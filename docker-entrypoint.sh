@@ -78,7 +78,6 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg)$ {
             expires 7d;
             add_header Cache-Control "public, immutable";
-            access_log off;
         }
 
         # WebSocket支持 - SocketIO
