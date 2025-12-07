@@ -32277,23 +32277,97 @@ function updateBruteforceTaskList(tasks) {
  *     console.error('初始化失败', error);
  *   }
  */
-async function loadInitialData() {
+// ============================================================================
+// 全局变量：用于loadInitialData的限流机制
+// ============================================================================
+let lastInitialDataRequest = 0;  // 上次请求的时间戳（毫秒）
+let lastInitialDataResponse = null;  // 缓存的上次响应数据
+const INITIAL_DATA_RATE_LIMIT = 500;  // 限流时间：500毫秒（0.5秒）
+
+/**
+ * 加载应用初始数据的统一函数（带限流机制）
+ * 
+ * 功能：
+ * 1. 调用后端 get_initial_data API
+ * 2. 处理返回的用户列表、最后登录用户等信息
+ * 3. 如果是超级管理员，自动更新密码恢复任务列表
+ * 4. 如果在多账号模式，自动获取并更新所有账号状态
+ * 5. 支持发送前端日志到后端
+ * 6. 实现限流：0.5秒内只允许一次请求，重复请求返回缓存数据
+ * 
+ * 参数：
+ *   options (Object, 可选) - 配置选项：
+ *     - frontend_logs (Array|Object): 要发送到后端的前端日志
+ *     - force (Boolean): 是否强制请求（忽略限流，默认false）
+ * 
+ * 返回值：
+ *   Promise<Object> - 包含初始数据的对象
+ */
+async function loadInitialData(options = {}) {
     // 使用try-catch块进行错误处理，这是异步函数的最佳实践
     try {
         // ====================================================================
-        // 步骤1：调用后端API获取初始数据
+        // 步骤1：限流检查
         // ====================================================================
+        
+        // 获取当前时间戳（毫秒）
+        const now = Date.now();
+        
+        // 计算距离上次请求的时间间隔
+        const timeSinceLastRequest = now - lastInitialDataRequest;
+        
+        // 检查是否需要应用限流
+        // 如果不是强制请求，且距离上次请求时间小于限流时间，且有缓存数据
+        if (!options.force && 
+            timeSinceLastRequest < INITIAL_DATA_RATE_LIMIT && 
+            lastInitialDataResponse) {
+            
+            // 记录日志：请求被限流
+            console.log(`[初始化] 请求被限流，返回缓存数据（距上次请求 ${timeSinceLastRequest}ms）`);
+            
+            // 直接返回缓存的响应数据
+            // 这样可以减少对后端的压力，提高响应速度
+            return lastInitialDataResponse;
+        }
+        
+        // ====================================================================
+        // 步骤2：准备API调用参数
+        // ====================================================================
+        
+        // 构建传递给后端的参数对象
+        const params = {};
+        
+        // 如果提供了前端日志，添加到参数中
+        if (options.frontend_logs) {
+            params.frontend_logs = options.frontend_logs;
+            console.log('[初始化] 携带前端日志数据，数量:', 
+                Array.isArray(options.frontend_logs) ? options.frontend_logs.length : 1);
+        }
+        
+        // ====================================================================
+        // 步骤3：调用后端API获取初始数据
+        // ====================================================================
+        
+        // 更新最后请求时间戳
+        lastInitialDataRequest = now;
         
         // 使用await关键字等待callPythonAPI的Promise完成
         // callPythonAPI是应用中已存在的函数，负责与Python后端通信
         // "get_initial_data"是API端点的标识符，后端会据此返回相应数据
-        const response = await callPythonAPI("get_initial_data");
+        const response = await callPythonAPI("get_initial_data", params);
         
         // 此时response已包含后端返回的完整数据对象
         // 如果API调用失败，callPythonAPI可能会抛出异常，会被catch块捕获
         
         // ====================================================================
-        // 步骤2：检查响应的有效性和成功状态
+        // 步骤4：缓存响应数据
+        // ====================================================================
+        
+        // 将响应数据缓存起来，供下次限流时使用
+        lastInitialDataResponse = response;
+        
+        // ====================================================================
+        // 步骤5：检查响应的有效性和成功状态
         // ====================================================================
         
         // 双重检查：确保response不为null/undefined，且success字段为true
@@ -32302,7 +32376,7 @@ async function loadInitialData() {
             // response对象存在且表示操作成功
             
             // ================================================================
-            // 步骤3：检查是否包含密码恢复任务列表（仅超级管理员）
+            // 步骤6：处理密码恢复任务列表（仅超级管理员）
             // ================================================================
             
             // 条件判断：检查response中是否存在bruteforce_task_list字段
@@ -32320,16 +32394,34 @@ async function loadInitialData() {
                 updateBruteforceTaskList(response.bruteforce_task_list);
                 
                 // 日志记录：帮助开发者调试，了解任务列表更新的触发情况
-                console.log('[初始化] 已自动更新密码恢复任务列表，任务数量:', response.bruteforce_task_list.length);
+                console.log('[初始化] 已自动更新密码恢复任务列表，任务数量:', 
+                    response.bruteforce_task_list.length);
             }
             // 如果bruteforce_task_list不存在，说明：
             //   - 当前用户不是超级管理员，或
             //   - 没有任何密码恢复任务
             // 这种情况下不执行任何操作，保持界面原样
+            
+            // ================================================================
+            // 步骤7：处理多账号模式的账号状态（如果在多账号模式）
+            // ================================================================
+            
+            // 检查是否返回了accounts字段（多账号状态信息）
+            if (response.accounts && Array.isArray(response.accounts)) {
+                // 如果存在accounts数据，说明当前用户在多账号模式
+                
+                // 日志记录：记录获取到的账号数量
+                console.log('[初始化] 已自动获取多账号状态，账号数量:', 
+                    response.accounts.length);
+                
+                // 注意：accounts数据已经在response中
+                // 调用方可以直接从response.accounts中提取并使用
+                // 这里不需要额外处理，因为调用方会处理这些数据
+            }
         }
         
         // ====================================================================
-        // 步骤4：返回完整的响应对象
+        // 步骤8：返回完整的响应对象
         // ====================================================================
         
         // 将response返回给调用者

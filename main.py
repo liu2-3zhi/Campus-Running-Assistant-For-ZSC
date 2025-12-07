@@ -4368,8 +4368,48 @@ class Api:
             k: v for k, v in self.user_data.__dict__.items() if not k.startswith("_")
         }
 
-    def get_initial_data(self):
-        """应用启动时由前端调用，获取初始用户列表和最后登录用户"""
+    def get_initial_data(self, frontend_logs=None):
+        """
+        应用启动时由前端调用，获取初始用户列表和最后登录用户
+        
+        参数:
+            frontend_logs: 可选，前端发送的日志数据（列表或单个日志对象）
+        """
+
+        # ========== 处理前端日志（如果提供）==========
+        if frontend_logs:
+            try:
+                # 获取会话信息用于日志记录
+                session_id = getattr(self, "_web_session_id", "UnknownSession")
+                auth_username = getattr(self, "auth_username", None)
+                is_guest = getattr(self, "is_guest", False)
+                
+                # 确定用户名
+                username = "Guest" if is_guest else (auth_username or "Unknown")
+                
+                # 处理日志列表
+                logs_to_process = frontend_logs if isinstance(frontend_logs, list) else [frontend_logs]
+                
+                for log_item in logs_to_process:
+                    if isinstance(log_item, dict) and log_item.get("message"):
+                        level = log_item.get("level", "INFO").upper()
+                        message = log_item.get("message", "")
+                        timestamp = log_item.get("timestamp", "")
+                        source = log_item.get("source", "unknown")
+                        
+                        log_message = f"[前端日志][前端时间:{timestamp}][用户:{username}][Session:{session_id}][{source}] {message}"
+                        
+                        # 根据日志级别记录到后端
+                        if level == "ERROR":
+                            logging.error(log_message)
+                        elif level == "WARN" or level == "WARNING":
+                            logging.warning(log_message)
+                        else:
+                            logging.info(log_message)
+                            
+                logging.debug(f"[前端日志] 处理了 {len(logs_to_process)} 条前端日志")
+            except Exception as e:
+                logging.error(f"[前端日志] 处理前端日志时出错: {e}", exc_info=True)
 
         try:
             session_id = getattr(self, "_web_session_id", None)
@@ -4535,6 +4575,20 @@ class Api:
                     response_data["bruteforce_task_list"] = brute_force_manager.get_all_tasks_status()
                 else:
                     response_data["bruteforce_task_list"] = []
+            
+            # [新增] 如果在多账号模式，添加所有账号的状态信息
+            if getattr(self, "is_multi_account_mode", False):
+                try:
+                    # 调用multi_get_all_accounts_status获取所有账号状态
+                    multi_status = self.multi_get_all_accounts_status()
+                    # 将账号状态数据添加到响应中
+                    if multi_status and isinstance(multi_status, dict):
+                        # 添加accounts字段
+                        response_data["accounts"] = multi_status.get("accounts", [])
+                        logging.debug(f"[多账号模式] 已添加 {len(response_data.get('accounts', []))} 个账号的状态信息")
+                except Exception as e:
+                    logging.error(f"[多账号模式] 获取账号状态失败: {e}", exc_info=True)
+                    response_data["accounts"] = []
 
             if is_logged_in and hasattr(self, "device_ua"):
                 response_data["device_ua"] = self.device_ua
@@ -20281,6 +20335,10 @@ def start_web_server(args_param):
                 logging.debug(
                     f"会话 {session_id} 调用 get_initial_data，更新活跃时间戳"
                 )
+                # 提取frontend_logs参数（如果存在）
+                if params and "frontend_logs" in params:
+                    # 将frontend_logs传递给get_initial_data方法
+                    pass  # 参数已在params中，会自动传递
 
             if hasattr(api_instance, method):
                 func = getattr(api_instance, method)
