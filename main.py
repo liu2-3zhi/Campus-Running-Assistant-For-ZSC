@@ -12708,6 +12708,12 @@ class BruteForceTaskManager:
     - 支持启动、停止、查询任务状态
     - 自动保存任务状态和恢复结果
     """
+    
+    # 类常量：账号不存在的错误关键词
+    ACCOUNT_NOT_EXIST_KEYWORDS = ["不存在", "未找到", "无效", "not found", "invalid"]
+    
+    # 类常量：尝试密码间隔时间（秒）
+    PASSWORD_ATTEMPT_DELAY = 0.5
 
     def __init__(self, logs_dir):
         """
@@ -12805,7 +12811,8 @@ class BruteForceTaskManager:
         attempted = set(self.attempts.get(account, []))
         
         # 第6位校验码的可能值：0-9和X（大写和小写）
-        check_codes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'X', 'x']
+        # 使用列表推导式生成0-9，然后添加X和x
+        check_codes = [str(i) for i in range(10)] + ['X', 'x']
         
         # 遍历所有可能的组合
         for day in range(1, 32):  # 第1-2位：日期01-31
@@ -12884,8 +12891,7 @@ class BruteForceTaskManager:
         try:
             # 创建临时的Api实例用于登录测试
             # 注意：为了避免影响现有会话，创建独立的Api对象
-            import tempfile
-            temp_user_dir = tempfile.mkdtemp()
+            # 注意：不需要临时目录，ApiClient不依赖文件系统
             
             # 创建一个简单的临时对象来模拟Api需要的属性
             class TempApp:
@@ -12929,9 +12935,8 @@ class BruteForceTaskManager:
                         error_msg = resp.get("message", "") if resp else ""
                         
                         # 检查是否是"账号不存在"的错误
-                        # 常见的账号不存在错误消息
-                        account_not_exist_keywords = ["不存在", "未找到", "无效", "not found", "invalid"]
-                        if any(keyword in error_msg for keyword in account_not_exist_keywords):
+                        # 使用类常量中定义的关键词列表
+                        if any(keyword in error_msg for keyword in self.ACCOUNT_NOT_EXIST_KEYWORDS):
                             logging.warning(f"[密码恢复] 账号 {account} 不存在，停止任务")
                             with self.lock:
                                 self.tasks[account]["status"] = "failed"
@@ -12984,7 +12989,8 @@ class BruteForceTaskManager:
                     return
                 
                 # 添加短暂延迟，避免请求过快触发防护
-                time.sleep(0.5)
+                # 使用类常量定义的延迟时间
+                time.sleep(self.PASSWORD_ATTEMPT_DELAY)
             
             # 所有密码都尝试完毕，未找到
             with self.lock:
