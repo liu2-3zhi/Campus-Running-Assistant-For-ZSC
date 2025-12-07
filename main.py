@@ -22852,6 +22852,21 @@ def start_web_server(args_param):
     print(f"  会话监控已启用（5分钟不活跃自动清理）")
     print(f"{'='*60}\n")
 
+    # [修正] 启动UDP通知线程（无论SSL是否启用，都在服务器启动前准备好）
+    # 将此逻辑移至 try 块之前，确保必然执行
+    def trigger_udp_notification():
+        # 直接调用具备重试逻辑的发送函数
+        # 函数内部已有30秒的健康检查轮询，无需额外封装
+        _send_startup_notification_to_log_forwarder(args.host, args.port)
+
+    udp_notification_thread = threading.Thread(
+        target=trigger_udp_notification,
+        daemon=True,
+        name="UDP_Startup_Notification"
+    )
+    udp_notification_thread.start()
+    logging.info("[系统启动] UDP通知服务线程已启动")
+
     try:
         if ssl_context:
             logging.info(
@@ -22969,40 +22984,16 @@ def start_web_server(args_param):
         else:
             logging.info(f"正在启动带有 WebSocket 支持的 Web 服务器于 {server_url}")
             try:
-                # 注册SocketIO启动后的回调，在服务器实际启动后才发送UDP通知
-                # 这样可以确保只有在服务器成功启动后才通知日志转发器
+                # 因为上方已经统一启动了 udp_notification_thread
+
                 @socketio.on('connect', namespace='/')
                 def on_first_connect():
-                    """首次连接时触发UDP通知（仅执行一次）"""
+                    """首次连接时触发UDP通知（仅执行一次，作为健康检查的补充）"""
                     if not hasattr(on_first_connect, 'notified'):
                         on_first_connect.notified = True
-                        # 在新线程中发送UDP通知，避免阻塞连接处理
-                        threading.Thread(
-                            target=_send_startup_notification_to_log_forwarder,
-                            args=(args.host, args.port),
-                            daemon=True
-                        ).start()
-                
-                # 启动Flask服务器前，在后台线程中等待服务器就绪后发送UDP通知
-                # 使用定时器延迟执行，确保socketio.run()已经开始监听
-                def delayed_udp_notification():
-                    """延迟发送UDP通知，确保服务器已启动"""
-                    time.sleep(2)  # 等待2秒让服务器完全启动
-                    # 验证服务器是否真的在运行
-                    try:
-                        import requests
-                        response = requests.get(f"http://{args.host}:{args.port}/", timeout=1)
-                        # 如果能连接，说明服务器已启动，发送UDP通知
-                        _send_startup_notification_to_log_forwarder(args.host, args.port)
-                    except Exception as e:
-                        logging.warning(f"[UDP通知] 服务器健康检查失败，不发送UDP通知: {e}")
-                
-                udp_notification_thread = threading.Thread(
-                    target=delayed_udp_notification,
-                    daemon=True
-                )
-                udp_notification_thread.start()
-                
+                        # 仅记录日志，主要通知任务交由主线程启动的 trigger_udp_notification 处理
+                        logging.debug("[SocketIO] 客户端首次连接确认")
+
                 # 启动SocketIO服务器（阻塞调用）
                 socketio.run(app, host=args.host, port=args.port, debug=False)
             except KeyboardInterrupt:
