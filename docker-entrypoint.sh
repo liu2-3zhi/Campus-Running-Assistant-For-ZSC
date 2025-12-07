@@ -44,6 +44,17 @@ stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 priority=10
+
+[program:nginx-log-forwarder]
+command=python3 /app/nginx_log_forwarder.py
+directory=/app
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/nginx-log-forwarder-stdout.log
+stderr_logfile=/var/log/supervisor/nginx-log-forwarder-stderr.log
+priority=20
+# 依赖Flask后端先启动
+startsecs=10
 SUPERVISOR_EOF
 
 # ==========================================

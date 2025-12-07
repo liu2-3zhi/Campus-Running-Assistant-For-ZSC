@@ -17932,6 +17932,86 @@ def start_web_server(args_param):
             )
             return jsonify({"success": False, "message": str(e)}), 500
 
+    @app.route("/api/log_nginx", methods=["POST"])
+    def log_nginx():
+        """
+        接收nginx访问日志并记录到Python日志系统
+        
+        接受的数据格式：
+        {
+            "remote_addr": "客户端IP",
+            "remote_user": "认证用户",
+            "time_local": "本地时间",
+            "request": "请求行",
+            "status": "响应状态码",
+            "body_bytes_sent": "发送字节数",
+            "http_referer": "来源页面",
+            "http_user_agent": "用户代理",
+            "http_x_forwarded_for": "代理IP"
+        }
+        或批量模式：
+        {
+            "batch": [日志对象数组]
+        }
+        """
+        try:
+            req_data = request.get_json() or {}
+            
+            # 定义单条nginx日志处理函数
+            def process_nginx_log(log_entry):
+                # 提取nginx日志字段
+                remote_addr = log_entry.get("remote_addr", "-")
+                remote_user = log_entry.get("remote_user", "-")
+                time_local = log_entry.get("time_local", "")
+                request_line = log_entry.get("request", "-")
+                status = log_entry.get("status", "-")
+                body_bytes = log_entry.get("body_bytes_sent", "-")
+                referer = log_entry.get("http_referer", "-")
+                user_agent = log_entry.get("http_user_agent", "-")
+                forwarded_for = log_entry.get("http_x_forwarded_for", "-")
+                
+                # 格式化日志消息（类似nginx access.log格式）
+                log_message = (
+                    f"[Nginx访问日志] {remote_addr} - {remote_user} [{time_local}] "
+                    f'"{request_line}" {status} {body_bytes} '
+                    f'"{referer}" "{user_agent}" "{forwarded_for}"'
+                )
+                
+                # 根据HTTP状态码决定日志级别
+                try:
+                    status_code = int(status)
+                    if status_code >= 500:
+                        # 5xx 服务器错误 -> ERROR
+                        logging.error(log_message)
+                    elif status_code >= 400:
+                        # 4xx 客户端错误 -> WARNING
+                        logging.warning(log_message)
+                    else:
+                        # 2xx, 3xx 正常 -> INFO
+                        logging.info(log_message)
+                except (ValueError, TypeError):
+                    # 状态码无效时使用INFO级别
+                    logging.info(log_message)
+            
+            # 判断是批量模式还是单条模式
+            if "batch" in req_data and isinstance(req_data["batch"], list):
+                # 批量处理
+                for log_entry in req_data["batch"]:
+                    if isinstance(log_entry, dict):
+                        process_nginx_log(log_entry)
+            else:
+                # 单条处理
+                process_nginx_log(req_data)
+            
+            return jsonify({"success": True})
+            
+        except Exception as e:
+            logging.error(
+                f"[Nginx日志处理错误] 处理失败: {e}",
+                exc_info=True,
+            )
+            return jsonify({"success": False, "message": str(e)}), 500
+
     @app.route("/api/auth/check_phone", methods=["POST"])
     def auth_check_phone():
         """
