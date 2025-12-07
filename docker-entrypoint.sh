@@ -3,6 +3,9 @@
 
 set -e
 
+mkdir -p /var/log/nginx/
+touch /var/log/nginx/access_json.log
+
 # 打印启动信息
 echo "================================================="
 echo "  跑步助手 Docker 容器启动 (Nginx前端模式)"
