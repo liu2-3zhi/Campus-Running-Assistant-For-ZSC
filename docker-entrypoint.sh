@@ -3,6 +3,11 @@
 
 set -e
 
+mkdir -p /var/log/nginx/
+touch /var/log/nginx/access_json.log
+touch /app/nginx.conf
+
+
 # 打印启动信息
 echo "================================================="
 echo "  跑步助手 Docker 容器启动 (Nginx前端模式)"
@@ -44,6 +49,17 @@ stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 priority=10
+
+[program:nginx-log-forwarder]
+command=python3 /app/nginx_log_forwarder.py
+directory=/app
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/nginx-log-forwarder-stdout.log
+stderr_logfile=/var/log/supervisor/nginx-log-forwarder-stderr.log
+priority=20
+# 依赖Flask后端先启动
+startsecs=10
 SUPERVISOR_EOF
 
 # ==========================================
@@ -60,11 +76,37 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         # 客户端最大上传大小
         client_max_body_size 100M;
 
-        # 静态文件缓存设置
-        location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg)$ {
-            expires 7d;
-            add_header Cache-Control "public, immutable";
+        # 1. Favicon (位于 /app/favicon.ico)
+        location = /favicon.ico {
+            root /app;
+            log_not_found off;
             access_log off;
+        }
+
+        # 2 & 3. Scripts 和 Styles 目录
+        location ~ ^/(scripts|styles)/ {
+            root /app;
+            # 设置较长的缓存时间，因为静态资源通常不常变
+            expires 7d;
+            access_log off;
+        }
+
+        # 4. 根目录头像 (位于 /app/default_avatar.png)
+        location = /default_avatar.png {
+            root /app;
+        }
+
+        # 5. Static 路径别名 (URL: /static/... -> File: /app/...)
+        location = /static/default_avatar.png {
+            alias /app/default_avatar.png;
+        }
+
+        # 6. API 路径头像特例 (优先级高于通用的 API 正则匹配)
+        # 必须使用 = 精确匹配，否则会被下方的 ~ ^/(api|...) 规则拦截
+        location = /api/avatar/default_avatar.png {
+            alias /app/default_avatar.png;
+            # 允许跨域访问图片
+            add_header Access-Control-Allow-Origin *;
         }
 
         # WebSocket支持 - SocketIO
@@ -152,7 +194,27 @@ http {
     log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" "$http_x_forwarded_for"';
+    
+    # JSON格式日志 - 用于结构化日志记录和分析
+    log_format  json_combined escape=json
+        '{'
+            '"time_local":"$time_local",'
+            '"remote_addr":"$remote_addr",'
+            '"remote_user":"$remote_user",'
+            '"request":"$request",'
+            '"status":"$status",'
+            '"body_bytes_sent":"$body_bytes_sent",'
+            '"request_time":"$request_time",'
+            '"http_referer":"$http_referer",'
+            '"http_user_agent":"$http_user_agent",'
+            '"http_x_forwarded_for":"$http_x_forwarded_for"'
+        '}';
+    
+    # 传统格式访问日志
     access_log  /var/log/nginx/access.log  main;
+    # JSON格式访问日志（用于程序化处理和转发到Python日志系统）
+    access_log  /var/log/nginx/access_json.log  json_combined;
+    
     sendfile        on;
     tcp_nopush      on;
     tcp_nodelay     on;
@@ -232,7 +294,27 @@ http {
     log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" "$http_x_forwarded_for"';
+    
+    # JSON格式日志 - 用于结构化日志记录和分析
+    log_format  json_combined escape=json
+        '{'
+            '"time_local":"$time_local",'
+            '"remote_addr":"$remote_addr",'
+            '"remote_user":"$remote_user",'
+            '"request":"$request",'
+            '"status":"$status",'
+            '"body_bytes_sent":"$body_bytes_sent",'
+            '"request_time":"$request_time",'
+            '"http_referer":"$http_referer",'
+            '"http_user_agent":"$http_user_agent",'
+            '"http_x_forwarded_for":"$http_x_forwarded_for"'
+        '}';
+    
+    # 传统格式访问日志
     access_log  /var/log/nginx/access.log  main;
+    # JSON格式访问日志（用于程序化处理和转发到Python日志系统）
+    access_log  /var/log/nginx/access_json.log  json_combined;
+    
     sendfile        on;
     tcp_nopush      on;
     tcp_nodelay     on;

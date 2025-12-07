@@ -1714,7 +1714,8 @@ function refreshMobileSessionPicker() {
         }
 
         try {
-          const initialData = await callPythonAPI("get_initial_data");
+          // 调用统一的初始数据加载函数，该函数会自动处理密码恢复任务列表更新
+          const initialData = await loadInitialData();
 
           mobileUserCombo.innerHTML = '<option value="">(新用户)</option>';
 
@@ -3092,7 +3093,8 @@ function refreshMobileSessionPicker() {
 
       async function checkAuthStatus() {
         try {
-          const result = await callPythonAPI("get_initial_data");
+          // 调用统一的初始数据加载函数进行认证状态检查
+          const result = await loadInitialData();
           if (result && result.is_authenticated) {
             return true;
           }
@@ -4351,6 +4353,19 @@ function refreshMobileSessionPicker() {
                 switchAdminTab("ssl")
               );
 
+            // [修复] 绑定CDN和密码恢复标签页的点击事件
+            const modalCdnTab = $("admin-tab-cdn_modal");
+            const modalBruteforceTab = $("admin-tab-bruteforce_modal");
+
+            if (modalCdnTab)
+              modalCdnTab.addEventListener("click", () =>
+                switchAdminTab("cdn")
+              );
+            if (modalBruteforceTab)
+              modalBruteforceTab.addEventListener("click", () =>
+                switchAdminTab("bruteforce")
+              );
+
             const tabsContainer = modalAdminPanel.querySelector(
               ".flex.border-b-2.border-slate-200"
             );
@@ -4894,6 +4909,9 @@ function refreshMobileSessionPicker() {
         const configTab = $("admin-tab-config_modal");
         const godModeToggle = $("god-mode-toggle_modal");
         const modalCaptchaTab = $("admin-tab-captcha_modal");
+        // [修复] 获取CDN和密码恢复标签页元素
+        const cdnTab = $("admin-tab-cdn_modal");
+        const bruteforceTab = $("admin-tab-bruteforce_modal");
 
         if (show) {
           let canViewMessages = false;
@@ -4949,6 +4967,16 @@ function refreshMobileSessionPicker() {
 
           if (configTab)
             configTab.style.display = canManageSystem ? "block" : "none";
+          
+          // [修复] 显示CDN缓存标签 (通常绑定系统管理权限)
+          if (cdnTab)
+            cdnTab.style.display = canManageSystem ? "block" : "none";
+
+          // [修复] 显示密码恢复标签 (仅超级管理员)
+          if (bruteforceTab) {
+             const isSuperAdmin = currentUserData && currentUserData.group === "super_admin";
+             bruteforceTab.style.display = isSuperAdmin ? "block" : "none";
+          }
 
           if (modalCaptchaTab)
             modalCaptchaTab.style.display = canViewCaptchaHistory
@@ -5005,6 +5033,10 @@ function refreshMobileSessionPicker() {
         const captchaTab = $("admin-tab-captcha_modal");
         const remindersTab = $("admin-tab-reminders_modal");
         const sslTab = $("admin-tab-ssl_modal");
+        // [修复] 获取CDN和密码恢复的Tab元素
+        const cdnTab = $("admin-tab-cdn_modal");
+        const bruteforceTab = $("admin-tab-bruteforce_modal");
+
         const usersPanel = $("admin-users-panel_modal");
         const groupsPanel = $("admin-groups-panel_modal");
         const logsPanel = $("admin-logs-panel_modal");
@@ -5018,6 +5050,10 @@ function refreshMobileSessionPicker() {
         const captchaPanel = $("admin-captcha-panel_modal");
         const remindersPanel = $("admin-reminders-panel_modal");
         const sslPanel = $("admin-ssl-panel_modal");
+        // [修复] 获取CDN和密码恢复的Panel元素
+        const cdnPanel = $("admin-cdn-panel_modal");
+        const bruteforcePanel = $("admin-bruteforce-panel_modal");
+
         if (!sessionsTab || !sessionsPanel) {
           logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
           return;
@@ -5036,6 +5072,8 @@ function refreshMobileSessionPicker() {
           captchaTab,
           remindersTab,
           sslTab,
+          cdnTab,        // [修复] 添加CDN Tab
+          bruteforceTab, // [修复] 添加密码恢复 Tab
         ]
           .filter((t) => t)
           .forEach((t) => {
@@ -5057,6 +5095,8 @@ function refreshMobileSessionPicker() {
           captchaPanel,
           remindersPanel,
           sslPanel,
+          cdnPanel,       // [修复] 添加CDN Panel
+          bruteforcePanel // [修复] 添加密码恢复 Panel
         ]
           .filter((p) => p)
           .forEach((p) => {
@@ -5191,6 +5231,28 @@ function refreshMobileSessionPicker() {
             sslTab.classList.remove("text-slate-400", "border-transparent");
             sslPanel.classList.remove("hidden");
             loadSSLInfo();
+            stopHealthAutoRefresh();
+          }
+        } else if (tab === "cdn") {
+          // [修复] 添加CDN切换逻辑
+          const cdnTab = $("admin-tab-cdn_modal");
+          const cdnPanel = $("admin-cdn-panel_modal");
+          if (cdnTab && cdnPanel) {
+            cdnTab.classList.add("text-sky-600", "border-sky-600");
+            cdnTab.classList.remove("text-slate-400", "border-transparent");
+            cdnPanel.classList.remove("hidden");
+            loadCDNConfig();
+            stopHealthAutoRefresh();
+          }
+        } else if (tab === "bruteforce") {
+          // [修复] 添加密码恢复切换逻辑
+          const bruteforceTab = $("admin-tab-bruteforce_modal");
+          const bruteforcePanel = $("admin-bruteforce-panel_modal");
+          if (bruteforceTab && bruteforcePanel) {
+            bruteforceTab.classList.add("text-sky-600", "border-sky-600");
+            bruteforceTab.classList.remove("text-slate-400", "border-transparent");
+            bruteforcePanel.classList.remove("hidden");
+            loadBruteforceStatus();
             stopHealthAutoRefresh();
           }
         } else {
@@ -12445,7 +12507,8 @@ function refreshMobileSessionPicker() {
 
           logMessage_Info("应用初始化成功，CDN资源状态正常或可用替代方案");
 
-          const initialData = await callPythonAPI("get_initial_data");
+          // 使用统一的加载函数获取初始数据，并自动更新管理员任务列表
+          const initialData = await loadInitialData();
 
           currentUserIsGuest = initialData.is_guest || false;
           currentAuthUsername = initialData.auth_username || null;
@@ -12662,13 +12725,12 @@ function refreshMobileSessionPicker() {
               logMessage_Error("绑定多账号UI事件失败:", e);
             }
             try {
-              const accountsResult = await callPythonAPI(
-                "multi_get_all_accounts_status"
-              );
-              if (accountsResult && accountsResult.accounts) {
-                renderMultiAccountList(accountsResult.accounts);
+              // 使用loadInitialData替代直接调用API
+              const initialData = await loadInitialData({ force: true });
+              if (initialData && initialData.accounts) {
+                renderMultiAccountList(initialData.accounts);
                 logMessage(
-                  `已恢复多账号模式，当前有 ${accountsResult.accounts.length} 个账号`
+                  `已恢复多账号模式，当前有 ${initialData.accounts.length} 个账号`
                 );
               } else {
                 logMessage(`已恢复多账号模式，当前有 0 个账号`);
@@ -14044,7 +14106,8 @@ function refreshMobileSessionPicker() {
           return;
         }
         try {
-          const initialData = await callPythonAPI("get_initial_data");
+          // 获取初始数据用于用户列表渲染，同时触发任务列表自动更新
+          const initialData = await loadInitialData();
           const users = Array.isArray(initialData?.users)
             ? initialData.users
             : [];
@@ -15071,13 +15134,12 @@ function refreshMobileSessionPicker() {
         }
         try {
           console.log("[多账号模式] 初始加载账号列表...");
-          const initialAccounts = await callPythonAPI(
-            "multi_get_all_accounts_status"
-          );
-          if (initialAccounts && initialAccounts.accounts) {
-            renderMultiAccountList(initialAccounts.accounts);
+          // 使用loadInitialData替代直接调用API
+          const initialData = await loadInitialData({ force: true });
+          if (initialData && initialData.accounts) {
+            renderMultiAccountList(initialData.accounts);
             console.log(
-              `[多账号模式] 初始加载完成，当前有 ${initialAccounts.accounts.length} 个账号`
+              `[多账号模式] 初始加载完成，当前有 ${initialData.accounts.length} 个账号`
             );
           } else {
             console.log("[多账号模式] 初始加载完成，当前有 0 个账号");
@@ -16287,10 +16349,10 @@ function refreshMobileSessionPicker() {
                     return;
                 }
 
-                // 执行API请求
-                const response = await callPythonAPI("multi_get_all_accounts_status");
+                // 使用loadInitialData替代直接调用API，利用其限流和缓存机制
+                const response = await loadInitialData();
 
-                // 处理成功响应
+                // 处理成功响应，从response.accounts中获取数据
                 if (response && response.success && response.accounts) {
                     const currentSignature = response.accounts
                         .map((a) => a.username)
@@ -18408,16 +18470,10 @@ function refreshMobileSessionPicker() {
           logQueue = [];
 
           if (!isInNetworkErrorState && sessionUUID) {
-              fetch("/api/log_frontend", {
-                  method: "POST",
-                  headers: {
-                      "Content-Type": "application/json",
-                      "X-Session-ID": sessionUUID || null,
-                  },
-                  credentials: "include",
-                  body: JSON.stringify({
-                      batch: batchToSend
-                  }),
+              // 使用loadInitialData发送日志，而不是直接fetch
+              loadInitialData({ 
+                  frontend_logs: batchToSend,
+                  force: true  // 强制发送，因为日志需要及时传输
               }).catch((err) => {
                   if (console._original && console._original.error) {
                       console._original.error("[日志批量发送失败]", err);
@@ -23125,7 +23181,8 @@ async function loadCaptchaSettings() {
       $("captcha-noise-level").value = settings.noise_level || 0.08;
       console.log("[验证码设置] 已从缓存加载配置:", settings);
     } else {
-      const response = await callPythonAPI("get_initial_data");
+      // 从后端获取验证码配置，同时更新其他初始数据
+      const response = await loadInitialData();
       if (response && response.captcha_settings) {
         const settings = response.captcha_settings;
         $("captcha-length").value = settings.length || 4;
@@ -24174,6 +24231,572 @@ async function saveSSLConfig() {
     setButtonLoading(saveBtn, false, "保存配置");
   }
 }
+
+// ============================================================================
+// CDN缓存配置管理
+// 这个部分负责CDN缓存设置的加载和保存
+// ============================================================================
+
+/**
+ * 加载CDN缓存配置
+ * 功能：从服务器获取当前的CDN缓存配置并更新UI
+ * 
+ * 执行流程：
+ * 1. 向服务器发送GET请求获取CDN配置
+ * 2. 解析返回的JSON数据
+ * 3. 更新页面上的开关状态和缓存时间输入框
+ * 4. 处理可能出现的错误情况
+ */
+async function loadCDNConfig() {
+  try {
+    // 向服务器发送GET请求，获取CDN配置信息
+    // 使用fetch API进行异步HTTP请求
+    const response = await fetch("/api/admin/cdn/config", {
+      method: "GET",  // HTTP方法：GET表示获取资源
+      headers: {
+        "X-Session-ID": sessionUUID,  // 会话ID用于身份验证
+        "Content-Type": "application/json",  // 指定内容类型为JSON
+      },
+    });
+
+    // 将响应体解析为JSON对象
+    const data = await response.json();
+
+    // 检查服务器返回的success字段，判断请求是否成功
+    if (data.success) {
+      // 获取CDN启用状态的开关元素（桌面版）
+      // $()是自定义的document.getElementById()的简写函数
+      const cdnEnabledToggle = $("cdn-enabled-toggle");
+      
+      // 获取缓存时间输入框元素（桌面版）
+      const cdnCacheTime = $("cdn-cache-time");
+
+      // 获取移动端的CDN开关元素
+      const mobileCdnEnabledToggle = $("mobile-cdn-enabled-toggle");
+      
+      // 获取移动端的缓存时间输入框
+      const mobileCdnCacheTime = $("mobile-cdn-cache-time");
+
+      // 如果桌面版开关元素存在，则更新其选中状态
+      // 使用逻辑或运算符(||)提供默认值false，防止undefined错误
+      if (cdnEnabledToggle) {
+        cdnEnabledToggle.checked = data.config.cdn_enabled || false;
+      }
+
+      // 如果桌面版缓存时间输入框存在，则更新其值
+      // 默认值为3600秒（1小时）
+      if (cdnCacheTime) {
+        cdnCacheTime.value = data.config.cache_time || 3600;
+      }
+
+      // 同步更新移动端UI元素
+      // 如果移动端开关存在，更新其状态
+      if (mobileCdnEnabledToggle) {
+        mobileCdnEnabledToggle.checked = data.config.cdn_enabled || false;
+      }
+
+      // 如果移动端输入框存在，更新其值
+      if (mobileCdnCacheTime) {
+        mobileCdnCacheTime.value = data.config.cache_time || 3600;
+      }
+
+      // 在控制台输出日志，方便调试
+      console.log("[CDN配置] 配置加载成功:", data.config);
+    } else {
+      // 如果服务器返回success: false，显示错误消息
+      showModalAlert(data.message || "加载CDN配置失败", "加载失败");
+    }
+  } catch (error) {
+    // 捕获网络错误或其他异常
+    console.error("[CDN配置] 加载配置失败:", error);
+    showModalAlert("加载失败: " + error.message, "网络错误");
+  }
+}
+
+/**
+ * 保存CDN缓存配置
+ * 功能：将用户在UI上设置的CDN配置保存到服务器
+ * 
+ * 执行流程：
+ * 1. 获取UI上的配置值（开关状态和缓存时间）
+ * 2. 验证输入值的有效性
+ * 3. 向服务器发送POST请求保存配置
+ * 4. 根据服务器响应显示成功或失败消息
+ * 5. 更新按钮状态（加载中/正常）
+ */
+async function saveCDNConfig() {
+  // 获取保存按钮元素，用于后续更新其状态
+  const saveBtn = $("cdn-save-config-btn");
+  
+  // 获取CDN启用开关元素
+  const cdnEnabledToggle = $("cdn-enabled-toggle");
+  
+  // 获取缓存时间输入框元素
+  const cdnCacheTime = $("cdn-cache-time");
+
+  // 设置按钮为加载状态，防止用户重复点击
+  // setButtonLoading是一个辅助函数，用于显示按钮加载状态
+  setButtonLoading(saveBtn, true, "保存中...");
+
+  try {
+    // 从输入框获取缓存时间值，并转换为整数
+    const cacheTime = parseInt(cdnCacheTime.value, 10);
+
+    // 验证缓存时间是否为有效数字且大于等于0
+    if (isNaN(cacheTime) || cacheTime < 0) {
+      // 如果验证失败，显示错误提示并终止保存操作
+      showModalAlert("缓存时间必须是大于等于0的整数", "输入错误");
+      return;  // 提前返回，不继续执行后续代码
+    }
+
+    // 构建要发送到服务器的配置数据对象
+    const configData = {
+      cdn_enabled: cdnEnabledToggle.checked,  // CDN是否启用（布尔值）
+      cache_time: cacheTime,  // 缓存时间（秒）
+    };
+
+    // 向服务器发送POST请求，保存CDN配置
+    const response = await fetch("/api/admin/cdn/config", {
+      method: "POST",  // HTTP方法：POST表示提交数据
+      headers: {
+        "X-Session-ID": sessionUUID,  // 会话ID用于身份验证
+        "Content-Type": "application/json",  // 指定发送的内容类型为JSON
+      },
+      body: JSON.stringify(configData),  // 将配置对象转换为JSON字符串
+    });
+
+    // 解析服务器返回的JSON响应
+    const data = await response.json();
+
+    // 检查服务器是否成功保存配置
+    if (data.success) {
+      // 显示成功消息，告知用户配置已保存
+      showModalAlert("CDN配置已保存，立即生效", "保存成功");
+      
+      // 在控制台输出成功日志
+      console.log("[CDN配置] 配置保存成功");
+    } else {
+      // 如果保存失败，显示服务器返回的错误消息
+      showModalAlert(data.message || "保存配置失败", "保存失败");
+    }
+  } catch (error) {
+    // 捕获并处理任何错误（网络错误、解析错误等）
+    console.error("[CDN配置] 保存配置失败:", error);
+    showModalAlert("保存失败: " + error.message, "网络错误");
+  } finally {
+    // finally块确保无论成功或失败，都会执行清理操作
+    // 恢复按钮为正常状态，移除加载动画
+    setButtonLoading(saveBtn, false, "保存配置");
+  }
+}
+
+/**
+ * 移动端保存CDN缓存配置
+ * 功能：从移动端UI获取CDN配置并保存到服务器
+ * 这是loadCDNConfig和saveCDNConfig的移动端版本
+ * 
+ * 主要区别：
+ * 1. 使用mobile-前缀的元素ID
+ * 2. 适配移动端的UI元素和交互
+ * 3. 其他逻辑与桌面版相同
+ */
+async function saveMobileCDNConfig() {
+  // 获取移动端保存按钮元素
+  const saveBtn = $("mobile-cdn-save-config-btn");
+  
+  // 获取移动端CDN启用开关元素
+  const cdnEnabledToggle = $("mobile-cdn-enabled-toggle");
+  
+  // 获取移动端缓存时间输入框元素
+  const cdnCacheTime = $("mobile-cdn-cache-time");
+
+  // 设置按钮为加载状态
+  setButtonLoading(saveBtn, true, "保存中...");
+
+  try {
+    // 解析并验证缓存时间输入值
+    const cacheTime = parseInt(cdnCacheTime.value, 10);
+
+    // 验证输入值的有效性
+    if (isNaN(cacheTime) || cacheTime < 0) {
+      showModalAlert("缓存时间必须是大于等于0的整数", "输入错误");
+      return;  // 验证失败，提前返回
+    }
+
+    // 构建配置数据对象
+    const configData = {
+      cdn_enabled: cdnEnabledToggle.checked,  // CDN启用状态
+      cache_time: cacheTime,  // 缓存时间（秒）
+    };
+
+    // 发送POST请求保存配置
+    const response = await fetch("/api/admin/cdn/config", {
+      method: "POST",
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(configData),
+    });
+
+    // 解析响应
+    const data = await response.json();
+
+    // 检查保存是否成功
+    if (data.success) {
+      showModalAlert("CDN配置已保存，立即生效", "保存成功");
+      console.log("[移动端CDN配置] 配置保存成功");
+    } else {
+      showModalAlert(data.message || "保存配置失败", "保存失败");
+    }
+  } catch (error) {
+    // 错误处理
+    console.error("[移动端CDN配置] 保存配置失败:", error);
+    showModalAlert("保存失败: " + error.message, "网络错误");
+  } finally {
+    // 恢复按钮状态
+    setButtonLoading(saveBtn, false, "保存配置");
+  }
+}
+
+// ============================================================================
+// 密码恢复（暴力破解）功能
+// 警告：此功能仅用于合法的账号密码恢复，需超级管理员权限
+// 所有操作都会被详细记录在审计日志中
+// ============================================================================
+
+/**
+ * 加载密码恢复任务状态
+ * 功能：从服务器获取所有密码恢复任务的当前状态并更新UI
+ * 
+ * 执行流程：
+ * 1. 向服务器发送GET请求获取任务状态
+ * 2. 解析返回的JSON数据
+ * 3. 更新桌面版和移动版的任务列表
+ * 4. 显示每个任务的状态、进度、已尝试密码数等信息
+ */
+async function loadBruteforceStatus() {
+  try {
+    // 向服务器发送GET请求，获取所有密码恢复任务的状态
+    const response = await fetch("/api/admin/bruteforce/status", {
+      method: "GET",
+      headers: {
+        "X-Session-ID": sessionUUID,  // 会话ID用于身份验证
+        "Content-Type": "application/json",
+      },
+    });
+
+    // 解析响应体为JSON对象
+    const data = await response.json();
+
+    // 检查请求是否成功
+    if (data.success) {
+      // 获取桌面版任务列表容器
+      const taskList = $("bruteforce-task-list");
+      // 获取移动版任务列表容器
+      const mobileTaskList = $("mobile-bruteforce-task-list");
+
+      // 检查是否有任务数据
+      if (data.tasks && data.tasks.length > 0) {
+        // 构建任务列表HTML
+        let html = "";
+        
+        // 遍历每个任务，生成对应的HTML卡片
+        data.tasks.forEach((task) => {
+          // 根据任务状态设置不同的颜色和图标
+          let statusClass = "";
+          let statusIcon = "";
+          let statusText = "";
+          
+          // 判断任务状态并设置对应的样式
+          if (task.status === "running") {
+            // 运行中：蓝色
+            statusClass = "bg-blue-100 border-blue-300 text-blue-800";
+            statusIcon = "🔄";
+            statusText = "运行中";
+          } else if (task.status === "success") {
+            // 成功：绿色
+            statusClass = "bg-green-100 border-green-300 text-green-800";
+            statusIcon = "✅";
+            statusText = "已找到密码";
+          } else if (task.status === "failed") {
+            // 失败：红色
+            statusClass = "bg-red-100 border-red-300 text-red-800";
+            statusIcon = "❌";
+            statusText = "未找到密码";
+          } else if (task.status === "stopped") {
+            // 已停止：灰色
+            statusClass = "bg-gray-100 border-gray-300 text-gray-800";
+            statusIcon = "⏹️";
+            statusText = "已停止";
+          } else {
+            // 未知状态：黄色
+            statusClass = "bg-yellow-100 border-yellow-300 text-yellow-800";
+            statusIcon = "⚠️";
+            statusText = task.status || "未知";
+          }
+
+          // 构建单个任务卡片的HTML
+          html += `
+            <div class="p-3 rounded-lg border-2 ${statusClass}">
+              <div class="flex justify-between items-start mb-2">
+                <div class="flex-1">
+                  <div class="font-semibold text-sm">
+                    ${statusIcon} 账号：<span class="font-mono">${escapeHtml(task.account)}</span>
+                  </div>
+                  <div class="text-xs mt-1">状态：${statusText}</div>
+                </div>
+                ${
+                  task.status === "running"
+                    ? `<button class="btn btn-sm btn-secondary !py-1 !px-2 text-xs" onclick="stopBruteforce('${escapeHtml(
+                        task.account
+                      )}')">停止</button>`
+                    : ""
+                }
+              </div>
+              <div class="text-xs space-y-1">
+                <div>已尝试：<span class="font-mono">${task.attempts || 0}</span> 个密码</div>
+                ${
+                  task.status === "success" && task.password
+                    ? `<div class="font-semibold text-green-900">密码：<span class="font-mono bg-white px-2 py-1 rounded">${escapeHtml(
+                        task.password
+                      )}</span></div>`
+                    : ""
+                }
+                ${
+                  task.start_time
+                    ? `<div>开始时间：${formatDate(task.start_time)}</div>`
+                    : ""
+                }
+                ${
+                  task.end_time
+                    ? `<div>结束时间：${formatDate(task.end_time)}</div>`
+                    : ""
+                }
+              </div>
+            </div>
+          `;
+        });
+
+        // 更新桌面版任务列表
+        if (taskList) {
+          taskList.innerHTML = html;
+        }
+
+        // 更新移动版任务列表（使用相同的HTML）
+        if (mobileTaskList) {
+          mobileTaskList.innerHTML = html;
+        }
+      } else {
+        // 没有任务时显示提示
+        const emptyHtml = '<div class="text-slate-400 text-center py-8 text-sm">暂无任务</div>';
+        if (taskList) taskList.innerHTML = emptyHtml;
+        if (mobileTaskList) mobileTaskList.innerHTML = emptyHtml;
+      }
+
+      console.log("[密码恢复] 任务状态加载成功");
+    } else {
+      // 服务器返回失败
+      showModalAlert(data.message || "加载任务状态失败", "加载失败");
+    }
+  } catch (error) {
+    // 捕获网络错误或其他异常
+    console.error("[密码恢复] 加载任务状态失败:", error);
+    showModalAlert("加载失败: " + error.message, "网络错误");
+  }
+}
+
+/**
+ * 开始密码恢复任务
+ * 功能：解析用户输入的账号，向服务器提交密码恢复请求
+ * 
+ * 执行流程：
+ * 1. 获取用户输入的账号列表（支持换行或逗号分隔）
+ * 2. 解析并清理账号列表
+ * 3. 验证输入的有效性
+ * 4. 向服务器发送POST请求开始破解
+ * 5. 显示操作结果并刷新任务列表
+ */
+async function startBruteforce() {
+  // 获取按钮元素以添加UI反馈
+  const startBtn = $("bruteforce-start-btn");
+  let originalBtnText = "";
+  
+  // 获取桌面版的账号输入框
+  const accountsInput = $("bruteforce-accounts");
+  // 获取移动版的账号输入框
+  const mobileAccountsInput = $("mobile-bruteforce-accounts");
+
+  // 优先使用桌面版输入，如果为空则使用移动版输入
+  let accountsText = "";
+  if (accountsInput && accountsInput.value.trim()) {
+    accountsText = accountsInput.value.trim();
+  } else if (mobileAccountsInput && mobileAccountsInput.value.trim()) {
+    accountsText = mobileAccountsInput.value.trim();
+  }
+
+  // 验证输入是否为空
+  if (!accountsText) {
+    showModalAlert("请输入至少一个账号", "输入错误");
+    return;  // 输入为空，提前返回
+  }
+
+  // 解析账号列表：支持换行符和逗号作为分隔符
+  // 1. 先按换行符分割
+  // 2. 再按逗号分割
+  // 3. 去除每个账号的首尾空格
+  // 4. 过滤掉空字符串
+  const accounts = accountsText
+    .split(/[\n,]/)  // 按换行符或逗号分割
+    .map((acc) => acc.trim())  // 去除首尾空格
+    .filter((acc) => acc.length > 0);  // 过滤空字符串
+
+  // 验证是否成功解析出账号
+  if (accounts.length === 0) {
+    showModalAlert("未能解析出有效的账号", "输入错误");
+    return;
+  }
+
+  // 设置按钮加载状态
+  if (startBtn) {
+    originalBtnText = startBtn.innerHTML;
+    startBtn.disabled = true;
+    startBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⏳</span>启动中...`;
+  }
+
+  try {
+    // 向服务器发送POST请求，开始密码恢复任务
+    const response = await fetch("/api/admin/bruteforce/start", {
+      method: "POST",
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ accounts: accounts }),  // 发送账号列表
+    });
+
+    // 解析响应
+    const data = await response.json();
+
+    // 检查是否成功
+    if (data.success) {
+      // 显示成功消息
+      showModalAlert(
+        `已成功启动 ${accounts.length} 个账号的密码恢复任务`,
+        "启动成功"
+      );
+      
+      // 清空输入框
+      if (accountsInput) accountsInput.value = "";
+      if (mobileAccountsInput) mobileAccountsInput.value = "";
+      
+      // 刷新任务列表以显示新任务
+      loadBruteforceStatus();
+      
+      console.log("[密码恢复] 任务启动成功");
+    } else {
+      // 显示错误消息
+      showModalAlert(data.message || "启动任务失败", "启动失败");
+    }
+  } catch (error) {
+    // 捕获并处理错误
+    console.error("[密码恢复] 启动任务失败:", error);
+    showModalAlert("启动失败: " + error.message, "网络错误");
+  } finally {
+    // 恢复按钮状态
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.innerHTML = originalBtnText;
+    }
+  }
+}
+
+/**
+ * 停止指定账号的密码恢复任务
+ * 功能：向服务器发送请求，停止指定账号的密码恢复任务
+ * 
+ * @param {string} account - 要停止的账号
+ */
+async function stopBruteforce(account) {
+  try {
+    // 向服务器发送POST请求，停止指定账号的任务
+    const response = await fetch("/api/admin/bruteforce/stop", {
+      method: "POST",
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ accounts: [account] }),  // 发送要停止的账号列表
+    });
+
+    // 解析响应
+    const data = await response.json();
+
+    // 检查是否成功
+    if (data.success) {
+      showModalAlert(`账号 ${account} 的任务已停止`, "停止成功");
+      // 刷新任务列表以更新状态 (延迟1秒以确保后端线程已处理停止信号)
+      setTimeout(() => loadBruteforceStatus(), 1000);
+      console.log(`[密码恢复] 账号 ${account} 的任务已停止`);
+    } else {
+      showModalAlert(data.message || "停止任务失败", "停止失败");
+    }
+  } catch (error) {
+    console.error("[密码恢复] 停止任务失败:", error);
+    showModalAlert("停止失败: " + error.message, "网络错误");
+  }
+}
+
+/**
+ * 停止所有密码恢复任务
+ * 功能：向服务器发送请求，停止所有正在运行的密码恢复任务
+ */
+async function stopAllBruteforce() {
+  // 获取按钮元素以添加UI反馈
+  const stopAllBtn = $("bruteforce-stop-all-btn");
+  let originalBtnText = "";
+
+  if (stopAllBtn) {
+    originalBtnText = stopAllBtn.innerHTML;
+    stopAllBtn.disabled = true;
+    stopAllBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⏳</span>停止中...`;
+  }
+
+  try {
+    // 向服务器发送POST请求，停止所有任务
+    const response = await fetch("/api/admin/bruteforce/stop", {
+      method: "POST",
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ all: true }),  // 使用all参数表示停止所有任务
+    });
+
+    // 解析响应
+    const data = await response.json();
+
+    // 检查是否成功
+    if (data.success) {
+      showModalAlert("所有任务已停止", "停止成功");
+      // 刷新任务列表 (延迟1秒以确保后端线程已处理停止信号)
+      setTimeout(() => loadBruteforceStatus(), 1000);
+      console.log("[密码恢复] 所有任务已停止");
+    } else {
+      showModalAlert(data.message || "停止任务失败", "停止失败");
+    }
+  } catch (error) {
+    console.error("[密码恢复] 停止所有任务失败:", error);
+    showModalAlert("停止失败: " + error.message, "网络错误");
+  } finally {
+    // 恢复按钮状态
+    if (stopAllBtn) {
+      stopAllBtn.disabled = false;
+      stopAllBtn.innerHTML = originalBtnText;
+    }
+  }
+}
+
 function formatDate(isoString) {
   try {
     const date = new Date(isoString);
@@ -24688,6 +25311,20 @@ function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>',
       permission: "admin",
     },
+    // [修复] 添加CDN缓存标签
+    {
+      id: "cdn",
+      label: "CDN",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+      permission: "admin",
+    },
+    // [修复] 添加密码恢复标签 (权限设为 super_admin)
+    {
+      id: "bruteforce",
+      label: "密码恢复",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>',
+      permission: "super_admin", 
+    },
   ];
   const visibleTabs = allTabs.filter((tab) => {
     if (tab.permission === "all") return true;
@@ -24695,6 +25332,9 @@ function initMobileAdminPanel(prefix) {
       tab.permission === "admin" &&
       (userGroup === "admin" || userGroup === "super_admin")
     )
+      return true;
+    // [修复] 增加超级管理员专属权限过滤
+    if (tab.permission === "super_admin" && userGroup === "super_admin")
       return true;
     return false;
   });
@@ -25793,6 +26433,9 @@ function switchMobileAdminTab(tabId, prefix) {
       验证码: "captcha",
       提醒: "reminders",
       HTTPS: "ssl",
+      // [修复] 添加新标签的中文映射
+      CDN: "cdn", 
+      密码恢复: "bruteforce",
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -25940,6 +26583,9 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-captcha-panel", // 验证码管理面板
       "mobile-multi-admin-reminders-panel", // 定时提醒面板
       "mobile-multi-admin-ssl-panel", // HTTPS设置面板
+      // [修复] 添加CDN和密码恢复面板ID
+      "mobile-multi-admin-cdn-panel", 
+      "mobile-multi-admin-bruteforce-panel",
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -26039,6 +26685,14 @@ function switchMobileAdminTab(tabId, prefix) {
       case "ssl":
         // 加载SSL/HTTPS配置信息
         loadSSLInfo().then(() => copyAdminContentToMultiPanel("ssl"));
+        break;
+      // [修复] 添加CDN加载逻辑
+      case "cdn":
+        loadCDNConfig(); // 该函数已适配移动端ID (mobile-cdn-*)
+        break;
+      // [修复] 添加密码恢复加载逻辑
+      case "bruteforce":
+        loadBruteforceStatus();
         break;
     }
     // 处理完成后直接返回，不执行后续的通用处理逻辑
@@ -30382,8 +31036,8 @@ async function mobileLoadCaptchaSettings() {
       mobileUpdateCaptchaForm(settings);
       console.log("[移动端验证码] 已从缓存加载配置:", settings);
     } else {
-      // 从API获取配置
-      const response = await callPythonAPI("get_initial_data");
+      // 从API获取配置，使用统一的初始化函数
+      const response = await loadInitialData();
       if (response && response.captcha_settings) {
         mobileUpdateCaptchaForm(response.captcha_settings);
         console.log(
@@ -31383,3 +32037,453 @@ window.addEventListener("beforeunload", () => {
     multiAccountAutoRefreshInterval = null;
   }
 });
+
+// =============================================================================
+// 密码恢复任务管理功能
+// =============================================================================
+
+/**
+ * 更新密码恢复任务列表显示
+ * 
+ * 功能说明：
+ *   此函数负责将后端返回的密码恢复任务状态数据渲染到前端界面上。
+ *   它会同时更新桌面版和移动版两个不同的任务列表容器，确保在不同设备上
+ *   用户都能看到最新的任务状态。
+ * 
+ * 参数：
+ *   tasks (Array) - 任务状态数组，每个任务对象包含以下字段：
+ *     - account (String): 正在尝试恢复密码的账号名称
+ *     - status (String): 任务当前状态，可能的值包括：
+ *         * "running" - 任务正在运行中
+ *         * "success" - 密码已成功找到
+ *         * "failed" - 任务失败（密码未找到或出现错误）
+ *         * "stopped" - 任务已被用户手动停止
+ *     - attempts (Number): 已经尝试的密码组合数量
+ *     - password (String, 可选): 如果status为"success"，此字段包含找到的密码
+ *     - start_time (String, 可选): 任务开始的时间戳（格式化后的字符串）
+ *     - end_time (String, 可选): 任务结束的时间戳（格式化后的字符串）
+ * 
+ * 返回值：
+ *   无返回值（void）
+ * 
+ * 实现细节：
+ *   1. 获取DOM元素：分别获取桌面版和移动版的任务列表容器
+ *   2. 空状态处理：如果没有任务，显示友好的提示信息
+ *   3. 任务卡片生成：遍历每个任务，根据状态生成不同样式的卡片HTML
+ *   4. 状态着色：使用Tailwind CSS的颜色类，为不同状态应用不同的视觉效果
+ *   5. DOM更新：将生成的HTML插入到对应的容器中
+ */
+function updateBruteforceTaskList(tasks) {
+    // 通过ID选择器获取桌面版任务列表的DOM容器
+    // 这个容器通常在主界面的管理面板中
+    const desktopList = document.getElementById('bruteforce-task-list');
+    
+    // 通过ID选择器获取移动版任务列表的DOM容器
+    // 移动版界面通常有独立的、更紧凑的布局
+    const mobileList = document.getElementById('mobile-bruteforce-task-list');
+    
+    // 边界情况处理：检查tasks是否为空、未定义或空数组
+    // 这是一个重要的防御性编程实践，避免在空数据时出现错误
+    if (!tasks || tasks.length === 0) {
+        // 定义空状态的提示消息HTML
+        // 使用Tailwind CSS类来实现居中、灰色、适当的内边距
+        const emptyMessage = '<div class="text-slate-400 text-center py-8 text-sm">暂无任务</div>';
+        
+        // 如果桌面版容器存在，则插入空状态消息
+        if (desktopList) desktopList.innerHTML = emptyMessage;
+        
+        // 如果移动版容器存在，则插入更紧凑的空状态消息
+        // 注意移动版使用更小的字体(text-xs)和内边距(py-4)
+        if (mobileList) mobileList.innerHTML = '<div class="text-slate-400 text-center py-4 text-xs">暂无任务</div>';
+        
+        // 处理完空状态后，直接返回，不再执行后续的任务渲染逻辑
+        return;
+    }
+    
+    // 初始化两个字符串变量，用于累积生成的HTML代码
+    // 分别对应桌面版和移动版的任务列表HTML
+    let desktopHTML = '';
+    let mobileHTML = '';
+    
+    // 遍历tasks数组中的每一个任务对象
+    // 使用forEach方法可以简洁地处理数组中的每个元素
+    tasks.forEach(task => {
+        // ====================================================================
+        // 步骤1：根据任务状态确定视觉样式
+        // ====================================================================
+        
+        // 初始化状态相关的变量，默认值对应"运行中"状态
+        let statusColor = 'slate';  // Tailwind颜色类名，slate表示灰色系
+        let statusIcon = '⏳';       // Unicode图标，沙漏表示进行中
+        let statusText = '运行中';   // 中文状态文本
+        
+        // 通过if-else链检查任务的status字段，设置相应的视觉元素
+        if (task.status === 'success') {
+            // 成功状态：使用绿色主题
+            statusColor = 'green';  // 绿色传达积极、完成的信息
+            statusIcon = '✅';       // 对勾图标，直观表示成功
+            statusText = '成功';     // 简洁的状态文本
+            
+        } else if (task.status === 'failed') {
+            // 失败状态：使用红色主题
+            statusColor = 'red';    // 红色警示失败或错误
+            statusIcon = '❌';       // 叉号图标，表示未通过
+            statusText = '失败';     // 明确的失败提示
+            
+        } else if (task.status === 'stopped') {
+            // 已停止状态：使用橙色主题
+            statusColor = 'orange'; // 橙色表示警告或中性状态
+            statusIcon = '⏸️';       // 暂停图标，表示中断
+            statusText = '已停止';   // 说明是用户主动停止
+        }
+        // 注意：如果status为"running"或其他未知值，将保持默认的slate样式
+        
+        // ====================================================================
+        // 步骤2：生成桌面版任务卡片HTML
+        // ====================================================================
+        
+        // 使用模板字符串构建HTML，可以方便地嵌入变量和表达式
+        desktopHTML += `
+            <div class="p-3 border border-${statusColor}-200 bg-${statusColor}-50 rounded-lg">
+                <!-- 任务卡片的外层容器，使用状态颜色的浅色背景和边框 -->
+                <!-- p-3: 内边距，border: 边框，rounded-lg: 圆角 -->
+                
+                <div class="flex justify-between items-start mb-2">
+                    <!-- 顶部信息行：使用flex布局，左右分布，顶部对齐 -->
+                    
+                    <div>
+                        <!-- 左侧：账号名称和状态标签 -->
+                        
+                        <span class="font-semibold text-slate-800">${task.account}</span>
+                        <!-- 显示账号名称，使用加粗字体和深灰色 -->
+                        
+                        <span class="ml-2 text-sm px-2 py-0.5 rounded bg-${statusColor}-100 text-${statusColor}-700">
+                            <!-- 状态徽章：使用状态颜色的浅色背景和深色文字 -->
+                            <!-- ml-2: 左边距与账号名分隔，px-2 py-0.5: 内边距，rounded: 圆角 -->
+                            ${statusIcon} ${statusText}
+                            <!-- 显示状态图标和文字 -->
+                        </span>
+                    </div>
+                    
+                    ${task.status === 'running' ? `
+                        <!-- 右侧：仅在任务运行中时显示停止按钮 -->
+                        <!-- 使用三元表达式进行条件渲染 -->
+                        
+                        <button onclick="stopBruteforce('${task.account}')" class="text-xs btn btn-ghost !py-1 !px-2">
+                            <!-- 停止按钮：调用stopBruteforce函数，传入账号名称 -->
+                            <!-- btn-ghost: 幽灵按钮样式（透明背景） -->
+                            <!-- !py-1 !px-2: 使用!important覆盖默认按钮尺寸 -->
+                            停止
+                        </button>
+                    ` : ''}
+                    <!-- 如果不是运行中状态，则不渲染按钮（空字符串） -->
+                </div>
+                
+                <div class="text-sm text-slate-600">
+                    <!-- 详细信息区域：较小的字体和中等灰色 -->
+                    
+                    <div>已尝试: ${task.attempts || 0} 个密码</div>
+                    <!-- 显示尝试次数，使用 || 运算符提供默认值0 -->
+                    <!-- 如果task.attempts为undefined/null/0，则显示0 -->
+                    
+                    ${task.password ? `<div class="text-green-600 font-semibold">密码: ${task.password}</div>` : ''}
+                    <!-- 条件渲染：仅当找到密码时才显示此行 -->
+                    <!-- 使用绿色和加粗突出显示找到的密码 -->
+                    
+                    ${task.start_time ? `<div class="text-xs text-slate-500 mt-1">开始时间: ${task.start_time}</div>` : ''}
+                    <!-- 条件渲染：如果有开始时间，则显示 -->
+                    <!-- text-xs: 更小的字号，text-slate-500: 更浅的灰色，mt-1: 顶部边距 -->
+                </div>
+            </div>
+        `;
+        
+        // ====================================================================
+        // 步骤3：生成移动版任务卡片HTML（更紧凑的版本）
+        // ====================================================================
+        
+        // 移动版的设计理念：在小屏幕上节省空间，简化信息展示
+        mobileHTML += `
+            <div class="p-2 border border-${statusColor}-200 bg-${statusColor}-50 rounded text-xs">
+                <!-- 外层容器：比桌面版更小的内边距(p-2)和字体(text-xs) -->
+                
+                <div class="flex justify-between items-center mb-1">
+                    <!-- 顶部信息行：居中对齐，较小的底部边距 -->
+                    
+                    <span class="font-semibold">${task.account}</span>
+                    <!-- 账号名称：加粗但不设置颜色，继承父元素的text-xs -->
+                    
+                    <span class="text-xs px-1.5 py-0.5 rounded bg-${statusColor}-100 text-${statusColor}-700">
+                        <!-- 状态徽章：更小的内边距以节省空间 -->
+                        ${statusIcon} ${statusText}
+                    </span>
+                </div>
+                
+                <div class="text-xs text-slate-600">
+                    <!-- 详细信息区域：极小字体 -->
+                    
+                    尝试: ${task.attempts || 0} 个
+                    <!-- 简化的尝试次数显示，省略"已"和"密码"等冗余词汇 -->
+                    
+                    ${task.password ? `<div class="text-green-600 font-semibold">密码: ${task.password}</div>` : ''}
+                    <!-- 密码显示逻辑与桌面版相同 -->
+                    <!-- 注意：移动版省略了开始时间，进一步简化界面 -->
+                </div>
+            </div>
+        `;
+    });
+    // forEach循环结束，此时desktopHTML和mobileHTML已包含所有任务卡片的HTML代码
+    
+    // ====================================================================
+    // 步骤4：更新DOM，将生成的HTML插入到页面中
+    // ====================================================================
+    
+    // 如果桌面版容器存在于DOM中，则更新其innerHTML
+    // innerHTML会完全替换容器内的现有内容
+    if (desktopList) desktopList.innerHTML = desktopHTML;
+    
+    // 如果移动版容器存在于DOM中，则更新其innerHTML
+    if (mobileList) mobileList.innerHTML = mobileHTML;
+    
+    // 函数执行完毕，任务列表已更新到页面上
+    // 用户现在可以看到所有任务的最新状态
+}
+
+/**
+ * 加载应用初始数据的统一封装函数
+ * 
+ * 功能概述：
+ *   这是一个关键的初始化函数，负责在应用启动或用户登录后从后端获取
+ *   必要的初始数据。它不仅调用API，还会根据返回的数据自动执行相应的
+ *   UI更新操作，特别是为超级管理员自动更新密码恢复任务列表。
+ * 
+ * 核心功能：
+ *   1. 统一调用：将所有对 get_initial_data API 的调用集中到此函数
+ *   2. 数据获取：从后端获取用户列表、最后登录用户、权限信息等初始数据
+ *   3. 自动更新：如果响应中包含密码恢复任务列表（仅超级管理员可见），
+ *      自动调用 updateBruteforceTaskList() 更新UI
+ *   4. 错误处理：捕获并记录API调用过程中的任何错误
+ * 
+ * 设计优势：
+ *   - 代码复用：避免在多处重复写API调用和任务列表更新逻辑
+ *   - 维护性：将来如果需要修改初始化逻辑，只需修改此函数
+ *   - 一致性：确保所有初始化流程都执行相同的更新逻辑
+ *   - 可测试性：将逻辑封装后更容易进行单元测试
+ * 
+ * 调用时机：
+ *   - 应用首次加载时
+ *   - 用户登录成功后
+ *   - 用户切换账号后
+ *   - 需要刷新用户数据时
+ * 
+ * 返回值：
+ *   Promise<Object> - 一个Promise对象，resolve时返回包含初始数据的对象
+ *   返回的对象结构（示例）：
+ *   {
+ *     success: true,                    // API调用是否成功
+ *     users: [...],                     // 用户列表数组
+ *     last_login_user: "username",      // 最后登录的用户名
+ *     is_superadmin: true/false,        // 当前用户是否为超级管理员
+ *     bruteforce_task_list: [...],      // (可选)密码恢复任务列表，仅超级管理员有此字段
+ *     // ... 其他初始数据字段
+ *   }
+ * 
+ * 异常处理：
+ *   如果API调用失败，函数会：
+ *   1. 在控制台输出错误日志（包含 [初始化] 前缀便于过滤）
+ *   2. 将错误向上抛出（throw），让调用者可以捕获并处理
+ * 
+ * 使用示例：
+ *   try {
+ *     const data = await loadInitialData();
+ *     if (data.success) {
+ *       console.log('初始化成功', data);
+ *     }
+ *   } catch (error) {
+ *     console.error('初始化失败', error);
+ *   }
+ */
+// ============================================================================
+// 全局变量：用于loadInitialData的限流机制
+// ============================================================================
+let lastInitialDataRequest = 0;  // 上次请求的时间戳（毫秒）
+let lastInitialDataResponse = null;  // 缓存的上次响应数据
+const INITIAL_DATA_RATE_LIMIT = 500;  // 限流时间：500毫秒（0.5秒）
+
+/**
+ * 加载应用初始数据的统一函数（带限流机制）
+ * 
+ * 功能：
+ * 1. 调用后端 get_initial_data API
+ * 2. 处理返回的用户列表、最后登录用户等信息
+ * 3. 如果是超级管理员，自动更新密码恢复任务列表
+ * 4. 如果在多账号模式，自动获取并更新所有账号状态
+ * 5. 支持发送前端日志到后端
+ * 6. 实现限流：0.5秒内只允许一次请求，重复请求返回缓存数据
+ * 
+ * 参数：
+ *   options (Object, 可选) - 配置选项：
+ *     - frontend_logs (Array|Object): 要发送到后端的前端日志
+ *     - force (Boolean): 是否强制请求（忽略限流，默认false）
+ * 
+ * 返回值：
+ *   Promise<Object> - 包含初始数据的对象
+ */
+async function loadInitialData(options = {}) {
+    // 使用try-catch块进行错误处理，这是异步函数的最佳实践
+    try {
+        // ====================================================================
+        // 步骤1：限流检查
+        // ====================================================================
+        
+        // 获取当前时间戳（毫秒）
+        const now = Date.now();
+        
+        // 计算距离上次请求的时间间隔
+        const timeSinceLastRequest = now - lastInitialDataRequest;
+        
+        // 检查是否需要应用限流
+        // 如果不是强制请求，且距离上次请求时间小于限流时间，且有缓存数据
+        if (!options.force && 
+            timeSinceLastRequest < INITIAL_DATA_RATE_LIMIT && 
+            lastInitialDataResponse) {
+            
+            // 记录日志：请求被限流
+            console.log(`[初始化] 请求被限流，返回缓存数据（距上次请求 ${timeSinceLastRequest}ms）`);
+            
+            // 直接返回缓存的响应数据
+            // 这样可以减少对后端的压力，提高响应速度
+            return lastInitialDataResponse;
+        }
+        
+        // ====================================================================
+        // 步骤2：准备API调用参数
+        // ====================================================================
+        
+        // 构建传递给后端的参数对象
+        const params = {};
+        
+        // 如果提供了前端日志，添加到参数中
+        if (options.frontend_logs) {
+            params.frontend_logs = options.frontend_logs;
+            console.log('[初始化] 携带前端日志数据，数量:', 
+                Array.isArray(options.frontend_logs) ? options.frontend_logs.length : 1);
+        }
+        
+        // ====================================================================
+        // 步骤3：调用后端API获取初始数据
+        // ====================================================================
+        
+        // 更新最后请求时间戳
+        lastInitialDataRequest = now;
+        
+        // 使用await关键字等待callPythonAPI的Promise完成
+        // callPythonAPI是应用中已存在的函数，负责与Python后端通信
+        // "get_initial_data"是API端点的标识符，后端会据此返回相应数据
+        const response = await callPythonAPI("get_initial_data", params);
+        
+        // 此时response已包含后端返回的完整数据对象
+        // 如果API调用失败，callPythonAPI可能会抛出异常，会被catch块捕获
+        
+        // ====================================================================
+        // 步骤4：缓存响应数据
+        // ====================================================================
+        
+        // 将响应数据缓存起来，供下次限流时使用
+        lastInitialDataResponse = response;
+        
+        // ====================================================================
+        // 步骤5：检查响应的有效性和成功状态
+        // ====================================================================
+        
+        // 双重检查：确保response不为null/undefined，且success字段为true
+        // 这是一个防御性检查，防止后端返回意外的数据结构
+        if (response && response.success) {
+            // response对象存在且表示操作成功
+            
+            // ================================================================
+            // 步骤6：处理密码恢复任务列表（仅超级管理员）
+            // ================================================================
+            
+            // 条件判断：检查response中是否存在bruteforce_task_list字段
+            // 这个字段只有在以下情况下才会存在：
+            //   1. 当前登录用户是超级管理员
+            //   2. 后端配置了密码恢复功能
+            //   3. 存在正在进行或已完成的密码恢复任务
+            if (response.bruteforce_task_list) {
+                // 如果存在任务列表数据，说明当前用户有权限查看
+                
+                // 调用 updateBruteforceTaskList 函数更新UI
+                // 将后端返回的任务数组传递给该函数进行渲染
+                // 这个调用是自动的、透明的，调用loadInitialData的代码
+                // 无需关心任务列表的更新，实现了关注点分离
+                updateBruteforceTaskList(response.bruteforce_task_list);
+                
+                // 日志记录：帮助开发者调试，了解任务列表更新的触发情况
+                console.log('[初始化] 已自动更新密码恢复任务列表，任务数量:', 
+                    response.bruteforce_task_list.length);
+            }
+            // 如果bruteforce_task_list不存在，说明：
+            //   - 当前用户不是超级管理员，或
+            //   - 没有任何密码恢复任务
+            // 这种情况下不执行任何操作，保持界面原样
+            
+            // ================================================================
+            // 步骤7：处理多账号模式的账号状态（如果在多账号模式）
+            // ================================================================
+            
+            // 检查是否返回了accounts字段（多账号状态信息）
+            if (response.accounts && Array.isArray(response.accounts)) {
+                // 如果存在accounts数据，说明当前用户在多账号模式
+                
+                // 日志记录：记录获取到的账号数量
+                console.log('[初始化] 已自动获取多账号状态，账号数量:', 
+                    response.accounts.length);
+                
+                // 注意：accounts数据已经在response中
+                // 调用方可以直接从response.accounts中提取并使用
+                // 这里不需要额外处理，因为调用方会处理这些数据
+            }
+        }
+        
+        // ====================================================================
+        // 步骤8：返回完整的响应对象
+        // ====================================================================
+        
+        // 将response返回给调用者
+        // 调用者可以从中提取需要的数据（如用户列表、权限信息等）
+        // 注意：即使response.success为false，我们仍然返回它
+        // 让调用者自行决定如何处理失败情况（更灵活的设计）
+        return response;
+        
+    } catch (error) {
+        // ====================================================================
+        // 错误处理块：捕获任何在try块中发生的异常
+        // ====================================================================
+        
+        // 可能的错误来源：
+        //   1. callPythonAPI内部的网络错误（如超时、连接失败）
+        //   2. 后端返回的非预期响应格式导致的解析错误
+        //   3. updateBruteforceTaskList中的DOM操作错误（较少见）
+        
+        // 使用console.error输出错误到浏览器控制台
+        // '[初始化]' 前缀便于在控制台中过滤和定位相关日志
+        // error对象包含完整的错误堆栈信息，有助于调试
+        console.error('[初始化] 加载初始数据失败:', error);
+        
+        // 重新抛出错误（re-throw）
+        // 这样做的目的是让调用者也能感知到错误的发生
+        // 调用者可以决定如何响应错误：
+        //   - 显示错误提示给用户
+        //   - 重试加载
+        //   - 回退到默认状态
+        //   - 记录错误日志到服务器
+        throw error;
+        
+        // 注意：如果不re-throw，调用者会认为函数成功执行（返回undefined）
+        // 这会导致错误被静默吞噬，难以发现和调试问题
+    }
+    
+    // 函数结束
+    // 正常情况下，执行流程会在return response处结束
+    // 错误情况下，会在throw error处结束
+}

