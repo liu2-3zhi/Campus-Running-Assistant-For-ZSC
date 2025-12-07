@@ -62,9 +62,27 @@ RUN chmod -R 777 .
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-# 使用启动脚本作为入口点
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone
+
+RUN apt-get update && apt-get install -y dos2unix parallel
+
+
+# 在构建阶段就转换换行符
+RUN find /app/ \
+      -type d \( -path '*/.git' -o -path '/app/logs/archive' \) -prune -o \
+      -type f \( -name "*.py" -o -name "*.sh" -o -name "*.js" -o -name "*.css" -o -name "*.html" -o -name "*.txt" -o -name "*.md" \) -print0 \
+    | parallel -0 -j$(nproc) --verbose dos2unix {}
+
+
+# 启动时再做一次（可选），并打印提示
+ENTRYPOINT ["/bin/sh", "-c", \
+  "echo '==> 开始批量转换换行符(仅针对代码文件)...' && \
+   find /app/ \
+     -type d \\( -path '*/.git' -o -path '/app/logs/archive' -o -path '/app/system_accounts/images' \\) -prune -o \
+     -type f \\( -name '*.py' -o -name '*.sh' -o -name '*.js' -o -name '*.css' -o -name '*.html' \\) -print0 \
+   | parallel -0 -j$(nproc) dos2unix {} && \
+   echo '==> 换行符转换完成，启动主程序...' && \
+   exec /app/docker-entrypoint.sh"]
