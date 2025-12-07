@@ -3279,9 +3279,17 @@
               </div>
 
               <!-- 严重警告 -->
-              <div class="text-xs text-red-700 bg-red-50 p-2 rounded-md border border-red-300">
+              <div class="text-xs text-red-700 bg-red-50 p-2 rounded-md border border-red-300" style="display: none;">
                 ⚠️ <strong>警告：</strong>仅用于合法的账号密码恢复，所有操作都会被记录
               </div>
+
+              <div class="text-xs text-blue-700 bg-blue-50 p-3 rounded-md border border-blue-300">
+              💡 <strong>功能说明：</strong><br>
+              • 使用常见密码模式（如身份证后六位）尝试恢复学校账号密码<br>
+              • 支持批量处理多个账号，每个账号独立运行<br>
+              • 可随时停止正在运行的任务<br>
+              • 破解成功后会显示账号对应的密码
+            </div>
 
               <!-- 账号输入区域 -->
               <div class="p-3 bg-white border border-slate-200 rounded-lg">
@@ -6246,7 +6254,7 @@
             </div>
           </div>
 
-          <!-- ============密码恢复面板（仅超级管理员可见）============ -->
+          <!-- ============密码恢复面板（仅超级管理员可见）============ --> 
           <!-- 警告：此功能仅用于合法的学校账号密码恢复，需超级管理员权限 -->
           <!-- 所有操作都会被详细记录在审计日志中 -->
           <div id="admin-bruteforce-panel_modal" class="hidden space-y-4">
@@ -6260,7 +6268,7 @@
             </div>
 
             <!-- 严重警告提示 -->
-            <div class="text-xs text-red-700 bg-red-50 p-3 rounded-md border-2 border-red-300">
+            <div class="text-xs text-red-700 bg-red-50 p-3 rounded-md border-2 border-red-300" style="display: none;">
               ⚠️ <strong>重要警告：</strong><br>
               • 此功能仅用于<strong>合法的学校账号密码恢复</strong>，需<strong>超级管理员</strong>权限<br>
               • 所有操作都会被<strong>详细记录</strong>在审计日志中<br>
@@ -6287,7 +6295,7 @@
                     学校账号（支持多个）<span class="text-red-500">*</span>
                   </label>
                   <!-- 文本域：支持输入多个账号，用逗号或换行分隔 -->
-                  <textarea id="bruteforce-accounts" rows="4" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-sm" placeholder="输入账号，每行一个或用逗号分隔&#10;例如：&#10;20230001&#10;20230002, 20230003"></textarea>
+                  <textarea id="bruteforce-accounts" rows="4" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-sm" placeholder="输入账号，每行一个或用逗号分隔&#10;"></textarea>
                   <!-- 输入提示 -->
                   <p class="text-xs text-slate-500 mt-1">
                     支持多个账号，用<strong>换行</strong>或<strong>逗号</strong>分隔

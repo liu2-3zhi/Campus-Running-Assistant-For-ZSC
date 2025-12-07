@@ -948,7 +948,7 @@ def _get_default_config():
     }
 
     config["CDN"] = {
-        "cdn_enabled": "false",
+        "cdn_enabled": "true",
         "cache_time": "3600",
     }
 
@@ -4527,6 +4527,14 @@ class Api:
                 "is_multi_account_mode": getattr(self, "is_multi_account_mode", False),
                 "captcha_settings": captcha_settings,
             }
+
+            # [新增] 如果是超级管理员，在初始化数据中包含密码恢复任务列表
+            if auth_group == 'super_admin':
+                global brute_force_manager
+                if brute_force_manager:
+                    response_data["bruteforce_task_list"] = brute_force_manager.get_all_tasks_status()
+                else:
+                    response_data["bruteforce_task_list"] = []
 
             if is_logged_in and hasattr(self, "device_ua"):
                 response_data["device_ua"] = self.device_ua
@@ -12702,6 +12710,59 @@ class BruteForceTaskManager:
                         if password not in attempted:
                             yield password
 
+    def _find_local_passwords(self, target_account):
+        """
+        从本地配置文件中查找该账号可能存在的密码
+        """
+        found_pwds = set()
+        
+        # 1. 扫描 user_accounts 目录 (JSON格式: 系统用户 -> 学校账号映射)
+        # 使用 AuthSystem 的方法读取，避免重复造轮子
+        ua_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        if os.path.exists(ua_dir) and 'auth_system' in globals():
+            try:
+                for fname in os.listdir(ua_dir):
+                    if fname.endswith(".json"):
+                        auth_username = os.path.splitext(fname)[0]
+                        # 使用已有的 auth_system 方法加载账户信息，更健壮
+                        accounts = auth_system._load_user_school_accounts(auth_username)
+                        
+                        if accounts and target_account in accounts:
+                            val = accounts[target_account]
+                            pwd = ""
+                            if isinstance(val, dict):
+                                pwd = val.get("password", "")
+                            elif isinstance(val, str):
+                                pwd = val
+            except Exception as e:
+                logging.warning(f"[密码恢复] 扫描user_accounts失败: {e}")
+
+        # 2. 扫描 school_accounts 根目录 (INI格式: 旧版单文件配置)
+        # 路径: school_accounts/{target_account}.ini
+        ini_path = os.path.join(SCHOOL_ACCOUNTS_DIR, f"{target_account}.ini")
+        if os.path.exists(ini_path):
+            try:
+                # 简单文本解析以避免 ConfigParser 的复杂性
+                with open(ini_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        line = line.strip()
+                        # 匹配 Password = xxx 或 密码 = xxx
+                        if line.lower().startswith("password") or line.startswith("密码"):
+                            parts = line.split("=", 1)
+                            if len(parts) == 2:
+                                pwd = parts[1].strip()
+                                if pwd:
+                                    found_pwds.add(pwd)
+                                    break
+            except Exception as e:
+                logging.warning(f"[密码恢复] 读取INI失败: {e}")
+
+        if(len(found_pwds) > 0):
+            logging.info(f"[密码恢复] 在本地配置文件中为账号 {target_account} 发现可能的密码: {found_pwds}")
+
+        return list(found_pwds)
+
+
     def start_task(self, account):
         """
         启动账号的密码恢复任务
@@ -12774,6 +12835,9 @@ class BruteForceTaskManager:
                 def __init__(self):
                     self.device_ua = ApiClient.generate_random_ua()
                     self.log = lambda msg: logging.debug(f"[密码恢复临时登录] {msg}")
+                    # [修复] 补充缺失属性，防止 ApiClient._request 报错
+                    self.is_offline_mode = False 
+                    self.api_bridge = None # ApiClient 会先检查 is_offline_mode，有了上面这行通常不需要 api_bridge，但为了保险起见设为 None 或 self
             
             temp_app = TempApp()
             api_client = ApiClient(temp_app)
@@ -12781,8 +12845,26 @@ class BruteForceTaskManager:
             # 记录开始尝试
             logging.info(f"[密码恢复] 开始尝试账号 {account} 的密码恢复")
             
-            # 获取密码生成器
-            password_gen = self.generate_passwords(account)
+            # === 修改开始：优先尝试本地密码 ===
+            # 1. 获取本地已知密码
+            local_passwords = self._find_local_passwords(account)
+            if local_passwords:
+                logging.info(f"[密码恢复] 在本地配置文件中找到 {len(local_passwords)} 个历史密码，将优先尝试")
+
+            # 2. 获取算法生成器
+            algo_gen = self.generate_passwords(account)
+
+            # 3. 构建组合生成器
+            def combined_password_generator():
+                # 先尝试本地发现的密码
+                for p in local_passwords:
+                    yield p
+                # 再尝试算法生成的密码
+                for p in algo_gen:
+                    yield p
+
+            password_gen = combined_password_generator()
+            # === 修改结束 ===
             
             # 遍历每个密码
             for password in password_gen:

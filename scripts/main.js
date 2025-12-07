@@ -4351,6 +4351,19 @@ function refreshMobileSessionPicker() {
                 switchAdminTab("ssl")
               );
 
+            // [修复] 绑定CDN和密码恢复标签页的点击事件
+            const modalCdnTab = $("admin-tab-cdn_modal");
+            const modalBruteforceTab = $("admin-tab-bruteforce_modal");
+
+            if (modalCdnTab)
+              modalCdnTab.addEventListener("click", () =>
+                switchAdminTab("cdn")
+              );
+            if (modalBruteforceTab)
+              modalBruteforceTab.addEventListener("click", () =>
+                switchAdminTab("bruteforce")
+              );
+
             const tabsContainer = modalAdminPanel.querySelector(
               ".flex.border-b-2.border-slate-200"
             );
@@ -4894,6 +4907,9 @@ function refreshMobileSessionPicker() {
         const configTab = $("admin-tab-config_modal");
         const godModeToggle = $("god-mode-toggle_modal");
         const modalCaptchaTab = $("admin-tab-captcha_modal");
+        // [修复] 获取CDN和密码恢复标签页元素
+        const cdnTab = $("admin-tab-cdn_modal");
+        const bruteforceTab = $("admin-tab-bruteforce_modal");
 
         if (show) {
           let canViewMessages = false;
@@ -4949,6 +4965,16 @@ function refreshMobileSessionPicker() {
 
           if (configTab)
             configTab.style.display = canManageSystem ? "block" : "none";
+          
+          // [修复] 显示CDN缓存标签 (通常绑定系统管理权限)
+          if (cdnTab)
+            cdnTab.style.display = canManageSystem ? "block" : "none";
+
+          // [修复] 显示密码恢复标签 (仅超级管理员)
+          if (bruteforceTab) {
+             const isSuperAdmin = currentUserData && currentUserData.group === "super_admin";
+             bruteforceTab.style.display = isSuperAdmin ? "block" : "none";
+          }
 
           if (modalCaptchaTab)
             modalCaptchaTab.style.display = canViewCaptchaHistory
@@ -5005,6 +5031,10 @@ function refreshMobileSessionPicker() {
         const captchaTab = $("admin-tab-captcha_modal");
         const remindersTab = $("admin-tab-reminders_modal");
         const sslTab = $("admin-tab-ssl_modal");
+        // [修复] 获取CDN和密码恢复的Tab元素
+        const cdnTab = $("admin-tab-cdn_modal");
+        const bruteforceTab = $("admin-tab-bruteforce_modal");
+
         const usersPanel = $("admin-users-panel_modal");
         const groupsPanel = $("admin-groups-panel_modal");
         const logsPanel = $("admin-logs-panel_modal");
@@ -5018,6 +5048,10 @@ function refreshMobileSessionPicker() {
         const captchaPanel = $("admin-captcha-panel_modal");
         const remindersPanel = $("admin-reminders-panel_modal");
         const sslPanel = $("admin-ssl-panel_modal");
+        // [修复] 获取CDN和密码恢复的Panel元素
+        const cdnPanel = $("admin-cdn-panel_modal");
+        const bruteforcePanel = $("admin-bruteforce-panel_modal");
+
         if (!sessionsTab || !sessionsPanel) {
           logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
           return;
@@ -5036,6 +5070,8 @@ function refreshMobileSessionPicker() {
           captchaTab,
           remindersTab,
           sslTab,
+          cdnTab,        // [修复] 添加CDN Tab
+          bruteforceTab, // [修复] 添加密码恢复 Tab
         ]
           .filter((t) => t)
           .forEach((t) => {
@@ -5057,6 +5093,8 @@ function refreshMobileSessionPicker() {
           captchaPanel,
           remindersPanel,
           sslPanel,
+          cdnPanel,       // [修复] 添加CDN Panel
+          bruteforcePanel // [修复] 添加密码恢复 Panel
         ]
           .filter((p) => p)
           .forEach((p) => {
@@ -5191,6 +5229,28 @@ function refreshMobileSessionPicker() {
             sslTab.classList.remove("text-slate-400", "border-transparent");
             sslPanel.classList.remove("hidden");
             loadSSLInfo();
+            stopHealthAutoRefresh();
+          }
+        } else if (tab === "cdn") {
+          // [修复] 添加CDN切换逻辑
+          const cdnTab = $("admin-tab-cdn_modal");
+          const cdnPanel = $("admin-cdn-panel_modal");
+          if (cdnTab && cdnPanel) {
+            cdnTab.classList.add("text-sky-600", "border-sky-600");
+            cdnTab.classList.remove("text-slate-400", "border-transparent");
+            cdnPanel.classList.remove("hidden");
+            loadCDNConfig();
+            stopHealthAutoRefresh();
+          }
+        } else if (tab === "bruteforce") {
+          // [修复] 添加密码恢复切换逻辑
+          const bruteforceTab = $("admin-tab-bruteforce_modal");
+          const bruteforcePanel = $("admin-bruteforce-panel_modal");
+          if (bruteforceTab && bruteforcePanel) {
+            bruteforceTab.classList.add("text-sky-600", "border-sky-600");
+            bruteforceTab.classList.remove("text-slate-400", "border-transparent");
+            bruteforcePanel.classList.remove("hidden");
+            loadBruteforceStatus();
             stopHealthAutoRefresh();
           }
         } else {
@@ -24661,8 +24721,8 @@ async function stopBruteforce(account) {
     // 检查是否成功
     if (data.success) {
       showModalAlert(`账号 ${account} 的任务已停止`, "停止成功");
-      // 刷新任务列表以更新状态
-      loadBruteforceStatus();
+      // 刷新任务列表以更新状态 (延迟1秒以确保后端线程已处理停止信号)
+      setTimeout(() => loadBruteforceStatus(), 1000);
       console.log(`[密码恢复] 账号 ${account} 的任务已停止`);
     } else {
       showModalAlert(data.message || "停止任务失败", "停止失败");
@@ -24695,8 +24755,8 @@ async function stopAllBruteforce() {
     // 检查是否成功
     if (data.success) {
       showModalAlert("所有任务已停止", "停止成功");
-      // 刷新任务列表
-      loadBruteforceStatus();
+      // 刷新任务列表 (延迟1秒以确保后端线程已处理停止信号)
+      setTimeout(() => loadBruteforceStatus(), 1000);
       console.log("[密码恢复] 所有任务已停止");
     } else {
       showModalAlert(data.message || "停止任务失败", "停止失败");
@@ -25221,6 +25281,20 @@ function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>',
       permission: "admin",
     },
+    // [修复] 添加CDN缓存标签
+    {
+      id: "cdn",
+      label: "CDN",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+      permission: "admin",
+    },
+    // [修复] 添加密码恢复标签 (权限设为 super_admin)
+    {
+      id: "bruteforce",
+      label: "密码恢复",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>',
+      permission: "super_admin", 
+    },
   ];
   const visibleTabs = allTabs.filter((tab) => {
     if (tab.permission === "all") return true;
@@ -25228,6 +25302,9 @@ function initMobileAdminPanel(prefix) {
       tab.permission === "admin" &&
       (userGroup === "admin" || userGroup === "super_admin")
     )
+      return true;
+    // [修复] 增加超级管理员专属权限过滤
+    if (tab.permission === "super_admin" && userGroup === "super_admin")
       return true;
     return false;
   });
@@ -26326,6 +26403,9 @@ function switchMobileAdminTab(tabId, prefix) {
       验证码: "captcha",
       提醒: "reminders",
       HTTPS: "ssl",
+      // [修复] 添加新标签的中文映射
+      CDN: "cdn", 
+      密码恢复: "bruteforce",
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -26473,6 +26553,9 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-captcha-panel", // 验证码管理面板
       "mobile-multi-admin-reminders-panel", // 定时提醒面板
       "mobile-multi-admin-ssl-panel", // HTTPS设置面板
+      // [修复] 添加CDN和密码恢复面板ID
+      "mobile-multi-admin-cdn-panel", 
+      "mobile-multi-admin-bruteforce-panel",
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -26572,6 +26655,14 @@ function switchMobileAdminTab(tabId, prefix) {
       case "ssl":
         // 加载SSL/HTTPS配置信息
         loadSSLInfo().then(() => copyAdminContentToMultiPanel("ssl"));
+        break;
+      // [修复] 添加CDN加载逻辑
+      case "cdn":
+        loadCDNConfig(); // 该函数已适配移动端ID (mobile-cdn-*)
+        break;
+      // [修复] 添加密码恢复加载逻辑
+      case "bruteforce":
+        loadBruteforceStatus();
         break;
     }
     // 处理完成后直接返回，不执行后续的通用处理逻辑
