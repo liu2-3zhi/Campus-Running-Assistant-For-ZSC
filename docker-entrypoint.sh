@@ -5,6 +5,8 @@ set -e
 
 mkdir -p /var/log/nginx/
 touch /var/log/nginx/access_json.log
+touch /app/nginx.conf
+
 
 # 打印启动信息
 echo "================================================="

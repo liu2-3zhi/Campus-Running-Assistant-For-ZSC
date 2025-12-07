@@ -44,8 +44,8 @@ RUN playwright install-deps chromium
 # 复制应用程序文件
 COPY . .
 
-# 复制nginx配置文件
-COPY nginx.conf /etc/nginx/nginx.conf
+# # 复制nginx配置文件
+# COPY nginx.conf /etc/nginx/nginx.conf
 
 # 创建必要的目录
 RUN mkdir -p /app/ssl /app/cache /app/logs /var/log/nginx
@@ -62,12 +62,13 @@ RUN chmod -R 777 .
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
+RUN apt-get update && apt-get install -y dos2unix parallel
 
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone
 
-RUN apt-get update && apt-get install -y dos2unix parallel
+
 
 
 # 在构建阶段就转换换行符
