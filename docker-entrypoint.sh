@@ -39,7 +39,7 @@ stderr_logfile=/var/log/supervisor/nginx-stderr.log
 priority=1
 
 [program:flask-backend]
-command=python3 /app/main.py --host 127.0.0.1 --port 5000
+command=python3 /app/main.py --host 0.0.0.0 --port 5000
 directory=/app
 autostart=true
 autorestart=true
@@ -89,6 +89,10 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             # 设置较长的缓存时间，因为静态资源通常不常变
             expires 7d;
             access_log off;
+            
+            # 【核心修复】如果静态文件不存在，代理到后端(Flask)处理
+            # 解决后端动态生成脚本(如模板渲染的js)或路径被误拦截的问题
+            try_files $uri @backend;
         }
 
         # 4. 根目录头像 (位于 /app/default_avatar.png)

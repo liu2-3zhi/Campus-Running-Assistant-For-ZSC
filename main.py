@@ -125,6 +125,7 @@ def import_standard_libraries():
         ("functools", "import functools"),
         ("ipaddress", "import ipaddress"),
         ("string", "import string"),
+        ("shutil", "import shutil")
     ]
 
     failed_imports = []
@@ -1747,31 +1748,9 @@ class AuthSystem:
             logging.error(f"_load_permissions: 读取权限文件异常 ({type(e).__name__}): {e}")
             logging.warning("检测到权限文件损坏或格式错误，正在自动重置...")
             
-            # 1. 备份损坏的文件
-            import shutil
-            try:
-                backup_path = PERMISSIONS_FILE + ".bak"
-                shutil.copy2(PERMISSIONS_FILE, backup_path)
-                logging.info(f"已将损坏的权限文件备份至: {backup_path}")
-            except Exception as backup_err:
-                logging.error(f"备份权限文件失败: {backup_err}")
-            
-            # 2. 删除并重新创建
-            try:
-                if os.path.exists(PERMISSIONS_FILE):
-                    os.remove(PERMISSIONS_FILE)
-            except Exception as del_err:
-                logging.error(f"删除损坏文件失败: {del_err}")
-
             _create_permissions_json() # 重新创建默认文件
             
-            # 3. 尝试返回新创建的配置
-            try:
-                with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as rec_e:
-                logging.error(f"重置后读取依然失败: {rec_e}")
-                return default_perms
+
 
     def _save_permissions(self):
         """保存权限配置"""
