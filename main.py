@@ -13247,6 +13247,116 @@ def get_ssl_certificate_info(cert_path):
     return cert_info
 
 
+def _send_startup_notification_to_log_forwarder(host, port):
+    """
+    通过UDP向日志转发器发送Flask启动通知
+    
+    工作流程：
+    1. 等待Flask服务器真正就绪（通过HTTP健康检查）
+    2. 发送UDP启动通知到日志转发器
+    3. 等待日志转发器的UDP确认响应
+    4. 如果未收到确认，每5秒重试一次
+    5. 如果1分钟内未成功，记录错误并停止尝试
+    
+    参数：
+        host (str): Flask服务器地址
+        port (int): Flask服务器端口
+    """
+    import socket
+    import time
+    
+    # UDP配置
+    LOG_FORWARDER_UDP_PORT = 9999  # 日志转发器监听端口
+    MAIN_UDP_PORT = 9998  # main.py监听确认响应的端口
+    STARTUP_MESSAGE = "FLASK_STARTED"  # 启动通知消息
+    ACK_MESSAGE = "ACK_RECEIVED"  # 确认消息
+    MAX_WAIT_TIME = 60  # 最大等待时间（秒）
+    RETRY_INTERVAL = 5  # 重试间隔（秒）
+    
+    try:
+        # 第1步：等待Flask服务器就绪（通过HTTP健康检查）
+        logging.info("[UDP通知] 等待Flask服务器完全就绪...")
+        flask_ready = False
+        health_check_start = time.time()
+        
+        while time.time() - health_check_start < 30:  # 最多等待30秒
+            try:
+                import requests
+                response = requests.get(f"http://{host}:{port}/", timeout=1)
+                if response.status_code in [200, 404, 302]:  # 任何响应都表示服务器已启动
+                    flask_ready = True
+                    logging.info("[UDP通知] Flask服务器已就绪")
+                    break
+            except:
+                time.sleep(0.5)  # 等待0.5秒后重试
+        
+        if not flask_ready:
+            logging.warning("[UDP通知] Flask服务器健康检查超时，仍然尝试发送UDP通知")
+        
+        # 第2步：创建UDP socket用于发送通知和接收确认
+        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        udp_socket.bind(('127.0.0.1', MAIN_UDP_PORT))  # 绑定本地端口接收确认
+        udp_socket.settimeout(RETRY_INTERVAL)  # 设置接收超时为重试间隔
+        
+        logging.info(f"[UDP通知] 已创建UDP socket，监听端口 {MAIN_UDP_PORT}")
+        
+        # 第3步：循环发送启动通知并等待确认
+        start_time = time.time()
+        attempt_count = 0
+        confirmed = False
+        
+        while time.time() - start_time < MAX_WAIT_TIME:
+            attempt_count += 1
+            
+            try:
+                # 发送启动通知
+                udp_socket.sendto(
+                    STARTUP_MESSAGE.encode('utf-8'),
+                    ('127.0.0.1', LOG_FORWARDER_UDP_PORT)
+                )
+                logging.info(f"[UDP通知] 第{attempt_count}次尝试：已发送启动通知到日志转发器（端口{LOG_FORWARDER_UDP_PORT}）")
+                
+                # 等待确认响应
+                try:
+                    data, addr = udp_socket.recvfrom(1024)
+                    message = data.decode('utf-8')
+                    
+                    if message == ACK_MESSAGE:
+                        logging.info(f"[UDP通知] ✓ 收到日志转发器的确认响应（来自 {addr}）")
+                        logging.info("[UDP通知] 日志转发握手成功完成")
+                        confirmed = True
+                        break
+                    else:
+                        logging.warning(f"[UDP通知] 收到未知消息: {message}")
+                
+                except socket.timeout:
+                    elapsed = int(time.time() - start_time)
+                    logging.warning(
+                        f"[UDP通知] 等待确认超时（已尝试{attempt_count}次，已用时{elapsed}秒），"
+                        f"将在{RETRY_INTERVAL}秒后重试..."
+                    )
+                    # 超时后会在下一次循环重试
+            
+            except Exception as e:
+                logging.error(f"[UDP通知] 发送通知时出错: {e}")
+                time.sleep(RETRY_INTERVAL)
+        
+        # 第4步：检查是否成功
+        if not confirmed:
+            logging.error(
+                f"[UDP通知] ✗ 在{MAX_WAIT_TIME}秒内未收到日志转发器的确认响应"
+            )
+            logging.error("[UDP通知] 日志转发系统可能未正常启动")
+            logging.error("[UDP通知] 注意：这可能导致nginx日志未能转发到Python日志系统")
+        
+        # 第5步：关闭UDP socket
+        udp_socket.close()
+        logging.info("[UDP通知] UDP通知线程结束")
+        
+    except Exception as e:
+        logging.error(f"[UDP通知] UDP通知线程发生异常: {e}", exc_info=True)
+
+
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
@@ -22859,6 +22969,41 @@ def start_web_server(args_param):
         else:
             logging.info(f"正在启动带有 WebSocket 支持的 Web 服务器于 {server_url}")
             try:
+                # 注册SocketIO启动后的回调，在服务器实际启动后才发送UDP通知
+                # 这样可以确保只有在服务器成功启动后才通知日志转发器
+                @socketio.on('connect', namespace='/')
+                def on_first_connect():
+                    """首次连接时触发UDP通知（仅执行一次）"""
+                    if not hasattr(on_first_connect, 'notified'):
+                        on_first_connect.notified = True
+                        # 在新线程中发送UDP通知，避免阻塞连接处理
+                        threading.Thread(
+                            target=_send_startup_notification_to_log_forwarder,
+                            args=(args.host, args.port),
+                            daemon=True
+                        ).start()
+                
+                # 启动Flask服务器前，在后台线程中等待服务器就绪后发送UDP通知
+                # 使用定时器延迟执行，确保socketio.run()已经开始监听
+                def delayed_udp_notification():
+                    """延迟发送UDP通知，确保服务器已启动"""
+                    time.sleep(2)  # 等待2秒让服务器完全启动
+                    # 验证服务器是否真的在运行
+                    try:
+                        import requests
+                        response = requests.get(f"http://{args.host}:{args.port}/", timeout=1)
+                        # 如果能连接，说明服务器已启动，发送UDP通知
+                        _send_startup_notification_to_log_forwarder(args.host, args.port)
+                    except Exception as e:
+                        logging.warning(f"[UDP通知] 服务器健康检查失败，不发送UDP通知: {e}")
+                
+                udp_notification_thread = threading.Thread(
+                    target=delayed_udp_notification,
+                    daemon=True
+                )
+                udp_notification_thread.start()
+                
+                # 启动SocketIO服务器（阻塞调用）
                 socketio.run(app, host=args.host, port=args.port, debug=False)
             except KeyboardInterrupt:
                 raise

@@ -7,10 +7,12 @@ Nginx日志转发器
     python3 nginx_log_forwarder.py
 
 工作原理：
-    1. 使用tail -F监控nginx的JSON日志文件
-    2. 解析每一行JSON格式的日志
-    3. 批量发送到Flask应用的 /api/log_nginx 接口
-    4. 通过Python的logging系统进行统一日志管理
+    1. 启动UDP监听，等待Flask应用的启动通知
+    2. 收到通知后发送确认响应，确保UDP握手成功
+    3. 确认Flask就绪后，使用tail -F监控nginx的JSON日志文件
+    4. 解析每一行JSON格式的日志
+    5. 批量发送到Flask应用的 /api/log_nginx 接口
+    6. 通过Python的logging系统进行统一日志管理
 """
 
 import json
@@ -19,6 +21,8 @@ import requests
 import logging
 import subprocess
 import sys
+import socket
+import threading
 from collections import deque
 
 # ============================================================================
@@ -39,6 +43,12 @@ BATCH_TIMEOUT = 2.0  # 批量发送超时时间（秒）
 MAX_RETRIES = 3  # 最大重试次数
 RETRY_DELAY = 1.0  # 重试延迟（秒）
 
+# UDP配置
+LOG_FORWARDER_UDP_PORT = 9999  # 本转发器监听的UDP端口
+MAIN_UDP_PORT = 9998  # main.py监听确认响应的UDP端口
+STARTUP_MESSAGE = "FLASK_STARTED"  # Flask启动通知消息
+ACK_MESSAGE = "ACK_RECEIVED"  # 确认响应消息
+
 # ============================================================================
 # 日志配置
 # ============================================================================
@@ -52,6 +62,73 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# UDP握手相关函数
+# ============================================================================
+
+flask_ready_event = threading.Event()  # 用于通知主线程Flask已就绪
+
+
+def udp_listener():
+    """
+    UDP监听线程，等待Flask应用的启动通知并发送确认响应
+    
+    工作流程：
+    1. 监听UDP端口，等待Flask的启动通知
+    2. 收到通知后，发送确认响应给Flask
+    3. 设置事件标志，通知主线程可以开始处理日志
+    """
+    try:
+        # 创建UDP socket
+        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        udp_socket.bind(('127.0.0.1', LOG_FORWARDER_UDP_PORT))
+        udp_socket.settimeout(None)  # 无超时，持续监听
+        
+        logger.info(f"[UDP监听] 已启动UDP监听线程，监听端口 {LOG_FORWARDER_UDP_PORT}")
+        logger.info("[UDP监听] 等待Flask应用发送启动通知...")
+        
+        while not flask_ready_event.is_set():
+            try:
+                # 接收数据
+                data, addr = udp_socket.recvfrom(1024)
+                message = data.decode('utf-8')
+                
+                logger.info(f"[UDP监听] 收到消息: '{message}' (来自 {addr})")
+                
+                # 检查是否为启动通知
+                if message == STARTUP_MESSAGE:
+                    logger.info("[UDP监听] ✓ 确认收到Flask启动通知")
+                    
+                    # 发送确认响应
+                    udp_socket.sendto(
+                        ACK_MESSAGE.encode('utf-8'),
+                        addr  # 回复给发送方
+                    )
+                    logger.info(f"[UDP监听] ✓ 已发送确认响应到 {addr}")
+                    
+                    # 设置事件标志，通知主线程Flask已就绪
+                    flask_ready_event.set()
+                    logger.info("[UDP监听] ✓ Flask就绪事件已设置，主线程可以开始处理日志")
+                    break
+                else:
+                    logger.warning(f"[UDP监听] 收到未知消息，忽略: {message}")
+            
+            except socket.timeout:
+                continue  # 超时后继续监听
+            except Exception as e:
+                logger.error(f"[UDP监听] 接收UDP消息时出错: {e}")
+                time.sleep(1)
+        
+        # 关闭socket
+        udp_socket.close()
+        logger.info("[UDP监听] UDP监听线程结束")
+        
+    except Exception as e:
+        logger.error(f"[UDP监听] UDP监听线程发生致命错误: {e}", exc_info=True)
+        # 即使出错也设置事件，避免主线程永久阻塞
+        flask_ready_event.set()
+
 
 # ============================================================================
 # 主要功能函数
@@ -172,6 +249,11 @@ def tail_nginx_log():
 def main():
     """
     主函数：监控nginx日志并批量转发到Flask
+    
+    工作流程：
+    1. 启动UDP监听线程，等待Flask启动通知
+    2. 等待Flask就绪事件
+    3. 开始监控并转发nginx日志
     """
     logger.info("=" * 60)
     logger.info("Nginx日志转发器启动")
@@ -179,26 +261,37 @@ def main():
     logger.info(f"目标API: {FLASK_LOG_API}")
     logger.info(f"批量大小: {BATCH_SIZE} 条/批")
     logger.info(f"批量超时: {BATCH_TIMEOUT} 秒")
+    logger.info(f"UDP监听端口: {LOG_FORWARDER_UDP_PORT}")
     logger.info("=" * 60)
     
-    # 日志缓冲队列
-    log_buffer = deque()
-    last_send_time = time.time()
-    
     try:
-        # 等待Flask应用启动
-        logger.info("等待Flask应用准备就绪...")
-        retries = 0
-        while retries < 30:  # 最多等待30秒
-            try:
-                response = requests.get("http://127.0.0.1:5000/", timeout=1)
-                logger.info("Flask应用已就绪，开始转发日志")
-                break
-            except:
-                retries += 1
-                time.sleep(1)
+        # 第1步：启动UDP监听线程
+        logger.info("[启动] 正在启动UDP监听线程...")
+        udp_thread = threading.Thread(target=udp_listener, daemon=True)
+        udp_thread.start()
+        logger.info("[启动] UDP监听线程已启动")
+        
+        # 第2步：等待Flask应用发送启动通知
+        logger.info("[启动] 等待Flask应用启动通知...")
+        logger.info("[启动] (这确保Flask完全就绪后才开始处理日志，保证日志完整性)")
+        
+        # 设置超时时间为5分钟（足够长，但不会永久阻塞）
+        flask_ready = flask_ready_event.wait(timeout=300)
+        
+        if not flask_ready:
+            logger.error("[启动] ✗ 等待Flask启动通知超时（5分钟）")
+            logger.error("[启动] Flask可能未启动或UDP通信失败")
+            logger.error("[启动] 将尝试继续运行，但日志完整性可能无法保证")
         else:
-            logger.warning("无法连接到Flask应用，但仍将继续尝试转发日志")
+            logger.info("[启动] ✓ Flask应用已就绪，UDP握手成功完成")
+        
+        # 第3步：开始处理日志
+        logger.info("[启动] 开始监控和转发nginx日志...")
+        logger.info("=" * 60)
+        
+        # 日志缓冲队列
+        log_buffer = deque()
+        last_send_time = time.time()
         
         # 开始监控和转发日志
         for log_line in tail_nginx_log():
