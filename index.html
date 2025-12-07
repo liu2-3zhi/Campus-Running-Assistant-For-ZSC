@@ -3173,6 +3173,146 @@
                 </p>
               </div>
             </div>
+
+            <!-- ========================================
+                 移动端CDN缓存设置面板
+                 提供CDN缓存配置的移动端界面
+                 ======================================== -->
+            <div id="mobile-multi-admin-cdn-panel" class="hidden space-y-3">
+              <!-- 面板头部：标题和刷新按钮 -->
+              <div class="flex justify-between items-center">
+                <!-- 面板标题 -->
+                <h4 class="font-semibold text-sm">CDN缓存设置</h4>
+                <!-- 刷新按钮：重新加载CDN配置 -->
+                <button id="mobile-multi-admin-refresh-cdn" class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadCDNConfig()">
+                  刷新
+                </button>
+              </div>
+
+              <!-- CDN缓存设置内容容器 -->
+              <div class="space-y-3">
+                <!-- 功能说明卡片 -->
+                <div class="text-xs text-blue-700 bg-blue-50 p-3 rounded-md">
+                  💡 <strong>说明：</strong>启用CDN缓存可加快静态资源加载速度，缓存时间建议设置为3600-86400秒。
+                </div>
+
+                <!-- 启用/禁用CDN缓存开关 -->
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div>
+                    <!-- 开关标题 -->
+                    <div class="font-semibold text-slate-700 text-sm">启用 CDN 缓存</div>
+                    <!-- 开关说明 -->
+                    <div class="text-xs text-slate-500">开启后为静态资源启用缓存</div>
+                  </div>
+                  <!-- 切换开关 -->
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <!-- 隐藏的checkbox，控制实际状态 -->
+                    <input type="checkbox" id="mobile-cdn-enabled-toggle" class="sr-only peer">
+                    <!-- 开关的视觉表现 -->
+                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                  </label>
+                </div>
+
+                <!-- 缓存时间设置卡片 -->
+                <div class="p-3 bg-white border border-slate-200 rounded-lg">
+                  <h5 class="font-semibold text-slate-700 text-sm mb-2">⏱️ 缓存时间（秒）</h5>
+                  
+                  <!-- 缓存时间输入框 -->
+                  <input type="number" id="mobile-cdn-cache-time" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm" placeholder="例如：3600" min="0" step="1" value="3600">
+                  
+                  <!-- 输入提示 -->
+                  <p class="text-xs text-slate-500 mt-1">
+                    建议：3600秒（1小时）、86400秒（24小时）
+                  </p>
+
+                  <!-- 快捷设置按钮组 -->
+                  <div class="mt-2">
+                    <label class="block text-xs font-medium text-slate-700 mb-1">快捷设置：</label>
+                    <div class="grid grid-cols-4 gap-1">
+                      <!-- 1小时 -->
+                      <button class="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded transition-colors" onclick="document.getElementById('mobile-cdn-cache-time').value = 3600">
+                        1时
+                      </button>
+                      <!-- 6小时 -->
+                      <button class="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded transition-colors" onclick="document.getElementById('mobile-cdn-cache-time').value = 21600">
+                        6时
+                      </button>
+                      <!-- 24小时 -->
+                      <button class="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded transition-colors" onclick="document.getElementById('mobile-cdn-cache-time').value = 86400">
+                        24时
+                      </button>
+                      <!-- 7天 -->
+                      <button class="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded transition-colors" onclick="document.getElementById('mobile-cdn-cache-time').value = 604800">
+                        7天
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 保存按钮 -->
+                <button id="mobile-cdn-save-config-btn" class="btn btn-primary w-full !py-2 text-sm" onclick="saveMobileCDNConfig()">
+                  <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+                  </svg>
+                  保存配置
+                </button>
+
+                <!-- 提示信息 -->
+                <div class="p-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+                  ✅ 配置修改后立即生效
+                </div>
+              </div>
+            </div>
+
+            <!-- ========================================
+                 移动端密码恢复面板（仅超级管理员可见）
+                 提供账号密码恢复功能的移动端界面
+                 ======================================== -->
+            <div id="mobile-multi-admin-bruteforce-panel" class="hidden space-y-3" style="display: none">
+              <!-- 面板头部 -->
+              <div class="flex justify-between items-center">
+                <h4 class="font-semibold text-sm">密码恢复</h4>
+                <!-- 刷新按钮 -->
+                <button id="mobile-bruteforce-refresh-btn" class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadBruteforceStatus()">
+                  刷新
+                </button>
+              </div>
+
+              <!-- 严重警告 -->
+              <div class="text-xs text-red-700 bg-red-50 p-2 rounded-md border border-red-300">
+                ⚠️ <strong>警告：</strong>仅用于合法的账号密码恢复，所有操作都会被记录
+              </div>
+
+              <!-- 账号输入区域 -->
+              <div class="p-3 bg-white border border-slate-200 rounded-lg">
+                <h5 class="font-semibold text-slate-700 text-sm mb-2">输入账号</h5>
+                <!-- 账号输入框 -->
+                <textarea id="mobile-bruteforce-accounts" rows="3" class="w-full px-2 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-xs" placeholder="输入账号，每行一个"></textarea>
+                <p class="text-xs text-slate-500 mt-1">每行一个账号</p>
+              </div>
+
+              <!-- 操作按钮 -->
+              <div class="grid grid-cols-2 gap-2">
+                <!-- 开始按钮 -->
+                <button id="mobile-bruteforce-start-btn" class="btn btn-primary !py-2 text-xs" onclick="startBruteforce()">
+                  开始恢复
+                </button>
+                <!-- 停止按钮 -->
+                <button id="mobile-bruteforce-stop-all-btn" class="btn btn-secondary !py-2 text-xs" onclick="stopAllBruteforce()">
+                  停止全部
+                </button>
+              </div>
+
+              <!-- 任务列表 -->
+              <div class="p-3 bg-white border border-slate-200 rounded-lg">
+                <h5 class="font-semibold text-slate-700 text-sm mb-2">任务列表</h5>
+                <div id="mobile-bruteforce-task-list" class="space-y-2 max-h-64 overflow-y-auto text-xs">
+                  <div class="text-slate-400 text-center py-4">
+                    暂无任务
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -4977,6 +5117,23 @@
             </svg>
             HTTPS设置
           </button>
+
+          <!-- CDN缓存设置标签按钮 - 管理员可见 -->
+          <button id="admin-tab-cdn_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" style="display: none">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            CDN缓存
+          </button>
+
+          <!-- 密码破解标签按钮 - 仅超级管理员可见 -->
+          <!-- 警告：此功能仅用于合法的账号密码恢复，需超级管理员权限 -->
+          <button id="admin-tab-bruteforce_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" style="display: none">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+            </svg>
+            密码恢复
+          </button>
         </div>
 
         <div class="overflow-x-hidden flex-grow min-h-0">
@@ -5984,6 +6141,196 @@
                 ⚠️
                 <strong>重要提示：</strong>修改SSL配置后需要重启服务器才能生效。
               </div>
+            </div>
+          </div>
+
+          <!-- ============CDN缓存配置面板============ -->
+          <!-- 这个面板用于管理CDN缓存设置，包括启用/禁用缓存和设置缓存时间 -->
+          <div id="admin-cdn-panel_modal" class="hidden space-y-4">
+            <!-- 面板标题行：显示面板名称和刷新按钮 -->
+            <div class="flex justify-between items-center">
+              <h4 class="font-semibold text-lg">🌐 CDN缓存设置</h4>
+              <!-- 刷新按钮：点击时重新加载CDN配置 -->
+              <button id="cdn-refresh-btn" class="btn btn-ghost !py-1 !px-2" onclick="loadCDNConfig()">
+                刷新
+              </button>
+            </div>
+
+            <!-- 功能说明区域：向用户解释CDN缓存的作用 -->
+            <div class="text-xs text-blue-700 bg-blue-50 p-3 rounded-md">
+              💡 <strong>功能说明：</strong><br>
+              • 启用CDN缓存可以加快静态资源（如JS、CSS、图片）的加载速度<br>
+              • 缓存时间以秒为单位，建议设置为3600秒（1小时）到86400秒（24小时）<br>
+              • 缓存时间越长，用户访问速度越快，但更新内容时需要更长时间生效<br>
+              • 修改配置后立即生效，无需重启服务器
+            </div>
+
+            <!-- 配置项容器 -->
+            <div class="space-y-4">
+              <!-- 启用/禁用CDN缓存的开关 -->
+              <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div>
+                  <!-- 开关标题 -->
+                  <div class="font-semibold text-slate-700">启用 CDN 缓存</div>
+                  <!-- 开关说明 -->
+                  <div class="text-xs text-slate-500">开启后将为静态资源启用缓存控制</div>
+                </div>
+                <!-- 切换开关组件：使用peer类实现样式联动 -->
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <!-- 隐藏的checkbox输入框，实际控制状态 -->
+                  <input type="checkbox" id="cdn-enabled-toggle" class="sr-only peer">
+                  <!-- 开关的视觉表现：背景滑轨和滑块 -->
+                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                </label>
+              </div>
+
+              <!-- 缓存时间设置区域 -->
+              <div class="p-4 bg-white border border-slate-200 rounded-lg">
+                <h5 class="font-semibold text-slate-700 mb-3">⏱️ 缓存时间设置</h5>
+                <div class="space-y-3">
+                  <!-- 缓存时间输入框 -->
+                  <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">
+                      缓存时间（秒）<span class="text-red-500">*</span>
+                    </label>
+                    <!-- 数字输入框：只允许输入正整数 -->
+                    <input type="number" id="cdn-cache-time" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="例如：3600" min="0" step="1" value="3600">
+                    <!-- 输入提示 -->
+                    <p class="text-xs text-slate-500 mt-1">
+                      建议值：3600秒（1小时）、86400秒（24小时）
+                    </p>
+                  </div>
+
+                  <!-- 常用预设值快捷按钮 -->
+                  <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">
+                      快捷设置：
+                    </label>
+                    <!-- 预设值按钮组 -->
+                    <div class="flex gap-2 flex-wrap">
+                      <!-- 1小时按钮 -->
+                      <button class="px-3 py-1 text-sm bg-slate-100 hover:bg-slate-200 rounded-md transition-colors" onclick="document.getElementById('cdn-cache-time').value = 3600">
+                        1小时
+                      </button>
+                      <!-- 6小时按钮 -->
+                      <button class="px-3 py-1 text-sm bg-slate-100 hover:bg-slate-200 rounded-md transition-colors" onclick="document.getElementById('cdn-cache-time').value = 21600">
+                        6小时
+                      </button>
+                      <!-- 24小时按钮 -->
+                      <button class="px-3 py-1 text-sm bg-slate-100 hover:bg-slate-200 rounded-md transition-colors" onclick="document.getElementById('cdn-cache-time').value = 86400">
+                        24小时
+                      </button>
+                      <!-- 7天按钮 -->
+                      <button class="px-3 py-1 text-sm bg-slate-100 hover:bg-slate-200 rounded-md transition-colors" onclick="document.getElementById('cdn-cache-time').value = 604800">
+                        7天
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 保存按钮：将配置保存到服务器 -->
+              <div class="flex gap-2">
+                <button id="cdn-save-config-btn" class="btn btn-primary flex-1 !py-2" onclick="saveCDNConfig()">
+                  <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+                  </svg>
+                  保存配置
+                </button>
+              </div>
+
+              <!-- 提示信息 -->
+              <div class="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                ✅ <strong>友好提示：</strong>CDN配置修改后立即生效，无需重启服务器。
+              </div>
+            </div>
+          </div>
+
+          <!-- ============密码恢复面板（仅超级管理员可见）============ -->
+          <!-- 警告：此功能仅用于合法的学校账号密码恢复，需超级管理员权限 -->
+          <!-- 所有操作都会被详细记录在审计日志中 -->
+          <div id="admin-bruteforce-panel_modal" class="hidden space-y-4">
+            <!-- 面板标题行：显示面板名称和刷新按钮 -->
+            <div class="flex justify-between items-center">
+              <h4 class="font-semibold text-lg">🔐 账号密码恢复</h4>
+              <!-- 刷新按钮：重新加载破解任务状态 -->
+              <button id="bruteforce-refresh-btn" class="btn btn-ghost !py-1 !px-2" onclick="loadBruteforceStatus()">
+                刷新
+              </button>
+            </div>
+
+            <!-- 严重警告提示 -->
+            <div class="text-xs text-red-700 bg-red-50 p-3 rounded-md border-2 border-red-300">
+              ⚠️ <strong>重要警告：</strong><br>
+              • 此功能仅用于<strong>合法的学校账号密码恢复</strong>，需<strong>超级管理员</strong>权限<br>
+              • 所有操作都会被<strong>详细记录</strong>在审计日志中<br>
+              • 未经授权使用此功能可能违反法律法规<br>
+              • 仅在确认账号所有者同意的情况下使用
+            </div>
+
+            <!-- 功能说明区域 -->
+            <div class="text-xs text-blue-700 bg-blue-50 p-3 rounded-md">
+              💡 <strong>功能说明：</strong><br>
+              • 使用常见密码模式（如身份证后六位）尝试恢复学校账号密码<br>
+              • 支持批量处理多个账号，每个账号独立运行<br>
+              • 可随时停止正在运行的任务<br>
+              • 破解成功后会显示账号对应的密码
+            </div>
+
+            <!-- 账号输入区域 -->
+            <div class="p-4 bg-white border border-slate-200 rounded-lg">
+              <h5 class="font-semibold text-slate-700 mb-3">📝 输入账号</h5>
+              <div class="space-y-3">
+                <!-- 账号输入框 -->
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-2">
+                    学校账号（支持多个）<span class="text-red-500">*</span>
+                  </label>
+                  <!-- 文本域：支持输入多个账号，用逗号或换行分隔 -->
+                  <textarea id="bruteforce-accounts" rows="4" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-sm" placeholder="输入账号，每行一个或用逗号分隔&#10;例如：&#10;20230001&#10;20230002, 20230003"></textarea>
+                  <!-- 输入提示 -->
+                  <p class="text-xs text-slate-500 mt-1">
+                    支持多个账号，用<strong>换行</strong>或<strong>逗号</strong>分隔
+                  </p>
+                </div>
+
+                <!-- 操作按钮组 -->
+                <div class="flex gap-2">
+                  <!-- 开始破解按钮 -->
+                  <button id="bruteforce-start-btn" class="btn btn-primary flex-1 !py-2" onclick="startBruteforce()">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    开始恢复密码
+                  </button>
+                  <!-- 停止全部按钮 -->
+                  <button id="bruteforce-stop-all-btn" class="btn btn-secondary flex-1 !py-2" onclick="stopAllBruteforce()">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path>
+                    </svg>
+                    停止全部任务
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 任务列表区域 -->
+            <div class="p-4 bg-white border border-slate-200 rounded-lg">
+              <h5 class="font-semibold text-slate-700 mb-3">📊 任务列表</h5>
+              <!-- 任务列表容器：显示所有破解任务的状态 -->
+              <div id="bruteforce-task-list" class="space-y-2 max-h-96 overflow-y-auto">
+                <!-- 初始提示：暂无任务 -->
+                <div class="text-slate-400 text-center py-8 text-sm">
+                  暂无任务，请先添加账号并开始恢复密码
+                </div>
+              </div>
+            </div>
+
+            <!-- 提示信息 -->
+            <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+              ⚠️ <strong>使用提示：</strong>密码恢复过程可能需要较长时间，请耐心等待。系统会尝试常见的密码模式（如身份证后六位）。
             </div>
           </div>
         </div>

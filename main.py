@@ -12537,6 +12537,468 @@ def save_ssl_config(ssl_config):
         return False
 
 
+def load_cdn_config():
+    """
+    从config.ini文件加载CDN缓存配置
+    
+    功能说明：
+    - 读取config.ini文件中的[CDN]节
+    - 如果配置文件或节不存在，返回默认配置
+    - 默认配置：CDN禁用，缓存时间3600秒（1小时）
+    
+    返回值：
+        dict: 包含CDN配置的字典
+            - cdn_enabled (bool): 是否启用CDN缓存
+            - cache_time (int): 缓存时间（秒）
+    """
+    # 获取配置文件路径（与main.py同目录）
+    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    
+    # 创建ConfigParser对象用于读取INI文件
+    config = configparser.ConfigParser()
+    
+    # 定义默认配置：CDN禁用，缓存时间1小时
+    default_config = {
+        "cdn_enabled": False,  # 默认不启用CDN缓存
+        "cache_time": 3600,    # 默认缓存时间3600秒（1小时）
+    }
+
+    try:
+        # 检查配置文件是否存在
+        if not os.path.exists(config_file):
+            # 配置文件不存在，记录警告并返回默认配置
+            logging.warning(f"配置文件 {config_file} 不存在，使用默认CDN配置（禁用）")
+            return default_config
+        
+        # 读取配置文件，指定UTF-8编码
+        config.read(config_file, encoding="utf-8")
+        
+        # 检查是否存在[CDN]节
+        if not config.has_section("CDN"):
+            # [CDN]节不存在，记录警告并返回默认配置
+            logging.warning("配置文件中未找到[CDN]节，使用默认CDN配置（禁用）")
+            return default_config
+        
+        # 从配置文件读取CDN配置
+        cdn_config = {
+            # 读取cdn_enabled配置，如果不存在则使用False作为默认值
+            "cdn_enabled": config.getboolean("CDN", "cdn_enabled", fallback=False),
+            # 读取cache_time配置，如果不存在则使用3600作为默认值
+            "cache_time": config.getint("CDN", "cache_time", fallback=3600),
+        }
+        
+        # 记录加载成功的日志
+        logging.info(
+            f"CDN配置加载成功: enabled={cdn_config['cdn_enabled']}, cache_time={cdn_config['cache_time']}"
+        )
+
+        return cdn_config
+
+    except Exception as e:
+        # 捕获所有异常，记录错误日志并返回默认配置
+        logging.error(f"加载CDN配置时发生错误: {e}，使用默认配置（禁用CDN）")
+        return default_config
+
+
+def save_cdn_config(cdn_config):
+    """
+    将CDN缓存配置保存到config.ini文件
+    
+    功能说明：
+    - 将CDN配置写入config.ini文件的[CDN]节
+    - 如果[CDN]节不存在，会自动创建
+    - 如果配置文件不存在，会创建新的配置文件
+    
+    参数：
+        cdn_config (dict): 包含CDN配置的字典，键应包括：
+            - cdn_enabled (bool): 是否启用CDN缓存
+            - cache_time (int): 缓存时间（秒）
+
+    返回值：
+        bool: 保存成功返回True，失败返回False
+    """
+    # 获取配置文件路径
+    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    
+    # 创建ConfigParser对象
+    config = configparser.ConfigParser()
+
+    try:
+        # 检查配置文件是否存在
+        if os.path.exists(config_file):
+            # 配置文件存在，读取现有配置
+            config.read(config_file, encoding="utf-8")
+        else:
+            # 配置文件不存在，记录警告并创建新的默认配置
+            logging.warning("config.ini 文件不存在，将创建新的配置文件")
+            # 获取默认配置作为基础
+            config = _get_default_config()
+        
+        # 检查是否存在[CDN]节，如果不存在则创建
+        if not config.has_section("CDN"):
+            config.add_section("CDN")
+        
+        # 写入cdn_enabled配置：将布尔值转换为字符串（true/false）
+        config.set(
+            "CDN", "cdn_enabled", str(cdn_config.get("cdn_enabled", False)).lower()
+        )
+        
+        # 写入cache_time配置：将整数转换为字符串
+        config.set(
+            "CDN", "cache_time", str(cdn_config.get("cache_time", 3600))
+        )
+        
+        # 使用带注释的写入函数保存配置
+        # 这个函数会保留配置文件中的注释
+        _write_config_with_comments(config, config_file)
+
+        # 记录成功日志
+        logging.info("CDN配置已成功保存到配置文件")
+        return True
+
+    except Exception as e:
+        # 捕获异常，记录错误日志并返回False
+        logging.error(f"保存CDN配置时发生错误: {e}")
+        return False
+
+
+# ============================================================================
+# 密码恢复（暴力破解）功能的后端实现
+# 警告：此功能仅用于合法的学校账号密码恢复
+# 需要超级管理员权限，所有操作都会被详细记录
+# ============================================================================
+
+# 全局变量：存储密码恢复任务管理器
+brute_force_manager = None
+
+
+class BruteForceTaskManager:
+    """
+    密码恢复任务管理器
+    
+    功能：
+    - 管理多个账号的密码恢复任务
+    - 每个任务独立运行在后台线程中
+    - 支持启动、停止、查询任务状态
+    - 自动保存任务状态和恢复结果
+    """
+
+    def __init__(self, logs_dir):
+        """
+        初始化任务管理器
+        
+        参数：
+            logs_dir (str): 日志目录路径，用于存储任务数据文件
+        """
+        # 存储所有任务的字典，键为账号，值为任务信息
+        self.tasks = {}
+        
+        # 线程锁：用于保护tasks字典的并发访问
+        self.lock = threading.Lock()
+        
+        # 日志目录路径
+        self.logs_dir = logs_dir
+        
+        # 已尝试密码的文件路径
+        self.attempts_file = os.path.join(logs_dir, "brute_force_attempts.json")
+        
+        # 破解结果的文件路径
+        self.results_file = os.path.join(logs_dir, "brute_force_results.json")
+        
+        # 确保日志目录存在
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir)
+        
+        # 加载已存在的尝试记录和结果
+        self.attempts = self._load_json_file(self.attempts_file, {})
+        self.results = self._load_json_file(self.results_file, {})
+        
+        logging.info("[密码恢复] 任务管理器初始化完成")
+
+    def _load_json_file(self, filepath, default=None):
+        """
+        从JSON文件加载数据
+        
+        参数：
+            filepath (str): 文件路径
+            default: 如果文件不存在或加载失败时返回的默认值
+        
+        返回值：
+            加载的数据或默认值
+        """
+        try:
+            # 检查文件是否存在
+            if os.path.exists(filepath):
+                # 读取并解析JSON文件
+                with open(filepath, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            # 加载失败时记录错误
+            logging.error(f"[密码恢复] 加载文件失败 {filepath}: {e}")
+        
+        # 返回默认值
+        return default if default is not None else {}
+
+    def _save_json_file(self, filepath, data):
+        """
+        将数据保存到JSON文件
+        
+        参数：
+            filepath (str): 文件路径
+            data: 要保存的数据（必须可JSON序列化）
+        """
+        try:
+            # 将数据写入文件，使用UTF-8编码
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            # 保存失败时记录错误
+            logging.error(f"[密码恢复] 保存文件失败 {filepath}: {e}")
+
+    def generate_passwords(self, account):
+        """
+        密码生成器：生成常见的密码模式
+        
+        参数：
+            account (str): 账号
+        
+        生成策略：
+        1. 身份证后六位：000000-999999（共100万个密码）
+        2. 跳过已经尝试过的密码
+        
+        返回值：
+            生成器，每次yield一个密码字符串
+        """
+        # 获取该账号已尝试过的密码集合
+        attempted = set(self.attempts.get(account, []))
+        
+        # 生成身份证后六位密码：从000000到999999
+        for i in range(1000000):
+            # 格式化为6位数字字符串（前面补0）
+            password = f"{i:06d}"
+            
+            # 如果该密码未被尝试过，则yield返回
+            if password not in attempted:
+                yield password
+
+    def start_task(self, account):
+        """
+        启动账号的密码恢复任务
+        
+        参数：
+            account (str): 要恢复密码的账号
+        
+        返回值：
+            dict: {"success": True/False, "message": "..."}
+        """
+        # 使用线程锁保护并发访问
+        with self.lock:
+            # 检查该账号是否已有任务在运行
+            if account in self.tasks and self.tasks[account].get("status") == "running":
+                return {"success": False, "message": f"账号 {account} 的任务已在运行中"}
+            
+            # 创建新任务的状态信息
+            task_info = {
+                "account": account,  # 账号
+                "status": "running",  # 状态：running
+                "attempts": 0,  # 已尝试密码数
+                "password": None,  # 找到的密码（初始为None）
+                "start_time": datetime.datetime.now().isoformat(),  # 开始时间
+                "end_time": None,  # 结束时间（初始为None）
+                "stop_flag": False,  # 停止标志（用于通知线程停止）
+            }
+            
+            # 将任务添加到tasks字典
+            self.tasks[account] = task_info
+            
+            # 如果该账号没有尝试记录，创建空列表
+            if account not in self.attempts:
+                self.attempts[account] = []
+        
+        # 创建后台线程执行密码破解
+        thread = threading.Thread(
+            target=self._run_brute_force,
+            args=(account,),
+            daemon=True,  # 守护线程，主程序退出时自动终止
+        )
+        thread.start()
+        
+        # 记录任务启动日志
+        logging.info(f"[密码恢复] 已启动账号 {account} 的密码恢复任务")
+        
+        return {"success": True, "message": f"已启动账号 {account} 的任务"}
+
+    def _run_brute_force(self, account):
+        """
+        执行密码破解的后台线程函数
+        
+        参数：
+            account (str): 账号
+        
+        执行流程：
+        1. 使用chrome_pool加载登录页面
+        2. 遍历密码生成器生成的密码
+        3. 对每个密码尝试登录
+        4. 如果登录成功，记录密码并停止
+        5. 如果账号不存在，停止任务
+        6. 如果收到停止信号，停止任务
+        """
+        try:
+            # 检查chrome_pool是否可用
+            global chrome_pool
+            if not chrome_pool:
+                logging.error(f"[密码恢复] Chrome池不可用，无法执行账号 {account} 的任务")
+                with self.lock:
+                    self.tasks[account]["status"] = "failed"
+                    self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                return
+            
+            # TODO: 这里需要实际的登录验证逻辑
+            # 由于实际实现需要了解具体的登录API，这里只提供框架
+            
+            # 获取密码生成器
+            password_gen = self.generate_passwords(account)
+            
+            # 遍历每个密码
+            for password in password_gen:
+                # 检查是否收到停止信号
+                with self.lock:
+                    if self.tasks[account].get("stop_flag"):
+                        logging.info(f"[密码恢复] 账号 {account} 的任务收到停止信号")
+                        self.tasks[account]["status"] = "stopped"
+                        self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                        self._save_json_file(self.results_file, self.results)
+                        return
+                
+                # 尝试使用该密码登录
+                # 注意：这里需要实际的登录验证代码
+                # 示例代码（需要根据实际情况修改）：
+                # success = try_login(account, password)
+                
+                # 为了演示，这里添加一个占位逻辑
+                # 实际使用时需要替换为真实的登录验证
+                success = False  # 占位符
+                
+                # 更新已尝试密码数
+                with self.lock:
+                    self.tasks[account]["attempts"] += 1
+                    self.attempts[account].append(password)
+                    
+                    # 每尝试100个密码保存一次
+                    if self.tasks[account]["attempts"] % 100 == 0:
+                        self._save_json_file(self.attempts_file, self.attempts)
+                
+                # 如果登录成功
+                if success:
+                    with self.lock:
+                        # 更新任务状态
+                        self.tasks[account]["status"] = "success"
+                        self.tasks[account]["password"] = password
+                        self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                        
+                        # 保存结果
+                        self.results[account] = {
+                            "status": "success",
+                            "password": password,
+                            "attempts": self.tasks[account]["attempts"],
+                            "start_time": self.tasks[account]["start_time"],
+                            "end_time": self.tasks[account]["end_time"],
+                        }
+                        self._save_json_file(self.results_file, self.results)
+                    
+                    logging.info(f"[密码恢复] 账号 {account} 的密码已找到")
+                    return
+            
+            # 所有密码都尝试完毕，未找到
+            with self.lock:
+                self.tasks[account]["status"] = "failed"
+                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                
+                # 保存结果
+                self.results[account] = {
+                    "status": "failed",
+                    "password": None,
+                    "attempts": self.tasks[account]["attempts"],
+                    "start_time": self.tasks[account]["start_time"],
+                    "end_time": self.tasks[account]["end_time"],
+                }
+                self._save_json_file(self.results_file, self.results)
+            
+            logging.info(f"[密码恢复] 账号 {account} 的任务完成，未找到密码")
+        
+        except Exception as e:
+            # 捕获异常，记录错误并更新任务状态
+            logging.error(f"[密码恢复] 账号 {account} 的任务执行失败: {e}", exc_info=True)
+            with self.lock:
+                self.tasks[account]["status"] = "failed"
+                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+
+    def stop_task(self, account):
+        """
+        停止指定账号的密码恢复任务
+        
+        参数：
+            account (str): 账号
+        
+        返回值：
+            dict: {"success": True/False, "message": "..."}
+        """
+        with self.lock:
+            # 检查任务是否存在
+            if account not in self.tasks:
+                return {"success": False, "message": f"账号 {account} 没有任务"}
+            
+            # 检查任务是否正在运行
+            if self.tasks[account].get("status") != "running":
+                return {"success": False, "message": f"账号 {account} 的任务不在运行中"}
+            
+            # 设置停止标志
+            self.tasks[account]["stop_flag"] = True
+        
+        logging.info(f"[密码恢复] 已发送停止信号给账号 {account} 的任务")
+        
+        return {"success": True, "message": f"已发送停止信号给账号 {account}"}
+
+    def stop_all_tasks(self):
+        """
+        停止所有正在运行的密码恢复任务
+        
+        返回值：
+            dict: {"success": True, "stopped_count": 整数}
+        """
+        stopped_count = 0
+        
+        with self.lock:
+            # 遍历所有任务
+            for account, task_info in self.tasks.items():
+                # 如果任务正在运行，设置停止标志
+                if task_info.get("status") == "running":
+                    task_info["stop_flag"] = True
+                    stopped_count += 1
+        
+        logging.info(f"[密码恢复] 已发送停止信号给 {stopped_count} 个任务")
+        
+        return {"success": True, "stopped_count": stopped_count}
+
+    def get_all_tasks_status(self):
+        """
+        获取所有任务的状态
+        
+        返回值：
+            list: 任务状态列表，每个元素是一个任务信息字典
+        """
+        with self.lock:
+            # 创建任务列表的副本，避免返回内部数据
+            tasks_list = []
+            for account, task_info in self.tasks.items():
+                # 复制任务信息，移除stop_flag（内部使用）
+                task_copy = task_info.copy()
+                task_copy.pop("stop_flag", None)
+                tasks_list.append(task_copy)
+            
+            return tasks_list
+
+
 def validate_ssl_certificate(cert_path, key_path):
     """
     验证SSL证书文件和密钥文件是否有效。
@@ -12694,6 +13156,11 @@ def start_web_server(args_param):
     try:
         background_task_manager = BackgroundTaskManager()
         logging.info("后台任务管理器初始化成功")
+        
+        # 初始化密码恢复任务管理器
+        global brute_force_manager
+        brute_force_manager = BruteForceTaskManager(LOGIN_LOGS_DIR)
+        logging.info("密码恢复任务管理器初始化成功")
 
         logging.info("程序启动：正在清理所有历史后台任务记录（内存和文件）...")
         cleaned_files_count = 0
@@ -18321,6 +18788,298 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[SSL管理] 切换SSL状态失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"操作失败: {str(e)}"}), 500
+
+    # ============================================================================
+    # CDN缓存配置管理API
+    # 这个部分提供CDN缓存设置的API接口
+    # ============================================================================
+
+    @app.route("/api/admin/cdn/config", methods=["GET"])
+    @login_required
+    def get_cdn_config():
+        """
+        获取CDN缓存配置
+        
+        功能说明：
+        - 从config.ini文件读取CDN配置
+        - 返回CDN启用状态和缓存时间
+        - 需要管理员权限（manage_system）
+        
+        返回格式：
+        {
+            "success": true,
+            "config": {
+                "cdn_enabled": false,
+                "cache_time": 3600
+            }
+        }
+        """
+        try:
+            # 检查用户是否有系统管理权限
+            # manage_system权限允许用户修改系统配置
+            if not auth_system.check_permission(g.user, "manage_system"):
+                # 权限不足，返回403 Forbidden状态码
+                return jsonify({"success": False, "message": "权限不足"}), 403
+            
+            # 调用load_cdn_config()函数从配置文件加载CDN配置
+            cdn_config = load_cdn_config()
+            
+            # 记录配置加载日志，包括用户名
+            logging.info(f"[CDN配置] {g.user} 查询CDN配置")
+            
+            # 返回成功响应，包含配置数据
+            return jsonify(
+                {
+                    "success": True,  # 操作成功标志
+                    "config": cdn_config,  # CDN配置数据
+                }
+            )
+
+        except Exception as e:
+            # 捕获所有异常，记录错误日志
+            logging.error(f"[CDN配置] 获取配置失败: {e}", exc_info=True)
+            # 返回500 Internal Server Error状态码
+            return jsonify({"success": False, "message": f"获取配置失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/cdn/config", methods=["POST"])
+    @login_required
+    def update_cdn_config():
+        """
+        更新CDN缓存配置
+        
+        功能说明：
+        - 接收前端提交的CDN配置数据
+        - 验证数据的有效性
+        - 保存配置到config.ini文件
+        - 需要管理员权限（manage_system）
+        
+        请求格式：
+        {
+            "cdn_enabled": true,
+            "cache_time": 3600
+        }
+        
+        返回格式：
+        {
+            "success": true,
+            "message": "配置已保存",
+            "config": {
+                "cdn_enabled": true,
+                "cache_time": 3600
+            }
+        }
+        """
+        try:
+            # 检查用户权限
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({"success": False, "message": "权限不足"}), 403
+            
+            # 获取请求体中的JSON数据
+            data = request.get_json()
+            
+            # 验证请求数据是否存在
+            if not data:
+                # 请求数据为空，返回400 Bad Request状态码
+                return jsonify({"success": False, "message": "请求数据为空"}), 400
+            
+            # 加载当前的CDN配置
+            current_config = load_cdn_config()
+            
+            # 更新cdn_enabled配置（如果请求中提供了该字段）
+            if "cdn_enabled" in data:
+                # 将值转换为布尔类型，确保数据类型正确
+                current_config["cdn_enabled"] = bool(data["cdn_enabled"])
+            
+            # 更新cache_time配置（如果请求中提供了该字段）
+            if "cache_time" in data:
+                # 将值转换为整数类型
+                cache_time = int(data["cache_time"])
+                
+                # 验证缓存时间是否为非负数
+                if cache_time < 0:
+                    # 缓存时间不能为负数，返回错误
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "message": "缓存时间必须大于等于0",
+                            }
+                        ),
+                        400,
+                    )
+                
+                # 验证通过，更新配置
+                current_config["cache_time"] = cache_time
+            
+            # 调用save_cdn_config()函数保存配置到文件
+            if save_cdn_config(current_config):
+                # 保存成功，记录日志
+                logging.info(f"[CDN配置] {g.user} 更新CDN配置: {current_config}")
+                
+                # 返回成功响应
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": "配置已保存，立即生效",
+                        "config": current_config,
+                    }
+                )
+            else:
+                # 保存失败，返回500错误
+                return jsonify({"success": False, "message": "保存配置失败"}), 500
+
+        except ValueError as e:
+            # 捕获值转换错误（例如字符串转整数失败）
+            logging.error(f"[CDN配置] 配置数据类型错误: {e}")
+            return jsonify({"success": False, "message": f"配置数据格式错误: {str(e)}"}), 400
+        
+        except Exception as e:
+            # 捕获其他所有异常
+            logging.error(f"[CDN配置] 更新配置失败: {e}", exc_info=True)
+            return (
+                jsonify({"success": False, "message": f"更新配置失败: {str(e)}"}),
+                500,
+            )
+
+    # ============================================================================
+    # 密码恢复（暴力破解）API（仅超级管理员）
+    # 警告：此功能仅用于合法的学校账号密码恢复
+    # ============================================================================
+
+    @app.route("/api/admin/bruteforce/start", methods=["POST"])
+    @login_required
+    def start_bruteforce():
+        """
+        启动密码恢复任务
+        需要超级管理员权限
+        """
+        try:
+            # 检查是否为超级管理员
+            config = configparser.ConfigParser()
+            config.read(CONFIG_FILE, encoding="utf-8")
+            super_admin = config.get("Admin", "super_admin", fallback="admin")
+            
+            if g.user != super_admin:
+                logging.warning(f"[密码恢复] 非超级管理员 {g.user} 尝试访问密码恢复功能")
+                return jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403
+            
+            # 获取请求数据
+            data = request.get_json()
+            if not data or "accounts" not in data:
+                return jsonify({"success": False, "message": "缺少accounts参数"}), 400
+            
+            accounts = data["accounts"]
+            if not isinstance(accounts, list) or len(accounts) == 0:
+                return jsonify({"success": False, "message": "accounts必须是非空列表"}), 400
+            
+            # 检查brute_force_manager是否可用
+            global brute_force_manager
+            if not brute_force_manager:
+                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
+            
+            # 启动每个账号的任务
+            results = []
+            for account in accounts:
+                result = brute_force_manager.start_task(account)
+                results.append({"account": account, "result": result})
+            
+            # 记录审计日志
+            logging.warning(f"[密码恢复] 超级管理员 {g.user} 启动了 {len(accounts)} 个账号的密码恢复任务：{accounts}")
+            
+            return jsonify({
+                "success": True,
+                "message": f"已启动 {len(accounts)} 个任务",
+                "results": results
+            })
+        
+        except Exception as e:
+            logging.error(f"[密码恢复] 启动任务失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"启动任务失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/bruteforce/stop", methods=["POST"])
+    @login_required
+    def stop_bruteforce():
+        """
+        停止密码恢复任务
+        需要超级管理员权限
+        """
+        try:
+            # 检查是否为超级管理员
+            config = configparser.ConfigParser()
+            config.read(CONFIG_FILE, encoding="utf-8")
+            super_admin = config.get("Admin", "super_admin", fallback="admin")
+            
+            if g.user != super_admin:
+                return jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403
+            
+            # 获取请求数据
+            data = request.get_json()
+            if not data:
+                return jsonify({"success": False, "message": "缺少请求数据"}), 400
+            
+            global brute_force_manager
+            if not brute_force_manager:
+                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
+            
+            # 判断是停止全部还是停止指定账号
+            if data.get("all"):
+                result = brute_force_manager.stop_all_tasks()
+                logging.warning(f"[密码恢复] 超级管理员 {g.user} 停止了所有密码恢复任务")
+                return jsonify(result)
+            elif "accounts" in data:
+                accounts = data["accounts"]
+                if not isinstance(accounts, list):
+                    return jsonify({"success": False, "message": "accounts必须是列表"}), 400
+                
+                results = []
+                for account in accounts:
+                    result = brute_force_manager.stop_task(account)
+                    results.append({"account": account, "result": result})
+                
+                logging.warning(f"[密码恢复] 超级管理员 {g.user} 停止了账号的密码恢复任务：{accounts}")
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"已处理 {len(accounts)} 个停止请求",
+                    "results": results
+                })
+            else:
+                return jsonify({"success": False, "message": "必须提供all或accounts参数"}), 400
+        
+        except Exception as e:
+            logging.error(f"[密码恢复] 停止任务失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"停止任务失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/bruteforce/status", methods=["GET"])
+    @login_required
+    def get_bruteforce_status():
+        """
+        获取所有密码恢复任务的状态
+        需要超级管理员权限
+        """
+        try:
+            # 检查是否为超级管理员
+            config = configparser.ConfigParser()
+            config.read(CONFIG_FILE, encoding="utf-8")
+            super_admin = config.get("Admin", "super_admin", fallback="admin")
+            
+            if g.user != super_admin:
+                return jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403
+            
+            global brute_force_manager
+            if not brute_force_manager:
+                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
+            
+            tasks = brute_force_manager.get_all_tasks_status()
+            
+            return jsonify({
+                "success": True,
+                "tasks": tasks
+            })
+        
+        except Exception as e:
+            logging.error(f"[密码恢复] 获取任务状态失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取任务状态失败: {str(e)}"}), 500
 
     # ============================================================================
     # 应用主路由
