@@ -12725,13 +12725,12 @@ function refreshMobileSessionPicker() {
               logMessage_Error("绑定多账号UI事件失败:", e);
             }
             try {
-              const accountsResult = await callPythonAPI(
-                "multi_get_all_accounts_status"
-              );
-              if (accountsResult && accountsResult.accounts) {
-                renderMultiAccountList(accountsResult.accounts);
+              // 使用loadInitialData替代直接调用API
+              const initialData = await loadInitialData({ force: true });
+              if (initialData && initialData.accounts) {
+                renderMultiAccountList(initialData.accounts);
                 logMessage(
-                  `已恢复多账号模式，当前有 ${accountsResult.accounts.length} 个账号`
+                  `已恢复多账号模式，当前有 ${initialData.accounts.length} 个账号`
                 );
               } else {
                 logMessage(`已恢复多账号模式，当前有 0 个账号`);
@@ -15135,13 +15134,12 @@ function refreshMobileSessionPicker() {
         }
         try {
           console.log("[多账号模式] 初始加载账号列表...");
-          const initialAccounts = await callPythonAPI(
-            "multi_get_all_accounts_status"
-          );
-          if (initialAccounts && initialAccounts.accounts) {
-            renderMultiAccountList(initialAccounts.accounts);
+          // 使用loadInitialData替代直接调用API
+          const initialData = await loadInitialData({ force: true });
+          if (initialData && initialData.accounts) {
+            renderMultiAccountList(initialData.accounts);
             console.log(
-              `[多账号模式] 初始加载完成，当前有 ${initialAccounts.accounts.length} 个账号`
+              `[多账号模式] 初始加载完成，当前有 ${initialData.accounts.length} 个账号`
             );
           } else {
             console.log("[多账号模式] 初始加载完成，当前有 0 个账号");
@@ -16351,10 +16349,10 @@ function refreshMobileSessionPicker() {
                     return;
                 }
 
-                // 执行API请求
-                const response = await callPythonAPI("multi_get_all_accounts_status");
+                // 使用loadInitialData替代直接调用API，利用其限流和缓存机制
+                const response = await loadInitialData();
 
-                // 处理成功响应
+                // 处理成功响应，从response.accounts中获取数据
                 if (response && response.success && response.accounts) {
                     const currentSignature = response.accounts
                         .map((a) => a.username)
@@ -18472,16 +18470,10 @@ function refreshMobileSessionPicker() {
           logQueue = [];
 
           if (!isInNetworkErrorState && sessionUUID) {
-              fetch("/api/log_frontend", {
-                  method: "POST",
-                  headers: {
-                      "Content-Type": "application/json",
-                      "X-Session-ID": sessionUUID || null,
-                  },
-                  credentials: "include",
-                  body: JSON.stringify({
-                      batch: batchToSend
-                  }),
+              // 使用loadInitialData发送日志，而不是直接fetch
+              loadInitialData({ 
+                  frontend_logs: batchToSend,
+                  force: true  // 强制发送，因为日志需要及时传输
               }).catch((err) => {
                   if (console._original && console._original.error) {
                       console._original.error("[日志批量发送失败]", err);
