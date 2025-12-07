@@ -1713,69 +1713,65 @@ class AuthSystem:
                     )
 
     def _load_permissions(self):
-        """加载权限配置"""
+        """加载权限配置（修复：增强的容错处理）"""
         logging.debug(f"_load_permissions: 检查权限文件: {PERMISSIONS_FILE}")
         
-        if os.path.exists(PERMISSIONS_FILE):
-            # [新增] 1. 检查文件是否为空
-            if os.path.getsize(PERMISSIONS_FILE) == 0:
-                logging.warning(f"_load_permissions: {PERMISSIONS_FILE} 为空，正在重置为默认配置...")
-                try:
-                    os.remove(PERMISSIONS_FILE) # 删除空文件
-                except Exception:
-                    pass
-                _create_permissions_json() # 重新创建默认文件
-                # 重新读取
-                try:
-                    with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
-                        return json.load(f)
-                except Exception as e:
-                    logging.error(f"_load_permissions: 重置后读取失败: {e}")
-                    return {"permission_groups": {}, "user_groups": {}}
+        default_perms = {"permission_groups": {}, "user_groups": {}}
 
-            # [新增] 2. 尝试读取并处理JSON错误
+        # 如果文件不存在，直接创建默认并返回
+        if not os.path.exists(PERMISSIONS_FILE):
+            logging.debug("_load_permissions: 权限文件不存在，创建默认配置")
+            _create_permissions_json()
             try:
                 with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
-                    perms = json.load(f)
-                logging.debug(
-                    f"_load_permissions: 权限配置已加载，权限组数: {len(perms.get('permission_groups', {}))}, 用户组数: {len(perms.get('user_groups', {}))}"
-                )
-                return perms
-            except (json.JSONDecodeError, Exception) as e:
-                logging.error(f"_load_permissions: 读取权限文件失败 ({type(e).__name__}): {e}")
-                
-                # 备份损坏的文件
-                import shutil
-                try:
-                    backup_path = PERMISSIONS_FILE + ".bak"
-                    shutil.copy2(PERMISSIONS_FILE, backup_path)
-                    logging.info(f"已将损坏的权限文件备份至: {backup_path}")
-                except Exception as backup_err:
-                    logging.error(f"备份权限文件失败: {backup_err}")
-                
-                logging.info("正在使用默认权限配置覆盖损坏的文件...")
-                try:
-                    os.remove(PERMISSIONS_FILE)
-                except Exception:
-                    pass
-                _create_permissions_json() # 重新创建
-                
-                # 尝试返回新创建的默认配置
-                try:
-                    with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
-                        return json.load(f)
-                except Exception:
-                    return {"permission_groups": {}, "user_groups": {}}
+                    return json.load(f)
+            except Exception:
+                return default_perms
 
-        logging.debug("_load_permissions: 权限文件不存在，使用默认配置")
-        # 确保文件被创建
-        _create_permissions_json()
-        # 尝试读取以返回完整结构，或者返回基础结构
+        # 文件存在，尝试安全读取
         try:
             with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {"permission_groups": {}, "user_groups": {}}
+                content = f.read().strip()
+            
+            # 检查内容是否为空（处理只有换行符的情况）
+            if not content:
+                raise json.JSONDecodeError("文件内容为空", "", 0)
+                
+            perms = json.loads(content)
+            logging.debug(
+                f"_load_permissions: 权限配置已加载，权限组数: {len(perms.get('permission_groups', {}))}, 用户组数: {len(perms.get('user_groups', {}))}"
+            )
+            return perms
+
+        except (json.JSONDecodeError, Exception) as e:
+            logging.error(f"_load_permissions: 读取权限文件异常 ({type(e).__name__}): {e}")
+            logging.warning("检测到权限文件损坏或格式错误，正在自动重置...")
+            
+            # 1. 备份损坏的文件
+            import shutil
+            try:
+                backup_path = PERMISSIONS_FILE + ".bak"
+                shutil.copy2(PERMISSIONS_FILE, backup_path)
+                logging.info(f"已将损坏的权限文件备份至: {backup_path}")
+            except Exception as backup_err:
+                logging.error(f"备份权限文件失败: {backup_err}")
+            
+            # 2. 删除并重新创建
+            try:
+                if os.path.exists(PERMISSIONS_FILE):
+                    os.remove(PERMISSIONS_FILE)
+            except Exception as del_err:
+                logging.error(f"删除损坏文件失败: {del_err}")
+
+            _create_permissions_json() # 重新创建默认文件
+            
+            # 3. 尝试返回新创建的配置
+            try:
+                with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as rec_e:
+                logging.error(f"重置后读取依然失败: {rec_e}")
+                return default_perms
 
     def _save_permissions(self):
         """保存权限配置"""
