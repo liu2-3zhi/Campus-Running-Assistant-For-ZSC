@@ -1,3 +1,61 @@
+// 初始化前端配置：从API加载配置或使用服务端注入的配置
+(function initAppConfig() {
+  // 默认配置（集中定义，避免重复）
+  var DEFAULT_CONFIG = {
+    sms_enabled: false,
+    reg_verify_enabled: false,
+    enable_phone_modification: false
+  };
+  
+  // 如果服务端已经注入了配置（旧方式，用于兼容），直接使用
+  if (typeof window.APP_CONFIG !== "undefined") {
+    console.log("[配置] 使用服务端注入的配置");
+    return;
+  }
+  
+  // 否则，从API异步加载配置（新方式，减轻后端压力）
+  console.log("[配置] 从API加载前端配置...");
+  
+  // 先设置默认配置，避免页面加载时出错
+  window.APP_CONFIG = DEFAULT_CONFIG;
+  
+  // 创建带超时的 AbortController
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() {
+    controller.abort();
+  }, 10000); // 10秒超时
+  
+  // 异步获取真实配置
+  fetch("/api/frontend-config", {
+    signal: controller.signal,
+    cache: "no-cache"
+  })
+    .then(function(response) {
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        throw new Error("配置加载失败: " + response.status);
+      }
+      return response.json();
+    })
+    .then(function(config) {
+      window.APP_CONFIG = config;
+      console.log("[配置] 成功从API加载配置:", config);
+      // 触发自定义事件，通知配置已加载，并传递配置数据
+      var event = new CustomEvent("appConfigLoaded", { detail: config });
+      window.dispatchEvent(event);
+    })
+    .catch(function(error) {
+      clearTimeout(timeoutId);
+      if (error.name === "AbortError") {
+        console.warn("[配置] 加载配置超时，使用默认配置");
+      } else {
+        console.error("[配置] 加载配置失败，使用默认配置:", error);
+      }
+      // 保持默认配置
+      window.APP_CONFIG = DEFAULT_CONFIG;
+    });
+})();
+
 function handleCdnError(resourceName) {
   resourceName = resourceName || "未指定";
   cdnErrorCount++;

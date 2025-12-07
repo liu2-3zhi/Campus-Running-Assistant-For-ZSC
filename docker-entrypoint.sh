@@ -95,14 +95,14 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_send_timeout 300;
         }
 
-        # UUID会话路径 - 代理到Flask
+        # UUID会话路径 - 直接返回静态index.html（优化：减轻后端压力）
         location ~ ^/uuid= {
-            proxy_pass http://127.0.0.1:5000;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            # 使用try_files直接返回index.html，让前端通过API获取配置
+            try_files /index.html =404;
+            # 禁用缓存，确保每次都能获取最新的index.html
+            add_header Cache-Control "no-cache, no-store, must-revalidate";
+            add_header Pragma "no-cache";
+            add_header Expires "0";
         }
 
         # 首页 - 优先尝试静态文件，如果不存在则代理到Flask
