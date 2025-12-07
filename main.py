@@ -18946,6 +18946,29 @@ def start_web_server(args_param):
     # 警告：此功能仅用于合法的学校账号密码恢复
     # ============================================================================
 
+    def check_super_admin_permission():
+        """
+        检查当前用户是否为超级管理员
+        
+        返回:
+            tuple: (is_super_admin: bool, error_response: tuple|None)
+                   如果不是超级管理员，返回(False, error_response)
+                   如果是超级管理员，返回(True, None)
+        """
+        try:
+            config = configparser.ConfigParser()
+            config.read(CONFIG_FILE, encoding="utf-8")
+            super_admin = config.get("Admin", "super_admin", fallback="admin")
+            
+            if g.user != super_admin:
+                logging.warning(f"[权限检查] 非超级管理员 {g.user} 尝试访问超级管理员功能")
+                return False, (jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403)
+            
+            return True, None
+        except Exception as e:
+            logging.error(f"[权限检查] 检查超级管理员权限失败: {e}", exc_info=True)
+            return False, (jsonify({"success": False, "message": "权限检查失败"}), 500)
+
     @app.route("/api/admin/bruteforce/start", methods=["POST"])
     @login_required
     def start_bruteforce():
@@ -18955,13 +18978,9 @@ def start_web_server(args_param):
         """
         try:
             # 检查是否为超级管理员
-            config = configparser.ConfigParser()
-            config.read(CONFIG_FILE, encoding="utf-8")
-            super_admin = config.get("Admin", "super_admin", fallback="admin")
-            
-            if g.user != super_admin:
-                logging.warning(f"[密码恢复] 非超级管理员 {g.user} 尝试访问密码恢复功能")
-                return jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403
+            is_super_admin, error_response = check_super_admin_permission()
+            if not is_super_admin:
+                return error_response
             
             # 获取请求数据
             data = request.get_json()
@@ -19005,12 +19024,9 @@ def start_web_server(args_param):
         """
         try:
             # 检查是否为超级管理员
-            config = configparser.ConfigParser()
-            config.read(CONFIG_FILE, encoding="utf-8")
-            super_admin = config.get("Admin", "super_admin", fallback="admin")
-            
-            if g.user != super_admin:
-                return jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403
+            is_super_admin, error_response = check_super_admin_permission()
+            if not is_super_admin:
+                return error_response
             
             # 获取请求数据
             data = request.get_json()
@@ -19059,12 +19075,9 @@ def start_web_server(args_param):
         """
         try:
             # 检查是否为超级管理员
-            config = configparser.ConfigParser()
-            config.read(CONFIG_FILE, encoding="utf-8")
-            super_admin = config.get("Admin", "super_admin", fallback="admin")
-            
-            if g.user != super_admin:
-                return jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403
+            is_super_admin, error_response = check_super_admin_permission()
+            if not is_super_admin:
+                return error_response
             
             global brute_force_manager
             if not brute_force_manager:
