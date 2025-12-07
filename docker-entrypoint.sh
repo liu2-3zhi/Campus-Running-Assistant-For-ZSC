@@ -165,7 +165,27 @@ http {
     log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" "$http_x_forwarded_for"';
+    
+    # JSON格式日志 - 用于结构化日志记录和分析
+    log_format  json_combined escape=json
+        '{'
+            '"time_local":"$time_local",'
+            '"remote_addr":"$remote_addr",'
+            '"remote_user":"$remote_user",'
+            '"request":"$request",'
+            '"status":"$status",'
+            '"body_bytes_sent":"$body_bytes_sent",'
+            '"request_time":"$request_time",'
+            '"http_referer":"$http_referer",'
+            '"http_user_agent":"$http_user_agent",'
+            '"http_x_forwarded_for":"$http_x_forwarded_for"'
+        '}';
+    
+    # 传统格式访问日志
     access_log  /var/log/nginx/access.log  main;
+    # JSON格式访问日志（用于程序化处理和转发到Python日志系统）
+    access_log  /var/log/nginx/access_json.log  json_combined;
+    
     sendfile        on;
     tcp_nopush      on;
     tcp_nodelay     on;
@@ -245,7 +265,27 @@ http {
     log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" "$http_x_forwarded_for"';
+    
+    # JSON格式日志 - 用于结构化日志记录和分析
+    log_format  json_combined escape=json
+        '{'
+            '"time_local":"$time_local",'
+            '"remote_addr":"$remote_addr",'
+            '"remote_user":"$remote_user",'
+            '"request":"$request",'
+            '"status":"$status",'
+            '"body_bytes_sent":"$body_bytes_sent",'
+            '"request_time":"$request_time",'
+            '"http_referer":"$http_referer",'
+            '"http_user_agent":"$http_user_agent",'
+            '"http_x_forwarded_for":"$http_x_forwarded_for"'
+        '}';
+    
+    # 传统格式访问日志
     access_log  /var/log/nginx/access.log  main;
+    # JSON格式访问日志（用于程序化处理和转发到Python日志系统）
+    access_log  /var/log/nginx/access_json.log  json_combined;
+    
     sendfile        on;
     tcp_nopush      on;
     tcp_nodelay     on;
