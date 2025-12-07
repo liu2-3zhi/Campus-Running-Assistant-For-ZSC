@@ -76,10 +76,37 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         # 客户端最大上传大小
         client_max_body_size 100M;
 
-        # 静态文件缓存设置
-        location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg)$ {
+        # 1. Favicon (位于 /app/favicon.ico)
+        location = /favicon.ico {
+            root /app;
+            log_not_found off;
+            access_log off;
+        }
+
+        # 2 & 3. Scripts 和 Styles 目录
+        location ~ ^/(scripts|styles)/ {
+            root /app;
+            # 设置较长的缓存时间，因为静态资源通常不常变
             expires 7d;
-            add_header Cache-Control "public, immutable";
+            access_log off;
+        }
+
+        # 4. 根目录头像 (位于 /app/default_avatar.png)
+        location = /default_avatar.png {
+            root /app;
+        }
+
+        # 5. Static 路径别名 (URL: /static/... -> File: /app/...)
+        location = /static/default_avatar.png {
+            alias /app/default_avatar.png;
+        }
+
+        # 6. API 路径头像特例 (优先级高于通用的 API 正则匹配)
+        # 必须使用 = 精确匹配，否则会被下方的 ~ ^/(api|...) 规则拦截
+        location = /api/avatar/default_avatar.png {
+            alias /app/default_avatar.png;
+            # 允许跨域访问图片
+            add_header Access-Control-Allow-Origin *;
         }
 
         # WebSocket支持 - SocketIO
