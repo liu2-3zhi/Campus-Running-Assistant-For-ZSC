@@ -947,6 +947,11 @@ def _get_default_config():
         "noise_level": "0.08",
     }
 
+    config["CDN"] = {
+        "cdn_enabled": "false",
+        "cache_time": "3600",
+    }
+
     config["Features"] = {
         "enable_phone_modification": "false",
         "enable_phone_login": "false",
@@ -12557,135 +12562,6 @@ def save_ssl_config(ssl_config):
         return False
 
 
-def load_cdn_config():
-    """
-    从config.ini文件加载CDN缓存配置
-    
-    功能说明：
-    - 读取config.ini文件中的[CDN]节
-    - 使用全局CONFIG_FILE变量获取配置文件路径
-    - 如果配置文件或节不存在，返回默认配置
-    - 默认配置：CDN禁用，缓存时间3600秒（1小时）
-    
-    返回值：
-        dict: 包含CDN配置的字典
-            - cdn_enabled (bool): 是否启用CDN缓存
-            - cache_time (int): 缓存时间（秒）
-    """
-    # 使用全局CONFIG_FILE变量获取配置文件路径
-    global CONFIG_FILE
-    
-    # 创建ConfigParser对象用于读取INI文件
-    config = configparser.ConfigParser()
-    
-    # 定义默认配置：CDN禁用，缓存时间1小时
-    default_config = {
-        "cdn_enabled": False,  # 默认不启用CDN缓存
-        "cache_time": 3600,    # 默认缓存时间3600秒（1小时）
-    }
-
-    try:
-        # 检查配置文件是否存在
-        if not os.path.exists(CONFIG_FILE):
-            # 配置文件不存在，记录警告并返回默认配置
-            logging.warning(f"配置文件 {CONFIG_FILE} 不存在，使用默认CDN配置（禁用）")
-            return default_config
-        
-        # 读取配置文件，指定UTF-8编码
-        config.read(CONFIG_FILE, encoding="utf-8")
-        
-        # 检查是否存在[CDN]节
-        if not config.has_section("CDN"):
-            # [CDN]节不存在，记录警告并返回默认配置
-            logging.warning("配置文件中未找到[CDN]节，使用默认CDN配置（禁用）")
-            return default_config
-        
-        # 从配置文件读取CDN配置
-        cdn_config = {
-            # 读取cdn_enabled配置，如果不存在则使用False作为默认值
-            "cdn_enabled": config.getboolean("CDN", "cdn_enabled", fallback=False),
-            # 读取cache_time配置，如果不存在则使用3600作为默认值
-            "cache_time": config.getint("CDN", "cache_time", fallback=3600),
-        }
-        
-        # 记录加载成功的日志
-        logging.info(
-            f"CDN配置加载成功: enabled={cdn_config['cdn_enabled']}, cache_time={cdn_config['cache_time']}"
-        )
-
-        return cdn_config
-
-    except Exception as e:
-        # 捕获所有异常，记录错误日志并返回默认配置
-        logging.error(f"加载CDN配置时发生错误: {e}，使用默认配置（禁用CDN）")
-        return default_config
-
-
-def save_cdn_config(cdn_config):
-    """
-    将CDN缓存配置保存到config.ini文件
-    
-    功能说明：
-    - 将CDN配置写入config.ini文件的[CDN]节
-    - 使用全局CONFIG_FILE变量获取配置文件路径
-    - 使用_write_config_with_comments函数保存配置以保留注释
-    - 如果[CDN]节不存在，会自动创建
-    - 如果配置文件不存在，会创建新的配置文件
-    
-    参数：
-        cdn_config (dict): 包含CDN配置的字典，键应包括：
-            - cdn_enabled (bool): 是否启用CDN缓存
-            - cache_time (int): 缓存时间（秒）
-
-    返回值：
-        bool: 保存成功返回True，失败返回False
-    """
-    # 使用全局CONFIG_FILE变量获取配置文件路径
-    global CONFIG_FILE
-    
-    # 创建ConfigParser对象
-    config = configparser.ConfigParser()
-
-    try:
-        # 检查配置文件是否存在
-        if os.path.exists(CONFIG_FILE):
-            # 配置文件存在，读取现有配置
-            config.read(CONFIG_FILE, encoding="utf-8")
-        else:
-            # 配置文件不存在，记录警告并创建新的默认配置
-            logging.warning("config.ini 文件不存在，将创建新的配置文件")
-            # 获取默认配置作为基础
-            config = _get_default_config()
-        
-        # 检查是否存在[CDN]节，如果不存在则创建
-        if not config.has_section("CDN"):
-            config.add_section("CDN")
-        
-        # 写入cdn_enabled配置：将布尔值转换为字符串（true/false）
-        config.set(
-            "CDN", "cdn_enabled", str(cdn_config.get("cdn_enabled", False)).lower()
-        )
-        
-        # 写入cache_time配置：将整数转换为字符串
-        config.set(
-            "CDN", "cache_time", str(cdn_config.get("cache_time", 3600))
-        )
-        
-        # 使用_write_config_with_comments函数保存配置
-        # 这样可以保留配置文件中的所有注释
-        _write_config_with_comments(config, CONFIG_FILE)
-        
-        # 记录保存成功的日志
-        logging.info(
-            f"CDN配置已保存: enabled={cdn_config['cdn_enabled']}, cache_time={cdn_config['cache_time']}"
-        )
-        
-        return True
-
-    except Exception as e:
-        # 捕获所有异常，记录错误日志
-        logging.error(f"保存CDN配置时发生错误: {e}", exc_info=True)
-        return False
 
 
 # ============================================================================
@@ -18904,19 +18780,42 @@ def start_web_server(args_param):
                 # 权限不足，返回403 Forbidden状态码
                 return jsonify({"success": False, "message": "权限不足"}), 403
             
-            # 调用load_cdn_config()函数从配置文件加载CDN配置
-            cdn_config = load_cdn_config()
+            # 创建ConfigParser对象读取配置文件
+            config = configparser.ConfigParser()
+            
+            # 检查配置文件是否存在
+            if not os.path.exists(CONFIG_FILE):
+                # 配置文件不存在，返回默认配置
+                logging.warning(f"[CDN配置] 配置文件 {CONFIG_FILE} 不存在，使用默认配置")
+                return jsonify({
+                    "success": True,
+                    "config": {
+                        "cdn_enabled": False,
+                        "cache_time": 3600
+                    }
+                })
+            
+            # 读取配置文件
+            config.read(CONFIG_FILE, encoding="utf-8")
+            
+            # 读取CDN配置，如果不存在则使用默认值
+            cdn_enabled = config.getboolean("CDN", "cdn_enabled", fallback=False)
+            cache_time = config.getint("CDN", "cache_time", fallback=3600)
+            
+            # 组装配置数据
+            cdn_config = {
+                "cdn_enabled": cdn_enabled,
+                "cache_time": cache_time
+            }
             
             # 记录配置加载日志，包括用户名
-            logging.info(f"[CDN配置] {g.user} 查询CDN配置")
+            logging.info(f"[CDN配置] {g.user} 查询CDN配置: {cdn_config}")
             
             # 返回成功响应，包含配置数据
-            return jsonify(
-                {
-                    "success": True,  # 操作成功标志
-                    "config": cdn_config,  # CDN配置数据
-                }
-            )
+            return jsonify({
+                "success": True,
+                "config": cdn_config
+            })
 
         except Exception as e:
             # 捕获所有异常，记录错误日志
@@ -18933,7 +18832,7 @@ def start_web_server(args_param):
         功能说明：
         - 接收前端提交的CDN配置数据
         - 验证数据的有效性
-        - 保存配置到config.ini文件
+        - 保存配置到config.ini文件（使用_write_config_with_comments保留注释）
         - 需要管理员权限（manage_system）
         
         请求格式：
@@ -18965,13 +18864,32 @@ def start_web_server(args_param):
                 # 请求数据为空，返回400 Bad Request状态码
                 return jsonify({"success": False, "message": "请求数据为空"}), 400
             
-            # 加载当前的CDN配置
-            current_config = load_cdn_config()
+            # 创建ConfigParser对象读取现有配置
+            config = configparser.ConfigParser()
+            
+            # 检查配置文件是否存在
+            if os.path.exists(CONFIG_FILE):
+                # 配置文件存在，读取现有配置
+                config.read(CONFIG_FILE, encoding="utf-8")
+            else:
+                # 配置文件不存在，使用默认配置
+                logging.warning("[CDN配置] config.ini 文件不存在，将创建新的配置文件")
+                config = _get_default_config()
+            
+            # 确保[CDN]节存在
+            if not config.has_section("CDN"):
+                config.add_section("CDN")
+            
+            # 当前配置值（用于返回）
+            current_cdn_enabled = config.getboolean("CDN", "cdn_enabled", fallback=False)
+            current_cache_time = config.getint("CDN", "cache_time", fallback=3600)
             
             # 更新cdn_enabled配置（如果请求中提供了该字段）
             if "cdn_enabled" in data:
                 # 将值转换为布尔类型，确保数据类型正确
-                current_config["cdn_enabled"] = bool(data["cdn_enabled"])
+                cdn_enabled = bool(data["cdn_enabled"])
+                config.set("CDN", "cdn_enabled", str(cdn_enabled).lower())
+                current_cdn_enabled = cdn_enabled
             
             # 更新cache_time配置（如果请求中提供了该字段）
             if "cache_time" in data:
@@ -18981,35 +18899,33 @@ def start_web_server(args_param):
                 # 验证缓存时间是否为非负数
                 if cache_time < 0:
                     # 缓存时间不能为负数，返回错误
-                    return (
-                        jsonify(
-                            {
-                                "success": False,
-                                "message": "缓存时间必须大于等于0",
-                            }
-                        ),
-                        400,
-                    )
+                    return jsonify({
+                        "success": False,
+                        "message": "缓存时间必须大于等于0"
+                    }), 400
                 
                 # 验证通过，更新配置
-                current_config["cache_time"] = cache_time
+                config.set("CDN", "cache_time", str(cache_time))
+                current_cache_time = cache_time
             
-            # 调用save_cdn_config()函数保存配置到文件
-            if save_cdn_config(current_config):
-                # 保存成功，记录日志
-                logging.info(f"[CDN配置] {g.user} 更新CDN配置: {current_config}")
-                
-                # 返回成功响应
-                return jsonify(
-                    {
-                        "success": True,
-                        "message": "配置已保存，立即生效",
-                        "config": current_config,
-                    }
-                )
-            else:
-                # 保存失败，返回500错误
-                return jsonify({"success": False, "message": "保存配置失败"}), 500
+            # 使用_write_config_with_comments函数保存配置以保留注释
+            _write_config_with_comments(config, CONFIG_FILE)
+            
+            # 组装返回的配置数据
+            saved_config = {
+                "cdn_enabled": current_cdn_enabled,
+                "cache_time": current_cache_time
+            }
+            
+            # 记录日志
+            logging.info(f"[CDN配置] {g.user} 更新CDN配置: {saved_config}")
+            
+            # 返回成功响应
+            return jsonify({
+                "success": True,
+                "message": "配置已保存，立即生效",
+                "config": saved_config
+            })
 
         except ValueError as e:
             # 捕获值转换错误（例如字符串转整数失败）
@@ -19019,10 +18935,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获其他所有异常
             logging.error(f"[CDN配置] 更新配置失败: {e}", exc_info=True)
-            return (
-                jsonify({"success": False, "message": f"更新配置失败: {str(e)}"}),
-                500,
-            )
+            return jsonify({"success": False, "message": f"更新配置失败: {str(e)}"}), 500
 
     # ============================================================================
     # 密码恢复（暴力破解）API（仅超级管理员）
