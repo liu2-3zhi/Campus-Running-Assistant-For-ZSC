@@ -1269,21 +1269,37 @@ def _write_config_with_comments(config_obj, filepath):
 def _create_config_ini():
     """创建或更新config.ini配置文件（兼容旧版本，自动补全缺失参数）"""
     default_config = _get_default_config()
+    config_file = "config.ini"
 
-    if os.path.exists("config.ini"):
+    if os.path.exists(config_file):
+        # [新增] 检查文件是否为空
+        if os.path.getsize(config_file) == 0:
+            print(f"[配置文件] 检测到 {config_file} 为空，正在重新创建默认配置...")
+            _write_config_with_comments(default_config, config_file)
+            return
+
         print("[配置文件] config.ini 已存在，检查是否需要更新...")
         existing_config = configparser.ConfigParser()
         try:
             existing_config.optionxform = str
-            existing_config.read("config.ini", encoding="utf-8")
-        except configparser.DuplicateOptionError as e:
-            print(f"\n[错误] 配置文件 'config.ini' 格式错误，请手动修复:")
-            print(f"  - 文件中存在重复的配置项: {e}")
-            print(
-                f"  - 请打开 config.ini 文件，找到 [{e.section}] 部分，确保 '{e.option}' 只出现一次（不区分大小写）。"
-            )
-            print(f"  - 修复后重新运行程序。")
-            logging.error(f"配置文件读取失败，存在重复项: {e}")
+            existing_config.read(config_file, encoding="utf-8")
+        except Exception as e:
+            # [新增] 捕获所有解析错误（包括重复项、格式错误等），备份并重置
+            print(f"\n[错误] 读取配置文件 '{config_file}' 失败: {e}")
+            logging.error(f"配置文件读取失败: {e}")
+            
+            import shutil
+            backup_file = config_file + ".bak"
+            try:
+                shutil.copy2(config_file, backup_file)
+                print(f"[配置文件] 已将损坏的配置文件备份为: {backup_file}")
+            except Exception as copy_err:
+                print(f"[配置文件] 备份失败: {copy_err}")
+            
+            print("[配置文件] 正在使用默认配置覆盖损坏的文件...")
+            _write_config_with_comments(default_config, config_file)
+            return
+
         updated = False
         for section in default_config.sections():
             if not existing_config.has_section(section):
@@ -1699,15 +1715,67 @@ class AuthSystem:
     def _load_permissions(self):
         """加载权限配置"""
         logging.debug(f"_load_permissions: 检查权限文件: {PERMISSIONS_FILE}")
+        
         if os.path.exists(PERMISSIONS_FILE):
-            with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
-                perms = json.load(f)
-            logging.debug(
-                f"_load_permissions: 权限配置已加载，权限组数: {len(perms.get('permission_groups', {}))}, 用户组数: {len(perms.get('user_groups', {}))}"
-            )
-            return perms
+            # [新增] 1. 检查文件是否为空
+            if os.path.getsize(PERMISSIONS_FILE) == 0:
+                logging.warning(f"_load_permissions: {PERMISSIONS_FILE} 为空，正在重置为默认配置...")
+                try:
+                    os.remove(PERMISSIONS_FILE) # 删除空文件
+                except Exception:
+                    pass
+                _create_permissions_json() # 重新创建默认文件
+                # 重新读取
+                try:
+                    with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except Exception as e:
+                    logging.error(f"_load_permissions: 重置后读取失败: {e}")
+                    return {"permission_groups": {}, "user_groups": {}}
+
+            # [新增] 2. 尝试读取并处理JSON错误
+            try:
+                with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
+                    perms = json.load(f)
+                logging.debug(
+                    f"_load_permissions: 权限配置已加载，权限组数: {len(perms.get('permission_groups', {}))}, 用户组数: {len(perms.get('user_groups', {}))}"
+                )
+                return perms
+            except (json.JSONDecodeError, Exception) as e:
+                logging.error(f"_load_permissions: 读取权限文件失败 ({type(e).__name__}): {e}")
+                
+                # 备份损坏的文件
+                import shutil
+                try:
+                    backup_path = PERMISSIONS_FILE + ".bak"
+                    shutil.copy2(PERMISSIONS_FILE, backup_path)
+                    logging.info(f"已将损坏的权限文件备份至: {backup_path}")
+                except Exception as backup_err:
+                    logging.error(f"备份权限文件失败: {backup_err}")
+                
+                logging.info("正在使用默认权限配置覆盖损坏的文件...")
+                try:
+                    os.remove(PERMISSIONS_FILE)
+                except Exception:
+                    pass
+                _create_permissions_json() # 重新创建
+                
+                # 尝试返回新创建的默认配置
+                try:
+                    with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except Exception:
+                    return {"permission_groups": {}, "user_groups": {}}
+
         logging.debug("_load_permissions: 权限文件不存在，使用默认配置")
-        return {"permission_groups": {}, "user_groups": {}}
+        # 确保文件被创建
+        _create_permissions_json()
+        # 尝试读取以返回完整结构，或者返回基础结构
+        try:
+            with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"permission_groups": {}, "user_groups": {}}
 
     def _save_permissions(self):
         """保存权限配置"""

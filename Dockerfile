@@ -68,7 +68,10 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone
 
-
+RUN touch /app/reminders.json
+RUN touch /app/permissions.json
+RUN touch /app/messages.json
+RUN touch /app/config.ini
 
 
 # 在构建阶段就转换换行符
