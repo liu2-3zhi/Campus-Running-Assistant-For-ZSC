@@ -24618,6 +24618,10 @@ async function loadBruteforceStatus() {
  * 5. 显示操作结果并刷新任务列表
  */
 async function startBruteforce() {
+  // 获取按钮元素以添加UI反馈
+  const startBtn = $("bruteforce-start-btn");
+  let originalBtnText = "";
+  
   // 获取桌面版的账号输入框
   const accountsInput = $("bruteforce-accounts");
   // 获取移动版的账号输入框
@@ -24651,6 +24655,13 @@ async function startBruteforce() {
   if (accounts.length === 0) {
     showModalAlert("未能解析出有效的账号", "输入错误");
     return;
+  }
+
+  // 设置按钮加载状态
+  if (startBtn) {
+    originalBtnText = startBtn.innerHTML;
+    startBtn.disabled = true;
+    startBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⏳</span>启动中...`;
   }
 
   try {
@@ -24691,6 +24702,12 @@ async function startBruteforce() {
     // 捕获并处理错误
     console.error("[密码恢复] 启动任务失败:", error);
     showModalAlert("启动失败: " + error.message, "网络错误");
+  } finally {
+    // 恢复按钮状态
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.innerHTML = originalBtnText;
+    }
   }
 }
 
@@ -24735,6 +24752,16 @@ async function stopBruteforce(account) {
  * 功能：向服务器发送请求，停止所有正在运行的密码恢复任务
  */
 async function stopAllBruteforce() {
+  // 获取按钮元素以添加UI反馈
+  const stopAllBtn = $("bruteforce-stop-all-btn");
+  let originalBtnText = "";
+
+  if (stopAllBtn) {
+    originalBtnText = stopAllBtn.innerHTML;
+    stopAllBtn.disabled = true;
+    stopAllBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⏳</span>停止中...`;
+  }
+
   try {
     // 向服务器发送POST请求，停止所有任务
     const response = await fetch("/api/admin/bruteforce/stop", {
@@ -24761,6 +24788,12 @@ async function stopAllBruteforce() {
   } catch (error) {
     console.error("[密码恢复] 停止所有任务失败:", error);
     showModalAlert("停止失败: " + error.message, "网络错误");
+  } finally {
+    // 恢复按钮状态
+    if (stopAllBtn) {
+      stopAllBtn.disabled = false;
+      stopAllBtn.innerHTML = originalBtnText;
+    }
   }
 }
 

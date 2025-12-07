@@ -12682,6 +12682,19 @@ class BruteForceTaskManager:
         # 加载已存在的尝试记录和结果
         self.attempts = self._load_json_file(self.attempts_file, {})
         self.results = self._load_json_file(self.results_file, {})
+
+        # [修正] 任务列表持久化文件路径
+        self.tasks_file = os.path.join(logs_dir, "brute_force_tasks.json")
+        
+        # [修正] 加载任务列表，并处理重启后的僵尸状态
+        self.tasks = self._load_json_file(self.tasks_file, {})
+        for acc, task_info in self.tasks.items():
+            # 如果重启前是运行状态，重启后线程已死，需重置为已停止
+            if task_info.get("status") == "running":
+                task_info["status"] = "stopped"
+        # 保存修正后的状态
+        if self.tasks:
+            self._save_json_file(self.tasks_file, self.tasks)
         
         logging.info("[密码恢复] 任务管理器初始化完成")
 
@@ -12846,6 +12859,9 @@ class BruteForceTaskManager:
             
             # 将任务添加到tasks字典
             self.tasks[account] = task_info
+
+            # [修正] 持久化任务列表
+            self._save_json_file(self.tasks_file, self.tasks)
             
             # 如果该账号没有尝试记录，创建空列表
             if account not in self.attempts:
@@ -12929,6 +12945,8 @@ class BruteForceTaskManager:
                         self.tasks[account]["status"] = "stopped"
                         self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
                         self._save_json_file(self.results_file, self.results)
+                        # [修正] 持久化任务状态更新
+                        self._save_json_file(self.tasks_file, self.tasks)
                         return
                 
                 # 尝试使用该密码登录学校系统
@@ -12953,6 +12971,9 @@ class BruteForceTaskManager:
                             with self.lock:
                                 self.tasks[account]["status"] = "failed"
                                 self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                                # [修正] 持久化任务状态更新
+                                self._save_json_file(self.tasks_file, self.tasks)
+
                                 self.results[account] = {
                                     "status": "failed",
                                     "password": None,
@@ -12987,6 +13008,9 @@ class BruteForceTaskManager:
                         self.tasks[account]["password"] = password
                         self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
                         
+                        # [修正] 持久化任务状态更新
+                        self._save_json_file(self.tasks_file, self.tasks)
+
                         # 保存结果
                         self.results[account] = {
                             "status": "success",
@@ -13009,6 +13033,9 @@ class BruteForceTaskManager:
                 self.tasks[account]["status"] = "failed"
                 self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
                 
+                # [修正] 持久化任务状态更新
+                self._save_json_file(self.tasks_file, self.tasks)
+
                 # 保存结果
                 self.results[account] = {
                     "status": "failed",
@@ -13027,6 +13054,8 @@ class BruteForceTaskManager:
             with self.lock:
                 self.tasks[account]["status"] = "failed"
                 self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                # [修正] 持久化任务状态更新
+                self._save_json_file(self.tasks_file, self.tasks)
 
     def stop_task(self, account):
         """
