@@ -975,6 +975,26 @@ def _get_default_config():
         "rate_limit_per_phone_day": "5",
     }
 
+    # 备案信息配置节，用于配置网站的ICP备案号和公安网备案号信息
+    # 这些信息通常需要在网站底部显示，以符合中国互联网信息服务的法律要求
+    config["Beian"] = {
+        # ICP备案号：由中国工信部颁发的互联网信息服务备案编号
+        # 格式示例："京ICP备12345678号"，留空则表示未备案或不显示
+        "icp_number": "",
+        
+        # 是否显示ICP备案信息：控制ICP备案号是否在网站底部显示
+        # 取值："true" 表示显示，"false" 表示不显示（默认不显示）
+        "show_icp": "false",
+        
+        # 公安网备案号：由中国公安部门颁发的网络安全备案编号
+        # 格式示例："京公网安备 11010802012345号"，留空则表示未备案或不显示
+        "police_number": "",
+        
+        # 是否显示公安网备案信息：控制公安网备案号是否在网站底部显示
+        # 取值："true" 表示显示，"false" 表示不显示（默认不显示）
+        "show_police": "false",
+    }
+
     return config
 
 
@@ -1267,6 +1287,36 @@ def _write_config_with_comments(config_obj, filepath):
         )
         f.write(
             f"https_only = {config_obj.get('SSL', 'https_only', fallback='false')}\n\n"
+        )
+
+        # [Beian] 备案信息配置
+        # 此配置节用于设置网站的ICP备案和公安网备案信息
+        f.write("[Beian]\n")
+        f.write("# 网站备案信息配置\n")
+        f.write("# 根据中国相关法律法规，经营性网站需要进行ICP备案和公安网备案\n")
+        f.write("# ICP备案号（工信部）\n")
+        f.write("# 格式示例：京ICP备12345678号\n")
+        f.write("# 留空则不显示（即使show_icp为true）\n")
+        f.write(
+            f"icp_number = {config_obj.get('Beian', 'icp_number', fallback='')}\n"
+        )
+        f.write("# 是否在页面底部显示ICP备案信息（true/false）\n")
+        f.write("# true：显示ICP备案号并链接至 http://beian.miit.gov.cn\n")
+        f.write("# false：不显示ICP备案信息\n")
+        f.write(
+            f"show_icp = {config_obj.get('Beian', 'show_icp', fallback='false')}\n"
+        )
+        f.write("# 公安网备案号（公安部）\n")
+        f.write("# 格式示例：京公网安备 11010802012345号\n")
+        f.write("# 留空则不显示（即使show_police为true）\n")
+        f.write(
+            f"police_number = {config_obj.get('Beian', 'police_number', fallback='')}\n"
+        )
+        f.write("# 是否在页面底部显示公安网备案信息（true/false）\n")
+        f.write("# true：显示公安网备案号并链接至 https://beian.mps.gov.cn\n")
+        f.write("# false：不显示公安网备案信息\n")
+        f.write(
+            f"show_police = {config_obj.get('Beian', 'show_police', fallback='false')}\n\n"
         )
 
 
