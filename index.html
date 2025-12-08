@@ -1063,6 +1063,11 @@
                 <input type="checkbox" id="multi-run-only-incomplete-check" checked="" class="w-4 h-4 accent-sky-600 rounded">
                 仅执行未完成的任务
               </label>
+              <!-- 添加"忽略任务具体时间"复选框：控制是否在任务筛选时忽略时间限制 -->
+              <label class="flex items-center gap-2 cursor-pointer font-semibold text-slate-700 mt-2">
+                <input type="checkbox" id="multi-param-ignore_task_time" checked="" class="w-4 h-4 accent-sky-600 rounded">
+                忽略任务具体时间
+              </label>
             </div>
           </div>
           <div class="panel rounded-xl p-4 flex-grow flex flex-col min-h-0">
@@ -3608,6 +3613,11 @@
               <label class="flex items-center gap-2 cursor-pointer p-2 bg-amber-50 rounded-lg hover:bg-amber-100 transition">
                 <input type="checkbox" id="mobile-multi-only-incomplete-check" checked="" class="w-4 h-4 accent-orange-600 rounded flex-shrink-0">
                 <span class="text-sm text-slate-700 font-semibold">仅启动未完成任务</span>
+              </label>
+              <!-- 移动端：添加"忽略任务具体时间"复选框，控制任务筛选时是否忽略时间限制 -->
+              <label class="flex items-center gap-2 cursor-pointer p-2 bg-amber-50 rounded-lg hover:bg-amber-100 transition">
+                <input type="checkbox" id="mobile-multi-param-ignore_task_time" checked="" class="w-4 h-4 accent-orange-600 rounded flex-shrink-0">
+                <span class="text-sm text-slate-700 font-semibold">忽略任务具体时间</span>
               </label>
             </div>
           </div>

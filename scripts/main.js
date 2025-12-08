@@ -15158,6 +15158,50 @@ function refreshMobileSessionPicker() {
           mbCheck.removeEventListener("change", handleIncompleteCheckChange);
           mbCheck.addEventListener("change", handleIncompleteCheckChange);
         }
+        
+        // ========== 处理 "忽略任务具体时间" 复选框变化 ==========
+        // 获取桌面端和移动端的 ignore_task_time 复选框元素
+        const pcIgnoreTimeCheck = document.getElementById("multi-param-ignore_task_time");
+        const mobileIgnoreTimeCheck = document.getElementById("mobile-multi-param-ignore_task_time");
+        
+        // 定义处理函数：当用户勾选/取消"忽略任务具体时间"时触发
+        const handleIgnoreTimeChange = () => {
+          // 根据当前运行模式（移动端/桌面端）读取对应复选框的当前状态
+          const isChecked = typeof isMobileMode !== "undefined" && isMobileMode && mobileIgnoreTimeCheck
+            ? mobileIgnoreTimeCheck.checked  // 移动端模式：读取移动端复选框
+            : (pcIgnoreTimeCheck ? pcIgnoreTimeCheck.checked : true); // 桌面端模式或移动端复选框不存在：读取桌面端复选框（默认true）
+          
+          // 同步两个复选框的状态（确保桌面端和移动端保持一致）
+          if (pcIgnoreTimeCheck) pcIgnoreTimeCheck.checked = isChecked;
+          if (mobileIgnoreTimeCheck) mobileIgnoreTimeCheck.checked = isChecked;
+          
+          // 立即更新所有账号的状态文本（根据新的 ignore_task_time 设置重新计算可执行任务数）
+          updateAllAccountsStatusText();
+        };
+        
+        // 为桌面端复选框绑定 change 事件监听器
+        if (pcIgnoreTimeCheck) {
+          // 先移除可能存在的旧监听器（防止重复绑定）
+          pcIgnoreTimeCheck.removeEventListener("change", handleIgnoreTimeChange);
+          // 绑定新的监听器
+          pcIgnoreTimeCheck.addEventListener("change", handleIgnoreTimeChange);
+          console.log('[事件监听器] 已为桌面端"忽略任务具体时间"复选框绑定change事件');
+        } else {
+          console.warn('[事件监听器] 未找到桌面端"忽略任务具体时间"复选框 (multi-param-ignore_task_time)');
+        }
+        
+        // 为移动端复选框绑定 change 事件监听器
+        if (mobileIgnoreTimeCheck) {
+          // 先移除可能存在的旧监听器（防止重复绑定）
+          mobileIgnoreTimeCheck.removeEventListener("change", handleIgnoreTimeChange);
+          // 绑定新的监听器
+          mobileIgnoreTimeCheck.addEventListener("change", handleIgnoreTimeChange);
+          console.log('[事件监听器] 已为移动端"忽略任务具体时间"复选框绑定change事件');
+        } else {
+          console.warn('[事件监听器] 未找到移动端"忽略任务具体时间"复选框 (mobile-multi-param-ignore_task_time)');
+        }
+        // ========== 结束：处理 "忽略任务具体时间" 复选框变化 ==========
+        
         try {
           console.log("[多账号模式] 初始加载账号列表...");
           // 使用loadInitialData替代直接调用API
@@ -15924,12 +15968,28 @@ function refreshMobileSessionPicker() {
             onlyIncomplete = pcChk.checked;
             if (mbChk) mbChk.checked = onlyIncomplete;
           }
-          let ignoreTaskTime = true;
-          if (typeof pythonParams !== "undefined") {
-            if (pythonParams.hasOwnProperty("ignore_task_time")) {
-              ignoreTaskTime = !!pythonParams.ignore_task_time;
-            }
+          // 读取 ignore_task_time 复选框状态（支持移动端和桌面端）
+          // 不再从 pythonParams 读取，而是直接从页面上的复选框实时读取当前用户的选择
+          let ignoreTaskTime = true; // 默认值：忽略任务时间
+          
+          // 获取移动端的 ignore_task_time 复选框元素
+          const mbIgnoreTimeChk = document.getElementById("mobile-multi-param-ignore_task_time");
+          // 获取桌面端（PC端）的 ignore_task_time 复选框元素
+          const pcIgnoreTimeChk = document.getElementById("multi-param-ignore_task_time");
+          
+          // 根据当前运行模式（移动端/桌面端）读取对应复选框的状态
+          if (typeof isMobileMode !== "undefined" && isMobileMode && mbIgnoreTimeChk) {
+            // 如果当前是移动端模式，且移动端复选框存在，则从移动端复选框读取状态
+            ignoreTaskTime = mbIgnoreTimeChk.checked;
+            // 同步状态到桌面端复选框（保持两端状态一致）
+            if (pcIgnoreTimeChk) pcIgnoreTimeChk.checked = ignoreTaskTime;
+          } else if (pcIgnoreTimeChk) {
+            // 如果当前是桌面端模式，或移动端复选框不存在，则从桌面端复选框读取状态
+            ignoreTaskTime = pcIgnoreTimeChk.checked;
+            // 同步状态到移动端复选框（保持两端状态一致）
+            if (mbIgnoreTimeChk) mbIgnoreTimeChk.checked = ignoreTaskTime;
           }
+          // 如果两个复选框都不存在，则使用默认值 true
           let updatedCount = 0;
           cachedMultiAccounts.forEach((account) => {
             const newStatusText = calculateStatusText(
@@ -29770,23 +29830,59 @@ function exportMobileAccountList() {
     showModalAlert("导出失败", "错误");
   }
 }
+/**
+ * 刷新移动端选中的账号
+ * 该函数会逐个刷新用户在移动端选择的账号，并更新它们的状态信息
+ */
 async function mobileRefreshSelectedAccounts() {
   try {
+    // 1. 查找移动端账号列表中所有被选中的复选框
     const selected = document.querySelectorAll(
       '#mobile-multi-account-list input[type="checkbox"]:checked'
     );
+    
+    // 2. 检查是否有选中的账号，如果没有则提示用户并退出
     if (selected.length === 0) {
       showModalAlert("请先选择要刷新的账号", "错误");
       return;
     }
+    
+    // 3. 显示提示信息，告知用户正在刷新账号
     showModalAlert(`正在刷新 ${selected.length} 个账号...`, "提示");
-    if (typeof multi_refreshSelected === "function") {
-      await multi_refreshSelected();
-      showModalAlert("已刷新选中账号", "成功");
-    } else {
-      showModalAlert("刷新功能未实现", "错误");
+    
+    // 4. 从选中的复选框中提取对应的用户名列表
+    // 遍历每个选中的复选框，找到其最近的带有 data-username 属性的父元素，并提取用户名
+    const usernames = Array.from(selected).map(checkbox => {
+      const item = checkbox.closest('[data-username]'); // 向上查找包含 data-username 属性的祖先元素
+      return item ? item.dataset.username : null; // 提取 username，如果找不到则返回 null
+    }).filter(u => u); // 过滤掉 null 值，确保只保留有效的用户名
+    
+    // 5. 逐个刷新选中的账号
+    // 使用 for...of 循环以确保按顺序执行异步操作
+    for (const username of usernames) {
+      try {
+        // 5.1 找到该用户名对应的移动端账号列表项元素
+        const item = document.getElementById(`mobile-multi-acc-${username}`);
+        
+        // 5.2 如果找到该元素，更新其状态文本为"刷新中..."（提供视觉反馈）
+        if (item) {
+          const statusEl = item.querySelector(".status-text"); // 查找状态文本显示元素
+          if (statusEl) statusEl.textContent = "刷新中..."; // 更新显示为"刷新中..."
+        }
+        
+        // 5.3 调用后端API刷新该账号的状态信息
+        // 该API会重新获取账号的任务列表、完成情况等最新数据
+        await callPythonAPI("multi_refresh_single_status", username);
+      } catch (e) {
+        // 5.4 如果某个账号刷新失败，记录错误日志但继续刷新其他账号（不中断流程）
+        console.error(`刷新账号 ${username} 失败:`, e);
+      }
     }
+    
+    // 6. 所有账号刷新完成后，显示成功提示
+    showModalAlert("已刷新选中账号", "成功");
   } catch (error) {
+    // 7. 如果整个刷新流程出现未预期的错误，记录错误日志并提示用户
     console.error("[移动端] 刷新选中账号失败:", error);
     showModalAlert("刷新失败", "错误");
   }
