@@ -15999,11 +15999,25 @@ function refreshMobileSessionPicker() {
 
           let updatedCount = 0;
           cachedMultiAccounts.forEach((account) => {
-            const newStatusText = calculateStatusText(
-              account,
-              onlyIncomplete,
-              ignoreTaskTime
-            );
+            // 检查是否为"Have_Tasks"标记，需要根据summary计算状态
+            let newStatusText;
+            if (account.status_text === "Have_Tasks" && account.summary) {
+              // 使用summary中的unexpired_count或unexpired_incomplete_count
+              const taskCount = onlyIncomplete 
+                ? (account.summary.unexpired_incomplete_count || 0)
+                : (account.summary.unexpired_count || 0);
+              newStatusText = taskCount > 0 
+                ? `有 ${taskCount} 个任务可执行`
+                : "无可执行任务";
+            } else {
+              // 对于非"Have_Tasks"的状态，使用原有的calculateStatusText函数
+              newStatusText = calculateStatusText(
+                account,
+                onlyIncomplete,
+                ignoreTaskTime
+              );
+            }
+            
             account.status_text = newStatusText;
             const pcItem = document.getElementById(
               `multi-acc-${account.username}`
@@ -16012,7 +16026,7 @@ function refreshMobileSessionPicker() {
               const statusEl = pcItem.querySelector(".status-text");
               if (statusEl) {
                 statusEl.textContent = newStatusText;
-                if (newStatusText.includes("无任务")) {
+                if (newStatusText.includes("无任务") || newStatusText.includes("无可执行")) {
                   statusEl.className =
                     "status-text font-semibold text-slate-500 text-xs px-2 py-0.5 rounded-full bg-slate-100 flex-shrink-0 whitespace-nowrap";
                 } else if (newStatusText.includes("有")) {
@@ -16029,7 +16043,7 @@ function refreshMobileSessionPicker() {
               const statusEl = mobileItem.querySelector(".status-text");
               if (statusEl) {
                 statusEl.textContent = newStatusText;
-                if (newStatusText.includes("无任务")) {
+                if (newStatusText.includes("无任务") || newStatusText.includes("无可执行")) {
                   statusEl.className =
                     "status-text font-semibold text-slate-500 text-xs px-2 py-0.5 rounded-full bg-slate-100 flex-shrink-0 whitespace-nowrap";
                 } else if (newStatusText.includes("有")) {
@@ -16647,7 +16661,37 @@ function refreshMobileSessionPicker() {
 
           if (data.status_text) {
             const statusEl = item.querySelector(".status-text");
-            if (statusEl) statusEl.textContent = data.status_text;
+            if (statusEl) {
+              // 检查是否为"Have_Tasks"标记，需要前端计算实际状态
+              if (data.status_text === "Have_Tasks" && data.summary) {
+                // 判断是桌面端还是移动端
+                const isMobile = id.startsWith("mobile-multi-acc-");
+                
+                // 根据不同端读取对应的复选框状态
+                let onlyIncomplete = true;
+                if (isMobile) {
+                  const mobileCheck = document.getElementById("mobile-multi-only-incomplete-check");
+                  onlyIncomplete = mobileCheck ? mobileCheck.checked : true;
+                } else {
+                  const pcCheck = document.getElementById("multi-run-only-incomplete-check");
+                  onlyIncomplete = pcCheck ? pcCheck.checked : true;
+                }
+                
+                // 根据复选框状态选择对应的计数值
+                const taskCount = onlyIncomplete 
+                  ? (data.summary.unexpired_incomplete_count || 0)
+                  : (data.summary.unexpired_count || 0);
+                
+                // 计算状态文本
+                const calculatedStatusText = taskCount > 0 
+                  ? `有 ${taskCount} 个任务可执行`
+                  : "无可执行任务";
+                
+                statusEl.textContent = calculatedStatusText;
+              } else {
+                statusEl.textContent = data.status_text;
+              }
+            }
           }
           if (data.name) {
             const nameEl = item.querySelector(".account-name");
