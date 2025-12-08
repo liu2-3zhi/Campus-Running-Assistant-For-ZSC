@@ -1282,12 +1282,9 @@ function refreshMobileSessionPicker() {
         const mobileMenuBtn = document.getElementById("mobile-menu-btn");
         if (mobileMenuBtn) {
           mobileMenuBtn.addEventListener("click", function () {
-            console.log("[移动端UI] 菜单按钮点击");
-            // 【任务7】根据当前会话模式决定打开哪个管理面板
-            // 检查是否在多账号模式下
-            const isMultiMode =
-              sessionModeInfo && sessionModeInfo.multi_account_mode === true;
-            openMobileAdminPanelUnified(isMultiMode ? "multi" : "single");
+            console.log("[移动端UI] 菜单按钮点击 -> 切换侧边栏显示");
+            // 修正：点击菜单按钮应该仅打开侧边栏，而不是跳转到管理面板
+            toggleMobileSidebar();
           });
         }
 
@@ -22653,11 +22650,11 @@ function mobileZoomOut() {
     map.zoomOut();
   }
 }
-function mobileFitView() {
-  if (map && markers && markers.length > 0) {
-    map.setFitView(markers, false, [50, 50, 50, 50]);
-  }
-}
+// function mobileFitView() {
+//   if (map && markers && markers.length > 0) {
+//     map.setFitView(markers, false, [50, 50, 50, 50]);
+//   }
+// }
 function resetMobileMapView() {
   if (map) {
     if (markers && markers.length > 0) {
