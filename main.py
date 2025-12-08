@@ -8,6 +8,9 @@ _import_failures = []
 _log_buffer = []
 
 
+MAX_MEMORY_SESSIONS = 100
+
+
 def _buffer_log(level, message):
     """
     暂存日志到缓冲区，同时打印到控制台。
@@ -404,7 +407,7 @@ def initialize_global_variables():
     web_sessions = {}
     web_sessions_lock = threading.Lock()
 
-    MAX_MEMORY_SESSIONS = 1000
+
 
     session_file_locks = {}
     session_file_locks_lock = threading.Lock()
