@@ -8585,7 +8585,11 @@
           if (result.success && result.data) {
             const data = result.data;
 
-            // 辅助函数：更新指定前缀（pc- 或 mobile-）的备案信息
+            // 辅助函数：更新指定前缀（auth-、pc- 或 mobile-）的备案信息
+            // 参数 prefix: 元素ID的前缀,用于区分不同容器中的备案footer
+            //   - "auth-": 登录页面(auth-login-container)中的备案footer
+            //   - "pc-": 桌面版(desktop-container)中的备案footer  
+            //   - "mobile-": 移动版(mobile-container)中的备案footer
             const updateBeianSection = (prefix) => {
               const footer = document.getElementById(prefix + "beian-footer");
               if (!footer) return;
@@ -8628,8 +8632,12 @@
               }
             };
 
-            // 分别更新 PC 端和移动端
+            // 分别更新 auth-login-container、PC 端和移动端的备案 footer
+            // 首先更新登录页面(auth-login-container)中的 auth-beian-footer
+            updateBeianSection("auth-");
+            // 然后更新桌面版(desktop-container)中的 pc-beian-footer
             updateBeianSection("pc-");
+            // 最后更新移动版(mobile-container)中的 mobile-beian-footer
             updateBeianSection("mobile-");
           }
         })
