@@ -3429,8 +3429,8 @@
                 <h4 class="text-base font-bold text-slate-800">🔧 批量操作</h4>
               </div>
 
-              <div class="space-y-2">
-                <div class="grid grid-cols-4 gap-2">
+              <div class="space-y-2" id="mobile-multi-account-batch-operations">
+                <div class="grid grid-cols-3 gap-2">
                   <button class="py-2.5 px-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex flex-col items-center justify-center gap-1 border-2 border-blue-200" onclick="importMobileAccountList()">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
@@ -3449,11 +3449,19 @@
                     </svg>
                     <span>模板</span>
                   </button>
-                  <button class="py-2.5 px-2 bg-slate-50 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-100 transition flex flex-col items-center justify-center gap-1 border-2 border-slate-200" onclick="mobileRefreshSelectedAccounts()">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <button class="py-2.5 px-2 bg-slate-50 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-100 transition flex items-center justify-center gap-2 border-2 border-slate-200" onclick="mobileRefreshSelectedAccounts()">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
-                    <span>刷新</span>
+                    <span>刷新选中</span>
+                  </button>
+                  <button class="py-2.5 px-2 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition flex items-center justify-center gap-2 border-2 border-indigo-200" onclick="mobileRefreshAllAccounts()">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    <span>刷新全部</span>
                   </button>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
