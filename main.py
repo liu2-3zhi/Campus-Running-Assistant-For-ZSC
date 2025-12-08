@@ -18249,6 +18249,101 @@ def start_web_server(args_param):
             )
             return jsonify({"success": False, "message": str(e)}), 500
 
+    # ====================
+    # 公开API：备案信息配置
+    # ====================
+
+    @app.route("/api/public/beian_config", methods=["GET"])
+    def get_beian_config():
+        """
+        获取备案信息配置（公开接口，无需登录）
+        
+        这是一个公开的API端点，主要用于在登录页面等前端界面显示网站备案信息。
+        不需要用户登录即可访问。
+        
+        返回格式：
+        {
+            "success": true,
+            "data": {
+                "icp_number": "京ICP备12345678号",      # ICP备案号
+                "show_icp": true,                         # 是否显示ICP备案号
+                "police_number": "京公网安备 11010802012345号",  # 公安备案号
+                "show_police": true                       # 是否显示公安备案号
+            }
+        }
+        
+        错误处理：
+        - 如果配置文件不存在，返回空值和 false 标志（不显示任何备案信息）
+        - 如果读取配置发生异常，同样返回空值和 false 标志，确保前端不会因为后端错误而崩溃
+        """
+        try:
+            # 创建一个 ConfigParser 对象，用于读取 INI 格式的配置文件
+            config = configparser.ConfigParser()
+            
+            # 定义配置文件的路径（config.ini 位于项目根目录）
+            config_file = "config.ini"
+            
+            # 检查配置文件是否存在于文件系统中
+            # 这是一个预防性检查，避免在文件不存在时尝试读取导致错误
+            if os.path.exists(config_file):
+                # 读取配置文件，指定 UTF-8 编码以支持中文字符
+                # 这样可以正确处理备案号中的中文字符（如"京"、"备"等）
+                config.read(config_file, encoding="utf-8")
+            
+            # 从配置文件的 [Beian] 部分读取备案信息
+            # 使用 fallback 参数提供默认值，确保即使配置项不存在也不会抛出异常
+            
+            # 读取 ICP 备案号（例如："京ICP备12345678号"）
+            # 如果配置文件中不存在该项，则默认返回空字符串
+            icp_number = config.get("Beian", "icp_number", fallback="")
+            
+            # 读取是否显示 ICP 备案号的布尔值
+            # getboolean() 方法会将 "true"/"false"、"yes"/"no"、"1"/"0" 等字符串转换为布尔值
+            # 如果配置项不存在，默认为 False（不显示）
+            show_icp = config.getboolean("Beian", "show_icp", fallback=False)
+            
+            # 读取公安备案号（例如："京公网安备 11010802012345号"）
+            # 如果配置文件中不存在该项，则默认返回空字符串
+            police_number = config.get("Beian", "police_number", fallback="")
+            
+            # 读取是否显示公安备案号的布尔值
+            # 如果配置项不存在，默认为 False（不显示）
+            show_police = config.getboolean("Beian", "show_police", fallback=False)
+            
+            # 将读取到的配置信息组装成一个字典对象
+            # 这个字典将作为 API 响应的数据部分返回给前端
+            beian_config = {
+                "icp_number": icp_number,          # ICP备案号字符串
+                "show_icp": show_icp,              # 是否显示ICP备案号（布尔值）
+                "police_number": police_number,    # 公安备案号字符串
+                "show_police": show_police,        # 是否显示公安备案号（布尔值）
+            }
+            
+            # 返回 JSON 格式的成功响应
+            # jsonify() 是 Flask 提供的函数，用于将 Python 字典转换为 JSON 响应
+            # 设置 success=True 表示操作成功，data 包含实际的备案配置信息
+            return jsonify({"success": True, "data": beian_config})
+            
+        except Exception as e:
+            # 捕获所有可能发生的异常（例如：文件读取错误、配置解析错误等）
+            # 使用 app.logger.error() 记录错误信息到应用日志中，便于后续排查问题
+            # str(e) 将异常对象转换为字符串，以便记录具体的错误信息
+            app.logger.error(f"获取备案配置失败: {str(e)}")
+            
+            # 即使发生错误，也返回一个"成功"的响应（success=True）
+            # 这是一个设计决策：我们不希望前端因为备案信息读取失败而显示错误
+            # 相反，我们返回空的备案信息（所有字段为空或 false），前端将不显示任何备案信息
+            # 这样可以确保即使后端配置出现问题，前端页面仍然可以正常工作
+            return jsonify({
+                "success": True,    # 仍然返回 success=True，避免前端报错
+                "data": {
+                    "icp_number": "",      # 返回空字符串，表示没有ICP备案号
+                    "show_icp": False,     # 不显示ICP备案号
+                    "police_number": "",   # 返回空字符串，表示没有公安备案号
+                    "show_police": False,  # 不显示公安备案号
+                }
+            })
+
     @app.route("/api/auth/check_phone", methods=["POST"])
     def auth_check_phone():
         """
