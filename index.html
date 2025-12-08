@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN"><head>
-
+    <script src="/api/frontend_config.js"></script>
     <!-- Socket.IO - 使用本地缓存，后端自动获取最新版本 -->
     <script src="/api/cdn/socketio" onerror="this.src='https://cdn.socket.io/4.8.1/socket.io.min.js'"></script>
     <meta charset="UTF-8">
@@ -3380,7 +3380,7 @@
                   </svg>
                   添加全部
                 </button>
-                <button class="py-2.5 px-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg text-sm font-bold hover:from-teal-600 hover:to-teal-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-1" id="mobile_multi_account_manual_input_button" onclick="openManualAccountModal()">
+                <button class="py-2.5 px-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg text-sm font-bold hover:from-teal-600 hover:to-teal-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-1" id="mobile_multi_account_manual_input_button" onclick="openManualAccountModal()" style="display: none;">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                   </svg>

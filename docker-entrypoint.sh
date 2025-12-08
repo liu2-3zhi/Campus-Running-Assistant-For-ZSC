@@ -18,10 +18,39 @@ if [ ! -f "/app/config.ini" ]; then
     echo "配置文件不存在，将在首次运行时自动创建"
 fi
 
-# 从 /app/config.ini 读取 ssl_enabled 的值
-ssl_enabled=$(sed -n 's/^[[:space:]]*ssl_enabled[[:space:]]*=[[:space:]]*\(.*\)/\1/p' /app/config.ini | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-# 从 /app/config.ini 读取 https_only 的值
-https_only=$(sed -n 's/^[[:space:]]*https_only[[:space:]]*=[[:space:]]*\(.*\)/\1/p' /app/config.ini | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+# ==========================================
+# 0. 配置读取模块 (修复：支持注释、容错处理)
+# ==========================================
+
+# 初始化默认值
+ssl_enabled="false"
+https_only="false"
+
+# 定义读取函数：处理行内注释(#,;)、去空格、转小写
+get_ini_value() {
+    local key=$1
+    local file=$2
+    if [ -f "$file" ]; then
+        # 1. grep: 查找以 key 开头的行
+        # 2. head: 只取第一行防止重复
+        # 3. cut: 移除 # 和 ; 后面的注释
+        # 4. cut: 提取 = 后面的值
+        # 5. tr: 转小写并移除所有空格
+        grep -E "^[[:space:]]*$key[[:space:]]*=" "$file" | head -n 1 | \
+        cut -d '#' -f 1 | cut -d ';' -f 1 | \
+        cut -d '=' -f 2- | \
+        tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'
+    fi
+}
+
+# 执行读取
+val_ssl=$(get_ini_value "ssl_enabled" "/app/config.ini")
+if [ -n "$val_ssl" ]; then ssl_enabled="$val_ssl"; fi
+
+val_https=$(get_ini_value "https_only" "/app/config.ini")
+if [ -n "$val_https" ]; then https_only="$val_https"; fi
+
+echo "配置状态检测: SSL=$ssl_enabled, HTTPS_ONLY=$https_only"
 
 # 创建supervisor配置
 cat > /etc/supervisor/conf.d/python-running.conf <<'SUPERVISOR_EOF'
@@ -141,14 +170,22 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_send_timeout 300;
         }
 
-        # UUID会话路径 - 直接返回静态index.html（优化：减轻后端压力）
-        location ~ ^/uuid= {
-            # 使用try_files直接返回index.html，让前端通过API获取配置
+        # UUID会话路径 (1/2) - 合法UUID格式 (白名单)
+        # 严格匹配 UUID v4 格式 (8-4-4-4-12)，忽略大小写
+        location ~* "^/uuid=[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" {
+            # 验证通过，返回前端入口文件
             try_files /index.html =404;
+            
             # 禁用缓存，确保每次都能获取最新的index.html
             add_header Cache-Control "no-cache, no-store, must-revalidate";
             add_header Pragma "no-cache";
             add_header Expires "0";
+        }
+
+        # UUID会话路径 (2/2) - 非法UUID格式 (黑名单)
+        # 凡是以 /uuid= 开头但未匹配上方规则的，均为非法格式，直接重定向回首页
+        location ~ ^/uuid= {
+            return 302 /;
         }
 
         # 首页 - 优先尝试静态文件，如果不存在则代理到Flask

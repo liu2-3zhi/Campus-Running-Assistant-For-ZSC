@@ -301,7 +301,7 @@ def check_and_import_dependencies():
     dependencies = [
         (
             "Flask Web框架",
-            "from flask import Flask, render_template_string, session, redirect, url_for, request, jsonify, make_response, g, send_file, send_from_directory",
+            "from flask import Flask, render_template_string, session, redirect, url_for, request, jsonify, make_response, g, send_file, send_from_directory, Response",
             "Flask",
         ),
         ("Flask CORS", "from flask_cors import CORS", "flask-cors"),
@@ -5359,19 +5359,18 @@ class Api:
     def set_draft_path(self, coords):
         """接收前端手动绘制的草稿路径"""
 
-        if coords is None:
-            coords_len = 0
-            logging.info(f"API调用: set_draft_path - 接收到空的(None)草稿路径")
-        else:
-            try:
-                coords_len = len(coords)
-            except TypeError:
-                logging.error(
-                    f"set_draft_path 失败：coords 参数不是一个列表: {type(coords)}",
-                    exc_info=True,
-                )
-                return {"success": False, "message": "无效的路径数据格式"}
+        # [修改] 严格校验：拒绝 None, [], [[]] 或非列表类型
+        if not coords or not isinstance(coords, list):
+            logging.warning(f"API调用: set_draft_path - 拒绝空路径或非列表格式")
+            return {"success": False, "message": "路径数据不能为空"}
 
+        # [修改] 深度校验：确保列表中至少包含一个有效的字典元素，排除 [[]] 这种情况
+        has_valid_item = any(isinstance(c, dict) and c for c in coords)
+        if not has_valid_item:
+            logging.warning(f"API调用: set_draft_path - 拒绝无效路径结构: {coords}")
+            return {"success": False, "message": "路径中不包含有效坐标点"}
+
+        coords_len = len(coords)
         logging.info(f"API调用: set_draft_path - 设置草稿路径，点数: {coords_len}")
 
         if not (0 <= self.current_run_idx < len(self.all_run_data)):
@@ -5384,24 +5383,29 @@ class Api:
             run = self.all_run_data[self.current_run_idx]
 
             draft_coords_list = []
-            if coords:
-                for c in coords:
-                    if not isinstance(c, dict):
-                        logging.warning(
-                            f"set_draft_path: 跳过无效的坐标点（非字典）: {c}"
-                        )
-                        continue
+            # 此时 coords 肯定为真且为列表，直接遍历
+            for c in coords:
+                if not isinstance(c, dict):
+                    logging.warning(
+                        f"set_draft_path: 跳过无效的坐标点（非字典）: {c}"
+                    )
+                    continue
 
-                    lng = c.get("lng")
-                    lat = c.get("lat")
+                lng = c.get("lng")
+                lat = c.get("lat")
 
-                    if lng is None or lat is None:
-                        logging.warning(
-                            f"set_draft_path: 跳过无效的坐标点（缺少lng或lat）: {c}"
-                        )
-                        continue
+                if lng is None or lat is None:
+                    logging.warning(
+                        f"set_draft_path: 跳过无效的坐标点（缺少lng或lat）: {c}"
+                    )
+                    continue
 
-                    draft_coords_list.append((lng, lat, c.get("isKey", 0)))
+                draft_coords_list.append((lng, lat, c.get("isKey", 0)))
+            
+            # [新增] 二次校验：如果过滤后没有有效点，也视为失败
+            if not draft_coords_list:
+                logging.warning("API调用: set_draft_path - 经校验后无有效坐标点")
+                return {"success": False, "message": "路径中无有效坐标点"}
 
             run.draft_coords = draft_coords_list
 
@@ -6856,6 +6860,15 @@ class Api:
         run.total_run_distance_m = 0  # 重置总运行距离
         run.total_run_time_s = 0  # 重置总运行时间
 
+        # [新增] 将修改写入持久化文件
+        session_id = getattr(self, "_web_session_id", None)
+        if session_id:
+            try:
+                save_session_state(session_id, self, force_save=True)
+                logging.info(f"[持久化] 已保存清除路径后的会话状态: {session_id[:8]}...")
+            except Exception as e:
+                logging.error(f"[持久化] 保存会话状态失败: {e}")
+
         logging.info(f"已清除任务的草稿路径和运行数据: 任务名称={run.run_name}")
         return {"success": True}
 
@@ -8280,6 +8293,12 @@ class Api:
 
             executable += 1
 
+        # 计算两个额外指标
+        # 1. 未过期任务数量 = 总数 - 已过期
+        unexpired_count = max(0, total - expired)
+        # 2. 未过期且未完成的任务数量 = 总数 - 已过期 - 已完成
+        unexpired_incomplete_count = max(0, total - expired - completed)
+
         acc.summary.update(
             {
                 "total": total,
@@ -8288,6 +8307,9 @@ class Api:
                 "not_started": not_started,
                 "executable": executable,
                 "expired": expired,
+                # 新增返回值
+                "unexpired_count": unexpired_count,
+                "unexpired_incomplete_count": unexpired_incomplete_count
             }
         )
 
@@ -19845,68 +19867,151 @@ def start_web_server(args_param):
             # 捕获并记录任何异常
             logging.error(f"[用户登出] 处理登出请求时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"登出失败: {str(e)}"}), 500
+        
+    @app.route("/api/frontend_config.js")
+    def get_frontend_config_javascript():
+        """将前端配置以JavaScript形式返回，并尝试根据Referer恢复会话"""
+        # ==========================================
+        # 逻辑合并：尝试从 Referer 恢复会话状态
+        # ==========================================
+        try:
+            referrer = request.referrer
+            if referrer:
+                # 尝试从 Referer URL 中提取 UUID
+                # 匹配 /uuid=... 格式
+                uuid_match = re.search(
+                    r"/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})",
+                    referrer,
+                    re.IGNORECASE
+                )
+                
+                if uuid_match:
+                    uuid = uuid_match.group(1)
+                    # 执行原 session_view 的会话恢复逻辑
+                    with web_sessions_lock:
+                        if uuid not in web_sessions:
+                            state = load_session_state(uuid)
+                            api_instance = Api(args)
+                            api_instance._session_created_at = time.time()
+                            api_instance._web_session_id = uuid
+
+                            if state and state.get("login_success"):
+                                api_instance.login_success = True
+                                api_instance.user_info = state.get("user_info")
+                                api_instance._session_created_at = state.get(
+                                    "created_at", time.time()
+                                )
+                                restore_session_to_api_instance(api_instance, state)
+
+                                logging.info(
+                                    f"[ConfigLoader] 从文件恢复已登录会话 : {uuid} (用户: {state.get('user_info', {}).get('username', 'Unknown')})"
+                                )
+                            else:
+                                logging.info(f"[ConfigLoader] 初始化新会话结构 : {uuid} ")
+
+                            web_sessions[uuid] = api_instance
+                        else:
+                            # 内存中已存在，确保 ID 属性设置正确
+                            api_instance = web_sessions[uuid]
+                            if not hasattr(api_instance, "_web_session_id"):
+                                api_instance._web_session_id = uuid
+                            logging.debug(f"[ConfigLoader] 确认现有会话活跃: {uuid[:32]}...")
+        except Exception as e:
+            logging.error(f"[ConfigLoader] 尝试恢复会话时出错: {e}")
+
+        # ==========================================
+        # 返回配置脚本
+        # ==========================================
+        app_config = get_frontend_config()
+        config_script = f"window.APP_CONFIG = {json.dumps(app_config)};"
+        
+        resp = make_response(config_script)
+        resp.mimetype = "application/javascript"
+        return resp
+
 
     @app.route("/")
-    def index():
-        """首页：显示登录页面，等待用户认证后分配UUID"""
-        app_config = get_frontend_config()
-        config_script = f"""
-        <script>
-            window.APP_CONFIG = {json.dumps(app_config)};
-        </script>
-        """
-        modified_html = html_content.replace("</body>", f"{config_script}</body>")
-
-        return render_template_string(modified_html)
-
     @app.route("/uuid=<uuid>")
-    def session_view(uuid):
-        """会话页面：显示应用界面"""
-        uuid_pattern = re.compile(
-            r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
-            re.IGNORECASE,
-        )
-        if not uuid or not uuid_pattern.match(uuid):
-            logging.warning(
-                f"无效的UUID格式或不匹配标准格式: {uuid[:40] if uuid else 'None'}..."
+    def index(uuid=None):
+        """首页：显示应用界面（统一入口）"""
+        # 如果提供了uuid但格式不正确，重定向到纯首页
+        if uuid:
+            uuid_pattern = re.compile(
+                r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+                re.IGNORECASE,
             )
-            return redirect(url_for("index"))
+            if not uuid_pattern.match(uuid):
+                logging.warning(
+                    f"无效的UUID格式: {uuid[:40]}... 重定向到首页"
+                )
+                return redirect(url_for("index"))
+        
+        # 直接返回静态HTML，具体的配置和会话逻辑由 frontend_config.js 接口处理
+        return render_template_string(html_content)
 
-        with web_sessions_lock:
-            if uuid not in web_sessions:
-                state = load_session_state(uuid)
-                api_instance = Api(args)
-                api_instance._session_created_at = time.time()
-                api_instance._web_session_id = uuid
 
-                if state and state.get("login_success"):
-                    api_instance.login_success = True
-                    api_instance.user_info = state.get("user_info")
-                    api_instance._session_created_at = state.get(
-                        "created_at", time.time()
-                    )
-                    restore_session_to_api_instance(api_instance, state)
 
-                    logging.info(
-                        f"从文件恢复已登录会话 : {uuid[:32]}... (用户: {state.get('user_info', {}).get('username', 'Unknown')}, 任务数: {len(api_instance.all_run_data)})"
-                    )
-                else:
-                    logging.info(f"创建新会话 : {uuid[:32]}...")
+    # @app.route("/")
+    # def index():
+    #     """首页：显示登录页面，等待用户认证后分配UUID"""
+    #     app_config = get_frontend_config()
+    #     config_script = f"""
+    #     <script>
+    #         window.APP_CONFIG = {json.dumps(app_config)};
+    #     </script>
+    #     """
+    #     modified_html = html_content.replace("</body>", f"{config_script}</body>")
 
-                web_sessions[uuid] = api_instance
-            else:
-                api_instance = web_sessions[uuid]
-                if not hasattr(api_instance, "_web_session_id"):
-                    api_instance._web_session_id = uuid
-                logging.debug(f"使用现有会话: {uuid[:32]}...")
-        app_config = get_frontend_config()
-        config_script = f"""
-        <script>
-            window.APP_CONFIG = {json.dumps(app_config)};
-        </script>
-        """
-        modified_html = html_content.replace("</body>", f"{config_script}</body>")
-        return render_template_string(modified_html)
+    #     return render_template_string(modified_html)
+
+    # @app.route("/uuid=<uuid>")
+    # def session_view(uuid):
+    #     """会话页面：显示应用界面"""
+    #     uuid_pattern = re.compile(
+    #         r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+    #         re.IGNORECASE,
+    #     )
+    #     if not uuid or not uuid_pattern.match(uuid):
+    #         logging.warning(
+    #             f"无效的UUID格式或不匹配标准格式: {uuid[:40] if uuid else 'None'}..."
+    #         )
+    #         return redirect(url_for("index"))
+
+    #     with web_sessions_lock:
+    #         if uuid not in web_sessions:
+    #             state = load_session_state(uuid)
+    #             api_instance = Api(args)
+    #             api_instance._session_created_at = time.time()
+    #             api_instance._web_session_id = uuid
+
+    #             if state and state.get("login_success"):
+    #                 api_instance.login_success = True
+    #                 api_instance.user_info = state.get("user_info")
+    #                 api_instance._session_created_at = state.get(
+    #                     "created_at", time.time()
+    #                 )
+    #                 restore_session_to_api_instance(api_instance, state)
+
+    #                 logging.info(
+    #                     f"从文件恢复已登录会话 : {uuid[:32]}... (用户: {state.get('user_info', {}).get('username', 'Unknown')}, 任务数: {len(api_instance.all_run_data)})"
+    #                 )
+    #             else:
+    #                 logging.info(f"创建新会话 : {uuid[:32]}...")
+
+    #             web_sessions[uuid] = api_instance
+    #         else:
+    #             api_instance = web_sessions[uuid]
+    #             if not hasattr(api_instance, "_web_session_id"):
+    #                 api_instance._web_session_id = uuid
+    #             logging.debug(f"使用现有会话: {uuid[:32]}...")
+    #     app_config = get_frontend_config()
+    #     config_script = f"""
+    #     <script>
+    #         window.APP_CONFIG = {json.dumps(app_config)};
+    #     </script>
+    #     """
+    #     modified_html = html_content.replace("</body>", f"{config_script}</body>")
+    #     return render_template_string(modified_html)
 
 #     @app.route("/JavaScript/<path:function_path>.js", methods=["GET"])
 #     def serve_javascript(function_path):

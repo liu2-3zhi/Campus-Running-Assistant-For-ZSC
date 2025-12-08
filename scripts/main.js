@@ -15124,13 +15124,39 @@ function refreshMobileSessionPicker() {
           "mobile-multi-only-incomplete-check"
         );
 
+        // 定义新的处理函数：同步状态到后端并刷新
+        const handleIncompleteCheckChange = async (e) => {
+            const isChecked = e.target.checked;
+            
+            // 1. 同步 PC 和 移动端 复选框状态
+            if (pcCheck && pcCheck !== e.target) pcCheck.checked = isChecked;
+            if (mbCheck && mbCheck !== e.target) mbCheck.checked = isChecked;
+
+            // 2. 立即在前端更新 UI 显示（提供即时反馈）
+            updateAllAccountsStatusText();
+
+            // 3. 同步配置到后端 (不需要等待刷新，直接使用缓存更新状态)
+            try {
+                console.log(`[设置同步] 正在同步 '仅执行未完成' 设置: ${isChecked}`);
+                // 仅同步设置，不触发全量刷新，前端状态 updateAllAccountsStatusText 已基于缓存处理
+                callPythonAPI("set_multi_run_only_incomplete", isChecked).catch(e => console.error("同步设置后台失败", e));
+            } catch (err) {
+                console.error("[设置同步] 同步失败:", err);
+            }
+        };
+
         if (pcCheck) {
+          // 移除旧的监听器引用（如果有）
           pcCheck.removeEventListener("change", updateAllAccountsStatusText);
-          pcCheck.addEventListener("change", updateAllAccountsStatusText);
+          // 移除可能存在的自身引用（防止多次绑定）
+          pcCheck.removeEventListener("change", handleIncompleteCheckChange);
+          // 绑定新处理函数
+          pcCheck.addEventListener("change", handleIncompleteCheckChange);
         }
         if (mbCheck) {
           mbCheck.removeEventListener("change", updateAllAccountsStatusText);
-          mbCheck.addEventListener("change", updateAllAccountsStatusText);
+          mbCheck.removeEventListener("change", handleIncompleteCheckChange);
+          mbCheck.addEventListener("change", handleIncompleteCheckChange);
         }
         try {
           console.log("[多账号模式] 初始加载账号列表...");
@@ -15492,11 +15518,14 @@ function refreshMobileSessionPicker() {
       $("newUserCancel").onclick = closeNewUserModal;
 
       function openMultiAddUserModal() {
-        $("multi-add-username").value = "";
-        $("multi-add-password").value = "";
-        $("multi-add-password-confirm").value = "";
-        $("multi-add-tag").value = "";
-        $("multi-add-user-modal").style.display = "flex";
+        if ($("multi-add-username")) $("multi-add-username").value = "";
+        if ($("multi-add-password")) $("multi-add-password").value = "";
+        // 修复：多账号添加模态框中不存在 password-confirm 字段，移除该行以防止报错
+        // $("multi-add-password-confirm").value = ""; 
+        if ($("multi-add-tag")) $("multi-add-tag").value = "";
+        
+        const modal = $("multi-add-user-modal");
+        if (modal) modal.style.display = "flex";
       }
 
       function closeMultiAddUserModal() {
@@ -15980,11 +16009,11 @@ function refreshMobileSessionPicker() {
             item.id = `${prefix}${acc.username}`;
             item.dataset.username = acc.username;
             item.className =
-              "p-3 rounded-xl border border-slate-200 bg-white/80 mb-2 text-sm";
+              "p-3 rounded-xl border border-slate-200 bg-white/80 mb-2 text-sm relative";
             item.innerHTML = `
                     <div class="flex justify-between items-start">
                         <div class="font-bold text-slate-800 flex items-start gap-2 truncate min-w-0">
-                            <input type="checkbox" class="account-checkbox w-4 h-4 accent-sky-600 rounded flex-shrink-0 mt-1">
+                            <input type="checkbox" class="account-checkbox w-4 h-4 accent-sky-600 rounded flex-shrink-0 mt-1" style="position: static !important; transform: none !important;">
                             <div class="truncate">
                                 <span class="account-name truncate">${
                                   acc.name
@@ -17247,7 +17276,7 @@ function refreshMobileSessionPicker() {
           btn.classList.remove("btn-success");
           btn.classList.add("btn-danger");
           $("map-container").classList.add("drawing");
-          clearCurrentPath(false);
+          clearCurrentPath(confirm=false,showAlert=false);
           currentRunData.target_sequence = 1;
           currentRunData.isInTargetZone = false;
           draftTotalDist = 0;
@@ -17306,7 +17335,7 @@ function refreshMobileSessionPicker() {
           resetMapView();
         }
       }
-      async function clearCurrentPath(confirm = true) {
+      async function clearCurrentPath(confirm = true,showAlert=true) {
         // 步骤1: 检查 currentRunData 中的 draft_coords 和 run_coords 是否同时为空或不存在
         // 如果两者都没有数据，则提示用户"当前任务没有可清除的路径"并返回
         const draftEmpty =
@@ -17316,7 +17345,9 @@ function refreshMobileSessionPicker() {
           !currentRunData?.run_coords || currentRunData.run_coords.length === 0; // 检查 run_coords 是否为空或不存在
         if (draftEmpty && runEmpty) {
           // 如果两者都为空，向用户显示提示信息
-          showModalAlert("当前任务没有可清除的路径");
+          if (showAlert) {
+            showModalAlert("当前任务没有可清除的路径");
+          }
           return; // 提前返回，不执行后续清除逻辑
         }
 
@@ -29451,46 +29482,164 @@ async function submitMobileResetPassword() {
   }
 }
 
-function addMobileSelectedConfig() {
+async function addMobileSelectedConfig() {
   const select = document.getElementById("mobile-multi-config-user-select");
-  if (!select || !select.value) {
-    showModalAlert("请先选择要添加的配置文件", "错误");
+  const user = select ? select.value : "";
+
+  if (!user) {
+    openManualAccountModal();
     return;
   }
+
+  let passwordToUse = "";
+  
+  // 尝试从已登录的 school_accounts 获取密码 (参照 multi_addFromConfig)
+  if (typeof sessionUUID !== "undefined" && sessionUUID && typeof currentAuthUsername !== "undefined" && currentAuthUsername) {
+    try {
+      const response = await fetch(
+        "/auth/admin/get_user_school_accounts",
+        {
+          method: "GET",
+          headers: {
+            "X-Session-ID": sessionUUID,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.accounts) {
+          const accountData = result.accounts[user];
+          if (accountData) {
+            if (typeof accountData === "string") {
+              passwordToUse = accountData;
+            } else if (typeof accountData === "object" && accountData !== null) {
+              passwordToUse = accountData.password || "";
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`[移动端-添加配置] 无法加载 school_accounts: ${error.message}`);
+    }
+  }
+
   try {
-    multi_addFromConfig();
-    showModalAlert("配置已添加", "成功");
+    const result = await callPythonAPI(
+      "multi_add_account",
+      user,
+      passwordToUse
+    );
+
+    if (
+      result &&
+      result.success === false &&
+      result.action === "request_password"
+    ) {
+      showModalAlert(
+        `账号 ${result.username} 缺少密码，请在弹窗中补全。`,
+        "缺少密码"
+      );
+      // 打开手动添加模态框并预填用户名
+      openManualAccountModal();
+      setTimeout(() => {
+          const uInput = document.getElementById("manual-account-username");
+          const pInput = document.getElementById("manual-account-password");
+          if(uInput) uInput.value = result.username;
+          if(pInput) pInput.focus();
+      }, 300);
+
+    } else if (result && result.accounts) {
+      renderMultiAccountList(result.accounts);
+      showModalAlert("账号已添加", "成功");
+    } else {
+      showModalAlert(result?.message || "添加失败", "错误");
+    }
   } catch (error) {
     console.error("[移动端] 添加配置失败:", error);
     showModalAlert("添加配置失败", "错误");
   }
 }
 async function addMobileAllConfigs() {
-  const select = document.getElementById("mobile-multi-config-user-select");
-  if (!select) {
-    showModalAlert("找不到配置文件选择器", "错误");
-    return;
-  }
-  const options = Array.from(select.options).filter((opt) => opt.value);
-  if (options.length === 0) {
-    showModalAlert("没有可添加的配置文件", "错误");
-    return;
-  }
-
   try {
-    showModalAlert(`正在添加 ${options.length} 个配置...`, "提示");
+    showModalAlert("正在批量加载所有配置...", "提示");
+    const result = await callPythonAPI("multi_load_accounts_from_config");
 
-    for (const option of options) {
-      select.value = option.value;
-      await multi_addFromConfig();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    if (result && result.accounts) {
+      // 如果当前已登录，尝试从 school_accounts 同步密码和UA
+      if (typeof sessionUUID !== "undefined" && sessionUUID && typeof currentAuthUsername !== "undefined" && currentAuthUsername) {
+        try {
+          const response = await fetch(
+            "/auth/admin/get_user_school_accounts",
+            {
+              method: "GET",
+              headers: {
+                "X-Session-ID": sessionUUID,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const schoolAccountsResult = await response.json();
+            if (
+              schoolAccountsResult.success &&
+              schoolAccountsResult.accounts
+            ) {
+              const accountDataMap = schoolAccountsResult.accounts;
+              let updatedCount = 0;
+              result.accounts.forEach((account) => {
+                if (account.username && accountDataMap[account.username]) {
+                  const accountData = accountDataMap[account.username];
+                  if (typeof accountData === "string") {
+                    account.password = accountData;
+                    updatedCount++;
+                  } else if (
+                    typeof accountData === "object" &&
+                    accountData !== null
+                  ) {
+                    if (accountData.password) {
+                      account.password = accountData.password;
+                    }
+                    if (accountData.ua) {
+                      account.device_ua = accountData.ua;
+                    }
+                    updatedCount++;
+                  }
+                }
+              });
+              if (updatedCount > 0) {
+                console.log(
+                  `[移动端-批量添加] 已从 school_accounts 更新 ${updatedCount} 个账号的密码和UA`
+                );
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(
+            `[移动端-批量添加] 无法加载 school_accounts: ${error.message}`
+          );
+        }
+      }
+      renderMultiAccountList(result.accounts);
     }
-
-    showModalAlert(`已添加 ${options.length} 个配置`, "成功");
-    await mobileRefreshMultiAccounts();
+    
+    if (
+      result &&
+      result.accounts_missing_password &&
+      result.accounts_missing_password.length > 0
+    ) {
+      const missingCount = result.accounts_missing_password.length;
+      const firstMissing = result.accounts_missing_password[0].username;
+      showModalAlert(
+        `批量添加完成。\n但有 ${missingCount} 个账号缺少密码（如 ${firstMissing}）。\n请使用"手动添加"功能补全密码。`,
+        "提示"
+      );
+    } else {
+      showModalAlert("批量添加配置成功", "成功");
+    }
   } catch (error) {
     console.error("[移动端] 批量添加配置失败:", error);
-    showModalAlert("批量添加配置失败", "错误");
+    showModalAlert("批量添加配置失败: " + error.message, "错误");
   }
 }
 function openManualAccountModal() {
@@ -29644,24 +29793,45 @@ async function mobileRefreshSelectedAccounts() {
 }
 async function deleteMobileSelectedAccounts() {
   try {
-    const selected = document.querySelectorAll(
-      '#mobile-multi-account-list input[type="checkbox"]:checked'
+    // 1. 获取移动端容器内的选中项
+    const container = document.getElementById("mobile-multi-account-list");
+    if (!container) return;
+
+    const selectedCheckboxes = container.querySelectorAll(
+      'input[type="checkbox"]:checked'
     );
-    if (selected.length === 0) {
+
+    if (selectedCheckboxes.length === 0) {
       showModalAlert("请先选择要删除的账号", "错误");
       return;
     }
+
+    // 2. 提取选中的用户名
+    const selectedUsernames = Array.from(selectedCheckboxes).map(
+      (cb) => cb.closest("[data-username]").dataset.username
+    );
+
     showMobileConfirm(
       "确认删除",
-      `确定要删除选中的 ${selected.length} 个账号吗？`,
+      `确定要删除选中的 ${selectedUsernames.length} 个账号吗？`,
       async () => {
         try {
-          if (typeof multi_removeSelected === "function") {
-            await multi_removeSelected(true);
+          // 3. 直接调用后端API，不再通过 multi_removeSelected 代理
+          const result = await callPythonAPI(
+            "multi_remove_selected_accounts",
+            selectedUsernames
+          );
+
+          if (result && result.success) {
             showModalAlert("已删除选中账号", "成功");
-            await mobileRefreshMultiAccounts();
+            // 4. 更新UI列表 (renderMultiAccountList 会同时更新PC和移动端列表)
+            if (result.accounts) {
+              renderMultiAccountList(result.accounts);
+            } else {
+              await mobileRefreshMultiAccounts();
+            }
           } else {
-            showModalAlert("删除功能未实现", "错误");
+            showModalAlert(result?.message || "删除失败", "错误");
           }
         } catch (error) {
           console.error("[移动端] 删除选中账号失败:", error);
