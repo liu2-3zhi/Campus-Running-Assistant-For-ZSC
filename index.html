@@ -793,6 +793,36 @@
             </div>
           </div>
         </div>
+      
+      <!-- 备案信息区域 -->
+      <!-- 此区域用于显示ICP备案和公安网备案信息，位于登录页面底部 -->
+      <!-- 初始状态为隐藏，只有当后端API返回需要显示备案信息时才会显示 -->
+      <div id="beian-footer" class="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-slate-200 py-3 px-4 flex flex-col items-center justify-center gap-2 text-xs text-slate-600 z-10" style="display: none;">
+        <!-- 使用flex布局，使备案信息居中显示，支持多行换行 -->
+        <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+          <!-- ICP备案信息链接 -->
+          <!-- 点击后跳转到工信部备案管理系统，初始隐藏 -->
+          <a id="icp-beian-link" href="http://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer" class="hover:text-slate-800 transition-colors flex items-center gap-1" style="display: none;">
+            <!-- ICP备案图标：文档图标，象征备案文件 -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <!-- ICP备案号文本，由JavaScript动态填充 -->
+            <span id="icp-beian-text"></span>
+          </a>
+          
+          <!-- 公安网备案信息链接 -->
+          <!-- 点击后跳转到公安部备案管理系统，初始隐藏 -->
+          <a id="police-beian-link" href="https://beian.mps.gov.cn" target="_blank" rel="noopener noreferrer" class="hover:text-slate-800 transition-colors flex items-center gap-1" style="display: none;">
+            <!-- 公安网备案图标：盾牌图标，象征安全和监管 -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <!-- 公安网备案号文本，由JavaScript动态填充 -->
+            <span id="police-beian-text"></span>
+          </a>
+        </div>
+      </div>
       </div>
 
       <main id="main-app" class="hidden h-screen w-screen grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
@@ -7283,6 +7313,61 @@
         </div>
       </div>
     </div>
+    
+    <!-- 备案信息加载脚本 -->
+    <!-- 此脚本负责从后端API获取备案配置信息，并根据配置动态显示备案信息 -->
+    <script>
+      // 使用立即执行函数表达式（IIFE），避免污染全局命名空间
+      // 函数功能：加载并显示备案信息
+      (function loadBeianInfo() {
+        // 调用后端API获取备案配置
+        // 使用fetch API发送GET请求到公开的备案配置接口
+        fetch('/api/public/beian_config')
+          .then(response => response.json()) // 将响应体解析为JSON格式
+          .then(result => {
+            // 检查API返回是否成功，并且data字段存在
+            // result.success 表示API调用成功
+            // result.data 包含实际的备案配置数据
+            if (result.success && result.data) {
+              const data = result.data; // 提取备案配置数据对象
+              const beianFooter = document.getElementById('beian-footer'); // 获取备案信息容器DOM元素
+              let hasBeianInfo = false; // 标记是否有任何备案信息需要显示
+              
+              // 处理ICP备案信息
+              // 仅当show_icp为true且icp_number不为空时才显示ICP备案
+              if (data.show_icp && data.icp_number) {
+                const icpLink = document.getElementById('icp-beian-link'); // 获取ICP备案链接元素
+                const icpText = document.getElementById('icp-beian-text'); // 获取ICP备案号文本容器
+                icpText.textContent = data.icp_number; // 将备案号填充到文本容器中
+                icpLink.style.display = 'flex'; // 显示ICP备案链接（从隐藏变为可见）
+                hasBeianInfo = true; // 标记已有备案信息
+              }
+              
+              // 处理公安网备案信息
+              // 仅当show_police为true且police_number不为空时才显示公安网备案
+              if (data.show_police && data.police_number) {
+                const policeLink = document.getElementById('police-beian-link'); // 获取公安网备案链接元素
+                const policeText = document.getElementById('police-beian-text'); // 获取公安网备案号文本容器
+                policeText.textContent = data.police_number; // 将备案号填充到文本容器中
+                policeLink.style.display = 'flex'; // 显示公安网备案链接（从隐藏变为可见）
+                hasBeianInfo = true; // 标记已有备案信息
+              }
+              
+              // 如果有任何备案信息需要显示（ICP或公安网），则显示整个备案区域
+              // 这样做是为了避免在没有备案信息时显示空白的备案区域
+              if (hasBeianInfo) {
+                beianFooter.style.display = 'flex'; // 显示备案信息容器
+              }
+            }
+          })
+          .catch(error => {
+            // 捕获任何网络错误或解析错误
+            // 采用静默失败策略：不显示备案信息，不影响页面其他功能
+            // 只在控制台输出警告信息，方便开发者调试
+            console.warn('加载备案信息失败:', error);
+          });
+      })(); // 立即执行该函数
+    </script>
     
     <!-- Extracted Script -->
     <!-- <script src="scripts/main.js" defer=""></script> -->
