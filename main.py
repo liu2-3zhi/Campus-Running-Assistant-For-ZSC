@@ -7430,7 +7430,7 @@ class Api:
                 not_started_cnt = acc.summary.get("not_started", 0)
 
                 if exe_cnt > 0:
-                    final_status = f"有 {exe_cnt} 个任务可执行"
+                    final_status = f"Have_Tasks"
                     acc.has_pending_tasks = True
                 elif not_started_cnt > 0:
                     final_status = "无任务可执行"
