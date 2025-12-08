@@ -1341,9 +1341,10 @@ def _create_config_ini():
         print("[配置文件] 配置文件创建完成（包含详细注释）")
 
 
-def _create_permissions_json():
+def _create_permissions_json(force=False):
     """创建默认的permissions.json权限配置文件"""
-    if os.path.exists("permissions.json"):
+    # 增加 force 参数判断，如果为 True 则跳过存在性检查，直接覆盖（即清空重建）
+    if not force and os.path.exists("permissions.json"):
         print("[权限配置] permissions.json 已存在，跳过创建")
         return
 
@@ -1749,9 +1750,17 @@ class AuthSystem:
 
         except (json.JSONDecodeError, Exception) as e:
             logging.error(f"_load_permissions: 读取权限文件异常 ({type(e).__name__}): {e}")
-            logging.warning("检测到权限文件损坏或格式错误，正在自动重置...")
+            logging.warning("检测到权限文件损坏或格式错误，正在直接清空并重建...")
             
-            _create_permissions_json() # 重新创建默认文件
+            # 强制清空重建，不备份，不重命名
+            _create_permissions_json(force=True) 
+            
+            # 重建后尝试重新读取新文件，确保内存数据与文件一致
+            try:
+                with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return default_perms
             
 
 
@@ -21176,7 +21185,17 @@ def start_web_server(args_param):
 
         except json.JSONDecodeError as e:
             logging.error(f"[定时提醒] JSON解析失败: {e}")
-            return jsonify({"success": False, "message": "提醒数据文件格式错误"}), 500
+            logging.warning("[定时提醒] 检测到提醒文件损坏，正在直接清空并重建...")
+            
+            # 强制清空重建
+            try:
+                with open(reminders_file, "w", encoding="utf-8") as f:
+                    json.dump({"reminders": []}, f, indent=2, ensure_ascii=False)
+            except Exception as write_e:
+                logging.error(f"[定时提醒] 重建文件失败: {write_e}")
+
+            # 返回空列表，保证前端正常加载
+            return jsonify({"success": True, "reminders": []})
 
         except Exception as e:
             logging.error(f"[定时提醒] 获取提醒列表失败: {e}", exc_info=True)
@@ -21436,9 +21455,15 @@ def start_web_server(args_param):
             reminders_file = "reminders.json"
             if not os.path.exists(reminders_file):
                 return jsonify({"success": True, "reminders": []})
-            with open(reminders_file, "r", encoding="utf-8") as f:
-                reminders_data = json.load(f)
+            try:
+                with open(reminders_file, "r", encoding="utf-8") as f:
+                    reminders_data = json.load(f)
                 all_reminders = reminders_data.get("reminders", [])
+            except (json.JSONDecodeError, ValueError) as e:
+                # [修正] 捕获JSON解析错误（如文件为空），防止崩溃
+                logging.warning(f"[定时提醒] 提醒文件损坏或为空，已重置: {e}")
+                all_reminders = []
+            
             active_reminders = []
             for reminder in all_reminders:
                 if not reminder.get("enabled", False):
