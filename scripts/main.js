@@ -13073,14 +13073,14 @@ function refreshMobileSessionPicker() {
         });
 
         socket.on("accounts_updated", (data) => {
-          if (data && data.accounts) {
-            logMessage(
-              `[Socket] 收到账号列表更新，共 ${data.accounts.length} 个账号`,
-              "INFO",
-              "Socket"
-            );
-            onAccountsUpdated(data.accounts);
-          }
+          // if (data && data.accounts) {
+          //   logMessage(
+          //     `[Socket] 收到账号列表更新，共 ${data.accounts.length} 个账号`,
+          //     "INFO",
+          //     "Socket"
+          //   );
+          //   onAccountsUpdated(data.accounts);
+          // }
         });
 
         socket.on("multi_global_buttons_update", (data) => {
@@ -15162,15 +15162,15 @@ function refreshMobileSessionPicker() {
         // ========== 处理 "忽略任务具体时间" 复选框变化 ==========
         // 获取桌面端和移动端的 ignore_task_time 复选框元素
         const pcIgnoreTimeCheck = document.getElementById("multi-param-ignore_task_time");
-        const mobileIgnoreTimeCheck = document.getElementById("mobile-multi-param-ignore_task_time");
+        // const mobileIgnoreTimeCheck = document.getElementById("mobile-multi-param-ignore_task_time");
         
         // 定义处理函数：当用户勾选/取消"忽略任务具体时间"时触发
         const handleIgnoreTimeChange = () => {
           // 根据当前运行模式（移动端/桌面端）读取对应复选框的当前状态
-          const isChecked = typeof isMobileMode !== "undefined" && isMobileMode && mobileIgnoreTimeCheck
-            ? mobileIgnoreTimeCheck.checked  // 移动端模式：读取移动端复选框
-            : (pcIgnoreTimeCheck ? pcIgnoreTimeCheck.checked : true); // 桌面端模式或移动端复选框不存在：读取桌面端复选框（默认true）
-          
+          // const isChecked = typeof isMobileMode !== "undefined" && isMobileMode && mobileIgnoreTimeCheck
+          //   ? mobileIgnoreTimeCheck.checked  // 移动端模式：读取移动端复选框
+          //   : (pcIgnoreTimeCheck ? pcIgnoreTimeCheck.checked : true); // 桌面端模式或移动端复选框不存在：读取桌面端复选框（默认true）
+          const isChecked = pcIgnoreTimeCheck ? pcIgnoreTimeCheck.checked : true;
           // 同步两个复选框的状态（确保桌面端和移动端保持一致）
           if (pcIgnoreTimeCheck) pcIgnoreTimeCheck.checked = isChecked;
           if (mobileIgnoreTimeCheck) mobileIgnoreTimeCheck.checked = isChecked;
@@ -15190,16 +15190,17 @@ function refreshMobileSessionPicker() {
           console.warn('[事件监听器] 未找到桌面端"忽略任务具体时间"复选框 (multi-param-ignore_task_time)');
         }
         
-        // 为移动端复选框绑定 change 事件监听器
-        if (mobileIgnoreTimeCheck) {
-          // 先移除可能存在的旧监听器（防止重复绑定）
-          mobileIgnoreTimeCheck.removeEventListener("change", handleIgnoreTimeChange);
-          // 绑定新的监听器
-          mobileIgnoreTimeCheck.addEventListener("change", handleIgnoreTimeChange);
-          console.log('[事件监听器] 已为移动端"忽略任务具体时间"复选框绑定change事件');
-        } else {
-          console.warn('[事件监听器] 未找到移动端"忽略任务具体时间"复选框 (mobile-multi-param-ignore_task_time)');
-        }
+        // // 为移动端复选框绑定 change 事件监听器
+        // if (mobileIgnoreTimeCheck) {
+        //   // 先移除可能存在的旧监听器（防止重复绑定）
+        //   mobileIgnoreTimeCheck.removeEventListener("change", handleIgnoreTimeChange);
+        //   // 绑定新的监听器
+        //   mobileIgnoreTimeCheck.addEventListener("change", handleIgnoreTimeChange);
+        //   // console.log('[事件监听器] 已为移动端"忽略任务具体时间"复选框绑定change事件');
+        // }
+        // } else {
+          // console.warn('[事件监听器] 未找到移动端"忽略任务具体时间"复选框 (mobile-multi-param-ignore_task_time)');
+        // }
         // ========== 结束：处理 "忽略任务具体时间" 复选框变化 ==========
         
         try {
@@ -15973,23 +15974,29 @@ function refreshMobileSessionPicker() {
           let ignoreTaskTime = true; // 默认值：忽略任务时间
           
           // 获取移动端的 ignore_task_time 复选框元素
-          const mbIgnoreTimeChk = document.getElementById("mobile-multi-param-ignore_task_time");
+          // const mbIgnoreTimeChk = document.getElementById("mobile-multi-param-ignore_task_time");
           // 获取桌面端（PC端）的 ignore_task_time 复选框元素
           const pcIgnoreTimeChk = document.getElementById("multi-param-ignore_task_time");
           
           // 根据当前运行模式（移动端/桌面端）读取对应复选框的状态
-          if (typeof isMobileMode !== "undefined" && isMobileMode && mbIgnoreTimeChk) {
-            // 如果当前是移动端模式，且移动端复选框存在，则从移动端复选框读取状态
-            ignoreTaskTime = mbIgnoreTimeChk.checked;
-            // 同步状态到桌面端复选框（保持两端状态一致）
-            if (pcIgnoreTimeChk) pcIgnoreTimeChk.checked = ignoreTaskTime;
-          } else if (pcIgnoreTimeChk) {
-            // 如果当前是桌面端模式，或移动端复选框不存在，则从桌面端复选框读取状态
-            ignoreTaskTime = pcIgnoreTimeChk.checked;
-            // 同步状态到移动端复选框（保持两端状态一致）
-            if (mbIgnoreTimeChk) mbIgnoreTimeChk.checked = ignoreTaskTime;
-          }
+          // if (typeof isMobileMode !== "undefined" && isMobileMode && mbIgnoreTimeChk) {
+          //   // 如果当前是移动端模式，且移动端复选框存在，则从移动端复选框读取状态
+          //   ignoreTaskTime = mbIgnoreTimeChk.checked;
+          //   // 同步状态到桌面端复选框（保持两端状态一致）
+          //   if (pcIgnoreTimeChk) pcIgnoreTimeChk.checked = ignoreTaskTime;
+          // }
+
+          // } else if (pcIgnoreTimeChk) {
+          //   // 如果当前是桌面端模式，或移动端复选框不存在，则从桌面端复选框读取状态
+          //   ignoreTaskTime = pcIgnoreTimeChk.checked;
+          //   // 同步状态到移动端复选框（保持两端状态一致）
+          //   if (mbIgnoreTimeChk) mbIgnoreTimeChk.checked = ignoreTaskTime;
+          // }
           // 如果两个复选框都不存在，则使用默认值 true
+
+
+          ignoreTaskTime = pcIgnoreTimeChk.checked;
+
           let updatedCount = 0;
           cachedMultiAccounts.forEach((account) => {
             const newStatusText = calculateStatusText(
