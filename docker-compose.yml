@@ -43,36 +43,6 @@ services:
     networks:
       - app-network
 
-  # ============================================================
-  # Sensitive-lexicon 服务 - 敏感词检测服务
-  # ============================================================
-  sensitive-lexicon:
-    # 使用 Sensitive-lexicon 子模块中的 Dockerfile 构建镜像
-    build:
-      context: ./Sensitive-lexicon
-      dockerfile: Dockerfile
-    # 容器名称
-    container_name: sensitive-lexicon
-    # 端口映射: 宿主机端口:容器端口
-    # 注意: 宿主机使用 8081 端口以避免与 python-running-helper 的 8080 端口冲突
-    #       容器内部仍然使用 8080 端口
-    #       在容器内部网络中,通过服务名 "sensitive-lexicon:8080" 访问
-    ports:
-      - "8081:8080"
-    # 环境变量配置
-    environment:
-      # 服务监听端口
-      - PORT=8080
-      # 词库目录路径（相对于容器内工作目录）
-      - LEXICON_DIR=Vocabulary
-      # 模糊匹配的最大编辑距离（1表示允许1个字符的差异）
-      - FUZZY_MAX_DISTANCE=1
-    # 容器重启策略：除非手动停止，否则总是重启
-    restart: unless-stopped
-    # 网络配置：连接到应用网络
-    networks:
-      - app-network
-
 networks:
   app-network:
     driver: bridge

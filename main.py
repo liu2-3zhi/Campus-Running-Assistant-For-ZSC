@@ -992,6 +992,27 @@ def _get_default_config():
         "show_police": "false",
     }
 
+    # 百度云文本审核服务配置节，用于配置百度云API的访问凭证
+    # 百度云文本审核服务可以检测用户提交的文本内容是否包含违规信息（如色情、暴力、政治敏感等）
+    config["baidu_cloud"] = {
+        # API Key：在百度云控制台创建应用后获取的API密钥（必填）
+        "api_key": "",
+        # Secret Key：在百度云控制台创建应用后获取的密钥（必填）
+        "secret_key": "",
+        # 策略ID：自定义审核策略的ID（可选，留空则使用百度云默认审核策略）
+        "strategy_id": "",
+    }
+
+    # 内容审核功能配置节，用于控制是否启用留言内容审核
+    # 此配置项决定是否在用户发表留言时调用百度云文本审核服务进行内容检测
+    config["Content_Review"] = {
+        # 是否启用留言内容审核（true/false）
+        # true：启用审核，留言将通过百度云文本审核服务检测后才能发布
+        # false：不启用审核，留言直接发布（默认值）
+        # 注意：启用此功能需要先在[baidu_cloud]配置节中配置有效的API密钥
+        "enable_message_review": "false",
+    }
+
     return config
 
 
@@ -1312,6 +1333,36 @@ def _write_config_with_comments(config_obj, filepath):
             f"show_police = {config_obj.get('Beian', 'show_police', fallback='false')}\n\n"
         )
 
+        # [baidu_cloud] 百度云文本审核服务配置
+        # 这个配置节包含了百度云API的访问凭证和审核策略设置
+        f.write("[baidu_cloud]\n")
+        f.write("# 百度云文本审核服务配置\n")
+        f.write("# 用于检测用户提交的文本内容是否包含违规信息（如色情、暴力、政治敏感等）\n")
+        f.write("# 申请地址：https://console.bce.baidu.com/ai/#/ai/antiporn/overview/index\n")
+        f.write("# API Key（必填）：在百度云控制台创建应用后获取\n")
+        f.write(f"api_key = {config_obj.get('baidu_cloud', 'api_key', fallback='')}\n")
+        f.write("# Secret Key（必填）：在百度云控制台创建应用后获取\n")
+        f.write(f"secret_key = {config_obj.get('baidu_cloud', 'secret_key', fallback='')}\n")
+        f.write("# 策略ID（可选）：不填则使用百度云默认审核策略\n")
+        f.write("# 如需自定义审核策略，请在百度云控制台配置后填写策略ID\n")
+        f.write(f"strategy_id = {config_obj.get('baidu_cloud', 'strategy_id', fallback='')}\n\n")
+
+        # ============================================================
+        # [Content_Review] 内容审核配置
+        # ============================================================
+        # 这个配置节用于控制留言板的内容审核功能
+        # 当启用此功能后，用户发表的留言将先通过百度云文本审核服务进行检测
+        # 只有通过审核的留言才能成功发布，不合规的留言将被拦截并记录
+        f.write("[Content_Review]\n")
+        f.write("# 内容审核功能配置\n")
+        f.write("# 是否启用留言内容审核（true/false）\n")
+        f.write("# true：启用审核，使用百度云文本审核服务检测留言内容\n")
+        f.write("#       留言将被检测是否包含违规信息（色情、暴力、政治敏感等）\n")
+        f.write("#       不合规的留言将被拒绝并保存到 logs/rejected_messages.json\n")
+        f.write("# false：不启用审核，留言直接发布（默认）\n")
+        f.write("# 注意：启用此功能需要先配置百度云API密钥（见上方[baidu_cloud]配置节）\n")
+        f.write(f"enable_message_review = {config_obj.get('Content_Review', 'enable_message_review', fallback='false')}\n\n")
+
 
 def is_weak_password(password):
     """
@@ -1369,438 +1420,417 @@ def is_weak_password(password):
     return (False, "")
 
 
-# ==============================================================================
-#  敏感词检测服务集成 (Sensitive-lexicon)
-# ==============================================================================
-
-
-def check_sensitive_words(text, enable_fuzzy=True):
+def get_baidu_access_token(api_key, secret_key):
     """
-    调用 Sensitive-lexicon 敏感词检测服务,检测文本中是否包含敏感词。
+    获取百度云API的access_token
     
-    功能说明:
-    --------
-    本函数通过 HTTP 请求调用部署在 Docker 容器中的 Sensitive-lexicon 服务,
-    对输入的文本进行敏感词检测。支持精确匹配和模糊匹配两种模式。
+    百度云的所有API调用都需要先获取access_token作为身份验证凭证。
+    该函数通过API Key和Secret Key向百度OAuth 2.0服务请求access_token。
     
     参数:
-    -----
-    text : str
-        需要检测的文本内容。
-        - 不能为空字符串
-        - 建议长度不超过 10000 字符(根据实际服务性能调整)
-        
-    enable_fuzzy : bool, optional (默认值: True)
-        是否启用模糊匹配。
-        - True: 启用模糊匹配,可以检测到拼写变体、谐音字等(例如: "傻B" 可以匹配 "傻逼")
-        - False: 仅精确匹配,只检测词库中完全一致的词汇
+        api_key (str): 百度云应用的API Key，在百度云控制台创建应用后获取
+        secret_key (str): 百度云应用的Secret Key，在百度云控制台创建应用后获取
     
-    返回值:
-    -------
-    dict
-        返回一个包含检测结果的字典,格式如下:
-        {
-            "success": bool,          # 请求是否成功(True/False)
-            "hits": list,             # 检测到的敏感词列表,每个元素是一个字典
-            "error": str or None      # 错误信息(如果发生错误),否则为 None
-        }
-        
-        当 success=True 时, hits 列表的每个元素格式为:
-        {
-            "word": str,              # 检测到的敏感词
-            "type": str,              # 匹配类型: "substring"(精确匹配) 或 "fuzzy"(模糊匹配)
-            "distance": int           # 编辑距离(仅模糊匹配时有效, 精确匹配时为 0)
-        }
-    
-    错误处理:
-    ---------
-    本函数包含完善的错误处理机制,可以应对以下异常情况:
-    1. 网络连接失败 (ConnectionError): 当无法连接到 sensitive-lexicon 服务时
-    2. 请求超时 (Timeout): 当服务响应时间超过 5 秒时
-    3. HTTP 错误 (HTTPError): 当服务返回 4xx/5xx 错误状态码时
-    4. JSON 解析错误 (JSONDecodeError): 当服务返回的响应不是有效的 JSON 时
-    5. 其他未知错误 (Exception): 捕获所有其他异常,防止程序崩溃
-    
-    所有错误都会被记录到日志中,并返回包含错误信息的字典。
+    返回:
+        dict: 包含以下键的字典：
+            - access_token (str or None): 成功时返回access_token字符串，失败时为None
+            - error (str or None): 成功时为None，失败时返回错误信息
     
     使用示例:
-    ---------
-    # 示例 1: 基本用法(启用模糊匹配)
-    result = check_sensitive_words("这是一段需要检测的文本")
-    if result["success"]:
-        if result["hits"]:
-            print(f"检测到 {len(result['hits'])} 个敏感词:")
-            for hit in result["hits"]:
-                print(f"  - {hit['word']} (类型: {hit['type']})")
+        result = get_baidu_access_token("your_api_key", "your_secret_key")
+        if result["error"] is None:
+            print(f"获取token成功: {result['access_token']}")
         else:
-            print("未检测到敏感词")
-    else:
-        print(f"检测失败: {result['error']}")
-    
-    # 示例 2: 仅精确匹配
-    result = check_sensitive_words("测试文本", enable_fuzzy=False)
-    
-    # 示例 3: 在用户注册时检测用户名
-    username = request.form.get("username")
-    result = check_sensitive_words(username, enable_fuzzy=True)
-    if result["success"] and result["hits"]:
-        return jsonify({"error": "用户名包含敏感词,请修改"}), 400
-    
-    技术细节:
-    ---------
-    - API 地址: http://sensitive-lexicon:8080/detect
-    - 请求方法: POST
-    - 请求头: Content-Type: application/json
-    - 超时时间: 5 秒
-    - 服务部署: 通过 docker-compose.yml 部署在同一网络中
-    
-    注意事项:
-    ---------
-    1. 确保 sensitive-lexicon 服务已启动(docker-compose up)
-    2. 服务地址使用 Docker 内部网络名称 "sensitive-lexicon"
-    3. 如果在 Docker 外部调用,需要将地址改为 "http://localhost:8080"
-    4. 超时时间设置为 5 秒,可根据实际网络环境调整
-    5. 建议在生产环境中添加请求限流和缓存机制
+            print(f"获取token失败: {result['error']}")
     """
-    # ========================================
-    # 第1步: 参数验证
-    # ========================================
-    # 检查输入文本是否为空或只包含空白字符
-    # 空文本无需检测,直接返回空结果,节省网络请求
-    # 使用 isspace() 方法避免重复调用 strip()
-    if not text or text.isspace():
-        # 返回成功但无命中结果
-        # 这是一个合理的行为,因为空文本确实不包含敏感词
-        return {
-            "success": True,  # 请求逻辑上是成功的
-            "hits": [],       # 未检测到任何敏感词
-            "error": None     # 没有错误发生
-        }
+    # 注意：requests库已在模块级别通过_try_import_third_party()导入
+    # 不需要在函数内部重复导入
     
-    # ========================================
-    # 第2步: 构建请求参数
-    # ========================================
-    # 敏感词检测服务的 API 端点地址
-    # 使用 Docker 内部网络名称 "sensitive-lexicon" 作为主机名
-    # Docker Compose 会自动解析该名称为对应容器的 IP 地址
-    api_url = "http://sensitive-lexicon:8080/detect"
+    # 百度云OAuth 2.0 token获取接口的URL
+    # 该接口使用client_credentials授权模式（客户端凭证模式）
+    token_url = "https://aip.baidubce.com/oauth/2.0/token"
     
-    # 构建请求体(JSON 格式)
-    # 根据 Sensitive-lexicon API 规范,请求体需要包含以下字段:
-    # - text: 待检测的文本内容
-    # - enable_fuzzy: 是否启用模糊匹配
-    payload = {
-        "text": text,               # 待检测的文本
-        "enable_fuzzy": enable_fuzzy  # 模糊匹配开关
+    # 构造请求参数
+    # grant_type: OAuth 2.0的授权类型，这里使用client_credentials（客户端凭证）
+    # client_id: 即百度云的API Key
+    # client_secret: 即百度云的Secret Key
+    params = {
+        "grant_type": "client_credentials",  # 授权类型：客户端凭证模式
+        "client_id": api_key,                # 百度云API Key
+        "client_secret": secret_key          # 百度云Secret Key
     }
     
-    # 设置请求头,声明请求体为 JSON 格式
-    # 这样服务端才能正确解析请求数据
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    # ========================================
-    # 第3步: 发送 HTTP 请求并处理响应
-    # ========================================
     try:
-        # 使用 requests 库发送 POST 请求
-        # 参数说明:
-        # - url: API 端点地址
-        # - json: 请求体数据(会自动序列化为 JSON 字符串)
-        # - headers: HTTP 请求头
-        # - timeout: 超时时间(秒),超过此时间未收到响应则抛出 Timeout 异常
-        response = requests.post(
-            api_url,
-            json=payload,     # requests 会自动将字典转换为 JSON 并设置 Content-Type
-            headers=headers,
-            timeout=5         # 5秒超时,防止请求长时间挂起
-        )
+        # 发送GET请求到百度云token获取接口
+        # timeout=10: 设置请求超时时间为10秒，防止长时间等待导致程序挂起
+        # 如果10秒内没有响应，将抛出requests.exceptions.Timeout异常
+        response = requests.get(token_url, params=params, timeout=10)
         
-        # 检查 HTTP 状态码
-        # 如果状态码为 4xx 或 5xx,则抛出 HTTPError 异常
-        # 这样可以统一处理所有 HTTP 错误
+        # 检查HTTP响应状态码
+        # raise_for_status()会在状态码为4xx或5xx时抛出HTTPError异常
+        # 例如：404 Not Found、500 Internal Server Error等
         response.raise_for_status()
         
-        # 解析 JSON 响应
-        # 预期响应格式: {"hits": [{"word": "...", "type": "...", "distance": 0}]}
+        # 尝试将响应内容解析为JSON格式
+        # 百度云API的响应都是JSON格式的数据
+        data = response.json()
+        
+        # 检查响应中是否包含access_token字段
+        # 成功的响应格式：{"access_token": "...", "expires_in": 2592000}
+        # 失败的响应格式：{"error": "...", "error_description": "..."}
+        if "access_token" in data:
+            # 成功获取token，返回结果
+            return {
+                "access_token": data["access_token"],  # 返回access_token
+                "error": None                          # 没有错误
+            }
+        else:
+            # 响应中没有access_token，说明请求失败
+            # 从响应中提取错误信息，如果没有error字段则使用默认信息
+            error_msg = data.get("error_description", data.get("error", "未知错误"))
+            return {
+                "access_token": None,                                  # token获取失败
+                "error": f"百度云API返回错误: {error_msg}"              # 返回错误信息
+            }
+    
+    except requests.exceptions.Timeout:
+        # 捕获请求超时异常
+        # 当请求时间超过timeout参数设置的时间时触发
+        return {
+            "access_token": None,
+            "error": "请求超时，请检查网络连接或稍后重试"
+        }
+    
+    except requests.exceptions.ConnectionError:
+        # 捕获连接错误异常
+        # 例如：DNS解析失败、网络不可达、服务器拒绝连接等
+        return {
+            "access_token": None,
+            "error": "网络连接失败，请检查网络设置"
+        }
+    
+    except requests.exceptions.HTTPError as e:
+        # 捕获HTTP错误异常（4xx、5xx状态码）
+        # 例如：401 Unauthorized、403 Forbidden、500 Internal Server Error
+        return {
+            "access_token": None,
+            "error": f"HTTP请求失败: {str(e)}"
+        }
+    
+    except ValueError:
+        # 捕获JSON解析错误
+        # 当响应内容不是有效的JSON格式时触发
+        return {
+            "access_token": None,
+            "error": "响应数据格式错误，无法解析JSON"
+        }
+    
+    except Exception as e:
+        # 捕获所有其他未预期的异常
+        # 作为最后的兜底处理，确保函数不会因为未知错误而崩溃
+        return {
+            "access_token": None,
+            "error": f"发生未知错误: {str(e)}"
+        }
+
+
+def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone_sha256=None, device_id=None):
+    """
+    调用百度云文本审核服务检测文本内容是否合规
+    
+    该函数将文本内容提交到百度云内容审核平台进行审核，检测是否包含违规内容。
+    百度云会根据预设的审核策略，检测文本中的色情、暴力、政治敏感、违禁品等内容。
+    
+    参数:
+        text (str): 待审核的文本内容（必填），这是唯一的必需参数
+        strategy_id (str, 可选): 审核策略ID，不填则使用百度云默认策略
+        user_id (str, 可选): 用户自定义的用户ID，用于标识提交审核的用户
+        user_ip (str, 可选): 用户的IP地址，用于风险识别和统计分析
+        phone_sha256 (str, 可选): 用户手机号的SHA256哈希值，用于风险识别
+        device_id (str, 可选): 用户设备的唯一标识，用于风险识别
+    
+    返回:
+        dict: 包含以下键的字典：
+            - success (bool): 是否成功调用API（True表示成功，False表示失败）
+            - conclusion (str): 审核结论文本，可能的值：
+                * "合规": 内容符合规范，可以正常展示
+                * "不合规": 内容存在违规，不应展示
+                * "疑似": 内容可能存在违规，建议人工复审
+                * "审核失败": API调用失败或发生错误
+            - conclusion_type (int): 审核结论类型编码：
+                * 1: 合规
+                * 2: 不合规
+                * 3: 疑似
+                * 4: 审核失败
+            - data (list): 详细的审核结果数组，包含具体的违规类型和位置信息
+            - error (str or None): 错误信息，成功时为None，失败时包含错误详情
+    
+    使用示例:
+        # 基本用法（只检测文本）
+        result = check_text_content("这是一段需要审核的文本内容")
+        if result["success"]:
+            if result["conclusion"] == "合规":
+                print("内容审核通过")
+            else:
+                print(f"内容审核未通过: {result['conclusion']}")
+                print(f"详细信息: {result['data']}")
+        else:
+            print(f"审核失败: {result['error']}")
+        
+        # 完整用法（包含所有可选参数）
+        result = check_text_content(
+            text="这是一段需要审核的文本内容",
+            strategy_id="your_strategy_id",
+            user_id="user_123",
+            user_ip="192.168.1.1",
+            phone_sha256="sha256_hash_of_phone",
+            device_id="device_123"
+        )
+    """
+    # 注意：requests库已在模块级别通过_try_import_third_party()导入
+    # 不需要在函数内部重复导入
+    
+    # 读取百度云配置信息
+    # 使用统一的配置读取函数读取config.ini文件中的[baidu_cloud]配置节
+    try:
+        # 调用统一的配置读取函数，该函数会返回RawConfigParser对象或None
+        config = _read_config_ini("config.ini")
+        
+        # 检查配置文件是否成功读取
+        # 如果返回None，说明配置文件读取失败（文件不存在、权限问题等）
+        if config is None:
+            # 配置文件读取失败，返回标准错误响应
+            return {
+                "success": False,
+                "conclusion": "审核失败",
+                "conclusion_type": 4,
+                "data": [],
+                "error": "无法读取配置文件config.ini"
+            }
+        
+        # 从配置文件中获取API Key和Secret Key
+        # 如果配置项不存在或为空，则get方法会返回空字符串
+        api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
+        secret_key = config.get("baidu_cloud", "secret_key", fallback="").strip()
+        
+        # 验证API凭证格式
+        # API Key和Secret Key必须至少24个字符（百度云实际长度通常更长）
+        if api_key and len(api_key) < 24:
+            logging.warning(f"[百度云文本审核] API Key长度异常（{len(api_key)}字符），预期至少24字符")
+        if secret_key and len(secret_key) < 24:
+            logging.warning(f"[百度云文本审核] Secret Key长度异常（{len(secret_key)}字符），预期至少24字符")
+        
+        # 如果配置文件中设置了策略ID，且函数调用时未指定，则使用配置文件中的值
+        if not strategy_id:
+            strategy_id = config.get("baidu_cloud", "strategy_id", fallback="").strip()
+        
+        # 检查API Key和Secret Key是否已配置
+        # 这两个参数是调用百度云API的必需凭证
+        if not api_key or not secret_key:
+            return {
+                "success": False,
+                "conclusion": "审核失败",
+                "conclusion_type": 4,
+                "data": [],
+                "error": "百度云API Key或Secret Key未配置，请在config.ini中配置[baidu_cloud]节"
+            }
+    
+    except Exception as e:
+        # 捕获配置文件读取过程中的任何异常
+        # 例如：文件不存在、权限不足、编码错误等
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": f"读取配置文件失败: {str(e)}"
+        }
+    
+    # 第一步：获取access_token
+    # 调用上面定义的get_baidu_access_token函数获取API访问令牌
+    token_result = get_baidu_access_token(api_key, secret_key)
+    
+    # 检查token获取是否成功
+    if token_result["error"] is not None:
+        # token获取失败，直接返回错误
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": f"获取access_token失败: {token_result['error']}"
+        }
+    
+    # 从token_result中提取access_token
+    access_token = token_result["access_token"]
+    
+    # 第二步：调用文本审核API
+    # 百度云文本审核接口的URL，需要将access_token作为URL参数传递
+    censor_url = f"https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v2/user_defined?access_token={access_token}"
+    
+    # 设置HTTP请求头
+    # Content-Type指定请求体的格式为表单编码（application/x-www-form-urlencoded）
+    # 这是百度云文本审核API要求的格式
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    # 构造请求体数据
+    # 使用字典存储所有参数，requests会自动将其编码为x-www-form-urlencoded格式
+    data = {
+        "text": text  # 必填参数：待审核的文本内容
+    }
+    
+    # 添加可选参数（如果提供了值）
+    # 只有当参数不为None且不为空字符串时才添加到请求中
+    if strategy_id:
+        data["strategyId"] = strategy_id  # 策略ID
+    if user_id:
+        data["userId"] = user_id  # 用户ID
+    if user_ip:
+        data["userIp"] = user_ip  # 用户IP
+    if phone_sha256:
+        data["phoneSha256"] = phone_sha256  # 手机号SHA256
+    if device_id:
+        data["deviceId"] = device_id  # 设备ID
+    
+    try:
+        # 发送POST请求到百度云文本审核接口
+        # data参数会被自动编码为application/x-www-form-urlencoded格式
+        # timeout=10：设置10秒超时，防止长时间等待
+        response = requests.post(censor_url, headers=headers, data=data, timeout=10)
+        
+        # 检查HTTP响应状态码
+        # 如果状态码不是2xx，raise_for_status()会抛出HTTPError异常
+        response.raise_for_status()
+        
+        # 解析响应的JSON数据
         result = response.json()
         
-        # 记录检测结果到日志(仅在检测到敏感词时记录)
-        # 这有助于审计和问题排查,但不会记录完整的文本内容(保护隐私)
-        hits = result.get("hits", [])
-        if hits:
-            # 如果检测到敏感词,记录警告级别日志
-            # 日志格式: 命中数量 + 敏感词列表(仅记录词语,不记录原文)
-            logging.warning(
-                f"[敏感词检测] 检测到 {len(hits)} 个敏感词: "
-                f"{', '.join([h.get('word', '') for h in hits])}"
-            )
-        else:
-            # 未检测到敏感词时,记录调试级别日志(可选)
-            # 生产环境中可以注释掉此行,减少日志量
-            logging.debug("[敏感词检测] 未检测到敏感词")
+        # 检查API是否返回了错误
+        # 百度云API在出错时会返回error_code和error_msg字段
+        if "error_code" in result:
+            # API返回了错误码，说明请求失败
+            error_code = result.get("error_code")
+            error_msg = result.get("error_msg", "未知错误")
+            return {
+                "success": False,
+                "conclusion": "审核失败",
+                "conclusion_type": 4,
+                "data": [],
+                "error": f"百度云API错误 (错误码: {error_code}): {error_msg}"
+            }
         
-        # 返回成功结果
+        # 从响应中提取审核结果
+        # conclusion: 审核结论文本（"合规"、"不合规"、"疑似"、"审核失败"）
+        # conclusionType: 审核结论类型（1-4的整数）
+        # data: 详细的审核结果数组
+        conclusion = result.get("conclusion", "审核失败")
+        conclusion_type = result.get("conclusionType", 4)
+        data_list = result.get("data", [])
+        
+        # 返回成功的结果
         return {
-            "success": True,            # 请求成功
-            "hits": hits,               # 命中的敏感词列表
-            "error": None               # 没有错误
+            "success": True,              # API调用成功
+            "conclusion": conclusion,      # 审核结论文本
+            "conclusion_type": conclusion_type,  # 审核结论类型编码
+            "data": data_list,            # 详细审核结果
+            "error": None                 # 没有错误
         }
     
-    # ========================================
-    # 第4步: 异常处理
-    # ========================================
-    # 以下是各种可能发生的异常及其处理方式
+    except requests.exceptions.Timeout:
+        # 请求超时异常
+        # 当API响应时间超过timeout参数设置的时间时触发
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": "请求超时，百度云服务响应时间过长，请稍后重试"
+        }
     
-    except requests.exceptions.ConnectionError as e:
+    except requests.exceptions.ConnectionError:
         # 网络连接错误
-        # 原因: 无法连接到 sensitive-lexicon 服务
-        # 可能的情况:
-        # 1. 服务未启动(docker-compose 未运行)
-        # 2. 网络配置错误(容器不在同一网络中)
-        # 3. 服务崩溃或重启中
-        error_msg = "无法连接到敏感词检测服务,请检查服务是否正常运行"
-        # 记录错误日志,包含详细的异常信息,方便调试
-        logging.error(f"[敏感词检测] 连接错误: {str(e)}")
-        # 返回失败结果
+        # 例如：无法连接到百度云服务器、DNS解析失败等
         return {
             "success": False,
-            "hits": [],
-            "error": error_msg
-        }
-    
-    except requests.exceptions.Timeout as e:
-        # 请求超时错误
-        # 原因: 服务在 5 秒内未返回响应
-        # 可能的情况:
-        # 1. 服务负载过高,处理缓慢
-        # 2. 检测的文本过长,处理时间过久
-        # 3. 网络延迟过高
-        error_msg = "敏感词检测服务响应超时,请稍后重试"
-        # 记录警告日志
-        logging.warning(f"[敏感词检测] 请求超时: {str(e)}")
-        return {
-            "success": False,
-            "hits": [],
-            "error": error_msg
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": "网络连接失败，无法连接到百度云服务，请检查网络设置"
         }
     
     except requests.exceptions.HTTPError as e:
-        # HTTP 错误(4xx 或 5xx 状态码)
-        # 原因: 服务返回了错误状态码
-        # 可能的情况:
-        # 1. 400 Bad Request: 请求参数格式错误
-        # 2. 500 Internal Server Error: 服务内部错误
-        # 3. 503 Service Unavailable: 服务暂时不可用
-        error_msg = f"敏感词检测服务返回错误: HTTP {response.status_code}"
-        # 记录错误日志,包含状态码和响应内容
-        logging.error(
-            f"[敏感词检测] HTTP错误 {response.status_code}: {str(e)}"
-        )
+        # HTTP错误（4xx、5xx状态码）
+        # 例如：401未授权、403禁止访问、500服务器内部错误等
         return {
             "success": False,
-            "hits": [],
-            "error": error_msg
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": f"HTTP请求失败: {str(e)}"
         }
     
-    except json.JSONDecodeError as e:
-        # JSON 解析错误
-        # 原因: 服务返回的响应不是有效的 JSON 格式
-        # 可能的情况:
-        # 1. 服务返回了 HTML 错误页面
-        # 2. 响应体被截断
-        # 3. 服务实现有问题
-        error_msg = "敏感词检测服务返回了无效的响应格式"
-        # 记录错误日志,包含响应内容(便于调试)
-        logging.error(
-            f"[敏感词检测] JSON解析失败: {str(e)}, "
-            f"响应内容: {response.text[:200]}"  # 只记录前200字符,避免日志过长
-        )
+    except ValueError:
+        # JSON解析错误
+        # 当百度云API返回的响应不是有效的JSON格式时触发
         return {
             "success": False,
-            "hits": [],
-            "error": error_msg
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": "响应数据格式错误，无法解析百度云API返回的JSON数据"
         }
     
     except Exception as e:
         # 捕获所有其他未预期的异常
-        # 这是一个保底的异常处理,确保函数不会因为未知错误而崩溃
-        error_msg = f"敏感词检测时发生未知错误: {str(e)}"
-        # 记录严重错误日志,包含完整的异常堆栈信息
-        logging.error(f"[敏感词检测] 未知错误: {str(e)}", exc_info=True)
+        # 这是最后的兜底处理，确保函数始终返回标准格式的结果
         return {
             "success": False,
-            "hits": [],
-            "error": error_msg
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": f"发生未知错误: {str(e)}"
         }
 
 
-def reload_sensitive_lexicon():
+def _read_config_ini(config_file="config.ini"):
     """
-    重新加载 Sensitive-lexicon 敏感词词库。
+    统一的config.ini读取函数
     
-    功能说明:
-    --------
-    本函数调用 Sensitive-lexicon 服务的 reload 接口,触发词库重新加载。
-    当词库文件(Vocabulary 目录)发生变化时,可以调用此函数使新词库生效,
-    而无需重启整个服务。
-    
-    使用场景:
-    ---------
-    1. 管理员手动更新了词库文件后,需要立即生效
-    2. 系统自动更新词库后,需要刷新内存中的词库数据
-    3. 定期重新加载词库,确保使用最新的词库版本
-    
-    返回值:
-    -------
-    dict
-        返回一个包含操作结果的字典,格式如下:
-        {
-            "success": bool,          # 操作是否成功(True/False)
-            "message": str,           # 成功或失败的消息
-            "error": str or None      # 错误信息(如果发生错误),否则为 None
-        }
-    
-    错误处理:
-    ---------
-    与 check_sensitive_words 函数类似,包含完善的错误处理机制:
-    1. 网络连接失败 (ConnectionError)
-    2. 请求超时 (Timeout)
-    3. HTTP 错误 (HTTPError)
-    4. JSON 解析错误 (JSONDecodeError)
-    5. 其他未知错误 (Exception)
-    
-    使用示例:
-    ---------
-    # 示例 1: 基本用法
-    result = reload_sensitive_lexicon()
-    if result["success"]:
-        print("词库重新加载成功")
-    else:
-        print(f"词库重新加载失败: {result['error']}")
-    
-    # 示例 2: 在管理后台接口中使用
-    @app.route("/admin/reload_lexicon", methods=["POST"])
-    @login_required
-    @admin_required
-    def admin_reload_lexicon():
-        result = reload_sensitive_lexicon()
-        if result["success"]:
-            return jsonify({"success": True, "message": "词库已重新加载"}), 200
-        else:
-            return jsonify({"success": False, "error": result["error"]}), 500
-    
-    # 示例 3: 定时任务(每天凌晨3点重新加载词库)
-    import schedule
-    schedule.every().day.at("03:00").do(reload_sensitive_lexicon)
-    
-    技术细节:
-    ---------
-    - API 地址: http://sensitive-lexicon:8080/reload
-    - 请求方法: POST
-    - 超时时间: 10 秒(重新加载可能需要更长时间)
-    - 服务部署: 通过 docker-compose.yml 部署在同一网络中
-    
-    注意事项:
-    ---------
-    1. 重新加载词库可能需要几秒钟时间,取决于词库大小
-    2. 重新加载过程中,服务仍然可以正常处理检测请求(使用旧词库)
-    3. 建议在系统负载较低时执行此操作(如凌晨)
-    4. 频繁调用此接口可能影响服务性能,建议设置合理的调用频率
-    5. 仅管理员有权限调用此接口
+    参数:
+        config_file: 配置文件路径，默认为"config.ini"
+        
+    返回:
+        configparser.RawConfigParser对象，如果读取失败返回None
+        
+    说明:
+        - 使用RawConfigParser保持键名的大小写
+        - 设置optionxform = str保持选项名的原始大小写
+        - 统一使用utf-8编码读取
+        - 包含错误处理，读取失败时记录日志并返回None
     """
-    # ========================================
-    # 第1步: 构建请求参数
-    # ========================================
-    # 词库重新加载的 API 端点地址
-    # 使用 Docker 内部网络名称访问服务
-    api_url = "http://sensitive-lexicon:8080/reload"
-    
-    # ========================================
-    # 第2步: 发送 HTTP 请求并处理响应
-    # ========================================
     try:
-        # 发送 POST 请求到 reload 端点
-        # 参数说明:
-        # - timeout: 设置为 10 秒,因为重新加载词库可能需要较长时间
-        #   (特别是当词库文件很大时)
-        response = requests.post(
-            api_url,
-            timeout=10  # 10秒超时,给予词库加载足够的时间
-        )
+        # 创建RawConfigParser对象，它不会对配置值进行插值处理
+        # 这确保了配置值中的特殊字符（如%）不会被误解释
+        config = configparser.RawConfigParser()
         
-        # 检查 HTTP 状态码
-        # 如果状态码为 4xx 或 5xx,则抛出 HTTPError 异常
-        response.raise_for_status()
+        # 保持键名的原始大小写（默认会转换为小写）
+        # 这对于区分大小写敏感的配置项很重要
+        config.optionxform = str
         
-        # 尝试解析 JSON 响应
-        # 预期响应格式: {"message": "词库重新加载成功"} 或类似格式
-        try:
-            result = response.json()
-            message = result.get("message", "词库重新加载成功")
-        except json.JSONDecodeError:
-            # 如果响应不是 JSON 格式,使用默认消息
-            # 有些服务可能只返回状态码而不返回 JSON
-            message = "词库重新加载成功"
+        # 读取配置文件，使用utf-8编码
+        # 这确保能正确读取包含中文或其他Unicode字符的配置
+        config.read(config_file, encoding="utf-8")
         
-        # 记录成功日志
-        logging.info("[敏感词检测] 词库重新加载成功")
-        
-        # 返回成功结果
-        return {
-            "success": True,
-            "message": message,
-            "error": None
-        }
-    
-    # ========================================
-    # 第3步: 异常处理
-    # ========================================
-    # 以下异常处理与 check_sensitive_words 类似
-    
-    except requests.exceptions.ConnectionError as e:
-        # 网络连接错误
-        error_msg = "无法连接到敏感词检测服务,请检查服务是否正常运行"
-        logging.error(f"[敏感词检测] 连接错误(reload): {str(e)}")
-        return {
-            "success": False,
-            "message": "",
-            "error": error_msg
-        }
-    
-    except requests.exceptions.Timeout as e:
-        # 请求超时错误
-        # 对于 reload 操作,超时可能意味着词库很大,加载需要更长时间
-        error_msg = "词库重新加载超时,词库可能较大或服务负载过高"
-        logging.warning(f"[敏感词检测] 重载超时: {str(e)}")
-        return {
-            "success": False,
-            "message": "",
-            "error": error_msg
-        }
-    
-    except requests.exceptions.HTTPError as e:
-        # HTTP 错误
-        error_msg = f"词库重新加载失败: HTTP {response.status_code}"
-        logging.error(
-            f"[敏感词检测] HTTP错误(reload) {response.status_code}: {str(e)}"
-        )
-        return {
-            "success": False,
-            "message": "",
-            "error": error_msg
-        }
-    
+        # 成功读取配置文件，返回配置对象
+        return config
     except Exception as e:
-        # 捕获所有其他未预期的异常
-        error_msg = f"词库重新加载时发生未知错误: {str(e)}"
-        logging.error(f"[敏感词检测] 未知错误(reload): {str(e)}", exc_info=True)
-        return {
-            "success": False,
-            "message": "",
-            "error": error_msg
-        }
+        # 捕获所有可能的异常（文件不存在、权限问题、编码错误等）
+        # 记录错误日志，包含完整的堆栈信息以便调试
+        logging.error(f"读取配置文件 {config_file} 失败: {e}", exc_info=True)
+        # 返回None表示读取失败，调用方需要检查返回值
+        return None
 
 
 def _create_config_ini():
@@ -22148,7 +22178,196 @@ def start_web_server(args_param):
 
         if len(content) > 1000:
             return jsonify({"success": False, "message": "留言内容不能超过1000字"})
+        
+        # ============================================================
+        # 预先判断用户类型：是否为游客
+        # ============================================================
+        # 这个判断需要在内容审核之前进行，因为审核日志需要记录用户类型
+        # 判断逻辑：如果用户名为"guest"或为空，则视为游客
         is_guest = auth_username == "guest" or not auth_username
+        
+        # ============================================================
+        # 内容审核：使用百度云文本审核服务检测留言内容
+        # ============================================================
+        # 这个功能用于在用户发表留言前，先检测留言内容是否包含违规信息
+        # 如果检测到不合规内容，将拒绝发布并记录到日志文件中
+        
+        # 第1步：读取配置文件，检查是否启用了留言内容审核功能
+        # 使用统一的配置读取函数_read_config_ini()读取config.ini文件
+        config = _read_config_ini("config.ini")
+        
+        # 初始化审核开关变量，默认为False（不启用审核）
+        enable_review = False
+        
+        # 检查配置文件是否成功读取，以及是否存在Content_Review配置节
+        if config and config.has_section("Content_Review"):
+            # 从配置文件中读取enable_message_review配置项
+            # 如果配置项不存在，使用fallback值"false"
+            # 使用.lower()转换为小写，然后与"true"比较，实现大小写不敏感的布尔判断
+            enable_review = config.get("Content_Review", "enable_message_review", fallback="false").lower() == "true"
+        
+        # 第2步：如果启用了审核功能，调用百度云文本审核服务
+        if enable_review:
+            # 调用check_text_content()函数进行文本审核
+            # 参数说明：
+            #   - text: 待审核的留言内容
+            #   - user_id: 用户ID（如果是游客则为None）
+            #   - user_ip: 用户的IP地址，用于风险识别
+            review_result = check_text_content(
+                text=content,
+                user_id=auth_username if auth_username else None,
+                user_ip=client_ip
+            )
+            
+            # 第3步：检查审核服务是否成功调用
+            # review_result["success"]为True表示API调用成功（不表示审核通过）
+            if review_result["success"]:
+                # 从审核结果中提取审核结论
+                # 可能的值："合规"、"不合规"、"疑似"
+                conclusion = review_result.get("conclusion", "")
+                
+                # 第4步：判断审核结果是否为"不合规"或"疑似"
+                # 这两种情况都需要拒绝留言发布
+                if conclusion in ["不合规", "疑似"]:
+                    # ============================================================
+                    # 留言被拒绝：记录到rejected_messages.json日志文件
+                    # ============================================================
+                    
+                    # 构建被拒绝留言的完整信息记录
+                    # 这个记录将保存到日志文件中，方便后续分析和审计
+                    rejected_message = {
+                        # 为每条被拒绝的留言生成一个唯一的UUID标识符
+                        "id": str(uuid.uuid4()),
+                        # 留言的完整内容
+                        "content": content,
+                        # 认证用户名（如果是游客则为None）
+                        "auth_username": auth_username if not is_guest else None,
+                        # 游客的昵称（仅游客有此字段）
+                        "nickname": nickname if is_guest else None,
+                        # 游客的邮箱（仅游客有此字段）
+                        "email": email if is_guest else None,
+                        # 是否为游客标识
+                        "is_guest": is_guest,
+                        # 留言提交的时间戳（Unix时间戳，秒级）
+                        "timestamp": time.time(),
+                        # 用户的IP地址
+                        "ip": client_ip,
+                        # 审核结果的详细信息
+                        "review_result": {
+                            # 审核结论："不合规"或"疑似"
+                            "conclusion": conclusion,
+                            # 审核结论类型编码（1:合规, 2:不合规, 3:疑似, 4:审核失败）
+                            "conclusion_type": review_result.get("conclusion_type"),
+                            # 详细的违规信息数组，包含具体的违规类型、位置等
+                            "data": review_result.get("data", [])
+                        }
+                    }
+                    
+                    # 第5步：保存被拒绝的留言到日志文件
+                    # 日志文件路径：./logs/rejected_messages.json
+                    logs_dir = "logs"
+                    
+                    # 检查logs目录是否存在，如果不存在则创建
+                    # 使用os.makedirs确保目录创建成功
+                    if not os.path.exists(logs_dir):
+                        try:
+                            os.makedirs(logs_dir)
+                        except OSError as e:
+                            # 目录创建失败，记录错误日志
+                            # 注意：即使目录创建失败，我们仍然会继续执行，只是无法保存日志
+                            logging.error(f"[留言审核] 创建logs目录失败: {e}")
+                    
+                    # 日志文件的完整路径
+                    rejected_file = os.path.join(logs_dir, "rejected_messages.json")
+                    
+                    # 初始化被拒绝留言列表
+                    rejected_messages = []
+                    
+                    # 第6步：读取已存在的被拒绝留言记录
+                    # 如果文件已存在，先读取原有内容，然后追加新记录
+                    if os.path.exists(rejected_file):
+                        try:
+                            # 以UTF-8编码读取JSON文件
+                            with open(rejected_file, "r", encoding="utf-8") as f:
+                                rejected_messages = json.load(f)
+                        except (json.JSONDecodeError, OSError) as e:
+                            # 文件读取或JSON解析失败，记录错误日志
+                            # 将rejected_messages重置为空列表，继续执行
+                            logging.error(f"[留言审核] 读取rejected_messages.json失败: {e}")
+                            rejected_messages = []
+                    
+                    # 第7步：将新的被拒绝留言添加到列表中
+                    rejected_messages.append(rejected_message)
+                    
+                    # 第8步：保存更新后的被拒绝留言列表到文件
+                    try:
+                        # 以UTF-8编码写入JSON文件
+                        # indent=2: 使用2个空格缩进，使JSON文件更易读
+                        # ensure_ascii=False: 允许写入中文字符，不转义为Unicode
+                        with open(rejected_file, "w", encoding="utf-8") as f:
+                            json.dump(rejected_messages, f, indent=2, ensure_ascii=False)
+                        
+                        # 记录警告日志，说明留言被拒绝的情况
+                        # 日志包含：用户名、审核结论、内容长度、IP地址等关键信息
+                        logging.warning(
+                            f"[留言审核] 留言被拒绝 --> 用户: {auth_username}, 审核结果: {conclusion}, "
+                            f"内容长度: {len(content)}字, IP: {client_ip}"
+                        )
+                    except OSError as e:
+                        # 文件写入失败，记录错误日志
+                        logging.error(f"[留言审核] 保存rejected_messages.json失败: {e}")
+                    
+                    # 第9步：返回审核失败的错误信息给用户
+                    # 根据审核结论类型，返回不同的用户友好提示信息
+                    
+                    # 根据审核结论选择错误提示文本
+                    if conclusion == "不合规":
+                        # 明确的违规内容，使用较强的提示语
+                        error_msg = "留言内容包含不当信息，无法发布"
+                    else:  # 疑似
+                        # 疑似违规内容，使用较温和的提示语，给用户修改机会
+                        error_msg = "留言内容可能包含不当信息，请修改后重试"
+                    
+                    # 第10步：从审核结果中提取具体的违规类型信息
+                    # 如果审核结果中包含详细的违规信息，将其添加到错误提示中
+                    data = review_result.get("data", [])
+                    if data and len(data) > 0:
+                        # 提取第一个违规项的描述信息
+                        first_violation = data[0]
+                        msg = first_violation.get("msg", "")
+                        # 如果存在描述信息，将其附加到错误提示中（以括号形式显示）
+                        if msg:
+                            error_msg += f"（{msg}）"
+                    
+                    # 返回HTTP 400错误响应，告知客户端留言审核未通过
+                    # 响应格式：{"success": False, "message": "错误提示信息"}
+                    return jsonify({"success": False, "message": error_msg}), 400
+            else:
+                # ============================================================
+                # 审核服务调用失败的处理：降级策略
+                # ============================================================
+                # 如果审核服务调用失败（例如：网络错误、API配置错误、服务不可用等）
+                # 我们需要决定是否继续发布留言
+                
+                # 记录错误日志，说明审核服务调用失败的原因
+                logging.error(f"[留言审核] 审核服务调用失败: {review_result.get('error')}")
+                
+                # 降级策略选择：
+                # 选项1：继续发布留言（当前策略）
+                #        优点：用户体验好，不会因为审核服务故障而影响正常功能
+                #        缺点：可能会有违规内容发布
+                # 选项2：拒绝留言发布
+                #        优点：更安全，确保没有未审核的内容发布
+                #        缺点：用户体验差，审核服务故障会导致留言功能不可用
+                
+                # 这里选择继续发布留言（降级策略），保证用户体验
+                # 如果需要更严格的策略，可以取消下面的注释，改为拒绝发布：
+                # return jsonify({"success": False, "message": "内容审核服务暂时不可用，请稍后重试"}), 503
+        
+        # ============================================================
+        # 审核通过或未启用审核，继续执行后续的留言发布流程
+        # ============================================================
+        # 游客身份验证：检查游客是否填写了必要的信息
         if is_guest:
             if not email:
                 return jsonify({"success": False, "message": "游客必须填写邮箱"})
