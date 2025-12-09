@@ -1815,5 +1815,5 @@ body.mobile-mode #session-picker-modal {
 #mobile-multi-log-text {
   min-height: 400px; /* 设置最小高度为400px，确保有足够的可视区域 */
   height: auto; /* 高度设置为auto，允许随内容自动增长 */
-  max-height: 80vh; /* 最大高度为视口高度的80%，避免过度拉伸超出屏幕 */
+  overflow: visible; /* 确保内容不会被裁剪，不使用滚动条 */
 }
