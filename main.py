@@ -1311,6 +1311,87 @@ def _write_config_with_comments(config_obj, filepath):
         )
 
 
+def is_weak_password(password):
+    """
+    检测密码是否为弱密码
+    
+    弱密码定义：
+    1. 长度小于8个字符
+    2. 纯数字密码（如：12345678）
+    3. 纯字母密码（如：abcdefgh）
+    4. 常见弱密码（如：password, admin123, 12345678等）
+    5. 键盘序列（如：qwerty, asdfgh, 123456等）
+    
+    参数:
+        password (str): 待检测的密码字符串
+        
+    返回值:
+        tuple: (is_weak, reason)
+            - is_weak (bool): True表示是弱密码，False表示强密码
+            - reason (str): 如果是弱密码，返回具体原因（中文）
+    
+    示例:
+        >>> is_weak_password("123")
+        (True, "密码长度不能少于8个字符")
+        >>> is_weak_password("12345678")
+        (True, "密码不能为纯数字")
+        >>> is_weak_password("abcd1234")
+        (True, "密码过于简单，请使用更复杂的密码")
+        >>> is_weak_password("MyP@ssw0rd")
+        (False, "")
+    """
+    # 1. 检查密码长度
+    # 密码长度必须至少8个字符，这是安全的基本要求
+    if len(password) < 8:
+        return (True, "密码长度不能少于8个字符")
+    
+    # 2. 检查是否为纯数字
+    # 纯数字密码容易被暴力破解，安全性极低
+    if password.isdigit():
+        return (True, "密码不能为纯数字")
+    
+    # 3. 检查是否为纯字母
+    # 纯字母密码缺乏复杂性，容易被字典攻击破解
+    if password.isalpha():
+        return (True, "密码不能为纯字母，需包含数字或特殊字符")
+    
+    # 4. 常见弱密码列表
+    # 这些密码在各种密码泄露事件中出现频率极高，黑客工具都会优先尝试
+    common_weak_passwords = [
+        'password', 'password123', 'admin123', 'admin', 
+        '12345678', '123456789', '87654321', 'qwerty', 
+        'qwerty123', 'abc123', 'abcd1234', '11111111',
+        '00000000', 'test1234', 'user1234', 'pass1234',
+        'a1b2c3d4', '1q2w3e4r', 'qwertyui', 'asdfghjk',
+    ]
+    # 使用 lower() 进行不区分大小写的比较，避免用户用大小写混淆绕过检测
+    if password.lower() in common_weak_passwords:
+        return (True, "密码过于简单，请使用更复杂的密码")
+    
+    # 5. 检查键盘序列（连续的键盘按键）
+    # 键盘序列容易被猜测，因为人们倾向于使用手指在键盘上连续按键的模式
+    keyboard_patterns = [
+        '123456', '234567', '345678', '456789', '567890',
+        'qwerty', 'asdfgh', 'zxcvbn', 'qazwsx', 'zaq12wsx',
+    ]
+    # 转换为小写进行检查，防止用户通过大小写混淆绕过检测
+    password_lower = password.lower()
+    for pattern in keyboard_patterns:
+        # 检查密码中是否包含这些键盘序列模式
+        if pattern in password_lower:
+            return (True, "密码包含键盘序列，请使用更复杂的密码")
+    
+    # 6. 检查重复字符（如：aaaa1111, 11112222）
+    # 使用 set() 获取密码中不同字符的数量
+    # 如果不同字符种类少于4种，说明密码重复性太高，缺乏多样性
+    if len(set(password)) < 4:
+        return (True, "密码字符重复过多，请使用更多样化的字符")
+    
+    # 通过所有检查，密码强度合格
+    # 返回 False 表示不是弱密码，reason 为空字符串
+    return (False, "")
+
+
 def _create_config_ini():
     """创建或更新config.ini配置文件（兼容旧版本，自动补全缺失参数）"""
     default_config = _get_default_config()
@@ -14349,6 +14430,15 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": captcha_error_msg})
             if not auth_username or not auth_password:
                 return jsonify({"success": False, "message": "用户名和密码不能为空"})
+            
+            # [新增] 检查弱密码
+            # 调用 is_weak_password 函数检测密码强度
+            # 如果密码过弱，立即返回错误信息，不允许注册
+            is_weak, weak_reason = is_weak_password(auth_password)
+            if is_weak:
+                # 将弱密码检测的具体原因返回给前端，提示用户修改密码
+                return jsonify({"success": False, "message": f"密码强度不足：{weak_reason}"}), 400
+            
             if re.search(r"[\u4e00-\u9fff]", auth_username):
                 return jsonify({"success": False, "message": "用户名不能包含中文字符"})
             if phone and not re.match(r"^1[3-9]\d{9}$", phone):
@@ -16509,6 +16599,14 @@ def start_web_server(args_param):
         # 验证必填参数：目标用户名和新密码
         if not target_username or not new_password:
             return jsonify({"success": False, "message": "参数缺失"})
+        
+        # [新增] 检查新密码强度
+        # 在允许密码重置之前，检查新密码是否为弱密码
+        # 这可以防止用户设置不安全的密码，提高账户安全性
+        is_weak, weak_reason = is_weak_password(new_password)
+        if is_weak:
+            # 如果新密码过弱，返回错误信息，要求用户设置更强的密码
+            return jsonify({"success": False, "message": f"新密码强度不足：{weak_reason}"}), 400
 
         # 判断是否是修改自己的密码
         is_self_change = target_username == auth_username
@@ -18328,6 +18426,35 @@ def start_web_server(args_param):
                     config.set("API", "ip_api_key", api_data["ip_api_key"])
                 if "captcha_api_key" in api_data:
                     config.set("API", "captcha_api_key", api_data["captcha_api_key"])
+            
+            # [新增] 处理 Beian 备案配置
+            # 备案信息用于在网站底部显示ICP备案号和公安网备案号
+            # 这是中国法律要求的合规信息
+            if "Beian" in data:
+                # 确保 Beian 配置节存在
+                ensure_section(config, "Beian")
+                beian_data = data["Beian"]
+                
+                # 处理 ICP 备案号（工信部）
+                # ICP备案号格式如：京ICP备12345678号
+                if "icp_number" in beian_data:
+                    config.set("Beian", "icp_number", str(beian_data["icp_number"]))
+                
+                # 处理是否显示 ICP 备案信息
+                # 布尔值转换为小写字符串 "true" 或 "false"
+                if "show_icp" in beian_data:
+                    config.set("Beian", "show_icp", str(beian_data["show_icp"]).lower())
+                
+                # 处理公安网备案号（公安部）
+                # 公安网备案号格式如：京公网安备 11010802012345号
+                if "police_number" in beian_data:
+                    config.set("Beian", "police_number", str(beian_data["police_number"]))
+                
+                # 处理是否显示公安网备案信息
+                # 布尔值转换为小写字符串 "true" 或 "false"
+                if "show_police" in beian_data:
+                    config.set("Beian", "show_police", str(beian_data["show_police"]).lower())
+            
             _write_config_with_comments(config, CONFIG_FILE)
             ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
             auth_system.log_audit(

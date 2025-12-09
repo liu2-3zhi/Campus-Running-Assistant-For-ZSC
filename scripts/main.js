@@ -80,6 +80,94 @@ function handleCdnError(resourceName) {
     }
   }, 3000);
 }
+
+/**
+ * 检查密码强度，判断是否为弱密码
+ * 
+ * 功能说明：
+ * 1. 检查密码长度是否少于8个字符
+ * 2. 检查是否为纯数字密码
+ * 3. 检查是否为纯字母密码
+ * 4. 检查是否为常见弱密码
+ * 5. 检查是否包含键盘序列
+ * 
+ * @param {string} password - 待检测的密码字符串
+ * @returns {Object} 返回对象包含两个属性：
+ *   - isWeak {boolean}: true表示是弱密码，false表示强密码
+ *   - reason {string}: 如果是弱密码，返回具体原因（中文）
+ * 
+ * 使用示例：
+ *   var result = checkWeakPassword("123");
+ *   if (result.isWeak) {
+ *     alert(result.reason); // "密码长度不能少于8个字符"
+ *   }
+ */
+function checkWeakPassword(password) {
+    // 1. 长度检查
+    // 密码长度必须至少8个字符，这是安全的基本要求
+    if (password.length < 8) {
+        return { isWeak: true, reason: "密码长度不能少于8个字符" };
+    }
+    
+    // 2. 纯数字检查
+    // 使用正则表达式检查密码是否只包含数字（0-9）
+    // 纯数字密码容易被暴力破解，安全性极低
+    if (/^\d+$/.test(password)) {
+        return { isWeak: true, reason: "密码不能为纯数字" };
+    }
+    
+    // 3. 纯字母检查
+    // 使用正则表达式检查密码是否只包含字母（大小写）
+    // 纯字母密码缺乏复杂性，容易被字典攻击破解
+    if (/^[a-zA-Z]+$/.test(password)) {
+        return { isWeak: true, reason: "密码不能为纯字母，需包含数字或特殊字符" };
+    }
+    
+    // 4. 常见弱密码列表
+    // 这些密码在各种密码泄露事件中出现频率极高，黑客工具都会优先尝试
+    var commonWeak = [
+        'password', 'password123', 'admin123', 'admin',
+        '12345678', '123456789', '87654321', 'qwerty',
+        'qwerty123', 'abc123', 'abcd1234', '11111111',
+        '00000000', 'test1234', 'user1234', 'pass1234',
+        'a1b2c3d4', '1q2w3e4r', 'qwertyui', 'asdfghjk',
+    ];
+    // 将密码转换为小写进行比较，防止用户使用大小写混淆绕过检测
+    if (commonWeak.includes(password.toLowerCase())) {
+        return { isWeak: true, reason: "密码过于简单，请使用更复杂的密码" };
+    }
+    
+    // 5. 键盘序列检查
+    // 键盘序列容易被猜测，因为人们倾向于使用手指在键盘上连续按键的模式
+    var patterns = [
+        '123456', '234567', '345678', '456789', '567890',
+        'qwerty', 'asdfgh', 'zxcvbn', 'qazwsx', 'zaq12wsx',
+    ];
+    // 将密码转换为小写后检查是否包含键盘序列
+    var passwordLower = password.toLowerCase();
+    for (var i = 0; i < patterns.length; i++) {
+        if (passwordLower.includes(patterns[i])) {
+            return { isWeak: true, reason: "密码包含键盘序列，请使用更复杂的密码" };
+        }
+    }
+    
+    // 6. 检查字符重复
+    // 统计密码中不同字符的数量
+    // 如果不同字符种类少于4种，说明密码重复性太高，缺乏多样性
+    var uniqueChars = {};
+    for (var i = 0; i < password.length; i++) {
+        uniqueChars[password[i]] = true;
+    }
+    var uniqueCount = Object.keys(uniqueChars).length;
+    if (uniqueCount < 4) {
+        return { isWeak: true, reason: "密码字符重复过多，请使用更多样化的字符" };
+    }
+    
+    // 通过所有检查，密码强度合格
+    // 返回 isWeak: false 表示不是弱密码，reason 为空字符串
+    return { isWeak: false, reason: "" };
+}
+
 // 新增：返回管理员会话逻辑
 function returnToAdminSession() {
   const originSession = localStorage.getItem("admin_return_origin");
@@ -3913,6 +4001,16 @@ function refreshMobileSessionPicker() {
           showModalAlert("两次输入的密码不一致", "注册失败");
           return;
         }
+        
+        // [新增] 检查弱密码
+        // 在发送注册请求之前，先在前端进行弱密码检测
+        // 这可以减少不必要的网络请求，提高用户体验
+        var weakCheck = checkWeakPassword(password);
+        if (weakCheck.isWeak) {
+          // 如果密码过弱，显示具体的错误原因
+          showModalAlert(weakCheck.reason, "密码强度不足");
+          return;
+        }
 
         if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
           showModalAlert("请输入正确的手机号格式", "注册失败");
@@ -6420,6 +6518,16 @@ function refreshMobileSessionPicker() {
         // 检查两次输入的新密码是否一致
         if (newPassword.value !== confirmPassword.value) {
           showModalAlert("两次输入的密码不一致", "错误");
+          return;
+        }
+        
+        // [新增] 检查新密码强度
+        // 在提交密码修改请求之前，先检查新密码是否为弱密码
+        // 这可以防止用户设置不安全的密码，提高账户安全性
+        var weakCheck = checkWeakPassword(newPassword.value);
+        if (weakCheck.isWeak) {
+          // 如果新密码过弱，显示具体的错误原因
+          showModalAlert(weakCheck.reason, "密码强度不足");
           return;
         }
 
@@ -28410,6 +28518,16 @@ async function updateMobileUnifiedPassword() {
   // 检查两次输入的新密码是否一致
   if (newPassword !== confirmPassword) {
     showModalAlert("两次输入的新密码不一致", "提示");
+    return;
+  }
+  
+  // [新增] 检查新密码强度
+  // 在提交密码修改请求之前，先检查新密码是否为弱密码
+  // 这可以防止用户设置不安全的密码，提高账户安全性
+  var weakCheck = checkWeakPassword(newPassword);
+  if (weakCheck.isWeak) {
+    // 如果新密码过弱，显示具体的错误原因
+    showModalAlert(weakCheck.reason, "密码强度不足");
     return;
   }
 
