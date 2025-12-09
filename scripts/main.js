@@ -23450,6 +23450,75 @@ async function loadSystemConfig() {
       "boolean",
       "是否在页面底部显示公安网备案信息"
     );
+    
+    // ==================== 百度云审核服务配置 ====================
+    // 添加百度云文本审核API相关配置项
+    // 用途：对用户发布的留言内容进行智能审核，检测违规信息
+    // 依赖：需要在百度智能云控制台创建"内容审核"应用
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">🔍 百度云审核服务</h5>';
+    // 添加说明文字，引导管理员了解此配置的用途
+    html +=
+      '<p class="text-xs text-slate-500 mb-3">用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）</p>';
+    
+    // API Key 配置项
+    // 用于身份验证，从百度智能云控制台获取
+    // 类型：text（普通文本输入框）
+    html += createInput(
+      "baidu_cloud",
+      "api_key",
+      "API Key",
+      "text",
+      "在百度云控制台创建应用后获取的API密钥"
+    );
+    
+    // Secret Key 配置项
+    // 与 API Key 配合使用，用于生成访问令牌
+    // 类型：password（密码输入框，隐藏输入内容保护隐私）
+    // 注意：虽然这里使用 type="text"，但由于 createInput 函数的限制，
+    // 实际会创建普通文本输入框。如需真正的密码框，需要修改 createInput 函数
+    html += createInput(
+      "baidu_cloud",
+      "secret_key",
+      "Secret Key",
+      "text",
+      "在百度云控制台创建应用后获取的密钥"
+    );
+    
+    // 策略ID 配置项（可选）
+    // 百度云支持自定义审核策略，可以设置不同的审核严格程度
+    // 留空则使用百度云的默认审核策略
+    html += createInput(
+      "baidu_cloud",
+      "strategy_id",
+      "策略ID（可选）",
+      "text",
+      "自定义审核策略的ID，留空则使用百度云默认审核策略"
+    );
+    
+    // ==================== 留言内容审核功能配置 ====================
+    // 添加内容审核功能的总开关
+    // 控制是否启用留言内容的自动审核
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">📝 留言内容审核</h5>';
+    
+    // 添加警告提示，提醒管理员需要先配置百度云API密钥
+    // 使用醒目的黄色背景色和警告图标，增强视觉提示效果
+    html +=
+      '<p class="text-xs text-amber-600 bg-amber-50 p-2 rounded mb-3">⚠️ 启用此功能需要先配置上方的百度云API密钥</p>';
+    
+    // 是否启用留言审核的开关
+    // 类型：boolean（布尔值选择器，显示"启用"或"禁用"）
+    // 启用后，用户提交的留言将先通过百度云API检测，检测通过才能发布
+    html += createInput(
+      "Content_Review",
+      "enable_message_review",
+      "启用留言审核",
+      "boolean",
+      "启用后，留言将通过百度云文本审核服务检测后才能发布"
+    );
+    // ==================== 配置项添加完成 ====================
+    
     formContainer.innerHTML = html;
   } catch (e) {
     formContainer.innerHTML = `<p class="text-red-500 text-center py-10">加载配置时发生错误: ${e.message}</p>`;
@@ -25300,6 +25369,35 @@ async function saveSystemConfig() {
         police_number: $("config-Beian-police_number").value,
         // 是否显示公安备案：布尔值，控制是否在页面底部展示公安网备案号
         show_police: $("config-Beian-show_police").value === "true",
+      },
+      // ==================== 百度云文本审核服务配置保存 ====================
+      // 读取页面上的 baidu_cloud（百度云审核服务）配置项
+      // 这些配置用于调用百度云文本审核API，对用户留言进行内容审核
+      baidu_cloud: {
+        // API Key：百度智能云控制台获取的应用凭证
+        // 用于标识应用身份，调用API时必须提供
+        api_key: $("config-baidu_cloud-api_key").value || "",
+        // Secret Key：百度智能云控制台获取的应用密钥
+        // 与 API Key 配合生成访问令牌（Access Token）
+        secret_key: $("config-baidu_cloud-secret_key").value || "",
+        // 策略ID：自定义审核策略的ID（可选）
+        // 留空则使用百度云默认审核策略
+        strategy_id: $("config-baidu_cloud-strategy_id").value || "",
+      },
+      // ==================== 内容审核功能配置保存 ====================
+      // 读取页面上的 Content_Review（内容审核）配置项
+      // 控制是否启用留言内容的自动审核功能
+      Content_Review: {
+        // 是否启用留言审核：布尔值
+        // true：启用审核，留言将通过百度云API检测后才能发布
+        // false：禁用审核，留言直接发布（不推荐）
+        // 
+        // 实现原理：
+        // 1. 从页面的 select 元素读取值（"true" 或 "false" 字符串）
+        // 2. 通过 === "true" 比较，转换为 JavaScript 布尔值
+        // 3. 发送到后端时，后端会将布尔值转换为字符串保存到 config.ini
+        // 4. 下次加载时，后端通过 config.getboolean() 转换回布尔值
+        enable_message_review: $("config-Content_Review-enable_message_review").value === "true",
       },
     };
     const response = await fetch("/api/admin/config/save", {

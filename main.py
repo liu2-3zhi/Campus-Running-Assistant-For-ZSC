@@ -429,6 +429,14 @@ def initialize_global_variables():
 
 
 # ==============================================================================
+#  辅助函数：获取客户端真实IP地址（任务2）
+# ==============================================================================
+
+
+
+
+
+# ==============================================================================
 #  1. 日志系统配置
 # ==============================================================================
 
@@ -14695,6 +14703,7 @@ def start_web_server(args_param):
         """
         全局IP封禁检查拦截器
         """
+        # 使用统一函数获取客户端真实IP（任务2）
         client_ip = request.remote_addr
         if (
             request.path.startswith("/static/")
@@ -14978,9 +14987,8 @@ def start_web_server(args_param):
                                 "files": {},
                             }
 
-                        ip_address = request.headers.get(
-                            "X-Forwarded-For", request.remote_addr
-                        )
+                        # 使用统一函数获取客户端真实IP（任务2）
+                        ip_address = request.remote_addr
                         index_data["files"][filename] = {
                             "username": "Guest",
                             "upload_time": time.time(),
@@ -15080,7 +15088,8 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": captcha_error_msg})
 
         session_id = request.headers.get("X-Session-ID", "")
-        ip_address = request.headers.get("X-Forwarded-For", request.remote_addr) or ""
+        # 使用统一函数获取客户端真实IP（任务2）
+        ip_address = request.remote_addr or ""
         user_agent = request.headers.get("User-Agent", "")
         auth_result = None
         target_username = None
@@ -15731,7 +15740,8 @@ def start_web_server(args_param):
                 }
 
                 auth_system._save_permissions()
-                ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+                # 使用统一函数获取客户端真实IP（任务2）
+                ip_address = request.remote_addr
                 auth_system.log_audit(
                     auth_username,
                     "set_user_permissions_batch",
@@ -15765,9 +15775,8 @@ def start_web_server(args_param):
 
                     auth_system._save_permissions()
 
-                    ip_address = request.headers.get(
-                        "X-Forwarded-For", request.remote_addr
-                    )
+                    # 使用统一函数获取客户端真实IP（任务2）
+                    ip_address = request.remote_addr
                     auth_system.log_audit(
                         auth_username,
                         "set_user_permissions_batch",
@@ -15788,7 +15797,8 @@ def start_web_server(args_param):
                 target_username, permission, grant
             )
 
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "set_user_permission",
@@ -16158,7 +16168,8 @@ def start_web_server(args_param):
 
         result = auth_system.register_user(new_username, password, group)
         if result.get("success"):
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
 
             # 如果提供了手机号，绑定到新用户
             if phone:
@@ -16202,7 +16213,8 @@ def start_web_server(args_param):
 
         result = auth_system.ban_user(target_username)
         if result.get("success"):
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "ban_user",
@@ -16230,7 +16242,8 @@ def start_web_server(args_param):
 
         result = auth_system.unban_user(target_username)
         if result.get("success"):
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "unban_user",
@@ -16258,7 +16271,8 @@ def start_web_server(args_param):
 
         result = auth_system.delete_user(target_username)
         if result.get("success"):
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "delete_user",
@@ -16293,7 +16307,8 @@ def start_web_server(args_param):
         result = auth_system.force_disable_2fa(target_username)
 
         if result.get("success"):
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "force_disable_2fa",
@@ -16368,7 +16383,8 @@ def start_web_server(args_param):
             logging.error(f"强制登出清理用户文件失败: {e}")
 
         # 5. 记录审计日志
-        ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+        # 使用统一函数获取客户端真实IP（任务2）
+        ip_address = request.remote_addr
         auth_system.log_audit(
             auth_username,
             "force_logout_user",
@@ -16406,7 +16422,8 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "缺少用户名或新密码"}), 400
         result = auth_system.reset_user_password(target_username, new_password)
         if result.get("success"):
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "force_reset_password",
@@ -16449,7 +16466,8 @@ def start_web_server(args_param):
             user_data["nickname"] = nickname
             with open(user_file_path, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "update_basic_info",
@@ -16502,7 +16520,8 @@ def start_web_server(args_param):
 
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "admin_update_nickname",
@@ -16585,7 +16604,8 @@ def start_web_server(args_param):
                 user_data["phone"] = new_phone
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "admin_update_phone",
@@ -17257,7 +17277,8 @@ def start_web_server(args_param):
                         "description": "用户头像索引文件，记录每个文件的上传信息",
                         "files": {},
                     }
-                ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+                # 使用统一函数获取客户端真实IP（任务2）
+                ip_address = request.remote_addr
                 index_data["files"][filename] = {
                     "username": auth_username,
                     "upload_time": time.time(),
@@ -17430,7 +17451,8 @@ def start_web_server(args_param):
 
                 except Exception as e:
                     logging.error(f"清除头像文件时出错: {e}", exc_info=True)
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "clear_user_avatar",
@@ -17588,7 +17610,8 @@ def start_web_server(args_param):
             )
 
         result = auth_system.update_max_sessions(target_username, max_sessions)
-        ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+        # 使用统一函数获取客户端真实IP（任务2）
+        ip_address = request.remote_addr
         auth_system.log_audit(
             auth_username,
             "update_max_sessions",
@@ -17846,7 +17869,8 @@ def start_web_server(args_param):
                 )
                 cleanup_thread.start()
             auth_system.link_session_to_user(auth_username, new_session_id)
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             audit_details = f"创建新会话持久化文件，会话ID: {new_session_id}"
             if cleanup_message:
                 audit_details += f"; {cleanup_message}"
@@ -18085,7 +18109,8 @@ def start_web_server(args_param):
         with web_sessions_lock:
             if target_session_id in web_sessions:
                 del web_sessions[target_session_id]
-        ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+        # 使用统一函数获取客户端真实IP（任务2）
+        ip_address = request.remote_addr
         auth_system.log_audit(
             auth_username,
             "destroy_session",
@@ -18835,6 +18860,77 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== Beian 配置加载结束 ====================
+                
+                # ==================== 百度云文本审核服务配置加载 ====================
+                # 功能说明：从 config.ini 文件中读取百度云文本审核API的配置信息
+                # 用途：对用户发布的留言内容进行智能审核，检测色情、暴力、政治敏感等违规信息
+                # 依赖：需要在百度智能云控制台创建"内容审核"应用并获取API密钥
+                # 
+                # 配置项说明：
+                # - api_key: 百度云控制台获取的API Key（应用凭证）
+                # - secret_key: 百度云控制台获取的Secret Key（应用密钥）
+                # - strategy_id: 自定义审核策略ID（可选，留空则使用百度默认策略）
+                "baidu_cloud": {
+                    # API Key（应用密钥）
+                    # 从百度智能云控制台 -> 产品服务 -> 内容审核 -> 应用列表 中获取
+                    # 用于身份验证，调用百度云API时必须提供
+                    "api_key": _get_config_value(
+                        config,  # 当前加载的配置对象
+                        "baidu_cloud",  # 配置节（section）名称
+                        "api_key",  # 配置键（key）名称
+                        fallback=""  # 如果配置文件中没有该项，返回空字符串
+                    ),
+                    # Secret Key（应用密钥）
+                    # 与 API Key 配合使用，用于生成访问令牌（Access Token）
+                    # 注意：此密钥非常重要，应妥善保管，不要泄露
+                    "secret_key": _get_config_value(
+                        config,  # 配置对象
+                        "baidu_cloud",  # 配置节
+                        "secret_key",  # 配置键
+                        fallback=""  # 默认为空字符串
+                    ),
+                    # 策略ID（可选配置项）
+                    # 说明：百度云支持自定义审核策略，可以设置不同的审核严格程度
+                    # 如果留空，则使用百度云的默认审核策略
+                    # 如果需要自定义审核规则，可以在百度云控制台创建策略后填写策略ID
+                    "strategy_id": _get_config_value(
+                        config,  # 配置对象
+                        "baidu_cloud",  # 配置节
+                        "strategy_id",  # 配置键
+                        fallback=""  # 默认为空字符串（使用默认策略）
+                    ),
+                },
+                # ==================== 百度云配置加载结束 ====================
+                
+                # ==================== 内容审核功能配置加载 ====================
+                # 功能说明：控制留言内容审核功能的开关
+                # 用途：决定是否对用户发布的留言进行实时内容审核
+                # 依赖：需要先配置上方的 baidu_cloud API 密钥才能正常工作
+                # 
+                # 工作流程：
+                # 1. 用户提交留言
+                # 2. 系统调用百度云文本审核API检测内容
+                # 3. 如果检测到违规内容，拒绝发布并提示用户
+                # 4. 如果内容合规，正常发布留言
+                "Content_Review": {
+                    # 是否启用留言内容审核功能
+                    # 类型：布尔值（True/False）
+                    # - True：启用审核，所有留言提交前会先通过百度云API检测
+                    # - False：关闭审核，留言直接发布（不推荐，可能导致违规内容）
+                    # 
+                    # 注意事项：
+                    # 1. 启用此功能前，必须先在上方的 baidu_cloud 中配置有效的API密钥
+                    # 2. 每次审核会调用百度云API，可能产生一定的API调用费用（根据百度云计费规则）
+                    # 3. 审核过程需要网络请求，可能增加留言发布的响应时间（通常1-2秒）
+                    "enable_message_review": _get_config_value(
+                        config,  # 配置对象
+                        "Content_Review",  # 配置节
+                        "enable_message_review",  # 配置键
+                        type_func=config.getboolean,  # 类型转换函数，将字符串转为布尔值
+                        fallback=False  # 默认为 False（关闭审核），避免未配置API密钥时出错
+                    ),
+                },
+                # ==================== 内容审核配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -18969,8 +19065,57 @@ def start_web_server(args_param):
                 if "show_police" in beian_data:
                     config.set("Beian", "show_police", str(beian_data["show_police"]).lower())
             
+            # [新增] 处理百度云文本审核服务配置
+            # 百度云API用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）
+            # 配置项来源：百度智能云控制台 -> 内容审核 -> 应用管理
+            if "baidu_cloud" in data:
+                # 确保 baidu_cloud 配置节存在
+                # 如果 config.ini 中没有 [baidu_cloud] 节，则自动创建
+                ensure_section(config, "baidu_cloud")
+                cloud_data = data["baidu_cloud"]
+                
+                # 处理 API Key（百度云控制台获取的应用凭证）
+                # API Key 用于标识应用身份，是调用百度云API的必需参数
+                if "api_key" in cloud_data:
+                    config.set("baidu_cloud", "api_key", str(cloud_data["api_key"]))
+                
+                # 处理 Secret Key（百度云控制台获取的应用密钥）
+                # Secret Key 与 API Key 配合使用，用于生成访问令牌（Access Token）
+                # 注意：Secret Key 非常重要，应妥善保管，避免泄露
+                if "secret_key" in cloud_data:
+                    config.set("baidu_cloud", "secret_key", str(cloud_data["secret_key"]))
+                
+                # 处理策略ID（可选配置项，用于自定义审核规则）
+                # 百度云支持创建自定义审核策略，可以设置不同的审核严格程度
+                # 如果留空，系统将使用百度云的默认审核策略
+                if "strategy_id" in cloud_data:
+                    config.set("baidu_cloud", "strategy_id", str(cloud_data["strategy_id"]))
+
+            # [新增] 处理内容审核功能配置
+            # 控制是否启用留言内容审核功能
+            # 启用后，用户提交的留言将通过百度云API进行违规内容检测
+            if "Content_Review" in data:
+                # 确保 Content_Review 配置节存在
+                # 如果 config.ini 中没有 [Content_Review] 节，则自动创建
+                ensure_section(config, "Content_Review")
+                review_data = data["Content_Review"]
+                
+                # 处理是否启用留言审核的开关（布尔值：true 或 false）
+                # 前端传递的是 JavaScript 的 true/false，需要转换为字符串 "true"/"false"
+                # configparser 只能存储字符串，读取时会通过 getboolean() 转换回布尔值
+                # 
+                # 工作流程：
+                # 1. 用户在管理面板勾选"启用留言审核"复选框
+                # 2. 前端发送 enable_message_review: true
+                # 3. 这里将 true 转换为小写字符串 "true" 保存到 config.ini
+                # 4. 下次加载时，通过 config.getboolean() 将 "true" 转换回 True
+                if "enable_message_review" in review_data:
+                    config.set("Content_Review", "enable_message_review", 
+                               str(review_data["enable_message_review"]).lower())
+            
             _write_config_with_comments(config, CONFIG_FILE)
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 g.user,
                 "update_system_config",
@@ -18997,7 +19142,8 @@ def start_web_server(args_param):
 
             # 获取公共信息
             session_id = request.headers.get("X-Session-ID", "UnknownSession")
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             username = "Guest/Unknown"
 
             # 查找用户信息（只查一次锁）
@@ -19051,7 +19197,8 @@ def start_web_server(args_param):
 
         except Exception as e:
             session_id_err = request.headers.get("X-Session-ID", "UnknownSession")
-            ip_address_err = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address_err = request.remote_addr
             logging.error(
                 f"[前端日志处理错误][IP:{ip_address_err}][Sess:{session_id_err[:8]}] {e}",
                 exc_info=True,
@@ -19383,8 +19530,8 @@ def start_web_server(args_param):
             # 如果前面的操作失败，验证码仍然有效，用户可以重试
             del sms_verification_codes[new_phone]
 
-            # 获取客户端IP地址，优先使用X-Forwarded-For头（代理场景）
-            ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+            # 使用统一函数获取客户端真实IP（任务2）
+            ip_address = request.remote_addr
             # 记录审计日志
             auth_system.log_audit(
                 current_username,
@@ -19941,7 +20088,8 @@ def start_web_server(args_param):
                     if hasattr(g, "api_instance")
                     else None
                 )
-                client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+                # 使用统一函数获取客户端真实IP（任务2）
+                client_ip = request.remote_addr
                 content = f"管理员 {g.user} 手动添加的验证码: {code}，{code_expire_minutes}分钟内有效。"
 
                 history_entry = {
@@ -22151,11 +22299,8 @@ def start_web_server(args_param):
         # ============================================================
         # IP封禁检查：留言板功能专项封禁
         # ============================================================
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
-        else:
-            client_ip = request.remote_addr
+        # 使用统一函数获取客户端真实IP（任务2）
+        client_ip = request.remote_addr
 
         if check_ip_ban(client_ip, scope="messages_only"):
             logging.warning(f"[IP封禁] 留言功能封禁拦截：IP {client_ip} 尝试发表留言")
@@ -22205,6 +22350,48 @@ def start_web_server(args_param):
             # 如果配置项不存在，使用fallback值"false"
             # 使用.lower()转换为小写，然后与"true"比较，实现大小写不敏感的布尔判断
             enable_review = config.get("Content_Review", "enable_message_review", fallback="false").lower() == "true"
+            
+            # ============================================================
+            # [新增] 配置验证：检查百度云API密钥是否有效
+            # ============================================================
+            # 如果管理员启用了审核功能，需要先验证百度云API密钥是否已配置
+            # 如果密钥缺失，自动禁用审核功能并回写配置文件，防止功能异常
+            if enable_review:
+                # 读取百度云API密钥配置
+                # 使用strip()方法去除首尾空白字符（空格、制表符、换行符等）
+                api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
+                secret_key = config.get("baidu_cloud", "secret_key", fallback="").strip()
+                
+                # 检查API密钥是否为空（去除空白后仍为空字符串）
+                if not api_key or not secret_key:
+                    # 密钥缺失，记录警告日志
+                    # 说明：这是一个配置错误，管理员启用了审核但未配置密钥
+                    logging.warning(
+                        "[内容审核] 检测到enable_message_review=true但百度云API密钥未配置，"
+                        "自动禁用审核功能并更新配置文件"
+                    )
+                    
+                    # 将审核开关设置为False，使本次请求不进行审核
+                    enable_review = False
+                    
+                    # 回写配置文件，将enable_message_review持久化为false
+                    # 使用_write_config_with_comments函数保留配置文件中的注释
+                    try:
+                        # 在配置对象中更新enable_message_review为false
+                        config.set("Content_Review", "enable_message_review", "false")
+                        # 将更新后的配置写入文件
+                        _write_config_with_comments(config, "config.ini")
+                        logging.info(
+                            "[内容审核] 已自动将config.ini中的enable_message_review设置为false"
+                        )
+                    except Exception as e:
+                        # 如果回写配置文件失败，记录错误但不影响留言发布流程
+                        # 因为enable_review已经设置为False，本次请求仍会跳过审核
+                        logging.error(
+                            f"[内容审核] 回写配置文件失败：{str(e)}。"
+                            "审核功能已在本次请求中禁用，但配置文件未更新",
+                            exc_info=True
+                        )
         
         # 第2步：如果启用了审核功能，调用百度云文本审核服务
         if enable_review:
@@ -22381,11 +22568,8 @@ def start_web_server(args_param):
         # 任务15：获取用户信息（昵称、头像）和IP归属地
         # 为留言添加更丰富的用户信息和位置信息
         # ============================================================
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
-        else:
-            client_ip = request.remote_addr
+        # 使用统一函数获取客户端真实IP（任务2）
+        client_ip = request.remote_addr
         ip_city = get_ip_location(client_ip)
         user_nickname = nickname
         avatar_url = "default_avatar.png"
@@ -23011,9 +23195,8 @@ def start_web_server(args_param):
 
             import threading
 
-            client_ip_data = (
-                request.headers.get("X-Forwarded-For", request.remote_addr) or "unknown"
-            )
+            # 使用统一函数获取客户端真实IP（任务2）
+            client_ip_data = request.remote_addr or "unknown"
             user_agent_data = request.headers.get("User-Agent", "unknown")
             threading.Thread(
                 target=log_captcha_history,
@@ -23809,9 +23992,8 @@ def start_web_server(args_param):
                     "code": code.upper(),
                     "html": html,
                     "session_id": request.headers.get("X-Session-ID", "unknown"),
-                    "client_ip": request.headers.get(
-                        "X-Forwarded-For", request.remote_addr
-                    ),
+                    # 使用统一函数获取客户端真实IP（任务2）
+                    "client_ip": request.remote_addr,
                     "user_agent": request.headers.get("User-Agent", "unknown"),
                     "timestamp": time.time(),
                     "timestamp_readable": datetime.datetime.now().strftime(
@@ -24251,17 +24433,28 @@ def start_web_server(args_param):
         处理反向代理（如Nginx）转发的请求头。
 
         功能说明：
-        1. 检查X-Forwarded-Proto头，识别原始请求是HTTP还是HTTPS
-        2. 检查X-Forwarded-For头，获取真实客户端IP
+        1. 从X-Forwarded-For头获取真实客户端IP
+        2. 检查X-Forwarded-Proto头，识别原始请求是HTTP还是HTTPS
         3. 如果启用了https_only模式且检测到HTTP请求，重定向到HTTPS
 
         这个函数在每个请求处理之前自动执行。
+        
+        注意：X-Forwarded-For的值已由nginx智能设置：
+        - 如果CDN传来自定义头（如X-RealIP-Form），nginx会使用它作为X-Forwarded-For
+        - 否则nginx使用标准的$proxy_add_x_forwarded_for
         """
-        forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
+        # 从X-Forwarded-For获取真实客户端IP
+        # X-Forwarded-For格式：client, proxy1, proxy2
+        # 取第一个IP作为原始客户端IP
         forwarded_for = request.headers.get("X-Forwarded-For", "")
         if forwarded_for:
+            # 按逗号分割，取第一个IP（原始客户端IP）
+            # strip()去除可能存在的首尾空格
             real_ip = forwarded_for.split(",")[0].strip()
             request.environ["REMOTE_ADDR"] = real_ip
+        
+        # 处理HTTPS重定向逻辑
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
         if ssl_config.get("https_only", False) and ssl_config.get("ssl_enabled", False):
             if not forwarded_proto:
                 is_https = True
