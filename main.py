@@ -1003,6 +1003,16 @@ def _get_default_config():
         "strategy_id": "",
     }
 
+    # 内容审核功能配置节，用于控制是否启用留言内容审核
+    # 此配置项决定是否在用户发表留言时调用百度云文本审核服务进行内容检测
+    config["Content_Review"] = {
+        # 是否启用留言内容审核（true/false）
+        # true：启用审核，留言将通过百度云文本审核服务检测后才能发布
+        # false：不启用审核，留言直接发布（默认值）
+        # 注意：启用此功能需要先在[baidu_cloud]配置节中配置有效的API密钥
+        "enable_message_review": "false",
+    }
+
     return config
 
 
@@ -1337,6 +1347,22 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 如需自定义审核策略，请在百度云控制台配置后填写策略ID\n")
         f.write(f"strategy_id = {config_obj.get('baidu_cloud', 'strategy_id', fallback='')}\n\n")
 
+        # ============================================================
+        # [Content_Review] 内容审核配置
+        # ============================================================
+        # 这个配置节用于控制留言板的内容审核功能
+        # 当启用此功能后，用户发表的留言将先通过百度云文本审核服务进行检测
+        # 只有通过审核的留言才能成功发布，不合规的留言将被拦截并记录
+        f.write("[Content_Review]\n")
+        f.write("# 内容审核功能配置\n")
+        f.write("# 是否启用留言内容审核（true/false）\n")
+        f.write("# true：启用审核，使用百度云文本审核服务检测留言内容\n")
+        f.write("#       留言将被检测是否包含违规信息（色情、暴力、政治敏感等）\n")
+        f.write("#       不合规的留言将被拒绝并保存到 logs/rejected_messages.json\n")
+        f.write("# false：不启用审核，留言直接发布（默认）\n")
+        f.write("# 注意：启用此功能需要先配置百度云API密钥（见上方[baidu_cloud]配置节）\n")
+        f.write(f"enable_message_review = {config_obj.get('Content_Review', 'enable_message_review', fallback='false')}\n\n")
+
 
 def is_weak_password(password):
     """
@@ -1565,11 +1591,22 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
     # 不需要在函数内部重复导入
     
     # 读取百度云配置信息
-    # 使用configparser读取config.ini文件中的[baidu_cloud]配置节
+    # 使用统一的配置读取函数读取config.ini文件中的[baidu_cloud]配置节
     try:
-        config = configparser.ConfigParser()
-        # 读取config.ini配置文件
-        config.read("config.ini", encoding="utf-8")
+        # 调用统一的配置读取函数，该函数会返回RawConfigParser对象或None
+        config = _read_config_ini("config.ini")
+        
+        # 检查配置文件是否成功读取
+        # 如果返回None，说明配置文件读取失败（文件不存在、权限问题等）
+        if config is None:
+            # 配置文件读取失败，返回标准错误响应
+            return {
+                "success": False,
+                "conclusion": "审核失败",
+                "conclusion_type": 4,
+                "data": [],
+                "error": "无法读取配置文件config.ini"
+            }
         
         # 从配置文件中获取API Key和Secret Key
         # 如果配置项不存在或为空，则get方法会返回空字符串
@@ -1755,6 +1792,45 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             "data": [],
             "error": f"发生未知错误: {str(e)}"
         }
+
+
+def _read_config_ini(config_file="config.ini"):
+    """
+    统一的config.ini读取函数
+    
+    参数:
+        config_file: 配置文件路径，默认为"config.ini"
+        
+    返回:
+        configparser.RawConfigParser对象，如果读取失败返回None
+        
+    说明:
+        - 使用RawConfigParser保持键名的大小写
+        - 设置optionxform = str保持选项名的原始大小写
+        - 统一使用utf-8编码读取
+        - 包含错误处理，读取失败时记录日志并返回None
+    """
+    try:
+        # 创建RawConfigParser对象，它不会对配置值进行插值处理
+        # 这确保了配置值中的特殊字符（如%）不会被误解释
+        config = configparser.RawConfigParser()
+        
+        # 保持键名的原始大小写（默认会转换为小写）
+        # 这对于区分大小写敏感的配置项很重要
+        config.optionxform = str
+        
+        # 读取配置文件，使用utf-8编码
+        # 这确保能正确读取包含中文或其他Unicode字符的配置
+        config.read(config_file, encoding="utf-8")
+        
+        # 成功读取配置文件，返回配置对象
+        return config
+    except Exception as e:
+        # 捕获所有可能的异常（文件不存在、权限问题、编码错误等）
+        # 记录错误日志，包含完整的堆栈信息以便调试
+        logging.error(f"读取配置文件 {config_file} 失败: {e}", exc_info=True)
+        # 返回None表示读取失败，调用方需要检查返回值
+        return None
 
 
 def _create_config_ini():
@@ -22102,7 +22178,196 @@ def start_web_server(args_param):
 
         if len(content) > 1000:
             return jsonify({"success": False, "message": "留言内容不能超过1000字"})
+        
+        # ============================================================
+        # 预先判断用户类型：是否为游客
+        # ============================================================
+        # 这个判断需要在内容审核之前进行，因为审核日志需要记录用户类型
+        # 判断逻辑：如果用户名为"guest"或为空，则视为游客
         is_guest = auth_username == "guest" or not auth_username
+        
+        # ============================================================
+        # 内容审核：使用百度云文本审核服务检测留言内容
+        # ============================================================
+        # 这个功能用于在用户发表留言前，先检测留言内容是否包含违规信息
+        # 如果检测到不合规内容，将拒绝发布并记录到日志文件中
+        
+        # 第1步：读取配置文件，检查是否启用了留言内容审核功能
+        # 使用统一的配置读取函数_read_config_ini()读取config.ini文件
+        config = _read_config_ini("config.ini")
+        
+        # 初始化审核开关变量，默认为False（不启用审核）
+        enable_review = False
+        
+        # 检查配置文件是否成功读取，以及是否存在Content_Review配置节
+        if config and config.has_section("Content_Review"):
+            # 从配置文件中读取enable_message_review配置项
+            # 如果配置项不存在，使用fallback值"false"
+            # 使用.lower()转换为小写，然后与"true"比较，实现大小写不敏感的布尔判断
+            enable_review = config.get("Content_Review", "enable_message_review", fallback="false").lower() == "true"
+        
+        # 第2步：如果启用了审核功能，调用百度云文本审核服务
+        if enable_review:
+            # 调用check_text_content()函数进行文本审核
+            # 参数说明：
+            #   - text: 待审核的留言内容
+            #   - user_id: 用户ID（如果是游客则为None）
+            #   - user_ip: 用户的IP地址，用于风险识别
+            review_result = check_text_content(
+                text=content,
+                user_id=auth_username if auth_username else None,
+                user_ip=client_ip
+            )
+            
+            # 第3步：检查审核服务是否成功调用
+            # review_result["success"]为True表示API调用成功（不表示审核通过）
+            if review_result["success"]:
+                # 从审核结果中提取审核结论
+                # 可能的值："合规"、"不合规"、"疑似"
+                conclusion = review_result.get("conclusion", "")
+                
+                # 第4步：判断审核结果是否为"不合规"或"疑似"
+                # 这两种情况都需要拒绝留言发布
+                if conclusion in ["不合规", "疑似"]:
+                    # ============================================================
+                    # 留言被拒绝：记录到rejected_messages.json日志文件
+                    # ============================================================
+                    
+                    # 构建被拒绝留言的完整信息记录
+                    # 这个记录将保存到日志文件中，方便后续分析和审计
+                    rejected_message = {
+                        # 为每条被拒绝的留言生成一个唯一的UUID标识符
+                        "id": str(uuid.uuid4()),
+                        # 留言的完整内容
+                        "content": content,
+                        # 认证用户名（如果是游客则为None）
+                        "auth_username": auth_username if not is_guest else None,
+                        # 游客的昵称（仅游客有此字段）
+                        "nickname": nickname if is_guest else None,
+                        # 游客的邮箱（仅游客有此字段）
+                        "email": email if is_guest else None,
+                        # 是否为游客标识
+                        "is_guest": is_guest,
+                        # 留言提交的时间戳（Unix时间戳，秒级）
+                        "timestamp": time.time(),
+                        # 用户的IP地址
+                        "ip": client_ip,
+                        # 审核结果的详细信息
+                        "review_result": {
+                            # 审核结论："不合规"或"疑似"
+                            "conclusion": conclusion,
+                            # 审核结论类型编码（1:合规, 2:不合规, 3:疑似, 4:审核失败）
+                            "conclusion_type": review_result.get("conclusion_type"),
+                            # 详细的违规信息数组，包含具体的违规类型、位置等
+                            "data": review_result.get("data", [])
+                        }
+                    }
+                    
+                    # 第5步：保存被拒绝的留言到日志文件
+                    # 日志文件路径：./logs/rejected_messages.json
+                    logs_dir = "logs"
+                    
+                    # 检查logs目录是否存在，如果不存在则创建
+                    # 使用os.makedirs确保目录创建成功
+                    if not os.path.exists(logs_dir):
+                        try:
+                            os.makedirs(logs_dir)
+                        except OSError as e:
+                            # 目录创建失败，记录错误日志
+                            # 注意：即使目录创建失败，我们仍然会继续执行，只是无法保存日志
+                            logging.error(f"[留言审核] 创建logs目录失败: {e}")
+                    
+                    # 日志文件的完整路径
+                    rejected_file = os.path.join(logs_dir, "rejected_messages.json")
+                    
+                    # 初始化被拒绝留言列表
+                    rejected_messages = []
+                    
+                    # 第6步：读取已存在的被拒绝留言记录
+                    # 如果文件已存在，先读取原有内容，然后追加新记录
+                    if os.path.exists(rejected_file):
+                        try:
+                            # 以UTF-8编码读取JSON文件
+                            with open(rejected_file, "r", encoding="utf-8") as f:
+                                rejected_messages = json.load(f)
+                        except (json.JSONDecodeError, OSError) as e:
+                            # 文件读取或JSON解析失败，记录错误日志
+                            # 将rejected_messages重置为空列表，继续执行
+                            logging.error(f"[留言审核] 读取rejected_messages.json失败: {e}")
+                            rejected_messages = []
+                    
+                    # 第7步：将新的被拒绝留言添加到列表中
+                    rejected_messages.append(rejected_message)
+                    
+                    # 第8步：保存更新后的被拒绝留言列表到文件
+                    try:
+                        # 以UTF-8编码写入JSON文件
+                        # indent=2: 使用2个空格缩进，使JSON文件更易读
+                        # ensure_ascii=False: 允许写入中文字符，不转义为Unicode
+                        with open(rejected_file, "w", encoding="utf-8") as f:
+                            json.dump(rejected_messages, f, indent=2, ensure_ascii=False)
+                        
+                        # 记录警告日志，说明留言被拒绝的情况
+                        # 日志包含：用户名、审核结论、内容长度、IP地址等关键信息
+                        logging.warning(
+                            f"[留言审核] 留言被拒绝 --> 用户: {auth_username}, 审核结果: {conclusion}, "
+                            f"内容长度: {len(content)}字, IP: {client_ip}"
+                        )
+                    except OSError as e:
+                        # 文件写入失败，记录错误日志
+                        logging.error(f"[留言审核] 保存rejected_messages.json失败: {e}")
+                    
+                    # 第9步：返回审核失败的错误信息给用户
+                    # 根据审核结论类型，返回不同的用户友好提示信息
+                    
+                    # 根据审核结论选择错误提示文本
+                    if conclusion == "不合规":
+                        # 明确的违规内容，使用较强的提示语
+                        error_msg = "留言内容包含不当信息，无法发布"
+                    else:  # 疑似
+                        # 疑似违规内容，使用较温和的提示语，给用户修改机会
+                        error_msg = "留言内容可能包含不当信息，请修改后重试"
+                    
+                    # 第10步：从审核结果中提取具体的违规类型信息
+                    # 如果审核结果中包含详细的违规信息，将其添加到错误提示中
+                    data = review_result.get("data", [])
+                    if data and len(data) > 0:
+                        # 提取第一个违规项的描述信息
+                        first_violation = data[0]
+                        msg = first_violation.get("msg", "")
+                        # 如果存在描述信息，将其附加到错误提示中（以括号形式显示）
+                        if msg:
+                            error_msg += f"（{msg}）"
+                    
+                    # 返回HTTP 400错误响应，告知客户端留言审核未通过
+                    # 响应格式：{"success": False, "message": "错误提示信息"}
+                    return jsonify({"success": False, "message": error_msg}), 400
+            else:
+                # ============================================================
+                # 审核服务调用失败的处理：降级策略
+                # ============================================================
+                # 如果审核服务调用失败（例如：网络错误、API配置错误、服务不可用等）
+                # 我们需要决定是否继续发布留言
+                
+                # 记录错误日志，说明审核服务调用失败的原因
+                logging.error(f"[留言审核] 审核服务调用失败: {review_result.get('error')}")
+                
+                # 降级策略选择：
+                # 选项1：继续发布留言（当前策略）
+                #        优点：用户体验好，不会因为审核服务故障而影响正常功能
+                #        缺点：可能会有违规内容发布
+                # 选项2：拒绝留言发布
+                #        优点：更安全，确保没有未审核的内容发布
+                #        缺点：用户体验差，审核服务故障会导致留言功能不可用
+                
+                # 这里选择继续发布留言（降级策略），保证用户体验
+                # 如果需要更严格的策略，可以取消下面的注释，改为拒绝发布：
+                # return jsonify({"success": False, "message": "内容审核服务暂时不可用，请稍后重试"}), 503
+        
+        # ============================================================
+        # 审核通过或未启用审核，继续执行后续的留言发布流程
+        # ============================================================
+        # 游客身份验证：检查游客是否填写了必要的信息
         if is_guest:
             if not email:
                 return jsonify({"success": False, "message": "游客必须填写邮箱"})
