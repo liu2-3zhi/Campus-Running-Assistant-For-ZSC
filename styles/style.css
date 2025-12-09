@@ -1152,7 +1152,7 @@ body.mobile-mode #session-picker-modal {
 .mobile-mode #mobile-task-history-list,
 .mobile-mode #mobile-admin-panel-content-panel,
 .mobile-mode #mobile-multi-admin-content-panel {
-    padding-bottom: 120px !important;
+    padding-bottom: 0px !important;
 }
 
 .mobile-mode .mobile-bottom-nav {
@@ -1702,7 +1702,7 @@ body.mobile-mode #session-picker-modal {
 }
 
 .mobile-mode .mobile-content {
-  padding-bottom: 80px !important;
+  padding-bottom: 0px !important;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1741,9 +1741,9 @@ body.mobile-mode #session-picker-modal {
 .mobile-mode .mobile-card-fullscreen {
   height: calc(100vh - 60px); /* 保持原有高度计算 */
   margin: 0;
-  border-radius: 0;
+  border-radius: 20px;
   /* 确保全屏卡片本身也有底部内边距，防止最底部按钮贴边 */
-  padding-bottom: 100px !important;
+  padding-bottom: 20px !important;
   border: none;
   box-shadow: none;
   padding: 16px;
@@ -1787,6 +1787,6 @@ body.mobile-mode #session-picker-modal {
 /* 为mobile-beian-footer添加底部间距，避开底部导航栏和浏览器工具栏 */
 #mobile-beian-footer {
   /* 100px = 移动端底部导航栏(64px) + 浏览器工具栏(~30-50px) + 安全余量(6-16px) */
-  padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px));
   /* env(safe-area-inset-bottom)用于适配iPhone等带有刘海屏的设备 */
 }

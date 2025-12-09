@@ -21981,67 +21981,6 @@ function openMobileAdminPanelUnified(mode) {
   }
 }
 
-/**
- * 控制移动端备案Footer的显示/隐藏
- * 根据当前面板ID判断是否需要显示footer
- * 
- * @param {string} panelId - 当前显示的面板ID
- */
-function updateMobileFooterVisibility(panelId) {
-  // 定义需要显示footer的18个面板ID列表
-  // 这个列表包含了所有需要在底部显示备案信息的移动端面板
-  const MOBILE_PANELS_WITH_FOOTER = [
-    // ===== 单账号模式面板（13个）=====
-    'mobile-single-login-card',       // 单账号登录卡片
-    'mobile-notification-panel',      // 通知面板
-    'mobile-task-panel',              // 任务面板
-    'mobile-map-panel',               // 地图面板
-    'mobile-control-panel',           // 控制面板
-    'mobile-log-panel',               // 日志面板
-    'mobile-checkpoints-panel',       // 打卡点面板
-    'mobile-task-history-panel',      // 任务历史面板
-    'mobile-attendance-panel',        // 考勤面板
-    'mobile-settings-panel',          // 设置面板
-    'mobile-task-details-panel',      // 任务详情面板
-    'mobile-profile-panel',           // 个人资料面板
-    'mobile-admin-panel-unified',     // 统一管理面板（单账号模式复用）
-    
-    // ===== 多账号模式面板（5个）=====
-    'mobile-multi-account-panel',     // 多账号面板
-    'mobile-multi-control-panel',     // 多账号控制面板
-    'mobile-multi-map-panel',         // 多账号地图面板
-    'mobile-multi-settings-panel',    // 多账号设置面板
-    'mobile-multi-log-panel'          // 多账号日志面板
-  ];
-  
-  // 获取移动端备案footer的DOM元素
-  const footer = document.getElementById('mobile-beian-footer');
-  
-  // 如果footer元素不存在（可能还未加载或被移除），则直接返回，避免后续操作报错
-  if (!footer) {
-    return;
-  }
-  
-  // 检查当前面板ID是否在需要显示footer的列表中
-  // 使用 includes() 方法进行精确匹配
-  const shouldShowFooter = MOBILE_PANELS_WITH_FOOTER.includes(panelId);
-  
-  // 根据判断结果，决定是显示还是隐藏footer
-  if (shouldShowFooter) {
-    // 当前面板需要显示footer
-    // 移除 'hidden' 类，使footer可见
-    footer.classList.remove('hidden');
-    // 设置display样式为flex，使用弹性布局显示footer内容
-    footer.style.display = 'flex';
-  } else {
-    // 当前面板不需要显示footer
-    // 添加 'hidden' 类，隐藏footer
-    footer.classList.add('hidden');
-    // 设置display样式为none，完全隐藏footer元素
-    footer.style.display = 'none';
-  }
-}
-
 function switchMobileSinglePanel(panelId, showalert = true) {
   // 【任务7修复】单账号模式面板数组，添加 mobile-admin-panel-unified 以支持复用多账号管理面板
   const singleModePanels = [
@@ -22074,11 +22013,6 @@ function switchMobileSinglePanel(panelId, showalert = true) {
     targetPanel.style.display = "";
     // [修正] 显式移除 hidden 类
     targetPanel.classList.remove("hidden");
-
-    // 【新增】控制移动端备案footer的显示
-    // 在面板切换完成后，根据当前panelId决定是否显示备案footer
-    // 这确保了18个指定面板会显示footer，其他面板则隐藏footer
-    updateMobileFooterVisibility(panelId);
 
     if (panelId === "mobile-control-panel") {
       logMessage_Info("[移动端单账号] 激活控制面板");
@@ -22383,11 +22317,6 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
     targetPanel.style.display = "";
     // [修正] 显式移除 hidden 类，确保面板显示 (修复 mobile-admin-panel-unified 无法显示的问题)
     targetPanel.classList.remove("hidden");
-
-    // 【新增】控制移动端备案footer的显示
-    // 在多账号模式面板切换完成后，根据当前panelId决定是否显示备案footer
-    // 这确保了多账号模式下的5个指定面板会显示footer，其他面板则隐藏footer
-    updateMobileFooterVisibility(panelId);
 
     if (panelId === "mobile-multi-control-panel") {
       logMessage_Info("[移动端多账号] 激活多账号控制面板");

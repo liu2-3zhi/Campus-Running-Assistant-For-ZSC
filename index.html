@@ -4093,7 +4093,7 @@
             </div>
           </div>
 
-          <div id="mobile-multi-account-list" class="space-y-3 max-h-[100vh] overflow-y-auto pr-2 mb-5">
+          <div id="mobile-multi-account-list" class="space-y-3 overflow-y-auto pr-2 mb-5">
             <div class="text-center py-12">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-20 h-20 mx-auto text-slate-300 mb-4" viewBox="0 0 24 24"
                 fill="currentColor">
@@ -4445,7 +4445,7 @@
         <!-- ========================================
              【全局参数面板】
              ======================================== -->
-        <div class="mobile-card mobile-card-fullscreen hidden" id="mobile-multi-settings-panel">
+        <div class="mobile-card hidden" id="mobile-multi-settings-panel">
           <div class="flex items-center gap-2 mb-4 pb-3 border-b border-teal-100">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-teal-600" fill="none" viewBox="0 0 24 24"
               stroke="currentColor">
@@ -4513,7 +4513,7 @@
             </div>
           </div>
 
-          <div id="mobile-multi-global-params-container" class="space-y-3 max-h-[60vh] overflow-y-auto"></div>
+          <div id="mobile-multi-global-params-container" class="space-y-3"></div>
 
           <div class="pt-3 border-t border-teal-100">
             <button
@@ -4528,7 +4528,7 @@
           </div>
         </div>
 
-        <div class="mobile-card mobile-card-fullscreen hidden" id="mobile-multi-log-panel">
+        <div class="mobile-card hidden" id="mobile-multi-log-panel">
           <div class="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24"
               stroke="currentColor">
@@ -4539,7 +4539,7 @@
             <h3 class="text-xl font-bold text-slate-700">全局日志</h3>
           </div>
 
-          <div class="flex-1 overflow-hidden rounded-lg p-3">
+          <div class="flex-1 rounded-lg p-3">
             <textarea id="mobile-multi-log-text" readonly=""
               class="w-full h-full bg-white text-slate-800 font-mono text-xs border border-slate-300 rounded-lg resize-none outline-none p-3"
               placeholder="等待日志输出..."></textarea>
@@ -4567,6 +4567,7 @@
             </button>
           </div>
         </div>
+        
       </div>
     </main>
 
