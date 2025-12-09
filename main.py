@@ -22404,6 +22404,48 @@ def start_web_server(args_param):
             # 如果配置项不存在，使用fallback值"false"
             # 使用.lower()转换为小写，然后与"true"比较，实现大小写不敏感的布尔判断
             enable_review = config.get("Content_Review", "enable_message_review", fallback="false").lower() == "true"
+            
+            # ============================================================
+            # [新增] 配置验证：检查百度云API密钥是否有效
+            # ============================================================
+            # 如果管理员启用了审核功能，需要先验证百度云API密钥是否已配置
+            # 如果密钥缺失，自动禁用审核功能并回写配置文件，防止功能异常
+            if enable_review:
+                # 读取百度云API密钥配置
+                # 使用strip()方法去除首尾空白字符（空格、制表符、换行符等）
+                api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
+                secret_key = config.get("baidu_cloud", "secret_key", fallback="").strip()
+                
+                # 检查API密钥是否为空（去除空白后仍为空字符串）
+                if not api_key or not secret_key:
+                    # 密钥缺失，记录警告日志
+                    # 说明：这是一个配置错误，管理员启用了审核但未配置密钥
+                    logging.warning(
+                        "[内容审核] 检测到enable_message_review=true但百度云API密钥未配置，"
+                        "自动禁用审核功能并更新配置文件"
+                    )
+                    
+                    # 将审核开关设置为False，使本次请求不进行审核
+                    enable_review = False
+                    
+                    # 回写配置文件，将enable_message_review持久化为false
+                    # 使用_write_config_with_comments函数保留配置文件中的注释
+                    try:
+                        # 在配置对象中更新enable_message_review为false
+                        config.set("Content_Review", "enable_message_review", "false")
+                        # 将更新后的配置写入文件
+                        _write_config_with_comments(config, "config.ini")
+                        logging.info(
+                            "[内容审核] 已自动将config.ini中的enable_message_review设置为false"
+                        )
+                    except Exception as e:
+                        # 如果回写配置文件失败，记录错误但不影响留言发布流程
+                        # 因为enable_review已经设置为False，本次请求仍会跳过审核
+                        logging.error(
+                            f"[内容审核] 回写配置文件失败：{str(e)}。"
+                            "审核功能已在本次请求中禁用，但配置文件未更新",
+                            exc_info=True
+                        )
         
         # 第2步：如果启用了审核功能，调用百度云文本审核服务
         if enable_review:
