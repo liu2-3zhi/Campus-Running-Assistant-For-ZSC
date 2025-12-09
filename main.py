@@ -992,6 +992,17 @@ def _get_default_config():
         "show_police": "false",
     }
 
+    # 百度云文本审核服务配置节，用于配置百度云API的访问凭证
+    # 百度云文本审核服务可以检测用户提交的文本内容是否包含违规信息（如色情、暴力、政治敏感等）
+    config["baidu_cloud"] = {
+        # API Key：在百度云控制台创建应用后获取的API密钥（必填）
+        "api_key": "",
+        # Secret Key：在百度云控制台创建应用后获取的密钥（必填）
+        "secret_key": "",
+        # 策略ID：自定义审核策略的ID（可选，留空则使用百度云默认审核策略）
+        "strategy_id": "",
+    }
+
     return config
 
 
@@ -1311,6 +1322,20 @@ def _write_config_with_comments(config_obj, filepath):
         f.write(
             f"show_police = {config_obj.get('Beian', 'show_police', fallback='false')}\n\n"
         )
+
+        # [baidu_cloud] 百度云文本审核服务配置
+        # 这个配置节包含了百度云API的访问凭证和审核策略设置
+        f.write("[baidu_cloud]\n")
+        f.write("# 百度云文本审核服务配置\n")
+        f.write("# 用于检测用户提交的文本内容是否包含违规信息（如色情、暴力、政治敏感等）\n")
+        f.write("# 申请地址：https://console.bce.baidu.com/ai/#/ai/antiporn/overview/index\n")
+        f.write("# API Key（必填）：在百度云控制台创建应用后获取\n")
+        f.write(f"api_key = {config_obj.get('baidu_cloud', 'api_key', fallback='')}\n")
+        f.write("# Secret Key（必填）：在百度云控制台创建应用后获取\n")
+        f.write(f"secret_key = {config_obj.get('baidu_cloud', 'secret_key', fallback='')}\n")
+        f.write("# 策略ID（可选）：不填则使用百度云默认审核策略\n")
+        f.write("# 如需自定义审核策略，请在百度云控制台配置后填写策略ID\n")
+        f.write(f"strategy_id = {config_obj.get('baidu_cloud', 'strategy_id', fallback='')}\n\n")
 
 
 def is_weak_password(password):
