@@ -1778,7 +1778,7 @@ body.mobile-mode #session-picker-modal {
 #auth-login-container,
 #main-app,
 #multi-account-app {
-  padding-bottom: 80px; /* 为footer预留空间 */
+  padding-bottom: 40px; /* 为footer预留空间 */
 }
 
 /* pc-beian-footer使用fixed定位，覆盖在padding区域上 */

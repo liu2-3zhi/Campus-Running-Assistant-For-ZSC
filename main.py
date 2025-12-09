@@ -10007,6 +10007,8 @@ def monitor_session_inactivity():
                 sessions_snapshot = list(web_sessions.items())
 
             for session_id, api_instance in sessions_snapshot:
+                if not session_id or session_id == "null" or session_id.strip() == "" or session_id == "undefined":
+                    continue
                 if not api_instance:
                     continue
                 with session_activity_lock:
