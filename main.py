@@ -18299,6 +18299,68 @@ def start_web_server(args_param):
                         ),
                     ),
                 },
+                # ==================== Beian 备案信息配置加载 ====================
+                # 功能说明：从 config.ini 文件中读取网站备案相关的配置信息
+                # 包括 ICP 备案号（工信部）和公安网备案号（公安部）
+                # 这些信息将在前端管理面板中显示，供管理员查看和编辑
+                # 
+                # 修复说明：
+                # - 原有问题：config_data 字典中缺少 Beian 配置部分
+                # - 导致前端无法正确读取和显示 Beian 配置项
+                # - 解决方案：添加完整的 Beian 配置加载逻辑
+                "Beian": {
+                    # ICP 备案号（Internet Content Provider，互联网内容提供商）
+                    # 这是工信部颁发的网站备案号，格式通常为：京ICP备xxxxxxxx号
+                    # 用途：在网站底部显示，证明网站已经过合法备案
+                    "icp_number": _get_config_value(
+                        config,  # 当前加载的配置对象
+                        "Beian",  # 配置节（section）名称
+                        "icp_number",  # 配置键（key）名称
+                        # fallback 参数：如果配置文件中没有该项，使用默认配置中的值
+                        # 如果默认配置中也没有，则使用空字符串
+                        fallback=default_config.get("Beian", "icp_number", fallback=""),
+                    ),
+                    # 是否显示 ICP 备案信息的开关
+                    # 类型：布尔值（True/False）
+                    # 用途：控制网站底部是否显示 ICP 备案号
+                    # 有些网站可能已备案但不希望公开显示，可以设置为 False
+                    "show_icp": _get_config_value(
+                        config,  # 配置对象
+                        "Beian",  # 配置节
+                        "show_icp",  # 配置键
+                        type_func=config.getboolean,  # 指定类型转换函数，将字符串转为布尔值
+                        # fallback：先尝试从默认配置获取布尔值，如果没有则使用 False
+                        fallback=default_config.getboolean(
+                            "Beian", "show_icp", fallback=False
+                        ),
+                    ),
+                    # 公安网备案号
+                    # 这是公安部门颁发的网站备案号，格式通常为：京公网安备 xxxxxxxxxxxxxxxx号
+                    # 用途：在网站底部显示，证明网站已向公安机关备案
+                    # 根据《网络安全法》，某些类型的网站需要进行公安备案
+                    "police_number": _get_config_value(
+                        config,  # 配置对象
+                        "Beian",  # 配置节
+                        "police_number",  # 配置键
+                        # fallback：如果配置文件中没有该项，使用默认配置或空字符串
+                        fallback=default_config.get("Beian", "police_number", fallback=""),
+                    ),
+                    # 是否显示公安网备案信息的开关
+                    # 类型：布尔值（True/False）
+                    # 用途：控制网站底部是否显示公安网备案号
+                    # 管理员可以根据需要开启或关闭此显示
+                    "show_police": _get_config_value(
+                        config,  # 配置对象
+                        "Beian",  # 配置节
+                        "show_police",  # 配置键
+                        type_func=config.getboolean,  # 类型转换函数，字符串 -> 布尔值
+                        # fallback：先尝试从默认配置获取，如果没有则默认为 False（不显示）
+                        fallback=default_config.getboolean(
+                            "Beian", "show_police", fallback=False
+                        ),
+                    ),
+                },
+                # ==================== Beian 配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})

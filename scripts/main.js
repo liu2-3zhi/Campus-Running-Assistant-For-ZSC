@@ -24261,49 +24261,156 @@ function formatTimestamp(timestamp) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 let shownReminders = new Set();
+/**
+ * 检查并显示定时提醒
+ * 
+ * 功能说明：
+ * 1. 定期向后端查询需要显示的提醒
+ * 2. 过滤出尚未显示的新提醒（避免重复显示）
+ * 3. 根据提醒数量决定显示方式：
+ *    - 单个提醒：独立弹窗显示
+ *    - 多个提醒：合并到一个弹窗中显示（解决覆盖问题）
+ * 
+ * 修复说明：
+ * - 原有问题：使用 for 循环逐个调用 Swal.fire()，导致后一个提醒覆盖前一个
+ * - 解决方案：先收集所有新提醒，然后根据数量选择合适的显示方式
+ */
 async function checkAndShowReminders() {
+  // 验证 sessionUUID 是否存在
+  // sessionUUID 是用户会话的唯一标识符，用于后端识别当前用户
   if (!sessionUUID) {
+    // 尝试从 URL 中获取 UUID（用户进入系统时会生成）
     sessionUUID = getUUIDFromURL();
     if (!sessionUUID) {
+      // 如果仍然无法获取 UUID，记录错误并退出
+      // 这种情况通常发生在用户未正确登录或会话已过期
       logMessage_Error("跳过提醒检查: sessionUUID 未定义");
       return;
     }
   }
+  
   try {
+    // 向后端 API 发起请求，检查是否有需要显示的提醒
     const response = await fetch("/api/reminders/check", {
-      method: "GET",
+      method: "GET", // 使用 GET 方法查询数据
       headers: {
+        // 在请求头中携带 sessionUUID，让后端知道是哪个用户在查询
         "X-Session-ID": sessionUUID,
       },
     });
+    
+    // 解析后端返回的 JSON 数据
     const result = await response.json();
+    
+    // 检查后端是否成功处理请求
     if (!result.success) {
+      // 如果失败，记录错误信息并退出
       console.error("[定时提醒] 检查失败:", result.message);
       return;
     }
+    
+    // 获取后端返回的提醒列表
+    // 如果后端没有返回 reminders 字段，使用空数组作为默认值
     const reminders = result.reminders || [];
-    for (const reminder of reminders) {
-      if (shownReminders.has(reminder.id)) {
-        continue;
-      }
-      shownReminders.add(reminder.id);
+    
+    // ==================== 核心修复逻辑开始 ====================
+    
+    // 过滤出尚未显示过的新提醒
+    // shownReminders 是一个 Set 集合，用于记录已显示过的提醒 ID
+    // 这样可以避免同一个提醒被重复显示
+    const newReminders = reminders.filter(r => !shownReminders.has(r.id));
+    
+    // 如果没有新提醒需要显示，直接返回，不做任何操作
+    if (newReminders.length === 0) {
+      return;
+    }
+    
+    // 将所有新提醒的 ID 添加到已显示集合中
+    // 这样下次检查时就不会再显示这些提醒了
+    newReminders.forEach(r => shownReminders.add(r.id));
+    
+    // 根据新提醒的数量，选择不同的显示方式
+    if (newReminders.length === 1) {
+      // ==================== 单个提醒的处理 ====================
+      // 只有一个提醒时，使用原有的简洁显示方式
+      
+      const reminder = newReminders[0];
+      
+      // 使用 SweetAlert2 显示提醒弹窗
       Swal.fire({
-        title: reminder.title,
+        title: reminder.title, // 提醒标题
+        // 将提醒内容中的换行符 \n 转换为 HTML 的 <br> 标签
+        // 这样可以在弹窗中正确显示多行文本
         html: reminder.message.replace(/\n/g, "<br>"),
-        icon: "info",
-        confirmButtonText: "知道了",
-        allowOutsideClick: true,
-        allowEscapeKey: true,
+        icon: "info", // 使用信息图标
+        confirmButtonText: "知道了", // 确认按钮文字
+        allowOutsideClick: true, // 允许点击弹窗外部关闭
+        allowEscapeKey: true, // 允许按 ESC 键关闭
         customClass: {
+          // 自定义样式类名，用于统一提醒弹窗的外观
           popup: "reminder-alert-popup",
           title: "reminder-alert-title",
           htmlContainer: "reminder-alert-content",
         },
       });
-
+      
+      // 在控制台记录日志，便于调试
       console.log(`[定时提醒] 已显示提醒: ${reminder.title}`);
+      
+    } else {
+      // ==================== 多个提醒的处理（核心修复） ====================
+      // 有多个提醒时，将它们合并到一个弹窗中显示
+      // 这样可以避免后一个提醒覆盖前一个提醒的问题
+      
+      // 构建合并后的 HTML 内容
+      // 使用 Tailwind CSS 的样式类来美化显示效果
+      let mergedHtml = '<div class="space-y-4">'; // space-y-4: 子元素之间垂直间距为 1rem
+      
+      // 遍历所有新提醒，为每个提醒生成一个独立的显示块
+      newReminders.forEach((reminder, index) => {
+        mergedHtml += `
+          <div class="border-b border-slate-200 pb-3 ${index === newReminders.length - 1 ? 'border-0 pb-0' : ''}">
+            <h4 class="font-semibold text-slate-800 mb-1">${index + 1}. ${reminder.title}</h4>
+            <div class="text-slate-600 text-sm">${reminder.message.replace(/\n/g, "<br>")}</div>
+          </div>
+        `;
+        // 解释：
+        // - border-b: 底部边框，用于分隔不同的提醒
+        // - 最后一个提醒不需要底部边框（通过三元运算符判断）
+        // - font-semibold: 标题使用半粗体
+        // - text-slate-800: 标题使用深灰色
+        // - text-slate-600: 内容使用中灰色
+        // - text-sm: 内容使用小号字体
+      });
+      
+      mergedHtml += '</div>';
+      
+      // 显示合并后的提醒弹窗
+      Swal.fire({
+        title: `📢 您有 ${newReminders.length} 条提醒`, // 标题显示提醒总数
+        html: mergedHtml, // 使用构建好的 HTML 内容
+        icon: "info", // 信息图标
+        confirmButtonText: "知道了", // 确认按钮文字
+        width: '600px', // 设置弹窗宽度，给多个提醒留出足够空间
+        allowOutsideClick: true, // 允许点击外部关闭
+        allowEscapeKey: true, // 允许按 ESC 键关闭
+        customClass: {
+          // 使用与单个提醒相同的样式类，保持界面一致性
+          popup: "reminder-alert-popup",
+          title: "reminder-alert-title",
+          htmlContainer: "reminder-alert-content",
+        },
+      });
+      
+      // 在控制台记录日志，显示提醒的数量
+      console.log(`[定时提醒] 已显示 ${newReminders.length} 条提醒`);
     }
+    
+    // ==================== 核心修复逻辑结束 ====================
+    
   } catch (error) {
+    // 捕获并记录任何网络请求或 JSON 解析过程中发生的错误
+    // 这样即使提醒功能出错，也不会影响应用的其他功能
     console.error("[定时提醒] 检查提醒时发生错误:", error);
   }
 }
