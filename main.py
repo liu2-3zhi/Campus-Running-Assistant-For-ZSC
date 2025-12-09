@@ -18914,6 +18914,77 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== Beian 配置加载结束 ====================
+                
+                # ==================== 百度云文本审核服务配置加载 ====================
+                # 功能说明：从 config.ini 文件中读取百度云文本审核API的配置信息
+                # 用途：对用户发布的留言内容进行智能审核，检测色情、暴力、政治敏感等违规信息
+                # 依赖：需要在百度智能云控制台创建"内容审核"应用并获取API密钥
+                # 
+                # 配置项说明：
+                # - api_key: 百度云控制台获取的API Key（应用凭证）
+                # - secret_key: 百度云控制台获取的Secret Key（应用密钥）
+                # - strategy_id: 自定义审核策略ID（可选，留空则使用百度默认策略）
+                "baidu_cloud": {
+                    # API Key（应用密钥）
+                    # 从百度智能云控制台 -> 产品服务 -> 内容审核 -> 应用列表 中获取
+                    # 用于身份验证，调用百度云API时必须提供
+                    "api_key": _get_config_value(
+                        config,  # 当前加载的配置对象
+                        "baidu_cloud",  # 配置节（section）名称
+                        "api_key",  # 配置键（key）名称
+                        fallback=""  # 如果配置文件中没有该项，返回空字符串
+                    ),
+                    # Secret Key（应用密钥）
+                    # 与 API Key 配合使用，用于生成访问令牌（Access Token）
+                    # 注意：此密钥非常重要，应妥善保管，不要泄露
+                    "secret_key": _get_config_value(
+                        config,  # 配置对象
+                        "baidu_cloud",  # 配置节
+                        "secret_key",  # 配置键
+                        fallback=""  # 默认为空字符串
+                    ),
+                    # 策略ID（可选配置项）
+                    # 说明：百度云支持自定义审核策略，可以设置不同的审核严格程度
+                    # 如果留空，则使用百度云的默认审核策略
+                    # 如果需要自定义审核规则，可以在百度云控制台创建策略后填写策略ID
+                    "strategy_id": _get_config_value(
+                        config,  # 配置对象
+                        "baidu_cloud",  # 配置节
+                        "strategy_id",  # 配置键
+                        fallback=""  # 默认为空字符串（使用默认策略）
+                    ),
+                },
+                # ==================== 百度云配置加载结束 ====================
+                
+                # ==================== 内容审核功能配置加载 ====================
+                # 功能说明：控制留言内容审核功能的开关
+                # 用途：决定是否对用户发布的留言进行实时内容审核
+                # 依赖：需要先配置上方的 baidu_cloud API 密钥才能正常工作
+                # 
+                # 工作流程：
+                # 1. 用户提交留言
+                # 2. 系统调用百度云文本审核API检测内容
+                # 3. 如果检测到违规内容，拒绝发布并提示用户
+                # 4. 如果内容合规，正常发布留言
+                "Content_Review": {
+                    # 是否启用留言内容审核功能
+                    # 类型：布尔值（True/False）
+                    # - True：启用审核，所有留言提交前会先通过百度云API检测
+                    # - False：关闭审核，留言直接发布（不推荐，可能导致违规内容）
+                    # 
+                    # 注意事项：
+                    # 1. 启用此功能前，必须先在上方的 baidu_cloud 中配置有效的API密钥
+                    # 2. 每次审核会调用百度云API，可能产生一定的API调用费用（根据百度云计费规则）
+                    # 3. 审核过程需要网络请求，可能增加留言发布的响应时间（通常1-2秒）
+                    "enable_message_review": _get_config_value(
+                        config,  # 配置对象
+                        "Content_Review",  # 配置节
+                        "enable_message_review",  # 配置键
+                        type_func=config.getboolean,  # 类型转换函数，将字符串转为布尔值
+                        fallback=False  # 默认为 False（关闭审核），避免未配置API密钥时出错
+                    ),
+                },
+                # ==================== 内容审核配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -19047,6 +19118,54 @@ def start_web_server(args_param):
                 # 布尔值转换为小写字符串 "true" 或 "false"
                 if "show_police" in beian_data:
                     config.set("Beian", "show_police", str(beian_data["show_police"]).lower())
+            
+            # [新增] 处理百度云文本审核服务配置
+            # 百度云API用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）
+            # 配置项来源：百度智能云控制台 -> 内容审核 -> 应用管理
+            if "baidu_cloud" in data:
+                # 确保 baidu_cloud 配置节存在
+                # 如果 config.ini 中没有 [baidu_cloud] 节，则自动创建
+                ensure_section(config, "baidu_cloud")
+                cloud_data = data["baidu_cloud"]
+                
+                # 处理 API Key（百度云控制台获取的应用凭证）
+                # API Key 用于标识应用身份，是调用百度云API的必需参数
+                if "api_key" in cloud_data:
+                    config.set("baidu_cloud", "api_key", str(cloud_data["api_key"]))
+                
+                # 处理 Secret Key（百度云控制台获取的应用密钥）
+                # Secret Key 与 API Key 配合使用，用于生成访问令牌（Access Token）
+                # 注意：Secret Key 非常重要，应妥善保管，避免泄露
+                if "secret_key" in cloud_data:
+                    config.set("baidu_cloud", "secret_key", str(cloud_data["secret_key"]))
+                
+                # 处理策略ID（可选配置项，用于自定义审核规则）
+                # 百度云支持创建自定义审核策略，可以设置不同的审核严格程度
+                # 如果留空，系统将使用百度云的默认审核策略
+                if "strategy_id" in cloud_data:
+                    config.set("baidu_cloud", "strategy_id", str(cloud_data["strategy_id"]))
+
+            # [新增] 处理内容审核功能配置
+            # 控制是否启用留言内容审核功能
+            # 启用后，用户提交的留言将通过百度云API进行违规内容检测
+            if "Content_Review" in data:
+                # 确保 Content_Review 配置节存在
+                # 如果 config.ini 中没有 [Content_Review] 节，则自动创建
+                ensure_section(config, "Content_Review")
+                review_data = data["Content_Review"]
+                
+                # 处理是否启用留言审核的开关（布尔值：true 或 false）
+                # 前端传递的是 JavaScript 的 true/false，需要转换为字符串 "true"/"false"
+                # configparser 只能存储字符串，读取时会通过 getboolean() 转换回布尔值
+                # 
+                # 工作流程：
+                # 1. 用户在管理面板勾选"启用留言审核"复选框
+                # 2. 前端发送 enable_message_review: true
+                # 3. 这里将 true 转换为小写字符串 "true" 保存到 config.ini
+                # 4. 下次加载时，通过 config.getboolean() 将 "true" 转换回 True
+                if "enable_message_review" in review_data:
+                    config.set("Content_Review", "enable_message_review", 
+                               str(review_data["enable_message_review"]).lower())
             
             _write_config_with_comments(config, CONFIG_FILE)
             # 使用统一函数获取客户端真实IP（任务2）
