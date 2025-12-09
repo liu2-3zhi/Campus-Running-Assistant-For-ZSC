@@ -14757,7 +14757,8 @@ def start_web_server(args_param):
         """
         全局IP封禁检查拦截器
         """
-        client_ip = request.remote_addr
+        # 使用统一函数获取客户端真实IP（任务2）
+        client_ip = get_client_ip(request)
         if (
             request.path.startswith("/static/")
             or request.path.startswith("/css/")
@@ -15040,9 +15041,8 @@ def start_web_server(args_param):
                                 "files": {},
                             }
 
-                        ip_address = request.headers.get(
-                            "X-Forwarded-For", request.remote_addr
-                        )
+                        # 使用统一函数获取客户端真实IP（任务2）
+                        ip_address = get_client_ip(request)
                         index_data["files"][filename] = {
                             "username": "Guest",
                             "upload_time": time.time(),
@@ -15829,9 +15829,8 @@ def start_web_server(args_param):
 
                     auth_system._save_permissions()
 
-                    ip_address = request.headers.get(
-                        "X-Forwarded-For", request.remote_addr
-                    )
+                    # 使用统一函数获取客户端真实IP（任务2）
+                    ip_address = get_client_ip(request)
                     auth_system.log_audit(
                         auth_username,
                         "set_user_permissions_batch",
@@ -23886,9 +23885,8 @@ def start_web_server(args_param):
                     "code": code.upper(),
                     "html": html,
                     "session_id": request.headers.get("X-Session-ID", "unknown"),
-                    "client_ip": request.headers.get(
-                        "X-Forwarded-For", request.remote_addr
-                    ),
+                    # 使用统一函数获取客户端真实IP（任务2）
+                    "client_ip": get_client_ip(request),
                     "user_agent": request.headers.get("User-Agent", "unknown"),
                     "timestamp": time.time(),
                     "timestamp_readable": datetime.datetime.now().strftime(

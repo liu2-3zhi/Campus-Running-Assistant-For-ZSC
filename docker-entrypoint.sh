@@ -13,6 +13,15 @@ touch /app/nginx.conf
 # 读取自定义IP头环境变量，默认为X-RealIP-Form
 # 这个头将被nginx设置为$remote_addr，传递给后端Flask应用
 REAL_IP_HEADER=${REAL_IP_HEADER:-X-RealIP-Form}
+
+# 验证REAL_IP_HEADER只包含合法的HTTP头名称字符(字母、数字、连字符)
+# 这样可以防止nginx配置注入攻击
+if ! echo "$REAL_IP_HEADER" | grep -qE '^[A-Za-z0-9-]+$'; then
+    echo "错误: REAL_IP_HEADER包含非法字符，只允许字母、数字和连字符"
+    echo "将使用默认值: X-RealIP-Form"
+    REAL_IP_HEADER="X-RealIP-Form"
+fi
+
 echo "使用自定义IP头: $REAL_IP_HEADER"
 
 # 打印启动信息
