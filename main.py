@@ -1369,6 +1369,363 @@ def is_weak_password(password):
     return (False, "")
 
 
+def get_baidu_access_token(api_key, secret_key):
+    """
+    获取百度云API的access_token
+    
+    百度云的所有API调用都需要先获取access_token作为身份验证凭证。
+    该函数通过API Key和Secret Key向百度OAuth 2.0服务请求access_token。
+    
+    参数:
+        api_key (str): 百度云应用的API Key，在百度云控制台创建应用后获取
+        secret_key (str): 百度云应用的Secret Key，在百度云控制台创建应用后获取
+    
+    返回:
+        dict: 包含以下键的字典：
+            - access_token (str or None): 成功时返回access_token字符串，失败时为None
+            - error (str or None): 成功时为None，失败时返回错误信息
+    
+    使用示例:
+        result = get_baidu_access_token("your_api_key", "your_secret_key")
+        if result["error"] is None:
+            print(f"获取token成功: {result['access_token']}")
+        else:
+            print(f"获取token失败: {result['error']}")
+    """
+    # 导入requests库用于发送HTTP请求
+    # 由于main.py中已经在其他地方导入了requests，这里使用现有的导入
+    import requests
+    
+    # 百度云OAuth 2.0 token获取接口的URL
+    # 该接口使用client_credentials授权模式（客户端凭证模式）
+    token_url = "https://aip.baidubce.com/oauth/2.0/token"
+    
+    # 构造请求参数
+    # grant_type: OAuth 2.0的授权类型，这里使用client_credentials（客户端凭证）
+    # client_id: 即百度云的API Key
+    # client_secret: 即百度云的Secret Key
+    params = {
+        "grant_type": "client_credentials",  # 授权类型：客户端凭证模式
+        "client_id": api_key,                # 百度云API Key
+        "client_secret": secret_key          # 百度云Secret Key
+    }
+    
+    try:
+        # 发送GET请求到百度云token获取接口
+        # timeout=10: 设置请求超时时间为10秒，防止长时间等待导致程序挂起
+        # 如果10秒内没有响应，将抛出requests.exceptions.Timeout异常
+        response = requests.get(token_url, params=params, timeout=10)
+        
+        # 检查HTTP响应状态码
+        # raise_for_status()会在状态码为4xx或5xx时抛出HTTPError异常
+        # 例如：404 Not Found、500 Internal Server Error等
+        response.raise_for_status()
+        
+        # 尝试将响应内容解析为JSON格式
+        # 百度云API的响应都是JSON格式的数据
+        data = response.json()
+        
+        # 检查响应中是否包含access_token字段
+        # 成功的响应格式：{"access_token": "...", "expires_in": 2592000}
+        # 失败的响应格式：{"error": "...", "error_description": "..."}
+        if "access_token" in data:
+            # 成功获取token，返回结果
+            return {
+                "access_token": data["access_token"],  # 返回access_token
+                "error": None                          # 没有错误
+            }
+        else:
+            # 响应中没有access_token，说明请求失败
+            # 从响应中提取错误信息，如果没有error字段则使用默认信息
+            error_msg = data.get("error_description", data.get("error", "未知错误"))
+            return {
+                "access_token": None,                                  # token获取失败
+                "error": f"百度云API返回错误: {error_msg}"              # 返回错误信息
+            }
+    
+    except requests.exceptions.Timeout:
+        # 捕获请求超时异常
+        # 当请求时间超过timeout参数设置的时间时触发
+        return {
+            "access_token": None,
+            "error": "请求超时，请检查网络连接或稍后重试"
+        }
+    
+    except requests.exceptions.ConnectionError:
+        # 捕获连接错误异常
+        # 例如：DNS解析失败、网络不可达、服务器拒绝连接等
+        return {
+            "access_token": None,
+            "error": "网络连接失败，请检查网络设置"
+        }
+    
+    except requests.exceptions.HTTPError as e:
+        # 捕获HTTP错误异常（4xx、5xx状态码）
+        # 例如：401 Unauthorized、403 Forbidden、500 Internal Server Error
+        return {
+            "access_token": None,
+            "error": f"HTTP请求失败: {str(e)}"
+        }
+    
+    except ValueError:
+        # 捕获JSON解析错误
+        # 当响应内容不是有效的JSON格式时触发
+        return {
+            "access_token": None,
+            "error": "响应数据格式错误，无法解析JSON"
+        }
+    
+    except Exception as e:
+        # 捕获所有其他未预期的异常
+        # 作为最后的兜底处理，确保函数不会因为未知错误而崩溃
+        return {
+            "access_token": None,
+            "error": f"发生未知错误: {str(e)}"
+        }
+
+
+def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone_sha256=None, device_id=None):
+    """
+    调用百度云文本审核服务检测文本内容是否合规
+    
+    该函数将文本内容提交到百度云内容审核平台进行审核，检测是否包含违规内容。
+    百度云会根据预设的审核策略，检测文本中的色情、暴力、政治敏感、违禁品等内容。
+    
+    参数:
+        text (str): 待审核的文本内容（必填），这是唯一的必需参数
+        strategy_id (str, 可选): 审核策略ID，不填则使用百度云默认策略
+        user_id (str, 可选): 用户自定义的用户ID，用于标识提交审核的用户
+        user_ip (str, 可选): 用户的IP地址，用于风险识别和统计分析
+        phone_sha256 (str, 可选): 用户手机号的SHA256哈希值，用于风险识别
+        device_id (str, 可选): 用户设备的唯一标识，用于风险识别
+    
+    返回:
+        dict: 包含以下键的字典：
+            - success (bool): 是否成功调用API（True表示成功，False表示失败）
+            - conclusion (str): 审核结论文本，可能的值：
+                * "合规": 内容符合规范，可以正常展示
+                * "不合规": 内容存在违规，不应展示
+                * "疑似": 内容可能存在违规，建议人工复审
+                * "审核失败": API调用失败或发生错误
+            - conclusion_type (int): 审核结论类型编码：
+                * 1: 合规
+                * 2: 不合规
+                * 3: 疑似
+                * 4: 审核失败
+            - data (list): 详细的审核结果数组，包含具体的违规类型和位置信息
+            - error (str or None): 错误信息，成功时为None，失败时包含错误详情
+    
+    使用示例:
+        # 基本用法（只检测文本）
+        result = check_text_content("这是一段需要审核的文本内容")
+        if result["success"]:
+            if result["conclusion"] == "合规":
+                print("内容审核通过")
+            else:
+                print(f"内容审核未通过: {result['conclusion']}")
+                print(f"详细信息: {result['data']}")
+        else:
+            print(f"审核失败: {result['error']}")
+        
+        # 完整用法（包含所有可选参数）
+        result = check_text_content(
+            text="这是一段需要审核的文本内容",
+            strategy_id="your_strategy_id",
+            user_id="user_123",
+            user_ip="192.168.1.1",
+            phone_sha256="sha256_hash_of_phone",
+            device_id="device_123"
+        )
+    """
+    # 导入必要的库
+    import requests  # HTTP请求库，用于调用百度云API
+    
+    # 读取百度云配置信息
+    # 使用configparser读取config.ini文件中的[baidu_cloud]配置节
+    try:
+        config = configparser.ConfigParser()
+        # 读取config.ini配置文件
+        config.read("config.ini", encoding="utf-8")
+        
+        # 从配置文件中获取API Key和Secret Key
+        # 如果配置项不存在或为空，则get方法会返回空字符串
+        api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
+        secret_key = config.get("baidu_cloud", "secret_key", fallback="").strip()
+        
+        # 如果配置文件中设置了策略ID，且函数调用时未指定，则使用配置文件中的值
+        if not strategy_id:
+            strategy_id = config.get("baidu_cloud", "strategy_id", fallback="").strip()
+        
+        # 检查API Key和Secret Key是否已配置
+        # 这两个参数是调用百度云API的必需凭证
+        if not api_key or not secret_key:
+            return {
+                "success": False,
+                "conclusion": "审核失败",
+                "conclusion_type": 4,
+                "data": [],
+                "error": "百度云API Key或Secret Key未配置，请在config.ini中配置[baidu_cloud]节"
+            }
+    
+    except Exception as e:
+        # 捕获配置文件读取过程中的任何异常
+        # 例如：文件不存在、权限不足、编码错误等
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": f"读取配置文件失败: {str(e)}"
+        }
+    
+    # 第一步：获取access_token
+    # 调用上面定义的get_baidu_access_token函数获取API访问令牌
+    token_result = get_baidu_access_token(api_key, secret_key)
+    
+    # 检查token获取是否成功
+    if token_result["error"] is not None:
+        # token获取失败，直接返回错误
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": f"获取access_token失败: {token_result['error']}"
+        }
+    
+    # 从token_result中提取access_token
+    access_token = token_result["access_token"]
+    
+    # 第二步：调用文本审核API
+    # 百度云文本审核接口的URL，需要将access_token作为URL参数传递
+    censor_url = f"https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v2/user_defined?access_token={access_token}"
+    
+    # 设置HTTP请求头
+    # Content-Type指定请求体的格式为表单编码（application/x-www-form-urlencoded）
+    # 这是百度云文本审核API要求的格式
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    # 构造请求体数据
+    # 使用字典存储所有参数，requests会自动将其编码为x-www-form-urlencoded格式
+    data = {
+        "text": text  # 必填参数：待审核的文本内容
+    }
+    
+    # 添加可选参数（如果提供了值）
+    # 只有当参数不为None且不为空字符串时才添加到请求中
+    if strategy_id:
+        data["strategyId"] = strategy_id  # 策略ID
+    if user_id:
+        data["userId"] = user_id  # 用户ID
+    if user_ip:
+        data["userIp"] = user_ip  # 用户IP
+    if phone_sha256:
+        data["phoneSha256"] = phone_sha256  # 手机号SHA256
+    if device_id:
+        data["deviceId"] = device_id  # 设备ID
+    
+    try:
+        # 发送POST请求到百度云文本审核接口
+        # data参数会被自动编码为application/x-www-form-urlencoded格式
+        # timeout=10：设置10秒超时，防止长时间等待
+        response = requests.post(censor_url, headers=headers, data=data, timeout=10)
+        
+        # 检查HTTP响应状态码
+        # 如果状态码不是2xx，raise_for_status()会抛出HTTPError异常
+        response.raise_for_status()
+        
+        # 解析响应的JSON数据
+        result = response.json()
+        
+        # 检查API是否返回了错误
+        # 百度云API在出错时会返回error_code和error_msg字段
+        if "error_code" in result:
+            # API返回了错误码，说明请求失败
+            error_code = result.get("error_code")
+            error_msg = result.get("error_msg", "未知错误")
+            return {
+                "success": False,
+                "conclusion": "审核失败",
+                "conclusion_type": 4,
+                "data": [],
+                "error": f"百度云API错误 (错误码: {error_code}): {error_msg}"
+            }
+        
+        # 从响应中提取审核结果
+        # conclusion: 审核结论文本（"合规"、"不合规"、"疑似"、"审核失败"）
+        # conclusionType: 审核结论类型（1-4的整数）
+        # data: 详细的审核结果数组
+        conclusion = result.get("conclusion", "审核失败")
+        conclusion_type = result.get("conclusionType", 4)
+        data_list = result.get("data", [])
+        
+        # 返回成功的结果
+        return {
+            "success": True,              # API调用成功
+            "conclusion": conclusion,      # 审核结论文本
+            "conclusion_type": conclusion_type,  # 审核结论类型编码
+            "data": data_list,            # 详细审核结果
+            "error": None                 # 没有错误
+        }
+    
+    except requests.exceptions.Timeout:
+        # 请求超时异常
+        # 当API响应时间超过timeout参数设置的时间时触发
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": "请求超时，百度云服务响应时间过长，请稍后重试"
+        }
+    
+    except requests.exceptions.ConnectionError:
+        # 网络连接错误
+        # 例如：无法连接到百度云服务器、DNS解析失败等
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": "网络连接失败，无法连接到百度云服务，请检查网络设置"
+        }
+    
+    except requests.exceptions.HTTPError as e:
+        # HTTP错误（4xx、5xx状态码）
+        # 例如：401未授权、403禁止访问、500服务器内部错误等
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": f"HTTP请求失败: {str(e)}"
+        }
+    
+    except ValueError:
+        # JSON解析错误
+        # 当百度云API返回的响应不是有效的JSON格式时触发
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": "响应数据格式错误，无法解析百度云API返回的JSON数据"
+        }
+    
+    except Exception as e:
+        # 捕获所有其他未预期的异常
+        # 这是最后的兜底处理，确保函数始终返回标准格式的结果
+        return {
+            "success": False,
+            "conclusion": "审核失败",
+            "conclusion_type": 4,
+            "data": [],
+            "error": f"发生未知错误: {str(e)}"
+        }
+
+
 def _create_config_ini():
     """创建或更新config.ini配置文件（兼容旧版本，自动补全缺失参数）"""
     default_config = _get_default_config()
