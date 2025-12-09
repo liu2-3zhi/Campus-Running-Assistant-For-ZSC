@@ -23309,6 +23309,47 @@ async function loadSystemConfig() {
       "text",
       "IP地理位置查询API密钥（可选，留空使用免费接口）。"
     );
+    // ==================== 网站备案信息配置 ====================
+    // 添加网站备案（Beian）相关配置项，包括ICP备案号和公安网备案号
+    // 这些配置项用于在网站底部显示合规信息，满足中国大陆网站的备案要求
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">网站备案信息</h5>';
+    // ICP备案号配置项
+    // 用于显示工信部颁发的ICP备案号，例如：京ICP备12345678号
+    html += createInput(
+      "Beian",
+      "icp_number",
+      "ICP备案号",
+      "text",
+      "工信部ICP备案号，如：京ICP备12345678号"
+    );
+    // 是否显示ICP备案信息的开关
+    // 管理员可以选择是否在页面底部展示ICP备案号
+    html += createInput(
+      "Beian",
+      "show_icp",
+      "显示ICP备案",
+      "boolean",
+      "是否在页面底部显示ICP备案信息"
+    );
+    // 公安网备案号配置项
+    // 用于显示公安部网络安全备案号，例如：京公网安备 11010802012345号
+    html += createInput(
+      "Beian",
+      "police_number",
+      "公安网备案号",
+      "text",
+      "公安部网络安全备案号，如：京公网安备 11010802012345号"
+    );
+    // 是否显示公安网备案信息的开关
+    // 管理员可以选择是否在页面底部展示公安网备案号
+    html += createInput(
+      "Beian",
+      "show_police",
+      "显示公安备案",
+      "boolean",
+      "是否在页面底部显示公安网备案信息"
+    );
     formContainer.innerHTML = html;
   } catch (e) {
     formContainer.innerHTML = `<p class="text-red-500 text-center py-10">加载配置时发生错误: ${e.message}</p>`;
@@ -25021,6 +25062,19 @@ async function saveSystemConfig() {
       },
       API: {
         ip_api_key: $("config-API-ip_api_key").value,
+      },
+      // ==================== 网站备案信息配置保存 ====================
+      // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中
+      // 这些配置项用于在网站底部显示合规的备案信息
+      Beian: {
+        // ICP备案号：工信部颁发的网站备案号
+        icp_number: $("config-Beian-icp_number").value,
+        // 是否显示ICP备案：布尔值，控制是否在页面底部展示ICP备案号
+        show_icp: $("config-Beian-show_icp").value === "true",
+        // 公安网备案号：公安部网络安全备案号
+        police_number: $("config-Beian-police_number").value,
+        // 是否显示公安备案：布尔值，控制是否在页面底部展示公安网备案号
+        show_police: $("config-Beian-show_police").value === "true",
       },
     };
     const response = await fetch("/api/admin/config/save", {

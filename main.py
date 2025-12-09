@@ -2764,45 +2764,173 @@ class AuthSystem:
             return {"success": True, "message": "用户已解封"}
 
     def delete_user(self, auth_username):
-        """删除用户（需要管理员权限）"""
-        with self.lock:
+        """
+        删除用户（需要管理员权限）
+        
+        在删除用户之前，会将用户的所有数据（system_accounts、school_accounts、permissions）
+        备份到 system_accounts/remove/ 目录中，备份文件使用 UUID 命名。
+        只有备份成功后才会执行实际的删除操作。
+        
+        参数:
+            auth_username (str): 要删除的用户的认证用户名
+            
+        返回:
+            dict: 包含 success (bool) 和 message (str) 的字典
+        """
+        with self.lock:  # 使用线程锁确保线程安全，防止并发删除导致数据不一致
+            # ==================== 第一步：安全性检查 ====================
+            
+            # 获取超级管理员用户名，防止删除超级管理员账号
             super_admin = self.config.get("Admin", "super_admin", fallback="admin")
             if auth_username == super_admin:
+                # 不允许删除超级管理员，这是系统安全的最后一道防线
                 return {"success": False, "message": "不允许删除超级管理员"}
 
+            # 获取用户的 system_accounts 文件路径
             user_file = self.get_user_file_path(auth_username)
             if not os.path.exists(user_file):
+                # 用户文件不存在，说明用户已不存在或从未创建
                 return {"success": False, "message": "用户不存在"}
 
+            # ==================== 第二步：收集需要备份的数据 ====================
+            
+            try:
+                # 1. 读取 system_accounts 中的用户数据
+                # 这包含用户的基本信息、密码哈希、会话信息等核心数据
+                with open(user_file, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+                logging.info(f"[删除用户备份] 已读取用户 {auth_username} 的 system_accounts 数据")
+            except Exception as e:
+                # 如果无法读取用户数据，则无法继续备份，返回错误
+                logging.error(f"[删除用户备份] 读取用户数据失败: {e}")
+                return {"success": False, "message": f"读取用户数据失败: {e}"}
+
+            # 2. 读取用户的 school_accounts (user_accounts) 数据
+            # 这包含用户绑定的学校账号信息（用户名、密码等）
+            school_accounts_data = None
+            school_accounts_file = self._get_user_accounts_file(auth_username)
+            if os.path.exists(school_accounts_file):
+                try:
+                    with open(school_accounts_file, "r", encoding="utf-8") as f:
+                        school_accounts_data = json.load(f)
+                    logging.info(f"[删除用户备份] 已读取用户 {auth_username} 的 school_accounts 数据")
+                except Exception as e:
+                    # 如果读取失败，记录警告但不阻止删除流程（可能用户没有学校账号）
+                    logging.warning(f"[删除用户备份] 读取 school_accounts 数据失败: {e}")
+                    school_accounts_data = None
+            else:
+                # 用户可能没有绑定任何学校账号，这是正常情况
+                logging.info(f"[删除用户备份] 用户 {auth_username} 没有 school_accounts 文件")
+
+            # 3. 提取用户的权限信息（从 permissions.json）
+            # 包括用户所属的用户组和自定义权限
+            user_permissions = {}
+            if auth_username in self.permissions.get("user_groups", {}):
+                # 保存用户的用户组信息（如 admin、user 等）
+                user_permissions["user_groups"] = self.permissions["user_groups"][auth_username]
+            if "user_custom_permissions" in self.permissions and auth_username in self.permissions["user_custom_permissions"]:
+                # 保存用户的自定义权限（如禁用某些功能、特殊访问权限等）
+                user_permissions["user_custom_permissions"] = self.permissions["user_custom_permissions"][auth_username]
+            
+            if user_permissions:
+                logging.info(f"[删除用户备份] 已提取用户 {auth_username} 的权限信息")
+            else:
+                logging.info(f"[删除用户备份] 用户 {auth_username} 没有特殊权限配置")
+
+            # ==================== 第三步：创建备份 ====================
+            
+            # 构建备份文件的保存路径
+            # 备份目录位于 system_accounts/remove/
+            backup_dir = os.path.join(SYSTEM_ACCOUNTS_DIR, "remove")
+            
+            # 如果备份目录不存在，则创建它（包括所有必要的父目录）
+            if not os.path.exists(backup_dir):
+                try:
+                    os.makedirs(backup_dir, exist_ok=True)
+                    logging.info(f"[删除用户备份] 创建备份目录: {backup_dir}")
+                except Exception as e:
+                    # 如果无法创建备份目录，则无法继续，返回错误
+                    logging.error(f"[删除用户备份] 创建备份目录失败: {e}")
+                    return {"success": False, "message": f"创建备份目录失败: {e}"}
+
+            # 生成唯一的备份文件名
+            # 使用 uuid.uuid4() 生成随机 UUID，UUID4 冲突概率为 1/2^122，实际上不可能重复
+            backup_uuid = str(uuid.uuid4())
+            backup_filename = os.path.join(backup_dir, f"{backup_uuid}.json")
+
+            # 构建备份数据的结构
+            # 使用 ISO 8601 格式的时间戳记录删除时间
+            backup_data = {
+                "deleted_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),  # 删除时间（UTC时间）
+                "auth_username": auth_username,  # 被删除用户的用户名
+                "user_data": user_data,  # system_accounts 中的完整用户数据
+                "school_accounts": school_accounts_data,  # school_accounts 中的数据（可能为 None）
+                "permissions": user_permissions  # 用户的权限配置（可能为空字典）
+            }
+
+            # 将备份数据写入 JSON 文件
+            try:
+                with open(backup_filename, "w", encoding="utf-8") as f:
+                    # 使用 indent=2 使 JSON 格式化输出，便于人工查看
+                    # ensure_ascii=False 确保中文字符正常显示
+                    json.dump(backup_data, f, indent=2, ensure_ascii=False)
+                logging.info(f"[删除用户备份] 备份成功: {backup_filename}")
+            except Exception as e:
+                # 如果备份失败，则不执行删除操作，保护用户数据
+                logging.error(f"[删除用户备份] 保存备份文件失败: {e}")
+                return {"success": False, "message": f"备份失败，用户未删除: {e}"}
+
+            # ==================== 第四步：执行删除操作 ====================
+            # 只有在备份成功后，才会执行以下删除操作
+            
+            # 1. 删除 system_accounts 中的用户文件
             try:
                 os.remove(user_file)
+                logging.info(f"[删除用户] 已删除用户文件: {user_file}")
             except Exception as e:
-                logging.error(f"删除用户文件失败: {e}")
-                return {"success": False, "message": f"删除失败: {e}"}
+                # 删除用户文件失败，记录错误并返回
+                logging.error(f"[删除用户] 删除用户文件失败: {e}")
+                return {"success": False, "message": f"删除用户文件失败: {e}"}
 
+            # 2. 删除 school_accounts 中的用户文件（如果存在）
             try:
-                school_accounts_file = self._get_user_accounts_file(auth_username)
                 if os.path.exists(school_accounts_file):
                     os.remove(school_accounts_file)
-                    logging.info(f"已删除用户 {auth_username} 的 school accounts 文件")
+                    logging.info(f"[删除用户] 已删除用户 {auth_username} 的 school_accounts 文件")
             except Exception as e:
-                logging.error(
-                    f"删除用户 {auth_username} 的 school accounts 文件失败: {e}"
-                )
+                # school_accounts 删除失败不影响主流程，仅记录警告
+                logging.warning(f"[删除用户] 删除 school_accounts 文件失败: {e}")
 
+            # 3. 从 permissions.json 中删除用户的权限配置
+            # 删除用户所属的用户组信息
             if auth_username in self.permissions.get("user_groups", {}):
                 del self.permissions["user_groups"][auth_username]
+                logging.info(f"[删除用户] 已删除用户 {auth_username} 的用户组配置")
 
+            # 删除用户的自定义权限信息
             if (
                 "user_custom_permissions" in self.permissions
                 and auth_username in self.permissions["user_custom_permissions"]
             ):
                 del self.permissions["user_custom_permissions"][auth_username]
+                logging.info(f"[删除用户] 已删除用户 {auth_username} 的自定义权限配置")
 
-            self._save_permissions()
+            # 4. 保存更新后的权限配置到文件
+            try:
+                self._save_permissions()
+                logging.info(f"[删除用户] 权限配置已保存")
+            except Exception as e:
+                # 权限保存失败，记录警告（不影响删除操作的成功）
+                logging.warning(f"[删除用户] 保存权限配置失败: {e}")
 
-            logging.info(f"用户已删除: {auth_username}")
-            return {"success": True, "message": "用户已删除"}
+            # ==================== 第五步：返回成功结果 ====================
+            
+            # 记录删除操作成功，包含备份文件路径供管理员参考
+            logging.info(f"[删除用户] 用户 {auth_username} 已成功删除，备份文件: {backup_filename}")
+            return {
+                "success": True, 
+                "message": f"用户已删除，备份文件: {os.path.basename(backup_filename)}"
+            }
 
     def get_user_details(self, auth_username):
         """获取用户详细信息"""
