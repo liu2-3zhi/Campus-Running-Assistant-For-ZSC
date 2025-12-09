@@ -2161,7 +2161,7 @@
         <!-- ========================================
              【任务列表面板】
              ======================================== -->
-        <div class="mobile-card p-0 overflow-hidden h-screen flex flex-col" id="mobile-task-panel">
+        <div class="mobile-card p-0 min-h-screen flex flex-col" id="mobile-task-panel">
           <div class="flex items-center justify-between mb-4 pb-3 border-b border-green-100 p-4">
             <div class="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24"
@@ -2177,7 +2177,7 @@
             </div>
           </div>
 
-          <div id="mobile-task-list" class="space-y-2 flex-1 overflow-y-auto px-4">
+          <div id="mobile-task-list" class="space-y-2 flex-1 px-4">
             <p class="text-slate-400 text-center py-8 text-sm">暂无任务</p>
           </div>
 
@@ -2475,7 +2475,7 @@
         <!-- ========================================
             【打卡点面板】
              ======================================== -->
-        <div class="mobile-card flex flex-col h-full" id="mobile-checkpoints-panel">
+        <div class="mobile-card flex flex-col h-full mobile-card-fullscreen" id="mobile-checkpoints-panel">
           <div class="flex-none flex items-center justify-between mb-4 pb-3 border-b border-red-100">
             <div class="flex items-center gap-2">
               <svg class="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 20 20">
@@ -2513,7 +2513,7 @@
           </div>
         </div>
 
-        <div class="mobile-card h-full flex flex-col" id="mobile-task-history-panel">
+        <div class="mobile-card h-full flex flex-col mobile-card-fullscreen" id="mobile-task-history-panel">
           <div class="flex-none flex items-center gap-2 mb-4 pb-3 border-b border-amber-100">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24"
               stroke="currentColor">
@@ -2698,7 +2698,7 @@
         <!-- ========================================
              【参数设置面板】- 单账号参数配置
              ======================================== -->
-        <div class="mobile-card mobile-card-fullscreen hidden" id="mobile-settings-panel">
+        <div class="mobile-card  hidden" id="mobile-settings-panel">
           <div class="flex items-center gap-2 mb-4 pb-3 border-b border-indigo-100">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24"
               stroke="currentColor">
@@ -2711,7 +2711,7 @@
             <h3 class="text-xl font-bold text-indigo-700">参数设置</h3>
           </div>
 
-          <div id="mobile-params-container" class="space-y-3 overflow-y-auto"></div>
+          <div id="mobile-params-container" class="space-y-3"></div>
 
           <div class="flex-shrink-0 pt-3 border-t border-indigo-100 flex gap-3 bg-white">
             <button onclick="refreshMobileSettings()"
