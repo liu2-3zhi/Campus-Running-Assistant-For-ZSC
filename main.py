@@ -1417,9 +1417,8 @@ def get_baidu_access_token(api_key, secret_key):
         else:
             print(f"获取token失败: {result['error']}")
     """
-    # 导入requests库用于发送HTTP请求
-    # 由于main.py中已经在其他地方导入了requests，这里使用现有的导入
-    import requests
+    # 注意：requests库已在模块级别通过_try_import_third_party()导入
+    # 不需要在函数内部重复导入
     
     # 百度云OAuth 2.0 token获取接口的URL
     # 该接口使用client_credentials授权模式（客户端凭证模式）
@@ -1562,8 +1561,8 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             device_id="device_123"
         )
     """
-    # 导入必要的库
-    import requests  # HTTP请求库，用于调用百度云API
+    # 注意：requests库已在模块级别通过_try_import_third_party()导入
+    # 不需要在函数内部重复导入
     
     # 读取百度云配置信息
     # 使用configparser读取config.ini文件中的[baidu_cloud]配置节
@@ -1576,6 +1575,13 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
         # 如果配置项不存在或为空，则get方法会返回空字符串
         api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
         secret_key = config.get("baidu_cloud", "secret_key", fallback="").strip()
+        
+        # 验证API凭证格式
+        # API Key和Secret Key必须至少24个字符（百度云实际长度通常更长）
+        if api_key and len(api_key) < 24:
+            logging.warning(f"[百度云文本审核] API Key长度异常（{len(api_key)}字符），预期至少24字符")
+        if secret_key and len(secret_key) < 24:
+            logging.warning(f"[百度云文本审核] Secret Key长度异常（{len(secret_key)}字符），预期至少24字符")
         
         # 如果配置文件中设置了策略ID，且函数调用时未指定，则使用配置文件中的值
         if not strategy_id:
