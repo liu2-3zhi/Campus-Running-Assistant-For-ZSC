@@ -155,8 +155,9 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             alias /app/system_accounts/images/$1;
             add_header Access-Control-Allow-Origin *;
 
-            # 如果文件不存在，直接 404（不落到 @backend）
-            try_files $uri =404;
+            # 修正：删除 try_files $uri =404;
+            # 当使用 alias + 正则时，try_files $uri 会导致路径解析错误（它会去寻找 /api/avatar/... 而不是 alias 后的路径）。
+            # 删除后，如果 alias 指定的文件不存在，Nginx 默认就会返回 404，符合预期。
         }
 
         # WebSocket支持 - SocketIO

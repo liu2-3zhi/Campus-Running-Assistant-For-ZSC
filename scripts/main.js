@@ -24359,51 +24359,69 @@ async function checkAndShowReminders() {
       
     } else {
       // ==================== 多个提醒的处理（核心修复） ====================
-      // 有多个提醒时，将它们合并到一个弹窗中显示
-      // 这样可以避免后一个提醒覆盖前一个提醒的问题
+      // 有多个提醒时，依次显示多个独立的弹窗，而不是合并到一个弹窗中
+      // 这样可以让用户更清楚地看到每一条提醒的完整信息
       
-      // 构建合并后的 HTML 内容
-      // 使用 Tailwind CSS 的样式类来美化显示效果
-      let mergedHtml = '<div class="space-y-4">'; // space-y-4: 子元素之间垂直间距为 1rem
+      // 在控制台记录即将显示的提醒数量，便于调试
+      console.log(`[定时提醒] 准备依次显示 ${newReminders.length} 条提醒`);
       
-      // 遍历所有新提醒，为每个提醒生成一个独立的显示块
-      newReminders.forEach((reminder, index) => {
-        mergedHtml += `
-          <div class="border-b border-slate-200 pb-3 ${index === newReminders.length - 1 ? 'border-0 pb-0' : ''}">
-            <h4 class="font-semibold text-slate-800 mb-1">${index + 1}. ${reminder.title}</h4>
-            <div class="text-slate-600 text-sm">${reminder.message.replace(/\n/g, "<br>")}</div>
-          </div>
-        `;
-        // 解释：
-        // - border-b: 底部边框，用于分隔不同的提醒
-        // - 最后一个提醒不需要底部边框（通过三元运算符判断）
-        // - font-semibold: 标题使用半粗体
-        // - text-slate-800: 标题使用深灰色
-        // - text-slate-600: 内容使用中灰色
-        // - text-sm: 内容使用小号字体
-      });
-      
-      mergedHtml += '</div>';
-      
-      // 显示合并后的提醒弹窗
-      Swal.fire({
-        title: `📢 您有 ${newReminders.length} 条提醒`, // 标题显示提醒总数
-        html: mergedHtml, // 使用构建好的 HTML 内容
-        icon: "info", // 信息图标
-        confirmButtonText: "知道了", // 确认按钮文字
-        width: '600px', // 设置弹窗宽度，给多个提醒留出足够空间
-        allowOutsideClick: true, // 允许点击外部关闭
-        allowEscapeKey: true, // 允许按 ESC 键关闭
-        customClass: {
-          // 使用与单个提醒相同的样式类，保持界面一致性
-          popup: "reminder-alert-popup",
-          title: "reminder-alert-title",
-          htmlContainer: "reminder-alert-content",
-        },
-      });
-      
-      // 在控制台记录日志，显示提醒的数量
-      console.log(`[定时提醒] 已显示 ${newReminders.length} 条提醒`);
+      // 使用立即执行的异步函数来处理多个弹窗的依次显示
+      // 必须使用 async/await 才能确保弹窗按顺序显示，避免同时弹出
+      (async () => {
+        // 遍历所有新提醒，为每个提醒显示一个独立的弹窗
+        for (let i = 0; i < newReminders.length; i++) {
+          // 获取当前索引对应的提醒对象
+          const reminder = newReminders[i];
+          
+          // 显示当前提醒的独立弹窗
+          // 使用 await 等待用户关闭当前弹窗后，再显示下一个
+          await Swal.fire({
+            // 标题：显示提醒的标题，并标注这是第几条提醒（例如：1/3）
+            // 这样用户可以知道还有多少提醒需要查看
+            title: `${reminder.title} (${i + 1}/${newReminders.length})`,
+            
+            // 内容：将提醒内容中的换行符 \n 转换为 HTML 的 <br> 标签
+            // 这样可以在弹窗中正确显示多行文本
+            html: reminder.message.replace(/\n/g, "<br>"),
+            
+            // 图标：使用信息图标，表明这是一条通知性质的提醒
+            icon: "info",
+            
+            // 确认按钮文字：使用友好的中文提示
+            confirmButtonText: "知道了",
+            
+            // 允许用户点击弹窗外部区域来关闭弹窗
+            // 这样提供了更灵活的关闭方式
+            allowOutsideClick: true,
+            
+            // 允许用户按 ESC 键关闭弹窗
+            // 这是用户习惯的快捷键操作
+            allowEscapeKey: true,
+            
+            // 自定义样式类名，保持与单个提醒相同的外观
+            // 这样确保界面风格的一致性
+            customClass: {
+              popup: "reminder-alert-popup",        // 弹窗容器的样式类
+              title: "reminder-alert-title",        // 标题的样式类
+              htmlContainer: "reminder-alert-content", // 内容区域的样式类
+            },
+          });
+          
+          // 在控制台记录已显示的提醒，便于调试和问题排查
+          console.log(`[定时提醒] 已显示第 ${i + 1}/${newReminders.length} 条提醒: ${reminder.title}`);
+          
+          // 如果不是最后一个提醒，添加一个延迟
+          // 这样可以避免用户关闭一个弹窗后，下一个弹窗立即出现造成的突兀感
+          if (i < newReminders.length - 1) {
+            // 使用 Promise 和 setTimeout 实现异步延迟
+            // 延迟时间设置为 700 毫秒（0.7 秒），既不会太快也不会太慢
+            await new Promise(resolve => setTimeout(resolve, 700));
+          }
+        }
+        
+        // 所有提醒显示完毕后，在控制台记录完成信息
+        console.log(`[定时提醒] 所有 ${newReminders.length} 条提醒已显示完毕`);
+      })();
     }
     
     // ==================== 核心修复逻辑结束 ====================
