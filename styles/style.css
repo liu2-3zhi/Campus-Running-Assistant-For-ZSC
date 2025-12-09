@@ -820,7 +820,7 @@ body.swal2-shown:not(.swal2-toast-shown) {
 }
 
 .swal2-container {
-  z-index: 20005;
+  z-index: 20001;
 }
 
 /* ============================================================ */
@@ -1799,7 +1799,7 @@ body.mobile-mode #session-picker-modal {
 
 /* 为mobile-beian-footer添加底部间距，避开底部导航栏和浏览器工具栏 */
 #mobile-beian-footer {
-  /* 100px = 移动端底部导航栏(64px) + 浏览器工具栏(~30-50px) + 安全余量(6-16px) */
+
   padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px));
   /* env(safe-area-inset-bottom)用于适配iPhone等带有刘海屏的设备 */
 }
