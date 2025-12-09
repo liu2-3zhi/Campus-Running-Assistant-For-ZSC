@@ -18923,7 +18923,7 @@ function refreshMobileSessionPicker() {
           // onNotificationsUpdated() (由后台调用或 refreshNotificationsUI 间接调用) 会填充 attendance-list
           // refreshNotificationsUI() 自带防抖，所以这里直接调用是安全的
           logMessage_Info("[自动刷新] 切换到签到标签，启动自动刷新");
-          refreshNotificationsUI(true, false); // 切换tab视为自动刷新，将开启定时刷新
+          refreshNotificationsUI(useCache=true, isManual=false, show_Modal=false); // 切换tab视为自动刷新，将开启定时刷新
         }
       }
 
@@ -19366,12 +19366,14 @@ function refreshMobileSessionPicker() {
         return result;
       }
       let notificationAutoRefreshTimer = null;
-      async function refreshNotificationsUI(useCache = true, isManual = false) {
+      async function refreshNotificationsUI(useCache = true, isManual = false, show_Modal = true) {
         if (isRefreshingNotifications) {
           logMessage_Info("通知刷新已在进行中，跳过本次请求");
           return;
         }
-        showModalAlert("正在刷新签到列表，请稍候...", "提示");
+        if (show_Modal) {
+          showModalAlert("正在刷新签到列表，请稍候...", "提示");
+        }
         isRefreshingNotifications = true;
         const content = $("notifications-content");
         const refreshBtn = $("refresh-notifications-btn");
@@ -19537,7 +19539,9 @@ function refreshMobileSessionPicker() {
           };
 
           await loadNextBatch();
-          showModalAlert("签到列表刷新完成", "提示");
+          if (show_Modal) {
+            showModalAlert("签到列表刷新完成", "提示");
+          }
         } catch (e) {
           logMessage_Error("刷新签到列表失败", e);
           showModalAlert("签到列表刷新失败，请稍后重试", "错误");

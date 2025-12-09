@@ -150,23 +150,23 @@ body.dark-mode table tr:hover {
 }
 
 body.dark-mode .bg-slate-50 {
-  background-color: rgba(55, 65, 81, 0.5) !important;
+  background-color: rgba(55, 65, 81, 0.5);
 }
 
 body.dark-mode .border-slate-200 {
-  border-color: rgba(107, 114, 128, 0.5) !important;
+  border-color: rgba(107, 114, 128, 0.5);
 }
 
 body.dark-mode .text-slate-700 {
-  color: #d1d5db !important;
+  color: #d1d5db;
 }
 
 body.dark-mode .text-slate-600 {
-  color: #e5e7eb !important;
+  color: #e5e7eb;
 }
 
 body.dark-mode .text-slate-400 {
-  color: #9ca3af !important;
+  color: #9ca3af;
 }
 
 body.dark-mode a {
@@ -200,39 +200,39 @@ body.dark-mode #login-container .bg-gradient-to-br {
     135deg,
     rgba(31, 41, 55, 0.8),
     rgba(55, 65, 81, 0.8)
-  ) !important;
+  );
 }
 
 body.dark-mode .bg-red-50 {
-  background-color: rgba(127, 29, 29, 0.3) !important;
+  background-color: rgba(127, 29, 29, 0.3);
 }
 
 body.dark-mode .bg-green-50 {
-  background-color: rgba(6, 78, 59, 0.3) !important;
+  background-color: rgba(6, 78, 59, 0.3);
 }
 
 body.dark-mode .bg-blue-50 {
-  background-color: rgba(30, 58, 138, 0.3) !important;
+  background-color: rgba(30, 58, 138, 0.3);
 }
 
 body.dark-mode .bg-yellow-50 {
-  background-color: rgba(120, 53, 15, 0.3) !important;
+  background-color: rgba(120, 53, 15, 0.3);
 }
 
 body.dark-mode .border-red-200 {
-  border-color: rgba(220, 38, 38, 0.5) !important;
+  border-color: rgba(220, 38, 38, 0.5);
 }
 
 body.dark-mode .border-green-200 {
-  border-color: rgba(34, 197, 94, 0.5) !important;
+  border-color: rgba(34, 197, 94, 0.5);
 }
 
 body.dark-mode .border-blue-200 {
-  border-color: rgba(59, 130, 246, 0.5) !important;
+  border-color: rgba(59, 130, 246, 0.5);
 }
 
 body.dark-mode .border-yellow-200 {
-  border-color: rgba(234, 179, 8, 0.5) !important;
+  border-color: rgba(234, 179, 8, 0.5);
 }
 
 body.dark-mode .modal-content.neumorphic,
@@ -725,7 +725,7 @@ body {
 #map-container.drawing .amap-text,
 #map-container.drawing .amap-overlay-text,
 #map-container.drawing .amap-overlay {
-  pointer-events: none !important;
+  pointer-events: none;
 }
 
 .pulsing-marker {
@@ -800,12 +800,12 @@ body {
   ~ main
   > #multi-map-container
   .amap-copyright {
-  display: none !important;
+  display: none;
 }
 
 body.modal-visible .amap-logo,
 body.modal-visible .amap-copyright {
-  display: none !important;
+  display: none;
 }
 
 #admin-modal-close-btn:hover {
@@ -815,13 +815,13 @@ body.modal-visible .amap-copyright {
 /* 修复问题4：Swal显示时Body不添加padding-right，防止登录框位移 */
 html.swal2-shown,
 body.swal2-shown:not(.swal2-toast-shown) {
-  padding-right: 0 !important;
-  overflow-y: auto !important; /* 保持滚动条，避免消失造成的跳动 */
+  padding-right: 0;
+  overflow-y: auto; /* 保持滚动条，避免消失造成的跳动 */
 }
 
 /* 修复问题3：提升Swal层级，确保在移动端容器(z-10000)之上显示 */
 .swal2-container {
-  z-index: 20005 !important;
+  z-index: 20005;
 }
 
 /* ============================================================ */
@@ -844,20 +844,20 @@ body.swal2-shown:not(.swal2-toast-shown) {
 body.swal2-shown #auth-login-container,
 body.swal2-shown #mobile-auth-login-container {
   /* 防止因滚动条补偿导致的内边距偏移 */
-  padding-right: 0 !important;
+  padding-right: 0;
   /* 防止因滚动条补偿导致的外边距偏移 */
-  margin-right: 0 !important;
+  margin-right: 0;
   /* 确保不应用任何可能导致偏移的变换 */
-  transform: none !important;
+  transform: none;
   /* 确保右侧位置不受影响 */
-  right: auto !important;
+  right: auto;
 }
 
 /* 修复问题1：提升通用模态框层级，确保在移动端可见 */
 #sms-history-modal,
 #verification-codes-modal,
 #sms-test-modal {
-  z-index: 20002 !important;
+  z-index: 20002;
 }
 
 /* ============================================================ */
@@ -867,8 +867,8 @@ body.swal2-shown #mobile-auth-login-container {
 @media (max-width: 768px) {
   .modal-content,
   .panel.rounded-2xl {
-    width: 90% !important;
-    max-width: 90% !important;
+    width: 90%;
+    max-width: 90%;
     margin: 0 auto;
   }
 
@@ -894,7 +894,7 @@ body.swal2-shown #mobile-auth-login-container {
   }
 
   input[type="tel"] {
-    font-size: 16px !important;
+    font-size: 16px;
   }
 
   .flex.gap-3,
@@ -931,8 +931,8 @@ body.swal2-shown #mobile-auth-login-container {
 @media (max-width: 480px) {
   .modal-content,
   .panel.rounded-2xl {
-    width: 95% !important;
-    max-width: 95% !important;
+    width: 95%;
+    max-width: 95%;
     padding: 16px;
   }
 
@@ -1065,16 +1065,16 @@ body.mobile-mode #auth-login-container,
 body.mobile-mode #login-container,
 body.mobile-mode #main-app,
 body.mobile-mode #multi-account-app {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  z-index: -1 !important;
+  display: none;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
 }
 
 body.mobile-mode .modal,
 body.mobile-mode #admin-panel-modal,
 body.mobile-mode #session-picker-modal {
-  z-index: 9999 !important;
+  z-index: 9999;
 }
 
 .mobile-mode .btn,
@@ -1152,7 +1152,7 @@ body.mobile-mode #session-picker-modal {
 .mobile-mode #mobile-task-history-list,
 .mobile-mode #mobile-admin-panel-content-panel,
 .mobile-mode #mobile-multi-admin-content-panel {
-    padding-bottom: 120px !important;
+    padding-bottom: 0px;
 }
 
 .mobile-mode .mobile-bottom-nav {
@@ -1434,8 +1434,8 @@ body.mobile-mode #session-picker-modal {
 .mobile-mode #mobile-control-panel button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: #cbd5e1 !important;
-  color: #64748b !important;
+  background: #cbd5e1;
+  color: #64748b;
 }
 
 .mobile-mode #mobile-status-indicator {
@@ -1523,14 +1523,14 @@ body.mobile-mode #session-picker-modal {
   }
 
   .mobile-mode #mobile-map-container {
-    height: 200px !important;
+    height: 200px;
   }
 
   .mobile-mode #mobile-all-notifications-list,
   .mobile-mode #mobile-attendance-notifications-list,
   .mobile-mode #mobile-task-list,
   .mobile-mode #mobile-multi-account-list {
-    max-height: 30vh !important;
+    max-height: 30vh;
   }
 }
 
@@ -1546,7 +1546,7 @@ body.mobile-mode #session-picker-modal {
 
   .mobile-mode-auth #mobile-container .mobile-header,
   .mobile-mode-auth #mobile-container .mobile-bottom-nav {
-    display: none !important;
+    display: none;
   }
 
   .mobile-mode-auth #mobile-container .mobile-content {
@@ -1698,11 +1698,11 @@ body.mobile-mode #session-picker-modal {
 }
 
 .mobile-bottom-nav {
-  display: none !important;
+  display: none;
 }
 
 .mobile-mode .mobile-content {
-  padding-bottom: 80px !important;
+  padding-bottom: 0px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1741,13 +1741,79 @@ body.mobile-mode #session-picker-modal {
 .mobile-mode .mobile-card-fullscreen {
   height: calc(100vh - 60px); /* 保持原有高度计算 */
   margin: 0;
-  border-radius: 0;
+  border-radius: 20px;
   /* 确保全屏卡片本身也有底部内边距，防止最底部按钮贴边 */
-  padding-bottom: 100px !important;
+  padding-bottom: 20px;
   border: none;
   box-shadow: none;
   padding: 16px;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+}
+
+/* ========================================
+   PC端备案Footer显示修复
+   使用Flexbox布局确保footer始终可见
+   ======================================== */
+
+/* desktop-container使用Flexbox垂直布局 */
+#desktop-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+/* login-container、main-app、multi-account-app占据可用空间并允许滚动 */
+#login-container,
+#main-app,
+#multi-account-app {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* auth-login-container、main-app、multi-account-app添加底部padding为footer预留空间 */
+#auth-login-container,
+#main-app,
+#multi-account-app {
+  padding-bottom: 20px; /* 为footer预留空间 */
+}
+
+/* pc-beian-footer使用fixed定位，覆盖在padding区域上 */
+#pc-beian-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 50;
+  flex-shrink: 0;
+}
+
+/* ========================================
+   移动端备案Footer显示修复
+   添加底部间距避免被浏览器工具栏遮挡
+   ======================================== */
+
+/* 为mobile-beian-footer添加底部间距，避开底部导航栏和浏览器工具栏 */
+#mobile-beian-footer {
+  /* 100px = 移动端底部导航栏(64px) + 浏览器工具栏(~30-50px) + 安全余量(6-16px) */
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px));
+  /* env(safe-area-inset-bottom)用于适配iPhone等带有刘海屏的设备 */
+}
+
+/* ========================================
+   移动端日志文本区域样式优化
+   设置最小高度并支持自动增长
+   ======================================== */
+
+/* 移动端日志文本区域：最小高度400px，随内容自动增长 */
+#mobile-log-text,
+#mobile-multi-log-text {
+  min-height: 400px; /* 设置最小高度为400px，确保有足够的可视区域 */
+  height: auto; /* 高度设置为auto，允许随内容自动增长 */
+  overflow: visible; /* 确保内容不会被裁剪，不使用滚动条 */
 }
