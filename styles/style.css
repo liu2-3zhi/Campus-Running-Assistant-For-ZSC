@@ -1774,8 +1774,22 @@ body.mobile-mode #session-picker-modal {
   overflow: auto;
 }
 
-/* pc-beian-footer固定在底部不压缩 */
+/* auth-login-container、main-app、multi-account-app添加底部padding为footer预留空间 */
+#auth-login-container,
+#main-app,
+#multi-account-app {
+  padding-bottom: 80px; /* 为footer预留空间 */
+}
+
+/* pc-beian-footer使用fixed定位，覆盖在padding区域上 */
 #pc-beian-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 50;
   flex-shrink: 0;
 }
 
@@ -1789,4 +1803,17 @@ body.mobile-mode #session-picker-modal {
   /* 100px = 移动端底部导航栏(64px) + 浏览器工具栏(~30-50px) + 安全余量(6-16px) */
   padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px));
   /* env(safe-area-inset-bottom)用于适配iPhone等带有刘海屏的设备 */
+}
+
+/* ========================================
+   移动端日志文本区域样式优化
+   设置最小高度并支持自动增长
+   ======================================== */
+
+/* 移动端日志文本区域：最小高度400px，随内容自动增长 */
+#mobile-log-text,
+#mobile-multi-log-text {
+  min-height: 400px; /* 设置最小高度为400px，确保有足够的可视区域 */
+  height: auto; /* 高度设置为auto，允许随内容自动增长 */
+  max-height: 80vh; /* 最大高度为视口高度的80%，避免过度拉伸超出屏幕 */
 }
