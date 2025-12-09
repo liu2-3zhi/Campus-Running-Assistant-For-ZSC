@@ -9,6 +9,8 @@ _log_buffer = []
 
 
 MAX_MEMORY_SESSIONS = 100
+# 自动签到功能配置
+AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 
 
 def _buffer_log(level, message):
@@ -1463,9 +1465,10 @@ def check_sensitive_words(text, enable_fuzzy=True):
     # ========================================
     # 第1步: 参数验证
     # ========================================
-    # 检查输入文本是否为空
+    # 检查输入文本是否为空或只包含空白字符
     # 空文本无需检测,直接返回空结果,节省网络请求
-    if not text or not text.strip():
+    # 使用 isspace() 方法避免重复调用 strip()
+    if not text or text.isspace():
         # 返回成功但无命中结果
         # 这是一个合理的行为,因为空文本确实不包含敏感词
         return {
@@ -10278,14 +10281,15 @@ class Api:
         log_func("(后台) 正在检查自动签到任务...")
 
         try:
-            # 性能优化：只拉取前5条通知而非20条
+            # 性能优化：只拉取前几条通知而非全部
+            # 使用配置常量 AUTO_ATTENDANCE_NOTICE_LIMIT 控制拉取数量
             # 原因：签到任务通常出现在最新的通知中，减少拉取数量可以：
             # 1. 降低API调用开销，减少网络传输时间
             # 2. 减少服务器负载，提高响应速度
             # 3. 加快通知遍历处理速度
             # 4. 降低内存占用
-            # 实践中，前5条通知足以覆盖绝大多数签到任务场景
-            list_resp = client.get_notice_list(offset=0, limit=5, type_id=0)
+            # 实践中，前几条通知足以覆盖绝大多数签到任务场景
+            list_resp = client.get_notice_list(offset=0, limit=AUTO_ATTENDANCE_NOTICE_LIMIT, type_id=0)
             if not (list_resp and list_resp.get("success")):
                 log_func("获取通知列表失败，跳过自动签到。")
                 return
