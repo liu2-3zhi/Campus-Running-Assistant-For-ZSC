@@ -108,7 +108,25 @@ startsecs=10
 SUPERVISOR_EOF
 
 # ==========================================
-# 1. 生成通用的 Nginx Location 配置
+# 1. 生成 Nginx Map 配置
+#    智能选择X-Forwarded-For的值：优先使用自定义头，否则使用标准头
+# ==========================================
+cat > /etc/nginx/nginx_map.conf <<NGINX_MAP_EOF
+# Map配置：智能选择真实IP来源
+# 如果存在自定义头（如CDN传来的X-RealIP-Form），优先使用它
+# 否则使用标准的proxy_add_x_forwarded_for
+map \$http_${REAL_IP_HEADER//-/_} \$real_forwarded_for {
+    # 如果自定义头有值，使用自定义头的值
+    # nginx会自动将header名称中的连字符转换为下划线，并添加http_前缀
+    # 例如：X-RealIP-Form -> \$http_x_realip_form
+    default \$http_${REAL_IP_HEADER//-/_};
+    # 如果自定义头为空，使用标准的X-Forwarded-For逻辑
+    "" \$proxy_add_x_forwarded_for;
+}
+NGINX_MAP_EOF
+
+# ==========================================
+# 2. 生成通用的 Nginx Location 配置
 #    (避免代码重复，供 HTTP 和 HTTPS 共同引用)
 # ==========================================
 cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
@@ -184,10 +202,10 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_set_header Connection "upgrade";
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            # 任务2修改：使用map变量智能选择X-Forwarded-For的值
+            # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
+            proxy_set_header X-Forwarded-For \$real_forwarded_for;
             proxy_set_header X-Forwarded-Proto \$scheme;
-            # 任务2：添加自定义IP头，传递nginx的remote_addr给后端
-            proxy_set_header $REAL_IP_HEADER \$remote_addr;
             proxy_buffering off;
             proxy_read_timeout 86400;
         }
@@ -198,10 +216,10 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_http_version 1.1;
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            # 任务2修改：使用map变量智能选择X-Forwarded-For的值
+            # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
+            proxy_set_header X-Forwarded-For \$real_forwarded_for;
             proxy_set_header X-Forwarded-Proto \$scheme;
-            # 任务2：添加自定义IP头，传递nginx的remote_addr给后端
-            proxy_set_header $REAL_IP_HEADER \$remote_addr;
             proxy_buffering off;
             proxy_read_timeout 300;
             proxy_connect_timeout 300;
@@ -242,10 +260,10 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_http_version 1.1;
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            # 任务2修改：使用map变量智能选择X-Forwarded-For的值
+            # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
+            proxy_set_header X-Forwarded-For \$real_forwarded_for;
             proxy_set_header X-Forwarded-Proto \$scheme;
-            # 任务2：添加自定义IP头，传递nginx的remote_addr给后端
-            proxy_set_header $REAL_IP_HEADER \$remote_addr;
         }
 LOCATIONS_EOF
 
@@ -271,6 +289,9 @@ events {
 http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
+
+    # 任务2：包含map配置，智能选择X-Forwarded-For的值
+    include       /etc/nginx/nginx_map.conf;
 
     log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
@@ -372,6 +393,10 @@ events {
 http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
+    
+    # 任务2：包含map配置，智能选择X-Forwarded-For的值
+    include       /etc/nginx/nginx_map.conf;
+    
     log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" "$http_x_forwarded_for"';

@@ -433,61 +433,7 @@ def initialize_global_variables():
 # ==============================================================================
 
 
-def get_client_ip(request):
-    """
-    获取真实客户端IP地址。
-    
-    功能说明：
-    这个函数实现了一个IP获取优先级策略，用于在多级代理环境中准确获取客户端真实IP。
-    
-    优先级顺序（从高到低）：
-    1. 自定义头（环境变量REAL_IP_HEADER指定，默认X-RealIP-Form）
-       - 这是nginx通过proxy_set_header设置的，包含nginx看到的remote_addr
-       - 在Docker环境中，这通常是最准确的客户端IP
-    
-    2. X-Forwarded-For头（处理多IP情况）
-       - 如果存在多个IP（用逗号分隔），取第一个IP
-       - X-Forwarded-For格式：client, proxy1, proxy2
-       - 第一个IP是原始客户端IP，后续IP是经过的代理
-    
-    3. request.remote_addr
-       - 这是Flask直接看到的连接IP
-       - 在反向代理环境中，这通常是代理服务器的IP，不是真实客户端IP
-    
-    参数：
-        request: Flask的request对象，包含HTTP请求的所有信息
-    
-    返回值：
-        str: 客户端真实IP地址，如果无法获取则返回"unknown"
-    
-    使用示例：
-        client_ip = get_client_ip(request)
-        logging.info(f"客户端IP: {client_ip}")
-    """
-    # 读取环境变量指定的自定义头名称
-    # 默认为X-RealIP-Form，可通过环境变量REAL_IP_HEADER自定义
-    # 这个环境变量在docker-entrypoint.sh中设置
-    custom_header = os.environ.get("REAL_IP_HEADER", "X-RealIP-Form")
-    
-    # 尝试从自定义头获取IP
-    # 这是最优先的方式，因为这是nginx明确设置的
-    custom_ip = request.headers.get(custom_header)
-    if custom_ip:
-        # 去除首尾空格，返回IP地址
-        return custom_ip.strip()
-    
-    # 尝试从X-Forwarded-For获取（处理多IP情况）
-    # X-Forwarded-For是标准的代理转发头，格式为：client, proxy1, proxy2
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # 按逗号分割，取第一个IP（原始客户端IP）
-        # strip()去除可能存在的首尾空格
-        return forwarded_for.split(",")[0].strip()
-    
-    # 使用request.remote_addr作为最后的备选
-    # 在没有代理的情况下，这是唯一可用的IP
-    # 在有代理的情况下，这通常是代理服务器的IP，不够准确
-    return request.remote_addr or "unknown"
+
 
 
 # ==============================================================================
@@ -14758,7 +14704,7 @@ def start_web_server(args_param):
         全局IP封禁检查拦截器
         """
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = get_client_ip(request)
+        client_ip = request.remote_addr
         if (
             request.path.startswith("/static/")
             or request.path.startswith("/css/")
@@ -15042,7 +14988,7 @@ def start_web_server(args_param):
                             }
 
                         # 使用统一函数获取客户端真实IP（任务2）
-                        ip_address = get_client_ip(request)
+                        ip_address = request.remote_addr
                         index_data["files"][filename] = {
                             "username": "Guest",
                             "upload_time": time.time(),
@@ -15143,7 +15089,7 @@ def start_web_server(args_param):
 
         session_id = request.headers.get("X-Session-ID", "")
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = get_client_ip(request) or ""
+        ip_address = request.remote_addr or ""
         user_agent = request.headers.get("User-Agent", "")
         auth_result = None
         target_username = None
@@ -15795,7 +15741,7 @@ def start_web_server(args_param):
 
                 auth_system._save_permissions()
                 # 使用统一函数获取客户端真实IP（任务2）
-                ip_address = get_client_ip(request)
+                ip_address = request.remote_addr
                 auth_system.log_audit(
                     auth_username,
                     "set_user_permissions_batch",
@@ -15830,7 +15776,7 @@ def start_web_server(args_param):
                     auth_system._save_permissions()
 
                     # 使用统一函数获取客户端真实IP（任务2）
-                    ip_address = get_client_ip(request)
+                    ip_address = request.remote_addr
                     auth_system.log_audit(
                         auth_username,
                         "set_user_permissions_batch",
@@ -15852,7 +15798,7 @@ def start_web_server(args_param):
             )
 
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "set_user_permission",
@@ -16223,7 +16169,7 @@ def start_web_server(args_param):
         result = auth_system.register_user(new_username, password, group)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
 
             # 如果提供了手机号，绑定到新用户
             if phone:
@@ -16268,7 +16214,7 @@ def start_web_server(args_param):
         result = auth_system.ban_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "ban_user",
@@ -16297,7 +16243,7 @@ def start_web_server(args_param):
         result = auth_system.unban_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "unban_user",
@@ -16326,7 +16272,7 @@ def start_web_server(args_param):
         result = auth_system.delete_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "delete_user",
@@ -16362,7 +16308,7 @@ def start_web_server(args_param):
 
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "force_disable_2fa",
@@ -16438,7 +16384,7 @@ def start_web_server(args_param):
 
         # 5. 记录审计日志
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = get_client_ip(request)
+        ip_address = request.remote_addr
         auth_system.log_audit(
             auth_username,
             "force_logout_user",
@@ -16477,7 +16423,7 @@ def start_web_server(args_param):
         result = auth_system.reset_user_password(target_username, new_password)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "force_reset_password",
@@ -16521,7 +16467,7 @@ def start_web_server(args_param):
             with open(user_file_path, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "update_basic_info",
@@ -16575,7 +16521,7 @@ def start_web_server(args_param):
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "admin_update_nickname",
@@ -16659,7 +16605,7 @@ def start_web_server(args_param):
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "admin_update_phone",
@@ -17332,7 +17278,7 @@ def start_web_server(args_param):
                         "files": {},
                     }
                 # 使用统一函数获取客户端真实IP（任务2）
-                ip_address = get_client_ip(request)
+                ip_address = request.remote_addr
                 index_data["files"][filename] = {
                     "username": auth_username,
                     "upload_time": time.time(),
@@ -17506,7 +17452,7 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"清除头像文件时出错: {e}", exc_info=True)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "clear_user_avatar",
@@ -17665,7 +17611,7 @@ def start_web_server(args_param):
 
         result = auth_system.update_max_sessions(target_username, max_sessions)
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = get_client_ip(request)
+        ip_address = request.remote_addr
         auth_system.log_audit(
             auth_username,
             "update_max_sessions",
@@ -17924,7 +17870,7 @@ def start_web_server(args_param):
                 cleanup_thread.start()
             auth_system.link_session_to_user(auth_username, new_session_id)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             audit_details = f"创建新会话持久化文件，会话ID: {new_session_id}"
             if cleanup_message:
                 audit_details += f"; {cleanup_message}"
@@ -18164,7 +18110,7 @@ def start_web_server(args_param):
             if target_session_id in web_sessions:
                 del web_sessions[target_session_id]
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = get_client_ip(request)
+        ip_address = request.remote_addr
         auth_system.log_audit(
             auth_username,
             "destroy_session",
@@ -19169,7 +19115,7 @@ def start_web_server(args_param):
             
             _write_config_with_comments(config, CONFIG_FILE)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             auth_system.log_audit(
                 g.user,
                 "update_system_config",
@@ -19197,7 +19143,7 @@ def start_web_server(args_param):
             # 获取公共信息
             session_id = request.headers.get("X-Session-ID", "UnknownSession")
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             username = "Guest/Unknown"
 
             # 查找用户信息（只查一次锁）
@@ -19252,7 +19198,7 @@ def start_web_server(args_param):
         except Exception as e:
             session_id_err = request.headers.get("X-Session-ID", "UnknownSession")
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address_err = get_client_ip(request)
+            ip_address_err = request.remote_addr
             logging.error(
                 f"[前端日志处理错误][IP:{ip_address_err}][Sess:{session_id_err[:8]}] {e}",
                 exc_info=True,
@@ -19585,7 +19531,7 @@ def start_web_server(args_param):
             del sms_verification_codes[new_phone]
 
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = get_client_ip(request)
+            ip_address = request.remote_addr
             # 记录审计日志
             auth_system.log_audit(
                 current_username,
@@ -20143,7 +20089,7 @@ def start_web_server(args_param):
                     else None
                 )
                 # 使用统一函数获取客户端真实IP（任务2）
-                client_ip = get_client_ip(request)
+                client_ip = request.remote_addr
                 content = f"管理员 {g.user} 手动添加的验证码: {code}，{code_expire_minutes}分钟内有效。"
 
                 history_entry = {
@@ -22354,7 +22300,7 @@ def start_web_server(args_param):
         # IP封禁检查：留言板功能专项封禁
         # ============================================================
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = get_client_ip(request)
+        client_ip = request.remote_addr
 
         if check_ip_ban(client_ip, scope="messages_only"):
             logging.warning(f"[IP封禁] 留言功能封禁拦截：IP {client_ip} 尝试发表留言")
@@ -22623,7 +22569,7 @@ def start_web_server(args_param):
         # 为留言添加更丰富的用户信息和位置信息
         # ============================================================
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = get_client_ip(request)
+        client_ip = request.remote_addr
         ip_city = get_ip_location(client_ip)
         user_nickname = nickname
         avatar_url = "default_avatar.png"
@@ -23250,7 +23196,7 @@ def start_web_server(args_param):
             import threading
 
             # 使用统一函数获取客户端真实IP（任务2）
-            client_ip_data = get_client_ip(request) or "unknown"
+            client_ip_data = request.remote_addr or "unknown"
             user_agent_data = request.headers.get("User-Agent", "unknown")
             threading.Thread(
                 target=log_captcha_history,
@@ -24047,7 +23993,7 @@ def start_web_server(args_param):
                     "html": html,
                     "session_id": request.headers.get("X-Session-ID", "unknown"),
                     # 使用统一函数获取客户端真实IP（任务2）
-                    "client_ip": get_client_ip(request),
+                    "client_ip": request.remote_addr,
                     "user_agent": request.headers.get("User-Agent", "unknown"),
                     "timestamp": time.time(),
                     "timestamp_readable": datetime.datetime.now().strftime(
@@ -24487,17 +24433,28 @@ def start_web_server(args_param):
         处理反向代理（如Nginx）转发的请求头。
 
         功能说明：
-        1. 检查X-Forwarded-Proto头，识别原始请求是HTTP还是HTTPS
-        2. 检查X-Forwarded-For头，获取真实客户端IP
+        1. 从X-Forwarded-For头获取真实客户端IP
+        2. 检查X-Forwarded-Proto头，识别原始请求是HTTP还是HTTPS
         3. 如果启用了https_only模式且检测到HTTP请求，重定向到HTTPS
 
         这个函数在每个请求处理之前自动执行。
+        
+        注意：X-Forwarded-For的值已由nginx智能设置：
+        - 如果CDN传来自定义头（如X-RealIP-Form），nginx会使用它作为X-Forwarded-For
+        - 否则nginx使用标准的$proxy_add_x_forwarded_for
         """
-        forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
+        # 从X-Forwarded-For获取真实客户端IP
+        # X-Forwarded-For格式：client, proxy1, proxy2
+        # 取第一个IP作为原始客户端IP
         forwarded_for = request.headers.get("X-Forwarded-For", "")
         if forwarded_for:
+            # 按逗号分割，取第一个IP（原始客户端IP）
+            # strip()去除可能存在的首尾空格
             real_ip = forwarded_for.split(",")[0].strip()
             request.environ["REMOTE_ADDR"] = real_ip
+        
+        # 处理HTTPS重定向逻辑
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
         if ssl_config.get("https_only", False) and ssl_config.get("ssl_enabled", False):
             if not forwarded_proto:
                 is_https = True
