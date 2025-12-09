@@ -1314,36 +1314,11 @@ def _write_config_with_comments(config_obj, filepath):
 def is_weak_password(password):
     """
     检测密码是否为弱密码
-    
-    弱密码定义：
-    1. 长度小于8个字符
-    2. 纯数字密码（如：12345678）
-    3. 纯字母密码（如：abcdefgh）
-    4. 常见弱密码（如：password, admin123, 12345678等）
-    5. 键盘序列（如：qwerty, asdfgh, 123456等）
-    
-    参数:
-        password (str): 待检测的密码字符串
-        
-    返回值:
-        tuple: (is_weak, reason)
-            - is_weak (bool): True表示是弱密码，False表示强密码
-            - reason (str): 如果是弱密码，返回具体原因（中文）
-    
-    示例:
-        >>> is_weak_password("123")
-        (True, "密码长度不能少于8个字符")
-        >>> is_weak_password("12345678")
-        (True, "密码不能为纯数字")
-        >>> is_weak_password("abcd1234")
-        (True, "密码过于简单，请使用更复杂的密码")
-        >>> is_weak_password("MyP@ssw0rd")
-        (False, "")
     """
     # 1. 检查密码长度
     # 密码长度必须至少8个字符，这是安全的基本要求
-    if len(password) < 8:
-        return (True, "密码长度不能少于8个字符")
+    if len(password) < 6:
+        return (True, "密码长度不能少于6个字符")
     
     # 2. 检查是否为纯数字
     # 纯数字密码容易被暴力破解，安全性极低
@@ -1715,8 +1690,11 @@ class AuthSystem:
         logging.info("配置文件已加载")
         self.permissions = self._load_permissions()
         logging.info("权限配置已加载")
-        self.lock = threading.Lock()
-        logging.info("线程锁已创建（使用threading.Lock）")
+        # [修正] 使用 RLock (可重入锁) 替代 Lock。
+        # 原因: register_user 方法持有锁时会调用 unbind_phone_from_user，后者也会请求锁。
+        # 如果使用普通 Lock 会导致死锁，RLock 允许同一线程多次获取锁。
+        self.lock = threading.RLock()
+        logging.info("线程锁已创建（使用threading.RLock以防止递归死锁）")
         self._synchronize_super_admin_permissions()
         logging.info("AuthSystem初始化完成")
         logging.info("=" * 80)

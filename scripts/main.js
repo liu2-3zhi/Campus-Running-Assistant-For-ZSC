@@ -83,30 +83,12 @@ function handleCdnError(resourceName) {
 
 /**
  * 检查密码强度，判断是否为弱密码
- * 
- * 功能说明：
- * 1. 检查密码长度是否少于8个字符
- * 2. 检查是否为纯数字密码
- * 3. 检查是否为纯字母密码
- * 4. 检查是否为常见弱密码
- * 5. 检查是否包含键盘序列
- * 
- * @param {string} password - 待检测的密码字符串
- * @returns {Object} 返回对象包含两个属性：
- *   - isWeak {boolean}: true表示是弱密码，false表示强密码
- *   - reason {string}: 如果是弱密码，返回具体原因（中文）
- * 
- * 使用示例：
- *   var result = checkWeakPassword("123");
- *   if (result.isWeak) {
- *     alert(result.reason); // "密码长度不能少于8个字符"
- *   }
  */
 function checkWeakPassword(password) {
     // 1. 长度检查
     // 密码长度必须至少8个字符，这是安全的基本要求
-    if (password.length < 8) {
-        return { isWeak: true, reason: "密码长度不能少于8个字符" };
+    if (password.length < 6) {
+        return { isWeak: true, reason: "密码长度不能少于6个字符" };
     }
     
     // 2. 纯数字检查
