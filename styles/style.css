@@ -1751,3 +1751,42 @@ body.mobile-mode #session-picker-modal {
   flex-direction: column;
   overflow-y: auto;
 }
+
+/* ========================================
+   PC端备案Footer显示修复
+   使用Flexbox布局确保footer始终可见
+   ======================================== */
+
+/* desktop-container使用Flexbox垂直布局 */
+#desktop-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+/* login-container、main-app、multi-account-app占据可用空间并允许滚动 */
+#login-container,
+#main-app,
+#multi-account-app {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* pc-beian-footer固定在底部不压缩 */
+#pc-beian-footer {
+  flex-shrink: 0;
+}
+
+/* ========================================
+   移动端备案Footer显示修复
+   添加底部间距避免被浏览器工具栏遮挡
+   ======================================== */
+
+/* 为mobile-beian-footer添加底部间距，避开底部导航栏和浏览器工具栏 */
+#mobile-beian-footer {
+  /* 100px = 移动端底部导航栏(64px) + 浏览器工具栏(~30-50px) + 安全余量(6-16px) */
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+  /* env(safe-area-inset-bottom)用于适配iPhone等带有刘海屏的设备 */
+}
