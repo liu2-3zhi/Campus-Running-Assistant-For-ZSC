@@ -110,6 +110,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             root /app;
             log_not_found off;
             access_log off;
+            add_header Access-Control-Allow-Origin *;
         }
 
         # 2 & 3. Scripts 和 Styles 目录
@@ -118,6 +119,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             # 设置较长的缓存时间，因为静态资源通常不常变
             expires 7d;
             access_log off;
+            add_header Access-Control-Allow-Origin *;
             
             # 【核心修复】如果静态文件不存在，代理到后端(Flask)处理
             # 解决后端动态生成脚本(如模板渲染的js)或路径被误拦截的问题
@@ -132,14 +134,29 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         # 5. Static 路径别名 (URL: /static/... -> File: /app/...)
         location = /static/default_avatar.png {
             alias /app/default_avatar.png;
+            add_header Access-Control-Allow-Origin *;
         }
 
         # 6. API 路径头像特例 (优先级高于通用的 API 正则匹配)
         # 必须使用 = 精确匹配，否则会被下方的 ~ ^/(api|...) 规则拦截
+        # 1. 精确匹配默认头像（最高优先级）
         location = /api/avatar/default_avatar.png {
             alias /app/default_avatar.png;
-            # 允许跨域访问图片
             add_header Access-Control-Allow-Origin *;
+        }
+
+        # 2. 禁止访问索引文件
+        location = /api/avatar/_index.json {
+            return 404;
+        }
+
+        # 3. 其余头像文件
+        location ~ ^/api/avatar/(.+)$ {
+            alias /app/system_accounts/images/$1;
+            add_header Access-Control-Allow-Origin *;
+
+            # 如果文件不存在，直接 404（不落到 @backend）
+            try_files $uri =404;
         }
 
         # WebSocket支持 - SocketIO

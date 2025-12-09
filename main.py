@@ -1823,6 +1823,12 @@ class AuthSystem:
         )
         return file_path
 
+    # [新增] 补充缺失的辅助方法，用于 delete_user 备份
+    def _get_user_accounts_file(self, auth_username):
+        """获取用户的 school_accounts 文件路径"""
+        user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        return os.path.join(user_accounts_dir, f"{auth_username}.json")
+
     def _update_user_file_group(self, username, new_group):
         """
         (辅助函数) 更新 system_accounts 中用户JSON文件内的 group 字段。
@@ -5072,9 +5078,16 @@ class Api:
         """生成一个新的UA并保存"""
         logging.info("API调用: generate_new_ua - 生成新的随机User-Agent字符串")
         self.device_ua = ApiClient.generate_random_ua()
-        cfg = configparser.ConfigParser()
+        # [修正] 使用 strict=False 允许读取包含重复项的配置文件，optionxform=str 保持大小写
+        cfg = configparser.ConfigParser(strict=False)
+        cfg.optionxform = str
         if os.path.exists(self.user_config_path):
-            cfg.read(self.user_config_path, encoding="utf-8")
+            try:
+                cfg.read(self.user_config_path, encoding="utf-8")
+            except Exception as e:
+                logging.warning(f"读取配置文件 {self.user_config_path} 失败: {e}，将创建新配置")
+                # 如果读取失败，cfg 保持为空或部分内容，继续执行不会崩溃
+
             if not cfg.has_section("System"):
                 cfg.add_section("System")
             cfg.set("System", "UA", self.device_ua)
@@ -16158,10 +16171,11 @@ def start_web_server(args_param):
             data = request.get_json()
             if not data:
                 return jsonify({"success": False, "message": "缺少请求数据"}), 400
-            auth_username = data.get("auth_username", "").strip()
-            school_username = data.get("school_username", "").strip()
-            password = data.get("password", "").strip()
-            ua = data.get("ua", "").strip()
+            auth_username = str(data.get("auth_username") or "").strip()
+            school_username = str(data.get("school_username") or "").strip()
+            password = str(data.get("password") or "").strip()
+            # [修正] 安全获取 ua，防止 None.strip() 报错
+            ua = str(data.get("ua") or "").strip()
             if not auth_username or not school_username or not password:
                 return (
                     jsonify(
@@ -16172,6 +16186,10 @@ def start_web_server(args_param):
                     ),
                     400,
                 )
+            # [新增] 如果前端未提供UA（为空），则自动生成一个随机UA
+            if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
+                ua = ApiClient.generate_random_ua()
+                logging.info(f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
 
         except Exception as e:
             logging.error(f"解析school_account保存请求失败: {e}", exc_info=True)
@@ -16332,6 +16350,9 @@ def start_web_server(args_param):
                     ),
                     400,
                 )
+            if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
+                ua = ApiClient.generate_random_ua()
+                logging.info(f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
         except Exception as e:
             logging.error(f"解析school_account更新请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400

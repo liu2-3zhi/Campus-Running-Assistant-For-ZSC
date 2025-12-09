@@ -7190,7 +7190,17 @@ function refreshMobileSessionPicker() {
               "成功"
             );
             closeEditSchoolAccountModal();
+            
+            // 刷新全局列表（如果有）
             loadSchoolAccounts();
+
+            // [新增]：如果当前打开了单个用户的管理模态框，也需要刷新该列表
+            const manageModal = $("manage-school-accounts-modal");
+            if (manageModal && !manageModal.classList.contains("hidden")) {
+                // authUsername 是该函数前面获取的变量，正好对应当前操作的认证用户名
+                await showUserSchoolAccounts(authUsername);
+            }
+
           } else {
             showModalAlert(result.message || "保存失败", "错误");
           }
