@@ -1,0 +1,4 @@
+[submodule "Sensitive-lexicon"]
+	path = Sensitive-lexicon
+	url = https://github.com/konsheng/Sensitive-lexicon.git
+	branch = dev

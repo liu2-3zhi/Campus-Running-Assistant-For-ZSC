@@ -1311,6 +1311,62 @@ def _write_config_with_comments(config_obj, filepath):
         )
 
 
+def is_weak_password(password):
+    """
+    检测密码是否为弱密码
+    """
+    # 1. 检查密码长度
+    # 密码长度必须至少8个字符，这是安全的基本要求
+    if len(password) < 6:
+        return (True, "密码长度不能少于6个字符")
+    
+    # 2. 检查是否为纯数字
+    # 纯数字密码容易被暴力破解，安全性极低
+    if password.isdigit():
+        return (True, "密码不能为纯数字")
+    
+    # 3. 检查是否为纯字母
+    # 纯字母密码缺乏复杂性，容易被字典攻击破解
+    if password.isalpha():
+        return (True, "密码不能为纯字母，需包含数字或特殊字符")
+    
+    # 4. 常见弱密码列表
+    # 这些密码在各种密码泄露事件中出现频率极高，黑客工具都会优先尝试
+    common_weak_passwords = [
+        'password', 'password123', 'admin123', 'admin', 
+        '12345678', '123456789', '87654321', 'qwerty', 
+        'qwerty123', 'abc123', 'abcd1234', '11111111',
+        '00000000', 'test1234', 'user1234', 'pass1234',
+        'a1b2c3d4', '1q2w3e4r', 'qwertyui', 'asdfghjk',
+    ]
+    # 使用 lower() 进行不区分大小写的比较，避免用户用大小写混淆绕过检测
+    if password.lower() in common_weak_passwords:
+        return (True, "密码过于简单，请使用更复杂的密码")
+    
+    # 5. 检查键盘序列（连续的键盘按键）
+    # 键盘序列容易被猜测，因为人们倾向于使用手指在键盘上连续按键的模式
+    keyboard_patterns = [
+        '123456', '234567', '345678', '456789', '567890',
+        'qwerty', 'asdfgh', 'zxcvbn', 'qazwsx', 'zaq12wsx',
+    ]
+    # 转换为小写进行检查，防止用户通过大小写混淆绕过检测
+    password_lower = password.lower()
+    for pattern in keyboard_patterns:
+        # 检查密码中是否包含这些键盘序列模式
+        if pattern in password_lower:
+            return (True, "密码包含键盘序列，请使用更复杂的密码")
+    
+    # 6. 检查重复字符（如：aaaa1111, 11112222）
+    # 使用 set() 获取密码中不同字符的数量
+    # 如果不同字符种类少于4种，说明密码重复性太高，缺乏多样性
+    if len(set(password)) < 4:
+        return (True, "密码字符重复过多，请使用更多样化的字符")
+    
+    # 通过所有检查，密码强度合格
+    # 返回 False 表示不是弱密码，reason 为空字符串
+    return (False, "")
+
+
 def _create_config_ini():
     """创建或更新config.ini配置文件（兼容旧版本，自动补全缺失参数）"""
     default_config = _get_default_config()
@@ -1634,8 +1690,11 @@ class AuthSystem:
         logging.info("配置文件已加载")
         self.permissions = self._load_permissions()
         logging.info("权限配置已加载")
-        self.lock = threading.Lock()
-        logging.info("线程锁已创建（使用threading.Lock）")
+        # [修正] 使用 RLock (可重入锁) 替代 Lock。
+        # 原因: register_user 方法持有锁时会调用 unbind_phone_from_user，后者也会请求锁。
+        # 如果使用普通 Lock 会导致死锁，RLock 允许同一线程多次获取锁。
+        self.lock = threading.RLock()
+        logging.info("线程锁已创建（使用threading.RLock以防止递归死锁）")
         self._synchronize_super_admin_permissions()
         logging.info("AuthSystem初始化完成")
         logging.info("=" * 80)
@@ -1822,6 +1881,12 @@ class AuthSystem:
             f"get_user_file_path: 用户 {auth_username} 的文件路径: {file_path}"
         )
         return file_path
+
+    # [新增] 补充缺失的辅助方法，用于 delete_user 备份
+    def _get_user_accounts_file(self, auth_username):
+        """获取用户的 school_accounts 文件路径"""
+        user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        return os.path.join(user_accounts_dir, f"{auth_username}.json")
 
     def _update_user_file_group(self, username, new_group):
         """
@@ -2764,45 +2829,173 @@ class AuthSystem:
             return {"success": True, "message": "用户已解封"}
 
     def delete_user(self, auth_username):
-        """删除用户（需要管理员权限）"""
-        with self.lock:
+        """
+        删除用户（需要管理员权限）
+        
+        在删除用户之前，会将用户的所有数据（system_accounts、school_accounts、permissions）
+        备份到 system_accounts/remove/ 目录中，备份文件使用 UUID 命名。
+        只有备份成功后才会执行实际的删除操作。
+        
+        参数:
+            auth_username (str): 要删除的用户的认证用户名
+            
+        返回:
+            dict: 包含 success (bool) 和 message (str) 的字典
+        """
+        with self.lock:  # 使用线程锁确保线程安全，防止并发删除导致数据不一致
+            # ==================== 第一步：安全性检查 ====================
+            
+            # 获取超级管理员用户名，防止删除超级管理员账号
             super_admin = self.config.get("Admin", "super_admin", fallback="admin")
             if auth_username == super_admin:
+                # 不允许删除超级管理员，这是系统安全的最后一道防线
                 return {"success": False, "message": "不允许删除超级管理员"}
 
+            # 获取用户的 system_accounts 文件路径
             user_file = self.get_user_file_path(auth_username)
             if not os.path.exists(user_file):
+                # 用户文件不存在，说明用户已不存在或从未创建
                 return {"success": False, "message": "用户不存在"}
 
+            # ==================== 第二步：收集需要备份的数据 ====================
+            
+            try:
+                # 1. 读取 system_accounts 中的用户数据
+                # 这包含用户的基本信息、密码哈希、会话信息等核心数据
+                with open(user_file, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+                logging.info(f"[删除用户备份] 已读取用户 {auth_username} 的 system_accounts 数据")
+            except Exception as e:
+                # 如果无法读取用户数据，则无法继续备份，返回错误
+                logging.error(f"[删除用户备份] 读取用户数据失败: {e}")
+                return {"success": False, "message": f"读取用户数据失败: {e}"}
+
+            # 2. 读取用户的 school_accounts (user_accounts) 数据
+            # 这包含用户绑定的学校账号信息（用户名、密码等）
+            school_accounts_data = None
+            school_accounts_file = self._get_user_accounts_file(auth_username)
+            if os.path.exists(school_accounts_file):
+                try:
+                    with open(school_accounts_file, "r", encoding="utf-8") as f:
+                        school_accounts_data = json.load(f)
+                    logging.info(f"[删除用户备份] 已读取用户 {auth_username} 的 school_accounts 数据")
+                except Exception as e:
+                    # 如果读取失败，记录警告但不阻止删除流程（可能用户没有学校账号）
+                    logging.warning(f"[删除用户备份] 读取 school_accounts 数据失败: {e}")
+                    school_accounts_data = None
+            else:
+                # 用户可能没有绑定任何学校账号，这是正常情况
+                logging.info(f"[删除用户备份] 用户 {auth_username} 没有 school_accounts 文件")
+
+            # 3. 提取用户的权限信息（从 permissions.json）
+            # 包括用户所属的用户组和自定义权限
+            user_permissions = {}
+            if auth_username in self.permissions.get("user_groups", {}):
+                # 保存用户的用户组信息（如 admin、user 等）
+                user_permissions["user_groups"] = self.permissions["user_groups"][auth_username]
+            if "user_custom_permissions" in self.permissions and auth_username in self.permissions["user_custom_permissions"]:
+                # 保存用户的自定义权限（如禁用某些功能、特殊访问权限等）
+                user_permissions["user_custom_permissions"] = self.permissions["user_custom_permissions"][auth_username]
+            
+            if user_permissions:
+                logging.info(f"[删除用户备份] 已提取用户 {auth_username} 的权限信息")
+            else:
+                logging.info(f"[删除用户备份] 用户 {auth_username} 没有特殊权限配置")
+
+            # ==================== 第三步：创建备份 ====================
+            
+            # 构建备份文件的保存路径
+            # 备份目录位于 system_accounts/remove/
+            backup_dir = os.path.join(SYSTEM_ACCOUNTS_DIR, "remove")
+            
+            # 如果备份目录不存在，则创建它（包括所有必要的父目录）
+            if not os.path.exists(backup_dir):
+                try:
+                    os.makedirs(backup_dir, exist_ok=True)
+                    logging.info(f"[删除用户备份] 创建备份目录: {backup_dir}")
+                except Exception as e:
+                    # 如果无法创建备份目录，则无法继续，返回错误
+                    logging.error(f"[删除用户备份] 创建备份目录失败: {e}")
+                    return {"success": False, "message": f"创建备份目录失败: {e}"}
+
+            # 生成唯一的备份文件名
+            # 使用 uuid.uuid4() 生成随机 UUID，UUID4 冲突概率为 1/2^122，实际上不可能重复
+            backup_uuid = str(uuid.uuid4())
+            backup_filename = os.path.join(backup_dir, f"{backup_uuid}.json")
+
+            # 构建备份数据的结构
+            # 使用 ISO 8601 格式的时间戳记录删除时间
+            backup_data = {
+                "deleted_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),  # 删除时间（UTC时间）
+                "auth_username": auth_username,  # 被删除用户的用户名
+                "user_data": user_data,  # system_accounts 中的完整用户数据
+                "school_accounts": school_accounts_data,  # school_accounts 中的数据（可能为 None）
+                "permissions": user_permissions  # 用户的权限配置（可能为空字典）
+            }
+
+            # 将备份数据写入 JSON 文件
+            try:
+                with open(backup_filename, "w", encoding="utf-8") as f:
+                    # 使用 indent=2 使 JSON 格式化输出，便于人工查看
+                    # ensure_ascii=False 确保中文字符正常显示
+                    json.dump(backup_data, f, indent=2, ensure_ascii=False)
+                logging.info(f"[删除用户备份] 备份成功: {backup_filename}")
+            except Exception as e:
+                # 如果备份失败，则不执行删除操作，保护用户数据
+                logging.error(f"[删除用户备份] 保存备份文件失败: {e}")
+                return {"success": False, "message": f"备份失败，用户未删除: {e}"}
+
+            # ==================== 第四步：执行删除操作 ====================
+            # 只有在备份成功后，才会执行以下删除操作
+            
+            # 1. 删除 system_accounts 中的用户文件
             try:
                 os.remove(user_file)
+                logging.info(f"[删除用户] 已删除用户文件: {user_file}")
             except Exception as e:
-                logging.error(f"删除用户文件失败: {e}")
-                return {"success": False, "message": f"删除失败: {e}"}
+                # 删除用户文件失败，记录错误并返回
+                logging.error(f"[删除用户] 删除用户文件失败: {e}")
+                return {"success": False, "message": f"删除用户文件失败: {e}"}
 
+            # 2. 删除 school_accounts 中的用户文件（如果存在）
             try:
-                school_accounts_file = self._get_user_accounts_file(auth_username)
                 if os.path.exists(school_accounts_file):
                     os.remove(school_accounts_file)
-                    logging.info(f"已删除用户 {auth_username} 的 school accounts 文件")
+                    logging.info(f"[删除用户] 已删除用户 {auth_username} 的 school_accounts 文件")
             except Exception as e:
-                logging.error(
-                    f"删除用户 {auth_username} 的 school accounts 文件失败: {e}"
-                )
+                # school_accounts 删除失败不影响主流程，仅记录警告
+                logging.warning(f"[删除用户] 删除 school_accounts 文件失败: {e}")
 
+            # 3. 从 permissions.json 中删除用户的权限配置
+            # 删除用户所属的用户组信息
             if auth_username in self.permissions.get("user_groups", {}):
                 del self.permissions["user_groups"][auth_username]
+                logging.info(f"[删除用户] 已删除用户 {auth_username} 的用户组配置")
 
+            # 删除用户的自定义权限信息
             if (
                 "user_custom_permissions" in self.permissions
                 and auth_username in self.permissions["user_custom_permissions"]
             ):
                 del self.permissions["user_custom_permissions"][auth_username]
+                logging.info(f"[删除用户] 已删除用户 {auth_username} 的自定义权限配置")
 
-            self._save_permissions()
+            # 4. 保存更新后的权限配置到文件
+            try:
+                self._save_permissions()
+                logging.info(f"[删除用户] 权限配置已保存")
+            except Exception as e:
+                # 权限保存失败，记录警告（不影响删除操作的成功）
+                logging.warning(f"[删除用户] 保存权限配置失败: {e}")
 
-            logging.info(f"用户已删除: {auth_username}")
-            return {"success": True, "message": "用户已删除"}
+            # ==================== 第五步：返回成功结果 ====================
+            
+            # 记录删除操作成功，包含备份文件路径供管理员参考
+            logging.info(f"[删除用户] 用户 {auth_username} 已成功删除，备份文件: {backup_filename}")
+            return {
+                "success": True, 
+                "message": f"用户已删除，备份文件: {os.path.basename(backup_filename)}"
+            }
 
     def get_user_details(self, auth_username):
         """获取用户详细信息"""
@@ -4944,9 +5137,16 @@ class Api:
         """生成一个新的UA并保存"""
         logging.info("API调用: generate_new_ua - 生成新的随机User-Agent字符串")
         self.device_ua = ApiClient.generate_random_ua()
-        cfg = configparser.ConfigParser()
+        # [修正] 使用 strict=False 允许读取包含重复项的配置文件，optionxform=str 保持大小写
+        cfg = configparser.ConfigParser(strict=False)
+        cfg.optionxform = str
         if os.path.exists(self.user_config_path):
-            cfg.read(self.user_config_path, encoding="utf-8")
+            try:
+                cfg.read(self.user_config_path, encoding="utf-8")
+            except Exception as e:
+                logging.warning(f"读取配置文件 {self.user_config_path} 失败: {e}，将创建新配置")
+                # 如果读取失败，cfg 保持为空或部分内容，继续执行不会崩溃
+
             if not cfg.has_section("System"):
                 cfg.add_section("System")
             cfg.set("System", "UA", self.device_ua)
@@ -14208,6 +14408,15 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": captcha_error_msg})
             if not auth_username or not auth_password:
                 return jsonify({"success": False, "message": "用户名和密码不能为空"})
+            
+            # [新增] 检查弱密码
+            # 调用 is_weak_password 函数检测密码强度
+            # 如果密码过弱，立即返回错误信息，不允许注册
+            is_weak, weak_reason = is_weak_password(auth_password)
+            if is_weak:
+                # 将弱密码检测的具体原因返回给前端，提示用户修改密码
+                return jsonify({"success": False, "message": f"密码强度不足：{weak_reason}"}), 400
+            
             if re.search(r"[\u4e00-\u9fff]", auth_username):
                 return jsonify({"success": False, "message": "用户名不能包含中文字符"})
             if phone and not re.match(r"^1[3-9]\d{9}$", phone):
@@ -16030,10 +16239,11 @@ def start_web_server(args_param):
             data = request.get_json()
             if not data:
                 return jsonify({"success": False, "message": "缺少请求数据"}), 400
-            auth_username = data.get("auth_username", "").strip()
-            school_username = data.get("school_username", "").strip()
-            password = data.get("password", "").strip()
-            ua = data.get("ua", "").strip()
+            auth_username = str(data.get("auth_username") or "").strip()
+            school_username = str(data.get("school_username") or "").strip()
+            password = str(data.get("password") or "").strip()
+            # [修正] 安全获取 ua，防止 None.strip() 报错
+            ua = str(data.get("ua") or "").strip()
             if not auth_username or not school_username or not password:
                 return (
                     jsonify(
@@ -16044,6 +16254,10 @@ def start_web_server(args_param):
                     ),
                     400,
                 )
+            # [新增] 如果前端未提供UA（为空），则自动生成一个随机UA
+            if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
+                ua = ApiClient.generate_random_ua()
+                logging.info(f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
 
         except Exception as e:
             logging.error(f"解析school_account保存请求失败: {e}", exc_info=True)
@@ -16204,6 +16418,9 @@ def start_web_server(args_param):
                     ),
                     400,
                 )
+            if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
+                ua = ApiClient.generate_random_ua()
+                logging.info(f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
         except Exception as e:
             logging.error(f"解析school_account更新请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400
@@ -16360,6 +16577,14 @@ def start_web_server(args_param):
         # 验证必填参数：目标用户名和新密码
         if not target_username or not new_password:
             return jsonify({"success": False, "message": "参数缺失"})
+        
+        # [新增] 检查新密码强度
+        # 在允许密码重置之前，检查新密码是否为弱密码
+        # 这可以防止用户设置不安全的密码，提高账户安全性
+        is_weak, weak_reason = is_weak_password(new_password)
+        if is_weak:
+            # 如果新密码过弱，返回错误信息，要求用户设置更强的密码
+            return jsonify({"success": False, "message": f"新密码强度不足：{weak_reason}"}), 400
 
         # 判断是否是修改自己的密码
         is_self_change = target_username == auth_username
@@ -18074,6 +18299,68 @@ def start_web_server(args_param):
                         ),
                     ),
                 },
+                # ==================== Beian 备案信息配置加载 ====================
+                # 功能说明：从 config.ini 文件中读取网站备案相关的配置信息
+                # 包括 ICP 备案号（工信部）和公安网备案号（公安部）
+                # 这些信息将在前端管理面板中显示，供管理员查看和编辑
+                # 
+                # 修复说明：
+                # - 原有问题：config_data 字典中缺少 Beian 配置部分
+                # - 导致前端无法正确读取和显示 Beian 配置项
+                # - 解决方案：添加完整的 Beian 配置加载逻辑
+                "Beian": {
+                    # ICP 备案号（Internet Content Provider，互联网内容提供商）
+                    # 这是工信部颁发的网站备案号，格式通常为：京ICP备xxxxxxxx号
+                    # 用途：在网站底部显示，证明网站已经过合法备案
+                    "icp_number": _get_config_value(
+                        config,  # 当前加载的配置对象
+                        "Beian",  # 配置节（section）名称
+                        "icp_number",  # 配置键（key）名称
+                        # fallback 参数：如果配置文件中没有该项，使用默认配置中的值
+                        # 如果默认配置中也没有，则使用空字符串
+                        fallback=default_config.get("Beian", "icp_number", fallback=""),
+                    ),
+                    # 是否显示 ICP 备案信息的开关
+                    # 类型：布尔值（True/False）
+                    # 用途：控制网站底部是否显示 ICP 备案号
+                    # 有些网站可能已备案但不希望公开显示，可以设置为 False
+                    "show_icp": _get_config_value(
+                        config,  # 配置对象
+                        "Beian",  # 配置节
+                        "show_icp",  # 配置键
+                        type_func=config.getboolean,  # 指定类型转换函数，将字符串转为布尔值
+                        # fallback：先尝试从默认配置获取布尔值，如果没有则使用 False
+                        fallback=default_config.getboolean(
+                            "Beian", "show_icp", fallback=False
+                        ),
+                    ),
+                    # 公安网备案号
+                    # 这是公安部门颁发的网站备案号，格式通常为：京公网安备 xxxxxxxxxxxxxxxx号
+                    # 用途：在网站底部显示，证明网站已向公安机关备案
+                    # 根据《网络安全法》，某些类型的网站需要进行公安备案
+                    "police_number": _get_config_value(
+                        config,  # 配置对象
+                        "Beian",  # 配置节
+                        "police_number",  # 配置键
+                        # fallback：如果配置文件中没有该项，使用默认配置或空字符串
+                        fallback=default_config.get("Beian", "police_number", fallback=""),
+                    ),
+                    # 是否显示公安网备案信息的开关
+                    # 类型：布尔值（True/False）
+                    # 用途：控制网站底部是否显示公安网备案号
+                    # 管理员可以根据需要开启或关闭此显示
+                    "show_police": _get_config_value(
+                        config,  # 配置对象
+                        "Beian",  # 配置节
+                        "show_police",  # 配置键
+                        type_func=config.getboolean,  # 类型转换函数，字符串 -> 布尔值
+                        # fallback：先尝试从默认配置获取，如果没有则默认为 False（不显示）
+                        fallback=default_config.getboolean(
+                            "Beian", "show_police", fallback=False
+                        ),
+                    ),
+                },
+                # ==================== Beian 配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -18179,6 +18466,35 @@ def start_web_server(args_param):
                     config.set("API", "ip_api_key", api_data["ip_api_key"])
                 if "captcha_api_key" in api_data:
                     config.set("API", "captcha_api_key", api_data["captcha_api_key"])
+            
+            # [新增] 处理 Beian 备案配置
+            # 备案信息用于在网站底部显示ICP备案号和公安网备案号
+            # 这是中国法律要求的合规信息
+            if "Beian" in data:
+                # 确保 Beian 配置节存在
+                ensure_section(config, "Beian")
+                beian_data = data["Beian"]
+                
+                # 处理 ICP 备案号（工信部）
+                # ICP备案号格式如：京ICP备12345678号
+                if "icp_number" in beian_data:
+                    config.set("Beian", "icp_number", str(beian_data["icp_number"]))
+                
+                # 处理是否显示 ICP 备案信息
+                # 布尔值转换为小写字符串 "true" 或 "false"
+                if "show_icp" in beian_data:
+                    config.set("Beian", "show_icp", str(beian_data["show_icp"]).lower())
+                
+                # 处理公安网备案号（公安部）
+                # 公安网备案号格式如：京公网安备 11010802012345号
+                if "police_number" in beian_data:
+                    config.set("Beian", "police_number", str(beian_data["police_number"]))
+                
+                # 处理是否显示公安网备案信息
+                # 布尔值转换为小写字符串 "true" 或 "false"
+                if "show_police" in beian_data:
+                    config.set("Beian", "show_police", str(beian_data["show_police"]).lower())
+            
             _write_config_with_comments(config, CONFIG_FILE)
             ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
             auth_system.log_audit(

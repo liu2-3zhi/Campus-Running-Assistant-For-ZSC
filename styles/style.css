@@ -799,14 +799,14 @@ body {
 #account-params-modal:not(.hidden)
   ~ main
   > #multi-map-container
-  .amap-copyright {
+  .amap-copyright,
+body.modal-visible .amap-logo,
+body.modal-visible .amap-copyright  {
   display: none;
+  z-index: -1;
 }
 
-body.modal-visible .amap-logo,
-body.modal-visible .amap-copyright {
-  display: none;
-}
+
 
 #admin-modal-close-btn:hover {
   transform: translateY(-50%);
@@ -819,7 +819,6 @@ body.swal2-shown:not(.swal2-toast-shown) {
   overflow-y: auto; /* 保持滚动条，避免消失造成的跳动 */
 }
 
-/* 修复问题3：提升Swal层级，确保在移动端容器(z-10000)之上显示 */
 .swal2-container {
   z-index: 20005;
 }

@@ -80,6 +80,76 @@ function handleCdnError(resourceName) {
     }
   }, 3000);
 }
+
+/**
+ * 检查密码强度，判断是否为弱密码
+ */
+function checkWeakPassword(password) {
+    // 1. 长度检查
+    // 密码长度必须至少8个字符，这是安全的基本要求
+    if (password.length < 6) {
+        return { isWeak: true, reason: "密码长度不能少于6个字符" };
+    }
+    
+    // 2. 纯数字检查
+    // 使用正则表达式检查密码是否只包含数字（0-9）
+    // 纯数字密码容易被暴力破解，安全性极低
+    if (/^\d+$/.test(password)) {
+        return { isWeak: true, reason: "密码不能为纯数字" };
+    }
+    
+    // 3. 纯字母检查
+    // 使用正则表达式检查密码是否只包含字母（大小写）
+    // 纯字母密码缺乏复杂性，容易被字典攻击破解
+    if (/^[a-zA-Z]+$/.test(password)) {
+        return { isWeak: true, reason: "密码不能为纯字母，需包含数字或特殊字符" };
+    }
+    
+    // 4. 常见弱密码列表
+    // 这些密码在各种密码泄露事件中出现频率极高，黑客工具都会优先尝试
+    var commonWeak = [
+        'password', 'password123', 'admin123', 'admin',
+        '12345678', '123456789', '87654321', 'qwerty',
+        'qwerty123', 'abc123', 'abcd1234', '11111111',
+        '00000000', 'test1234', 'user1234', 'pass1234',
+        'a1b2c3d4', '1q2w3e4r', 'qwertyui', 'asdfghjk',
+    ];
+    // 将密码转换为小写进行比较，防止用户使用大小写混淆绕过检测
+    if (commonWeak.includes(password.toLowerCase())) {
+        return { isWeak: true, reason: "密码过于简单，请使用更复杂的密码" };
+    }
+    
+    // 5. 键盘序列检查
+    // 键盘序列容易被猜测，因为人们倾向于使用手指在键盘上连续按键的模式
+    var patterns = [
+        '123456', '234567', '345678', '456789', '567890',
+        'qwerty', 'asdfgh', 'zxcvbn', 'qazwsx', 'zaq12wsx',
+    ];
+    // 将密码转换为小写后检查是否包含键盘序列
+    var passwordLower = password.toLowerCase();
+    for (var i = 0; i < patterns.length; i++) {
+        if (passwordLower.includes(patterns[i])) {
+            return { isWeak: true, reason: "密码包含键盘序列，请使用更复杂的密码" };
+        }
+    }
+    
+    // 6. 检查字符重复
+    // 统计密码中不同字符的数量
+    // 如果不同字符种类少于4种，说明密码重复性太高，缺乏多样性
+    var uniqueChars = {};
+    for (var i = 0; i < password.length; i++) {
+        uniqueChars[password[i]] = true;
+    }
+    var uniqueCount = Object.keys(uniqueChars).length;
+    if (uniqueCount < 4) {
+        return { isWeak: true, reason: "密码字符重复过多，请使用更多样化的字符" };
+    }
+    
+    // 通过所有检查，密码强度合格
+    // 返回 isWeak: false 表示不是弱密码，reason 为空字符串
+    return { isWeak: false, reason: "" };
+}
+
 // 新增：返回管理员会话逻辑
 function returnToAdminSession() {
   const originSession = localStorage.getItem("admin_return_origin");
@@ -3913,6 +3983,16 @@ function refreshMobileSessionPicker() {
           showModalAlert("两次输入的密码不一致", "注册失败");
           return;
         }
+        
+        // [新增] 检查弱密码
+        // 在发送注册请求之前，先在前端进行弱密码检测
+        // 这可以减少不必要的网络请求，提高用户体验
+        var weakCheck = checkWeakPassword(password);
+        if (weakCheck.isWeak) {
+          // 如果密码过弱，显示具体的错误原因
+          showModalAlert(weakCheck.reason, "密码强度不足");
+          return;
+        }
 
         if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
           showModalAlert("请输入正确的手机号格式", "注册失败");
@@ -6422,6 +6502,16 @@ function refreshMobileSessionPicker() {
           showModalAlert("两次输入的密码不一致", "错误");
           return;
         }
+        
+        // [新增] 检查新密码强度
+        // 在提交密码修改请求之前，先检查新密码是否为弱密码
+        // 这可以防止用户设置不安全的密码，提高账户安全性
+        var weakCheck = checkWeakPassword(newPassword.value);
+        if (weakCheck.isWeak) {
+          // 如果新密码过弱，显示具体的错误原因
+          showModalAlert(weakCheck.reason, "密码强度不足");
+          return;
+        }
 
         // 检查新密码长度是否符合要求（最少6位）
         if (newPassword.value.length < 6) {
@@ -7190,7 +7280,17 @@ function refreshMobileSessionPicker() {
               "成功"
             );
             closeEditSchoolAccountModal();
+            
+            // 刷新全局列表（如果有）
             loadSchoolAccounts();
+
+            // [新增]：如果当前打开了单个用户的管理模态框，也需要刷新该列表
+            const manageModal = $("manage-school-accounts-modal");
+            if (manageModal && !manageModal.classList.contains("hidden")) {
+                // authUsername 是该函数前面获取的变量，正好对应当前操作的认证用户名
+                await showUserSchoolAccounts(authUsername);
+            }
+
           } else {
             showModalAlert(result.message || "保存失败", "错误");
           }
@@ -23309,6 +23409,47 @@ async function loadSystemConfig() {
       "text",
       "IP地理位置查询API密钥（可选，留空使用免费接口）。"
     );
+    // ==================== 网站备案信息配置 ====================
+    // 添加网站备案（Beian）相关配置项，包括ICP备案号和公安网备案号
+    // 这些配置项用于在网站底部显示合规信息，满足中国大陆网站的备案要求
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">网站备案信息</h5>';
+    // ICP备案号配置项
+    // 用于显示工信部颁发的ICP备案号，例如：京ICP备12345678号
+    html += createInput(
+      "Beian",
+      "icp_number",
+      "ICP备案号",
+      "text",
+      "工信部ICP备案号，如：京ICP备12345678号"
+    );
+    // 是否显示ICP备案信息的开关
+    // 管理员可以选择是否在页面底部展示ICP备案号
+    html += createInput(
+      "Beian",
+      "show_icp",
+      "显示ICP备案",
+      "boolean",
+      "是否在页面底部显示ICP备案信息"
+    );
+    // 公安网备案号配置项
+    // 用于显示公安部网络安全备案号，例如：京公网安备 11010802012345号
+    html += createInput(
+      "Beian",
+      "police_number",
+      "公安网备案号",
+      "text",
+      "公安部网络安全备案号，如：京公网安备 11010802012345号"
+    );
+    // 是否显示公安网备案信息的开关
+    // 管理员可以选择是否在页面底部展示公安网备案号
+    html += createInput(
+      "Beian",
+      "show_police",
+      "显示公安备案",
+      "boolean",
+      "是否在页面底部显示公安网备案信息"
+    );
     formContainer.innerHTML = html;
   } catch (e) {
     formContainer.innerHTML = `<p class="text-red-500 text-center py-10">加载配置时发生错误: ${e.message}</p>`;
@@ -24120,49 +24261,156 @@ function formatTimestamp(timestamp) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 let shownReminders = new Set();
+/**
+ * 检查并显示定时提醒
+ * 
+ * 功能说明：
+ * 1. 定期向后端查询需要显示的提醒
+ * 2. 过滤出尚未显示的新提醒（避免重复显示）
+ * 3. 根据提醒数量决定显示方式：
+ *    - 单个提醒：独立弹窗显示
+ *    - 多个提醒：合并到一个弹窗中显示（解决覆盖问题）
+ * 
+ * 修复说明：
+ * - 原有问题：使用 for 循环逐个调用 Swal.fire()，导致后一个提醒覆盖前一个
+ * - 解决方案：先收集所有新提醒，然后根据数量选择合适的显示方式
+ */
 async function checkAndShowReminders() {
+  // 验证 sessionUUID 是否存在
+  // sessionUUID 是用户会话的唯一标识符，用于后端识别当前用户
   if (!sessionUUID) {
+    // 尝试从 URL 中获取 UUID（用户进入系统时会生成）
     sessionUUID = getUUIDFromURL();
     if (!sessionUUID) {
+      // 如果仍然无法获取 UUID，记录错误并退出
+      // 这种情况通常发生在用户未正确登录或会话已过期
       logMessage_Error("跳过提醒检查: sessionUUID 未定义");
       return;
     }
   }
+  
   try {
+    // 向后端 API 发起请求，检查是否有需要显示的提醒
     const response = await fetch("/api/reminders/check", {
-      method: "GET",
+      method: "GET", // 使用 GET 方法查询数据
       headers: {
+        // 在请求头中携带 sessionUUID，让后端知道是哪个用户在查询
         "X-Session-ID": sessionUUID,
       },
     });
+    
+    // 解析后端返回的 JSON 数据
     const result = await response.json();
+    
+    // 检查后端是否成功处理请求
     if (!result.success) {
+      // 如果失败，记录错误信息并退出
       console.error("[定时提醒] 检查失败:", result.message);
       return;
     }
+    
+    // 获取后端返回的提醒列表
+    // 如果后端没有返回 reminders 字段，使用空数组作为默认值
     const reminders = result.reminders || [];
-    for (const reminder of reminders) {
-      if (shownReminders.has(reminder.id)) {
-        continue;
-      }
-      shownReminders.add(reminder.id);
+    
+    // ==================== 核心修复逻辑开始 ====================
+    
+    // 过滤出尚未显示过的新提醒
+    // shownReminders 是一个 Set 集合，用于记录已显示过的提醒 ID
+    // 这样可以避免同一个提醒被重复显示
+    const newReminders = reminders.filter(r => !shownReminders.has(r.id));
+    
+    // 如果没有新提醒需要显示，直接返回，不做任何操作
+    if (newReminders.length === 0) {
+      return;
+    }
+    
+    // 将所有新提醒的 ID 添加到已显示集合中
+    // 这样下次检查时就不会再显示这些提醒了
+    newReminders.forEach(r => shownReminders.add(r.id));
+    
+    // 根据新提醒的数量，选择不同的显示方式
+    if (newReminders.length === 1) {
+      // ==================== 单个提醒的处理 ====================
+      // 只有一个提醒时，使用原有的简洁显示方式
+      
+      const reminder = newReminders[0];
+      
+      // 使用 SweetAlert2 显示提醒弹窗
       Swal.fire({
-        title: reminder.title,
+        title: reminder.title, // 提醒标题
+        // 将提醒内容中的换行符 \n 转换为 HTML 的 <br> 标签
+        // 这样可以在弹窗中正确显示多行文本
         html: reminder.message.replace(/\n/g, "<br>"),
-        icon: "info",
-        confirmButtonText: "知道了",
-        allowOutsideClick: true,
-        allowEscapeKey: true,
+        icon: "info", // 使用信息图标
+        confirmButtonText: "知道了", // 确认按钮文字
+        allowOutsideClick: true, // 允许点击弹窗外部关闭
+        allowEscapeKey: true, // 允许按 ESC 键关闭
         customClass: {
+          // 自定义样式类名，用于统一提醒弹窗的外观
           popup: "reminder-alert-popup",
           title: "reminder-alert-title",
           htmlContainer: "reminder-alert-content",
         },
       });
-
+      
+      // 在控制台记录日志，便于调试
       console.log(`[定时提醒] 已显示提醒: ${reminder.title}`);
+      
+    } else {
+      // ==================== 多个提醒的处理（核心修复） ====================
+      // 有多个提醒时，将它们合并到一个弹窗中显示
+      // 这样可以避免后一个提醒覆盖前一个提醒的问题
+      
+      // 构建合并后的 HTML 内容
+      // 使用 Tailwind CSS 的样式类来美化显示效果
+      let mergedHtml = '<div class="space-y-4">'; // space-y-4: 子元素之间垂直间距为 1rem
+      
+      // 遍历所有新提醒，为每个提醒生成一个独立的显示块
+      newReminders.forEach((reminder, index) => {
+        mergedHtml += `
+          <div class="border-b border-slate-200 pb-3 ${index === newReminders.length - 1 ? 'border-0 pb-0' : ''}">
+            <h4 class="font-semibold text-slate-800 mb-1">${index + 1}. ${reminder.title}</h4>
+            <div class="text-slate-600 text-sm">${reminder.message.replace(/\n/g, "<br>")}</div>
+          </div>
+        `;
+        // 解释：
+        // - border-b: 底部边框，用于分隔不同的提醒
+        // - 最后一个提醒不需要底部边框（通过三元运算符判断）
+        // - font-semibold: 标题使用半粗体
+        // - text-slate-800: 标题使用深灰色
+        // - text-slate-600: 内容使用中灰色
+        // - text-sm: 内容使用小号字体
+      });
+      
+      mergedHtml += '</div>';
+      
+      // 显示合并后的提醒弹窗
+      Swal.fire({
+        title: `📢 您有 ${newReminders.length} 条提醒`, // 标题显示提醒总数
+        html: mergedHtml, // 使用构建好的 HTML 内容
+        icon: "info", // 信息图标
+        confirmButtonText: "知道了", // 确认按钮文字
+        width: '600px', // 设置弹窗宽度，给多个提醒留出足够空间
+        allowOutsideClick: true, // 允许点击外部关闭
+        allowEscapeKey: true, // 允许按 ESC 键关闭
+        customClass: {
+          // 使用与单个提醒相同的样式类，保持界面一致性
+          popup: "reminder-alert-popup",
+          title: "reminder-alert-title",
+          htmlContainer: "reminder-alert-content",
+        },
+      });
+      
+      // 在控制台记录日志，显示提醒的数量
+      console.log(`[定时提醒] 已显示 ${newReminders.length} 条提醒`);
     }
+    
+    // ==================== 核心修复逻辑结束 ====================
+    
   } catch (error) {
+    // 捕获并记录任何网络请求或 JSON 解析过程中发生的错误
+    // 这样即使提醒功能出错，也不会影响应用的其他功能
     console.error("[定时提醒] 检查提醒时发生错误:", error);
   }
 }
@@ -25021,6 +25269,19 @@ async function saveSystemConfig() {
       },
       API: {
         ip_api_key: $("config-API-ip_api_key").value,
+      },
+      // ==================== 网站备案信息配置保存 ====================
+      // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中
+      // 这些配置项用于在网站底部显示合规的备案信息
+      Beian: {
+        // ICP备案号：工信部颁发的网站备案号
+        icp_number: $("config-Beian-icp_number").value,
+        // 是否显示ICP备案：布尔值，控制是否在页面底部展示ICP备案号
+        show_icp: $("config-Beian-show_icp").value === "true",
+        // 公安网备案号：公安部网络安全备案号
+        police_number: $("config-Beian-police_number").value,
+        // 是否显示公安备案：布尔值，控制是否在页面底部展示公安网备案号
+        show_police: $("config-Beian-show_police").value === "true",
       },
     };
     const response = await fetch("/api/admin/config/save", {
@@ -28346,6 +28607,16 @@ async function updateMobileUnifiedPassword() {
   // 检查两次输入的新密码是否一致
   if (newPassword !== confirmPassword) {
     showModalAlert("两次输入的新密码不一致", "提示");
+    return;
+  }
+  
+  // [新增] 检查新密码强度
+  // 在提交密码修改请求之前，先检查新密码是否为弱密码
+  // 这可以防止用户设置不安全的密码，提高账户安全性
+  var weakCheck = checkWeakPassword(newPassword);
+  if (weakCheck.isWeak) {
+    // 如果新密码过弱，显示具体的错误原因
+    showModalAlert(weakCheck.reason, "密码强度不足");
     return;
   }
 
