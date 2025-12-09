@@ -1021,6 +1021,33 @@ def _get_default_config():
         "enable_message_review": "false",
     }
 
+    # 彩虹易支付V2配置节，用于配置在线支付接口参数
+    # 彩虹易支付是一个第三方支付平台，支持支付宝、微信支付等多种支付方式
+    # 使用前需要在彩虹易支付平台注册商户账号并获取相关参数
+    config["Rainbow_YiPay"] = {
+        # 易支付接口域名：彩虹易支付平台提供的API接口地址（必填）
+        # 格式示例："https://api.example.com" 或 "https://pay.yourdomain.com"
+        # 注意：请填写完整的域名地址，包含 http:// 或 https:// 协议头，不要在末尾添加斜杠
+        "host": "",
+        # 商户ID（PID）：在彩虹易支付平台注册后获取的唯一商户标识（必填）
+        # 格式：通常为纯数字，例如 "10001"
+        "pid": "",
+        # 商户密钥（KEY）：在彩虹易支付平台获取的用于签名验证的密钥（必填）
+        # 这是一个重要的安全参数，用于生成和验证支付请求的签名，请妥善保管，切勿泄露
+        # 格式：通常为32位随机字符串，例如 "abcdef1234567890abcdef1234567890"
+        "key": "",
+        # 异步通知URL：支付成功后彩虹易支付服务器回调的接口地址（必填）
+        # 这是一个服务器到服务器的POST回调，用于接收支付结果通知
+        # 格式示例："https://yourdomain.com/api/payment/notify"
+        # 注意：必须是公网可访问的HTTPS地址，本地开发环境需使用内网穿透工具（如ngrok）
+        "notify_url": "",
+        # 同步返回URL：用户支付完成后浏览器跳转的页面地址（必填）
+        # 这是一个用户可见的跳转地址，用于显示支付结果页面
+        # 格式示例："https://yourdomain.com/api/payment/return"
+        # 注意：此URL仅用于展示，不可用于判断支付状态，支付结果以异步通知为准
+        "return_url": "",
+    }
+
     return config
 
 
@@ -1370,6 +1397,54 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# false：不启用审核，留言直接发布（默认）\n")
         f.write("# 注意：启用此功能需要先配置百度云API密钥（见上方[baidu_cloud]配置节）\n")
         f.write(f"enable_message_review = {config_obj.get('Content_Review', 'enable_message_review', fallback='false')}\n\n")
+
+        # ============================================================
+        # [Rainbow_YiPay] 彩虹易支付V2配置
+        # ============================================================
+        # 彩虹易支付是一个第三方支付平台，提供支付宝、微信支付等多种在线支付方式
+        # 适用于需要集成在线支付功能的网站或应用
+        # 官方文档：请参考您的彩虹易支付服务商提供的API文档
+        f.write("# ============================================================\n")
+        f.write("# [Rainbow_YiPay] 彩虹易支付V2配置\n")
+        f.write("# ============================================================\n")
+        f.write("# 彩虹易支付是第三方支付聚合平台，支持支付宝、微信支付等多种支付方式\n")
+        f.write("# 使用前需要：\n")
+        f.write("# 1. 在彩虹易支付平台注册商户账号\n")
+        f.write("# 2. 获取商户ID（PID）和商户密钥（KEY）\n")
+        f.write("# 3. 配置异步通知URL和同步返回URL（需要公网可访问）\n")
+        f.write("# ============================================================\n\n")
+        f.write("[Rainbow_YiPay]\n")
+        f.write("# 易支付接口域名（必填）\n")
+        f.write("# 这是彩虹易支付平台提供的API接口地址\n")
+        f.write("# 格式示例：https://api.example.com 或 https://pay.yourdomain.com\n")
+        f.write("# 注意：必须包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
+        f.write(f"host = {config_obj.get('Rainbow_YiPay', 'host', fallback='')}\n")
+        f.write("# 商户ID（PID）（必填）\n")
+        f.write("# 在彩虹易支付平台注册后获取的唯一商户标识\n")
+        f.write("# 格式：通常为纯数字，例如：10001\n")
+        f.write(f"pid = {config_obj.get('Rainbow_YiPay', 'pid', fallback='')}\n")
+        f.write("# 商户密钥（KEY）（必填）\n")
+        f.write("# 用于生成和验证支付请求签名的密钥，请妥善保管，切勿泄露\n")
+        f.write("# 格式：通常为32位随机字符串\n")
+        f.write("# 示例：abcdef1234567890abcdef1234567890\n")
+        f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
+        f.write("# 异步通知URL（必填）\n")
+        f.write("# 支付成功后，彩虹易支付服务器会向此URL发送POST请求通知支付结果\n")
+        f.write("# 格式示例：https://yourdomain.com/api/payment/notify\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 必须是公网可访问的HTTPS地址\n")
+        f.write("# 2. 本地开发环境需使用内网穿透工具（如 ngrok、frp 等）\n")
+        f.write("# 3. 此接口用于服务器间通信，必须验证签名确保安全\n")
+        f.write(f"notify_url = {config_obj.get('Rainbow_YiPay', 'notify_url', fallback='')}\n")
+        f.write("# 同步返回URL（必填）\n")
+        f.write("# 用户支付完成后，浏览器会跳转到此URL显示支付结果\n")
+        f.write("# 格式示例：https://yourdomain.com/api/payment/return\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 此URL仅用于页面展示，不能作为支付成功的判断依据\n")
+        f.write("# 2. 支付状态必须以异步通知（notify_url）的结果为准\n")
+        f.write("# 3. 用户可能不会访问此页面（如直接关闭浏览器）\n")
+        f.write(f"return_url = {config_obj.get('Rainbow_YiPay', 'return_url', fallback='')}\n\n")
+
 
 
 def is_weak_password(password):
@@ -2147,6 +2222,472 @@ def get_session_file_path(session_id: str) -> str:
     """根据 session_id (UUID) 计算会话文件的完整路径"""
     session_hash = hashlib.sha256(session_id.encode()).hexdigest()
     return os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
+
+
+# ==============================================================================
+# 彩虹易支付V2客户端 - 在线支付接口集成
+# ==============================================================================
+
+
+class RainbowYiPayClient:
+    """
+    彩虹易支付V2接口客户端类
+    
+    功能说明：
+    这个类封装了彩虹易支付（Rainbow Yi Pay）V2版本的所有API接口
+    支持创建支付订单、查询订单状态、验证支付回调签名等功能
+    
+    支付流程：
+    1. 调用 create_order() 创建支付订单，获取支付跳转URL
+    2. 用户在支付页面完成支付
+    3. 支付成功后，彩虹易支付会异步回调 notify_url
+    4. 调用 verify_notify() 验证回调签名，确认支付成功
+    5. 可通过 query_order() 主动查询订单状态
+    
+    安全机制：
+    - 使用MD5签名算法验证所有请求和回调
+    - 签名密钥存储在服务器端，不会暴露给客户端
+    - 异步回调必须验证签名，防止伪造通知
+    """
+
+    def __init__(self, config_file="config.ini"):
+        """
+        初始化彩虹易支付客户端
+        
+        参数:
+            config_file (str): 配置文件路径，默认为 "config.ini"
+        
+        功能:
+            从配置文件中读取彩虹易支付的商户参数，包括：
+            - host: 易支付接口域名
+            - pid: 商户ID
+            - key: 商户密钥（用于签名）
+            - notify_url: 异步通知URL
+            - return_url: 同步返回URL
+        
+        异常:
+            如果配置文件不存在或配置项缺失，会记录错误日志
+        """
+        # 创建一个新的配置解析器实例，用于读取配置文件
+        # strict=False 允许配置项重复（虽然不推荐，但提高兼容性）
+        self.config = configparser.ConfigParser(strict=False)
+        
+        # optionxform=str 保持配置项的大小写敏感，默认会转为小写
+        self.config.optionxform = str
+        
+        # 读取配置文件，使用 UTF-8 编码以支持中文
+        self.config.read(config_file, encoding="utf-8")
+        
+        # 从配置文件的 [Rainbow_YiPay] 节读取易支付接口域名
+        # fallback 参数指定当配置项不存在时的默认值（空字符串）
+        self.host = self.config.get("Rainbow_YiPay", "host", fallback="")
+        
+        # 读取商户ID（PID），这是商户在易支付平台的唯一标识
+        self.pid = self.config.get("Rainbow_YiPay", "pid", fallback="")
+        
+        # 读取商户密钥（KEY），用于生成和验证签名，必须保密
+        self.key = self.config.get("Rainbow_YiPay", "key", fallback="")
+        
+        # 读取异步通知URL，支付成功后易支付会向这个URL发送POST请求
+        self.notify_url = self.config.get("Rainbow_YiPay", "notify_url", fallback="")
+        
+        # 读取同步返回URL，用户支付完成后浏览器会跳转到这个URL
+        self.return_url = self.config.get("Rainbow_YiPay", "return_url", fallback="")
+        
+        # 记录日志：彩虹易支付客户端初始化成功
+        # 日志中包含商户ID，方便调试和追踪
+        logging.info(f"[彩虹易支付] 客户端初始化成功 - 商户ID: {self.pid}")
+
+    def _generate_sign(self, params):
+        """
+        生成MD5签名
+        
+        参数:
+            params (dict): 需要签名的参数字典
+        
+        返回:
+            str: 32位小写MD5签名字符串
+        
+        签名算法说明：
+        1. 将参数按照键名（key）进行升序排序
+        2. 将排序后的参数按照 "key=value&key=value" 格式拼接成字符串
+        3. 在拼接字符串末尾追加商户密钥（key）
+        4. 对最终字符串进行MD5哈希运算
+        5. 将哈希结果转换为32位小写十六进制字符串
+        
+        示例：
+            params = {"pid": "10001", "type": "alipay", "money": "100"}
+            key = "abcd1234"
+            拼接字符串: "money=100&pid=10001&type=alipayabcd1234"
+            MD5结果: "d41d8cd98f00b204e9800998ecf8427e"
+        
+        安全性：
+        - 商户密钥（key）只存在服务器端，不会发送到客户端
+        - 任何参数被篡改都会导致签名验证失败
+        - MD5虽然不是最安全的哈希算法，但对于签名验证足够
+        """
+        # 过滤掉空值参数和签名参数本身（sign 和 sign_type 不参与签名计算）
+        # 这是为了：1) 避免空值影响签名 2) 防止签名参数自身参与签名导致循环依赖
+        filtered_params = {
+            k: v for k, v in params.items() 
+            if v != "" and v is not None and k not in ["sign", "sign_type"]
+        }
+        
+        # 将参数按照键名进行字典序（升序）排序
+        # sorted() 函数返回排序后的键值对列表
+        sorted_params = sorted(filtered_params.items())
+        
+        # 将排序后的参数拼接成 "key=value&key=value&..." 格式的字符串
+        # 使用列表推导式生成 "key=value" 格式，然后用 "&" 连接
+        param_str = "&".join([f"{k}={v}" for k, v in sorted_params])
+        
+        # 在参数字符串末尾直接追加商户密钥（不用 "&" 连接）
+        # 这是彩虹易支付V2的签名规则
+        sign_str = param_str + self.key
+        
+        # 使用MD5算法对签名字符串进行哈希
+        # hashlib.md5() 创建MD5哈希对象
+        # .encode('utf-8') 将字符串转换为字节流（MD5需要字节输入）
+        # .hexdigest() 将哈希结果转换为32位小写十六进制字符串
+        sign = hashlib.md5(sign_str.encode("utf-8")).hexdigest()
+        
+        # 记录调试日志：签名字符串和生成的签名（生产环境建议关闭此日志，避免泄露密钥）
+        logging.debug(f"[彩虹易支付] 签名字符串: {sign_str}")
+        logging.debug(f"[彩虹易支付] 生成签名: {sign}")
+        
+        # 返回生成的签名
+        return sign
+
+    def verify_sign(self, params):
+        """
+        验证回调签名
+        
+        参数:
+            params (dict): 回调参数字典（包含 sign 字段）
+        
+        返回:
+            bool: 签名验证是否通过（True: 通过, False: 失败）
+        
+        功能说明：
+        当彩虹易支付服务器向我们的 notify_url 发送支付结果通知时，
+        会在参数中包含一个 sign 字段，这是易支付用商户密钥生成的签名。
+        我们需要用相同的算法重新计算签名，并与回调中的签名对比，
+        以验证这个回调确实来自彩虹易支付，而不是恶意伪造的请求。
+        
+        验证流程：
+        1. 从回调参数中提取 sign 字段（易支付发送的签名）
+        2. 移除 sign 字段，用剩余参数重新计算签名
+        3. 对比计算出的签名和回调中的签名
+        4. 如果一致，说明回调合法；不一致则可能被篡改
+        
+        安全性：
+        - 签名验证失败的回调必须拒绝处理
+        - 防止攻击者伪造支付成功通知
+        - 保护商户资金安全
+        """
+        # 从回调参数中获取易支付发送的签名（sign 字段）
+        # .get() 方法如果键不存在会返回 None，而不会抛出异常
+        received_sign = params.get("sign")
+        
+        # 如果回调参数中没有 sign 字段，说明这是一个无效的回调
+        # 直接返回 False，拒绝处理
+        if not received_sign:
+            logging.warning("[彩虹易支付] 回调参数中缺少签名字段")
+            return False
+        
+        # 创建一个新的参数字典副本，用于计算签名
+        # 使用 dict() 创建副本，避免修改原始参数字典
+        params_copy = dict(params)
+        
+        # 从副本中移除 sign 字段，因为签名计算时不包含 sign 本身
+        # .pop() 方法删除并返回指定键的值，如果键不存在则返回 None
+        params_copy.pop("sign", None)
+        
+        # 用相同的算法重新计算签名
+        # 调用 _generate_sign() 方法，传入去除 sign 后的参数
+        calculated_sign = self._generate_sign(params_copy)
+        
+        # 对比计算出的签名和回调中收到的签名
+        # 使用 == 运算符进行字符串比较（区分大小写）
+        is_valid = calculated_sign == received_sign
+        
+        # 记录日志：签名验证结果
+        if is_valid:
+            # 验证通过，记录信息日志
+            logging.info(f"[彩虹易支付] 签名验证通过")
+        else:
+            # 验证失败，记录警告日志，并输出两个签名进行对比
+            logging.warning(
+                f"[彩虹易支付] 签名验证失败 - 收到: {received_sign}, 计算: {calculated_sign}"
+            )
+        
+        # 返回验证结果
+        return is_valid
+
+    def create_order(self, out_trade_no, name, money, pay_type="alipay"):
+        """
+        创建支付订单
+        
+        参数:
+            out_trade_no (str): 商户订单号（必须唯一，建议使用时间戳+随机数）
+            name (str): 商品名称（显示在支付页面，例如："充值100元"）
+            money (str/float): 支付金额（单位：元，最少0.01元）
+            pay_type (str): 支付方式，可选值：
+                - "alipay": 支付宝支付（默认）
+                - "wxpay": 微信支付
+        
+        返回:
+            dict: 包含以下字段的字典
+                - success (bool): 是否成功
+                - message (str): 错误信息或成功提示
+                - pay_url (str): 支付跳转URL（成功时返回）
+                - order_data (dict): 完整的订单参数（用于记录日志）
+        
+        功能说明：
+        这个方法会构造支付订单参数，生成签名，然后向彩虹易支付API发送请求。
+        如果请求成功，会返回一个支付URL，前端可以重定向用户到这个URL进行支付。
+        
+        使用示例：
+            client = RainbowYiPayClient()
+            result = client.create_order(
+                out_trade_no="ORDER20230101001",
+                name="充值100元",
+                money="100.00",
+                pay_type="alipay"
+            )
+            if result["success"]:
+                # 跳转到 result["pay_url"] 进行支付
+                print(f"支付URL: {result['pay_url']}")
+            else:
+                # 显示错误信息
+                print(f"创建订单失败: {result['message']}")
+        
+        异常处理：
+        - 如果配置不完整（如 host、pid、key 为空），返回错误
+        - 如果网络请求失败，返回错误并记录异常日志
+        - 如果易支付API返回错误，返回错误信息
+        """
+        # 检查必需的配置参数是否已填写
+        # 如果 host、pid 或 key 为空，说明配置不完整，无法创建订单
+        if not self.host or not self.pid or not self.key:
+            # 记录错误日志
+            logging.error("[彩虹易支付] 配置不完整，无法创建订单")
+            # 返回失败响应
+            return {"success": False, "message": "彩虹易支付配置不完整，请联系管理员"}
+        
+        # 构造订单参数字典
+        # 这些参数将被发送到彩虹易支付API
+        params = {
+            "pid": self.pid,                    # 商户ID
+            "type": pay_type,                   # 支付方式（alipay/wxpay）
+            "out_trade_no": out_trade_no,       # 商户订单号（必须唯一）
+            "notify_url": self.notify_url,      # 异步通知URL
+            "return_url": self.return_url,      # 同步返回URL
+            "name": name,                       # 商品名称
+            "money": str(money),                # 支付金额（转为字符串）
+        }
+        
+        # 生成签名并添加到参数中
+        # 调用 _generate_sign() 方法计算MD5签名
+        params["sign"] = self._generate_sign(params)
+        
+        # 设置签名类型为 MD5
+        # 这是彩虹易支付V2的标准签名类型
+        params["sign_type"] = "MD5"
+        
+        # 构造完整的API请求URL
+        # 彩虹易支付的创建订单接口路径为 /submit.php
+        api_url = f"{self.host}/submit.php"
+        
+        # 记录信息日志：开始创建订单
+        logging.info(f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
+        
+        try:
+            # 导入 requests 库，用于发送HTTP请求
+            # 在函数内部导入，避免全局导入影响启动速度
+            import requests
+            
+            # 向彩虹易支付API发送POST请求
+            # data 参数指定POST请求体（表单格式）
+            # timeout 设置超时时间为10秒，避免长时间等待
+            response = requests.post(api_url, data=params, timeout=10)
+            
+            # 检查HTTP响应状态码
+            # status_code 200 表示请求成功
+            if response.status_code == 200:
+                # 尝试解析响应内容为JSON格式
+                # 易支付API通常返回JSON格式的响应
+                try:
+                    result = response.json()
+                except json.JSONDecodeError:
+                    # 如果响应不是有效的JSON，可能是HTML格式的支付页面
+                    # 某些易支付版本直接返回支付页面HTML
+                    # 此时 response.url 就是支付URL
+                    logging.warning("[彩虹易支付] API返回非JSON响应，使用响应URL作为支付链接")
+                    return {
+                        "success": True,
+                        "message": "订单创建成功",
+                        "pay_url": response.url,  # 使用重定向后的URL
+                        "order_data": params,
+                    }
+                
+                # 检查API响应中的状态码
+                # code=1 表示成功，其他值表示失败
+                if result.get("code") == 1:
+                    # 订单创建成功
+                    pay_url = result.get("payurl") or result.get("url") or result.get("qrcode")
+                    
+                    # 检查是否成功获取到支付URL
+                    if pay_url:
+                        logging.info(f"[彩虹易支付] 订单创建成功 - 支付URL: {pay_url}")
+                        return {
+                            "success": True,
+                            "message": "订单创建成功",
+                            "pay_url": pay_url,
+                            "order_data": params,
+                        }
+                    else:
+                        # API响应中没有支付URL
+                        logging.error(f"[彩虹易支付] API响应中缺少支付URL: {result}")
+                        return {
+                            "success": False,
+                            "message": "易支付API响应异常，缺少支付URL",
+                        }
+                else:
+                    # 订单创建失败，API返回了错误信息
+                    error_msg = result.get("msg") or result.get("message") or "未知错误"
+                    logging.error(f"[彩虹易支付] 创建订单失败 - {error_msg}")
+                    return {"success": False, "message": f"创建订单失败: {error_msg}"}
+            else:
+                # HTTP请求失败（非200状态码）
+                logging.error(
+                    f"[彩虹易支付] HTTP请求失败 - 状态码: {response.status_code}"
+                )
+                return {
+                    "success": False,
+                    "message": f"支付接口请求失败 (HTTP {response.status_code})",
+                }
+        
+        except requests.exceptions.Timeout:
+            # 请求超时异常
+            logging.error("[彩虹易支付] 请求超时")
+            return {"success": False, "message": "支付接口请求超时，请稍后重试"}
+        
+        except requests.exceptions.RequestException as e:
+            # 其他网络请求异常（如网络不通、DNS解析失败等）
+            logging.error(f"[彩虹易支付] 网络请求异常: {str(e)}")
+            return {"success": False, "message": f"网络请求失败: {str(e)}"}
+        
+        except Exception as e:
+            # 捕获所有未预期的异常
+            logging.error(f"[彩虹易支付] 创建订单异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return {"success": False, "message": f"创建订单时发生错误: {str(e)}"}
+
+    def query_order(self, out_trade_no):
+        """
+        查询订单状态
+        
+        参数:
+            out_trade_no (str): 商户订单号（创建订单时使用的订单号）
+        
+        返回:
+            dict: 包含以下字段的字典
+                - success (bool): 请求是否成功
+                - message (str): 错误信息或成功提示
+                - status (str): 订单状态（成功时返回）
+                    - "TRADE_SUCCESS": 支付成功
+                    - "WAIT_BUYER_PAY": 等待支付
+                    - "TRADE_CLOSED": 交易关闭
+                - data (dict): 完整的订单信息（成功时返回）
+        
+        功能说明：
+        主动查询订单的支付状态，可用于：
+        1. 补充异步通知机制（防止通知丢失）
+        2. 用户在支付页面查询支付结果
+        3. 管理后台查看订单状态
+        
+        使用示例：
+            client = RainbowYiPayClient()
+            result = client.query_order("ORDER20230101001")
+            if result["success"]:
+                if result["status"] == "TRADE_SUCCESS":
+                    print("支付成功！")
+                elif result["status"] == "WAIT_BUYER_PAY":
+                    print("等待支付...")
+            else:
+                print(f"查询失败: {result['message']}")
+        
+        注意事项：
+        - 查询接口有频率限制，不要频繁调用
+        - 订单状态最终以异步通知为准
+        """
+        # 检查配置是否完整
+        if not self.host or not self.pid or not self.key:
+            logging.error("[彩虹易支付] 配置不完整，无法查询订单")
+            return {"success": False, "message": "彩虹易支付配置不完整"}
+        
+        # 构造查询参数
+        params = {
+            "act": "order",                 # 操作类型：订单查询
+            "pid": self.pid,                # 商户ID
+            "key": self.key,                # 商户密钥
+            "out_trade_no": out_trade_no,   # 商户订单号
+        }
+        
+        # 构造API请求URL
+        # 彩虹易支付的查询接口路径为 /api.php
+        api_url = f"{self.host}/api.php"
+        
+        # 记录日志
+        logging.info(f"[彩虹易支付] 查询订单状态 - 订单号: {out_trade_no}")
+        
+        try:
+            # 发送GET请求查询订单
+            import requests
+            
+            response = requests.get(api_url, params=params, timeout=10)
+            
+            # 检查HTTP状态码
+            if response.status_code == 200:
+                # 解析响应JSON
+                result = response.json()
+                
+                # 检查API返回的状态码
+                if result.get("code") == 1:
+                    # 查询成功
+                    order_status = result.get("status") or result.get("trade_status")
+                    logging.info(f"[彩虹易支付] 订单状态: {order_status}")
+                    
+                    return {
+                        "success": True,
+                        "message": "查询成功",
+                        "status": order_status,
+                        "data": result,
+                    }
+                else:
+                    # 查询失败
+                    error_msg = result.get("msg") or result.get("message") or "未知错误"
+                    logging.error(f"[彩虹易支付] 查询订单失败 - {error_msg}")
+                    return {"success": False, "message": error_msg}
+            else:
+                # HTTP请求失败
+                logging.error(
+                    f"[彩虹易支付] HTTP请求失败 - 状态码: {response.status_code}"
+                )
+                return {
+                    "success": False,
+                    "message": f"查询接口请求失败 (HTTP {response.status_code})",
+                }
+        
+        except requests.exceptions.Timeout:
+            logging.error("[彩虹易支付] 查询请求超时")
+            return {"success": False, "message": "查询请求超时"}
+        
+        except Exception as e:
+            logging.error(f"[彩虹易支付] 查询订单异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return {"success": False, "message": f"查询订单时发生错误: {str(e)}"}
 
 
 # ==============================================================================
@@ -24038,6 +24579,789 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"【本地验证码】测试生成验证码失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"生成失败: {str(e)}"}), 500
+
+    # ==============================================================================
+    # 彩虹易支付V2 - 在线支付接口路由
+    # ==============================================================================
+    # 以下路由实现了彩虹易支付的完整支付流程，包括：
+    # 1. 创建支付订单
+    # 2. 查询订单状态
+    # 3. 接收异步通知（服务器回调）
+    # 4. 同步返回页面（用户跳转）
+    # 5. 管理订单列表
+    # ==============================================================================
+
+    # 订单数据存储目录常量定义
+    # 用于存储所有支付订单的JSON文件
+    PAYMENT_ORDERS_DIR = "payment_orders"
+
+    # 确保订单存储目录存在
+    # 如果目录不存在，则创建它（exist_ok=True 表示目录已存在时不报错）
+    os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+
+    @app.route("/api/payment/create", methods=["POST"])
+    @login_required
+    def payment_create_order():
+        """
+        创建支付订单接口
+        
+        请求方法：POST
+        权限要求：需要登录
+        
+        请求参数（JSON格式）：
+            - amount (str/float): 支付金额（单位：元，例如 "100" 或 "99.99"）
+            - product_name (str): 商品名称（显示在支付页面，例如："VIP会员充值"）
+            - pay_type (str): 支付方式，可选值：
+                - "alipay": 支付宝（默认）
+                - "wxpay": 微信支付
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 提示信息
+            - pay_url (str): 支付跳转URL（成功时返回）
+            - order_id (str): 订单号（成功时返回）
+        
+        功能说明：
+        1. 验证用户登录状态
+        2. 验证请求参数（金额、商品名称等）
+        3. 生成唯一订单号
+        4. 调用彩虹易支付API创建支付订单
+        5. 保存订单信息到本地文件
+        6. 返回支付URL给前端
+        
+        使用流程：
+        前端 -> POST /api/payment/create -> 后端创建订单 -> 返回支付URL -> 前端跳转到支付页面
+        
+        安全措施：
+        - 必须登录才能创建订单
+        - 验证金额格式和范围
+        - 生成唯一订单号（时间戳+随机数）
+        - 记录详细的操作日志
+        """
+        try:
+            # 从请求体中获取JSON数据
+            # request.get_json() 解析POST请求的JSON数据
+            # 如果解析失败或没有数据，返回空字典 {}
+            data = request.get_json() or {}
+            
+            # 从请求数据中提取支付金额，并去除首尾空白字符
+            # .get() 方法如果键不存在返回空字符串
+            # .strip() 去除字符串首尾的空格、换行等空白字符
+            amount = data.get("amount", "").strip()
+            
+            # 从请求数据中提取商品名称
+            product_name = data.get("product_name", "").strip()
+            
+            # 从请求数据中提取支付方式，默认为支付宝
+            pay_type = data.get("pay_type", "alipay").strip()
+            
+            # ========== 参数验证 ==========
+            
+            # 验证金额是否为空
+            if not amount:
+                return jsonify({"success": False, "message": "支付金额不能为空"})
+            
+            # 验证商品名称是否为空
+            if not product_name:
+                return jsonify({"success": False, "message": "商品名称不能为空"})
+            
+            # 验证支付方式是否合法
+            # 只允许 alipay（支付宝）和 wxpay（微信支付）
+            if pay_type not in ["alipay", "wxpay"]:
+                return jsonify({"success": False, "message": "不支持的支付方式"})
+            
+            # 尝试将金额转换为浮点数，验证格式是否正确
+            try:
+                # float() 函数将字符串转换为浮点数
+                # 如果字符串不是有效的数字格式，会抛出 ValueError 异常
+                amount_float = float(amount)
+                
+                # 验证金额是否大于0
+                # 支付金额必须是正数
+                if amount_float <= 0:
+                    return jsonify({"success": False, "message": "支付金额必须大于0"})
+                
+                # 验证金额是否超过最大限制（例如10000元）
+                # 这是一个安全限制，防止误操作或恶意请求
+                if amount_float > 10000:
+                    return jsonify({"success": False, "message": "单笔支付金额不能超过10000元"})
+                
+            except ValueError:
+                # 如果金额格式不正确（例如 "abc" 或 "12.34.56"）
+                # 返回错误信息
+                return jsonify({"success": False, "message": "支付金额格式不正确"})
+            
+            # ========== 生成唯一订单号 ==========
+            
+            # 订单号格式：ORDER + 年月日时分秒 + 6位随机数
+            # 例如：ORDER20230615123045123456
+            # 使用时间戳确保订单号按时间排序
+            # 使用随机数确保同一秒内的订单号不重复
+            order_id = f"ORDER{time.strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"
+            
+            # ========== 调用彩虹易支付API创建订单 ==========
+            
+            # 创建彩虹易支付客户端实例
+            # 客户端会自动从 config.ini 读取配置参数
+            yipay_client = RainbowYiPayClient()
+            
+            # 调用 create_order() 方法创建支付订单
+            # 参数说明：
+            # - out_trade_no: 商户订单号（我们生成的唯一订单号）
+            # - name: 商品名称（显示在支付页面）
+            # - money: 支付金额（元）
+            # - pay_type: 支付方式（alipay/wxpay）
+            result = yipay_client.create_order(
+                out_trade_no=order_id,
+                name=product_name,
+                money=amount,
+                pay_type=pay_type
+            )
+            
+            # 检查订单创建是否成功
+            if result["success"]:
+                # ========== 保存订单信息到本地文件 ==========
+                
+                # 构造订单数据字典
+                # 包含订单的所有关键信息，用于后续查询和管理
+                order_data = {
+                    "order_id": order_id,               # 订单号
+                    "username": g.user,                  # 下单用户名（从 Flask g 对象获取）
+                    "amount": amount,                    # 支付金额
+                    "product_name": product_name,        # 商品名称
+                    "pay_type": pay_type,                # 支付方式
+                    "status": "pending",                 # 订单状态：pending（待支付）
+                    "pay_url": result["pay_url"],        # 支付跳转URL
+                    "created_at": time.time(),           # 创建时间（Unix时间戳）
+                    "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),  # 创建时间（可读格式）
+                    "client_ip": request.remote_addr,    # 客户端IP地址
+                    "user_agent": request.headers.get("User-Agent", ""),  # 用户浏览器信息
+                }
+                
+                # 构造订单文件路径
+                # 文件名格式：订单号.json
+                # 例如：payment_orders/ORDER20230615123045123456.json
+                order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+                
+                # 将订单数据写入JSON文件
+                # 使用 UTF-8 编码支持中文
+                # indent=2 使JSON格式化输出，便于人工查看
+                # ensure_ascii=False 保留中文字符，不转义为 \uXXXX 格式
+                with open(order_file, "w", encoding="utf-8") as f:
+                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                # 记录信息日志：订单创建成功
+                logging.info(
+                    f"[支付订单] 创建成功 - 用户: {g.user}, 订单号: {order_id}, 金额: {amount}元, 支付方式: {pay_type}"
+                )
+                
+                # 返回成功响应
+                return jsonify({
+                    "success": True,
+                    "message": "订单创建成功",
+                    "pay_url": result["pay_url"],  # 支付URL（前端用于跳转）
+                    "order_id": order_id,          # 订单号（前端用于查询）
+                })
+            else:
+                # 订单创建失败
+                # 记录错误日志
+                logging.error(f"[支付订单] 创建失败 - {result['message']}")
+                
+                # 返回失败响应，包含错误信息
+                return jsonify({
+                    "success": False,
+                    "message": result["message"]
+                })
+        
+        except Exception as e:
+            # 捕获所有未预期的异常
+            # 记录错误日志和堆栈跟踪
+            logging.error(f"[支付订单] 创建订单时发生异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            
+            # 返回通用错误响应
+            return jsonify({
+                "success": False,
+                "message": f"创建订单失败: {str(e)}"
+            }), 500
+
+    @app.route("/api/payment/query", methods=["POST"])
+    @login_required
+    def payment_query_order():
+        """
+        查询订单支付状态接口
+        
+        请求方法：POST
+        权限要求：需要登录
+        
+        请求参数（JSON格式）：
+            - order_id (str): 订单号（创建订单时返回的订单号）
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 提示信息
+            - status (str): 订单状态（成功时返回）
+                - "pending": 待支付
+                - "paid": 已支付
+                - "closed": 已关闭
+            - order (dict): 完整的订单信息（成功时返回）
+        
+        功能说明：
+        1. 从本地文件读取订单信息
+        2. 如果订单状态是待支付，调用易支付API查询最新状态
+        3. 更新本地订单状态
+        4. 返回订单信息给前端
+        
+        使用场景：
+        - 用户支付完成后查询支付结果
+        - 管理员查看订单状态
+        - 定时任务自动查询未支付订单
+        """
+        try:
+            # 获取请求数据
+            data = request.get_json() or {}
+            order_id = data.get("order_id", "").strip()
+            
+            # 验证订单号是否为空
+            if not order_id:
+                return jsonify({"success": False, "message": "订单号不能为空"})
+            
+            # ========== 从本地文件读取订单信息 ==========
+            
+            # 构造订单文件路径
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            
+            # 检查订单文件是否存在
+            if not os.path.exists(order_file):
+                return jsonify({"success": False, "message": "订单不存在"})
+            
+            # 读取订单数据
+            with open(order_file, "r", encoding="utf-8") as f:
+                order_data = json.load(f)
+            
+            # ========== 验证订单所属权限 ==========
+            # 只允许订单所有者或管理员查询订单
+            
+            # 检查当前用户是否是订单所有者
+            if order_data.get("username") != g.user:
+                # 不是所有者，检查是否是管理员
+                if not auth_system.check_permission(g.user, "manage_users"):
+                    # 既不是所有者也不是管理员，返回权限不足
+                    return jsonify({"success": False, "message": "无权查询此订单"}), 403
+            
+            # ========== 查询最新支付状态 ==========
+            
+            # 如果订单状态是待支付，调用易支付API查询最新状态
+            if order_data.get("status") == "pending":
+                # 创建彩虹易支付客户端
+                yipay_client = RainbowYiPayClient()
+                
+                # 调用查询接口
+                query_result = yipay_client.query_order(order_id)
+                
+                # 如果查询成功且订单已支付
+                if query_result["success"] and query_result.get("status") == "TRADE_SUCCESS":
+                    # 更新订单状态为已支付
+                    order_data["status"] = "paid"
+                    order_data["paid_at"] = time.time()
+                    order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # 保存更新后的订单数据
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                    
+                    # 记录日志
+                    logging.info(f"[支付订单] 查询更新 - 订单: {order_id}, 状态: 已支付")
+            
+            # 返回订单信息
+            return jsonify({
+                "success": True,
+                "message": "查询成功",
+                "status": order_data.get("status"),
+                "order": order_data
+            })
+        
+        except Exception as e:
+            logging.error(f"[支付订单] 查询订单异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({"success": False, "message": f"查询订单失败: {str(e)}"}), 500
+
+    @app.route("/api/payment/notify", methods=["POST"])
+    def payment_notify():
+        """
+        接收彩虹易支付异步通知接口
+        
+        请求方法：POST
+        权限要求：无（公开接口，但需要验证签名）
+        
+        功能说明：
+        这是一个服务器到服务器的回调接口，当用户支付成功后，
+        彩虹易支付服务器会向这个URL发送POST请求，通知支付结果。
+        
+        请求参数（表单格式）：
+        彩虹易支付会发送以下参数（具体参数以官方文档为准）：
+            - pid: 商户ID
+            - out_trade_no: 商户订单号
+            - trade_no: 易支付订单号
+            - type: 支付方式
+            - name: 商品名称
+            - money: 支付金额
+            - trade_status: 支付状态（TRADE_SUCCESS表示成功）
+            - sign: 签名
+            - sign_type: 签名类型
+        
+        返回数据：
+        - 如果验证成功，返回 "success"
+        - 如果验证失败，返回 "fail"
+        
+        重要说明：
+        1. 这个接口必须是公网可访问的HTTPS地址
+        2. 必须验证签名，防止伪造通知
+        3. 必须处理重复通知（幂等性）
+        4. 必须快速响应，不要执行耗时操作
+        5. 返回 "success" 后，易支付不会再次通知
+        6. 如果返回其他内容，易支付会重复通知
+        
+        安全机制：
+        - 签名验证：防止伪造通知
+        - 金额验证：确保支付金额与订单金额一致
+        - 状态验证：防止重复处理已支付订单
+        - IP白名单：可选，限制只接受来自易支付服务器的请求
+        """
+        try:
+            # 获取回调参数
+            # request.form 获取POST表单数据
+            # .to_dict() 将 ImmutableMultiDict 转换为普通字典
+            params = request.form.to_dict()
+            
+            # 记录日志：收到异步通知
+            logging.info(f"[支付通知] 收到异步通知 - 参数: {params}")
+            
+            # ========== 验证签名 ==========
+            
+            # 创建彩虹易支付客户端
+            yipay_client = RainbowYiPayClient()
+            
+            # 调用签名验证方法
+            if not yipay_client.verify_sign(params):
+                # 签名验证失败，可能是伪造的通知
+                logging.error(f"[支付通知] 签名验证失败 - 参数: {params}")
+                return "fail"  # 返回 fail，易支付会继续重试通知
+            
+            # ========== 提取关键参数 ==========
+            
+            # 商户订单号
+            out_trade_no = params.get("out_trade_no", "")
+            
+            # 易支付订单号
+            trade_no = params.get("trade_no", "")
+            
+            # 支付状态（TRADE_SUCCESS 表示支付成功）
+            trade_status = params.get("trade_status", "")
+            
+            # 实际支付金额
+            money = params.get("money", "")
+            
+            # 验证必要参数是否存在
+            if not out_trade_no or not trade_status:
+                logging.error(f"[支付通知] 缺少必要参数 - 参数: {params}")
+                return "fail"
+            
+            # ========== 读取订单信息 ==========
+            
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+            
+            # 检查订单是否存在
+            if not os.path.exists(order_file):
+                logging.error(f"[支付通知] 订单不存在 - 订单号: {out_trade_no}")
+                return "fail"
+            
+            # 读取订单数据
+            with open(order_file, "r", encoding="utf-8") as f:
+                order_data = json.load(f)
+            
+            # ========== 验证订单金额 ==========
+            # 防止支付金额与订单金额不一致的情况
+            
+            try:
+                # 将字符串金额转换为浮点数进行比较
+                # round() 函数保留2位小数，避免浮点数精度问题
+                paid_amount = round(float(money), 2)
+                order_amount = round(float(order_data.get("amount", "0")), 2)
+                
+                # 比较金额是否一致
+                if paid_amount != order_amount:
+                    # 金额不一致，记录错误日志
+                    logging.error(
+                        f"[支付通知] 金额不一致 - 订单: {out_trade_no}, "
+                        f"订单金额: {order_amount}, 支付金额: {paid_amount}"
+                    )
+                    return "fail"
+            except ValueError:
+                # 金额格式错误
+                logging.error(f"[支付通知] 金额格式错误 - 订单: {out_trade_no}, 金额: {money}")
+                return "fail"
+            
+            # ========== 处理支付成功通知 ==========
+            
+            if trade_status == "TRADE_SUCCESS":
+                # 检查订单是否已经支付过
+                # 防止重复处理（幂等性）
+                if order_data.get("status") == "paid":
+                    # 订单已支付，直接返回成功（不重复处理）
+                    logging.info(f"[支付通知] 订单已支付，跳过处理 - 订单: {out_trade_no}")
+                    return "success"
+                
+                # 更新订单状态为已支付
+                order_data["status"] = "paid"
+                order_data["trade_no"] = trade_no          # 保存易支付订单号
+                order_data["paid_at"] = time.time()        # 支付时间（时间戳）
+                order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
+                order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
+                
+                # 保存更新后的订单数据
+                with open(order_file, "w", encoding="utf-8") as f:
+                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                # 记录日志：支付成功
+                logging.info(
+                    f"[支付通知] 支付成功 - 订单: {out_trade_no}, 用户: {order_data.get('username')}, "
+                    f"金额: {money}元, 易支付订单号: {trade_no}"
+                )
+                
+                # TODO: 在这里添加支付成功后的业务逻辑
+                # 例如：
+                # - 给用户增加VIP时长
+                # - 发送通知邮件
+                # - 更新用户积分
+                # - 触发其他业务流程
+                
+                # 返回 success，告知易支付不要再次通知
+                return "success"
+            else:
+                # 其他支付状态（如支付失败、已关闭等）
+                logging.warning(f"[支付通知] 非成功状态 - 订单: {out_trade_no}, 状态: {trade_status}")
+                
+                # 可以根据状态更新订单状态
+                if trade_status == "TRADE_CLOSED":
+                    order_data["status"] = "closed"
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                return "success"
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付通知] 处理异步通知异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return "fail"  # 返回 fail，让易支付重试
+
+    @app.route("/api/payment/return", methods=["GET"])
+    def payment_return():
+        """
+        同步返回页面接口
+        
+        请求方法：GET
+        权限要求：无（公开页面）
+        
+        功能说明：
+        用户在支付页面完成支付后，浏览器会跳转到这个URL。
+        这个页面用于显示支付结果，提供友好的用户体验。
+        
+        重要说明：
+        1. 这个页面仅用于展示，不能作为支付成功的判断依据
+        2. 用户可能不会访问这个页面（例如直接关闭浏览器）
+        3. 订单状态必须以异步通知（notify）为准
+        4. 这个页面可以显示支付结果，并提供返回应用的按钮
+        
+        请求参数（查询字符串）：
+        彩虹易支付会在URL中附加参数，例如：
+            - out_trade_no: 商户订单号
+            - trade_no: 易支付订单号
+            - trade_status: 支付状态
+            - sign: 签名
+        
+        返回：HTML页面（支付结果展示页面）
+        """
+        try:
+            # 获取URL查询参数
+            # request.args 获取GET请求的查询字符串参数
+            params = request.args.to_dict()
+            
+            # 记录日志
+            logging.info(f"[支付返回] 用户返回 - 参数: {params}")
+            
+            # 提取订单号
+            out_trade_no = params.get("out_trade_no", "")
+            trade_status = params.get("trade_status", "")
+            
+            # 构造简单的HTML支付结果页面
+            # 实际项目中，可以返回一个更美观的前端页面
+            if trade_status == "TRADE_SUCCESS":
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>支付成功</title>
+                    <style>
+                        body {{
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background-color: #f5f5f5;
+                        }}
+                        .result-box {{
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                        }}
+                        .success-icon {{
+                            font-size: 60px;
+                            color: #52c41a;
+                            margin-bottom: 20px;
+                        }}
+                        .title {{
+                            font-size: 24px;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }}
+                        .info {{
+                            color: #666;
+                            margin-bottom: 30px;
+                        }}
+                        .button {{
+                            display: inline-block;
+                            padding: 10px 30px;
+                            background-color: #1890ff;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            transition: background-color 0.3s;
+                        }}
+                        .button:hover {{
+                            background-color: #40a9ff;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="result-box">
+                        <div class="success-icon">✓</div>
+                        <div class="title">支付成功！</div>
+                        <div class="info">
+                            <p>订单号：{out_trade_no}</p>
+                            <p>感谢您的支付，订单处理中...</p>
+                        </div>
+                        <a href="/" class="button">返回首页</a>
+                    </div>
+                    <script>
+                        // 3秒后自动跳转到首页
+                        setTimeout(function() {{
+                            window.location.href = '/';
+                        }}, 3000);
+                    </script>
+                </body>
+                </html>
+                """
+            else:
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>支付失败</title>
+                    <style>
+                        body {{
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background-color: #f5f5f5;
+                        }}
+                        .result-box {{
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                        }}
+                        .fail-icon {{
+                            font-size: 60px;
+                            color: #f5222d;
+                            margin-bottom: 20px;
+                        }}
+                        .title {{
+                            font-size: 24px;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }}
+                        .info {{
+                            color: #666;
+                            margin-bottom: 30px;
+                        }}
+                        .button {{
+                            display: inline-block;
+                            padding: 10px 30px;
+                            background-color: #1890ff;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            margin: 0 10px;
+                            transition: background-color 0.3s;
+                        }}
+                        .button:hover {{
+                            background-color: #40a9ff;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="result-box">
+                        <div class="fail-icon">✗</div>
+                        <div class="title">支付失败</div>
+                        <div class="info">
+                            <p>订单号：{out_trade_no}</p>
+                            <p>支付未完成，请重试或联系客服</p>
+                        </div>
+                        <a href="/" class="button">返回首页</a>
+                        <a href="javascript:history.back()" class="button">重新支付</a>
+                    </div>
+                </body>
+                </html>
+                """
+            
+            return html
+        
+        except Exception as e:
+            logging.error(f"[支付返回] 处理返回页面异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return "<html><body><h1>页面加载失败</h1></body></html>", 500
+
+    @app.route("/api/payment/orders", methods=["GET"])
+    @login_required
+    def payment_list_orders():
+        """
+        查询订单列表接口
+        
+        请求方法：GET
+        权限要求：需要登录
+        
+        查询参数（URL参数）：
+            - status (str, 可选): 订单状态过滤
+                - "pending": 待支付
+                - "paid": 已支付
+                - "closed": 已关闭
+            - page (int, 可选): 页码，默认1
+            - per_page (int, 可选): 每页数量，默认20
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 提示信息
+            - orders (list): 订单列表
+            - total (int): 总订单数
+            - page (int): 当前页码
+            - per_page (int): 每页数量
+        
+        功能说明：
+        1. 普通用户只能查询自己的订单
+        2. 管理员可以查询所有用户的订单
+        3. 支持按状态筛选
+        4. 支持分页查询
+        5. 订单按创建时间倒序排列（最新的在前面）
+        """
+        try:
+            # 获取查询参数
+            status_filter = request.args.get("status", "").strip()  # 状态过滤
+            page = int(request.args.get("page", "1"))              # 页码
+            per_page = int(request.args.get("per_page", "20"))     # 每页数量
+            
+            # 验证参数
+            if page < 1:
+                page = 1
+            if per_page < 1 or per_page > 100:
+                per_page = 20
+            
+            # 检查是否是管理员
+            is_admin = auth_system.check_permission(g.user, "manage_users")
+            
+            # ========== 读取所有订单文件 ==========
+            
+            orders = []
+            
+            # 遍历订单目录中的所有JSON文件
+            for filename in os.listdir(PAYMENT_ORDERS_DIR):
+                # 只处理.json文件
+                if not filename.endswith(".json"):
+                    continue
+                
+                # 构造文件完整路径
+                file_path = os.path.join(PAYMENT_ORDERS_DIR, filename)
+                
+                try:
+                    # 读取订单数据
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        order_data = json.load(f)
+                    
+                    # ========== 权限过滤 ==========
+                    # 普通用户只能看到自己的订单
+                    # 管理员可以看到所有订单
+                    if not is_admin:
+                        # 不是管理员，检查订单是否属于当前用户
+                        if order_data.get("username") != g.user:
+                            # 不是当前用户的订单，跳过
+                            continue
+                    
+                    # ========== 状态过滤 ==========
+                    # 如果指定了状态过滤，只返回匹配的订单
+                    if status_filter:
+                        if order_data.get("status") != status_filter:
+                            # 状态不匹配，跳过
+                            continue
+                    
+                    # 添加到订单列表
+                    orders.append(order_data)
+                
+                except (json.JSONDecodeError, IOError) as e:
+                    # 文件读取或解析失败，记录日志并跳过
+                    logging.warning(f"[订单列表] 读取订单文件失败: {filename}, 错误: {str(e)}")
+                    continue
+            
+            # ========== 排序 ==========
+            # 按创建时间倒序排列（最新的在前面）
+            orders.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+            
+            # ========== 分页 ==========
+            total = len(orders)  # 总订单数
+            start = (page - 1) * per_page  # 起始索引
+            end = start + per_page  # 结束索引
+            orders_page = orders[start:end]  # 当前页的订单
+            
+            # 返回订单列表
+            return jsonify({
+                "success": True,
+                "message": "查询成功",
+                "orders": orders_page,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+            })
+        
+        except Exception as e:
+            logging.error(f"[订单列表] 查询订单列表异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({"success": False, "message": f"查询失败: {str(e)}"}), 500
+
+    # ==============================================================================
+    # 健康检查和监控接口
+    # ==============================================================================
 
     @app.route("/health")
     def health():
