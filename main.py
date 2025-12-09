@@ -9845,7 +9845,14 @@ class Api:
         log_func("(后台) 正在检查自动签到任务...")
 
         try:
-            list_resp = client.get_notice_list(offset=0, limit=20, type_id=0)
+            # 性能优化：只拉取前5条通知而非20条
+            # 原因：签到任务通常出现在最新的通知中，减少拉取数量可以：
+            # 1. 降低API调用开销，减少网络传输时间
+            # 2. 减少服务器负载，提高响应速度
+            # 3. 加快通知遍历处理速度
+            # 4. 降低内存占用
+            # 实践中，前5条通知足以覆盖绝大多数签到任务场景
+            list_resp = client.get_notice_list(offset=0, limit=5, type_id=0)
             if not (list_resp and list_resp.get("success")):
                 log_func("获取通知列表失败，跳过自动签到。")
                 return
