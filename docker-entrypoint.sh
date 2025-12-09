@@ -7,6 +7,13 @@ mkdir -p /var/log/nginx/
 touch /var/log/nginx/access_json.log
 touch /app/nginx.conf
 
+# ==========================================
+# 读取自定义IP头环境变量（任务2）
+# ==========================================
+# 读取自定义IP头环境变量，默认为X-RealIP-Form
+# 这个头将被nginx设置为$remote_addr，传递给后端Flask应用
+REAL_IP_HEADER=${REAL_IP_HEADER:-X-RealIP-Form}
+echo "使用自定义IP头: $REAL_IP_HEADER"
 
 # 打印启动信息
 echo "================================================="
@@ -164,12 +171,14 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location /socket.io/ {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            # 任务2：添加自定义IP头，传递nginx的remote_addr给后端
+            proxy_set_header $REAL_IP_HEADER \$remote_addr;
             proxy_buffering off;
             proxy_read_timeout 86400;
         }
@@ -178,10 +187,12 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location ~ ^/(api|auth|logs|cdn-cache|avatar|system-announcement)/ {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            # 任务2：添加自定义IP头，传递nginx的remote_addr给后端
+            proxy_set_header $REAL_IP_HEADER \$remote_addr;
             proxy_buffering off;
             proxy_read_timeout 300;
             proxy_connect_timeout 300;
@@ -220,10 +231,12 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location @backend {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            # 任务2：添加自定义IP头，传递nginx的remote_addr给后端
+            proxy_set_header $REAL_IP_HEADER \$remote_addr;
         }
 LOCATIONS_EOF
 
