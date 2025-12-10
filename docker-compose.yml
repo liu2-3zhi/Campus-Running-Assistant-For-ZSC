@@ -28,6 +28,7 @@ services:
       - ./sessions:/app/sessions
       - ./tokens:/app/tokens
       - ./system_accounts:/app/system_accounts
+      - ./payment_orders:/app/payment_orders
 
     environment:
       - PYTHONUNBUFFERED=1
