@@ -6910,6 +6910,25 @@
           </svg>
           支付日志
         </button>
+        <!-- ========================================
+             支付设置Tab按钮
+             ========================================
+             功能：管理员支付设置面板的标签页按钮
+             权限：仅管理员（admin）和超级管理员（super_admin）可见
+             位置：管理员面板标签栏，位于支付日志之后
+             API端点：/api/admin/payment/config（配置管理）
+             ======================================== -->
+        <button id="admin-tab-payment-settings_modal"
+          class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap"
+          style="display: none">
+          <!-- 支付设置图标：表示配置/设置 -->
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          支付设置
+        </button>
       </div>
 
       <div class="overflow-x-hidden flex-grow min-h-0">
@@ -8430,6 +8449,540 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
           </button>
+        </div>
+      </div>
+
+      <!-- ========================================
+           PC端支付设置面板 (admin-payment-settings-panel_modal)
+           ========================================
+           【功能说明】
+           此面板是PC端（桌面端）管理员支付设置面板，提供支付相关的高级管理功能。
+           包含4个子Tab，用于配置支付方式、查询订单、处理退款和测试支付流程。
+           
+           【主要功能】
+           1. Tab 1 - 支付方式配置：启用/禁用支付宝、微信、QQ钱包、云闪付
+           2. Tab 2 - 订单查询：根据订单号查询订单详细信息
+           3. Tab 3 - 退款处理：为已支付订单发起退款申请
+           4. Tab 4 - 测试支付：创建测试订单并生成支付链接
+           
+           【权限控制】
+           - 仅管理员（admin）和超级管理员（super_admin）可访问
+           - Tab按钮通过style="display: none"初始隐藏，登录后根据权限显示
+           
+           【API端点】
+           - /api/admin/payment/config (GET/PUT): 支付方式配置的读取和保存
+           - /api/payment/query (POST): 查询订单详情
+           - /api/payment/refund (POST): 提交退款请求
+           - /api/payment/create (POST): 创建测试支付订单
+           
+           【参考实现】
+           - 移动端HTML：第5575-5889行 (mobile-multi-admin-payment-settings-panel)
+           - 移动端JavaScript：第11141-12594行
+           
+           【UI适配】
+           - 桌面端使用更宽的布局（max-w-4xl）
+           - 使用网格布局（grid）来优化空间利用
+           - 更大的字体和间距，适合桌面端操作
+           ======================================== -->
+      <div id="admin-payment-settings-panel_modal" class="hidden space-y-4">
+        <!-- ========== 面板头部 ========== -->
+        <!-- 包含标题和功能说明 -->
+        <div class="flex justify-between items-center">
+          <!-- 面板标题：使用图标+文字的形式 -->
+          <h3 class="text-xl font-bold text-slate-800">
+            <!-- 设置图标：表示配置管理 -->
+            <svg class="w-6 h-6 inline mr-2 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            支付设置
+          </h3>
+        </div>
+
+        <!-- ========== 功能说明提示框 ========== -->
+        <!-- 向用户说明此面板的功能和用途 -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p class="text-sm text-blue-800">
+            <!-- 信息图标 -->
+            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            此面板提供支付相关的高级管理功能：配置支付方式、查询订单、处理退款、测试支付流程
+          </p>
+        </div>
+
+        <!-- ========================================
+             子标签页导航栏
+             ========================================
+             包含4个功能模块的Tab按钮：
+             1. 支付方式配置
+             2. 订单查询
+             3. 退款处理
+             4. 测试支付
+             ======================================== -->
+        <div class="flex border-b-2 border-slate-200 gap-2">
+          <!-- Tab 1: 支付方式配置 -->
+          <!-- 默认激活状态，显示蓝色底色和加粗字体 -->
+          <button id="admin-payment-settings-tab-config_modal" 
+            class="px-4 py-2.5 text-sm font-semibold whitespace-nowrap rounded-t-lg transition-colors bg-sky-50 text-sky-600 border-b-2 border-sky-600" 
+            onclick="switchAdminPaymentSettingsTab('config')">
+            <!-- 配置图标：齿轮 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            支付方式配置
+          </button>
+          
+          <!-- Tab 2: 订单查询 -->
+          <!-- 未激活状态，灰色文字，悬停时有交互效果 -->
+          <button id="admin-payment-settings-tab-query_modal" 
+            class="px-4 py-2.5 text-sm font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+            onclick="switchAdminPaymentSettingsTab('query')">
+            <!-- 搜索图标 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            订单查询
+          </button>
+          
+          <!-- Tab 3: 退款处理 -->
+          <button id="admin-payment-settings-tab-refund_modal" 
+            class="px-4 py-2.5 text-sm font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+            onclick="switchAdminPaymentSettingsTab('refund')">
+            <!-- 退款图标：货币转账 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+            </svg>
+            退款处理
+          </button>
+          
+          <!-- Tab 4: 测试支付 -->
+          <button id="admin-payment-settings-tab-test_modal" 
+            class="px-4 py-2.5 text-sm font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+            onclick="switchAdminPaymentSettingsTab('test')">
+            <!-- 测试图标：烧杯 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+            </svg>
+            测试支付
+          </button>
+        </div>
+
+        <!-- ========================================
+             Tab 1 内容区域：支付方式配置
+             ========================================
+             功能：管理员可以启用/禁用各种支付方式
+             包含：支付宝、微信支付、QQ钱包、云闪付的开关
+             API端点：/api/admin/payment/config
+             ======================================== -->
+        <div id="admin-payment-settings-content-config_modal" class="space-y-4">
+          <!-- 配置说明文本 -->
+          <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            💡 提示：启用相应的支付方式后，用户可在支付页面选择使用。更改后请点击"保存配置"按钮。
+          </p>
+
+          <!-- 支付方式开关列表容器 -->
+          <!-- 使用网格布局，桌面端显示2列，提升空间利用率 -->
+          <div class="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
+            
+            <!-- 支付宝开关 -->
+            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
+              <!-- 支付方式图标和名称 -->
+              <div class="flex items-center gap-3">
+                <!-- 支付宝图标：使用蓝色圆形背景 -->
+                <div class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  支
+                </div>
+                <span class="text-sm font-semibold text-slate-700">支付宝</span>
+              </div>
+              <!-- 开关控件：使用checkbox实现，默认选中状态 -->
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="admin-payment-method-alipay_modal" class="sr-only peer" checked>
+                <!-- 开关滑块：选中时显示蓝色，未选中时显示灰色 -->
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+            </div>
+
+            <!-- 微信支付开关 -->
+            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-green-300 transition-colors">
+              <div class="flex items-center gap-3">
+                <!-- 微信支付图标：使用绿色圆形背景 -->
+                <div class="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  微
+                </div>
+                <span class="text-sm font-semibold text-slate-700">微信支付</span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="admin-payment-method-wechat_modal" class="sr-only peer" checked>
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+            </div>
+
+            <!-- QQ钱包开关 -->
+            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-yellow-300 transition-colors">
+              <div class="flex items-center gap-3">
+                <!-- QQ钱包图标：使用黄色圆形背景 -->
+                <div class="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  Q
+                </div>
+                <span class="text-sm font-semibold text-slate-700">QQ钱包</span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="admin-payment-method-qq_modal" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+            </div>
+
+            <!-- 云闪付开关 -->
+            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-red-300 transition-colors">
+              <div class="flex items-center gap-3">
+                <!-- 云闪付图标：使用红色圆形背景 -->
+                <div class="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  云
+                </div>
+                <span class="text-sm font-semibold text-slate-700">云闪付</span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="admin-payment-method-unionpay_modal" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 保存按钮：提交配置更改 -->
+          <button id="admin-save-payment-methods-btn_modal" 
+            class="w-full py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
+            <!-- 保存图标 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M5 13l4 4L19 7"/>
+            </svg>
+            保存配置
+          </button>
+
+          <!-- 操作结果提示区域：用于显示成功或错误消息 -->
+          <div id="admin-payment-config-result_modal" class="hidden">
+            <!-- 成功提示：绿色背景 -->
+            <!-- 此内容将由JavaScript动态更新 -->
+          </div>
+        </div>
+
+        <!-- ========================================
+             Tab 2 内容区域：订单查询
+             ========================================
+             功能：管理员可以通过订单号查询订单详情
+             包含：订单号输入框、查询按钮、订单详情显示区
+             API端点：/api/payment/query
+             ======================================== -->
+        <div id="admin-payment-settings-content-query_modal" class="hidden space-y-4">
+          <!-- 查询说明文本 -->
+          <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            💡 提示：输入完整的订单号（trade_no）进行查询，系统将显示订单的详细信息
+          </p>
+
+          <!-- 订单号输入表单 -->
+          <div class="space-y-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <!-- 订单号输入框 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                订单号（trade_no）
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 输入框：支持粘贴长订单号，有焦点高亮效果 -->
+              <input type="text" id="admin-query-order-trade-no_modal" 
+                placeholder="例如：20231210123456789012" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+            </div>
+
+            <!-- 查询按钮 -->
+            <button id="admin-query-order-btn_modal" 
+              class="w-full py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md"
+              onclick="queryAdminPaymentOrder()">
+              <!-- 搜索图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              查询订单
+            </button>
+          </div>
+
+          <!-- 订单详情显示区域：初始隐藏，查询成功后显示 -->
+          <div id="admin-order-detail-container_modal" class="hidden space-y-3 bg-white border border-slate-200 rounded-lg p-4">
+            <h5 class="font-semibold text-base text-slate-700 border-b border-slate-200 pb-2">
+              <!-- 文档图标 -->
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              订单详情
+            </h5>
+            
+            <!-- 订单信息列表：使用键值对布局，桌面端使用网格布局 -->
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <!-- 订单号 -->
+              <div class="col-span-2 flex justify-between py-2 border-b border-slate-100">
+                <span class="text-slate-500 font-medium">订单号：</span>
+                <span id="admin-order-detail-trade-no_modal" class="text-slate-700 font-semibold break-all">-</span>
+              </div>
+              <!-- 订单状态：使用彩色标签显示 -->
+              <div class="flex justify-between py-2 border-b border-slate-100">
+                <span class="text-slate-500 font-medium">状态：</span>
+                <span id="admin-order-detail-status_modal" class="px-2 py-0.5 rounded-full text-xs font-semibold">-</span>
+              </div>
+              <!-- 支付金额：强调显示 -->
+              <div class="flex justify-between py-2 border-b border-slate-100">
+                <span class="text-slate-500 font-medium">金额：</span>
+                <span id="admin-order-detail-amount_modal" class="text-red-600 font-bold">-</span>
+              </div>
+              <!-- 支付方式 -->
+              <div class="flex justify-between py-2 border-b border-slate-100">
+                <span class="text-slate-500 font-medium">支付方式：</span>
+                <span id="admin-order-detail-method_modal" class="text-slate-700">-</span>
+              </div>
+              <!-- 创建时间 -->
+              <div class="flex justify-between py-2 border-b border-slate-100">
+                <span class="text-slate-500 font-medium">创建时间：</span>
+                <span id="admin-order-detail-create-time_modal" class="text-slate-700">-</span>
+              </div>
+              <!-- 支付时间 -->
+              <div class="col-span-2 flex justify-between py-2 border-b border-slate-100">
+                <span class="text-slate-500 font-medium">支付时间：</span>
+                <span id="admin-order-detail-pay-time_modal" class="text-slate-700">-</span>
+              </div>
+              <!-- 商品名称/备注 -->
+              <div class="col-span-2 flex justify-between py-2">
+                <span class="text-slate-500 font-medium">商品/备注：</span>
+                <span id="admin-order-detail-product_modal" class="text-slate-700 break-all">-</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 查询结果提示区域：用于显示错误或提示消息 -->
+          <div id="admin-query-order-result_modal" class="hidden">
+            <!-- 错误提示：红色背景 -->
+            <!-- 此内容将由JavaScript动态更新 -->
+          </div>
+        </div>
+
+        <!-- ========================================
+             Tab 3 内容区域：退款处理
+             ========================================
+             功能：管理员可以为已支付订单发起退款
+             包含：原订单号、退款金额、退款单号、退款原因
+             API端点：/api/payment/refund
+             ======================================== -->
+        <div id="admin-payment-settings-content-refund_modal" class="hidden space-y-4">
+          <!-- 退款说明文本：重要警告 -->
+          <p class="text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3">
+            ⚠️ 警告：退款操作不可撤销，请仔细核对订单信息后再提交。退款金额不能超过原订单金额。
+          </p>
+
+          <!-- 退款表单 -->
+          <div class="space-y-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <!-- 订单号输入框 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                原订单号（trade_no）
+                <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="admin-refund-order-trade-no_modal" 
+                placeholder="要退款的订单号" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+            </div>
+
+            <!-- 退款金额输入框 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                退款金额（元）
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 数字输入框：限制为正数，保留两位小数 -->
+              <input type="number" id="admin-refund-amount_modal" 
+                placeholder="0.00" 
+                min="0.01" 
+                step="0.01" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+              <p class="text-xs text-slate-500 mt-1">系统会在查询订单后自动填充原订单金额</p>
+            </div>
+
+            <!-- 退款单号输入框（可选） -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                退款单号（可选）
+              </label>
+              <!-- 如不填写，系统将自动生成 -->
+              <div class="flex gap-2">
+                <input type="text" id="admin-refund-no_modal" 
+                  placeholder="不填则自动生成" 
+                  class="flex-1 px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+                <!-- 自动生成按钮 -->
+                <button onclick="generateAdminRefundOrderNo()" 
+                  class="px-4 py-2.5 bg-slate-500 text-white rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors whitespace-nowrap">
+                  自动生成
+                </button>
+              </div>
+            </div>
+
+            <!-- 退款原因输入框（可选） -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                退款原因（可选）
+              </label>
+              <!-- 多行文本框，用于记录退款原因 -->
+              <textarea id="admin-refund-reason_modal" 
+                rows="3" 
+                placeholder="例如：用户申请退款、订单重复支付等" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none resize-none transition-shadow"></textarea>
+            </div>
+
+            <!-- 退款按钮：使用橙色警告色 -->
+            <button id="admin-process-refund-btn_modal" 
+              class="w-full py-3 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors shadow-sm hover:shadow-md"
+              onclick="submitAdminPaymentRefund()">
+              <!-- 退款图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+              </svg>
+              确认退款
+            </button>
+          </div>
+
+          <!-- 退款结果显示区域 -->
+          <div id="admin-refund-result-container_modal" class="hidden">
+            <!-- 成功提示：绿色背景 -->
+            <!-- 此内容将由JavaScript动态更新 -->
+          </div>
+
+          <!-- 退款错误提示区域 -->
+          <div id="admin-refund-error-result_modal" class="hidden">
+            <!-- 错误提示：红色背景 -->
+            <!-- 此内容将由JavaScript动态更新 -->
+          </div>
+        </div>
+
+        <!-- ========================================
+             Tab 4 内容区域：测试支付
+             ========================================
+             功能：管理员可以生成测试订单进行支付测试
+             包含：测试金额、支付方式选择、支付链接
+             API端点：/api/payment/create
+             ======================================== -->
+        <div id="admin-payment-settings-content-test_modal" class="hidden space-y-4">
+          <!-- 测试说明文本 -->
+          <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            💡 提示：此功能用于测试支付流程，建议使用小额金额（如0.01元）进行测试
+          </p>
+
+          <!-- 测试订单表单 -->
+          <div class="space-y-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <!-- 测试金额输入框 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                测试金额（元）
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 建议使用小额测试，如0.01元 -->
+              <input type="number" id="admin-test-payment-amount_modal" 
+                placeholder="0.01" 
+                min="0.01" 
+                step="0.01" 
+                value="0.01" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+            </div>
+
+            <!-- 支付方式选择下拉框 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                支付方式
+                <span class="text-red-500">*</span>
+              </label>
+              <select id="admin-test-payment-method_modal" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow">
+                <!-- 支付宝 -->
+                <option value="alipay">支付宝</option>
+                <!-- 微信支付 -->
+                <option value="wechat">微信支付</option>
+                <!-- QQ钱包 -->
+                <option value="qq">QQ钱包</option>
+                <!-- 云闪付 -->
+                <option value="unionpay">云闪付</option>
+              </select>
+            </div>
+
+            <!-- 创建测试订单按钮 -->
+            <button id="admin-create-test-order-btn_modal" 
+              class="w-full py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md"
+              onclick="createAdminTestPayment()">
+              <!-- 加号图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 4v16m8-8H4"/>
+              </svg>
+              创建测试订单
+            </button>
+          </div>
+
+          <!-- 支付链接显示区域：创建订单成功后显示 -->
+          <div id="admin-test-payment-link-container_modal" class="hidden space-y-3 bg-white border border-slate-200 rounded-lg p-4">
+            <h5 class="font-semibold text-base text-slate-700 border-b border-slate-200 pb-2">
+              <!-- 链接图标 -->
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+              </svg>
+              支付链接已生成
+            </h5>
+            
+            <!-- 支付链接显示框：可复制 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">支付链接：</label>
+              <!-- 只读输入框，显示完整的支付链接 -->
+              <input type="text" id="admin-test-pay-url_modal" 
+                readonly 
+                class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono text-slate-600 cursor-text select-all" />
+            </div>
+
+            <!-- 操作按钮组：使用网格布局 -->
+            <div class="grid grid-cols-2 gap-3">
+              <!-- 打开支付链接按钮 -->
+              <button id="admin-open-test-pay-url-btn_modal" 
+                class="py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm hover:shadow-md"
+                onclick="openAdminPaymentLink()">
+                <!-- 外部链接图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+                打开链接
+              </button>
+              
+              <!-- 复制链接按钮 -->
+              <button onclick="copyAdminTestPayUrl()" 
+                class="py-2.5 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md">
+                <!-- 复制图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                复制链接
+              </button>
+            </div>
+          </div>
+
+          <!-- 测试订单创建结果提示区域 -->
+          <div id="admin-test-payment-result_modal" class="hidden">
+            <!-- 成功/错误提示 -->
+            <!-- 此内容将由JavaScript动态更新 -->
+          </div>
         </div>
       </div>
     </div>
@@ -12587,8 +13140,1311 @@
     }
   </script>
 
+  <!-- ==========================================
+       PC端管理员支付设置面板脚本
+       ==========================================
+       【功能说明】
+       此脚本负责PC端（桌面端）管理员面板中支付设置功能的实现。
+       与移动端支付设置功能平行，但适配了桌面端的UI布局和交互方式。
+       
+       【主要功能】
+       1. Tab切换：在4个功能模块之间切换（支付方式配置、订单查询、退款处理、测试支付）
+       2. Tab 1 - 支付方式配置：从后端加载和保存支付方式的启用状态
+       3. Tab 2 - 订单查询：根据订单号查询订单详情并显示
+       4. Tab 3 - 退款处理：为已支付订单发起退款申请
+       5. Tab 4 - 测试支付：创建测试订单并生成支付链接
+       
+       【API端点】
+       - /api/admin/payment/config (GET/PUT): 支付方式配置
+       - /api/payment/query (POST): 订单查询
+       - /api/payment/refund (POST): 退款处理
+       - /api/payment/create (POST): 创建测试订单
+       
+       【权限控制】
+       - 仅管理员（admin）和超级管理员（super_admin）可访问
+       - API端点会进行服务器端权限验证
+       
+       【安全措施】
+       - 使用textContent防止XSS攻击
+       - 使用DOM方法而非innerHTML（除非必要）
+       - 所有用户输入都进行验证
+       
+       【参考实现】
+       - 移动端实现：第11141-12594行
+       - HTML结构：第8456行开始（本文件）
+       ========================================== -->
+  <script>
+    // ==========================================
+    // Tab切换功能
+    // ==========================================
+    // 【功能说明】
+    // 实现PC端管理员支付设置面板的4个Tab之间的切换
+    // 包括：支付方式配置、订单查询、退款处理、测试支付
+    // ==========================================
+    
+    /**
+     * 切换PC端管理员支付设置面板的Tab
+     * 
+     * 功能说明：
+     * 1. 隐藏所有Tab的内容区域
+     * 2. 移除所有Tab按钮的激活样式
+     * 3. 显示指定Tab的内容区域
+     * 4. 为指定Tab按钮添加激活样式
+     * 
+     * 调用时机：
+     * - 用户点击任何一个Tab按钮时
+     * - 页面加载时默认显示第一个Tab
+     * 
+     * 参数说明：
+     * @param {string} tabName - Tab的名称，可选值：'config'、'query'、'refund'、'test'
+     * 
+     * 实现细节：
+     * - 使用forEach遍历所有Tab，统一处理显示/隐藏逻辑
+     * - 通过classList动态添加/移除CSS类来改变样式
+     * - 激活状态：蓝色背景、蓝色文字、底部蓝色边框、加粗字体
+     * - 非激活状态：无背景、灰色文字、普通粗细字体
+     */
+    function switchAdminPaymentSettingsTab(tabName) {
+      // 在控制台输出日志，记录Tab切换操作
+      console.log(`[PC端支付设置] 切换到Tab: ${tabName}`);
+      
+      // 定义所有标签页的名称数组
+      // 这样可以统一管理所有标签页，便于维护
+      // 如果将来需要添加新的Tab，只需在这里添加名称即可
+      const tabs = ['config', 'query', 'refund', 'test'];
+      
+      // 遍历所有标签页，执行显示/隐藏操作
+      // forEach循环：对数组中的每个元素执行一次指定函数
+      tabs.forEach(tab => {
+        // ========== 获取DOM元素 ==========
+        
+        // 获取标签页按钮元素
+        // 命名规则：admin-payment-settings-tab-{tab}_modal
+        const tabButton = document.getElementById(`admin-payment-settings-tab-${tab}_modal`);
+        
+        // 获取标签页内容区域元素
+        // 命名规则：admin-payment-settings-content-{tab}_modal
+        const tabContent = document.getElementById(`admin-payment-settings-content-${tab}_modal`);
+        
+        // 防御性检查：确保DOM元素存在
+        // 如果元素不存在，跳过此次循环，避免null引用错误
+        if (!tabButton || !tabContent) {
+          console.warn(`[PC端支付设置] 警告：找不到Tab "${tab}" 的DOM元素`);
+          return; // 使用return跳过当前循环迭代
+        }
+        
+        // ========== 判断是否为目标Tab ==========
+        
+        // 检查当前遍历的标签页是否是要显示的目标标签页
+        if (tab === tabName) {
+          // === 激活目标标签页 ===
+          
+          // 步骤1：为标签页按钮添加激活状态样式
+          // bg-sky-50: 浅蓝色背景
+          // text-sky-600: 蓝色文字
+          // border-b-2: 底部边框2px
+          // border-sky-600: 蓝色边框
+          // font-semibold: 加粗字体（600权重）
+          tabButton.classList.add('bg-sky-50', 'text-sky-600', 'border-b-2', 'border-sky-600', 'font-semibold');
+          
+          // 步骤2：移除标签页按钮的非激活状态样式
+          // text-slate-600: 灰色文字（非激活状态）
+          // font-medium: 普通粗细字体（500权重）
+          tabButton.classList.remove('text-slate-600', 'font-medium');
+          
+          // 步骤3：显示对应的内容区域
+          // 移除hidden类，使内容可见
+          // hidden类由Tailwind CSS提供，相当于display: none
+          tabContent.classList.remove('hidden');
+          
+          // 在控制台输出日志，标记Tab激活成功
+          console.log(`[PC端支付设置] Tab "${tab}" 已激活`);
+        } else {
+          // === 取消激活其他标签页 ===
+          
+          // 步骤1：移除其他标签页按钮的激活状态样式
+          // 移除蓝色背景、蓝色文字、蓝色边框、加粗字体
+          tabButton.classList.remove('bg-sky-50', 'text-sky-600', 'border-b-2', 'border-sky-600', 'font-semibold');
+          
+          // 步骤2：为其他标签页按钮添加非激活状态样式
+          // 恢复为灰色文字和普通粗细
+          tabButton.classList.add('text-slate-600', 'font-medium');
+          
+          // 步骤3：隐藏其他内容区域
+          // 添加hidden类，使内容不可见
+          tabContent.classList.add('hidden');
+        }
+      });
+      
+      // Tab切换完成，输出日志
+      console.log(`[PC端支付设置] Tab切换完成`);
+    }
+
+    // ==========================================
+    // Tab 1: 支付方式配置功能
+    // ==========================================
+    // 【功能说明】
+    // 实现支付方式（支付宝、微信、QQ钱包、云闪付）的启用/禁用配置
+    // 包括从服务器加载当前配置和保存用户的更改
+    // ==========================================
+    
+    /**
+     * 加载PC端管理员支付方式配置
+     * 
+     * 功能说明：
+     * 从服务器获取当前的支付方式启用状态，并更新页面上的checkbox
+     * 此函数会在页面加载时自动调用，以确保显示最新的配置状态
+     * 
+     * API端点：GET /api/admin/payment/config
+     * 
+     * 预期返回格式：
+     * {
+     *   success: true,
+     *   config: {
+     *     alipay: true,      // 支付宝是否启用
+     *     wechat: true,      // 微信支付是否启用
+     *     qq: false,         // QQ钱包是否启用
+     *     unionpay: false    // 云闪付是否启用
+     *   }
+     * }
+     * 
+     * 调用时机：
+     * - 页面加载完成后自动调用
+     * - 保存配置成功后重新加载（确保数据同步）
+     * 
+     * 实现步骤：
+     * 1. 发起HTTP GET请求到API端点
+     * 2. 检查响应状态码和业务状态
+     * 3. 解析返回的JSON数据
+     * 4. 更新页面上4个checkbox的状态
+     * 5. 错误处理：显示友好的错误提示
+     */
+    async function loadAdminPaymentMethodsConfig() {
+      // 在控制台输出日志，便于调试和追踪函数执行
+      console.log('[PC端支付配置] 开始加载支付方式配置...');
+      
+      try {
+        // === 第1步：发起HTTP GET请求获取配置数据 ===
+        
+        // 使用fetch API调用后端接口
+        // fetch是现代浏览器提供的原生API，返回Promise对象
+        // await关键字会等待Promise resolve，确保获取到响应后再继续执行
+        const response = await fetch('/api/admin/payment/config', {
+          method: 'GET',  // HTTP方法：GET用于获取数据（幂等操作）
+          headers: {
+            // 设置请求头，告知服务器期望返回JSON格式的数据
+            // Content-Type标头说明了请求/响应的MIME类型
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        // === 第2步：检查HTTP响应状态码 ===
+        
+        // response.ok 是一个布尔值
+        // 为true时，表示状态码在200-299范围内（HTTP成功状态）
+        // 为false时，表示请求失败（如404 Not Found、500 Internal Server Error等）
+        if (!response.ok) {
+          // 如果响应状态码不是成功状态
+          // 抛出错误，中断当前执行流程，进入catch块处理
+          // 错误消息包含具体的HTTP状态码，便于调试
+          throw new Error(`加载配置失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第3步：解析JSON响应数据 ===
+        
+        // response.json()方法将响应体解析为JavaScript对象
+        // 这也是一个异步操作，返回Promise，需要await等待
+        // 如果响应体不是有效的JSON，会抛出解析错误
+        const result = await response.json();
+        
+        // 在控制台输出获取到的完整响应数据，方便开发者查看和调试
+        console.log('[PC端支付配置] 成功获取API响应：', result);
+        
+        // === 第4步：提取配置对象 ===
+        
+        // 从API响应中提取config对象
+        // 假设API返回格式为 { success: true, config: {...} }
+        // 如果API直接返回配置对象，则使用 const config = result;
+        const config = result.config || result;
+        
+        // 输出配置对象，确认数据正确
+        console.log('[PC端支付配置] 解析到的配置数据：', config);
+        
+        // === 第5步：根据配置数据更新页面上的checkbox状态 ===
+        
+        // 5.1 更新支付宝checkbox
+        // 通过getElementById获取DOM元素
+        const alipayCheckbox = document.getElementById('admin-payment-method-alipay_modal');
+        // 防御性检查：确保元素存在（避免null引用错误）
+        if (alipayCheckbox) {
+          // 设置checkbox的checked属性
+          // 使用 !! 将值转换为布尔类型，确保只有true/false
+          // 这样即使config.alipay是undefined或其他假值，也能正确处理
+          alipayCheckbox.checked = !!config.alipay;
+          console.log('[PC端支付配置] 支付宝状态已更新：', alipayCheckbox.checked);
+        } else {
+          console.warn('[PC端支付配置] 警告：找不到支付宝checkbox元素');
+        }
+        
+        // 5.2 更新微信支付checkbox
+        // 同样的逻辑：获取元素 -> 检查存在性 -> 设置状态
+        const wechatCheckbox = document.getElementById('admin-payment-method-wechat_modal');
+        if (wechatCheckbox) {
+          wechatCheckbox.checked = !!config.wechat;
+          console.log('[PC端支付配置] 微信支付状态已更新：', wechatCheckbox.checked);
+        } else {
+          console.warn('[PC端支付配置] 警告：找不到微信支付checkbox元素');
+        }
+        
+        // 5.3 更新QQ钱包checkbox
+        const qqCheckbox = document.getElementById('admin-payment-method-qq_modal');
+        if (qqCheckbox) {
+          qqCheckbox.checked = !!config.qq;
+          console.log('[PC端支付配置] QQ钱包状态已更新：', qqCheckbox.checked);
+        } else {
+          console.warn('[PC端支付配置] 警告：找不到QQ钱包checkbox元素');
+        }
+        
+        // 5.4 更新云闪付checkbox
+        const unionpayCheckbox = document.getElementById('admin-payment-method-unionpay_modal');
+        if (unionpayCheckbox) {
+          unionpayCheckbox.checked = !!config.unionpay;
+          console.log('[PC端支付配置] 云闪付状态已更新：', unionpayCheckbox.checked);
+        } else {
+          console.warn('[PC端支付配置] 警告：找不到云闪付checkbox元素');
+        }
+        
+        // 记录成功日志
+        console.log('[PC端支付配置] 支付方式配置已成功应用到页面');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        
+        // 当任何步骤发生错误时（网络失败、JSON解析失败、服务器错误等）
+        // 都会被捕获到这里统一处理
+        
+        // 在控制台输出详细的错误信息，帮助开发者定位问题
+        // error对象包含错误类型、消息、堆栈跟踪等信息
+        console.error('[PC端支付配置] 加载支付方式配置时发生错误：', error);
+        
+        // 向用户显示友好的错误提示
+        // 使用alert弹窗，确保用户能够看到错误信息
+        // 提供操作建议：刷新页面或联系管理员
+        alert('无法加载支付方式配置，请刷新页面重试。\n如果问题持续，请联系系统管理员。\n\n错误详情：' + (error.message || '未知错误'));
+      }
+    }
+    
+    /**
+     * 保存PC端管理员支付方式配置
+     * 
+     * 功能说明：
+     * 读取页面上4个checkbox的当前状态，并将配置提交到服务器保存
+     * 保存成功后会显示提示信息，并重新加载配置以确保数据同步
+     * 
+     * API端点：PUT /api/admin/payment/config
+     * 
+     * 请求体格式：
+     * {
+     *   alipay: true,      // 支付宝是否启用
+     *   wechat: true,      // 微信支付是否启用
+     *   qq: false,         // QQ钱包是否启用
+     *   unionpay: false    // 云闪付是否启用
+     * }
+     * 
+     * 调用时机：
+     * - 用户点击"保存配置"按钮时
+     * 
+     * 实现步骤：
+     * 1. 从页面读取4个checkbox的状态
+     * 2. 构建配置对象
+     * 3. 发起HTTP PUT请求保存到服务器
+     * 4. 检查响应状态
+     * 5. 显示成功/失败提示
+     * 6. 重新加载配置（确保数据同步）
+     */
+    async function saveAdminPaymentMethodsConfig() {
+      // 输出日志，标记保存操作开始
+      console.log('[PC端支付配置] 开始保存支付方式配置...');
+      
+      // 获取结果显示区域的DOM元素
+      // 这个元素用于向用户显示操作成功或失败的消息
+      const resultDiv = document.getElementById('admin-payment-config-result_modal');
+      
+      try {
+        // === 第1步：从页面读取checkbox的当前状态 ===
+        
+        // 1.1 获取支付宝checkbox元素
+        const alipayCheckbox = document.getElementById('admin-payment-method-alipay_modal');
+        // 1.2 获取微信支付checkbox元素
+        const wechatCheckbox = document.getElementById('admin-payment-method-wechat_modal');
+        // 1.3 获取QQ钱包checkbox元素
+        const qqCheckbox = document.getElementById('admin-payment-method-qq_modal');
+        // 1.4 获取云闪付checkbox元素
+        const unionpayCheckbox = document.getElementById('admin-payment-method-unionpay_modal');
+        
+        // === 第2步：构建要提交的配置对象 ===
+        
+        // 创建一个JavaScript对象，包含4个支付方式的启用状态
+        // 使用可选链操作符（?.）安全访问checked属性
+        // 如果元素不存在，?.checked会返回undefined
+        // 使用逻辑或（||）确保即使元素不存在也返回false而不是undefined
+        const config = {
+          alipay: alipayCheckbox?.checked || false,    // 支付宝启用状态
+          wechat: wechatCheckbox?.checked || false,    // 微信支付启用状态
+          qq: qqCheckbox?.checked || false,            // QQ钱包启用状态
+          unionpay: unionpayCheckbox?.checked || false // 云闪付启用状态
+        };
+        
+        // 在控制台输出即将提交的配置，便于调试
+        // 这样可以在发送请求前确认数据的正确性
+        console.log('[PC端支付配置] 准备提交的配置数据：', config);
+        
+        // === 第3步：发起HTTP PUT请求保存配置 ===
+        
+        // 使用fetch API调用后端接口
+        // PUT方法用于更新资源（幂等操作）
+        const response = await fetch('/api/admin/payment/config', {
+          method: 'PUT',  // HTTP方法：PUT用于更新/替换资源
+          headers: {
+            // Content-Type告知服务器请求体是JSON格式
+            // 服务器需要根据这个标头解析请求体
+            'Content-Type': 'application/json'
+          },
+          // body必须是字符串，使用JSON.stringify()将对象转换为JSON字符串
+          // JSON格式示例：{"alipay":true,"wechat":true,"qq":false,"unionpay":false}
+          body: JSON.stringify(config)
+        });
+        
+        // === 第4步：检查响应状态 ===
+        
+        if (!response.ok) {
+          // 如果服务器返回错误状态码（如400 Bad Request、500 Internal Server Error等）
+          // 抛出错误，进入catch块处理
+          throw new Error(`保存配置失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第5步：解析服务器响应 ===
+        
+        // 获取服务器返回的JSON数据
+        // 响应可能包含成功消息、更新后的配置或其他信息
+        const result = await response.json();
+        
+        // 输出成功日志
+        console.log('[PC端支付配置] 支付方式配置保存成功：', result);
+        
+        // === 第6步：显示成功提示 ===
+        
+        // 防御性检查：确保结果显示区域元素存在
+        if (resultDiv) {
+          // 6.1 更新结果显示区域的HTML内容
+          // 显示绿色的成功提示框
+          // 使用textContent会更安全，但这里的内容是静态的，使用innerHTML也可接受
+          resultDiv.innerHTML = `
+            <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+              <!-- 成功图标 -->
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✓ 配置已成功保存
+            </div>
+          `;
+          
+          // 6.2 移除hidden类，让提示框可见
+          resultDiv.classList.remove('hidden');
+          
+          // 6.3 设置定时器，3秒后自动隐藏提示框
+          // setTimeout在指定毫秒后执行回调函数（3000ms = 3秒）
+          // 这样可以避免提示框一直显示，影响用户体验
+          setTimeout(() => {
+            // 添加hidden类，隐藏提示框
+            resultDiv.classList.add('hidden');
+          }, 3000);
+        }
+        
+        // === 第7步：重新加载配置以确保数据同步 ===
+        
+        // 调用loadAdminPaymentMethodsConfig函数，从服务器重新获取最新配置
+        // 注意：这会产生一个额外的网络请求，但能确保页面显示的状态与服务器保存的状态完全一致
+        // 这是一个有意的设计选择，因为：
+        // 1. 服务器可能会对提交的数据进行验证或修改
+        // 2. 确保客户端和服务器端数据的一致性
+        // 3. 防止因网络问题导致的数据不同步
+        // 如果需要优化性能，可以让服务器在保存响应中直接返回更新后的配置
+        await loadAdminPaymentMethodsConfig();
+        
+      } catch (error) {
+        // === 错误处理 ===
+        
+        // 捕获所有可能的错误：网络错误、服务器错误、JSON解析错误等
+        
+        // 在控制台输出详细的错误信息
+        console.error('[PC端支付配置] 保存支付方式配置时发生错误：', error);
+        
+        // 向用户显示错误提示
+        // 检查resultDiv是否存在，避免null引用错误
+        if (resultDiv) {
+          // 更新结果显示区域为红色错误提示框
+          resultDiv.innerHTML = `
+            <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              <!-- 错误图标 -->
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✗ 保存失败：${error.message || '未知错误'}。请重试或联系管理员。
+            </div>
+          `;
+          
+          // 显示错误提示框
+          resultDiv.classList.remove('hidden');
+          
+          // 5秒后自动隐藏错误提示（比成功提示多2秒，让用户有更多时间阅读错误信息）
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 5000);
+        } else {
+          // 如果结果显示区域不存在，使用alert作为备用方案
+          alert(`保存失败：${error.message || '未知错误'}。\n请重试或联系管理员。`);
+        }
+      }
+    }
+
+    // ==========================================
+    // Tab 2: 订单查询功能
+    // ==========================================
+    // 【功能说明】
+    // 实现支付设置面板中的订单查询功能，包括：
+    // 1. 根据订单号查询订单详情
+    // 2. 显示订单的完整信息（订单号、状态、金额、支付方式等）
+    // 3. 根据订单状态显示不同颜色的标签
+    // 4. 完善的输入验证和错误处理
+    // 
+    // 【API说明】
+    // - POST /api/payment/query: 查询指定订单号的订单详情
+    // ==========================================
+    
+    /**
+     * 查询PC端管理员订单信息
+     * 
+     * 功能说明：
+     * 根据用户输入的订单号，查询订单的详细信息并显示在页面上
+     * 包括：订单号、状态、金额、支付方式、创建时间、支付时间、商品名称
+     * 
+     * API端点：POST /api/payment/query
+     * 
+     * 请求体格式：
+     * {
+     *   trade_no: "20231210123456789012"  // 订单号
+     * }
+     * 
+     * 预期返回格式：
+     * {
+     *   success: true,
+     *   order: {
+     *     trade_no: "20231210123456789012",
+     *     status: "paid",              // 订单状态：pending, paid, failed, refunded
+     *     amount: 99.99,               // 订单金额
+     *     payment_method: "alipay",    // 支付方式
+     *     created_at: "2023-12-10 12:34:56",
+     *     paid_at: "2023-12-10 12:35:10",
+     *     product_name: "VIP会员"      // 商品名称/备注
+     *   }
+     * }
+     * 
+     * 调用时机：
+     * - 用户点击"查询订单"按钮时
+     */
+    async function queryAdminPaymentOrder() {
+      // 输出日志，标记查询操作开始
+      console.log('[PC端订单查询] 开始查询订单...');
+      
+      // === 第1步：获取DOM元素 ===
+      
+      // 获取订单号输入框元素
+      const tradeNoInput = document.getElementById('admin-query-order-trade-no_modal');
+      // 获取订单详情显示容器
+      const detailContainer = document.getElementById('admin-order-detail-container_modal');
+      // 获取查询结果提示区域
+      const resultDiv = document.getElementById('admin-query-order-result_modal');
+      
+      // 防御性检查：确保关键元素存在
+      if (!tradeNoInput) {
+        console.error('[PC端订单查询] 错误：找不到订单号输入框');
+        alert('页面元素异常，请刷新页面后重试。');
+        return;
+      }
+      
+      // === 第2步：获取并验证订单号输入 ===
+      
+      // 获取用户输入的订单号，使用trim()去除首尾空格
+      const tradeNo = tradeNoInput.value.trim();
+      
+      // 验证订单号是否为空
+      if (!tradeNo) {
+        // 如果订单号为空，显示错误提示
+        console.warn('[PC端订单查询] 订单号为空');
+        
+        // 隐藏订单详情容器
+        if (detailContainer) {
+          detailContainer.classList.add('hidden');
+        }
+        
+        // 显示错误提示
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✗ 请输入订单号
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          // 3秒后自动隐藏提示
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 3000);
+        }
+        return;
+      }
+      
+      // 在控制台输出即将查询的订单号
+      console.log('[PC端订单查询] 查询订单号：', tradeNo);
+      
+      try {
+        // === 第3步：发起HTTP POST请求查询订单 ===
+        
+        const response = await fetch('/api/payment/query', {
+          method: 'POST',  // 使用POST方法发送查询请求
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          // 将订单号作为请求体发送
+          body: JSON.stringify({
+            trade_no: tradeNo
+          })
+        });
+        
+        // === 第4步：检查HTTP响应状态 ===
+        
+        if (!response.ok) {
+          throw new Error(`查询失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第5步：解析响应数据 ===
+        
+        const result = await response.json();
+        
+        console.log('[PC端订单查询] API响应：', result);
+        
+        // === 第6步：检查业务状态 ===
+        
+        if (!result.success || !result.order) {
+          throw new Error(result.message || '未找到订单');
+        }
+        
+        // === 第7步：显示订单详情 ===
+        
+        const order = result.order;
+        
+        // 7.1 填充订单号
+        const tradeNoElem = document.getElementById('admin-order-detail-trade-no_modal');
+        if (tradeNoElem) {
+          tradeNoElem.textContent = order.trade_no || '-';
+        }
+        
+        // 7.2 填充订单状态（使用彩色标签）
+        const statusElem = document.getElementById('admin-order-detail-status_modal');
+        if (statusElem) {
+          // 根据不同的订单状态显示不同颜色的标签
+          let statusText = '';
+          let statusClass = '';
+          
+          switch (order.status) {
+            case 'pending':
+              statusText = '待支付';
+              statusClass = 'bg-yellow-100 text-yellow-700';
+              break;
+            case 'paid':
+              statusText = '已支付';
+              statusClass = 'bg-green-100 text-green-700';
+              break;
+            case 'failed':
+              statusText = '支付失败';
+              statusClass = 'bg-red-100 text-red-700';
+              break;
+            case 'refunded':
+              statusText = '已退款';
+              statusClass = 'bg-gray-100 text-gray-700';
+              break;
+            default:
+              statusText = order.status || '-';
+              statusClass = 'bg-slate-100 text-slate-700';
+          }
+          
+          statusElem.textContent = statusText;
+          statusElem.className = `px-2 py-0.5 rounded-full text-xs font-semibold ${statusClass}`;
+        }
+        
+        // 7.3 填充订单金额
+        const amountElem = document.getElementById('admin-order-detail-amount_modal');
+        if (amountElem) {
+          amountElem.textContent = order.amount ? `¥${parseFloat(order.amount).toFixed(2)}` : '-';
+        }
+        
+        // 7.4 填充支付方式
+        const methodElem = document.getElementById('admin-order-detail-method_modal');
+        if (methodElem) {
+          let methodText = '';
+          switch (order.payment_method) {
+            case 'alipay':
+              methodText = '支付宝';
+              break;
+            case 'wechat':
+              methodText = '微信支付';
+              break;
+            case 'qq':
+              methodText = 'QQ钱包';
+              break;
+            case 'unionpay':
+              methodText = '云闪付';
+              break;
+            default:
+              methodText = order.payment_method || '-';
+          }
+          methodElem.textContent = methodText;
+        }
+        
+        // 7.5 填充创建时间
+        const createTimeElem = document.getElementById('admin-order-detail-create-time_modal');
+        if (createTimeElem) {
+          createTimeElem.textContent = order.created_at || '-';
+        }
+        
+        // 7.6 填充支付时间
+        const payTimeElem = document.getElementById('admin-order-detail-pay-time_modal');
+        if (payTimeElem) {
+          payTimeElem.textContent = order.paid_at || '-';
+        }
+        
+        // 7.7 填充商品名称/备注
+        const productElem = document.getElementById('admin-order-detail-product_modal');
+        if (productElem) {
+          productElem.textContent = order.product_name || order.description || '-';
+        }
+        
+        // 7.8 显示订单详情容器
+        if (detailContainer) {
+          detailContainer.classList.remove('hidden');
+        }
+        
+        // 7.9 隐藏错误提示（如果有）
+        if (resultDiv) {
+          resultDiv.classList.add('hidden');
+        }
+        
+        console.log('[PC端订单查询] 订单详情已显示');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        
+        console.error('[PC端订单查询] 查询订单时发生错误：', error);
+        
+        // 隐藏订单详情容器
+        if (detailContainer) {
+          detailContainer.classList.add('hidden');
+        }
+        
+        // 显示错误提示
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✗ 查询失败：${error.message || '未知错误'}
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          // 5秒后自动隐藏错误提示
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 5000);
+        }
+      }
+    }
+
+    // ==========================================
+    // Tab 3: 退款处理功能
+    // ==========================================
+    // 【功能说明】
+    // 实现退款处理功能，包括：
+    // 1. 生成退款单号
+    // 2. 提交退款申请
+    // 3. 显示退款结果
+    // 
+    // 【API说明】
+    // - POST /api/payment/refund: 提交退款申请
+    // ==========================================
+    
+    /**
+     * 生成PC端管理员退款单号
+     * 
+     * 功能说明：
+     * 自动生成一个唯一的退款单号，填充到退款单号输入框
+     * 格式：REFUND + 时间戳(YYYYMMDDHHmmss) + 随机数(6位)
+     * 例如：REFUND20231210123456123456
+     * 
+     * 调用时机：
+     * - 用户点击"自动生成"按钮时
+     * - 也可以在提交退款时如果没有填写退款单号则自动生成
+     */
+    function generateAdminRefundOrderNo() {
+      console.log('[PC端退款] 生成退款单号...');
+      
+      // === 生成退款单号 ===
+      
+      // 获取当前时间
+      const now = new Date();
+      
+      // 格式化时间为：YYYYMMDDHHmmss
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');  // 月份从0开始，需要+1
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      
+      // 生成6位随机数
+      const randomNum = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+      
+      // 拼接退款单号
+      const refundNo = `REFUND${year}${month}${day}${hours}${minutes}${seconds}${randomNum}`;
+      
+      console.log('[PC端退款] 生成的退款单号：', refundNo);
+      
+      // === 填充到输入框 ===
+      
+      const refundNoInput = document.getElementById('admin-refund-no_modal');
+      if (refundNoInput) {
+        refundNoInput.value = refundNo;
+      } else {
+        console.error('[PC端退款] 错误：找不到退款单号输入框');
+      }
+    }
+    
+    /**
+     * 提交PC端管理员退款申请
+     * 
+     * 功能说明：
+     * 收集退款表单数据，提交到服务器进行退款处理
+     * 包括验证输入、发送请求、显示结果
+     * 
+     * API端点：POST /api/payment/refund
+     * 
+     * 请求体格式：
+     * {
+     *   trade_no: "20231210123456789012",  // 原订单号
+     *   refund_amount: 99.99,              // 退款金额
+     *   refund_no: "REFUND20231210...",    // 退款单号（可选）
+     *   reason: "用户申请退款"              // 退款原因（可选）
+     * }
+     * 
+     * 预期返回格式：
+     * {
+     *   success: true,
+     *   refund_no: "REFUND20231210...",    // 退款单号
+     *   refund_amount: 99.99,              // 退款金额
+     *   message: "退款成功"
+     * }
+     * 
+     * 调用时机：
+     * - 用户点击"确认退款"按钮时
+     */
+    async function submitAdminPaymentRefund() {
+      console.log('[PC端退款] 开始处理退款...');
+      
+      // === 第1步：获取DOM元素 ===
+      
+      const tradeNoInput = document.getElementById('admin-refund-order-trade-no_modal');
+      const amountInput = document.getElementById('admin-refund-amount_modal');
+      const refundNoInput = document.getElementById('admin-refund-no_modal');
+      const reasonInput = document.getElementById('admin-refund-reason_modal');
+      const successDiv = document.getElementById('admin-refund-result-container_modal');
+      const errorDiv = document.getElementById('admin-refund-error-result_modal');
+      
+      // === 第2步：获取并验证输入 ===
+      
+      // 获取原订单号
+      const tradeNo = tradeNoInput ? tradeNoInput.value.trim() : '';
+      if (!tradeNo) {
+        alert('请输入原订单号');
+        return;
+      }
+      
+      // 获取退款金额
+      const amount = amountInput ? parseFloat(amountInput.value) : 0;
+      if (!amount || amount <= 0) {
+        alert('请输入有效的退款金额（大于0）');
+        return;
+      }
+      
+      // 获取退款单号（可选，如果为空则自动生成）
+      let refundNo = refundNoInput ? refundNoInput.value.trim() : '';
+      if (!refundNo) {
+        // 自动生成退款单号
+        generateAdminRefundOrderNo();
+        refundNo = refundNoInput ? refundNoInput.value.trim() : '';
+      }
+      
+      // 获取退款原因（可选）
+      const reason = reasonInput ? reasonInput.value.trim() : '';
+      
+      console.log('[PC端退款] 退款数据：', { tradeNo, amount, refundNo, reason });
+      
+      try {
+        // === 第3步：发起HTTP POST请求提交退款 ===
+        
+        const response = await fetch('/api/payment/refund', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            trade_no: tradeNo,
+            refund_amount: amount,
+            refund_no: refundNo,
+            reason: reason
+          })
+        });
+        
+        // === 第4步：检查响应状态 ===
+        
+        if (!response.ok) {
+          throw new Error(`退款失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第5步：解析响应数据 ===
+        
+        const result = await response.json();
+        
+        console.log('[PC端退款] API响应：', result);
+        
+        // === 第6步：检查业务状态 ===
+        
+        if (!result.success) {
+          throw new Error(result.message || '退款失败');
+        }
+        
+        // === 第7步：显示成功提示 ===
+        
+        if (successDiv) {
+          // 更新退款单号
+          const refundNoElem = document.getElementById('admin-refund-result-no_modal');
+          if (refundNoElem) {
+            refundNoElem.textContent = result.refund_no || refundNo;
+          }
+          
+          // 更新退款金额
+          const refundAmountElem = document.getElementById('admin-refund-result-amount_modal');
+          if (refundAmountElem) {
+            refundAmountElem.textContent = `¥${parseFloat(result.refund_amount || amount).toFixed(2)}`;
+          }
+          
+          // 显示成功容器
+          successDiv.classList.remove('hidden');
+        }
+        
+        // 隐藏错误提示（如果有）
+        if (errorDiv) {
+          errorDiv.classList.add('hidden');
+        }
+        
+        // 清空表单
+        if (tradeNoInput) tradeNoInput.value = '';
+        if (amountInput) amountInput.value = '';
+        if (refundNoInput) refundNoInput.value = '';
+        if (reasonInput) reasonInput.value = '';
+        
+        console.log('[PC端退款] 退款成功');
+        
+        // 5秒后自动隐藏成功提示
+        setTimeout(() => {
+          if (successDiv) {
+            successDiv.classList.add('hidden');
+          }
+        }, 5000);
+        
+      } catch (error) {
+        // === 错误处理 ===
+        
+        console.error('[PC端退款] 退款时发生错误：', error);
+        
+        // 隐藏成功提示（如果有）
+        if (successDiv) {
+          successDiv.classList.add('hidden');
+        }
+        
+        // 显示错误提示
+        if (errorDiv) {
+          const errorMsgElem = document.getElementById('admin-refund-error-message_modal');
+          if (errorMsgElem) {
+            errorMsgElem.textContent = error.message || '未知错误';
+          }
+          errorDiv.classList.remove('hidden');
+          
+          // 5秒后自动隐藏错误提示
+          setTimeout(() => {
+            errorDiv.classList.add('hidden');
+          }, 5000);
+        } else {
+          alert(`退款失败：${error.message || '未知错误'}`);
+        }
+      }
+    }
+
+    // ==========================================
+    // Tab 4: 测试支付功能
+    // ==========================================
+    // 【功能说明】
+    // 实现测试支付功能，包括：
+    // 1. 创建测试订单
+    // 2. 生成支付链接
+    // 3. 打开支付链接
+    // 4. 复制支付链接
+    // 
+    // 【API说明】
+    // - POST /api/payment/create: 创建测试支付订单
+    // ==========================================
+    
+    /**
+     * 创建PC端管理员测试支付订单
+     * 
+     * 功能说明：
+     * 根据用户输入的金额和选择的支付方式，创建一个测试订单
+     * 并生成支付链接显示在页面上
+     * 
+     * API端点：POST /api/payment/create
+     * 
+     * 请求体格式：
+     * {
+     *   amount: 0.01,              // 测试金额
+     *   payment_method: "alipay",  // 支付方式
+     *   product_name: "测试订单"    // 商品名称
+     * }
+     * 
+     * 预期返回格式：
+     * {
+     *   success: true,
+     *   trade_no: "20231210123456789012",  // 订单号
+     *   pay_url: "https://..."              // 支付链接
+     * }
+     * 
+     * 调用时机：
+     * - 用户点击"创建测试订单"按钮时
+     */
+    async function createAdminTestPayment() {
+      console.log('[PC端测试支付] 开始创建测试订单...');
+      
+      // === 第1步：获取DOM元素 ===
+      
+      const amountInput = document.getElementById('admin-test-payment-amount_modal');
+      const methodSelect = document.getElementById('admin-test-payment-method_modal');
+      const linkContainer = document.getElementById('admin-test-payment-link-container_modal');
+      const payUrlInput = document.getElementById('admin-test-pay-url_modal');
+      const openBtn = document.getElementById('admin-open-test-pay-url-btn_modal');
+      const resultDiv = document.getElementById('admin-test-payment-result_modal');
+      
+      // === 第2步：获取并验证输入 ===
+      
+      // 获取测试金额
+      const amount = amountInput ? parseFloat(amountInput.value) : 0;
+      if (!amount || amount <= 0) {
+        alert('请输入有效的测试金额（大于0）');
+        return;
+      }
+      
+      // 获取支付方式
+      const method = methodSelect ? methodSelect.value : '';
+      if (!method) {
+        alert('请选择支付方式');
+        return;
+      }
+      
+      console.log('[PC端测试支付] 测试订单数据：', { amount, method });
+      
+      try {
+        // === 第3步：发起HTTP POST请求创建订单 ===
+        
+        const response = await fetch('/api/payment/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            amount: amount,
+            payment_method: method,
+            product_name: '测试订单'
+          })
+        });
+        
+        // === 第4步：检查响应状态 ===
+        
+        if (!response.ok) {
+          throw new Error(`创建订单失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第5步：解析响应数据 ===
+        
+        const result = await response.json();
+        
+        console.log('[PC端测试支付] API响应：', result);
+        
+        // === 第6步：检查业务状态 ===
+        
+        if (!result.success || !result.pay_url) {
+          throw new Error(result.message || '创建订单失败');
+        }
+        
+        // === 第7步：显示支付链接 ===
+        
+        // 填充支付链接到输入框
+        if (payUrlInput) {
+          payUrlInput.value = result.pay_url;
+        }
+        
+        // 将支付链接保存到打开按钮的data属性
+        if (openBtn) {
+          openBtn.setAttribute('data-url', result.pay_url);
+        }
+        
+        // 显示支付链接容器
+        if (linkContainer) {
+          linkContainer.classList.remove('hidden');
+        }
+        
+        // 隐藏错误提示（如果有）
+        if (resultDiv) {
+          resultDiv.classList.add('hidden');
+        }
+        
+        console.log('[PC端测试支付] 测试订单创建成功，支付链接：', result.pay_url);
+        
+      } catch (error) {
+        // === 错误处理 ===
+        
+        console.error('[PC端测试支付] 创建测试订单时发生错误：', error);
+        
+        // 隐藏支付链接容器
+        if (linkContainer) {
+          linkContainer.classList.add('hidden');
+        }
+        
+        // 显示错误提示
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✗ 创建失败：${error.message || '未知错误'}
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          // 5秒后自动隐藏错误提示
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 5000);
+        } else {
+          alert(`创建失败：${error.message || '未知错误'}`);
+        }
+      }
+    }
+    
+    /**
+     * 打开PC端管理员测试支付链接
+     * 
+     * 功能说明：
+     * 在新标签页中打开之前生成的支付链接
+     * 
+     * 调用时机：
+     * - 用户点击"打开链接"按钮时
+     */
+    function openAdminPaymentLink() {
+      console.log('[PC端测试支付] 准备打开支付链接...');
+      
+      // === 获取支付链接 ===
+      
+      const openBtn = document.getElementById('admin-open-test-pay-url-btn_modal');
+      if (!openBtn) {
+        console.error('[PC端测试支付] 错误：找不到打开按钮');
+        alert('页面元素异常，请刷新页面后重试。');
+        return;
+      }
+      
+      // 从按钮的data-url属性获取支付链接
+      const payUrl = openBtn.getAttribute('data-url');
+      
+      console.log('[PC端测试支付] 支付链接：', payUrl);
+      
+      // === 验证链接是否存在 ===
+      
+      if (!payUrl) {
+        console.error('[PC端测试支付] 错误：支付链接不存在');
+        alert('支付链接不存在，请先创建测试订单。');
+        return;
+      }
+      
+      // === 打开新标签页 ===
+      
+      try {
+        // 使用window.open()在新标签页中打开支付链接
+        // '_blank'参数表示在新标签页打开
+        const newWindow = window.open(payUrl, '_blank');
+        
+        // 检查是否被浏览器拦截
+        // 某些浏览器可能会拦截window.open()弹窗
+        if (!newWindow) {
+          console.warn('[PC端测试支付] 警告：弹窗可能被浏览器拦截');
+          alert(`无法自动打开支付链接，请手动复制链接后在新标签页打开：\n\n${payUrl}`);
+        } else {
+          console.log('[PC端测试支付] 支付链接已在新标签页打开');
+        }
+      } catch (error) {
+        // 捕获可能的错误（虽然window.open()通常不会抛出错误）
+        console.error('[PC端测试支付] 打开支付链接时发生错误：', error);
+        alert(`无法打开支付链接：${error.message || '未知错误'}\n\n请手动复制链接后在新标签页打开：\n\n${payUrl}`);
+      }
+    }
+    
+    /**
+     * 复制PC端管理员测试支付链接
+     * 
+     * 功能说明：
+     * 将支付链接复制到剪贴板，方便用户分享或保存
+     * 
+     * 调用时机：
+     * - 用户点击"复制链接"按钮时
+     */
+    function copyAdminTestPayUrl() {
+      console.log('[PC端测试支付] 准备复制支付链接...');
+      
+      // === 获取支付链接输入框 ===
+      
+      const payUrlInput = document.getElementById('admin-test-pay-url_modal');
+      if (!payUrlInput) {
+        console.error('[PC端测试支付] 错误：找不到支付链接输入框');
+        alert('页面元素异常，请刷新页面后重试。');
+        return;
+      }
+      
+      // 获取支付链接文本
+      const payUrl = payUrlInput.value;
+      
+      if (!payUrl) {
+        console.error('[PC端测试支付] 错误：支付链接为空');
+        alert('支付链接为空，请先创建测试订单。');
+        return;
+      }
+      
+      // === 复制到剪贴板 ===
+      
+      try {
+        // 选中输入框中的文本
+        payUrlInput.select();
+        payUrlInput.setSelectionRange(0, 99999); // 兼容移动设备
+        
+        // 使用现代Clipboard API（优先）
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(payUrl)
+            .then(() => {
+              console.log('[PC端测试支付] 支付链接已复制到剪贴板');
+              alert('✓ 支付链接已复制到剪贴板');
+            })
+            .catch(err => {
+              console.error('[PC端测试支付] Clipboard API复制失败：', err);
+              // 降级使用document.execCommand
+              fallbackCopy();
+            });
+        } else {
+          // 浏览器不支持Clipboard API，使用document.execCommand（降级方案）
+          fallbackCopy();
+        }
+      } catch (error) {
+        console.error('[PC端测试支付] 复制支付链接时发生错误：', error);
+        alert(`复制失败：${error.message || '未知错误'}\n\n请手动复制链接。`);
+      }
+      
+      // 降级复制方法
+      function fallbackCopy() {
+        try {
+          const successful = document.execCommand('copy');
+          if (successful) {
+            console.log('[PC端测试支付] 支付链接已复制到剪贴板（使用fallback方法）');
+            alert('✓ 支付链接已复制到剪贴板');
+          } else {
+            throw new Error('execCommand复制失败');
+          }
+        } catch (err) {
+          console.error('[PC端测试支付] Fallback复制失败：', err);
+          alert('复制失败，请手动复制链接。');
+        }
+      }
+    }
+
+    // ==========================================
+    // 初始化和事件绑定
+    // ==========================================
+    // 在页面DOM完全加载后，初始化PC端管理员支付设置面板
+    // 包括加载初始配置、绑定事件监听器等
+    // ==========================================
+    
+    /**
+     * PC端管理员支付设置面板初始化
+     * 
+     * 功能说明：
+     * 1. 绑定所有按钮的点击事件
+     * 2. 加载支付方式配置（Tab 1）
+     * 3. 设置默认显示的Tab
+     * 
+     * 调用时机：
+     * - 页面DOM加载完成后自动执行（DOMContentLoaded事件）
+     */
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('[PC端支付设置] 开始初始化PC端管理员支付设置面板...');
+      
+      // === Tab 1: 绑定保存配置按钮 ===
+      
+      const saveBtn = document.getElementById('admin-save-payment-methods-btn_modal');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', function() {
+          console.log('[PC端支付设置] 用户点击了保存配置按钮');
+          saveAdminPaymentMethodsConfig();
+        });
+        console.log('[PC端支付设置] 保存配置按钮事件已绑定');
+      } else {
+        console.warn('[PC端支付设置] 警告：找不到保存配置按钮');
+      }
+      
+      // === Tab 1: 页面加载时自动加载支付方式配置 ===
+      
+      // 延迟100ms后加载配置，确保DOM完全准备就绪
+      setTimeout(() => {
+        loadAdminPaymentMethodsConfig();
+      }, 100);
+      
+      console.log('[PC端支付设置] PC端管理员支付设置面板初始化完成');
+    });
+  </script>
+
   <!-- Extracted Script -->
-  <!-- <script src="scripts/main.js" defer=""></script> -->
 </body>
 
 </html>
