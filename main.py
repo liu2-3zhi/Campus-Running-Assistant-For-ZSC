@@ -9915,7 +9915,79 @@ class Api:
                 acc.user_data.name = user_info.get("name", "")
                 acc.user_data.id = user_info.get("id", "")
                 acc.user_data.student_id = user_info.get("account", "")
+                
+                # 设置 username 字段，用于后续备份文件命名
+                # 优先使用学号(student_id)，如果学号不存在则使用账号登录名(acc.username)
+                # 这确保了备份文件名的一致性和可追溯性
+                acc.user_data.username = acc.user_data.student_id or acc.username
+                
                 acc.log("登录成功。")
+                
+                # ========== 开始：备份用户信息到本地文件 ==========
+                # 此备份功能与 login() 函数（第6376-6395行）保持一致
+                # 目的：在多账号模式下，也能为每个账号创建用户信息的本地备份
+                # 备份内容包括：userInfo（用户基本信息）、deptInfo（部门/学校信息）、备份时间戳
+                try:
+                    # 从登录响应中提取部门信息（deptInfo）
+                    # deptInfo 包含学校名称、性别、属性类型等扩展信息
+                    dept_info = data.get("deptInfo", {})
+                    
+                    # 检查前置条件：
+                    # 1. acc.user_data.username 必须存在（用于生成备份文件名）
+                    # 2. self.user_dir 目录必须存在（备份文件的存储目录）
+                    # 只有同时满足这两个条件，才执行备份操作
+                    if acc.user_data.username and os.path.exists(self.user_dir):
+                        # 构造备份文件名：格式为 "{学号}_backup.json"
+                        # 例如：20210001_backup.json
+                        # 这种命名方式便于识别和管理不同用户的备份文件
+                        backup_filename = f"{acc.user_data.username}_backup.json"
+                        
+                        # 拼接完整的备份文件路径
+                        # user_dir 通常是 "school_accounts" 目录
+                        backup_filepath = os.path.join(self.user_dir, backup_filename)
+                        
+                        # 构建要备份的数据结构（Python 字典）
+                        # 包含三个关键字段：
+                        # 1. userInfo: 用户基本信息（姓名、手机号、学号、ID等）
+                        # 2. deptInfo: 部门/学校信息（学校名称、性别、属性类型等）
+                        # 3. backup_timestamp: 备份创建的时间戳（Unix时间戳，便于后续判断备份的新旧）
+                        backup_data = {
+                            "userInfo": user_info,
+                            "deptInfo": dept_info,
+                            "backup_timestamp": time.time(),
+                        }
+                        
+                        # 将备份数据写入到 JSON 文件
+                        # 参数说明：
+                        # - "w": 以写入模式打开文件（如果文件存在则覆盖）
+                        # - encoding="utf-8": 使用 UTF-8 编码，确保中文正常保存
+                        # - indent=2: JSON 格式化时使用2个空格缩进，提高可读性
+                        # - ensure_ascii=False: 允许保存非 ASCII 字符（如中文），不转义为 \uXXXX
+                        with open(backup_filepath, "w", encoding="utf-8") as f:
+                            json.dump(backup_data, f, indent=2, ensure_ascii=False)
+                        
+                        # 记录备份成功的日志信息
+                        # 使用 logging.info 而非 acc.log，因为这是系统级操作
+                        logging.info(f"[多账号模式] 已成功备份 user_info 到: {backup_filepath}")
+                    
+                    # 如果 username 不存在，记录警告日志
+                    # 这种情况理论上不应该发生，因为上面已经设置了 username
+                    # 但作为防御性编程，仍然进行检查
+                    elif not acc.user_data.username:
+                        logging.warning(
+                            f"[多账号模式] 备份 user_info 失败：无法确定用户名(学号)，账号: {acc.username}"
+                        )
+                
+                # 捕获并记录任何可能发生的异常
+                # 备份失败不应该影响主流程（登录、任务分析等），因此只记录错误不中断程序
+                # exc_info=True 会将完整的异常堆栈信息记录到日志中，便于调试
+                except Exception as e:
+                    logging.error(
+                        f"[多账号模式] 备份 user_info 失败，账号: {acc.username}, 错误: {e}",
+                        exc_info=True,
+                    )
+                # ========== 结束：备份用户信息到本地文件 ==========
+                
                 self._update_account_status_js(
                     acc, status_text="分析任务", name=acc.user_data.name
                 )
