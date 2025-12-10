@@ -2323,6 +2323,10 @@ def _create_default_admin():
         "theme": "light",
         "phone": "",
         "nickname": "超级管理员",
+        # 可用执行次数字段：记录用户还可以执行多少次任务
+        # 默认值为0，表示初始状态下没有可用次数
+        # 当值为 -1 时表示无限次数（适用于超级管理员等特殊账户）
+        "available_runs": -1,
     }
 
     with open(admin_file, "w", encoding="utf-8") as f:
@@ -3408,6 +3412,10 @@ class AuthSystem:
                 "theme": "light",
                 "phone": phone,
                 "nickname": nickname or auth_username,
+                # 可用执行次数字段：记录用户还可以执行多少次任务
+                # 新注册用户默认值为0，需要管理员充值后才能使用
+                # 当值为 -1 时表示无限次数
+                "available_runs": 0,
             }
 
             logging.debug(f"register_user: 保存用户数据到文件: {user_file}")
@@ -5414,7 +5422,7 @@ class Api:
             auth_username: 认证用户名
 
         返回:
-            字典，格式为 {school_username: {"password": "xxx", "ua": "xxx"}, ...}
+            字典，格式为 {school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
             或旧格式 {school_username: password, ...}（向后兼容）
         """
         if not auth_username or auth_username == "guest":
@@ -5427,6 +5435,23 @@ class Api:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            
+            # 向后兼容：为每个账户添加 overdue_count 字段（如果不存在）
+            # overdue_count 用于记录该学校账号的欠费次数
+            # 当用户的 available_runs <= 0 时，每次任务执行完成会增加此计数
+            for school_username, account_info in data.items():
+                # 如果是新格式（字典），确保包含 overdue_count 字段
+                if isinstance(account_info, dict):
+                    if "overdue_count" not in account_info:
+                        account_info["overdue_count"] = 0
+                # 如果是旧格式（字符串密码），转换为新格式
+                elif isinstance(account_info, str):
+                    data[school_username] = {
+                        "password": account_info,
+                        "ua": None,
+                        "overdue_count": 0
+                    }
+            
             logging.debug(
                 f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户"
             )
@@ -5540,6 +5565,116 @@ class Api:
         if isinstance(account_data, dict):
             return account_data.get("ua", "")
         return None
+
+    def _deduct_available_runs_or_increment_overdue(self, auth_username, school_username):
+        """
+        任务完成后处理可用次数扣减或欠费次数增加的逻辑。
+        
+        执行逻辑：
+        1. 读取 system_accounts 中认证用户的 available_runs 字段
+        2. 如果 available_runs == -1（无限次数），直接返回，不做任何处理
+        3. 如果 available_runs >= 1，扣减1次，保存到 system_accounts
+        4. 如果 available_runs <= 0，则增加 school_accounts 中对应学校账号的 overdue_count
+        
+        参数:
+            auth_username: 认证用户名（system_accounts 中的用户名）
+            school_username: 学校账户用户名（school_accounts 中的账户）
+        
+        返回:
+            None
+        """
+        try:
+            # 步骤1：加载认证用户的 system_accounts 数据
+            # 使用全局 auth_system 来获取用户文件路径
+            global auth_system
+            if not auth_system:
+                logging.warning(
+                    f"[次数扣减] auth_system 未初始化，跳过次数扣减逻辑"
+                )
+                return
+            
+            user_file = auth_system.get_user_file_path(auth_username)
+            
+            # 如果用户文件不存在，记录警告并返回
+            if not os.path.exists(user_file):
+                logging.warning(
+                    f"[次数扣减] 用户文件不存在: {user_file}，跳过次数扣减逻辑"
+                )
+                return
+            
+            # 读取用户数据（JSON格式）
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+            
+            # 步骤2：获取 available_runs 字段（向后兼容：如果不存在则默认为0）
+            available_runs = user_data.get("available_runs", 0)
+            
+            logging.debug(
+                f"[次数扣减] 用户 {auth_username} 当前可用次数: {available_runs}"
+            )
+            
+            # 步骤3：如果是无限次数（-1），直接返回
+            if available_runs == -1:
+                logging.debug(
+                    f"[次数扣减] 用户 {auth_username} 拥有无限次数，跳过扣减"
+                )
+                return
+            
+            # 步骤4：判断是扣减 available_runs 还是增加 overdue_count
+            if available_runs >= 1:
+                # 情况A：可用次数 >= 1，扣减1次
+                user_data["available_runs"] = available_runs - 1
+                
+                # 保存更新后的用户数据
+                with open(user_file, "w", encoding="utf-8") as f:
+                    json.dump(user_data, f, indent=2, ensure_ascii=False)
+                
+                logging.info(
+                    f"[次数扣减] 用户 {auth_username} 扣减1次可用次数，"
+                    f"剩余: {user_data['available_runs']} 次"
+                )
+            else:
+                # 情况B：可用次数 <= 0，增加对应学校账号的欠费次数
+                # 加载该认证用户的所有学校账号配置
+                school_accounts = self._load_user_school_accounts(auth_username)
+                
+                # 查找目标学校账号
+                if school_username in school_accounts:
+                    account_info = school_accounts[school_username]
+                    
+                    # 确保是字典格式（向后兼容）
+                    if not isinstance(account_info, dict):
+                        account_info = {
+                            "password": account_info if isinstance(account_info, str) else "",
+                            "ua": None,
+                            "overdue_count": 0
+                        }
+                        school_accounts[school_username] = account_info
+                    
+                    # 增加欠费次数
+                    current_overdue = account_info.get("overdue_count", 0)
+                    account_info["overdue_count"] = current_overdue + 1
+                    
+                    # 保存更新后的学校账号配置
+                    self._save_user_school_accounts(auth_username, school_accounts)
+                    
+                    logging.info(
+                        f"[次数扣减] 用户 {auth_username} 可用次数不足（当前: {available_runs}），"
+                        f"学校账号 {school_username} 欠费次数 +1，当前欠费: {account_info['overdue_count']} 次"
+                    )
+                else:
+                    # 如果学校账号不在配置中，记录警告
+                    logging.warning(
+                        f"[次数扣减] 在用户 {auth_username} 的学校账号配置中未找到 {school_username}，"
+                        f"无法增加欠费次数"
+                    )
+        
+        except Exception as e:
+            # 捕获所有异常，避免影响主任务流程
+            logging.error(
+                f"[次数扣减] 处理用户 {auth_username}（学校账号: {school_username}）的次数扣减时发生异常: {e}",
+                exc_info=True
+            )
 
     def _save_config(self, username, password=None, ua=None):
         """保存指定用户的配置到 user/<username>.ini；当 password 为 None 时保留现有密码；当 ua 为 None 时保留现有 UA。同时更新主 config.ini 的 LastUser 和 amap_js_key。"""
@@ -10518,6 +10653,39 @@ class Api:
                     self._multi_fetch_and_summarize_tasks(acc)
                     self._update_account_status_js(acc, summary=acc.summary)
                     acc.log(f"任务 {run_data.run_name} 执行流程完成。")
+                    
+                    # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
+                    # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
+                    # auth_username: 认证用户名（system_accounts 中的用户）
+                    # school_username: 学校账号用户名（当前正在执行任务的账号）
+                    try:
+                        # 从 Api 实例（api_bridge）获取认证用户名
+                        auth_username = getattr(self, "auth_username", None)
+                        school_username = acc.username  # AccountSession 的 username 是学校账号
+                        
+                        # 只有当认证用户名存在且不是游客时，才执行扣减逻辑
+                        if auth_username and auth_username != "guest":
+                            logging.debug(
+                                f"[多账号任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
+                                f"学校账号={school_username}, 任务={run_data.run_name}"
+                            )
+                            
+                            # 调用辅助函数处理可用次数扣减或欠费次数增加
+                            self._deduct_available_runs_or_increment_overdue(
+                                auth_username, school_username
+                            )
+                        else:
+                            logging.debug(
+                                f"[多账号任务] 跳过次数扣减：认证用户={auth_username}（游客或未设置）"
+                            )
+                    except Exception as e:
+                        # 捕获异常，避免影响主流程
+                        logging.error(
+                            f"[多账号任务] 处理次数扣减时发生异常: {e}",
+                            exc_info=True
+                        )
+                    # ========== 结束：次数扣减处理 ==========
+                    
                     self._update_account_status_js(
                         acc,
                         status_text="任务已完成",
@@ -13013,6 +13181,8 @@ class BackgroundTaskManager:
 
                 except Exception as e:
                     logging.error(f"任务执行失败，异常信息: {e}", exc_info=True)
+                
+                # 标记当前任务已完成（更新进度状态）
                 with self.lock:
                     task_state["completed_tasks"] = i + 1
                     task_state["progress_percent"] = int(
@@ -13025,6 +13195,38 @@ class BackgroundTaskManager:
                 logging.info(
                     f"任务 {i+1}/{len(task_indices)} 已完成，会话ID前缀: {session_id[:8]}"
                 )
+                
+                # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
+                # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
+                # 这里处理单账号模式下的后台任务完成情况
+                try:
+                    # 从 api_instance 获取认证用户名和学校账号用户名
+                    auth_username = getattr(api_instance, "auth_username", None)
+                    school_username = getattr(api_instance.user_data, "username", None)
+                    
+                    # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
+                    if auth_username and auth_username != "guest" and school_username:
+                        logging.debug(
+                            f"[单账号后台任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
+                            f"学校账号={school_username}, 任务={run_data.run_name}"
+                        )
+                        
+                        # 调用 api_instance 的辅助函数处理可用次数扣减或欠费次数增加
+                        api_instance._deduct_available_runs_or_increment_overdue(
+                            auth_username, school_username
+                        )
+                    else:
+                        logging.debug(
+                            f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username}, "
+                            f"学校账号={school_username}（游客或未设置）"
+                        )
+                except Exception as e:
+                    # 捕获异常，避免影响主流程
+                    logging.error(
+                        f"[单账号后台任务] 处理次数扣减时发生异常: {e}",
+                        exc_info=True
+                    )
+                # ========== 结束：次数扣减处理 ==========
             if tasks_executed > 0:
                 with self.lock:
                     task_state["status"] = "completed"
