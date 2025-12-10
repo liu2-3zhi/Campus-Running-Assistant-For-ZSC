@@ -11119,6 +11119,282 @@ function refreshMobileSessionPicker() {
         `;
         }
       }
+
+      // ====================
+      // 短信回复记录查看功能
+      // ====================
+      
+      /**
+       * 打开短信回复记录弹窗（SweetAlert2版本）
+       * 
+       * 功能说明：
+       * 这个函数用于查看和展示用户通过短信回复的内容记录。
+       * 它会调用后端API获取数据，并使用SweetAlert2弹窗以表格形式美观地展示。
+       * 
+       * 主要功能：
+       * 1. 显示加载提示：在获取数据时显示"加载中"的提示
+       * 2. 调用后端API：从 /api/sms/reply-logs 获取短信回复记录
+       * 3. 权限检查：处理403权限不足的情况
+       * 4. 数据展示：将记录以表格形式展示在弹窗中
+       * 5. 错误处理：处理网络错误、空数据等各种异常情况
+       * 6. XSS防护：使用escapeHtml函数防止跨站脚本攻击
+       * 
+       * 权限要求：
+       * - 需要管理员或超级管理员权限（admin 或 super_admin 组）
+       * - 后端会自动验证X-Session-ID和用户组别
+       * 
+       * 调用位置：
+       * - PC端：index.html 第7199行的按钮
+       * - 移动端：index.html 第3729行和第5295行的按钮
+       * 
+       * 技术实现：
+       * - 使用async/await处理异步操作
+       * - 使用fetch API调用后端接口
+       * - 使用SweetAlert2.fire()显示各种状态的弹窗
+       * - 使用HTML模板字符串构建表格
+       * 
+       * 错误处理：
+       * - 403权限错误：显示权限不足提示
+       * - 网络错误：显示网络连接失败提示
+       * - 空数据：显示暂无记录提示
+       * - API失败：显示具体的错误信息
+       * 
+       * 安全考虑：
+       * - 使用sessionUUID进行身份认证
+       * - 对所有用户输入内容使用escapeHtml转义，防止XSS攻击
+       * - 后端进行严格的权限验证
+       * 
+       * @returns {Promise<void>} 无返回值，通过弹窗展示结果
+       * @async
+       */
+      async function openSMSReplyLogsModal() {
+        try {
+          // ========================================
+          // 步骤1：显示加载提示
+          // ========================================
+          // 使用SweetAlert2显示一个"加载中"的提示弹窗
+          // 这个弹窗会阻止用户点击外部区域（allowOutsideClick: false）
+          // 不显示确认按钮（showConfirmButton: false）
+          // 显示一个旋转的加载动画（Swal.showLoading()）
+          Swal.fire({
+            title: '加载中...', // 弹窗标题
+            text: '正在获取短信回复记录', // 提示文本
+            allowOutsideClick: false, // 禁止点击外部关闭弹窗
+            showConfirmButton: false, // 不显示确认按钮
+            willOpen: () => {
+              // 弹窗打开时的回调函数
+              // 显示SweetAlert2内置的加载动画（旋转图标）
+              Swal.showLoading();
+            }
+          });
+          
+          // ========================================
+          // 步骤2：调用后端API获取数据
+          // ========================================
+          // 使用fetch API向后端发送GET请求
+          // API端点：/api/sms/reply-logs
+          // 查询参数：limit=50 限制返回最近50条记录
+          // 请求头：X-Session-ID 用于身份认证
+          const response = await fetch('/api/sms/reply-logs?limit=50', {
+            method: 'GET', // 使用GET方法
+            headers: {
+              // 设置请求头，包含会话ID用于身份验证
+              // sessionUUID 是全局变量，在用户登录后设置
+              'X-Session-ID': sessionUUID
+            }
+          });
+          
+          // 解析响应的JSON数据
+          // result格式：{ success: bool, logs: array, total: int, message: string }
+          const result = await response.json();
+          
+          // ========================================
+          // 步骤3：处理权限不足的情况（HTTP 403）
+          // ========================================
+          // 检查HTTP状态码是否为403（Forbidden - 禁止访问）
+          // 这表示用户没有管理员权限，无法访问此功能
+          if (response.status === 403) {
+            // 显示权限不足的错误提示
+            Swal.fire({
+              icon: 'error', // 错误图标（红色X）
+              title: '权限不足', // 错误标题
+              text: result.message || '仅管理员可查看短信回复记录', // 错误信息
+              confirmButtonText: '我知道了' // 确认按钮文本
+            });
+            return; // 提前退出函数，不再继续执行
+          }
+          
+          // ========================================
+          // 步骤4：检查API调用是否成功
+          // ========================================
+          // 检查返回数据中的success字段
+          // 如果为false，表示API调用失败（例如：服务器错误、读取文件失败等）
+          if (!result.success) {
+            // 显示API返回的错误信息
+            Swal.fire({
+              icon: 'error', // 错误图标
+              title: '获取失败', // 错误标题
+              text: result.message || '无法获取短信回复记录', // 显示具体错误信息
+              confirmButtonText: '确定' // 确认按钮文本
+            });
+            return; // 提前退出
+          }
+          
+          // 获取日志数组，如果不存在则使用空数组作为默认值
+          // logs是一个数组，每个元素包含：timestamp, datetime, phone, content, ip
+          const logs = result.logs || [];
+          
+          // ========================================
+          // 步骤5：处理空数据的情况
+          // ========================================
+          // 如果日志数组长度为0，表示还没有任何短信回复记录
+          if (logs.length === 0) {
+            // 显示提示信息
+            Swal.fire({
+              icon: 'info', // 信息图标（蓝色i）
+              title: '暂无记录', // 提示标题
+              text: '还没有收到任何短信回复', // 提示内容
+              confirmButtonText: '知道了' // 确认按钮文本
+            });
+            return; // 提前退出
+          }
+          
+          // ========================================
+          // 步骤6：构建HTML表格
+          // ========================================
+          // 使用模板字符串构建一个HTML表格
+          // 表格包含表头（时间、手机号、回复内容、IP地址）和数据行
+          let tableHTML = `
+            <div class="overflow-x-auto max-h-96">
+              <!-- 外层div设置：
+                   - overflow-x-auto: 横向溢出时显示滚动条
+                   - max-h-96: 最大高度为24rem（384px），超出则显示纵向滚动条
+              -->
+              <table class="w-full text-left text-sm">
+                <!-- 表格样式：
+                     - w-full: 宽度100%
+                     - text-left: 文本左对齐
+                     - text-sm: 小号字体
+                -->
+                <thead class="bg-slate-100 sticky top-0">
+                  <!-- 表头样式：
+                       - bg-slate-100: 浅灰色背景
+                       - sticky top-0: 固定在顶部，滚动时不动（粘性定位）
+                  -->
+                  <tr>
+                    <th class="px-4 py-2">时间</th>
+                    <th class="px-4 py-2">手机号</th>
+                    <th class="px-4 py-2">回复内容</th>
+                    <th class="px-4 py-2">IP地址</th>
+                  </tr>
+                </thead>
+                <tbody>
+          `;
+          
+          // ========================================
+          // 步骤7：遍历日志数组，为每条记录生成一行表格
+          // ========================================
+          // 使用forEach循环遍历logs数组中的每个log对象
+          logs.forEach(log => {
+            // 为每条记录生成一个<tr>行
+            // log对象包含以下字段：
+            // - timestamp: Unix时间戳（数字）
+            // - datetime: 可读时间字符串（例如："2024-01-01 12:00:00"）
+            // - phone: 回复的手机号
+            // - content: 短信回复内容
+            // - ip: 请求来源IP地址
+            
+            tableHTML += `
+                <tr class="border-b hover:bg-slate-50">
+                  <!-- 表格行样式：
+                       - border-b: 底部边框
+                       - hover:bg-slate-50: 鼠标悬停时背景变为浅灰色
+                  -->
+                  <td class="px-4 py-2 whitespace-nowrap">${log.datetime || '未知'}</td>
+                  <!-- 时间列：
+                       - whitespace-nowrap: 文本不换行
+                       - 使用 || '未知' 提供默认值，防止显示undefined
+                  -->
+                  <td class="px-4 py-2">${log.phone || '未知'}</td>
+                  <!-- 手机号列：显示回复的手机号 -->
+                  <td class="px-4 py-2">${escapeHtml(log.content || '')}</td>
+                  <!-- 回复内容列：
+                       - 使用escapeHtml()函数转义HTML特殊字符
+                       - 这是关键的安全措施，防止XSS（跨站脚本）攻击
+                       - 例如：如果用户回复了 "<script>alert('XSS')</script>"
+                         escapeHtml会将其转换为 "&lt;script&gt;alert('XSS')&lt;/script&gt;"
+                         这样就只会显示文本，不会执行脚本代码
+                  -->
+                  <td class="px-4 py-2">${log.ip || '未知'}</td>
+                  <!-- IP地址列：显示请求来源IP -->
+                </tr>
+            `;
+          });
+          
+          // ========================================
+          // 步骤8：完成表格HTML并添加统计信息
+          // ========================================
+          // 关闭tbody和table标签
+          tableHTML += `
+                </tbody>
+              </table>
+            </div>
+            <div class="mt-4 text-sm text-slate-600 text-center">
+              <!-- 统计信息区域：
+                   - mt-4: 顶部外边距（1rem）
+                   - text-sm: 小号字体
+                   - text-slate-600: 深灰色文本
+                   - text-center: 居中对齐
+              -->
+              共 ${result.total || logs.length} 条记录，显示最近 ${logs.length} 条
+              <!-- 显示总记录数和当前显示数量
+                   - result.total: 后端返回的总记录数
+                   - logs.length: 当前显示的记录数（受limit参数限制）
+              -->
+            </div>
+          `;
+          
+          // ========================================
+          // 步骤9：使用SweetAlert2显示最终的表格弹窗
+          // ========================================
+          // 显示包含表格的弹窗
+          Swal.fire({
+            title: '短信回复记录', // 弹窗标题
+            html: tableHTML, // 弹窗内容（HTML格式）
+            width: '800px', // 弹窗宽度，足够宽以容纳表格
+            showCloseButton: true, // 显示右上角的关闭按钮（X）
+            confirmButtonText: '关闭', // 底部确认按钮的文本
+            customClass: {
+              // 自定义CSS类，用于更好的样式控制
+              container: 'sms-reply-logs-modal' // 可用于添加额外的CSS样式
+            }
+          });
+          
+        } catch (error) {
+          // ========================================
+          // 步骤10：处理所有未预期的错误
+          // ========================================
+          // catch块捕获try块中的所有错误
+          // 常见错误类型：
+          // - 网络错误：无法连接到服务器
+          // - JSON解析错误：响应不是有效的JSON
+          // - 其他JavaScript运行时错误
+          
+          // 在控制台输出错误信息，方便开发者调试
+          // console.error会在浏览器开发者工具中显示为红色错误
+          console.error('获取短信回复记录失败:', error);
+          
+          // 显示用户友好的错误提示
+          Swal.fire({
+            icon: 'error', // 错误图标
+            title: '网络错误', // 错误标题
+            text: '无法连接到服务器，请稍后重试', // 错误信息
+            confirmButtonText: '确定', // 确认按钮文本
+            footer: '<span class="text-xs text-slate-400">如果问题持续存在，请联系技术支持</span>' // 底部附加信息
+          });
+        }
+      }
+
       // ==================== 验证码管理功能 ====================
       let verificationCodesCountdownInterval = null;
 
