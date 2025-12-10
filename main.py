@@ -1435,7 +1435,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("[SMS_Service_SMSBao]\n")
         f.write("# 短信宝服务配置（官网：https://www.smsbao.com/）\n")
         f.write("# 用于发送验证码、通知等短信\n")
-        f.write("# 注意：使用前需要在短信宝注册账号并充值\n")
+        f.write("# 注意：使用前需要在短信宝注册账号并配置账户余额\n")
         f.write("# 短信宝账户用户名\n")
         f.write(
             f"username = {config_obj.get('SMS_Service_SMSBao', 'username', fallback='')}\n"
@@ -25701,8 +25701,8 @@ def start_web_server(args_param):
     @app.route("/api/captcha/history", methods=["GET"])
     def get_captcha_history():
         """
-                获取验证码请求历史记录
-        \ """
+        获取验证码请求历史记录
+        """
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id or session_id not in web_sessions:
             return jsonify({"success": False, "message": "未授权访问"}), 401
