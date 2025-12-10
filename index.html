@@ -4045,6 +4045,51 @@
             </div>
           </div>
 
+
+          <!-- ========================================
+               移动端欠费查询面板 (mobile-multi-admin-overdue-panel)
+               功能：显示所有有欠费记录的学校账号
+               权限：管理员（admin）和超级管理员（super_admin）
+               位置：移动端管理面板内容区
+               默认隐藏：通过switchMobileAdminTab切换显示
+               ======================================== -->
+          <div id="mobile-multi-admin-overdue-panel" class="hidden space-y-3">
+            <!-- 面板头部：包含标题和刷新按钮 -->
+            <div class="flex justify-between items-center mb-3">
+              <!-- 面板标题 -->
+              <h3 class="text-lg font-bold text-slate-800">欠费账号查询</h3>
+              <!-- 刷新按钮：重新加载欠费账号列表 -->
+              <button onclick="loadOverdueAccounts()" class="btn btn-ghost !py-1 !px-3 !text-sm">
+                <!-- 刷新图标 -->
+                <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                刷新
+              </button>
+            </div>
+            
+            <!-- 功能说明提示卡片 -->
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p class="text-sm text-yellow-800">
+                <!-- 信息图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                显示所有有欠费记录的学校账号，按欠费次数排序
+              </p>
+            </div>
+            
+            <!-- 欠费账号列表容器 -->
+            <div id="mobile-overdue-accounts-list" class="space-y-2">
+              <!-- 动态加载欠费账号列表 -->
+              <!-- 初始加载提示 -->
+              <div class="text-center py-10 text-slate-500">加载中...</div>
+            </div>
+          </div>
+
+          <!-- ========================================
           <!-- ========================================
                  移动端密码恢复面板（仅超级管理员可见）
                  提供账号密码恢复功能的移动端界面
@@ -6456,6 +6501,23 @@
           </svg>
           密码恢复
         </button>
+
+        <!-- ========================================
+             欠费查询标签按钮 - 仅管理员可见
+             功能：查询所有有欠费记录的学校账号
+             权限：管理员（admin）和超级管理员（super_admin）
+             位置：管理员面板标签栏
+             ======================================== -->
+        <button id="admin-tab-overdue_modal"
+          class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap"
+          style="display: none">
+          <!-- 警告图标：表示欠费/异常状态 -->
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          欠费查询
+        </button>
       </div>
 
       <div class="overflow-x-hidden flex-grow min-h-0">
@@ -7774,6 +7836,49 @@
             ⚠️
             <strong>使用提示：</strong>密码恢复过程可能需要较长时间，请耐心等待。系统会尝试常见的密码模式（身份证后六位）。
           </div>
+        </div>
+      </div>
+
+      <!-- ========================================
+           欠费查询面板 (admin-overdue-panel_modal)
+           功能：显示所有有欠费记录的学校账号
+           权限：管理员（admin）和超级管理员（super_admin）
+           位置：管理员面板内容区
+           默认隐藏：需要通过标签切换显示
+           ======================================== -->
+      <div id="admin-overdue-panel_modal" class="hidden space-y-4">
+        <!-- 面板头部：标题和刷新按钮 -->
+        <div class="flex justify-between items-center">
+          <!-- 面板标题 -->
+          <h3 class="text-xl font-bold text-slate-800">📋 欠费账号查询</h3>
+          <!-- 刷新按钮：重新加载欠费账号列表 -->
+          <button onclick="loadOverdueAccounts()" class="btn btn-secondary">
+            <!-- 刷新图标 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            刷新
+          </button>
+        </div>
+        
+        <!-- 功能说明提示框 -->
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p class="text-sm text-yellow-800">
+            <!-- 信息图标 -->
+            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            此面板显示所有有欠费记录的学校账号，按欠费次数从高到低排序
+          </p>
+        </div>
+        
+        <!-- 欠费账号列表容器 -->
+        <div id="overdue-accounts-list" class="space-y-2">
+          <!-- 动态加载欠费账号列表 -->
+          <!-- 初始加载提示 -->
+          <div class="text-center py-10 text-slate-500">加载中...</div>
         </div>
       </div>
     </div>

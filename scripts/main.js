@@ -26747,6 +26747,19 @@ function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>',
       permission: "super_admin", 
     },
+    // ========================================
+    // 欠费查询标签
+    // 管理员可以在此查看所有有欠费记录的学校账号
+    // 功能：显示欠费账号列表，按欠费次数排序
+    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    {
+      id: "overdue",  // 标签ID，用于标识和切换面板
+      label: "欠费查询",  // 标签显示的文本
+      // 警告图标：表示欠费/异常状态
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+      permission: "admin",  // 权限要求：管理员级别
+    },
   ];
   const visibleTabs = allTabs.filter((tab) => {
     if (tab.permission === "all") return true;
@@ -36258,4 +36271,179 @@ async function clearOverduePlaceholder(overdueAccounts) {
 // ============================================================================
 // 欠费检查功能 - 结束
 // ============================================================================
+// ============================================================================
+
+// ============================================================================
+// 欠费账号查询功能 - 开始
+// ============================================================================
+
+/**
+ * 加载欠费账号列表（管理员功能）
+ * 
+ * 功能说明：
+ * - 调用后端API获取所有有欠费记录的学校账号
+ * - 同时更新PC端和移动端的欠费账号列表
+ * - 按欠费次数从高到低排序显示
+ * - 提供查看详情按钮，可查看账号的完整备份信息
+ * 
+ * 权限要求：
+ * - 仅管理员（admin）和超级管理员（super_admin）可调用
+ * 
+ * 使用场景：
+ * - 管理员面板的"欠费查询"标签页加载时自动调用
+ * - 点击"刷新"按钮手动调用
+ * 
+ * @returns {Promise<void>}
+ */
+async function loadOverdueAccounts() {
+    try {
+        // ========== 调用后端API获取欠费账号列表 ==========
+        // 发送GET请求到 /api/admin/overdue-accounts
+        const response = await fetch('/api/admin/overdue-accounts', {
+            method: 'GET',
+            headers: {
+                'X-Session-ID': sessionUUID  // 会话ID用于身份验证
+            }
+        });
+        
+        // 解析响应体为JSON对象
+        const result = await response.json();
+        
+        // ========== 检查请求是否成功 ==========
+        if (!result.success) {
+            // 请求失败，显示错误提示
+            showModalAlert(result.message || '加载欠费账号失败', '错误');
+            return;
+        }
+        
+        // ========== 获取欠费账号列表数据 ==========
+        const accounts = result.accounts || [];
+        
+        // ========== 获取PC端和移动端的列表容器元素 ==========
+        // PC端列表容器
+        const pcList = document.getElementById('overdue-accounts-list');
+        // 移动端列表容器
+        const mobileList = document.getElementById('mobile-overdue-accounts-list');
+        
+        // ========== 构建HTML内容 ==========
+        let html = '';
+        
+        // 检查是否有欠费账号
+        if (accounts.length === 0) {
+            // 没有欠费账号，显示提示信息
+            html = '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
+        } else {
+            // 有欠费账号，遍历生成每个账号的卡片
+            accounts.forEach(account => {
+                // 为每个欠费账号生成一个卡片
+                html += `
+                    <div class="p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition">
+                        <div class="flex justify-between items-start">
+                            <!-- 左侧：账号信息 -->
+                            <div class="flex-1">
+                                <!-- 账号姓名和欠费标签 -->
+                                <div class="flex items-center gap-2">
+                                    <!-- 姓名（加粗显示） -->
+                                    <h4 class="font-bold text-slate-800">${account.name}</h4>
+                                    <!-- 欠费次数标签（红色背景） -->
+                                    <span class="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+                                        欠费 ${account.overdue_count} 次
+                                    </span>
+                                </div>
+                                <!-- 详细信息：学号和认证账号 -->
+                                <p class="text-sm text-slate-600 mt-1">
+                                    学号：${account.student_id} | 认证账号：${account.auth_username}
+                                </p>
+                            </div>
+                            <!-- 右侧：操作按钮 -->
+                            <button onclick="viewBackupInfo('${account.school_username}')" 
+                                    class="btn btn-sm btn-primary"
+                                    ${!account.has_backup ? 'disabled' : ''}>
+                                查看详情
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        // ========== 更新页面显示 ==========
+        // 更新PC端列表（如果容器存在）
+        if (pcList) pcList.innerHTML = html;
+        // 更新移动端列表（如果容器存在）
+        if (mobileList) mobileList.innerHTML = html;
+        
+    } catch (error) {
+        // ========== 异常处理 ==========
+        // 捕获网络错误等异常
+        console.error('加载欠费账号失败:', error);
+        showModalAlert('加载欠费账号失败', '错误');
+    }
+}
+
+/**
+ * 查看备份信息详情（显示完整的账号备份数据）
+ * 
+ * 功能说明：
+ * - 读取指定学校账号的 {username}_backup.json 文件
+ * - 以可读的格式展示备份文件中的所有信息
+ * - 使用 SweetAlert2 弹窗显示
+ * 
+ * 备份文件包含的信息：
+ * - userInfo: 用户基本信息（姓名、学号、学院等）
+ * - course: 课程列表和选课信息
+ * - unpaid: 未缴费课程列表
+ * - 其他系统保存的数据
+ * 
+ * 当前状态：占位实现
+ * - 此功能需要后端API支持：GET /api/admin/backup-info?username={school_username}
+ * - 建议返回格式化的JSON数据供前端展示
+ * 
+ * @param {string} school_username - 学校账号用户名
+ * @returns {Promise<void>}
+ */
+async function viewBackupInfo(school_username) {
+    // ========== 显示加载动画 ==========
+    // 使用 SweetAlert2 显示加载提示
+    Swal.fire({
+        title: '账号详细信息',
+        text: '加载中...',
+        showConfirmButton: false,  // 不显示确认按钮
+        willOpen: () => Swal.showLoading()  // 显示加载动画
+    });
+    
+    // ========== 占位实现提示 ==========
+    // TODO: 后续版本实现完整功能
+    // 实现步骤：
+    // 1. 添加后端API：/api/admin/backup-info
+    // 2. 读取 school_accounts/{school_username}_backup.json
+    // 3. 返回格式化的JSON数据
+    // 4. 前端解析并美化显示所有字段
+    
+    // 模拟延迟（实际应该是API调用）
+    setTimeout(() => {
+        // 关闭加载动画，显示功能说明
+        Swal.fire({
+            title: '查看详情',
+            html: `
+                <div class="text-left">
+                    <p class="mb-3">账号 <strong>${school_username}</strong> 的详细信息查看功能正在开发中。</p>
+                    <p class="text-sm text-slate-600 mb-2">此功能将显示：</p>
+                    <ul class="text-sm text-slate-600 list-disc pl-5">
+                        <li>用户基本信息（姓名、学号、学院等）</li>
+                        <li>课程列表和选课信息</li>
+                        <li>未缴费课程明细</li>
+                        <li>其他备份数据</li>
+                    </ul>
+                    <p class="text-xs text-slate-500 mt-3">💡 需要添加后端API支持</p>
+                </div>
+            `,
+            icon: 'info',
+            confirmButtonText: '我知道了'
+        });
+    }, 500);
+}
+
+// ============================================================================
+// 欠费账号查询功能 - 结束
 // ============================================================================

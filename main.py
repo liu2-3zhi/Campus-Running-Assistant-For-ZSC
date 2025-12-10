@@ -27930,6 +27930,168 @@ def start_web_server(args_param):
                 "message": f"清零欠费失败：{str(e)}"
             }), 500
 
+    @app.route("/api/admin/overdue-accounts", methods=["GET"])
+    @admin_required
+    def admin_get_overdue_accounts():
+        """
+        获取所有有欠费的学校账号列表（仅管理员可访问）
+        
+        功能说明：
+        1. 遍历所有认证用户的 school_accounts 配置文件
+        2. 查找 overdue_count > 0 的学校账号
+        3. 从对应的 {username}_backup.json 文件中读取用户详细信息（姓名、学号等）
+        4. 按欠费次数从高到低排序
+        
+        请求方法：GET
+        权限要求：管理员权限（admin_required装饰器）
+        
+        查询参数：无
+        
+        返回数据（JSON格式）：
+        {
+            "success": true,
+            "accounts": [
+                {
+                    "auth_username": "user1",         // 认证系统用户名
+                    "school_username": "202001",      // 学校账号用户名
+                    "overdue_count": 5,               // 欠费次数
+                    "name": "张三",                    // 姓名（从备份文件读取）
+                    "student_id": "202001",           // 学号（从备份文件读取）
+                    "has_backup": true                // 是否存在备份文件
+                },
+                ...
+            ],
+            "total": 10  // 欠费账号总数
+        }
+        
+        使用场景：
+        - 管理员监控：查看所有有欠费记录的学校账号
+        - 财务审计：统计欠费情况
+        - 催费提醒：为欠费用户发送通知
+        
+        注意事项：
+        - 仅管理员和超级管理员可以访问此接口
+        - 返回的列表按欠费次数从高到低排序
+        - 如果备份文件不存在或读取失败，name 显示为 "未知"
+        """
+        try:
+            # ========== 权限检查：确认当前用户是管理员 ==========
+            current_user = g.user
+            
+            # 获取用户组信息
+            # 返回值可能是：user, admin, super_admin 等
+            user_group = auth_system.get_user_group(current_user)
+            
+            # 只有管理员和超级管理员可以访问此接口
+            if user_group not in ["admin", "super_admin"]:
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，仅管理员可查看欠费账号"
+                }), 403
+            
+            # ========== 初始化欠费账号列表 ==========
+            # 用于存储所有找到的欠费账号信息
+            overdue_accounts = []
+            
+            # ========== 获取所有系统用户列表 ==========
+            # 遍历所有用户，检查他们的学校账号是否有欠费
+            
+            # 从权限配置中获取所有用户
+            user_groups = auth_system.permissions.get("user_groups", {})
+            all_usernames = set(user_groups.keys())
+            
+            # 添加超级管理员账号（超级管理员可能不在 user_groups 中）
+            super_admin = auth_system.config.get("Admin", "super_admin", fallback="admin")
+            all_usernames.add(super_admin)
+            
+            # ========== 遍历所有用户，查找欠费账号 ==========
+            for auth_username in all_usernames:
+                try:
+                    # 读取该用户的所有学校账号配置
+                    # 文件路径：school_accounts/{auth_username}.json
+                    # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
+                    school_accounts = background_task_manager._load_user_school_accounts(auth_username)
+                    
+                    # 遍历该用户的所有学校账号
+                    for school_username, account_info in school_accounts.items():
+                        # 兼容旧格式：如果 account_info 是字符串（密码），跳过
+                        if isinstance(account_info, str):
+                            continue
+                        
+                        # 获取欠费次数，默认为 0
+                        overdue_count = account_info.get('overdue_count', 0)
+                        
+                        # 只处理有欠费的账号（overdue_count > 0）
+                        if overdue_count > 0:
+                            # ========== 从备份文件中读取账号详细信息 ==========
+                            # 备份文件路径：school_accounts/{school_username}_backup.json
+                            backup_file = os.path.join(
+                                background_task_manager.user_dir,
+                                f"{school_username}_backup.json"
+                            )
+                            
+                            # 初始化默认值
+                            name = "未知"  # 如果读取失败，显示"未知"
+                            student_id = school_username  # 默认使用学校用户名作为学号
+                            has_backup = False  # 标记是否存在备份文件
+                            
+                            # 尝试读取备份文件
+                            if os.path.exists(backup_file):
+                                try:
+                                    # 打开并解析 JSON 备份文件
+                                    with open(backup_file, 'r', encoding='utf-8') as f:
+                                        backup_data = json.load(f)
+                                    
+                                    # 从 userInfo 字段中提取信息
+                                    user_info = backup_data.get('userInfo', {})
+                                    name = user_info.get('name', '未知')  # 姓名
+                                    student_id = user_info.get('account', school_username)  # 学号
+                                    has_backup = True  # 标记备份文件存在
+                                except Exception as e:
+                                    # 备份文件读取失败，使用默认值
+                                    logging.warning(
+                                        f"[欠费查询] 读取备份文件失败 {backup_file}: {e}"
+                                    )
+                            
+                            # ========== 将欠费账号信息添加到结果列表 ==========
+                            overdue_accounts.append({
+                                "auth_username": auth_username,  # 认证系统用户名
+                                "school_username": school_username,  # 学校账号用户名
+                                "overdue_count": overdue_count,  # 欠费次数
+                                "name": name,  # 姓名
+                                "student_id": student_id,  # 学号
+                                "has_backup": has_backup  # 是否有备份文件
+                            })
+                
+                except Exception as e:
+                    # 某个用户的账号读取失败，记录警告并继续处理其他用户
+                    logging.warning(
+                        f"[欠费查询] 读取用户 {auth_username} 的学校账号失败: {e}"
+                    )
+                    continue
+            
+            # ========== 按欠费次数从高到低排序 ==========
+            # 欠费次数越多，排在越前面
+            overdue_accounts.sort(key=lambda x: x['overdue_count'], reverse=True)
+            
+            # ========== 返回结果 ==========
+            return jsonify({
+                "success": True,
+                "accounts": overdue_accounts,  # 欠费账号列表
+                "total": len(overdue_accounts)  # 欠费账号总数
+            })
+        
+        except Exception as e:
+            # ========== 异常处理 ==========
+            # 记录详细的错误日志，包括堆栈信息
+            logging.error(f"[欠费查询] 获取欠费账号失败: {e}", exc_info=True)
+            
+            # 返回错误响应
+            return jsonify({
+                "success": False,
+                "message": "获取欠费账号失败"
+            }), 500
+
     # ==============================================================================
     # 健康检查和监控接口
     # ==============================================================================
