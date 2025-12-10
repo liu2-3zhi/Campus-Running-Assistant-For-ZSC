@@ -11788,7 +11788,13 @@
           console.warn('[测试支付] 警告：浏览器可能拦截了弹窗');
           
           // 向用户显示友好的提示信息
-          alert('浏览器拦截了弹窗，请允许本网站的弹窗权限，或手动复制链接在新标签页打开。\n\n支付链接：' + payUrl);
+          // 不在alert中直接显示URL，避免安全问题
+          alert('浏览器拦截了弹窗，请允许本网站的弹窗权限。\n\n支付链接已复制到输入框中，您可以手动复制后在新标签页打开。');
+          // 将链接复制到输入框供用户查看
+          const urlInput = document.getElementById('test-order-pay-url');
+          if (urlInput) {
+            urlInput.select();
+          }
         } else {
           // 如果成功打开，输出成功日志
           console.log('[测试支付] 支付链接已在新标签页中打开');
