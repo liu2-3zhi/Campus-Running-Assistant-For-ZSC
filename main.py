@@ -28693,6 +28693,223 @@ def start_web_server(args_param):
                 "message": f"操作失败：{str(e)}"
             }), 500
 
+    @app.route("/api/admin/pricing_config", methods=["GET", "PUT"])
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
+    def admin_pricing_config():
+        """
+        获取或更新价格配置接口（管理员专用）
+        
+        请求方法：GET（获取配置）、PUT（更新配置）
+        权限要求：modify_config权限
+        
+        GET请求 - 获取当前价格配置：
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - config (dict): 当前价格配置
+                - require_payment (bool): 是否需要付费
+                - per_run_cost (float): 单次跑步费用（元）
+                - default_available_runs (int): 新用户默认免费次数
+        
+        PUT请求 - 更新价格配置：
+        请求参数（JSON格式）：
+            - require_payment (bool): 是否需要付费
+            - per_run_cost (float): 单次跑步费用（元）
+            - default_available_runs (int): 新用户默认免费次数
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 操作结果信息
+        
+        功能说明：
+        这个接口允许管理员动态配置系统的价格策略，包括是否启用付费模式、单次费用和新用户免费次数。
+        配置会立即生效，影响后续创建的所有用户和订单。
+        
+        使用场景：
+        - 管理员在后台管理面板配置价格策略
+        - 根据运营策略调整费用标准
+        - 控制新用户的免费试用次数
+        
+        安全措施：
+        - 需要modify_config权限
+        - 验证输入参数的有效性
+        - 记录配置变更日志
+        """
+        try:
+            # 检查细粒度权限：修改配置权限
+            # modify_config 权限允许修改价格配置
+            # 价格配置影响系统的收费模式和用户权益，需要谨慎管理
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
+            
+            if request.method == "GET":
+                # ========== 处理GET请求：获取当前配置 ==========
+                
+                # 读取配置文件
+                # 使用 configparser 从 config.ini 文件读取配置项
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 从 Payment_Settings 节读取价格相关配置
+                # 使用 fallback 参数提供默认值，确保即使配置文件缺失也能正常工作
+                
+                # 读取是否需要付费的配置（布尔值）
+                # getboolean() 方法会自动将字符串 "true"/"false" 转换为 Python 的 bool 类型
+                require_payment = config.getboolean(
+                    "Payment_Settings",
+                    "require_payment",
+                    fallback=True  # 默认值：需要付费
+                )
+                
+                # 读取单次跑步费用的配置（浮点数）
+                # getfloat() 方法会自动将字符串转换为 Python 的 float 类型
+                per_run_cost = config.getfloat(
+                    "Payment_Settings",
+                    "single_run_cost",  # 注意：配置文件中的键名是 single_run_cost
+                    fallback=1.0  # 默认值：1.0元/次
+                )
+                
+                # 读取新用户默认免费次数的配置（整数）
+                # getint() 方法会自动将字符串转换为 Python 的 int 类型
+                default_available_runs = config.getint(
+                    "Payment_Settings",
+                    "default_available_runs",
+                    fallback=10  # 默认值：10次
+                )
+                
+                # 构造返回数据
+                # 将读取到的配置以 JSON 格式返回给前端
+                return jsonify({
+                    "success": True,
+                    "config": {
+                        "require_payment": require_payment,
+                        "per_run_cost": per_run_cost,
+                        "default_available_runs": default_available_runs
+                    }
+                })
+            
+            elif request.method == "PUT":
+                # ========== 处理PUT请求：更新配置 ==========
+                
+                # 获取请求数据
+                # 从前端传来的 JSON 数据中提取配置参数
+                data = request.get_json() or {}
+                
+                # 提取新的配置值
+                # 使用 .get() 方法获取参数，如果参数不存在则使用当前配置值作为默认值
+                
+                # 读取当前配置作为默认值
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 获取新的 require_payment 值（布尔类型）
+                new_require_payment = data.get(
+                    "require_payment",
+                    config.getboolean("Payment_Settings", "require_payment", fallback=True)
+                )
+                
+                # 获取新的 per_run_cost 值（浮点类型）
+                new_per_run_cost = data.get(
+                    "per_run_cost",
+                    config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+                )
+                
+                # 获取新的 default_available_runs 值（整数类型）
+                new_default_available_runs = data.get(
+                    "default_available_runs",
+                    config.getint("Payment_Settings", "default_available_runs", fallback=10)
+                )
+                
+                # ========== 验证参数的有效性 ==========
+                
+                # 验证 require_payment 是否为布尔类型
+                if not isinstance(new_require_payment, bool):
+                    return jsonify({
+                        "success": False,
+                        "message": "require_payment 必须是布尔值（true/false）"
+                    }), 400
+                
+                # 验证 per_run_cost 是否为数字类型
+                # 检查是否为 int 或 float 类型
+                if not isinstance(new_per_run_cost, (int, float)):
+                    return jsonify({
+                        "success": False,
+                        "message": "per_run_cost 必须是数字"
+                    }), 400
+                
+                # 验证 per_run_cost 是否为非负数
+                # 费用不能为负数，但可以为 0（表示免费）
+                if new_per_run_cost < 0:
+                    return jsonify({
+                        "success": False,
+                        "message": "per_run_cost 不能为负数"
+                    }), 400
+                
+                # 验证 default_available_runs 是否为整数类型
+                if not isinstance(new_default_available_runs, int):
+                    return jsonify({
+                        "success": False,
+                        "message": "default_available_runs 必须是整数"
+                    }), 400
+                
+                # 验证 default_available_runs 是否为非负数
+                # 免费次数不能为负数，但可以为 0（表示新用户无免费次数）
+                if new_default_available_runs < 0:
+                    return jsonify({
+                        "success": False,
+                        "message": "default_available_runs 不能为负数"
+                    }), 400
+                
+                # ========== 保存旧配置用于日志记录 ==========
+                old_require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+                old_per_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+                old_default_available_runs = config.getint("Payment_Settings", "default_available_runs", fallback=10)
+                
+                # ========== 更新配置 ==========
+                
+                # 确保 Payment_Settings 配置节存在
+                # 如果配置节不存在，则创建它
+                if not config.has_section("Payment_Settings"):
+                    config.add_section("Payment_Settings")
+                
+                # 设置新的配置值
+                # 注意：configparser 保存时会将所有值转换为字符串
+                # 布尔值转换为 "true"/"false"，数字转换为字符串形式
+                config.set("Payment_Settings", "require_payment", str(new_require_payment).lower())
+                config.set("Payment_Settings", "single_run_cost", str(new_per_run_cost))
+                config.set("Payment_Settings", "default_available_runs", str(new_default_available_runs))
+                
+                # 保存配置文件
+                # 使用 _write_config_with_comments() 函数保持配置文件中的注释
+                # 这样可以避免覆盖配置文件时丢失注释信息
+                _write_config_with_comments(config, "config.ini")
+                
+                # ========== 记录信息日志 ==========
+                # 记录配置变更，便于审计和问题追踪
+                logging.info(
+                    f"[价格配置] 管理员更新价格配置 - "
+                    f"操作者: {g.user}, "
+                    f"require_payment: {old_require_payment} -> {new_require_payment}, "
+                    f"per_run_cost: {old_per_run_cost} -> {new_per_run_cost}, "
+                    f"default_available_runs: {old_default_available_runs} -> {new_default_available_runs}"
+                )
+                
+                # ========== 返回成功响应 ==========
+                return jsonify({
+                    "success": True,
+                    "message": "价格配置已成功更新"
+                })
+        
+        except Exception as e:
+            # 捕获所有异常
+            # 记录错误日志，包括详细的堆栈跟踪信息
+            logging.error(f"[价格配置] 管理价格配置接口异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            # 返回 500 错误响应
+            return jsonify({
+                "success": False,
+                "message": f"操作失败：{str(e)}"
+            }), 500
+
     @app.route("/api/payment_logs", methods=["GET"])
     @login_required
     def user_payment_logs():

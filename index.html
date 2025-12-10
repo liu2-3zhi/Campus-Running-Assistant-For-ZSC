@@ -5983,6 +5983,136 @@
           </div>
         </div>
 
+        <!-- ========================================
+             价格设置面板 (mobile-multi-admin-pricing-panel)
+             用途：管理员配置价格策略
+             权限：需要modify_config权限
+             功能：配置是否需要付费、单次费用、新用户免费次数
+             API端点：/api/admin/pricing_config
+             默认隐藏，通过switchMobileAdminTab切换显示
+             ======================================== -->
+        <div id="mobile-multi-admin-pricing-panel" class="hidden space-y-3">
+          <!-- 面板头部：包含标题和刷新按钮 -->
+          <div class="flex justify-between items-center">
+            <!-- 面板标题 -->
+            <h4 class="font-semibold text-sm">价格设置</h4>
+            <!-- 刷新按钮：重新加载价格配置 -->
+            <button id="mobile-multi-admin-refresh-pricing" 
+              class="btn btn-ghost !py-1 !px-2 text-xs"
+              onclick="loadMobilePricingConfig()">
+              <!-- 刷新图标 -->
+              <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              刷新
+            </button>
+          </div>
+
+          <!-- 面板说明 -->
+          <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+            💡 配置系统的价格策略，包括是否启用付费模式、单次跑步费用和新用户的默认免费次数
+          </p>
+
+          <!-- 价格配置内容区域 -->
+          <div id="mobile-multi-admin-pricing-content" class="space-y-3">
+            <!-- 配置项1: 是否需要付费 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <!-- 配置项标题 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    <!-- 开关图标 -->
+                    <svg class="w-3.5 h-3.5 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                    是否需要付费
+                  </label>
+                  <!-- 配置项说明 -->
+                  <p class="text-xs text-slate-500">
+                    开启后用户需要支付才能使用
+                  </p>
+                </div>
+                <!-- 开关按钮 -->
+                <label class="relative inline-flex items-center cursor-pointer ml-3">
+                  <!-- 隐藏的复选框，实际控制开关状态 -->
+                  <input type="checkbox" id="mobile-pricing-require-payment" class="sr-only peer">
+                  <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
+                  <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- 配置项2: 单次跑步费用 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+              <!-- 配置项标题 -->
+              <label class="block text-xs font-semibold text-slate-700">
+                <!-- 金钱图标 -->
+                <svg class="w-3.5 h-3.5 inline mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                单次跑步费用（元）
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500">
+                用于计算欠费金额，设置为0表示免费
+              </p>
+              <!-- 数字输入框 -->
+              <input type="number" id="mobile-pricing-per-run-cost"
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                placeholder="例如：1.0"
+                min="0"
+                step="0.01"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400">
+                支持小数，最多两位（如1.50）
+              </p>
+            </div>
+
+            <!-- 配置项3: 新用户默认免费次数 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+              <!-- 配置项标题 -->
+              <label class="block text-xs font-semibold text-slate-700">
+                <!-- 礼物图标 -->
+                <svg class="w-3.5 h-3.5 inline mr-1 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
+                </svg>
+                新用户默认免费次数
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500">
+                新用户注册时自动获得的免费次数
+              </p>
+              <!-- 数字输入框 -->
+              <input type="number" id="mobile-pricing-default-runs"
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                placeholder="例如：10"
+                min="0"
+                step="1"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400">
+                必须是非负整数（如0、10、100）
+              </p>
+            </div>
+
+            <!-- 保存按钮 -->
+            <button onclick="saveMobilePricingConfig()" 
+              class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
+              <!-- 保存图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M5 13l4 4L19 7"/>
+              </svg>
+              保存配置
+            </button>
+          </div>
+        </div>
+
         <div class="flex justify-end pt-2 border-t border-slate-100">
           <button class="mobile-primary-btn" onclick="toggleMobileMultiAdminPanel(false)">
             关闭
@@ -6952,6 +7082,26 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
           </svg>
           支付设置
+        </button>
+
+        <!-- ========================================
+             价格设置标签（PC端管理员面板）
+             ID: admin-tab-pricing_modal
+             用途：切换到价格配置管理面板
+             功能：管理员价格设置面板的标签页按钮
+             权限：仅管理员（admin）和超级管理员（super_admin）可见
+             位置：管理员面板标签栏，位于支付设置之后
+             API端点：/api/admin/pricing_config（价格配置管理）
+             ======================================== -->
+        <button id="admin-tab-pricing_modal"
+          class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap"
+          style="display: none">
+          <!-- 价格设置图标：表示金钱/定价 -->
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          价格设置
         </button>
       </div>
 
@@ -9064,6 +9214,141 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ========================================
+       PC端价格设置面板 (admin-pricing-panel_modal)
+       用途：管理员配置价格策略
+       权限：需要modify_config权限
+       功能：配置是否需要付费、单次费用、新用户免费次数
+       API端点：/api/admin/pricing_config
+       
+       面板结构：
+       - 顶部：面板标题和描述
+       - 中间：配置表单（开关、数字输入框）
+       - 底部：保存按钮
+       
+       配置项：
+       1. require_payment: 是否需要付费（开关）
+       2. per_run_cost: 单次跑步费用（数字输入）
+       3. default_available_runs: 新用户默认免费次数（数字输入）
+       ======================================== -->
+  <div id="admin-pricing-panel_modal" class="hidden space-y-4">
+    <!-- 面板顶部：标题和描述 -->
+    <div class="bg-gradient-to-r from-sky-50 to-blue-50 p-4 rounded-lg border border-sky-200">
+      <h3 class="text-lg font-bold text-sky-700 mb-2">
+        <!-- 价格图标 -->
+        <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        价格配置管理
+      </h3>
+      <!-- 面板描述文本 -->
+      <p class="text-sm text-slate-600">
+        配置系统的价格策略，包括是否启用付费模式、单次跑步费用和新用户的默认免费次数。
+      </p>
+    </div>
+
+    <!-- 配置表单区域 -->
+    <div class="space-y-4">
+      <!-- 配置项1: 是否需要付费 -->
+      <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <!-- 配置项标题 -->
+            <label class="block text-sm font-semibold text-slate-700 mb-1">
+              <!-- 图标：开关 -->
+              <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+              </svg>
+              是否需要付费
+            </label>
+            <!-- 配置项说明 -->
+            <p class="text-xs text-slate-500">
+              开启后，用户需要支付才能使用跑步服务；关闭后，所有用户可免费使用。
+            </p>
+          </div>
+          <!-- 开关按钮 -->
+          <label class="relative inline-flex items-center cursor-pointer ml-4">
+            <!-- 隐藏的复选框，实际控制开关状态 -->
+            <input type="checkbox" id="pricing-require-payment_modal" class="sr-only peer">
+            <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+          </label>
+        </div>
+      </div>
+
+      <!-- 配置项2: 单次跑步费用 -->
+      <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+        <!-- 配置项标题 -->
+        <label class="block text-sm font-semibold text-slate-700 mb-1">
+          <!-- 图标：金钱 -->
+          <svg class="w-4 h-4 inline mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          单次跑步费用（元）
+        </label>
+        <!-- 配置项说明 -->
+        <p class="text-xs text-slate-500 mb-2">
+          用于计算用户欠费金额 = 欠费次数 × 单次费用。设置为0表示免费。
+        </p>
+        <!-- 数字输入框 -->
+        <input type="number" id="pricing-per-run-cost_modal"
+          class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
+          placeholder="例如：1.0"
+          min="0"
+          step="0.01"
+          required>
+        <!-- 输入提示 -->
+        <p class="text-xs text-slate-400 mt-1">
+          支持小数，最多两位小数（如1.50）
+        </p>
+      </div>
+
+      <!-- 配置项3: 新用户默认免费次数 -->
+      <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+        <!-- 配置项标题 -->
+        <label class="block text-sm font-semibold text-slate-700 mb-1">
+          <!-- 图标：礼物 -->
+          <svg class="w-4 h-4 inline mr-1 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
+          </svg>
+          新用户默认免费次数
+        </label>
+        <!-- 配置项说明 -->
+        <p class="text-xs text-slate-500 mb-2">
+          新用户注册时自动获得的免费跑步次数。设置为0表示无免费次数。
+        </p>
+        <!-- 数字输入框 -->
+        <input type="number" id="pricing-default-runs_modal"
+          class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
+          placeholder="例如：10"
+          min="0"
+          step="1"
+          required>
+        <!-- 输入提示 -->
+        <p class="text-xs text-slate-400 mt-1">
+          必须是非负整数（如0、10、100）
+        </p>
+      </div>
+    </div>
+
+    <!-- 保存按钮 -->
+    <div class="flex justify-end pt-4">
+      <button onclick="savePricingConfig()" 
+        class="px-6 py-2.5 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md">
+        <!-- 保存图标 -->
+        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M5 13l4 4L19 7"/>
+        </svg>
+        保存配置
+      </button>
     </div>
   </div>
 
@@ -14937,6 +15222,367 @@
      * 如果项目中已有加载用户资料的函数，需要在该函数中添加对
      * updateProfileAvailableRuns(userData) 的调用。
      */
+
+    // ============================================================
+    // 价格配置管理相关函数（任务1）
+    // ============================================================
+
+    /**
+     * 加载价格配置（PC端）
+     * 
+     * 功能说明：
+     * 从后端API获取当前的价格配置，并填充到PC端的表单中。
+     * 
+     * 调用时机：
+     * 1. 用户点击"价格设置"标签时
+     * 2. 用户点击"刷新"按钮时
+     * 
+     * API端点：GET /api/admin/pricing_config
+     * 
+     * 表单元素ID：
+     * - pricing-require-payment_modal：是否需要付费（复选框）
+     * - pricing-per-run-cost_modal：单次跑步费用（数字输入框）
+     * - pricing-default-runs_modal：新用户默认免费次数（数字输入框）
+     */
+    async function loadPricingConfig() {
+      try {
+        // ========== 显示加载状态 ==========
+        // 为了提升用户体验，在数据加载期间显示加载提示
+        console.log('[价格配置] 正在加载价格配置...');
+
+        // ========== 发送GET请求获取配置 ==========
+        // 使用fetch API从后端获取价格配置数据
+        const response = await fetch('/api/admin/pricing_config', {
+          method: 'GET',  // HTTP方法：GET（获取数据）
+          headers: {
+            'Content-Type': 'application/json'  // 请求头：指定内容类型为JSON
+          },
+          credentials: 'include'  // 包含认证凭证（cookies），用于身份验证
+        });
+
+        // ========== 解析响应数据 ==========
+        // 将响应体解析为JSON对象
+        const data = await response.json();
+
+        // ========== 检查响应状态 ==========
+        // 如果请求失败（success为false），抛出错误
+        if (!data.success) {
+          throw new Error(data.message || '加载价格配置失败');
+        }
+
+        // ========== 提取配置数据 ==========
+        // 从响应数据中提取config对象
+        const config = data.config;
+
+        // ========== 填充表单字段 ==========
+        
+        // 填充"是否需要付费"复选框
+        // 获取复选框元素
+        const requirePaymentCheckbox = document.getElementById('pricing-require-payment_modal');
+        if (requirePaymentCheckbox) {
+          // 设置复选框的选中状态
+          // checked属性为true表示选中（需要付费），false表示未选中（不需要付费）
+          requirePaymentCheckbox.checked = config.require_payment;
+        } else {
+          // 如果找不到元素，记录警告日志
+          console.warn('[价格配置] 警告：找不到元素 #pricing-require-payment_modal');
+        }
+
+        // 填充"单次跑步费用"输入框
+        const perRunCostInput = document.getElementById('pricing-per-run-cost_modal');
+        if (perRunCostInput) {
+          // 设置输入框的值
+          // 使用toFixed(2)将浮点数格式化为两位小数的字符串
+          perRunCostInput.value = config.per_run_cost.toFixed(2);
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #pricing-per-run-cost_modal');
+        }
+
+        // 填充"新用户默认免费次数"输入框
+        const defaultRunsInput = document.getElementById('pricing-default-runs_modal');
+        if (defaultRunsInput) {
+          // 设置输入框的值
+          // 整数类型，直接赋值
+          defaultRunsInput.value = config.default_available_runs;
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #pricing-default-runs_modal');
+        }
+
+        // ========== 记录成功日志 ==========
+        console.log('[价格配置] 价格配置加载成功', config);
+
+      } catch (error) {
+        // ========== 错误处理 ==========
+        // 捕获加载过程中的任何错误
+        console.error('[价格配置] 加载价格配置失败:', error);
+        
+        // 使用alert提示用户错误信息
+        // 在实际生产环境中，建议使用更友好的UI提示（如SweetAlert2）
+        alert('加载价格配置失败：' + error.message);
+      }
+    }
+
+    /**
+     * 保存价格配置（PC端）
+     * 
+     * 功能说明：
+     * 从PC端表单中读取价格配置，发送到后端API进行保存。
+     * 
+     * 调用时机：
+     * 用户点击"保存配置"按钮时
+     * 
+     * API端点：PUT /api/admin/pricing_config
+     * 
+     * 验证规则：
+     * 1. require_payment：必须为布尔值
+     * 2. per_run_cost：必须为非负数，支持小数
+     * 3. default_available_runs：必须为非负整数
+     */
+    async function savePricingConfig() {
+      try {
+        // ========== 获取表单元素 ==========
+        
+        // 获取"是否需要付费"复选框
+        const requirePaymentCheckbox = document.getElementById('pricing-require-payment_modal');
+        // 获取"单次跑步费用"输入框
+        const perRunCostInput = document.getElementById('pricing-per-run-cost_modal');
+        // 获取"新用户默认免费次数"输入框
+        const defaultRunsInput = document.getElementById('pricing-default-runs_modal');
+
+        // ========== 验证表单元素是否存在 ==========
+        // 如果任何一个表单元素不存在，抛出错误
+        if (!requirePaymentCheckbox || !perRunCostInput || !defaultRunsInput) {
+          throw new Error('表单元素未找到，请刷新页面后重试');
+        }
+
+        // ========== 读取表单值 ==========
+        
+        // 读取"是否需要付费"的值（布尔类型）
+        const requirePayment = requirePaymentCheckbox.checked;
+        
+        // 读取"单次跑步费用"的值（浮点类型）
+        // parseFloat() 将字符串转换为浮点数
+        const perRunCost = parseFloat(perRunCostInput.value);
+        
+        // 读取"新用户默认免费次数"的值（整数类型）
+        // parseInt() 将字符串转换为整数
+        const defaultRuns = parseInt(defaultRunsInput.value);
+
+        // ========== 客户端验证 ==========
+        
+        // 验证"单次跑步费用"是否为有效数字
+        if (isNaN(perRunCost)) {
+          throw new Error('单次跑步费用必须是有效的数字');
+        }
+        
+        // 验证"单次跑步费用"是否为非负数
+        if (perRunCost < 0) {
+          throw new Error('单次跑步费用不能为负数');
+        }
+        
+        // 验证"新用户默认免费次数"是否为有效数字
+        if (isNaN(defaultRuns)) {
+          throw new Error('新用户默认免费次数必须是有效的整数');
+        }
+        
+        // 验证"新用户默认免费次数"是否为非负数
+        if (defaultRuns < 0) {
+          throw new Error('新用户默认免费次数不能为负数');
+        }
+
+        // ========== 构造请求数据 ==========
+        // 将表单数据封装为JSON对象
+        const requestData = {
+          require_payment: requirePayment,
+          per_run_cost: perRunCost,
+          default_available_runs: defaultRuns
+        };
+
+        // ========== 记录请求日志 ==========
+        console.log('[价格配置] 正在保存价格配置:', requestData);
+
+        // ========== 发送PUT请求保存配置 ==========
+        const response = await fetch('/api/admin/pricing_config', {
+          method: 'PUT',  // HTTP方法：PUT（更新数据）
+          headers: {
+            'Content-Type': 'application/json'  // 请求头：指定内容类型为JSON
+          },
+          credentials: 'include',  // 包含认证凭证
+          body: JSON.stringify(requestData)  // 请求体：将JavaScript对象转换为JSON字符串
+        });
+
+        // ========== 解析响应数据 ==========
+        const data = await response.json();
+
+        // ========== 检查响应状态 ==========
+        if (!data.success) {
+          throw new Error(data.message || '保存价格配置失败');
+        }
+
+        // ========== 显示成功提示 ==========
+        // 使用alert提示用户保存成功
+        // 在实际生产环境中，建议使用更友好的UI提示
+        alert('价格配置已成功保存！');
+
+        // ========== 记录成功日志 ==========
+        console.log('[价格配置] 价格配置保存成功');
+
+      } catch (error) {
+        // ========== 错误处理 ==========
+        console.error('[价格配置] 保存价格配置失败:', error);
+        alert('保存价格配置失败：' + error.message);
+      }
+    }
+
+    /**
+     * 加载价格配置（移动端）
+     * 
+     * 功能说明：
+     * 与PC端的loadPricingConfig()功能相同，但操作移动端的表单元素。
+     * 
+     * 表单元素ID：
+     * - mobile-pricing-require-payment：是否需要付费
+     * - mobile-pricing-per-run-cost：单次跑步费用
+     * - mobile-pricing-default-runs：新用户默认免费次数
+     */
+    async function loadMobilePricingConfig() {
+      try {
+        // 显示加载状态
+        console.log('[价格配置] 正在加载价格配置（移动端）...');
+
+        // 发送GET请求获取配置
+        const response = await fetch('/api/admin/pricing_config', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        });
+
+        // 解析响应数据
+        const data = await response.json();
+
+        // 检查响应状态
+        if (!data.success) {
+          throw new Error(data.message || '加载价格配置失败');
+        }
+
+        // 提取配置数据
+        const config = data.config;
+
+        // 填充表单字段
+        
+        // 填充"是否需要付费"复选框
+        const requirePaymentCheckbox = document.getElementById('mobile-pricing-require-payment');
+        if (requirePaymentCheckbox) {
+          requirePaymentCheckbox.checked = config.require_payment;
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #mobile-pricing-require-payment');
+        }
+
+        // 填充"单次跑步费用"输入框
+        const perRunCostInput = document.getElementById('mobile-pricing-per-run-cost');
+        if (perRunCostInput) {
+          perRunCostInput.value = config.per_run_cost.toFixed(2);
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #mobile-pricing-per-run-cost');
+        }
+
+        // 填充"新用户默认免费次数"输入框
+        const defaultRunsInput = document.getElementById('mobile-pricing-default-runs');
+        if (defaultRunsInput) {
+          defaultRunsInput.value = config.default_available_runs;
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #mobile-pricing-default-runs');
+        }
+
+        // 记录成功日志
+        console.log('[价格配置] 价格配置加载成功（移动端）', config);
+
+      } catch (error) {
+        // 错误处理
+        console.error('[价格配置] 加载价格配置失败（移动端）:', error);
+        alert('加载价格配置失败：' + error.message);
+      }
+    }
+
+    /**
+     * 保存价格配置（移动端）
+     * 
+     * 功能说明：
+     * 与PC端的savePricingConfig()功能相同，但操作移动端的表单元素。
+     */
+    async function saveMobilePricingConfig() {
+      try {
+        // 获取表单元素
+        const requirePaymentCheckbox = document.getElementById('mobile-pricing-require-payment');
+        const perRunCostInput = document.getElementById('mobile-pricing-per-run-cost');
+        const defaultRunsInput = document.getElementById('mobile-pricing-default-runs');
+
+        // 验证表单元素是否存在
+        if (!requirePaymentCheckbox || !perRunCostInput || !defaultRunsInput) {
+          throw new Error('表单元素未找到，请刷新页面后重试');
+        }
+
+        // 读取表单值
+        const requirePayment = requirePaymentCheckbox.checked;
+        const perRunCost = parseFloat(perRunCostInput.value);
+        const defaultRuns = parseInt(defaultRunsInput.value);
+
+        // 客户端验证
+        if (isNaN(perRunCost)) {
+          throw new Error('单次跑步费用必须是有效的数字');
+        }
+        if (perRunCost < 0) {
+          throw new Error('单次跑步费用不能为负数');
+        }
+        if (isNaN(defaultRuns)) {
+          throw new Error('新用户默认免费次数必须是有效的整数');
+        }
+        if (defaultRuns < 0) {
+          throw new Error('新用户默认免费次数不能为负数');
+        }
+
+        // 构造请求数据
+        const requestData = {
+          require_payment: requirePayment,
+          per_run_cost: perRunCost,
+          default_available_runs: defaultRuns
+        };
+
+        // 记录请求日志
+        console.log('[价格配置] 正在保存价格配置（移动端）:', requestData);
+
+        // 发送PUT请求保存配置
+        const response = await fetch('/api/admin/pricing_config', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify(requestData)
+        });
+
+        // 解析响应数据
+        const data = await response.json();
+
+        // 检查响应状态
+        if (!data.success) {
+          throw new Error(data.message || '保存价格配置失败');
+        }
+
+        // 显示成功提示
+        alert('价格配置已成功保存！');
+
+        // 记录成功日志
+        console.log('[价格配置] 价格配置保存成功（移动端）');
+
+      } catch (error) {
+        // 错误处理
+        console.error('[价格配置] 保存价格配置失败（移动端）:', error);
+        alert('保存价格配置失败：' + error.message);
+      }
+    }
   </script>
 
   <!-- Extracted Script -->
