@@ -27221,12 +27221,70 @@ def start_web_server(args_param):
             # ========== 处理支付成功通知 ==========
             
             if trade_status == "TRADE_SUCCESS":
-                # 检查订单是否已经支付过
-                # 防止重复处理（幂等性）
+                # ========== 检查订单是否已经支付过（幂等性保护）==========
+                # 这是防止重复处理的核心机制
+                # 场景：易支付可能会多次发送支付成功通知（网络重试、系统重试等）
+                # 我们必须确保即使收到多次通知，也只处理一次业务逻辑
+                
                 if order_data.get("status") == "paid":
-                    # 订单已支付，直接返回成功（不重复处理）
-                    logging.info(f"[支付通知] 订单已支付，跳过处理 - 订单: {out_trade_no}")
+                    # ========== 订单已支付，这是一个重复通知 ==========
+                    
+                    # 获取当前的通知计数并+1
+                    # 情况1：如果notify_count字段存在，说明之前已经记录过，直接+1
+                    # 情况2：如果notify_count字段不存在，说明这是旧订单（在添加计数功能之前创建的）
+                    #        由于订单status="paid"，说明至少收到过1次通知
+                    #        现在收到重复通知，默认为1，然后+1=2（第2次通知）
+                    notify_count = order_data.get("notify_count", 1) + 1
+                    
+                    # 更新通知计数
+                    order_data["notify_count"] = notify_count
+                    
+                    # 记录最后一次收到通知的时间戳（用于审计和分析）
+                    order_data["last_notify_at"] = time.time()
+                    
+                    # 记录最后一次收到通知的可读时间（便于人工查看）
+                    order_data["last_notify_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
+                    # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                    
+                    # 记录日志：订单已支付，跳过重复处理
+                    logging.info(
+                        f"[支付通知] 订单已支付，跳过处理（重复通知#{notify_count}）- 订单: {out_trade_no}"
+                    )
+                    
+                    # ========== 写入支付操作日志（重复通知）==========
+                    # 虽然不处理业务逻辑，但我们仍然需要记录这次重复通知
+                    # 这对于安全审计和问题排查非常重要
+                    _write_payment_log(
+                        user_id=order_data.get("username", "unknown"),  # 订单所有者
+                        order_id=out_trade_no,                          # 商户订单号
+                        action="payment_duplicate_notify",              # 操作类型：重复通知
+                        log_data={
+                            # 重复通知信息
+                            "notify_count": notify_count,               # 这是第几次通知
+                            "notify_params": params,                    # 本次通知的参数
+                            "notify_ip": request.remote_addr,           # 通知来源IP
+                            "last_notify_at": order_data["last_notify_at"],     # 通知时间戳
+                            "last_notify_time": order_data["last_notify_time"], # 通知时间（可读）
+                            # 订单信息
+                            "order_status": order_data.get("status"),   # 订单状态（应该是paid）
+                            "first_paid_at": order_data.get("paid_at"), # 首次支付时间
+                            "first_paid_time": order_data.get("paid_time"), # 首次支付时间（可读）
+                            # 操作结果
+                            "success": True,
+                            "message": f"重复通知（第{notify_count}次），订单已处理，跳过业务逻辑"
+                        }
+                    )
+                    
+                    # 返回success告诉易支付我们已经收到通知
+                    # 这样易支付就不会继续重试了
                     return "success"
+                
+                # ========== 首次处理支付通知 ==========
+                # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
                 
                 # 更新订单状态为已支付
                 order_data["status"] = "paid"
@@ -27234,6 +27292,12 @@ def start_web_server(args_param):
                 order_data["paid_at"] = time.time()        # 支付时间（时间戳）
                 order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
                 order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
+                
+                # ========== 添加首次处理标记（用于幂等性保护）==========
+                # notify_processed_at: 首次处理通知的时间戳（用于审计）
+                order_data["notify_processed_at"] = time.time()
+                # notify_count: 通知计数，初始值为1（表示这是第一次处理）
+                order_data["notify_count"] = 1
                 
                 # 保存更新后的订单数据
                 with open(order_file, "w", encoding="utf-8") as f:
@@ -27441,7 +27505,7 @@ def start_web_server(args_param):
     @app.route("/api/payment/return", methods=["GET"])
     def payment_return():
         """
-        同步返回页面接口
+        支付返回页面（同步通知）
         
         请求方法：GET
         权限要求：无（公开页面）
@@ -27450,36 +27514,166 @@ def start_web_server(args_param):
         用户在支付页面完成支付后，浏览器会跳转到这个URL。
         这个页面用于显示支付结果，提供友好的用户体验。
         
-        重要说明：
-        1. 这个页面仅用于展示，不能作为支付成功的判断依据
-        2. 用户可能不会访问这个页面（例如直接关闭浏览器）
-        3. 订单状态必须以异步通知（notify）为准
-        4. 这个页面可以显示支付结果，并提供返回应用的按钮
+        ========== 重要的安全说明 ==========
+        1. **这个页面仅用于向用户展示支付结果**
+        2. **不要依赖这个页面更新订单状态**（因为用户可以刷新页面）
+        3. **订单状态的更新必须通过异步通知（notify）完成**
+        4. **这个页面只是"查询并显示"订单状态，不执行任何业务逻辑**
+        5. 用户可能不会访问这个页面（例如直接关闭浏览器）
+        6. 恶意用户可能会伪造访问，所以必须验证签名
+        
+        为什么不能用return页面更新订单状态？
+        - 用户可以刷新页面（导致重复处理）
+        - 恶意用户可以伪造请求
+        - 用户可能不访问这个页面（直接关闭支付窗口）
+        - 网络问题可能导致页面无法加载
         
         请求参数（查询字符串）：
         彩虹易支付会在URL中附加参数，例如：
             - out_trade_no: 商户订单号
             - trade_no: 易支付订单号
             - trade_status: 支付状态
-            - sign: 签名
+            - sign: 签名（用于验证请求的真实性）
         
         返回：HTML页面（支付结果展示页面）
         """
         try:
-            # 获取URL查询参数
+            # ========== 获取URL查询参数 ==========
             # request.args 获取GET请求的查询字符串参数
             params = request.args.to_dict()
             
-            # 记录日志
-            logging.info(f"[支付返回] 用户返回 - 参数: {params}")
-            
-            # 提取订单号
+            # 提取关键参数
             out_trade_no = params.get("out_trade_no", "")
             trade_status = params.get("trade_status", "")
             
-            # 构造简单的HTML支付结果页面
-            # 实际项目中，可以返回一个更美观的前端页面
-            if trade_status == "TRADE_SUCCESS":
+            # 记录return页面访问日志
+            logging.info(
+                f"[支付返回] 用户访问支付返回页面 - 订单: {out_trade_no}, "
+                f"IP: {request.remote_addr}, 状态: {trade_status}"
+            )
+            
+            # ========== 安全检查：验证签名 ==========
+            # 防止恶意用户伪造支付成功页面
+            # 即使这个页面不执行业务逻辑，我们也要验证签名
+            yipay_client = RainbowYiPayClient()
+            if not yipay_client.verify_sign(params):
+                # 签名验证失败，记录警告日志
+                logging.warning(
+                    f"[支付返回] 签名验证失败 - 订单: {out_trade_no}, "
+                    f"IP: {request.remote_addr}, 参数: {params}"
+                )
+                # 返回错误页面
+                return """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>验证失败</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background-color: #f5f5f5;
+                        }
+                        .result-box {
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                        }
+                        .fail-icon {
+                            font-size: 60px;
+                            color: #f5222d;
+                            margin-bottom: 20px;
+                        }
+                        .title {
+                            font-size: 24px;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }
+                        .info {
+                            color: #666;
+                            margin-bottom: 30px;
+                        }
+                        .button {
+                            display: inline-block;
+                            padding: 10px 30px;
+                            background-color: #1890ff;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            transition: background-color 0.3s;
+                        }
+                        .button:hover {
+                            background-color: #40a9ff;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="result-box">
+                        <div class="fail-icon">⚠</div>
+                        <div class="title">验证失败</div>
+                        <div class="info">
+                            <p>请求验证失败，请联系客服</p>
+                        </div>
+                        <a href="/" class="button">返回首页</a>
+                    </div>
+                </body>
+                </html>
+                """, 400
+            
+            # ========== 仅查询订单状态，不执行业务逻辑 ==========
+            # 构造订单文件路径
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+            
+            # 初始化订单数据（用于日志记录）
+            order_data = None
+            order_exists = False
+            
+            # 检查订单是否存在并读取
+            if os.path.exists(order_file):
+                order_exists = True
+                try:
+                    # 读取订单数据（只读，不修改）
+                    with open(order_file, "r", encoding="utf-8") as f:
+                        order_data = json.load(f)
+                except Exception as e:
+                    logging.error(f"[支付返回] 读取订单文件失败 - 订单: {out_trade_no}, 错误: {str(e)}")
+            
+            # ========== 写入访问日志（用于安全审计）==========
+            # 记录每次return页面的访问，便于监控和排查问题
+            if order_data:
+                _write_payment_log(
+                    user_id=order_data.get("username", "unknown"),  # 订单所有者
+                    order_id=out_trade_no,                          # 商户订单号
+                    action="payment_return_page_visit",             # 操作类型：访问返回页面
+                    log_data={
+                        # 返回页面信息
+                        "return_params": params,                    # URL中的参数
+                        "visitor_ip": request.remote_addr,          # 访问者IP
+                        "user_agent": request.headers.get("User-Agent", ""),  # 浏览器信息
+                        # 订单信息
+                        "order_exists": order_exists,               # 订单是否存在
+                        "order_status": order_data.get("status", "unknown"),  # 订单状态
+                        "paid_at": order_data.get("paid_at"),       # 支付时间
+                        "paid_time": order_data.get("paid_time"),   # 支付时间（可读）
+                        # 操作结果
+                        "success": True,
+                        "message": "用户访问支付返回页面（仅展示，不执行业务逻辑）"
+                    }
+                )
+            
+            # ========== 构造HTML支付结果页面 ==========
+            # 根据订单状态和trade_status显示不同的页面
+            
+            # 情况1：订单存在且已支付（正常情况）
+            if order_exists and order_data and order_data.get("status") == "paid":
                 html = f"""
                 <!DOCTYPE html>
                 <html>
@@ -27538,19 +27732,134 @@ def start_web_server(args_param):
                         <div class="title">支付成功！</div>
                         <div class="info">
                             <p>订单号：{out_trade_no}</p>
-                            <p>感谢您的支付，订单处理中...</p>
+                            <p>支付金额：{order_data.get("amount", "未知")}元</p>
+                            <p>商品：{order_data.get("product_name", "未知")}</p>
+                            <p>支付时间：{order_data.get("paid_time", "未知")}</p>
+                            <p>感谢您的支付，订单已完成！</p>
+                            <p id="redirect-text">页面将在 5 秒后自动跳转...</p>
                         </div>
-                        <a href="/" class="button">返回首页</a>
+                        <a href="/" class="button">立即返回首页</a>
                     </div>
                     <script>
-                        // 3秒后自动跳转到首页
-                        setTimeout(function() {{
-                            window.location.href = '/';
-                        }}, 3000);
+                        // 显示倒计时，提升用户体验
+                        var countdown = 5;
+                        var redirectText = document.getElementById('redirect-text');
+                        var timer = setInterval(function() {{
+                            countdown--;
+                            if (countdown > 0) {{
+                                redirectText.textContent = '页面将在 ' + countdown + ' 秒后自动跳转...';
+                            }} else {{
+                                redirectText.textContent = '正在跳转...';
+                                clearInterval(timer);
+                                window.location.href = '/';
+                            }}
+                        }}, 1000);
                     </script>
                 </body>
                 </html>
                 """
+            # 情况2：trade_status显示成功，但订单状态未更新（可能通知还未到达）
+            elif trade_status == "TRADE_SUCCESS":
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>支付处理中</title>
+                    <style>
+                        body {{
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background-color: #f5f5f5;
+                        }}
+                        .result-box {{
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                        }}
+                        .pending-icon {{
+                            font-size: 60px;
+                            color: #faad14;
+                            margin-bottom: 20px;
+                        }}
+                        .title {{
+                            font-size: 24px;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }}
+                        .info {{
+                            color: #666;
+                            margin-bottom: 30px;
+                        }}
+                        .button {{
+                            display: inline-block;
+                            padding: 10px 30px;
+                            background-color: #1890ff;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            transition: background-color 0.3s;
+                        }}
+                        .button:hover {{
+                            background-color: #40a9ff;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="result-box">
+                        <div class="pending-icon">⏳</div>
+                        <div class="title">支付处理中...</div>
+                        <div class="info">
+                            <p>订单号：{out_trade_no}</p>
+                            <p>您的支付正在处理中，请稍候</p>
+                            <p id="status-text">订单状态将在几秒内更新</p>
+                        </div>
+                        <a href="/" class="button">返回首页</a>
+                    </div>
+                    <script>
+                        // 自动刷新逻辑（带次数限制，防止无限刷新）
+                        // 从localStorage读取刷新次数
+                        var refreshCount = parseInt(localStorage.getItem('payment_refresh_count_{out_trade_no}') || '0');
+                        var maxRefreshes = 5; // 最多刷新5次（约25秒）
+                        
+                        if (refreshCount < maxRefreshes) {{
+                            // 更新刷新次数
+                            localStorage.setItem('payment_refresh_count_{out_trade_no}', refreshCount + 1);
+                            
+                            // 显示倒计时
+                            var countdown = 5;
+                            var statusText = document.getElementById('status-text');
+                            var timer = setInterval(function() {{
+                                countdown--;
+                                if (countdown > 0) {{
+                                    statusText.textContent = '订单状态将在 ' + countdown + ' 秒后刷新...（剩余' + (maxRefreshes - refreshCount) + '次）';
+                                }} else {{
+                                    statusText.textContent = '正在刷新...';
+                                    clearInterval(timer);
+                                }}
+                            }}, 1000);
+                            
+                            // 5秒后刷新页面
+                            setTimeout(function() {{
+                                window.location.reload();
+                            }}, 5000);
+                        }} else {{
+                            // 达到最大刷新次数，清理localStorage并提示用户
+                            localStorage.removeItem('payment_refresh_count_{out_trade_no}');
+                            document.getElementById('status-text').textContent = '请稍后手动刷新查看订单状态，或返回首页查看';
+                        }}
+                    </script>
+                </body>
+                </html>
+                """
+            # 情况3：支付失败或其他状态
             else:
                 html = f"""
                 <!DOCTYPE html>
@@ -27620,12 +27929,15 @@ def start_web_server(args_param):
                 </html>
                 """
             
+            # 返回HTML页面
             return html
         
         except Exception as e:
+            # 捕获所有异常，记录日志
             logging.error(f"[支付返回] 处理返回页面异常: {str(e)}")
             logging.error(traceback.format_exc())
-            return "<html><body><h1>页面加载失败</h1></body></html>", 500
+            # 返回友好的错误页面
+            return "<html><body><h1>页面加载失败</h1><p>请联系客服</p></body></html>", 500
 
     @app.route("/api/payment/orders", methods=["GET"])
     @login_required
@@ -28591,6 +28903,142 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"获取日志失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment/notify_stats", methods=["GET"])
+    @admin_required
+    def admin_payment_notify_stats():
+        """
+        获取支付通知统计信息接口（管理员专用）
+        
+        请求方法：GET
+        权限要求：管理员权限（admin_required装饰器）
+        
+        功能说明：
+        这个接口用于监控支付通知系统的运行状况，统计重复通知的情况。
+        可以帮助管理员发现：
+        - 哪些订单收到了重复通知
+        - 重复通知的频率
+        - 是否存在异常的重复通知模式
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - stats (dict): 统计信息
+                - total_orders (int): 总订单数
+                - repeat_notifies (int): 重复通知总次数（不包括首次通知）
+                - max_repeat_count (int): 单个订单的最大通知次数
+                - orders_with_repeats (list): 有重复通知的订单列表
+                    每个订单包含：
+                    - order_id (str): 订单号
+                    - notify_count (int): 收到通知的总次数
+                    - last_notify_time (str): 最后一次通知时间
+                    - username (str): 订单所有者
+                    - amount (str): 订单金额
+                    - status (str): 订单状态
+        
+        使用场景：
+        - 监控：实时监控支付系统的通知重试情况
+        - 告警：发现异常的重复通知模式（例如某订单被通知了上百次）
+        - 优化：分析通知重试的原因，优化幂等性处理机制
+        - 调试：排查支付通知相关的问题
+        """
+        try:
+            # ========== 初始化统计数据结构 ==========
+            
+            stats = {
+                "total_orders": 0,              # 总订单数
+                "paid_orders": 0,               # 已支付订单数
+                "repeat_notifies": 0,           # 重复通知总次数（不包括首次）
+                "max_repeat_count": 0,          # 单个订单的最大通知次数
+                "orders_with_repeats": []       # 有重复通知的订单详情列表
+            }
+            
+            # ========== 遍历所有订单文件，收集统计信息 ==========
+            
+            # 检查订单目录是否存在
+            if not os.path.exists(PAYMENT_ORDERS_DIR):
+                # 订单目录不存在，返回空统计
+                return jsonify({
+                    "success": True,
+                    "stats": stats,
+                    "message": "订单目录不存在，统计为空"
+                })
+            
+            # 遍历订单目录中的所有JSON文件
+            for filename in os.listdir(PAYMENT_ORDERS_DIR):
+                # 只处理JSON文件
+                if not filename.endswith(".json"):
+                    continue
+                
+                # 构造完整的文件路径
+                filepath = os.path.join(PAYMENT_ORDERS_DIR, filename)
+                
+                try:
+                    # 读取订单数据
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        order_data = json.load(f)
+                    
+                    # 统计总订单数
+                    stats["total_orders"] += 1
+                    
+                    # 统计已支付订单数
+                    if order_data.get("status") == "paid":
+                        stats["paid_orders"] += 1
+                    
+                    # 获取通知计数（notify_count字段）
+                    # 注意：对于旧订单（在添加计数功能之前创建的），notify_count字段不存在
+                    # 我们将其默认为0，这样它们不会被计入重复通知统计
+                    # 这是合理的，因为我们无法得知旧订单收到过多少次通知
+                    # 只有在添加此功能之后创建的订单才会有准确的统计数据
+                    notify_count = order_data.get("notify_count", 0)
+                    
+                    # 如果收到过通知（notify_count > 0）
+                    if notify_count > 0:
+                        # 更新最大通知次数
+                        stats["max_repeat_count"] = max(stats["max_repeat_count"], notify_count)
+                        
+                        # 如果通知次数大于1，说明有重复通知
+                        if notify_count > 1:
+                            # 累加重复通知次数（不包括首次通知）
+                            stats["repeat_notifies"] += (notify_count - 1)
+                            
+                            # 将这个订单添加到重复通知列表
+                            stats["orders_with_repeats"].append({
+                                "order_id": order_data.get("order_id", filename.replace(".json", "")),
+                                "notify_count": notify_count,                           # 通知总次数
+                                "last_notify_time": order_data.get("last_notify_time", "未知"),  # 最后通知时间
+                                "last_notify_at": order_data.get("last_notify_at", 0),  # 最后通知时间戳
+                                "first_notify_time": order_data.get("paid_time", "未知"),  # 首次通知时间
+                                "username": order_data.get("username", "未知"),         # 订单所有者
+                                "amount": order_data.get("amount", "0"),                # 订单金额
+                                "status": order_data.get("status", "unknown"),          # 订单状态
+                                "product_name": order_data.get("product_name", "未知")  # 商品名称
+                            })
+                
+                except Exception as e:
+                    # 读取单个订单文件失败，记录日志但继续处理其他订单
+                    logging.error(f"[通知统计] 读取订单文件失败: {filename}, 错误: {str(e)}")
+                    continue
+            
+            # ========== 对重复通知列表排序 ==========
+            # 按通知次数降序排列，通知次数最多的订单排在最前面
+            stats["orders_with_repeats"].sort(key=lambda x: x["notify_count"], reverse=True)
+            
+            # ========== 返回统计结果 ==========
+            
+            return jsonify({
+                "success": True,
+                "stats": stats,
+                "message": "统计完成"
+            })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[通知统计] 获取统计信息失败: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"获取统计信息失败: {str(e)}"
             }), 500
 
     # ==============================================================================
