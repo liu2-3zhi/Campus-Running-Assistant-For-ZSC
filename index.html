@@ -8856,16 +8856,61 @@
             </button>
           </div>
 
-          <!-- 退款结果显示区域 -->
-          <div id="admin-refund-result-container_modal" class="hidden">
-            <!-- 成功提示：绿色背景 -->
-            <!-- 此内容将由JavaScript动态更新 -->
+          <!-- 退款结果显示区域：成功时显示 -->
+          <!-- 包含退款单号和退款金额的详细信息 -->
+          <div id="admin-refund-result-container_modal" class="hidden space-y-3 bg-green-50 border border-green-200 rounded-lg p-4">
+            <!-- 成功标题 -->
+            <h5 class="font-semibold text-base text-green-700 flex items-center">
+              <!-- 成功图标：打勾标志 -->
+              <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              退款申请已提交
+            </h5>
+            
+            <!-- 退款详细信息显示 -->
+            <div class="space-y-2 text-sm">
+              <!-- 退款单号行 -->
+              <div class="flex justify-between items-center py-2 border-b border-green-100">
+                <span class="text-green-700 font-medium">退款单号：</span>
+                <!-- 退款单号显示元素：由JavaScript动态更新 -->
+                <span id="admin-refund-result-no_modal" class="text-green-900 font-semibold break-all">-</span>
+              </div>
+              
+              <!-- 退款金额行 -->
+              <div class="flex justify-between items-center py-2">
+                <span class="text-green-700 font-medium">退款金额：</span>
+                <!-- 退款金额显示元素：由JavaScript动态更新，使用红色突出显示金额 -->
+                <span id="admin-refund-result-amount_modal" class="text-red-600 font-bold">-</span>
+              </div>
+            </div>
+            
+            <!-- 后续操作提示 -->
+            <p class="text-xs text-green-600 bg-green-100 rounded p-2 mt-2">
+              💡 提示：退款将在1-3个工作日内到账，请耐心等待
+            </p>
           </div>
 
-          <!-- 退款错误提示区域 -->
-          <div id="admin-refund-error-result_modal" class="hidden">
-            <!-- 错误提示：红色背景 -->
-            <!-- 此内容将由JavaScript动态更新 -->
+          <!-- 退款错误提示区域：失败时显示 -->
+          <!-- 显示具体的错误消息，帮助管理员排查问题 -->
+          <div id="admin-refund-error-result_modal" class="hidden bg-red-50 border border-red-200 rounded-lg p-4">
+            <!-- 错误标题 -->
+            <h5 class="font-semibold text-base text-red-700 flex items-center mb-2">
+              <!-- 错误图标：感叹号 -->
+              <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              退款申请失败
+            </h5>
+            
+            <!-- 错误消息显示元素：由JavaScript动态更新 -->
+            <p id="admin-refund-error-message_modal" class="text-sm text-red-800">未知错误</p>
+            
+            <!-- 操作建议提示 -->
+            <p class="text-xs text-red-600 bg-red-100 rounded p-2 mt-3">
+              💡 建议：请检查订单号是否正确，退款金额是否超过原订单金额，或稍后重试
+            </p>
           </div>
         </div>
 
@@ -13425,12 +13470,14 @@
         
         // 在控制台输出详细的错误信息，帮助开发者定位问题
         // error对象包含错误类型、消息、堆栈跟踪等信息
+        // 详细的错误信息仅在控制台显示，不暴露给最终用户，避免泄露敏感信息
         console.error('[PC端支付配置] 加载支付方式配置时发生错误：', error);
         
-        // 向用户显示友好的错误提示
+        // 向用户显示友好的通用错误提示
         // 使用alert弹窗，确保用户能够看到错误信息
         // 提供操作建议：刷新页面或联系管理员
-        alert('无法加载支付方式配置，请刷新页面重试。\n如果问题持续，请联系系统管理员。\n\n错误详情：' + (error.message || '未知错误'));
+        // 不包含具体的错误详情，避免暴露敏感的技术信息
+        alert('无法加载支付方式配置，请刷新页面重试。\n如果问题持续，请联系系统管理员。');
       }
     }
     
@@ -13851,6 +13898,8 @@
       } catch (error) {
         // === 错误处理 ===
         
+        // 在控制台输出详细的错误信息，用于开发和调试
+        // 详细的错误信息仅在控制台显示，不暴露给最终用户，避免泄露敏感信息
         console.error('[PC端订单查询] 查询订单时发生错误：', error);
         
         // 隐藏订单详情容器
@@ -13858,7 +13907,8 @@
           detailContainer.classList.add('hidden');
         }
         
-        // 显示错误提示
+        // 显示通用的错误提示给用户
+        // 使用通用错误消息，避免直接显示error.message可能包含的敏感技术信息
         if (resultDiv) {
           resultDiv.innerHTML = `
             <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
@@ -13866,7 +13916,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
-              ✗ 查询失败：${error.message || '未知错误'}
+              ✗ 订单查询失败，请稍后重试
             </div>
           `;
           resultDiv.classList.remove('hidden');
@@ -13995,11 +14045,22 @@
       }
       
       // 获取退款单号（可选，如果为空则自动生成）
+      // 这里需要验证退款单号是否成功生成，避免空值导致的问题
       let refundNo = refundNoInput ? refundNoInput.value.trim() : '';
       if (!refundNo) {
-        // 自动生成退款单号
+        // 调用生成退款单号函数
         generateAdminRefundOrderNo();
+        
+        // 读取退款单号（需要验证是否成功生成）
         refundNo = refundNoInput ? refundNoInput.value.trim() : '';
+        
+        // 如果退款单号仍为空，显示错误提示并终止
+        // 这是一个健壮性检查，防止退款单号生成失败导致的问题
+        if (!refundNo) {
+          alert('请先生成退款单号');
+          console.error('[PC端退款] 错误：退款单号生成失败');
+          return;
+        }
       }
       
       // 获取退款原因（可选）
@@ -14358,8 +14419,9 @@
       
       try {
         // 选中输入框中的文本
+        // 使用payUrl.length替代硬编码的99999，确保选择完整的URL文本
         payUrlInput.select();
-        payUrlInput.setSelectionRange(0, 99999); // 兼容移动设备
+        payUrlInput.setSelectionRange(0, payUrl.length); // 选择从0到URL长度的所有字符
         
         // 使用现代Clipboard API（优先）
         if (navigator.clipboard && navigator.clipboard.writeText) {
