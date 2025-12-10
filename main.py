@@ -1070,6 +1070,64 @@ def _get_default_config():
         #   2. 前端创建订单时会验证支付方式是否在启用列表中
         #   3. 修改此配置后无需重启服务器，下次创建订单时生效
         "enabled_payment_methods": "alipay,wxpay",
+        # 支付方式详细配置（JSON格式）
+        # 此配置定义了所有支持的支付方式及其显示信息（名称、SVG图标、描述等）
+        # 格式：JSON字符串，包含每个支付方式的完整配置信息
+        # 每个支付方式包含以下字段：
+        #   - name: 支付方式的中文名称，用于前端显示
+        #   - icon: 图标类型标识，固定为 "svg" 表示使用SVG图标
+        #   - svg: SVG图标的完整代码，包含颜色、尺寸等样式
+        #   - description: 支付方式的详细描述，帮助用户理解该支付方式
+        #   - borderColor: 悬停时的边框颜色样式类（Tailwind CSS类名）
+        #   - textColor: 文字颜色样式类（Tailwind CSS类名）
+        # 注意：
+        #   1. SVG图标使用 viewBox="0 0 24 24" 标准尺寸
+        #   2. 颜色使用 currentColor 以便继承父元素颜色
+        #   3. 添加新支付方式只需在此JSON中新增配置项即可
+        #   4. 修改此配置后无需重启服务器，前端会动态加载最新配置
+        #   5. 必须保持JSON格式正确，否则会导致配置解析失败
+        "payment_methods_config": json.dumps({
+            "alipay": {
+                "name": "支付宝支付",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+                "description": "支持支付宝扫码支付",
+                "borderColor": "hover:border-sky-500",
+                "textColor": "text-sky-600"
+            },
+            "wxpay": {
+                "name": "微信支付",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>',
+                "description": "支持微信扫码支付",
+                "borderColor": "hover:border-green-500",
+                "textColor": "text-green-600"
+            },
+            "bank": {
+                "name": "网银支付",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+                "description": "支持各大银行网银支付",
+                "borderColor": "hover:border-blue-500",
+                "textColor": "text-blue-600"
+            },
+            "qqpay": {
+                "name": "QQ钱包",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>',
+                "description": "支持QQ钱包扫码支付",
+                "borderColor": "hover:border-indigo-500",
+                "textColor": "text-indigo-600"
+            },
+            "unionpay": {
+                "name": "云闪付",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+                "description": "支持云闪付扫码支付",
+                "borderColor": "hover:border-red-500",
+                "textColor": "text-red-600"
+            }
+        }, ensure_ascii=False),
     }
 
     return config
@@ -1490,7 +1548,17 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 1. 启用的支付方式必须在您的易支付商户后台已开通\n")
         f.write("# 2. 前端创建订单时会验证支付方式是否在启用列表中\n")
         f.write("# 3. 修改此配置后无需重启服务器，下次创建订单时生效\n")
-        f.write(f"enabled_payment_methods = {config_obj.get('Rainbow_YiPay', 'enabled_payment_methods', fallback='alipay,wxpay')}\n\n")
+        f.write(f"enabled_payment_methods = {config_obj.get('Rainbow_YiPay', 'enabled_payment_methods', fallback='alipay,wxpay')}\n")
+        f.write("# 支付方式详细配置（JSON格式）\n")
+        f.write("# 定义所有支持的支付方式及其显示信息（名称、SVG图标、描述等）\n")
+        f.write("# 管理员可以在此添加新的支付方式或修改现有支付方式的显示信息\n")
+        f.write("# 每个支付方式包含：name(名称)、icon(图标类型)、svg(SVG代码)、description(描述)、borderColor(边框色)、textColor(文字色)\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 必须保持JSON格式正确，建议使用在线JSON验证工具检查\n")
+        f.write("# 2. SVG图标代码中的引号需要使用单引号，或者对双引号进行转义\n")
+        f.write("# 3. 添加新支付方式后，还需要在 enabled_payment_methods 中启用它\n")
+        f.write("# 4. 修改此配置后无需重启服务器，前端会动态加载最新配置\n")
+        f.write(f"payment_methods_config = {config_obj.get('Rainbow_YiPay', 'payment_methods_config', fallback='{}')}\n\n")
 
 
 
@@ -24810,6 +24878,94 @@ def start_web_server(args_param):
             # 只记录错误日志，不抛出异常
             logging.error(f"[支付日志] 写入失败 - 用户: {user_id}, 操作: {action}, 错误: {str(e)}")
             logging.error(traceback.format_exc())
+
+    @app.route("/api/payment/methods_config", methods=["GET"])
+    def payment_methods_config():
+        """
+        获取支付方式配置接口
+        
+        功能说明：
+        返回所有支持的支付方式及其显示信息（名称、SVG图标、描述、样式等）
+        前端通过此接口获取支付方式配置，实现完全的配置驱动，无需硬编码
+        
+        请求方法：GET
+        权限要求：无（公开接口）
+        
+        返回格式：
+        {
+            "success": true,
+            "methods": {
+                "alipay": {
+                    "name": "支付宝支付",
+                    "icon": "svg",
+                    "svg": "<svg>...</svg>",
+                    "description": "支持支付宝扫码支付",
+                    "borderColor": "hover:border-sky-500",
+                    "textColor": "text-sky-600"
+                },
+                "wxpay": { ... },
+                ...
+            }
+        }
+        
+        错误返回：
+        {
+            "success": false,
+            "message": "读取配置失败"
+        }
+        
+        使用场景：
+        1. 页面加载时自动调用，动态生成支付方式选择界面
+        2. 管理员修改配置后，前端可重新调用以刷新显示
+        3. 支持动态添加/删除支付方式，无需修改前端代码
+        
+        注意事项：
+        1. 返回的是所有定义的支付方式，实际可用的支付方式还需要结合 enabled_payment_methods 配置
+        2. SVG图标代码已包含样式类，前端可直接渲染
+        3. 如果配置文件中不存在此配置，返回空对象 {}
+        """
+        try:
+            # 从配置文件中读取支付方式配置
+            # 使用 configparser 读取 config.ini 文件
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 获取支付方式配置的JSON字符串
+            # 从 Rainbow_YiPay 节中读取 payment_methods_config 配置项
+            # 如果配置不存在，使用空JSON对象作为默认值
+            methods_config_str = config.get(
+                "Rainbow_YiPay",
+                "payment_methods_config",
+                fallback="{}"
+            )
+            
+            # 将JSON字符串解析为Python字典对象
+            # 这样前端可以直接使用，无需再次解析
+            methods_config = json.loads(methods_config_str)
+            
+            # 记录日志，便于调试和监控
+            logging.info(f"[支付方式配置] 成功读取配置，共 {len(methods_config)} 个支付方式")
+            
+            # 返回成功响应，包含所有支付方式的配置信息
+            return jsonify({
+                "success": True,
+                "methods": methods_config
+            })
+        except json.JSONDecodeError as e:
+            # JSON解析失败，说明配置文件中的JSON格式不正确
+            logging.error(f"[支付方式配置] JSON解析失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": "配置格式错误，请检查JSON语法"
+            }), 500
+        except Exception as e:
+            # 捕获其他异常（如文件读取失败、配置节不存在等）
+            logging.error(f"[支付方式配置] 读取配置失败: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": "读取配置失败"
+            }), 500
 
     @app.route("/api/payment/create", methods=["POST"])
     @login_required

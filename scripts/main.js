@@ -57,73 +57,121 @@
 })();
 
 // ========================================
-// 支付方式全局配置
-// 管理员可以在此添加更多支付方式
+// 支付方式配置（从后端动态加载）
 // ========================================
+
 /**
- * 支付方式配置对象
+ * 全局变量：支付方式配置对象
  * 
- * 说明：
- * 1. 这是一个集中管理所有支付方式的配置对象
- * 2. 每个支付方式包含以下属性：
- *    - name: 显示给用户的中文名称
- *    - icon: 图标emoji（用于增强视觉效果）
- *    - borderColor: Tailwind CSS完整的边框颜色类名（用于hover效果）
- *    - textColor: Tailwind CSS完整的文字颜色类名（用于单选/复选按钮）
- *    - description: 支付方式的简短描述（用于管理员配置面板）
- * 3. 添加新支付方式的步骤：
- *    a) 在此对象中添加新的键值对
- *    b) 确保后端也支持该支付方式
- *    c) 无需修改其他代码，系统会自动识别并显示
+ * 功能：存储从后端加载的所有支付方式配置信息
+ * 数据来源：通过 /api/payment/methods_config 接口从后端动态获取
+ * 加载时机：页面加载完成后（DOMContentLoaded事件）自动调用 loadPaymentMethodsConfig() 函数
  * 
- * 注意：使用完整的Tailwind CSS类名而不是动态生成，确保类名能被正确识别
- * 
- * 示例：添加PayPal支付
- * 'paypal': { 
- *   name: 'PayPal支付', 
- *   icon: '💵', 
- *   borderColor: 'hover:border-purple-500',
- *   textColor: 'text-purple-600',
- *   description: '支持PayPal账户支付'
+ * 数据结构：
+ * {
+ *   'alipay': { 
+ *     name: '支付宝支付',
+ *     icon: 'svg',
+ *     svg: '<svg>...</svg>',
+ *     borderColor: 'hover:border-sky-500',
+ *     textColor: 'text-sky-600',
+ *     description: '支持支付宝扫码支付'
+ *   },
+ *   'wxpay': { ... },
+ *   ...
  * }
+ * 
+ * 注意事项：
+ * 1. 初始值为空对象，必须等待 loadPaymentMethodsConfig() 加载完成后才有数据
+ * 2. 所有使用此变量的代码应确保配置已加载完成
+ * 3. 支持SVG图标，icon字段为'svg'时使用svg字段的SVG代码
+ * 4. 配置完全由后端config.ini管理，添加新支付方式无需修改前端代码
  */
-const PAYMENT_METHODS = {
-  'alipay': { 
-    name: '支付宝支付', 
-    icon: '💰', 
-    borderColor: 'hover:border-sky-500',
-    textColor: 'text-sky-600',
-    description: '支持支付宝扫码支付'
-  },
-  'wxpay': { 
-    name: '微信支付', 
-    icon: '💚', 
-    borderColor: 'hover:border-green-500',
-    textColor: 'text-green-600',
-    description: '支持微信扫码支付'
-  },
-  'bank': { 
-    name: '网银支付', 
-    icon: '🏦', 
-    borderColor: 'hover:border-blue-500',
-    textColor: 'text-blue-600',
-    description: '支持各大银行网银支付'
-  },
-  'qqpay': { 
-    name: 'QQ钱包', 
-    icon: '🐧', 
-    borderColor: 'hover:border-indigo-500',
-    textColor: 'text-indigo-600',
-    description: '支持QQ钱包扫码支付'
-  },
-  'unionpay': { 
-    name: '云闪付', 
-    icon: '💳', 
-    borderColor: 'hover:border-red-500',
-    textColor: 'text-red-600',
-    description: '支持云闪付扫码支付'
-  }
-};
+let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
+
+/**
+ * 从后端加载支付方式配置
+ * 
+ * 功能说明：
+ * 调用后端 /api/payment/methods_config 接口，获取所有支付方式的配置信息
+ * 包括支付方式的名称、SVG图标、描述、样式等，并存储到全局变量 PAYMENT_METHODS 中
+ * 
+ * 调用时机：
+ * 页面加载完成后自动调用（通过DOMContentLoaded事件监听器）
+ * 
+ * 错误处理：
+ * 1. 网络请求失败：记录错误日志，PAYMENT_METHODS保持为空对象
+ * 2. 接口返回失败：记录错误信息，PAYMENT_METHODS保持为空对象
+ * 3. 数据解析失败：记录异常信息，PAYMENT_METHODS保持为空对象
+ * 
+ * 后续影响：
+ * 1. 如果配置加载失败，支付方式选择界面可能无法正常显示
+ * 2. 相关功能会检查PAYMENT_METHODS是否为空，以提供降级方案
+ * 
+ * @returns {Promise<void>} 异步函数，无返回值
+ */
+async function loadPaymentMethodsConfig() {
+    try {
+        // 记录开始加载的日志，便于追踪配置加载流程
+        console.log('[支付方式配置] 开始从后端加载配置...');
+        
+        // 调用后端API接口获取支付方式配置
+        // 使用fetch发起GET请求到 /api/payment/methods_config 端点
+        const response = await fetch('/api/payment/methods_config', {
+            method: 'GET', // GET请求，获取数据
+            headers: {
+                'Content-Type': 'application/json' // 设置请求头，告知服务器期望返回JSON格式数据
+            }
+        });
+        
+        // 解析响应的JSON数据
+        // response.json() 返回一个Promise，解析后得到JavaScript对象
+        const data = await response.json();
+        
+        // 检查接口返回的success字段，判断请求是否成功
+        if (data.success) {
+            // 请求成功，将后端返回的支付方式配置存储到全局变量
+            // data.methods 包含所有支付方式的配置信息（名称、图标、描述等）
+            PAYMENT_METHODS = data.methods;
+            
+            // 记录成功日志，输出配置内容便于调试
+            // 这样开发者可以在浏览器控制台看到完整的配置数据
+            console.log('[支付方式配置] 配置加载成功:', PAYMENT_METHODS);
+        } else {
+            // 请求失败，记录错误信息
+            // data.message 包含服务器返回的具体错误原因
+            console.error('[支付方式配置] 加载失败:', data.message);
+        }
+    } catch (error) {
+        // 捕获所有异常情况（网络错误、JSON解析失败、其他运行时错误等）
+        // 确保即使加载失败也不会导致整个页面崩溃
+        console.error('[支付方式配置] 加载异常:', error);
+    }
+}
+
+// ========================================
+// 页面加载完成后的初始化逻辑
+// ========================================
+
+/**
+ * DOMContentLoaded事件监听器
+ * 
+ * 功能：在DOM完全加载和解析后立即执行初始化代码
+ * 时机：HTML文档被完全加载和解析完成后触发，无需等待样式表、图像等资源
+ * 
+ * 执行内容：
+ * 1. 调用 loadPaymentMethodsConfig() 加载支付方式配置
+ * 2. 其他页面初始化逻辑可以在这里添加
+ * 
+ * 注意事项：
+ * 1. 此事件在页面加载的早期阶段触发，确保配置尽早可用
+ * 2. 如果有其他依赖PAYMENT_METHODS的初始化代码，应该在loadPaymentMethodsConfig()完成后执行
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    // 加载支付方式配置
+    // 这是异步操作，会在后台执行，不阻塞其他初始化逻辑
+    loadPaymentMethodsConfig();
+});
 
 function handleCdnError(resourceName) {
   resourceName = resourceName || "未指定";
@@ -33418,11 +33466,19 @@ async function openPaymentModal() {
                 // 如果配置不存在（未知的支付方式），使用默认配置
                 const config = PAYMENT_METHODS[method] || {
                     name: method.toUpperCase(), // 使用代码本身作为显示名称，转为大写
-                    icon: '💳', // 使用通用的信用卡图标
+                    icon: 'emoji', // 默认使用emoji图标类型
+                    svg: '💳', // 使用通用的信用卡emoji作为备用
                     borderColor: 'hover:border-slate-500', // 使用中性的灰色边框
                     textColor: 'text-slate-600', // 使用中性的灰色文字
                     description: '在线支付'
                 };
+                
+                // 根据图标类型生成图标HTML
+                // 如果icon字段为'svg'，使用svg字段的SVG代码
+                // 否则使用icon字段作为emoji图标
+                const iconHtml = config.icon === 'svg' 
+                    ? config.svg // 直接使用SVG代码（已包含样式类）
+                    : `<span class="text-lg">${config.icon}</span>`; // emoji图标，包裹在span中
                 
                 // 创建支付方式选项的HTML字符串
                 // 使用模板字符串拼接，支持变量插值
@@ -33432,10 +33488,12 @@ async function openPaymentModal() {
                         <!-- 单选按钮：name属性保证同组单选，value属性用于提交数据 -->
                         <input type="radio" name="payment-method" value="${method}" 
                             class="w-4 h-4 ${config.textColor}" ${index === 0 ? 'checked' : ''} />
-                        <!-- 支付方式图标：使用emoji增强视觉效果 -->
-                        <span class="ml-2 text-lg">${config.icon}</span>
-                        <!-- 支付方式名称：显示给用户的中文名称 -->
-                        <span class="ml-2 text-sm font-medium text-slate-700">${config.name}</span>
+                        <!-- 支付方式图标：SVG或emoji，根据配置动态生成 -->
+                        <span class="ml-3 flex items-center gap-2">
+                            ${iconHtml}
+                            <!-- 支付方式名称：显示给用户的中文名称 -->
+                            <span class="text-sm font-medium text-slate-700">${config.name}</span>
+                        </span>
                     </label>
                 `;
                 
@@ -34616,13 +34674,20 @@ async function loadPaymentConfig() {
         // 使用Object.entries()获取所有的键值对
         Object.entries(PAYMENT_METHODS).forEach(([methodCode, methodConfig]) => {
             // methodCode: 支付方式代码，如 'alipay'
-            // methodConfig: 支付方式配置对象，包含 name、icon、borderColor、textColor、description
+            // methodConfig: 支付方式配置对象，包含 name、icon、svg、borderColor、textColor、description
             
             // 检查当前支付方式是否在启用列表中
             const isChecked = enabledMethods.includes(methodCode);
             
+            // 根据图标类型生成图标HTML
+            // 如果icon字段为'svg'，使用svg字段的SVG代码
+            // 否则使用icon字段作为emoji图标
+            const iconHtml = methodConfig.icon === 'svg' 
+                ? methodConfig.svg // 直接使用SVG代码（已包含样式类）
+                : `<span class="text-xl">${methodConfig.icon}</span>`; // emoji图标，包裹在span中
+            
             // 生成复选框HTML
-            // 每个复选框包含：图标、名称、描述
+            // 每个复选框包含：图标（SVG或emoji）、名称、描述
             checkboxesHTML += `
                 <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer ${methodConfig.borderColor} transition-colors">
                     <!-- 复选框输入元素 -->
@@ -34632,8 +34697,10 @@ async function loadPaymentConfig() {
                            class="w-4 h-4 ${methodConfig.textColor} rounded" 
                            ${isChecked ? 'checked' : ''} />
                     
-                    <!-- 支付方式图标 -->
-                    <span class="ml-2 text-xl">${methodConfig.icon}</span>
+                    <!-- 支付方式图标：SVG或emoji，根据配置动态生成 -->
+                    <span class="ml-3 flex items-center">
+                        ${iconHtml}
+                    </span>
                     
                     <!-- 支付方式信息：名称和描述 -->
                     <div class="ml-2 flex-1">
