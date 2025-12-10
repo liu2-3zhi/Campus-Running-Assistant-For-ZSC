@@ -19002,17 +19002,21 @@ def start_web_server(args_param):
             )
 
     @app.route("/auth/admin/clear_user_avatar", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_clear_user_avatar():
         """管理员：强制清除用户头像"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+        # 获取当前登录用户
+        # 使用Flask的g对象获取用户名，这是由@login_required装饰器设置的
+        auth_username = g.user
+        
+        # 检查细粒度权限：用户管理权限
+        # manage_users 权限允许管理员执行用户相关的管理操作，包括清除用户头像
+        # 这是一个涉及用户数据修改的敏感操作，需要专门的用户管理权限
+        if not auth_system.check_permission(auth_username, 'manage_users'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
 
         data = request.json
         target_username = data.get("username", "")
@@ -21704,11 +21708,25 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "删除失败"}), 500
 
     @app.route("/api/admin/check_ip_ban", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def check_ip_ban_api():
         """
         检查IP封禁状态API
+        这是一个查询类接口，用于检查指定IP是否被封禁
         """
+        # 获取当前登录用户
+        # 使用Flask的g对象获取用户名，这是由@login_required装饰器设置的
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统日志和安全相关信息
+        # IP封禁状态属于系统安全信息的一部分，需要日志查看权限
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
             client_ip = request.remote_addr
             data = request.get_json() or {}
@@ -21932,15 +21950,25 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存失败"}), 500
 
     @app.route("/api/admin/sms/check_balance", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def check_sms_balance():
         """
         查询短信宝余额
+        这是一个查询类接口，用于查看短信服务的余额信息
         """
+        # 获取当前登录用户（由@login_required装饰器设置到g.user）
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统的运行状态和配置信息
+        # 短信余额是系统运行状态的一部分，属于查询类操作，使用view_logs权限
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
             cache_key = "sms_balance_cache"
             current_time = time.time()
             rate_limit_seconds = 120
@@ -22228,15 +22256,26 @@ def start_web_server(args_param):
     # ============================================================================
 
     @app.route("/api/admin/ssl/info", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_ssl_info():
         """
         获取当前SSL配置和证书信息。
+        这是一个查询类接口，用于查看SSL证书配置和状态
         """
+        # 获取当前登录用户（由@login_required装饰器设置到g.user）
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统配置和状态信息
+        # SSL证书信息属于系统配置的查看操作，使用view_logs权限即可
+        # 注意：这里只是查看证书信息，不涉及修改操作
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
             current_ssl_config = load_ssl_config()
             config_info = {
                 "ssl_enabled": current_ssl_config.get("ssl_enabled", False),
@@ -22851,18 +22890,25 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/bruteforce/status", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_bruteforce_status():
         """
         获取所有密码恢复任务的状态
-        需要超级管理员权限
+        这是一个查询类接口，用于查看密码恢复任务的运行状态
         """
+        # 获取当前登录用户（由@login_required装饰器设置到g.user）
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统的运行状态和任务信息
+        # 密码恢复任务状态属于系统运行信息的一部分，使用view_logs权限
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
-            # 检查是否为超级管理员
-            is_super_admin, error_response = check_super_admin_permission()
-            if not is_super_admin:
-                return error_response
 
             global brute_force_manager
             if not brute_force_manager:
@@ -29043,13 +29089,13 @@ def start_web_server(args_param):
             }), 500
 
     @app.route("/api/admin/payment/notify_stats", methods=["GET"])
-    @admin_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_payment_notify_stats():
         """
         获取支付通知统计信息接口（管理员专用）
         
         请求方法：GET
-        权限要求：管理员权限（admin_required装饰器）
+        权限要求：需要日志查看权限（view_logs）
         
         功能说明：
         这个接口用于监控支付通知系统的运行状况，统计重复通知的情况。
@@ -29079,6 +29125,19 @@ def start_web_server(args_param):
         - 优化：分析通知重试的原因，优化幂等性处理机制
         - 调试：排查支付通知相关的问题
         """
+        # 获取当前登录用户（由@login_required装饰器设置到g.user）
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统日志和统计信息
+        # 支付通知统计属于系统运行状态的监控数据，使用view_logs权限
+        # 这是一个只读的查询操作，不涉及数据修改
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
             # ========== 初始化统计数据结构 ==========
             
