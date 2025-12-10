@@ -5287,35 +5287,58 @@ function refreshMobileSessionPicker() {
           if (cdnTab)
             cdnTab.style.display = canManageSystem ? "block" : "none";
 
-          // [修复] 显示密码恢复标签 (仅超级管理员可见)
+          // [修复] 显示密码恢复标签 - 使用用户组别判断而非权限判断
+          // 
+          // 修复原因：
+          // 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
+          // 例如：user组的用户可能被配置为拥有 manage_users 或 god_mode 权限
+          // 因此，不能通过检查权限来判断用户是否是真正的管理员
+          // 必须直接读取用户组别（group）来准确判断用户的管理员身份
           // 
           // 功能说明：
-          // 1. 根据用户的god_mode权限决定是否显示"密码恢复"标签
-          // 2. 只有拥有god_mode权限的用户（通常是super_admin组）才能看到此标签
-          // 3. 该功能用于合法的账号密码恢复，因此需要最高权限
+          // 1. 根据用户的组别决定是否显示"密码恢复"标签
+          // 2. 只有 "admin" 组和 "super_admin" 组的用户可以看到此标签
+          // 3. 该功能用于合法的账号密码恢复，因此必须严格限制为管理员专属
           //
-          // 修复说明：
-          // - 使用hasGodMode权限检查结果，而不是直接检查currentUserData.group
-          // - 这样确保权限判断的一致性和准确性
-          // - 即使用户组为super_admin，如果权限配置中没有god_mode，也不会显示
+          // 技术实现：
+          // - 从 currentUserData 全局对象中读取用户组别（group属性）
+          // - currentUserData.group 在用户登录时由后端API设置
+          // - 如果未设置或无效，默认为 "guest" 以确保安全
+          // - 使用严格的字符串比较判断组别是否为管理员
           //
-          // 技术细节：
-          // - bruteforceTab: HTML中ID为"admin-tab-bruteforce_modal"的按钮元素
-          // - hasGodMode: 从权限检查API获取的布尔值（permissionChecks[3]）
-          // - display属性: "block"显示，"none"隐藏
+          // 安全考虑：
+          // - 密码恢复功能是高风险操作，只应对真正的管理员开放
+          // - 即使普通用户拥有管理员权限，也不应该访问此功能
+          // - 通过组别判断可以严格控制访问权限，避免权限滥用
+          //
+          // 与旧版本的区别：
+          // - 旧版本：使用 (canManageUsers || hasGodMode) 权限判断
+          // - 新版本：使用 (userGroup === "admin" || userGroup === "super_admin") 组别判断
+          // - 优势：组别判断更加直接和准确，不会因为差分权限配置而误判
           if (bruteforceTab) {
+            // 从全局对象 currentUserData 中获取用户组别
+            // currentUserData 由登录流程设置，包含用户的完整身份信息
+            // 如果 currentUserData 未定义或 group 属性缺失，默认为 "guest"
+            const userGroup = currentUserData?.group || "guest";
+            
+            // 判断用户是否是管理员或超级管理员（通过组别）
+            // 只有这两个组别的用户才能访问密码恢复功能
+            const isAdmin = userGroup === "admin" || userGroup === "super_admin";
+            
             // [调试日志] 记录密码恢复Tab的显示控制信息
-            console.log("[密码恢复Tab] 显示控制:", {
-              hasGodMode: hasGodMode,                    // 用户是否拥有god_mode权限
+            // 这对于调试权限问题非常重要，可以清楚地看到判断依据
+            console.log("[密码恢复Tab] 组别检查:", {
+              userGroup: userGroup,                      // 用户的组别（来自 currentUserData.group）
+              isAdmin: isAdmin,                          // 是否是管理员（基于组别判断）
               elementFound: !!bruteforceTab,             // 是否找到了按钮元素
               currentDisplay: bruteforceTab.style.display, // 当前的display样式
-              willSetTo: hasGodMode ? "block" : "none"   // 即将设置的display值
+              willDisplay: isAdmin ? "block" : "none"    // 即将设置的display值
             });
             
-            // 根据权限设置按钮的显示状态
-            // 如果hasGodMode为true，设置display为"block"（显示）
-            // 如果hasGodMode为false，设置display为"none"（隐藏）
-            bruteforceTab.style.display = hasGodMode ? "block" : "none";
+            // 根据组别设置按钮的显示状态
+            // 如果 isAdmin 为 true（用户组为 admin 或 super_admin），设置display为"block"（显示）
+            // 如果 isAdmin 为 false（用户组为其他），设置display为"none"（隐藏）
+            bruteforceTab.style.display = isAdmin ? "block" : "none";
             
             // [调试日志] 验证display属性是否设置成功
             // 使用getComputedStyle获取元素的实际计算样式（包括CSS影响）
@@ -5328,8 +5351,8 @@ function refreshMobileSessionPicker() {
             
             // [健壮性检查] 如果设置后仍然不可见，记录警告
             // 这可能表示有CSS规则覆盖了我们的设置
-            if (hasGodMode && computedDisplay === "none") {
-              console.warn("[密码恢复Tab警告] 尽管hasGodMode为true，但按钮仍然不可见。可能的原因:", {
+            if (isAdmin && computedDisplay === "none") {
+              console.warn("[密码恢复Tab警告] 尽管用户是管理员，但按钮仍然不可见。可能的原因:", {
                 inlineStyle: bruteforceTab.style.cssText,           // 内联样式
                 classList: Array.from(bruteforceTab.classList),     // 应用的CSS类
                 parentDisplay: bruteforceTab.parentElement ? 

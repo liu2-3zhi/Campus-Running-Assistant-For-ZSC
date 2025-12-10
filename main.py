@@ -19741,10 +19741,31 @@ def start_web_server(args_param):
         短信测试发送API
         """
         try:
+            # 获取当前登录的用户名
+            # g.user 由 @login_required 装饰器设置，包含已验证的用户身份
             current_user = g.user
-            if not auth_system.is_super_admin(
-                current_user
-            ) and not auth_system.is_admin(current_user):
+            
+            # [修复] 使用用户组别判断而非权限判断
+            # 
+            # 修复原因：
+            # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
+            # 例如：user组的用户可能被配置为拥有 manage_users 或 god_mode 权限
+            # 因此，不能通过检查权限来判断用户是否是真正的管理员
+            # 必须直接读取用户组别（group）来准确判断用户的管理员身份
+            # 
+            # 技术实现：
+            # - 使用 get_user_group() 方法直接获取用户所属的组别
+            # - 只允许 "admin" 和 "super_admin" 组的用户访问此功能
+            # - 这样确保即使普通用户拥有管理员权限，也无法访问管理员专属功能
+            # 
+            # 安全考虑：
+            # - 短信测试功能是管理员专属操作，不应对普通用户开放
+            # - 通过组别判断可以严格控制访问权限，避免权限滥用
+            user_group = auth_system.get_user_group(current_user)
+            
+            # 检查用户组别：只允许管理员和超级管理员访问
+            if user_group not in ["admin", "super_admin"]:
+                # 权限不足时返回403禁止访问状态码
                 return (
                     jsonify(
                         {
@@ -19913,11 +19934,35 @@ def start_web_server(args_param):
         - 调试短信回复webhook功能
         """
         try:
-            # 获取当前用户
+            # 获取当前登录的用户名
+            # g.user 由 @login_required 装饰器设置，确保：
+            # 1. X-Session-ID 请求头已验证（第15714行）
+            # 2. 会话有效性已检查（第15720-15725行）
+            # 3. 用户身份已认证（第15726-15727行）
             current_user = g.user
             
-            # 权限检查：仅管理员可访问
-            if not auth_system.is_super_admin(current_user) and not auth_system.is_admin(current_user):
+            # [修复] 使用用户组别判断而非权限判断
+            # 
+            # 修复原因：
+            # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
+            # 例如：user组的用户可能被配置为拥有 view_logs 权限
+            # 因此，不能通过检查权限来判断用户是否是真正的管理员
+            # 必须直接读取用户组别（group）来准确判断用户的管理员身份
+            # 
+            # 技术实现：
+            # - 使用 get_user_group() 方法直接获取用户所属的组别
+            # - 只允许 "admin" 和 "super_admin" 组的用户访问此功能
+            # - 这样确保即使普通用户拥有日志查看权限，也无法访问管理员专属的短信回复日志
+            # 
+            # 安全考虑：
+            # - 短信回复日志可能包含敏感的用户通信内容
+            # - 必须严格限制为管理员和超级管理员才能访问
+            # - 通过组别判断可以严格控制访问权限，避免权限滥用
+            user_group = auth_system.get_user_group(current_user)
+            
+            # 检查用户组别：只允许管理员和超级管理员访问
+            if user_group not in ["admin", "super_admin"]:
+                # 权限不足时返回403禁止访问状态码
                 return jsonify({
                     "success": False,
                     "message": "权限不足，仅管理员可查看短信回复记录"
