@@ -5167,9 +5167,10 @@ function refreshMobileSessionPicker() {
             cdnTab.style.display = canManageSystem ? "block" : "none";
 
           // [修复] 显示密码恢复标签 (仅超级管理员)
+          // 修复说明：使用hasGodMode权限检查结果，而不是直接检查currentUserData.group
+          // 这样确保权限判断的一致性和准确性
           if (bruteforceTab) {
-             const isSuperAdmin = currentUserData && currentUserData.group === "super_admin";
-             bruteforceTab.style.display = isSuperAdmin ? "block" : "none";
+             bruteforceTab.style.display = hasGodMode ? "block" : "none";
           }
 
           if (modalCaptchaTab)

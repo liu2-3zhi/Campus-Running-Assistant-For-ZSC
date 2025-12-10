@@ -714,8 +714,9 @@
         class="hidden text-sm text-center p-3 rounded-lg bg-green-50 border border-green-200 text-green-600"></div>
 
       <!-- 认证页面备案信息 Footer -->
+      <!-- 修复：移除hidden类，确保footer始终显示以防止UI错位 -->
       <div id="auth-beian-footer"
-        class="mt-6 pt-4 border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400 hidden">
+        class="mt-6 pt-4 border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
         <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
           <!-- ICP备案链接 -->
           <a id="auth-icp-beian-link" href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer"
@@ -1474,8 +1475,9 @@
     </div>
 
     <!-- PC端备案Footer - 所有PC端页面共享 -->
+    <!-- 修复：移除hidden类，确保footer始终显示以防止UI错位 -->
     <div id="pc-beian-footer"
-      class="border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400 hidden">
+      class="border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
       <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
         <a id="pc-icp-beian-link" href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer"
           class="hover:text-sky-600 transition-colors flex items-center gap-1" style="display: none">
@@ -5958,8 +5960,9 @@
     </nav>
 
     <!-- 移动端备案Footer - 所有移动端页面共享 -->
+    <!-- 修复：移除hidden类，确保footer始终显示以防止UI错位 -->
     <div id="mobile-beian-footer"
-      class="mt-4 pt-3 border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400 hidden">
+      class="mt-4 pt-3 border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
       <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
         <a id="mobile-icp-beian-link" href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer"
           class="hover:text-sky-600 transition-colors flex items-center gap-1" style="display: none">
@@ -8741,13 +8744,15 @@
             //   - "auth-": 登录页面(auth-login-container)中的备案footer
             //   - "pc-": 桌面版(desktop-container)中的备案footer  
             //   - "mobile-": 移动版(mobile-container)中的备案footer
+            // 
+            // 修复说明：移除hasInfo判断，footer始终显示（已在HTML中移除hidden类）
+            // 这样即使没有备案信息，footer也会占位，防止UI错位
             const updateBeianSection = (prefix) => {
               const footer = document.getElementById(prefix + "beian-footer");
               if (!footer) return;
 
-              let hasInfo = false;
-
               // 处理 ICP 备案
+              // 如果配置中启用了ICP备案显示且提供了备案号，则显示ICP备案链接
               if (data.show_icp && data.icp_number) {
                 const icpLink = document.getElementById(
                   prefix + "icp-beian-link"
@@ -8758,11 +8763,11 @@
                 if (icpLink && icpText) {
                   icpText.textContent = data.icp_number;
                   icpLink.style.display = "flex";
-                  hasInfo = true;
                 }
               }
 
               // 处理公安网备案
+              // 如果配置中启用了公安备案显示且提供了备案号，则显示公安备案链接
               if (data.show_police && data.police_number) {
                 const policeLink = document.getElementById(
                   prefix + "police-beian-link"
@@ -8773,14 +8778,11 @@
                 if (policeLink && policeText) {
                   policeText.textContent = data.police_number;
                   policeLink.style.display = "flex";
-                  hasInfo = true;
                 }
               }
-
-              if (hasInfo) {
-                footer.classList.remove("hidden");
-                footer.style.display = "block";
-              }
+              
+              // 注释：不再需要hasInfo判断来控制footer显示
+              // footer在HTML中默认就是可见的，确保UI布局稳定
             };
 
             // 分别更新 auth-login-container、PC 端和移动端的备案 footer
