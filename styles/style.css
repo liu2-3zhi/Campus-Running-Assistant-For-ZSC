@@ -1816,3 +1816,20 @@ body.mobile-mode #session-picker-modal {
   height: auto; /* 高度设置为auto，允许随内容自动增长 */
   overflow: visible; /* 确保内容不会被裁剪，不使用滚动条 */
 }
+
+/* ========================================
+   支付系统样式
+   包含订单筛选按钮、支付弹窗、订单列表等样式
+   ======================================== */
+
+/* 订单筛选按钮：默认状态 */
+.orders-filter-btn {
+  /* 默认样式已在HTML中通过Tailwind类名定义 */
+  /* 这里定义激活状态的样式 */
+}
+
+/* 订单筛选按钮：激活状态 */
+.orders-filter-btn.active {
+  /* 激活时的背景色和文字颜色通过JavaScript动态添加 */
+  /* bg-sky-500 和 text-white 类名 */
+}

@@ -1021,6 +1021,115 @@ def _get_default_config():
         "enable_message_review": "false",
     }
 
+    # 彩虹易支付V2配置节，用于配置在线支付接口参数
+    # 彩虹易支付是一个第三方支付平台，支持支付宝、微信支付等多种支付方式
+    # 使用前需要在彩虹易支付平台注册商户账号并获取相关参数
+    config["Rainbow_YiPay"] = {
+        # 易支付接口域名：彩虹易支付平台提供的API接口地址（必填）
+        # 格式示例："https://api.example.com" 或 "https://pay.yourdomain.com"
+        # 注意：请填写完整的域名地址，包含 http:// 或 https:// 协议头，不要在末尾添加斜杠
+        "host": "",
+        # 商户ID（PID）：在彩虹易支付平台注册后获取的唯一商户标识（必填）
+        # 格式：通常为纯数字，例如 "10001"
+        "pid": "",
+        # 商户密钥（KEY）：在彩虹易支付平台获取的用于签名验证的密钥（必填）
+        # 这是一个重要的安全参数，用于生成和验证支付请求的签名，请妥善保管，切勿泄露
+        # 格式：通常为32位随机字符串，例如 "abcdef1234567890abcdef1234567890"
+        "key": "",
+        # 应用访问域名：本应用的公网访问地址（必填）
+        # 用于自动构造异步通知URL（notify_url）
+        # 格式示例："https://yourdomain.com" 或 "https://www.example.com"
+        # 注意：必须是公网可访问的HTTPS地址，包含协议头，末尾不要添加斜杠
+        # 系统会自动拼接为：{app_host}/api/payment/yipay_notify
+        "app_host": "",
+        # 异步通知URL：支付成功后彩虹易支付服务器回调的接口地址（已废弃）
+        # ⚠️ 此配置项已废弃，现在 notify_url 会根据 app_host 自动构造
+        # 格式：{app_host}/api/payment/yipay_notify
+        # 无需手动配置，保留此项仅为向后兼容
+        "notify_url": "",
+        # 同步返回URL：用户支付完成后浏览器跳转的页面地址（可选）
+        # 这是一个用户可见的跳转地址，用于显示支付结果页面
+        # 格式示例："https://yourdomain.com/payment/success"
+        # 注意：
+        # 1. 此URL仅用于展示，不可用于判断支付状态，支付结果以异步通知为准
+        # 2. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值
+        "return_url": "",
+        # 启用的支付方式：管理员可配置的支付方式列表（可选）
+        # 格式：使用逗号分隔的支付方式代码字符串
+        # 支持的支付方式：
+        #   - alipay: 支付宝支付（推荐，覆盖率最高）
+        #   - wxpay: 微信支付（移动端常用）
+        #   - bank: 网银支付（适合大额支付）
+        # 示例：
+        #   - "alipay,wxpay"         启用支付宝和微信支付
+        #   - "alipay,wxpay,bank"    启用所有支付方式
+        #   - "alipay"               只启用支付宝支付
+        # 默认值："alipay,wxpay" 启用支付宝和微信支付
+        # 注意：
+        #   1. 启用的支付方式必须在您的易支付商户后台已开通
+        #   2. 前端创建订单时会验证支付方式是否在启用列表中
+        #   3. 修改此配置后无需重启服务器，下次创建订单时生效
+        "enabled_payment_methods": "alipay,wxpay",
+        # 支付方式详细配置（JSON格式）
+        # 此配置定义了所有支持的支付方式及其显示信息（名称、SVG图标、描述等）
+        # 格式：JSON字符串，包含每个支付方式的完整配置信息
+        # 每个支付方式包含以下字段：
+        #   - name: 支付方式的中文名称，用于前端显示
+        #   - icon: 图标类型标识，固定为 "svg" 表示使用SVG图标
+        #   - svg: SVG图标的完整代码，包含颜色、尺寸等样式
+        #   - description: 支付方式的详细描述，帮助用户理解该支付方式
+        #   - borderColor: 悬停时的边框颜色样式类（Tailwind CSS类名）
+        #   - textColor: 文字颜色样式类（Tailwind CSS类名）
+        # 注意：
+        #   1. SVG图标使用 viewBox="0 0 24 24" 标准尺寸
+        #   2. 颜色使用 currentColor 以便继承父元素颜色
+        #   3. 添加新支付方式只需在此JSON中新增配置项即可
+        #   4. 修改此配置后无需重启服务器，前端会动态加载最新配置
+        #   5. 必须保持JSON格式正确，否则会导致配置解析失败
+        "payment_methods_config": json.dumps({
+            "alipay": {
+                "name": "支付宝支付",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+                "description": "支持支付宝扫码支付",
+                "borderColor": "hover:border-sky-500",
+                "textColor": "text-sky-600"
+            },
+            "wxpay": {
+                "name": "微信支付",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>',
+                "description": "支持微信扫码支付",
+                "borderColor": "hover:border-green-500",
+                "textColor": "text-green-600"
+            },
+            "bank": {
+                "name": "网银支付",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+                "description": "支持各大银行网银支付",
+                "borderColor": "hover:border-blue-500",
+                "textColor": "text-blue-600"
+            },
+            "qqpay": {
+                "name": "QQ钱包",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>',
+                "description": "支持QQ钱包扫码支付",
+                "borderColor": "hover:border-indigo-500",
+                "textColor": "text-indigo-600"
+            },
+            "unionpay": {
+                "name": "云闪付",
+                "icon": "svg",
+                "svg": '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+                "description": "支持云闪付扫码支付",
+                "borderColor": "hover:border-red-500",
+                "textColor": "text-red-600"
+            }
+        }, ensure_ascii=False),
+    }
+
     return config
 
 
@@ -1370,6 +1479,87 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# false：不启用审核，留言直接发布（默认）\n")
         f.write("# 注意：启用此功能需要先配置百度云API密钥（见上方[baidu_cloud]配置节）\n")
         f.write(f"enable_message_review = {config_obj.get('Content_Review', 'enable_message_review', fallback='false')}\n\n")
+
+        # ============================================================
+        # [Rainbow_YiPay] 彩虹易支付V2配置
+        # ============================================================
+        # 彩虹易支付是一个第三方支付平台，提供支付宝、微信支付等多种在线支付方式
+        # 适用于需要集成在线支付功能的网站或应用
+        # 官方文档：请参考您的彩虹易支付服务商提供的API文档
+        f.write("# ============================================================\n")
+        f.write("# [Rainbow_YiPay] 彩虹易支付V2配置\n")
+        f.write("# ============================================================\n")
+        f.write("# 彩虹易支付是第三方支付聚合平台，支持支付宝、微信支付等多种支付方式\n")
+        f.write("# 使用前需要：\n")
+        f.write("# 1. 在彩虹易支付平台注册商户账号\n")
+        f.write("# 2. 获取商户ID（PID）和商户密钥（KEY）\n")
+        f.write("# 3. 配置应用访问域名（app_host），系统会自动构造异步通知URL\n")
+        f.write("# 4. 可选配置同步返回URL（return_url），也可在创建订单时动态传入\n")
+        f.write("# ============================================================\n\n")
+        f.write("[Rainbow_YiPay]\n")
+        f.write("# 易支付接口域名（必填）\n")
+        f.write("# 这是彩虹易支付平台提供的API接口地址\n")
+        f.write("# 格式示例：https://api.example.com 或 https://pay.yourdomain.com\n")
+        f.write("# 注意：必须包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
+        f.write(f"host = {config_obj.get('Rainbow_YiPay', 'host', fallback='')}\n")
+        f.write("# 商户ID（PID）（必填）\n")
+        f.write("# 在彩虹易支付平台注册后获取的唯一商户标识\n")
+        f.write("# 格式：通常为纯数字，例如：10001\n")
+        f.write(f"pid = {config_obj.get('Rainbow_YiPay', 'pid', fallback='')}\n")
+        f.write("# 商户密钥（KEY）（必填）\n")
+        f.write("# 用于生成和验证支付请求签名的密钥，请妥善保管，切勿泄露\n")
+        f.write("# 格式：通常为32位随机字符串\n")
+        f.write("# 示例：abcdef1234567890abcdef1234567890\n")
+        f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
+        f.write("# 应用访问域名（必填）\n")
+        f.write("# 本应用的公网访问地址，用于自动构造异步通知URL\n")
+        f.write("# 格式示例：https://yourdomain.com 或 https://www.example.com\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 必须是公网可访问的HTTPS地址\n")
+        f.write("# 2. 包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
+        f.write("# 3. 系统会自动拼接为：{app_host}/api/payment/yipay_notify\n")
+        f.write(f"app_host = {config_obj.get('Rainbow_YiPay', 'app_host', fallback='')}\n")
+        f.write("# 异步通知URL（已废弃）\n")
+        f.write("# ⚠️ 此配置项已废弃，现在 notify_url 会根据 app_host 自动构造\n")
+        f.write("# 格式：{app_host}/api/payment/yipay_notify\n")
+        f.write("# 无需手动配置，保留此项仅为向后兼容\n")
+        f.write(f"notify_url = {config_obj.get('Rainbow_YiPay', 'notify_url', fallback='')}\n")
+        f.write("# 同步返回URL（可选）\n")
+        f.write("# 用户支付完成后，浏览器会跳转到此URL显示支付结果\n")
+        f.write("# 格式示例：https://yourdomain.com/payment/success\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 此URL仅用于页面展示，不能作为支付成功的判断依据\n")
+        f.write("# 2. 支付状态必须以异步通知（notify_url）的结果为准\n")
+        f.write("# 3. 用户可能不会访问此页面（如直接关闭浏览器）\n")
+        f.write("# 4. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值\n")
+        f.write(f"return_url = {config_obj.get('Rainbow_YiPay', 'return_url', fallback='')}\n")
+        f.write("# 启用的支付方式（可选）\n")
+        f.write("# 管理员可配置启用哪些支付方式，使用逗号分隔\n")
+        f.write("# 支持的支付方式：\n")
+        f.write("#   - alipay: 支付宝支付（推荐，覆盖率最高）\n")
+        f.write("#   - wxpay: 微信支付（移动端常用）\n")
+        f.write("#   - bank: 网银支付（适合大额支付）\n")
+        f.write("# 示例：\n")
+        f.write("#   - alipay,wxpay         启用支付宝和微信支付\n")
+        f.write("#   - alipay,wxpay,bank    启用所有支付方式\n")
+        f.write("#   - alipay               只启用支付宝支付\n")
+        f.write("# 默认值：alipay,wxpay\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 启用的支付方式必须在您的易支付商户后台已开通\n")
+        f.write("# 2. 前端创建订单时会验证支付方式是否在启用列表中\n")
+        f.write("# 3. 修改此配置后无需重启服务器，下次创建订单时生效\n")
+        f.write(f"enabled_payment_methods = {config_obj.get('Rainbow_YiPay', 'enabled_payment_methods', fallback='alipay,wxpay')}\n")
+        f.write("# 支付方式详细配置（JSON格式）\n")
+        f.write("# 定义所有支持的支付方式及其显示信息（名称、SVG图标、描述等）\n")
+        f.write("# 管理员可以在此添加新的支付方式或修改现有支付方式的显示信息\n")
+        f.write("# 每个支付方式包含：name(名称)、icon(图标类型)、svg(SVG代码)、description(描述)、borderColor(边框色)、textColor(文字色)\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 必须保持JSON格式正确，建议使用在线JSON验证工具检查\n")
+        f.write("# 2. SVG图标代码中的引号需要使用单引号，或者对双引号进行转义\n")
+        f.write("# 3. 添加新支付方式后，还需要在 enabled_payment_methods 中启用它\n")
+        f.write("# 4. 修改此配置后无需重启服务器，前端会动态加载最新配置\n")
+        f.write(f"payment_methods_config = {config_obj.get('Rainbow_YiPay', 'payment_methods_config', fallback='{}')}\n\n")
+
 
 
 def is_weak_password(password):
@@ -2147,6 +2337,516 @@ def get_session_file_path(session_id: str) -> str:
     """根据 session_id (UUID) 计算会话文件的完整路径"""
     session_hash = hashlib.sha256(session_id.encode()).hexdigest()
     return os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
+
+
+# ==============================================================================
+# 彩虹易支付V2客户端 - 在线支付接口集成
+# ==============================================================================
+
+
+class RainbowYiPayClient:
+    """
+    彩虹易支付V2接口客户端类
+    
+    功能说明：
+    这个类封装了彩虹易支付（Rainbow Yi Pay）V2版本的所有API接口
+    支持创建支付订单、查询订单状态、验证支付回调签名等功能
+    
+    支付流程：
+    1. 调用 create_order() 创建支付订单，获取支付跳转URL
+    2. 用户在支付页面完成支付
+    3. 支付成功后，彩虹易支付会异步回调 notify_url
+    4. 调用 verify_sign() 验证回调签名，确认支付成功
+    5. 可通过 query_order() 主动查询订单状态
+    
+    安全机制：
+    - 使用MD5签名算法验证所有请求和回调
+    - 签名密钥存储在服务器端，不会暴露给客户端
+    - 异步回调必须验证签名，防止伪造通知
+    """
+
+    def __init__(self, config_file="config.ini"):
+        """
+        初始化彩虹易支付客户端
+        
+        参数:
+            config_file (str): 配置文件路径，默认为 "config.ini"
+        
+        功能:
+            从配置文件中读取彩虹易支付的商户参数，包括：
+            - host: 易支付接口域名
+            - pid: 商户ID
+            - key: 商户密钥（用于签名）
+            - notify_url: 异步通知URL
+            - return_url: 同步返回URL
+        
+        异常:
+            如果配置文件不存在或配置项缺失，会记录错误日志
+        """
+        # 创建一个新的配置解析器实例，用于读取配置文件
+        # strict=False 允许配置项重复（虽然不推荐，但提高兼容性）
+        self.config = configparser.ConfigParser(strict=False)
+        
+        # optionxform=str 保持配置项的大小写敏感，默认会转为小写
+        self.config.optionxform = str
+        
+        # 读取配置文件，使用 UTF-8 编码以支持中文
+        self.config.read(config_file, encoding="utf-8")
+        
+        # 从配置文件的 [Rainbow_YiPay] 节读取易支付接口域名
+        # fallback 参数指定当配置项不存在时的默认值（空字符串）
+        self.host = self.config.get("Rainbow_YiPay", "host", fallback="")
+        
+        # 读取商户ID（PID），这是商户在易支付平台的唯一标识
+        self.pid = self.config.get("Rainbow_YiPay", "pid", fallback="")
+        
+        # 读取商户密钥（KEY），用于生成和验证签名，必须保密
+        self.key = self.config.get("Rainbow_YiPay", "key", fallback="")
+        
+        # 读取异步通知URL，支付成功后易支付会向这个URL发送POST请求
+        self.notify_url = self.config.get("Rainbow_YiPay", "notify_url", fallback="")
+        
+        # 读取同步返回URL，用户支付完成后浏览器会跳转到这个URL
+        self.return_url = self.config.get("Rainbow_YiPay", "return_url", fallback="")
+        
+        # 记录日志：彩虹易支付客户端初始化成功
+        # 日志中包含商户ID，方便调试和追踪
+        logging.info(f"[彩虹易支付] 客户端初始化成功 - 商户ID: {self.pid}")
+
+    def _generate_sign(self, params):
+        """
+        生成MD5签名
+        
+        参数:
+            params (dict): 需要签名的参数字典
+        
+        返回:
+            str: 32位小写MD5签名字符串
+        
+        签名算法说明：
+        1. 将参数按照键名（key）进行升序排序
+        2. 将排序后的参数按照 "key=value&key=value" 格式拼接成字符串
+        3. 在拼接字符串末尾追加商户密钥（key）
+        4. 对最终字符串进行MD5哈希运算
+        5. 将哈希结果转换为32位小写十六进制字符串
+        
+        示例：
+            params = {"pid": "10001", "type": "alipay", "money": "100"}
+            key = "abcd1234"
+            拼接字符串: "money=100&pid=10001&type=alipayabcd1234"
+            MD5结果: "d41d8cd98f00b204e9800998ecf8427e"
+        
+        安全性：
+        - 商户密钥（key）只存在服务器端，不会发送到客户端
+        - 任何参数被篡改都会导致签名验证失败
+        - MD5虽然不是最安全的哈希算法，但对于签名验证足够
+        """
+        # 过滤掉空值参数和签名参数本身（sign 和 sign_type 不参与签名计算）
+        # 这是为了：1) 避免空值影响签名 2) 防止签名参数自身参与签名导致循环依赖
+        filtered_params = {
+            k: v for k, v in params.items() 
+            if v != "" and v is not None and k not in ["sign", "sign_type"]
+        }
+        
+        # 将参数按照键名进行字典序（升序）排序
+        # sorted() 函数返回排序后的键值对列表
+        sorted_params = sorted(filtered_params.items())
+        
+        # 将排序后的参数拼接成 "key=value&key=value&..." 格式的字符串
+        # 使用列表推导式生成 "key=value" 格式，然后用 "&" 连接
+        param_str = "&".join([f"{k}={v}" for k, v in sorted_params])
+        
+        # 在参数字符串末尾直接追加商户密钥（不用 "&" 连接）
+        # 这是彩虹易支付V2的签名规则
+        sign_str = param_str + self.key
+        
+        # 使用MD5算法对签名字符串进行哈希
+        # hashlib.md5() 创建MD5哈希对象
+        # .encode('utf-8') 将字符串转换为字节流（MD5需要字节输入）
+        # .hexdigest() 将哈希结果转换为32位小写十六进制字符串
+        sign = hashlib.md5(sign_str.encode("utf-8")).hexdigest()
+        
+        # 记录调试日志：签名字符串和生成的签名（生产环境建议关闭此日志，避免泄露密钥）
+        logging.debug(f"[彩虹易支付] 签名字符串: {sign_str}")
+        logging.debug(f"[彩虹易支付] 生成签名: {sign}")
+        
+        # 返回生成的签名
+        return sign
+
+    def verify_sign(self, params):
+        """
+        验证回调签名
+        
+        参数:
+            params (dict): 回调参数字典（包含 sign 字段）
+        
+        返回:
+            bool: 签名验证是否通过（True: 通过, False: 失败）
+        
+        功能说明：
+        当彩虹易支付服务器向我们的 notify_url 发送支付结果通知时，
+        会在参数中包含一个 sign 字段，这是易支付用商户密钥生成的签名。
+        我们需要用相同的算法重新计算签名，并与回调中的签名对比，
+        以验证这个回调确实来自彩虹易支付，而不是恶意伪造的请求。
+        
+        验证流程：
+        1. 从回调参数中提取 sign 字段（易支付发送的签名）
+        2. 移除 sign 字段，用剩余参数重新计算签名
+        3. 对比计算出的签名和回调中的签名
+        4. 如果一致，说明回调合法；不一致则可能被篡改
+        
+        安全性：
+        - 签名验证失败的回调必须拒绝处理
+        - 防止攻击者伪造支付成功通知
+        - 保护商户资金安全
+        """
+        # 从回调参数中获取易支付发送的签名（sign 字段）
+        # .get() 方法如果键不存在会返回 None，而不会抛出异常
+        received_sign = params.get("sign")
+        
+        # 如果回调参数中没有 sign 字段，说明这是一个无效的回调
+        # 直接返回 False，拒绝处理
+        if not received_sign:
+            logging.warning("[彩虹易支付] 回调参数中缺少签名字段")
+            return False
+        
+        # 创建一个新的参数字典副本，用于计算签名
+        # 使用 dict() 创建副本，避免修改原始参数字典
+        params_copy = dict(params)
+        
+        # 从副本中移除 sign 字段，因为签名计算时不包含 sign 本身
+        # .pop() 方法删除并返回指定键的值，如果键不存在则返回 None
+        params_copy.pop("sign", None)
+        
+        # 用相同的算法重新计算签名
+        # 调用 _generate_sign() 方法，传入去除 sign 后的参数
+        calculated_sign = self._generate_sign(params_copy)
+        
+        # 对比计算出的签名和回调中收到的签名
+        # 使用 == 运算符进行字符串比较（区分大小写）
+        is_valid = calculated_sign == received_sign
+        
+        # 记录日志：签名验证结果
+        if is_valid:
+            # 验证通过，记录信息日志
+            logging.info(f"[彩虹易支付] 签名验证通过")
+        else:
+            # 验证失败，记录警告日志，并输出两个签名进行对比
+            logging.warning(
+                f"[彩虹易支付] 签名验证失败 - 收到: {received_sign}, 计算: {calculated_sign}"
+            )
+        
+        # 返回验证结果
+        return is_valid
+
+    def create_order(self, out_trade_no, name, money, pay_type="alipay", return_url=None):
+        """
+        创建支付订单
+        
+        参数:
+            out_trade_no (str): 商户订单号（必须唯一，建议使用时间戳+随机数）
+            name (str): 商品名称（显示在支付页面，例如："在线支付100元"）
+            money (str/float): 支付金额（单位：元，最少0.01元）
+            pay_type (str): 支付方式，可选值：
+                - "alipay": 支付宝支付（默认）
+                - "wxpay": 微信支付
+            return_url (str, optional): 同步返回URL，用户支付完成后浏览器跳转的地址
+                - 如果传入此参数，则使用传入的URL（优先级最高）
+                - 如果不传入，则使用配置文件中的 return_url（兼容旧版本）
+                - 这使得每个订单可以有不同的返回地址，提高了灵活性
+        
+        返回:
+            dict: 包含以下字段的字典
+                - success (bool): 是否成功
+                - message (str): 错误信息或成功提示
+                - pay_url (str): 支付跳转URL（成功时返回）
+                - order_data (dict): 完整的订单参数（用于记录日志）
+        
+        功能说明：
+        这个方法会构造支付订单参数，生成签名，然后向彩虹易支付API发送请求。
+        如果请求成功，会返回一个支付URL，前端可以重定向用户到这个URL进行支付。
+        
+        使用示例：
+            client = RainbowYiPayClient()
+            result = client.create_order(
+                out_trade_no="ORDER20230101001",
+                name="在线支付100元",
+                money="100.00",
+                pay_type="alipay"
+            )
+            if result["success"]:
+                # 跳转到 result["pay_url"] 进行支付
+                print(f"支付URL: {result['pay_url']}")
+            else:
+                # 显示错误信息
+                print(f"创建订单失败: {result['message']}")
+        
+        异常处理：
+        - 如果配置不完整（如 host、pid、key 为空），返回错误
+        - 如果网络请求失败，返回错误并记录异常日志
+        - 如果易支付API返回错误，返回错误信息
+        """
+        # 检查必需的配置参数是否已填写
+        # 如果 host、pid 或 key 为空，说明配置不完整，无法创建订单
+        if not self.host or not self.pid or not self.key:
+            # 记录错误日志
+            logging.error("[彩虹易支付] 配置不完整，无法创建订单")
+            # 返回失败响应
+            return {"success": False, "message": "彩虹易支付配置不完整，请联系管理员"}
+        
+        # 构造异步通知URL（notify_url）
+        # 从配置文件中读取应用的公网访问域名（app_host）
+        # app_host 是本应用的公网访问地址，例如："https://yourdomain.com"
+        app_host = self.config.get("Rainbow_YiPay", "app_host", fallback="").strip()
+        
+        # 验证 app_host 是否已配置
+        # app_host 必须配置，因为彩虹易支付需要回调这个地址
+        if not app_host:
+            # 记录错误日志：缺少应用访问域名配置
+            logging.error("[彩虹易支付] 配置缺少 app_host（应用访问域名），无法构造异步通知URL")
+            # 返回失败响应，提示管理员配置 app_host
+            return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
+        
+        # 验证 app_host 格式是否正确
+        # 必须以 http:// 或 https:// 开头，以确保URL格式正确
+        if not (app_host.startswith("http://") or app_host.startswith("https://")):
+            # 记录错误日志：app_host 格式不正确
+            logging.error(f"[彩虹易支付] app_host 格式不正确（缺少协议头）: {app_host}")
+            # 返回失败响应，提示管理员修正配置
+            return {"success": False, "message": "彩虹易支付配置 app_host 格式不正确，必须包含 http:// 或 https://"}
+        
+        # 移除 app_host 末尾的斜杠（如果存在）
+        # 这样可以避免构造出双斜杠的URL，例如：https://example.com//api/...
+        # rstrip('/') 会移除字符串末尾的所有斜杠
+        app_host = app_host.rstrip('/')
+        
+        # 自动构造异步通知URL
+        # 格式：{app_host}/api/payment/yipay_notify
+        # 这是彩虹易支付专用的异步通知接收地址
+        # 当用户支付成功后，彩虹易支付服务器会向这个URL发送POST请求
+        notify_url = f"{app_host}/api/payment/yipay_notify"
+        
+        # 确定同步返回URL（return_url）
+        # 优先使用传入的 return_url 参数（如果提供）
+        # 如果没有传入，则使用配置文件中的 return_url（向后兼容）
+        # 用户支付完成后，浏览器会跳转到这个URL
+        if return_url is None:
+            # 使用配置文件中的默认 return_url
+            return_url = self.return_url
+        
+        # 构造订单参数字典
+        # 这些参数将被发送到彩虹易支付API
+        params = {
+            "pid": self.pid,                    # 商户ID
+            "type": pay_type,                   # 支付方式（alipay/wxpay）
+            "out_trade_no": out_trade_no,       # 商户订单号（必须唯一）
+            "notify_url": notify_url,           # 异步通知URL（动态构造）
+            "return_url": return_url,           # 同步返回URL（可动态传入）
+            "name": name,                       # 商品名称
+            "money": str(money),                # 支付金额（转为字符串）
+        }
+        
+        # 生成签名并添加到参数中
+        # 调用 _generate_sign() 方法计算MD5签名
+        params["sign"] = self._generate_sign(params)
+        
+        # 设置签名类型为 MD5
+        # 这是彩虹易支付V2的标准签名类型
+        params["sign_type"] = "MD5"
+        
+        # 构造完整的API请求URL
+        # 彩虹易支付的创建订单接口路径为 /submit.php
+        api_url = f"{self.host}/submit.php"
+        
+        # 记录信息日志：开始创建订单
+        logging.info(f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
+        
+        try:
+            # 导入 requests 库，用于发送HTTP请求
+            # 在函数内部导入，避免全局导入影响启动速度
+            import requests
+            
+            # 向彩虹易支付API发送POST请求
+            # data 参数指定POST请求体（表单格式）
+            # timeout 设置超时时间为10秒，避免长时间等待
+            response = requests.post(api_url, data=params, timeout=10)
+            
+            # 检查HTTP响应状态码
+            # status_code 200 表示请求成功
+            if response.status_code == 200:
+                # 尝试解析响应内容为JSON格式
+                # 易支付API通常返回JSON格式的响应
+                try:
+                    result = response.json()
+                except json.JSONDecodeError:
+                    # 如果响应不是有效的JSON，可能是HTML格式的支付页面
+                    # 某些易支付版本直接返回支付页面HTML
+                    # 此时 response.url 就是支付URL
+                    logging.warning("[彩虹易支付] API返回非JSON响应，使用响应URL作为支付链接")
+                    return {
+                        "success": True,
+                        "message": "订单创建成功",
+                        "pay_url": response.url,  # 使用重定向后的URL
+                        "order_data": params,
+                    }
+                
+                # 检查API响应中的状态码
+                # code=1 表示成功，其他值表示失败
+                if result.get("code") == 1:
+                    # 订单创建成功
+                    pay_url = result.get("payurl") or result.get("url") or result.get("qrcode")
+                    
+                    # 检查是否成功获取到支付URL
+                    if pay_url:
+                        logging.info(f"[彩虹易支付] 订单创建成功 - 支付URL: {pay_url}")
+                        return {
+                            "success": True,
+                            "message": "订单创建成功",
+                            "pay_url": pay_url,
+                            "order_data": params,
+                        }
+                    else:
+                        # API响应中没有支付URL
+                        logging.error(f"[彩虹易支付] API响应中缺少支付URL: {result}")
+                        return {
+                            "success": False,
+                            "message": "易支付API响应异常，缺少支付URL",
+                        }
+                else:
+                    # 订单创建失败，API返回了错误信息
+                    error_msg = result.get("msg") or result.get("message") or "未知错误"
+                    logging.error(f"[彩虹易支付] 创建订单失败 - {error_msg}")
+                    return {"success": False, "message": f"创建订单失败: {error_msg}"}
+            else:
+                # HTTP请求失败（非200状态码）
+                logging.error(
+                    f"[彩虹易支付] HTTP请求失败 - 状态码: {response.status_code}"
+                )
+                return {
+                    "success": False,
+                    "message": f"支付接口请求失败 (HTTP {response.status_code})",
+                }
+        
+        except requests.exceptions.Timeout:
+            # 请求超时异常
+            logging.error("[彩虹易支付] 请求超时")
+            return {"success": False, "message": "支付接口请求超时，请稍后重试"}
+        
+        except requests.exceptions.RequestException as e:
+            # 其他网络请求异常（如网络不通、DNS解析失败等）
+            logging.error(f"[彩虹易支付] 网络请求异常: {str(e)}")
+            return {"success": False, "message": f"网络请求失败: {str(e)}"}
+        
+        except Exception as e:
+            # 捕获所有未预期的异常
+            logging.error(f"[彩虹易支付] 创建订单异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return {"success": False, "message": f"创建订单时发生错误: {str(e)}"}
+
+    def query_order(self, out_trade_no):
+        """
+        查询订单状态
+        
+        参数:
+            out_trade_no (str): 商户订单号（创建订单时使用的订单号）
+        
+        返回:
+            dict: 包含以下字段的字典
+                - success (bool): 请求是否成功
+                - message (str): 错误信息或成功提示
+                - status (str): 订单状态（成功时返回）
+                    - "TRADE_SUCCESS": 支付成功
+                    - "WAIT_BUYER_PAY": 等待支付
+                    - "TRADE_CLOSED": 交易关闭
+                - data (dict): 完整的订单信息（成功时返回）
+        
+        功能说明：
+        主动查询订单的支付状态，可用于：
+        1. 补充异步通知机制（防止通知丢失）
+        2. 用户在支付页面查询支付结果
+        3. 管理后台查看订单状态
+        
+        使用示例：
+            client = RainbowYiPayClient()
+            result = client.query_order("ORDER20230101001")
+            if result["success"]:
+                if result["status"] == "TRADE_SUCCESS":
+                    print("支付成功！")
+                elif result["status"] == "WAIT_BUYER_PAY":
+                    print("等待支付...")
+            else:
+                print(f"查询失败: {result['message']}")
+        
+        注意事项：
+        - 查询接口有频率限制，不要频繁调用
+        - 订单状态最终以异步通知为准
+        """
+        # 检查配置是否完整
+        if not self.host or not self.pid or not self.key:
+            logging.error("[彩虹易支付] 配置不完整，无法查询订单")
+            return {"success": False, "message": "彩虹易支付配置不完整"}
+        
+        # 构造查询参数
+        params = {
+            "act": "order",                 # 操作类型：订单查询
+            "pid": self.pid,                # 商户ID
+            "key": self.key,                # 商户密钥
+            "out_trade_no": out_trade_no,   # 商户订单号
+        }
+        
+        # 构造API请求URL
+        # 彩虹易支付的查询接口路径为 /api.php
+        api_url = f"{self.host}/api.php"
+        
+        # 记录日志
+        logging.info(f"[彩虹易支付] 查询订单状态 - 订单号: {out_trade_no}")
+        
+        try:
+            # 发送GET请求查询订单
+            import requests
+            
+            response = requests.get(api_url, params=params, timeout=10)
+            
+            # 检查HTTP状态码
+            if response.status_code == 200:
+                # 解析响应JSON
+                result = response.json()
+                
+                # 检查API返回的状态码
+                if result.get("code") == 1:
+                    # 查询成功
+                    order_status = result.get("status") or result.get("trade_status")
+                    logging.info(f"[彩虹易支付] 订单状态: {order_status}")
+                    
+                    return {
+                        "success": True,
+                        "message": "查询成功",
+                        "status": order_status,
+                        "data": result,
+                    }
+                else:
+                    # 查询失败
+                    error_msg = result.get("msg") or result.get("message") or "未知错误"
+                    logging.error(f"[彩虹易支付] 查询订单失败 - {error_msg}")
+                    return {"success": False, "message": error_msg}
+            else:
+                # HTTP请求失败
+                logging.error(
+                    f"[彩虹易支付] HTTP请求失败 - 状态码: {response.status_code}"
+                )
+                return {
+                    "success": False,
+                    "message": f"查询接口请求失败 (HTTP {response.status_code})",
+                }
+        
+        except requests.exceptions.Timeout:
+            logging.error("[彩虹易支付] 查询请求超时")
+            return {"success": False, "message": "查询请求超时"}
+        
+        except Exception as e:
+            logging.error(f"[彩虹易支付] 查询订单异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return {"success": False, "message": f"查询订单时发生错误: {str(e)}"}
 
 
 # ==============================================================================
@@ -14698,6 +15398,55 @@ def start_web_server(args_param):
 
         return decorated_function
 
+    # ==================== [修正] 添加缺失的 admin_required 装饰器，并采用权限组判断 ====================
+    def admin_required(f):
+        """
+        管理员权限验证装饰器 (基于权限组)
+        要求用户已登录，且权限组为 'admin' 或 'super_admin'
+        """
+
+        @functools.wraps(f)
+        def decorated_function(*args, **kwargs):
+            session_id = request.headers.get("X-Session-ID", "")
+            api_instance = None
+            is_authenticated = False
+            auth_username = None
+            auth_group = "guest"  # 默认访客组
+
+            # 1. 验证会话和登录状态
+            if session_id:
+                with web_sessions_lock:
+                    if session_id in web_sessions:
+                        api_instance = web_sessions[session_id]
+                        is_authenticated = getattr(
+                            api_instance, "is_authenticated", False
+                        )
+                        auth_username = getattr(api_instance, "auth_username", None)
+                        # 获取权限组（用于后续的组判断）
+                        auth_group = getattr(api_instance, "auth_group", "guest")
+
+            if not is_authenticated or not api_instance or not auth_username:
+                logging.warning(
+                    f"Admin Required Failed: No valid session or not authenticated. Session ID: {session_id[:8]}..."
+                )
+                return jsonify({"success": False, "message": "未登录或会话无效"}), 401
+
+            # 2. 验证管理员权限 (检查权限组)
+            ADMIN_GROUPS = ["admin", "super_admin"]
+            if auth_group not in ADMIN_GROUPS:
+                logging.warning(
+                    f"Admin Required Failed: User {auth_username} (Group: {auth_group}) attempted to access admin route."
+                )
+                return jsonify({"success": False, "message": "权限不足，仅管理员可访问"}), 403
+
+            # 3. 设置上下文变量
+            g.user = auth_username
+            g.api_instance = api_instance
+            return f(*args, **kwargs)
+
+        return decorated_function
+    # ==============================================================================
+
     @app.before_request
     def check_ip_ban_before_request():
         """
@@ -18389,7 +19138,7 @@ def start_web_server(args_param):
                 pass
             log_dir = LOGIN_LOGS_DIR
             os.makedirs(log_dir, exist_ok=True)
-            log_file = os.path.join(log_dir, "sms_replies.jsonl")
+            log_file = os.path.join(log_dir, "sms_replies.json")
 
             import json
 
@@ -18554,6 +19303,135 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[短信测试] 处理请求异常: {str(e)}", exc_info=True)
             return jsonify({"success": False, "message": f"处理失败：{str(e)}"})
+
+    @app.route("/api/sms/reply-logs", methods=["GET"])
+    @login_required
+    def sms_reply_logs():
+        """
+        获取短信回复记录API
+        
+        功能说明：
+        查询短信宝webhook接收到的用户短信回复记录。
+        仅管理员可访问此接口，用于查看用户回复的短信内容。
+        
+        权限要求：
+        - 需要管理员或超级管理员权限
+        
+        查询参数（URL参数）：
+            - limit (int, 可选): 返回记录数量，默认100，最大1000
+            - phone (str, 可选): 按手机号筛选
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - logs (list): 回复记录列表（按时间倒序）
+                每条记录包含：
+                - timestamp: 时间戳
+                - datetime: 可读时间
+                - phone: 回复手机号
+                - content: 回复内容
+                - ip: 请求IP地址
+            - total (int): 总记录数
+            - message (str): 错误信息（失败时）
+        
+        使用场景：
+        - 查看用户通过短信回复的内容
+        - 分析用户反馈
+        - 调试短信回复webhook功能
+        """
+        try:
+            # 获取当前用户
+            current_user = g.user
+            
+            # 权限检查：仅管理员可访问
+            if not auth_system.is_super_admin(current_user) and not auth_system.is_admin(current_user):
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，仅管理员可查看短信回复记录"
+                }), 403
+            
+            # 获取查询参数
+            # limit: 返回记录数量，默认100，最大1000
+            limit = int(request.args.get("limit", "100"))
+            if limit < 1:
+                limit = 100
+            if limit > 1000:
+                limit = 1000
+            
+            # phone: 按手机号筛选（可选）
+            phone_filter = request.args.get("phone", "").strip()
+            
+            # 读取短信回复日志文件
+            log_dir = LOGIN_LOGS_DIR  # 使用登录日志目录
+            log_file = os.path.join(log_dir, "sms_replies.json")
+            
+            # 初始化日志列表
+            logs = []
+            
+            # 检查日志文件是否存在
+            if os.path.exists(log_file):
+                try:
+                    # 读取日志文件
+                    # 文件格式：每行一个JSON对象
+                    with open(log_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue  # 跳过空行
+                            
+                            try:
+                                # 解析JSON行
+                                entry = json.loads(line)
+                                
+                                # 如果指定了手机号筛选，则进行筛选
+                                if phone_filter and entry.get("phone") != phone_filter:
+                                    continue
+                                
+                                # 添加到日志列表
+                                logs.append(entry)
+                            except json.JSONDecodeError as e:
+                                # 如果某行JSON解析失败，记录错误但继续处理其他行
+                                app.logger.warning(f"[SMS回复日志] 解析JSON失败: {line[:50]}... 错误: {str(e)}")
+                                continue
+                    
+                    # 按时间戳倒序排序（最新的在前面）
+                    logs.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+                    
+                    # 限制返回数量
+                    total = len(logs)
+                    logs = logs[:limit]
+                    
+                    # 返回成功响应
+                    return jsonify({
+                        "success": True,
+                        "logs": logs,
+                        "total": total,
+                        "limit": limit
+                    })
+                    
+                except Exception as e:
+                    # 文件读取异常
+                    app.logger.error(f"[SMS回复日志] 读取日志文件失败: {str(e)}")
+                    return jsonify({
+                        "success": False,
+                        "message": f"读取日志文件失败: {str(e)}"
+                    }), 500
+            else:
+                # 日志文件不存在，返回空列表
+                return jsonify({
+                    "success": True,
+                    "logs": [],
+                    "total": 0,
+                    "limit": limit,
+                    "message": "暂无短信回复记录"
+                })
+        
+        except Exception as e:
+            # 处理请求异常
+            app.logger.error(f"[SMS回复日志] 处理请求异常: {str(e)}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"处理失败：{str(e)}"
+            }), 500
 
     # ====================
     # 管理员日志查看API
@@ -24038,6 +24916,2056 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"【本地验证码】测试生成验证码失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"生成失败: {str(e)}"}), 500
+
+    # ==============================================================================
+    # 彩虹易支付V2 - 在线支付接口路由
+    # ==============================================================================
+    # 以下路由实现了彩虹易支付的完整支付流程，包括：
+    # 1. 创建支付订单
+    # 2. 查询订单状态
+    # 3. 接收异步通知（服务器回调）
+    # 4. 同步返回页面（用户跳转）
+    # 5. 管理订单列表
+    # ==============================================================================
+
+    # 订单数据存储目录常量定义
+    # 用于存储所有支付订单的JSON文件
+    PAYMENT_ORDERS_DIR = "payment_orders"
+
+    # 确保订单存储目录存在
+    # 如果目录不存在，则创建它（exist_ok=True 表示目录已存在时不报错）
+    os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+
+    # 支付日志存储目录常量定义
+    # 用于按用户分目录存储每次支付操作的详细日志
+    # 日志文件结构：logs/payment_logs/{user_id}/{timestamp}_{order_id}.json
+    # 游客使用session UUID，注册用户使用username
+    PAYMENT_LOGS_DIR = "logs/payment_logs"
+
+    # 确保支付日志根目录存在
+    # 用户子目录将在记录日志时动态创建
+    os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
+
+    def _write_payment_log(user_id, order_id, action, log_data):
+        """
+        写入支付操作日志（内部函数）
+        
+        参数:
+            user_id (str): 用户标识（注册用户为username，游客为session UUID）
+            order_id (str): 订单号
+            action (str): 操作类型（例如："create_order", "query_order", "payment_notify"）
+            log_data (dict): 要记录的日志数据
+        
+        功能说明：
+        这个函数负责将支付相关的操作记录到日志文件中，便于：
+        1. 审计：追踪所有支付操作，发现异常行为
+        2. 调试：当支付出现问题时，可以查看详细的操作历史
+        3. 统计：分析用户支付行为，优化支付流程
+        4. 合规：满足财务和法律的审计要求
+        
+        日志文件命名规则：
+        - 格式：{timestamp}_{order_id}.json
+        - 例如：20231201_120530_ORDER20231201120530123456.json
+        - 时间戳使用年月日_时分秒格式，便于按时间排序
+        
+        日志目录结构：
+        - logs/payment_logs/                    # 日志根目录
+        -     ├── user_zhang/                   # 注册用户zhang的日志目录
+        -     │   ├── 20231201_120530_ORDER123.json
+        -     │   └── 20231201_130000_ORDER456.json
+        -     ├── guest_abc123/                 # 游客(session UUID: abc123)的日志目录
+        -     │   └── 20231201_140000_ORDER789.json
+        -     └── user_admin/                   # 管理员admin的日志目录
+        -         └── 20231201_150000_ORDER999.json
+        
+        日志内容包括（但不限于）：
+        - timestamp: 操作时间戳
+        - action: 操作类型
+        - user_id: 用户标识
+        - order_id: 订单号
+        - client_ip: 客户端IP地址
+        - user_agent: 用户浏览器信息
+        - 以及action特定的其他数据
+        
+        异常处理：
+        - 如果写入日志失败，只记录错误日志，不影响主业务流程
+        - 确保支付功能的可用性优先于日志记录
+        """
+        try:
+            # 规范化用户标识，用于创建目录
+            # 将用户ID转换为安全的文件系统路径名
+            # 例如：zhang -> user_zhang, abc-123-def -> guest_abc-123-def
+            # 注册用户添加"user_"前缀，游客添加"guest_"前缀
+            if user_id and not user_id.startswith("guest_") and not user_id.startswith("user_"):
+                # 判断是否为游客（通常游客ID包含连字符或为UUID格式）
+                # 简单的判断规则：如果包含连字符'-'，认为是游客session UUID
+                if "-" in user_id:
+                    safe_user_id = f"guest_{user_id}"
+                else:
+                    safe_user_id = f"user_{user_id}"
+            else:
+                # 已经有前缀了，直接使用
+                safe_user_id = user_id
+            
+            # 构造用户日志目录路径
+            # 格式：logs/payment_logs/{safe_user_id}/
+            user_log_dir = os.path.join(PAYMENT_LOGS_DIR, safe_user_id)
+            
+            # 确保用户日志目录存在
+            # exist_ok=True 表示如果目录已存在不报错
+            os.makedirs(user_log_dir, exist_ok=True)
+            
+            # 生成日志文件名
+            # 格式：{年月日}_{时分秒}_{订单号}.json
+            # 例如：20231201_120530_ORDER20231201120530123456.json
+            # 使用时间戳作为文件名的一部分，便于按时间查找和排序
+            timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+            log_filename = f"{timestamp_str}_{order_id}.json"
+            
+            # 构造日志文件完整路径
+            log_filepath = os.path.join(user_log_dir, log_filename)
+            
+            # 准备要写入的完整日志数据
+            # 合并基础信息和传入的自定义数据
+            full_log_data = {
+                # 基础元信息
+                "timestamp": time.time(),                          # Unix时间戳（数字）
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),   # 可读时间（字符串）
+                "action": action,                                  # 操作类型
+                "user_id": user_id,                                # 用户标识
+                "order_id": order_id,                              # 订单号
+                # 请求元信息（在Flask请求上下文中可用）
+                "client_ip": request.remote_addr if request else None,      # 客户端IP
+                "user_agent": request.headers.get("User-Agent", "") if request else "",  # 浏览器UA
+                # 自定义数据（从参数传入）
+                **log_data
+            }
+            
+            # 将日志数据写入JSON文件
+            # 使用UTF-8编码支持中文
+            # indent=2 使JSON格式化，便于人工阅读
+            # ensure_ascii=False 保留中文字符，不转义为\uXXXX
+            with open(log_filepath, "w", encoding="utf-8") as f:
+                json.dump(full_log_data, f, indent=2, ensure_ascii=False)
+            
+            # 记录调试日志：日志写入成功
+            logging.debug(f"[支付日志] 写入成功 - 用户: {user_id}, 操作: {action}, 文件: {log_filename}")
+        
+        except Exception as e:
+            # 捕获所有异常，确保日志写入失败不影响主业务
+            # 只记录错误日志，不抛出异常
+            logging.error(f"[支付日志] 写入失败 - 用户: {user_id}, 操作: {action}, 错误: {str(e)}")
+            logging.error(traceback.format_exc())
+
+    @app.route("/api/payment/methods_config", methods=["GET"])
+    def payment_methods_config():
+        """
+        获取支付方式配置接口
+        
+        功能说明：
+        返回所有支持的支付方式及其显示信息（名称、SVG图标、描述、样式等）
+        前端通过此接口获取支付方式配置，实现完全的配置驱动，无需硬编码
+        
+        请求方法：GET
+        权限要求：无（公开接口）
+        
+        返回格式：
+        {
+            "success": true,
+            "methods": {
+                "alipay": {
+                    "name": "支付宝支付",
+                    "icon": "svg",
+                    "svg": "<svg>...</svg>",
+                    "description": "支持支付宝扫码支付",
+                    "borderColor": "hover:border-sky-500",
+                    "textColor": "text-sky-600"
+                },
+                "wxpay": { ... },
+                ...
+            }
+        }
+        
+        错误返回：
+        {
+            "success": false,
+            "message": "读取配置失败"
+        }
+        
+        使用场景：
+        1. 页面加载时自动调用，动态生成支付方式选择界面
+        2. 管理员修改配置后，前端可重新调用以刷新显示
+        3. 支持动态添加/删除支付方式，无需修改前端代码
+        
+        注意事项：
+        1. 返回的是所有定义的支付方式，实际可用的支付方式还需要结合 enabled_payment_methods 配置
+        2. SVG图标代码已包含样式类，前端可直接渲染
+        3. 如果配置文件中不存在此配置，返回空对象 {}
+        """
+        try:
+            # 从配置文件中读取支付方式配置
+            # 使用 configparser 读取 config.ini 文件
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 获取支付方式配置的JSON字符串
+            # 从 Rainbow_YiPay 节中读取 payment_methods_config 配置项
+            # 如果配置不存在，使用空JSON对象作为默认值
+            methods_config_str = config.get(
+                "Rainbow_YiPay",
+                "payment_methods_config",
+                fallback="{}"
+            )
+            
+            # 将JSON字符串解析为Python字典对象
+            # 这样前端可以直接使用，无需再次解析
+            methods_config = json.loads(methods_config_str)
+            
+            # 记录日志，便于调试和监控
+            logging.info(f"[支付方式配置] 成功读取配置，共 {len(methods_config)} 个支付方式")
+            
+            # 返回成功响应，包含所有支付方式的配置信息
+            return jsonify({
+                "success": True,
+                "methods": methods_config
+            })
+        except json.JSONDecodeError as e:
+            # JSON解析失败，说明配置文件中的JSON格式不正确
+            logging.error(f"[支付方式配置] JSON解析失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": "配置格式错误，请检查JSON语法"
+            }), 500
+        except Exception as e:
+            # 捕获其他异常（如文件读取失败、配置节不存在等）
+            logging.error(f"[支付方式配置] 读取配置失败: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": "读取配置失败"
+            }), 500
+
+    @app.route("/api/payment/create", methods=["POST"])
+    @login_required
+    def payment_create_order():
+        """
+        创建支付订单接口
+        
+        请求方法：POST
+        权限要求：需要登录
+        
+        请求参数（JSON格式）：
+            - amount (str/float): 支付金额（单位：元，例如 "100" 或 "99.99"）
+            - product_name (str): 商品名称（显示在支付页面，例如："VIP会员充值"）
+            - pay_type (str): 支付方式，可选值：
+                - "alipay": 支付宝（默认）
+                - "wxpay": 微信支付
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 提示信息
+            - pay_url (str): 支付跳转URL（成功时返回）
+            - order_id (str): 订单号（成功时返回）
+        
+        功能说明：
+        1. 验证用户登录状态
+        2. 验证请求参数（金额、商品名称等）
+        3. 生成唯一订单号
+        4. 调用彩虹易支付API创建支付订单
+        5. 保存订单信息到本地文件
+        6. 返回支付URL给前端
+        
+        使用流程：
+        前端 -> POST /api/payment/create -> 后端创建订单 -> 返回支付URL -> 前端跳转到支付页面
+        
+        安全措施：
+        - 必须登录才能创建订单
+        - 验证金额格式和范围
+        - 生成唯一订单号（时间戳+随机数）
+        - 记录详细的操作日志
+        """
+        try:
+            # 从请求体中获取JSON数据
+            # request.get_json() 解析POST请求的JSON数据
+            # 如果解析失败或没有数据，返回空字典 {}
+            data = request.get_json() or {}
+            
+            # 从请求数据中提取支付金额，并去除首尾空白字符
+            # .get() 方法如果键不存在返回空字符串
+            # .strip() 去除字符串首尾的空格、换行等空白字符
+            amount = data.get("amount", "").strip()
+            
+            # 从请求数据中提取商品名称
+            product_name = data.get("product_name", "").strip()
+            
+            # 从请求数据中提取支付方式，默认为支付宝
+            pay_type = data.get("pay_type", "alipay").strip()
+            
+            # 从请求数据中提取同步返回URL（可选参数）
+            # return_url 是用户支付完成后浏览器跳转的地址
+            # 如果前端传入此参数，则使用前端指定的URL
+            # 如果不传入或为空字符串，create_order() 方法会使用配置文件中的默认值
+            # 这使得不同的支付场景可以跳转到不同的页面
+            # 使用 strip() 去除空白字符，空字符串会被转为 None
+            return_url = data.get("return_url", "").strip() or None
+            
+            # ========== 参数验证 ==========
+            
+            # 验证金额是否为空
+            if not amount:
+                return jsonify({"success": False, "message": "支付金额不能为空"})
+            
+            # 验证商品名称是否为空
+            if not product_name:
+                return jsonify({"success": False, "message": "商品名称不能为空"})
+            
+            # ========== 验证支付方式是否启用 ==========
+            
+            # 从配置文件读取启用的支付方式列表
+            # 配置格式为逗号分隔的字符串，例如："alipay,wxpay,bank"
+            # 需要实时读取配置，支持管理员动态修改而无需重启服务
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 获取启用的支付方式配置
+            # fallback 参数指定默认值："alipay,wxpay"（启用支付宝和微信支付）
+            enabled_methods_str = config.get(
+                "Rainbow_YiPay", 
+                "enabled_payment_methods", 
+                fallback="alipay,wxpay"
+            ).strip()
+            
+            # 将逗号分隔的字符串转换为列表
+            # 使用列表推导式去除每个方式名称的前后空格
+            # 例如："alipay, wxpay " -> ["alipay", "wxpay"]
+            enabled_methods = [method.strip() for method in enabled_methods_str.split(",") if method.strip()]
+            
+            # 如果配置为空或解析失败，使用默认的支付方式
+            if not enabled_methods:
+                enabled_methods = ["alipay", "wxpay"]
+            
+            # 记录调试日志：当前启用的支付方式
+            logging.debug(f"[支付订单] 当前启用的支付方式: {enabled_methods}")
+            
+            # 验证请求的支付方式是否在启用列表中
+            if pay_type not in enabled_methods:
+                # 支付方式未启用或不支持
+                # 构造友好的错误提示信息，告知用户当前支持哪些支付方式
+                supported_methods_display = {
+                    "alipay": "支付宝",
+                    "wxpay": "微信支付",
+                    "bank": "网银支付"
+                }
+                # 生成支持的支付方式的中文名称列表
+                enabled_names = [
+                    supported_methods_display.get(m, m) 
+                    for m in enabled_methods
+                ]
+                # 拼接成字符串，例如："支付宝、微信支付"
+                enabled_names_str = "、".join(enabled_names)
+                
+                # 返回错误信息
+                return jsonify({
+                    "success": False, 
+                    "message": f"该支付方式未启用，当前支持：{enabled_names_str}"
+                })
+            
+            # 尝试将金额转换为浮点数，验证格式是否正确
+            try:
+                # float() 函数将字符串转换为浮点数
+                # 如果字符串不是有效的数字格式，会抛出 ValueError 异常
+                amount_float = float(amount)
+                
+                # 验证金额是否大于0
+                # 支付金额必须是正数
+                if amount_float <= 0:
+                    return jsonify({"success": False, "message": "支付金额必须大于0"})
+                
+                # 验证金额是否超过最大限制（例如10000元）
+                # 这是一个安全限制，防止误操作或恶意请求
+                if amount_float > 10000:
+                    return jsonify({"success": False, "message": "单笔支付金额不能超过10000元"})
+                
+            except ValueError:
+                # 如果金额格式不正确（例如 "abc" 或 "12.34.56"）
+                # 返回错误信息
+                return jsonify({"success": False, "message": "支付金额格式不正确"})
+            
+            # ========== 生成唯一订单号 ==========
+            
+            # 订单号格式：ORDER + 年月日时分秒 + 6位随机数
+            # 例如：ORDER20230615123045123456
+            # 使用时间戳确保订单号按时间排序
+            # 使用随机数确保同一秒内的订单号不重复
+            order_id = f"ORDER{time.strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"
+            
+            # ========== 调用彩虹易支付API创建订单 ==========
+            
+            # 创建彩虹易支付客户端实例
+            # 客户端会自动从 config.ini 读取配置参数
+            yipay_client = RainbowYiPayClient()
+            
+            # 调用 create_order() 方法创建支付订单
+            # 参数说明：
+            # - out_trade_no: 商户订单号（我们生成的唯一订单号）
+            # - name: 商品名称（显示在支付页面）
+            # - money: 支付金额（元）
+            # - pay_type: 支付方式（alipay/wxpay）
+            # - return_url: 同步返回URL（可选，如果前端传入则使用前端指定的URL）
+            result = yipay_client.create_order(
+                out_trade_no=order_id,
+                name=product_name,
+                money=amount,
+                pay_type=pay_type,
+                return_url=return_url  # 传递 return_url 参数（可能为 None）
+            )
+            
+            # 检查订单创建是否成功
+            if result["success"]:
+                # ========== 保存订单信息到本地文件 ==========
+                
+                # 构造订单数据字典
+                # 包含订单的所有关键信息，用于后续查询和管理
+                order_data = {
+                    "order_id": order_id,               # 订单号
+                    "username": g.user,                  # 下单用户名（从 Flask g 对象获取）
+                    "amount": amount,                    # 支付金额
+                    "product_name": product_name,        # 商品名称
+                    "pay_type": pay_type,                # 支付方式
+                    "status": "pending",                 # 订单状态：pending（待支付）
+                    "pay_url": result["pay_url"],        # 支付跳转URL
+                    "created_at": time.time(),           # 创建时间（Unix时间戳）
+                    "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),  # 创建时间（可读格式）
+                    "client_ip": request.remote_addr,    # 客户端IP地址
+                    "user_agent": request.headers.get("User-Agent", ""),  # 用户浏览器信息
+                }
+                
+                # 构造订单文件路径
+                # 文件名格式：订单号.json
+                # 例如：payment_orders/ORDER20230615123045123456.json
+                order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+                
+                # 将订单数据写入JSON文件
+                # 使用 UTF-8 编码支持中文
+                # indent=2 使JSON格式化输出，便于人工查看
+                # ensure_ascii=False 保留中文字符，不转义为 \uXXXX 格式
+                with open(order_file, "w", encoding="utf-8") as f:
+                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                # ========== 写入支付操作日志 ==========
+                
+                # 记录订单创建操作到支付日志系统
+                # 这是独立于订单文件的详细操作日志，用于审计和调试
+                _write_payment_log(
+                    user_id=g.user,                # 用户标识（注册用户为username，游客为session UUID）
+                    order_id=order_id,             # 订单号
+                    action="create_order",         # 操作类型：创建订单
+                    log_data={
+                        # 订单基本信息
+                        "amount": amount,                      # 支付金额
+                        "product_name": product_name,          # 商品名称
+                        "pay_type": pay_type,                  # 支付方式
+                        "pay_url": result["pay_url"],          # 支付跳转URL
+                        "return_url": return_url,              # 同步返回URL
+                        # 请求信息
+                        "client_ip": request.remote_addr,      # 客户端IP
+                        "user_agent": request.headers.get("User-Agent", ""),  # 浏览器UA
+                        # 操作结果
+                        "success": True,                       # 操作是否成功
+                        "message": "订单创建成功"              # 操作消息
+                    }
+                )
+                
+                # 记录信息日志：订单创建成功
+                logging.info(
+                    f"[支付订单] 创建成功 - 用户: {g.user}, 订单号: {order_id}, 金额: {amount}元, 支付方式: {pay_type}"
+                )
+                
+                # 返回成功响应
+                return jsonify({
+                    "success": True,
+                    "message": "订单创建成功",
+                    "pay_url": result["pay_url"],  # 支付URL（前端用于跳转）
+                    "order_id": order_id,          # 订单号（前端用于查询）
+                })
+            else:
+                # 订单创建失败
+                # 记录错误日志
+                logging.error(f"[支付订单] 创建失败 - {result['message']}")
+                
+                # ========== 写入支付操作日志（失败情况） ==========
+                
+                # 即使创建失败，也要记录日志，用于分析失败原因
+                _write_payment_log(
+                    user_id=g.user,                # 用户标识
+                    order_id=order_id,             # 订单号（虽然创建失败，但订单号已生成）
+                    action="create_order_failed",  # 操作类型：创建订单失败
+                    log_data={
+                        # 订单请求信息
+                        "amount": amount,                      # 请求的支付金额
+                        "product_name": product_name,          # 请求的商品名称
+                        "pay_type": pay_type,                  # 请求的支付方式
+                        "return_url": return_url,              # 请求的返回URL
+                        # 请求信息
+                        "client_ip": request.remote_addr,      # 客户端IP
+                        "user_agent": request.headers.get("User-Agent", ""),  # 浏览器UA
+                        # 失败信息
+                        "success": False,                      # 操作失败
+                        "message": result["message"],          # 失败原因
+                        "error": result.get("error", "")       # 详细错误信息（如果有）
+                    }
+                )
+                
+                # 返回失败响应，包含错误信息
+                return jsonify({
+                    "success": False,
+                    "message": result["message"]
+                })
+        
+        except Exception as e:
+            # 捕获所有未预期的异常
+            # 记录错误日志和堆栈跟踪
+            logging.error(f"[支付订单] 创建订单时发生异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            
+            # 返回通用错误响应
+            return jsonify({
+                "success": False,
+                "message": f"创建订单失败: {str(e)}"
+            }), 500
+
+    @app.route("/api/payment/query", methods=["POST"])
+    @login_required
+    def payment_query_order():
+        """
+        查询订单支付状态接口
+        
+        请求方法：POST
+        权限要求：需要登录
+        
+        请求参数（JSON格式）：
+            - order_id (str): 订单号（创建订单时返回的订单号）
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 提示信息
+            - status (str): 订单状态（成功时返回）
+                - "pending": 待支付
+                - "paid": 已支付
+                - "closed": 已关闭
+            - order (dict): 完整的订单信息（成功时返回）
+        
+        功能说明：
+        1. 从本地文件读取订单信息
+        2. 如果订单状态是待支付，调用易支付API查询最新状态
+        3. 更新本地订单状态
+        4. 返回订单信息给前端
+        
+        使用场景：
+        - 用户支付完成后查询支付结果
+        - 管理员查看订单状态
+        - 定时任务自动查询未支付订单
+        """
+        try:
+            # 获取请求数据
+            data = request.get_json() or {}
+            order_id = data.get("order_id", "").strip()
+            
+            # 验证订单号是否为空
+            if not order_id:
+                return jsonify({"success": False, "message": "订单号不能为空"})
+            
+            # ========== 从本地文件读取订单信息 ==========
+            
+            # 构造订单文件路径
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            
+            # 检查订单文件是否存在
+            if not os.path.exists(order_file):
+                return jsonify({"success": False, "message": "订单不存在"})
+            
+            # 读取订单数据
+            with open(order_file, "r", encoding="utf-8") as f:
+                order_data = json.load(f)
+            
+            # ========== 验证订单所属权限 ==========
+            # 只允许订单所有者或管理员查询订单
+            
+            # 检查当前用户是否是订单所有者
+            if order_data.get("username") != g.user:
+                # 不是所有者，检查是否是管理员
+                if not auth_system.check_permission(g.user, "manage_users"):
+                    # 既不是所有者也不是管理员，返回权限不足
+                    return jsonify({"success": False, "message": "无权查询此订单"}), 403
+            
+            # ========== 查询最新支付状态 ==========
+            
+            # 如果订单状态是待支付，调用易支付API查询最新状态
+            if order_data.get("status") == "pending":
+                # 创建彩虹易支付客户端
+                yipay_client = RainbowYiPayClient()
+                
+                # 调用查询接口
+                query_result = yipay_client.query_order(order_id)
+                
+                # 如果查询成功且订单已支付
+                if query_result["success"] and query_result.get("status") == "TRADE_SUCCESS":
+                    # 更新订单状态为已支付
+                    order_data["status"] = "paid"
+                    order_data["paid_at"] = time.time()
+                    order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # 保存更新后的订单数据
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                    
+                    # ========== 写入支付操作日志（状态更新） ==========
+                    
+                    # 记录订单状态从pending变为paid的操作
+                    _write_payment_log(
+                        user_id=order_data.get("username", g.user),  # 订单所有者
+                        order_id=order_id,                           # 订单号
+                        action="order_status_updated",               # 操作类型：订单状态更新
+                        log_data={
+                            # 状态变更信息
+                            "old_status": "pending",                 # 旧状态
+                            "new_status": "paid",                    # 新状态
+                            "paid_at": order_data["paid_at"],        # 支付时间戳
+                            "paid_time": order_data["paid_time"],    # 支付时间（可读）
+                            # 查询信息
+                            "query_user": g.user,                    # 查询者
+                            "query_result": query_result,            # 易支付查询结果
+                            # 请求信息
+                            "client_ip": request.remote_addr,
+                            "user_agent": request.headers.get("User-Agent", ""),
+                            # 操作结果
+                            "success": True,
+                            "message": "订单状态更新为已支付"
+                        }
+                    )
+                    
+                    # 记录日志
+                    logging.info(f"[支付订单] 查询更新 - 订单: {order_id}, 状态: 已支付")
+            
+            # ========== 写入支付操作日志（查询操作） ==========
+            
+            # 记录每次查询操作，用于审计
+            _write_payment_log(
+                user_id=g.user,                      # 查询者
+                order_id=order_id,                   # 订单号
+                action="query_order",                # 操作类型：查询订单
+                log_data={
+                    # 订单信息
+                    "order_status": order_data.get("status"),     # 订单状态
+                    "order_owner": order_data.get("username"),    # 订单所有者
+                    "amount": order_data.get("amount"),           # 金额
+                    # 请求信息
+                    "client_ip": request.remote_addr,
+                    "user_agent": request.headers.get("User-Agent", ""),
+                    # 操作结果
+                    "success": True,
+                    "message": "查询成功"
+                }
+            )
+            
+            # 返回订单信息
+            return jsonify({
+                "success": True,
+                "message": "查询成功",
+                "status": order_data.get("status"),
+                "order": order_data
+            })
+        
+        except Exception as e:
+            logging.error(f"[支付订单] 查询订单异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({"success": False, "message": f"查询订单失败: {str(e)}"}), 500
+
+    @app.route("/api/payment/yipay_notify", methods=["POST"])
+    def payment_yipay_notify():
+        """
+        接收彩虹易支付异步通知接口（专用）
+        
+        请求方法：POST
+        权限要求：无（公开接口，但需要验证签名）
+        路由路径：/api/payment/yipay_notify
+        
+        功能说明：
+        这是一个服务器到服务器的回调接口，当用户支付成功后，
+        彩虹易支付服务器会向这个URL发送POST请求，通知支付结果。
+        
+        重要更新：
+        - 此路由路径已从 /api/payment/notify 更改为 /api/payment/yipay_notify
+        - notify_url 会在 create_order() 方法中自动构造为此地址
+        - 管理员只需在配置文件中设置 app_host（应用访问域名）即可
+        
+        这是一个服务器到服务器的回调接口，当用户支付成功后，
+        彩虹易支付服务器会向这个URL发送POST请求，通知支付结果。
+        
+        请求参数（表单格式）：
+        彩虹易支付会发送以下参数（具体参数以官方文档为准）：
+            - pid: 商户ID
+            - out_trade_no: 商户订单号
+            - trade_no: 易支付订单号
+            - type: 支付方式
+            - name: 商品名称
+            - money: 支付金额
+            - trade_status: 支付状态（TRADE_SUCCESS表示成功）
+            - sign: 签名
+            - sign_type: 签名类型
+        
+        返回数据：
+        - 如果验证成功，返回 "success"
+        - 如果验证失败，返回 "fail"
+        
+        重要说明：
+        1. 这个接口必须是公网可访问的HTTPS地址
+        2. 必须验证签名，防止伪造通知
+        3. 必须处理重复通知（幂等性）
+        4. 必须快速响应，不要执行耗时操作
+        5. 返回 "success" 后，易支付不会再次通知
+        6. 如果返回其他内容，易支付会重复通知
+        
+        安全机制：
+        - 签名验证：防止伪造通知
+        - 金额验证：确保支付金额与订单金额一致
+        - 状态验证：防止重复处理已支付订单
+        - IP白名单：可选，限制只接受来自易支付服务器的请求
+        """
+        try:
+            # 获取回调参数
+            # request.form 获取POST表单数据
+            # .to_dict() 将 ImmutableMultiDict 转换为普通字典
+            params = request.form.to_dict()
+            
+            # 记录日志：收到异步通知
+            logging.info(f"[支付通知] 收到异步通知 - 参数: {params}")
+            
+            # ========== 验证签名 ==========
+            
+            # 创建彩虹易支付客户端
+            yipay_client = RainbowYiPayClient()
+            
+            # 调用签名验证方法
+            if not yipay_client.verify_sign(params):
+                # 签名验证失败，可能是伪造的通知
+                logging.error(f"[支付通知] 签名验证失败 - 参数: {params}")
+                
+                # ========== 写入支付操作日志（签名验证失败） ==========
+                
+                # 这是严重的安全事件，必须记录
+                _write_payment_log(
+                    user_id="system",                           # 系统记录
+                    order_id=params.get("out_trade_no", "unknown"),  # 订单号（可能为空）
+                    action="payment_notify_signature_failed",   # 操作类型：签名验证失败
+                    log_data={
+                        # 通知参数
+                        "notify_params": params,                # 完整的通知参数
+                        "notify_ip": request.remote_addr,       # 通知来源IP
+                        # 安全信息
+                        "security_event": "signature_verification_failed",  # 安全事件类型
+                        "risk_level": "high",                   # 风险级别：高
+                        # 操作结果
+                        "success": False,
+                        "message": "签名验证失败，可能是伪造的支付通知"
+                    }
+                )
+                
+                return "fail"  # 返回 fail，易支付会继续重试通知
+            
+            # ========== 提取关键参数 ==========
+            
+            # 商户订单号
+            out_trade_no = params.get("out_trade_no", "")
+            
+            # 易支付订单号
+            trade_no = params.get("trade_no", "")
+            
+            # 支付状态（TRADE_SUCCESS 表示支付成功）
+            trade_status = params.get("trade_status", "")
+            
+            # 实际支付金额
+            money = params.get("money", "")
+            
+            # 验证必要参数是否存在
+            if not out_trade_no or not trade_status:
+                logging.error(f"[支付通知] 缺少必要参数 - 参数: {params}")
+                return "fail"
+            
+            # ========== 读取订单信息 ==========
+            
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+            
+            # 检查订单是否存在
+            if not os.path.exists(order_file):
+                logging.error(f"[支付通知] 订单不存在 - 订单号: {out_trade_no}")
+                return "fail"
+            
+            # 读取订单数据
+            with open(order_file, "r", encoding="utf-8") as f:
+                order_data = json.load(f)
+            
+            # ========== 验证订单金额 ==========
+            # 防止支付金额与订单金额不一致的情况
+            
+            try:
+                # 将字符串金额转换为浮点数进行比较
+                # round() 函数保留2位小数，避免浮点数精度问题
+                paid_amount = round(float(money), 2)
+                order_amount = round(float(order_data.get("amount", "0")), 2)
+                
+                # 比较金额是否一致
+                if paid_amount != order_amount:
+                    # 金额不一致，记录错误日志
+                    logging.error(
+                        f"[支付通知] 金额不一致 - 订单: {out_trade_no}, "
+                        f"订单金额: {order_amount}, 支付金额: {paid_amount}"
+                    )
+                    return "fail"
+            except ValueError:
+                # 金额格式错误
+                logging.error(f"[支付通知] 金额格式错误 - 订单: {out_trade_no}, 金额: {money}")
+                return "fail"
+            
+            # ========== 处理支付成功通知 ==========
+            
+            if trade_status == "TRADE_SUCCESS":
+                # 检查订单是否已经支付过
+                # 防止重复处理（幂等性）
+                if order_data.get("status") == "paid":
+                    # 订单已支付，直接返回成功（不重复处理）
+                    logging.info(f"[支付通知] 订单已支付，跳过处理 - 订单: {out_trade_no}")
+                    return "success"
+                
+                # 更新订单状态为已支付
+                order_data["status"] = "paid"
+                order_data["trade_no"] = trade_no          # 保存易支付订单号
+                order_data["paid_at"] = time.time()        # 支付时间（时间戳）
+                order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
+                order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
+                
+                # 保存更新后的订单数据
+                with open(order_file, "w", encoding="utf-8") as f:
+                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                # ========== 写入支付操作日志（支付成功通知） ==========
+                
+                # 记录支付成功的异步通知，这是最重要的支付日志
+                _write_payment_log(
+                    user_id=order_data.get("username", "unknown"),  # 订单所有者
+                    order_id=out_trade_no,                          # 商户订单号
+                    action="payment_success_notify",                # 操作类型：支付成功通知
+                    log_data={
+                        # 支付信息
+                        "trade_no": trade_no,                       # 易支付订单号
+                        "trade_status": trade_status,               # 支付状态
+                        "paid_amount": paid_amount,                 # 实际支付金额
+                        "order_amount": order_amount,               # 订单金额
+                        "pay_type": params.get("type", ""),         # 支付方式
+                        "paid_at": order_data["paid_at"],           # 支付时间戳
+                        "paid_time": order_data["paid_time"],       # 支付时间（可读）
+                        # 通知信息
+                        "notify_params": params,                    # 完整的通知参数
+                        "notify_ip": request.remote_addr,           # 通知来源IP（易支付服务器IP）
+                        # 订单信息
+                        "product_name": order_data.get("product_name", ""),  # 商品名称
+                        # 操作结果
+                        "success": True,
+                        "message": "支付成功，订单已完成"
+                    }
+                )
+                
+                # 记录日志：支付成功
+                logging.info(
+                    f"[支付通知] 支付成功 - 订单: {out_trade_no}, 用户: {order_data.get('username')}, "
+                    f"金额: {money}元, 易支付订单号: {trade_no}"
+                )
+                
+                # TODO: 在这里添加支付成功后的业务逻辑
+                # 例如：
+                # - 给用户增加VIP时长
+                # - 发送通知邮件
+                # - 更新用户积分
+                # - 触发其他业务流程
+                
+                # 返回 success，告知易支付不要再次通知
+                return "success"
+            else:
+                # 其他支付状态（如支付失败、已关闭等）
+                logging.warning(f"[支付通知] 非成功状态 - 订单: {out_trade_no}, 状态: {trade_status}")
+                
+                # 可以根据状态更新订单状态
+                if trade_status == "TRADE_CLOSED":
+                    order_data["status"] = "closed"
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                return "success"
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付通知] 处理异步通知异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return "fail"  # 返回 fail，让易支付重试
+
+    @app.route("/api/payment/return", methods=["GET"])
+    def payment_return():
+        """
+        同步返回页面接口
+        
+        请求方法：GET
+        权限要求：无（公开页面）
+        
+        功能说明：
+        用户在支付页面完成支付后，浏览器会跳转到这个URL。
+        这个页面用于显示支付结果，提供友好的用户体验。
+        
+        重要说明：
+        1. 这个页面仅用于展示，不能作为支付成功的判断依据
+        2. 用户可能不会访问这个页面（例如直接关闭浏览器）
+        3. 订单状态必须以异步通知（notify）为准
+        4. 这个页面可以显示支付结果，并提供返回应用的按钮
+        
+        请求参数（查询字符串）：
+        彩虹易支付会在URL中附加参数，例如：
+            - out_trade_no: 商户订单号
+            - trade_no: 易支付订单号
+            - trade_status: 支付状态
+            - sign: 签名
+        
+        返回：HTML页面（支付结果展示页面）
+        """
+        try:
+            # 获取URL查询参数
+            # request.args 获取GET请求的查询字符串参数
+            params = request.args.to_dict()
+            
+            # 记录日志
+            logging.info(f"[支付返回] 用户返回 - 参数: {params}")
+            
+            # 提取订单号
+            out_trade_no = params.get("out_trade_no", "")
+            trade_status = params.get("trade_status", "")
+            
+            # 构造简单的HTML支付结果页面
+            # 实际项目中，可以返回一个更美观的前端页面
+            if trade_status == "TRADE_SUCCESS":
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>支付成功</title>
+                    <style>
+                        body {{
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background-color: #f5f5f5;
+                        }}
+                        .result-box {{
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                        }}
+                        .success-icon {{
+                            font-size: 60px;
+                            color: #52c41a;
+                            margin-bottom: 20px;
+                        }}
+                        .title {{
+                            font-size: 24px;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }}
+                        .info {{
+                            color: #666;
+                            margin-bottom: 30px;
+                        }}
+                        .button {{
+                            display: inline-block;
+                            padding: 10px 30px;
+                            background-color: #1890ff;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            transition: background-color 0.3s;
+                        }}
+                        .button:hover {{
+                            background-color: #40a9ff;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="result-box">
+                        <div class="success-icon">✓</div>
+                        <div class="title">支付成功！</div>
+                        <div class="info">
+                            <p>订单号：{out_trade_no}</p>
+                            <p>感谢您的支付，订单处理中...</p>
+                        </div>
+                        <a href="/" class="button">返回首页</a>
+                    </div>
+                    <script>
+                        // 3秒后自动跳转到首页
+                        setTimeout(function() {{
+                            window.location.href = '/';
+                        }}, 3000);
+                    </script>
+                </body>
+                </html>
+                """
+            else:
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>支付失败</title>
+                    <style>
+                        body {{
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background-color: #f5f5f5;
+                        }}
+                        .result-box {{
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                        }}
+                        .fail-icon {{
+                            font-size: 60px;
+                            color: #f5222d;
+                            margin-bottom: 20px;
+                        }}
+                        .title {{
+                            font-size: 24px;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }}
+                        .info {{
+                            color: #666;
+                            margin-bottom: 30px;
+                        }}
+                        .button {{
+                            display: inline-block;
+                            padding: 10px 30px;
+                            background-color: #1890ff;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            margin: 0 10px;
+                            transition: background-color 0.3s;
+                        }}
+                        .button:hover {{
+                            background-color: #40a9ff;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="result-box">
+                        <div class="fail-icon">✗</div>
+                        <div class="title">支付失败</div>
+                        <div class="info">
+                            <p>订单号：{out_trade_no}</p>
+                            <p>支付未完成，请重试或联系客服</p>
+                        </div>
+                        <a href="/" class="button">返回首页</a>
+                        <a href="javascript:history.back()" class="button">重新支付</a>
+                    </div>
+                </body>
+                </html>
+                """
+            
+            return html
+        
+        except Exception as e:
+            logging.error(f"[支付返回] 处理返回页面异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return "<html><body><h1>页面加载失败</h1></body></html>", 500
+
+    @app.route("/api/payment/orders", methods=["GET"])
+    @login_required
+    def payment_list_orders():
+        """
+        查询订单列表接口
+        
+        请求方法：GET
+        权限要求：需要登录
+        
+        查询参数（URL参数）：
+            - status (str, 可选): 订单状态过滤
+                - "pending": 待支付
+                - "paid": 已支付
+                - "closed": 已关闭
+            - page (int, 可选): 页码，默认1
+            - per_page (int, 可选): 每页数量，默认20
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 提示信息
+            - orders (list): 订单列表
+            - total (int): 总订单数
+            - page (int): 当前页码
+            - per_page (int): 每页数量
+        
+        功能说明：
+        1. 普通用户只能查询自己的订单
+        2. 管理员可以查询所有用户的订单
+        3. 支持按状态筛选
+        4. 支持分页查询
+        5. 订单按创建时间倒序排列（最新的在前面）
+        """
+        try:
+            # 获取查询参数
+            status_filter = request.args.get("status", "").strip()  # 状态过滤
+            page = int(request.args.get("page", "1"))              # 页码
+            per_page = int(request.args.get("per_page", "20"))     # 每页数量
+            
+            # 验证参数
+            if page < 1:
+                page = 1
+            if per_page < 1 or per_page > 100:
+                per_page = 20
+            
+            # 检查是否是管理员
+            is_admin = auth_system.check_permission(g.user, "manage_users")
+            
+            # ========== 读取所有订单文件 ==========
+            
+            orders = []
+            
+            # 遍历订单目录中的所有JSON文件
+            for filename in os.listdir(PAYMENT_ORDERS_DIR):
+                # 只处理.json文件
+                if not filename.endswith(".json"):
+                    continue
+                
+                # 构造文件完整路径
+                file_path = os.path.join(PAYMENT_ORDERS_DIR, filename)
+                
+                try:
+                    # 读取订单数据
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        order_data = json.load(f)
+                    
+                    # ========== 权限过滤 ==========
+                    # 普通用户只能看到自己的订单
+                    # 管理员可以看到所有订单
+                    if not is_admin:
+                        # 不是管理员，检查订单是否属于当前用户
+                        if order_data.get("username") != g.user:
+                            # 不是当前用户的订单，跳过
+                            continue
+                    
+                    # ========== 状态过滤 ==========
+                    # 如果指定了状态过滤，只返回匹配的订单
+                    if status_filter:
+                        if order_data.get("status") != status_filter:
+                            # 状态不匹配，跳过
+                            continue
+                    
+                    # 添加到订单列表
+                    orders.append(order_data)
+                
+                except (json.JSONDecodeError, IOError) as e:
+                    # 文件读取或解析失败，记录日志并跳过
+                    logging.warning(f"[订单列表] 读取订单文件失败: {filename}, 错误: {str(e)}")
+                    continue
+            
+            # ========== 排序 ==========
+            # 按创建时间倒序排列（最新的在前面）
+            orders.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+            
+            # ========== 分页 ==========
+            total = len(orders)  # 总订单数
+            start = (page - 1) * per_page  # 起始索引
+            end = start + per_page  # 结束索引
+            orders_page = orders[start:end]  # 当前页的订单
+            
+            # 返回订单列表
+            return jsonify({
+                "success": True,
+                "message": "查询成功",
+                "orders": orders_page,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+            })
+        
+        except Exception as e:
+            logging.error(f"[订单列表] 查询订单列表异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({"success": False, "message": f"查询失败: {str(e)}"}), 500
+
+    # ==============================================================================
+    # 支付验证接口 - 用于验证app_host的安全性
+    # ==============================================================================
+
+    @app.route("/api/payment/verify_host", methods=["POST"])
+    @login_required
+    def payment_verify_host():
+        """
+        验证app_host是否为本服务器的安全接口
+        
+        请求方法：POST
+        权限要求：需要登录（仅管理员应使用）
+        
+        请求参数（JSON格式）：
+            - app_host (str): 需要验证的应用域名（例如："https://example.com"）
+        
+        返回数据（JSON格式）：
+            - success (bool): 验证是否通过
+            - message (str): 验证结果信息
+            - verified (bool): 是否验证通过
+        
+        功能说明：
+        这个接口使用随机验证码机制来验证传入的app_host是否确实是本服务器。
+        验证流程：
+        1. 生成一个6位随机字符串作为验证码（challenge）
+        2. 向 {app_host}/api/payment/verify_challenge 发送POST请求，携带验证码
+        3. 检查响应中返回的验证码是否与发送的一致
+        4. 如果一致，说明app_host指向的就是本服务器
+        
+        安全意义：
+        - 防止攻击者配置错误的app_host导致支付回调被劫持
+        - 确保支付异步通知URL指向正确的服务器
+        - 使用随机验证码，每次验证都不同，防止重放攻击
+        
+        使用场景：
+        - 管理员在配置彩虹易支付时，验证app_host配置是否正确
+        - 前端动态传入app_host前，先进行验证
+        """
+        try:
+            # 从请求体中获取JSON数据
+            data = request.get_json() or {}
+            
+            # 提取需要验证的app_host参数
+            # strip() 去除首尾空白字符
+            app_host = data.get("app_host", "").strip()
+            
+            # ========== 参数验证 ==========
+            
+            # 验证app_host是否为空
+            if not app_host:
+                return jsonify({
+                    "success": False, 
+                    "message": "app_host参数不能为空",
+                    "verified": False
+                })
+            
+            # 验证app_host格式：必须以http://或https://开头
+            # 这确保了URL的基本格式正确
+            if not (app_host.startswith("http://") or app_host.startswith("https://")):
+                return jsonify({
+                    "success": False,
+                    "message": "app_host格式不正确，必须以http://或https://开头",
+                    "verified": False
+                })
+            
+            # 移除app_host末尾的斜杠（如果存在）
+            # 这样可以统一URL格式，避免出现双斜杠的情况
+            # 例如：https://example.com/ -> https://example.com
+            app_host = app_host.rstrip('/')
+            
+            # ========== 生成随机验证码 ==========
+            
+            # 生成一个2048位的随机字符串作为验证码（challenge）
+            # 使用大小写字母和数字的组合，确保极高的安全性和随机性
+            # string.ascii_letters 包含所有大小写字母（a-z, A-Z，共52个字符）
+            # string.digits 包含所有数字（0-9，共10个字符）
+            # 总共62个字符的字符集，2048位随机字符串的组合数为 62^2048
+            import string
+            # random.choices() 从给定字符集中随机选择k个字符
+            # k=2048 表示生成2048位验证码，提供极高的安全强度
+            # ''.join() 将字符列表拼接成字符串
+            challenge = ''.join(random.choices(string.ascii_letters + string.digits, k=2048))
+            
+            # 记录日志：开始验证app_host
+            # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
+            challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(challenge) > 64 else challenge
+            logging.info(f"[支付验证] 开始验证app_host: {app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
+            
+            # ========== 发送验证请求 ==========
+            
+            # 构造验证接口的完整URL
+            # 格式：{app_host}/api/payment/verify_challenge
+            verify_url = f"{app_host}/api/payment/verify_challenge"
+            
+            try:
+                # 导入requests库用于发送HTTP请求
+                import requests
+                
+                # 向verify_challenge接口发送POST请求
+                # json参数：以JSON格式发送验证码
+                # timeout参数：设置5秒超时，避免长时间等待
+                # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
+                response = requests.post(
+                    verify_url,
+                    json={"challenge": challenge},
+                    timeout=5
+                )
+                
+                # 检查HTTP响应状态码
+                # 200表示请求成功
+                if response.status_code == 200:
+                    # 尝试解析响应JSON
+                    try:
+                        result = response.json()
+                        
+                        # 从响应中提取返回的验证码
+                        returned_challenge = result.get("challenge", "")
+                        
+                        # 对比发送的验证码和返回的验证码
+                        # 如果完全一致，说明确实是本服务器
+                        if returned_challenge == challenge:
+                            # 验证通过
+                            logging.info(f"[支付验证] app_host验证通过: {app_host}")
+                            return jsonify({
+                                "success": True,
+                                "message": "验证通过，这是本服务器",
+                                "verified": True
+                            })
+                        else:
+                            # 验证码不匹配，验证失败
+                            logging.warning(
+                                f"[支付验证] 验证码不匹配 - 发送: {challenge}, 返回: {returned_challenge}"
+                            )
+                            return jsonify({
+                                "success": False,
+                                "message": "验证失败：返回的验证码不匹配",
+                                "verified": False
+                            })
+                    
+                    except json.JSONDecodeError:
+                        # 响应不是有效的JSON格式
+                        logging.warning(f"[支付验证] 响应不是有效的JSON格式")
+                        return jsonify({
+                            "success": False,
+                            "message": "验证失败：响应格式不正确",
+                            "verified": False
+                        })
+                
+                else:
+                    # HTTP状态码不是200
+                    logging.warning(
+                        f"[支付验证] HTTP请求失败 - 状态码: {response.status_code}"
+                    )
+                    return jsonify({
+                        "success": False,
+                        "message": f"验证失败：HTTP状态码 {response.status_code}",
+                        "verified": False
+                    })
+            
+            except requests.exceptions.Timeout:
+                # 请求超时
+                logging.warning(f"[支付验证] 请求超时 - {verify_url}")
+                return jsonify({
+                    "success": False,
+                    "message": "验证失败：请求超时（5秒）",
+                    "verified": False
+                })
+            
+            except requests.exceptions.ConnectionError:
+                # 连接错误（网络不通或域名无法解析）
+                logging.warning(f"[支付验证] 连接失败 - {verify_url}")
+                return jsonify({
+                    "success": False,
+                    "message": "验证失败：无法连接到目标服务器",
+                    "verified": False
+                })
+            
+            except Exception as e:
+                # 其他异常
+                logging.error(f"[支付验证] 验证过程异常: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "message": f"验证失败：{str(e)}",
+                    "verified": False
+                })
+        
+        except Exception as e:
+            # 捕获最外层的所有异常
+            logging.error(f"[支付验证] verify_host接口异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"验证失败：{str(e)}",
+                "verified": False
+            }), 500
+
+    @app.route("/api/payment/verify_challenge", methods=["POST"])
+    def payment_verify_challenge():
+        """
+        验证挑战响应接口（用于配合verify_host验证）
+        
+        请求方法：POST
+        权限要求：无（公开接口，但只用于内部验证）
+        
+        请求参数（JSON格式）：
+            - challenge (str): 验证码（由verify_host接口发送）
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - challenge (str): 原样返回接收到的验证码
+        
+        功能说明：
+        这是一个简单的回显接口，用于配合verify_host进行服务器验证。
+        当verify_host向本服务器发送验证请求时，这个接口会原样返回验证码。
+        
+        工作原理：
+        1. 接收来自verify_host的验证码（challenge）
+        2. 不做任何处理，直接原样返回
+        3. verify_host接收到返回值后，对比是否与发送的一致
+        
+        安全说明：
+        - 这个接口不涉及敏感操作，仅用于验证域名是否指向本服务器
+        - 每次验证使用不同的随机验证码，防止重放攻击
+        - 不需要登录验证，因为这是服务器自我验证的一部分
+        
+        使用场景：
+        - 仅由verify_host接口调用
+        - 不应被前端直接调用
+        - 用于确认app_host配置正确性
+        """
+        try:
+            # 从请求体中获取JSON数据
+            data = request.get_json() or {}
+            
+            # 提取验证码参数
+            # 使用.get()方法安全地获取，如果不存在返回空字符串
+            challenge = data.get("challenge", "")
+            
+            # 记录日志：收到验证请求
+            # 记录请求来源IP，用于安全审计
+            client_ip = request.remote_addr
+            logging.info(f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码: {challenge}")
+            
+            # 原样返回验证码
+            # 非常简单的逻辑：收到什么就返回什么
+            # 这样verify_host就能验证响应是否来自本服务器
+            return jsonify({
+                "success": True,
+                "challenge": challenge
+            })
+        
+        except Exception as e:
+            # 捕获所有异常
+            # 即使出现异常，也返回错误信息而不是让请求失败
+            logging.error(f"[支付验证] verify_challenge接口异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"处理失败：{str(e)}"
+            }), 500
+
+    # ==============================================================================
+    # 支付管理接口 - 管理员配置支付方式
+    # ==============================================================================
+
+    @app.route("/api/admin/payment/config", methods=["GET", "PUT"])
+    @admin_required
+    def admin_payment_config():
+        """
+        获取或更新支付配置接口（管理员专用）
+        
+        请求方法：GET（获取配置）、PUT（更新配置）
+        权限要求：管理员权限（admin_required装饰器）
+        
+        GET请求 - 获取当前支付配置：
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - config (dict): 当前支付配置
+                - enabled_payment_methods (list): 启用的支付方式列表
+                - all_payment_methods (list): 所有支持的支付方式
+        
+        PUT请求 - 更新支付配置：
+        请求参数（JSON格式）：
+            - enabled_payment_methods (list): 要启用的支付方式列表
+                - 例如：["alipay", "wxpay"] 或 ["alipay", "wxpay", "bank"]
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 操作结果信息
+        
+        功能说明：
+        这个接口允许管理员动态配置启用哪些支付方式，无需重启服务器。
+        配置会立即生效，影响后续创建的所有订单。
+        
+        使用场景：
+        - 管理员在后台管理面板配置支付方式
+        - 根据运营策略动态调整支持的支付方式
+        - 临时禁用某些支付方式进行维护
+        
+        安全措施：
+        - 仅管理员可访问
+        - 验证支付方式的有效性
+        - 记录配置变更日志
+        """
+        try:
+            # 定义所有支持的支付方式及其中文名称
+            # 这是系统支持的完整支付方式列表
+            all_methods = {
+                "alipay": "支付宝",
+                "wxpay": "微信支付",
+                "bank": "网银支付"
+            }
+            
+            if request.method == "GET":
+                # ========== 处理GET请求：获取当前配置 ==========
+                
+                # 读取配置文件
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 获取当前启用的支付方式
+                enabled_methods_str = config.get(
+                    "Rainbow_YiPay",
+                    "enabled_payment_methods",
+                    fallback="alipay,wxpay"
+                ).strip()
+                
+                # 解析为列表
+                enabled_methods = [
+                    method.strip() 
+                    for method in enabled_methods_str.split(",") 
+                    if method.strip()
+                ]
+                
+                # 如果解析为空，使用默认值
+                if not enabled_methods:
+                    enabled_methods = ["alipay", "wxpay"]
+                
+                # 构造返回数据
+                # 包含当前启用的支付方式和所有可用的支付方式
+                return jsonify({
+                    "success": True,
+                    "config": {
+                        "enabled_payment_methods": enabled_methods,
+                        "all_payment_methods": [
+                            {"code": code, "name": name}
+                            for code, name in all_methods.items()
+                        ]
+                    }
+                })
+            
+            elif request.method == "PUT":
+                # ========== 处理PUT请求：更新配置 ==========
+                
+                # 获取请求数据
+                data = request.get_json() or {}
+                
+                # 提取要启用的支付方式列表
+                new_methods = data.get("enabled_payment_methods", [])
+                
+                # 验证参数
+                if not isinstance(new_methods, list):
+                    return jsonify({
+                        "success": False,
+                        "message": "enabled_payment_methods必须是数组"
+                    }), 400
+                
+                # 验证是否至少启用一种支付方式
+                if not new_methods:
+                    return jsonify({
+                        "success": False,
+                        "message": "至少需要启用一种支付方式"
+                    }), 400
+                
+                # 验证每个支付方式是否有效
+                invalid_methods = [m for m in new_methods if m not in all_methods]
+                if invalid_methods:
+                    return jsonify({
+                        "success": False,
+                        "message": f"不支持的支付方式：{', '.join(invalid_methods)}"
+                    }), 400
+                
+                # 读取当前配置
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 获取旧的配置（用于日志记录）
+                old_methods_str = config.get(
+                    "Rainbow_YiPay",
+                    "enabled_payment_methods",
+                    fallback="alipay,wxpay"
+                )
+                
+                # 更新配置
+                # 将列表转换为逗号分隔的字符串
+                new_methods_str = ",".join(new_methods)
+                
+                # 确保配置节存在
+                if not config.has_section("Rainbow_YiPay"):
+                    config.add_section("Rainbow_YiPay")
+                
+                # 设置新的配置值
+                config.set("Rainbow_YiPay", "enabled_payment_methods", new_methods_str)
+                
+                # 保存配置文件
+                # 使用 _write_config_with_comments() 函数保持注释
+                _write_config_with_comments(config, "config.ini")
+                
+                # 记录信息日志：配置已更新
+                logging.info(
+                    f"[支付配置] 管理员更新支付方式配置 - "
+                    f"操作者: {g.user}, 旧配置: {old_methods_str}, 新配置: {new_methods_str}"
+                )
+                
+                # 构造中文名称列表用于返回消息
+                method_names = [all_methods[m] for m in new_methods]
+                method_names_str = "、".join(method_names)
+                
+                # 返回成功响应
+                return jsonify({
+                    "success": True,
+                    "message": f"支付方式配置已更新：{method_names_str}"
+                })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付配置] 管理支付配置接口异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"操作失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/payment_logs", methods=["GET"])
+    @login_required
+    def user_payment_logs():
+        """
+        获取当前用户的支付日志列表接口
+        
+        功能说明：
+        用户查看自己的支付操作日志，自动根据登录状态识别用户身份。
+        - 如果是注册用户，使用username作为user_id
+        - 如果是游客会话，使用session UUID作为user_id
+        
+        请求方法：GET
+        权限要求：登录用户（login_required装饰器）
+        
+        查询参数（URL参数）：
+            - action (str, 可选): 按操作类型筛选
+                - "create_order": 创建订单
+                - "query_order": 查询订单
+                - "payment_success": 支付成功
+                - "payment_fail": 支付失败
+            - start_date (str, 可选): 开始日期（格式：YYYY-MM-DD）
+            - end_date (str, 可选): 结束日期（格式：YYYY-MM-DD）
+            - page (int, 可选): 页码，默认1
+            - per_page (int, 可选): 每页数量，默认20（最大100）
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - logs (list): 日志列表（按时间倒序）
+                每条日志包含：
+                - order_id: 订单号
+                - action: 操作类型
+                - datetime: 操作时间（可读格式）
+                - 以及其他操作特定的数据
+            - total (int): 符合条件的总日志数
+            - page (int): 当前页码
+            - per_page (int): 每页数量
+        
+        功能说明：
+        用户可以查看自己的支付操作日志，支持按操作类型、日期范围筛选和分页。
+        日志按时间倒序排列，最新的日志在最前面。
+        
+        使用场景：
+        - 查看自己的订单历史
+        - 追踪支付状态
+        - 查询支付问题
+        """
+        try:
+            # ========== 获取当前用户ID ==========
+            
+            # 获取当前登录用户
+            current_user = g.user
+            
+            # 确定用户ID
+            # 如果g.user不为None，说明是注册用户，使用username
+            # 否则，使用session中的UUID（游客会话）
+            if current_user:
+                user_id = current_user
+            else:
+                # 游客用户，使用session UUID
+                # session UUID应该在login_required装饰器中已经设置
+                user_id = session.get("uuid", "")
+                if not user_id:
+                    return jsonify({
+                        "success": False,
+                        "message": "无法识别用户身份，请重新登录"
+                    }), 401
+            
+            # ========== 获取查询参数 ==========
+            
+            # 操作类型筛选（可选）
+            action_filter = request.args.get("action", "").strip()
+            
+            # 日期范围筛选（可选）
+            start_date_str = request.args.get("start_date", "").strip()
+            end_date_str = request.args.get("end_date", "").strip()
+            
+            # 分页参数
+            try:
+                page = int(request.args.get("page", "1"))
+                per_page = int(request.args.get("per_page", "20"))
+            except ValueError:
+                page = 1
+                per_page = 20
+            
+            # 验证分页参数
+            if page < 1:
+                page = 1
+            if per_page < 1 or per_page > 100:
+                per_page = 20
+            
+            # 解析日期范围
+            start_timestamp = None
+            end_timestamp = None
+            
+            if start_date_str:
+                try:
+                    # 将日期字符串转换为时间戳
+                    # 格式：YYYY-MM-DD -> Unix时间戳（当天00:00:00）
+                    from datetime import datetime
+                    start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+                    start_timestamp = start_dt.timestamp()
+                except ValueError:
+                    # 日期格式不正确，忽略此筛选条件
+                    app.logger.warning(f"[用户支付日志] 日期格式不正确: {start_date_str}")
+            
+            if end_date_str:
+                try:
+                    # 将日期字符串转换为时间戳
+                    # 格式：YYYY-MM-DD -> Unix时间戳（当天23:59:59）
+                    from datetime import datetime
+                    end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
+                    # 加上一天的秒数，使其包含整个结束日期
+                    end_timestamp = end_dt.timestamp() + 86400 - 1
+                except ValueError:
+                    app.logger.warning(f"[用户支付日志] 日期格式不正确: {end_date_str}")
+            
+            # ========== 读取当前用户的支付日志文件 ==========
+            
+            logs = []
+            
+            # 规范化用户ID为目录名
+            # 与_write_payment_log函数保持一致
+            if user_id and not user_id.startswith("guest_") and not user_id.startswith("user_"):
+                # 判断是否为游客（通常游客ID包含连字符或为UUID格式）
+                if "-" in user_id:
+                    safe_user_id = f"guest_{user_id}"
+                else:
+                    safe_user_id = f"user_{user_id}"
+            else:
+                safe_user_id = user_id
+            
+            # 构建用户日志目录路径
+            log_dir = "logs/payment_logs"
+            user_log_dir = os.path.join(log_dir, safe_user_id)
+            
+            # 检查用户日志目录是否存在
+            if os.path.exists(user_log_dir) and os.path.isdir(user_log_dir):
+                # 遍历用户目录下的所有JSON文件
+                for filename in os.listdir(user_log_dir):
+                    if not filename.endswith('.json'):
+                        continue
+                    
+                    file_path = os.path.join(user_log_dir, filename)
+                    
+                    try:
+                        # 读取日志文件
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            log_entry = json.load(f)
+                        
+                        # ========== 应用筛选条件 ==========
+                        
+                        # 筛选条件1：操作类型
+                        if action_filter and log_entry.get('action') != action_filter:
+                            continue
+                        
+                        # 筛选条件2：开始日期
+                        if start_timestamp is not None:
+                            log_timestamp = log_entry.get('timestamp', 0)
+                            if log_timestamp < start_timestamp:
+                                continue
+                        
+                        # 筛选条件3：结束日期
+                        if end_timestamp is not None:
+                            log_timestamp = log_entry.get('timestamp', 0)
+                            if log_timestamp > end_timestamp:
+                                continue
+                        
+                        # 通过筛选，添加到结果列表
+                        logs.append(log_entry)
+                        
+                    except Exception as e:
+                        # 读取或解析单个文件失败，记录警告但继续处理其他文件
+                        app.logger.warning(f"[用户支付日志] 读取文件失败: {file_path}, 错误: {str(e)}")
+                        continue
+            
+            # ========== 排序和分页 ==========
+            
+            # 按时间戳倒序排序（最新的在前面）
+            logs.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+            
+            # 计算总数
+            total = len(logs)
+            
+            # 计算分页
+            start_index = (page - 1) * per_page
+            end_index = start_index + per_page
+            
+            # 获取当前页的数据
+            page_logs = logs[start_index:end_index]
+            
+            # ========== 返回结果 ==========
+            
+            return jsonify({
+                "success": True,
+                "logs": page_logs,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "user_id": user_id  # 返回用户ID，便于前端确认
+            })
+        
+        except Exception as e:
+            # 处理异常
+            app.logger.error(f"[用户支付日志] 处理失败: {str(e)}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"获取支付日志失败: {str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment_logs", methods=["GET"])
+    @admin_required
+    def admin_payment_logs():
+        """
+        获取支付日志列表接口（管理员专用）
+        
+        请求方法：GET
+        权限要求：管理员权限（admin_required装饰器）
+        
+        查询参数（URL参数）：
+            - user_id (str, 可选): 按用户ID筛选（支持模糊匹配）
+            - action (str, 可选): 按操作类型筛选
+                - "create_order": 创建订单
+                - "query_order": 查询订单
+                - "payment_success_notify": 支付成功通知
+                - 等等
+            - start_date (str, 可选): 开始日期（格式：YYYY-MM-DD）
+            - end_date (str, 可选): 结束日期（格式：YYYY-MM-DD）
+            - page (int, 可选): 页码，默认1
+            - per_page (int, 可选): 每页数量，默认20（最大100）
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - logs (list): 日志列表（按时间倒序）
+                每条日志包含：
+                - user_id: 用户标识
+                - order_id: 订单号
+                - action: 操作类型
+                - datetime: 操作时间（可读格式）
+                - 以及其他操作特定的数据
+            - total (int): 符合条件的总日志数
+            - page (int): 当前页码
+            - per_page (int): 每页数量
+            - users (list): 所有有支付记录的用户列表（用于筛选）
+        
+        功能说明：
+        管理员可以查看所有用户的支付操作日志，支持多维度筛选和分页。
+        日志按时间倒序排列，最新的日志在最前面。
+        
+        使用场景：
+        - 审计：查看所有支付操作记录
+        - 调试：分析支付问题的完整流程
+        - 统计：分析用户支付行为
+        - 安全：发现异常支付操作
+        """
+        try:
+            # ========== 获取查询参数 ==========
+            
+            # 用户ID筛选（可选）
+            user_filter = request.args.get("user_id", "").strip()
+            
+            # 操作类型筛选（可选）
+            action_filter = request.args.get("action", "").strip()
+            
+            # 日期范围筛选（可选）
+            start_date_str = request.args.get("start_date", "").strip()
+            end_date_str = request.args.get("end_date", "").strip()
+            
+            # 分页参数
+            try:
+                page = int(request.args.get("page", "1"))
+                per_page = int(request.args.get("per_page", "20"))
+            except ValueError:
+                page = 1
+                per_page = 20
+            
+            # 验证分页参数
+            if page < 1:
+                page = 1
+            if per_page < 1 or per_page > 100:
+                per_page = 20
+            
+            # 解析日期范围
+            start_timestamp = None
+            end_timestamp = None
+            
+            if start_date_str:
+                try:
+                    # 将日期字符串转换为时间戳
+                    # 格式：YYYY-MM-DD -> Unix时间戳（当天00:00:00）
+                    from datetime import datetime
+                    start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+                    start_timestamp = start_dt.timestamp()
+                except ValueError:
+                    # 日期格式不正确，忽略此筛选条件
+                    logging.warning(f"[支付日志] 日期格式不正确: {start_date_str}")
+            
+            if end_date_str:
+                try:
+                    # 将日期字符串转换为时间戳
+                    # 格式：YYYY-MM-DD -> Unix时间戳（当天23:59:59）
+                    from datetime import datetime
+                    end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
+                    # 加上一天的秒数，使其包含整个结束日期
+                    end_timestamp = end_dt.timestamp() + 86400 - 1
+                except ValueError:
+                    logging.warning(f"[支付日志] 日期格式不正确: {end_date_str}")
+            
+            # ========== 读取所有支付日志文件 ==========
+            
+            logs = []
+            users_set = set()  # 用于收集所有有支付记录的用户
+            
+            # 检查支付日志目录是否存在
+            if not os.path.exists(PAYMENT_LOGS_DIR):
+                # 目录不存在，返回空列表
+                return jsonify({
+                    "success": True,
+                    "logs": [],
+                    "total": 0,
+                    "page": page,
+                    "per_page": per_page,
+                    "users": []
+                })
+            
+            # 遍历所有用户目录
+            for user_dir_name in os.listdir(PAYMENT_LOGS_DIR):
+                # 构造用户日志目录的完整路径
+                user_dir_path = os.path.join(PAYMENT_LOGS_DIR, user_dir_name)
+                
+                # 跳过非目录项
+                if not os.path.isdir(user_dir_path):
+                    continue
+                
+                # 提取用户ID（移除 user_ 或 guest_ 前缀）
+                if user_dir_name.startswith("user_"):
+                    user_id = user_dir_name[5:]  # 移除"user_"前缀
+                elif user_dir_name.startswith("guest_"):
+                    user_id = user_dir_name[6:]  # 移除"guest_"前缀
+                else:
+                    user_id = user_dir_name
+                
+                # 添加到用户集合
+                users_set.add(user_id)
+                
+                # 如果设置了用户筛选，检查是否匹配
+                if user_filter and user_filter not in user_id:
+                    # 不匹配，跳过此用户
+                    continue
+                
+                # 遍历用户目录中的所有日志文件
+                for log_filename in os.listdir(user_dir_path):
+                    # 只处理.json文件
+                    if not log_filename.endswith(".json"):
+                        continue
+                    
+                    # 构造日志文件完整路径
+                    log_filepath = os.path.join(user_dir_path, log_filename)
+                    
+                    try:
+                        # 读取日志文件
+                        with open(log_filepath, "r", encoding="utf-8") as f:
+                            log_data = json.load(f)
+                        
+                        # ========== 应用筛选条件 ==========
+                        
+                        # 操作类型筛选
+                        if action_filter and log_data.get("action") != action_filter:
+                            continue
+                        
+                        # 日期范围筛选
+                        log_timestamp = log_data.get("timestamp", 0)
+                        if start_timestamp and log_timestamp < start_timestamp:
+                            continue
+                        if end_timestamp and log_timestamp > end_timestamp:
+                            continue
+                        
+                        # 添加到日志列表
+                        logs.append(log_data)
+                    
+                    except (json.JSONDecodeError, IOError) as e:
+                        # 文件读取或解析失败，记录警告并跳过
+                        logging.warning(
+                            f"[支付日志] 读取日志文件失败: {log_filepath}, 错误: {str(e)}"
+                        )
+                        continue
+            
+            # ========== 排序和分页 ==========
+            
+            # 按时间戳倒序排列（最新的在前面）
+            logs.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+            
+            # 分页
+            total = len(logs)
+            start = (page - 1) * per_page
+            end = start + per_page
+            logs_page = logs[start:end]
+            
+            # 转换用户集合为排序列表
+            users_list = sorted(list(users_set))
+            
+            # 返回结果
+            return jsonify({
+                "success": True,
+                "logs": logs_page,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "users": users_list  # 用于前端筛选下拉框
+            })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付日志] 获取支付日志列表异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"获取日志失败：{str(e)}"
+            }), 500
+
+    # ==============================================================================
+    # 健康检查和监控接口
+    # ==============================================================================
 
     @app.route("/health")
     def health():

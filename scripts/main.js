@@ -56,6 +56,123 @@
     });
 })();
 
+// ========================================
+// 支付方式配置（从后端动态加载）
+// ========================================
+
+/**
+ * 全局变量：支付方式配置对象
+ * 
+ * 功能：存储从后端加载的所有支付方式配置信息
+ * 数据来源：通过 /api/payment/methods_config 接口从后端动态获取
+ * 加载时机：页面加载完成后（DOMContentLoaded事件）自动调用 loadPaymentMethodsConfig() 函数
+ * 
+ * 数据结构：
+ * {
+ *   'alipay': { 
+ *     name: '支付宝支付',
+ *     icon: 'svg',
+ *     svg: '<svg>...</svg>',
+ *     borderColor: 'hover:border-sky-500',
+ *     textColor: 'text-sky-600',
+ *     description: '支持支付宝扫码支付'
+ *   },
+ *   'wxpay': { ... },
+ *   ...
+ * }
+ * 
+ * 注意事项：
+ * 1. 初始值为空对象，必须等待 loadPaymentMethodsConfig() 加载完成后才有数据
+ * 2. 所有使用此变量的代码应确保配置已加载完成
+ * 3. 支持SVG图标，icon字段为'svg'时使用svg字段的SVG代码
+ * 4. 配置完全由后端config.ini管理，添加新支付方式无需修改前端代码
+ */
+let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
+
+/**
+ * 从后端加载支付方式配置
+ * 
+ * 功能说明：
+ * 调用后端 /api/payment/methods_config 接口，获取所有支付方式的配置信息
+ * 包括支付方式的名称、SVG图标、描述、样式等，并存储到全局变量 PAYMENT_METHODS 中
+ * 
+ * 调用时机：
+ * 页面加载完成后自动调用（通过DOMContentLoaded事件监听器）
+ * 
+ * 错误处理：
+ * 1. 网络请求失败：记录错误日志，PAYMENT_METHODS保持为空对象
+ * 2. 接口返回失败：记录错误信息，PAYMENT_METHODS保持为空对象
+ * 3. 数据解析失败：记录异常信息，PAYMENT_METHODS保持为空对象
+ * 
+ * 后续影响：
+ * 1. 如果配置加载失败，支付方式选择界面可能无法正常显示
+ * 2. 相关功能会检查PAYMENT_METHODS是否为空，以提供降级方案
+ * 
+ * @returns {Promise<void>} 异步函数，无返回值
+ */
+async function loadPaymentMethodsConfig() {
+    try {
+        // 记录开始加载的日志，便于追踪配置加载流程
+        console.log('[支付方式配置] 开始从后端加载配置...');
+        
+        // 调用后端API接口获取支付方式配置
+        // 使用fetch发起GET请求到 /api/payment/methods_config 端点
+        const response = await fetch('/api/payment/methods_config', {
+            method: 'GET', // GET请求，获取数据
+            headers: {
+                'Content-Type': 'application/json' // 设置请求头，告知服务器期望返回JSON格式数据
+            }
+        });
+        
+        // 解析响应的JSON数据
+        // response.json() 返回一个Promise，解析后得到JavaScript对象
+        const data = await response.json();
+        
+        // 检查接口返回的success字段，判断请求是否成功
+        if (data.success) {
+            // 请求成功，将后端返回的支付方式配置存储到全局变量
+            // data.methods 包含所有支付方式的配置信息（名称、图标、描述等）
+            PAYMENT_METHODS = data.methods;
+            
+            // 记录成功日志，输出配置内容便于调试
+            // 这样开发者可以在浏览器控制台看到完整的配置数据
+            console.log('[支付方式配置] 配置加载成功:', PAYMENT_METHODS);
+        } else {
+            // 请求失败，记录错误信息
+            // data.message 包含服务器返回的具体错误原因
+            console.error('[支付方式配置] 加载失败:', data.message);
+        }
+    } catch (error) {
+        // 捕获所有异常情况（网络错误、JSON解析失败、其他运行时错误等）
+        // 确保即使加载失败也不会导致整个页面崩溃
+        console.error('[支付方式配置] 加载异常:', error);
+    }
+}
+
+// ========================================
+// 页面加载完成后的初始化逻辑
+// ========================================
+
+/**
+ * DOMContentLoaded事件监听器
+ * 
+ * 功能：在DOM完全加载和解析后立即执行初始化代码
+ * 时机：HTML文档被完全加载和解析完成后触发，无需等待样式表、图像等资源
+ * 
+ * 执行内容：
+ * 1. 调用 loadPaymentMethodsConfig() 加载支付方式配置
+ * 2. 其他页面初始化逻辑可以在这里添加
+ * 
+ * 注意事项：
+ * 1. 此事件在页面加载的早期阶段触发，确保配置尽早可用
+ * 2. 如果有其他依赖PAYMENT_METHODS的初始化代码，应该在loadPaymentMethodsConfig()完成后执行
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    // 加载支付方式配置
+    // 这是异步操作，会在后台执行，不阻塞其他初始化逻辑
+    loadPaymentMethodsConfig();
+});
+
 function handleCdnError(resourceName) {
   resourceName = resourceName || "未指定";
   cdnErrorCount++;
@@ -5050,9 +5167,10 @@ function refreshMobileSessionPicker() {
             cdnTab.style.display = canManageSystem ? "block" : "none";
 
           // [修复] 显示密码恢复标签 (仅超级管理员)
+          // 修复说明：使用hasGodMode权限检查结果，而不是直接检查currentUserData.group
+          // 这样确保权限判断的一致性和准确性
           if (bruteforceTab) {
-             const isSuperAdmin = currentUserData && currentUserData.group === "super_admin";
-             bruteforceTab.style.display = isSuperAdmin ? "block" : "none";
+             bruteforceTab.style.display = hasGodMode ? "block" : "none";
           }
 
           if (modalCaptchaTab)
@@ -25831,6 +25949,26 @@ function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>',
       permission: "admin",
     },
+    // ========================================
+    // 支付配置标签
+    // 管理员可以在此启用/禁用支付方式
+    // ========================================
+    {
+      id: "payment-config",
+      label: "支付配置",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+      permission: "admin",
+    },
+    // ========================================
+    // 支付日志标签
+    // 管理员可以在此查看所有支付操作日志
+    // ========================================
+    {
+      id: "payment-logs",
+      label: "支付日志",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
+      permission: "admin",
+    },
     // [修复] 添加CDN缓存标签
     {
       id: "cdn",
@@ -26953,6 +27091,8 @@ function switchMobileAdminTab(tabId, prefix) {
       验证码: "captcha",
       提醒: "reminders",
       HTTPS: "ssl",
+      支付配置: "payment-config", // 支付配置标签映射
+      支付日志: "payment-logs", // 支付日志标签映射
       // [修复] 添加新标签的中文映射
       CDN: "cdn", 
       密码恢复: "bruteforce",
@@ -27103,6 +27243,8 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-captcha-panel", // 验证码管理面板
       "mobile-multi-admin-reminders-panel", // 定时提醒面板
       "mobile-multi-admin-ssl-panel", // HTTPS设置面板
+      "mobile-multi-admin-payment-config-panel", // 支付配置面板
+      "mobile-multi-admin-payment-logs-panel", // 支付日志面板
       // [修复] 添加CDN和密码恢复面板ID
       "mobile-multi-admin-cdn-panel", 
       "mobile-multi-admin-bruteforce-panel",
@@ -27205,6 +27347,24 @@ function switchMobileAdminTab(tabId, prefix) {
       case "ssl":
         // 加载SSL/HTTPS配置信息
         loadSSLInfo().then(() => copyAdminContentToMultiPanel("ssl"));
+        break;
+      // ========================================
+      // 支付配置面板加载逻辑
+      // 当管理员切换到"支付配置"标签时，调用loadPaymentConfig函数
+      // 该函数会从后端加载当前启用的支付方式并更新复选框状态
+      // ========================================
+      case "payment-config":
+        // 加载支付配置
+        loadPaymentConfig();
+        break;
+      // ========================================
+      // 支付日志面板加载逻辑
+      // 当管理员切换到"支付日志"标签时，调用loadPaymentLogs函数
+      // 默认加载第1页的日志数据
+      // ========================================
+      case "payment-logs":
+        // 加载支付日志（第1页）
+        loadPaymentLogs(1);
         break;
       // [修复] 添加CDN加载逻辑
       case "cdn":
@@ -33192,3 +33352,1935 @@ async function loadInitialData(options = {}) {
     // 正常情况下，执行流程会在return response处结束
     // 错误情况下，会在throw error处结束
 }
+
+// ============================================================================
+// 彩虹易支付系统 - 前端JavaScript实现
+// ============================================================================
+// 本模块实现了彩虹易支付系统的所有前端交互功能
+// 包括：创建订单、查询状态、订单列表管理、支付配置、日志查看等
+// 所有函数都有详细的中文注释，便于理解和维护
+// ============================================================================
+
+// ========================================
+// 全局变量定义区域
+// ========================================
+
+// 订单轮询定时器：用于定时查询订单支付状态
+// 当用户创建订单后，会启动定时器每3秒查询一次订单状态
+// 支付成功或超时后会自动清除定时器
+let paymentPollingTimer = null;
+
+// 订单轮询计数器：记录已经轮询的次数
+// 最多轮询20次（约1分钟），避免无限轮询浪费资源
+let paymentPollingCount = 0;
+
+// 订单列表当前页码：用于分页显示订单列表
+// 默认从第1页开始，点击"下一页"/"上一页"会更新此值
+let currentOrdersPage = 1;
+
+// 订单列表每页显示数量：控制每页显示多少条订单
+// 设置为10条，既不会太多导致加载慢，也不会太少需要频繁翻页
+let ordersPerPage = 10;
+
+// 当前筛选的订单状态：用于过滤订单列表
+// 可选值：'all'（全部）、'pending'（待支付）、'paid'（已支付）、'closed'（已关闭）
+let currentOrderStatus = 'all';
+
+// ========================================
+// 打开支付弹窗函数
+// ========================================
+/**
+ * 打开支付弹窗，让用户输入支付金额和选择支付方式
+ * 
+ * 功能说明：
+ * 1. 显示支付弹窗（payment-modal）
+ * 2. 从后端加载启用的支付方式并动态显示
+ * 3. 重置表单到初始状态
+ * 
+ * 调用时机：
+ * - 用户点击个人中心的"在线支付"按钮时
+ * - 用户点击订单列表中的"继续支付"按钮时
+ * 
+ * @returns {void} 无返回值
+ */
+async function openPaymentModal() {
+    // 步骤1：获取支付弹窗DOM元素
+    const modal = document.getElementById('payment-modal');
+    
+    // 步骤2：检查弹窗元素是否存在
+    // 如果不存在，说明HTML结构有问题，输出错误并返回
+    if (!modal) {
+        console.error('[支付] 支付弹窗元素不存在');
+        return;
+    }
+    
+    // 步骤3：显示支付弹窗
+    // 移除'hidden'类名（如果存在），并添加'flex'类名使弹窗居中显示
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    
+    // 步骤4：重置表单到初始状态
+    // 清空金额输入框，避免显示上次输入的金额
+    document.getElementById('payment-amount').value = '';
+    // 恢复商品描述为默认值"在线支付"
+    document.getElementById('payment-product-name').value = '在线支付';
+    
+    // 步骤5：从后端加载启用的支付方式
+    // 管理员可能随时修改支付配置，所以每次打开弹窗都需要重新加载
+    try {
+        // 调用后端API获取支付配置
+        // 使用await等待异步请求完成，确保数据加载后再继续
+        const response = await fetch('/api/admin/payment/config');
+        
+        // 将响应转换为JSON格式
+        const result = await response.json();
+        
+        // 步骤6：检查API调用是否成功
+        if (result.success && result.enabled_payment_methods) {
+            // 获取启用的支付方式列表
+            // 例如：["alipay", "wxpay"]
+            const enabledMethods = result.enabled_payment_methods;
+            
+            // 获取支付方式容器DOM元素
+            const container = document.getElementById('payment-methods-container');
+            
+            // 步骤7：动态生成支付方式选项
+            // 清空容器，准备重新生成
+            container.innerHTML = '';
+            
+            // 检查是否有启用的支付方式
+            // 如果后端没有返回任何启用的支付方式，显示提示信息
+            if (enabledMethods.length === 0) {
+                // 创建提示HTML并插入容器
+                container.innerHTML = `
+                    <div class="text-center py-6 text-slate-500">
+                        <p class="text-sm">暂无可用的支付方式</p>
+                        <p class="text-xs mt-1">请联系管理员启用支付方式</p>
+                    </div>
+                `;
+                return; // 直接返回，不再继续执行
+            }
+            
+            // 遍历启用的支付方式，为每个方式创建一个单选按钮
+            enabledMethods.forEach((method, index) => {
+                // 从全局配置对象(PAYMENT_METHODS)中获取当前支付方式的配置
+                // 如果配置不存在（未知的支付方式），使用默认配置
+                const config = PAYMENT_METHODS[method] || {
+                    name: method.toUpperCase(), // 使用代码本身作为显示名称，转为大写
+                    icon: 'emoji', // 默认使用emoji图标类型
+                    svg: '💳', // 使用通用的信用卡emoji作为备用
+                    borderColor: 'hover:border-slate-500', // 使用中性的灰色边框
+                    textColor: 'text-slate-600', // 使用中性的灰色文字
+                    description: '在线支付'
+                };
+                
+                // 根据图标类型生成图标HTML
+                // 如果icon字段为'svg'，使用svg字段的SVG代码
+                // 否则使用icon字段作为emoji图标
+                const iconHtml = config.icon === 'svg' 
+                    ? config.svg // 直接使用SVG代码（已包含样式类）
+                    : `<span class="text-lg">${config.icon}</span>`; // emoji图标，包裹在span中
+                
+                // 创建支付方式选项的HTML字符串
+                // 使用模板字符串拼接，支持变量插值
+                // 注意：第一个选项(index === 0)会被自动选中(checked属性)
+                const optionHTML = `
+                    <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer ${config.borderColor} transition-colors">
+                        <!-- 单选按钮：name属性保证同组单选，value属性用于提交数据 -->
+                        <input type="radio" name="payment-method" value="${method}" 
+                            class="w-4 h-4 ${config.textColor}" ${index === 0 ? 'checked' : ''} />
+                        <!-- 支付方式图标：SVG或emoji，根据配置动态生成 -->
+                        <span class="ml-3 flex items-center gap-2">
+                            ${iconHtml}
+                            <!-- 支付方式名称：显示给用户的中文名称 -->
+                            <span class="text-sm font-medium text-slate-700">${config.name}</span>
+                        </span>
+                    </label>
+                `;
+                
+                // 将HTML字符串插入到容器的末尾
+                // insertAdjacentHTML比innerHTML更高效，不会重新解析整个容器
+                container.insertAdjacentHTML('beforeend', optionHTML);
+            });
+            
+            // 输出日志：记录成功加载的支付方式
+            console.log('[支付] 已加载启用的支付方式:', enabledMethods);
+        } else {
+            // API调用失败或没有启用的支付方式
+            // 使用Swal.fire显示友好的错误提示
+            Swal.fire({
+                icon: 'warning',
+                title: '提示',
+                text: '暂无可用的支付方式，请联系管理员',
+                confirmButtonText: '确定'
+            });
+            
+            // 输出警告日志
+            console.warn('[支付] 获取支付方式失败:', result.message);
+        }
+    } catch (error) {
+        // 捕获网络错误或其他异常
+        console.error('[支付] 加载支付方式时出错:', error);
+        
+        // 显示错误提示
+        Swal.fire({
+            icon: 'error',
+            title: '错误',
+            text: '加载支付方式失败，请稍后重试',
+            confirmButtonText: '确定'
+        });
+    }
+}
+
+// ========================================
+// 关闭支付弹窗函数
+// ========================================
+/**
+ * 关闭支付弹窗
+ * 
+ * 功能说明：
+ * 1. 隐藏支付弹窗
+ * 2. 清理表单数据
+ * 
+ * 调用时机：
+ * - 用户点击"取消"按钮时
+ * - 用户点击弹窗外部区域时
+ * - 用户点击关闭按钮（X）时
+ * 
+ * @returns {void} 无返回值
+ */
+function closePaymentModal() {
+    // 获取支付弹窗DOM元素
+    const modal = document.getElementById('payment-modal');
+    
+    // 检查元素是否存在
+    if (!modal) return;
+    
+    // 隐藏弹窗：添加'hidden'类名
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+    
+    // 输出日志
+    console.log('[支付] 支付弹窗已关闭');
+}
+
+// ========================================
+// 创建支付订单函数
+// ========================================
+/**
+ * 创建支付订单并跳转到支付页面
+ * 
+ * 功能说明：
+ * 1. 验证用户输入（金额、支付方式、商品名称）
+ * 2. 获取当前页面的app_host并验证其有效性
+ * 3. 调用后端API创建支付订单
+ * 4. 在新窗口打开支付URL
+ * 5. 启动订单状态轮询，实时查询支付结果
+ * 
+ * 参数验证规则：
+ * - amount: 必须大于0.01元
+ * - pay_type: 必须选择一个支付方式
+ * - product_name: 不能为空
+ * 
+ * @returns {Promise<void>} 无返回值的Promise
+ */
+async function createPaymentOrder() {
+    // 步骤1：获取用户输入的支付金额
+    // 使用trim()去除首尾空格，避免用户误输入空格
+    const amount = document.getElementById('payment-amount').value.trim();
+    
+    // 步骤2：获取选中的支付方式
+    // querySelector获取被选中的单选按钮的value属性
+    const payType = document.querySelector('input[name="payment-method"]:checked')?.value;
+    
+    // 步骤3：获取商品名称
+    const productName = document.getElementById('payment-product-name').value.trim();
+    
+    // 步骤4：参数验证 - 检查金额是否为空
+    if (!amount) {
+        // 使用Swal.fire显示友好的错误提示
+        Swal.fire({
+            icon: 'warning',
+            title: '提示',
+            text: '请输入支付金额',
+            confirmButtonText: '确定'
+        });
+        return; // 验证失败，终止函数执行
+    }
+    
+    // 步骤5：参数验证 - 检查金额是否小于最低限额
+    // parseFloat将字符串转换为浮点数，便于数值比较
+    if (parseFloat(amount) < 0.01) {
+        Swal.fire({
+            icon: 'warning',
+            title: '提示',
+            text: '支付金额不能低于0.01元',
+            confirmButtonText: '确定'
+        });
+        return;
+    }
+    
+    // 步骤6：参数验证 - 检查是否选择了支付方式
+    if (!payType) {
+        Swal.fire({
+            icon: 'warning',
+            title: '提示',
+            text: '请选择支付方式',
+            confirmButtonText: '确定'
+        });
+        return;
+    }
+    
+    // 步骤7：参数验证 - 检查商品名称是否为空
+    if (!productName) {
+        Swal.fire({
+            icon: 'warning',
+            title: '提示',
+            text: '请输入商品描述',
+            confirmButtonText: '确定'
+        });
+        return;
+    }
+    
+    // 步骤8：获取当前页面的app_host（域名）
+    // location.hostname返回域名（如：example.com）
+    // location.port返回端口号（如：8080），如果是默认端口则为空字符串
+    const appHost = location.hostname + (location.port ? ':' + location.port : '');
+    
+    // 输出日志：记录即将创建的订单信息
+    console.log('[支付] 准备创建订单:', { amount, payType, productName, appHost });
+    
+    try {
+        // 步骤9：验证app_host是否有效
+        // 调用后端API验证当前域名是否允许创建订单
+        const verifyResponse = await fetch('/api/payment/verify_host', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ app_host: appHost })
+        });
+        
+        // 解析验证结果
+        const verifyResult = await verifyResponse.json();
+        
+        // 步骤10：检查验证结果
+        if (!verifyResult.success) {
+            // 域名验证失败，显示错误提示
+            Swal.fire({
+                icon: 'error',
+                title: '验证失败',
+                text: verifyResult.message || '当前域名未授权，无法创建订单',
+                confirmButtonText: '确定'
+            });
+            console.error('[支付] app_host验证失败:', verifyResult.message);
+            return;
+        }
+        
+        // 步骤11：创建支付订单
+        // 调用后端API，传入金额、支付方式、商品名称等参数
+        const createResponse = await fetch('/api/payment/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: amount,
+                pay_type: payType,
+                product_name: productName,
+                app_host: appHost
+            })
+        });
+        
+        // 解析创建结果
+        const createResult = await createResponse.json();
+        
+        // 步骤12：检查订单创建结果
+        if (!createResult.success) {
+            // 订单创建失败，显示错误提示
+            Swal.fire({
+                icon: 'error',
+                title: '创建订单失败',
+                text: createResult.message || '创建订单时出错，请稍后重试',
+                confirmButtonText: '确定'
+            });
+            console.error('[支付] 创建订单失败:', createResult.message);
+            return;
+        }
+        
+        // 步骤13：订单创建成功，提取支付URL和订单号
+        const payUrl = createResult.pay_url;
+        const orderId = createResult.order_id;
+        
+        // 输出日志：记录订单创建成功
+        console.log('[支付] 订单创建成功:', { orderId, payUrl });
+        
+        // 步骤14：关闭支付弹窗
+        closePaymentModal();
+        
+        // 步骤15：在新窗口打开支付URL
+        // 使用window.open在新标签页打开支付页面，避免离开当前页面
+        window.open(payUrl, '_blank');
+        
+        // 步骤16：显示支付提示
+        Swal.fire({
+            icon: 'success',
+            title: '订单已创建',
+            text: '请在新打开的页面完成支付，支付完成后会自动刷新订单状态',
+            confirmButtonText: '确定',
+            timer: 3000 // 3秒后自动关闭
+        });
+        
+        // 步骤17：启动订单状态轮询
+        // 每3秒查询一次订单状态，最多查询20次（1分钟）
+        startOrderPolling(orderId);
+        
+    } catch (error) {
+        // 捕获网络错误或其他异常
+        console.error('[支付] 创建订单时出错:', error);
+        
+        // 显示错误提示
+        Swal.fire({
+            icon: 'error',
+            title: '错误',
+            text: '网络错误，请检查网络连接后重试',
+            confirmButtonText: '确定'
+        });
+    }
+}
+
+// ========================================
+// 查询订单状态函数
+// ========================================
+/**
+ * 查询指定订单的支付状态
+ * 
+ * 功能说明：
+ * 1. 调用后端API查询订单状态
+ * 2. 返回订单详细信息（状态、金额、时间等）
+ * 
+ * 订单状态说明：
+ * - pending: 待支付（用户还未完成支付）
+ * - paid: 已支付（支付成功）
+ * - closed: 已关闭（订单已取消或超时）
+ * 
+ * @param {string} orderId - 订单号
+ * @returns {Promise<Object>} 返回订单信息对象，包含status、order等字段
+ */
+async function queryOrderStatus(orderId) {
+    // 步骤1：参数验证 - 检查订单号是否为空
+    if (!orderId) {
+        console.error('[支付] 订单号不能为空');
+        return { success: false, message: '订单号不能为空' };
+    }
+    
+    try {
+        // 步骤2：调用后端API查询订单状态
+        const response = await fetch('/api/payment/query', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ order_id: orderId })
+        });
+        
+        // 步骤3：解析响应数据
+        const result = await response.json();
+        
+        // 步骤4：输出日志 - 记录查询结果
+        console.log('[支付] 查询订单状态:', { orderId, result });
+        
+        // 步骤5：返回查询结果
+        return result;
+        
+    } catch (error) {
+        // 捕获网络错误或其他异常
+        console.error('[支付] 查询订单状态时出错:', error);
+        
+        // 返回错误对象
+        return { success: false, message: '查询订单状态失败' };
+    }
+}
+
+// ========================================
+// 启动订单状态轮询函数
+// ========================================
+/**
+ * 启动定时轮询，每3秒查询一次订单状态
+ * 
+ * 功能说明：
+ * 1. 使用setInterval创建定时器，每3秒执行一次
+ * 2. 每次查询订单状态，如果已支付则停止轮询
+ * 3. 最多轮询20次（1分钟），超时后自动停止
+ * 
+ * 使用场景：
+ * - 用户创建订单后自动启动轮询
+ * - 用户在订单列表点击"查询状态"时启动轮询
+ * 
+ * 注意事项：
+ * - 同一时间只能有一个订单在轮询
+ * - 轮询前会先清除之前的定时器，避免内存泄漏
+ * 
+ * @param {string} orderId - 订单号
+ * @returns {void} 无返回值
+ */
+function startOrderPolling(orderId) {
+    // 步骤1：清除之前的定时器（如果存在）
+    // 避免多个订单同时轮询，导致资源浪费
+    if (paymentPollingTimer) {
+        clearInterval(paymentPollingTimer);
+        paymentPollingTimer = null;
+    }
+    
+    // 步骤2：重置轮询计数器
+    paymentPollingCount = 0;
+    
+    // 输出日志：记录开始轮询
+    console.log('[支付] 开始轮询订单状态:', orderId);
+    
+    // 步骤3：创建定时器，每3秒执行一次
+    paymentPollingTimer = setInterval(async () => {
+        // 步骤4：增加轮询计数
+        paymentPollingCount++;
+        
+        // 输出日志：记录轮询次数
+        console.log(`[支付] 第${paymentPollingCount}次查询订单状态:`, orderId);
+        
+        // 步骤5：查询订单状态
+        const result = await queryOrderStatus(orderId);
+        
+        // 步骤6：检查查询结果
+        if (result.success) {
+            // 查询成功，获取订单状态
+            const status = result.status;
+            
+            // 步骤7：判断订单状态
+            if (status === 'paid') {
+                // 订单已支付，停止轮询
+                clearInterval(paymentPollingTimer);
+                paymentPollingTimer = null;
+                
+                // 显示支付成功提示
+                Swal.fire({
+                    icon: 'success',
+                    title: '支付成功',
+                    text: '订单已支付，感谢您的支持！',
+                    confirmButtonText: '确定'
+                });
+                
+                // 输出日志
+                console.log('[支付] 订单支付成功:', orderId);
+                
+                // 刷新订单列表（如果订单列表弹窗是打开的）
+                const ordersModal = document.getElementById('orders-modal');
+                if (ordersModal && ordersModal.style.display !== 'none') {
+                    loadPaymentOrders(currentOrderStatus, currentOrdersPage);
+                }
+            } else if (status === 'closed') {
+                // 订单已关闭，停止轮询
+                clearInterval(paymentPollingTimer);
+                paymentPollingTimer = null;
+                
+                // 显示订单关闭提示
+                Swal.fire({
+                    icon: 'info',
+                    title: '订单已关闭',
+                    text: '订单已被关闭或取消',
+                    confirmButtonText: '确定'
+                });
+                
+                console.log('[支付] 订单已关闭:', orderId);
+            }
+        }
+        
+        // 步骤8：检查是否达到最大轮询次数
+        if (paymentPollingCount >= 20) {
+            // 达到最大次数（20次 * 3秒 = 1分钟），停止轮询
+            clearInterval(paymentPollingTimer);
+            paymentPollingTimer = null;
+            
+            // 显示超时提示
+            Swal.fire({
+                icon: 'warning',
+                title: '查询超时',
+                text: '订单状态查询超时，请稍后在"我的订单"中手动查询',
+                confirmButtonText: '确定'
+            });
+            
+            console.log('[支付] 订单状态查询超时:', orderId);
+        }
+    }, 3000); // 每3秒执行一次
+}
+
+// ========================================
+// 打开订单列表弹窗函数
+// ========================================
+/**
+ * 打开订单列表弹窗，显示用户的所有订单
+ * 
+ * 功能说明：
+ * 1. 显示订单列表弹窗（orders-modal）
+ * 2. 重置筛选条件和分页
+ * 3. 加载第一页的订单数据
+ * 
+ * 调用时机：
+ * - 用户点击个人中心的"我的订单"按钮时
+ * - 用户在支付成功后查看订单时
+ * 
+ * @returns {void} 无返回值
+ */
+function openOrdersModal() {
+    // 步骤1：获取订单列表弹窗DOM元素
+    const modal = document.getElementById('orders-modal');
+    
+    // 步骤2：检查弹窗元素是否存在
+    if (!modal) {
+        console.error('[支付] 订单列表弹窗元素不存在');
+        return;
+    }
+    
+    // 步骤3：显示订单列表弹窗
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    
+    // 步骤4：重置筛选条件和分页
+    currentOrderStatus = 'all'; // 重置为显示全部订单
+    currentOrdersPage = 1; // 重置为第1页
+    
+    // 步骤5：更新筛选按钮的激活状态
+    // 获取所有筛选按钮，移除'active'类，只给"全部"按钮添加
+    document.querySelectorAll('.orders-filter-btn').forEach(btn => {
+        btn.classList.remove('active', 'bg-sky-500', 'text-white');
+        if (btn.dataset.status === 'all') {
+            btn.classList.add('active', 'bg-sky-500', 'text-white');
+        }
+    });
+    
+    // 步骤6：加载第一页的订单数据
+    loadPaymentOrders('all', 1);
+    
+    // 输出日志
+    console.log('[支付] 订单列表弹窗已打开');
+}
+
+// ========================================
+// 关闭订单列表弹窗函数
+// ========================================
+/**
+ * 关闭订单列表弹窗
+ * 
+ * 功能说明：
+ * 1. 隐藏订单列表弹窗
+ * 2. 停止订单轮询（如果正在轮询）
+ * 
+ * @returns {void} 无返回值
+ */
+function closeOrdersModal() {
+    // 获取订单列表弹窗DOM元素
+    const modal = document.getElementById('orders-modal');
+    
+    // 检查元素是否存在
+    if (!modal) return;
+    
+    // 隐藏弹窗
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+    
+    // 停止订单轮询
+    if (paymentPollingTimer) {
+        clearInterval(paymentPollingTimer);
+        paymentPollingTimer = null;
+    }
+    
+    // 输出日志
+    console.log('[支付] 订单列表弹窗已关闭');
+}
+
+// ========================================
+// 加载订单列表函数
+// ========================================
+/**
+ * 从后端加载订单列表并渲染到页面
+ * 
+ * 功能说明：
+ * 1. 调用后端API获取订单列表
+ * 2. 根据筛选条件和分页参数加载数据
+ * 3. 渲染订单卡片到页面
+ * 4. 更新分页控件状态
+ * 
+ * 参数说明：
+ * @param {string} status - 订单状态筛选，可选值：'all'、'pending'、'paid'、'closed'
+ * @param {number} page - 页码，从1开始
+ * 
+ * @returns {Promise<void>} 无返回值的Promise
+ */
+async function loadPaymentOrders(status, page) {
+    // 步骤1：更新全局变量
+    currentOrderStatus = status;
+    currentOrdersPage = page;
+    
+    // 步骤2：获取订单列表容器DOM元素
+    const container = document.getElementById('orders-list-container');
+    
+    // 步骤3：检查容器是否存在
+    if (!container) {
+        console.error('[支付] 订单列表容器不存在');
+        return;
+    }
+    
+    // 步骤4：显示加载提示
+    container.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">加载中...</p>';
+    
+    // 输出日志：记录加载参数
+    console.log('[支付] 加载订单列表:', { status, page });
+    
+    try {
+        // 步骤5：构建API请求URL
+        // 拼接查询参数：status、page、per_page
+        let url = `/api/payment/orders?page=${page}&per_page=${ordersPerPage}`;
+        
+        // 如果status不是'all'，添加status参数进行筛选
+        if (status !== 'all') {
+            url += `&status=${status}`;
+        }
+        
+        // 步骤6：调用后端API获取订单列表
+        const response = await fetch(url);
+        
+        // 步骤7：解析响应数据
+        const result = await response.json();
+        
+        // 步骤8：检查API调用结果
+        if (!result.success) {
+            // 加载失败，显示错误提示
+            container.innerHTML = `<p class="text-red-500 text-center py-10 text-sm">${result.message || '加载订单失败'}</p>`;
+            console.error('[支付] 加载订单失败:', result.message);
+            return;
+        }
+        
+        // 步骤9：获取订单列表数据
+        const orders = result.orders || [];
+        const total = result.total || 0;
+        const totalPages = Math.ceil(total / ordersPerPage);
+        
+        // 输出日志：记录加载结果
+        console.log('[支付] 订单列表加载成功:', { total, orders: orders.length });
+        
+        // 步骤10：检查是否有订单数据
+        if (orders.length === 0) {
+            // 没有订单，显示空状态提示
+            container.innerHTML = `
+                <div class="text-center py-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 mx-auto text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    <p class="text-slate-400 text-sm">暂无订单</p>
+                </div>
+            `;
+        } else {
+            // 步骤11：渲染订单列表
+            // 清空容器，准备插入订单卡片
+            container.innerHTML = '';
+            
+            // 遍历订单数组，为每个订单创建一个卡片
+            orders.forEach(order => {
+                // 创建订单卡片HTML
+                const orderCard = createOrderCard(order);
+                
+                // 插入到容器中
+                container.insertAdjacentHTML('beforeend', orderCard);
+            });
+        }
+        
+        // 步骤12：更新分页控件
+        updateOrdersPagination(page, totalPages);
+        
+    } catch (error) {
+        // 捕获网络错误或其他异常
+        console.error('[支付] 加载订单列表时出错:', error);
+        
+        // 显示错误提示
+        container.innerHTML = '<p class="text-red-500 text-center py-10 text-sm">网络错误，请稍后重试</p>';
+    }
+}
+
+// ========================================
+// 创建订单卡片HTML函数
+// ========================================
+/**
+ * 根据订单数据生成订单卡片的HTML字符串
+ * 
+ * 功能说明：
+ * 1. 根据订单状态选择不同的样式颜色
+ * 2. 格式化订单信息（金额、时间等）
+ * 3. 根据订单状态显示不同的操作按钮
+ * 
+ * @param {Object} order - 订单对象，包含order_id、amount、status等字段
+ * @returns {string} 返回订单卡片的HTML字符串
+ */
+function createOrderCard(order) {
+    // 步骤1：根据订单状态选择样式颜色和显示文本
+    let statusConfig = {};
+    
+    switch (order.status) {
+        case 'pending':
+            statusConfig = {
+                text: '待支付',
+                color: 'amber',
+                bgColor: 'bg-amber-50',
+                borderColor: 'border-amber-200',
+                textColor: 'text-amber-700'
+            };
+            break;
+        case 'paid':
+            statusConfig = {
+                text: '已支付',
+                color: 'green',
+                bgColor: 'bg-green-50',
+                borderColor: 'border-green-200',
+                textColor: 'text-green-700'
+            };
+            break;
+        case 'closed':
+            statusConfig = {
+                text: '已关闭',
+                color: 'slate',
+                bgColor: 'bg-slate-50',
+                borderColor: 'border-slate-200',
+                textColor: 'text-slate-700'
+            };
+            break;
+        default:
+            statusConfig = {
+                text: '未知',
+                color: 'slate',
+                bgColor: 'bg-slate-50',
+                borderColor: 'border-slate-200',
+                textColor: 'text-slate-700'
+            };
+    }
+    
+    // 步骤2：格式化支付方式显示文本
+    let payTypeText = '';
+    switch (order.pay_type) {
+        case 'alipay':
+            payTypeText = '支付宝';
+            break;
+        case 'wxpay':
+            payTypeText = '微信支付';
+            break;
+        case 'bank':
+            payTypeText = '网银支付';
+            break;
+        default:
+            payTypeText = order.pay_type || '未知';
+    }
+    
+    // 步骤3：格式化创建时间
+    // 将ISO格式的时间转换为易读格式（如：2024-12-10 10:30:45）
+    const createTime = new Date(order.create_time).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    
+    // 步骤4：生成操作按钮HTML
+    let actionButtons = '';
+    
+    if (order.status === 'pending') {
+        // 待支付订单：显示"继续支付"和"查询状态"按钮
+        actionButtons = `
+            <button onclick="continuePay('${order.order_id}')" 
+                class="flex-1 py-2 px-3 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition">
+                继续支付
+            </button>
+            <button onclick="refreshOrderStatus('${order.order_id}')" 
+                class="flex-1 py-2 px-3 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 transition">
+                查询状态
+            </button>
+        `;
+    } else {
+        // 已支付或已关闭订单：只显示"查询状态"按钮
+        actionButtons = `
+            <button onclick="refreshOrderStatus('${order.order_id}')" 
+                class="w-full py-2 px-3 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 transition">
+                查询状态
+            </button>
+        `;
+    }
+    
+    // 步骤5：拼接完整的订单卡片HTML
+    // 使用模板字符串，支持变量插值和换行
+    return `
+        <div class="border-2 ${statusConfig.borderColor} ${statusConfig.bgColor} rounded-xl p-4 space-y-3">
+            <!-- 订单头部：订单号和状态 -->
+            <div class="flex justify-between items-start">
+                <!-- 订单号：使用等宽字体显示，便于复制 -->
+                <div>
+                    <p class="text-xs text-slate-500">订单号</p>
+                    <p class="text-sm font-mono font-semibold text-slate-800">${order.order_id}</p>
+                </div>
+                <!-- 订单状态徽章 -->
+                <span class="px-3 py-1 ${statusConfig.bgColor} ${statusConfig.textColor} rounded-full text-xs font-semibold border ${statusConfig.borderColor}">
+                    ${statusConfig.text}
+                </span>
+            </div>
+            
+            <!-- 订单详情：金额、支付方式、商品名称 -->
+            <div class="space-y-2 text-sm">
+                <!-- 支付金额：突出显示，使用大号字体 -->
+                <div class="flex justify-between">
+                    <span class="text-slate-600">支付金额</span>
+                    <span class="font-bold text-lg text-sky-600">¥${parseFloat(order.amount).toFixed(2)}</span>
+                </div>
+                <!-- 支付方式 -->
+                <div class="flex justify-between">
+                    <span class="text-slate-600">支付方式</span>
+                    <span class="text-slate-800">${payTypeText}</span>
+                </div>
+                <!-- 商品名称 -->
+                <div class="flex justify-between">
+                    <span class="text-slate-600">商品名称</span>
+                    <span class="text-slate-800">${order.product_name || '在线支付'}</span>
+                </div>
+                <!-- 创建时间 -->
+                <div class="flex justify-between">
+                    <span class="text-slate-600">创建时间</span>
+                    <span class="text-slate-500 text-xs">${createTime}</span>
+                </div>
+            </div>
+            
+            <!-- 操作按钮区域 -->
+            <div class="flex gap-2 pt-2 border-t border-slate-200">
+                ${actionButtons}
+            </div>
+        </div>
+    `;
+}
+
+// ========================================
+// 更新订单列表分页控件函数
+// ========================================
+/**
+ * 更新订单列表的分页控件状态
+ * 
+ * 功能说明：
+ * 1. 更新页码显示
+ * 2. 更新"上一页"/"下一页"按钮的禁用状态
+ * 
+ * @param {number} currentPage - 当前页码
+ * @param {number} totalPages - 总页数
+ * @returns {void} 无返回值
+ */
+function updateOrdersPagination(currentPage, totalPages) {
+    // 步骤1：获取分页控件DOM元素
+    const pageInfo = document.getElementById('orders-page-info');
+    const prevBtn = document.getElementById('orders-prev-btn');
+    const nextBtn = document.getElementById('orders-next-btn');
+    
+    // 步骤2：更新页码显示
+    if (pageInfo) {
+        pageInfo.textContent = `第 ${currentPage} / ${totalPages} 页`;
+    }
+    
+    // 步骤3：更新"上一页"按钮状态
+    if (prevBtn) {
+        // 如果当前是第1页，禁用"上一页"按钮
+        if (currentPage <= 1) {
+            prevBtn.disabled = true;
+            prevBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            prevBtn.disabled = false;
+            prevBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    }
+    
+    // 步骤4：更新"下一页"按钮状态
+    if (nextBtn) {
+        // 如果当前是最后一页，禁用"下一页"按钮
+        if (currentPage >= totalPages) {
+            nextBtn.disabled = true;
+            nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            nextBtn.disabled = false;
+            nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    }
+}
+
+// ========================================
+// 继续支付函数
+// ========================================
+/**
+ * 继续支付未完成的订单
+ * 
+ * 功能说明：
+ * 1. 查询订单详情获取支付URL
+ * 2. 在新窗口打开支付页面
+ * 3. 启动订单状态轮询
+ * 
+ * @param {string} orderId - 订单号
+ * @returns {Promise<void>} 无返回值的Promise
+ */
+async function continuePay(orderId) {
+    try {
+        // 步骤1：查询订单详情
+        const result = await queryOrderStatus(orderId);
+        
+        // 步骤2：检查查询结果
+        if (!result.success) {
+            Swal.fire({
+                icon: 'error',
+                title: '错误',
+                text: result.message || '查询订单失败',
+                confirmButtonText: '确定'
+            });
+            return;
+        }
+        
+        // 步骤3：检查订单状态
+        if (result.status !== 'pending') {
+            Swal.fire({
+                icon: 'info',
+                title: '提示',
+                text: '该订单不是待支付状态',
+                confirmButtonText: '确定'
+            });
+            return;
+        }
+        
+        // 步骤4：获取支付URL
+        const payUrl = result.order.pay_url;
+        
+        // 步骤5：在新窗口打开支付页面
+        window.open(payUrl, '_blank');
+        
+        // 步骤6：启动订单状态轮询
+        startOrderPolling(orderId);
+        
+        // 步骤7：显示提示
+        Swal.fire({
+            icon: 'info',
+            title: '提示',
+            text: '请在新打开的页面完成支付',
+            confirmButtonText: '确定',
+            timer: 2000
+        });
+        
+    } catch (error) {
+        console.error('[支付] 继续支付时出错:', error);
+        Swal.fire({
+            icon: 'error',
+            title: '错误',
+            text: '操作失败，请稍后重试',
+            confirmButtonText: '确定'
+        });
+    }
+}
+
+// ========================================
+// 刷新订单状态函数
+// ========================================
+/**
+ * 手动刷新订单状态
+ * 
+ * 功能说明：
+ * 1. 查询最新的订单状态
+ * 2. 更新订单列表显示
+ * 3. 显示查询结果提示
+ * 
+ * @param {string} orderId - 订单号
+ * @returns {Promise<void>} 无返回值的Promise
+ */
+async function refreshOrderStatus(orderId) {
+    try {
+        // 显示加载提示
+        Swal.fire({
+            title: '查询中...',
+            text: '正在查询订单状态',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+        
+        // 步骤1：查询订单状态
+        const result = await queryOrderStatus(orderId);
+        
+        // 步骤2：关闭加载提示
+        Swal.close();
+        
+        // 步骤3：检查查询结果
+        if (!result.success) {
+            Swal.fire({
+                icon: 'error',
+                title: '查询失败',
+                text: result.message || '查询订单状态失败',
+                confirmButtonText: '确定'
+            });
+            return;
+        }
+        
+        // 步骤4：显示查询结果
+        let statusText = '';
+        let icon = 'info';
+        
+        switch (result.status) {
+            case 'paid':
+                statusText = '订单已支付';
+                icon = 'success';
+                break;
+            case 'pending':
+                statusText = '订单待支付';
+                icon = 'info';
+                break;
+            case 'closed':
+                statusText = '订单已关闭';
+                icon = 'warning';
+                break;
+            default:
+                statusText = '订单状态未知';
+                icon = 'question';
+        }
+        
+        Swal.fire({
+            icon: icon,
+            title: statusText,
+            text: `订单号：${orderId}`,
+            confirmButtonText: '确定'
+        });
+        
+        // 步骤5：重新加载订单列表
+        loadPaymentOrders(currentOrderStatus, currentOrdersPage);
+        
+    } catch (error) {
+        Swal.close();
+        console.error('[支付] 刷新订单状态时出错:', error);
+        Swal.fire({
+            icon: 'error',
+            title: '错误',
+            text: '查询失败，请稍后重试',
+            confirmButtonText: '确定'
+        });
+    }
+}
+
+// ========================================
+// 事件监听器绑定区域
+// ========================================
+// 在DOM加载完成后绑定所有事件监听器
+document.addEventListener('DOMContentLoaded', function() {
+    // ========== 支付弹窗相关事件 ==========
+    
+    // 绑定支付弹窗关闭按钮点击事件
+    const paymentCloseBtn = document.getElementById('payment-close-btn');
+    if (paymentCloseBtn) {
+        paymentCloseBtn.addEventListener('click', closePaymentModal);
+    }
+    
+    // 绑定支付弹窗取消按钮点击事件
+    const paymentCancelBtn = document.getElementById('payment-cancel-btn');
+    if (paymentCancelBtn) {
+        paymentCancelBtn.addEventListener('click', closePaymentModal);
+    }
+    
+    // 绑定支付弹窗提交按钮点击事件
+    const paymentSubmitBtn = document.getElementById('payment-submit-btn');
+    if (paymentSubmitBtn) {
+        paymentSubmitBtn.addEventListener('click', createPaymentOrder);
+    }
+    
+    // 绑定支付弹窗背景点击事件（点击弹窗外部关闭）
+    const paymentModal = document.getElementById('payment-modal');
+    if (paymentModal) {
+        paymentModal.addEventListener('click', function(e) {
+            // 只有点击背景（modal本身）时才关闭，点击内容区域不关闭
+            if (e.target === paymentModal) {
+                closePaymentModal();
+            }
+        });
+    }
+    
+    // ========== 订单列表弹窗相关事件 ==========
+    
+    // 绑定订单列表弹窗关闭按钮点击事件
+    const ordersCloseBtn = document.getElementById('orders-close-btn');
+    if (ordersCloseBtn) {
+        ordersCloseBtn.addEventListener('click', closeOrdersModal);
+    }
+    
+    // 绑定订单列表弹窗刷新按钮点击事件
+    const ordersRefreshBtn = document.getElementById('orders-refresh-btn');
+    if (ordersRefreshBtn) {
+        ordersRefreshBtn.addEventListener('click', function() {
+            // 重新加载当前页的订单列表
+            loadPaymentOrders(currentOrderStatus, currentOrdersPage);
+        });
+    }
+    
+    // 绑定订单列表弹窗背景点击事件
+    const ordersModal = document.getElementById('orders-modal');
+    if (ordersModal) {
+        ordersModal.addEventListener('click', function(e) {
+            if (e.target === ordersModal) {
+                closeOrdersModal();
+            }
+        });
+    }
+    
+    // ========== 订单状态筛选按钮事件 ==========
+    
+    // 获取所有筛选按钮并绑定点击事件
+    document.querySelectorAll('.orders-filter-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            // 获取点击按钮的状态值
+            const status = this.dataset.status;
+            
+            // 更新所有按钮的激活状态
+            document.querySelectorAll('.orders-filter-btn').forEach(b => {
+                b.classList.remove('active', 'bg-sky-500', 'text-white');
+            });
+            
+            // 给当前按钮添加激活样式
+            this.classList.add('active', 'bg-sky-500', 'text-white');
+            
+            // 重新加载订单列表（第1页）
+            loadPaymentOrders(status, 1);
+        });
+    });
+    
+    // ========== 订单列表分页按钮事件 ==========
+    
+    // 绑定"上一页"按钮点击事件
+    const ordersPrevBtn = document.getElementById('orders-prev-btn');
+    if (ordersPrevBtn) {
+        ordersPrevBtn.addEventListener('click', function() {
+            // 检查是否已经是第1页
+            if (currentOrdersPage > 1) {
+                // 加载上一页
+                loadPaymentOrders(currentOrderStatus, currentOrdersPage - 1);
+            }
+        });
+    }
+    
+    // 绑定"下一页"按钮点击事件
+    const ordersNextBtn = document.getElementById('orders-next-btn');
+    if (ordersNextBtn) {
+        ordersNextBtn.addEventListener('click', function() {
+            // 加载下一页
+            loadPaymentOrders(currentOrderStatus, currentOrdersPage + 1);
+        });
+    }
+    
+    // 输出日志：记录事件绑定完成
+    console.log('[支付] 支付系统事件监听器已绑定');
+});
+
+// ============================================================================
+// 彩虹易支付系统 - 管理员功能实现
+// ============================================================================
+// 本模块实现管理员专用的支付管理功能
+// 包括：支付配置管理、支付日志查看等
+// ============================================================================
+
+// ========================================
+// 支付日志分页全局变量
+// ========================================
+
+// 支付日志当前页码
+let currentPaymentLogsPage = 1;
+
+// 支付日志每页显示数量
+let paymentLogsPerPage = 20;
+
+// ========================================
+// 加载支付配置函数（管理员）
+// ========================================
+/**
+ * 从后端加载当前的支付配置并显示到管理面板
+ * 
+ * 功能说明：
+ * 1. 调用后端API获取当前启用的支付方式
+ * 2. 更新复选框的选中状态
+ * 3. 隐藏加载提示，显示配置内容
+ * 
+ * 调用时机：
+ * - 管理员首次打开支付配置面板时
+ * - 管理员点击"刷新"按钮时
+ * 
+ * @returns {Promise<void>} 无返回值的Promise
+ */
+async function loadPaymentConfig() {
+    // 输出日志：记录开始加载配置
+    console.log('[管理员-支付配置] 开始加载支付配置');
+    
+    try {
+        // 步骤1：调用后端API获取支付配置
+        const response = await fetch('/api/admin/payment/config');
+        
+        // 步骤2：解析响应数据
+        const result = await response.json();
+        
+        // 步骤3：检查API调用结果
+        if (!result.success) {
+            // 加载失败，显示错误提示
+            Swal.fire({
+                icon: 'error',
+                title: '加载失败',
+                text: result.message || '无法加载支付配置',
+                confirmButtonText: '确定'
+            });
+            console.error('[管理员-支付配置] 加载失败:', result.message);
+            return;
+        }
+        
+        // 步骤4：获取启用的支付方式列表
+        // 例如：["alipay", "wxpay"]
+        const enabledMethods = result.enabled_payment_methods || [];
+        
+        // 输出日志：记录当前启用的支付方式
+        console.log('[管理员-支付配置] 当前启用的支付方式:', enabledMethods);
+        
+        // 步骤5：动态生成支付方式配置复选框
+        // 获取配置内容容器
+        const configContent = document.getElementById('mobile-multi-admin-payment-config-content');
+        
+        // 检查容器是否存在
+        if (!configContent) {
+            console.error('[管理员-支付配置] 配置容器元素不存在');
+            return;
+        }
+        
+        // 5.1 生成支付方式复选框HTML
+        // 创建一个HTML字符串，包含所有支付方式的复选框
+        let checkboxesHTML = `
+            <!-- 提示信息卡片 -->
+            <div class="bg-sky-50 border border-sky-200 rounded-lg p-3">
+                <p class="text-xs text-sky-700">
+                    <strong>提示：</strong>请至少启用一种支付方式。修改后立即生效，无需重启服务。
+                </p>
+            </div>
+
+            <!-- 支付方式选择区域 -->
+            <div class="space-y-3">
+                <!-- 支付方式标题 -->
+                <h5 class="text-sm font-semibold text-slate-700">启用的支付方式</h5>
+        `;
+        
+        // 5.2 遍历全局配置对象(PAYMENT_METHODS)，为每个支付方式创建复选框
+        // 使用Object.entries()获取所有的键值对
+        Object.entries(PAYMENT_METHODS).forEach(([methodCode, methodConfig]) => {
+            // methodCode: 支付方式代码，如 'alipay'
+            // methodConfig: 支付方式配置对象，包含 name、icon、svg、borderColor、textColor、description
+            
+            // 检查当前支付方式是否在启用列表中
+            const isChecked = enabledMethods.includes(methodCode);
+            
+            // 根据图标类型生成图标HTML
+            // 如果icon字段为'svg'，使用svg字段的SVG代码
+            // 否则使用icon字段作为emoji图标
+            const iconHtml = methodConfig.icon === 'svg' 
+                ? methodConfig.svg // 直接使用SVG代码（已包含样式类）
+                : `<span class="text-xl">${methodConfig.icon}</span>`; // emoji图标，包裹在span中
+            
+            // 生成复选框HTML
+            // 每个复选框包含：图标（SVG或emoji）、名称、描述
+            checkboxesHTML += `
+                <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer ${methodConfig.borderColor} transition-colors">
+                    <!-- 复选框输入元素 -->
+                    <input type="checkbox" 
+                           id="payment-method-${methodCode}" 
+                           value="${methodCode}" 
+                           class="w-4 h-4 ${methodConfig.textColor} rounded" 
+                           ${isChecked ? 'checked' : ''} />
+                    
+                    <!-- 支付方式图标：SVG或emoji，根据配置动态生成 -->
+                    <span class="ml-3 flex items-center">
+                        ${iconHtml}
+                    </span>
+                    
+                    <!-- 支付方式信息：名称和描述 -->
+                    <div class="ml-2 flex-1">
+                        <span class="text-sm font-medium text-slate-800">${methodConfig.name}</span>
+                        <p class="text-xs text-slate-500 mt-0.5">${methodConfig.description}</p>
+                    </div>
+                </label>
+            `;
+        });
+        
+        // 5.3 添加保存按钮和加载提示
+        checkboxesHTML += `
+            </div>
+
+            <!-- 保存按钮 -->
+            <button id="save-payment-config-btn" 
+                class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition">
+                保存配置
+            </button>
+
+            <!-- 加载提示（初始显示） -->
+            <div id="payment-config-loading" class="hidden text-center py-4">
+                <p class="text-sm text-slate-500">加载中...</p>
+            </div>
+        `;
+        
+        // 5.4 将生成的HTML插入到配置容器中
+        configContent.innerHTML = checkboxesHTML;
+        
+        // 5.5 重新绑定保存按钮的点击事件
+        // 因为innerHTML会替换所有内容，之前绑定的事件会失效
+        const saveBtn = document.getElementById('save-payment-config-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function() {
+                // 调用保存配置函数
+                savePaymentConfig();
+            });
+        }
+        
+        // 步骤6：隐藏加载提示（如果存在的话）
+        const loadingElement = document.getElementById('payment-config-loading');
+        if (loadingElement) {
+            loadingElement.style.display = 'none';
+        }
+        
+    } catch (error) {
+        // 捕获网络错误或其他异常
+        console.error('[管理员-支付配置] 加载时出错:', error);
+        
+        // 显示错误提示
+        Swal.fire({
+            icon: 'error',
+            title: '错误',
+            text: '网络错误，请稍后重试',
+            confirmButtonText: '确定'
+        });
+    }
+}
+
+// ========================================
+// 保存支付配置函数（管理员）
+// ========================================
+/**
+ * 将管理员修改的支付配置保存到后端
+ * 
+ * 功能说明：
+ * 1. 收集复选框的选中状态
+ * 2. 验证至少启用了一种支付方式
+ * 3. 调用后端API更新配置
+ * 4. 显示保存结果提示
+ * 
+ * 调用时机：
+ * - 管理员点击"保存配置"按钮时
+ * 
+ * @returns {Promise<void>} 无返回值的Promise
+ */
+async function savePaymentConfig() {
+    // 输出日志：记录开始保存配置
+    console.log('[管理员-支付配置] 开始保存支付配置');
+    
+    try {
+        // 步骤1：动态收集所有支付方式复选框的选中状态
+        const enabledMethods = [];
+        
+        // 遍历全局配置对象(PAYMENT_METHODS)，检查每个支付方式的复选框
+        // 使用Object.keys()获取所有支付方式代码
+        Object.keys(PAYMENT_METHODS).forEach(methodCode => {
+            // 根据支付方式代码获取对应的复选框元素
+            // 元素ID格式: payment-method-{code}，例如 payment-method-alipay
+            const checkbox = document.getElementById(`payment-method-${methodCode}`);
+            
+            // 检查复选框是否存在且已勾选
+            if (checkbox && checkbox.checked) {
+                // 将选中的支付方式代码添加到数组中
+                enabledMethods.push(methodCode);
+            }
+        });
+        
+        // 步骤2：验证至少选择了一种支付方式
+        if (enabledMethods.length === 0) {
+            // 没有选择任何支付方式，显示警告
+            Swal.fire({
+                icon: 'warning',
+                title: '提示',
+                text: '请至少启用一种支付方式',
+                confirmButtonText: '确定'
+            });
+            return;
+        }
+        
+        // 步骤3：将数组转换为逗号分隔的字符串
+        // 例如：["alipay", "wxpay"] -> "alipay,wxpay"
+        const enabledMethodsStr = enabledMethods.join(',');
+        
+        // 输出日志：记录即将保存的配置
+        console.log('[管理员-支付配置] 即将保存的配置:', enabledMethodsStr);
+        
+        // 步骤4：调用后端API更新配置
+        const response = await fetch('/api/admin/payment/config', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                enabled_payment_methods: enabledMethodsStr
+            })
+        });
+        
+        // 步骤5：解析响应数据
+        const result = await response.json();
+        
+        // 步骤6：检查保存结果
+        if (result.success) {
+            // 保存成功，显示成功提示
+            Swal.fire({
+                icon: 'success',
+                title: '保存成功',
+                text: '支付配置已更新，立即生效',
+                confirmButtonText: '确定',
+                timer: 2000
+            });
+            
+            // 输出日志：记录保存成功
+            console.log('[管理员-支付配置] 保存成功');
+        } else {
+            // 保存失败，显示错误提示
+            Swal.fire({
+                icon: 'error',
+                title: '保存失败',
+                text: result.message || '无法保存支付配置',
+                confirmButtonText: '确定'
+            });
+            
+            // 输出错误日志
+            console.error('[管理员-支付配置] 保存失败:', result.message);
+        }
+        
+    } catch (error) {
+        // 捕获网络错误或其他异常
+        console.error('[管理员-支付配置] 保存时出错:', error);
+        
+        // 显示错误提示
+        Swal.fire({
+            icon: 'error',
+            title: '错误',
+            text: '网络错误，请稍后重试',
+            confirmButtonText: '确定'
+        });
+    }
+}
+
+// ========================================
+// 加载支付日志函数（管理员）
+// ========================================
+/**
+ * 从后端加载支付日志列表并渲染到管理面板
+ * 
+ * 功能说明：
+ * 1. 收集筛选条件（用户ID、操作类型、日期范围）
+ * 2. 调用后端API获取日志数据
+ * 3. 渲染日志列表到页面
+ * 4. 更新分页控件状态
+ * 
+ * 参数说明：
+ * @param {number} page - 页码，从1开始
+ * 
+ * @returns {Promise<void>} 无返回值的Promise
+ */
+async function loadPaymentLogs(page) {
+    // 步骤1：更新全局页码变量
+    currentPaymentLogsPage = page;
+    
+    // 步骤2：获取日志列表容器DOM元素
+    const container = document.getElementById('mobile-multi-admin-payment-logs-list');
+    
+    // 步骤3：检查容器是否存在
+    if (!container) {
+        console.error('[管理员-支付日志] 日志列表容器不存在');
+        return;
+    }
+    
+    // 步骤4：显示加载提示
+    container.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
+    
+    // 步骤5：收集筛选条件
+    // 获取用户ID输入框的值
+    const userId = document.getElementById('payment-logs-user-id')?.value.trim() || '';
+    
+    // 获取操作类型下拉框的值
+    const actionType = document.getElementById('payment-logs-action-type')?.value || '';
+    
+    // 获取开始日期输入框的值
+    const startDate = document.getElementById('payment-logs-start-date')?.value || '';
+    
+    // 获取结束日期输入框的值
+    const endDate = document.getElementById('payment-logs-end-date')?.value || '';
+    
+    // 输出日志：记录筛选条件
+    console.log('[管理员-支付日志] 筛选条件:', { userId, actionType, startDate, endDate, page });
+    
+    try {
+        // 步骤6：构建API请求URL
+        // 基础URL包含页码和每页数量
+        let url = `/api/admin/payment_logs?page=${page}&per_page=${paymentLogsPerPage}`;
+        
+        // 如果有用户ID筛选条件，添加到URL
+        if (userId) {
+            url += `&user_id=${encodeURIComponent(userId)}`;
+        }
+        
+        // 如果有操作类型筛选条件，添加到URL
+        if (actionType) {
+            url += `&action_type=${encodeURIComponent(actionType)}`;
+        }
+        
+        // 如果有开始日期筛选条件，添加到URL
+        if (startDate) {
+            url += `&start_date=${encodeURIComponent(startDate)}`;
+        }
+        
+        // 如果有结束日期筛选条件，添加到URL
+        if (endDate) {
+            url += `&end_date=${encodeURIComponent(endDate)}`;
+        }
+        
+        // 步骤7：调用后端API获取日志列表
+        const response = await fetch(url);
+        
+        // 步骤8：解析响应数据
+        const result = await response.json();
+        
+        // 步骤9：检查API调用结果
+        if (!result.success) {
+            // 加载失败，显示错误提示
+            container.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${result.message || '加载日志失败'}</p>`;
+            console.error('[管理员-支付日志] 加载失败:', result.message);
+            return;
+        }
+        
+        // 步骤10：获取日志列表数据
+        const logs = result.logs || [];
+        const total = result.total || 0;
+        const totalPages = Math.ceil(total / paymentLogsPerPage);
+        
+        // 输出日志：记录加载结果
+        console.log('[管理员-支付日志] 日志列表加载成功:', { total, logs: logs.length });
+        
+        // 步骤11：检查是否有日志数据
+        if (logs.length === 0) {
+            // 没有日志，显示空状态提示
+            container.innerHTML = `
+                <div class="text-center py-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <p class="text-slate-400 text-xs">暂无日志记录</p>
+                </div>
+            `;
+        } else {
+            // 步骤12：渲染日志列表
+            // 清空容器，准备插入日志卡片
+            container.innerHTML = '';
+            
+            // 遍历日志数组，为每条日志创建一个卡片
+            logs.forEach(log => {
+                // 创建日志卡片HTML
+                const logCard = createPaymentLogCard(log);
+                
+                // 插入到容器中
+                container.insertAdjacentHTML('beforeend', logCard);
+            });
+        }
+        
+        // 步骤13：更新分页控件
+        updatePaymentLogsPagination(page, totalPages);
+        
+    } catch (error) {
+        // 捕获网络错误或其他异常
+        console.error('[管理员-支付日志] 加载时出错:', error);
+        
+        // 显示错误提示
+        container.innerHTML = '<p class="text-red-500 text-center py-10 text-xs">网络错误，请稍后重试</p>';
+    }
+}
+
+// ========================================
+// 创建支付日志卡片HTML函数
+// ========================================
+/**
+ * 根据日志数据生成日志卡片的HTML字符串
+ * 
+ * 功能说明：
+ * 1. 根据操作类型选择不同的样式颜色
+ * 2. 格式化日志信息（时间、数据等）
+ * 3. 将JSON数据格式化显示
+ * 
+ * @param {Object} log - 日志对象，包含user_id、action、log_data等字段
+ * @returns {string} 返回日志卡片的HTML字符串
+ */
+function createPaymentLogCard(log) {
+    // 步骤1：根据操作类型选择样式颜色
+    let actionConfig = {};
+    
+    switch (log.action) {
+        case 'create_order':
+            actionConfig = {
+                text: '创建订单',
+                color: 'blue',
+                bgColor: 'bg-blue-50',
+                borderColor: 'border-blue-200',
+                textColor: 'text-blue-700'
+            };
+            break;
+        case 'query_order':
+            actionConfig = {
+                text: '查询订单',
+                color: 'purple',
+                bgColor: 'bg-purple-50',
+                borderColor: 'border-purple-200',
+                textColor: 'text-purple-700'
+            };
+            break;
+        case 'payment_success':
+            actionConfig = {
+                text: '支付成功',
+                color: 'green',
+                bgColor: 'bg-green-50',
+                borderColor: 'border-green-200',
+                textColor: 'text-green-700'
+            };
+            break;
+        case 'payment_fail':
+            actionConfig = {
+                text: '支付失败',
+                color: 'red',
+                bgColor: 'bg-red-50',
+                borderColor: 'border-red-200',
+                textColor: 'text-red-700'
+            };
+            break;
+        case 'config_update':
+            actionConfig = {
+                text: '配置更新',
+                color: 'amber',
+                bgColor: 'bg-amber-50',
+                borderColor: 'border-amber-200',
+                textColor: 'text-amber-700'
+            };
+            break;
+        default:
+            actionConfig = {
+                text: log.action || '未知操作',
+                color: 'slate',
+                bgColor: 'bg-slate-50',
+                borderColor: 'border-slate-200',
+                textColor: 'text-slate-700'
+            };
+    }
+    
+    // 步骤2：格式化创建时间
+    // 将ISO格式的时间转换为易读格式（如：2024-12-10 10:30:45）
+    const createTime = new Date(log.create_time).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    
+    // 步骤3：格式化日志数据
+    // 将JSON对象转换为格式化的字符串，缩进2个空格
+    let logDataHTML = '';
+    if (log.log_data) {
+        try {
+            // 尝试解析JSON数据（如果是字符串）
+            const logDataObj = typeof log.log_data === 'string' ? JSON.parse(log.log_data) : log.log_data;
+            
+            // 将对象转换为格式化的JSON字符串
+            const logDataStr = JSON.stringify(logDataObj, null, 2);
+            
+            // 生成HTML
+            logDataHTML = `
+                <div class="mt-2">
+                    <p class="text-xs font-semibold text-slate-700 mb-1">详细数据</p>
+                    <pre class="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200 overflow-x-auto font-mono">${logDataStr}</pre>
+                </div>
+            `;
+        } catch (e) {
+            // JSON解析失败，直接显示原始字符串
+            logDataHTML = `
+                <div class="mt-2">
+                    <p class="text-xs font-semibold text-slate-700 mb-1">详细数据</p>
+                    <p class="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200">${log.log_data}</p>
+                </div>
+            `;
+        }
+    }
+    
+    // 步骤4：拼接完整的日志卡片HTML
+    return `
+        <div class="border-2 ${actionConfig.borderColor} ${actionConfig.bgColor} rounded-lg p-3 space-y-2">
+            <!-- 日志头部：操作类型和时间 -->
+            <div class="flex justify-between items-start">
+                <!-- 操作类型徽章 -->
+                <span class="px-2 py-1 ${actionConfig.bgColor} ${actionConfig.textColor} rounded text-xs font-semibold border ${actionConfig.borderColor}">
+                    ${actionConfig.text}
+                </span>
+                <!-- 时间 -->
+                <span class="text-xs text-slate-500">${createTime}</span>
+            </div>
+            
+            <!-- 日志详情 -->
+            <div class="space-y-1 text-xs">
+                <!-- 用户ID -->
+                <div class="flex justify-between">
+                    <span class="text-slate-600">用户ID</span>
+                    <span class="text-slate-800 font-medium">${log.user_id || '系统'}</span>
+                </div>
+                <!-- 订单ID（如果有） -->
+                ${log.order_id ? `
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">订单ID</span>
+                        <span class="text-slate-800 font-mono text-xs">${log.order_id}</span>
+                    </div>
+                ` : ''}
+            </div>
+            
+            <!-- 详细数据 -->
+            ${logDataHTML}
+        </div>
+    `;
+}
+
+// ========================================
+// 更新支付日志分页控件函数
+// ========================================
+/**
+ * 更新支付日志的分页控件状态
+ * 
+ * 功能说明：
+ * 1. 更新页码显示
+ * 2. 更新"上一页"/"下一页"按钮的禁用状态
+ * 
+ * @param {number} currentPage - 当前页码
+ * @param {number} totalPages - 总页数
+ * @returns {void} 无返回值
+ */
+function updatePaymentLogsPagination(currentPage, totalPages) {
+    // 步骤1：获取分页控件DOM元素
+    const pageInfo = document.getElementById('payment-logs-page-info');
+    const prevBtn = document.getElementById('payment-logs-prev-btn');
+    const nextBtn = document.getElementById('payment-logs-next-btn');
+    
+    // 步骤2：更新页码显示
+    if (pageInfo) {
+        pageInfo.textContent = `第 ${currentPage} / ${totalPages} 页`;
+    }
+    
+    // 步骤3：更新"上一页"按钮状态
+    if (prevBtn) {
+        // 如果当前是第1页，禁用"上一页"按钮
+        if (currentPage <= 1) {
+            prevBtn.disabled = true;
+            prevBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            prevBtn.disabled = false;
+            prevBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    }
+    
+    // 步骤4：更新"下一页"按钮状态
+    if (nextBtn) {
+        // 如果当前是最后一页，禁用"下一页"按钮
+        if (currentPage >= totalPages) {
+            nextBtn.disabled = true;
+            nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            nextBtn.disabled = false;
+            nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    }
+}
+
+// ========================================
+// 管理员事件监听器绑定区域
+// ========================================
+// 在DOM加载完成后绑定管理员相关的事件监听器
+document.addEventListener('DOMContentLoaded', function() {
+    // ========== 支付配置面板相关事件 ==========
+    
+    // 绑定刷新支付配置按钮点击事件
+    const refreshPaymentConfigBtn = document.getElementById('mobile-multi-admin-refresh-payment-config');
+    if (refreshPaymentConfigBtn) {
+        refreshPaymentConfigBtn.addEventListener('click', function() {
+            // 重新加载支付配置
+            loadPaymentConfig();
+        });
+    }
+    
+    // 绑定保存支付配置按钮点击事件
+    const savePaymentConfigBtn = document.getElementById('save-payment-config-btn');
+    if (savePaymentConfigBtn) {
+        savePaymentConfigBtn.addEventListener('click', function() {
+            // 保存支付配置
+            savePaymentConfig();
+        });
+    }
+    
+    // ========== 支付日志面板相关事件 ==========
+    
+    // 绑定刷新支付日志按钮点击事件
+    const refreshPaymentLogsBtn = document.getElementById('mobile-multi-admin-refresh-payment-logs');
+    if (refreshPaymentLogsBtn) {
+        refreshPaymentLogsBtn.addEventListener('click', function() {
+            // 重新加载当前页的支付日志
+            loadPaymentLogs(currentPaymentLogsPage);
+        });
+    }
+    
+    // 绑定查询支付日志按钮点击事件
+    const searchPaymentLogsBtn = document.getElementById('search-payment-logs-btn');
+    if (searchPaymentLogsBtn) {
+        searchPaymentLogsBtn.addEventListener('click', function() {
+            // 使用筛选条件重新加载第1页
+            loadPaymentLogs(1);
+        });
+    }
+    
+    // 绑定支付日志"上一页"按钮点击事件
+    const paymentLogsPrevBtn = document.getElementById('payment-logs-prev-btn');
+    if (paymentLogsPrevBtn) {
+        paymentLogsPrevBtn.addEventListener('click', function() {
+            // 检查是否已经是第1页
+            if (currentPaymentLogsPage > 1) {
+                // 加载上一页
+                loadPaymentLogs(currentPaymentLogsPage - 1);
+            }
+        });
+    }
+    
+    // 绑定支付日志"下一页"按钮点击事件
+    const paymentLogsNextBtn = document.getElementById('payment-logs-next-btn');
+    if (paymentLogsNextBtn) {
+        paymentLogsNextBtn.addEventListener('click', function() {
+            // 加载下一页
+            loadPaymentLogs(currentPaymentLogsPage + 1);
+        });
+    }
+    
+    // 输出日志：记录管理员事件绑定完成
+    console.log('[管理员-支付] 管理员事件监听器已绑定');
+});
+
+// ============================================================================
+// 彩虹易支付系统 - 管理员功能实现结束
+// ============================================================================
+
+// ============================================================================
+// 彩虹易支付系统 - 前端JavaScript实现结束
+// ============================================================================
