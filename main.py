@@ -2256,7 +2256,7 @@ class RainbowYiPayClient:
     1. 调用 create_order() 创建支付订单，获取支付跳转URL
     2. 用户在支付页面完成支付
     3. 支付成功后，彩虹易支付会异步回调 notify_url
-    4. 调用 verify_notify() 验证回调签名，确认支付成功
+    4. 调用 verify_sign() 验证回调签名，确认支付成功
     5. 可通过 query_order() 主动查询订单状态
     
     安全机制：
@@ -2470,7 +2470,7 @@ class RainbowYiPayClient:
             client = RainbowYiPayClient()
             result = client.create_order(
                 out_trade_no="ORDER20230101001",
-                name="充值100元",
+                name="在线支付100元",
                 money="100.00",
                 pay_type="alipay"
             )
@@ -2506,6 +2506,19 @@ class RainbowYiPayClient:
             logging.error("[彩虹易支付] 配置缺少 app_host（应用访问域名），无法构造异步通知URL")
             # 返回失败响应，提示管理员配置 app_host
             return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
+        
+        # 验证 app_host 格式是否正确
+        # 必须以 http:// 或 https:// 开头，以确保URL格式正确
+        if not (app_host.startswith("http://") or app_host.startswith("https://")):
+            # 记录错误日志：app_host 格式不正确
+            logging.error(f"[彩虹易支付] app_host 格式不正确（缺少协议头）: {app_host}")
+            # 返回失败响应，提示管理员修正配置
+            return {"success": False, "message": "彩虹易支付配置 app_host 格式不正确，必须包含 http:// 或 https://"}
+        
+        # 移除 app_host 末尾的斜杠（如果存在）
+        # 这样可以避免构造出双斜杠的URL，例如：https://example.com//api/...
+        # rstrip('/') 会移除字符串末尾的所有斜杠
+        app_host = app_host.rstrip('/')
         
         # 自动构造异步通知URL
         # 格式：{app_host}/api/payment/yipay_notify
@@ -24704,12 +24717,10 @@ def start_web_server(args_param):
             # 从请求数据中提取同步返回URL（可选参数）
             # return_url 是用户支付完成后浏览器跳转的地址
             # 如果前端传入此参数，则使用前端指定的URL
-            # 如果不传入，create_order() 方法会使用配置文件中的默认值
+            # 如果不传入或为空字符串，create_order() 方法会使用配置文件中的默认值
             # 这使得不同的支付场景可以跳转到不同的页面
-            return_url = data.get("return_url", None)
-            if return_url:
-                # 如果传入了 return_url，去除首尾空白字符
-                return_url = return_url.strip()
+            # 使用 strip() 去除空白字符，空字符串会被转为 None
+            return_url = data.get("return_url", "").strip() or None
             
             # ========== 参数验证 ==========
             
