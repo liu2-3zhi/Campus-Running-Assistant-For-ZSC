@@ -5497,20 +5497,26 @@ class Api:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             
-            # 向后兼容：为每个账户添加 overdue_count 字段（如果不存在）
+            # 向后兼容：为每个账户添加 overdue_count 和 completed_count 字段（如果不存在）
             # overdue_count 用于记录该学校账号的欠费次数
             # 当用户的 available_runs <= 0 时，每次任务执行完成会增加此计数
+            # completed_count 用于记录该学校账号已完成的任务总数
+            # 每次任务成功提交后会增加此计数，用于统计和追踪
             for school_username, account_info in data.items():
-                # 如果是新格式（字典），确保包含 overdue_count 字段
+                # 如果是新格式（字典），确保包含 overdue_count 和 completed_count 字段
                 if isinstance(account_info, dict):
                     if "overdue_count" not in account_info:
                         account_info["overdue_count"] = 0
+                    # 添加 completed_count 字段，用于统计已完成的任务数量
+                    if "completed_count" not in account_info:
+                        account_info["completed_count"] = 0
                 # 如果是旧格式（字符串密码），转换为新格式
                 elif isinstance(account_info, str):
                     data[school_username] = {
                         "password": account_info,
                         "ua": None,
-                        "overdue_count": 0
+                        "overdue_count": 0,
+                        "completed_count": 0
                     }
             
             logging.debug(
@@ -5734,6 +5740,95 @@ class Api:
             # 捕获所有异常，避免影响主任务流程
             logging.error(
                 f"[次数扣减] 处理用户 {auth_username}（学校账号: {school_username}）的次数扣减时发生异常: {e}",
+                exc_info=True
+            )
+
+    def _increment_completed_count(self, auth_username, school_username):
+        """
+        增加学校账号的已完成任务计数。
+        
+        功能说明：
+            当一个任务成功提交并完成后，调用此函数为对应的学校账号增加已完成任务计数。
+            计数器存储在 school_accounts JSON 文件中的 completed_count 字段。
+        
+        参数：
+            auth_username: 认证用户名（system_accounts中的用户名）
+            school_username: 学校账号用户名（school_accounts中的账户）
+        
+        实现逻辑：
+            1. 读取用户的 school_accounts JSON 文件
+            2. 找到对应的学校账号
+            3. 将 completed_count 字段加1
+            4. 保存更新后的 JSON 文件
+        
+        错误处理：
+            如果更新失败（文件不存在、账号不存在等），记录错误日志但不影响主流程。
+            这样可以确保任务执行的稳定性，即使计数器更新失败也不会导致任务中断。
+        
+        返回值：
+            None
+        """
+        try:
+            # 步骤1：读取 school_accounts 配置文件
+            # 使用已有的 _load_user_school_accounts 方法加载用户的所有学校账号配置
+            # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0, "completed_count": 0}, ...}
+            accounts = self._load_user_school_accounts(auth_username)
+            
+            # 如果返回的是空字典，说明没有找到配置文件或加载失败
+            if not accounts:
+                logging.warning(
+                    f"[任务计数] 无法加载用户 {auth_username} 的学校账号配置，跳过计数更新"
+                )
+                return
+            
+            # 步骤2：在配置中查找对应的学校账号
+            # 学校账号用户名作为字典的键
+            if school_username not in accounts:
+                logging.warning(
+                    f"[任务计数] 在用户 {auth_username} 的配置中未找到学校账号 {school_username}，无法更新计数"
+                )
+                return
+            
+            # 获取该学校账号的信息（字典类型）
+            account_info = accounts[school_username]
+            
+            # 步骤3：确保 account_info 是字典格式（向后兼容处理）
+            # 如果是旧格式（字符串），转换为新格式
+            if not isinstance(account_info, dict):
+                account_info = {
+                    "password": account_info if isinstance(account_info, str) else "",
+                    "ua": None,
+                    "overdue_count": 0,
+                    "completed_count": 0
+                }
+                accounts[school_username] = account_info
+            
+            # 步骤4：增加已完成任务计数
+            # 获取当前的 completed_count 值，如果不存在则默认为 0
+            current_count = account_info.get("completed_count", 0)
+            # 将计数器加1
+            account_info["completed_count"] = current_count + 1
+            
+            # 记录日志：显示更新后的计数值
+            logging.info(
+                f"[任务计数] 用户 {auth_username} 的学校账号 {school_username} "
+                f"已完成任务数: {current_count} → {account_info['completed_count']}"
+            )
+            
+            # 步骤5：保存更新后的数据到 JSON 文件
+            # 使用已有的 _save_user_school_accounts 方法保存整个配置
+            self._save_user_school_accounts(auth_username, accounts)
+            
+            logging.debug(
+                f"[任务计数] 成功更新并保存学校账号 {school_username} 的任务计数"
+            )
+        
+        except Exception as e:
+            # 捕获所有可能的异常（文件IO错误、权限错误等）
+            # 记录详细的错误信息，包括完整的异常堆栈（exc_info=True）
+            # 但不抛出异常，避免影响主任务流程的执行
+            logging.error(
+                f"[任务计数] 更新用户 {auth_username}（学校账号: {school_username}）的任务计数时发生异常: {e}",
                 exc_info=True
             )
 
@@ -10735,6 +10830,27 @@ class Api:
                             self._deduct_available_runs_or_increment_overdue(
                                 auth_username, school_username
                             )
+                            
+                            # ========== 增加已完成任务计数器 ==========
+                            # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
+                            # 这个计数器用于统计每个学校账号总共完成了多少个任务
+                            # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
+                            try:
+                                logging.debug(
+                                    f"[多账号任务] 开始增加任务计数：认证用户={auth_username}, "
+                                    f"学校账号={school_username}, 任务={run_data.run_name}"
+                                )
+                                
+                                # 调用辅助函数增加已完成任务计数
+                                self._increment_completed_count(auth_username, school_username)
+                                
+                            except Exception as e_count:
+                                # 捕获计数更新异常，记录日志但不影响主流程
+                                logging.error(
+                                    f"[多账号任务] 更新任务计数时发生异常: {e_count}",
+                                    exc_info=True
+                                )
+                            # ========== 结束：任务计数处理 ==========
                         else:
                             logging.debug(
                                 f"[多账号任务] 跳过次数扣减：认证用户={auth_username}（游客或未设置）"
@@ -13276,6 +13392,27 @@ class BackgroundTaskManager:
                         api_instance._deduct_available_runs_or_increment_overdue(
                             auth_username, school_username
                         )
+                        
+                        # ========== 增加已完成任务计数器 ==========
+                        # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
+                        # 这个计数器用于统计每个学校账号总共完成了多少个任务
+                        # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
+                        try:
+                            logging.debug(
+                                f"[单账号后台任务] 开始增加任务计数：认证用户={auth_username}, "
+                                f"学校账号={school_username}, 任务={run_data.run_name}"
+                            )
+                            
+                            # 调用 api_instance 的辅助函数增加已完成任务计数
+                            api_instance._increment_completed_count(auth_username, school_username)
+                            
+                        except Exception as e_count:
+                            # 捕获计数更新异常，记录日志但不影响主流程
+                            logging.error(
+                                f"[单账号后台任务] 更新任务计数时发生异常: {e_count}",
+                                exc_info=True
+                            )
+                        # ========== 结束：任务计数处理 ==========
                     else:
                         logging.debug(
                             f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username}, "
