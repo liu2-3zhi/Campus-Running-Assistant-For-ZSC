@@ -1054,6 +1054,22 @@ def _get_default_config():
         # 1. 此URL仅用于展示，不可用于判断支付状态，支付结果以异步通知为准
         # 2. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值
         "return_url": "",
+        # 商品ID：用于标识商品类型的唯一标识符（可选）
+        # 格式：整数，例如 "1001"
+        # 默认值：1001（跑步助手服务）
+        # 用途：在支付记录中区分不同类型的商品或服务
+        "product_id": "1001",
+        # 支付接口类型：指定使用的支付接口类型（可选）
+        # 格式：字符串，可选值包括：
+        #   - web: 网页版支付（PC端）
+        #   - jump: 跳转支付（推荐，默认值）
+        #   - jsapi: 微信公众号支付（需要openid）
+        #   - app: APP支付（移动应用内支付）
+        #   - scan: 扫码支付（商户扫描用户付款码）
+        #   - applet: 小程序支付（微信/支付宝小程序）
+        # 默认值：jump（跳转支付，适用于大多数场景）
+        # 注意：不同接口类型可能需要额外的参数，请参考易支付平台文档
+        "payment_method": "jump",
         # 启用的支付方式：管理员可配置的支付方式列表（可选）
         # 格式：使用逗号分隔的支付方式代码字符串
         # 支持的支付方式：
@@ -1128,6 +1144,62 @@ def _get_default_config():
                 "textColor": "text-red-600"
             }
         }, ensure_ascii=False),
+    }
+
+    # ============================================================
+    # [Payment_Settings] 支付费用配置节
+    # ============================================================
+    # 此配置节用于设置跑步任务的费用标准
+    # 当用户欠费时，系统将根据此配置计算需要缴纳的金额
+    config["Payment_Settings"] = {
+        # 单次跑步任务费用（单位：元）
+        # 用于计算用户欠费金额 = 欠费次数 × single_run_cost
+        # 默认值：1.0元/次
+        # 管理员可根据实际情况调整此费用
+        # 注意：修改后仅对新产生的欠费生效，已有订单不受影响
+        "single_run_cost": "1.0",
+    }
+
+    # ============================================================
+    # [Profile_Display] 个人资料显示配置节
+    # ============================================================
+    # 此配置节用于控制个人资料页面中available_runs（剩余免费次数）的显示行为
+    config["Profile_Display"] = {
+        # 是否在个人资料页面显示剩余免费次数（true/false）
+        # true：在个人资料页面显示available_runs字段
+        # false：不显示available_runs字段
+        # 默认值：true（显示）
+        "show_available_runs": "true",
+        # 剩余免费次数的显示格式（字符串模板）
+        # 使用 {available_runs} 作为占位符，将被替换为实际的剩余次数数值
+        # 示例：
+        #   - "剩余免费次数：{available_runs} 次"  （默认格式）
+        #   - "您还有 {available_runs} 次免费跑步机会"
+        #   - "Free runs left: {available_runs}"
+        # 默认值："剩余免费次数：{available_runs} 次"
+        "available_runs_format": "剩余免费次数：{available_runs} 次",
+    }
+
+    # ============================================================
+    # [Registration_Display] 注册页面显示配置节
+    # ============================================================
+    # 此配置节用于控制注册页面中关于available_runs（初始免费次数）的提示信息
+    config["Registration_Display"] = {
+        # 是否在注册页面显示免费次数提示（true/false）
+        # true：在注册表单中显示初始免费次数的提示信息
+        # false：不显示提示信息
+        # 默认值：true（显示）
+        "show_available_runs_on_register": "true",
+        # 注册页面的免费次数提示文本（字符串模板）
+        # 使用 {available_runs} 作为占位符，将被替换为新用户注册时获得的初始免费次数
+        # 此数值通常从代码中的DEFAULT_AVAILABLE_RUNS常量获取
+        # 示例：
+        #   - "注册即可得 {available_runs} 次校园跑"  （默认格式）
+        #   - "新用户福利：{available_runs} 次免费跑步"
+        #   - "Sign up and get {available_runs} free runs!"
+        # 默认值："注册即可得 {available_runs} 次校园跑"
+        # 注意：此提示文本通常显示在注册按钮附近或表单顶部，用于吸引用户注册
+        "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑",
     }
 
     return config
@@ -1549,6 +1621,18 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 2. 前端创建订单时会验证支付方式是否在启用列表中\n")
         f.write("# 3. 修改此配置后无需重启服务器，下次创建订单时生效\n")
         f.write(f"enabled_payment_methods = {config_obj.get('Rainbow_YiPay', 'enabled_payment_methods', fallback='alipay,wxpay')}\n")
+        f.write("# 商品ID（可选）\n")
+        f.write("# 用于标识商品类型的唯一标识符\n")
+        f.write("# 格式：整数，例如：1001\n")
+        f.write("# 默认值：1001（跑步助手服务）\n")
+        f.write("# 用途：在支付记录中区分不同类型的商品或服务\n")
+        f.write(f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
+        f.write("# 支付接口类型（可选）\n")
+        f.write("# 指定使用的支付接口类型\n")
+        f.write("# 可选值：web（网页版）、jump（跳转支付，推荐）、jsapi（公众号）、app（APP支付）、scan（扫码支付）、applet（小程序支付）\n")
+        f.write("# 默认值：jump（跳转支付，适用于大多数场景）\n")
+        f.write("# 注意：不同接口类型可能需要额外的参数，请参考易支付平台文档\n")
+        f.write(f"payment_method = {config_obj.get('Rainbow_YiPay', 'payment_method', fallback='jump')}\n")
         f.write("# 支付方式详细配置（JSON格式）\n")
         f.write("# 定义所有支持的支付方式及其显示信息（名称、SVG图标、描述等）\n")
         f.write("# 管理员可以在此添加新的支付方式或修改现有支付方式的显示信息\n")
@@ -1560,6 +1644,73 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 4. 修改此配置后无需重启服务器，前端会动态加载最新配置\n")
         f.write(f"payment_methods_config = {config_obj.get('Rainbow_YiPay', 'payment_methods_config', fallback='{}')}\n\n")
 
+        # ============================================================
+        # [Payment_Settings] 支付费用配置
+        # ============================================================
+        f.write("# ============================================================\n")
+        f.write("# [Payment_Settings] 支付费用配置\n")
+        f.write("# ============================================================\n")
+        f.write("# 此配置节用于设置跑步任务的费用标准\n")
+        f.write("# 当用户欠费时，系统将根据此配置计算需要缴纳的金额\n")
+        f.write("# ============================================================\n\n")
+        f.write("[Payment_Settings]\n")
+        f.write("# 单次跑步任务费用（单位：元）\n")
+        f.write("# 用于计算用户欠费金额 = 欠费次数 × single_run_cost\n")
+        f.write("# 默认值：1.0元/次\n")
+        f.write("# 管理员可根据实际情况调整此费用\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 费用必须为正数，支持小数（如：0.5、1.5、2.0）\n")
+        f.write("# 2. 修改后仅对新产生的欠费生效，已有订单不受影响\n")
+        f.write("# 3. 建议设置合理的费用标准，避免过高或过低\n")
+        f.write(f"single_run_cost = {config_obj.get('Payment_Settings', 'single_run_cost', fallback='1.0')}\n\n")
+
+        # ============================================================
+        # [Profile_Display] 个人资料显示配置
+        # ============================================================
+        f.write("# ============================================================\n")
+        f.write("# [Profile_Display] 个人资料显示配置\n")
+        f.write("# ============================================================\n")
+        f.write("# 此配置节用于控制个人资料页面中available_runs（剩余免费次数）的显示行为\n")
+        f.write("# ============================================================\n\n")
+        f.write("[Profile_Display]\n")
+        f.write("# 是否在个人资料页面显示剩余免费次数（true/false）\n")
+        f.write("# true：在个人资料页面显示available_runs字段\n")
+        f.write("# false：不显示available_runs字段\n")
+        f.write("# 默认值：true（显示）\n")
+        f.write(f"show_available_runs = {config_obj.get('Profile_Display', 'show_available_runs', fallback='true')}\n")
+        f.write("# 剩余免费次数的显示格式（字符串模板）\n")
+        f.write("# 使用 {available_runs} 作为占位符，将被替换为实际的剩余次数数值\n")
+        f.write("# 示例：\n")
+        f.write("#   - 剩余免费次数：{available_runs} 次（默认格式）\n")
+        f.write("#   - 您还有 {available_runs} 次免费跑步机会\n")
+        f.write("#   - Free runs left: {available_runs}\n")
+        f.write("# 默认值：剩余免费次数：{available_runs} 次\n")
+        f.write(f"available_runs_format = {config_obj.get('Profile_Display', 'available_runs_format', fallback='剩余免费次数：{{available_runs}} 次')}\n\n")
+
+        # ============================================================
+        # [Registration_Display] 注册页面显示配置
+        # ============================================================
+        f.write("# ============================================================\n")
+        f.write("# [Registration_Display] 注册页面显示配置\n")
+        f.write("# ============================================================\n")
+        f.write("# 此配置节用于控制注册页面中关于available_runs（初始免费次数）的提示信息\n")
+        f.write("# ============================================================\n\n")
+        f.write("[Registration_Display]\n")
+        f.write("# 是否在注册页面显示免费次数提示（true/false）\n")
+        f.write("# true：在注册表单中显示初始免费次数的提示信息\n")
+        f.write("# false：不显示提示信息\n")
+        f.write("# 默认值：true（显示）\n")
+        f.write(f"show_available_runs_on_register = {config_obj.get('Registration_Display', 'show_available_runs_on_register', fallback='true')}\n")
+        f.write("# 注册页面的免费次数提示文本（字符串模板）\n")
+        f.write("# 使用 {available_runs} 作为占位符，将被替换为新用户注册时获得的初始免费次数\n")
+        f.write("# 此数值通常从代码中的DEFAULT_AVAILABLE_RUNS常量获取\n")
+        f.write("# 示例：\n")
+        f.write("#   - 注册即可得 {available_runs} 次校园跑（默认格式）\n")
+        f.write("#   - 新用户福利：{available_runs} 次免费跑步\n")
+        f.write("#   - Sign up and get {available_runs} free runs!\n")
+        f.write("# 默认值：注册即可得 {available_runs} 次校园跑\n")
+        f.write("# 注意：此提示文本通常显示在注册按钮附近或表单顶部，用于吸引用户注册\n")
+        f.write(f"register_available_runs_hint = {config_obj.get('Registration_Display', 'register_available_runs_hint', fallback='注册即可得 {{available_runs}} 次校园跑')}\n\n")
 
 
 def is_weak_password(password):

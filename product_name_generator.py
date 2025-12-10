@@ -1,4 +1,29 @@
-import random
+# -*- coding: utf-8 -*-
+"""
+现卤现捞商品名生成器模块
+
+本模块提供了一个用于生成趣味性现捞商品描述的工具类 LoMeiGenerator。
+生成的商品名称采用纯中文数字格式，符合支付接口对商品名的字节长度限制（最大127字节）。
+
+主要功能：
+1. 根据商品数量生成风格各异的趣味商品描述
+2. 自动将阿拉伯数字转换为中文数字（如：5 -> 五）
+3. 智能控制生成结果的字节长度，确保不超过127字节上限
+4. 支持多种生成策略，适配不同数量级的商品描述需求
+
+使用示例：
+    from product_name_generator import LoMeiGenerator
+    
+    generator = LoMeiGenerator()
+    product_name = generator.generate(5)  # 生成5份商品的描述
+    print(product_name)  # 输出：五串麻辣鸭脖配上三根秘制烤肠
+
+作者：AI代理
+版本：2.0（纯中文数字版）
+"""
+
+import random  # 用于随机选择食材、形容词等元素，增加生成结果的多样性
+
 
 class LoMeiGenerator:
     """
@@ -186,16 +211,12 @@ class LoMeiGenerator:
             # 即使数量很大，也要转成中文，例如：五十串
             return self._build_single_desc(n, force_long=True)
 
-# --- 验证测试 ---
-if __name__ == "__main__":
-    gen = LoMeiGenerator()
-    
-    test_cases = [1, 2, 5, 10, 12, 23, 99, 105, 0, -1]
-    
-    print(f"{'Input':<5} | {'Bytes':<5} | {'Result'}")
-    print("-" * 60)
-    
-    for val in test_cases:
-        name = gen.generate(val)
-        byte_len = len(name.encode('utf-8')) if name else 0
-        print(f"{val:<5} | {byte_len:<5} | {name}")
+# --- 模块导出说明 ---
+# 此模块可被其他Python文件导入使用
+# 使用方式：
+#   from product_name_generator import LoMeiGenerator
+#   generator = LoMeiGenerator()
+#   product_name = generator.generate(5)  # 生成5份商品的描述
+# 
+# 验证测试代码已移除，确保此文件可作为纯模块被导入
+# 如需测试，请创建单独的测试脚本
