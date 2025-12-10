@@ -28917,7 +28917,7 @@ def start_web_server(args_param):
         获取或更新易支付配置接口（管理员专用）
         
         请求方法：GET（获取配置）、PUT（更新配置）
-        权限要求：modify_config权限
+        权限要求：modify_config权限（必须）+ 超级管理员或管理员用户组
         
         GET请求 - 获取当前易支付配置：
         返回数据（JSON格式）：
@@ -28925,7 +28925,7 @@ def start_web_server(args_param):
             - config (dict): 当前易支付配置
                 - host (str): 易支付接口域名
                 - pid (str): 商户ID
-                - key (str): 商户密钥（脱敏显示）
+                - key (str): 商户密钥（完整显示，不脱敏）
                 - enabled_payment_methods (str): 启用的支付方式
                 - payment_method (str): 支付接口类型
         
@@ -28950,18 +28950,55 @@ def start_web_server(args_param):
         - 更换易支付平台或商户账号
         - 调整支付接口类型和启用的支付方式
         
-        安全措施：
-        - 需要modify_config权限
-        - 商户密钥在GET时进行脱敏处理
+        安全措施（已强化）：
+        - 需要modify_config权限（第一层权限检查）
+        - 必须是管理员（admin）或超级管理员（super_admin）用户组（第二层权限检查）
+        - 商户密钥完整显示，不脱敏（便于配置管理）
         - 验证输入参数的有效性
-        - 记录配置变更日志
+        - 记录配置变更日志（包含操作者信息）
+        - IP地址记录和审计日志
         """
         try:
-            # 检查细粒度权限：修改配置权限
-            # modify_config 权限允许修改易支付配置
+            # ========== 第一层权限检查：细粒度权限 ==========
+            # 检查用户是否具有 modify_config 权限
+            # modify_config 权限允许修改系统配置，包括易支付配置
             # 易支付配置包含敏感信息（商户密钥），需要严格的权限控制
             if not auth_system.check_permission(g.user, "modify_config"):
+                # 记录权限不足的访问尝试
+                logging.warning(
+                    f"[易支付配置-权限拒绝] 用户 {g.user} 尝试访问易支付配置接口，但缺少 modify_config 权限 - "
+                    f"IP: {request.remote_addr}, 方法: {request.method}"
+                )
                 return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
+            
+            # ========== 第二层权限检查：用户组验证（强化安全性）==========
+            # 即使用户具有 modify_config 权限，也必须是管理员或超级管理员用户组
+            # 这样可以防止普通用户通过自定义权限配置访问敏感的易支付配置
+            # 商户密钥是高度敏感的信息，只有真正的管理员才能查看和修改
+            user_data = auth_system.get_user(g.user)
+            if not user_data:
+                logging.error(f"[易支付配置-权限拒绝] 无法获取用户 {g.user} 的数据")
+                return jsonify({"success": False, "message": "用户数据异常"}), 500
+            
+            user_group = user_data.get("group", "user")
+            
+            # 只允许 admin（管理员）和 super_admin（超级管理员）访问
+            # 这是第二层安全防护，确保只有管理员组成员才能操作易支付配置
+            if user_group not in ["admin", "super_admin"]:
+                logging.warning(
+                    f"[易支付配置-权限拒绝] 用户 {g.user}（用户组：{user_group}）尝试访问易支付配置接口，"
+                    f"但不是管理员组成员 - IP: {request.remote_addr}, 方法: {request.method}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，只有管理员和超级管理员才能管理易支付配置"
+                }), 403
+            
+            # 记录合法的访问（用于审计）
+            logging.info(
+                f"[易支付配置-访问] 管理员 {g.user}（用户组：{user_group}）正在访问易支付配置接口 - "
+                f"IP: {request.remote_addr}, 方法: {request.method}"
+            )
             
             if request.method == "GET":
                 # ========== 处理GET请求：获取当前配置 ==========
@@ -28989,21 +29026,14 @@ def start_web_server(args_param):
                 )
                 
                 # 读取商户密钥（KEY）
-                # 注意：密钥是敏感信息，需要脱敏处理后返回给前端
+                # 注意：密钥是敏感信息，但由于已进行双重权限验证（modify_config权限 + 管理员用户组）
+                # 因此直接返回完整密钥，便于管理员进行配置管理
+                # 安全性由权限系统保障：只有真正的管理员才能访问此接口
                 key = config.get(
                     "Rainbow_YiPay",
                     "key",
                     fallback=""
                 )
-                
-                # 对商户密钥进行脱敏处理
-                # 如果密钥长度大于8位，只显示前4位和后4位，中间用星号代替
-                # 例如："abcdef1234567890" -> "abcd********7890"
-                if len(key) > 8:
-                    masked_key = key[:4] + "*" * (len(key) - 8) + key[-4:]
-                else:
-                    # 如果密钥长度小于等于8位，全部用星号代替
-                    masked_key = "*" * len(key) if key else ""
                 
                 # 读取启用的支付方式
                 # 这是一个逗号分隔的字符串，例如 "alipay,wxpay"
@@ -29023,13 +29053,13 @@ def start_web_server(args_param):
                 
                 # 构造返回数据
                 # 将读取到的配置以 JSON 格式返回给前端
-                # 注意：商户密钥已经脱敏处理
+                # 注意：返回完整的商户密钥（已通过双重权限验证，安全可控）
                 return jsonify({
                     "success": True,
                     "config": {
                         "host": host,
                         "pid": pid,
-                        "key": masked_key,  # 脱敏后的密钥
+                        "key": key,  # 完整的商户密钥（不脱敏）
                         "enabled_payment_methods": enabled_payment_methods,
                         "payment_method": payment_method
                     }
@@ -29062,16 +29092,11 @@ def start_web_server(args_param):
                 ).strip()
                 
                 # 获取新的 key 值
+                # 由于不再对密钥进行脱敏处理，前端传来的密钥就是完整的密钥
                 new_key = data.get(
                     "key",
                     config.get("Rainbow_YiPay", "key", fallback="")
                 ).strip()
-                
-                # 检查key是否被脱敏（包含星号）
-                # 如果前端传来的key包含星号，说明用户没有修改密钥，使用当前配置中的密钥
-                if "*" in new_key:
-                    # 从配置文件中读取完整的密钥
-                    new_key = config.get("Rainbow_YiPay", "key", fallback="")
                 
                 # 获取新的 enabled_payment_methods 值
                 new_enabled_payment_methods = data.get(
