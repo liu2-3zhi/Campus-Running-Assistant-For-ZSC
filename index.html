@@ -10683,8 +10683,84 @@
       // 注意：这个调用不会等待完成就继续执行（异步调用）
       loadPaymentMethodsConfig();
       
+      // ========== Tab 3: 绑定"处理退款"按钮的点击事件 ==========
+      
+      // 1. 通过ID获取"处理退款"按钮的DOM元素
+      const refundBtn = document.getElementById('process-refund-btn');
+      
+      // 2. 检查按钮是否存在（防御性编程，避免null引用错误）
+      if (refundBtn) {
+        // 3. 为按钮添加click事件监听器
+        // 当用户点击按钮时，会自动调用processRefund函数
+        refundBtn.addEventListener('click', function() {
+          // 输出日志，记录用户操作
+          console.log('[退款功能] 用户点击了处理退款按钮');
+          
+          // 调用退款函数，执行退款逻辑
+          // 这是一个async函数，会异步执行，不会阻塞页面
+          processRefund();
+        });
+        
+        // 输出成功日志
+        console.log('[退款功能] 处理退款按钮事件监听器已绑定');
+      } else {
+        // 如果按钮不存在，输出警告日志
+        // 这可能表示HTML结构有问题或ID名称不匹配
+        console.warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
+      }
+      
+      // ========== Tab 4: 绑定"创建测试订单"按钮的点击事件 ==========
+      
+      // 1. 通过ID获取"创建测试订单"按钮的DOM元素
+      const createOrderBtn = document.getElementById('create-test-order-btn');
+      
+      // 2. 检查按钮是否存在（防御性编程，避免null引用错误）
+      if (createOrderBtn) {
+        // 3. 为按钮添加click事件监听器
+        // 当用户点击按钮时，会自动调用createTestOrder函数
+        createOrderBtn.addEventListener('click', function() {
+          // 输出日志，记录用户操作
+          console.log('[测试支付] 用户点击了创建测试订单按钮');
+          
+          // 调用创建订单函数，执行订单创建逻辑
+          // 这是一个async函数，会异步执行，不会阻塞页面
+          createTestOrder();
+        });
+        
+        // 输出成功日志
+        console.log('[测试支付] 创建测试订单按钮事件监听器已绑定');
+      } else {
+        // 如果按钮不存在，输出警告日志
+        console.warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
+      }
+      
+      // ========== Tab 4: 绑定"打开支付链接"按钮的点击事件 ==========
+      
+      // 1. 通过ID获取"打开支付链接"按钮的DOM元素
+      const openPayBtn = document.getElementById('open-test-pay-url-btn');
+      
+      // 2. 检查按钮是否存在（防御性编程，避免null引用错误）
+      if (openPayBtn) {
+        // 3. 为按钮添加click事件监听器
+        // 当用户点击按钮时，会自动调用openTestPayUrl函数
+        openPayBtn.addEventListener('click', function() {
+          // 输出日志，记录用户操作
+          console.log('[测试支付] 用户点击了打开支付链接按钮');
+          
+          // 调用打开支付链接函数，在新标签页打开支付页面
+          // 这是一个同步函数，会立即执行
+          openTestPayUrl();
+        });
+        
+        // 输出成功日志
+        console.log('[测试支付] 打开支付链接按钮事件监听器已绑定');
+      } else {
+        // 如果按钮不存在，输出警告日志
+        console.warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
+      }
+      
       // 输出完成日志
-      console.log('[支付设置] 支付设置面板初始化完成');
+      console.log('[支付设置] 支付设置面板初始化完成（包括Tab 1-4所有功能）');
     });
 
     // ==========================================
@@ -11043,6 +11119,695 @@
       // 输出完成日志
       console.log('[订单查询] 订单查询功能初始化完成');
     });
+
+    // ==========================================
+    // Tab 3: 退款功能 (processRefund函数)
+    // ==========================================
+    // 【功能说明】
+    // 实现支付设置面板中的订单退款功能，包括：
+    // 1. 获取并验证退款所需的4个字段（订单号、退款金额、退款单号、退款原因）
+    // 2. 订单号和退款金额为必填项，退款金额必须大于0
+    // 3. 退款单号为可选项，如果用户不填写则自动生成
+    // 4. 调用后端API执行退款操作
+    // 5. 显示退款结果（成功或失败）
+    // 
+    // 【API说明】
+    // - POST /api/payment/refund: 处理订单退款请求
+    // ==========================================
+
+    /**
+     * 处理退款操作函数
+     * 
+     * 功能说明：
+     * 1. 从输入框获取4个字段的值
+     * 2. 验证必填项（订单号、退款金额）
+     * 3. 验证退款金额必须大于0
+     * 4. 如果退款单号为空，则自动生成（格式：REFUND + 时间戳 + 6位随机数）
+     * 5. 调用后端API执行退款
+     * 6. 在refund-result-container中显示操作结果
+     * 
+     * API端点：POST /api/payment/refund
+     * 请求体格式：
+     * {
+     *   trade_no: "原订单号",
+     *   refund_amount: 9.90,
+     *   refund_no: "退款单号（可选）",
+     *   refund_reason: "退款原因（可选）"
+     * }
+     * 
+     * 返回数据格式示例：
+     * {
+     *   success: true,
+     *   message: "退款成功",
+     *   refund: {
+     *     refund_no: "REFUND202412101234567890",
+     *     trade_no: "202412101234567890",
+     *     refund_amount: 9.90,
+     *     status: "REFUND_SUCCESS"
+     *   }
+     * }
+     */
+    async function processRefund() {
+      // 在控制台输出日志，标记退款操作开始
+      console.log('[退款功能] 开始处理退款请求...');
+      
+      // ========== 第1步：获取所有输入框的DOM元素 ==========
+      
+      // 1.1 获取原订单号输入框（必填项）
+      const tradeNoInput = document.getElementById('refund-order-trade-no');
+      
+      // 1.2 获取退款金额输入框（必填项，必须>0）
+      const amountInput = document.getElementById('refund-amount');
+      
+      // 1.3 获取退款单号输入框（可选项，为空则自动生成）
+      const refundNoInput = document.getElementById('refund-no');
+      
+      // 1.4 获取退款原因输入框（可选项）
+      const reasonInput = document.getElementById('refund-reason');
+      
+      // 1.5 获取结果显示容器
+      const resultContainer = document.getElementById('refund-result-container');
+      
+      // ========== 第2步：防御性检查 - 确保所有必需的DOM元素都存在 ==========
+      
+      // 检查所有必需的元素是否都能找到
+      // 如果任何一个元素不存在，说明HTML结构有问题
+      if (!tradeNoInput || !amountInput || !refundNoInput || !reasonInput || !resultContainer) {
+        // 输出错误日志，列出缺失的元素（便于调试）
+        console.error('[退款功能] 错误：页面元素未找到');
+        console.error('元素检查：', {
+          tradeNoInput: !!tradeNoInput,
+          amountInput: !!amountInput,
+          refundNoInput: !!refundNoInput,
+          reasonInput: !!reasonInput,
+          resultContainer: !!resultContainer
+        });
+        // 向用户显示友好的错误提示
+        alert('页面元素异常，请刷新页面后重试。');
+        return; // 终止函数执行
+      }
+      
+      // ========== 第3步：获取并验证用户输入 ==========
+      
+      // 3.1 获取原订单号，并去除首尾空格
+      // trim()方法会移除字符串两端的空白字符（空格、制表符、换行符等）
+      const tradeNo = tradeNoInput.value.trim();
+      
+      // 3.2 验证订单号不为空（必填项验证）
+      if (!tradeNo) {
+        // 输出日志记录验证失败
+        console.log('[退款功能] 验证失败：订单号为空');
+        // 向用户显示友好的错误提示
+        alert('请输入订单号');
+        // 将焦点设置到订单号输入框，方便用户立即输入
+        tradeNoInput.focus();
+        return; // 终止函数执行
+      }
+      
+      // 3.3 获取退款金额，并去除首尾空格
+      const amountStr = amountInput.value.trim();
+      
+      // 3.4 验证退款金额不为空（必填项验证）
+      if (!amountStr) {
+        console.log('[退款功能] 验证失败：退款金额为空');
+        alert('请输入退款金额');
+        amountInput.focus();
+        return;
+      }
+      
+      // 3.5 将退款金额字符串转换为浮点数
+      // parseFloat()会尝试解析字符串为数字，失败时返回NaN
+      const refundAmount = parseFloat(amountStr);
+      
+      // 3.6 验证退款金额是否为有效数字
+      // isNaN()检查值是否为NaN（Not a Number）
+      if (isNaN(refundAmount)) {
+        console.log('[退款功能] 验证失败：退款金额不是有效数字');
+        alert('退款金额必须是有效的数字');
+        amountInput.focus();
+        return;
+      }
+      
+      // 3.7 验证退款金额必须大于0
+      // 退款金额不能是负数或0
+      if (refundAmount <= 0) {
+        console.log('[退款功能] 验证失败：退款金额必须大于0，当前值：', refundAmount);
+        alert('退款金额必须大于0');
+        amountInput.focus();
+        return;
+      }
+      
+      // 3.8 获取退款单号（可选项）
+      // 用户可以自定义退款单号，也可以留空由系统自动生成
+      let refundNo = refundNoInput.value.trim();
+      
+      // 3.9 如果退款单号为空，则自动生成
+      // 生成规则：REFUND + 当前时间戳 + 6位随机数
+      if (!refundNo) {
+        // Date.now() 返回当前时间的时间戳（毫秒）
+        // Math.random() 生成0-1之间的随机数
+        // Math.floor() 向下取整
+        // toString().padStart(6, '0') 转为字符串并补齐到6位（不足部分用0填充）
+        const randomNum = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+        refundNo = `REFUND${Date.now()}${randomNum}`;
+        
+        // 输出日志记录自动生成的退款单号
+        console.log('[退款功能] 自动生成退款单号：', refundNo);
+        
+        // 可选：将生成的退款单号回填到输入框，让用户看到
+        // 这样用户可以知道系统使用了哪个退款单号
+        refundNoInput.value = refundNo;
+      }
+      
+      // 3.10 获取退款原因（可选项）
+      const refundReason = reasonInput.value.trim();
+      
+      // 输出日志，记录所有输入参数（便于调试）
+      console.log('[退款功能] 退款参数：', {
+        trade_no: tradeNo,
+        refund_amount: refundAmount,
+        refund_no: refundNo,
+        refund_reason: refundReason || '（未填写）'
+      });
+      
+      // ========== 第4步：显示"处理中"状态 ==========
+      
+      // 在结果容器中显示"处理中..."提示
+      // 使用蓝色背景和边框，让用户知道系统正在处理请求
+      resultContainer.innerHTML = `
+        <div class="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          💳 正在处理退款请求，请稍候...
+        </div>
+      `;
+      // 移除hidden类，让提示框可见
+      resultContainer.classList.remove('hidden');
+      
+      try {
+        // ========== 第5步：发起API请求处理退款 ==========
+        
+        // 5.1 使用fetch API调用后端接口
+        // await关键字会等待请求完成，确保获取到响应后再继续执行
+        const response = await fetch('/api/payment/refund', {
+          method: 'POST', // HTTP方法：POST用于提交退款请求
+          headers: {
+            // 设置请求头，告知服务器请求体是JSON格式
+            'Content-Type': 'application/json'
+          },
+          // 将退款参数转换为JSON字符串作为请求体
+          body: JSON.stringify({
+            trade_no: tradeNo,           // 原订单号
+            refund_amount: refundAmount, // 退款金额
+            refund_no: refundNo,         // 退款单号
+            refund_reason: refundReason  // 退款原因
+          })
+        });
+        
+        // 5.2 检查HTTP响应状态码
+        // response.ok 为true表示状态码在200-299范围内（成功）
+        if (!response.ok) {
+          // 如果响应状态码不是成功状态（如404、500等）
+          // 抛出错误，中断执行流程，进入catch块处理
+          throw new Error(`退款请求失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // 5.3 解析JSON响应数据
+        const result = await response.json();
+        
+        // 输出完整的API响应，方便开发者调试
+        console.log('[退款功能] API响应：', result);
+        
+        // 5.4 检查业务状态
+        // 即使HTTP状态码是200，业务逻辑也可能失败（如订单不存在、退款金额超过订单金额等）
+        if (!result.success) {
+          // 如果业务失败，抛出错误，显示服务器返回的错误消息
+          throw new Error(result.message || '退款失败，未知错误');
+        }
+        
+        // ========== 第6步：显示退款成功结果 ==========
+        
+        // 6.1 输出成功日志
+        console.log('[退款功能] 退款成功：', result);
+        
+        // 6.2 构建成功提示HTML
+        // 显示绿色的成功提示框，包含退款单号和相关信息
+        let successHTML = `
+          <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
+            <div class="font-bold text-sm">✓ 退款成功</div>
+        `;
+        
+        // 6.3 如果返回了退款详情数据，显示详细信息
+        if (result.refund) {
+          successHTML += `
+            <div class="space-y-1 text-xs">
+              <div><span class="font-medium">退款单号：</span>${result.refund.refund_no || refundNo}</div>
+              <div><span class="font-medium">原订单号：</span>${result.refund.trade_no || tradeNo}</div>
+              <div><span class="font-medium">退款金额：</span>¥${(result.refund.refund_amount || refundAmount).toFixed(2)}</div>
+          `;
+          
+          // 如果有退款状态，也显示出来
+          if (result.refund.status) {
+            successHTML += `<div><span class="font-medium">退款状态：</span>${result.refund.status}</div>`;
+          }
+          
+          successHTML += `</div>`;
+        } else {
+          // 如果没有返回详细数据，只显示基本信息
+          successHTML += `
+            <div class="text-xs">
+              <div>退款单号：${refundNo}</div>
+              <div>退款金额：¥${refundAmount.toFixed(2)}</div>
+            </div>
+          `;
+        }
+        
+        successHTML += `</div>`;
+        
+        // 6.4 更新结果容器的内容
+        resultContainer.innerHTML = successHTML;
+        resultContainer.classList.remove('hidden');
+        
+        // 6.5 可选：清空输入框，为下一次退款做准备
+        // 保留退款单号输入框为空，以便系统自动生成新的退款单号
+        // tradeNoInput.value = '';
+        // amountInput.value = '';
+        // refundNoInput.value = '';
+        // reasonInput.value = '';
+        
+        // 输出完成日志
+        console.log('[退款功能] 退款操作完成');
+        
+      } catch (error) {
+        // ========== 错误处理 ==========
+        // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
+        
+        // 在控制台输出详细的错误信息
+        console.error('[退款功能] 退款失败：', error);
+        
+        // 在结果容器中显示错误消息
+        // 使用红色背景和边框，明确标识为错误状态
+        resultContainer.innerHTML = `
+          <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+            <div class="font-bold text-sm">✗ 退款失败</div>
+            <div class="mt-1">${error.message || '未知错误，请重试或联系管理员'}</div>
+          </div>
+        `;
+        // 显示错误提示框
+        resultContainer.classList.remove('hidden');
+        
+        // 可选：5秒后自动隐藏错误提示
+        // setTimeout(() => {
+        //   resultContainer.classList.add('hidden');
+        // }, 5000);
+      }
+    }
+
+    // ==========================================
+    // Tab 4: 测试支付功能
+    // ==========================================
+    // 【功能说明】
+    // 实现支付设置面板中的测试支付功能，包括：
+    // 1. createTestOrder(): 创建测试订单
+    //    - 获取测试金额、商品名称、支付方式
+    //    - 自动生成订单号（时间戳 + 6位随机数）
+    //    - 调用后端API创建订单
+    //    - 显示订单信息和支付链接
+    // 2. openTestPayUrl(): 打开支付链接
+    //    - 从按钮的data-url属性获取支付链接
+    //    - 在新标签页中打开支付页面
+    // 
+    // 【API说明】
+    // - POST /api/payment/create: 创建支付订单
+    // ==========================================
+
+    /**
+     * 创建测试订单函数
+     * 
+     * 功能说明：
+     * 1. 从输入框获取测试支付金额、商品名称、支付方式
+     * 2. 验证必填项（金额>0，支付方式已选择）
+     * 3. 自动生成订单号（格式：时间戳 + 6位随机数）
+     * 4. 调用后端API创建订单
+     * 5. 显示订单信息（订单号、金额、支付链接）
+     * 6. 显示"打开支付链接"按钮
+     * 
+     * API端点：POST /api/payment/create
+     * 请求体格式：
+     * {
+     *   amount: 9.90,
+     *   product_name: "测试商品",
+     *   payment_method: "alipay"
+     * }
+     * 
+     * 返回数据格式示例：
+     * {
+     *   success: true,
+     *   order: {
+     *     trade_no: "202412101234567890",
+     *     amount: 9.90,
+     *     payment_method: "alipay",
+     *     pay_url: "https://pay.example.com/..."
+     *   }
+     * }
+     */
+    async function createTestOrder() {
+      // 在控制台输出日志，标记创建测试订单操作开始
+      console.log('[测试支付] 开始创建测试订单...');
+      
+      // ========== 第1步：获取所有输入框和显示区域的DOM元素 ==========
+      
+      // 1.1 获取测试支付金额输入框（必填项，必须>0）
+      const amountInput = document.getElementById('test-payment-amount');
+      
+      // 1.2 获取商品名称输入框（可选项，为空时使用默认值）
+      const productInput = document.getElementById('test-payment-product');
+      
+      // 1.3 获取支付方式选择下拉框（必填项）
+      const methodSelect = document.getElementById('test-payment-method');
+      
+      // 1.4 获取订单结果显示容器
+      const resultContainer = document.getElementById('test-order-result-container');
+      
+      // 1.5 获取订单号显示元素
+      const tradeNoSpan = document.getElementById('test-order-trade-no');
+      
+      // 1.6 获取订单金额显示元素
+      const amountSpan = document.getElementById('test-order-amount');
+      
+      // 1.7 获取支付链接显示元素（用于显示和复制）
+      const payUrlSpan = document.getElementById('test-order-pay-url');
+      
+      // 1.8 获取"打开支付链接"按钮
+      const openPayBtn = document.getElementById('open-test-pay-url-btn');
+      
+      // ========== 第2步：防御性检查 - 确保所有必需的DOM元素都存在 ==========
+      
+      // 检查所有必需的元素是否都能找到
+      if (!amountInput || !productInput || !methodSelect || !resultContainer || 
+          !tradeNoSpan || !amountSpan || !payUrlSpan || !openPayBtn) {
+        // 输出错误日志，列出缺失的元素（便于调试）
+        console.error('[测试支付] 错误：页面元素未找到');
+        console.error('元素检查：', {
+          amountInput: !!amountInput,
+          productInput: !!productInput,
+          methodSelect: !!methodSelect,
+          resultContainer: !!resultContainer,
+          tradeNoSpan: !!tradeNoSpan,
+          amountSpan: !!amountSpan,
+          payUrlSpan: !!payUrlSpan,
+          openPayBtn: !!openPayBtn
+        });
+        // 向用户显示友好的错误提示
+        alert('页面元素异常，请刷新页面后重试。');
+        return; // 终止函数执行
+      }
+      
+      // ========== 第3步：获取并验证用户输入 ==========
+      
+      // 3.1 获取支付金额，并去除首尾空格
+      const amountStr = amountInput.value.trim();
+      
+      // 3.2 验证金额不为空（必填项验证）
+      if (!amountStr) {
+        console.log('[测试支付] 验证失败：支付金额为空');
+        alert('请输入支付金额');
+        amountInput.focus();
+        return;
+      }
+      
+      // 3.3 将金额字符串转换为浮点数
+      const amount = parseFloat(amountStr);
+      
+      // 3.4 验证金额是否为有效数字
+      if (isNaN(amount)) {
+        console.log('[测试支付] 验证失败：支付金额不是有效数字');
+        alert('支付金额必须是有效的数字');
+        amountInput.focus();
+        return;
+      }
+      
+      // 3.5 验证金额必须大于0
+      if (amount <= 0) {
+        console.log('[测试支付] 验证失败：支付金额必须大于0，当前值：', amount);
+        alert('支付金额必须大于0');
+        amountInput.focus();
+        return;
+      }
+      
+      // 3.6 获取商品名称（可选项，为空时使用默认值）
+      let productName = productInput.value.trim();
+      if (!productName) {
+        // 如果用户没有填写商品名称，使用默认值
+        productName = '测试商品';
+        console.log('[测试支付] 使用默认商品名称：', productName);
+      }
+      
+      // 3.7 获取支付方式（必填项）
+      const paymentMethod = methodSelect.value;
+      
+      // 3.8 验证支付方式已选择
+      if (!paymentMethod) {
+        console.log('[测试支付] 验证失败：未选择支付方式');
+        alert('请选择支付方式');
+        methodSelect.focus();
+        return;
+      }
+      
+      // ========== 第4步：生成订单号 ==========
+      
+      // 订单号生成规则：当前时间戳（毫秒） + 6位随机数
+      // Date.now() 返回当前时间的时间戳（毫秒）
+      // Math.random() 生成0-1之间的随机数
+      // Math.floor() 向下取整
+      // toString().padStart(6, '0') 转为字符串并补齐到6位（不足部分用0填充）
+      const timestamp = Date.now();
+      const randomNum = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+      const tradeNo = `${timestamp}${randomNum}`;
+      
+      // 输出日志记录生成的订单号
+      console.log('[测试支付] 生成订单号：', tradeNo);
+      
+      // 输出日志，记录所有订单参数（便于调试）
+      console.log('[测试支付] 订单参数：', {
+        trade_no: tradeNo,
+        amount: amount,
+        product_name: productName,
+        payment_method: paymentMethod
+      });
+      
+      // ========== 第5步：先隐藏结果容器，避免显示旧数据 ==========
+      resultContainer.classList.add('hidden');
+      
+      try {
+        // ========== 第6步：发起API请求创建订单 ==========
+        
+        // 6.1 使用fetch API调用后端接口
+        // await关键字会等待请求完成，确保获取到响应后再继续执行
+        const response = await fetch('/api/payment/create', {
+          method: 'POST', // HTTP方法：POST用于创建新订单
+          headers: {
+            // 设置请求头，告知服务器请求体是JSON格式
+            'Content-Type': 'application/json'
+          },
+          // 将订单参数转换为JSON字符串作为请求体
+          body: JSON.stringify({
+            amount: amount,              // 支付金额
+            product_name: productName,   // 商品名称
+            payment_method: paymentMethod // 支付方式
+          })
+        });
+        
+        // 6.2 检查HTTP响应状态码
+        // response.ok 为true表示状态码在200-299范围内（成功）
+        if (!response.ok) {
+          // 如果响应状态码不是成功状态（如404、500等）
+          // 抛出错误，中断执行流程，进入catch块处理
+          throw new Error(`创建订单失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // 6.3 解析JSON响应数据
+        const result = await response.json();
+        
+        // 输出完整的API响应，方便开发者调试
+        console.log('[测试支付] API响应：', result);
+        
+        // 6.4 检查业务状态
+        // 即使HTTP状态码是200，业务逻辑也可能失败
+        if (!result.success) {
+          // 如果业务失败，抛出错误，显示服务器返回的错误消息
+          throw new Error(result.message || '创建订单失败，未知错误');
+        }
+        
+        // 6.5 检查订单数据是否存在
+        if (!result.order) {
+          throw new Error('未返回订单信息');
+        }
+        
+        // ========== 第7步：显示订单信息 ==========
+        
+        // 7.1 获取订单数据
+        const order = result.order;
+        
+        // 输出成功日志
+        console.log('[测试支付] 订单创建成功：', order);
+        
+        // 7.2 显示订单号
+        // 优先使用API返回的订单号，如果没有则使用生成的订单号
+        tradeNoSpan.textContent = order.trade_no || tradeNo;
+        
+        // 7.3 显示订单金额
+        // 格式化金额：添加货币符号¥，保留2位小数
+        const displayAmount = order.amount || amount;
+        amountSpan.textContent = `¥${parseFloat(displayAmount).toFixed(2)}`;
+        
+        // 7.4 显示支付链接
+        // 如果API返回了支付链接，显示链接；否则显示提示信息
+        if (order.pay_url) {
+          // 显示支付链接（截断显示，避免过长）
+          // 最多显示60个字符，超出部分用...表示
+          const displayUrl = order.pay_url.length > 60 
+            ? order.pay_url.substring(0, 60) + '...' 
+            : order.pay_url;
+          payUrlSpan.textContent = displayUrl;
+          
+          // 将完整的支付链接保存到按钮的data-url属性中
+          // 这样openTestPayUrl函数可以从这里获取完整链接
+          openPayBtn.setAttribute('data-url', order.pay_url);
+          
+          // 启用"打开支付链接"按钮
+          // 移除disabled属性，让按钮可点击
+          openPayBtn.disabled = false;
+          // 移除禁用状态的视觉样式
+          openPayBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          
+          console.log('[测试支付] 支付链接已保存到按钮data-url属性');
+        } else {
+          // 如果没有返回支付链接，显示提示信息
+          payUrlSpan.textContent = '（未返回支付链接）';
+          
+          // 禁用"打开支付链接"按钮
+          openPayBtn.disabled = true;
+          openPayBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          
+          console.warn('[测试支付] 警告：API未返回支付链接');
+        }
+        
+        // 7.5 显示订单结果容器
+        // 移除hidden类，让用户看到订单信息
+        resultContainer.classList.remove('hidden');
+        
+        // 输出完成日志
+        console.log('[测试支付] 订单信息已成功显示');
+        
+        // 7.6 可选：向用户显示成功提示
+        // alert('测试订单创建成功！请点击下方按钮打开支付链接。');
+        
+      } catch (error) {
+        // ========== 错误处理 ==========
+        // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
+        
+        // 在控制台输出详细的错误信息
+        console.error('[测试支付] 创建订单失败：', error);
+        
+        // 向用户显示错误提示
+        alert(`创建订单失败：${error.message || '未知错误，请重试或联系管理员'}`);
+        
+        // 隐藏订单结果容器（因为没有有效的订单数据）
+        resultContainer.classList.add('hidden');
+      }
+    }
+
+    /**
+     * 打开测试支付链接函数
+     * 
+     * 功能说明：
+     * 1. 从"打开支付链接"按钮的data-url属性中获取支付链接
+     * 2. 验证链接是否存在
+     * 3. 使用window.open()在新标签页中打开支付页面
+     * 4. 处理可能的弹窗拦截问题
+     * 
+     * 调用时机：
+     * - 用户点击"打开支付链接"按钮时
+     * 
+     * 注意事项：
+     * - 现代浏览器可能会拦截window.open()弹窗，需要提示用户允许弹窗
+     * - 必须在用户点击事件的处理函数中调用，否则会被拦截
+     */
+    function openTestPayUrl() {
+      // 在控制台输出日志，标记打开支付链接操作开始
+      console.log('[测试支付] 准备打开支付链接...');
+      
+      // ========== 第1步：获取按钮元素 ==========
+      
+      // 获取"打开支付链接"按钮的DOM元素
+      const openPayBtn = document.getElementById('open-test-pay-url-btn');
+      
+      // 防御性检查：确保按钮元素存在
+      if (!openPayBtn) {
+        console.error('[测试支付] 错误：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
+        alert('页面元素异常，请刷新页面后重试。');
+        return;
+      }
+      
+      // ========== 第2步：从按钮的data-url属性获取支付链接 ==========
+      
+      // getAttribute()方法获取元素的指定属性值
+      // data-url属性是在createTestOrder()函数中设置的，包含完整的支付链接
+      const payUrl = openPayBtn.getAttribute('data-url');
+      
+      // 输出日志，记录获取到的支付链接
+      console.log('[测试支付] 获取到的支付链接：', payUrl);
+      
+      // ========== 第3步：验证支付链接是否存在 ==========
+      
+      // 检查链接是否为空或undefined
+      if (!payUrl) {
+        // 如果链接不存在，说明订单创建失败或API未返回支付链接
+        console.error('[测试支付] 错误：支付链接不存在');
+        alert('支付链接不存在，请先创建测试订单。');
+        return;
+      }
+      
+      // ========== 第4步：在新标签页中打开支付链接 ==========
+      
+      try {
+        // 使用window.open()方法在新标签页中打开支付链接
+        // 参数说明：
+        // - 第1个参数：要打开的URL（支付链接）
+        // - 第2个参数：窗口目标，'_blank'表示在新标签页中打开
+        // - 第3个参数：窗口特性（可选），这里使用'noopener,noreferrer'增强安全性
+        //   * noopener: 防止新页面通过window.opener访问原页面
+        //   * noreferrer: 不发送HTTP Referer头，保护隐私
+        const newWindow = window.open(payUrl, '_blank', 'noopener,noreferrer');
+        
+        // ========== 第5步：检查是否成功打开 ==========
+        
+        // 如果newWindow为null或undefined，说明浏览器拦截了弹窗
+        // 现代浏览器默认会拦截非用户主动触发的弹窗，需要用户在浏览器设置中允许
+        if (!newWindow) {
+          // 输出警告日志
+          console.warn('[测试支付] 警告：浏览器可能拦截了弹窗');
+          
+          // 向用户显示友好的提示信息
+          alert('浏览器拦截了弹窗，请允许本网站的弹窗权限，或手动复制链接在新标签页打开。\n\n支付链接：' + payUrl);
+        } else {
+          // 如果成功打开，输出成功日志
+          console.log('[测试支付] 支付链接已在新标签页中打开');
+          
+          // 可选：将焦点设置到新窗口
+          // newWindow.focus();
+        }
+        
+      } catch (error) {
+        // ========== 错误处理 ==========
+        // 捕获可能的异常（虽然window.open()很少抛出异常）
+        
+        // 在控制台输出详细的错误信息
+        console.error('[测试支付] 打开支付链接时发生错误：', error);
+        
+        // 向用户显示错误提示
+        alert(`无法打开支付链接：${error.message || '未知错误'}\n\n支付链接：${payUrl}\n\n请手动复制链接在新标签页打开。`);
+      }
+    }
   </script>
 
   <!-- Extracted Script -->
