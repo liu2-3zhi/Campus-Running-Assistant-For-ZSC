@@ -16288,6 +16288,16 @@ function refreshMobileSessionPicker() {
 
           return;
         }
+        
+        // ========== 添加欠费检查 ==========
+        // 在开始所有账号前，检查所有学校账号是否有欠费
+        const canStart = await checkOverdueBeforeStart();
+        if (!canStart) {
+          // 欠费检查未通过，直接返回不启动任务
+          return;
+        }
+        // ========== 欠费检查结束 ==========
+        
         const use_delay = $("multi-use-delay-check").checked;
         const min_delay = parseInt($("multi-min-delay-input").value) || 0;
         const max_delay = parseInt($("multi-max-delay-input").value) || 300;
@@ -16617,7 +16627,17 @@ function refreshMobileSessionPicker() {
 
           listDiv.querySelectorAll(".btn-account-start").forEach(
             (b) =>
-              (b.onclick = (e) => {
+              (b.onclick = async (e) => {
+                // ========== 添加欠费检查 ==========
+                // 在开始单个账号前，检查该账号是否有欠费
+                const username = e.target.dataset.username;
+                const canStart = await checkOverdueBeforeStart(username);
+                if (!canStart) {
+                  // 欠费检查未通过，直接返回不启动任务
+                  return;
+                }
+                // ========== 欠费检查结束 ==========
+                
                 const checkboxId = isMobile
                   ? "mobile-multi-only-incomplete-check"
                   : "multi-run-only-incomplete-check";
@@ -16625,7 +16645,7 @@ function refreshMobileSessionPicker() {
                   document.getElementById(checkboxId)?.checked ?? true;
                 callPythonAPI(
                   "multi_start_single_account",
-                  e.target.dataset.username,
+                  username,
                   runOnly
                 );
               })
@@ -16804,6 +16824,14 @@ function refreshMobileSessionPicker() {
         if (usernames.length === 0) {
           showModalAlert("请至少选择一个账号再执行“开始选中”。");
           return;
+// ========== 添加欠费检查 ==========
+        // 在开始选中的账号前，检查所有学校账号是否有欠费
+        const canStart = await checkOverdueBeforeStart();
+        if (!canStart) {
+          // 欠费检查未通过，直接返回不启动任务
+          return;
+        }
+        // ========== 欠费检查结束 ==========
         }
         const use_delay = $("multi-use-delay-check")?.checked ?? true;
         const min_delay = parseInt($("multi-min-delay-input")?.value) || 0;
@@ -18047,6 +18075,16 @@ function refreshMobileSessionPicker() {
         runAccumulatedMs = 0;
 
         if (btn.textContent === "开始执行") {
+          // ========== 添加欠费检查 ==========
+          // 在开始任务前，检查当前学校账号是否有欠费
+          // 如果有欠费，会显示弹窗并返回 false，阻止任务启动
+          const canStart = await checkOverdueBeforeStart();
+          if (!canStart) {
+            // 欠费检查未通过，直接返回不启动任务
+            return;
+          }
+          // ========== 欠费检查结束 ==========
+          
           const autoGen = $("auto-gen-all-check").checked;
           if (selectedTaskIndex < 0) {
             showModalAlert("请先选择任务");
@@ -18089,6 +18127,15 @@ function refreshMobileSessionPicker() {
         runAccumulatedMs = 0;
 
         if (btn.textContent === "执行所有") {
+          // ========== 添加欠费检查 ==========
+          // 在开始所有任务前，检查所有学校账号是否有欠费
+          const canStart = await checkOverdueBeforeStart();
+          if (!canStart) {
+            // 欠费检查未通过，直接返回不启动任务
+            return;
+          }
+          // ========== 欠费检查结束 ==========
+          
           const ignoreCompleted = $("run-completed-check").checked;
           const autoGen = $("auto-gen-all-check").checked;
           const taskIndices = [];
@@ -21455,6 +21502,14 @@ async function mobileStartSelectedAccounts() {
     if (selected.length === 0) {
       showModalAlert("请先选择要启动的账号", "错误");
       return;
+// ========== 添加欠费检查 ==========
+    // 在开始选中的账号前，检查所有学校账号是否有欠费
+    const canStart = await checkOverdueBeforeStart();
+    if (!canStart) {
+      // 欠费检查未通过，直接返回不启动任务
+      return;
+    }
+    // ========== 欠费检查结束 ==========
     }
     await multi_startSelected();
     showModalAlert(`正在启动 ${selected.length} 个账号`, "成功");
@@ -21506,6 +21561,14 @@ async function mobileStartAllAccounts() {
     if (!count || count <= 0) {
       showModalAlert("账号列表为空，无法启动", "错误");
       return;
+// ========== 添加欠费检查 ==========
+    // 在开始所有账号前，检查所有学校账号是否有欠费
+    const canStart = await checkOverdueBeforeStart();
+    if (!canStart) {
+      // 欠费检查未通过，直接返回不启动任务
+      return;
+    }
+    // ========== 欠费检查结束 ==========
     }
     const randomDelayCheck = document.getElementById(
       "mobile-multi-random-delay-check"
@@ -35512,4 +35575,215 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ============================================================================
 // 彩虹易支付系统 - 前端JavaScript实现结束
+// ============================================================================
+
+// ============================================================================
+// 欠费检查功能
+// ============================================================================
+
+/**
+ * 检查账号是否有欠费，在开始任务前调用
+ * 
+ * 功能说明：
+ * - 调用后端 /api/check_overdue 接口检查指定账号或所有账号的欠费状态
+ * - 如果存在欠费，显示欠费弹窗并返回 false 阻止任务启动
+ * - 如果没有欠费或检查失败（容错），返回 true 允许任务继续
+ * 
+ * @param {string|null} schoolUsername - 可选，学校账号用户名。如果为 null，检查所有账号
+ * @returns {Promise<boolean>} - true 表示可以继续启动任务，false 表示被欠费阻止
+ * 
+ * 调用示例：
+ * const canStart = await checkOverdueBeforeStart('20210001');
+ * if (!canStart) {
+ *     return; // 有欠费，不启动任务
+ * }
+ * // 继续启动任务...
+ */
+async function checkOverdueBeforeStart(schoolUsername = null) {
+    try {
+        // 构造请求体：如果提供了 schoolUsername，只检查该账号
+        const requestBody = {};
+        if (schoolUsername) {
+            requestBody.school_username = schoolUsername;
+        }
+        
+        // 调用后端检查欠费接口
+        // 使用 fetch 而不是 callPythonAPI，因为需要更精细的错误处理
+        const response = await fetch('/api/check_overdue', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // 使用全局 sessionUUID 进行会话认证
+                'X-Session-ID': sessionUUID
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        // 解析响应数据
+        const result = await response.json();
+        
+        // 检查接口调用是否成功
+        if (!result.success) {
+            // 接口返回失败，显示错误信息
+            showModalAlert(result.message, '错误');
+            // 容错：即使检查失败，也允许任务继续（避免阻塞正常用户）
+            return true;
+        }
+        
+        // 如果存在欠费账号
+        if (result.has_overdue) {
+            // 显示欠费弹窗，等待用户处理
+            await showOverduePaymentModal(result.overdue_accounts);
+            // 返回 false 阻止任务启动
+            return false;
+        }
+        
+        // 没有欠费，允许任务继续
+        return true;
+        
+    } catch (error) {
+        // 捕获所有异常（网络错误、JSON解析错误等）
+        console.error('检查欠费失败:', error);
+        // 容错：检查失败不阻止任务执行，避免因网络问题影响正常用户
+        return true;
+    }
+}
+
+/**
+ * 显示欠费提示弹窗
+ * 
+ * 功能说明：
+ * - 使用 SweetAlert2 (Swal) 显示美观的欠费提示弹窗
+ * - 列出所有欠费账号的姓名和欠费次数
+ * - 提供"立即缴费"和"取消"两个按钮
+ * - 如果用户点击"立即缴费"，调用占位缴费函数
+ * 
+ * @param {Array} overdueAccounts - 欠费账号列表，格式：
+ *   [
+ *     {username: '20210001', name: '张三', overdue_count: 3},
+ *     ...
+ *   ]
+ * @returns {Promise<void>}
+ * 
+ * UI效果：
+ * ┌─────────────────────────────┐
+ * │   ⚠️ 账号欠费提醒           │
+ * ├─────────────────────────────┤
+ * │ 以下账号存在欠费，需要缴费  │
+ * │ 后才能继续使用：            │
+ * │                              │
+ * │ • 张三: 3次欠费             │
+ * │ • 李四: 1次欠费             │
+ * │                              │
+ * │ [立即缴费(占位)]  [取消]   │
+ * └─────────────────────────────┘
+ */
+async function showOverduePaymentModal(overdueAccounts) {
+    // 将欠费账号列表转换为HTML格式
+    // 每个账号显示为一个列表项：姓名 + 欠费次数
+    const accountList = overdueAccounts.map(acc => 
+        `<li style="margin: 5px 0;">${acc.name || acc.username}: ${acc.overdue_count}次欠费</li>`
+    ).join('');
+    
+    // 使用 SweetAlert2 显示欠费弹窗
+    const result = await Swal.fire({
+        title: '账号欠费提醒',
+        html: `
+            <p style="margin-bottom: 15px;">以下账号存在欠费，需要缴费后才能继续使用：</p>
+            <ul style="text-align: left; padding-left: 30px; list-style-type: disc;">
+                ${accountList}
+            </ul>
+        `,
+        icon: 'warning',  // 警告图标
+        showCancelButton: true,  // 显示取消按钮
+        confirmButtonText: '立即缴费（占位）',  // 确认按钮文本
+        cancelButtonText: '取消',  // 取消按钮文本
+        confirmButtonColor: '#3085d6',  // 确认按钮颜色（蓝色）
+        cancelButtonColor: '#d33'  // 取消按钮颜色（红色）
+    });
+    
+    // 如果用户点击了"立即缴费"按钮
+    if (result.isConfirmed) {
+        // 调用占位缴费函数，清零所有欠费账号的欠费记录
+        await clearOverduePlaceholder(overdueAccounts);
+    }
+    
+    // 如果用户点击了"取消"按钮，不做任何操作，直接返回
+}
+
+/**
+ * 占位缴费函数：清零欠费记录
+ * 
+ * 功能说明：
+ * - 这是一个占位实现，实际应用中应该集成真实的支付流程
+ * - 遍历所有欠费账号，调用后端接口清零欠费记录
+ * - 显示加载动画和成功提示
+ * 
+ * TODO（实际应用中应实现）：
+ * 1. 跳转到支付页面或显示支付二维码
+ * 2. 等待支付完成通知
+ * 3. 验证支付凭证
+ * 4. 记录支付日志
+ * 5. 清零欠费记录
+ * 
+ * @param {Array} overdueAccounts - 欠费账号列表
+ * @returns {Promise<void>}
+ */
+async function clearOverduePlaceholder(overdueAccounts) {
+    // 显示加载动画弹窗
+    Swal.fire({
+        title: '正在处理缴费...',
+        text: '请稍候',
+        icon: 'info',
+        allowOutsideClick: false,  // 不允许点击外部关闭
+        allowEscapeKey: false,  // 不允许按 ESC 关闭
+        showConfirmButton: false,  // 不显示确认按钮
+        didOpen: () => {
+            // 显示加载动画
+            Swal.showLoading();
+        }
+    });
+    
+    // 遍历所有欠费账号，逐个清零欠费记录
+    for (const acc of overdueAccounts) {
+        try {
+            // 调用后端清零欠费接口
+            const response = await fetch('/api/clear_overdue', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Session-ID': sessionUUID
+                },
+                body: JSON.stringify({
+                    school_username: acc.username
+                })
+            });
+            
+            // 解析响应
+            const result = await response.json();
+            
+            // 检查是否成功
+            if (!result.success) {
+                // 清零失败，记录错误日志
+                console.error(`清零账号 ${acc.username} 欠费失败:`, result.message);
+            }
+            
+        } catch (error) {
+            // 捕获网络错误等异常
+            console.error(`清零账号 ${acc.username} 欠费异常:`, error);
+        }
+    }
+    
+    // 关闭加载动画，显示成功提示
+    Swal.fire({
+        title: '缴费成功',
+        text: '欠费已清零（占位功能）',
+        icon: 'success',
+        confirmButtonText: '确定'
+    });
+}
+
+// ============================================================================
+// 欠费检查功能 - 结束
+// ============================================================================
 // ============================================================================

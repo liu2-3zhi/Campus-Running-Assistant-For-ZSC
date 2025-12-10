@@ -27374,6 +27374,217 @@ def start_web_server(args_param):
             }), 500
 
     # ==============================================================================
+    # 欠费检查接口
+    # ==============================================================================
+
+    @app.route("/api/check_overdue", methods=["POST"])
+    @login_required
+    def check_overdue():
+        """
+        检查学校账号是否有欠费
+        
+        功能说明：
+        - 读取当前认证用户的所有学校账号
+        - 检查每个账号的 overdue_count 字段（欠费次数）
+        - 如果 overdue_count > 0，说明该账号有欠费记录
+        - 从备份文件中读取账号姓名，用于友好显示
+        
+        请求参数（JSON）：
+        - school_username: 可选，学校账号用户名。如果提供，只检查该账号；否则检查所有账号
+        
+        返回格式（JSON）：
+        {
+            "success": true,
+            "has_overdue": false,  // 是否存在欠费账号
+            "overdue_accounts": [  // 欠费账号列表
+                {
+                    "username": "xxx",      // 学校账号用户名
+                    "overdue_count": 3,     // 欠费次数
+                    "name": "张三"          // 姓名（从备份文件读取）
+                },
+                ...
+            ]
+        }
+        
+        错误情况：
+        - 返回 {"success": false, "message": "错误信息"}
+        """
+        try:
+            # 从请求体中获取参数
+            data = request.get_json() or {}
+            # 可选参数：要检查的特定学校账号用户名
+            school_username = data.get("school_username")
+            
+            # 获取当前认证用户名（通过 login_required 装饰器注入到 g.user）
+            auth_username = g.user
+            
+            # 获取该认证用户的所有学校账号配置
+            # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
+            school_accounts = g.api_instance._load_user_school_accounts(auth_username)
+            
+            # 如果没有学校账号，直接返回无欠费
+            if not school_accounts:
+                return jsonify({
+                    "success": True,
+                    "has_overdue": False,
+                    "overdue_accounts": []
+                })
+            
+            # 存储欠费账号的列表
+            overdue_accounts = []
+            
+            # 遍历所有学校账号，检查欠费情况
+            for acc_username, account_info in school_accounts.items():
+                # 如果指定了 school_username，只检查该账号
+                if school_username and acc_username != school_username:
+                    continue
+                
+                # 兼容旧格式：如果 account_info 是字符串（密码），跳过
+                if isinstance(account_info, str):
+                    continue
+                
+                # 获取欠费次数，默认为 0
+                overdue_count = account_info.get("overdue_count", 0)
+                
+                # 如果欠费次数大于 0，记录该账号
+                if overdue_count > 0:
+                    # 尝试从备份文件中读取账号的真实姓名
+                    # 备份文件路径：school_accounts/{acc_username}/{acc_username}_backup.json
+                    name = None
+                    try:
+                        # 构造备份文件路径
+                        backup_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, acc_username)
+                        backup_file = os.path.join(backup_dir, f"{acc_username}_backup.json")
+                        
+                        # 如果备份文件存在，读取姓名
+                        if os.path.exists(backup_file):
+                            with open(backup_file, "r", encoding="utf-8") as f:
+                                backup_data = json.load(f)
+                                # 从 userInfo 中获取姓名
+                                user_info = backup_data.get("userInfo", {})
+                                name = user_info.get("name")
+                    except Exception as e:
+                        # 读取备份文件失败，记录警告但不影响主流程
+                        logging.warning(
+                            f"[欠费检查] 读取账号 {acc_username} 的备份文件失败: {e}"
+                        )
+                    
+                    # 将欠费账号信息添加到列表
+                    overdue_accounts.append({
+                        "username": acc_username,
+                        "overdue_count": overdue_count,
+                        "name": name or acc_username  # 如果没有姓名，使用用户名
+                    })
+            
+            # 返回检查结果
+            return jsonify({
+                "success": True,
+                "has_overdue": len(overdue_accounts) > 0,  # 是否存在欠费
+                "overdue_accounts": overdue_accounts
+            })
+        
+        except Exception as e:
+            # 捕获所有异常，记录日志并返回错误
+            logging.error(f"[欠费检查] 检查欠费状态失败: {e}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"检查欠费状态失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/clear_overdue", methods=["POST"])
+    @login_required
+    def clear_overdue():
+        """
+        清零学校账号的欠费记录（占位功能）
+        
+        功能说明：
+        - 将指定学校账号的 overdue_count 字段设置为 0
+        - 这是一个占位功能，实际应用中应该先验证支付后再清零
+        - 在真实环境中，此接口应该：
+          1. 验证用户的支付凭证
+          2. 调用支付平台API确认支付成功
+          3. 记录支付日志
+          4. 清零欠费计数
+        
+        请求参数（JSON）：
+        - school_username: 必需，学校账号用户名
+        
+        返回格式（JSON）：
+        - 成功：{"success": true, "message": "欠费已清零"}
+        - 失败：{"success": false, "message": "错误信息"}
+        
+        注意事项：
+        - 当前为占位实现，直接清零不进行任何支付验证
+        - TODO: 集成实际的支付验证流程
+        """
+        try:
+            # 从请求体中获取参数
+            data = request.get_json() or {}
+            # 必需参数：要清零的学校账号用户名
+            school_username = data.get("school_username")
+            
+            # 参数校验
+            if not school_username:
+                return jsonify({
+                    "success": False,
+                    "message": "缺少必需参数：school_username"
+                }), 400
+            
+            # 获取当前认证用户名
+            auth_username = g.user
+            
+            # 加载该认证用户的所有学校账号配置
+            school_accounts = g.api_instance._load_user_school_accounts(auth_username)
+            
+            # 检查指定的学校账号是否存在
+            if school_username not in school_accounts:
+                return jsonify({
+                    "success": False,
+                    "message": f"学校账号 {school_username} 不存在"
+                }), 404
+            
+            # 获取账号信息
+            account_info = school_accounts[school_username]
+            
+            # 兼容旧格式：如果 account_info 是字符串（密码），转换为新格式
+            if isinstance(account_info, str):
+                account_info = {
+                    "password": account_info,
+                    "ua": None,
+                    "overdue_count": 0
+                }
+                school_accounts[school_username] = account_info
+            
+            # 记录清零前的欠费次数（用于日志）
+            old_overdue_count = account_info.get("overdue_count", 0)
+            
+            # 清零欠费计数
+            account_info["overdue_count"] = 0
+            
+            # 保存更新后的学校账号配置
+            g.api_instance._save_user_school_accounts(auth_username, school_accounts)
+            
+            # 记录日志
+            logging.info(
+                f"[欠费清零] 用户 {auth_username} 的学校账号 {school_username} "
+                f"欠费已清零（清零前：{old_overdue_count} 次）"
+            )
+            
+            # 返回成功响应
+            return jsonify({
+                "success": True,
+                "message": "欠费已清零"
+            })
+        
+        except Exception as e:
+            # 捕获所有异常，记录日志并返回错误
+            logging.error(f"[欠费清零] 清零欠费失败: {e}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"清零欠费失败：{str(e)}"
+            }), 500
+
+    # ==============================================================================
     # 健康检查和监控接口
     # ==============================================================================
 
