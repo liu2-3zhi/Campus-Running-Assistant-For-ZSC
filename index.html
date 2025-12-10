@@ -5463,38 +5463,24 @@
           </div>
 
           <!-- ========================================
-               支付配置面板 (payment-config)
-               管理员可以在此启用/禁用支付方式（支付宝、微信、网银）
-               支持多选，修改后立即生效
-               默认隐藏，通过switchMobileAdminTab切换显示
+               【已删除】支付配置面板 (payment-config)
+               
+               删除原因：
+               - 支付功能重构任务的第一部分
+               - 旧的支付配置面板UI和交互逻辑需要重新设计
+               - 此面板原本用于启用/禁用支付方式（支付宝、微信、网银）
+               
+               删除时间：2025-12-10
+               
+               注意事项：
+               - 相关的JavaScript函数（如loadPaymentConfig等）可能需要后续清理
+               - 调用此面板的switchMobileAdminTab函数可能需要调整
+               - 支付日志面板（mobile-multi-admin-payment-logs-panel）已保留
+               
+               后续任务：
+               - 设计新的支付配置面板UI
+               - 重构支付配置相关的前后端逻辑
                ======================================== -->
-          <div id="mobile-multi-admin-payment-config-panel" class="hidden space-y-3">
-            <!-- 面板头部：包含标题和刷新按钮 -->
-            <div class="flex justify-between items-center">
-              <!-- 面板标题 -->
-              <h4 class="font-semibold text-sm">支付配置</h4>
-              <!-- 刷新按钮：重新加载支付配置 -->
-              <button id="mobile-multi-admin-refresh-payment-config" class="btn btn-ghost !py-1 !px-2 text-xs">
-                刷新
-              </button>
-            </div>
-
-            <!-- 支付配置内容容器 -->
-            <div id="mobile-multi-admin-payment-config-content" class="space-y-4">
-              <!-- 配置内容将通过JavaScript动态加载，参见 loadPaymentConfig() 函数 -->
-              <!-- 动态生成的好处：
-                   1. 支持从全局配置对象(PAYMENT_METHODS)自动读取所有支付方式
-                   2. 添加新支付方式时，只需在JavaScript中修改配置对象
-                   3. 无需手动维护HTML中的复选框列表
-                   4. 自动根据后端返回的启用状态勾选复选框
-              -->
-              
-              <!-- 初始加载提示 -->
-              <div class="text-center py-8">
-                <p class="text-slate-400 text-sm">正在加载支付配置...</p>
-              </div>
-            </div>
-          </div>
 
           <!-- ========================================
                支付日志面板 (payment-logs)
