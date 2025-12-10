@@ -1036,15 +1036,23 @@ def _get_default_config():
         # 这是一个重要的安全参数，用于生成和验证支付请求的签名，请妥善保管，切勿泄露
         # 格式：通常为32位随机字符串，例如 "abcdef1234567890abcdef1234567890"
         "key": "",
-        # 异步通知URL：支付成功后彩虹易支付服务器回调的接口地址（必填）
-        # 这是一个服务器到服务器的POST回调，用于接收支付结果通知
-        # 格式示例："https://yourdomain.com/api/payment/notify"
-        # 注意：必须是公网可访问的HTTPS地址，本地开发环境需使用内网穿透工具（如ngrok）
+        # 应用访问域名：本应用的公网访问地址（必填）
+        # 用于自动构造异步通知URL（notify_url）
+        # 格式示例："https://yourdomain.com" 或 "https://www.example.com"
+        # 注意：必须是公网可访问的HTTPS地址，包含协议头，末尾不要添加斜杠
+        # 系统会自动拼接为：{app_host}/api/payment/yipay_notify
+        "app_host": "",
+        # 异步通知URL：支付成功后彩虹易支付服务器回调的接口地址（已废弃）
+        # ⚠️ 此配置项已废弃，现在 notify_url 会根据 app_host 自动构造
+        # 格式：{app_host}/api/payment/yipay_notify
+        # 无需手动配置，保留此项仅为向后兼容
         "notify_url": "",
-        # 同步返回URL：用户支付完成后浏览器跳转的页面地址（必填）
+        # 同步返回URL：用户支付完成后浏览器跳转的页面地址（可选）
         # 这是一个用户可见的跳转地址，用于显示支付结果页面
-        # 格式示例："https://yourdomain.com/api/payment/return"
-        # 注意：此URL仅用于展示，不可用于判断支付状态，支付结果以异步通知为准
+        # 格式示例："https://yourdomain.com/payment/success"
+        # 注意：
+        # 1. 此URL仅用于展示，不可用于判断支付状态，支付结果以异步通知为准
+        # 2. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值
         "return_url": "",
     }
 
@@ -1411,7 +1419,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 使用前需要：\n")
         f.write("# 1. 在彩虹易支付平台注册商户账号\n")
         f.write("# 2. 获取商户ID（PID）和商户密钥（KEY）\n")
-        f.write("# 3. 配置异步通知URL和同步返回URL（需要公网可访问）\n")
+        f.write("# 3. 配置应用访问域名（app_host），系统会自动构造异步通知URL\n")
+        f.write("# 4. 可选配置同步返回URL（return_url），也可在创建订单时动态传入\n")
         f.write("# ============================================================\n\n")
         f.write("[Rainbow_YiPay]\n")
         f.write("# 易支付接口域名（必填）\n")
@@ -1428,21 +1437,27 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 格式：通常为32位随机字符串\n")
         f.write("# 示例：abcdef1234567890abcdef1234567890\n")
         f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
-        f.write("# 异步通知URL（必填）\n")
-        f.write("# 支付成功后，彩虹易支付服务器会向此URL发送POST请求通知支付结果\n")
-        f.write("# 格式示例：https://yourdomain.com/api/payment/notify\n")
+        f.write("# 应用访问域名（必填）\n")
+        f.write("# 本应用的公网访问地址，用于自动构造异步通知URL\n")
+        f.write("# 格式示例：https://yourdomain.com 或 https://www.example.com\n")
         f.write("# 注意：\n")
         f.write("# 1. 必须是公网可访问的HTTPS地址\n")
-        f.write("# 2. 本地开发环境需使用内网穿透工具（如 ngrok、frp 等）\n")
-        f.write("# 3. 此接口用于服务器间通信，必须验证签名确保安全\n")
+        f.write("# 2. 包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
+        f.write("# 3. 系统会自动拼接为：{app_host}/api/payment/yipay_notify\n")
+        f.write(f"app_host = {config_obj.get('Rainbow_YiPay', 'app_host', fallback='')}\n")
+        f.write("# 异步通知URL（已废弃）\n")
+        f.write("# ⚠️ 此配置项已废弃，现在 notify_url 会根据 app_host 自动构造\n")
+        f.write("# 格式：{app_host}/api/payment/yipay_notify\n")
+        f.write("# 无需手动配置，保留此项仅为向后兼容\n")
         f.write(f"notify_url = {config_obj.get('Rainbow_YiPay', 'notify_url', fallback='')}\n")
-        f.write("# 同步返回URL（必填）\n")
+        f.write("# 同步返回URL（可选）\n")
         f.write("# 用户支付完成后，浏览器会跳转到此URL显示支付结果\n")
-        f.write("# 格式示例：https://yourdomain.com/api/payment/return\n")
+        f.write("# 格式示例：https://yourdomain.com/payment/success\n")
         f.write("# 注意：\n")
         f.write("# 1. 此URL仅用于页面展示，不能作为支付成功的判断依据\n")
         f.write("# 2. 支付状态必须以异步通知（notify_url）的结果为准\n")
         f.write("# 3. 用户可能不会访问此页面（如直接关闭浏览器）\n")
+        f.write("# 4. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值\n")
         f.write(f"return_url = {config_obj.get('Rainbow_YiPay', 'return_url', fallback='')}\n\n")
 
 
@@ -2424,17 +2439,21 @@ class RainbowYiPayClient:
         # 返回验证结果
         return is_valid
 
-    def create_order(self, out_trade_no, name, money, pay_type="alipay"):
+    def create_order(self, out_trade_no, name, money, pay_type="alipay", return_url=None):
         """
         创建支付订单
         
         参数:
             out_trade_no (str): 商户订单号（必须唯一，建议使用时间戳+随机数）
-            name (str): 商品名称（显示在支付页面，例如："充值100元"）
+            name (str): 商品名称（显示在支付页面，例如："在线支付100元"）
             money (str/float): 支付金额（单位：元，最少0.01元）
             pay_type (str): 支付方式，可选值：
                 - "alipay": 支付宝支付（默认）
                 - "wxpay": 微信支付
+            return_url (str, optional): 同步返回URL，用户支付完成后浏览器跳转的地址
+                - 如果传入此参数，则使用传入的URL（优先级最高）
+                - 如果不传入，则使用配置文件中的 return_url（兼容旧版本）
+                - 这使得每个订单可以有不同的返回地址，提高了灵活性
         
         返回:
             dict: 包含以下字段的字典
@@ -2475,14 +2494,41 @@ class RainbowYiPayClient:
             # 返回失败响应
             return {"success": False, "message": "彩虹易支付配置不完整，请联系管理员"}
         
+        # 构造异步通知URL（notify_url）
+        # 从配置文件中读取应用的公网访问域名（app_host）
+        # app_host 是本应用的公网访问地址，例如："https://yourdomain.com"
+        app_host = self.config.get("Rainbow_YiPay", "app_host", fallback="").strip()
+        
+        # 验证 app_host 是否已配置
+        # app_host 必须配置，因为彩虹易支付需要回调这个地址
+        if not app_host:
+            # 记录错误日志：缺少应用访问域名配置
+            logging.error("[彩虹易支付] 配置缺少 app_host（应用访问域名），无法构造异步通知URL")
+            # 返回失败响应，提示管理员配置 app_host
+            return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
+        
+        # 自动构造异步通知URL
+        # 格式：{app_host}/api/payment/yipay_notify
+        # 这是彩虹易支付专用的异步通知接收地址
+        # 当用户支付成功后，彩虹易支付服务器会向这个URL发送POST请求
+        notify_url = f"{app_host}/api/payment/yipay_notify"
+        
+        # 确定同步返回URL（return_url）
+        # 优先使用传入的 return_url 参数（如果提供）
+        # 如果没有传入，则使用配置文件中的 return_url（向后兼容）
+        # 用户支付完成后，浏览器会跳转到这个URL
+        if return_url is None:
+            # 使用配置文件中的默认 return_url
+            return_url = self.return_url
+        
         # 构造订单参数字典
         # 这些参数将被发送到彩虹易支付API
         params = {
             "pid": self.pid,                    # 商户ID
             "type": pay_type,                   # 支付方式（alipay/wxpay）
             "out_trade_no": out_trade_no,       # 商户订单号（必须唯一）
-            "notify_url": self.notify_url,      # 异步通知URL
-            "return_url": self.return_url,      # 同步返回URL
+            "notify_url": notify_url,           # 异步通知URL（动态构造）
+            "return_url": return_url,           # 同步返回URL（可动态传入）
             "name": name,                       # 商品名称
             "money": str(money),                # 支付金额（转为字符串）
         }
@@ -24655,6 +24701,16 @@ def start_web_server(args_param):
             # 从请求数据中提取支付方式，默认为支付宝
             pay_type = data.get("pay_type", "alipay").strip()
             
+            # 从请求数据中提取同步返回URL（可选参数）
+            # return_url 是用户支付完成后浏览器跳转的地址
+            # 如果前端传入此参数，则使用前端指定的URL
+            # 如果不传入，create_order() 方法会使用配置文件中的默认值
+            # 这使得不同的支付场景可以跳转到不同的页面
+            return_url = data.get("return_url", None)
+            if return_url:
+                # 如果传入了 return_url，去除首尾空白字符
+                return_url = return_url.strip()
+            
             # ========== 参数验证 ==========
             
             # 验证金额是否为空
@@ -24711,11 +24767,13 @@ def start_web_server(args_param):
             # - name: 商品名称（显示在支付页面）
             # - money: 支付金额（元）
             # - pay_type: 支付方式（alipay/wxpay）
+            # - return_url: 同步返回URL（可选，如果前端传入则使用前端指定的URL）
             result = yipay_client.create_order(
                 out_trade_no=order_id,
                 name=product_name,
                 money=amount,
-                pay_type=pay_type
+                pay_type=pay_type,
+                return_url=return_url  # 传递 return_url 参数（可能为 None）
             )
             
             # 检查订单创建是否成功
@@ -24886,15 +24944,24 @@ def start_web_server(args_param):
             logging.error(traceback.format_exc())
             return jsonify({"success": False, "message": f"查询订单失败: {str(e)}"}), 500
 
-    @app.route("/api/payment/notify", methods=["POST"])
-    def payment_notify():
+    @app.route("/api/payment/yipay_notify", methods=["POST"])
+    def payment_yipay_notify():
         """
-        接收彩虹易支付异步通知接口
+        接收彩虹易支付异步通知接口（专用）
         
         请求方法：POST
         权限要求：无（公开接口，但需要验证签名）
+        路由路径：/api/payment/yipay_notify
         
         功能说明：
+        这是一个服务器到服务器的回调接口，当用户支付成功后，
+        彩虹易支付服务器会向这个URL发送POST请求，通知支付结果。
+        
+        重要更新：
+        - 此路由路径已从 /api/payment/notify 更改为 /api/payment/yipay_notify
+        - notify_url 会在 create_order() 方法中自动构造为此地址
+        - 管理员只需在配置文件中设置 app_host（应用访问域名）即可
+        
         这是一个服务器到服务器的回调接口，当用户支付成功后，
         彩虹易支付服务器会向这个URL发送POST请求，通知支付结果。
         
