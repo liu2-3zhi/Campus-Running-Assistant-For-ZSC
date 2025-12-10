@@ -5328,59 +5328,18 @@
 
             <!-- 支付配置内容容器 -->
             <div id="mobile-multi-admin-payment-config-content" class="space-y-4">
-              <!-- 提示信息卡片 -->
-              <div class="bg-sky-50 border border-sky-200 rounded-lg p-3">
-                <p class="text-xs text-sky-700">
-                  <strong>提示：</strong>请至少启用一种支付方式。修改后立即生效，无需重启服务。
-                </p>
+              <!-- 配置内容将通过JavaScript动态加载，参见 loadPaymentConfig() 函数 -->
+              <!-- 动态生成的好处：
+                   1. 支持从全局配置对象(PAYMENT_METHODS)自动读取所有支付方式
+                   2. 添加新支付方式时，只需在JavaScript中修改配置对象
+                   3. 无需手动维护HTML中的复选框列表
+                   4. 自动根据后端返回的启用状态勾选复选框
+              -->
+              
+              <!-- 初始加载提示 -->
+              <div class="text-center py-8">
+                <p class="text-slate-400 text-sm">正在加载支付配置...</p>
               </div>
-
-              <!-- 支付方式选择区域 -->
-              <div class="space-y-3">
-                <!-- 支付方式标题 -->
-                <h5 class="text-sm font-semibold text-slate-700">启用的支付方式</h5>
-
-                <!-- 支付宝复选框 -->
-                <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer hover:border-sky-500 transition-colors">
-                  <input type="checkbox" id="payment-method-alipay" value="alipay" 
-                    class="w-4 h-4 text-sky-600 rounded" />
-                  <div class="ml-3 flex-1">
-                    <span class="text-sm font-medium text-slate-800">支付宝</span>
-                    <p class="text-xs text-slate-500 mt-0.5">支持支付宝扫码支付</p>
-                  </div>
-                </label>
-
-                <!-- 微信支付复选框 -->
-                <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer hover:border-green-500 transition-colors">
-                  <input type="checkbox" id="payment-method-wxpay" value="wxpay" 
-                    class="w-4 h-4 text-green-600 rounded" />
-                  <div class="ml-3 flex-1">
-                    <span class="text-sm font-medium text-slate-800">微信支付</span>
-                    <p class="text-xs text-slate-500 mt-0.5">支持微信扫码支付</p>
-                  </div>
-                </label>
-
-                <!-- 网银支付复选框 -->
-                <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-                  <input type="checkbox" id="payment-method-bank" value="bank" 
-                    class="w-4 h-4 text-blue-600 rounded" />
-                  <div class="ml-3 flex-1">
-                    <span class="text-sm font-medium text-slate-800">网银支付</span>
-                    <p class="text-xs text-slate-500 mt-0.5">支持各大银行网银支付</p>
-                  </div>
-                </label>
-              </div>
-
-              <!-- 保存按钮 -->
-              <button id="save-payment-config-btn" 
-                class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition">
-                保存配置
-              </button>
-
-              <!-- 加载提示（初始显示） -->
-              <p id="payment-config-loading" class="text-slate-400 text-center py-6 text-xs">
-                加载中...
-              </p>
             </div>
           </div>
 
@@ -8658,25 +8617,15 @@
         </label>
         <!-- 支付方式选项容器：使用flex布局，垂直排列 -->
         <div id="payment-methods-container" class="space-y-2">
-          <!-- 支付宝选项：单选按钮 -->
-          <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-sky-500 transition-colors">
-            <!-- 单选按钮：选中时会触发样式变化 -->
-            <input type="radio" name="payment-method" value="alipay" class="w-4 h-4 text-sky-600" checked />
-            <!-- 支付宝图标和文字 -->
-            <span class="ml-3 text-sm font-medium text-slate-700">支付宝支付</span>
-          </label>
-          
-          <!-- 微信支付选项：单选按钮 -->
-          <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-green-500 transition-colors">
-            <input type="radio" name="payment-method" value="wxpay" class="w-4 h-4 text-green-600" />
-            <span class="ml-3 text-sm font-medium text-slate-700">微信支付</span>
-          </label>
-          
-          <!-- 网银支付选项：单选按钮 -->
-          <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-            <input type="radio" name="payment-method" value="bank" class="w-4 h-4 text-blue-600" />
-            <span class="ml-3 text-sm font-medium text-slate-700">网银支付</span>
-          </label>
+          <!-- 支付方式将通过JavaScript动态加载，参见 loadPaymentMethods() 函数 -->
+          <!-- 动态加载的好处：
+               1. 管理员可以在配置面板启用/禁用支付方式，用户会实时看到变化
+               2. 添加新支付方式时，只需修改JavaScript配置，无需修改HTML
+               3. 支持未来扩展更多支付方式（如QQ钱包、云闪付等）
+          -->
+          <div class="text-center py-4 text-slate-500">
+            <p class="text-sm">正在加载支付方式...</p>
+          </div>
         </div>
       </div>
 

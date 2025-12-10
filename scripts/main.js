@@ -56,6 +56,75 @@
     });
 })();
 
+// ========================================
+// 支付方式全局配置
+// 管理员可以在此添加更多支付方式
+// ========================================
+/**
+ * 支付方式配置对象
+ * 
+ * 说明：
+ * 1. 这是一个集中管理所有支付方式的配置对象
+ * 2. 每个支付方式包含以下属性：
+ *    - name: 显示给用户的中文名称
+ *    - icon: 图标emoji（用于增强视觉效果）
+ *    - borderColor: Tailwind CSS完整的边框颜色类名（用于hover效果）
+ *    - textColor: Tailwind CSS完整的文字颜色类名（用于单选/复选按钮）
+ *    - description: 支付方式的简短描述（用于管理员配置面板）
+ * 3. 添加新支付方式的步骤：
+ *    a) 在此对象中添加新的键值对
+ *    b) 确保后端也支持该支付方式
+ *    c) 无需修改其他代码，系统会自动识别并显示
+ * 
+ * 注意：使用完整的Tailwind CSS类名而不是动态生成，确保类名能被正确识别
+ * 
+ * 示例：添加PayPal支付
+ * 'paypal': { 
+ *   name: 'PayPal支付', 
+ *   icon: '💵', 
+ *   borderColor: 'hover:border-purple-500',
+ *   textColor: 'text-purple-600',
+ *   description: '支持PayPal账户支付'
+ * }
+ */
+const PAYMENT_METHODS = {
+  'alipay': { 
+    name: '支付宝支付', 
+    icon: '💰', 
+    borderColor: 'hover:border-sky-500',
+    textColor: 'text-sky-600',
+    description: '支持支付宝扫码支付'
+  },
+  'wxpay': { 
+    name: '微信支付', 
+    icon: '💚', 
+    borderColor: 'hover:border-green-500',
+    textColor: 'text-green-600',
+    description: '支持微信扫码支付'
+  },
+  'bank': { 
+    name: '网银支付', 
+    icon: '🏦', 
+    borderColor: 'hover:border-blue-500',
+    textColor: 'text-blue-600',
+    description: '支持各大银行网银支付'
+  },
+  'qqpay': { 
+    name: 'QQ钱包', 
+    icon: '🐧', 
+    borderColor: 'hover:border-indigo-500',
+    textColor: 'text-indigo-600',
+    description: '支持QQ钱包扫码支付'
+  },
+  'unionpay': { 
+    name: '云闪付', 
+    icon: '💳', 
+    borderColor: 'hover:border-red-500',
+    textColor: 'text-red-600',
+    description: '支持云闪付扫码支付'
+  }
+};
+
 function handleCdnError(resourceName) {
   resourceName = resourceName || "未指定";
   cdnErrorCount++;
@@ -33330,32 +33399,47 @@ async function openPaymentModal() {
             // 清空容器，准备重新生成
             container.innerHTML = '';
             
-            // 定义支付方式配置：包含值、显示名称、样式颜色
-            const methodConfigs = {
-                'alipay': { name: '支付宝支付', color: 'sky' },
-                'wxpay': { name: '微信支付', color: 'green' },
-                'bank': { name: '网银支付', color: 'blue' }
-            };
+            // 检查是否有启用的支付方式
+            // 如果后端没有返回任何启用的支付方式，显示提示信息
+            if (enabledMethods.length === 0) {
+                // 创建提示HTML并插入容器
+                container.innerHTML = `
+                    <div class="text-center py-6 text-slate-500">
+                        <p class="text-sm">暂无可用的支付方式</p>
+                        <p class="text-xs mt-1">请联系管理员启用支付方式</p>
+                    </div>
+                `;
+                return; // 直接返回，不再继续执行
+            }
             
             // 遍历启用的支付方式，为每个方式创建一个单选按钮
             enabledMethods.forEach((method, index) => {
-                // 获取当前支付方式的配置
-                const config = methodConfigs[method];
-                
-                // 如果配置不存在（未知的支付方式），跳过
-                if (!config) return;
+                // 从全局配置对象(PAYMENT_METHODS)中获取当前支付方式的配置
+                // 如果配置不存在（未知的支付方式），使用默认配置
+                const config = PAYMENT_METHODS[method] || {
+                    name: method.toUpperCase(), // 使用代码本身作为显示名称，转为大写
+                    icon: '💳', // 使用通用的信用卡图标
+                    borderColor: 'hover:border-slate-500', // 使用中性的灰色边框
+                    textColor: 'text-slate-600', // 使用中性的灰色文字
+                    description: '在线支付'
+                };
                 
                 // 创建支付方式选项的HTML字符串
                 // 使用模板字符串拼接，支持变量插值
+                // 注意：第一个选项(index === 0)会被自动选中(checked属性)
                 const optionHTML = `
-                    <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-${config.color}-500 transition-colors">
+                    <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer ${config.borderColor} transition-colors">
+                        <!-- 单选按钮：name属性保证同组单选，value属性用于提交数据 -->
                         <input type="radio" name="payment-method" value="${method}" 
-                            class="w-4 h-4 text-${config.color}-600" ${index === 0 ? 'checked' : ''} />
-                        <span class="ml-3 text-sm font-medium text-slate-700">${config.name}</span>
+                            class="w-4 h-4 ${config.textColor}" ${index === 0 ? 'checked' : ''} />
+                        <!-- 支付方式图标：使用emoji增强视觉效果 -->
+                        <span class="ml-2 text-lg">${config.icon}</span>
+                        <!-- 支付方式名称：显示给用户的中文名称 -->
+                        <span class="ml-2 text-sm font-medium text-slate-700">${config.name}</span>
                     </label>
                 `;
                 
-                // 将HTML字符串插入到容器中
+                // 将HTML字符串插入到容器的末尾
                 // insertAdjacentHTML比innerHTML更高效，不会重新解析整个容器
                 container.insertAdjacentHTML('beforeend', optionHTML);
             });
@@ -34502,26 +34586,94 @@ async function loadPaymentConfig() {
         // 输出日志：记录当前启用的支付方式
         console.log('[管理员-支付配置] 当前启用的支付方式:', enabledMethods);
         
-        // 步骤5：更新复选框的选中状态
-        // 支付宝
-        const alipayCheckbox = document.getElementById('payment-method-alipay');
-        if (alipayCheckbox) {
-            alipayCheckbox.checked = enabledMethods.includes('alipay');
+        // 步骤5：动态生成支付方式配置复选框
+        // 获取配置内容容器
+        const configContent = document.getElementById('mobile-multi-admin-payment-config-content');
+        
+        // 检查容器是否存在
+        if (!configContent) {
+            console.error('[管理员-支付配置] 配置容器元素不存在');
+            return;
         }
         
-        // 微信支付
-        const wxpayCheckbox = document.getElementById('payment-method-wxpay');
-        if (wxpayCheckbox) {
-            wxpayCheckbox.checked = enabledMethods.includes('wxpay');
+        // 5.1 生成支付方式复选框HTML
+        // 创建一个HTML字符串，包含所有支付方式的复选框
+        let checkboxesHTML = `
+            <!-- 提示信息卡片 -->
+            <div class="bg-sky-50 border border-sky-200 rounded-lg p-3">
+                <p class="text-xs text-sky-700">
+                    <strong>提示：</strong>请至少启用一种支付方式。修改后立即生效，无需重启服务。
+                </p>
+            </div>
+
+            <!-- 支付方式选择区域 -->
+            <div class="space-y-3">
+                <!-- 支付方式标题 -->
+                <h5 class="text-sm font-semibold text-slate-700">启用的支付方式</h5>
+        `;
+        
+        // 5.2 遍历全局配置对象(PAYMENT_METHODS)，为每个支付方式创建复选框
+        // 使用Object.entries()获取所有的键值对
+        Object.entries(PAYMENT_METHODS).forEach(([methodCode, methodConfig]) => {
+            // methodCode: 支付方式代码，如 'alipay'
+            // methodConfig: 支付方式配置对象，包含 name、icon、borderColor、textColor、description
+            
+            // 检查当前支付方式是否在启用列表中
+            const isChecked = enabledMethods.includes(methodCode);
+            
+            // 生成复选框HTML
+            // 每个复选框包含：图标、名称、描述
+            checkboxesHTML += `
+                <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer ${methodConfig.borderColor} transition-colors">
+                    <!-- 复选框输入元素 -->
+                    <input type="checkbox" 
+                           id="payment-method-${methodCode}" 
+                           value="${methodCode}" 
+                           class="w-4 h-4 ${methodConfig.textColor} rounded" 
+                           ${isChecked ? 'checked' : ''} />
+                    
+                    <!-- 支付方式图标 -->
+                    <span class="ml-2 text-xl">${methodConfig.icon}</span>
+                    
+                    <!-- 支付方式信息：名称和描述 -->
+                    <div class="ml-2 flex-1">
+                        <span class="text-sm font-medium text-slate-800">${methodConfig.name}</span>
+                        <p class="text-xs text-slate-500 mt-0.5">${methodConfig.description}</p>
+                    </div>
+                </label>
+            `;
+        });
+        
+        // 5.3 添加保存按钮和加载提示
+        checkboxesHTML += `
+            </div>
+
+            <!-- 保存按钮 -->
+            <button id="save-payment-config-btn" 
+                class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition">
+                保存配置
+            </button>
+
+            <!-- 加载提示（初始显示） -->
+            <div id="payment-config-loading" class="hidden text-center py-4">
+                <p class="text-sm text-slate-500">加载中...</p>
+            </div>
+        `;
+        
+        // 5.4 将生成的HTML插入到配置容器中
+        configContent.innerHTML = checkboxesHTML;
+        
+        // 5.5 重新绑定保存按钮的点击事件
+        // 因为innerHTML会替换所有内容，之前绑定的事件会失效
+        const saveBtn = document.getElementById('save-payment-config-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function() {
+                // 调用保存配置函数
+                savePaymentConfig();
+            });
         }
         
-        // 网银支付
-        const bankCheckbox = document.getElementById('payment-method-bank');
-        if (bankCheckbox) {
-            bankCheckbox.checked = enabledMethods.includes('bank');
-        }
-        
-        // 步骤6：隐藏加载提示
+        // 步骤6：隐藏加载提示（如果存在的话）
         const loadingElement = document.getElementById('payment-config-loading');
         if (loadingElement) {
             loadingElement.style.display = 'none';
@@ -34563,26 +34715,22 @@ async function savePaymentConfig() {
     console.log('[管理员-支付配置] 开始保存支付配置');
     
     try {
-        // 步骤1：收集选中的支付方式
+        // 步骤1：动态收集所有支付方式复选框的选中状态
         const enabledMethods = [];
         
-        // 检查支付宝复选框
-        const alipayCheckbox = document.getElementById('payment-method-alipay');
-        if (alipayCheckbox && alipayCheckbox.checked) {
-            enabledMethods.push('alipay');
-        }
-        
-        // 检查微信支付复选框
-        const wxpayCheckbox = document.getElementById('payment-method-wxpay');
-        if (wxpayCheckbox && wxpayCheckbox.checked) {
-            enabledMethods.push('wxpay');
-        }
-        
-        // 检查网银支付复选框
-        const bankCheckbox = document.getElementById('payment-method-bank');
-        if (bankCheckbox && bankCheckbox.checked) {
-            enabledMethods.push('bank');
-        }
+        // 遍历全局配置对象(PAYMENT_METHODS)，检查每个支付方式的复选框
+        // 使用Object.keys()获取所有支付方式代码
+        Object.keys(PAYMENT_METHODS).forEach(methodCode => {
+            // 根据支付方式代码获取对应的复选框元素
+            // 元素ID格式: payment-method-{code}，例如 payment-method-alipay
+            const checkbox = document.getElementById(`payment-method-${methodCode}`);
+            
+            // 检查复选框是否存在且已勾选
+            if (checkbox && checkbox.checked) {
+                // 将选中的支付方式代码添加到数组中
+                enabledMethods.push(methodCode);
+            }
+        });
         
         // 步骤2：验证至少选择了一种支付方式
         if (enabledMethods.length === 0) {
