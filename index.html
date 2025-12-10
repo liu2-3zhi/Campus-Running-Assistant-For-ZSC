@@ -683,6 +683,13 @@
           </div>
         </div>
 
+        <!-- available_runs 注册提示信息 -->
+        <div id="auth-register-available-runs-hint" class="hidden bg-green-50 border border-green-200 rounded-lg p-3">
+          <p class="text-sm text-green-700 text-center font-medium">
+            🎁 <span id="auth-register-runs-text"></span>
+          </p>
+        </div>
+
         <button id="auth-register-btn" class="btn btn-success w-full py-3" style="min-height: 44px">
           注册
         </button>
@@ -1819,6 +1826,13 @@
                 <input type="text" id="mobile-register-captcha" class="w-full" placeholder="请输入验证码" maxlength="6"
                   autocomplete="off" />
               </div>
+            </div>
+
+            <!-- available_runs 注册提示信息（移动端） -->
+            <div id="mobile-register-available-runs-hint" class="hidden bg-green-50 border border-green-200 rounded-lg p-3">
+              <p class="text-sm text-green-700 text-center font-medium">
+                🎁 <span id="mobile-register-runs-text"></span>
+              </p>
             </div>
 
             <button id="mobile-register-btn" class="mobile-primary-btn" style="
@@ -3324,6 +3338,16 @@
               <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
                 <h5 class="font-semibold text-slate-700 text-xs">基本信息</h5>
                 <div class="space-y-2">
+                  <!-- available_runs 显示区域（移动端） -->
+                  <div id="mobile-profile-available-runs-container" class="hidden">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">剩余次数</label>
+                    <div class="bg-white border border-slate-200 rounded p-2">
+                      <p class="text-sm font-semibold text-sky-600" id="mobile-profile-available-runs-text">
+                        加载中...
+                      </p>
+                    </div>
+                  </div>
+
                   <div>
                     <label class="block text-xs font-medium text-slate-600 mb-1">昵称</label>
                     <input type="text" id="mobile-unified-profile-nickname" class="input-field !text-xs !py-1.5"
@@ -7087,6 +7111,16 @@
             <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
               <h5 class="font-semibold text-slate-700 mb-3">基本信息</h5>
               <div class="space-y-3">
+                <!-- available_runs 显示区域（PC端） -->
+                <div id="admin-profile-available-runs-container" class="hidden">
+                  <label class="block text-sm font-semibold text-slate-700 mb-1">剩余次数</label>
+                  <div class="bg-white border border-slate-200 rounded p-3">
+                    <p class="text-base font-semibold text-sky-600" id="admin-profile-available-runs-text">
+                      加载中...
+                    </p>
+                  </div>
+                </div>
+
                 <div>
                   <label class="block text-sm font-semibold text-slate-700 mb-1">昵称</label>
                   <input type="text" id="profile-nickname" class="input-field" placeholder="输入昵称" />
@@ -14504,6 +14538,405 @@
       
       console.log('[PC端支付设置] PC端管理员支付设置面板初始化完成');
     });
+  </script>
+
+  <!-- ========================================================================== -->
+  <!-- 注册提示和个人资料available_runs显示功能 -->
+  <!-- ========================================================================== -->
+  <script>
+    // ==========================================
+    // 注册页面available_runs提示初始化函数
+    // ==========================================
+    /**
+     * 初始化注册页面的available_runs提示信息
+     * 
+     * 功能说明：
+     * 1. 调用 /api/config/registration_display 获取配置
+     * 2. 根据配置决定是否显示注册提示
+     * 3. 将提示文本中的 {available_runs} 占位符替换为实际数值
+     * 4. 同时更新PC端和移动端的提示元素
+     * 
+     * 调用时机：
+     * - 页面加载完成后自动调用（在DOMContentLoaded事件中）
+     * - 用户打开注册模态框时可以再次调用（确保显示最新配置）
+     * 
+     * 相关HTML元素：
+     * - PC端：#auth-register-available-runs-hint（容器）和 #auth-register-runs-text（文本）
+     * - 移动端：#mobile-register-available-runs-hint（容器）和 #mobile-register-runs-text（文本）
+     * 
+     * 配置来源：
+     * - config.ini 的 [Registration_Display] 节
+     * - show_available_runs_on_register: 是否显示（"true"或"false"）
+     * - register_available_runs_hint: 提示文本模板（包含 {available_runs} 占位符）
+     * 
+     * 默认免费次数：
+     * - 目前硬编码为10次（可后续改为从另一个API获取）
+     * - 这个数值应该与系统实际给新用户分配的次数一致
+     */
+    async function initRegisterAvailableRunsHint() {
+      try {
+        // 在控制台输出日志，记录初始化开始
+        console.log('[注册提示] 开始加载注册页面available_runs提示配置...');
+        
+        // ========== 步骤1：调用API获取配置 ==========
+        
+        // 使用fetch()发送GET请求到配置读取接口
+        // fetch()返回一个Promise对象，需要用await等待响应
+        const response = await fetch('/api/config/registration_display');
+        
+        // 检查HTTP响应状态码是否成功（200-299）
+        if (!response.ok) {
+          // 如果响应失败（如404、500等），抛出错误
+          // response.status 是HTTP状态码，response.statusText 是状态描述
+          throw new Error(`HTTP错误: ${response.status} ${response.statusText}`);
+        }
+        
+        // 将响应体解析为JSON格式
+        // .json()方法返回一个Promise，需要用await等待解析完成
+        const config = await response.json();
+        
+        // 在控制台输出获取到的配置（用于调试）
+        console.log('[注册提示] 获取到的配置:', config);
+        
+        // ========== 步骤2：检查是否需要显示提示 ==========
+        
+        // 从配置中读取 show_available_runs_on_register 字段
+        // 注意：配置值是字符串 "true" 或 "false"，不是布尔值
+        // 使用 === 'true' 进行严格比较，转换为布尔值
+        if (config.show_available_runs_on_register === 'true') {
+          // 配置为显示，继续处理
+          
+          // ========== 步骤3：获取默认的available_runs值 ==========
+          
+          // TODO: 后续可改为从另一个API获取实际的默认值
+          // 例如：const runsResponse = await fetch('/api/config/default_available_runs');
+          // 目前硬编码为10次
+          const defaultRuns = 10;
+          
+          // ========== 步骤4：替换占位符，生成实际的提示文本 ==========
+          
+          // 从配置中获取提示文本模板
+          // 例如："注册即可得 {available_runs} 次校园跑"
+          const hintTemplate = config.register_available_runs_hint;
+          
+          // 使用String.replace()方法替换占位符
+          // 第一个参数是要查找的字符串（占位符）
+          // 第二个参数是替换后的字符串（实际次数）
+          // 例如："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
+          const hintText = hintTemplate.replace('{available_runs}', defaultRuns);
+          
+          // ========== 步骤5：更新PC端的提示元素 ==========
+          
+          // 获取PC端提示文本元素
+          const pcTextElement = document.getElementById('auth-register-runs-text');
+          if (pcTextElement) {
+            // 如果元素存在，更新其文本内容
+            // 使用textContent（而非innerHTML）防止XSS攻击
+            pcTextElement.textContent = hintText;
+            
+            // 在控制台输出日志
+            console.log('[注册提示] PC端提示文本已更新:', hintText);
+          } else {
+            // 如果元素不存在，输出警告日志
+            console.warn('[注册提示] 警告：找不到PC端提示文本元素 #auth-register-runs-text');
+          }
+          
+          // 获取PC端提示容器元素
+          const pcContainerElement = document.getElementById('auth-register-available-runs-hint');
+          if (pcContainerElement) {
+            // 移除hidden类，显示提示容器
+            // classList.remove()方法移除指定的CSS类
+            pcContainerElement.classList.remove('hidden');
+            
+            // 在控制台输出日志
+            console.log('[注册提示] PC端提示容器已显示');
+          } else {
+            // 如果元素不存在，输出警告日志
+            console.warn('[注册提示] 警告：找不到PC端提示容器元素 #auth-register-available-runs-hint');
+          }
+          
+          // ========== 步骤6：更新移动端的提示元素 ==========
+          
+          // 获取移动端提示文本元素
+          const mobileTextElement = document.getElementById('mobile-register-runs-text');
+          if (mobileTextElement) {
+            // 如果元素存在，更新其文本内容
+            mobileTextElement.textContent = hintText;
+            
+            // 在控制台输出日志
+            console.log('[注册提示] 移动端提示文本已更新:', hintText);
+          } else {
+            // 如果元素不存在，输出警告日志
+            console.warn('[注册提示] 警告：找不到移动端提示文本元素 #mobile-register-runs-text');
+          }
+          
+          // 获取移动端提示容器元素
+          const mobileContainerElement = document.getElementById('mobile-register-available-runs-hint');
+          if (mobileContainerElement) {
+            // 移除hidden类，显示提示容器
+            mobileContainerElement.classList.remove('hidden');
+            
+            // 在控制台输出日志
+            console.log('[注册提示] 移动端提示容器已显示');
+          } else {
+            // 如果元素不存在，输出警告日志
+            console.warn('[注册提示] 警告：找不到移动端提示容器元素 #mobile-register-available-runs-hint');
+          }
+          
+          // 在控制台输出总结日志
+          console.log('[注册提示] 注册提示初始化完成，提示已显示');
+        } else {
+          // 配置为不显示提示
+          console.log('[注册提示] 配置为不显示注册提示（show_available_runs_on_register = false）');
+        }
+      } catch (error) {
+        // ========== 异常处理 ==========
+        
+        // 捕获所有可能的异常（网络错误、JSON解析错误等）
+        // 输出错误日志到控制台，包含错误对象的详细信息
+        console.error('[注册提示] 加载注册提示配置失败:', error);
+        
+        // 注意：即使加载失败，也不影响页面其他功能
+        // 只是不显示注册提示而已，用户仍然可以正常注册
+      }
+    }
+
+    // ==========================================
+    // 个人资料页面available_runs显示函数
+    // ==========================================
+    /**
+     * 更新个人资料页面中的available_runs显示
+     * 
+     * 功能说明：
+     * 1. 调用 /api/config/profile_display 获取显示配置
+     * 2. 根据配置决定是否显示available_runs
+     * 3. 将显示格式中的 {available_runs} 占位符替换为用户的实际剩余次数
+     * 4. 同时更新PC端和移动端的显示元素
+     * 
+     * 调用时机：
+     * - 加载个人资料数据后调用（传入用户数据对象）
+     * - 用户完成任务或充值后刷新个人资料时再次调用
+     * 
+     * 参数说明：
+     * @param {Object} userData - 用户数据对象，包含以下字段：
+     *   - available_runs: 用户的剩余免费次数（整数）
+     *   - auth_username: 用户名
+     *   - 其他用户信息字段...
+     * 
+     * 相关HTML元素：
+     * - PC端：#admin-profile-available-runs-container（容器）和 #admin-profile-available-runs-text（文本）
+     * - 移动端：#mobile-profile-available-runs-container（容器）和 #mobile-profile-available-runs-text（文本）
+     * 
+     * 配置来源：
+     * - config.ini 的 [Profile_Display] 节
+     * - show_available_runs: 是否显示（"true"或"false"）
+     * - available_runs_format: 显示格式模板（包含 {available_runs} 占位符）
+     * 
+     * 显示示例：
+     * - 格式模板："剩余免费次数：{available_runs} 次"
+     * - 用户剩余5次
+     * - 显示结果："剩余免费次数：5 次"
+     */
+    async function updateProfileAvailableRuns(userData) {
+      try {
+        // 在控制台输出日志，记录函数调用
+        console.log('[个人资料] 开始更新available_runs显示，用户数据:', userData);
+        
+        // ========== 步骤1：验证参数 ==========
+        
+        // 检查userData参数是否存在
+        if (!userData) {
+          // 如果参数为null或undefined，输出警告并退出
+          console.warn('[个人资料] 警告：userData参数为空，无法更新available_runs显示');
+          return;
+        }
+        
+        // ========== 步骤2：调用API获取显示配置 ==========
+        
+        // 使用fetch()发送GET请求到配置读取接口
+        const response = await fetch('/api/config/profile_display');
+        
+        // 检查HTTP响应状态码是否成功
+        if (!response.ok) {
+          // 如果响应失败，抛出错误
+          throw new Error(`HTTP错误: ${response.status} ${response.statusText}`);
+        }
+        
+        // 将响应体解析为JSON格式
+        const config = await response.json();
+        
+        // 在控制台输出获取到的配置
+        console.log('[个人资料] 获取到的显示配置:', config);
+        
+        // ========== 步骤3：检查是否需要显示available_runs ==========
+        
+        // 从配置中读取 show_available_runs 字段
+        // 配置值是字符串 "true" 或 "false"
+        if (config.show_available_runs === 'true') {
+          // 配置为显示，继续处理
+          
+          // ========== 步骤4：获取用户的available_runs值 ==========
+          
+          // 从userData对象中提取available_runs字段
+          // 使用 || 0 确保如果字段不存在，默认为0
+          const availableRuns = userData.available_runs || 0;
+          
+          // 在控制台输出用户的剩余次数
+          console.log('[个人资料] 用户剩余次数:', availableRuns);
+          
+          // ========== 步骤5：替换占位符，生成显示文本 ==========
+          
+          // 从配置中获取显示格式模板
+          // 例如："剩余免费次数：{available_runs} 次"
+          const formatTemplate = config.available_runs_format;
+          
+          // 使用String.replace()方法替换占位符
+          // 例如："剩余免费次数：{available_runs} 次" -> "剩余免费次数：5 次"
+          const displayText = formatTemplate.replace('{available_runs}', availableRuns);
+          
+          // ========== 步骤6：更新PC端的显示元素 ==========
+          
+          // 获取PC端显示文本元素
+          const pcTextElement = document.getElementById('admin-profile-available-runs-text');
+          if (pcTextElement) {
+            // 如果元素存在，更新其文本内容
+            // 使用textContent防止XSS攻击
+            pcTextElement.textContent = displayText;
+            
+            // 在控制台输出日志
+            console.log('[个人资料] PC端显示文本已更新:', displayText);
+          } else {
+            // 如果元素不存在，输出警告
+            console.warn('[个人资料] 警告：找不到PC端显示文本元素 #admin-profile-available-runs-text');
+          }
+          
+          // 获取PC端显示容器元素
+          const pcContainerElement = document.getElementById('admin-profile-available-runs-container');
+          if (pcContainerElement) {
+            // 移除hidden类，显示容器
+            pcContainerElement.classList.remove('hidden');
+            
+            // 在控制台输出日志
+            console.log('[个人资料] PC端显示容器已显示');
+          } else {
+            // 如果元素不存在，输出警告
+            console.warn('[个人资料] 警告：找不到PC端显示容器元素 #admin-profile-available-runs-container');
+          }
+          
+          // ========== 步骤7：更新移动端的显示元素 ==========
+          
+          // 获取移动端显示文本元素
+          const mobileTextElement = document.getElementById('mobile-profile-available-runs-text');
+          if (mobileTextElement) {
+            // 如果元素存在，更新其文本内容
+            mobileTextElement.textContent = displayText;
+            
+            // 在控制台输出日志
+            console.log('[个人资料] 移动端显示文本已更新:', displayText);
+          } else {
+            // 如果元素不存在，输出警告
+            console.warn('[个人资料] 警告：找不到移动端显示文本元素 #mobile-profile-available-runs-text');
+          }
+          
+          // 获取移动端显示容器元素
+          const mobileContainerElement = document.getElementById('mobile-profile-available-runs-container');
+          if (mobileContainerElement) {
+            // 移除hidden类，显示容器
+            mobileContainerElement.classList.remove('hidden');
+            
+            // 在控制台输出日志
+            console.log('[个人资料] 移动端显示容器已显示');
+          } else {
+            // 如果元素不存在，输出警告
+            console.warn('[个人资料] 警告：找不到移动端显示容器元素 #mobile-profile-available-runs-container');
+          }
+          
+          // 在控制台输出总结日志
+          console.log('[个人资料] available_runs显示更新完成');
+        } else {
+          // 配置为不显示available_runs
+          console.log('[个人资料] 配置为不显示available_runs（show_available_runs = false）');
+        }
+      } catch (error) {
+        // ========== 异常处理 ==========
+        
+        // 捕获所有可能的异常
+        // 输出错误日志到控制台
+        console.error('[个人资料] 更新available_runs显示失败:', error);
+        
+        // 注意：即使更新失败，也不影响页面其他功能
+        // 只是不显示available_runs而已
+      }
+    }
+
+    // ==========================================
+    // 页面加载时初始化注册提示
+    // ==========================================
+    /**
+     * 在页面DOM加载完成后，自动调用注册提示初始化函数
+     * 
+     * 调用时机：
+     * - DOM内容加载完成（DOMContentLoaded事件触发时）
+     * 
+     * 注意事项：
+     * - 此事件在HTML文档完全解析后触发，不等待样式表、图片等资源
+     * - 确保在调用initRegisterAvailableRunsHint()时，相关DOM元素已存在
+     */
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('[页面初始化] 页面加载完成，开始初始化注册提示...');
+      
+      // 调用注册提示初始化函数
+      // 使用async/await语法，但不等待完成（避免阻塞页面其他初始化）
+      initRegisterAvailableRunsHint();
+      
+      console.log('[页面初始化] 注册提示初始化函数已调用');
+    });
+
+    // ==========================================
+    // 注意事项和使用说明
+    // ==========================================
+    /**
+     * 【重要】关于updateProfileAvailableRuns()的调用：
+     * 
+     * 此函数需要在加载用户个人资料数据后手动调用。
+     * 
+     * 典型的调用场景：
+     * 
+     * 1. 用户登录后加载个人资料：
+     *    ```javascript
+     *    async function loadUserProfile() {
+     *      const response = await fetch('/api/user/profile');
+     *      const userData = await response.json();
+     *      
+     *      // 更新页面显示用户信息...
+     *      
+     *      // 调用此函数更新available_runs显示
+     *      await updateProfileAvailableRuns(userData);
+     *    }
+     *    ```
+     * 
+     * 2. 用户完成任务后刷新个人资料：
+     *    ```javascript
+     *    async function refreshAfterTask() {
+     *      const response = await fetch('/api/user/profile');
+     *      const userData = await response.json();
+     *      await updateProfileAvailableRuns(userData);
+     *    }
+     *    ```
+     * 
+     * 3. 用户支付成功后刷新个人资料：
+     *    ```javascript
+     *    async function refreshAfterPayment() {
+     *      const response = await fetch('/api/user/profile');
+     *      const userData = await response.json();
+     *      await updateProfileAvailableRuns(userData);
+     *    }
+     *    ```
+     * 
+     * 【注意】
+     * 如果项目中已有加载用户资料的函数，需要在该函数中添加对
+     * updateProfileAvailableRuns(userData) 的调用。
+     */
   </script>
 
   <!-- Extracted Script -->
