@@ -1668,7 +1668,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 默认值：true（需要付费）\n")
         f.write("# 注意：\n")
         f.write("# 1. 当设置为false时，或者single_run_cost<=0时，系统将跳过所有付费相关逻辑\n")
-        f.write("# 2. 免费模式下，用户仍然可以充值，但不会自动扣费\n")
+        f.write("# 2. 免费模式下，用户仍然可以手动结算费用，但不会自动扣费\n")
         f.write(f"require_payment = {config_obj.get('Payment_Settings', 'require_payment', fallback='true')}\n\n")
         f.write("# 单次跑步任务费用（单位：元）\n")
         f.write("# 用于计算用户欠费金额 = 欠费次数 × single_run_cost\n")
@@ -3585,7 +3585,7 @@ class AuthSystem:
                 "phone": phone,
                 "nickname": nickname or auth_username,
                 # 可用执行次数字段：记录用户还可以执行多少次任务
-                # 新注册用户默认值为0，需要管理员充值后才能使用
+                # 新注册用户默认值为0，需要管理员分配可用次数后才能使用
                 # 当值为 -1 时表示无限次数
                 "available_runs": 0,
             }
@@ -17034,71 +17034,68 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/list_users", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_list_users():
         """
         列出所有用户信息。
         """
-        session_id = request.headers.get("X-Session-ID", "")
-        with web_sessions_lock:
-            if not session_id or session_id not in web_sessions:
-                return jsonify({"success": False, "message": "未授权"})
-            api_instance = web_sessions[session_id]
-            if not hasattr(api_instance, "auth_username"):
-                return jsonify({"success": False, "message": "未登录"})
-            auth_username = api_instance.auth_username
+        # 从Flask的g对象中获取当前登录的用户名
+        # g.user 已由 @login_required 装饰器设置
+        auth_username = g.user
+        
+        # 检查细粒度权限：管理用户权限
+        # manage_users 权限允许用户查看、创建、修改、删除用户信息
         if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"})
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
         users = auth_system.list_users()
         return jsonify({"success": True, "users": users})
 
     @app.route("/auth/admin/update_user_group", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_update_user_group():
         """
         修改用户所属的权限组。
         """
-        session_id = request.headers.get("X-Session-ID", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：管理用户权限
+        # manage_users 权限允许修改用户的权限组分配
+        if not auth_system.check_permission(auth_username, "manage_users"):
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
+        
         data = request.get_json() or {}
         target_username = data.get("target_username", "")
         new_group = data.get("new_group", "")
 
+        # 安全检查：不允许分配超级管理员组
+        # 这是为了防止权限提升攻击
         if new_group == "super_admin":
             return jsonify({"success": False, "message": "不允许分配超级管理员组"})
 
+        # 安全检查：不允许修改超级管理员的用户组
+        # 保护系统最高权限用户不被修改
         super_admin = auth_system.config.get("Admin", "super_admin", fallback="admin")
         if target_username == super_admin:
             return jsonify(
                 {"success": False, "message": "不允许修改超级管理员用户组的用户"}
             )
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未授权"})
-        with web_sessions_lock:
-            api_instance = web_sessions[session_id]
-            if not hasattr(api_instance, "auth_username"):
-                return jsonify({"success": False, "message": "未登录"})
-            auth_username = api_instance.auth_username
-        if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"})
         result = auth_system.update_user_group(target_username, new_group)
         return jsonify(result)
 
     @app.route("/auth/admin/list_groups", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_list_groups():
         """
         管理员API - 列出所有权限组及其权限配置。
         """
-        session_id = request.headers.get("X-Session-ID", "")
-        with web_sessions_lock:
-            if not session_id or session_id not in web_sessions:
-                return jsonify({"success": False, "message": "未授权"})
-            api_instance = web_sessions[session_id]
-            if not hasattr(api_instance, "auth_username"):
-                return jsonify({"success": False, "message": "未登录"})
-            auth_username = api_instance.auth_username
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：权限管理权限
+        # manage_permissions 权限允许查看、管理权限组和用户权限
         if not auth_system.check_permission(auth_username, "manage_permissions"):
-            return jsonify({"success": False, "message": "权限不足"})
+            return jsonify({"success": False, "message": "权限不足，需要权限管理权限（manage_permissions）"}), 403
         raw_groups = auth_system.get_all_groups()
         groups = copy.deepcopy(raw_groups)
         all_permission_keys = set()
@@ -17117,29 +17114,31 @@ def start_web_server(args_param):
         return jsonify({"success": True, "groups": groups})
 
     @app.route("/auth/admin/create_group", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_create_group():
         """创建权限组"""
-        session_id = request.headers.get("X-Session-ID", "")
+        # 从Flask的g对象中获取当前登录的用户名和API实例
+        auth_username = g.user
+        api_instance = g.api_instance
+        
+        # 检查细粒度权限：创建权限组权限
+        # create_permission_groups 权限允许创建新的权限组
+        # 这是敏感操作，通常只有超级管理员才具备此权限
+        if not auth_system.check_permission(auth_username, "create_permission_groups"):
+            return jsonify({"success": False, "message": "权限不足，需要创建权限组权限（create_permission_groups）"}), 403
+        
         data = request.get_json() or {}
         group_name = data.get("group_name", "").strip()
         display_name = data.get("display_name", "").strip()
         permissions = data.get("permissions", {})
-        with web_sessions_lock:
-            if not session_id or session_id not in web_sessions:
-                return jsonify({"success": False, "message": "未授权"})
-            api_instance = web_sessions[session_id]
-            if not hasattr(api_instance, "auth_username"):
-                return jsonify({"success": False, "message": "未登录"})
-            if api_instance.auth_group != "super_admin":
-                return jsonify(
-                    {"success": False, "message": "仅超级管理员可创建权限组"}
-                )
+        
+        # 参数验证：权限组标识不能为空
         if not group_name:
             return jsonify(
                 {"success": False, "message": "权限组标识（group_name）不能为空"}
             )
 
+        # 参数验证：权限组显示名称不能为空
         if not display_name:
             return jsonify(
                 {"success": False, "message": "权限组名称（display_name）不能为空"}
@@ -17150,25 +17149,29 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/update_group", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_update_group():
         """更新权限组（支持group_key和group_name参数）"""
-        session_id = request.headers.get("X-Session-ID", "")
+        # 从Flask的g对象中获取当前登录的用户名和API实例
+        auth_username = g.user
+        api_instance = g.api_instance
+        
+        # 检查细粒度权限：修改权限组权限
+        # modify_permission_groups 权限允许修改现有权限组的权限配置
+        # 这是敏感操作，通常只有超级管理员才具备此权限
+        if not auth_system.check_permission(auth_username, "modify_permission_groups"):
+            return jsonify({"success": False, "message": "权限不足，需要修改权限组权限（modify_permission_groups）"}), 403
+        
         data = request.get_json() or {}
         group_name = data.get("group_key") or data.get("group_name", "")
         permissions = data.get("permissions", {})
+        
+        # 安全检查：不允许修改超级管理员组
+        # 保护系统最高权限组不被修改
         if group_name == "super_admin":
             return jsonify({"success": False, "message": "不允许修改超级管理员组"})
-        with web_sessions_lock:
-            if not session_id or session_id not in web_sessions:
-                return jsonify({"success": False, "message": "未授权"})
-            api_instance = web_sessions[session_id]
-            if not hasattr(api_instance, "auth_username"):
-                return jsonify({"success": False, "message": "未登录"})
-            if api_instance.auth_group != "super_admin":
-                return jsonify(
-                    {"success": False, "message": "仅超级管理员可更新权限组"}
-                )
+        
+        # 参数验证：权限组标识不能为空
         if not group_name:
             return jsonify({"success": False, "message": "权限组标识不能为空"})
         result = auth_system.update_permission_group(group_name, permissions)
@@ -17181,40 +17184,39 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/delete_group", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_delete_group():
         """超级管理员：删除权限组"""
-        session_id = request.headers.get("X-Session-ID", "")
+        # 从Flask的g对象中获取当前登录的用户名和API实例
+        auth_username = g.user
+        api_instance = g.api_instance
+        
+        # 检查细粒度权限：删除权限组权限
+        # delete_permission_groups 权限允许删除现有的权限组
+        # 这是敏感操作，通常只有超级管理员才具备此权限
+        if not auth_system.check_permission(auth_username, "delete_permission_groups"):
+            return jsonify({"success": False, "message": "权限不足，需要删除权限组权限（delete_permission_groups）"}), 403
+        
         data = request.get_json() or {}
         group_name = data.get("group_name", "")
-
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未授权"})
-
-        api_instance = web_sessions[session_id]
-        if not hasattr(api_instance, "auth_username"):
-            return jsonify({"success": False, "message": "未登录"})
-        if api_instance.auth_group != "super_admin":
-            return jsonify({"success": False, "message": "仅超级管理员可删除权限组"})
 
         result = auth_system.delete_permission_group(group_name)
         return jsonify(result)
 
     @app.route("/auth/admin/get_user_permissions", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_get_user_permissions():
         """管理员：获取用户的完整权限列表"""
-        session_id = request.headers.get("X-Session-ID", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：权限管理权限
+        # manage_permissions 权限允许查看用户的权限配置
+        if not auth_system.check_permission(auth_username, "manage_permissions"):
+            return jsonify({"success": False, "message": "权限不足，需要权限管理权限（manage_permissions）"}), 403
+        
         data = request.get_json() or {}
         target_username = data.get("username", "")
-
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未授权"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        if not auth_system.check_permission(auth_username, "manage_permissions"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
 
         user_current_permissions = auth_system.get_user_permissions(target_username)
 
@@ -17258,20 +17260,19 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/set_user_permission", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_set_user_permission():
         """管理员：为用户设置自定义权限（差分化存储）"""
-        session_id = request.headers.get("X-Session-ID", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：权限管理权限
+        # manage_permissions 权限允许为用户设置自定义权限
+        if not auth_system.check_permission(auth_username, "manage_permissions"):
+            return jsonify({"success": False, "message": "权限不足，需要权限管理权限（manage_permissions）"}), 403
+        
         data = request.get_json() or {}
         target_username = data.get("username", "")
-
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未授权"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        if not auth_system.check_permission(auth_username, "manage_permissions"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
         added_permissions = data.get("added_permissions", {})
         removed_permissions = data.get("removed_permissions", {})
 
@@ -17658,7 +17659,7 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/create_user", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_create_user():
         """管理员：创建新用户
 
@@ -17670,14 +17671,13 @@ def start_web_server(args_param):
         - nickname: 昵称（可选）
         - sms_code: 短信验证码（可选，如非空则进行校验）
         """
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：管理用户权限
+        # manage_users 权限允许创建新用户账号
         if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
 
         data = request.json
         new_username = data.get("username", "")
@@ -17744,17 +17744,16 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/ban_user", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_ban_user():
         """管理员：封禁用户"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：管理用户权限
+        # manage_users 权限允许封禁用户账号
         if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
 
         data = request.json
         target_username = data.get("username", "")
@@ -17774,17 +17773,16 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/unban_user", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_unban_user():
         """管理员：解封用户"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：管理用户权限
+        # manage_users 权限允许解封用户账号
         if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
 
         data = request.json
         target_username = data.get("username", "")
@@ -17804,17 +17802,18 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/delete_user", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_delete_user():
         """管理员：删除用户"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：管理用户权限
+        # manage_users 权限允许删除用户账号
         if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
+        
+        session_id = request.headers.get("X-Session-ID", "")
 
         data = request.json
         target_username = data.get("username", "")
@@ -17834,19 +17833,23 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/force_disable_2fa", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_force_disable_2fa():
         """管理员：强制关闭用户2FA"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-
-        # 检查权限：需要 'manage_users' 权限
+        # 从Flask的g对象中获取当前登录的用户名
+        # @login_required装饰器已经确保用户已登录并将用户名存储在g.user中
+        auth_username = g.user
+        
+        # 细粒度权限检查：需要 'manage_users' 权限
+        # manage_users 权限允许管理用户相关的设置，包括强制关闭2FA等安全功能
+        # 这是为了防止普通管理员随意操作用户的安全设置
         if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+            return jsonify({
+                "success": False, 
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
+        
+        session_id = request.headers.get("X-Session-ID", "")
 
         data = request.json
         # 修复: 强制转换为字符串并去除空格，处理纯数字用户名的情况
@@ -17874,19 +17877,19 @@ def start_web_server(args_param):
     # 【修复】添加缺失的强制登出API路由
     # ============================================================
     @app.route("/auth/admin/force_logout_user", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_force_logout_user():
         """管理员：强制登出指定用户"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-
-        # 检查权限：需要 'force_logout_users' 权限
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：强制登出用户权限
+        # force_logout_users 权限允许强制登出其他用户的所有会话
+        # 这是敏感的安全操作，用于应对账号被盗用等紧急情况
         if not auth_system.check_permission(auth_username, "force_logout_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+            return jsonify({"success": False, "message": "权限不足，需要强制登出用户权限（force_logout_users）"}), 403
+        
+        session_id = request.headers.get("X-Session-ID", "")
 
         data = request.json
         target_username = data.get("username", "")
@@ -17954,19 +17957,21 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/force_reset_password", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_force_reset_password():
         """
         管理员API：强制重置用户密码。
         """
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：重置用户密码权限
+        # reset_user_password 权限允许管理员强制重置其他用户的密码
+        # 这是敏感操作，通常用于用户忘记密码或账号被盗的情况
+        if not auth_system.check_permission(auth_username, "reset_user_password"):
+            return jsonify({"success": False, "message": "权限不足，需要重置用户密码权限（reset_user_password）"}), 403
+        
         session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
         data = request.json
         target_username = data.get("target_username", "")
         new_password = data.get("new_password", "")
@@ -18041,17 +18046,24 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/update_user_nickname", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_update_user_nickname():
         """
         新功能：管理员强制修改用户昵称
         """
         try:
+            # 从Flask的g对象中获取当前登录的用户名
             current_username = g.user
+            
+            # 细粒度权限检查：需要 'manage_users' 权限
+            # manage_users 权限允许管理用户的基本信息（昵称、手机号等）
+            # 修改用户昵称虽然不是敏感操作，但仍需要专门的用户管理权限
             if not auth_system.check_permission(current_username, "manage_users"):
                 return (
-                    jsonify({"success": False, "message": "权限不足：需要管理员权限"}),
+                    jsonify({
+                        "success": False, 
+                        "message": "权限不足，需要用户管理权限（manage_users）"
+                    }),
                     403,
                 )
             data = request.get_json() or {}
@@ -18096,7 +18108,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/update_user_phone", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_update_user_phone():
         """
         管理员更新用户手机号
@@ -18106,16 +18118,23 @@ def start_web_server(args_param):
         - new_phone: 新手机号（必填）
         - sms_code: 短信验证码（可选，如非空则进行校验）
         """
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-        api_instance = web_sessions[session_id]
-        current_username = getattr(api_instance, "auth_username", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        # @login_required装饰器已确保用户已登录
+        current_username = g.user
+        
+        # 细粒度权限检查：需要 'manage_users' 权限
+        # manage_users 权限允许管理用户的联系方式（手机号）
+        # 修改手机号是敏感操作，可能影响用户的登录和验证功能
         if not auth_system.check_permission(current_username, "manage_users"):
             return (
-                jsonify({"success": False, "message": "权限不足：需要管理员权限"}),
+                jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要用户管理权限（manage_users）"
+                }),
                 403,
             )
+        
+        session_id = request.headers.get("X-Session-ID", "")
         data = request.get_json() or {}
         username = data.get("username", "").strip()
         new_phone = data.get("new_phone", "").strip()
@@ -18182,17 +18201,22 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/login_logs", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_login_logs():
         """获取登录日志（管理员）"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_group = getattr(api_instance, "auth_group", "guest")
-        if auth_group not in ["admin", "super_admin"]:
-            return jsonify({"success": False, "message": "权限不足"}), 403
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 细粒度权限检查：需要 'view_audit_logs' 权限
+        # view_audit_logs 权限允许查看系统审计日志，包括登录历史
+        # 这是敏感信息，可以了解用户的登录行为和安全状况
+        if not auth_system.check_permission(auth_username, "view_audit_logs"):
+            return jsonify({
+                "success": False, 
+                "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
+            }), 403
+        
+        # 获取查询参数
         username = request.args.get("username", None)
         limit = int(request.args.get("limit", 100))
 
@@ -18200,32 +18224,33 @@ def start_web_server(args_param):
         return jsonify({"success": True, "logs": logs})
 
     @app.route("/auth/admin/get_user_school_accounts", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_get_user_school_accounts():
         """获取指定认证用户的所有 school_account（管理员或有 auto_fill_password 权限）"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_group = getattr(api_instance, "auth_group", "guest")
-        auth_username = getattr(api_instance, "auth_username", None)
-        has_permission = False
-        if auth_group in ["admin", "super_admin"]:
-            has_permission = True
-        elif auth_username:
-            has_permission = auth_system.check_permission(
-                auth_username, "auto_fill_password"
-            )
-
-        if not has_permission:
-            return jsonify({"success": False, "message": "权限不足"}), 403
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 细粒度权限检查：需要 'manage_users' 权限
+        # manage_users 权限允许查看和管理用户的学校账号信息
+        # 这是敏感信息，包含用户的学校账户凭证
+        if not auth_system.check_permission(auth_username, "manage_users"):
+            return jsonify({
+                "success": False, 
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
+        
+        # 获取目标用户名，如果未指定则默认为当前用户
         target_username = request.args.get("username", auth_username)
-        if (
-            auth_group not in ["admin", "super_admin"]
-            and target_username != auth_username
-        ):
-            return jsonify({"success": False, "message": "只能查询自己的账户"}), 403
+        
+        # 获取api_instance用于调用内部方法
+        session_id = request.headers.get("X-Session-ID", "")
+        if session_id and session_id in web_sessions:
+            api_instance = web_sessions[session_id]
+        else:
+            # 如果没有有效的session，返回错误
+            return jsonify({"success": False, "message": "会话无效"}), 401
+        
+        # 加载并返回用户的学校账号信息
         accounts = api_instance._load_user_school_accounts(target_username)
 
         return jsonify(
@@ -18233,26 +18258,22 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/get_all_users_school_accounts", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_get_all_users_school_accounts():
         """获取所有认证用户的 school_account 列表（管理员或有 auto_fill_password 权限）"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_group = getattr(api_instance, "auth_group", "guest")
-        auth_username = getattr(api_instance, "auth_username", None)
-        has_permission = False
-        if auth_group in ["admin", "super_admin"]:
-            has_permission = True
-        elif auth_username:
-            has_permission = auth_system.check_permission(
-                auth_username, "auto_fill_password"
-            )
-
-        if not has_permission:
-            return jsonify({"success": False, "message": "权限不足"}), 403
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 细粒度权限检查：需要 'manage_users' 权限
+        # manage_users 权限允许查看所有用户的学校账号信息
+        # 这是高度敏感的批量数据访问操作
+        if not auth_system.check_permission(auth_username, "manage_users"):
+            return jsonify({
+                "success": False, 
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
+        
+        # 定义用户账号目录路径
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
         all_users_accounts = {}
 
@@ -18274,18 +18295,28 @@ def start_web_server(args_param):
 
     # ========== 新增：School Account 管理API（保存/添加） ==========
     @app.route("/api/admin/school_account/save", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def api_admin_school_account_save():
         """
         保存或添加 School Account（PC端管理面板CRUD支持）。
         """
+        # 从Flask的g对象中获取当前登录的用户名
+        current_auth_username = g.user
+        
+        # 细粒度权限检查：需要 'manage_users' 权限
+        # manage_users 权限允许管理用户的学校账号，包括添加、修改和删除
+        # 学校账号包含敏感的登录凭证，需要严格的权限控制
+        if not auth_system.check_permission(current_auth_username, "manage_users"):
+            return jsonify({
+                "success": False, 
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
+        
+        # 获取session_id用于后续操作
         session_id = request.headers.get("X-Session-ID", "")
-
         if not session_id or session_id not in web_sessions:
             return jsonify({"success": False, "message": "未登录或会话无效"}), 401
         api_instance = web_sessions[session_id]
-        auth_group = getattr(api_instance, "auth_group", "guest")
-        current_auth_username = getattr(api_instance, "auth_username", None)
 
         # ========== 2. 解析请求数据 ==========
         try:
@@ -18360,18 +18391,29 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存账户数据失败"}), 500
 
     @app.route("/api/admin/school_account/delete", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def api_admin_school_account_delete():
         """
         删除 School Account（PC端管理面板CRUD支持）。
         """
+        # 从Flask的g对象中获取当前登录的用户名
+        current_auth_username = g.user
+        
+        # 细粒度权限检查：需要 'manage_users' 权限
+        # manage_users 权限允许删除用户的学校账号
+        # 删除账号是敏感操作，可能导致用户无法正常使用服务
+        if not auth_system.check_permission(current_auth_username, "manage_users"):
+            return jsonify({
+                "success": False, 
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
+        
         # ========== 1. 验证会话 ==========
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id or session_id not in web_sessions:
             return jsonify({"success": False, "message": "未登录或会话无效"}), 401
         api_instance = web_sessions[session_id]
-        auth_group = getattr(api_instance, "auth_group", "guest")
-        current_auth_username = getattr(api_instance, "auth_username", None)
+        
         # ========== 2. 解析请求数据 ==========
         try:
             data = request.get_json()
@@ -18442,18 +18484,29 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存账户数据失败"}), 500
 
     @app.route("/api/admin/school_account/update", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def api_admin_school_account_update():
         """
         更新 School Account（PC端管理面板CRUD支持）。
         """
+        # 从Flask的g对象中获取当前登录的用户名
+        current_auth_username = g.user
+        
+        # 细粒度权限检查：需要 'manage_users' 权限
+        # manage_users 权限允许更新用户的学校账号信息
+        # 更新账号密码等信息是敏感操作，需要严格的权限控制
+        if not auth_system.check_permission(current_auth_username, "manage_users"):
+            return jsonify({
+                "success": False, 
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
+        
         # ========== 1. 验证会话 ==========
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id or session_id not in web_sessions:
             return jsonify({"success": False, "message": "未登录或会话无效"}), 401
         api_instance = web_sessions[session_id]
-        auth_group = getattr(api_instance, "auth_group", "guest")
-        current_auth_username = getattr(api_instance, "auth_username", None)
+        
         # ========== 2. 解析请求数据 ==========
         try:
             data = request.get_json()
@@ -18593,7 +18646,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/reset_password", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_reset_password():
         """
         重置用户密码（管理员）或修改自己的密码。
@@ -18605,18 +18658,9 @@ def start_web_server(args_param):
         修改自己密码时，至少需要提供其中一种验证方式。
         管理员重置他人密码时，需要拥有reset_user_password权限。
         """
-        # 获取请求头中的会话ID，用于验证用户登录状态
-        session_id = request.headers.get("X-Session-ID", "")
-        # 检查会话ID是否存在且有效
-        if not session_id or session_id not in web_sessions:
-            # 会话无效，返回401未授权错误
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        # 从会话中获取API实例
-        api_instance = web_sessions[session_id]
-        # 获取当前登录用户的用户名
-        auth_username = getattr(api_instance, "auth_username", "")
-        # 获取当前登录用户的用户组，默认为guest
+        # 从Flask的g对象中获取当前登录的用户名和用户组
+        auth_username = g.user
+        api_instance = g.api_instance
         auth_group = getattr(api_instance, "auth_group", "guest")
 
         # 解析请求体JSON数据
@@ -18958,17 +19002,21 @@ def start_web_server(args_param):
             )
 
     @app.route("/auth/admin/clear_user_avatar", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_clear_user_avatar():
         """管理员：强制清除用户头像"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+        # 获取当前登录用户
+        # 使用Flask的g对象获取用户名，这是由@login_required装饰器设置的
+        auth_username = g.user
+        
+        # 检查细粒度权限：用户管理权限
+        # manage_users 权限允许管理员执行用户相关的管理操作，包括清除用户头像
+        # 这是一个涉及用户数据修改的敏感操作，需要专门的用户管理权限
+        if not auth_system.check_permission(auth_username, 'manage_users'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
 
         data = request.json
         target_username = data.get("username", "")
@@ -19144,18 +19192,22 @@ def start_web_server(args_param):
         return jsonify({"success": False, "message": "用户不存在", "avatar_url": ""})
 
     @app.route("/auth/admin/update_max_sessions", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_update_max_sessions():
         """更新用户最大会话数量（管理员）"""
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 细粒度权限检查：需要 'manage_system' 权限
+        # manage_system 权限允许管理系统级别的配置，包括用户会话数量限制
+        # 这是影响系统资源和用户体验的重要配置
+        if not auth_system.check_permission(auth_username, "manage_system"):
+            return jsonify({
+                "success": False, 
+                "message": "权限不足，需要系统管理权限（manage_system）"
+            }), 403
+        
         session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        auth_group = getattr(api_instance, "auth_group", "guest")
-        if not auth_system.check_permission(auth_username, "manage_users"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
 
         data = request.json
         target_username = data.get("username", "")
@@ -19187,7 +19239,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/api/admin/update_available_runs", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def api_admin_update_available_runs():
         """
         更新用户的可用执行次数（管理员API）
@@ -19213,22 +19265,13 @@ def start_web_server(args_param):
         参数说明:
             - available_runs: -1表示无限次数，0表示无可用次数，正数表示具体次数
         """
-        # 步骤1：从请求头中获取会话ID，用于身份验证
-        session_id = request.headers.get("X-Session-ID", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
         
-        # 步骤2：验证会话ID是否有效（检查是否存在于活跃会话列表中）
-        if not session_id or session_id not in web_sessions:
-            # 如果会话无效或不存在，返回401未授权状态码
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        # 步骤3：从活跃会话中获取API实例，提取当前用户的身份信息
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        
-        # 步骤4：权限检查 - 验证当前用户是否具有管理用户的权限
+        # 检查细粒度权限：管理用户权限
+        # manage_users 权限允许修改用户的可用执行次数配额
         if not auth_system.check_permission(auth_username, "manage_users"):
-            # 如果权限不足，返回403禁止访问状态码
-            return jsonify({"success": False, "message": "权限不足"}), 403
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
 
         # 步骤5：解析请求体中的JSON数据
         data = request.json
@@ -19588,18 +19631,19 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/all_sessions", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_all_sessions():
         """管理员：获取所有活跃会话（查看所有会话）"""
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：查看所有会话权限
+        # view_all_sessions 权限允许查看系统中所有用户的活跃会话信息
+        # 这用于监控系统活动和安全审计
+        if not auth_system.check_permission(auth_username, "view_all_sessions"):
+            return jsonify({"success": False, "message": "权限不足，需要查看所有会话权限（view_all_sessions）"}), 403
+        
         session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-
-        if not session_id:
-            return jsonify({"success": False, "message": "缺少当前会话ID"}), 401
 
         with web_sessions_lock:
             if session_id not in web_sessions:
@@ -19667,8 +19711,7 @@ def start_web_server(args_param):
                 ),
                 401,
             )
-        if not auth_system.check_permission(auth_username, "god_mode"):
-            return jsonify({"success": False, "message": "需要查看所有会话权限"}), 403
+        # 权限检查已在函数开头完成，这里不需要重复检查
         all_sessions = []
         session_ids_in_memory = set()
         with web_sessions_lock:
@@ -19743,17 +19786,19 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/destroy_session", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_destroy_session():
-        """管理员：强制销毁任意会话（查看所有会话）"""
+        """管理员：强制销毁任意会话（管理用户会话）"""
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：管理用户会话权限
+        # manage_user_sessions 权限允许强制销毁任意用户的会话
+        # 这是敏感操作，用于应对安全事件或异常会话
+        if not auth_system.check_permission(auth_username, "manage_user_sessions"):
+            return jsonify({"success": False, "message": "权限不足，需要管理用户会话权限（manage_user_sessions）"}), 403
+        
         session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        if not auth_system.check_permission(auth_username, "god_mode"):
-            return jsonify({"success": False, "message": "需要查看所有会话权限"}), 403
 
         data = request.json
         target_session_id = data.get("session_id", "")
@@ -19794,17 +19839,17 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/audit_logs", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_audit_logs():
         """获取审计日志（管理员）"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
+        # 从Flask的g对象中获取当前登录的用户名
+        auth_username = g.user
+        
+        # 检查细粒度权限：查看审计日志权限
+        # view_audit_logs 权限允许查看系统的操作审计日志
+        # 审计日志记录了所有敏感操作，用于安全审计和合规要求
         if not auth_system.check_permission(auth_username, "view_audit_logs"):
-            return jsonify({"success": False, "message": "权限不足"}), 403
+            return jsonify({"success": False, "message": "权限不足，需要查看审计日志权限（view_audit_logs）"}), 403
         username = request.args.get("username", None)
         action = request.args.get("action", None)
         limit = int(request.args.get("limit", 100))
@@ -20541,23 +20586,30 @@ def start_web_server(args_param):
     # ====================
 
     @app.route("/api/admin/logs/login_history", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_logs_login_history():
         """
         查看用户登录历史记录
         """
         try:
+            # 从Flask的g对象中获取当前登录的用户名
             current_user = g.user
+            
+            # 细粒度权限检查：需要 'view_audit_logs' 权限
+            # view_audit_logs 权限允许查看用户的登录历史记录
+            # 这是审计功能的一部分，用于安全监控和合规检查
+            if not auth_system.check_permission(current_user, "view_audit_logs"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
+                }), 403
+            
+            # 获取查询参数
             target_username = request.args.get("username", "").strip()
             limit = int(request.args.get("limit", 100))
-            if not auth_system.check_permission(current_user, "manage_users"):
-                if target_username and target_username != current_user:
-                    return jsonify({"success": False, "message": "权限不足"}), 403
-                target_username = current_user
-            if not target_username:
-                if not auth_system.check_permission(current_user, "manage_users"):
-                    target_username = current_user
+            
+            # 确定要查询的用户名
+            # 如果没有指定target_username，则查询所有用户的登录历史
             username_to_query = target_username if target_username else None
             history = auth_system.get_login_history(username_to_query, limit)
             history.reverse()
@@ -20575,16 +20627,18 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "查询失败"}), 500
 
     @app.route("/api/admin/logs/audit", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_logs_audit():
         """
         查看用户审计日志（操作记录）
         """
 
         try:
-            if not auth_system.check_permission(g.user, "view_logs"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 检查细粒度权限：查看审计日志权限
+            # view_audit_logs 权限允许查看系统的操作审计日志
+            # 审计日志记录了所有敏感操作，用于安全审计和合规要求
+            if not auth_system.check_permission(g.user, "view_audit_logs"):
+                return jsonify({"success": False, "message": "权限不足，需要查看审计日志权限（view_audit_logs）"}), 403
             username = request.args.get("username", "").strip()
             action = request.args.get("action", "").strip()
             limit = int(request.args.get("limit", 100))
@@ -20613,16 +20667,23 @@ def start_web_server(args_param):
         return fallback
 
     @app.route("/api/admin/config/load", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_config_load():
         """
         加载 config.ini 中的可配置项
-        权限要求: manage_system
+        权限要求: modify_config
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_system"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 细粒度权限检查：需要 'modify_config' 权限
+            # modify_config 权限允许查看和修改系统配置文件
+            # 系统配置包含敏感的运行参数，需要谨慎管理
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要配置修改权限（modify_config）"
+                }), 403
+            
+            # 获取默认配置
             default_config = _get_default_config()
             config = configparser.ConfigParser()
             if os.path.exists(CONFIG_FILE):
@@ -20924,16 +20985,18 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "加载配置失败"}), 500
 
     @app.route("/api/admin/config/save", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_config_save():
         """
         保存 config.ini 中的可配置项
-        权限要求: manage_system
+        权限要求: modify_config
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_system"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 检查细粒度权限：修改配置权限
+            # modify_config 权限允许修改系统配置文件
+            # 这是敏感操作，配置错误可能导致系统异常
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
 
             data = request.get_json() or {}
             config = configparser.ConfigParser()
@@ -21540,15 +21603,17 @@ def start_web_server(args_param):
     IP_BANS_FILE = os.path.join("logs", "ip_bans.json")
 
     @app.route("/api/admin/ip_bans", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_ip_bans():
         """
         获取IP封禁列表
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 检查细粒度权限：系统管理权限
+            # manage_system 权限允许管理IP封禁规则
+            # IP封禁是重要的安全防护措施
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({"success": False, "message": "权限不足，需要系统管理权限（manage_system）"}), 403
             if not os.path.exists("logs"):
                 os.makedirs("logs", exist_ok=True)
             if os.path.exists(IP_BANS_FILE):
@@ -21563,15 +21628,17 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取列表失败"}), 500
 
     @app.route("/api/admin/ip_bans", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def add_ip_ban():
         """
         添加IP封禁规则
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 检查细粒度权限：系统管理权限
+            # manage_system 权限允许添加IP封禁规则
+            # IP封禁是重要的安全防护措施，可以阻止恶意访问
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({"success": False, "message": "权限不足，需要系统管理权限（manage_system）"}), 403
 
             data = request.get_json() or {}
             target = data.get("target", "").strip()
@@ -21609,15 +21676,16 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "添加失败"}), 500
 
     @app.route("/api/admin/ip_bans/<ban_id>", methods=["DELETE"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def delete_ip_ban(ban_id):
         """
         删除IP封禁规则
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 检查细粒度权限：系统管理权限
+            # manage_system 权限允许删除IP封禁规则
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({"success": False, "message": "权限不足，需要系统管理权限（manage_system）"}), 403
 
             if not os.path.exists(IP_BANS_FILE):
                 return jsonify({"success": False, "message": "封禁列表不存在"})
@@ -21640,11 +21708,25 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "删除失败"}), 500
 
     @app.route("/api/admin/check_ip_ban", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def check_ip_ban_api():
         """
         检查IP封禁状态API
+        这是一个查询类接口，用于检查指定IP是否被封禁
         """
+        # 获取当前登录用户
+        # 使用Flask的g对象获取用户名，这是由@login_required装饰器设置的
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统日志和安全相关信息
+        # IP封禁状态属于系统安全信息的一部分，需要日志查看权限
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
             client_ip = request.remote_addr
             data = request.get_json() or {}
@@ -21700,15 +21782,22 @@ def start_web_server(args_param):
     # ====================
 
     @app.route("/api/admin/sms/config", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_sms_config():
         """
         获取短信服务配置
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 细粒度权限检查：需要 'modify_config' 权限
+            # modify_config 权限允许查看短信服务配置
+            # 短信配置包含API密钥等敏感信息，需要严格控制访问
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要配置修改权限（modify_config）"
+                }), 403
+            
+            # 读取配置文件
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
             if "Features" not in config:
@@ -21782,15 +21871,22 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取配置失败"}), 500
 
     @app.route("/api/admin/sms/config", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def save_sms_config():
         """
         保存短信服务配置
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 细粒度权限检查：需要 'modify_config' 权限
+            # modify_config 权限允许修改短信服务配置
+            # 修改配置会影响短信发送功能，包括API密钥等敏感信息
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要配置修改权限（modify_config）"
+                }), 403
+            
+            # 获取请求数据
             data = request.get_json() or {}
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
@@ -21854,15 +21950,25 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存失败"}), 500
 
     @app.route("/api/admin/sms/check_balance", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def check_sms_balance():
         """
         查询短信宝余额
+        这是一个查询类接口，用于查看短信服务的余额信息
         """
+        # 获取当前登录用户（由@login_required装饰器设置到g.user）
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统的运行状态和配置信息
+        # 短信余额是系统运行状态的一部分，属于查询类操作，使用view_logs权限
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
             cache_key = "sms_balance_cache"
             current_time = time.time()
             rate_limit_seconds = 120
@@ -21947,15 +22053,22 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"查询失败：{str(e)}"}), 500
 
     @app.route("/api/admin/sms/history", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_sms_history():
         """
         获取短信发送历史记录
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 细粒度权限检查：需要 'view_audit_logs' 权限
+            # view_audit_logs 权限允许查看短信发送历史
+            # 短信历史包含用户手机号等敏感信息，用于审计和问题排查
+            if not auth_system.check_permission(g.user, "view_audit_logs"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
+                }), 403
+            
+            # 获取过滤参数
             date_filter = request.args.get("date", "").strip()
             phone_filter = request.args.get("phone", "").strip()
             history_file = os.path.join(LOGIN_LOGS_DIR, "sms_history.jsonl")
@@ -21988,16 +22101,22 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取历史失败"}), 500
 
     @app.route("/api/admin/sms/verification_codes", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_verification_codes():
         """
         获取当前有效的验证码列表
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 细粒度权限检查：需要 'view_audit_logs' 权限
+            # view_audit_logs 权限允许查看短信验证码列表
+            # 验证码是敏感的临时凭证，查看权限需要严格控制
+            if not auth_system.check_permission(g.user, "view_audit_logs"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
+                }), 403
 
+            # 获取当前时间戳，用于过滤过期验证码
             current_time = time.time()
             codes = []
             for phone, (code, expire_time) in list(sms_verification_codes.items()):
@@ -22018,16 +22137,22 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取列表失败"}), 500
 
     @app.route("/api/admin/sms/invalidate_code", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def invalidate_verification_code():
         """
         使指定手机号的验证码失效
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 细粒度权限检查：需要 'manage_system' 权限
+            # manage_system 权限允许管理短信验证码的生命周期
+            # 使验证码失效可能影响用户的注册或验证流程
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要系统管理权限（manage_system）"
+                }), 403
 
+            # 获取请求数据
             data = request.get_json() or {}
             phone = data.get("phone", "").strip()
 
@@ -22045,16 +22170,22 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "操作失败"}), 500
 
     @app.route("/api/admin/sms/add_manual_code", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def add_manual_verification_code():
         """
         手动添加验证码（模拟发送，用于测试或紧急情况）
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 细粒度权限检查：需要 'manage_system' 权限
+            # manage_system 权限允许手动添加短信验证码
+            # 这是用于测试或紧急情况的特殊操作，需要严格控制
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要系统管理权限（manage_system）"
+                }), 403
 
+            # 获取请求数据
             data = request.get_json() or {}
             phone = data.get("phone", "").strip()
             code = data.get("code", "").strip()
@@ -22125,15 +22256,26 @@ def start_web_server(args_param):
     # ============================================================================
 
     @app.route("/api/admin/ssl/info", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_ssl_info():
         """
         获取当前SSL配置和证书信息。
+        这是一个查询类接口，用于查看SSL证书配置和状态
         """
+        # 获取当前登录用户（由@login_required装饰器设置到g.user）
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统配置和状态信息
+        # SSL证书信息属于系统配置的查看操作，使用view_logs权限即可
+        # 注意：这里只是查看证书信息，不涉及修改操作
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
             current_ssl_config = load_ssl_config()
             config_info = {
                 "ssl_enabled": current_ssl_config.get("ssl_enabled", False),
@@ -22166,15 +22308,17 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/ssl/upload", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def upload_ssl_certificate():
         """
         上传SSL证书文件和密钥文件。
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 检查细粒度权限：修改配置权限
+            # modify_config 权限允许上传和更新SSL证书
+            # SSL证书是系统安全的关键组件，管理不当会导致安全风险
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
             if "cert_file" not in request.files or "key_file" not in request.files:
                 return (
                     jsonify(
@@ -22257,15 +22401,17 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"上传失败: {str(e)}"}), 500
 
     @app.route("/api/admin/ssl/config", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def update_ssl_config():
         """
         更新SSL配置（不包括证书文件，仅更新配置选项）。
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 检查细粒度权限：修改配置权限
+            # modify_config 权限允许修改SSL配置选项
+            # SSL配置影响系统的HTTPS访问行为
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
             data = request.get_json()
             if not data:
                 return jsonify({"success": False, "message": "请求数据为空"}), 400
@@ -22316,15 +22462,17 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/ssl/toggle", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def toggle_ssl():
         """
         快速启用/禁用SSL（开关功能）。
         """
         try:
-            if not auth_system.check_permission(g.user, "manage_users"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 检查细粒度权限：修改配置权限
+            # modify_config 权限允许快速切换SSL启用状态
+            # 这是方便的运维操作，但需要谨慎使用
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
             data = request.get_json()
             if not data or "enabled" not in data:
                 return jsonify({"success": False, "message": "缺少enabled参数"}), 400
@@ -22370,8 +22518,7 @@ def start_web_server(args_param):
     # ============================================================================
 
     @app.route("/api/admin/cdn/config", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_cdn_config():
         """
         获取CDN缓存配置
@@ -22379,7 +22526,7 @@ def start_web_server(args_param):
         功能说明：
         - 从config.ini文件读取CDN配置
         - 返回CDN启用状态和缓存时间
-        - 需要管理员权限（manage_system）
+        - 需要配置修改权限（modify_config）
 
         返回格式：
         {
@@ -22391,11 +22538,15 @@ def start_web_server(args_param):
         }
         """
         try:
-            # 检查用户是否有系统管理权限
-            # manage_system权限允许用户修改系统配置
-            if not auth_system.check_permission(g.user, "manage_system"):
+            # 细粒度权限检查：需要 'modify_config' 权限
+            # modify_config 权限允许查看CDN缓存配置
+            # CDN配置影响系统性能和用户体验
+            if not auth_system.check_permission(g.user, "modify_config"):
                 # 权限不足，返回403 Forbidden状态码
-                return jsonify({"success": False, "message": "权限不足"}), 403
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要配置修改权限（modify_config）"
+                }), 403
 
             # 创建ConfigParser对象读取配置文件
             config = configparser.ConfigParser()
@@ -22439,8 +22590,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/cdn/config", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def update_cdn_config():
         """
         更新CDN缓存配置
@@ -22449,7 +22599,7 @@ def start_web_server(args_param):
         - 接收前端提交的CDN配置数据
         - 验证数据的有效性
         - 保存配置到config.ini文件（使用_write_config_with_comments保留注释）
-        - 需要管理员权限（manage_system）
+        - 需要配置修改权限（modify_config）
 
         请求格式：
         {
@@ -22468,9 +22618,14 @@ def start_web_server(args_param):
         }
         """
         try:
-            # 检查用户权限
-            if not auth_system.check_permission(g.user, "manage_system"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 细粒度权限检查：需要 'modify_config' 权限
+            # modify_config 权限允许修改CDN缓存配置
+            # 修改CDN配置会影响系统性能和静态资源的访问速度
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要配置修改权限（modify_config）"
+                }), 403
 
             # 获取请求体中的JSON数据
             data = request.get_json()
@@ -22599,18 +22754,21 @@ def start_web_server(args_param):
             return False, (jsonify({"success": False, "message": "权限检查失败"}), 500)
 
     @app.route("/api/admin/bruteforce/start", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def start_bruteforce():
         """
         启动密码恢复任务
-        需要超级管理员权限
+        需要系统管理权限（manage_system）
         """
         try:
-            # 检查是否为超级管理员
-            is_super_admin, error_response = check_super_admin_permission()
-            if not is_super_admin:
-                return error_response
+            # 细粒度权限检查：需要 'manage_system' 权限
+            # manage_system 权限允许启动密码暴力破解任务
+            # 这是非常敏感的操作，涉及到批量密码恢复，需要严格控制
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要系统管理权限（manage_system）"
+                }), 403
 
             # 获取请求数据
             data = request.get_json()
@@ -22659,18 +22817,21 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/bruteforce/stop", methods=["POST"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def stop_bruteforce():
         """
         停止密码恢复任务
-        需要超级管理员权限
+        需要系统管理权限（manage_system）
         """
         try:
-            # 检查是否为超级管理员
-            is_super_admin, error_response = check_super_admin_permission()
-            if not is_super_admin:
-                return error_response
+            # 细粒度权限检查：需要 'manage_system' 权限
+            # manage_system 权限允许停止密码暴力破解任务
+            # 这是管理系统资源和任务的重要操作
+            if not auth_system.check_permission(g.user, "manage_system"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要系统管理权限（manage_system）"
+                }), 403
 
             # 获取请求数据
             data = request.get_json()
@@ -22729,18 +22890,25 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/bruteforce/status", methods=["GET"])
-    @admin_required  # 添加管理员权限校验
-    @login_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def get_bruteforce_status():
         """
         获取所有密码恢复任务的状态
-        需要超级管理员权限
+        这是一个查询类接口，用于查看密码恢复任务的运行状态
         """
+        # 获取当前登录用户（由@login_required装饰器设置到g.user）
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统的运行状态和任务信息
+        # 密码恢复任务状态属于系统运行信息的一部分，使用view_logs权限
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
-            # 检查是否为超级管理员
-            is_super_admin, error_response = check_super_admin_permission()
-            if not is_super_admin:
-                return error_response
 
             global brute_force_manager
             if not brute_force_manager:
@@ -26283,7 +26451,7 @@ def start_web_server(args_param):
         
         请求参数（JSON格式）：
             - amount (str/float): 支付金额（单位：元，例如 "100" 或 "99.99"）
-            - product_name (str): 商品名称（显示在支付页面，例如："VIP会员充值"）
+            - product_name (str): 商品名称（显示在支付页面，例如："跑步服务费用结算"）
             - pay_type (str): 支付方式，可选值：
                 - "alipay": 支付宝（默认）
                 - "wxpay": 微信支付
@@ -28319,13 +28487,13 @@ def start_web_server(args_param):
     # ==============================================================================
 
     @app.route("/api/admin/payment/config", methods=["GET", "PUT"])
-    @admin_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_payment_config():
         """
         获取或更新支付配置接口（管理员专用）
         
         请求方法：GET（获取配置）、PUT（更新配置）
-        权限要求：管理员权限（admin_required装饰器）
+        权限要求：modify_config权限
         
         GET请求 - 获取当前支付配置：
         返回数据（JSON格式）：
@@ -28353,11 +28521,17 @@ def start_web_server(args_param):
         - 临时禁用某些支付方式进行维护
         
         安全措施：
-        - 仅管理员可访问
+        - 需要modify_config权限
         - 验证支付方式的有效性
         - 记录配置变更日志
         """
         try:
+            # 检查细粒度权限：修改配置权限
+            # modify_config 权限允许修改支付配置
+            # 支付配置影响系统的收款功能，需要谨慎管理
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
+            
             # 定义所有支持的支付方式及其中文名称
             # 这是系统支持的完整支付方式列表
             all_methods = {
@@ -28696,13 +28870,13 @@ def start_web_server(args_param):
             }), 500
 
     @app.route("/api/admin/payment_logs", methods=["GET"])
-    @admin_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_payment_logs():
         """
         获取支付日志列表接口（管理员专用）
         
         请求方法：GET
-        权限要求：管理员权限（admin_required装饰器）
+        权限要求：审计日志查看权限（view_audit_logs）
         
         查询参数（URL参数）：
             - user_id (str, 可选): 按用户ID筛选（支持模糊匹配）
@@ -28741,6 +28915,15 @@ def start_web_server(args_param):
         - 安全：发现异常支付操作
         """
         try:
+            # 细粒度权限检查：需要 'view_audit_logs' 权限
+            # view_audit_logs 权限允许查看支付日志
+            # 支付日志包含用户的交易信息，是重要的审计数据
+            if not auth_system.check_permission(g.user, "view_audit_logs"):
+                return jsonify({
+                    "success": False, 
+                    "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
+                }), 403
+            
             # ========== 获取查询参数 ==========
             
             # 用户ID筛选（可选）
@@ -28906,13 +29089,13 @@ def start_web_server(args_param):
             }), 500
 
     @app.route("/api/admin/payment/notify_stats", methods=["GET"])
-    @admin_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_payment_notify_stats():
         """
         获取支付通知统计信息接口（管理员专用）
         
         请求方法：GET
-        权限要求：管理员权限（admin_required装饰器）
+        权限要求：需要日志查看权限（view_logs）
         
         功能说明：
         这个接口用于监控支付通知系统的运行状况，统计重复通知的情况。
@@ -28942,6 +29125,19 @@ def start_web_server(args_param):
         - 优化：分析通知重试的原因，优化幂等性处理机制
         - 调试：排查支付通知相关的问题
         """
+        # 获取当前登录用户（由@login_required装饰器设置到g.user）
+        auth_username = g.user
+        
+        # 检查细粒度权限：日志查看权限
+        # view_logs 权限允许管理员查看系统日志和统计信息
+        # 支付通知统计属于系统运行状态的监控数据，使用view_logs权限
+        # 这是一个只读的查询操作，不涉及数据修改
+        if not auth_system.check_permission(auth_username, 'view_logs'):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要日志查看权限（view_logs）"
+            }), 403
+        
         try:
             # ========== 初始化统计数据结构 ==========
             
@@ -29398,7 +29594,7 @@ def start_web_server(args_param):
             }), 500
 
     @app.route("/api/admin/overdue-accounts", methods=["GET"])
-    @admin_required
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_get_overdue_accounts():
         """
         获取所有有欠费的学校账号列表（仅管理员可访问）
@@ -29410,7 +29606,7 @@ def start_web_server(args_param):
         4. 按欠费次数从高到低排序
         
         请求方法：GET
-        权限要求：管理员权限（admin_required装饰器）
+        权限要求：用户管理权限（manage_users）
         
         查询参数：无
         
@@ -29442,18 +29638,16 @@ def start_web_server(args_param):
         - 如果备份文件不存在或读取失败，name 显示为 "未知"
         """
         try:
-            # ========== 权限检查：确认当前用户是管理员 ==========
+            # ========== 权限检查：确认当前用户具有用户管理权限 ==========
             current_user = g.user
             
-            # 获取用户组信息
-            # 返回值可能是：user, admin, super_admin 等
-            user_group = auth_system.get_user_group(current_user)
-            
-            # 只有管理员和超级管理员可以访问此接口
-            if user_group not in ["admin", "super_admin"]:
+            # 细粒度权限检查：需要 'manage_users' 权限
+            # manage_users 权限允许查看欠费账号列表
+            # 欠费信息涉及用户的财务状况，需要严格的权限控制
+            if not auth_system.check_permission(current_user, "manage_users"):
                 return jsonify({
                     "success": False,
-                    "message": "权限不足，仅管理员可查看欠费账号"
+                    "message": "权限不足，需要用户管理权限（manage_users）"
                 }), 403
             
             # ========== 初始化欠费账号列表 ==========
@@ -29692,7 +29886,7 @@ def start_web_server(args_param):
         
         使用场景：
         - 个人资料加载：用户打开个人资料页面时调用此接口
-        - 次数更新后：用户完成任务或充值后，重新调用此接口刷新显示
+        - 次数更新后：用户完成任务或次数变更后，重新调用此接口刷新显示
         
         注意事项：
         - 虽然这是公开接口，但通常在用户登录后才调用
