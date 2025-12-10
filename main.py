@@ -2498,6 +2498,11 @@ def get_session_file_path(session_id: str) -> str:
 # 彩虹易支付V2客户端 - 在线支付接口集成
 # ==============================================================================
 
+# 导入商品名生成器模块
+# 用于生成符合支付接口要求的趣味性商品描述（纯中文格式）
+# 该模块将商品数量转换为现捞风格的描述，如"三串麻辣鸭脖配上两根秘制烤肠"
+from product_name_generator import LoMeiGenerator
+
 
 class RainbowYiPayClient:
     """
@@ -5783,6 +5788,126 @@ class Api:
         if isinstance(account_data, dict):
             return account_data.get("ua", "")
         return None
+
+    def update_school_account_overdue_count(self, auth_username, school_username, new_overdue_count):
+        """
+        更新指定学校账号的欠费次数（overdue_count）
+        
+        功能说明：
+        此方法用于更新用户的某个学校账号的overdue_count字段。
+        主要用于支付成功后清零欠费次数，也可用于管理员手动调整欠费。
+        
+        参数:
+            auth_username (str): 认证用户名（system_accounts中的用户）
+            school_username (str): 学校账号用户名（school_accounts中的账号）
+            new_overdue_count (int): 新的欠费次数值
+                - 0: 表示清零欠费（支付成功后的常用操作）
+                - 正整数: 表示设置为指定的欠费次数
+        
+        返回:
+            dict: 包含success和message的字典
+                {
+                    "success": True/False,
+                    "message": "操作结果说明"
+                }
+        
+        使用场景：
+        1. 支付成功后清零欠费：update_school_account_overdue_count(user, account, 0)
+        2. 管理员手动调整欠费：update_school_account_overdue_count(user, account, 5)
+        
+        注意事项：
+        - 使用线程锁确保并发安全
+        - 如果学校账号不存在，不会创建新账号，而是返回错误
+        - 如果欠费次数字段不存在，会自动创建并设置为指定值
+        """
+        # 验证参数有效性
+        # 欠费次数不能为负数
+        if new_overdue_count < 0:
+            return {
+                "success": False,
+                "message": "欠费次数不能为负数"
+            }
+        
+        # 验证用户名和学校账号用户名不能为空
+        if not auth_username or not school_username:
+            return {
+                "success": False,
+                "message": "用户名和学校账号用户名不能为空"
+            }
+        
+        # 游客用户不允许操作学校账号
+        if auth_username == "guest":
+            return {
+                "success": False,
+                "message": "游客用户不允许操作学校账号"
+            }
+        
+        try:
+            # 使用线程锁确保文件操作的原子性
+            # 防止多个请求同时修改同一个用户的数据导致数据不一致
+            with self.lock:
+                # 步骤1：加载用户的所有学校账号数据
+                # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
+                accounts = self._load_user_school_accounts(auth_username)
+                
+                # 步骤2：检查指定的学校账号是否存在
+                if school_username not in accounts:
+                    # 学校账号不存在，返回错误
+                    # 我们不会自动创建账号，因为账号必须由用户主动添加
+                    return {
+                        "success": False,
+                        "message": f"学校账号 {school_username} 不存在"
+                    }
+                
+                # 步骤3：获取该学校账号的数据
+                account_data = accounts[school_username]
+                
+                # 兼容旧格式：如果账号数据是字符串（只保存了密码），转换为字典格式
+                if isinstance(account_data, str):
+                    # 旧格式：account_data = "password123"
+                    # 转换为新格式：account_data = {"password": "password123", "ua": "", "overdue_count": 0}
+                    account_data = {
+                        "password": account_data,  # 保留原密码
+                        "ua": "",                  # UA默认为空
+                        "overdue_count": 0         # 欠费次数默认为0
+                    }
+                    # 更新到accounts字典中
+                    accounts[school_username] = account_data
+                
+                # 步骤4：更新overdue_count字段
+                # 直接覆盖为新值
+                account_data["overdue_count"] = new_overdue_count
+                
+                # 步骤5：保存更新后的数据到文件
+                # 调用_save_user_school_accounts方法将整个accounts字典写回文件
+                self._save_user_school_accounts(auth_username, accounts)
+                
+                # 步骤6：记录操作日志
+                logging.info(
+                    f"[学校账号管理] 更新欠费次数成功 - 用户: {auth_username}, "
+                    f"学校账号: {school_username}, 新欠费次数: {new_overdue_count}"
+                )
+                
+                # 步骤7：返回成功结果
+                return {
+                    "success": True,
+                    "message": f"已将学校账号 {school_username} 的欠费次数更新为 {new_overdue_count}"
+                }
+        
+        except Exception as e:
+            # 捕获所有异常（文件读写错误、JSON解析错误等）
+            # 记录详细的错误日志，包含堆栈信息
+            logging.error(
+                f"[学校账号管理] 更新欠费次数失败 - 用户: {auth_username}, "
+                f"学校账号: {school_username}, 错误: {str(e)}"
+            )
+            logging.error(traceback.format_exc())
+            
+            # 返回失败结果
+            return {
+                "success": False,
+                "message": f"更新欠费次数失败: {str(e)}"
+            }
 
     def _deduct_available_runs_or_increment_overdue(self, auth_username, school_username):
         """
@@ -26488,6 +26613,370 @@ def start_web_server(args_param):
             logging.error(traceback.format_exc())
             return jsonify({"success": False, "message": f"查询订单失败: {str(e)}"}), 500
 
+    @app.route("/api/payment/create_order_for_overdue", methods=["POST"])
+    @login_required
+    def payment_create_order_for_overdue():
+        """
+        创建欠费补缴支付订单接口
+        
+        请求方法：POST
+        权限要求：需要登录（通过@login_required装饰器验证）
+        路由路径：/api/payment/create_order_for_overdue
+        
+        功能说明：
+        此接口用于用户补缴学校账号的欠费次数。当用户的available_runs不足时，
+        系统会为学校账号记录overdue_count（欠费次数）。用户可以通过此接口
+        一次性支付所有欠费账号的费用，支付成功后会增加available_runs并清零overdue_count。
+        
+        请求参数（JSON格式）：
+            - overdue_accounts (list): 欠费账号列表，每个元素包含：
+                - school_username (str): 学校账号用户名
+                - overdue_count (int): 该账号的欠费次数
+                
+        示例请求体：
+        {
+            "overdue_accounts": [
+                {"school_username": "2021001", "overdue_count": 3},
+                {"school_username": "2021002", "overdue_count": 5}
+            ]
+        }
+        
+        返回数据（JSON格式）：
+            成功时：
+            {
+                "success": true,
+                "message": "订单创建成功",
+                "pay_url": "https://pay.example.com/...",  // 支付跳转URL
+                "order_id": "20241201170077851273757",      // 订单号
+                "total_count": 8,                            // 总欠费次数
+                "total_amount": "8.00"                       // 总金额
+            }
+            
+            失败时：
+            {
+                "success": false,
+                "message": "错误信息描述"
+            }
+        
+        业务逻辑：
+        1. 验证用户登录状态（由@login_required自动完成）
+        2. 验证请求参数（欠费账号列表不能为空）
+        3. 计算总欠费次数（累加所有账号的overdue_count）
+        4. 使用LoMeiGenerator生成趣味商品名称
+        5. 从配置读取single_run_cost，计算总金额
+        6. 生成唯一订单号（8位日期 + 15位随机数）
+        7. 根据User-Agent判断设备类型（PC/移动端）
+        8. 调用RainbowYiPayClient创建支付订单
+        9. 在订单数据中保存欠费账号信息（用于支付成功后更新）
+        10. 返回支付URL供前端跳转
+        
+        安全机制：
+        - 必须登录才能创建订单（防止未授权访问）
+        - 验证欠费账号是否属于当前用户（防止恶意扣费）
+        - 订单数据包含auth_username和overdue_accounts（用于支付回调验证）
+        - 使用随机数生成唯一订单号（防止订单号碰撞）
+        
+        注意事项：
+        - 订单创建后会保存到本地文件（payment_orders目录）
+        - 订单号格式：YYYYMMDD + 15位随机数字（总长度23位）
+        - 支付成功后，系统会通过yipay_notify回调接口更新用户数据
+        """
+        try:
+            # ========== 步骤1：获取并验证请求参数 ==========
+            
+            # 从请求体中解析JSON数据
+            # request.get_json() 返回解析后的Python字典，如果解析失败返回None
+            # 使用 or {} 确保即使解析失败也返回空字典，避免后续代码出错
+            data = request.get_json() or {}
+            
+            # 提取欠费账号列表
+            # .get() 方法如果键不存在返回空列表 []
+            overdue_accounts = data.get("overdue_accounts", [])
+            
+            # 验证欠费账号列表是否为空
+            # 如果列表为空或不是列表类型，返回错误
+            if not overdue_accounts or not isinstance(overdue_accounts, list):
+                return jsonify({
+                    "success": False, 
+                    "message": "欠费账号列表不能为空"
+                })
+            
+            # 获取当前登录用户的用户名
+            # g.user 是由 @login_required 装饰器在请求上下文中设置的
+            # 包含当前登录用户的完整信息
+            auth_username = g.user.get("auth_username", "")
+            
+            # ========== 步骤2：验证欠费账号是否属于当前用户 ==========
+            
+            # 调用 auth_system.get_school_accounts() 获取当前用户的所有学校账号
+            # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
+            user_school_accounts = auth_system.get_school_accounts(auth_username)
+            
+            # 验证每个欠费账号是否属于当前用户
+            for account in overdue_accounts:
+                # 提取学校账号用户名
+                school_username = account.get("school_username", "")
+                
+                # 检查该学校账号是否在用户的账号列表中
+                if school_username not in user_school_accounts:
+                    # 如果账号不属于当前用户，返回错误（防止恶意请求）
+                    return jsonify({
+                        "success": False,
+                        "message": f"学校账号 {school_username} 不属于您"
+                    })
+            
+            # ========== 步骤3：计算总欠费次数 ==========
+            
+            # 累加所有账号的欠费次数
+            # 使用sum()函数和生成器表达式计算总和
+            # .get("overdue_count", 0) 确保如果字段不存在返回0
+            total_overdue_count = sum(
+                account.get("overdue_count", 0) 
+                for account in overdue_accounts
+            )
+            
+            # 验证总欠费次数是否大于0
+            # 如果总次数为0或负数，说明没有欠费，不需要支付
+            if total_overdue_count <= 0:
+                return jsonify({
+                    "success": False,
+                    "message": "欠费次数必须大于0"
+                })
+            
+            # ========== 步骤4：使用LoMeiGenerator生成商品名 ==========
+            
+            # 创建商品名生成器实例
+            generator = LoMeiGenerator()
+            
+            # 调用generate()方法生成商品名
+            # 传入总欠费次数，生成类似"五串麻辣鸭脖配上三根秘制烤肠"的趣味描述
+            product_name = generator.generate(total_overdue_count)
+            
+            # 验证生成的商品名是否为None（异常情况）
+            # generate()方法在输入非法时会返回None
+            if product_name is None:
+                # 如果生成失败，使用简单的兜底商品名
+                product_name = f"{total_overdue_count}份现捞小吃"
+            
+            # 记录日志：生成的商品名（用于调试）
+            logging.info(f"[欠费支付] 生成商品名: {product_name} (次数: {total_overdue_count})")
+            
+            # ========== 步骤5：从配置读取单次费用，计算总金额 ==========
+            
+            # 读取配置文件
+            config = _read_config_ini()
+            
+            # 验证配置文件是否读取成功
+            if config is None:
+                return jsonify({
+                    "success": False,
+                    "message": "读取配置文件失败，请联系管理员"
+                })
+            
+            # 从配置文件的 [User_Run_Cost] 节读取 single_run_cost（单次费用）
+            # fallback="1.0" 指定默认值为1.0元
+            single_run_cost_str = config.get("User_Run_Cost", "single_run_cost", fallback="1.0")
+            
+            # 将字符串转换为浮点数
+            try:
+                # 使用float()转换，并保留2位小数（避免浮点数精度问题）
+                single_run_cost = round(float(single_run_cost_str), 2)
+            except ValueError:
+                # 如果转换失败（配置值不是有效数字），记录错误并返回
+                logging.error(f"[欠费支付] single_run_cost配置值无效: {single_run_cost_str}")
+                return jsonify({
+                    "success": False,
+                    "message": "系统配置错误，请联系管理员"
+                })
+            
+            # 计算总金额：总欠费次数 × 单次费用
+            # round(..., 2) 保留2位小数
+            total_amount = round(total_overdue_count * single_run_cost, 2)
+            
+            # 验证总金额是否合理（必须大于0）
+            if total_amount <= 0:
+                return jsonify({
+                    "success": False,
+                    "message": "支付金额必须大于0"
+                })
+            
+            # ========== 步骤6：生成唯一订单号 ==========
+            
+            # 订单号格式：YYYYMMDD + 15位随机数字
+            # 例如：20241201 + 170077851273757 = 20241201170077851273757（总长度23位）
+            
+            # 生成15位随机数字字符串
+            # random.randint(0, 9) 生成0-9之间的随机整数
+            # 使用列表推导式生成15个随机数字，然后用join()连接成字符串
+            random_part = ''.join([str(random.randint(0, 9)) for _ in range(15)])
+            
+            # 获取当前日期，格式化为8位字符串（YYYYMMDD）
+            # datetime.datetime.now() 获取当前时间
+            # .strftime('%Y%m%d') 格式化为"年月日"格式，例如："20241201"
+            date_part = datetime.datetime.now().strftime('%Y%m%d')
+            
+            # 拼接订单号：日期 + 随机数
+            out_trade_no = date_part + random_part
+            
+            # ========== 步骤7：判断设备类型（根据User-Agent） ==========
+            
+            # 获取请求头中的User-Agent字符串
+            # request.user_agent 是Flask提供的UserAgent对象
+            # .string 属性返回原始的User-Agent字符串
+            ua_string = request.user_agent.string or ""
+            
+            # 将User-Agent转换为小写，方便后续判断
+            ua_lower = ua_string.lower()
+            
+            # 根据User-Agent关键词判断设备类型
+            # 移动设备通常包含 "mobile"、"android"、"iphone" 等关键词
+            if "mobile" in ua_lower or "android" in ua_lower or "iphone" in ua_lower:
+                device = "mobile"  # 移动设备
+            else:
+                device = "pc"      # PC设备
+            
+            # ========== 步骤8：获取客户端IP地址 ==========
+            
+            # request.remote_addr 获取客户端IP地址
+            # 在反向代理环境下，可能需要从X-Forwarded-For等请求头获取真实IP
+            clientip = request.remote_addr or "unknown"
+            
+            # ========== 步骤9：读取彩虹易支付配置 ==========
+            
+            # 从配置文件读取app_host（应用访问域名）
+            # app_host是本应用的公网访问地址，用于构造回调URL
+            app_host = config.get("Rainbow_YiPay", "app_host", fallback="").strip()
+            
+            # 验证app_host是否配置
+            if not app_host:
+                logging.error("[欠费支付] 配置缺少 app_host")
+                return jsonify({
+                    "success": False,
+                    "message": "支付配置不完整，请联系管理员"
+                })
+            
+            # 移除app_host末尾的斜杠（避免URL拼接出现双斜杠）
+            app_host = app_host.rstrip('/')
+            
+            # 构造异步通知URL（支付成功后彩虹易支付会POST请求到这个URL）
+            notify_url = f"{app_host}/api/payment/yipay_notify"
+            
+            # 构造同步返回URL（用户支付完成后浏览器跳转的地址）
+            # 这里使用前端主页作为返回地址（可根据需求修改）
+            return_url = f"{app_host}/"
+            
+            # ========== 步骤10：创建彩虹易支付订单 ==========
+            
+            # 创建RainbowYiPayClient实例
+            yipay_client = RainbowYiPayClient()
+            
+            # 调用create_order()方法创建支付订单
+            # 参数说明：
+            #   - out_trade_no: 商户订单号（唯一标识）
+            #   - name: 商品名称（显示在支付页面）
+            #   - money: 支付金额（单位：元）
+            #   - pay_type: 支付方式（默认支付宝）
+            #   - return_url: 同步返回URL
+            result = yipay_client.create_order(
+                out_trade_no=out_trade_no,
+                name=product_name,
+                money=str(total_amount),
+                pay_type="alipay",  # 默认使用支付宝（可扩展为支持用户选择）
+                return_url=return_url
+            )
+            
+            # 检查订单创建是否成功
+            if not result.get("success"):
+                # 如果失败，返回错误信息
+                logging.error(f"[欠费支付] 创建支付订单失败: {result.get('message')}")
+                return jsonify({
+                    "success": False,
+                    "message": result.get("message", "创建支付订单失败")
+                })
+            
+            # ========== 步骤11：保存订单信息到本地文件 ==========
+            
+            # 构造订单数据字典
+            order_data = {
+                "order_id": out_trade_no,              # 订单号
+                "auth_username": auth_username,        # 用户名（关键！用于支付回调时更新用户数据）
+                "product_name": product_name,          # 商品名称
+                "amount": str(total_amount),           # 支付金额（字符串格式）
+                "total_count": total_overdue_count,    # 总欠费次数
+                "overdue_accounts": overdue_accounts,  # 欠费账号列表（关键！用于支付回调时清零overdue_count）
+                "pay_type": "alipay",                  # 支付方式
+                "device": device,                      # 设备类型（mobile/pc）
+                "clientip": clientip,                  # 客户端IP
+                "status": "pending",                   # 订单状态（pending: 待支付）
+                "created_at": time.time(),             # 创建时间（时间戳）
+                "notify_url": notify_url,              # 异步通知URL
+                "return_url": return_url               # 同步返回URL
+            }
+            
+            # 确保payment_orders目录存在
+            # PAYMENT_ORDERS_DIR是全局常量，指向存储订单的目录
+            if not os.path.exists(PAYMENT_ORDERS_DIR):
+                # 如果目录不存在，创建它
+                # exist_ok=True 表示如果目录已存在也不报错
+                os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+            
+            # 构造订单文件路径：payment_orders/{订单号}.json
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+            
+            # 将订单数据写入JSON文件
+            with open(order_file, "w", encoding="utf-8") as f:
+                # json.dump() 将Python对象序列化为JSON格式并写入文件
+                # indent=2: 格式化输出，每层缩进2个空格
+                # ensure_ascii=False: 保存中文字符，不转义为\uXXXX
+                json.dump(order_data, f, indent=2, ensure_ascii=False)
+            
+            # ========== 步骤12：记录操作日志 ==========
+            
+            logging.info(
+                f"[欠费支付] 创建订单成功 - 用户: {auth_username}, "
+                f"订单号: {out_trade_no}, 总次数: {total_overdue_count}, "
+                f"总金额: {total_amount}元"
+            )
+            
+            # ========== 步骤13：写入支付操作日志（用于审计） ==========
+            
+            _write_payment_log(
+                user_id=auth_username,
+                order_id=out_trade_no,
+                action="create_overdue_order",  # 操作类型：创建欠费订单
+                log_data={
+                    "total_count": total_overdue_count,
+                    "total_amount": total_amount,
+                    "overdue_accounts": overdue_accounts,
+                    "product_name": product_name,
+                    "device": device,
+                    "clientip": clientip
+                }
+            )
+            
+            # ========== 步骤14：返回成功响应 ==========
+            
+            return jsonify({
+                "success": True,
+                "message": "订单创建成功",
+                "pay_url": result.get("pay_url"),      # 支付跳转URL
+                "order_id": out_trade_no,              # 订单号
+                "total_count": total_overdue_count,    # 总欠费次数
+                "total_amount": str(total_amount)      # 总金额（字符串格式）
+            })
+        
+        except Exception as e:
+            # 捕获所有未预期的异常
+            # 记录完整的堆栈信息，便于调试
+            logging.error(f"[欠费支付] 创建订单异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            
+            # 返回500错误和友好的错误信息
+            return jsonify({
+                "success": False, 
+                "message": f"创建订单失败: {str(e)}"
+            }), 500
+
     @app.route("/api/payment/yipay_notify", methods=["POST"])
     def payment_yipay_notify():
         """
@@ -26688,14 +27177,153 @@ def start_web_server(args_param):
                     f"金额: {money}元, 易支付订单号: {trade_no}"
                 )
                 
-                # TODO: 在这里添加支付成功后的业务逻辑
-                # 例如：
-                # - 给用户增加VIP时长
-                # - 发送通知邮件
-                # - 更新用户积分
-                # - 触发其他业务流程
+                # ========== 支付成功后的业务逻辑处理 ==========
+                
+                # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
+                # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
+                if "overdue_accounts" in order_data and "auth_username" in order_data:
+                    # 这是一个欠费补缴订单，需要：
+                    # 1. 增加用户的available_runs
+                    # 2. 清零所有欠费账号的overdue_count
+                    
+                    # 提取订单中保存的用户名
+                    auth_username = order_data.get("auth_username", "")
+                    
+                    # 提取欠费账号列表
+                    # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
+                    overdue_accounts = order_data.get("overdue_accounts", [])
+                    
+                    # 提取总欠费次数（订单创建时已计算好）
+                    total_count = order_data.get("total_count", 0)
+                    
+                    # 验证必要字段是否存在
+                    if auth_username and overdue_accounts and total_count > 0:
+                        try:
+                            # ========== 步骤1：增加用户的available_runs ==========
+                            
+                            # 获取用户数据文件路径
+                            user_file = auth_system.get_user_file_path(auth_username)
+                            
+                            # 检查用户文件是否存在
+                            if os.path.exists(user_file):
+                                # 使用线程锁确保文件操作的原子性（防止并发修改）
+                                with auth_system.lock:
+                                    # 读取用户数据
+                                    with open(user_file, "r", encoding="utf-8") as f:
+                                        user_data = json.load(f)
+                                    
+                                    # 获取当前的available_runs值
+                                    # 如果字段不存在，默认为0
+                                    current_runs = user_data.get("available_runs", 0)
+                                    
+                                    # 增加available_runs：当前值 + 总欠费次数
+                                    # 例如：当前剩余5次，补缴了8次欠费，更新后为13次
+                                    new_runs = current_runs + total_count
+                                    user_data["available_runs"] = new_runs
+                                    
+                                    # 将更新后的用户数据写回文件
+                                    with open(user_file, "w", encoding="utf-8") as f:
+                                        json.dump(user_data, f, indent=2, ensure_ascii=False)
+                                    
+                                    # 记录日志：available_runs更新成功
+                                    logging.info(
+                                        f"[欠费支付] available_runs更新成功 - 用户: {auth_username}, "
+                                        f"原值: {current_runs}, 增加: {total_count}, 新值: {new_runs}"
+                                    )
+                            else:
+                                # 用户文件不存在（异常情况）
+                                logging.error(
+                                    f"[欠费支付] 用户文件不存在，无法更新available_runs - 用户: {auth_username}"
+                                )
+                            
+                            # ========== 步骤2：清零所有欠费账号的overdue_count ==========
+                            
+                            # 遍历所有欠费账号
+                            for account in overdue_accounts:
+                                # 提取学校账号用户名
+                                school_username = account.get("school_username", "")
+                                
+                                # 验证学校账号用户名是否有效
+                                if not school_username:
+                                    # 如果用户名为空，跳过该账号
+                                    continue
+                                
+                                # 调用auth_system的update_school_account_overdue_count方法
+                                # 该方法用于更新学校账号的overdue_count字段
+                                # 第三个参数传入0，表示将欠费次数清零
+                                result = auth_system.update_school_account_overdue_count(
+                                    auth_username,      # 用户名
+                                    school_username,    # 学校账号用户名
+                                    0                   # 新的overdue_count值（清零）
+                                )
+                                
+                                # 检查更新是否成功
+                                if result.get("success"):
+                                    # 更新成功，记录日志
+                                    logging.info(
+                                        f"[欠费支付] 清零欠费成功 - 用户: {auth_username}, "
+                                        f"学校账号: {school_username}"
+                                    )
+                                else:
+                                    # 更新失败，记录错误日志（但不影响后续处理）
+                                    logging.error(
+                                        f"[欠费支付] 清零欠费失败 - 用户: {auth_username}, "
+                                        f"学校账号: {school_username}, 错误: {result.get('message')}"
+                                    )
+                            
+                            # ========== 步骤3：记录欠费支付成功日志 ==========
+                            
+                            _write_payment_log(
+                                user_id=auth_username,
+                                order_id=out_trade_no,
+                                action="overdue_payment_completed",  # 操作类型：欠费支付完成
+                                log_data={
+                                    "total_count": total_count,
+                                    "overdue_accounts": overdue_accounts,
+                                    "available_runs_updated": True,
+                                    "overdue_cleared": True,
+                                    "trade_no": trade_no,
+                                    "paid_amount": paid_amount
+                                }
+                            )
+                            
+                            # 记录总结日志
+                            logging.info(
+                                f"[欠费支付] 欠费补缴处理完成 - 用户: {auth_username}, "
+                                f"已增加available_runs: {total_count} 次, "
+                                f"已清零 {len(overdue_accounts)} 个学校账号的欠费"
+                            )
+                        
+                        except Exception as e:
+                            # 捕获欠费处理过程中的异常
+                            # 即使处理失败，也要返回success给支付平台（防止重复通知）
+                            # 但需要记录详细的错误日志，便于人工介入处理
+                            logging.error(
+                                f"[欠费支付] 处理欠费补缴异常 - 用户: {auth_username}, "
+                                f"订单: {out_trade_no}, 错误: {str(e)}"
+                            )
+                            logging.error(traceback.format_exc())
+                            
+                            # 记录错误日志到支付操作日志
+                            _write_payment_log(
+                                user_id=auth_username,
+                                order_id=out_trade_no,
+                                action="overdue_payment_error",
+                                log_data={
+                                    "error": str(e),
+                                    "traceback": traceback.format_exc(),
+                                    "overdue_accounts": overdue_accounts
+                                }
+                            )
+                    else:
+                        # 订单数据不完整（异常情况）
+                        logging.warning(
+                            f"[欠费支付] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
+                            f"auth_username: {auth_username}, total_count: {total_count}"
+                        )
                 
                 # 返回 success，告知易支付不要再次通知
+                # 无论业务逻辑是否成功，都要返回success（幂等性原则）
                 return "success"
             else:
                 # 其他支付状态（如支付失败、已关闭等）
@@ -28241,6 +28869,204 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": "获取欠费账号失败"
+            }), 500
+
+    # ==============================================================================
+    # 配置读取API端点 - 用于前端获取显示配置
+    # ==============================================================================
+
+    @app.route('/api/config/registration_display', methods=['GET'])
+    def get_registration_display_config():
+        """
+        获取注册页面显示配置接口
+        
+        请求方法：GET
+        权限要求：无（公开接口，任何用户都可以访问）
+        路由路径：/api/config/registration_display
+        
+        功能说明：
+        此接口返回注册页面中关于available_runs（初始免费次数）的显示配置。
+        前端JavaScript会调用此接口获取配置，然后根据配置决定是否显示注册提示信息。
+        
+        查询参数：无
+        
+        返回数据（JSON格式）：
+        {
+            "show_available_runs_on_register": "true",  // 是否在注册页面显示提示
+            "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑"  // 提示文本模板
+        }
+        
+        配置说明：
+        - show_available_runs_on_register: 字符串类型的布尔值（"true"或"false"）
+          * "true": 在注册页面显示免费次数提示
+          * "false": 不显示提示
+        
+        - register_available_runs_hint: 提示文本模板，包含占位符 {available_runs}
+          * 占位符会被前端JavaScript替换为实际的初始免费次数
+          * 示例："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
+        
+        使用场景：
+        - 页面加载时：前端调用此接口获取配置，决定是否显示注册提示
+        - 配置更新后：管理员修改配置后，前端重新调用此接口刷新显示
+        
+        注意事项：
+        - 这是一个公开接口，不需要登录即可访问
+        - 如果配置文件读取失败，返回默认值（显示提示）
+        - 返回的配置值是从config.ini的[Registration_Display]节读取的
+        """
+        try:
+            # ========== 步骤1：读取配置文件 ==========
+            
+            # 调用_read_config_ini()函数读取配置文件
+            # 该函数返回一个ConfigParser对象，如果读取失败返回None
+            config = _read_config_ini()
+            
+            # 验证配置文件是否读取成功
+            if config is None:
+                # 如果读取失败，记录错误日志
+                logging.error("[配置读取] 读取注册显示配置失败：配置文件不可用")
+                
+                # 返回500错误和错误信息
+                return jsonify({
+                    'error': '读取配置文件失败'
+                }), 500
+            
+            # ========== 步骤2：从配置文件读取注册显示相关配置 ==========
+            
+            # 读取 show_available_runs_on_register 配置项
+            # 参数说明：
+            #   - 第一个参数：节名称（Section）
+            #   - 第二个参数：配置项名称（Option）
+            #   - fallback：如果配置项不存在，返回的默认值
+            show_available_runs_on_register = config.get(
+                'Registration_Display',                  # 配置节名
+                'show_available_runs_on_register',       # 配置项名
+                fallback='true'                          # 默认值：显示提示
+            )
+            
+            # 读取 register_available_runs_hint 配置项
+            # 这是提示文本的模板，包含 {available_runs} 占位符
+            register_available_runs_hint = config.get(
+                'Registration_Display',                  # 配置节名
+                'register_available_runs_hint',          # 配置项名
+                fallback='注册即可得 {available_runs} 次校园跑'  # 默认提示文本
+            )
+            
+            # ========== 步骤3：返回配置数据 ==========
+            
+            # 将配置数据封装为JSON格式返回给前端
+            return jsonify({
+                'show_available_runs_on_register': show_available_runs_on_register,
+                'register_available_runs_hint': register_available_runs_hint
+            })
+        
+        except Exception as e:
+            # ========== 异常处理 ==========
+            
+            # 捕获所有未预期的异常
+            # 记录详细的错误日志，包含完整的堆栈信息
+            logging.error(f"[配置读取] 读取注册显示配置失败: {e}", exc_info=True)
+            
+            # 返回500错误和友好的错误信息
+            return jsonify({
+                'error': str(e)
+            }), 500
+
+    @app.route('/api/config/profile_display', methods=['GET'])
+    def get_profile_display_config():
+        """
+        获取个人资料显示配置接口
+        
+        请求方法：GET
+        权限要求：无（公开接口，但通常在登录后调用）
+        路由路径：/api/config/profile_display
+        
+        功能说明：
+        此接口返回个人资料页面中关于available_runs（剩余免费次数）的显示配置。
+        前端JavaScript会调用此接口获取配置，然后根据配置决定是否显示剩余次数。
+        
+        查询参数：无
+        
+        返回数据（JSON格式）：
+        {
+            "show_available_runs": "true",                          // 是否显示剩余次数
+            "available_runs_format": "剩余免费次数：{available_runs} 次"  // 显示格式模板
+        }
+        
+        配置说明：
+        - show_available_runs: 字符串类型的布尔值（"true"或"false"）
+          * "true": 在个人资料页面显示剩余次数
+          * "false": 不显示剩余次数
+        
+        - available_runs_format: 显示格式模板，包含占位符 {available_runs}
+          * 占位符会被前端JavaScript替换为用户实际的剩余次数
+          * 示例："剩余免费次数：{available_runs} 次" -> "剩余免费次数：5 次"
+        
+        使用场景：
+        - 个人资料加载：用户打开个人资料页面时调用此接口
+        - 次数更新后：用户完成任务或充值后，重新调用此接口刷新显示
+        
+        注意事项：
+        - 虽然这是公开接口，但通常在用户登录后才调用
+        - 如果配置文件读取失败，返回默认值（显示剩余次数）
+        - 返回的配置值是从config.ini的[Profile_Display]节读取的
+        """
+        try:
+            # ========== 步骤1：读取配置文件 ==========
+            
+            # 调用_read_config_ini()函数读取配置文件
+            # 该函数返回一个ConfigParser对象，如果读取失败返回None
+            config = _read_config_ini()
+            
+            # 验证配置文件是否读取成功
+            if config is None:
+                # 如果读取失败，记录错误日志
+                logging.error("[配置读取] 读取个人资料显示配置失败：配置文件不可用")
+                
+                # 返回500错误和错误信息
+                return jsonify({
+                    'error': '读取配置文件失败'
+                }), 500
+            
+            # ========== 步骤2：从配置文件读取个人资料显示相关配置 ==========
+            
+            # 读取 show_available_runs 配置项
+            # 参数说明：
+            #   - 第一个参数：节名称（Section）
+            #   - 第二个参数：配置项名称（Option）
+            #   - fallback：如果配置项不存在，返回的默认值
+            show_available_runs = config.get(
+                'Profile_Display',                       # 配置节名
+                'show_available_runs',                   # 配置项名
+                fallback='true'                          # 默认值：显示剩余次数
+            )
+            
+            # 读取 available_runs_format 配置项
+            # 这是显示格式的模板，包含 {available_runs} 占位符
+            available_runs_format = config.get(
+                'Profile_Display',                       # 配置节名
+                'available_runs_format',                 # 配置项名
+                fallback='剩余免费次数：{available_runs} 次'  # 默认显示格式
+            )
+            
+            # ========== 步骤3：返回配置数据 ==========
+            
+            # 将配置数据封装为JSON格式返回给前端
+            return jsonify({
+                'show_available_runs': show_available_runs,
+                'available_runs_format': available_runs_format
+            })
+        
+        except Exception as e:
+            # ========== 异常处理 ==========
+            
+            # 捕获所有未预期的异常
+            # 记录详细的错误日志，包含完整的堆栈信息
+            logging.error(f"[配置读取] 读取个人资料显示配置失败: {e}", exc_info=True)
+            
+            # 返回500错误和友好的错误信息
+            return jsonify({
+                'error': str(e)
             }), 500
 
     # ==============================================================================
