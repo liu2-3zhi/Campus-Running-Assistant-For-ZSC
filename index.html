@@ -10686,6 +10686,363 @@
       // 输出完成日志
       console.log('[支付设置] 支付设置面板初始化完成');
     });
+
+    // ==========================================
+    // 订单查询功能（Tab 2）
+    // ==========================================
+    // 【功能说明】
+    // 实现支付设置面板中的订单查询功能，包括：
+    // 1. 根据订单号查询订单详情
+    // 2. 显示订单的完整信息（订单号、状态、金额、支付方式等）
+    // 3. 根据订单状态显示不同颜色的标签
+    // 4. 完善的输入验证和错误处理
+    // 
+    // 【API说明】
+    // - POST /api/payment/query: 查询指定订单号的订单详情
+    // ==========================================
+    
+    /**
+     * 查询订单详情函数
+     * 
+     * 功能说明：
+     * 1. 从输入框获取订单号
+     * 2. 验证订单号不为空
+     * 3. 调用后端API查询订单信息
+     * 4. 解析并显示订单详情（7个字段）
+     * 5. 根据订单状态显示不同颜色的标签
+     * 
+     * API端点：POST /api/payment/query
+     * 请求体格式：{ trade_no: "订单号字符串" }
+     * 
+     * 返回数据格式示例：
+     * {
+     *   success: true,
+     *   order: {
+     *     trade_no: "202412101234567890",        // 订单号
+     *     status: "TRADE_SUCCESS",               // 订单状态
+     *     amount: 9.90,                          // 支付金额
+     *     payment_method: "alipay",              // 支付方式
+     *     create_time: "2024-12-10 10:30:00",   // 创建时间
+     *     pay_time: "2024-12-10 10:31:25",      // 支付时间
+     *     product_name: "跑步助手会员服务"       // 商品名称
+     *   }
+     * }
+     * 
+     * 订单状态颜色映射：
+     * - TRADE_SUCCESS / 已支付 -> 绿色 (bg-green-100 text-green-700)
+     * - TRADE_PENDING / 待支付 -> 黄色 (bg-yellow-100 text-yellow-700)
+     * - TRADE_CLOSED / 已关闭 -> 灰色 (bg-gray-100 text-gray-700)
+     * - TRADE_REFUND / 已退款 -> 红色 (bg-red-100 text-red-700)
+     */
+    async function queryOrder() {
+      // 在控制台输出日志，标记查询操作开始
+      console.log('[订单查询] 开始查询订单...');
+      
+      // ========== 第1步：获取并验证用户输入 ==========
+      
+      // 1.1 获取订单号输入框的DOM元素
+      const tradeNoInput = document.getElementById('query-order-trade-no');
+      
+      // 1.2 防御性检查：确保输入框元素存在
+      if (!tradeNoInput) {
+        // 如果找不到输入框元素，在控制台输出错误并提示用户
+        console.error('[订单查询] 错误：未找到订单号输入框（ID: query-order-trade-no）');
+        alert('页面元素异常，请刷新页面后重试。');
+        return; // 终止函数执行
+      }
+      
+      // 1.3 获取输入框的值并去除首尾空格
+      // trim()方法会移除字符串两端的空白字符（空格、制表符、换行符等）
+      const tradeNo = tradeNoInput.value.trim();
+      
+      // 1.4 验证订单号不为空
+      // 如果用户没有输入订单号或只输入了空格，显示友好的提示
+      if (!tradeNo) {
+        // 使用alert弹窗提示用户，确保用户能看到错误信息
+        alert('请输入订单号');
+        // 将焦点重新设置到输入框，方便用户立即输入
+        tradeNoInput.focus();
+        // 终止函数执行，不发送请求
+        return;
+      }
+      
+      // 输出日志，记录用户输入的订单号（便于调试）
+      console.log('[订单查询] 查询订单号：', tradeNo);
+      
+      // ========== 第2步：获取结果显示区域的DOM元素 ==========
+      
+      // 2.1 获取查询结果提示区域（用于显示成功/失败消息）
+      const resultDiv = document.getElementById('query-order-result');
+      
+      // 2.2 获取订单详情容器（用于显示订单的详细信息）
+      const detailContainer = document.getElementById('order-detail-container');
+      
+      // 2.3 防御性检查：确保两个元素都存在
+      if (!resultDiv || !detailContainer) {
+        console.error('[订单查询] 错误：未找到结果显示区域');
+        alert('页面元素异常，请刷新页面后重试。');
+        return;
+      }
+      
+      // ========== 第3步：显示加载中状态 ==========
+      
+      // 3.1 在结果提示区域显示"查询中..."消息
+      // 使用蓝色背景和边框，让用户知道系统正在处理请求
+      resultDiv.innerHTML = `
+        <div class="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-2">
+          🔍 正在查询订单信息...
+        </div>
+      `;
+      // 移除hidden类，让提示框可见
+      resultDiv.classList.remove('hidden');
+      
+      // 3.2 先隐藏订单详情容器，等查询成功后再显示
+      // 这样可以避免显示旧数据
+      detailContainer.classList.add('hidden');
+      
+      try {
+        // ========== 第4步：发起API请求查询订单 ==========
+        
+        // 4.1 使用fetch API调用后端接口
+        // await关键字会等待请求完成，确保获取到响应后再继续执行
+        const response = await fetch('/api/payment/query', {
+          method: 'POST', // HTTP方法：POST用于提交数据查询
+          headers: {
+            // 设置请求头，告知服务器请求体是JSON格式
+            'Content-Type': 'application/json'
+          },
+          // 将查询参数转换为JSON字符串作为请求体
+          body: JSON.stringify({
+            trade_no: tradeNo // 订单号
+          })
+        });
+        
+        // 4.2 检查HTTP响应状态码
+        // response.ok 为true表示状态码在200-299范围内（成功）
+        if (!response.ok) {
+          // 如果响应状态码不是成功状态（如404、500等）
+          // 抛出错误，中断执行流程，进入catch块处理
+          throw new Error(`查询失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // 4.3 解析JSON响应数据
+        const result = await response.json();
+        
+        // 输出完整的API响应，方便开发者调试
+        console.log('[订单查询] API响应：', result);
+        
+        // 4.4 检查业务状态
+        // 即使HTTP状态码是200，业务逻辑也可能失败（如订单不存在）
+        if (!result.success) {
+          // 如果业务失败，抛出错误，显示服务器返回的错误消息
+          throw new Error(result.message || '查询失败，未知错误');
+        }
+        
+        // 4.5 检查订单数据是否存在
+        if (!result.order) {
+          throw new Error('未找到订单信息');
+        }
+        
+        // ========== 第5步：提取订单数据 ==========
+        
+        // 从响应中提取订单对象，方便后续访问
+        const order = result.order;
+        
+        // 输出订单数据
+        console.log('[订单查询] 查询成功，订单数据：', order);
+        
+        // ========== 第6步：根据订单状态确定显示样式 ==========
+        
+        // 6.1 定义状态文本映射
+        // 将API返回的状态码转换为用户友好的中文文本
+        const statusTextMap = {
+          'TRADE_SUCCESS': '已支付',
+          'TRADE_PENDING': '待支付',
+          'TRADE_CLOSED': '已关闭',
+          'TRADE_REFUND': '已退款'
+        };
+        
+        // 6.2 获取状态文本（如果状态码不在映射中，使用原始状态码）
+        const statusText = statusTextMap[order.status] || order.status || '未知状态';
+        
+        // 6.3 根据订单状态确定显示颜色
+        // 不同状态使用不同的背景色和文字色，提升视觉可读性
+        let statusColorClass = 'bg-gray-100 text-gray-700'; // 默认颜色：灰色
+        
+        // 判断订单状态并设置对应的颜色类
+        if (order.status === 'TRADE_SUCCESS' || statusText === '已支付') {
+          // 已支付：绿色（成功状态）
+          statusColorClass = 'bg-green-100 text-green-700';
+        } else if (order.status === 'TRADE_PENDING' || statusText === '待支付') {
+          // 待支付：黄色（警告状态）
+          statusColorClass = 'bg-yellow-100 text-yellow-700';
+        } else if (order.status === 'TRADE_CLOSED' || statusText === '已关闭') {
+          // 已关闭：灰色（中性状态）
+          statusColorClass = 'bg-gray-100 text-gray-700';
+        } else if (order.status === 'TRADE_REFUND' || statusText === '已退款') {
+          // 已退款：红色（错误/退款状态）
+          statusColorClass = 'bg-red-100 text-red-700';
+        }
+        
+        // ========== 第7步：更新页面显示订单详情（7个字段）==========
+        
+        // 7.1 更新订单号字段
+        // 使用可选链操作符?.，如果元素不存在也不会报错
+        document.getElementById('order-detail-trade-no').textContent = order.trade_no || '-';
+        
+        // 7.2 更新订单状态字段（带颜色标签）
+        // 使用innerHTML而不是textContent，因为需要插入HTML标签来实现颜色样式
+        const statusElement = document.getElementById('order-detail-status');
+        if (statusElement) {
+          statusElement.innerHTML = `
+            <span class="inline-block px-2 py-1 rounded text-xs font-medium ${statusColorClass}">
+              ${statusText}
+            </span>
+          `;
+        }
+        
+        // 7.3 更新支付金额字段
+        // 格式化金额：添加货币符号¥，保留2位小数
+        const amountElement = document.getElementById('order-detail-amount');
+        if (amountElement) {
+          // 使用parseFloat确保金额是数字类型，然后格式化为2位小数
+          const formattedAmount = order.amount 
+            ? `¥${parseFloat(order.amount).toFixed(2)}` 
+            : '-';
+          amountElement.textContent = formattedAmount;
+        }
+        
+        // 7.4 更新支付方式字段
+        // 将支付方式代码转换为用户友好的中文名称
+        const paymentMethodMap = {
+          'alipay': '支付宝',
+          'wechat': '微信支付',
+          'qq': 'QQ钱包',
+          'unionpay': '云闪付'
+        };
+        const paymentMethodText = paymentMethodMap[order.payment_method] || order.payment_method || '-';
+        document.getElementById('order-detail-method').textContent = paymentMethodText;
+        
+        // 7.5 更新创建时间字段
+        document.getElementById('order-detail-create-time').textContent = order.create_time || '-';
+        
+        // 7.6 更新支付时间字段
+        // 如果订单未支付，支付时间可能为空，显示"-"
+        document.getElementById('order-detail-pay-time').textContent = order.pay_time || '-';
+        
+        // 7.7 更新商品名称字段
+        document.getElementById('order-detail-product').textContent = order.product_name || '-';
+        
+        // ========== 第8步：显示成功提示和订单详情 ==========
+        
+        // 8.1 在结果提示区域显示成功消息
+        resultDiv.innerHTML = `
+          <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+            ✓ 查询成功
+          </div>
+        `;
+        // 保持提示框可见
+        resultDiv.classList.remove('hidden');
+        
+        // 8.2 显示订单详情容器
+        // 移除hidden类，让用户看到订单的详细信息
+        detailContainer.classList.remove('hidden');
+        
+        // 8.3 设置定时器，3秒后自动隐藏成功提示
+        // 订单详情保持显示，只隐藏"查询成功"的提示框
+        setTimeout(() => {
+          resultDiv.classList.add('hidden');
+        }, 3000);
+        
+        // 输出成功日志
+        console.log('[订单查询] 订单详情已成功显示');
+        
+      } catch (error) {
+        // ========== 错误处理 ==========
+        // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
+        
+        // 在控制台输出详细的错误信息
+        console.error('[订单查询] 查询失败：', error);
+        
+        // 在结果提示区域显示错误消息
+        resultDiv.innerHTML = `
+          <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+            ✗ ${error.message || '查询失败，请重试'}
+          </div>
+        `;
+        // 显示错误提示框
+        resultDiv.classList.remove('hidden');
+        
+        // 隐藏订单详情容器（因为查询失败，没有有效数据可显示）
+        detailContainer.classList.add('hidden');
+        
+        // 5秒后自动隐藏错误提示（比成功提示多2秒，让用户有更多时间阅读）
+        setTimeout(() => {
+          resultDiv.classList.add('hidden');
+        }, 5000);
+      }
+    }
+    
+    // ==========================================
+    // 订单查询功能事件监听器绑定
+    // ==========================================
+    // 在页面DOM完全加载后，为查询按钮绑定点击事件
+    // 注意：这段代码在DOMContentLoaded事件监听器内部执行
+    // ==========================================
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      // 在控制台输出日志，标记订单查询功能初始化开始
+      console.log('[订单查询] 开始初始化订单查询功能...');
+      
+      // === 绑定"查询订单"按钮的点击事件 ===
+      
+      // 1. 通过ID获取查询按钮的DOM元素
+      const queryBtn = document.getElementById('query-order-btn');
+      
+      // 2. 检查按钮是否存在（防御性编程，避免null引用错误）
+      if (queryBtn) {
+        // 3. 为按钮添加click事件监听器
+        // 当用户点击按钮时，会自动调用queryOrder函数
+        queryBtn.addEventListener('click', function() {
+          // 输出日志，记录用户操作
+          console.log('[订单查询] 用户点击了查询订单按钮');
+          
+          // 调用查询函数，执行订单查询逻辑
+          // 这是一个async函数，会异步执行，不会阻塞页面
+          queryOrder();
+        });
+        
+        // 输出成功日志
+        console.log('[订单查询] 查询按钮事件监听器已绑定');
+      } else {
+        // 如果按钮不存在，输出警告日志
+        // 这可能表示HTML结构有问题或ID名称不匹配
+        console.warn('[订单查询] 警告：未找到查询订单按钮（ID: query-order-btn）');
+      }
+      
+      // === 可选：绑定输入框的Enter键事件 ===
+      // 让用户可以通过按Enter键快速查询，提升用户体验
+      
+      const tradeNoInput = document.getElementById('query-order-trade-no');
+      if (tradeNoInput) {
+        // 监听keypress事件，检测用户是否按下Enter键
+        tradeNoInput.addEventListener('keypress', function(event) {
+          // event.key === 'Enter' 表示用户按下了Enter键
+          if (event.key === 'Enter') {
+            // 阻止默认行为（如表单提交）
+            event.preventDefault();
+            // 触发查询操作
+            console.log('[订单查询] 用户按下Enter键触发查询');
+            queryOrder();
+          }
+        });
+        
+        console.log('[订单查询] 输入框Enter键事件监听器已绑定');
+      }
+      
+      // 输出完成日志
+      console.log('[订单查询] 订单查询功能初始化完成');
+    });
   </script>
 
   <!-- Extracted Script -->
