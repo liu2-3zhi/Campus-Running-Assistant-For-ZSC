@@ -1152,11 +1152,19 @@ def _get_default_config():
     # 此配置节用于设置跑步任务的费用标准
     # 当用户欠费时，系统将根据此配置计算需要缴纳的金额
     config["Payment_Settings"] = {
+        # 是否需要付费（true/false）
+        # true：启用付费模式，用户需要支付才能使用跑步服务
+        # false：免费模式，所有用户可无限次使用，不扣除次数，不产生欠费
+        # 默认值：true（需要付费）
+        # 注意：当设置为false时，或者single_run_cost<=0时，系统将跳过所有付费相关逻辑
+        "require_payment": "true",
         # 单次跑步任务费用（单位：元）
         # 用于计算用户欠费金额 = 欠费次数 × single_run_cost
         # 默认值：1.0元/次
         # 管理员可根据实际情况调整此费用
-        # 注意：修改后仅对新产生的欠费生效，已有订单不受影响
+        # 注意：
+        # 1. 修改后仅对新产生的欠费生效，已有订单不受影响
+        # 2. 设置为0或负数时，相当于关闭付费功能，所有用户可免费使用
         "single_run_cost": "1.0",
     }
 
@@ -1654,6 +1662,14 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 当用户欠费时，系统将根据此配置计算需要缴纳的金额\n")
         f.write("# ============================================================\n\n")
         f.write("[Payment_Settings]\n")
+        f.write("# 是否需要付费（true/false）\n")
+        f.write("# true：启用付费模式，用户需要支付才能使用跑步服务\n")
+        f.write("# false：免费模式，所有用户可无限次使用，不扣除次数，不产生欠费\n")
+        f.write("# 默认值：true（需要付费）\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 当设置为false时，或者single_run_cost<=0时，系统将跳过所有付费相关逻辑\n")
+        f.write("# 2. 免费模式下，用户仍然可以充值，但不会自动扣费\n")
+        f.write(f"require_payment = {config_obj.get('Payment_Settings', 'require_payment', fallback='true')}\n\n")
         f.write("# 单次跑步任务费用（单位：元）\n")
         f.write("# 用于计算用户欠费金额 = 欠费次数 × single_run_cost\n")
         f.write("# 默认值：1.0元/次\n")
@@ -1661,7 +1677,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 注意：\n")
         f.write("# 1. 费用必须为正数，支持小数（如：0.5、1.5、2.0）\n")
         f.write("# 2. 修改后仅对新产生的欠费生效，已有订单不受影响\n")
-        f.write("# 3. 建议设置合理的费用标准，避免过高或过低\n")
+        f.write("# 3. 设置为0或负数时，相当于关闭付费功能，所有用户可免费使用\n")
         f.write(f"single_run_cost = {config_obj.get('Payment_Settings', 'single_run_cost', fallback='1.0')}\n\n")
 
         # ============================================================
@@ -5914,6 +5930,7 @@ class Api:
         任务完成后处理可用次数扣减或欠费次数增加的逻辑。
         
         执行逻辑：
+        0. 检查付费配置，如果不需要付费或价格<=0，则跳过所有付费逻辑
         1. 读取 system_accounts 中认证用户的 available_runs 字段
         2. 如果 available_runs == -1（无限次数），直接返回，不做任何处理
         3. 如果 available_runs >= 1，扣减1次，保存到 system_accounts
@@ -5927,6 +5944,30 @@ class Api:
             None
         """
         try:
+            # 步骤0：检查付费控制配置
+            # 从配置文件中读取 require_payment（是否需要付费）和 single_run_cost（单次费用）
+            # 如果不需要付费或价格为0/负数，则跳过所有付费相关逻辑（不扣除次数、不产生欠费）
+            config = _get_config()
+            # 读取 require_payment 配置项，默认值为 true（需要付费）
+            # 如果配置为 false，表示系统运行在免费模式下
+            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+            # 读取 single_run_cost 配置项，默认值为 1.0元
+            # 如果价格设置为0或负数，也表示免费模式
+            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+            
+            # 判断是否需要跳过付费逻辑
+            # 满足以下任一条件时跳过：
+            # 1. require_payment 为 false（明确配置为免费模式）
+            # 2. single_run_cost <= 0（价格为0或负数，等同于免费）
+            if not require_payment or single_run_cost <= 0:
+                logging.info(
+                    f"[付费控制] 用户 {auth_username} (学校账号: {school_username}) "
+                    f"免费模式运行，跳过次数扣除和欠费记录。"
+                    f"(require_payment={require_payment}, single_run_cost={single_run_cost})"
+                )
+                # 免费模式下，直接返回，不执行后续的扣减或欠费逻辑
+                return
+            
             # 步骤1：加载认证用户的 system_accounts 数据
             # 使用全局 auth_system 来获取用户文件路径
             global auth_system
@@ -28563,6 +28604,7 @@ def start_web_server(args_param):
         检查学校账号是否有欠费
         
         功能说明：
+        - 首先检查付费配置，如果不需要付费或价格<=0，直接返回无欠费
         - 读取当前认证用户的所有学校账号
         - 检查每个账号的 overdue_count 字段（欠费次数）
         - 如果 overdue_count > 0，说明该账号有欠费记录
@@ -28589,6 +28631,29 @@ def start_web_server(args_param):
         - 返回 {"success": false, "message": "错误信息"}
         """
         try:
+            # ========== 步骤1：检查付费控制配置 ==========
+            # 从配置文件中读取付费相关配置
+            # 如果系统运行在免费模式下，直接返回无欠费状态，无需继续检查
+            config = _get_config()
+            # 读取 require_payment 配置项，默认值为 true（需要付费）
+            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+            # 读取 single_run_cost 配置项，默认值为 1.0元
+            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+            
+            # 判断是否为免费模式
+            # 满足以下任一条件时，系统运行在免费模式下：
+            # 1. require_payment 为 false（明确配置为免费模式）
+            # 2. single_run_cost <= 0（价格为0或负数，等同于免费）
+            if not require_payment or single_run_cost <= 0:
+                # 免费模式下，不存在欠费概念，直接返回无欠费
+                return jsonify({
+                    "success": True,
+                    "has_overdue": False,
+                    "message": "当前系统运行在免费模式，所有用户均可无限次使用",
+                    "overdue_accounts": []
+                })
+            
+            # ========== 步骤2：检查学校账号欠费情况 ==========
             # 从请求体中获取参数
             data = request.get_json() or {}
             # 可选参数：要检查的特定学校账号用户名
@@ -28761,6 +28826,127 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"清零欠费失败：{str(e)}"
+            }), 500
+
+    # ==============================================================================
+    # 付费配置获取接口
+    # ==============================================================================
+    
+    @app.route("/api/config/pricing", methods=["GET"])
+    @login_required
+    def get_pricing_config():
+        """
+        获取付费相关配置
+        
+        功能说明：
+        - 返回系统的付费相关配置信息
+        - 包括是否需要付费、单次跑步费用、界面显示配置等
+        - 前端用于显示价格信息和管理付费相关功能
+        - 普通用户可以读取配置，但只有管理员可以修改
+        
+        请求方法：GET
+        权限要求：需要登录（login_required装饰器）
+        
+        查询参数：无
+        
+        返回数据（JSON格式）：
+        {
+            "success": true,
+            "config": {
+                "require_payment": true,                      // 是否需要付费
+                "single_run_cost": 1.0,                       // 单次跑步任务费用（元）
+                "show_available_runs": true,                  // 是否在个人资料页显示剩余次数
+                "available_runs_format": "剩余免费次数：{available_runs} 次",  // 剩余次数显示格式
+                "show_available_runs_on_register": true,      // 是否在注册页显示免费次数提示
+                "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑"  // 注册页提示文本
+            }
+        }
+        
+        使用场景：
+        - 前端初始化：加载配置以决定是否显示付费相关功能
+        - 价格展示：在前端页面显示当前的收费标准
+        - 管理后台：为管理员提供当前配置的查看和编辑界面
+        
+        注意事项：
+        - 如果配置文件中不存在某项配置，使用默认值
+        - 配置修改需要调用其他接口（如 /api/admin/config/save）
+        """
+        try:
+            # ========== 步骤1：读取配置文件 ==========
+            # 使用 _get_config() 函数获取配置对象
+            # 该函数会自动处理配置文件不存在的情况，返回默认配置
+            config = _get_config()
+            
+            # ========== 步骤2：提取付费相关配置项 ==========
+            # 使用 fallback 参数指定默认值，确保即使配置文件中缺少某项也能正常返回
+            
+            # 是否需要付费（布尔值）
+            # true: 启用付费模式，用户需要支付才能使用
+            # false: 免费模式，所有用户可无限次使用
+            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+            
+            # 单次跑步任务费用（浮点数，单位：元）
+            # 用于计算用户欠费金额 = 欠费次数 × single_run_cost
+            # 设置为0或负数时，相当于关闭付费功能
+            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+            
+            # 是否在个人资料页面显示剩余免费次数（布尔值）
+            # true: 显示 available_runs 字段
+            # false: 不显示该字段
+            show_available_runs = config.getboolean("Profile_Display", "show_available_runs", fallback=True)
+            
+            # 剩余免费次数的显示格式（字符串模板）
+            # {available_runs} 会被替换为实际的剩余次数数值
+            # 例如："剩余免费次数：5 次"
+            available_runs_format = config.get(
+                "Profile_Display", 
+                "available_runs_format", 
+                fallback="剩余免费次数：{available_runs} 次"
+            )
+            
+            # 是否在注册页面显示免费次数提示（布尔值）
+            # true: 在注册表单中显示初始免费次数的提示信息
+            # false: 不显示提示信息
+            show_available_runs_on_register = config.getboolean(
+                "Registration_Display", 
+                "show_available_runs_on_register", 
+                fallback=True
+            )
+            
+            # 注册页面的免费次数提示文本（字符串模板）
+            # {available_runs} 会被替换为新用户注册时获得的初始免费次数
+            # 例如："注册即可得 10 次校园跑"
+            register_available_runs_hint = config.get(
+                "Registration_Display",
+                "register_available_runs_hint",
+                fallback="注册即可得 {available_runs} 次校园跑"
+            )
+            
+            # ========== 步骤3：构造返回数据 ==========
+            # 将所有配置项打包成一个字典，返回给前端
+            return jsonify({
+                "success": True,
+                "config": {
+                    "require_payment": require_payment,
+                    "single_run_cost": single_run_cost,
+                    "show_available_runs": show_available_runs,
+                    "available_runs_format": available_runs_format,
+                    "show_available_runs_on_register": show_available_runs_on_register,
+                    "register_available_runs_hint": register_available_runs_hint
+                }
+            })
+        
+        except Exception as e:
+            # ========== 异常处理 ==========
+            # 捕获所有可能的异常（如配置文件损坏、类型转换错误等）
+            # 记录详细的错误日志，包含完整的异常堆栈信息
+            logging.error(f"[配置读取] 获取付费配置失败: {e}", exc_info=True)
+            
+            # 返回错误响应给前端
+            # HTTP 状态码 500 表示服务器内部错误
+            return jsonify({
+                "success": False,
+                "message": f"获取配置失败：{str(e)}"
             }), 500
 
     @app.route("/api/admin/overdue-accounts", methods=["GET"])
