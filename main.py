@@ -19138,7 +19138,7 @@ def start_web_server(args_param):
                 pass
             log_dir = LOGIN_LOGS_DIR
             os.makedirs(log_dir, exist_ok=True)
-            log_file = os.path.join(log_dir, "sms_replies.jsonl")
+            log_file = os.path.join(log_dir, "sms_replies.json")
 
             import json
 
