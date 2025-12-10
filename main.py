@@ -15398,6 +15398,55 @@ def start_web_server(args_param):
 
         return decorated_function
 
+    # ==================== [修正] 添加缺失的 admin_required 装饰器，并采用权限组判断 ====================
+    def admin_required(f):
+        """
+        管理员权限验证装饰器 (基于权限组)
+        要求用户已登录，且权限组为 'admin' 或 'super_admin'
+        """
+
+        @functools.wraps(f)
+        def decorated_function(*args, **kwargs):
+            session_id = request.headers.get("X-Session-ID", "")
+            api_instance = None
+            is_authenticated = False
+            auth_username = None
+            auth_group = "guest"  # 默认访客组
+
+            # 1. 验证会话和登录状态
+            if session_id:
+                with web_sessions_lock:
+                    if session_id in web_sessions:
+                        api_instance = web_sessions[session_id]
+                        is_authenticated = getattr(
+                            api_instance, "is_authenticated", False
+                        )
+                        auth_username = getattr(api_instance, "auth_username", None)
+                        # 获取权限组（用于后续的组判断）
+                        auth_group = getattr(api_instance, "auth_group", "guest")
+
+            if not is_authenticated or not api_instance or not auth_username:
+                logging.warning(
+                    f"Admin Required Failed: No valid session or not authenticated. Session ID: {session_id[:8]}..."
+                )
+                return jsonify({"success": False, "message": "未登录或会话无效"}), 401
+
+            # 2. 验证管理员权限 (检查权限组)
+            ADMIN_GROUPS = ["admin", "super_admin"]
+            if auth_group not in ADMIN_GROUPS:
+                logging.warning(
+                    f"Admin Required Failed: User {auth_username} (Group: {auth_group}) attempted to access admin route."
+                )
+                return jsonify({"success": False, "message": "权限不足，仅管理员可访问"}), 403
+
+            # 3. 设置上下文变量
+            g.user = auth_username
+            g.api_instance = api_instance
+            return f(*args, **kwargs)
+
+        return decorated_function
+    # ==============================================================================
+
     @app.before_request
     def check_ip_ban_before_request():
         """
