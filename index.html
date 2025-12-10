@@ -2930,9 +2930,41 @@
             </div>
           </div>
 
-          <div class="mt-auto pt-3 border-t border-sky-100 flex-shrink-0">
+          <!-- ========================================
+               个人中心底部操作区域
+               包含"我的订单"、"在线支付"和"刷新信息"按钮
+               ======================================== -->
+          <div class="mt-auto pt-3 border-t border-sky-100 flex-shrink-0 space-y-2">
+            <!-- 我的订单按钮：点击打开订单列表弹窗 -->
+            <button onclick="openOrdersModal()"
+              class="w-full py-3 bg-green-50 text-green-600 rounded-xl font-medium hover:bg-green-100 active:bg-green-200 transition flex items-center justify-center gap-2">
+              <!-- 订单图标 SVG -->
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01">
+                </path>
+              </svg>
+              我的订单
+            </button>
+            
+            <!-- 在线支付按钮：点击打开支付弹窗 -->
+            <button onclick="openPaymentModal()"
+              class="w-full py-3 bg-purple-50 text-purple-600 rounded-xl font-medium hover:bg-purple-100 active:bg-purple-200 transition flex items-center justify-center gap-2">
+              <!-- 支付图标 SVG -->
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z">
+                </path>
+              </svg>
+              在线支付
+            </button>
+            
+            <!-- 刷新信息按钮：重新加载用户详情 -->
             <button onclick="loadMobileUserDetails()"
               class="w-full py-3 bg-sky-50 text-sky-600 rounded-xl font-medium hover:bg-sky-100 active:bg-sky-200 transition flex items-center justify-center gap-2">
+              <!-- 刷新图标 SVG -->
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
                 stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -5257,6 +5289,11 @@
             </div>
           </div>
 
+          <!-- ========================================
+               HTTPS设置面板 (ssl)
+               管理员可以在此配置HTTPS证书和设置
+               默认隐藏，通过switchMobileAdminTab切换显示
+               ======================================== -->
           <div id="mobile-multi-admin-ssl-panel" class="hidden space-y-3">
             <div class="flex justify-between items-center">
               <h4 class="font-semibold text-sm">HTTPS设置</h4>
@@ -5269,6 +5306,169 @@
               <p class="text-slate-400 text-center py-10 text-xs">
                 加载中...
               </p>
+            </div>
+          </div>
+
+          <!-- ========================================
+               支付配置面板 (payment-config)
+               管理员可以在此启用/禁用支付方式（支付宝、微信、网银）
+               支持多选，修改后立即生效
+               默认隐藏，通过switchMobileAdminTab切换显示
+               ======================================== -->
+          <div id="mobile-multi-admin-payment-config-panel" class="hidden space-y-3">
+            <!-- 面板头部：包含标题和刷新按钮 -->
+            <div class="flex justify-between items-center">
+              <!-- 面板标题 -->
+              <h4 class="font-semibold text-sm">支付配置</h4>
+              <!-- 刷新按钮：重新加载支付配置 -->
+              <button id="mobile-multi-admin-refresh-payment-config" class="btn btn-ghost !py-1 !px-2 text-xs">
+                刷新
+              </button>
+            </div>
+
+            <!-- 支付配置内容容器 -->
+            <div id="mobile-multi-admin-payment-config-content" class="space-y-4">
+              <!-- 提示信息卡片 -->
+              <div class="bg-sky-50 border border-sky-200 rounded-lg p-3">
+                <p class="text-xs text-sky-700">
+                  <strong>提示：</strong>请至少启用一种支付方式。修改后立即生效，无需重启服务。
+                </p>
+              </div>
+
+              <!-- 支付方式选择区域 -->
+              <div class="space-y-3">
+                <!-- 支付方式标题 -->
+                <h5 class="text-sm font-semibold text-slate-700">启用的支付方式</h5>
+
+                <!-- 支付宝复选框 -->
+                <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer hover:border-sky-500 transition-colors">
+                  <input type="checkbox" id="payment-method-alipay" value="alipay" 
+                    class="w-4 h-4 text-sky-600 rounded" />
+                  <div class="ml-3 flex-1">
+                    <span class="text-sm font-medium text-slate-800">支付宝</span>
+                    <p class="text-xs text-slate-500 mt-0.5">支持支付宝扫码支付</p>
+                  </div>
+                </label>
+
+                <!-- 微信支付复选框 -->
+                <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer hover:border-green-500 transition-colors">
+                  <input type="checkbox" id="payment-method-wxpay" value="wxpay" 
+                    class="w-4 h-4 text-green-600 rounded" />
+                  <div class="ml-3 flex-1">
+                    <span class="text-sm font-medium text-slate-800">微信支付</span>
+                    <p class="text-xs text-slate-500 mt-0.5">支持微信扫码支付</p>
+                  </div>
+                </label>
+
+                <!-- 网银支付复选框 -->
+                <label class="flex items-center p-3 bg-white border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                  <input type="checkbox" id="payment-method-bank" value="bank" 
+                    class="w-4 h-4 text-blue-600 rounded" />
+                  <div class="ml-3 flex-1">
+                    <span class="text-sm font-medium text-slate-800">网银支付</span>
+                    <p class="text-xs text-slate-500 mt-0.5">支持各大银行网银支付</p>
+                  </div>
+                </label>
+              </div>
+
+              <!-- 保存按钮 -->
+              <button id="save-payment-config-btn" 
+                class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition">
+                保存配置
+              </button>
+
+              <!-- 加载提示（初始显示） -->
+              <p id="payment-config-loading" class="text-slate-400 text-center py-6 text-xs">
+                加载中...
+              </p>
+            </div>
+          </div>
+
+          <!-- ========================================
+               支付日志面板 (payment-logs)
+               管理员可以在此查看所有支付相关的操作日志
+               支持按用户ID、操作类型、日期范围筛选
+               支持分页浏览
+               默认隐藏，通过switchMobileAdminTab切换显示
+               ======================================== -->
+          <div id="mobile-multi-admin-payment-logs-panel" class="hidden space-y-3">
+            <!-- 面板头部：包含标题和刷新按钮 -->
+            <div class="flex justify-between items-center">
+              <!-- 面板标题 -->
+              <h4 class="font-semibold text-sm">支付日志</h4>
+              <!-- 刷新按钮：重新加载支付日志 -->
+              <button id="mobile-multi-admin-refresh-payment-logs" class="btn btn-ghost !py-1 !px-2 text-xs">
+                刷新
+              </button>
+            </div>
+
+            <!-- 筛选条件区域 -->
+            <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <!-- 用户ID筛选 -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">用户ID（可选）</label>
+                <input type="text" id="payment-logs-user-id" 
+                  placeholder="输入用户ID进行筛选" 
+                  class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+              </div>
+
+              <!-- 操作类型筛选 -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">操作类型（可选）</label>
+                <select id="payment-logs-action-type" 
+                  class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                  <option value="">全部操作</option>
+                  <option value="create_order">创建订单</option>
+                  <option value="query_order">查询订单</option>
+                  <option value="payment_success">支付成功</option>
+                  <option value="payment_fail">支付失败</option>
+                  <option value="config_update">配置更新</option>
+                </select>
+              </div>
+
+              <!-- 日期范围筛选 -->
+              <div class="grid grid-cols-2 gap-2">
+                <!-- 开始日期 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">开始日期</label>
+                  <input type="date" id="payment-logs-start-date" 
+                    class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+                <!-- 结束日期 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">结束日期</label>
+                  <input type="date" id="payment-logs-end-date" 
+                    class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+              </div>
+
+              <!-- 查询按钮 -->
+              <button id="search-payment-logs-btn" 
+                class="w-full py-2 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 active:bg-sky-700 transition">
+                查询日志
+              </button>
+            </div>
+
+            <!-- 支付日志列表容器 -->
+            <div id="mobile-multi-admin-payment-logs-list" class="space-y-2 max-h-96 overflow-y-auto">
+              <!-- 加载占位提示 -->
+              <p class="text-slate-400 text-center py-10 text-xs">
+                加载中...
+              </p>
+            </div>
+
+            <!-- 分页控制区域 -->
+            <div id="payment-logs-pagination" class="flex justify-between items-center pt-3 border-t border-slate-200">
+              <!-- 上一页按钮 -->
+              <button id="payment-logs-prev-btn" class="btn btn-ghost !py-1 !px-2 text-xs" disabled>
+                上一页
+              </button>
+              <!-- 页码显示 -->
+              <span id="payment-logs-page-info" class="text-xs text-slate-600">第 1 页</span>
+              <!-- 下一页按钮 -->
+              <button id="payment-logs-next-btn" class="btn btn-ghost !py-1 !px-2 text-xs">
+                下一页
+              </button>
             </div>
           </div>
         </div>
@@ -8411,6 +8611,168 @@
             取消
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================
+       支付弹窗 (payment-modal)
+       用户在此输入支付金额、选择支付方式、填写商品描述
+       点击"立即支付"后调用后端API创建订单并跳转到支付页面
+       ======================================== -->
+  <div id="payment-modal" class="modal">
+    <!-- 弹窗内容容器：使用圆角、内边距、阴影等样式 -->
+    <div class="panel rounded-2xl w-full max-w-md p-6 space-y-4 relative bg-white/95 shadow-xl">
+      <!-- 关闭按钮：位于右上角，点击关闭弹窗 -->
+      <button id="payment-close-btn"
+        class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all">
+        <!-- SVG 关闭图标 -->
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd"
+            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+            clip-rule="evenodd"></path>
+        </svg>
+      </button>
+
+      <!-- 弹窗标题 -->
+      <h3 class="text-xl font-bold text-sky-700 text-center card-title">
+        在线支付
+      </h3>
+
+      <!-- 金额输入区域 -->
+      <div>
+        <!-- 标签：显示"支付金额"，必填标记为红色星号 -->
+        <label for="payment-amount" class="block text-sm font-semibold leading-6 text-slate-700">
+          支付金额 <span class="text-red-500">*</span>
+        </label>
+        <!-- 输入框：支付金额，最小值0.01元，使用数字键盘 -->
+        <input type="number" id="payment-amount" placeholder="请输入支付金额（最低0.01元）" 
+          class="input-field mt-1" min="0.01" step="0.01" inputmode="decimal" />
+      </div>
+
+      <!-- 支付方式选择区域 -->
+      <div>
+        <!-- 标签：显示"支付方式"，必填 -->
+        <label class="block text-sm font-semibold leading-6 text-slate-700 mb-2">
+          支付方式 <span class="text-red-500">*</span>
+        </label>
+        <!-- 支付方式选项容器：使用flex布局，垂直排列 -->
+        <div id="payment-methods-container" class="space-y-2">
+          <!-- 支付宝选项：单选按钮 -->
+          <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-sky-500 transition-colors">
+            <!-- 单选按钮：选中时会触发样式变化 -->
+            <input type="radio" name="payment-method" value="alipay" class="w-4 h-4 text-sky-600" checked />
+            <!-- 支付宝图标和文字 -->
+            <span class="ml-3 text-sm font-medium text-slate-700">支付宝支付</span>
+          </label>
+          
+          <!-- 微信支付选项：单选按钮 -->
+          <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-green-500 transition-colors">
+            <input type="radio" name="payment-method" value="wxpay" class="w-4 h-4 text-green-600" />
+            <span class="ml-3 text-sm font-medium text-slate-700">微信支付</span>
+          </label>
+          
+          <!-- 网银支付选项：单选按钮 -->
+          <label class="flex items-center p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+            <input type="radio" name="payment-method" value="bank" class="w-4 h-4 text-blue-600" />
+            <span class="ml-3 text-sm font-medium text-slate-700">网银支付</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 商品描述输入区域 -->
+      <div>
+        <!-- 标签：显示"商品描述" -->
+        <label for="payment-product-name" class="block text-sm font-semibold leading-6 text-slate-700">
+          商品描述
+        </label>
+        <!-- 输入框：商品名称，默认值为"在线支付" -->
+        <input type="text" id="payment-product-name" placeholder="商品描述（例如：VIP会员充值）" 
+          value="在线支付" class="input-field mt-1" />
+      </div>
+
+      <!-- 按钮区域：确认和取消按钮 -->
+      <div class="flex justify-end gap-3 pt-4 border-t border-slate-200">
+        <!-- 取消按钮：关闭弹窗 -->
+        <button id="payment-cancel-btn" class="btn btn-ghost">取消</button>
+        <!-- 立即支付按钮：提交支付请求 -->
+        <button id="payment-submit-btn" class="btn btn-primary">立即支付</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================
+       订单列表弹窗 (orders-modal)
+       显示用户的所有支付订单
+       包含订单号、金额、支付方式、状态、创建时间
+       提供查询状态和继续支付功能
+       ======================================== -->
+  <div id="orders-modal" class="modal">
+    <!-- 弹窗内容容器：比支付弹窗稍大，用于显示列表 -->
+    <div class="panel rounded-2xl w-full max-w-2xl p-6 space-y-4 relative bg-white/95 shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
+      <!-- 关闭按钮：位于右上角 -->
+      <button id="orders-close-btn"
+        class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all z-10">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd"
+            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+            clip-rule="evenodd"></path>
+        </svg>
+      </button>
+
+      <!-- 弹窗标题和刷新按钮 -->
+      <div class="flex justify-between items-center">
+        <h3 class="text-xl font-bold text-sky-700 card-title">我的订单</h3>
+        <!-- 刷新按钮：重新加载订单列表 -->
+        <button id="orders-refresh-btn" class="btn btn-ghost !py-1 !px-3 text-xs">
+          刷新
+        </button>
+      </div>
+
+      <!-- 状态筛选区域：使用标签页样式 -->
+      <div class="flex gap-2 border-b border-slate-200 pb-2">
+        <!-- 全部订单标签 -->
+        <button class="orders-filter-btn px-4 py-2 text-sm font-medium rounded-lg transition-colors active" 
+          data-status="all">
+          全部
+        </button>
+        <!-- 待支付订单标签 -->
+        <button class="orders-filter-btn px-4 py-2 text-sm font-medium rounded-lg transition-colors" 
+          data-status="pending">
+          待支付
+        </button>
+        <!-- 已支付订单标签 -->
+        <button class="orders-filter-btn px-4 py-2 text-sm font-medium rounded-lg transition-colors" 
+          data-status="paid">
+          已支付
+        </button>
+        <!-- 已关闭订单标签 -->
+        <button class="orders-filter-btn px-4 py-2 text-sm font-medium rounded-lg transition-colors" 
+          data-status="closed">
+          已关闭
+        </button>
+      </div>
+
+      <!-- 订单列表容器：可滚动区域 -->
+      <div id="orders-list-container" class="flex-1 overflow-y-auto space-y-3">
+        <!-- 加载提示：初始显示，数据加载后替换 -->
+        <p class="text-slate-400 text-center py-10 text-sm">
+          加载中...
+        </p>
+      </div>
+
+      <!-- 分页控制区域 -->
+      <div id="orders-pagination" class="flex justify-between items-center pt-4 border-t border-slate-200">
+        <!-- 上一页按钮 -->
+        <button id="orders-prev-btn" class="btn btn-ghost !py-1 !px-3 text-xs" disabled>
+          上一页
+        </button>
+        <!-- 页码显示 -->
+        <span id="orders-page-info" class="text-sm text-slate-600">第 1 页</span>
+        <!-- 下一页按钮 -->
+        <button id="orders-next-btn" class="btn btn-ghost !py-1 !px-3 text-xs">
+          下一页
+        </button>
       </div>
     </div>
   </div>
