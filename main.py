@@ -16993,6 +16993,7 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/list_users", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_list_users():
         """
         列出所有用户信息。
@@ -17011,6 +17012,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "users": users})
 
     @app.route("/auth/admin/update_user_group", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_update_user_group():
         """
         修改用户所属的权限组。
@@ -17041,6 +17043,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/list_groups", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_list_groups():
         """
         管理员API - 列出所有权限组及其权限配置。
@@ -17073,6 +17076,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "groups": groups})
 
     @app.route("/auth/admin/create_group", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_create_group():
         """创建权限组"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17105,6 +17109,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/update_group", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_update_group():
         """更新权限组（支持group_key和group_name参数）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17135,6 +17140,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/delete_group", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_delete_group():
         """超级管理员：删除权限组"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17154,6 +17160,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/get_user_permissions", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_get_user_permissions():
         """管理员：获取用户的完整权限列表"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17210,6 +17217,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/set_user_permission", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_set_user_permission():
         """管理员：为用户设置自定义权限（差分化存储）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17609,6 +17617,7 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/create_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_create_user():
         """管理员：创建新用户
 
@@ -17694,6 +17703,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/ban_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_ban_user():
         """管理员：封禁用户"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17723,6 +17733,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/unban_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_unban_user():
         """管理员：解封用户"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17752,6 +17763,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/delete_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_delete_user():
         """管理员：删除用户"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17781,6 +17793,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/force_disable_2fa", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_force_disable_2fa():
         """管理员：强制关闭用户2FA"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17820,6 +17833,7 @@ def start_web_server(args_param):
     # 【修复】添加缺失的强制登出API路由
     # ============================================================
     @app.route("/auth/admin/force_logout_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_force_logout_user():
         """管理员：强制登出指定用户"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17899,6 +17913,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/force_reset_password", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_force_reset_password():
         """
         管理员API：强制重置用户密码。
@@ -17985,6 +18000,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/update_user_nickname", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def auth_admin_update_user_nickname():
         """
@@ -18039,6 +18055,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/update_user_phone", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_update_user_phone():
         """
         管理员更新用户手机号
@@ -18124,6 +18141,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/login_logs", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_login_logs():
         """获取登录日志（管理员）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -18141,6 +18159,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "logs": logs})
 
     @app.route("/auth/admin/get_user_school_accounts", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_get_user_school_accounts():
         """获取指定认证用户的所有 school_account（管理员或有 auto_fill_password 权限）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -18173,6 +18192,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/get_all_users_school_accounts", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_get_all_users_school_accounts():
         """获取所有认证用户的 school_account 列表（管理员或有 auto_fill_password 权限）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -18213,6 +18233,7 @@ def start_web_server(args_param):
 
     # ========== 新增：School Account 管理API（保存/添加） ==========
     @app.route("/api/admin/school_account/save", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def api_admin_school_account_save():
         """
         保存或添加 School Account（PC端管理面板CRUD支持）。
@@ -18298,6 +18319,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存账户数据失败"}), 500
 
     @app.route("/api/admin/school_account/delete", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def api_admin_school_account_delete():
         """
         删除 School Account（PC端管理面板CRUD支持）。
@@ -18379,6 +18401,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存账户数据失败"}), 500
 
     @app.route("/api/admin/school_account/update", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def api_admin_school_account_update():
         """
         更新 School Account（PC端管理面板CRUD支持）。
@@ -18529,6 +18552,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/reset_password", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_reset_password():
         """
         重置用户密码（管理员）或修改自己的密码。
@@ -18893,6 +18917,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/auth/admin/clear_user_avatar", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_clear_user_avatar():
         """管理员：强制清除用户头像"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -19078,6 +19103,7 @@ def start_web_server(args_param):
         return jsonify({"success": False, "message": "用户不存在", "avatar_url": ""})
 
     @app.route("/auth/admin/update_max_sessions", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_update_max_sessions():
         """更新用户最大会话数量（管理员）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -19120,6 +19146,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/api/admin/update_available_runs", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def api_admin_update_available_runs():
         """
         更新用户的可用执行次数（管理员API）
@@ -19520,6 +19547,7 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/all_sessions", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_all_sessions():
         """管理员：获取所有活跃会话（查看所有会话）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -19674,6 +19702,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/destroy_session", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_destroy_session():
         """管理员：强制销毁任意会话（查看所有会话）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -19724,6 +19753,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/audit_logs", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_audit_logs():
         """获取审计日志（管理员）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -20470,6 +20500,7 @@ def start_web_server(args_param):
     # ====================
 
     @app.route("/api/admin/logs/login_history", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def admin_logs_login_history():
         """
@@ -20503,6 +20534,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "查询失败"}), 500
 
     @app.route("/api/admin/logs/audit", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def admin_logs_audit():
         """
@@ -20540,6 +20572,7 @@ def start_web_server(args_param):
         return fallback
 
     @app.route("/api/admin/config/load", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def admin_config_load():
         """
@@ -20850,6 +20883,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "加载配置失败"}), 500
 
     @app.route("/api/admin/config/save", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def admin_config_save():
         """
@@ -21465,6 +21499,7 @@ def start_web_server(args_param):
     IP_BANS_FILE = os.path.join("logs", "ip_bans.json")
 
     @app.route("/api/admin/ip_bans", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_ip_bans():
         """
@@ -21487,6 +21522,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取列表失败"}), 500
 
     @app.route("/api/admin/ip_bans", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def add_ip_ban():
         """
@@ -21532,6 +21568,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "添加失败"}), 500
 
     @app.route("/api/admin/ip_bans/<ban_id>", methods=["DELETE"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def delete_ip_ban(ban_id):
         """
@@ -21562,6 +21599,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "删除失败"}), 500
 
     @app.route("/api/admin/check_ip_ban", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def check_ip_ban_api():
         """
         检查IP封禁状态API
@@ -21621,6 +21659,7 @@ def start_web_server(args_param):
     # ====================
 
     @app.route("/api/admin/sms/config", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_sms_config():
         """
@@ -21702,6 +21741,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取配置失败"}), 500
 
     @app.route("/api/admin/sms/config", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def save_sms_config():
         """
@@ -21773,6 +21813,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存失败"}), 500
 
     @app.route("/api/admin/sms/check_balance", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def check_sms_balance():
         """
@@ -21865,6 +21906,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"查询失败：{str(e)}"}), 500
 
     @app.route("/api/admin/sms/history", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_sms_history():
         """
@@ -21905,6 +21947,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取历史失败"}), 500
 
     @app.route("/api/admin/sms/verification_codes", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_verification_codes():
         """
@@ -21934,6 +21977,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取列表失败"}), 500
 
     @app.route("/api/admin/sms/invalidate_code", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def invalidate_verification_code():
         """
@@ -21960,6 +22004,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "操作失败"}), 500
 
     @app.route("/api/admin/sms/add_manual_code", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def add_manual_verification_code():
         """
@@ -22039,6 +22084,7 @@ def start_web_server(args_param):
     # ============================================================================
 
     @app.route("/api/admin/ssl/info", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_ssl_info():
         """
@@ -22079,6 +22125,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/ssl/upload", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def upload_ssl_certificate():
         """
@@ -22169,6 +22216,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"上传失败: {str(e)}"}), 500
 
     @app.route("/api/admin/ssl/config", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def update_ssl_config():
         """
@@ -22227,6 +22275,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/ssl/toggle", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def toggle_ssl():
         """
@@ -22280,6 +22329,7 @@ def start_web_server(args_param):
     # ============================================================================
 
     @app.route("/api/admin/cdn/config", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_cdn_config():
         """
@@ -22348,6 +22398,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/cdn/config", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def update_cdn_config():
         """
@@ -22507,6 +22558,7 @@ def start_web_server(args_param):
             return False, (jsonify({"success": False, "message": "权限检查失败"}), 500)
 
     @app.route("/api/admin/bruteforce/start", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def start_bruteforce():
         """
@@ -22566,6 +22618,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/bruteforce/stop", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def stop_bruteforce():
         """
@@ -22635,6 +22688,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/bruteforce/status", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_bruteforce_status():
         """
