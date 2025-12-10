@@ -2323,6 +2323,10 @@ def _create_default_admin():
         "theme": "light",
         "phone": "",
         "nickname": "超级管理员",
+        # 可用执行次数字段：记录用户还可以执行多少次任务
+        # 默认值为0，表示初始状态下没有可用次数
+        # 当值为 -1 时表示无限次数（适用于超级管理员等特殊账户）
+        "available_runs": -1,
     }
 
     with open(admin_file, "w", encoding="utf-8") as f:
@@ -3408,6 +3412,10 @@ class AuthSystem:
                 "theme": "light",
                 "phone": phone,
                 "nickname": nickname or auth_username,
+                # 可用执行次数字段：记录用户还可以执行多少次任务
+                # 新注册用户默认值为0，需要管理员充值后才能使用
+                # 当值为 -1 时表示无限次数
+                "available_runs": 0,
             }
 
             logging.debug(f"register_user: 保存用户数据到文件: {user_file}")
@@ -3786,6 +3794,9 @@ class AuthSystem:
                             "2fa_enabled": user_data.get("2fa_enabled", False),
                             "banned": user_data.get("banned", False),
                             "max_sessions": user_data.get("max_sessions", 1),
+                            # 添加可用执行次数字段：从用户数据中获取 available_runs，默认值为0
+                            # -1 表示无限次数，0表示无剩余次数，正数表示剩余次数
+                            "available_runs": user_data.get("available_runs", 0),
                         }
                     )
                 except Exception as e:
@@ -3962,6 +3973,64 @@ class AuthSystem:
             else:
                 msg = f"已设置最大会话数量为：{max_sessions}个，超出时将自动清理最旧的会话"
 
+            return {"success": True, "message": msg}
+
+    def update_available_runs(self, auth_username, available_runs):
+        """
+        更新用户的可用执行次数（管理员功能）
+
+        Args:
+            auth_username: 要修改的用户名
+            available_runs: 新的可用次数（-1表示无限次数，0表示无剩余，正数表示剩余次数）
+
+        Returns:
+            dict: 包含success和message的字典
+                {
+                    "success": True/False,
+                    "message": "操作结果说明"
+                }
+        """
+        # 使用线程锁确保文件操作的原子性，防止并发修改导致数据不一致
+        with self.lock:
+            # 步骤1：根据用户名构建用户数据文件的完整路径
+            user_file = self.get_user_file_path(auth_username)
+            
+            # 步骤2：检查用户文件是否存在
+            if not os.path.exists(user_file):
+                # 如果用户文件不存在，返回错误信息
+                return {"success": False, "message": "用户不存在"}
+
+            # 步骤3：从文件中读取当前的用户数据（JSON格式）
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+
+            # 步骤4：更新用户数据中的 available_runs 字段
+            user_data["available_runs"] = available_runs
+
+            # 步骤5：将更新后的用户数据写回文件
+            # indent=2: 格式化输出，每层缩进2个空格，提高可读性
+            # ensure_ascii=False: 允许保存中文字符，不转义为Unicode
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+
+            # 步骤6：根据设置的次数值生成友好的提示消息
+            if available_runs == -1:
+                # 当设置为-1时，表示无限制使用
+                msg = f"已设置为无限次数模式：用户 {auth_username} 可以无限次执行任务"
+            elif available_runs == 0:
+                # 当设置为0时，表示用户已无可用次数
+                msg = f"已设置可用次数为0：用户 {auth_username} 暂时无法执行新任务"
+            else:
+                # 正数表示具体的剩余次数
+                msg = f"已成功设置用户 {auth_username} 的可用次数为：{available_runs} 次"
+
+            # 步骤7：记录操作日志，便于后续审计和问题排查
+            logging.info(
+                f"[可用次数管理] 管理员更新用户可用次数 --> 用户: {auth_username}, "
+                f"新次数: {available_runs} ({'无限制' if available_runs == -1 else str(available_runs) + '次'})"
+            )
+
+            # 步骤8：返回成功结果和友好提示消息
             return {"success": True, "message": msg}
 
     def ban_user(self, auth_username):
@@ -5414,7 +5483,7 @@ class Api:
             auth_username: 认证用户名
 
         返回:
-            字典，格式为 {school_username: {"password": "xxx", "ua": "xxx"}, ...}
+            字典，格式为 {school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
             或旧格式 {school_username: password, ...}（向后兼容）
         """
         if not auth_username or auth_username == "guest":
@@ -5427,6 +5496,29 @@ class Api:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            
+            # 向后兼容：为每个账户添加 overdue_count 和 completed_count 字段（如果不存在）
+            # overdue_count 用于记录该学校账号的欠费次数
+            # 当用户的 available_runs <= 0 时，每次任务执行完成会增加此计数
+            # completed_count 用于记录该学校账号已完成的任务总数
+            # 每次任务成功提交后会增加此计数，用于统计和追踪
+            for school_username, account_info in data.items():
+                # 如果是新格式（字典），确保包含 overdue_count 和 completed_count 字段
+                if isinstance(account_info, dict):
+                    if "overdue_count" not in account_info:
+                        account_info["overdue_count"] = 0
+                    # 添加 completed_count 字段，用于统计已完成的任务数量
+                    if "completed_count" not in account_info:
+                        account_info["completed_count"] = 0
+                # 如果是旧格式（字符串密码），转换为新格式
+                elif isinstance(account_info, str):
+                    data[school_username] = {
+                        "password": account_info,
+                        "ua": None,
+                        "overdue_count": 0,
+                        "completed_count": 0
+                    }
+            
             logging.debug(
                 f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户"
             )
@@ -5540,6 +5632,205 @@ class Api:
         if isinstance(account_data, dict):
             return account_data.get("ua", "")
         return None
+
+    def _deduct_available_runs_or_increment_overdue(self, auth_username, school_username):
+        """
+        任务完成后处理可用次数扣减或欠费次数增加的逻辑。
+        
+        执行逻辑：
+        1. 读取 system_accounts 中认证用户的 available_runs 字段
+        2. 如果 available_runs == -1（无限次数），直接返回，不做任何处理
+        3. 如果 available_runs >= 1，扣减1次，保存到 system_accounts
+        4. 如果 available_runs <= 0，则增加 school_accounts 中对应学校账号的 overdue_count
+        
+        参数:
+            auth_username: 认证用户名（system_accounts 中的用户名）
+            school_username: 学校账户用户名（school_accounts 中的账户）
+        
+        返回:
+            None
+        """
+        try:
+            # 步骤1：加载认证用户的 system_accounts 数据
+            # 使用全局 auth_system 来获取用户文件路径
+            global auth_system
+            if not auth_system:
+                logging.warning(
+                    f"[次数扣减] auth_system 未初始化，跳过次数扣减逻辑"
+                )
+                return
+            
+            user_file = auth_system.get_user_file_path(auth_username)
+            
+            # 如果用户文件不存在，记录警告并返回
+            if not os.path.exists(user_file):
+                logging.warning(
+                    f"[次数扣减] 用户文件不存在: {user_file}，跳过次数扣减逻辑"
+                )
+                return
+            
+            # 读取用户数据（JSON格式）
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+            
+            # 步骤2：获取 available_runs 字段（向后兼容：如果不存在则默认为0）
+            available_runs = user_data.get("available_runs", 0)
+            
+            logging.debug(
+                f"[次数扣减] 用户 {auth_username} 当前可用次数: {available_runs}"
+            )
+            
+            # 步骤3：如果是无限次数（-1），直接返回
+            if available_runs == -1:
+                logging.debug(
+                    f"[次数扣减] 用户 {auth_username} 拥有无限次数，跳过扣减"
+                )
+                return
+            
+            # 步骤4：判断是扣减 available_runs 还是增加 overdue_count
+            if available_runs >= 1:
+                # 情况A：可用次数 >= 1，扣减1次
+                user_data["available_runs"] = available_runs - 1
+                
+                # 保存更新后的用户数据
+                with open(user_file, "w", encoding="utf-8") as f:
+                    json.dump(user_data, f, indent=2, ensure_ascii=False)
+                
+                logging.info(
+                    f"[次数扣减] 用户 {auth_username} 扣减1次可用次数，"
+                    f"剩余: {user_data['available_runs']} 次"
+                )
+            else:
+                # 情况B：可用次数 <= 0，增加对应学校账号的欠费次数
+                # 加载该认证用户的所有学校账号配置
+                school_accounts = self._load_user_school_accounts(auth_username)
+                
+                # 查找目标学校账号
+                if school_username in school_accounts:
+                    account_info = school_accounts[school_username]
+                    
+                    # 确保是字典格式（向后兼容）
+                    if not isinstance(account_info, dict):
+                        account_info = {
+                            "password": account_info if isinstance(account_info, str) else "",
+                            "ua": None,
+                            "overdue_count": 0
+                        }
+                        school_accounts[school_username] = account_info
+                    
+                    # 增加欠费次数
+                    current_overdue = account_info.get("overdue_count", 0)
+                    account_info["overdue_count"] = current_overdue + 1
+                    
+                    # 保存更新后的学校账号配置
+                    self._save_user_school_accounts(auth_username, school_accounts)
+                    
+                    logging.info(
+                        f"[次数扣减] 用户 {auth_username} 可用次数不足（当前: {available_runs}），"
+                        f"学校账号 {school_username} 欠费次数 +1，当前欠费: {account_info['overdue_count']} 次"
+                    )
+                else:
+                    # 如果学校账号不在配置中，记录警告
+                    logging.warning(
+                        f"[次数扣减] 在用户 {auth_username} 的学校账号配置中未找到 {school_username}，"
+                        f"无法增加欠费次数"
+                    )
+        
+        except Exception as e:
+            # 捕获所有异常，避免影响主任务流程
+            logging.error(
+                f"[次数扣减] 处理用户 {auth_username}（学校账号: {school_username}）的次数扣减时发生异常: {e}",
+                exc_info=True
+            )
+
+    def _increment_completed_count(self, auth_username, school_username):
+        """
+        增加学校账号的已完成任务计数。
+        
+        功能说明：
+            当一个任务成功提交并完成后，调用此函数为对应的学校账号增加已完成任务计数。
+            计数器存储在 school_accounts JSON 文件中的 completed_count 字段。
+        
+        参数：
+            auth_username: 认证用户名（system_accounts中的用户名）
+            school_username: 学校账号用户名（school_accounts中的账户）
+        
+        实现逻辑：
+            1. 读取用户的 school_accounts JSON 文件
+            2. 找到对应的学校账号
+            3. 将 completed_count 字段加1
+            4. 保存更新后的 JSON 文件
+        
+        错误处理：
+            如果更新失败（文件不存在、账号不存在等），记录错误日志但不影响主流程。
+            这样可以确保任务执行的稳定性，即使计数器更新失败也不会导致任务中断。
+        
+        返回值：
+            None
+        """
+        try:
+            # 步骤1：读取 school_accounts 配置文件
+            # 使用已有的 _load_user_school_accounts 方法加载用户的所有学校账号配置
+            # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0, "completed_count": 0}, ...}
+            accounts = self._load_user_school_accounts(auth_username)
+            
+            # 如果返回的是空字典，说明没有找到配置文件或加载失败
+            if not accounts:
+                logging.warning(
+                    f"[任务计数] 无法加载用户 {auth_username} 的学校账号配置，跳过计数更新"
+                )
+                return
+            
+            # 步骤2：在配置中查找对应的学校账号
+            # 学校账号用户名作为字典的键
+            if school_username not in accounts:
+                logging.warning(
+                    f"[任务计数] 在用户 {auth_username} 的配置中未找到学校账号 {school_username}，无法更新计数"
+                )
+                return
+            
+            # 获取该学校账号的信息（字典类型）
+            account_info = accounts[school_username]
+            
+            # 步骤3：确保 account_info 是字典格式（向后兼容处理）
+            # 如果是旧格式（字符串），转换为新格式
+            if not isinstance(account_info, dict):
+                account_info = {
+                    "password": account_info if isinstance(account_info, str) else "",
+                    "ua": None,
+                    "overdue_count": 0,
+                    "completed_count": 0
+                }
+                accounts[school_username] = account_info
+            
+            # 步骤4：增加已完成任务计数
+            # 获取当前的 completed_count 值，如果不存在则默认为 0
+            current_count = account_info.get("completed_count", 0)
+            # 将计数器加1
+            account_info["completed_count"] = current_count + 1
+            
+            # 记录日志：显示更新后的计数值
+            logging.info(
+                f"[任务计数] 用户 {auth_username} 的学校账号 {school_username} "
+                f"已完成任务数: {current_count} → {account_info['completed_count']}"
+            )
+            
+            # 步骤5：保存更新后的数据到 JSON 文件
+            # 使用已有的 _save_user_school_accounts 方法保存整个配置
+            self._save_user_school_accounts(auth_username, accounts)
+            
+            logging.debug(
+                f"[任务计数] 成功更新并保存学校账号 {school_username} 的任务计数"
+            )
+        
+        except Exception as e:
+            # 捕获所有可能的异常（文件IO错误、权限错误等）
+            # 记录详细的错误信息，包括完整的异常堆栈（exc_info=True）
+            # 但不抛出异常，避免影响主任务流程的执行
+            logging.error(
+                f"[任务计数] 更新用户 {auth_username}（学校账号: {school_username}）的任务计数时发生异常: {e}",
+                exc_info=True
+            )
 
     def _save_config(self, username, password=None, ua=None):
         """保存指定用户的配置到 user/<username>.ini；当 password 为 None 时保留现有密码；当 ua 为 None 时保留现有 UA。同时更新主 config.ini 的 LastUser 和 amap_js_key。"""
@@ -9915,7 +10206,79 @@ class Api:
                 acc.user_data.name = user_info.get("name", "")
                 acc.user_data.id = user_info.get("id", "")
                 acc.user_data.student_id = user_info.get("account", "")
+                
+                # 设置 username 字段，用于后续备份文件命名
+                # 优先使用学号(student_id)，如果学号不存在则使用账号登录名(acc.username)
+                # 这确保了备份文件名的一致性和可追溯性
+                acc.user_data.username = acc.user_data.student_id or acc.username
+                
                 acc.log("登录成功。")
+                
+                # ========== 开始：备份用户信息到本地文件 ==========
+                # 此备份功能与 login() 函数（第6376-6395行）保持一致
+                # 目的：在多账号模式下，也能为每个账号创建用户信息的本地备份
+                # 备份内容包括：userInfo（用户基本信息）、deptInfo（部门/学校信息）、备份时间戳
+                try:
+                    # 从登录响应中提取部门信息（deptInfo）
+                    # deptInfo 包含学校名称、性别、属性类型等扩展信息
+                    dept_info = data.get("deptInfo", {})
+                    
+                    # 检查前置条件：
+                    # 1. acc.user_data.username 必须存在（用于生成备份文件名）
+                    # 2. self.user_dir 目录必须存在（备份文件的存储目录）
+                    # 只有同时满足这两个条件，才执行备份操作
+                    if acc.user_data.username and os.path.exists(self.user_dir):
+                        # 构造备份文件名：格式为 "{学号}_backup.json"
+                        # 例如：20210001_backup.json
+                        # 这种命名方式便于识别和管理不同用户的备份文件
+                        backup_filename = f"{acc.user_data.username}_backup.json"
+                        
+                        # 拼接完整的备份文件路径
+                        # user_dir 通常是 "school_accounts" 目录
+                        backup_filepath = os.path.join(self.user_dir, backup_filename)
+                        
+                        # 构建要备份的数据结构（Python 字典）
+                        # 包含三个关键字段：
+                        # 1. userInfo: 用户基本信息（姓名、手机号、学号、ID等）
+                        # 2. deptInfo: 部门/学校信息（学校名称、性别、属性类型等）
+                        # 3. backup_timestamp: 备份创建的时间戳（Unix时间戳，便于后续判断备份的新旧）
+                        backup_data = {
+                            "userInfo": user_info,
+                            "deptInfo": dept_info,
+                            "backup_timestamp": time.time(),
+                        }
+                        
+                        # 将备份数据写入到 JSON 文件
+                        # 参数说明：
+                        # - "w": 以写入模式打开文件（如果文件存在则覆盖）
+                        # - encoding="utf-8": 使用 UTF-8 编码，确保中文正常保存
+                        # - indent=2: JSON 格式化时使用2个空格缩进，提高可读性
+                        # - ensure_ascii=False: 允许保存非 ASCII 字符（如中文），不转义为 \uXXXX
+                        with open(backup_filepath, "w", encoding="utf-8") as f:
+                            json.dump(backup_data, f, indent=2, ensure_ascii=False)
+                        
+                        # 记录备份成功的日志信息
+                        # 使用 logging.info 而非 acc.log，因为这是系统级操作
+                        logging.info(f"[多账号模式] 已成功备份 user_info 到: {backup_filepath}")
+                    
+                    # 如果 username 不存在，记录警告日志
+                    # 这种情况理论上不应该发生，因为上面已经设置了 username
+                    # 但作为防御性编程，仍然进行检查
+                    elif not acc.user_data.username:
+                        logging.warning(
+                            f"[多账号模式] 备份 user_info 失败：无法确定用户名(学号)，账号: {acc.username}"
+                        )
+                
+                # 捕获并记录任何可能发生的异常
+                # 备份失败不应该影响主流程（登录、任务分析等），因此只记录错误不中断程序
+                # exc_info=True 会将完整的异常堆栈信息记录到日志中，便于调试
+                except Exception as e:
+                    logging.error(
+                        f"[多账号模式] 备份 user_info 失败，账号: {acc.username}, 错误: {e}",
+                        exc_info=True,
+                    )
+                # ========== 结束：备份用户信息到本地文件 ==========
+                
                 self._update_account_status_js(
                     acc, status_text="分析任务", name=acc.user_data.name
                 )
@@ -10446,6 +10809,60 @@ class Api:
                     self._multi_fetch_and_summarize_tasks(acc)
                     self._update_account_status_js(acc, summary=acc.summary)
                     acc.log(f"任务 {run_data.run_name} 执行流程完成。")
+                    
+                    # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
+                    # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
+                    # auth_username: 认证用户名（system_accounts 中的用户）
+                    # school_username: 学校账号用户名（当前正在执行任务的账号）
+                    try:
+                        # 从 Api 实例（api_bridge）获取认证用户名
+                        auth_username = getattr(self, "auth_username", None)
+                        school_username = acc.username  # AccountSession 的 username 是学校账号
+                        
+                        # 只有当认证用户名存在且不是游客时，才执行扣减逻辑
+                        if auth_username and auth_username != "guest":
+                            logging.debug(
+                                f"[多账号任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
+                                f"学校账号={school_username}, 任务={run_data.run_name}"
+                            )
+                            
+                            # 调用辅助函数处理可用次数扣减或欠费次数增加
+                            self._deduct_available_runs_or_increment_overdue(
+                                auth_username, school_username
+                            )
+                            
+                            # ========== 增加已完成任务计数器 ==========
+                            # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
+                            # 这个计数器用于统计每个学校账号总共完成了多少个任务
+                            # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
+                            try:
+                                logging.debug(
+                                    f"[多账号任务] 开始增加任务计数：认证用户={auth_username}, "
+                                    f"学校账号={school_username}, 任务={run_data.run_name}"
+                                )
+                                
+                                # 调用辅助函数增加已完成任务计数
+                                self._increment_completed_count(auth_username, school_username)
+                                
+                            except Exception as e_count:
+                                # 捕获计数更新异常，记录日志但不影响主流程
+                                logging.error(
+                                    f"[多账号任务] 更新任务计数时发生异常: {e_count}",
+                                    exc_info=True
+                                )
+                            # ========== 结束：任务计数处理 ==========
+                        else:
+                            logging.debug(
+                                f"[多账号任务] 跳过次数扣减：认证用户={auth_username}（游客或未设置）"
+                            )
+                    except Exception as e:
+                        # 捕获异常，避免影响主流程
+                        logging.error(
+                            f"[多账号任务] 处理次数扣减时发生异常: {e}",
+                            exc_info=True
+                        )
+                    # ========== 结束：次数扣减处理 ==========
+                    
                     self._update_account_status_js(
                         acc,
                         status_text="任务已完成",
@@ -12941,6 +13358,8 @@ class BackgroundTaskManager:
 
                 except Exception as e:
                     logging.error(f"任务执行失败，异常信息: {e}", exc_info=True)
+                
+                # 标记当前任务已完成（更新进度状态）
                 with self.lock:
                     task_state["completed_tasks"] = i + 1
                     task_state["progress_percent"] = int(
@@ -12953,6 +13372,59 @@ class BackgroundTaskManager:
                 logging.info(
                     f"任务 {i+1}/{len(task_indices)} 已完成，会话ID前缀: {session_id[:8]}"
                 )
+                
+                # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
+                # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
+                # 这里处理单账号模式下的后台任务完成情况
+                try:
+                    # 从 api_instance 获取认证用户名和学校账号用户名
+                    auth_username = getattr(api_instance, "auth_username", None)
+                    school_username = getattr(api_instance.user_data, "username", None)
+                    
+                    # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
+                    if auth_username and auth_username != "guest" and school_username:
+                        logging.debug(
+                            f"[单账号后台任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
+                            f"学校账号={school_username}, 任务={run_data.run_name}"
+                        )
+                        
+                        # 调用 api_instance 的辅助函数处理可用次数扣减或欠费次数增加
+                        api_instance._deduct_available_runs_or_increment_overdue(
+                            auth_username, school_username
+                        )
+                        
+                        # ========== 增加已完成任务计数器 ==========
+                        # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
+                        # 这个计数器用于统计每个学校账号总共完成了多少个任务
+                        # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
+                        try:
+                            logging.debug(
+                                f"[单账号后台任务] 开始增加任务计数：认证用户={auth_username}, "
+                                f"学校账号={school_username}, 任务={run_data.run_name}"
+                            )
+                            
+                            # 调用 api_instance 的辅助函数增加已完成任务计数
+                            api_instance._increment_completed_count(auth_username, school_username)
+                            
+                        except Exception as e_count:
+                            # 捕获计数更新异常，记录日志但不影响主流程
+                            logging.error(
+                                f"[单账号后台任务] 更新任务计数时发生异常: {e_count}",
+                                exc_info=True
+                            )
+                        # ========== 结束：任务计数处理 ==========
+                    else:
+                        logging.debug(
+                            f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username}, "
+                            f"学校账号={school_username}（游客或未设置）"
+                        )
+                except Exception as e:
+                    # 捕获异常，避免影响主流程
+                    logging.error(
+                        f"[单账号后台任务] 处理次数扣减时发生异常: {e}",
+                        exc_info=True
+                    )
+                # ========== 结束：次数扣减处理 ==========
             if tasks_executed > 0:
                 with self.lock:
                     task_state["status"] = "completed"
@@ -18371,6 +18843,109 @@ def start_web_server(args_param):
 
         return jsonify(result)
 
+    @app.route("/api/admin/update_available_runs", methods=["POST"])
+    def api_admin_update_available_runs():
+        """
+        更新用户的可用执行次数（管理员API）
+        
+        请求头:
+            X-Session-ID: 当前会话ID，用于身份验证和权限检查
+        
+        请求体 (JSON):
+            {
+                "username": "目标用户名",
+                "available_runs": 新的可用次数（整数）
+            }
+        
+        返回 (JSON):
+            {
+                "success": true/false,
+                "message": "操作结果说明"
+            }
+        
+        权限要求:
+            - 需要有 manage_users 权限（通常为管理员）
+        
+        参数说明:
+            - available_runs: -1表示无限次数，0表示无可用次数，正数表示具体次数
+        """
+        # 步骤1：从请求头中获取会话ID，用于身份验证
+        session_id = request.headers.get("X-Session-ID", "")
+        
+        # 步骤2：验证会话ID是否有效（检查是否存在于活跃会话列表中）
+        if not session_id or session_id not in web_sessions:
+            # 如果会话无效或不存在，返回401未授权状态码
+            return jsonify({"success": False, "message": "未登录"}), 401
+
+        # 步骤3：从活跃会话中获取API实例，提取当前用户的身份信息
+        api_instance = web_sessions[session_id]
+        auth_username = getattr(api_instance, "auth_username", "")
+        
+        # 步骤4：权限检查 - 验证当前用户是否具有管理用户的权限
+        if not auth_system.check_permission(auth_username, "manage_users"):
+            # 如果权限不足，返回403禁止访问状态码
+            return jsonify({"success": False, "message": "权限不足"}), 403
+
+        # 步骤5：解析请求体中的JSON数据
+        data = request.json
+        # 提取目标用户名和新的可用次数值
+        target_username = data.get("username", "")
+        available_runs = data.get("available_runs", 0)
+        
+        # 步骤6：数据验证 - 检查目标用户名是否为空
+        if not target_username:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "缺少必要参数：用户名不能为空",
+                    }
+                ),
+                400,  # 400 Bad Request - 客户端请求参数错误
+            )
+        
+        # 步骤7：数据验证 - 检查可用次数是否为整数类型
+        if not isinstance(available_runs, int):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "无效的次数值：必须为整数",
+                    }
+                ),
+                400,
+            )
+        
+        # 步骤8：数据验证 - 检查可用次数的取值范围
+        # 有效值: -1（无限）或 >= 0 的整数
+        if available_runs < -1:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "无效的次数值：必须为-1（无限）或非负整数",
+                    }
+                ),
+                400,
+            )
+
+        # 步骤9：调用 AuthSystem 的方法执行实际的更新操作
+        result = auth_system.update_available_runs(target_username, available_runs)
+        
+        # 步骤10：记录审计日志 - 记录管理员的操作行为，便于追溯
+        # 获取客户端真实IP地址
+        ip_address = request.remote_addr
+        auth_system.log_audit(
+            auth_username,  # 操作者（管理员）
+            "update_available_runs",  # 操作类型
+            f"修改用户 {target_username} 的可用次数为: {available_runs} ({'无限' if available_runs == -1 else str(available_runs) + '次'})",  # 操作详情
+            ip_address,  # 操作者IP
+            session_id,  # 会话ID
+        )
+
+        # 步骤11：返回操作结果给前端
+        return jsonify(result)
+
     @app.route("/auth/user/sessions", methods=["GET"])
     def auth_user_sessions():
         """获取用户的所有会话"""
@@ -19122,42 +19697,178 @@ def start_web_server(args_param):
     @app.route("/sms-reply-webhook", methods=["GET"])
     def sms_reply_webhook():
         """
-        接收短信宝的用户回复推送
+        【短信宝平台回调接口】接收用户回复推送
+        
+        这是一个符合短信宝（smsbao.com）平台规范的Webhook端点，用于接收用户对短信的回复。
+        
+        技术规范：
+        - HTTP方法：GET（短信宝平台使用GET请求推送数据）
+        - 请求参数：
+          * m（必须）：发送方的手机号（11位中国大陆手机号）
+          * c（必须）：用户回复的短信内容，采用 UTF-8 URLENCODE 编码
+        - 响应要求：必须返回字符串 "0" 表示成功接收
+        
+        业务逻辑：
+        1. 接收并解析短信宝推送的回复数据
+        2. 对内容进行 UTF-8 URL解码（因为短信宝会对中文进行URL编码）
+        3. 持久化到本地JSON日志文件，便于后续分析和追溯
+        4. 记录应用日志，方便实时监控
+        5. 返回 "0" 告知短信宝平台已成功接收
+        
+        返回值:
+        str: 固定返回 "0"，这是短信宝平台约定的成功响应码
         """
         try:
+            # ========== 第一步：获取短信宝平台推送的参数 ==========
+            
+            # 获取参数 "m"（mobile的缩写）：发送方的手机号
+            # 使用 request.args.get() 从URL查询字符串中安全地获取参数
+            # 如果参数不存在，默认返回空字符串（而非None），避免后续处理时出现类型错误
             phone = request.args.get("m", "")
+            
+            # 获取参数 "c"（content的缩写）：用户回复的短信内容
+            # 注意：短信宝会对这个参数进行 UTF-8 URLENCODE 编码
+            # 例如："你好" 会被编码为 "%E4%BD%A0%E5%A5%BD"
             content = request.args.get("c", "")
 
+            # ========== 第二步：参数有效性校验 ==========
+            
+            # 校验必需参数是否存在且不为空
+            # 如果手机号或内容任一缺失，说明这不是一个有效的短信宝回调请求
+            # 即使数据无效，我们也返回 "0"，避免短信宝平台重复推送
             if not phone or not content:
-                return "0"
+                return "0"  # 返回成功响应，避免平台重试
+            
+            # ========== 第三步：内容解码（关键步骤）==========
+            
             try:
+                # 导入 urllib.parse 模块，用于URL解码
                 import urllib.parse
 
+                # 对内容参数进行 UTF-8 URL 解码
+                # 为什么需要解码？
+                # - 短信宝平台为了确保中文字符在HTTP传输中不出错，会对内容进行URL编码
+                # - 例如："你好" -> "%E4%BD%A0%E5%A5%BD"
+                # - 我们需要将其还原为可读的中文："你好"
+                # 
+                # urllib.parse.unquote() 参数说明：
+                # - 第一个参数：要解码的字符串
+                # - encoding="utf-8"：指定解码使用的字符编码为UTF-8（与短信宝平台保持一致）
                 content = urllib.parse.unquote(content, encoding="utf-8")
-            except:
+                
+            except Exception:
+                # 捕获解码过程中可能出现的任何异常
+                # 可能的异常场景：
+                # - 内容格式异常（虽然不太可能）
+                # - 编码格式不匹配
+                # 
+                # 异常处理策略：使用 pass 静默忽略
+                # 原因：即使解码失败，我们仍然可以使用原始（编码后的）内容进行记录
+                # 这样可以确保不会因为解码问题导致整个回调处理失败
                 pass
+            
+            # ========== 第四步：准备持久化存储 ==========
+            
+            # 指定日志文件的存储目录
+            # LOGIN_LOGS_DIR 是全局配置的日志目录路径（通常为 "logs"）
             log_dir = LOGIN_LOGS_DIR
+            
+            # 确保日志目录存在
+            # os.makedirs() 参数说明：
+            # - exist_ok=True：如果目录已存在，不抛出异常，静默成功
+            # 这是一个防御性编程实践，避免因目录不存在导致后续文件写入失败
             os.makedirs(log_dir, exist_ok=True)
+            
+            # 构建完整的日志文件路径
+            # 日志文件名固定为 "sms_replies.json"
+            # 最终路径示例："/path/to/logs/sms_replies.json"
             log_file = os.path.join(log_dir, "sms_replies.json")
 
+            # 导入 json 模块，用于将Python字典序列化为JSON格式
             import json
 
+            # ========== 第五步：构建日志条目 ==========
+            
+            # 创建一个字典，包含本次短信回复的完整信息
+            # 这个结构化数据便于后续进行数据分析、审计和问题追溯
             log_entry = {
+                # Unix时间戳（秒级浮点数）
+                # 便于程序进行时间计算（例如，计算两次回复的时间间隔）
                 "timestamp": time.time(),
+                
+                # 人类可读的日期时间字符串，格式：YYYY-MM-DD HH:MM:SS
+                # 便于人工查看日志时快速了解时间信息
                 "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+                
+                # 回复者的手机号（来自参数 "m"）
                 "phone": phone,
+                
+                # 回复内容（已解码，为可读的中文文本）
                 "content": content,
+                
+                # 短信宝平台服务器的IP地址
+                # request.remote_addr 获取发起HTTP请求的客户端IP
+                # 记录IP地址的目的：
+                # - 安全审计：验证请求确实来自短信宝平台的官方服务器
+                # - 问题排查：如果出现异常请求，可以通过IP追溯来源
                 "ip": request.remote_addr,
             }
 
+            # ========== 第六步：持久化到文件 ==========
+            
+            # 以追加模式（append mode）打开日志文件
+            # 参数说明：
+            # - "a"：追加模式，不会覆盖现有内容，而是在文件末尾添加新内容
+            # - encoding="utf-8"：使用UTF-8编码写入，确保中文正确存储
             with open(log_file, "a", encoding="utf-8") as f:
+                # 将字典序列化为JSON字符串，并追加换行符
+                # json.dumps() 参数说明：
+                # - ensure_ascii=False：不将非ASCII字符（如中文）转义为 \uXXXX 形式
+                #   这样可以让日志文件中直接显示中文，而不是 Unicode 编码
+                # - 最后的 "\n"：添加换行符，确保每条日志占一行（JSONL格式）
+                # 
+                # JSONL格式（JSON Lines）的优势：
+                # - 每行是一个独立的JSON对象，便于逐行读取和流式处理
+                # - 追加写入时不会破坏已有数据的格式
                 f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
+            # ========== 第七步：记录应用日志 ==========
+            
+            # 使用 Flask 应用的日志记录器记录一条信息级别的日志
+            # 这条日志会输出到应用的标准日志系统（例如控制台、日志文件等）
+            # 用途：
+            # - 实时监控：管理员可以通过查看应用日志实时了解短信回复情况
+            # - 快速排查：如果出现问题，可以快速从应用日志中定位
             app.logger.info(f"[短信回复] 收到用户 {phone} 的回复：{content}")
+            
+            # ========== 第八步：返回成功响应 ==========
+            
+            # 返回字符串 "0" 给短信宝平台
+            # 为什么必须返回 "0"？
+            # - 这是短信宝平台的技术约定，表示"已成功接收并处理"
+            # - 如果返回其他内容（例如 "success"、空字符串、HTTP错误状态码），
+            #   短信宝平台可能会认为推送失败，并进行重试，导致重复接收
+            # - 返回 "0" 后，短信宝平台会将本次推送标记为成功，不再重试
             return "0"
 
         except Exception as e:
+            # ========== 异常处理：确保健壮性 ==========
+            
+            # 捕获所有可能的异常，防止服务崩溃
+            # 可能的异常场景：
+            # - 文件系统错误（磁盘已满、权限不足等）
+            # - 内存错误
+            # - 其他未预见的运行时错误
+            
+            # 记录错误日志，便于后续排查问题
+            # 日志中包含完整的异常信息（str(e)）
             app.logger.error(f"[短信回复] 处理异常：{str(e)}")
+            
+            # 即使发生异常，仍然返回 "0"
+            # 原因：避免短信宝平台因为我们的内部错误而反复重试
+            # 这是一种"宽进严出"的设计理念：
+            # - 对外：始终表现为"成功接收"，保持接口的稳定性
+            # - 对内：通过日志记录错误，由开发人员后续修复
             return "0"
 
     @app.route("/api/sms/test_send", methods=["POST"])
@@ -19167,10 +19878,31 @@ def start_web_server(args_param):
         短信测试发送API
         """
         try:
+            # 获取当前登录的用户名
+            # g.user 由 @login_required 装饰器设置，包含已验证的用户身份
             current_user = g.user
-            if not auth_system.is_super_admin(
-                current_user
-            ) and not auth_system.is_admin(current_user):
+            
+            # [修复] 使用用户组别判断而非权限判断
+            # 
+            # 修复原因：
+            # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
+            # 例如：user组的用户可能被配置为拥有 manage_users 或 god_mode 权限
+            # 因此，不能通过检查权限来判断用户是否是真正的管理员
+            # 必须直接读取用户组别（group）来准确判断用户的管理员身份
+            # 
+            # 技术实现：
+            # - 使用 get_user_group() 方法直接获取用户所属的组别
+            # - 只允许 "admin" 和 "super_admin" 组的用户访问此功能
+            # - 这样确保即使普通用户拥有管理员权限，也无法访问管理员专属功能
+            # 
+            # 安全考虑：
+            # - 短信测试功能是管理员专属操作，不应对普通用户开放
+            # - 通过组别判断可以严格控制访问权限，避免权限滥用
+            user_group = auth_system.get_user_group(current_user)
+            
+            # 检查用户组别：只允许管理员和超级管理员访问
+            if user_group not in ["admin", "super_admin"]:
+                # 权限不足时返回403禁止访问状态码
                 return (
                     jsonify(
                         {
@@ -19339,11 +20071,35 @@ def start_web_server(args_param):
         - 调试短信回复webhook功能
         """
         try:
-            # 获取当前用户
+            # 获取当前登录的用户名
+            # g.user 由 @login_required 装饰器设置，确保：
+            # 1. X-Session-ID 请求头已验证（第15714行）
+            # 2. 会话有效性已检查（第15720-15725行）
+            # 3. 用户身份已认证（第15726-15727行）
             current_user = g.user
             
-            # 权限检查：仅管理员可访问
-            if not auth_system.is_super_admin(current_user) and not auth_system.is_admin(current_user):
+            # [修复] 使用用户组别判断而非权限判断
+            # 
+            # 修复原因：
+            # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
+            # 例如：user组的用户可能被配置为拥有 view_logs 权限
+            # 因此，不能通过检查权限来判断用户是否是真正的管理员
+            # 必须直接读取用户组别（group）来准确判断用户的管理员身份
+            # 
+            # 技术实现：
+            # - 使用 get_user_group() 方法直接获取用户所属的组别
+            # - 只允许 "admin" 和 "super_admin" 组的用户访问此功能
+            # - 这样确保即使普通用户拥有日志查看权限，也无法访问管理员专属的短信回复日志
+            # 
+            # 安全考虑：
+            # - 短信回复日志可能包含敏感的用户通信内容
+            # - 必须严格限制为管理员和超级管理员才能访问
+            # - 通过组别判断可以严格控制访问权限，避免权限滥用
+            user_group = auth_system.get_user_group(current_user)
+            
+            # 检查用户组别：只允许管理员和超级管理员访问
+            if user_group not in ["admin", "super_admin"]:
+                # 权限不足时返回403禁止访问状态码
                 return jsonify({
                     "success": False,
                     "message": "权限不足，仅管理员可查看短信回复记录"
@@ -26961,6 +27717,379 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"获取日志失败：{str(e)}"
+            }), 500
+
+    # ==============================================================================
+    # 欠费检查接口
+    # ==============================================================================
+
+    @app.route("/api/check_overdue", methods=["POST"])
+    @login_required
+    def check_overdue():
+        """
+        检查学校账号是否有欠费
+        
+        功能说明：
+        - 读取当前认证用户的所有学校账号
+        - 检查每个账号的 overdue_count 字段（欠费次数）
+        - 如果 overdue_count > 0，说明该账号有欠费记录
+        - 从备份文件中读取账号姓名，用于友好显示
+        
+        请求参数（JSON）：
+        - school_username: 可选，学校账号用户名。如果提供，只检查该账号；否则检查所有账号
+        
+        返回格式（JSON）：
+        {
+            "success": true,
+            "has_overdue": false,  // 是否存在欠费账号
+            "overdue_accounts": [  // 欠费账号列表
+                {
+                    "username": "xxx",      // 学校账号用户名
+                    "overdue_count": 3,     // 欠费次数
+                    "name": "张三"          // 姓名（从备份文件读取）
+                },
+                ...
+            ]
+        }
+        
+        错误情况：
+        - 返回 {"success": false, "message": "错误信息"}
+        """
+        try:
+            # 从请求体中获取参数
+            data = request.get_json() or {}
+            # 可选参数：要检查的特定学校账号用户名
+            school_username = data.get("school_username")
+            
+            # 获取当前认证用户名（通过 login_required 装饰器注入到 g.user）
+            auth_username = g.user
+            
+            # 获取该认证用户的所有学校账号配置
+            # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
+            school_accounts = g.api_instance._load_user_school_accounts(auth_username)
+            
+            # 如果没有学校账号，直接返回无欠费
+            if not school_accounts:
+                return jsonify({
+                    "success": True,
+                    "has_overdue": False,
+                    "overdue_accounts": []
+                })
+            
+            # 存储欠费账号的列表
+            overdue_accounts = []
+            
+            # 遍历所有学校账号，检查欠费情况
+            for acc_username, account_info in school_accounts.items():
+                # 如果指定了 school_username，只检查该账号
+                if school_username and acc_username != school_username:
+                    continue
+                
+                # 兼容旧格式：如果 account_info 是字符串（密码），跳过
+                if isinstance(account_info, str):
+                    continue
+                
+                # 获取欠费次数，默认为 0
+                overdue_count = account_info.get("overdue_count", 0)
+                
+                # 如果欠费次数大于 0，记录该账号
+                if overdue_count > 0:
+                    # 尝试从备份文件中读取账号的真实姓名
+                    # 备份文件路径：school_accounts/{acc_username}/{acc_username}_backup.json
+                    name = None
+                    try:
+                        # 构造备份文件路径
+                        backup_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, acc_username)
+                        backup_file = os.path.join(backup_dir, f"{acc_username}_backup.json")
+                        
+                        # 如果备份文件存在，读取姓名
+                        if os.path.exists(backup_file):
+                            with open(backup_file, "r", encoding="utf-8") as f:
+                                backup_data = json.load(f)
+                                # 从 userInfo 中获取姓名
+                                user_info = backup_data.get("userInfo", {})
+                                name = user_info.get("name")
+                    except Exception as e:
+                        # 读取备份文件失败，记录警告但不影响主流程
+                        logging.warning(
+                            f"[欠费检查] 读取账号 {acc_username} 的备份文件失败: {e}"
+                        )
+                    
+                    # 将欠费账号信息添加到列表
+                    overdue_accounts.append({
+                        "username": acc_username,
+                        "overdue_count": overdue_count,
+                        "name": name or acc_username  # 如果没有姓名，使用用户名
+                    })
+            
+            # 返回检查结果
+            return jsonify({
+                "success": True,
+                "has_overdue": len(overdue_accounts) > 0,  # 是否存在欠费
+                "overdue_accounts": overdue_accounts
+            })
+        
+        except Exception as e:
+            # 捕获所有异常，记录日志并返回错误
+            logging.error(f"[欠费检查] 检查欠费状态失败: {e}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"检查欠费状态失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/clear_overdue", methods=["POST"])
+    @login_required
+    def clear_overdue():
+        """
+        清零学校账号的欠费记录（占位功能）
+        
+        功能说明：
+        - 将指定学校账号的 overdue_count 字段设置为 0
+        - 这是一个占位功能，实际应用中应该先验证支付后再清零
+        - 在真实环境中，此接口应该：
+          1. 验证用户的支付凭证
+          2. 调用支付平台API确认支付成功
+          3. 记录支付日志
+          4. 清零欠费计数
+        
+        请求参数（JSON）：
+        - school_username: 必需，学校账号用户名
+        
+        返回格式（JSON）：
+        - 成功：{"success": true, "message": "欠费已清零"}
+        - 失败：{"success": false, "message": "错误信息"}
+        
+        注意事项：
+        - 当前为占位实现，直接清零不进行任何支付验证
+        - TODO: 集成实际的支付验证流程
+        """
+        try:
+            # 从请求体中获取参数
+            data = request.get_json() or {}
+            # 必需参数：要清零的学校账号用户名
+            school_username = data.get("school_username")
+            
+            # 参数校验
+            if not school_username:
+                return jsonify({
+                    "success": False,
+                    "message": "缺少必需参数：school_username"
+                }), 400
+            
+            # 获取当前认证用户名
+            auth_username = g.user
+            
+            # 加载该认证用户的所有学校账号配置
+            school_accounts = g.api_instance._load_user_school_accounts(auth_username)
+            
+            # 检查指定的学校账号是否存在
+            if school_username not in school_accounts:
+                return jsonify({
+                    "success": False,
+                    "message": f"学校账号 {school_username} 不存在"
+                }), 404
+            
+            # 获取账号信息
+            account_info = school_accounts[school_username]
+            
+            # 兼容旧格式：如果 account_info 是字符串（密码），转换为新格式
+            if isinstance(account_info, str):
+                account_info = {
+                    "password": account_info,
+                    "ua": None,
+                    "overdue_count": 0
+                }
+                school_accounts[school_username] = account_info
+            
+            # 记录清零前的欠费次数（用于日志）
+            old_overdue_count = account_info.get("overdue_count", 0)
+            
+            # 清零欠费计数
+            account_info["overdue_count"] = 0
+            
+            # 保存更新后的学校账号配置
+            g.api_instance._save_user_school_accounts(auth_username, school_accounts)
+            
+            # 记录日志
+            logging.info(
+                f"[欠费清零] 用户 {auth_username} 的学校账号 {school_username} "
+                f"欠费已清零（清零前：{old_overdue_count} 次）"
+            )
+            
+            # 返回成功响应
+            return jsonify({
+                "success": True,
+                "message": "欠费已清零"
+            })
+        
+        except Exception as e:
+            # 捕获所有异常，记录日志并返回错误
+            logging.error(f"[欠费清零] 清零欠费失败: {e}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"清零欠费失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/overdue-accounts", methods=["GET"])
+    @admin_required
+    def admin_get_overdue_accounts():
+        """
+        获取所有有欠费的学校账号列表（仅管理员可访问）
+        
+        功能说明：
+        1. 遍历所有认证用户的 school_accounts 配置文件
+        2. 查找 overdue_count > 0 的学校账号
+        3. 从对应的 {username}_backup.json 文件中读取用户详细信息（姓名、学号等）
+        4. 按欠费次数从高到低排序
+        
+        请求方法：GET
+        权限要求：管理员权限（admin_required装饰器）
+        
+        查询参数：无
+        
+        返回数据（JSON格式）：
+        {
+            "success": true,
+            "accounts": [
+                {
+                    "auth_username": "user1",         // 认证系统用户名
+                    "school_username": "202001",      // 学校账号用户名
+                    "overdue_count": 5,               // 欠费次数
+                    "name": "张三",                    // 姓名（从备份文件读取）
+                    "student_id": "202001",           // 学号（从备份文件读取）
+                    "has_backup": true                // 是否存在备份文件
+                },
+                ...
+            ],
+            "total": 10  // 欠费账号总数
+        }
+        
+        使用场景：
+        - 管理员监控：查看所有有欠费记录的学校账号
+        - 财务审计：统计欠费情况
+        - 催费提醒：为欠费用户发送通知
+        
+        注意事项：
+        - 仅管理员和超级管理员可以访问此接口
+        - 返回的列表按欠费次数从高到低排序
+        - 如果备份文件不存在或读取失败，name 显示为 "未知"
+        """
+        try:
+            # ========== 权限检查：确认当前用户是管理员 ==========
+            current_user = g.user
+            
+            # 获取用户组信息
+            # 返回值可能是：user, admin, super_admin 等
+            user_group = auth_system.get_user_group(current_user)
+            
+            # 只有管理员和超级管理员可以访问此接口
+            if user_group not in ["admin", "super_admin"]:
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，仅管理员可查看欠费账号"
+                }), 403
+            
+            # ========== 初始化欠费账号列表 ==========
+            # 用于存储所有找到的欠费账号信息
+            overdue_accounts = []
+            
+            # ========== 获取所有系统用户列表 ==========
+            # 遍历所有用户，检查他们的学校账号是否有欠费
+            
+            # 从权限配置中获取所有用户
+            user_groups = auth_system.permissions.get("user_groups", {})
+            all_usernames = set(user_groups.keys())
+            
+            # 添加超级管理员账号（超级管理员可能不在 user_groups 中）
+            super_admin = auth_system.config.get("Admin", "super_admin", fallback="admin")
+            all_usernames.add(super_admin)
+            
+            # ========== 遍历所有用户，查找欠费账号 ==========
+            for auth_username in all_usernames:
+                try:
+                    # 读取该用户的所有学校账号配置
+                    # 文件路径：school_accounts/{auth_username}.json
+                    # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
+                    school_accounts = background_task_manager._load_user_school_accounts(auth_username)
+                    
+                    # 遍历该用户的所有学校账号
+                    for school_username, account_info in school_accounts.items():
+                        # 兼容旧格式：如果 account_info 是字符串（密码），跳过
+                        if isinstance(account_info, str):
+                            continue
+                        
+                        # 获取欠费次数，默认为 0
+                        overdue_count = account_info.get('overdue_count', 0)
+                        
+                        # 只处理有欠费的账号（overdue_count > 0）
+                        if overdue_count > 0:
+                            # ========== 从备份文件中读取账号详细信息 ==========
+                            # 备份文件路径：school_accounts/{school_username}_backup.json
+                            backup_file = os.path.join(
+                                background_task_manager.user_dir,
+                                f"{school_username}_backup.json"
+                            )
+                            
+                            # 初始化默认值
+                            name = "未知"  # 如果读取失败，显示"未知"
+                            student_id = school_username  # 默认使用学校用户名作为学号
+                            has_backup = False  # 标记是否存在备份文件
+                            
+                            # 尝试读取备份文件
+                            if os.path.exists(backup_file):
+                                try:
+                                    # 打开并解析 JSON 备份文件
+                                    with open(backup_file, 'r', encoding='utf-8') as f:
+                                        backup_data = json.load(f)
+                                    
+                                    # 从 userInfo 字段中提取信息
+                                    user_info = backup_data.get('userInfo', {})
+                                    name = user_info.get('name', '未知')  # 姓名
+                                    student_id = user_info.get('account', school_username)  # 学号
+                                    has_backup = True  # 标记备份文件存在
+                                except Exception as e:
+                                    # 备份文件读取失败，使用默认值
+                                    logging.warning(
+                                        f"[欠费查询] 读取备份文件失败 {backup_file}: {e}"
+                                    )
+                            
+                            # ========== 将欠费账号信息添加到结果列表 ==========
+                            overdue_accounts.append({
+                                "auth_username": auth_username,  # 认证系统用户名
+                                "school_username": school_username,  # 学校账号用户名
+                                "overdue_count": overdue_count,  # 欠费次数
+                                "name": name,  # 姓名
+                                "student_id": student_id,  # 学号
+                                "has_backup": has_backup  # 是否有备份文件
+                            })
+                
+                except Exception as e:
+                    # 某个用户的账号读取失败，记录警告并继续处理其他用户
+                    logging.warning(
+                        f"[欠费查询] 读取用户 {auth_username} 的学校账号失败: {e}"
+                    )
+                    continue
+            
+            # ========== 按欠费次数从高到低排序 ==========
+            # 欠费次数越多，排在越前面
+            overdue_accounts.sort(key=lambda x: x['overdue_count'], reverse=True)
+            
+            # ========== 返回结果 ==========
+            return jsonify({
+                "success": True,
+                "accounts": overdue_accounts,  # 欠费账号列表
+                "total": len(overdue_accounts)  # 欠费账号总数
+            })
+        
+        except Exception as e:
+            # ========== 异常处理 ==========
+            # 记录详细的错误日志，包括堆栈信息
+            logging.error(f"[欠费查询] 获取欠费账号失败: {e}", exc_info=True)
+            
+            # 返回错误响应
+            return jsonify({
+                "success": False,
+                "message": "获取欠费账号失败"
             }), 500
 
     # ==============================================================================

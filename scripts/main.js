@@ -4548,17 +4548,50 @@ function refreshMobileSessionPicker() {
               );
 
             // [修复] 绑定CDN和密码恢复标签页的点击事件
-            const modalCdnTab = $("admin-tab-cdn_modal");
-            const modalBruteforceTab = $("admin-tab-bruteforce_modal");
+            // 
+            // 功能说明：
+            // 为管理面板中的CDN和密码恢复标签按钮添加点击事件监听器
+            // 点击后调用switchAdminTab函数切换到对应的管理面板
+            //
+            // CDN标签：用于配置和管理内容分发网络（CDN）设置
+            // 密码恢复标签：用于执行密码破解/恢复任务（仅超级管理员）
+            const modalCdnTab = $("admin-tab-cdn_modal");             // 获取CDN标签按钮元素
+            const modalBruteforceTab = $("admin-tab-bruteforce_modal"); // 获取密码恢复标签按钮元素
 
-            if (modalCdnTab)
+            // [CDN标签事件绑定]
+            // 检查CDN标签元素是否存在（防止空指针错误）
+            if (modalCdnTab) {
+              // 添加点击事件监听器
+              // 当用户点击CDN标签时，调用switchAdminTab("cdn")切换到CDN管理面板
               modalCdnTab.addEventListener("click", () =>
                 switchAdminTab("cdn")
               );
-            if (modalBruteforceTab)
+              // [调试日志] 记录事件绑定成功
+              console.log("[事件绑定] CDN标签点击事件已绑定");
+            } else {
+              // [警告] 如果找不到CDN标签元素，记录警告信息
+              // 这可能意味着HTML结构有变化或元素ID不匹配
+              console.warn("[事件绑定警告] 未找到CDN标签元素 (ID: admin-tab-cdn_modal)");
+            }
+            
+            // [密码恢复标签事件绑定]
+            // 检查密码恢复标签元素是否存在（防止空指针错误）
+            if (modalBruteforceTab) {
+              // 添加点击事件监听器
+              // 当用户点击密码恢复标签时，调用switchAdminTab("bruteforce")切换到密码恢复面板
               modalBruteforceTab.addEventListener("click", () =>
                 switchAdminTab("bruteforce")
               );
+              // [调试日志] 记录事件绑定成功
+              console.log("[事件绑定] 密码恢复标签点击事件已绑定");
+            } else {
+              // [警告] 如果找不到密码恢复标签元素，记录警告信息
+              // 可能原因：
+              // 1. HTML中元素ID拼写错误
+              // 2. 元素尚未加载到DOM中
+              // 3. 元素被移除或修改
+              console.warn("[事件绑定警告] 未找到密码恢复标签元素 (ID: admin-tab-bruteforce_modal)");
+            }
 
             const tabsContainer = modalAdminPanel.querySelector(
               ".flex.border-b-2.border-slate-200"
@@ -5071,20 +5104,60 @@ function refreshMobileSessionPicker() {
         return result || permissionKey;
       }
 
+      /**
+       * 检查当前用户是否拥有指定的管理员权限
+       * 
+       * 功能说明：
+       * 1. 向后端API发送权限检查请求
+       * 2. 使用当前会话ID (sessionUUID) 进行身份验证
+       * 3. 返回布尔值表示用户是否拥有该权限
+       * 
+       * @param {string} permissionName - 要检查的权限名称（如 "god_mode", "manage_users" 等）
+       * @returns {Promise<boolean>} - 如果用户拥有该权限返回true，否则返回false
+       */
       async function checkAdminPermission(permissionName) {
         try {
+          // [调试日志] 记录权限检查的开始，便于追踪问题
+          console.log(`[权限检查] 开始检查权限: ${permissionName}, sessionUUID: ${sessionUUID ? '已设置' : '未设置'}`);
+          
+          // 向后端发送POST请求，检查指定权限
+          // API端点: /auth/check_permission
+          // 请求体: { permission: "权限名称" }
           const response = await fetch("/auth/check_permission", {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
-              "X-Session-ID": sessionUUID,
+              "Content-Type": "application/json",  // 指定请求体格式为JSON
+              "X-Session-ID": sessionUUID,         // 附加会话ID用于身份验证
             },
-            body: JSON.stringify({ permission: permissionName }),
+            body: JSON.stringify({ permission: permissionName }),  // 将权限名称序列化为JSON字符串
           });
+          
+          // 解析服务器返回的JSON响应
           const result = await response.json();
+          
+          // [调试日志] 记录权限检查的结果，包含完整的响应数据
+          console.log(`[权限检查] ${permissionName} 检查结果:`, {
+            success: result.success,              // API调用是否成功
+            has_permission: result.has_permission, // 用户是否拥有该权限
+            response: result                       // 完整的响应对象（用于调试）
+          });
+          
+          // 返回权限检查结果
+          // 只有当API调用成功(success=true)且用户拥有权限(has_permission=true)时才返回true
           return result.success && result.has_permission;
         } catch (e) {
+          // 捕获任何异常（网络错误、解析错误等）
+          // 使用自定义错误日志函数记录详细错误信息
           logMessage_Error(`检查权限 ${permissionName} 失败:`, e);
+          
+          // [调试日志] 额外记录错误详情，便于调试
+          console.error(`[权限检查ERROR] ${permissionName} 检查失败:`, {
+            error: e,
+            message: e.message,
+            stack: e.stack
+          });
+          
+          // 发生错误时，出于安全考虑，默认返回false（无权限）
           return false;
         }
       }
@@ -5117,29 +5190,77 @@ function refreshMobileSessionPicker() {
           let canViewCaptchaHistory = false;
           if (!skipAuthCheck) {
             try {
+              // [权限检查] 并行执行多个权限检查，提高效率
+              // 
+              // 使用Promise.all并行执行所有权限检查API调用
+              // 这比串行调用快得多，因为不需要等待每个请求完成后再发起下一个
+              //
+              // 权限检查数组索引说明：
+              // [0] manage_users        - 管理用户权限（创建、编辑、删除用户）
+              // [1] view_messages       - 查看消息权限（查看用户间的消息记录）
+              // [2] manage_system       - 系统管理权限（配置系统参数、CDN等）
+              // [3] god_mode            - 上帝模式权限（最高权限，包括密码恢复等危险操作）
+              // [4] (auth status check) - 身份验证状态检查
+              // [5] view_logs           - 查看日志权限（系统日志、操作日志）
+              // [6] view_captcha_history- 查看验证码历史权限
               const permissionChecks = await Promise.all([
-                checkAdminPermission("manage_users"),
-                checkAdminPermission("view_messages"),
-                checkAdminPermission("manage_system"),
-                checkAdminPermission("god_mode"),
-                checkAuthStatus(),
-                checkAdminPermission("view_logs"),
-                checkAdminPermission("view_captcha_history"),
+                checkAdminPermission("manage_users"),          // 索引0: 用户管理权限
+                checkAdminPermission("view_messages"),         // 索引1: 消息查看权限
+                checkAdminPermission("manage_system"),         // 索引2: 系统管理权限
+                checkAdminPermission("god_mode"),              // 索引3: 上帝模式权限 ← bruteforce需要此权限
+                checkAuthStatus(),                             // 索引4: 身份验证状态
+                checkAdminPermission("view_logs"),             // 索引5: 日志查看权限
+                checkAdminPermission("view_captcha_history"),  // 索引6: 验证码历史查看权限
               ]);
 
-              canManageUsers = permissionChecks[0];
-              canViewMessages = permissionChecks[1];
-              canManageSystem = permissionChecks[2];
-              hasGodMode = permissionChecks[3];
-              isAuthenticated = permissionChecks[4];
-              canViewLogs = permissionChecks[5];
-              canViewCaptchaHistory = permissionChecks[6];
+              // [权限赋值] 从Promise.all的结果数组中提取各项权限
+              // 每个权限对应上面数组的索引位置
+              canManageUsers = permissionChecks[0];        // 用户管理权限结果
+              canViewMessages = permissionChecks[1];       // 消息查看权限结果
+              canManageSystem = permissionChecks[2];       // 系统管理权限结果
+              hasGodMode = permissionChecks[3];            // 上帝模式权限结果 ← 这是bruteforce标签的关键
+              isAuthenticated = permissionChecks[4];       // 身份验证状态结果
+              canViewLogs = permissionChecks[5];           // 日志查看权限结果
+              canViewCaptchaHistory = permissionChecks[6]; // 验证码历史权限结果
+              
+              // [调试日志] 记录所有权限检查的完整结果
+              // 这对于调试权限问题非常重要，可以一目了然地看到用户拥有哪些权限
+              console.log("[权限检查汇总] 所有权限检查完成:", {
+                canManageUsers: canManageUsers,              // 是否可管理用户
+                canViewMessages: canViewMessages,            // 是否可查看消息
+                canManageSystem: canManageSystem,            // 是否可管理系统
+                hasGodMode: hasGodMode,                      // 是否有上帝模式（重要：影响bruteforce显示）
+                isAuthenticated: isAuthenticated,            // 是否已认证
+                canViewLogs: canViewLogs,                    // 是否可查看日志
+                canViewCaptchaHistory: canViewCaptchaHistory,// 是否可查看验证码历史
+                userGroup: currentUserData?.group || "未知",  // 当前用户组
+                username: currentUserData?.username || "未知" // 当前用户名
+              });
             } catch (e) {
+              // [异常处理] 如果并行检查过程中发生任何错误，记录错误并设置所有权限为false
+              // 
+              // 可能的错误原因：
+              // 1. 网络连接失败
+              // 2. 服务器返回错误状态
+              // 3. 响应JSON解析失败
+              // 4. sessionUUID无效或未设置
               logMessage_Error("并行检查权限时出错:", e);
+              
+              // [调试日志] 记录详细的错误信息
+              console.error("[权限检查错误] 并行检查失败，错误详情:", {
+                error: e,
+                message: e.message,
+                stack: e.stack,
+                sessionUUID: sessionUUID ? "已设置" : "未设置",
+                currentUserData: currentUserData
+              });
+              
+              // 出于安全考虑，发生错误时将所有权限设置为false
+              // 这确保在权限检查失败时，用户不会意外获得不应有的权限
               canManageUsers = false;
               canViewMessages = false;
               canManageSystem = false;
-              hasGodMode = false;
+              hasGodMode = false;          // ← bruteforce标签将被隐藏
               isAuthenticated = false;
               canViewLogs = false;
               canViewCaptchaHistory = false;
@@ -5166,11 +5287,82 @@ function refreshMobileSessionPicker() {
           if (cdnTab)
             cdnTab.style.display = canManageSystem ? "block" : "none";
 
-          // [修复] 显示密码恢复标签 (仅超级管理员)
-          // 修复说明：使用hasGodMode权限检查结果，而不是直接检查currentUserData.group
-          // 这样确保权限判断的一致性和准确性
+          // [修复] 显示密码恢复标签 - 使用用户组别判断而非权限判断
+          // 
+          // 修复原因：
+          // 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
+          // 例如：user组的用户可能被配置为拥有 manage_users 或 god_mode 权限
+          // 因此，不能通过检查权限来判断用户是否是真正的管理员
+          // 必须直接读取用户组别（group）来准确判断用户的管理员身份
+          // 
+          // 功能说明：
+          // 1. 根据用户的组别决定是否显示"密码恢复"标签
+          // 2. 只有 "admin" 组和 "super_admin" 组的用户可以看到此标签
+          // 3. 该功能用于合法的账号密码恢复，因此必须严格限制为管理员专属
+          //
+          // 技术实现：
+          // - 从 currentUserData 全局对象中读取用户组别（group属性）
+          // - currentUserData.group 在用户登录时由后端API设置
+          // - 如果未设置或无效，默认为 "guest" 以确保安全
+          // - 使用严格的字符串比较判断组别是否为管理员
+          //
+          // 安全考虑：
+          // - 密码恢复功能是高风险操作，只应对真正的管理员开放
+          // - 即使普通用户拥有管理员权限，也不应该访问此功能
+          // - 通过组别判断可以严格控制访问权限，避免权限滥用
+          //
+          // 与旧版本的区别：
+          // - 旧版本：使用 (canManageUsers || hasGodMode) 权限判断
+          // - 新版本：使用 (userGroup === "admin" || userGroup === "super_admin") 组别判断
+          // - 优势：组别判断更加直接和准确，不会因为差分权限配置而误判
           if (bruteforceTab) {
-             bruteforceTab.style.display = hasGodMode ? "block" : "none";
+            // 从全局对象 currentUserData 中获取用户组别
+            // currentUserData 由登录流程设置，包含用户的完整身份信息
+            // 如果 currentUserData 未定义或 group 属性缺失，默认为 "guest"
+            const userGroup = currentUserData?.group || "guest";
+            
+            // 判断用户是否是管理员或超级管理员（通过组别）
+            // 只有这两个组别的用户才能访问密码恢复功能
+            const isAdmin = userGroup === "admin" || userGroup === "super_admin";
+            
+            // [调试日志] 记录密码恢复Tab的显示控制信息
+            // 这对于调试权限问题非常重要，可以清楚地看到判断依据
+            console.log("[密码恢复Tab] 组别检查:", {
+              userGroup: userGroup,                      // 用户的组别（来自 currentUserData.group）
+              isAdmin: isAdmin,                          // 是否是管理员（基于组别判断）
+              elementFound: !!bruteforceTab,             // 是否找到了按钮元素
+              currentDisplay: bruteforceTab.style.display, // 当前的display样式
+              willDisplay: isAdmin ? "block" : "none"    // 即将设置的display值
+            });
+            
+            // 根据组别设置按钮的显示状态
+            // 如果 isAdmin 为 true（用户组为 admin 或 super_admin），设置display为"block"（显示）
+            // 如果 isAdmin 为 false（用户组为其他），设置display为"none"（隐藏）
+            bruteforceTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 验证display属性是否设置成功
+            // 使用getComputedStyle获取元素的实际计算样式（包括CSS影响）
+            const computedDisplay = window.getComputedStyle(bruteforceTab).display;
+            console.log("[密码恢复Tab] 显示状态设置完成:", {
+              setDisplay: bruteforceTab.style.display,   // 设置的display值
+              computedDisplay: computedDisplay,          // 实际计算的display值
+              isVisible: computedDisplay !== "none"      // 是否可见
+            });
+            
+            // [健壮性检查] 如果设置后仍然不可见，记录警告
+            // 这可能表示有CSS规则覆盖了我们的设置
+            if (isAdmin && computedDisplay === "none") {
+              console.warn("[密码恢复Tab警告] 尽管用户是管理员，但按钮仍然不可见。可能的原因:", {
+                inlineStyle: bruteforceTab.style.cssText,           // 内联样式
+                classList: Array.from(bruteforceTab.classList),     // 应用的CSS类
+                parentDisplay: bruteforceTab.parentElement ? 
+                  window.getComputedStyle(bruteforceTab.parentElement).display : null  // 父元素显示状态
+              });
+            }
+          } else {
+            // [错误日志] 如果找不到按钮元素，记录错误
+            // 这表示HTML结构可能有问题，或者元素ID不匹配
+            console.error("[密码恢复Tab错误] 未找到ID为'admin-tab-bruteforce_modal'的元素");
           }
 
           if (modalCaptchaTab)
@@ -5440,15 +5632,75 @@ function refreshMobileSessionPicker() {
             stopHealthAutoRefresh();
           }
         } else if (tab === "bruteforce") {
-          // [修复] 添加密码恢复切换逻辑
+          // [修复] 密码恢复标签切换逻辑
+          //
+          // 功能说明：
+          // 当用户点击"密码恢复"标签时，此代码块负责：
+          // 1. 高亮显示当前选中的标签（改变颜色和边框）
+          // 2. 显示密码恢复管理面板
+          // 3. 加载当前的密码恢复任务状态
+          // 4. 停止健康状态自动刷新（因为切换到了其他面板）
+          //
+          // 安全说明：
+          // 密码恢复功能仅供拥有god_mode权限的超级管理员使用
+          // 用于合法的账号密码找回场景，切勿滥用
+          
+          // 获取密码恢复标签按钮元素（ID: admin-tab-bruteforce_modal）
           const bruteforceTab = $("admin-tab-bruteforce_modal");
+          
+          // 获取密码恢复面板容器元素（ID: admin-bruteforce-panel_modal）
           const bruteforcePanel = $("admin-bruteforce-panel_modal");
+          
+          // [调试日志] 记录标签切换操作
+          console.log("[标签切换] 切换到密码恢复标签:", {
+            tabElement: !!bruteforceTab,      // 标签元素是否存在
+            panelElement: !!bruteforcePanel,  // 面板元素是否存在
+            currentTab: tab                   // 当前标签名称
+          });
+          
+          // 检查标签和面板元素是否都存在
+          // 只有两者都存在时才执行切换操作，避免空指针错误
           if (bruteforceTab && bruteforcePanel) {
+            // [样式更新] 为选中的标签添加高亮样式
+            // text-sky-600: 天蓝色文字
+            // border-sky-600: 天蓝色边框
             bruteforceTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [样式更新] 移除未选中状态的样式
+            // text-slate-400: 灰色文字（未选中状态）
+            // border-transparent: 透明边框（未选中状态）
             bruteforceTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使密码恢复面板可见
+            // Tailwind CSS的hidden类会设置display: none
             bruteforcePanel.classList.remove("hidden");
+            
+            // [调试日志] 记录样式更新成功
+            console.log("[标签切换] 密码恢复标签样式已更新:", {
+              tabClasses: Array.from(bruteforceTab.classList),    // 标签的所有CSS类
+              panelClasses: Array.from(bruteforcePanel.classList), // 面板的所有CSS类
+              panelVisible: !bruteforcePanel.classList.contains("hidden") // 面板是否可见
+            });
+            
+            // [加载数据] 调用loadBruteforceStatus函数加载密码恢复任务状态
+            // 该函数会从后端获取所有正在进行的密码恢复任务
+            // 并更新界面上的任务列表
+            console.log("[数据加载] 开始加载密码恢复任务状态...");
             loadBruteforceStatus();
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了密码恢复面板，不再需要刷新健康状态
             stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 密码恢复面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到密码恢复标签，元素缺失:", {
+              bruteforceTab: !!bruteforceTab,     // 标签元素是否存在
+              bruteforcePanel: !!bruteforcePanel, // 面板元素是否存在
+              missingElement: !bruteforceTab ? "admin-tab-bruteforce_modal" : 
+                              !bruteforcePanel ? "admin-bruteforce-panel_modal" : "未知"
+            });
           }
         } else {
           if (profileTab && profilePanel) {
@@ -7596,6 +7848,18 @@ function refreshMobileSessionPicker() {
                 <p class="text-xs text-slate-500">会话限制: ${
                   user.max_sessions === -1 ? "无限制" : user.max_sessions + "个"
                 }</p>
+                <p class="text-xs text-slate-500">
+                  可用次数: 
+                  <span id="available-runs-${user.auth_username}" class="${
+                  user.available_runs === -1 
+                    ? "text-green-600 font-semibold" 
+                    : user.available_runs === 0 
+                    ? "text-red-600 font-semibold" 
+                    : "text-blue-600 font-semibold"
+                }">
+                    ${user.available_runs === -1 ? "无限制" : user.available_runs + "次"}
+                  </span>
+                </p>
                 <p class="text-xs ${
                   user["2fa_enabled"] || user.tfa_enabled
                     ? "text-green-600"
@@ -7634,6 +7898,11 @@ function refreshMobileSessionPicker() {
                             user.auth_username
                           }', ${user.max_sessions || 1})">
                     会话管理
+                  </button>
+
+                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border-cyan-100 border" 
+                          onclick="editAvailableRuns('${user.auth_username}', ${user.available_runs !== undefined ? user.available_runs : 0})">
+                    修改次数
                   </button>
 
                   <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100 border" 
@@ -8132,6 +8401,162 @@ function refreshMobileSessionPicker() {
           }
         } catch (e) {
           showModalAlert("操作失败: " + e.message, "错误");
+        }
+      }
+
+      /**
+       * 编辑用户的可用执行次数
+       * 
+       * 功能说明：
+       * 1. 弹出 SweetAlert2 输入框，让管理员输入新的可用次数
+       * 2. 支持输入 -1 表示无限次数，0 表示无可用次数，正数表示具体次数
+       * 3. 验证输入的合法性（必须是整数且 >= -1）
+       * 4. 调用后端API更新用户的可用次数
+       * 5. 更新成功后刷新用户列表显示
+       * 
+       * @param {string} username - 要修改的用户名
+       * @param {number} currentRuns - 当前的可用次数值
+       */
+      async function editAvailableRuns(username, currentRuns) {
+        // 步骤1：使用 SweetAlert2 弹出输入对话框
+        // 提供友好的用户界面，让管理员输入新的可用次数值
+        const { value: newRuns } = await Swal.fire({
+          title: "修改可用执行次数",  // 对话框标题
+          html: `
+            <div class="text-left mb-4">
+              <p class="text-sm text-slate-600 mb-2">用户：<strong class="text-slate-800">${username}</strong></p>
+              <p class="text-sm text-slate-600 mb-2">当前次数：<strong class="text-blue-600">${
+                currentRuns === -1 ? "无限制" : currentRuns + "次"
+              }</strong></p>
+              <div class="bg-blue-50 border-l-4 border-blue-500 p-3 mt-3">
+                <p class="text-xs text-blue-700">💡 提示：</p>
+                <ul class="text-xs text-blue-600 mt-1 ml-4 list-disc">
+                  <li>输入 <strong>-1</strong> 表示无限次数</li>
+                  <li>输入 <strong>0</strong> 表示暂停使用权限</li>
+                  <li>输入正整数表示具体可用次数</li>
+                </ul>
+              </div>
+            </div>
+          `,
+          input: "number",  // 输入框类型为数字
+          inputLabel: "请输入新的可用次数",  // 输入框标签
+          inputValue: currentRuns,  // 默认值为当前的可用次数
+          showCancelButton: true,  // 显示取消按钮
+          confirmButtonText: "确认修改",  // 确认按钮文本
+          cancelButtonText: "取消",  // 取消按钮文本
+          confirmButtonColor: "#3085d6",  // 确认按钮颜色
+          cancelButtonColor: "#d33",  // 取消按钮颜色
+          // 步骤2：输入验证器 - 在用户点击确认前验证输入的合法性
+          inputValidator: (value) => {
+            // 检查输入是否为空（允许输入0，所以需要特殊判断）
+            if (value === null || value === undefined || value === "") {
+              return "请输入有效的次数！";
+            }
+            
+            // 将输入转换为整数
+            const numValue = parseInt(value);
+            
+            // 检查是否为有效的整数
+            if (isNaN(numValue)) {
+              return "请输入有效的整数！";
+            }
+            
+            // 检查取值范围：必须 >= -1
+            // -1 表示无限次数，0 表示无可用次数，正数表示具体次数
+            if (numValue < -1) {
+              return "次数不能小于-1！（-1表示无限次数）";
+            }
+            
+            // 验证通过，返回 undefined 表示没有错误
+            return undefined;
+          },
+        });
+
+        // 步骤3：检查用户是否点击了取消按钮
+        // 如果 newRuns 为 undefined，说明用户取消了操作，直接返回
+        if (newRuns === undefined) {
+          return;
+        }
+
+        // 步骤4：调用更新函数，将新的可用次数发送到后端
+        await updateAvailableRuns(username, parseInt(newRuns));
+      }
+
+      /**
+       * 更新用户的可用执行次数（调用后端API）
+       * 
+       * 功能说明：
+       * 1. 发送 POST 请求到后端 API
+       * 2. 传递用户名和新的可用次数值
+       * 3. 处理响应结果，显示成功或失败消息
+       * 4. 成功后刷新用户列表以更新显示
+       * 
+       * @param {string} username - 要修改的用户名
+       * @param {number} newRuns - 新的可用次数值
+       */
+      async function updateAvailableRuns(username, newRuns) {
+        try {
+          // 步骤1：显示加载提示，告知用户正在处理
+          Swal.fire({
+            title: "处理中...",
+            text: "正在更新可用次数",
+            allowOutsideClick: false,  // 禁止点击外部关闭
+            allowEscapeKey: false,  // 禁止按ESC键关闭
+            didOpen: () => {
+              Swal.showLoading();  // 显示加载动画
+            },
+          });
+
+          // 步骤2：发送 POST 请求到后端 API
+          const response = await fetch("/api/admin/update_available_runs", {
+            method: "POST",  // HTTP方法为POST
+            headers: {
+              "Content-Type": "application/json",  // 请求体格式为JSON
+              "X-Session-ID": sessionUUID,  // 传递会话ID用于身份验证
+            },
+            // 步骤3：将请求数据转换为JSON字符串
+            body: JSON.stringify({
+              username: username,  // 目标用户名
+              available_runs: newRuns,  // 新的可用次数
+            }),
+          });
+
+          // 步骤4：解析响应的JSON数据
+          const result = await response.json();
+
+          // 步骤5：根据响应结果显示相应的提示消息
+          if (result.success) {
+            // 成功情况：显示成功消息
+            Swal.fire({
+              icon: "success",  // 成功图标
+              title: "更新成功",  // 标题
+              text: result.message || "可用次数已更新",  // 显示后端返回的消息
+              confirmButtonText: "确定",  // 确认按钮文本
+            });
+
+            // 步骤6：刷新用户列表，更新界面显示
+            // 这会重新加载所有用户数据，确保显示的次数是最新的
+            loadAdminUsers();
+          } else {
+            // 失败情况：显示错误消息
+            Swal.fire({
+              icon: "error",  // 错误图标
+              title: "更新失败",  // 标题
+              text: result.message || "操作失败，请重试",  // 显示错误原因
+              confirmButtonText: "确定",  // 确认按钮文本
+            });
+          }
+        } catch (error) {
+          // 步骤7：捕获网络错误或其他异常
+          console.error("更新可用次数失败:", error);  // 在控制台记录错误详情
+          
+          // 显示友好的错误提示给用户
+          Swal.fire({
+            icon: "error",  // 错误图标
+            title: "网络错误",  // 标题
+            text: "网络请求失败，请检查网络连接后重试",  // 错误说明
+            confirmButtonText: "确定",  // 确认按钮文本
+          });
         }
       }
 
@@ -10694,6 +11119,282 @@ function refreshMobileSessionPicker() {
         `;
         }
       }
+
+      // ====================
+      // 短信回复记录查看功能
+      // ====================
+      
+      /**
+       * 打开短信回复记录弹窗（SweetAlert2版本）
+       * 
+       * 功能说明：
+       * 这个函数用于查看和展示用户通过短信回复的内容记录。
+       * 它会调用后端API获取数据，并使用SweetAlert2弹窗以表格形式美观地展示。
+       * 
+       * 主要功能：
+       * 1. 显示加载提示：在获取数据时显示"加载中"的提示
+       * 2. 调用后端API：从 /api/sms/reply-logs 获取短信回复记录
+       * 3. 权限检查：处理403权限不足的情况
+       * 4. 数据展示：将记录以表格形式展示在弹窗中
+       * 5. 错误处理：处理网络错误、空数据等各种异常情况
+       * 6. XSS防护：使用escapeHtml函数防止跨站脚本攻击
+       * 
+       * 权限要求：
+       * - 需要管理员或超级管理员权限（admin 或 super_admin 组）
+       * - 后端会自动验证X-Session-ID和用户组别
+       * 
+       * 调用位置：
+       * - PC端：index.html 第7199行的按钮
+       * - 移动端：index.html 第3729行和第5295行的按钮
+       * 
+       * 技术实现：
+       * - 使用async/await处理异步操作
+       * - 使用fetch API调用后端接口
+       * - 使用SweetAlert2.fire()显示各种状态的弹窗
+       * - 使用HTML模板字符串构建表格
+       * 
+       * 错误处理：
+       * - 403权限错误：显示权限不足提示
+       * - 网络错误：显示网络连接失败提示
+       * - 空数据：显示暂无记录提示
+       * - API失败：显示具体的错误信息
+       * 
+       * 安全考虑：
+       * - 使用sessionUUID进行身份认证
+       * - 对所有用户输入内容使用escapeHtml转义，防止XSS攻击
+       * - 后端进行严格的权限验证
+       * 
+       * @returns {Promise<void>} 无返回值，通过弹窗展示结果
+       * @async
+       */
+      async function openSMSReplyLogsModal() {
+        try {
+          // ========================================
+          // 步骤1：显示加载提示
+          // ========================================
+          // 使用SweetAlert2显示一个"加载中"的提示弹窗
+          // 这个弹窗会阻止用户点击外部区域（allowOutsideClick: false）
+          // 不显示确认按钮（showConfirmButton: false）
+          // 显示一个旋转的加载动画（Swal.showLoading()）
+          Swal.fire({
+            title: '加载中...', // 弹窗标题
+            text: '正在获取短信回复记录', // 提示文本
+            allowOutsideClick: false, // 禁止点击外部关闭弹窗
+            showConfirmButton: false, // 不显示确认按钮
+            willOpen: () => {
+              // 弹窗打开时的回调函数
+              // 显示SweetAlert2内置的加载动画（旋转图标）
+              Swal.showLoading();
+            }
+          });
+          
+          // ========================================
+          // 步骤2：调用后端API获取数据
+          // ========================================
+          // 使用fetch API向后端发送GET请求
+          // API端点：/api/sms/reply-logs
+          // 查询参数：limit=50 限制返回最近50条记录
+          // 请求头：X-Session-ID 用于身份认证
+          const response = await fetch('/api/sms/reply-logs?limit=50', {
+            method: 'GET', // 使用GET方法
+            headers: {
+              // 设置请求头，包含会话ID用于身份验证
+              // sessionUUID 是全局变量，在用户登录后设置
+              'X-Session-ID': sessionUUID
+            }
+          });
+          
+          // 解析响应的JSON数据
+          // result格式：{ success: bool, logs: array, total: int, message: string }
+          const result = await response.json();
+          
+          // ========================================
+          // 步骤3：处理权限不足的情况（HTTP 403）
+          // ========================================
+          // 检查HTTP状态码是否为403（Forbidden - 禁止访问）
+          // 这表示用户没有管理员权限，无法访问此功能
+          if (response.status === 403) {
+            // 显示权限不足的错误提示
+            Swal.fire({
+              icon: 'error', // 错误图标（红色X）
+              title: '权限不足', // 错误标题
+              text: result.message || '仅管理员可查看短信回复记录', // 错误信息
+              confirmButtonText: '我知道了' // 确认按钮文本
+            });
+            return; // 提前退出函数，不再继续执行
+          }
+          
+          // ========================================
+          // 步骤4：检查API调用是否成功
+          // ========================================
+          // 检查返回数据中的success字段
+          // 如果为false，表示API调用失败（例如：服务器错误、读取文件失败等）
+          if (!result.success) {
+            // 显示API返回的错误信息
+            Swal.fire({
+              icon: 'error', // 错误图标
+              title: '获取失败', // 错误标题
+              text: result.message || '无法获取短信回复记录', // 显示具体错误信息
+              confirmButtonText: '确定' // 确认按钮文本
+            });
+            return; // 提前退出
+          }
+          
+          // 获取日志数组，如果不存在则使用空数组作为默认值
+          // logs是一个数组，每个元素包含：timestamp, datetime, phone, content, ip
+          const logs = result.logs || [];
+          
+          // ========================================
+          // 步骤5：处理空数据的情况
+          // ========================================
+          // 如果日志数组长度为0，表示还没有任何短信回复记录
+          if (logs.length === 0) {
+            // 显示提示信息
+            Swal.fire({
+              icon: 'info', // 信息图标（蓝色i）
+              title: '暂无记录', // 提示标题
+              text: '还没有收到任何短信回复', // 提示内容
+              confirmButtonText: '知道了' // 确认按钮文本
+            });
+            return; // 提前退出
+          }
+          
+          // ========================================
+          // 步骤6：构建HTML表格
+          // ========================================
+          // 使用模板字符串构建一个HTML表格
+          // 表格包含表头（时间、手机号、回复内容、IP地址）和数据行
+          let tableHTML = `
+            <div class="overflow-x-auto max-h-96">
+              <!-- 外层div设置：
+                   - overflow-x-auto: 横向溢出时显示滚动条
+                   - max-h-96: 最大高度为24rem（384px），超出则显示纵向滚动条
+              -->
+              <table class="w-full text-left text-sm">
+                <!-- 表格样式：
+                     - w-full: 宽度100%
+                     - text-left: 文本左对齐
+                     - text-sm: 小号字体
+                -->
+                <thead class="bg-slate-100 sticky top-0">
+                  <!-- 表头样式：
+                       - bg-slate-100: 浅灰色背景
+                       - sticky top-0: 固定在顶部，滚动时不动（粘性定位）
+                  -->
+                  <tr>
+                    <th class="px-4 py-2">时间</th>
+                    <th class="px-4 py-2">手机号</th>
+                    <th class="px-4 py-2">回复内容</th>
+                    <th class="px-4 py-2">IP地址</th>
+                  </tr>
+                </thead>
+                <tbody>
+          `;
+          
+          // ========================================
+          // 步骤7：遍历日志数组，为每条记录生成一行表格
+          // ========================================
+          // 使用forEach循环遍历logs数组中的每个log对象
+          logs.forEach(log => {
+            // 为每条记录生成一个<tr>行
+            // log对象包含以下字段：
+            // - timestamp: Unix时间戳（数字）
+            // - datetime: 可读时间字符串（例如："2024-01-01 12:00:00"）
+            // - phone: 回复的手机号
+            // - content: 短信回复内容
+            // - ip: 请求来源IP地址
+            
+            tableHTML += `
+                <tr class="border-b hover:bg-slate-50">
+                  <!-- 表格行样式：
+                       - border-b: 底部边框
+                       - hover:bg-slate-50: 鼠标悬停时背景变为浅灰色
+                  -->
+                  <td class="px-4 py-2 whitespace-nowrap">${log.datetime || '未知'}</td>
+                  <!-- 时间列：
+                       - whitespace-nowrap: 文本不换行
+                       - 使用 || '未知' 提供默认值，防止显示undefined
+                  -->
+                  <td class="px-4 py-2">${log.phone || '未知'}</td>
+                  <!-- 手机号列：显示回复的手机号 -->
+                  <td class="px-4 py-2">${escapeHtml(log.content || '')}</td>
+                  <!-- 回复内容列：
+                       - 使用escapeHtml()函数转义HTML特殊字符
+                       - 这是关键的安全措施，防止XSS（跨站脚本）攻击
+                       - 例如：如果用户回复了 "<script>alert('XSS')</script>"
+                         escapeHtml会将其转换为 "&lt;script&gt;alert('XSS')&lt;/script&gt;"
+                         这样就只会显示文本，不会执行脚本代码
+                  -->
+                  <td class="px-4 py-2">${log.ip || '未知'}</td>
+                  <!-- IP地址列：显示请求来源IP -->
+                </tr>
+            `;
+          });
+          
+          // ========================================
+          // 步骤8：完成表格HTML并添加统计信息
+          // ========================================
+          // 关闭tbody和table标签
+          tableHTML += `
+                </tbody>
+              </table>
+            </div>
+            <div class="mt-4 text-sm text-slate-600 text-center">
+              <!-- 统计信息区域：
+                   - mt-4: 顶部外边距（1rem）
+                   - text-sm: 小号字体
+                   - text-slate-600: 深灰色文本
+                   - text-center: 居中对齐
+              -->
+              共 ${result.total || logs.length} 条记录，显示最近 ${logs.length} 条
+              <!-- 显示总记录数和当前显示数量
+                   - result.total: 后端返回的总记录数
+                   - logs.length: 当前显示的记录数（受limit参数限制）
+              -->
+            </div>
+          `;
+          
+          // ========================================
+          // 步骤9：使用SweetAlert2显示最终的表格弹窗
+          // ========================================
+          // 显示包含表格的弹窗
+          Swal.fire({
+            title: '短信回复记录', // 弹窗标题
+            html: tableHTML, // 弹窗内容（HTML格式）
+            width: '800px', // 弹窗宽度，足够宽以容纳表格
+            showCloseButton: true, // 显示右上角的关闭按钮（X）
+            confirmButtonText: '关闭', // 底部确认按钮的文本
+            customClass: {
+              // 自定义CSS类，用于更好的样式控制
+              container: 'sms-reply-logs-modal' // 可用于添加额外的CSS样式
+            }
+          });
+          
+        } catch (error) {
+          // ========================================
+          // 步骤10：处理所有未预期的错误
+          // ========================================
+          // catch块捕获try块中的所有错误
+          // 常见错误类型：
+          // - 网络错误：无法连接到服务器
+          // - JSON解析错误：响应不是有效的JSON
+          // - 其他JavaScript运行时错误
+          
+          // 在控制台输出错误信息，方便开发者调试
+          // console.error会在浏览器开发者工具中显示为红色错误
+          console.error('获取短信回复记录失败:', error);
+          
+          // 显示用户友好的错误提示
+          Swal.fire({
+            icon: 'error', // 错误图标
+            title: '网络错误', // 错误标题
+            text: '无法连接到服务器，请稍后重试', // 错误信息
+            confirmButtonText: '确定', // 确认按钮文本
+            footer: '<span class="text-xs text-slate-400">如果问题持续存在，请联系技术支持</span>' // 底部附加信息
+          });
+        }
+      }
+
       // ==================== 验证码管理功能 ====================
       let verificationCodesCountdownInterval = null;
 
@@ -16059,6 +16760,16 @@ function refreshMobileSessionPicker() {
 
           return;
         }
+        
+        // ========== 添加欠费检查 ==========
+        // 在开始所有账号前，检查所有学校账号是否有欠费
+        const canStart = await checkOverdueBeforeStart();
+        if (!canStart) {
+          // 欠费检查未通过，直接返回不启动任务
+          return;
+        }
+        // ========== 欠费检查结束 ==========
+        
         const use_delay = $("multi-use-delay-check").checked;
         const min_delay = parseInt($("multi-min-delay-input").value) || 0;
         const max_delay = parseInt($("multi-max-delay-input").value) || 300;
@@ -16388,7 +17099,17 @@ function refreshMobileSessionPicker() {
 
           listDiv.querySelectorAll(".btn-account-start").forEach(
             (b) =>
-              (b.onclick = (e) => {
+              (b.onclick = async (e) => {
+                // ========== 添加欠费检查 ==========
+                // 在开始单个账号前，检查该账号是否有欠费
+                const username = e.target.dataset.username;
+                const canStart = await checkOverdueBeforeStart(username);
+                if (!canStart) {
+                  // 欠费检查未通过，直接返回不启动任务
+                  return;
+                }
+                // ========== 欠费检查结束 ==========
+                
                 const checkboxId = isMobile
                   ? "mobile-multi-only-incomplete-check"
                   : "multi-run-only-incomplete-check";
@@ -16396,7 +17117,7 @@ function refreshMobileSessionPicker() {
                   document.getElementById(checkboxId)?.checked ?? true;
                 callPythonAPI(
                   "multi_start_single_account",
-                  e.target.dataset.username,
+                  username,
                   runOnly
                 );
               })
@@ -16575,6 +17296,14 @@ function refreshMobileSessionPicker() {
         if (usernames.length === 0) {
           showModalAlert("请至少选择一个账号再执行“开始选中”。");
           return;
+// ========== 添加欠费检查 ==========
+        // 在开始选中的账号前，检查所有学校账号是否有欠费
+        const canStart = await checkOverdueBeforeStart();
+        if (!canStart) {
+          // 欠费检查未通过，直接返回不启动任务
+          return;
+        }
+        // ========== 欠费检查结束 ==========
         }
         const use_delay = $("multi-use-delay-check")?.checked ?? true;
         const min_delay = parseInt($("multi-min-delay-input")?.value) || 0;
@@ -17818,6 +18547,16 @@ function refreshMobileSessionPicker() {
         runAccumulatedMs = 0;
 
         if (btn.textContent === "开始执行") {
+          // ========== 添加欠费检查 ==========
+          // 在开始任务前，检查当前学校账号是否有欠费
+          // 如果有欠费，会显示弹窗并返回 false，阻止任务启动
+          const canStart = await checkOverdueBeforeStart();
+          if (!canStart) {
+            // 欠费检查未通过，直接返回不启动任务
+            return;
+          }
+          // ========== 欠费检查结束 ==========
+          
           const autoGen = $("auto-gen-all-check").checked;
           if (selectedTaskIndex < 0) {
             showModalAlert("请先选择任务");
@@ -17860,6 +18599,15 @@ function refreshMobileSessionPicker() {
         runAccumulatedMs = 0;
 
         if (btn.textContent === "执行所有") {
+          // ========== 添加欠费检查 ==========
+          // 在开始所有任务前，检查所有学校账号是否有欠费
+          const canStart = await checkOverdueBeforeStart();
+          if (!canStart) {
+            // 欠费检查未通过，直接返回不启动任务
+            return;
+          }
+          // ========== 欠费检查结束 ==========
+          
           const ignoreCompleted = $("run-completed-check").checked;
           const autoGen = $("auto-gen-all-check").checked;
           const taskIndices = [];
@@ -21226,6 +21974,14 @@ async function mobileStartSelectedAccounts() {
     if (selected.length === 0) {
       showModalAlert("请先选择要启动的账号", "错误");
       return;
+// ========== 添加欠费检查 ==========
+    // 在开始选中的账号前，检查所有学校账号是否有欠费
+    const canStart = await checkOverdueBeforeStart();
+    if (!canStart) {
+      // 欠费检查未通过，直接返回不启动任务
+      return;
+    }
+    // ========== 欠费检查结束 ==========
     }
     await multi_startSelected();
     showModalAlert(`正在启动 ${selected.length} 个账号`, "成功");
@@ -21277,6 +22033,14 @@ async function mobileStartAllAccounts() {
     if (!count || count <= 0) {
       showModalAlert("账号列表为空，无法启动", "错误");
       return;
+// ========== 添加欠费检查 ==========
+    // 在开始所有账号前，检查所有学校账号是否有欠费
+    const canStart = await checkOverdueBeforeStart();
+    if (!canStart) {
+      // 欠费检查未通过，直接返回不启动任务
+      return;
+    }
+    // ========== 欠费检查结束 ==========
     }
     const randomDelayCheck = document.getElementById(
       "mobile-multi-random-delay-check"
@@ -25982,6 +26746,19 @@ function initMobileAdminPanel(prefix) {
       label: "密码恢复",
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>',
       permission: "super_admin", 
+    },
+    // ========================================
+    // 欠费查询标签
+    // 管理员可以在此查看所有有欠费记录的学校账号
+    // 功能：显示欠费账号列表，按欠费次数排序
+    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    {
+      id: "overdue",  // 标签ID，用于标识和切换面板
+      label: "欠费查询",  // 标签显示的文本
+      // 警告图标：表示欠费/异常状态
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+      permission: "admin",  // 权限要求：管理员级别
     },
   ];
   const visibleTabs = allTabs.filter((tab) => {
@@ -35283,4 +36060,390 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ============================================================================
 // 彩虹易支付系统 - 前端JavaScript实现结束
+// ============================================================================
+
+// ============================================================================
+// 欠费检查功能
+// ============================================================================
+
+/**
+ * 检查账号是否有欠费，在开始任务前调用
+ * 
+ * 功能说明：
+ * - 调用后端 /api/check_overdue 接口检查指定账号或所有账号的欠费状态
+ * - 如果存在欠费，显示欠费弹窗并返回 false 阻止任务启动
+ * - 如果没有欠费或检查失败（容错），返回 true 允许任务继续
+ * 
+ * @param {string|null} schoolUsername - 可选，学校账号用户名。如果为 null，检查所有账号
+ * @returns {Promise<boolean>} - true 表示可以继续启动任务，false 表示被欠费阻止
+ * 
+ * 调用示例：
+ * const canStart = await checkOverdueBeforeStart('20210001');
+ * if (!canStart) {
+ *     return; // 有欠费，不启动任务
+ * }
+ * // 继续启动任务...
+ */
+async function checkOverdueBeforeStart(schoolUsername = null) {
+    try {
+        // 构造请求体：如果提供了 schoolUsername，只检查该账号
+        const requestBody = {};
+        if (schoolUsername) {
+            requestBody.school_username = schoolUsername;
+        }
+        
+        // 调用后端检查欠费接口
+        // 使用 fetch 而不是 callPythonAPI，因为需要更精细的错误处理
+        const response = await fetch('/api/check_overdue', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // 使用全局 sessionUUID 进行会话认证
+                'X-Session-ID': sessionUUID
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        // 解析响应数据
+        const result = await response.json();
+        
+        // 检查接口调用是否成功
+        if (!result.success) {
+            // 接口返回失败，显示错误信息
+            showModalAlert(result.message, '错误');
+            // 容错：即使检查失败，也允许任务继续（避免阻塞正常用户）
+            return true;
+        }
+        
+        // 如果存在欠费账号
+        if (result.has_overdue) {
+            // 显示欠费弹窗，等待用户处理
+            await showOverduePaymentModal(result.overdue_accounts);
+            // 返回 false 阻止任务启动
+            return false;
+        }
+        
+        // 没有欠费，允许任务继续
+        return true;
+        
+    } catch (error) {
+        // 捕获所有异常（网络错误、JSON解析错误等）
+        console.error('检查欠费失败:', error);
+        // 容错：检查失败不阻止任务执行，避免因网络问题影响正常用户
+        return true;
+    }
+}
+
+/**
+ * 显示欠费提示弹窗
+ * 
+ * 功能说明：
+ * - 使用 SweetAlert2 (Swal) 显示美观的欠费提示弹窗
+ * - 列出所有欠费账号的姓名和欠费次数
+ * - 提供"立即缴费"和"取消"两个按钮
+ * - 如果用户点击"立即缴费"，调用占位缴费函数
+ * 
+ * @param {Array} overdueAccounts - 欠费账号列表，格式：
+ *   [
+ *     {username: '20210001', name: '张三', overdue_count: 3},
+ *     ...
+ *   ]
+ * @returns {Promise<void>}
+ * 
+ * UI效果：
+ * ┌─────────────────────────────┐
+ * │   ⚠️ 账号欠费提醒           │
+ * ├─────────────────────────────┤
+ * │ 以下账号存在欠费，需要缴费  │
+ * │ 后才能继续使用：            │
+ * │                              │
+ * │ • 张三: 3次欠费             │
+ * │ • 李四: 1次欠费             │
+ * │                              │
+ * │ [立即缴费(占位)]  [取消]   │
+ * └─────────────────────────────┘
+ */
+async function showOverduePaymentModal(overdueAccounts) {
+    // 将欠费账号列表转换为HTML格式
+    // 每个账号显示为一个列表项：姓名 + 欠费次数
+    const accountList = overdueAccounts.map(acc => 
+        `<li style="margin: 5px 0;">${acc.name || acc.username}: ${acc.overdue_count}次欠费</li>`
+    ).join('');
+    
+    // 使用 SweetAlert2 显示欠费弹窗
+    const result = await Swal.fire({
+        title: '账号欠费提醒',
+        html: `
+            <p style="margin-bottom: 15px;">以下账号存在欠费，需要缴费后才能继续使用：</p>
+            <ul style="text-align: left; padding-left: 30px; list-style-type: disc;">
+                ${accountList}
+            </ul>
+        `,
+        icon: 'warning',  // 警告图标
+        showCancelButton: true,  // 显示取消按钮
+        confirmButtonText: '立即缴费（占位）',  // 确认按钮文本
+        cancelButtonText: '取消',  // 取消按钮文本
+        confirmButtonColor: '#3085d6',  // 确认按钮颜色（蓝色）
+        cancelButtonColor: '#d33'  // 取消按钮颜色（红色）
+    });
+    
+    // 如果用户点击了"立即缴费"按钮
+    if (result.isConfirmed) {
+        // 调用占位缴费函数，清零所有欠费账号的欠费记录
+        await clearOverduePlaceholder(overdueAccounts);
+    }
+    
+    // 如果用户点击了"取消"按钮，不做任何操作，直接返回
+}
+
+/**
+ * 占位缴费函数：清零欠费记录
+ * 
+ * 功能说明：
+ * - 这是一个占位实现，实际应用中应该集成真实的支付流程
+ * - 遍历所有欠费账号，调用后端接口清零欠费记录
+ * - 显示加载动画和成功提示
+ * 
+ * TODO（实际应用中应实现）：
+ * 1. 跳转到支付页面或显示支付二维码
+ * 2. 等待支付完成通知
+ * 3. 验证支付凭证
+ * 4. 记录支付日志
+ * 5. 清零欠费记录
+ * 
+ * @param {Array} overdueAccounts - 欠费账号列表
+ * @returns {Promise<void>}
+ */
+async function clearOverduePlaceholder(overdueAccounts) {
+    // 显示加载动画弹窗
+    Swal.fire({
+        title: '正在处理缴费...',
+        text: '请稍候',
+        icon: 'info',
+        allowOutsideClick: false,  // 不允许点击外部关闭
+        allowEscapeKey: false,  // 不允许按 ESC 关闭
+        showConfirmButton: false,  // 不显示确认按钮
+        didOpen: () => {
+            // 显示加载动画
+            Swal.showLoading();
+        }
+    });
+    
+    // 遍历所有欠费账号，逐个清零欠费记录
+    for (const acc of overdueAccounts) {
+        try {
+            // 调用后端清零欠费接口
+            const response = await fetch('/api/clear_overdue', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Session-ID': sessionUUID
+                },
+                body: JSON.stringify({
+                    school_username: acc.username
+                })
+            });
+            
+            // 解析响应
+            const result = await response.json();
+            
+            // 检查是否成功
+            if (!result.success) {
+                // 清零失败，记录错误日志
+                console.error(`清零账号 ${acc.username} 欠费失败:`, result.message);
+            }
+            
+        } catch (error) {
+            // 捕获网络错误等异常
+            console.error(`清零账号 ${acc.username} 欠费异常:`, error);
+        }
+    }
+    
+    // 关闭加载动画，显示成功提示
+    Swal.fire({
+        title: '缴费成功',
+        text: '欠费已清零（占位功能）',
+        icon: 'success',
+        confirmButtonText: '确定'
+    });
+}
+
+// ============================================================================
+// 欠费检查功能 - 结束
+// ============================================================================
+// ============================================================================
+
+// ============================================================================
+// 欠费账号查询功能 - 开始
+// ============================================================================
+
+/**
+ * 加载欠费账号列表（管理员功能）
+ * 
+ * 功能说明：
+ * - 调用后端API获取所有有欠费记录的学校账号
+ * - 同时更新PC端和移动端的欠费账号列表
+ * - 按欠费次数从高到低排序显示
+ * - 提供查看详情按钮，可查看账号的完整备份信息
+ * 
+ * 权限要求：
+ * - 仅管理员（admin）和超级管理员（super_admin）可调用
+ * 
+ * 使用场景：
+ * - 管理员面板的"欠费查询"标签页加载时自动调用
+ * - 点击"刷新"按钮手动调用
+ * 
+ * @returns {Promise<void>}
+ */
+async function loadOverdueAccounts() {
+    try {
+        // ========== 调用后端API获取欠费账号列表 ==========
+        // 发送GET请求到 /api/admin/overdue-accounts
+        const response = await fetch('/api/admin/overdue-accounts', {
+            method: 'GET',
+            headers: {
+                'X-Session-ID': sessionUUID  // 会话ID用于身份验证
+            }
+        });
+        
+        // 解析响应体为JSON对象
+        const result = await response.json();
+        
+        // ========== 检查请求是否成功 ==========
+        if (!result.success) {
+            // 请求失败，显示错误提示
+            showModalAlert(result.message || '加载欠费账号失败', '错误');
+            return;
+        }
+        
+        // ========== 获取欠费账号列表数据 ==========
+        const accounts = result.accounts || [];
+        
+        // ========== 获取PC端和移动端的列表容器元素 ==========
+        // PC端列表容器
+        const pcList = document.getElementById('overdue-accounts-list');
+        // 移动端列表容器
+        const mobileList = document.getElementById('mobile-overdue-accounts-list');
+        
+        // ========== 构建HTML内容 ==========
+        let html = '';
+        
+        // 检查是否有欠费账号
+        if (accounts.length === 0) {
+            // 没有欠费账号，显示提示信息
+            html = '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
+        } else {
+            // 有欠费账号，遍历生成每个账号的卡片
+            accounts.forEach(account => {
+                // 为每个欠费账号生成一个卡片
+                html += `
+                    <div class="p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition">
+                        <div class="flex justify-between items-start">
+                            <!-- 左侧：账号信息 -->
+                            <div class="flex-1">
+                                <!-- 账号姓名和欠费标签 -->
+                                <div class="flex items-center gap-2">
+                                    <!-- 姓名（加粗显示） -->
+                                    <h4 class="font-bold text-slate-800">${account.name}</h4>
+                                    <!-- 欠费次数标签（红色背景） -->
+                                    <span class="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+                                        欠费 ${account.overdue_count} 次
+                                    </span>
+                                </div>
+                                <!-- 详细信息：学号和认证账号 -->
+                                <p class="text-sm text-slate-600 mt-1">
+                                    学号：${account.student_id} | 认证账号：${account.auth_username}
+                                </p>
+                            </div>
+                            <!-- 右侧：操作按钮 -->
+                            <button onclick="viewBackupInfo('${account.school_username}')" 
+                                    class="btn btn-sm btn-primary"
+                                    ${!account.has_backup ? 'disabled' : ''}>
+                                查看详情
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        // ========== 更新页面显示 ==========
+        // 更新PC端列表（如果容器存在）
+        if (pcList) pcList.innerHTML = html;
+        // 更新移动端列表（如果容器存在）
+        if (mobileList) mobileList.innerHTML = html;
+        
+    } catch (error) {
+        // ========== 异常处理 ==========
+        // 捕获网络错误等异常
+        console.error('加载欠费账号失败:', error);
+        showModalAlert('加载欠费账号失败', '错误');
+    }
+}
+
+/**
+ * 查看备份信息详情（显示完整的账号备份数据）
+ * 
+ * 功能说明：
+ * - 读取指定学校账号的 {username}_backup.json 文件
+ * - 以可读的格式展示备份文件中的所有信息
+ * - 使用 SweetAlert2 弹窗显示
+ * 
+ * 备份文件包含的信息：
+ * - userInfo: 用户基本信息（姓名、学号、学院等）
+ * - course: 课程列表和选课信息
+ * - unpaid: 未缴费课程列表
+ * - 其他系统保存的数据
+ * 
+ * 当前状态：占位实现
+ * - 此功能需要后端API支持：GET /api/admin/backup-info?username={school_username}
+ * - 建议返回格式化的JSON数据供前端展示
+ * 
+ * @param {string} school_username - 学校账号用户名
+ * @returns {Promise<void>}
+ */
+async function viewBackupInfo(school_username) {
+    // ========== 显示加载动画 ==========
+    // 使用 SweetAlert2 显示加载提示
+    Swal.fire({
+        title: '账号详细信息',
+        text: '加载中...',
+        showConfirmButton: false,  // 不显示确认按钮
+        willOpen: () => Swal.showLoading()  // 显示加载动画
+    });
+    
+    // ========== 占位实现提示 ==========
+    // TODO: 后续版本实现完整功能
+    // 实现步骤：
+    // 1. 添加后端API：/api/admin/backup-info
+    // 2. 读取 school_accounts/{school_username}_backup.json
+    // 3. 返回格式化的JSON数据
+    // 4. 前端解析并美化显示所有字段
+    
+    // 模拟延迟（实际应该是API调用）
+    setTimeout(() => {
+        // 关闭加载动画，显示功能说明
+        Swal.fire({
+            title: '查看详情',
+            html: `
+                <div class="text-left">
+                    <p class="mb-3">账号 <strong>${school_username}</strong> 的详细信息查看功能正在开发中。</p>
+                    <p class="text-sm text-slate-600 mb-2">此功能将显示：</p>
+                    <ul class="text-sm text-slate-600 list-disc pl-5">
+                        <li>用户基本信息（姓名、学号、学院等）</li>
+                        <li>课程列表和选课信息</li>
+                        <li>未缴费课程明细</li>
+                        <li>其他备份数据</li>
+                    </ul>
+                    <p class="text-xs text-slate-500 mt-3">💡 需要添加后端API支持</p>
+                </div>
+            `,
+            icon: 'info',
+            confirmButtonText: '我知道了'
+        });
+    }, 500);
+}
+
+// ============================================================================
+// 欠费账号查询功能 - 结束
 // ============================================================================

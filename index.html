@@ -713,33 +713,74 @@
       <div id="auth-success-msg"
         class="hidden text-sm text-center p-3 rounded-lg bg-green-50 border border-green-200 text-green-600"></div>
 
-      <!-- 认证页面备案信息 Footer -->
-      <!-- 修复：移除hidden类，确保footer始终显示以防止UI错位 -->
+      <!-- ==========================================
+           认证页面备案信息 Footer (auth-beian-footer)
+           ==========================================
+           
+           【设计说明】
+           此footer容器用于在认证登录页面底部显示ICP和公安网备案信息。
+           
+           【重要特性 - Footer容器始终可见】
+           - 此容器本身**没有**hidden类或display:none样式
+           - 无论是否有备案信息，此footer容器都会占据页面空间
+           - 这样设计的目的是防止UI布局错位和跳动
+           - 当没有备案信息时，footer显示为一个空白区域，维持页面稳定性
+           
+           【内容控制策略】
+           - 容器内的ICP和公安备案链接元素默认使用style="display: none"隐藏
+           - JavaScript的updateBeianSection函数会根据后端配置决定是否显示这些链接
+           - 只有当配置启用且提供了备案号时，对应的链接才会被设置为display: flex显示
+           
+           【样式说明】
+           - mt-6: 上边距，与上方内容保持合适间距
+           - pt-4: 内边距顶部，为顶部边框留出空间
+           - border-t: 顶部边框，视觉上分隔footer与主体内容
+           - flex: 使用flexbox布局，便于居中对齐
+           - text-xs: 小号文字，符合footer的视觉层次
+           - text-slate-400: 灰色文字，降低视觉权重
+           ========================================== -->
       <div id="auth-beian-footer"
         class="mt-6 pt-4 border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
+        <!-- 内层容器：用于包裹所有备案链接，支持换行和居中对齐 -->
         <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-          <!-- ICP备案链接 -->
+          <!-- ==========================================
+               ICP备案链接 (auth-icp-beian-link)
+               ==========================================
+               【功能】显示网站的ICP备案号，链接到工信部备案查询网站
+               【默认状态】style="display: none" - 默认隐藏，由JavaScript控制显示
+               【显示条件】当后端配置show_icp=true且提供了icp_number时显示
+               【链接目标】https://beian.miit.gov.cn - 工业和信息化部ICP备案管理系统
+               【安全属性】target="_blank" rel="noopener noreferrer" - 安全地打开新标签页
+               ========================================== -->
           <a id="auth-icp-beian-link" href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer"
             class="hover:text-sky-600 transition-colors flex items-center gap-1" style="display: none">
-            <!-- ICP备案图标：文档图标 -->
+            <!-- ICP备案图标：使用文档图标表示备案文件 -->
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24"
               stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <!-- ICP备案文本，由JavaScript动态填充 -->
+            <!-- ICP备案文本容器：由JavaScript的updateBeianSection函数动态填充备案号 -->
             <span id="auth-icp-beian-text"></span>
           </a>
-          <!-- 公安备案链接 -->
+          <!-- ==========================================
+               公安备案链接 (auth-police-beian-link)
+               ==========================================
+               【功能】显示网站的公安网备案号，链接到公安部备案查询网站
+               【默认状态】style="display: none" - 默认隐藏，由JavaScript控制显示
+               【显示条件】当后端配置show_police=true且提供了police_number时显示
+               【链接目标】https://beian.mps.gov.cn - 全国公安机关互联网站安全管理服务平台
+               【安全属性】target="_blank" rel="noopener noreferrer" - 安全地打开新标签页
+               ========================================== -->
           <a id="auth-police-beian-link" href="https://beian.mps.gov.cn" target="_blank" rel="noopener noreferrer"
             class="hover:text-sky-600 transition-colors flex items-center gap-1" style="display: none">
-            <!-- 公安备案图标：盾牌图标 -->
+            <!-- 公安备案图标：使用盾牌图标表示安全认证 -->
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24"
               stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
-            <!-- 公安备案文本，由JavaScript动态填充 -->
+            <!-- 公安备案文本容器：由JavaScript的updateBeianSection函数动态填充备案号 -->
             <span id="auth-police-beian-text"></span>
           </a>
         </div>
@@ -1474,25 +1515,70 @@
       </div>
     </div>
 
-    <!-- PC端备案Footer - 所有PC端页面共享 -->
-    <!-- 修复：移除hidden类，确保footer始终显示以防止UI错位 -->
+    <!-- ==========================================
+         PC端备案Footer (pc-beian-footer) - 所有PC端页面共享
+         ==========================================
+         
+         【设计说明】
+         此footer容器用于在桌面版（desktop-container）所有页面的底部显示备案信息。
+         它被放置在desktop-container的最外层，因此会在所有PC端页面共享显示。
+         
+         【重要特性 - Footer容器始终可见】
+         - 此容器本身**没有**hidden类或display:none样式
+         - 无论是否有备案信息，此footer容器都会占据页面空间
+         - 这样设计的目的是防止UI布局错位和跳动
+         - 当没有备案信息时，footer显示为一个空白区域，维持页面稳定性
+         
+         【内容控制策略】
+         - 容器内的ICP和公安备案链接元素默认使用style="display: none"隐藏
+         - JavaScript的updateBeianSection("pc-")函数会根据后端配置决定是否显示这些链接
+         - 只有当配置启用且提供了备案号时，对应的链接才会被设置为display: flex显示
+         
+         【布局特点】
+         - 相比auth-beian-footer，此footer没有mt-6和pt-4，节省空间
+         - 直接使用border-t作为顶部分隔线
+         - 适用于PC端主应用界面的footer显示需求
+         ========================================== -->
     <div id="pc-beian-footer"
       class="border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
+      <!-- 内层容器：用于包裹所有备案链接，支持换行和居中对齐 -->
       <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+        <!-- ==========================================
+             ICP备案链接 (pc-icp-beian-link)
+             ==========================================
+             【功能】显示网站的ICP备案号，链接到工信部备案查询网站
+             【默认状态】style="display: none" - 默认隐藏，由JavaScript控制显示
+             【显示条件】当后端配置show_icp=true且提供了icp_number时显示
+             【链接目标】https://beian.miit.gov.cn - 工业和信息化部ICP备案管理系统
+             【安全属性】target="_blank" rel="noopener noreferrer" - 安全地打开新标签页
+             ========================================== -->
         <a id="pc-icp-beian-link" href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer"
           class="hover:text-sky-600 transition-colors flex items-center gap-1" style="display: none">
+          <!-- ICP备案图标：使用文档图标表示备案文件 -->
           <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
+          <!-- ICP备案文本容器：由JavaScript的updateBeianSection("pc-")函数动态填充备案号 -->
           <span id="pc-icp-beian-text"></span>
         </a>
+        <!-- ==========================================
+             公安备案链接 (pc-police-beian-link)
+             ==========================================
+             【功能】显示网站的公安网备案号，链接到公安部备案查询网站
+             【默认状态】style="display: none" - 默认隐藏，由JavaScript控制显示
+             【显示条件】当后端配置show_police=true且提供了police_number时显示
+             【链接目标】https://beian.mps.gov.cn - 全国公安机关互联网站安全管理服务平台
+             【安全属性】target="_blank" rel="noopener noreferrer" - 安全地打开新标签页
+             ========================================== -->
         <a id="pc-police-beian-link" href="https://beian.mps.gov.cn" target="_blank" rel="noopener noreferrer"
           class="hover:text-sky-600 transition-colors flex items-center gap-1" style="display: none">
+          <!-- 公安备案图标：使用盾牌图标表示安全认证 -->
           <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
+          <!-- 公安备案文本容器：由JavaScript的updateBeianSection("pc-")函数动态填充备案号 -->
           <span id="pc-police-beian-text"></span>
         </a>
       </div>
@@ -3959,6 +4045,51 @@
             </div>
           </div>
 
+
+          <!-- ========================================
+               移动端欠费查询面板 (mobile-multi-admin-overdue-panel)
+               功能：显示所有有欠费记录的学校账号
+               权限：管理员（admin）和超级管理员（super_admin）
+               位置：移动端管理面板内容区
+               默认隐藏：通过switchMobileAdminTab切换显示
+               ======================================== -->
+          <div id="mobile-multi-admin-overdue-panel" class="hidden space-y-3">
+            <!-- 面板头部：包含标题和刷新按钮 -->
+            <div class="flex justify-between items-center mb-3">
+              <!-- 面板标题 -->
+              <h3 class="text-lg font-bold text-slate-800">欠费账号查询</h3>
+              <!-- 刷新按钮：重新加载欠费账号列表 -->
+              <button onclick="loadOverdueAccounts()" class="btn btn-ghost !py-1 !px-3 !text-sm">
+                <!-- 刷新图标 -->
+                <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                刷新
+              </button>
+            </div>
+            
+            <!-- 功能说明提示卡片 -->
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p class="text-sm text-yellow-800">
+                <!-- 信息图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                显示所有有欠费记录的学校账号，按欠费次数排序
+              </p>
+            </div>
+            
+            <!-- 欠费账号列表容器 -->
+            <div id="mobile-overdue-accounts-list" class="space-y-2">
+              <!-- 动态加载欠费账号列表 -->
+              <!-- 初始加载提示 -->
+              <div class="text-center py-10 text-slate-500">加载中...</div>
+            </div>
+          </div>
+
+          <!-- ========================================
           <!-- ========================================
                  移动端密码恢复面板（仅超级管理员可见）
                  提供账号密码恢复功能的移动端界面
@@ -5979,25 +6110,72 @@
       </div>
     </nav>
 
-    <!-- 移动端备案Footer - 所有移动端页面共享 -->
-    <!-- 修复：移除hidden类，确保footer始终显示以防止UI错位 -->
+    <!-- ==========================================
+         移动端备案Footer (mobile-beian-footer) - 所有移动端页面共享
+         ==========================================
+         
+         【设计说明】
+         此footer容器用于在移动版（mobile-container）所有页面的底部显示备案信息。
+         它被放置在mobile-container的最外层，因此会在所有移动端页面共享显示。
+         
+         【重要特性 - Footer容器始终可见】
+         - 此容器本身**没有**hidden类或display:none样式
+         - 无论是否有备案信息，此footer容器都会占据页面空间
+         - 这样设计的目的是防止UI布局错位和跳动
+         - 当没有备案信息时，footer显示为一个空白区域，维持页面稳定性
+         
+         【内容控制策略】
+         - 容器内的ICP和公安备案链接元素默认使用style="display: none"隐藏
+         - JavaScript的updateBeianSection("mobile-")函数会根据后端配置决定是否显示这些链接
+         - 只有当配置启用且提供了备案号时，对应的链接才会被设置为display: flex显示
+         
+         【移动端布局特点】
+         - mt-4, pt-3: 适配移动端的上边距和内边距，相对紧凑
+         - 同样使用border-t作为顶部分隔线
+         - 文字和图标尺寸与PC端保持一致（text-xs, w-3 h-3）
+         ========================================== -->
     <div id="mobile-beian-footer"
       class="mt-4 pt-3 border-t border-slate-200 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
+      <!-- 内层容器：用于包裹所有备案链接，支持换行和居中对齐 -->
       <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+        <!-- ==========================================
+             ICP备案链接 (mobile-icp-beian-link)
+             ==========================================
+             【功能】显示网站的ICP备案号，链接到工信部备案查询网站
+             【默认状态】style="display: none" - 默认隐藏，由JavaScript控制显示
+             【显示条件】当后端配置show_icp=true且提供了icp_number时显示
+             【链接目标】https://beian.miit.gov.cn - 工业和信息化部ICP备案管理系统
+             【安全属性】target="_blank" rel="noopener noreferrer" - 安全地打开新标签页
+             【移动端适配】在移动设备上点击会打开新标签页，用户可以返回应用
+             ========================================== -->
         <a id="mobile-icp-beian-link" href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer"
           class="hover:text-sky-600 transition-colors flex items-center gap-1" style="display: none">
+          <!-- ICP备案图标：使用文档图标表示备案文件 -->
           <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
+          <!-- ICP备案文本容器：由JavaScript的updateBeianSection("mobile-")函数动态填充备案号 -->
           <span id="mobile-icp-beian-text"></span>
         </a>
+        <!-- ==========================================
+             公安备案链接 (mobile-police-beian-link)
+             ==========================================
+             【功能】显示网站的公安网备案号，链接到公安部备案查询网站
+             【默认状态】style="display: none" - 默认隐藏，由JavaScript控制显示
+             【显示条件】当后端配置show_police=true且提供了police_number时显示
+             【链接目标】https://beian.mps.gov.cn - 全国公安机关互联网站安全管理服务平台
+             【安全属性】target="_blank" rel="noopener noreferrer" - 安全地打开新标签页
+             【移动端适配】在移动设备上点击会打开新标签页，用户可以返回应用
+             ========================================== -->
         <a id="mobile-police-beian-link" href="https://beian.mps.gov.cn" target="_blank" rel="noopener noreferrer"
           class="hover:text-sky-600 transition-colors flex items-center gap-1" style="display: none">
+          <!-- 公安备案图标：使用盾牌图标表示安全认证 -->
           <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
+          <!-- 公安备案文本容器：由JavaScript的updateBeianSection("mobile-")函数动态填充备案号 -->
           <span id="mobile-police-beian-text"></span>
         </a>
       </div>
@@ -6322,6 +6500,23 @@
             </path>
           </svg>
           密码恢复
+        </button>
+
+        <!-- ========================================
+             欠费查询标签按钮 - 仅管理员可见
+             功能：查询所有有欠费记录的学校账号
+             权限：管理员（admin）和超级管理员（super_admin）
+             位置：管理员面板标签栏
+             ======================================== -->
+        <button id="admin-tab-overdue_modal"
+          class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap"
+          style="display: none">
+          <!-- 警告图标：表示欠费/异常状态 -->
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          欠费查询
         </button>
       </div>
 
@@ -7641,6 +7836,49 @@
             ⚠️
             <strong>使用提示：</strong>密码恢复过程可能需要较长时间，请耐心等待。系统会尝试常见的密码模式（身份证后六位）。
           </div>
+        </div>
+      </div>
+
+      <!-- ========================================
+           欠费查询面板 (admin-overdue-panel_modal)
+           功能：显示所有有欠费记录的学校账号
+           权限：管理员（admin）和超级管理员（super_admin）
+           位置：管理员面板内容区
+           默认隐藏：需要通过标签切换显示
+           ======================================== -->
+      <div id="admin-overdue-panel_modal" class="hidden space-y-4">
+        <!-- 面板头部：标题和刷新按钮 -->
+        <div class="flex justify-between items-center">
+          <!-- 面板标题 -->
+          <h3 class="text-xl font-bold text-slate-800">📋 欠费账号查询</h3>
+          <!-- 刷新按钮：重新加载欠费账号列表 -->
+          <button onclick="loadOverdueAccounts()" class="btn btn-secondary">
+            <!-- 刷新图标 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            刷新
+          </button>
+        </div>
+        
+        <!-- 功能说明提示框 -->
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p class="text-sm text-yellow-800">
+            <!-- 信息图标 -->
+            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            此面板显示所有有欠费记录的学校账号，按欠费次数从高到低排序
+          </p>
+        </div>
+        
+        <!-- 欠费账号列表容器 -->
+        <div id="overdue-accounts-list" class="space-y-2">
+          <!-- 动态加载欠费账号列表 -->
+          <!-- 初始加载提示 -->
+          <div class="text-center py-10 text-slate-500">加载中...</div>
         </div>
       </div>
     </div>
@@ -9057,75 +9295,214 @@
     }
   </script>
 
-  <!-- 备案信息加载脚本 -->
-  <!-- 此脚本负责从后端API获取备案配置信息，并根据配置动态显示备案信息 -->
+  <!-- ==========================================
+       备案信息加载脚本 (Beian Information Loading Script)
+       ==========================================
+       【功能说明】
+       此脚本负责从后端API获取备案配置信息，并根据配置动态显示备案信息。
+       它会在页面加载时自动执行，更新三个footer区域的备案链接显示状态。
+       
+       【涉及的Footer区域】
+       1. auth-beian-footer - 认证登录页面的备案footer
+       2. pc-beian-footer - PC端所有页面的备案footer
+       3. mobile-beian-footer - 移动端所有页面的备案footer
+       
+       【设计特点】
+       - Footer容器始终可见，不会因为没有备案信息而隐藏
+       - 只控制容器内ICP和公安备案链接的显示/隐藏
+       - 这样可以防止UI布局错位和跳动
+       ========================================== -->
   <script>
+    // 使用立即执行函数表达式(IIFE)包裹代码，避免污染全局作用域
+    // 函数名loadBeianInfo用于在浏览器调试工具中更容易识别
     (function loadBeianInfo() {
+      // ==========================================
+      // 第一步：向后端API发起请求，获取备案配置信息
+      // ==========================================
+      // API端点: /api/public/beian_config
+      // 此接口是公开的，不需要认证，返回格式化的JSON数据
       fetch("/api/public/beian_config")
+        // 解析响应体为JSON对象
+        // response.json()返回一个Promise，包含解析后的JavaScript对象
         .then((response) => response.json())
+        // ==========================================
+        // 第二步：处理API返回的数据
+        // ==========================================
         .then((result) => {
+          // 验证API调用是否成功，且返回了有效的数据对象
+          // result.success: 后端返回的操作状态标志（true表示成功）
+          // result.data: 包含实际备案配置信息的对象
           if (result.success && result.data) {
+            // 将result.data赋值给局部变量data，方便后续访问
+            // data对象的结构示例：
+            // {
+            //   show_icp: true/false,         // 是否显示ICP备案
+            //   icp_number: "京ICP备xxxxx号", // ICP备案号
+            //   show_police: true/false,      // 是否显示公安备案
+            //   police_number: "京公网安备xxxxx号" // 公安备案号
+            // }
             const data = result.data;
 
-            // 辅助函数：更新指定前缀（auth-、pc- 或 mobile-）的备案信息
-            // 参数 prefix: 元素ID的前缀,用于区分不同容器中的备案footer
-            //   - "auth-": 登录页面(auth-login-container)中的备案footer
-            //   - "pc-": 桌面版(desktop-container)中的备案footer  
-            //   - "mobile-": 移动版(mobile-container)中的备案footer
+            // ==========================================
+            // 核心函数：updateBeianSection
+            // ==========================================
+            // 【功能】根据prefix参数更新对应footer区域的备案信息显示
+            // 【参数】prefix - 元素ID的前缀字符串，用于定位不同容器中的footer元素
+            //         - "auth-"   : 针对登录页面(auth-login-container)中的 auth-beian-footer
+            //         - "pc-"     : 针对桌面版(desktop-container)中的 pc-beian-footer  
+            //         - "mobile-" : 针对移动版(mobile-container)中的 mobile-beian-footer
             // 
-            // 修复说明：移除hasInfo判断，footer始终显示（已在HTML中移除hidden类）
-            // 这样即使没有备案信息，footer也会占位，防止UI错位
+            // 【设计理念】Footer容器始终显示
+            // - 此函数**不会**隐藏footer容器本身
+            // - Footer容器在HTML中没有hidden类或display:none样式
+            // - 即使没有备案信息，footer也会作为空白区域存在
+            // - 这样设计的目的是保持UI布局的稳定性，防止页面跳动
+            // 
+            // 【控制策略】只控制链接元素的显示
+            // - ICP和公安备案链接在HTML中默认是隐藏的（style="display: none"）
+            // - 只有当配置启用(show_xxx=true)且提供了备案号时，才将对应链接设为可见
+            // - 这种策略确保了精细化的内容控制，不影响容器本身
             const updateBeianSection = (prefix) => {
+              // 步骤1：获取footer容器元素的DOM引用
+              // 通过prefix + "beian-footer"拼接得到完整的元素ID
+              // 例如：prefix="auth-" => ID="auth-beian-footer"
               const footer = document.getElementById(prefix + "beian-footer");
+              
+              // 如果找不到footer元素（理论上不应该发生），则提前返回
+              // 这是一个防御性检查，避免后续操作报错
               if (!footer) return;
 
-              // 处理 ICP 备案
-              // 如果配置中启用了ICP备案显示且提供了备案号，则显示ICP备案链接
+              // ==========================================
+              // 步骤2：处理 ICP 备案链接的显示逻辑
+              // ==========================================
+              // 判断条件：必须同时满足两个条件
+              // 1. data.show_icp === true（配置文件中启用了ICP备案显示）
+              // 2. data.icp_number存在且不为空（提供了有效的ICP备案号）
               if (data.show_icp && data.icp_number) {
+                // 获取ICP备案链接元素的DOM引用
+                // 元素ID格式：prefix + "icp-beian-link"
+                // 例如：auth-icp-beian-link, pc-icp-beian-link, mobile-icp-beian-link
                 const icpLink = document.getElementById(
                   prefix + "icp-beian-link"
                 );
+                
+                // 获取ICP备案文本span元素的DOM引用
+                // 这个span用于显示实际的备案号文字
+                // 元素ID格式：prefix + "icp-beian-text"
                 const icpText = document.getElementById(
                   prefix + "icp-beian-text"
                 );
+                
+                // 确保两个元素都存在，才进行后续操作
+                // 这是一个安全检查，防止DOM结构不完整导致的错误
                 if (icpLink && icpText) {
+                  // 将备案号文本填充到span元素中
+                  // 使用textContent而不是innerHTML，防止XSS攻击
                   icpText.textContent = data.icp_number;
+                  
+                  // 将链接元素设置为可见
+                  // 从默认的display:none改为display:flex
+                  // 使用flex是因为链接内部使用了flexbox布局（图标+文本）
                   icpLink.style.display = "flex";
                 }
               }
+              // 注意：如果条件不满足（show_icp=false或没有icp_number），
+              // 则ICP链接保持默认的display:none状态，即隐藏
 
-              // 处理公安网备案
-              // 如果配置中启用了公安备案显示且提供了备案号，则显示公安备案链接
+              // ==========================================
+              // 步骤3：处理公安网备案链接的显示逻辑
+              // ==========================================
+              // 判断条件：必须同时满足两个条件
+              // 1. data.show_police === true（配置文件中启用了公安备案显示）
+              // 2. data.police_number存在且不为空（提供了有效的公安备案号）
               if (data.show_police && data.police_number) {
+                // 获取公安备案链接元素的DOM引用
+                // 元素ID格式：prefix + "police-beian-link"
+                // 例如：auth-police-beian-link, pc-police-beian-link, mobile-police-beian-link
                 const policeLink = document.getElementById(
                   prefix + "police-beian-link"
                 );
+                
+                // 获取公安备案文本span元素的DOM引用
+                // 这个span用于显示实际的公安备案号文字
+                // 元素ID格式：prefix + "police-beian-text"
                 const policeText = document.getElementById(
                   prefix + "police-beian-text"
                 );
+                
+                // 确保两个元素都存在，才进行后续操作
+                // 这是一个安全检查，防止DOM结构不完整导致的错误
                 if (policeLink && policeText) {
+                  // 将公安备案号文本填充到span元素中
+                  // 使用textContent而不是innerHTML，防止XSS攻击
                   policeText.textContent = data.police_number;
+                  
+                  // 将链接元素设置为可见
+                  // 从默认的display:none改为display:flex
+                  // 使用flex是因为链接内部使用了flexbox布局（图标+文本）
                   policeLink.style.display = "flex";
                 }
               }
+              // 注意：如果条件不满足（show_police=false或没有police_number），
+              // 则公安备案链接保持默认的display:none状态，即隐藏
               
-              // 注释：不再需要hasInfo判断来控制footer显示
-              // footer在HTML中默认就是可见的，确保UI布局稳定
+              // ==========================================
+              // 关键设计说明：Footer容器的显示逻辑
+              // ==========================================
+              // 【以前的做法（已废弃）】
+              // 以前的代码可能会检查hasInfo变量（是否有任何备案信息），
+              // 如果hasInfo为false，就隐藏整个footer容器。
+              // 这种做法会导致UI布局不稳定，出现跳动现象。
+              //
+              // 【现在的做法（推荐）】
+              // 不再需要hasInfo判断来控制footer容器的显示/隐藏。
+              // Footer容器在HTML中默认就是可见的（没有hidden类或display:none）。
+              // 这样做的优点：
+              // 1. 页面布局稳定：即使没有备案信息，footer也占据空间
+              // 2. 用户体验好：避免页面内容因footer出现/消失而跳动
+              // 3. 代码简洁：减少了不必要的DOM操作
+              // 
+              // 总结：此函数只负责控制链接元素的显示，绝不隐藏footer容器本身！
             };
 
-            // 分别更新 auth-login-container、PC 端和移动端的备案 footer
-            // 首先更新登录页面(auth-login-container)中的 auth-beian-footer
+            // ==========================================
+            // 第三步：调用updateBeianSection更新所有footer区域
+            // ==========================================
+            // 按照顺序分别更新三个不同位置的备案footer
+            
+            // 1. 更新认证登录页面(auth-login-container)中的 auth-beian-footer
+            // 这个footer显示在用户登录界面的底部
             updateBeianSection("auth-");
-            // 然后更新桌面版(desktop-container)中的 pc-beian-footer
+            
+            // 2. 更新桌面版(desktop-container)中的 pc-beian-footer
+            // 这个footer显示在所有PC端页面的底部
             updateBeianSection("pc-");
-            // 最后更新移动版(mobile-container)中的 mobile-beian-footer
+            
+            // 3. 更新移动版(mobile-container)中的 mobile-beian-footer
+            // 这个footer显示在所有移动端页面的底部
             updateBeianSection("mobile-");
+            
+            // 注意：三次调用传入不同的prefix参数，确保更新所有footer区域
           }
+          // 如果result.success为false或result.data不存在，则不做任何操作
+          // footer保持默认状态（容器可见，链接隐藏）
         })
+        // ==========================================
+        // 第四步：错误处理
+        // ==========================================
+        // catch捕获fetch或then链中的任何错误
+        // 例如：网络错误、JSON解析错误、API返回错误等
         .catch((error) => {
+          // 使用console.warn而不是console.error
+          // 因为备案信息加载失败不是致命错误，不应影响页面的核心功能
+          // 用户仍然可以正常使用网站，只是看不到备案信息
           console.warn("加载备案信息失败:", error);
+          
+          // 即使加载失败，footer容器仍然可见（作为空白区域）
+          // 链接元素保持默认的隐藏状态
+          // 这符合渐进式增强(Progressive Enhancement)的设计理念
         });
-    })();
+    })(); // 立即执行函数，页面加载时自动运行
   </script>
 
   <!-- Extracted Script -->
