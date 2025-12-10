@@ -4548,17 +4548,50 @@ function refreshMobileSessionPicker() {
               );
 
             // [修复] 绑定CDN和密码恢复标签页的点击事件
-            const modalCdnTab = $("admin-tab-cdn_modal");
-            const modalBruteforceTab = $("admin-tab-bruteforce_modal");
+            // 
+            // 功能说明：
+            // 为管理面板中的CDN和密码恢复标签按钮添加点击事件监听器
+            // 点击后调用switchAdminTab函数切换到对应的管理面板
+            //
+            // CDN标签：用于配置和管理内容分发网络（CDN）设置
+            // 密码恢复标签：用于执行密码破解/恢复任务（仅超级管理员）
+            const modalCdnTab = $("admin-tab-cdn_modal");             // 获取CDN标签按钮元素
+            const modalBruteforceTab = $("admin-tab-bruteforce_modal"); // 获取密码恢复标签按钮元素
 
-            if (modalCdnTab)
+            // [CDN标签事件绑定]
+            // 检查CDN标签元素是否存在（防止空指针错误）
+            if (modalCdnTab) {
+              // 添加点击事件监听器
+              // 当用户点击CDN标签时，调用switchAdminTab("cdn")切换到CDN管理面板
               modalCdnTab.addEventListener("click", () =>
                 switchAdminTab("cdn")
               );
-            if (modalBruteforceTab)
+              // [调试日志] 记录事件绑定成功
+              console.log("[事件绑定] CDN标签点击事件已绑定");
+            } else {
+              // [警告] 如果找不到CDN标签元素，记录警告信息
+              // 这可能意味着HTML结构有变化或元素ID不匹配
+              console.warn("[事件绑定警告] 未找到CDN标签元素 (ID: admin-tab-cdn_modal)");
+            }
+            
+            // [密码恢复标签事件绑定]
+            // 检查密码恢复标签元素是否存在（防止空指针错误）
+            if (modalBruteforceTab) {
+              // 添加点击事件监听器
+              // 当用户点击密码恢复标签时，调用switchAdminTab("bruteforce")切换到密码恢复面板
               modalBruteforceTab.addEventListener("click", () =>
                 switchAdminTab("bruteforce")
               );
+              // [调试日志] 记录事件绑定成功
+              console.log("[事件绑定] 密码恢复标签点击事件已绑定");
+            } else {
+              // [警告] 如果找不到密码恢复标签元素，记录警告信息
+              // 可能原因：
+              // 1. HTML中元素ID拼写错误
+              // 2. 元素尚未加载到DOM中
+              // 3. 元素被移除或修改
+              console.warn("[事件绑定警告] 未找到密码恢复标签元素 (ID: admin-tab-bruteforce_modal)");
+            }
 
             const tabsContainer = modalAdminPanel.querySelector(
               ".flex.border-b-2.border-slate-200"
@@ -5071,20 +5104,60 @@ function refreshMobileSessionPicker() {
         return result || permissionKey;
       }
 
+      /**
+       * 检查当前用户是否拥有指定的管理员权限
+       * 
+       * 功能说明：
+       * 1. 向后端API发送权限检查请求
+       * 2. 使用当前会话ID (sessionUUID) 进行身份验证
+       * 3. 返回布尔值表示用户是否拥有该权限
+       * 
+       * @param {string} permissionName - 要检查的权限名称（如 "god_mode", "manage_users" 等）
+       * @returns {Promise<boolean>} - 如果用户拥有该权限返回true，否则返回false
+       */
       async function checkAdminPermission(permissionName) {
         try {
+          // [调试日志] 记录权限检查的开始，便于追踪问题
+          console.log(`[权限检查] 开始检查权限: ${permissionName}, sessionUUID: ${sessionUUID ? '已设置' : '未设置'}`);
+          
+          // 向后端发送POST请求，检查指定权限
+          // API端点: /auth/check_permission
+          // 请求体: { permission: "权限名称" }
           const response = await fetch("/auth/check_permission", {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
-              "X-Session-ID": sessionUUID,
+              "Content-Type": "application/json",  // 指定请求体格式为JSON
+              "X-Session-ID": sessionUUID,         // 附加会话ID用于身份验证
             },
-            body: JSON.stringify({ permission: permissionName }),
+            body: JSON.stringify({ permission: permissionName }),  // 将权限名称序列化为JSON字符串
           });
+          
+          // 解析服务器返回的JSON响应
           const result = await response.json();
+          
+          // [调试日志] 记录权限检查的结果，包含完整的响应数据
+          console.log(`[权限检查] ${permissionName} 检查结果:`, {
+            success: result.success,              // API调用是否成功
+            has_permission: result.has_permission, // 用户是否拥有该权限
+            response: result                       // 完整的响应对象（用于调试）
+          });
+          
+          // 返回权限检查结果
+          // 只有当API调用成功(success=true)且用户拥有权限(has_permission=true)时才返回true
           return result.success && result.has_permission;
         } catch (e) {
+          // 捕获任何异常（网络错误、解析错误等）
+          // 使用自定义错误日志函数记录详细错误信息
           logMessage_Error(`检查权限 ${permissionName} 失败:`, e);
+          
+          // [调试日志] 额外记录错误详情，便于调试
+          console.error(`[权限检查ERROR] ${permissionName} 检查失败:`, {
+            error: e,
+            message: e.message,
+            stack: e.stack
+          });
+          
+          // 发生错误时，出于安全考虑，默认返回false（无权限）
           return false;
         }
       }
@@ -5117,29 +5190,77 @@ function refreshMobileSessionPicker() {
           let canViewCaptchaHistory = false;
           if (!skipAuthCheck) {
             try {
+              // [权限检查] 并行执行多个权限检查，提高效率
+              // 
+              // 使用Promise.all并行执行所有权限检查API调用
+              // 这比串行调用快得多，因为不需要等待每个请求完成后再发起下一个
+              //
+              // 权限检查数组索引说明：
+              // [0] manage_users        - 管理用户权限（创建、编辑、删除用户）
+              // [1] view_messages       - 查看消息权限（查看用户间的消息记录）
+              // [2] manage_system       - 系统管理权限（配置系统参数、CDN等）
+              // [3] god_mode            - 上帝模式权限（最高权限，包括密码恢复等危险操作）
+              // [4] (auth status check) - 身份验证状态检查
+              // [5] view_logs           - 查看日志权限（系统日志、操作日志）
+              // [6] view_captcha_history- 查看验证码历史权限
               const permissionChecks = await Promise.all([
-                checkAdminPermission("manage_users"),
-                checkAdminPermission("view_messages"),
-                checkAdminPermission("manage_system"),
-                checkAdminPermission("god_mode"),
-                checkAuthStatus(),
-                checkAdminPermission("view_logs"),
-                checkAdminPermission("view_captcha_history"),
+                checkAdminPermission("manage_users"),          // 索引0: 用户管理权限
+                checkAdminPermission("view_messages"),         // 索引1: 消息查看权限
+                checkAdminPermission("manage_system"),         // 索引2: 系统管理权限
+                checkAdminPermission("god_mode"),              // 索引3: 上帝模式权限 ← bruteforce需要此权限
+                checkAuthStatus(),                             // 索引4: 身份验证状态
+                checkAdminPermission("view_logs"),             // 索引5: 日志查看权限
+                checkAdminPermission("view_captcha_history"),  // 索引6: 验证码历史查看权限
               ]);
 
-              canManageUsers = permissionChecks[0];
-              canViewMessages = permissionChecks[1];
-              canManageSystem = permissionChecks[2];
-              hasGodMode = permissionChecks[3];
-              isAuthenticated = permissionChecks[4];
-              canViewLogs = permissionChecks[5];
-              canViewCaptchaHistory = permissionChecks[6];
+              // [权限赋值] 从Promise.all的结果数组中提取各项权限
+              // 每个权限对应上面数组的索引位置
+              canManageUsers = permissionChecks[0];        // 用户管理权限结果
+              canViewMessages = permissionChecks[1];       // 消息查看权限结果
+              canManageSystem = permissionChecks[2];       // 系统管理权限结果
+              hasGodMode = permissionChecks[3];            // 上帝模式权限结果 ← 这是bruteforce标签的关键
+              isAuthenticated = permissionChecks[4];       // 身份验证状态结果
+              canViewLogs = permissionChecks[5];           // 日志查看权限结果
+              canViewCaptchaHistory = permissionChecks[6]; // 验证码历史权限结果
+              
+              // [调试日志] 记录所有权限检查的完整结果
+              // 这对于调试权限问题非常重要，可以一目了然地看到用户拥有哪些权限
+              console.log("[权限检查汇总] 所有权限检查完成:", {
+                canManageUsers: canManageUsers,              // 是否可管理用户
+                canViewMessages: canViewMessages,            // 是否可查看消息
+                canManageSystem: canManageSystem,            // 是否可管理系统
+                hasGodMode: hasGodMode,                      // 是否有上帝模式（重要：影响bruteforce显示）
+                isAuthenticated: isAuthenticated,            // 是否已认证
+                canViewLogs: canViewLogs,                    // 是否可查看日志
+                canViewCaptchaHistory: canViewCaptchaHistory,// 是否可查看验证码历史
+                userGroup: currentUserData?.group || "未知",  // 当前用户组
+                username: currentUserData?.username || "未知" // 当前用户名
+              });
             } catch (e) {
+              // [异常处理] 如果并行检查过程中发生任何错误，记录错误并设置所有权限为false
+              // 
+              // 可能的错误原因：
+              // 1. 网络连接失败
+              // 2. 服务器返回错误状态
+              // 3. 响应JSON解析失败
+              // 4. sessionUUID无效或未设置
               logMessage_Error("并行检查权限时出错:", e);
+              
+              // [调试日志] 记录详细的错误信息
+              console.error("[权限检查错误] 并行检查失败，错误详情:", {
+                error: e,
+                message: e.message,
+                stack: e.stack,
+                sessionUUID: sessionUUID ? "已设置" : "未设置",
+                currentUserData: currentUserData
+              });
+              
+              // 出于安全考虑，发生错误时将所有权限设置为false
+              // 这确保在权限检查失败时，用户不会意外获得不应有的权限
               canManageUsers = false;
               canViewMessages = false;
               canManageSystem = false;
-              hasGodMode = false;
+              hasGodMode = false;          // ← bruteforce标签将被隐藏
               isAuthenticated = false;
               canViewLogs = false;
               canViewCaptchaHistory = false;
@@ -5166,11 +5287,59 @@ function refreshMobileSessionPicker() {
           if (cdnTab)
             cdnTab.style.display = canManageSystem ? "block" : "none";
 
-          // [修复] 显示密码恢复标签 (仅超级管理员)
-          // 修复说明：使用hasGodMode权限检查结果，而不是直接检查currentUserData.group
-          // 这样确保权限判断的一致性和准确性
+          // [修复] 显示密码恢复标签 (仅超级管理员可见)
+          // 
+          // 功能说明：
+          // 1. 根据用户的god_mode权限决定是否显示"密码恢复"标签
+          // 2. 只有拥有god_mode权限的用户（通常是super_admin组）才能看到此标签
+          // 3. 该功能用于合法的账号密码恢复，因此需要最高权限
+          //
+          // 修复说明：
+          // - 使用hasGodMode权限检查结果，而不是直接检查currentUserData.group
+          // - 这样确保权限判断的一致性和准确性
+          // - 即使用户组为super_admin，如果权限配置中没有god_mode，也不会显示
+          //
+          // 技术细节：
+          // - bruteforceTab: HTML中ID为"admin-tab-bruteforce_modal"的按钮元素
+          // - hasGodMode: 从权限检查API获取的布尔值（permissionChecks[3]）
+          // - display属性: "block"显示，"none"隐藏
           if (bruteforceTab) {
-             bruteforceTab.style.display = hasGodMode ? "block" : "none";
+            // [调试日志] 记录密码恢复Tab的显示控制信息
+            console.log("[密码恢复Tab] 显示控制:", {
+              hasGodMode: hasGodMode,                    // 用户是否拥有god_mode权限
+              elementFound: !!bruteforceTab,             // 是否找到了按钮元素
+              currentDisplay: bruteforceTab.style.display, // 当前的display样式
+              willSetTo: hasGodMode ? "block" : "none"   // 即将设置的display值
+            });
+            
+            // 根据权限设置按钮的显示状态
+            // 如果hasGodMode为true，设置display为"block"（显示）
+            // 如果hasGodMode为false，设置display为"none"（隐藏）
+            bruteforceTab.style.display = hasGodMode ? "block" : "none";
+            
+            // [调试日志] 验证display属性是否设置成功
+            // 使用getComputedStyle获取元素的实际计算样式（包括CSS影响）
+            const computedDisplay = window.getComputedStyle(bruteforceTab).display;
+            console.log("[密码恢复Tab] 显示状态设置完成:", {
+              setDisplay: bruteforceTab.style.display,   // 设置的display值
+              computedDisplay: computedDisplay,          // 实际计算的display值
+              isVisible: computedDisplay !== "none"      // 是否可见
+            });
+            
+            // [健壮性检查] 如果设置后仍然不可见，记录警告
+            // 这可能表示有CSS规则覆盖了我们的设置
+            if (hasGodMode && computedDisplay === "none") {
+              console.warn("[密码恢复Tab警告] 尽管hasGodMode为true，但按钮仍然不可见。可能的原因:", {
+                inlineStyle: bruteforceTab.style.cssText,           // 内联样式
+                classList: Array.from(bruteforceTab.classList),     // 应用的CSS类
+                parentDisplay: bruteforceTab.parentElement ? 
+                  window.getComputedStyle(bruteforceTab.parentElement).display : null  // 父元素显示状态
+              });
+            }
+          } else {
+            // [错误日志] 如果找不到按钮元素，记录错误
+            // 这表示HTML结构可能有问题，或者元素ID不匹配
+            console.error("[密码恢复Tab错误] 未找到ID为'admin-tab-bruteforce_modal'的元素");
           }
 
           if (modalCaptchaTab)
@@ -5440,15 +5609,75 @@ function refreshMobileSessionPicker() {
             stopHealthAutoRefresh();
           }
         } else if (tab === "bruteforce") {
-          // [修复] 添加密码恢复切换逻辑
+          // [修复] 密码恢复标签切换逻辑
+          //
+          // 功能说明：
+          // 当用户点击"密码恢复"标签时，此代码块负责：
+          // 1. 高亮显示当前选中的标签（改变颜色和边框）
+          // 2. 显示密码恢复管理面板
+          // 3. 加载当前的密码恢复任务状态
+          // 4. 停止健康状态自动刷新（因为切换到了其他面板）
+          //
+          // 安全说明：
+          // 密码恢复功能仅供拥有god_mode权限的超级管理员使用
+          // 用于合法的账号密码找回场景，切勿滥用
+          
+          // 获取密码恢复标签按钮元素（ID: admin-tab-bruteforce_modal）
           const bruteforceTab = $("admin-tab-bruteforce_modal");
+          
+          // 获取密码恢复面板容器元素（ID: admin-bruteforce-panel_modal）
           const bruteforcePanel = $("admin-bruteforce-panel_modal");
+          
+          // [调试日志] 记录标签切换操作
+          console.log("[标签切换] 切换到密码恢复标签:", {
+            tabElement: !!bruteforceTab,      // 标签元素是否存在
+            panelElement: !!bruteforcePanel,  // 面板元素是否存在
+            currentTab: tab                   // 当前标签名称
+          });
+          
+          // 检查标签和面板元素是否都存在
+          // 只有两者都存在时才执行切换操作，避免空指针错误
           if (bruteforceTab && bruteforcePanel) {
+            // [样式更新] 为选中的标签添加高亮样式
+            // text-sky-600: 天蓝色文字
+            // border-sky-600: 天蓝色边框
             bruteforceTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [样式更新] 移除未选中状态的样式
+            // text-slate-400: 灰色文字（未选中状态）
+            // border-transparent: 透明边框（未选中状态）
             bruteforceTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使密码恢复面板可见
+            // Tailwind CSS的hidden类会设置display: none
             bruteforcePanel.classList.remove("hidden");
+            
+            // [调试日志] 记录样式更新成功
+            console.log("[标签切换] 密码恢复标签样式已更新:", {
+              tabClasses: Array.from(bruteforceTab.classList),    // 标签的所有CSS类
+              panelClasses: Array.from(bruteforcePanel.classList), // 面板的所有CSS类
+              panelVisible: !bruteforcePanel.classList.contains("hidden") // 面板是否可见
+            });
+            
+            // [加载数据] 调用loadBruteforceStatus函数加载密码恢复任务状态
+            // 该函数会从后端获取所有正在进行的密码恢复任务
+            // 并更新界面上的任务列表
+            console.log("[数据加载] 开始加载密码恢复任务状态...");
             loadBruteforceStatus();
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了密码恢复面板，不再需要刷新健康状态
             stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 密码恢复面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到密码恢复标签，元素缺失:", {
+              bruteforceTab: !!bruteforceTab,     // 标签元素是否存在
+              bruteforcePanel: !!bruteforcePanel, // 面板元素是否存在
+              missingElement: !bruteforceTab ? "admin-tab-bruteforce_modal" : 
+                              !bruteforcePanel ? "admin-bruteforce-panel_modal" : "未知"
+            });
           }
         } else {
           if (profileTab && profilePanel) {
