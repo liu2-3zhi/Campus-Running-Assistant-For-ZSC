@@ -1149,7 +1149,7 @@ def _get_default_config():
     # ============================================================
     # [Payment_Settings] 支付费用配置节
     # ============================================================
-    # 此配置节用于设置跑步任务的费用标准
+    # 此配置节用于设置跑步任务的费用标准和新用户初始免费次数
     # 当用户欠费时，系统将根据此配置计算需要缴纳的金额
     config["Payment_Settings"] = {
         # 是否需要付费（true/false）
@@ -1166,6 +1166,21 @@ def _get_default_config():
         # 1. 修改后仅对新产生的欠费生效，已有订单不受影响
         # 2. 设置为0或负数时，相当于关闭付费功能，所有用户可免费使用
         "single_run_cost": "1.0",
+        # 新用户注册时获得的默认免费次数（整数）
+        # 用于在用户注册时自动设置available_runs字段的初始值
+        # 默认值：10次
+        # 特殊值：
+        # - 0：新用户无免费次数，需要管理员手动分配或立即付费
+        # - -1：新用户获得无限次数（不推荐，除非完全免费模式）
+        # - 正整数：新用户获得指定次数的免费使用额度
+        # 示例：
+        # - 设置为10：新用户注册后可免费使用10次
+        # - 设置为0：新用户注册后需要购买次数才能使用
+        # 注意：
+        # 1. 此配置仅影响新注册用户，已注册用户不受影响
+        # 2. 管理员可随时通过用户管理面板修改个别用户的可用次数
+        # 3. 此值会在注册页面的提示文本中显示（如："注册即可得 {available_runs} 次校园跑"）
+        "default_available_runs": "10",
     }
 
     # ============================================================
@@ -1200,7 +1215,7 @@ def _get_default_config():
         "show_available_runs_on_register": "true",
         # 注册页面的免费次数提示文本（字符串模板）
         # 使用 {available_runs} 作为占位符，将被替换为新用户注册时获得的初始免费次数
-        # 此数值通常从代码中的DEFAULT_AVAILABLE_RUNS常量获取
+        # 此数值从配置文件的 [Payment_Settings].default_available_runs 读取
         # 示例：
         #   - "注册即可得 {available_runs} 次校园跑"  （默认格式）
         #   - "新用户福利：{available_runs} 次免费跑步"
@@ -1658,7 +1673,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# ============================================================\n")
         f.write("# [Payment_Settings] 支付费用配置\n")
         f.write("# ============================================================\n")
-        f.write("# 此配置节用于设置跑步任务的费用标准\n")
+        f.write("# 此配置节用于设置跑步任务的费用标准和新用户初始免费次数\n")
         f.write("# 当用户欠费时，系统将根据此配置计算需要缴纳的金额\n")
         f.write("# ============================================================\n\n")
         f.write("[Payment_Settings]\n")
@@ -1679,6 +1694,21 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 2. 修改后仅对新产生的欠费生效，已有订单不受影响\n")
         f.write("# 3. 设置为0或负数时，相当于关闭付费功能，所有用户可免费使用\n")
         f.write(f"single_run_cost = {config_obj.get('Payment_Settings', 'single_run_cost', fallback='1.0')}\n\n")
+        f.write("# 新用户注册时获得的默认免费次数（整数）\n")
+        f.write("# 用于在用户注册时自动设置available_runs字段的初始值\n")
+        f.write("# 默认值：10次\n")
+        f.write("# 特殊值：\n")
+        f.write("# - 0：新用户无免费次数，需要管理员手动分配或立即付费\n")
+        f.write("# - -1：新用户获得无限次数（不推荐，除非完全免费模式）\n")
+        f.write("# - 正整数：新用户获得指定次数的免费使用额度\n")
+        f.write("# 示例：\n")
+        f.write("# - 设置为10：新用户注册后可免费使用10次\n")
+        f.write("# - 设置为0：新用户注册后需要购买次数才能使用\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 此配置仅影响新注册用户，已注册用户不受影响\n")
+        f.write("# 2. 管理员可随时通过用户管理面板修改个别用户的可用次数\n")
+        f.write("# 3. 此值会在注册页面的提示文本中显示（如：注册即可得 {available_runs} 次校园跑）\n")
+        f.write(f"default_available_runs = {config_obj.get('Payment_Settings', 'default_available_runs', fallback='10')}\n\n")
 
         # ============================================================
         # [Profile_Display] 个人资料显示配置
@@ -1719,7 +1749,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write(f"show_available_runs_on_register = {config_obj.get('Registration_Display', 'show_available_runs_on_register', fallback='true')}\n")
         f.write("# 注册页面的免费次数提示文本（字符串模板）\n")
         f.write("# 使用 {available_runs} 作为占位符，将被替换为新用户注册时获得的初始免费次数\n")
-        f.write("# 此数值通常从代码中的DEFAULT_AVAILABLE_RUNS常量获取\n")
+        f.write("# 此数值从配置文件的 [Payment_Settings].default_available_runs 读取\n")
         f.write("# 示例：\n")
         f.write("#   - 注册即可得 {available_runs} 次校园跑（默认格式）\n")
         f.write("#   - 新用户福利：{available_runs} 次免费跑步\n")
@@ -3585,9 +3615,12 @@ class AuthSystem:
                 "phone": phone,
                 "nickname": nickname or auth_username,
                 # 可用执行次数字段：记录用户还可以执行多少次任务
-                # 新注册用户默认值为0，需要管理员分配可用次数后才能使用
-                # 当值为 -1 时表示无限次数
-                "available_runs": 0,
+                # 从配置文件读取默认值（Payment_Settings.default_available_runs）
+                # 默认值为10次，管理员可在config.ini中修改
+                # 特殊值：-1表示无限次数，0表示无免费次数
+                "available_runs": self.config.getint(
+                    "Payment_Settings", "default_available_runs", fallback=10
+                ),
             }
 
             logging.debug(f"register_user: 保存用户数据到文件: {user_file}")
