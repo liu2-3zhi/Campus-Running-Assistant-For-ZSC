@@ -1668,7 +1668,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 默认值：true（需要付费）\n")
         f.write("# 注意：\n")
         f.write("# 1. 当设置为false时，或者single_run_cost<=0时，系统将跳过所有付费相关逻辑\n")
-        f.write("# 2. 免费模式下，用户仍然可以充值，但不会自动扣费\n")
+        f.write("# 2. 免费模式下，用户仍然可以手动结算费用，但不会自动扣费\n")
         f.write(f"require_payment = {config_obj.get('Payment_Settings', 'require_payment', fallback='true')}\n\n")
         f.write("# 单次跑步任务费用（单位：元）\n")
         f.write("# 用于计算用户欠费金额 = 欠费次数 × single_run_cost\n")
@@ -3585,7 +3585,7 @@ class AuthSystem:
                 "phone": phone,
                 "nickname": nickname or auth_username,
                 # 可用执行次数字段：记录用户还可以执行多少次任务
-                # 新注册用户默认值为0，需要管理员充值后才能使用
+                # 新注册用户默认值为0，需要管理员分配可用次数后才能使用
                 # 当值为 -1 时表示无限次数
                 "available_runs": 0,
             }
@@ -26451,7 +26451,7 @@ def start_web_server(args_param):
         
         请求参数（JSON格式）：
             - amount (str/float): 支付金额（单位：元，例如 "100" 或 "99.99"）
-            - product_name (str): 商品名称（显示在支付页面，例如："VIP会员充值"）
+            - product_name (str): 商品名称（显示在支付页面，例如："跑步服务费用结算"）
             - pay_type (str): 支付方式，可选值：
                 - "alipay": 支付宝（默认）
                 - "wxpay": 微信支付
@@ -29886,7 +29886,7 @@ def start_web_server(args_param):
         
         使用场景：
         - 个人资料加载：用户打开个人资料页面时调用此接口
-        - 次数更新后：用户完成任务或充值后，重新调用此接口刷新显示
+        - 次数更新后：用户完成任务或次数变更后，重新调用此接口刷新显示
         
         注意事项：
         - 虽然这是公开接口，但通常在用户登录后才调用
