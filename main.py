@@ -1152,11 +1152,19 @@ def _get_default_config():
     # 此配置节用于设置跑步任务的费用标准
     # 当用户欠费时，系统将根据此配置计算需要缴纳的金额
     config["Payment_Settings"] = {
+        # 是否需要付费（true/false）
+        # true：启用付费模式，用户需要支付才能使用跑步服务
+        # false：免费模式，所有用户可无限次使用，不扣除次数，不产生欠费
+        # 默认值：true（需要付费）
+        # 注意：当设置为false时，或者single_run_cost<=0时，系统将跳过所有付费相关逻辑
+        "require_payment": "true",
         # 单次跑步任务费用（单位：元）
         # 用于计算用户欠费金额 = 欠费次数 × single_run_cost
         # 默认值：1.0元/次
         # 管理员可根据实际情况调整此费用
-        # 注意：修改后仅对新产生的欠费生效，已有订单不受影响
+        # 注意：
+        # 1. 修改后仅对新产生的欠费生效，已有订单不受影响
+        # 2. 设置为0或负数时，相当于关闭付费功能，所有用户可免费使用
         "single_run_cost": "1.0",
     }
 
@@ -1654,6 +1662,14 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 当用户欠费时，系统将根据此配置计算需要缴纳的金额\n")
         f.write("# ============================================================\n\n")
         f.write("[Payment_Settings]\n")
+        f.write("# 是否需要付费（true/false）\n")
+        f.write("# true：启用付费模式，用户需要支付才能使用跑步服务\n")
+        f.write("# false：免费模式，所有用户可无限次使用，不扣除次数，不产生欠费\n")
+        f.write("# 默认值：true（需要付费）\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 当设置为false时，或者single_run_cost<=0时，系统将跳过所有付费相关逻辑\n")
+        f.write("# 2. 免费模式下，用户仍然可以充值，但不会自动扣费\n")
+        f.write(f"require_payment = {config_obj.get('Payment_Settings', 'require_payment', fallback='true')}\n\n")
         f.write("# 单次跑步任务费用（单位：元）\n")
         f.write("# 用于计算用户欠费金额 = 欠费次数 × single_run_cost\n")
         f.write("# 默认值：1.0元/次\n")
@@ -1661,7 +1677,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 注意：\n")
         f.write("# 1. 费用必须为正数，支持小数（如：0.5、1.5、2.0）\n")
         f.write("# 2. 修改后仅对新产生的欠费生效，已有订单不受影响\n")
-        f.write("# 3. 建议设置合理的费用标准，避免过高或过低\n")
+        f.write("# 3. 设置为0或负数时，相当于关闭付费功能，所有用户可免费使用\n")
         f.write(f"single_run_cost = {config_obj.get('Payment_Settings', 'single_run_cost', fallback='1.0')}\n\n")
 
         # ============================================================
@@ -5914,6 +5930,7 @@ class Api:
         任务完成后处理可用次数扣减或欠费次数增加的逻辑。
         
         执行逻辑：
+        0. 检查付费配置，如果不需要付费或价格<=0，则跳过所有付费逻辑
         1. 读取 system_accounts 中认证用户的 available_runs 字段
         2. 如果 available_runs == -1（无限次数），直接返回，不做任何处理
         3. 如果 available_runs >= 1，扣减1次，保存到 system_accounts
@@ -5927,6 +5944,30 @@ class Api:
             None
         """
         try:
+            # 步骤0：检查付费控制配置
+            # 从配置文件中读取 require_payment（是否需要付费）和 single_run_cost（单次费用）
+            # 如果不需要付费或价格为0/负数，则跳过所有付费相关逻辑（不扣除次数、不产生欠费）
+            config = _get_config()
+            # 读取 require_payment 配置项，默认值为 true（需要付费）
+            # 如果配置为 false，表示系统运行在免费模式下
+            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+            # 读取 single_run_cost 配置项，默认值为 1.0元
+            # 如果价格设置为0或负数，也表示免费模式
+            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+            
+            # 判断是否需要跳过付费逻辑
+            # 满足以下任一条件时跳过：
+            # 1. require_payment 为 false（明确配置为免费模式）
+            # 2. single_run_cost <= 0（价格为0或负数，等同于免费）
+            if not require_payment or single_run_cost <= 0:
+                logging.info(
+                    f"[付费控制] 用户 {auth_username} (学校账号: {school_username}) "
+                    f"免费模式运行，跳过次数扣除和欠费记录。"
+                    f"(require_payment={require_payment}, single_run_cost={single_run_cost})"
+                )
+                # 免费模式下，直接返回，不执行后续的扣减或欠费逻辑
+                return
+            
             # 步骤1：加载认证用户的 system_accounts 数据
             # 使用全局 auth_system 来获取用户文件路径
             global auth_system
@@ -16993,6 +17034,7 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/list_users", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_list_users():
         """
         列出所有用户信息。
@@ -17011,6 +17053,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "users": users})
 
     @app.route("/auth/admin/update_user_group", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_update_user_group():
         """
         修改用户所属的权限组。
@@ -17041,6 +17084,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/list_groups", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_list_groups():
         """
         管理员API - 列出所有权限组及其权限配置。
@@ -17073,6 +17117,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "groups": groups})
 
     @app.route("/auth/admin/create_group", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_create_group():
         """创建权限组"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17105,6 +17150,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/update_group", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_update_group():
         """更新权限组（支持group_key和group_name参数）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17135,6 +17181,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/delete_group", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_delete_group():
         """超级管理员：删除权限组"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17154,6 +17201,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/get_user_permissions", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_get_user_permissions():
         """管理员：获取用户的完整权限列表"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17210,6 +17258,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/set_user_permission", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_set_user_permission():
         """管理员：为用户设置自定义权限（差分化存储）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17609,6 +17658,7 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/create_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_create_user():
         """管理员：创建新用户
 
@@ -17694,6 +17744,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/ban_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_ban_user():
         """管理员：封禁用户"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17723,6 +17774,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/unban_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_unban_user():
         """管理员：解封用户"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17752,6 +17804,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/delete_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_delete_user():
         """管理员：删除用户"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17781,6 +17834,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/auth/admin/force_disable_2fa", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_force_disable_2fa():
         """管理员：强制关闭用户2FA"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17820,6 +17874,7 @@ def start_web_server(args_param):
     # 【修复】添加缺失的强制登出API路由
     # ============================================================
     @app.route("/auth/admin/force_logout_user", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_force_logout_user():
         """管理员：强制登出指定用户"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -17899,6 +17954,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/force_reset_password", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_force_reset_password():
         """
         管理员API：强制重置用户密码。
@@ -17985,6 +18041,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/update_user_nickname", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def auth_admin_update_user_nickname():
         """
@@ -18039,6 +18096,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/update_user_phone", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_update_user_phone():
         """
         管理员更新用户手机号
@@ -18124,6 +18182,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"更新失败: {str(e)}"}), 500
 
     @app.route("/auth/admin/login_logs", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_login_logs():
         """获取登录日志（管理员）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -18141,6 +18200,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "logs": logs})
 
     @app.route("/auth/admin/get_user_school_accounts", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_get_user_school_accounts():
         """获取指定认证用户的所有 school_account（管理员或有 auto_fill_password 权限）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -18173,6 +18233,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/get_all_users_school_accounts", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_get_all_users_school_accounts():
         """获取所有认证用户的 school_account 列表（管理员或有 auto_fill_password 权限）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -18213,6 +18274,7 @@ def start_web_server(args_param):
 
     # ========== 新增：School Account 管理API（保存/添加） ==========
     @app.route("/api/admin/school_account/save", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def api_admin_school_account_save():
         """
         保存或添加 School Account（PC端管理面板CRUD支持）。
@@ -18298,6 +18360,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存账户数据失败"}), 500
 
     @app.route("/api/admin/school_account/delete", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def api_admin_school_account_delete():
         """
         删除 School Account（PC端管理面板CRUD支持）。
@@ -18379,6 +18442,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存账户数据失败"}), 500
 
     @app.route("/api/admin/school_account/update", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def api_admin_school_account_update():
         """
         更新 School Account（PC端管理面板CRUD支持）。
@@ -18529,6 +18593,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/reset_password", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_reset_password():
         """
         重置用户密码（管理员）或修改自己的密码。
@@ -18893,6 +18958,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/auth/admin/clear_user_avatar", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_clear_user_avatar():
         """管理员：强制清除用户头像"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -19078,6 +19144,7 @@ def start_web_server(args_param):
         return jsonify({"success": False, "message": "用户不存在", "avatar_url": ""})
 
     @app.route("/auth/admin/update_max_sessions", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_update_max_sessions():
         """更新用户最大会话数量（管理员）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -19120,6 +19187,7 @@ def start_web_server(args_param):
         return jsonify(result)
 
     @app.route("/api/admin/update_available_runs", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def api_admin_update_available_runs():
         """
         更新用户的可用执行次数（管理员API）
@@ -19520,6 +19588,7 @@ def start_web_server(args_param):
         return response
 
     @app.route("/auth/admin/all_sessions", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_all_sessions():
         """管理员：获取所有活跃会话（查看所有会话）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -19674,6 +19743,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/destroy_session", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_destroy_session():
         """管理员：强制销毁任意会话（查看所有会话）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -19724,6 +19794,7 @@ def start_web_server(args_param):
         )
 
     @app.route("/auth/admin/audit_logs", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     def auth_admin_audit_logs():
         """获取审计日志（管理员）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -20470,6 +20541,7 @@ def start_web_server(args_param):
     # ====================
 
     @app.route("/api/admin/logs/login_history", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def admin_logs_login_history():
         """
@@ -20503,6 +20575,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "查询失败"}), 500
 
     @app.route("/api/admin/logs/audit", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def admin_logs_audit():
         """
@@ -20540,6 +20613,7 @@ def start_web_server(args_param):
         return fallback
 
     @app.route("/api/admin/config/load", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def admin_config_load():
         """
@@ -20850,6 +20924,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "加载配置失败"}), 500
 
     @app.route("/api/admin/config/save", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def admin_config_save():
         """
@@ -21465,6 +21540,7 @@ def start_web_server(args_param):
     IP_BANS_FILE = os.path.join("logs", "ip_bans.json")
 
     @app.route("/api/admin/ip_bans", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_ip_bans():
         """
@@ -21487,6 +21563,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取列表失败"}), 500
 
     @app.route("/api/admin/ip_bans", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def add_ip_ban():
         """
@@ -21532,6 +21609,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "添加失败"}), 500
 
     @app.route("/api/admin/ip_bans/<ban_id>", methods=["DELETE"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def delete_ip_ban(ban_id):
         """
@@ -21562,6 +21640,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "删除失败"}), 500
 
     @app.route("/api/admin/check_ip_ban", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     def check_ip_ban_api():
         """
         检查IP封禁状态API
@@ -21621,6 +21700,7 @@ def start_web_server(args_param):
     # ====================
 
     @app.route("/api/admin/sms/config", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_sms_config():
         """
@@ -21702,6 +21782,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取配置失败"}), 500
 
     @app.route("/api/admin/sms/config", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def save_sms_config():
         """
@@ -21773,6 +21854,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存失败"}), 500
 
     @app.route("/api/admin/sms/check_balance", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def check_sms_balance():
         """
@@ -21865,6 +21947,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"查询失败：{str(e)}"}), 500
 
     @app.route("/api/admin/sms/history", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_sms_history():
         """
@@ -21905,6 +21988,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取历史失败"}), 500
 
     @app.route("/api/admin/sms/verification_codes", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_verification_codes():
         """
@@ -21934,6 +22018,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "获取列表失败"}), 500
 
     @app.route("/api/admin/sms/invalidate_code", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def invalidate_verification_code():
         """
@@ -21960,6 +22045,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "操作失败"}), 500
 
     @app.route("/api/admin/sms/add_manual_code", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def add_manual_verification_code():
         """
@@ -22039,6 +22125,7 @@ def start_web_server(args_param):
     # ============================================================================
 
     @app.route("/api/admin/ssl/info", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_ssl_info():
         """
@@ -22079,6 +22166,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/ssl/upload", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def upload_ssl_certificate():
         """
@@ -22169,6 +22257,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"上传失败: {str(e)}"}), 500
 
     @app.route("/api/admin/ssl/config", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def update_ssl_config():
         """
@@ -22227,6 +22316,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/ssl/toggle", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def toggle_ssl():
         """
@@ -22280,6 +22370,7 @@ def start_web_server(args_param):
     # ============================================================================
 
     @app.route("/api/admin/cdn/config", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_cdn_config():
         """
@@ -22348,6 +22439,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/cdn/config", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def update_cdn_config():
         """
@@ -22507,6 +22599,7 @@ def start_web_server(args_param):
             return False, (jsonify({"success": False, "message": "权限检查失败"}), 500)
 
     @app.route("/api/admin/bruteforce/start", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def start_bruteforce():
         """
@@ -22566,6 +22659,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/bruteforce/stop", methods=["POST"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def stop_bruteforce():
         """
@@ -22635,6 +22729,7 @@ def start_web_server(args_param):
             )
 
     @app.route("/api/admin/bruteforce/status", methods=["GET"])
+    @admin_required  # 添加管理员权限校验
     @login_required
     def get_bruteforce_status():
         """
@@ -27126,12 +27221,70 @@ def start_web_server(args_param):
             # ========== 处理支付成功通知 ==========
             
             if trade_status == "TRADE_SUCCESS":
-                # 检查订单是否已经支付过
-                # 防止重复处理（幂等性）
+                # ========== 检查订单是否已经支付过（幂等性保护）==========
+                # 这是防止重复处理的核心机制
+                # 场景：易支付可能会多次发送支付成功通知（网络重试、系统重试等）
+                # 我们必须确保即使收到多次通知，也只处理一次业务逻辑
+                
                 if order_data.get("status") == "paid":
-                    # 订单已支付，直接返回成功（不重复处理）
-                    logging.info(f"[支付通知] 订单已支付，跳过处理 - 订单: {out_trade_no}")
+                    # ========== 订单已支付，这是一个重复通知 ==========
+                    
+                    # 获取当前的通知计数并+1
+                    # 情况1：如果notify_count字段存在，说明之前已经记录过，直接+1
+                    # 情况2：如果notify_count字段不存在，说明这是旧订单（在添加计数功能之前创建的）
+                    #        由于订单status="paid"，说明至少收到过1次通知
+                    #        现在收到重复通知，默认为1，然后+1=2（第2次通知）
+                    notify_count = order_data.get("notify_count", 1) + 1
+                    
+                    # 更新通知计数
+                    order_data["notify_count"] = notify_count
+                    
+                    # 记录最后一次收到通知的时间戳（用于审计和分析）
+                    order_data["last_notify_at"] = time.time()
+                    
+                    # 记录最后一次收到通知的可读时间（便于人工查看）
+                    order_data["last_notify_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
+                    # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                    
+                    # 记录日志：订单已支付，跳过重复处理
+                    logging.info(
+                        f"[支付通知] 订单已支付，跳过处理（重复通知#{notify_count}）- 订单: {out_trade_no}"
+                    )
+                    
+                    # ========== 写入支付操作日志（重复通知）==========
+                    # 虽然不处理业务逻辑，但我们仍然需要记录这次重复通知
+                    # 这对于安全审计和问题排查非常重要
+                    _write_payment_log(
+                        user_id=order_data.get("username", "unknown"),  # 订单所有者
+                        order_id=out_trade_no,                          # 商户订单号
+                        action="payment_duplicate_notify",              # 操作类型：重复通知
+                        log_data={
+                            # 重复通知信息
+                            "notify_count": notify_count,               # 这是第几次通知
+                            "notify_params": params,                    # 本次通知的参数
+                            "notify_ip": request.remote_addr,           # 通知来源IP
+                            "last_notify_at": order_data["last_notify_at"],     # 通知时间戳
+                            "last_notify_time": order_data["last_notify_time"], # 通知时间（可读）
+                            # 订单信息
+                            "order_status": order_data.get("status"),   # 订单状态（应该是paid）
+                            "first_paid_at": order_data.get("paid_at"), # 首次支付时间
+                            "first_paid_time": order_data.get("paid_time"), # 首次支付时间（可读）
+                            # 操作结果
+                            "success": True,
+                            "message": f"重复通知（第{notify_count}次），订单已处理，跳过业务逻辑"
+                        }
+                    )
+                    
+                    # 返回success告诉易支付我们已经收到通知
+                    # 这样易支付就不会继续重试了
                     return "success"
+                
+                # ========== 首次处理支付通知 ==========
+                # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
                 
                 # 更新订单状态为已支付
                 order_data["status"] = "paid"
@@ -27139,6 +27292,12 @@ def start_web_server(args_param):
                 order_data["paid_at"] = time.time()        # 支付时间（时间戳）
                 order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
                 order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
+                
+                # ========== 添加首次处理标记（用于幂等性保护）==========
+                # notify_processed_at: 首次处理通知的时间戳（用于审计）
+                order_data["notify_processed_at"] = time.time()
+                # notify_count: 通知计数，初始值为1（表示这是第一次处理）
+                order_data["notify_count"] = 1
                 
                 # 保存更新后的订单数据
                 with open(order_file, "w", encoding="utf-8") as f:
@@ -27346,7 +27505,7 @@ def start_web_server(args_param):
     @app.route("/api/payment/return", methods=["GET"])
     def payment_return():
         """
-        同步返回页面接口
+        支付返回页面（同步通知）
         
         请求方法：GET
         权限要求：无（公开页面）
@@ -27355,36 +27514,166 @@ def start_web_server(args_param):
         用户在支付页面完成支付后，浏览器会跳转到这个URL。
         这个页面用于显示支付结果，提供友好的用户体验。
         
-        重要说明：
-        1. 这个页面仅用于展示，不能作为支付成功的判断依据
-        2. 用户可能不会访问这个页面（例如直接关闭浏览器）
-        3. 订单状态必须以异步通知（notify）为准
-        4. 这个页面可以显示支付结果，并提供返回应用的按钮
+        ========== 重要的安全说明 ==========
+        1. **这个页面仅用于向用户展示支付结果**
+        2. **不要依赖这个页面更新订单状态**（因为用户可以刷新页面）
+        3. **订单状态的更新必须通过异步通知（notify）完成**
+        4. **这个页面只是"查询并显示"订单状态，不执行任何业务逻辑**
+        5. 用户可能不会访问这个页面（例如直接关闭浏览器）
+        6. 恶意用户可能会伪造访问，所以必须验证签名
+        
+        为什么不能用return页面更新订单状态？
+        - 用户可以刷新页面（导致重复处理）
+        - 恶意用户可以伪造请求
+        - 用户可能不访问这个页面（直接关闭支付窗口）
+        - 网络问题可能导致页面无法加载
         
         请求参数（查询字符串）：
         彩虹易支付会在URL中附加参数，例如：
             - out_trade_no: 商户订单号
             - trade_no: 易支付订单号
             - trade_status: 支付状态
-            - sign: 签名
+            - sign: 签名（用于验证请求的真实性）
         
         返回：HTML页面（支付结果展示页面）
         """
         try:
-            # 获取URL查询参数
+            # ========== 获取URL查询参数 ==========
             # request.args 获取GET请求的查询字符串参数
             params = request.args.to_dict()
             
-            # 记录日志
-            logging.info(f"[支付返回] 用户返回 - 参数: {params}")
-            
-            # 提取订单号
+            # 提取关键参数
             out_trade_no = params.get("out_trade_no", "")
             trade_status = params.get("trade_status", "")
             
-            # 构造简单的HTML支付结果页面
-            # 实际项目中，可以返回一个更美观的前端页面
-            if trade_status == "TRADE_SUCCESS":
+            # 记录return页面访问日志
+            logging.info(
+                f"[支付返回] 用户访问支付返回页面 - 订单: {out_trade_no}, "
+                f"IP: {request.remote_addr}, 状态: {trade_status}"
+            )
+            
+            # ========== 安全检查：验证签名 ==========
+            # 防止恶意用户伪造支付成功页面
+            # 即使这个页面不执行业务逻辑，我们也要验证签名
+            yipay_client = RainbowYiPayClient()
+            if not yipay_client.verify_sign(params):
+                # 签名验证失败，记录警告日志
+                logging.warning(
+                    f"[支付返回] 签名验证失败 - 订单: {out_trade_no}, "
+                    f"IP: {request.remote_addr}, 参数: {params}"
+                )
+                # 返回错误页面
+                return """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>验证失败</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background-color: #f5f5f5;
+                        }
+                        .result-box {
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                        }
+                        .fail-icon {
+                            font-size: 60px;
+                            color: #f5222d;
+                            margin-bottom: 20px;
+                        }
+                        .title {
+                            font-size: 24px;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }
+                        .info {
+                            color: #666;
+                            margin-bottom: 30px;
+                        }
+                        .button {
+                            display: inline-block;
+                            padding: 10px 30px;
+                            background-color: #1890ff;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            transition: background-color 0.3s;
+                        }
+                        .button:hover {
+                            background-color: #40a9ff;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="result-box">
+                        <div class="fail-icon">⚠</div>
+                        <div class="title">验证失败</div>
+                        <div class="info">
+                            <p>请求验证失败，请联系客服</p>
+                        </div>
+                        <a href="/" class="button">返回首页</a>
+                    </div>
+                </body>
+                </html>
+                """, 400
+            
+            # ========== 仅查询订单状态，不执行业务逻辑 ==========
+            # 构造订单文件路径
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+            
+            # 初始化订单数据（用于日志记录）
+            order_data = None
+            order_exists = False
+            
+            # 检查订单是否存在并读取
+            if os.path.exists(order_file):
+                order_exists = True
+                try:
+                    # 读取订单数据（只读，不修改）
+                    with open(order_file, "r", encoding="utf-8") as f:
+                        order_data = json.load(f)
+                except Exception as e:
+                    logging.error(f"[支付返回] 读取订单文件失败 - 订单: {out_trade_no}, 错误: {str(e)}")
+            
+            # ========== 写入访问日志（用于安全审计）==========
+            # 记录每次return页面的访问，便于监控和排查问题
+            if order_data:
+                _write_payment_log(
+                    user_id=order_data.get("username", "unknown"),  # 订单所有者
+                    order_id=out_trade_no,                          # 商户订单号
+                    action="payment_return_page_visit",             # 操作类型：访问返回页面
+                    log_data={
+                        # 返回页面信息
+                        "return_params": params,                    # URL中的参数
+                        "visitor_ip": request.remote_addr,          # 访问者IP
+                        "user_agent": request.headers.get("User-Agent", ""),  # 浏览器信息
+                        # 订单信息
+                        "order_exists": order_exists,               # 订单是否存在
+                        "order_status": order_data.get("status", "unknown"),  # 订单状态
+                        "paid_at": order_data.get("paid_at"),       # 支付时间
+                        "paid_time": order_data.get("paid_time"),   # 支付时间（可读）
+                        # 操作结果
+                        "success": True,
+                        "message": "用户访问支付返回页面（仅展示，不执行业务逻辑）"
+                    }
+                )
+            
+            # ========== 构造HTML支付结果页面 ==========
+            # 根据订单状态和trade_status显示不同的页面
+            
+            # 情况1：订单存在且已支付（正常情况）
+            if order_exists and order_data and order_data.get("status") == "paid":
                 html = f"""
                 <!DOCTYPE html>
                 <html>
@@ -27443,19 +27732,134 @@ def start_web_server(args_param):
                         <div class="title">支付成功！</div>
                         <div class="info">
                             <p>订单号：{out_trade_no}</p>
-                            <p>感谢您的支付，订单处理中...</p>
+                            <p>支付金额：{order_data.get("amount", "未知")}元</p>
+                            <p>商品：{order_data.get("product_name", "未知")}</p>
+                            <p>支付时间：{order_data.get("paid_time", "未知")}</p>
+                            <p>感谢您的支付，订单已完成！</p>
+                            <p id="redirect-text">页面将在 5 秒后自动跳转...</p>
                         </div>
-                        <a href="/" class="button">返回首页</a>
+                        <a href="/" class="button">立即返回首页</a>
                     </div>
                     <script>
-                        // 3秒后自动跳转到首页
-                        setTimeout(function() {{
-                            window.location.href = '/';
-                        }}, 3000);
+                        // 显示倒计时，提升用户体验
+                        var countdown = 5;
+                        var redirectText = document.getElementById('redirect-text');
+                        var timer = setInterval(function() {{
+                            countdown--;
+                            if (countdown > 0) {{
+                                redirectText.textContent = '页面将在 ' + countdown + ' 秒后自动跳转...';
+                            }} else {{
+                                redirectText.textContent = '正在跳转...';
+                                clearInterval(timer);
+                                window.location.href = '/';
+                            }}
+                        }}, 1000);
                     </script>
                 </body>
                 </html>
                 """
+            # 情况2：trade_status显示成功，但订单状态未更新（可能通知还未到达）
+            elif trade_status == "TRADE_SUCCESS":
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>支付处理中</title>
+                    <style>
+                        body {{
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background-color: #f5f5f5;
+                        }}
+                        .result-box {{
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                        }}
+                        .pending-icon {{
+                            font-size: 60px;
+                            color: #faad14;
+                            margin-bottom: 20px;
+                        }}
+                        .title {{
+                            font-size: 24px;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }}
+                        .info {{
+                            color: #666;
+                            margin-bottom: 30px;
+                        }}
+                        .button {{
+                            display: inline-block;
+                            padding: 10px 30px;
+                            background-color: #1890ff;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                            transition: background-color 0.3s;
+                        }}
+                        .button:hover {{
+                            background-color: #40a9ff;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="result-box">
+                        <div class="pending-icon">⏳</div>
+                        <div class="title">支付处理中...</div>
+                        <div class="info">
+                            <p>订单号：{out_trade_no}</p>
+                            <p>您的支付正在处理中，请稍候</p>
+                            <p id="status-text">订单状态将在几秒内更新</p>
+                        </div>
+                        <a href="/" class="button">返回首页</a>
+                    </div>
+                    <script>
+                        // 自动刷新逻辑（带次数限制，防止无限刷新）
+                        // 从localStorage读取刷新次数
+                        var refreshCount = parseInt(localStorage.getItem('payment_refresh_count_{out_trade_no}') || '0');
+                        var maxRefreshes = 5; // 最多刷新5次（约25秒）
+                        
+                        if (refreshCount < maxRefreshes) {{
+                            // 更新刷新次数
+                            localStorage.setItem('payment_refresh_count_{out_trade_no}', refreshCount + 1);
+                            
+                            // 显示倒计时
+                            var countdown = 5;
+                            var statusText = document.getElementById('status-text');
+                            var timer = setInterval(function() {{
+                                countdown--;
+                                if (countdown > 0) {{
+                                    statusText.textContent = '订单状态将在 ' + countdown + ' 秒后刷新...（剩余' + (maxRefreshes - refreshCount) + '次）';
+                                }} else {{
+                                    statusText.textContent = '正在刷新...';
+                                    clearInterval(timer);
+                                }}
+                            }}, 1000);
+                            
+                            // 5秒后刷新页面
+                            setTimeout(function() {{
+                                window.location.reload();
+                            }}, 5000);
+                        }} else {{
+                            // 达到最大刷新次数，清理localStorage并提示用户
+                            localStorage.removeItem('payment_refresh_count_{out_trade_no}');
+                            document.getElementById('status-text').textContent = '请稍后手动刷新查看订单状态，或返回首页查看';
+                        }}
+                    </script>
+                </body>
+                </html>
+                """
+            # 情况3：支付失败或其他状态
             else:
                 html = f"""
                 <!DOCTYPE html>
@@ -27525,12 +27929,15 @@ def start_web_server(args_param):
                 </html>
                 """
             
+            # 返回HTML页面
             return html
         
         except Exception as e:
+            # 捕获所有异常，记录日志
             logging.error(f"[支付返回] 处理返回页面异常: {str(e)}")
             logging.error(traceback.format_exc())
-            return "<html><body><h1>页面加载失败</h1></body></html>", 500
+            # 返回友好的错误页面
+            return "<html><body><h1>页面加载失败</h1><p>请联系客服</p></body></html>", 500
 
     @app.route("/api/payment/orders", methods=["GET"])
     @login_required
@@ -28498,6 +28905,142 @@ def start_web_server(args_param):
                 "message": f"获取日志失败：{str(e)}"
             }), 500
 
+    @app.route("/api/admin/payment/notify_stats", methods=["GET"])
+    @admin_required
+    def admin_payment_notify_stats():
+        """
+        获取支付通知统计信息接口（管理员专用）
+        
+        请求方法：GET
+        权限要求：管理员权限（admin_required装饰器）
+        
+        功能说明：
+        这个接口用于监控支付通知系统的运行状况，统计重复通知的情况。
+        可以帮助管理员发现：
+        - 哪些订单收到了重复通知
+        - 重复通知的频率
+        - 是否存在异常的重复通知模式
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - stats (dict): 统计信息
+                - total_orders (int): 总订单数
+                - repeat_notifies (int): 重复通知总次数（不包括首次通知）
+                - max_repeat_count (int): 单个订单的最大通知次数
+                - orders_with_repeats (list): 有重复通知的订单列表
+                    每个订单包含：
+                    - order_id (str): 订单号
+                    - notify_count (int): 收到通知的总次数
+                    - last_notify_time (str): 最后一次通知时间
+                    - username (str): 订单所有者
+                    - amount (str): 订单金额
+                    - status (str): 订单状态
+        
+        使用场景：
+        - 监控：实时监控支付系统的通知重试情况
+        - 告警：发现异常的重复通知模式（例如某订单被通知了上百次）
+        - 优化：分析通知重试的原因，优化幂等性处理机制
+        - 调试：排查支付通知相关的问题
+        """
+        try:
+            # ========== 初始化统计数据结构 ==========
+            
+            stats = {
+                "total_orders": 0,              # 总订单数
+                "paid_orders": 0,               # 已支付订单数
+                "repeat_notifies": 0,           # 重复通知总次数（不包括首次）
+                "max_repeat_count": 0,          # 单个订单的最大通知次数
+                "orders_with_repeats": []       # 有重复通知的订单详情列表
+            }
+            
+            # ========== 遍历所有订单文件，收集统计信息 ==========
+            
+            # 检查订单目录是否存在
+            if not os.path.exists(PAYMENT_ORDERS_DIR):
+                # 订单目录不存在，返回空统计
+                return jsonify({
+                    "success": True,
+                    "stats": stats,
+                    "message": "订单目录不存在，统计为空"
+                })
+            
+            # 遍历订单目录中的所有JSON文件
+            for filename in os.listdir(PAYMENT_ORDERS_DIR):
+                # 只处理JSON文件
+                if not filename.endswith(".json"):
+                    continue
+                
+                # 构造完整的文件路径
+                filepath = os.path.join(PAYMENT_ORDERS_DIR, filename)
+                
+                try:
+                    # 读取订单数据
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        order_data = json.load(f)
+                    
+                    # 统计总订单数
+                    stats["total_orders"] += 1
+                    
+                    # 统计已支付订单数
+                    if order_data.get("status") == "paid":
+                        stats["paid_orders"] += 1
+                    
+                    # 获取通知计数（notify_count字段）
+                    # 注意：对于旧订单（在添加计数功能之前创建的），notify_count字段不存在
+                    # 我们将其默认为0，这样它们不会被计入重复通知统计
+                    # 这是合理的，因为我们无法得知旧订单收到过多少次通知
+                    # 只有在添加此功能之后创建的订单才会有准确的统计数据
+                    notify_count = order_data.get("notify_count", 0)
+                    
+                    # 如果收到过通知（notify_count > 0）
+                    if notify_count > 0:
+                        # 更新最大通知次数
+                        stats["max_repeat_count"] = max(stats["max_repeat_count"], notify_count)
+                        
+                        # 如果通知次数大于1，说明有重复通知
+                        if notify_count > 1:
+                            # 累加重复通知次数（不包括首次通知）
+                            stats["repeat_notifies"] += (notify_count - 1)
+                            
+                            # 将这个订单添加到重复通知列表
+                            stats["orders_with_repeats"].append({
+                                "order_id": order_data.get("order_id", filename.replace(".json", "")),
+                                "notify_count": notify_count,                           # 通知总次数
+                                "last_notify_time": order_data.get("last_notify_time", "未知"),  # 最后通知时间
+                                "last_notify_at": order_data.get("last_notify_at", 0),  # 最后通知时间戳
+                                "first_notify_time": order_data.get("paid_time", "未知"),  # 首次通知时间
+                                "username": order_data.get("username", "未知"),         # 订单所有者
+                                "amount": order_data.get("amount", "0"),                # 订单金额
+                                "status": order_data.get("status", "unknown"),          # 订单状态
+                                "product_name": order_data.get("product_name", "未知")  # 商品名称
+                            })
+                
+                except Exception as e:
+                    # 读取单个订单文件失败，记录日志但继续处理其他订单
+                    logging.error(f"[通知统计] 读取订单文件失败: {filename}, 错误: {str(e)}")
+                    continue
+            
+            # ========== 对重复通知列表排序 ==========
+            # 按通知次数降序排列，通知次数最多的订单排在最前面
+            stats["orders_with_repeats"].sort(key=lambda x: x["notify_count"], reverse=True)
+            
+            # ========== 返回统计结果 ==========
+            
+            return jsonify({
+                "success": True,
+                "stats": stats,
+                "message": "统计完成"
+            })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[通知统计] 获取统计信息失败: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"获取统计信息失败: {str(e)}"
+            }), 500
+
     # ==============================================================================
     # 欠费检查接口
     # ==============================================================================
@@ -28509,6 +29052,7 @@ def start_web_server(args_param):
         检查学校账号是否有欠费
         
         功能说明：
+        - 首先检查付费配置，如果不需要付费或价格<=0，直接返回无欠费
         - 读取当前认证用户的所有学校账号
         - 检查每个账号的 overdue_count 字段（欠费次数）
         - 如果 overdue_count > 0，说明该账号有欠费记录
@@ -28535,6 +29079,29 @@ def start_web_server(args_param):
         - 返回 {"success": false, "message": "错误信息"}
         """
         try:
+            # ========== 步骤1：检查付费控制配置 ==========
+            # 从配置文件中读取付费相关配置
+            # 如果系统运行在免费模式下，直接返回无欠费状态，无需继续检查
+            config = _get_config()
+            # 读取 require_payment 配置项，默认值为 true（需要付费）
+            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+            # 读取 single_run_cost 配置项，默认值为 1.0元
+            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+            
+            # 判断是否为免费模式
+            # 满足以下任一条件时，系统运行在免费模式下：
+            # 1. require_payment 为 false（明确配置为免费模式）
+            # 2. single_run_cost <= 0（价格为0或负数，等同于免费）
+            if not require_payment or single_run_cost <= 0:
+                # 免费模式下，不存在欠费概念，直接返回无欠费
+                return jsonify({
+                    "success": True,
+                    "has_overdue": False,
+                    "message": "当前系统运行在免费模式，所有用户均可无限次使用",
+                    "overdue_accounts": []
+                })
+            
+            # ========== 步骤2：检查学校账号欠费情况 ==========
             # 从请求体中获取参数
             data = request.get_json() or {}
             # 可选参数：要检查的特定学校账号用户名
@@ -28707,6 +29274,127 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"清零欠费失败：{str(e)}"
+            }), 500
+
+    # ==============================================================================
+    # 付费配置获取接口
+    # ==============================================================================
+    
+    @app.route("/api/config/pricing", methods=["GET"])
+    @login_required
+    def get_pricing_config():
+        """
+        获取付费相关配置
+        
+        功能说明：
+        - 返回系统的付费相关配置信息
+        - 包括是否需要付费、单次跑步费用、界面显示配置等
+        - 前端用于显示价格信息和管理付费相关功能
+        - 普通用户可以读取配置，但只有管理员可以修改
+        
+        请求方法：GET
+        权限要求：需要登录（login_required装饰器）
+        
+        查询参数：无
+        
+        返回数据（JSON格式）：
+        {
+            "success": true,
+            "config": {
+                "require_payment": true,                      // 是否需要付费
+                "single_run_cost": 1.0,                       // 单次跑步任务费用（元）
+                "show_available_runs": true,                  // 是否在个人资料页显示剩余次数
+                "available_runs_format": "剩余免费次数：{available_runs} 次",  // 剩余次数显示格式
+                "show_available_runs_on_register": true,      // 是否在注册页显示免费次数提示
+                "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑"  // 注册页提示文本
+            }
+        }
+        
+        使用场景：
+        - 前端初始化：加载配置以决定是否显示付费相关功能
+        - 价格展示：在前端页面显示当前的收费标准
+        - 管理后台：为管理员提供当前配置的查看和编辑界面
+        
+        注意事项：
+        - 如果配置文件中不存在某项配置，使用默认值
+        - 配置修改需要调用其他接口（如 /api/admin/config/save）
+        """
+        try:
+            # ========== 步骤1：读取配置文件 ==========
+            # 使用 _get_config() 函数获取配置对象
+            # 该函数会自动处理配置文件不存在的情况，返回默认配置
+            config = _get_config()
+            
+            # ========== 步骤2：提取付费相关配置项 ==========
+            # 使用 fallback 参数指定默认值，确保即使配置文件中缺少某项也能正常返回
+            
+            # 是否需要付费（布尔值）
+            # true: 启用付费模式，用户需要支付才能使用
+            # false: 免费模式，所有用户可无限次使用
+            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+            
+            # 单次跑步任务费用（浮点数，单位：元）
+            # 用于计算用户欠费金额 = 欠费次数 × single_run_cost
+            # 设置为0或负数时，相当于关闭付费功能
+            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+            
+            # 是否在个人资料页面显示剩余免费次数（布尔值）
+            # true: 显示 available_runs 字段
+            # false: 不显示该字段
+            show_available_runs = config.getboolean("Profile_Display", "show_available_runs", fallback=True)
+            
+            # 剩余免费次数的显示格式（字符串模板）
+            # {available_runs} 会被替换为实际的剩余次数数值
+            # 例如："剩余免费次数：5 次"
+            available_runs_format = config.get(
+                "Profile_Display", 
+                "available_runs_format", 
+                fallback="剩余免费次数：{available_runs} 次"
+            )
+            
+            # 是否在注册页面显示免费次数提示（布尔值）
+            # true: 在注册表单中显示初始免费次数的提示信息
+            # false: 不显示提示信息
+            show_available_runs_on_register = config.getboolean(
+                "Registration_Display", 
+                "show_available_runs_on_register", 
+                fallback=True
+            )
+            
+            # 注册页面的免费次数提示文本（字符串模板）
+            # {available_runs} 会被替换为新用户注册时获得的初始免费次数
+            # 例如："注册即可得 10 次校园跑"
+            register_available_runs_hint = config.get(
+                "Registration_Display",
+                "register_available_runs_hint",
+                fallback="注册即可得 {available_runs} 次校园跑"
+            )
+            
+            # ========== 步骤3：构造返回数据 ==========
+            # 将所有配置项打包成一个字典，返回给前端
+            return jsonify({
+                "success": True,
+                "config": {
+                    "require_payment": require_payment,
+                    "single_run_cost": single_run_cost,
+                    "show_available_runs": show_available_runs,
+                    "available_runs_format": available_runs_format,
+                    "show_available_runs_on_register": show_available_runs_on_register,
+                    "register_available_runs_hint": register_available_runs_hint
+                }
+            })
+        
+        except Exception as e:
+            # ========== 异常处理 ==========
+            # 捕获所有可能的异常（如配置文件损坏、类型转换错误等）
+            # 记录详细的错误日志，包含完整的异常堆栈信息
+            logging.error(f"[配置读取] 获取付费配置失败: {e}", exc_info=True)
+            
+            # 返回错误响应给前端
+            # HTTP 状态码 500 表示服务器内部错误
+            return jsonify({
+                "success": False,
+                "message": f"获取配置失败：{str(e)}"
             }), 500
 
     @app.route("/api/admin/overdue-accounts", methods=["GET"])
