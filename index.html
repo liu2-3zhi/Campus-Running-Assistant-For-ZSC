@@ -5484,10 +5484,15 @@
 
           <!-- ========================================
                支付日志面板 (payment-logs)
-               管理员可以在此查看所有支付相关的操作日志
-               支持按用户ID、操作类型、日期范围筛选
+               用户可以在此查看自己的支付相关操作日志
+               支持按操作类型、日期范围筛选
                支持分页浏览
                默认隐藏，通过switchMobileAdminTab切换显示
+               
+               重构说明（2024）：
+               - 修改为"当前账号视角"：普通用户只能看自己的日志
+               - 移除了用户ID筛选（因为只查询当前用户）
+               - API调用：/api/payment_logs（自动识别当前用户身份）
                ======================================== -->
           <div id="mobile-multi-admin-payment-logs-panel" class="hidden space-y-3">
             <!-- 面板头部：包含标题和刷新按钮 -->
@@ -5502,14 +5507,6 @@
 
             <!-- 筛选条件区域 -->
             <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <!-- 用户ID筛选 -->
-              <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1">用户ID（可选）</label>
-                <input type="text" id="payment-logs-user-id" 
-                  placeholder="输入用户ID进行筛选" 
-                  class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-              </div>
-
               <!-- 操作类型筛选 -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">操作类型（可选）</label>
@@ -9279,6 +9276,484 @@
           `;
         });
     }
+
+    // ==========================================
+    // 支付日志面板功能实现
+    // ==========================================
+    // 【功能说明】
+    // 实现移动端支付日志面板的完整功能，包括：
+    // 1. 查询当前用户的支付日志
+    // 2. 支持按操作类型、日期范围筛选
+    // 3. 支持分页浏览
+    // 4. 自动刷新功能
+    // 
+    // 【API说明】
+    // - /api/payment_logs: 查询当前登录用户的支付日志（自适应游客和注册用户）
+    // ==========================================
+
+    /**
+     * 全局变量：支付日志分页状态
+     * 
+     * 用途：
+     * - 保存当前的分页信息
+     * - 用于上一页/下一页功能
+     * 
+     * 属性：
+     * - currentPage: 当前页码（从1开始）
+     * - totalPages: 总页数
+     * - perPage: 每页显示数量
+     */
+    let paymentLogsState = {
+      currentPage: 1,  // 当前页码，初始为第1页
+      totalPages: 1,   // 总页数，初始为1页
+      perPage: 20      // 每页显示20条记录
+    };
+
+    /**
+     * 加载支付日志数据
+     * 
+     * 功能说明：
+     * 1. 从后端API获取当前用户的支付日志
+     * 2. 支持筛选和分页
+     * 3. 渲染日志列表
+     * 
+     * API端点：/api/payment_logs
+     * 请求方法：GET
+     * 查询参数：
+     * - action: 操作类型筛选（可选）
+     * - start_date: 开始日期（可选，格式：YYYY-MM-DD）
+     * - end_date: 结束日期（可选，格式：YYYY-MM-DD）
+     * - page: 页码（默认1）
+     * - per_page: 每页数量（默认20）
+     * 
+     * 返回数据格式：
+     * {
+     *   success: boolean,
+     *   logs: [
+     *     {
+     *       user_id: string,
+     *       order_id: string,
+     *       action: string,
+     *       datetime: string,
+     *       amount: number,
+     *       status: string,
+     *       ... 其他字段
+     *     }
+     *   ],
+     *   total: number,
+     *   page: number,
+     *   per_page: number
+     * }
+     * 
+     * 参数：
+     * @param {number} page - 要加载的页码（可选，默认为当前页）
+     */
+    function loadPaymentLogs(page) {
+      // 如果没有指定页码，使用当前页码
+      // 这样既支持直接调用loadPaymentLogs()刷新当前页
+      // 也支持loadPaymentLogs(2)加载指定页
+      if (typeof page === 'undefined') {
+        page = paymentLogsState.currentPage;
+      }
+
+      // 获取日志列表容器元素的DOM引用
+      // 这个容器用于显示支付日志列表
+      const listContainer = document.getElementById('mobile-multi-admin-payment-logs-list');
+      if (!listContainer) {
+        // 防御性检查：如果找不到容器元素，在控制台输出错误并返回
+        console.error('[支付日志] 未找到日志列表容器元素');
+        return;
+      }
+
+      // 显示加载中状态
+      // 使用SVG动画图标和文字提示，提升用户体验
+      listContainer.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-12">
+          <svg class="animate-spin h-8 w-8 text-sky-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p class="text-slate-400 text-center text-sm">正在加载支付日志...</p>
+        </div>
+      `;
+
+      // ========== 收集筛选条件 ==========
+      
+      // 获取操作类型筛选值
+      // 从下拉选择框获取用户选择的操作类型（如：create_order, payment_success等）
+      const actionTypeSelect = document.getElementById('payment-logs-action-type');
+      const actionType = actionTypeSelect ? actionTypeSelect.value.trim() : '';
+
+      // 获取日期范围筛选值
+      // 开始日期：用户可以选择查询从某个日期开始的日志
+      const startDateInput = document.getElementById('payment-logs-start-date');
+      const startDate = startDateInput ? startDateInput.value.trim() : '';
+      
+      // 结束日期：用户可以选择查询到某个日期结束的日志
+      const endDateInput = document.getElementById('payment-logs-end-date');
+      const endDate = endDateInput ? endDateInput.value.trim() : '';
+
+      // ========== 构建API请求URL ==========
+      
+      // 基础URL：/api/payment_logs（查询当前用户的支付日志）
+      // 使用URLSearchParams对象来构建查询字符串，这种方式更规范和安全
+      const params = new URLSearchParams();
+      
+      // 添加分页参数
+      params.append('page', page);                      // 当前页码
+      params.append('per_page', paymentLogsState.perPage); // 每页数量
+      
+      // 如果用户选择了操作类型筛选，添加action参数
+      if (actionType) {
+        params.append('action', actionType);
+      }
+      
+      // 如果用户输入了开始日期，添加start_date参数
+      if (startDate) {
+        params.append('start_date', startDate);
+      }
+      
+      // 如果用户输入了结束日期，添加end_date参数
+      if (endDate) {
+        params.append('end_date', endDate);
+      }
+
+      // 拼接完整的请求URL
+      // 格式示例：/api/payment_logs?page=1&per_page=20&action=create_order&start_date=2024-01-01
+      const url = `/api/payment_logs?${params.toString()}`;
+
+      // 在控制台输出请求信息，方便调试
+      console.log(`[支付日志] 正在加载第${page}页，筛选条件:`, {
+        actionType: actionType || '全部',
+        startDate: startDate || '无限制',
+        endDate: endDate || '无限制'
+      });
+
+      // ========== 发送API请求 ==========
+      
+      fetch(url)
+        .then(response => {
+          // 检查HTTP响应状态码
+          // 如果状态码不是2xx（成功），抛出错误
+          if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status}`);
+          }
+          // 解析响应体为JSON对象
+          return response.json();
+        })
+        .then(result => {
+          // 检查API返回的业务状态
+          // success字段表示操作是否成功
+          if (!result.success) {
+            throw new Error(result.message || '加载支付日志失败');
+          }
+
+          // ========== 处理返回数据 ==========
+          
+          // 提取日志列表，如果为空则使用空数组
+          const logs = result.logs || [];
+          
+          // 提取总记录数，用于计算总页数
+          const total = result.total || 0;
+          
+          // 更新分页状态
+          paymentLogsState.currentPage = page;  // 更新当前页码
+          // 计算总页数：总记录数除以每页数量，向上取整
+          // 例如：23条记录，每页20条，总页数为2页
+          paymentLogsState.totalPages = Math.ceil(total / paymentLogsState.perPage);
+
+          // ========== 渲染日志列表 ==========
+          
+          // 检查是否有日志数据
+          if (logs.length === 0) {
+            // 没有日志时，显示空状态提示
+            listContainer.innerHTML = `
+              <div class="flex flex-col items-center justify-center py-12">
+                <svg class="w-16 h-16 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                  </path>
+                </svg>
+                <p class="text-slate-400 text-center text-sm">暂无支付日志</p>
+                <p class="text-slate-300 text-center text-xs mt-1">尝试调整筛选条件</p>
+              </div>
+            `;
+          } else {
+            // 有日志时，渲染日志卡片列表
+            // 使用map函数遍历每条日志，生成对应的HTML
+            const logsHTML = logs.map(log => {
+              // 为每条日志生成一个卡片
+              // 包含：订单号、操作类型、时间、金额、状态等信息
+              
+              // 根据操作类型确定显示的标签样式
+              // 不同的操作类型使用不同的颜色
+              let actionBadgeClass = 'bg-slate-100 text-slate-700'; // 默认样式
+              let actionText = log.action || '未知操作';             // 操作类型文本
+              
+              // 根据不同的操作类型设置不同的样式
+              if (log.action === 'create_order') {
+                actionBadgeClass = 'bg-blue-100 text-blue-700';
+                actionText = '创建订单';
+              } else if (log.action === 'query_order') {
+                actionBadgeClass = 'bg-purple-100 text-purple-700';
+                actionText = '查询订单';
+              } else if (log.action === 'payment_success') {
+                actionBadgeClass = 'bg-green-100 text-green-700';
+                actionText = '支付成功';
+              } else if (log.action === 'payment_fail') {
+                actionBadgeClass = 'bg-red-100 text-red-700';
+                actionText = '支付失败';
+              } else if (log.action === 'config_update') {
+                actionBadgeClass = 'bg-orange-100 text-orange-700';
+                actionText = '配置更新';
+              }
+
+              // 格式化金额显示
+              // 如果日志中包含金额信息，格式化为货币格式（保留2位小数）
+              const amountHTML = log.amount 
+                ? `<div class="text-xs text-slate-600">金额: <span class="font-semibold text-green-600">¥${parseFloat(log.amount).toFixed(2)}</span></div>`
+                : '';
+
+              // 格式化状态显示
+              // 根据状态值设置不同的颜色
+              let statusHTML = '';
+              if (log.status) {
+                let statusClass = 'text-slate-600';
+                let statusText = log.status;
+                
+                if (log.status === 'success' || log.status === 'completed') {
+                  statusClass = 'text-green-600';
+                  statusText = '成功';
+                } else if (log.status === 'failed' || log.status === 'error') {
+                  statusClass = 'text-red-600';
+                  statusText = '失败';
+                } else if (log.status === 'pending' || log.status === 'processing') {
+                  statusClass = 'text-yellow-600';
+                  statusText = '处理中';
+                }
+                
+                statusHTML = `<div class="text-xs ${statusClass}">状态: ${statusText}</div>`;
+              }
+
+              // 返回单条日志的HTML卡片
+              return `
+                <div class="bg-white border border-slate-200 rounded-lg p-3 hover:border-sky-300 transition">
+                  <!-- 头部：操作类型标签 + 时间 -->
+                  <div class="flex justify-between items-start mb-2">
+                    <span class="inline-block px-2 py-1 rounded text-xs font-medium ${actionBadgeClass}">
+                      ${actionText}
+                    </span>
+                    <span class="text-xs text-slate-500">${log.datetime || '未知时间'}</span>
+                  </div>
+                  
+                  <!-- 订单号 -->
+                  <div class="text-sm font-medium text-slate-800 mb-1">
+                    订单号: ${log.order_id || '无'}
+                  </div>
+                  
+                  <!-- 详细信息：金额和状态 -->
+                  <div class="space-y-1">
+                    ${amountHTML}
+                    ${statusHTML}
+                  </div>
+                </div>
+              `;
+            }).join(''); // 将所有卡片HTML连接成一个字符串
+
+            // 更新列表容器的内容
+            listContainer.innerHTML = logsHTML;
+          }
+
+          // ========== 更新分页控件 ==========
+          
+          updatePaymentLogsPagination();
+
+          // 在控制台输出成功信息，方便调试
+          console.log(`[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
+        })
+        .catch(error => {
+          // ========== 错误处理 ==========
+          
+          // 在控制台输出详细错误信息
+          console.error('[支付日志] 加载失败:', error);
+          
+          // 在列表容器中显示错误提示
+          listContainer.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12">
+              <svg class="w-16 h-16 text-red-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+                </path>
+              </svg>
+              <p class="text-red-500 text-center text-base font-medium">加载失败</p>
+              <p class="text-slate-400 text-center text-sm mt-2">${error.message || '请稍后重试'}</p>
+              <button onclick="loadPaymentLogs()" class="mt-4 px-4 py-2 bg-sky-500 text-white rounded text-sm hover:bg-sky-600">
+                重试
+              </button>
+            </div>
+          `;
+        });
+    }
+
+    /**
+     * 更新分页控件状态
+     * 
+     * 功能说明：
+     * 1. 更新页码显示文本
+     * 2. 更新上一页/下一页按钮的启用/禁用状态
+     * 
+     * 调用时机：
+     * - 每次加载日志后
+     * - 用户点击分页按钮后
+     * 
+     * 实现细节：
+     * - 第一页时，禁用"上一页"按钮
+     * - 最后一页时，禁用"下一页"按钮
+     * - 只有一页时，两个按钮都禁用
+     */
+    function updatePaymentLogsPagination() {
+      // 获取分页控件元素
+      const pageInfo = document.getElementById('payment-logs-page-info');
+      const prevBtn = document.getElementById('payment-logs-prev-btn');
+      const nextBtn = document.getElementById('payment-logs-next-btn');
+
+      // 防御性检查：确保所有元素都存在
+      if (!pageInfo || !prevBtn || !nextBtn) {
+        console.error('[支付日志] 分页控件元素未找到');
+        return;
+      }
+
+      // 更新页码显示文本
+      // 格式：第 X 页 / 共 Y 页
+      pageInfo.textContent = `第 ${paymentLogsState.currentPage} 页 / 共 ${paymentLogsState.totalPages} 页`;
+
+      // 更新"上一页"按钮状态
+      // 如果当前是第一页，禁用"上一页"按钮
+      if (paymentLogsState.currentPage <= 1) {
+        prevBtn.disabled = true;  // 禁用按钮
+        prevBtn.classList.add('opacity-50', 'cursor-not-allowed'); // 添加视觉提示
+      } else {
+        prevBtn.disabled = false; // 启用按钮
+        prevBtn.classList.remove('opacity-50', 'cursor-not-allowed'); // 移除视觉提示
+      }
+
+      // 更新"下一页"按钮状态
+      // 如果当前是最后一页，禁用"下一页"按钮
+      if (paymentLogsState.currentPage >= paymentLogsState.totalPages) {
+        nextBtn.disabled = true;  // 禁用按钮
+        nextBtn.classList.add('opacity-50', 'cursor-not-allowed'); // 添加视觉提示
+      } else {
+        nextBtn.disabled = false; // 启用按钮
+        nextBtn.classList.remove('opacity-50', 'cursor-not-allowed'); // 移除视觉提示
+      }
+    }
+
+    /**
+     * 加载上一页
+     * 
+     * 功能说明：
+     * 加载支付日志的上一页数据
+     * 
+     * 调用时机：
+     * - 用户点击"上一页"按钮时
+     * 
+     * 实现细节：
+     * - 检查是否已经是第一页
+     * - 如果不是，页码减1并重新加载
+     */
+    function loadPaymentLogsPrevPage() {
+      // 检查是否已经是第一页
+      if (paymentLogsState.currentPage <= 1) {
+        console.log('[支付日志] 已经是第一页');
+        return; // 如果已经是第一页，直接返回，不执行操作
+      }
+
+      // 页码减1
+      const prevPage = paymentLogsState.currentPage - 1;
+      
+      // 加载上一页数据
+      loadPaymentLogs(prevPage);
+    }
+
+    /**
+     * 加载下一页
+     * 
+     * 功能说明：
+     * 加载支付日志的下一页数据
+     * 
+     * 调用时机：
+     * - 用户点击"下一页"按钮时
+     * 
+     * 实现细节：
+     * - 检查是否已经是最后一页
+     * - 如果不是，页码加1并重新加载
+     */
+    function loadPaymentLogsNextPage() {
+      // 检查是否已经是最后一页
+      if (paymentLogsState.currentPage >= paymentLogsState.totalPages) {
+        console.log('[支付日志] 已经是最后一页');
+        return; // 如果已经是最后一页，直接返回，不执行操作
+      }
+
+      // 页码加1
+      const nextPage = paymentLogsState.currentPage + 1;
+      
+      // 加载下一页数据
+      loadPaymentLogs(nextPage);
+    }
+
+    // ==========================================
+    // 事件监听器绑定
+    // ==========================================
+    // 在页面加载完成后，为各个按钮绑定事件监听器
+    // 使用 DOMContentLoaded 事件确保DOM完全加载后再绑定
+    // ==========================================
+
+    document.addEventListener('DOMContentLoaded', function() {
+      // 绑定"刷新"按钮的点击事件
+      // 点击后重新加载当前页的数据
+      const refreshBtn = document.getElementById('mobile-multi-admin-refresh-payment-logs');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+          console.log('[支付日志] 用户点击刷新按钮');
+          loadPaymentLogs(); // 重新加载当前页
+        });
+      }
+
+      // 绑定"查询日志"按钮的点击事件
+      // 点击后根据用户选择的筛选条件，从第1页开始查询
+      const searchBtn = document.getElementById('search-payment-logs-btn');
+      if (searchBtn) {
+        searchBtn.addEventListener('click', function() {
+          console.log('[支付日志] 用户点击查询按钮');
+          paymentLogsState.currentPage = 1; // 重置为第1页
+          loadPaymentLogs(1); // 从第1页开始加载
+        });
+      }
+
+      // 绑定"上一页"按钮的点击事件
+      const prevBtn = document.getElementById('payment-logs-prev-btn');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', function() {
+          console.log('[支付日志] 用户点击上一页按钮');
+          loadPaymentLogsPrevPage();
+        });
+      }
+
+      // 绑定"下一页"按钮的点击事件
+      const nextBtn = document.getElementById('payment-logs-next-btn');
+      if (nextBtn) {
+        nextBtn.addEventListener('click', function() {
+          console.log('[支付日志] 用户点击下一页按钮');
+          loadPaymentLogsNextPage();
+        });
+      }
+
+      // 注意：这里不自动加载数据
+      // 因为支付日志面板默认是隐藏的
+      // 只有当用户切换到该面板时才需要加载
+      // 可以在面板显示时调用 loadPaymentLogs() 来加载数据
+    });
   </script>
 
   <!-- ==========================================
