@@ -7825,6 +7825,18 @@ function refreshMobileSessionPicker() {
                 <p class="text-xs text-slate-500">会话限制: ${
                   user.max_sessions === -1 ? "无限制" : user.max_sessions + "个"
                 }</p>
+                <p class="text-xs text-slate-500">
+                  可用次数: 
+                  <span id="available-runs-${user.auth_username}" class="${
+                  user.available_runs === -1 
+                    ? "text-green-600 font-semibold" 
+                    : user.available_runs === 0 
+                    ? "text-red-600 font-semibold" 
+                    : "text-blue-600 font-semibold"
+                }">
+                    ${user.available_runs === -1 ? "无限制" : user.available_runs + "次"}
+                  </span>
+                </p>
                 <p class="text-xs ${
                   user["2fa_enabled"] || user.tfa_enabled
                     ? "text-green-600"
@@ -7863,6 +7875,11 @@ function refreshMobileSessionPicker() {
                             user.auth_username
                           }', ${user.max_sessions || 1})">
                     会话管理
+                  </button>
+
+                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border-cyan-100 border" 
+                          onclick="editAvailableRuns('${user.auth_username}', ${user.available_runs !== undefined ? user.available_runs : 0})">
+                    修改次数
                   </button>
 
                   <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100 border" 
@@ -8361,6 +8378,162 @@ function refreshMobileSessionPicker() {
           }
         } catch (e) {
           showModalAlert("操作失败: " + e.message, "错误");
+        }
+      }
+
+      /**
+       * 编辑用户的可用执行次数
+       * 
+       * 功能说明：
+       * 1. 弹出 SweetAlert2 输入框，让管理员输入新的可用次数
+       * 2. 支持输入 -1 表示无限次数，0 表示无可用次数，正数表示具体次数
+       * 3. 验证输入的合法性（必须是整数且 >= -1）
+       * 4. 调用后端API更新用户的可用次数
+       * 5. 更新成功后刷新用户列表显示
+       * 
+       * @param {string} username - 要修改的用户名
+       * @param {number} currentRuns - 当前的可用次数值
+       */
+      async function editAvailableRuns(username, currentRuns) {
+        // 步骤1：使用 SweetAlert2 弹出输入对话框
+        // 提供友好的用户界面，让管理员输入新的可用次数值
+        const { value: newRuns } = await Swal.fire({
+          title: "修改可用执行次数",  // 对话框标题
+          html: `
+            <div class="text-left mb-4">
+              <p class="text-sm text-slate-600 mb-2">用户：<strong class="text-slate-800">${username}</strong></p>
+              <p class="text-sm text-slate-600 mb-2">当前次数：<strong class="text-blue-600">${
+                currentRuns === -1 ? "无限制" : currentRuns + "次"
+              }</strong></p>
+              <div class="bg-blue-50 border-l-4 border-blue-500 p-3 mt-3">
+                <p class="text-xs text-blue-700">💡 提示：</p>
+                <ul class="text-xs text-blue-600 mt-1 ml-4 list-disc">
+                  <li>输入 <strong>-1</strong> 表示无限次数</li>
+                  <li>输入 <strong>0</strong> 表示暂停使用权限</li>
+                  <li>输入正整数表示具体可用次数</li>
+                </ul>
+              </div>
+            </div>
+          `,
+          input: "number",  // 输入框类型为数字
+          inputLabel: "请输入新的可用次数",  // 输入框标签
+          inputValue: currentRuns,  // 默认值为当前的可用次数
+          showCancelButton: true,  // 显示取消按钮
+          confirmButtonText: "确认修改",  // 确认按钮文本
+          cancelButtonText: "取消",  // 取消按钮文本
+          confirmButtonColor: "#3085d6",  // 确认按钮颜色
+          cancelButtonColor: "#d33",  // 取消按钮颜色
+          // 步骤2：输入验证器 - 在用户点击确认前验证输入的合法性
+          inputValidator: (value) => {
+            // 检查输入是否为空（允许输入0，所以需要特殊判断）
+            if (value === null || value === undefined || value === "") {
+              return "请输入有效的次数！";
+            }
+            
+            // 将输入转换为整数
+            const numValue = parseInt(value);
+            
+            // 检查是否为有效的整数
+            if (isNaN(numValue)) {
+              return "请输入有效的整数！";
+            }
+            
+            // 检查取值范围：必须 >= -1
+            // -1 表示无限次数，0 表示无可用次数，正数表示具体次数
+            if (numValue < -1) {
+              return "次数不能小于-1！（-1表示无限次数）";
+            }
+            
+            // 验证通过，返回 undefined 表示没有错误
+            return undefined;
+          },
+        });
+
+        // 步骤3：检查用户是否点击了取消按钮
+        // 如果 newRuns 为 undefined，说明用户取消了操作，直接返回
+        if (newRuns === undefined) {
+          return;
+        }
+
+        // 步骤4：调用更新函数，将新的可用次数发送到后端
+        await updateAvailableRuns(username, parseInt(newRuns));
+      }
+
+      /**
+       * 更新用户的可用执行次数（调用后端API）
+       * 
+       * 功能说明：
+       * 1. 发送 POST 请求到后端 API
+       * 2. 传递用户名和新的可用次数值
+       * 3. 处理响应结果，显示成功或失败消息
+       * 4. 成功后刷新用户列表以更新显示
+       * 
+       * @param {string} username - 要修改的用户名
+       * @param {number} newRuns - 新的可用次数值
+       */
+      async function updateAvailableRuns(username, newRuns) {
+        try {
+          // 步骤1：显示加载提示，告知用户正在处理
+          Swal.fire({
+            title: "处理中...",
+            text: "正在更新可用次数",
+            allowOutsideClick: false,  // 禁止点击外部关闭
+            allowEscapeKey: false,  // 禁止按ESC键关闭
+            didOpen: () => {
+              Swal.showLoading();  // 显示加载动画
+            },
+          });
+
+          // 步骤2：发送 POST 请求到后端 API
+          const response = await fetch("/api/admin/update_available_runs", {
+            method: "POST",  // HTTP方法为POST
+            headers: {
+              "Content-Type": "application/json",  // 请求体格式为JSON
+              "X-Session-ID": sessionUUID,  // 传递会话ID用于身份验证
+            },
+            // 步骤3：将请求数据转换为JSON字符串
+            body: JSON.stringify({
+              username: username,  // 目标用户名
+              available_runs: newRuns,  // 新的可用次数
+            }),
+          });
+
+          // 步骤4：解析响应的JSON数据
+          const result = await response.json();
+
+          // 步骤5：根据响应结果显示相应的提示消息
+          if (result.success) {
+            // 成功情况：显示成功消息
+            Swal.fire({
+              icon: "success",  // 成功图标
+              title: "更新成功",  // 标题
+              text: result.message || "可用次数已更新",  // 显示后端返回的消息
+              confirmButtonText: "确定",  // 确认按钮文本
+            });
+
+            // 步骤6：刷新用户列表，更新界面显示
+            // 这会重新加载所有用户数据，确保显示的次数是最新的
+            loadAdminUsers();
+          } else {
+            // 失败情况：显示错误消息
+            Swal.fire({
+              icon: "error",  // 错误图标
+              title: "更新失败",  // 标题
+              text: result.message || "操作失败，请重试",  // 显示错误原因
+              confirmButtonText: "确定",  // 确认按钮文本
+            });
+          }
+        } catch (error) {
+          // 步骤7：捕获网络错误或其他异常
+          console.error("更新可用次数失败:", error);  // 在控制台记录错误详情
+          
+          // 显示友好的错误提示给用户
+          Swal.fire({
+            icon: "error",  // 错误图标
+            title: "网络错误",  // 标题
+            text: "网络请求失败，请检查网络连接后重试",  // 错误说明
+            confirmButtonText: "确定",  // 确认按钮文本
+          });
         }
       }
 

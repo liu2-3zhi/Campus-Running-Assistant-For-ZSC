@@ -3794,6 +3794,9 @@ class AuthSystem:
                             "2fa_enabled": user_data.get("2fa_enabled", False),
                             "banned": user_data.get("banned", False),
                             "max_sessions": user_data.get("max_sessions", 1),
+                            # 添加可用执行次数字段：从用户数据中获取 available_runs，默认值为0
+                            # -1 表示无限次数，0表示无剩余次数，正数表示剩余次数
+                            "available_runs": user_data.get("available_runs", 0),
                         }
                     )
                 except Exception as e:
@@ -3970,6 +3973,64 @@ class AuthSystem:
             else:
                 msg = f"已设置最大会话数量为：{max_sessions}个，超出时将自动清理最旧的会话"
 
+            return {"success": True, "message": msg}
+
+    def update_available_runs(self, auth_username, available_runs):
+        """
+        更新用户的可用执行次数（管理员功能）
+
+        Args:
+            auth_username: 要修改的用户名
+            available_runs: 新的可用次数（-1表示无限次数，0表示无剩余，正数表示剩余次数）
+
+        Returns:
+            dict: 包含success和message的字典
+                {
+                    "success": True/False,
+                    "message": "操作结果说明"
+                }
+        """
+        # 使用线程锁确保文件操作的原子性，防止并发修改导致数据不一致
+        with self.lock:
+            # 步骤1：根据用户名构建用户数据文件的完整路径
+            user_file = self.get_user_file_path(auth_username)
+            
+            # 步骤2：检查用户文件是否存在
+            if not os.path.exists(user_file):
+                # 如果用户文件不存在，返回错误信息
+                return {"success": False, "message": "用户不存在"}
+
+            # 步骤3：从文件中读取当前的用户数据（JSON格式）
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+
+            # 步骤4：更新用户数据中的 available_runs 字段
+            user_data["available_runs"] = available_runs
+
+            # 步骤5：将更新后的用户数据写回文件
+            # indent=2: 格式化输出，每层缩进2个空格，提高可读性
+            # ensure_ascii=False: 允许保存中文字符，不转义为Unicode
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+
+            # 步骤6：根据设置的次数值生成友好的提示消息
+            if available_runs == -1:
+                # 当设置为-1时，表示无限制使用
+                msg = f"已设置为无限次数模式：用户 {auth_username} 可以无限次执行任务"
+            elif available_runs == 0:
+                # 当设置为0时，表示用户已无可用次数
+                msg = f"已设置可用次数为0：用户 {auth_username} 暂时无法执行新任务"
+            else:
+                # 正数表示具体的剩余次数
+                msg = f"已成功设置用户 {auth_username} 的可用次数为：{available_runs} 次"
+
+            # 步骤7：记录操作日志，便于后续审计和问题排查
+            logging.info(
+                f"[可用次数管理] 管理员更新用户可用次数 --> 用户: {auth_username}, "
+                f"新次数: {available_runs} ({'无限制' if available_runs == -1 else str(available_runs) + '次'})"
+            )
+
+            # 步骤8：返回成功结果和友好提示消息
             return {"success": True, "message": msg}
 
     def ban_user(self, auth_username):
@@ -18643,6 +18704,109 @@ def start_web_server(args_param):
             session_id,
         )
 
+        return jsonify(result)
+
+    @app.route("/api/admin/update_available_runs", methods=["POST"])
+    def api_admin_update_available_runs():
+        """
+        更新用户的可用执行次数（管理员API）
+        
+        请求头:
+            X-Session-ID: 当前会话ID，用于身份验证和权限检查
+        
+        请求体 (JSON):
+            {
+                "username": "目标用户名",
+                "available_runs": 新的可用次数（整数）
+            }
+        
+        返回 (JSON):
+            {
+                "success": true/false,
+                "message": "操作结果说明"
+            }
+        
+        权限要求:
+            - 需要有 manage_users 权限（通常为管理员）
+        
+        参数说明:
+            - available_runs: -1表示无限次数，0表示无可用次数，正数表示具体次数
+        """
+        # 步骤1：从请求头中获取会话ID，用于身份验证
+        session_id = request.headers.get("X-Session-ID", "")
+        
+        # 步骤2：验证会话ID是否有效（检查是否存在于活跃会话列表中）
+        if not session_id or session_id not in web_sessions:
+            # 如果会话无效或不存在，返回401未授权状态码
+            return jsonify({"success": False, "message": "未登录"}), 401
+
+        # 步骤3：从活跃会话中获取API实例，提取当前用户的身份信息
+        api_instance = web_sessions[session_id]
+        auth_username = getattr(api_instance, "auth_username", "")
+        
+        # 步骤4：权限检查 - 验证当前用户是否具有管理用户的权限
+        if not auth_system.check_permission(auth_username, "manage_users"):
+            # 如果权限不足，返回403禁止访问状态码
+            return jsonify({"success": False, "message": "权限不足"}), 403
+
+        # 步骤5：解析请求体中的JSON数据
+        data = request.json
+        # 提取目标用户名和新的可用次数值
+        target_username = data.get("username", "")
+        available_runs = data.get("available_runs", 0)
+        
+        # 步骤6：数据验证 - 检查目标用户名是否为空
+        if not target_username:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "缺少必要参数：用户名不能为空",
+                    }
+                ),
+                400,  # 400 Bad Request - 客户端请求参数错误
+            )
+        
+        # 步骤7：数据验证 - 检查可用次数是否为整数类型
+        if not isinstance(available_runs, int):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "无效的次数值：必须为整数",
+                    }
+                ),
+                400,
+            )
+        
+        # 步骤8：数据验证 - 检查可用次数的取值范围
+        # 有效值: -1（无限）或 >= 0 的整数
+        if available_runs < -1:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "无效的次数值：必须为-1（无限）或非负整数",
+                    }
+                ),
+                400,
+            )
+
+        # 步骤9：调用 AuthSystem 的方法执行实际的更新操作
+        result = auth_system.update_available_runs(target_username, available_runs)
+        
+        # 步骤10：记录审计日志 - 记录管理员的操作行为，便于追溯
+        # 获取客户端真实IP地址
+        ip_address = request.remote_addr
+        auth_system.log_audit(
+            auth_username,  # 操作者（管理员）
+            "update_available_runs",  # 操作类型
+            f"修改用户 {target_username} 的可用次数为: {available_runs} ({'无限' if available_runs == -1 else str(available_runs) + '次'})",  # 操作详情
+            ip_address,  # 操作者IP
+            session_id,  # 会话ID
+        )
+
+        # 步骤11：返回操作结果给前端
         return jsonify(result)
 
     @app.route("/auth/user/sessions", methods=["GET"])
