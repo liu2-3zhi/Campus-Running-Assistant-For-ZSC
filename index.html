@@ -3635,6 +3635,16 @@
                 加载中...
               </p>
             </div>
+            
+            <!-- 移动端SMS回复记录按钮 -->
+            <!-- 新增功能：查看用户通过短信回复的内容（移动端专用） -->
+            <!-- 点击后弹出modal显示所有回复记录 -->
+            <div class="border-t border-slate-200 pt-3">
+              <button onclick="openSMSReplyLogsModal()" 
+                class="w-full btn btn-ghost !py-2 text-sm border-2 border-purple-300 hover:border-purple-400 hover:bg-purple-50 transition-all">
+                💬 查看回复记录
+              </button>
+            </div>
           </div>
 
           <!-- ========================================
@@ -5190,6 +5200,16 @@
               <p class="text-slate-400 text-center py-10 text-xs">
                 加载中...
               </p>
+            </div>
+            
+            <!-- 移动端SMS回复记录按钮 -->
+            <!-- 新增功能：查看用户通过短信回复的内容（移动端专用） -->
+            <!-- 点击后弹出modal显示所有回复记录 -->
+            <div class="border-t border-slate-200 pt-3">
+              <button onclick="openSMSReplyLogsModal()" 
+                class="w-full btn btn-ghost !py-2 text-sm border-2 border-purple-300 hover:border-purple-400 hover:bg-purple-50 transition-all">
+                💬 查看回复记录
+              </button>
             </div>
           </div>
 
@@ -7039,6 +7059,16 @@
                 </button>
               </div>
 
+              <!-- 短信回复记录按钮 -->
+              <!-- 新增功能：查看用户通过短信回复的内容 -->
+              <!-- 点击后弹出modal显示所有回复记录 -->
+              <div class="flex flex-col sm:flex-row gap-3 mt-3 pt-3 border-t-2 border-slate-200">
+                <button onclick="openSMSReplyLogsModal()"
+                  class="flex-1 btn btn-ghost min-h-[44px] border-2 border-purple-300 hover:border-purple-400 hover:bg-purple-50 transition-all">
+                  💬 查看回复记录
+                </button>
+              </div>
+
               <div id="sms-balance-display" class="hidden mt-3 border-2 border-blue-300 bg-blue-50 rounded-lg p-3">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
@@ -8125,6 +8155,75 @@
     </div>
   </div>
 
+  <!-- ==================== SMS回复记录Modal ====================
+       功能说明：显示用户通过短信回复的记录
+       触发方式：点击"查看回复记录"按钮
+       数据来源：/api/sms/reply-logs API
+       权限要求：管理员权限
+       ====================================================== -->
+  <div id="sms-reply-logs-modal" class="fixed inset-0 flex items-center justify-center hidden z-[1054]">
+    <!-- 背景遮罩：半透明黑色，点击关闭modal -->
+    <div class="absolute inset-0 bg-black/70" onclick="closeSMSReplyLogsModal()"></div>
+    
+    <!-- Modal主体容器 -->
+    <div class="panel rounded-2xl p-6 w-[50rem] max-h-[85vh] flex flex-col space-y-4 relative shadow-2xl">
+      <!-- Modal头部：标题和关闭按钮 -->
+      <div class="flex items-center justify-between flex-shrink-0">
+        <h3 class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center gap-2">
+          <span class="text-2xl">💬</span>
+          短信回复记录
+        </h3>
+        <button onclick="closeSMSReplyLogsModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none transition-colors">
+          ×
+        </button>
+      </div>
+
+      <!-- 说明文字 -->
+      <div class="bg-purple-50 border-l-4 border-purple-400 p-3 rounded flex-shrink-0">
+        <p class="text-sm text-purple-900">
+          <span class="font-semibold">💡 提示：</span>
+          此处显示用户通过短信回复到您的短信宝号码的内容记录。
+        </p>
+      </div>
+
+      <!-- 筛选区域 -->
+      <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 flex-shrink-0">
+        <div class="flex gap-2">
+          <input type="text" id="sms-reply-phone-filter" 
+            placeholder="输入手机号筛选（可选）" 
+            class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none" />
+          <button onclick="loadSMSReplyLogs()" class="btn btn-primary !py-2 !px-4 text-sm">
+            🔍 查询
+          </button>
+        </div>
+      </div>
+
+      <!-- 回复记录列表容器：可滚动区域 -->
+      <div id="sms-reply-logs-list" class="flex-1 overflow-y-auto space-y-3">
+        <!-- 加载提示：初始显示，数据加载后替换 -->
+        <div class="flex flex-col items-center justify-center py-12">
+          <svg class="animate-spin h-8 w-8 text-purple-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p class="text-slate-400 text-center text-sm">
+            加载中...
+          </p>
+        </div>
+      </div>
+
+      <!-- 底部按钮 -->
+      <div class="flex gap-3 flex-shrink-0 border-t pt-4">
+        <button onclick="loadSMSReplyLogs()" class="flex-1 btn btn-ghost min-h-[44px] border-2 border-purple-300">
+          🔄 刷新
+        </button>
+        <button onclick="closeSMSReplyLogsModal()" class="flex-1 btn btn-primary min-h-[44px]">
+          关闭
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="captcha-detail-modal" class="fixed inset-0 flex items-center justify-center hidden z-[1054]">
     <div class="absolute inset-0 bg-black/60" onclick="closeCaptchaDetailModal()"></div>
     <div class="panel rounded-2xl p-6 w-[40rem] max-h-[80vh] overflow-y-auto space-y-4 relative">
@@ -8728,6 +8827,235 @@
       </div>
     </div>
   </div>
+
+  <!-- ==================== SMS回复记录功能JavaScript ==================== -->
+  <!-- 功能说明：实现SMS回复记录modal的打开、关闭和数据加载功能 -->
+  <!-- 作者注释：提供详细的中文注释，便于理解和维护 -->
+  <script>
+    /**
+     * 打开SMS回复记录Modal
+     * 功能说明：
+     * 1. 显示SMS回复记录modal
+     * 2. 自动加载回复记录数据
+     * 
+     * 调用时机：
+     * - 用户点击"查看回复记录"按钮时
+     * 
+     * 实现细节：
+     * - 移除modal的hidden类，使其显示
+     * - 调用loadSMSReplyLogs()函数加载数据
+     */
+    function openSMSReplyLogsModal() {
+      // 获取modal元素
+      const modal = document.getElementById('sms-reply-logs-modal');
+      if (!modal) {
+        console.error('[SMS回复记录] 未找到modal元素');
+        return;
+      }
+      
+      // 显示modal：移除hidden类
+      modal.classList.remove('hidden');
+      
+      // 加载回复记录数据
+      loadSMSReplyLogs();
+    }
+
+    /**
+     * 关闭SMS回复记录Modal
+     * 功能说明：
+     * 1. 隐藏SMS回复记录modal
+     * 2. 清空筛选条件
+     * 
+     * 调用时机：
+     * - 用户点击关闭按钮时
+     * - 用户点击背景遮罩时
+     * 
+     * 实现细节：
+     * - 添加hidden类隐藏modal
+     * - 清空手机号筛选输入框
+     */
+    function closeSMSReplyLogsModal() {
+      // 获取modal元素
+      const modal = document.getElementById('sms-reply-logs-modal');
+      if (!modal) {
+        return;
+      }
+      
+      // 隐藏modal：添加hidden类
+      modal.classList.add('hidden');
+      
+      // 清空筛选条件
+      const phoneFilter = document.getElementById('sms-reply-phone-filter');
+      if (phoneFilter) {
+        phoneFilter.value = '';
+      }
+    }
+
+    /**
+     * 加载SMS回复记录数据
+     * 功能说明：
+     * 1. 从后端API获取短信回复记录
+     * 2. 渲染到列表中显示
+     * 3. 支持按手机号筛选
+     * 
+     * API端点：/api/sms/reply-logs
+     * 请求方法：GET
+     * 查询参数：
+     * - phone: 手机号筛选（可选）
+     * - limit: 返回记录数量，默认100
+     * 
+     * 返回数据格式：
+     * {
+     *   success: boolean,
+     *   logs: [
+     *     {
+     *       timestamp: number,
+     *       datetime: string,
+     *       phone: string,
+     *       content: string,
+     *       ip: string
+     *     }
+     *   ],
+     *   total: number
+     * }
+     * 
+     * 实现细节：
+     * - 显示加载状态
+     * - 调用API获取数据
+     * - 渲染回复记录卡片
+     * - 处理空数据和错误情况
+     */
+    function loadSMSReplyLogs() {
+      // 获取列表容器元素
+      const listContainer = document.getElementById('sms-reply-logs-list');
+      if (!listContainer) {
+        console.error('[SMS回复记录] 未找到列表容器元素');
+        return;
+      }
+      
+      // 显示加载状态
+      listContainer.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-12">
+          <svg class="animate-spin h-8 w-8 text-purple-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p class="text-slate-400 text-center text-sm">加载中...</p>
+        </div>
+      `;
+      
+      // 获取筛选条件：手机号
+      const phoneFilter = document.getElementById('sms-reply-phone-filter');
+      const phone = phoneFilter ? phoneFilter.value.trim() : '';
+      
+      // 构建API请求URL
+      // 基础URL：/api/sms/reply-logs
+      // 查询参数：limit=100（最多返回100条记录）
+      // 如果有手机号筛选，则添加phone参数
+      let url = '/api/sms/reply-logs?limit=100';
+      if (phone) {
+        url += `&phone=${encodeURIComponent(phone)}`;
+      }
+      
+      // 发送API请求
+      fetch(url)
+        .then(response => {
+          // 检查HTTP响应状态
+          if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(result => {
+          // 检查API返回结果
+          if (!result.success) {
+            throw new Error(result.message || '加载失败');
+          }
+          
+          // 获取回复记录列表
+          const logs = result.logs || [];
+          
+          // 如果没有记录，显示空状态提示
+          if (logs.length === 0) {
+            listContainer.innerHTML = `
+              <div class="flex flex-col items-center justify-center py-12">
+                <svg class="w-16 h-16 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z">
+                  </path>
+                </svg>
+                <p class="text-slate-400 text-center text-base font-medium">暂无短信回复记录</p>
+                <p class="text-slate-400 text-center text-sm mt-2">用户回复的短信会显示在这里</p>
+              </div>
+            `;
+            return;
+          }
+          
+          // 渲染回复记录列表
+          // 使用数组map生成HTML字符串，然后join拼接
+          const logsHTML = logs.map(log => {
+            // 转义HTML特殊字符，防止XSS攻击
+            const escapeHTML = (str) => {
+              const div = document.createElement('div');
+              div.textContent = str;
+              return div.innerHTML;
+            };
+            
+            // 格式化显示的回复内容
+            // 如果内容过长，截断并显示省略号
+            const content = log.content || '';
+            const displayContent = content.length > 100 ? 
+              content.substring(0, 100) + '...' : 
+              content;
+            
+            // 返回回复记录卡片HTML
+            return `
+              <div class="bg-white border-2 border-purple-200 rounded-xl p-4 hover:shadow-lg transition-shadow">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <div class="flex items-center gap-2">
+                    <span class="text-2xl">📱</span>
+                    <div>
+                      <div class="font-semibold text-slate-800">${escapeHTML(log.phone || '未知号码')}</div>
+                      <div class="text-xs text-slate-500">${escapeHTML(log.datetime || '')}</div>
+                    </div>
+                  </div>
+                  <div class="text-xs text-slate-400">
+                    IP: ${escapeHTML(log.ip || '-')}
+                  </div>
+                </div>
+                
+                <div class="bg-purple-50 border-l-4 border-purple-400 rounded p-3">
+                  <div class="text-sm text-slate-700 whitespace-pre-wrap break-words">
+                    ${escapeHTML(displayContent)}
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+          
+          // 更新列表容器内容
+          listContainer.innerHTML = logsHTML;
+          
+          // 在控制台输出加载成功信息
+          console.log(`[SMS回复记录] 成功加载${logs.length}条记录`);
+        })
+        .catch(error => {
+          // 错误处理：显示错误提示
+          console.error('[SMS回复记录] 加载失败:', error);
+          listContainer.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12">
+              <svg class="w-16 h-16 text-red-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+                </path>
+              </svg>
+              <p class="text-red-500 text-center text-base font-medium">加载失败</p>
+              <p class="text-slate-400 text-center text-sm mt-2">${error.message || '请稍后重试'}</p>
+            </div>
+          `;
+        });
+    }
+  </script>
 
   <!-- 备案信息加载脚本 -->
   <!-- 此脚本负责从后端API获取备案配置信息，并根据配置动态显示备案信息 -->

@@ -19304,6 +19304,135 @@ def start_web_server(args_param):
             logging.error(f"[短信测试] 处理请求异常: {str(e)}", exc_info=True)
             return jsonify({"success": False, "message": f"处理失败：{str(e)}"})
 
+    @app.route("/api/sms/reply-logs", methods=["GET"])
+    @login_required
+    def sms_reply_logs():
+        """
+        获取短信回复记录API
+        
+        功能说明：
+        查询短信宝webhook接收到的用户短信回复记录。
+        仅管理员可访问此接口，用于查看用户回复的短信内容。
+        
+        权限要求：
+        - 需要管理员或超级管理员权限
+        
+        查询参数（URL参数）：
+            - limit (int, 可选): 返回记录数量，默认100，最大1000
+            - phone (str, 可选): 按手机号筛选
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - logs (list): 回复记录列表（按时间倒序）
+                每条记录包含：
+                - timestamp: 时间戳
+                - datetime: 可读时间
+                - phone: 回复手机号
+                - content: 回复内容
+                - ip: 请求IP地址
+            - total (int): 总记录数
+            - message (str): 错误信息（失败时）
+        
+        使用场景：
+        - 查看用户通过短信回复的内容
+        - 分析用户反馈
+        - 调试短信回复webhook功能
+        """
+        try:
+            # 获取当前用户
+            current_user = g.user
+            
+            # 权限检查：仅管理员可访问
+            if not auth_system.is_super_admin(current_user) and not auth_system.is_admin(current_user):
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，仅管理员可查看短信回复记录"
+                }), 403
+            
+            # 获取查询参数
+            # limit: 返回记录数量，默认100，最大1000
+            limit = int(request.args.get("limit", "100"))
+            if limit < 1:
+                limit = 100
+            if limit > 1000:
+                limit = 1000
+            
+            # phone: 按手机号筛选（可选）
+            phone_filter = request.args.get("phone", "").strip()
+            
+            # 读取短信回复日志文件
+            log_dir = LOGIN_LOGS_DIR  # 使用登录日志目录
+            log_file = os.path.join(log_dir, "sms_replies.json")
+            
+            # 初始化日志列表
+            logs = []
+            
+            # 检查日志文件是否存在
+            if os.path.exists(log_file):
+                try:
+                    # 读取日志文件
+                    # 文件格式：每行一个JSON对象
+                    with open(log_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue  # 跳过空行
+                            
+                            try:
+                                # 解析JSON行
+                                entry = json.loads(line)
+                                
+                                # 如果指定了手机号筛选，则进行筛选
+                                if phone_filter and entry.get("phone") != phone_filter:
+                                    continue
+                                
+                                # 添加到日志列表
+                                logs.append(entry)
+                            except json.JSONDecodeError as e:
+                                # 如果某行JSON解析失败，记录错误但继续处理其他行
+                                app.logger.warning(f"[SMS回复日志] 解析JSON失败: {line[:50]}... 错误: {str(e)}")
+                                continue
+                    
+                    # 按时间戳倒序排序（最新的在前面）
+                    logs.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+                    
+                    # 限制返回数量
+                    total = len(logs)
+                    logs = logs[:limit]
+                    
+                    # 返回成功响应
+                    return jsonify({
+                        "success": True,
+                        "logs": logs,
+                        "total": total,
+                        "limit": limit
+                    })
+                    
+                except Exception as e:
+                    # 文件读取异常
+                    app.logger.error(f"[SMS回复日志] 读取日志文件失败: {str(e)}")
+                    return jsonify({
+                        "success": False,
+                        "message": f"读取日志文件失败: {str(e)}"
+                    }), 500
+            else:
+                # 日志文件不存在，返回空列表
+                return jsonify({
+                    "success": True,
+                    "logs": [],
+                    "total": 0,
+                    "limit": limit,
+                    "message": "暂无短信回复记录"
+                })
+        
+        except Exception as e:
+            # 处理请求异常
+            app.logger.error(f"[SMS回复日志] 处理请求异常: {str(e)}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"处理失败：{str(e)}"
+            }), 500
+
     # ====================
     # 管理员日志查看API
     # ====================
@@ -26413,6 +26542,215 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"操作失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/payment_logs", methods=["GET"])
+    @login_required
+    def user_payment_logs():
+        """
+        获取当前用户的支付日志列表接口
+        
+        功能说明：
+        用户查看自己的支付操作日志，自动根据登录状态识别用户身份。
+        - 如果是注册用户，使用username作为user_id
+        - 如果是游客会话，使用session UUID作为user_id
+        
+        请求方法：GET
+        权限要求：登录用户（login_required装饰器）
+        
+        查询参数（URL参数）：
+            - action (str, 可选): 按操作类型筛选
+                - "create_order": 创建订单
+                - "query_order": 查询订单
+                - "payment_success": 支付成功
+                - "payment_fail": 支付失败
+            - start_date (str, 可选): 开始日期（格式：YYYY-MM-DD）
+            - end_date (str, 可选): 结束日期（格式：YYYY-MM-DD）
+            - page (int, 可选): 页码，默认1
+            - per_page (int, 可选): 每页数量，默认20（最大100）
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - logs (list): 日志列表（按时间倒序）
+                每条日志包含：
+                - order_id: 订单号
+                - action: 操作类型
+                - datetime: 操作时间（可读格式）
+                - 以及其他操作特定的数据
+            - total (int): 符合条件的总日志数
+            - page (int): 当前页码
+            - per_page (int): 每页数量
+        
+        功能说明：
+        用户可以查看自己的支付操作日志，支持按操作类型、日期范围筛选和分页。
+        日志按时间倒序排列，最新的日志在最前面。
+        
+        使用场景：
+        - 查看自己的订单历史
+        - 追踪支付状态
+        - 查询支付问题
+        """
+        try:
+            # ========== 获取当前用户ID ==========
+            
+            # 获取当前登录用户
+            current_user = g.user
+            
+            # 确定用户ID
+            # 如果g.user不为None，说明是注册用户，使用username
+            # 否则，使用session中的UUID（游客会话）
+            if current_user:
+                user_id = current_user
+            else:
+                # 游客用户，使用session UUID
+                # session UUID应该在login_required装饰器中已经设置
+                user_id = session.get("uuid", "")
+                if not user_id:
+                    return jsonify({
+                        "success": False,
+                        "message": "无法识别用户身份，请重新登录"
+                    }), 401
+            
+            # ========== 获取查询参数 ==========
+            
+            # 操作类型筛选（可选）
+            action_filter = request.args.get("action", "").strip()
+            
+            # 日期范围筛选（可选）
+            start_date_str = request.args.get("start_date", "").strip()
+            end_date_str = request.args.get("end_date", "").strip()
+            
+            # 分页参数
+            try:
+                page = int(request.args.get("page", "1"))
+                per_page = int(request.args.get("per_page", "20"))
+            except ValueError:
+                page = 1
+                per_page = 20
+            
+            # 验证分页参数
+            if page < 1:
+                page = 1
+            if per_page < 1 or per_page > 100:
+                per_page = 20
+            
+            # 解析日期范围
+            start_timestamp = None
+            end_timestamp = None
+            
+            if start_date_str:
+                try:
+                    # 将日期字符串转换为时间戳
+                    # 格式：YYYY-MM-DD -> Unix时间戳（当天00:00:00）
+                    from datetime import datetime
+                    start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+                    start_timestamp = start_dt.timestamp()
+                except ValueError:
+                    # 日期格式不正确，忽略此筛选条件
+                    app.logger.warning(f"[用户支付日志] 日期格式不正确: {start_date_str}")
+            
+            if end_date_str:
+                try:
+                    # 将日期字符串转换为时间戳
+                    # 格式：YYYY-MM-DD -> Unix时间戳（当天23:59:59）
+                    from datetime import datetime
+                    end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
+                    # 加上一天的秒数，使其包含整个结束日期
+                    end_timestamp = end_dt.timestamp() + 86400 - 1
+                except ValueError:
+                    app.logger.warning(f"[用户支付日志] 日期格式不正确: {end_date_str}")
+            
+            # ========== 读取当前用户的支付日志文件 ==========
+            
+            logs = []
+            
+            # 规范化用户ID为目录名
+            # 与_write_payment_log函数保持一致
+            if user_id and not user_id.startswith("guest_") and not user_id.startswith("user_"):
+                # 判断是否为游客（通常游客ID包含连字符或为UUID格式）
+                if "-" in user_id:
+                    safe_user_id = f"guest_{user_id}"
+                else:
+                    safe_user_id = f"user_{user_id}"
+            else:
+                safe_user_id = user_id
+            
+            # 构建用户日志目录路径
+            log_dir = "logs/payment_logs"
+            user_log_dir = os.path.join(log_dir, safe_user_id)
+            
+            # 检查用户日志目录是否存在
+            if os.path.exists(user_log_dir) and os.path.isdir(user_log_dir):
+                # 遍历用户目录下的所有JSON文件
+                for filename in os.listdir(user_log_dir):
+                    if not filename.endswith('.json'):
+                        continue
+                    
+                    file_path = os.path.join(user_log_dir, filename)
+                    
+                    try:
+                        # 读取日志文件
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            log_entry = json.load(f)
+                        
+                        # ========== 应用筛选条件 ==========
+                        
+                        # 筛选条件1：操作类型
+                        if action_filter and log_entry.get('action') != action_filter:
+                            continue
+                        
+                        # 筛选条件2：开始日期
+                        if start_timestamp is not None:
+                            log_timestamp = log_entry.get('timestamp', 0)
+                            if log_timestamp < start_timestamp:
+                                continue
+                        
+                        # 筛选条件3：结束日期
+                        if end_timestamp is not None:
+                            log_timestamp = log_entry.get('timestamp', 0)
+                            if log_timestamp > end_timestamp:
+                                continue
+                        
+                        # 通过筛选，添加到结果列表
+                        logs.append(log_entry)
+                        
+                    except Exception as e:
+                        # 读取或解析单个文件失败，记录警告但继续处理其他文件
+                        app.logger.warning(f"[用户支付日志] 读取文件失败: {file_path}, 错误: {str(e)}")
+                        continue
+            
+            # ========== 排序和分页 ==========
+            
+            # 按时间戳倒序排序（最新的在前面）
+            logs.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+            
+            # 计算总数
+            total = len(logs)
+            
+            # 计算分页
+            start_index = (page - 1) * per_page
+            end_index = start_index + per_page
+            
+            # 获取当前页的数据
+            page_logs = logs[start_index:end_index]
+            
+            # ========== 返回结果 ==========
+            
+            return jsonify({
+                "success": True,
+                "logs": page_logs,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "user_id": user_id  # 返回用户ID，便于前端确认
+            })
+        
+        except Exception as e:
+            # 处理异常
+            app.logger.error(f"[用户支付日志] 处理失败: {str(e)}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"获取支付日志失败: {str(e)}"
             }), 500
 
     @app.route("/api/admin/payment_logs", methods=["GET"])
