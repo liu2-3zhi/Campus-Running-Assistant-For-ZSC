@@ -793,6 +793,12 @@ def auto_init_system():
         print("[系统初始化] 创建/更新配置文件...")
         _create_config_ini()
 
+        logging.info("步骤2.5: 迁移支付方式配置...")
+        print("[系统初始化] 检查并迁移支付方式配置...")
+        # 调用迁移函数，将 config.ini 中的 payment_methods_config 迁移到 JSON 文件
+        # 此函数会检查 payment_methods.json 是否已存在，避免重复迁移
+        _migrate_payment_methods_to_json()
+
         logging.info("步骤3: 创建权限配置文件...")
         print("[系统初始化] 创建权限配置文件...")
         _create_permissions_json()
@@ -1086,64 +1092,8 @@ def _get_default_config():
         #   2. 前端创建订单时会验证支付方式是否在启用列表中
         #   3. 修改此配置后无需重启服务器，下次创建订单时生效
         "enabled_payment_methods": "alipay,wxpay",
-        # 支付方式详细配置（JSON格式）
-        # 此配置定义了所有支持的支付方式及其显示信息（名称、SVG图标、描述等）
-        # 格式：JSON字符串，包含每个支付方式的完整配置信息
-        # 每个支付方式包含以下字段：
-        #   - name: 支付方式的中文名称，用于前端显示
-        #   - icon: 图标类型标识，固定为 "svg" 表示使用SVG图标
-        #   - svg: SVG图标的完整代码，包含颜色、尺寸等样式
-        #   - description: 支付方式的详细描述，帮助用户理解该支付方式
-        #   - borderColor: 悬停时的边框颜色样式类（Tailwind CSS类名）
-        #   - textColor: 文字颜色样式类（Tailwind CSS类名）
-        # 注意：
-        #   1. SVG图标使用 viewBox="0 0 24 24" 标准尺寸
-        #   2. 颜色使用 currentColor 以便继承父元素颜色
-        #   3. 添加新支付方式只需在此JSON中新增配置项即可
-        #   4. 修改此配置后无需重启服务器，前端会动态加载最新配置
-        #   5. 必须保持JSON格式正确，否则会导致配置解析失败
-        "payment_methods_config": json.dumps({
-            "alipay": {
-                "name": "支付宝支付",
-                "icon": "svg",
-                "svg": '<svg class="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
-                "description": "支持支付宝扫码支付",
-                "borderColor": "hover:border-sky-500",
-                "textColor": "text-sky-600"
-            },
-            "wxpay": {
-                "name": "微信支付",
-                "icon": "svg",
-                "svg": '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>',
-                "description": "支持微信扫码支付",
-                "borderColor": "hover:border-green-500",
-                "textColor": "text-green-600"
-            },
-            "bank": {
-                "name": "网银支付",
-                "icon": "svg",
-                "svg": '<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
-                "description": "支持各大银行网银支付",
-                "borderColor": "hover:border-blue-500",
-                "textColor": "text-blue-600"
-            },
-            "qqpay": {
-                "name": "QQ钱包",
-                "icon": "svg",
-                "svg": '<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>',
-                "description": "支持QQ钱包扫码支付",
-                "borderColor": "hover:border-indigo-500",
-                "textColor": "text-indigo-600"
-            },
-            "unionpay": {
-                "name": "云闪付",
-                "icon": "svg",
-                "svg": '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
-                "description": "支持云闪付扫码支付",
-                "borderColor": "hover:border-red-500",
-                "textColor": "text-red-600"
-            }
-        }, ensure_ascii=False),
+        # 注意：支付方式详细配置（payment_methods_config）已迁移到独立的 payment_methods.json 文件
+        # 如需修改支付方式的名称、图标、描述等信息，请直接编辑 payment_methods.json 文件
     }
 
     # ============================================================
@@ -1643,16 +1593,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 默认值：jump（跳转支付，适用于大多数场景）\n")
         f.write("# 注意：不同接口类型可能需要额外的参数，请参考易支付平台文档\n")
         f.write(f"payment_method = {config_obj.get('Rainbow_YiPay', 'payment_method', fallback='jump')}\n")
-        f.write("# 支付方式详细配置（JSON格式）\n")
-        f.write("# 定义所有支持的支付方式及其显示信息（名称、SVG图标、描述等）\n")
-        f.write("# 管理员可以在此添加新的支付方式或修改现有支付方式的显示信息\n")
-        f.write("# 每个支付方式包含：name(名称)、icon(图标类型)、svg(SVG代码)、description(描述)、borderColor(边框色)、textColor(文字色)\n")
-        f.write("# 注意：\n")
-        f.write("# 1. 必须保持JSON格式正确，建议使用在线JSON验证工具检查\n")
-        f.write("# 2. SVG图标代码中的引号需要使用单引号，或者对双引号进行转义\n")
-        f.write("# 3. 添加新支付方式后，还需要在 enabled_payment_methods 中启用它\n")
-        f.write("# 4. 修改此配置后无需重启服务器，前端会动态加载最新配置\n")
-        f.write(f"payment_methods_config = {config_obj.get('Rainbow_YiPay', 'payment_methods_config', fallback='{}')}\n\n")
+        f.write("# 注意：支付方式详细配置（payment_methods_config）已迁移到独立的 payment_methods.json 文件\n")
+        f.write("# 如需修改支付方式的名称、图标、描述等信息，请直接编辑 payment_methods.json 文件\n\n")
 
         # ============================================================
         # [Payment_Settings] 支付费用配置
@@ -2285,6 +2227,228 @@ def _create_config_ini():
         print("[配置文件] config.ini 不存在，创建新配置文件...")
         _write_config_with_comments(default_config, "config.ini")
         print("[配置文件] 配置文件创建完成（包含详细注释）")
+
+
+def _get_default_payment_methods_config():
+    """
+    获取默认的支付方式配置
+    
+    返回值:
+        dict: 默认的支付方式配置字典，包含所有支持的支付方式及其显示信息
+        
+    说明:
+        此函数返回系统默认支持的支付方式配置，包括：
+        - alipay: 支付宝支付
+        - wxpay: 微信支付
+        - bank: 网银支付
+        - qqpay: QQ钱包
+        - unionpay: 云闪付
+        
+        每个支付方式包含以下字段：
+        - name: 中文名称，用于前端显示
+        - icon: 图标类型，固定为 "svg"
+        - svg: SVG图标的完整代码
+        - description: 支付方式的详细描述
+        - borderColor: 悬停时的边框颜色样式类（Tailwind CSS）
+        - textColor: 文字颜色样式类（Tailwind CSS）
+    """
+    # 返回默认的支付方式配置字典
+    # 此配置包含了系统支持的所有支付方式及其前端显示样式
+    return {
+        # 支付宝支付配置
+        "alipay": {
+            "name": "支付宝支付",  # 显示名称
+            "icon": "svg",  # 图标类型标识
+            # SVG 图标代码，使用天蓝色主题，包含货币符号图标
+            "svg": '<svg class="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+            "description": "支持支付宝扫码支付",  # 支付方式描述
+            "borderColor": "hover:border-sky-500",  # 鼠标悬停时的边框颜色
+            "textColor": "text-sky-600"  # 文字颜色
+        },
+        # 微信支付配置
+        "wxpay": {
+            "name": "微信支付",  # 显示名称
+            "icon": "svg",  # 图标类型标识
+            # SVG 图标代码，使用绿色主题，包含聊天图标
+            "svg": '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>',
+            "description": "支持微信扫码支付",  # 支付方式描述
+            "borderColor": "hover:border-green-500",  # 鼠标悬停时的边框颜色
+            "textColor": "text-green-600"  # 文字颜色
+        },
+        # 网银支付配置
+        "bank": {
+            "name": "网银支付",  # 显示名称
+            "icon": "svg",  # 图标类型标识
+            # SVG 图标代码，使用蓝色主题，包含银行卡图标
+            "svg": '<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+            "description": "支持各大银行网银支付",  # 支付方式描述
+            "borderColor": "hover:border-blue-500",  # 鼠标悬停时的边框颜色
+            "textColor": "text-blue-600"  # 文字颜色
+        },
+        # QQ钱包支付配置
+        "qqpay": {
+            "name": "QQ钱包",  # 显示名称
+            "icon": "svg",  # 图标类型标识
+            # SVG 图标代码，使用靛蓝色主题，包含钱包图标
+            "svg": '<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>',
+            "description": "支持QQ钱包扫码支付",  # 支付方式描述
+            "borderColor": "hover:border-indigo-500",  # 鼠标悬停时的边框颜色
+            "textColor": "text-indigo-600"  # 文字颜色
+        },
+        # 云闪付配置
+        "unionpay": {
+            "name": "云闪付",  # 显示名称
+            "icon": "svg",  # 图标类型标识
+            # SVG 图标代码，使用红色主题，包含银行卡图标
+            "svg": '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+            "description": "支持云闪付扫码支付",  # 支付方式描述
+            "borderColor": "hover:border-red-500",  # 鼠标悬停时的边框颜色
+            "textColor": "text-red-600"  # 文字颜色
+        }
+    }
+
+
+def _read_payment_methods_config():
+    """
+    读取支付方式配置文件
+    
+    返回值:
+        dict: 支付方式配置字典，如果文件不存在或读取失败，则返回默认配置
+        
+    说明:
+        此函数负责从 payment_methods.json 文件中读取支付方式配置。
+        - 如果文件存在且格式正确，返回文件中的配置
+        - 如果文件不存在，返回默认配置
+        - 如果读取过程中发生错误（如JSON格式错误），记录错误日志并返回默认配置
+        
+    异常处理:
+        所有异常都会被捕获，确保函数始终返回一个有效的配置字典
+    """
+    # 定义配置文件路径为当前目录下的 payment_methods.json
+    config_file = "payment_methods.json"
+    
+    try:
+        # 检查配置文件是否存在
+        if os.path.exists(config_file):
+            # 文件存在，尝试打开并读取
+            # 使用 utf-8 编码确保中文内容正确读取
+            with open(config_file, 'r', encoding='utf-8') as f:
+                # 使用 json.load 解析JSON文件内容
+                # 返回解析后的字典对象
+                return json.load(f)
+        else:
+            # 文件不存在，返回默认配置
+            # 这是正常情况（首次运行或文件被删除）
+            return _get_default_payment_methods_config()
+    except Exception as e:
+        # 捕获所有可能的异常（文件读取错误、JSON解析错误等）
+        # 记录错误日志，便于排查问题
+        logging.error(f"[支付方式配置] 读取配置文件失败: {str(e)}")
+        # 即使发生错误，也返回默认配置，确保系统可以正常运行
+        return _get_default_payment_methods_config()
+
+
+def _write_payment_methods_config(methods_config):
+    """
+    写入支付方式配置文件
+    
+    参数:
+        methods_config (dict): 支付方式配置字典，将被写入到JSON文件
+        
+    说明:
+        此函数负责将支付方式配置写入到 payment_methods.json 文件。
+        - 使用 utf-8 编码确保中文内容正确保存
+        - 使用 ensure_ascii=False 保持中文字符不被转义
+        - 使用 indent=2 格式化JSON输出，便于人工编辑
+        
+    异常处理:
+        如果写入失败，会记录错误日志并重新抛出异常，由调用方处理
+    """
+    # 定义配置文件路径为当前目录下的 payment_methods.json
+    config_file = "payment_methods.json"
+    
+    try:
+        # 打开文件进行写入，如果文件不存在则创建
+        # 使用 utf-8 编码确保中文内容正确保存
+        with open(config_file, 'w', encoding='utf-8') as f:
+            # 使用 json.dump 将字典对象序列化为JSON并写入文件
+            # ensure_ascii=False: 保持中文字符不被转义为 \uXXXX 格式
+            # indent=2: 使用2个空格缩进，使JSON格式更易读
+            json.dump(methods_config, f, ensure_ascii=False, indent=2)
+        # 写入成功，记录信息日志
+        logging.info(f"[支付方式配置] 配置已保存到 {config_file}")
+    except Exception as e:
+        # 捕获所有可能的异常（权限错误、磁盘空间不足等）
+        # 记录错误日志，便于排查问题
+        logging.error(f"[支付方式配置] 写入配置文件失败: {str(e)}")
+        # 重新抛出异常，让调用方知道写入失败
+        # 这样调用方可以决定如何处理（如回滚操作、向用户显示错误等）
+        raise
+
+
+def _migrate_payment_methods_to_json():
+    """
+    一次性迁移：将 config.ini 中的 payment_methods_config 迁移到 JSON 文件
+    
+    说明:
+        此函数用于从旧版本升级时自动迁移配置数据。
+        - 如果 payment_methods.json 已存在，则跳过迁移（避免覆盖用户自定义配置）
+        - 如果 config.ini 中存在旧配置，则读取并迁移到新的JSON文件
+        - 如果没有旧配置，则创建默认配置文件
+        
+    迁移策略:
+        1. 检查 JSON 文件是否已存在
+        2. 如果不存在，尝试从 config.ini 读取旧配置
+        3. 如果旧配置存在，迁移到新文件
+        4. 如果旧配置不存在或读取失败，创建默认配置
+        
+    异常处理:
+        所有异常都会被捕获，确保即使迁移失败也不影响应用启动
+    """
+    # 定义目标配置文件路径
+    config_file = "payment_methods.json"
+    
+    # 检查 JSON 配置文件是否已存在
+    if os.path.exists(config_file):
+        # 文件已存在，说明已经迁移过或用户已自定义配置
+        # 直接返回，避免覆盖用户的配置
+        return
+    
+    # JSON 文件不存在，尝试从 config.ini 迁移旧配置
+    try:
+        # 创建 ConfigParser 对象用于读取 INI 文件
+        config = configparser.ConfigParser()
+        # 读取 config.ini 文件，使用 utf-8 编码
+        config.read("config.ini", encoding="utf-8")
+        
+        # 检查 Rainbow_YiPay 节中是否存在 payment_methods_config 配置项
+        if config.has_option("Rainbow_YiPay", "payment_methods_config"):
+            # 旧配置存在，读取配置项的值（JSON字符串格式）
+            old_config_str = config.get("Rainbow_YiPay", "payment_methods_config")
+            # 将JSON字符串解析为字典对象
+            methods_config = json.loads(old_config_str)
+            
+            # 将解析后的配置写入新的 JSON 文件
+            _write_payment_methods_config(methods_config)
+            
+            # 记录迁移成功的日志
+            logging.info("[支付方式配置] 已从 config.ini 迁移到 payment_methods.json")
+        else:
+            # config.ini 中没有旧配置，创建默认配置
+            _write_payment_methods_config(_get_default_payment_methods_config())
+            # 记录创建默认配置的日志
+            logging.info("[支付方式配置] 已创建默认配置文件 payment_methods.json")
+    except Exception as e:
+        # 捕获所有可能的异常（文件不存在、JSON解析错误、写入失败等）
+        # 记录错误日志，但不中断应用启动
+        logging.error(f"[支付方式配置] 迁移失败: {str(e)}")
+        # 即使迁移失败，也尝试创建默认配置，确保系统可以正常运行
+        try:
+            _write_payment_methods_config(_get_default_payment_methods_config())
+        except:
+            # 如果创建默认配置也失败，只能记录错误
+            # 这种情况下系统可能无法正常工作，需要用户手动处理
+            pass
 
 
 def _create_permissions_json(force=False):
@@ -26469,88 +26633,31 @@ def start_web_server(args_param):
     def payment_methods_config():
         """
         获取支付方式配置接口
-        
-        功能说明：
-        返回所有支持的支付方式及其显示信息（名称、SVG图标、描述、样式等）
-        前端通过此接口获取支付方式配置，实现完全的配置驱动，无需硬编码
-        
-        请求方法：GET
-        权限要求：无（公开接口）
-        
-        返回格式：
-        {
-            "success": true,
-            "methods": {
-                "alipay": {
-                    "name": "支付宝支付",
-                    "icon": "svg",
-                    "svg": "<svg>...</svg>",
-                    "description": "支持支付宝扫码支付",
-                    "borderColor": "hover:border-sky-500",
-                    "textColor": "text-sky-600"
-                },
-                "wxpay": { ... },
-                ...
-            }
-        }
-        
-        错误返回：
-        {
-            "success": false,
-            "message": "读取配置失败"
-        }
-        
-        使用场景：
-        1. 页面加载时自动调用，动态生成支付方式选择界面
-        2. 管理员修改配置后，前端可重新调用以刷新显示
-        3. 支持动态添加/删除支付方式，无需修改前端代码
-        
-        注意事项：
-        1. 返回的是所有定义的支付方式，实际可用的支付方式还需要结合 enabled_payment_methods 配置
-        2. SVG图标代码已包含样式类，前端可直接渲染
-        3. 如果配置文件中不存在此配置，返回空对象 {}
         """
         try:
-            # 从配置文件中读取支付方式配置
-            # 使用 configparser 读取 config.ini 文件
-            config = configparser.ConfigParser()
-            config.read("config.ini", encoding="utf-8")
-            
-            # 获取支付方式配置的JSON字符串
-            # 从 Rainbow_YiPay 节中读取 payment_methods_config 配置项
-            # 如果配置不存在，使用空JSON对象作为默认值
-            methods_config_str = config.get(
-                "Rainbow_YiPay",
-                "payment_methods_config",
-                fallback="{}"
-            )
-            
-            # 将JSON字符串解析为Python字典对象
-            # 这样前端可以直接使用，无需再次解析
-            methods_config = json.loads(methods_config_str)
+            # 调用 _read_payment_methods_config() 函数从 JSON 文件读取配置
+            # 此函数会自动处理文件不存在、格式错误等异常情况，并返回默认配置
+            methods_config = _read_payment_methods_config()
             
             # 记录日志，便于调试和监控
+            # 输出当前读取到的支付方式数量
             logging.info(f"[支付方式配置] 成功读取配置，共 {len(methods_config)} 个支付方式")
             
             # 返回成功响应，包含所有支付方式的配置信息
+            # 前端可以直接使用这个字典，无需再次解析
             return jsonify({
-                "success": True,
-                "methods": methods_config
+                "success": True,  # 标识请求成功
+                "methods": methods_config  # 支付方式配置字典
             })
-        except json.JSONDecodeError as e:
-            # JSON解析失败，说明配置文件中的JSON格式不正确
-            logging.error(f"[支付方式配置] JSON解析失败: {str(e)}")
-            return jsonify({
-                "success": False,
-                "message": "配置格式错误，请检查JSON语法"
-            }), 500
         except Exception as e:
-            # 捕获其他异常（如文件读取失败、配置节不存在等）
+            # 捕获所有可能的异常（虽然 _read_payment_methods_config 已经处理了大部分异常）
+            # 记录错误日志，包含完整的异常堆栈，便于排查问题
             logging.error(f"[支付方式配置] 读取配置失败: {str(e)}")
             logging.error(traceback.format_exc())
+            # 返回错误响应，HTTP状态码 500 表示服务器内部错误
             return jsonify({
-                "success": False,
-                "message": "读取配置失败"
+                "success": False,  # 标识请求失败
+                "message": "读取配置失败"  # 错误提示信息
             }), 500
 
     @app.route("/api/payment/create", methods=["POST"])
@@ -28714,17 +28821,25 @@ def start_web_server(args_param):
                         "message": "至少需要启用一种支付方式"
                     }), 400
                 
-                # 验证每个支付方式是否有效
-                invalid_methods = [m for m in new_methods if m not in all_methods]
+                # === 改造：验证每个支付方式是否在 payment_methods_config 中定义 ===
+                
+                # 读取当前配置（用于后续保存 enabled_payment_methods）
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 从 payment_methods.json 文件获取所有已定义的支付方式
+                # 调用 _read_payment_methods_config() 函数，该函数会自动处理异常情况
+                methods_config = _read_payment_methods_config()
+                # 获取所有已定义的支付方式代码（字典的键）
+                available_methods = set(methods_config.keys())
+                
+                # 验证每个支付方式是否已定义
+                invalid_methods = [m for m in new_methods if m not in available_methods]
                 if invalid_methods:
                     return jsonify({
                         "success": False,
-                        "message": f"不支持的支付方式：{', '.join(invalid_methods)}"
+                        "message": f"以下支付方式未定义，请先在支付方式管理中添加：{', '.join(invalid_methods)}"
                     }), 400
-                
-                # 读取当前配置
-                config = configparser.ConfigParser()
-                config.read("config.ini", encoding="utf-8")
                 
                 # 获取旧的配置（用于日志记录）
                 old_methods_str = config.get(
@@ -28755,7 +28870,15 @@ def start_web_server(args_param):
                 )
                 
                 # 构造中文名称列表用于返回消息
-                method_names = [all_methods[m] for m in new_methods]
+                # 从 payment_methods_config 中获取名称
+                method_names = []
+                for m in new_methods:
+                    if m in methods_config:
+                        method_names.append(methods_config[m].get('name', m))
+                    elif m in all_methods:
+                        method_names.append(all_methods[m])
+                    else:
+                        method_names.append(m)
                 method_names_str = "、".join(method_names)
                 
                 # 返回成功响应
@@ -28767,6 +28890,336 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[支付配置] 管理支付配置接口异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"操作失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment_methods", methods=["POST"])
+    @login_required
+    def add_payment_method():
+        """
+        添加新的支付方式接口（管理员专用）
+        
+        请求方法：POST
+        权限要求：modify_config权限
+        
+        请求参数（JSON格式）：
+            - code (str): 支付方式代码（必填），例如：alipay, wxpay
+            - name (str): 显示名称（必填），例如：支付宝支付
+            - icon (str): Logo类型（必填），可选值：svg, image
+            - svg (str): SVG代码（当icon为svg时必填）
+            - image (str): 图片URL（当icon为image时必填）
+            - description (str): 描述信息（可选）
+            - borderColor (str): 边框颜色CSS类（可选），例如：hover:border-sky-500
+            - textColor (str): 文字颜色CSS类（可选），例如：text-sky-600
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 操作结果信息
+        
+        功能说明：
+        - 将新的支付方式添加到 payment_methods_config（JSON配置）
+        - 支付方式代码必须唯一，不能与现有支付方式重复
+        - 配置立即保存到 config.ini 文件
+        """
+        try:
+            # === 权限检查 ===
+            # 需要 modify_config 权限才能添加支付方式
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要修改配置权限（modify_config）"
+                }), 403
+            
+            # === 获取并验证请求数据 ===
+            data = request.get_json() or {}
+            
+            # 验证必填字段：支付方式代码
+            code = data.get("code", "").strip()
+            if not code:
+                return jsonify({
+                    "success": False,
+                    "message": "支付方式代码不能为空"
+                }), 400
+            
+            # 验证代码格式：只允许字母、数字和下划线
+            import re
+            if not re.match(r'^[a-zA-Z0-9_]+$', code):
+                return jsonify({
+                    "success": False,
+                    "message": "支付方式代码只能包含字母、数字和下划线"
+                }), 400
+            
+            # 验证必填字段：显示名称
+            name = data.get("name", "").strip()
+            if not name:
+                return jsonify({
+                    "success": False,
+                    "message": "显示名称不能为空"
+                }), 400
+            
+            # 验证必填字段：Logo类型
+            icon = data.get("icon", "").strip()
+            if icon not in ["svg", "image"]:
+                return jsonify({
+                    "success": False,
+                    "message": "Logo类型必须是 svg 或 image"
+                }), 400
+            
+            # 验证Logo内容
+            svg = data.get("svg", "").strip()
+            image = data.get("image", "").strip()
+            
+            if icon == "svg" and not svg:
+                return jsonify({
+                    "success": False,
+                    "message": "选择SVG类型时，SVG代码不能为空"
+                }), 400
+            
+            if icon == "image" and not image:
+                return jsonify({
+                    "success": False,
+                    "message": "选择图片类型时，图片URL不能为空"
+                }), 400
+            
+            # 获取可选字段
+            description = data.get("description", "").strip()
+            border_color = data.get("borderColor", "hover:border-sky-500").strip()
+            text_color = data.get("textColor", "text-sky-600").strip()
+            
+            # === 读取当前配置 ===
+            # 从 payment_methods.json 文件读取现有的支付方式配置
+            # _read_payment_methods_config() 会自动处理文件不存在、格式错误等情况
+            methods_config = _read_payment_methods_config()
+            
+            # === 检查支付方式代码是否已存在 ===
+            # 遍历已有的支付方式字典，检查新代码是否与现有代码冲突
+            if code in methods_config:
+                # 代码已存在，返回错误提示
+                return jsonify({
+                    "success": False,
+                    "message": f"支付方式代码 '{code}' 已存在，请使用其他代码或编辑现有支付方式"
+                }), 400
+            
+            # === 构建新支付方式配置 ===
+            # 创建一个字典，包含新支付方式的所有配置信息
+            new_method = {
+                "name": name,  # 支付方式的显示名称
+                "icon": icon,  # 图标类型（svg 或 image）
+                "svg": svg if icon == "svg" else "",  # 如果使用SVG图标，保存SVG代码
+                "image": image if icon == "image" else "",  # 如果使用图片，保存图片URL
+                "description": description,  # 支付方式描述
+                "borderColor": border_color,  # 边框颜色CSS类
+                "textColor": text_color  # 文字颜色CSS类
+            }
+            
+            # 将新支付方式添加到配置字典中
+            # 使用支付方式代码作为键，配置信息作为值
+            methods_config[code] = new_method
+            
+            # === 保存配置 ===
+            # 调用 _write_payment_methods_config() 函数将更新后的配置写入 JSON 文件
+            # 此函数会自动处理文件写入、格式化等操作
+            _write_payment_methods_config(methods_config)
+            
+            # === 记录日志 ===
+            logging.info(
+                f"[支付方式管理] 管理员添加新支付方式 - "
+                f"操作者: {g.user}, 代码: {code}, 名称: {name}"
+            )
+            
+            # 返回成功响应
+            return jsonify({
+                "success": True,
+                "message": f"支付方式 '{name}' 已成功添加"
+            })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付方式管理] 添加支付方式失败: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"添加失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment_methods/<code>", methods=["PUT", "DELETE"])
+    @login_required
+    def manage_payment_method(code):
+        """
+        更新或删除支付方式接口（管理员专用）
+        
+        请求方法：PUT（更新）、DELETE（删除）
+        权限要求：modify_config权限
+        
+        URL参数：
+            - code (str): 支付方式代码
+        
+        PUT请求参数（JSON格式）：
+            - name (str): 显示名称（必填）
+            - icon (str): Logo类型（必填），可选值：svg, image
+            - svg (str): SVG代码（当icon为svg时必填）
+            - image (str): 图片URL（当icon为image时必填）
+            - description (str): 描述信息（可选）
+            - borderColor (str): 边框颜色CSS类（可选）
+            - textColor (str): 文字颜色CSS类（可选）
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 操作结果信息
+        """
+        try:
+            # === 权限检查 ===
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要修改配置权限（modify_config）"
+                }), 403
+            
+            # === 读取当前配置 ===
+            # 从 payment_methods.json 文件读取现有的支付方式配置
+            # _read_payment_methods_config() 会自动处理文件不存在、格式错误等情况
+            methods_config = _read_payment_methods_config()
+            
+            # === 检查支付方式是否存在 ===
+            # 检查要操作的支付方式代码是否在配置字典中
+            if code not in methods_config:
+                # 支付方式不存在，返回404错误
+                return jsonify({
+                    "success": False,
+                    "message": f"支付方式 '{code}' 不存在"
+                }), 404
+            
+            if request.method == "PUT":
+                # ========== 处理PUT请求：更新支付方式 ==========
+                
+                # 获取并验证请求数据
+                data = request.get_json() or {}
+                
+                # 验证必填字段：显示名称
+                name = data.get("name", "").strip()
+                if not name:
+                    return jsonify({
+                        "success": False,
+                        "message": "显示名称不能为空"
+                    }), 400
+                
+                # 验证必填字段：Logo类型
+                icon = data.get("icon", "").strip()
+                if icon not in ["svg", "image"]:
+                    return jsonify({
+                        "success": False,
+                        "message": "Logo类型必须是 svg 或 image"
+                    }), 400
+                
+                # 验证Logo内容
+                svg = data.get("svg", "").strip()
+                image = data.get("image", "").strip()
+                
+                if icon == "svg" and not svg:
+                    return jsonify({
+                        "success": False,
+                        "message": "选择SVG类型时，SVG代码不能为空"
+                    }), 400
+                
+                if icon == "image" and not image:
+                    return jsonify({
+                        "success": False,
+                        "message": "选择图片类型时，图片URL不能为空"
+                    }), 400
+                
+                # 获取可选字段
+                description = data.get("description", "").strip()
+                border_color = data.get("borderColor", "hover:border-sky-500").strip()
+                text_color = data.get("textColor", "text-sky-600").strip()
+                
+                # 更新支付方式配置
+                # 使用提供的新值更新指定支付方式的所有配置项
+                methods_config[code] = {
+                    "name": name,  # 更新显示名称
+                    "icon": icon,  # 更新图标类型
+                    "svg": svg if icon == "svg" else "",  # 更新SVG代码（如果适用）
+                    "image": image if icon == "image" else "",  # 更新图片URL（如果适用）
+                    "description": description,  # 更新描述信息
+                    "borderColor": border_color,  # 更新边框颜色
+                    "textColor": text_color  # 更新文字颜色
+                }
+                
+                # 保存配置到 JSON 文件
+                # 调用 _write_payment_methods_config() 函数写入文件
+                _write_payment_methods_config(methods_config)
+                
+                # 记录日志
+                logging.info(
+                    f"[支付方式管理] 管理员更新支付方式 - "
+                    f"操作者: {g.user}, 代码: {code}, 名称: {name}"
+                )
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"支付方式 '{name}' 已成功更新"
+                })
+            
+            elif request.method == "DELETE":
+                # ========== 处理DELETE请求：删除支付方式 ==========
+                
+                # 获取支付方式名称（用于日志和返回消息）
+                # 如果配置中有name字段则使用，否则使用代码作为名称
+                method_name = methods_config[code].get("name", code)
+                
+                # 从配置字典中删除该支付方式
+                # 使用 del 关键字删除指定键值对
+                del methods_config[code]
+                
+                # 保存更新后的配置到 JSON 文件
+                # 调用 _write_payment_methods_config() 函数写入文件
+                _write_payment_methods_config(methods_config)
+                
+                # 同时从 enabled_payment_methods 中移除该支付方式
+                # 避免启用列表中包含已删除的支付方式
+                # 这需要读取和修改 config.ini 文件
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 读取当前启用的支付方式列表
+                enabled_methods_str = config.get(
+                    "Rainbow_YiPay",
+                    "enabled_payment_methods",
+                    fallback=""
+                )
+                # 将逗号分隔的字符串转换为列表，去除空白
+                enabled_methods = [
+                    m.strip() for m in enabled_methods_str.split(",") if m.strip()
+                ]
+                
+                # 如果启用列表中包含该支付方式，移除它
+                if code in enabled_methods:
+                    enabled_methods.remove(code)  # 从列表中删除
+                    new_enabled_str = ",".join(enabled_methods)  # 重新组合为字符串
+                    # 确保配置节存在
+                    if not config.has_section("Rainbow_YiPay"):
+                        config.add_section("Rainbow_YiPay")
+                    # 更新配置项
+                    config.set("Rainbow_YiPay", "enabled_payment_methods", new_enabled_str)
+                    # 保存配置文件（保持注释）
+                    _write_config_with_comments(config, "config.ini")
+                
+                # 记录日志
+                logging.info(
+                    f"[支付方式管理] 管理员删除支付方式 - "
+                    f"操作者: {g.user}, 代码: {code}, 名称: {method_name}"
+                )
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"支付方式 '{method_name}' 已成功删除"
+                })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付方式管理] 管理支付方式失败: {str(e)}")
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
