@@ -6450,8 +6450,11 @@ class Api:
                     if not cfg.has_section("Map"):
                         cfg.add_section("Map")
                     cfg.set("Map", "amap_js_key", amap_key)
-                    with open(self.config_path, "w", encoding="utf-8") as f:
-                        cfg.write(f)
+                    # 使用 _write_config_with_comments() 函数写入配置文件
+                    # 原因：标准的 config.write() 方法会丢失 config.ini 中的所有注释内容
+                    # _write_config_with_comments() 函数会保留配置文件中的注释，保持可读性
+                    # 这对于维护配置文件的可读性和文档性非常重要
+                    _write_config_with_comments(cfg, self.config_path)
                     logging.info("已将AmapJsKey从旧版[System]迁移到新版[Map]")
 
             self.global_params["amap_js_key"] = amap_key
@@ -6770,8 +6773,11 @@ class Api:
                 logging.debug(f"LastUser '{last_user}' 不在可用列表中，已忽略。")
                 last_user = ""
                 try:
-                    with open(self.config_path, "w", encoding="utf-8") as f:
-                        cfg.write(f)
+                    # 使用 _write_config_with_comments() 函数写入配置文件
+                    # 原因：标准的 config.write() 方法会丢失 config.ini 中的所有注释内容
+                    # _write_config_with_comments() 函数会保留配置文件中的注释，保持可读性
+                    # 这对于维护配置文件的可读性和文档性非常重要
+                    _write_config_with_comments(cfg, self.config_path)
                 except Exception as e:
                     logging.error(f"写回 config.ini 失败：{e}", exc_info=True)
                 last_user = ""
@@ -29285,14 +29291,57 @@ def start_web_server(args_param):
                     fallback=10  # 默认值：10次
                 )
                 
+                # ========== [修复] 读取UI显示配置字段 ==========
+                # 这4个配置项之前在GET响应中缺失，导致前端无法正确加载配置
+                
+                # 从 Profile_Display 节读取"是否在个人资料页显示剩余次数"配置（布尔值）
+                # 用于控制用户个人资料页面是否显示剩余跑步次数
+                show_available_runs = config.getboolean(
+                    "Profile_Display",
+                    "show_available_runs",
+                    fallback=True  # 默认值：显示
+                )
+                
+                # 从 Profile_Display 节读取"剩余次数显示格式"配置（字符串）
+                # {available_runs} 是占位符，会被替换为实际的剩余次数
+                available_runs_format = config.get(
+                    "Profile_Display",
+                    "available_runs_format",
+                    fallback="剩余免费次数：{available_runs} 次"  # 默认格式模板
+                )
+                
+                # 从 Registration_Display 节读取"是否在注册页显示免费次数提示"配置（布尔值）
+                # 用于控制用户注册页面是否显示免费次数提示信息
+                show_available_runs_on_register = config.getboolean(
+                    "Registration_Display",
+                    "show_available_runs_on_register",
+                    fallback=True  # 默认值：显示
+                )
+                
+                # 从 Registration_Display 节读取"注册页提示文本"配置（字符串）
+                # {available_runs} 是占位符，会被替换为实际的免费次数
+                register_available_runs_hint = config.get(
+                    "Registration_Display",
+                    "register_available_runs_hint",
+                    fallback="注册即可得 {available_runs} 次校园跑"  # 默认提示文本
+                )
+                
                 # 构造返回数据
                 # 将读取到的配置以 JSON 格式返回给前端
+                # [修复] 添加了4个UI显示配置字段，确保前端能正确加载所有配置
                 return jsonify({
                     "success": True,
                     "config": {
-                        "require_payment": require_payment,
-                        "per_run_cost": per_run_cost,
-                        "default_available_runs": default_available_runs
+                        # 基础支付配置
+                        "require_payment": require_payment,  # 是否需要付费
+                        "per_run_cost": per_run_cost,  # 单次跑步费用
+                        "default_available_runs": default_available_runs,  # 新用户默认免费次数
+                        # [修复新增] UI显示配置 - Profile_Display 节
+                        "show_available_runs": show_available_runs,  # 是否在个人资料页显示剩余次数
+                        "available_runs_format": available_runs_format,  # 剩余次数显示格式模板
+                        # [修复新增] UI显示配置 - Registration_Display 节
+                        "show_available_runs_on_register": show_available_runs_on_register,  # 是否在注册页显示提示
+                        "register_available_runs_hint": register_available_runs_hint  # 注册页提示文本模板
                     }
                 })
             
