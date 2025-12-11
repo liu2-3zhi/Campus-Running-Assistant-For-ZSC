@@ -28693,6 +28693,518 @@ def start_web_server(args_param):
                 "message": f"操作失败：{str(e)}"
             }), 500
 
+    @app.route("/api/admin/pricing_config", methods=["GET", "PUT"])
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
+    def admin_pricing_config():
+        """
+        获取或更新价格配置接口（管理员专用）
+        
+        请求方法：GET（获取配置）、PUT（更新配置）
+        权限要求：modify_config权限
+        
+        GET请求 - 获取当前价格配置：
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - config (dict): 当前价格配置
+                - require_payment (bool): 是否需要付费
+                - per_run_cost (float): 单次跑步费用（元）
+                - default_available_runs (int): 新用户默认免费次数
+        
+        PUT请求 - 更新价格配置：
+        请求参数（JSON格式）：
+            - require_payment (bool): 是否需要付费
+            - per_run_cost (float): 单次跑步费用（元）
+            - default_available_runs (int): 新用户默认免费次数
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 操作结果信息
+        
+        功能说明：
+        这个接口允许管理员动态配置系统的价格策略，包括是否启用付费模式、单次费用和新用户免费次数。
+        配置会立即生效，影响后续创建的所有用户和订单。
+        
+        使用场景：
+        - 管理员在后台管理面板配置价格策略
+        - 根据运营策略调整费用标准
+        - 控制新用户的免费试用次数
+        
+        安全措施：
+        - 需要modify_config权限
+        - 验证输入参数的有效性
+        - 记录配置变更日志
+        """
+        try:
+            # 检查细粒度权限：修改配置权限
+            # modify_config 权限允许修改价格配置
+            # 价格配置影响系统的收费模式和用户权益，需要谨慎管理
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
+            
+            if request.method == "GET":
+                # ========== 处理GET请求：获取当前配置 ==========
+                
+                # 读取配置文件
+                # 使用 configparser 从 config.ini 文件读取配置项
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 从 Payment_Settings 节读取价格相关配置
+                # 使用 fallback 参数提供默认值，确保即使配置文件缺失也能正常工作
+                
+                # 读取是否需要付费的配置（布尔值）
+                # getboolean() 方法会自动将字符串 "true"/"false" 转换为 Python 的 bool 类型
+                require_payment = config.getboolean(
+                    "Payment_Settings",
+                    "require_payment",
+                    fallback=True  # 默认值：需要付费
+                )
+                
+                # 读取单次跑步费用的配置（浮点数）
+                # getfloat() 方法会自动将字符串转换为 Python 的 float 类型
+                per_run_cost = config.getfloat(
+                    "Payment_Settings",
+                    "single_run_cost",  # 注意：配置文件中的键名是 single_run_cost
+                    fallback=1.0  # 默认值：1.0元/次
+                )
+                
+                # 读取新用户默认免费次数的配置（整数）
+                # getint() 方法会自动将字符串转换为 Python 的 int 类型
+                default_available_runs = config.getint(
+                    "Payment_Settings",
+                    "default_available_runs",
+                    fallback=10  # 默认值：10次
+                )
+                
+                # 构造返回数据
+                # 将读取到的配置以 JSON 格式返回给前端
+                return jsonify({
+                    "success": True,
+                    "config": {
+                        "require_payment": require_payment,
+                        "per_run_cost": per_run_cost,
+                        "default_available_runs": default_available_runs
+                    }
+                })
+            
+            elif request.method == "PUT":
+                # ========== 处理PUT请求：更新配置 ==========
+                
+                # 获取请求数据
+                # 从前端传来的 JSON 数据中提取配置参数
+                data = request.get_json() or {}
+                
+                # 提取新的配置值
+                # 使用 .get() 方法获取参数，如果参数不存在则使用当前配置值作为默认值
+                
+                # 读取当前配置作为默认值
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 获取新的 require_payment 值（布尔类型）
+                new_require_payment = data.get(
+                    "require_payment",
+                    config.getboolean("Payment_Settings", "require_payment", fallback=True)
+                )
+                
+                # 获取新的 per_run_cost 值（浮点类型）
+                new_per_run_cost = data.get(
+                    "per_run_cost",
+                    config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+                )
+                
+                # 获取新的 default_available_runs 值（整数类型）
+                new_default_available_runs = data.get(
+                    "default_available_runs",
+                    config.getint("Payment_Settings", "default_available_runs", fallback=10)
+                )
+                
+                # ========== 验证参数的有效性 ==========
+                
+                # 验证 require_payment 是否为布尔类型
+                if not isinstance(new_require_payment, bool):
+                    return jsonify({
+                        "success": False,
+                        "message": "require_payment 必须是布尔值（true/false）"
+                    }), 400
+                
+                # 验证 per_run_cost 是否为数字类型
+                # 检查是否为 int 或 float 类型
+                if not isinstance(new_per_run_cost, (int, float)):
+                    return jsonify({
+                        "success": False,
+                        "message": "per_run_cost 必须是数字"
+                    }), 400
+                
+                # 验证 per_run_cost 是否为非负数
+                # 费用不能为负数，但可以为 0（表示免费）
+                if new_per_run_cost < 0:
+                    return jsonify({
+                        "success": False,
+                        "message": "per_run_cost 不能为负数"
+                    }), 400
+                
+                # 验证 default_available_runs 是否为整数类型
+                if not isinstance(new_default_available_runs, int):
+                    return jsonify({
+                        "success": False,
+                        "message": "default_available_runs 必须是整数"
+                    }), 400
+                
+                # 验证 default_available_runs 是否为非负数
+                # 免费次数不能为负数，但可以为 0（表示新用户无免费次数）
+                if new_default_available_runs < 0:
+                    return jsonify({
+                        "success": False,
+                        "message": "default_available_runs 不能为负数"
+                    }), 400
+                
+                # ========== 保存旧配置用于日志记录 ==========
+                old_require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+                old_per_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+                old_default_available_runs = config.getint("Payment_Settings", "default_available_runs", fallback=10)
+                
+                # ========== 更新配置 ==========
+                
+                # 确保 Payment_Settings 配置节存在
+                # 如果配置节不存在，则创建它
+                if not config.has_section("Payment_Settings"):
+                    config.add_section("Payment_Settings")
+                
+                # 设置新的配置值
+                # 注意：configparser 保存时会将所有值转换为字符串
+                # 布尔值转换为 "true"/"false"，数字转换为字符串形式
+                config.set("Payment_Settings", "require_payment", str(new_require_payment).lower())
+                config.set("Payment_Settings", "single_run_cost", str(new_per_run_cost))
+                config.set("Payment_Settings", "default_available_runs", str(new_default_available_runs))
+                
+                # 保存配置文件
+                # 使用 _write_config_with_comments() 函数保持配置文件中的注释
+                # 这样可以避免覆盖配置文件时丢失注释信息
+                _write_config_with_comments(config, "config.ini")
+                
+                # ========== 记录信息日志 ==========
+                # 记录配置变更，便于审计和问题追踪
+                logging.info(
+                    f"[价格配置] 管理员更新价格配置 - "
+                    f"操作者: {g.user}, "
+                    f"require_payment: {old_require_payment} -> {new_require_payment}, "
+                    f"per_run_cost: {old_per_run_cost} -> {new_per_run_cost}, "
+                    f"default_available_runs: {old_default_available_runs} -> {new_default_available_runs}"
+                )
+                
+                # ========== 返回成功响应 ==========
+                return jsonify({
+                    "success": True,
+                    "message": "价格配置已成功更新"
+                })
+        
+        except Exception as e:
+            # 捕获所有异常
+            # 记录错误日志，包括详细的堆栈跟踪信息
+            logging.error(f"[价格配置] 管理价格配置接口异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            # 返回 500 错误响应
+            return jsonify({
+                "success": False,
+                "message": f"操作失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/yipay_config", methods=["GET", "PUT"])
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
+    def admin_yipay_config():
+        """
+        获取或更新易支付配置接口（管理员专用）
+        
+        请求方法：GET（获取配置）、PUT（更新配置）
+        权限要求：modify_config权限（必须）+ 超级管理员或管理员用户组
+        
+        GET请求 - 获取当前易支付配置：
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - config (dict): 当前易支付配置
+                - host (str): 易支付接口域名
+                - pid (str): 商户ID
+                - key (str): 商户密钥（完整显示，不脱敏）
+                - enabled_payment_methods (str): 启用的支付方式
+                - payment_method (str): 支付接口类型
+        
+        PUT请求 - 更新易支付配置：
+        请求参数（JSON格式）：
+            - host (str): 易支付接口域名
+            - pid (str): 商户ID
+            - key (str): 商户密钥
+            - enabled_payment_methods (str): 启用的支付方式
+            - payment_method (str): 支付接口类型
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 操作结果信息
+        
+        功能说明：
+        这个接口允许管理员动态配置易支付平台的接入参数，无需重启服务器。
+        配置会立即生效，影响后续创建的所有订单。
+        
+        使用场景：
+        - 管理员在后台管理面板配置易支付参数
+        - 更换易支付平台或商户账号
+        - 调整支付接口类型和启用的支付方式
+        
+        安全措施（已强化）：
+        - 需要modify_config权限（第一层权限检查）
+        - 必须是管理员（admin）或超级管理员（super_admin）用户组（第二层权限检查）
+        - 商户密钥完整显示，不脱敏（便于配置管理）
+        - 验证输入参数的有效性
+        - 记录配置变更日志（包含操作者信息）
+        - IP地址记录和审计日志
+        """
+        try:
+            # ========== 第一层权限检查：细粒度权限 ==========
+            # 检查用户是否具有 modify_config 权限
+            # modify_config 权限允许修改系统配置，包括易支付配置
+            # 易支付配置包含敏感信息（商户密钥），需要严格的权限控制
+            if not auth_system.check_permission(g.user, "modify_config"):
+                # 记录权限不足的访问尝试
+                logging.warning(
+                    f"[易支付配置-权限拒绝] 用户 {g.user} 尝试访问易支付配置接口，但缺少 modify_config 权限 - "
+                    f"IP: {request.remote_addr}, 方法: {request.method}"
+                )
+                return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
+            
+            # ========== 第二层权限检查：用户组验证（强化安全性）==========
+            # 即使用户具有 modify_config 权限，也必须是管理员或超级管理员用户组
+            # 这样可以防止普通用户通过自定义权限配置访问敏感的易支付配置
+            # 商户密钥是高度敏感的信息，只有真正的管理员才能查看和修改
+            user_data = auth_system.get_user(g.user)
+            if not user_data:
+                logging.error(f"[易支付配置-权限拒绝] 无法获取用户 {g.user} 的数据")
+                return jsonify({"success": False, "message": "用户数据异常"}), 500
+            
+            user_group = user_data.get("group", "user")
+            
+            # 只允许 admin（管理员）和 super_admin（超级管理员）访问
+            # 这是第二层安全防护，确保只有管理员组成员才能操作易支付配置
+            if user_group not in ["admin", "super_admin"]:
+                logging.warning(
+                    f"[易支付配置-权限拒绝] 用户 {g.user}（用户组：{user_group}）尝试访问易支付配置接口，"
+                    f"但不是管理员组成员 - IP: {request.remote_addr}, 方法: {request.method}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，只有管理员和超级管理员才能管理易支付配置"
+                }), 403
+            
+            # 记录合法的访问（用于审计）
+            logging.info(
+                f"[易支付配置-访问] 管理员 {g.user}（用户组：{user_group}）正在访问易支付配置接口 - "
+                f"IP: {request.remote_addr}, 方法: {request.method}"
+            )
+            
+            if request.method == "GET":
+                # ========== 处理GET请求：获取当前配置 ==========
+                
+                # 读取配置文件
+                # 使用 configparser 从 config.ini 文件读取配置项
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 从 Rainbow_YiPay 节读取易支付相关配置
+                # 使用 fallback 参数提供默认值，确保即使配置文件缺失也能正常工作
+                
+                # 读取易支付接口域名
+                host = config.get(
+                    "Rainbow_YiPay",
+                    "host",
+                    fallback=""  # 默认值：空字符串
+                )
+                
+                # 读取商户ID（PID）
+                pid = config.get(
+                    "Rainbow_YiPay",
+                    "pid",
+                    fallback=""
+                )
+                
+                # 读取商户密钥（KEY）
+                # 注意：密钥是敏感信息，但由于已进行双重权限验证（modify_config权限 + 管理员用户组）
+                # 因此直接返回完整密钥，便于管理员进行配置管理
+                # 安全性由权限系统保障：只有真正的管理员才能访问此接口
+                key = config.get(
+                    "Rainbow_YiPay",
+                    "key",
+                    fallback=""
+                )
+                
+                # 读取启用的支付方式
+                # 这是一个逗号分隔的字符串，例如 "alipay,wxpay"
+                enabled_payment_methods = config.get(
+                    "Rainbow_YiPay",
+                    "enabled_payment_methods",
+                    fallback="alipay,wxpay"  # 默认值：启用支付宝和微信支付
+                )
+                
+                # 读取支付接口类型
+                # 可选值：web、jump、jsapi、app、scan、applet
+                payment_method = config.get(
+                    "Rainbow_YiPay",
+                    "payment_method",
+                    fallback="jump"  # 默认值：跳转支付
+                )
+                
+                # 构造返回数据
+                # 将读取到的配置以 JSON 格式返回给前端
+                # 注意：返回完整的商户密钥（已通过双重权限验证，安全可控）
+                return jsonify({
+                    "success": True,
+                    "config": {
+                        "host": host,
+                        "pid": pid,
+                        "key": key,  # 完整的商户密钥（不脱敏）
+                        "enabled_payment_methods": enabled_payment_methods,
+                        "payment_method": payment_method
+                    }
+                })
+            
+            elif request.method == "PUT":
+                # ========== 处理PUT请求：更新配置 ==========
+                
+                # 获取请求数据
+                # 从前端传来的 JSON 数据中提取配置参数
+                data = request.get_json() or {}
+                
+                # 读取当前配置作为默认值
+                config = configparser.ConfigParser()
+                config.read("config.ini", encoding="utf-8")
+                
+                # 提取新的配置值
+                # 使用 .get() 方法获取参数，如果参数不存在则使用当前配置值作为默认值
+                
+                # 获取新的 host 值
+                new_host = data.get(
+                    "host",
+                    config.get("Rainbow_YiPay", "host", fallback="")
+                ).strip()  # 去除首尾空格
+                
+                # 获取新的 pid 值
+                new_pid = data.get(
+                    "pid",
+                    config.get("Rainbow_YiPay", "pid", fallback="")
+                ).strip()
+                
+                # 获取新的 key 值
+                # 由于不再对密钥进行脱敏处理，前端传来的密钥就是完整的密钥
+                new_key = data.get(
+                    "key",
+                    config.get("Rainbow_YiPay", "key", fallback="")
+                ).strip()
+                
+                # 获取新的 enabled_payment_methods 值
+                new_enabled_payment_methods = data.get(
+                    "enabled_payment_methods",
+                    config.get("Rainbow_YiPay", "enabled_payment_methods", fallback="alipay,wxpay")
+                ).strip()
+                
+                # 获取新的 payment_method 值
+                new_payment_method = data.get(
+                    "payment_method",
+                    config.get("Rainbow_YiPay", "payment_method", fallback="jump")
+                ).strip()
+                
+                # ========== 验证参数的有效性 ==========
+                
+                # 验证 host 不能为空
+                if not new_host:
+                    return jsonify({
+                        "success": False,
+                        "message": "易支付接口域名不能为空"
+                    }), 400
+                
+                # 验证 host 必须以 http:// 或 https:// 开头
+                if not new_host.startswith(("http://", "https://")):
+                    return jsonify({
+                        "success": False,
+                        "message": "易支付接口域名必须以 http:// 或 https:// 开头"
+                    }), 400
+                
+                # 验证 pid 不能为空
+                if not new_pid:
+                    return jsonify({
+                        "success": False,
+                        "message": "商户ID不能为空"
+                    }), 400
+                
+                # 验证 key 不能为空
+                if not new_key:
+                    return jsonify({
+                        "success": False,
+                        "message": "商户密钥不能为空"
+                    }), 400
+                
+                # 验证 payment_method 的有效性
+                # 只允许特定的支付接口类型
+                valid_payment_methods = ["web", "jump", "jsapi", "app", "scan", "applet"]
+                if new_payment_method not in valid_payment_methods:
+                    return jsonify({
+                        "success": False,
+                        "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
+                    }), 400
+                
+                # ========== 保存旧配置用于日志记录 ==========
+                old_host = config.get("Rainbow_YiPay", "host", fallback="")
+                old_pid = config.get("Rainbow_YiPay", "pid", fallback="")
+                old_enabled_payment_methods = config.get("Rainbow_YiPay", "enabled_payment_methods", fallback="")
+                old_payment_method = config.get("Rainbow_YiPay", "payment_method", fallback="")
+                
+                # ========== 更新配置 ==========
+                
+                # 确保 Rainbow_YiPay 配置节存在
+                # 如果配置节不存在，则创建它
+                if not config.has_section("Rainbow_YiPay"):
+                    config.add_section("Rainbow_YiPay")
+                
+                # 设置新的配置值
+                config.set("Rainbow_YiPay", "host", new_host)
+                config.set("Rainbow_YiPay", "pid", new_pid)
+                config.set("Rainbow_YiPay", "key", new_key)
+                config.set("Rainbow_YiPay", "enabled_payment_methods", new_enabled_payment_methods)
+                config.set("Rainbow_YiPay", "payment_method", new_payment_method)
+                
+                # 保存配置文件
+                # 使用 _write_config_with_comments() 函数保持配置文件中的注释
+                # 这样可以避免覆盖配置文件时丢失注释信息
+                _write_config_with_comments(config, "config.ini")
+                
+                # ========== 记录信息日志 ==========
+                # 记录配置变更，便于审计和问题追踪
+                # 注意：不记录完整的密钥，只记录是否修改了密钥
+                key_changed = (new_key != config.get("Rainbow_YiPay", "key", fallback=""))
+                logging.info(
+                    f"[易支付配置] 管理员更新易支付配置 - "
+                    f"操作者: {g.user}, "
+                    f"host: {old_host} -> {new_host}, "
+                    f"pid: {old_pid} -> {new_pid}, "
+                    f"key: {'已修改' if key_changed else '未修改'}, "
+                    f"enabled_payment_methods: {old_enabled_payment_methods} -> {new_enabled_payment_methods}, "
+                    f"payment_method: {old_payment_method} -> {new_payment_method}"
+                )
+                
+                # ========== 返回成功响应 ==========
+                return jsonify({
+                    "success": True,
+                    "message": "易支付配置已成功更新"
+                })
+        
+        except Exception as e:
+            # 捕获所有异常
+            # 记录错误日志，包括详细的堆栈跟踪信息
+            logging.error(f"[易支付配置] 管理易支付配置接口异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            # 返回 500 错误响应
+            return jsonify({
+                "success": False,
+                "message": f"操作失败：{str(e)}"
+            }), 500
+
     @app.route("/api/payment_logs", methods=["GET"])
     @login_required
     def user_payment_logs():
