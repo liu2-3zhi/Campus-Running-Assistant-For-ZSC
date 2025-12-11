@@ -30648,13 +30648,10 @@ def start_web_server(args_param):
             
             # ========== 步骤3：调用生成器生成商品名 ==========
             
-            # 导入product_name_generator模块（在文件顶部已导入）
-            # 创建LoMeiGenerator实例
-            from product_name_generator import LoMeiGenerator
-            generator = LoMeiGenerator()
-            
             # 调用generate()方法生成商品名
             # 传入商品数量，返回字符串或None（如果输入非法）
+            # 注意：LoMeiGenerator已在文件顶部导入并可以直接使用
+            generator = LoMeiGenerator()
             product_name = generator.generate(quantity)
             
             # 验证生成是否成功
@@ -30662,7 +30659,7 @@ def start_web_server(args_param):
             if product_name is None:
                 return jsonify({
                     "success": False,
-                    "message": "生成商品名失败，请检查输入参数"
+                    "message": "商品名生成器内部错误，无法生成有效的商品名称"
                 }), 500
             
             # ========== 步骤4：计算字节长度 ==========
