@@ -8940,81 +8940,37 @@
         <div id="admin-payment-settings-content-config_modal" class="space-y-4">
           <!-- 配置说明文本 -->
           <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
-            💡 提示：启用相应的支付方式后，用户可在支付页面选择使用。更改后请点击"保存配置"按钮。
+            💡 提示：启用相应的支付方式后，用户可在支付页面选择使用。可以通过"添加支付方式"按钮新增其他支付方式。更改后请点击"保存配置"按钮。
           </p>
 
-          <!-- 支付方式开关列表容器 -->
-          <!-- 使用网格布局，桌面端显示2列，提升空间利用率 -->
-          <div class="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
-            
-            <!-- 支付宝开关 -->
-            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
-              <!-- 支付方式图标和名称 -->
-              <div class="flex items-center gap-3">
-                <!-- 支付宝图标：使用蓝色圆形背景 -->
-                <div class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                  支
-                </div>
-                <span class="text-sm font-semibold text-slate-700">支付宝</span>
-              </div>
-              <!-- 开关控件：使用checkbox实现，默认选中状态 -->
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="admin-payment-method-alipay_modal" class="sr-only peer" checked>
-                <!-- 开关滑块：选中时显示蓝色，未选中时显示灰色 -->
-                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-              </label>
-            </div>
+          <!-- 添加支付方式按钮 -->
+          <!-- 点击后打开添加支付方式的模态框 -->
+          <button onclick="openAddPaymentMethodModal()" 
+            class="w-full py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-sm font-semibold hover:from-blue-600 hover:to-blue-700 active:from-blue-700 active:to-blue-800 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2">
+            <!-- 添加图标：加号 -->
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            添加支付方式
+          </button>
 
-            <!-- 微信支付开关 -->
-            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-green-300 transition-colors">
-              <div class="flex items-center gap-3">
-                <!-- 微信支付图标：使用绿色圆形背景 -->
-                <div class="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                  微
-                </div>
-                <span class="text-sm font-semibold text-slate-700">微信支付</span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="admin-payment-method-wechat_modal" class="sr-only peer" checked>
-                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-              </label>
-            </div>
-
-            <!-- QQ钱包开关 -->
-            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-yellow-300 transition-colors">
-              <div class="flex items-center gap-3">
-                <!-- QQ钱包图标：使用黄色圆形背景 -->
-                <div class="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                  Q
-                </div>
-                <span class="text-sm font-semibold text-slate-700">QQ钱包</span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="admin-payment-method-qq_modal" class="sr-only peer">
-                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-              </label>
-            </div>
-
-            <!-- 云闪付开关 -->
-            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-red-300 transition-colors">
-              <div class="flex items-center gap-3">
-                <!-- 云闪付图标：使用红色圆形背景 -->
-                <div class="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                  云
-                </div>
-                <span class="text-sm font-semibold text-slate-700">云闪付</span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="admin-payment-method-unionpay_modal" class="sr-only peer">
-                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-              </label>
-            </div>
+          <!-- 支付方式列表容器 -->
+          <!-- 这个容器将通过JavaScript动态填充支付方式，每个支付方式包含：名称、Logo、开关、编辑和删除按钮 -->
+          <!-- 使用网格布局，在桌面端显示2列，提升空间利用率 -->
+          <div id="payment-methods-list_modal" class="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <!-- 支付方式将通过 loadPaymentMethodsConfig() 函数动态加载到这里 -->
+            <!-- 每个支付方式的结构：
+                 <div class="payment-method-item">
+                   <logo> <name> <switch> <edit-btn> <delete-btn>
+                 </div>
+            -->
           </div>
 
           <!-- 保存按钮：提交配置更改 -->
+          <!-- 点击后会调用 savePaymentMethodsConfig() 函数保存所有支付方式的启用状态 -->
           <button id="admin-save-payment-methods-btn_modal" 
             class="w-full py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
-            <!-- 保存图标 -->
+            <!-- 保存图标：对勾 -->
             <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M5 13l4 4L19 7"/>
@@ -9023,9 +8979,9 @@
           </button>
 
           <!-- 操作结果提示区域：用于显示成功或错误消息 -->
+          <!-- hidden类会让元素默认隐藏，成功或失败时通过JavaScript移除hidden类来显示提示 -->
           <div id="admin-payment-config-result_modal" class="hidden">
-            <!-- 成功提示：绿色背景 -->
-            <!-- 此内容将由JavaScript动态更新 -->
+            <!-- 成功或错误提示的HTML将由JavaScript动态更新 -->
           </div>
         </div>
 
@@ -9601,6 +9557,198 @@
           <div id="admin-yipay-config-result_modal" class="hidden">
             <!-- 成功/错误提示 -->
             <!-- 此内容将由JavaScript动态更新 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================
+         添加/编辑支付方式模态框
+         用途：管理员添加新的支付方式或编辑现有支付方式
+         权限：需要modify_config权限
+         功能：配置支付方式的代码、名称、Logo、描述、样式等
+         ======================================== -->
+      <div id="payment-method-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <!-- 模态框主体 -->
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <!-- 模态框头部 -->
+          <div class="sticky top-0 bg-gradient-to-r from-sky-500 to-blue-600 text-white p-6 rounded-t-xl">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xl font-bold flex items-center gap-2">
+                <!-- 支付图标 -->
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+                <span id="payment-method-modal-title">添加支付方式</span>
+              </h3>
+              <!-- 关闭按钮 -->
+              <button onclick="closePaymentMethodModal()" class="text-white hover:text-slate-200 transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- 模态框表单内容 -->
+          <div class="p-6 space-y-4">
+            <!-- 支付方式代码 -->
+            <div class="space-y-2">
+              <label class="block text-sm font-semibold text-slate-700">
+                <!-- 代码图标 -->
+                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                </svg>
+                支付方式代码 <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="payment-method-code" 
+                placeholder="例如: alipay, wxpay, unionpay" 
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+              <p class="text-xs text-slate-500">
+                唯一标识符，只能包含字母、数字和下划线，编辑时不可修改
+              </p>
+            </div>
+
+            <!-- 显示名称 -->
+            <div class="space-y-2">
+              <label class="block text-sm font-semibold text-slate-700">
+                <!-- 标签图标 -->
+                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                </svg>
+                显示名称 <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="payment-method-name" 
+                placeholder="例如: 支付宝支付" 
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+              <p class="text-xs text-slate-500">
+                显示给用户的支付方式名称
+              </p>
+            </div>
+
+            <!-- Logo设置 -->
+            <div class="space-y-2">
+              <label class="block text-sm font-semibold text-slate-700">
+                <!-- 图片图标 -->
+                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                Logo类型 <span class="text-red-500">*</span>
+              </label>
+              <!-- Logo类型选择 -->
+              <div class="flex gap-4 mb-3">
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="logo-type" value="svg" id="logo-type-svg" checked 
+                    class="mr-2" onchange="toggleLogoInput()">
+                  <span class="text-sm text-slate-700">SVG代码</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="logo-type" value="image" id="logo-type-image" 
+                    class="mr-2" onchange="toggleLogoInput()">
+                  <span class="text-sm text-slate-700">图片URL</span>
+                </label>
+              </div>
+              <!-- SVG代码输入 -->
+              <div id="svg-input-container">
+                <textarea id="payment-method-svg" rows="4" 
+                  placeholder='例如: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">...</svg>' 
+                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm font-mono"></textarea>
+                <p class="text-xs text-slate-500 mt-1">
+                  粘贴完整的SVG代码，建议使用简洁的图标SVG
+                </p>
+              </div>
+              <!-- 图片URL输入 -->
+              <div id="image-input-container" class="hidden">
+                <input type="text" id="payment-method-image" 
+                  placeholder="例如: https://example.com/logo.png" 
+                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+                <p class="text-xs text-slate-500 mt-1">
+                  输入图片的完整URL地址
+                </p>
+              </div>
+            </div>
+
+            <!-- 描述信息 -->
+            <div class="space-y-2">
+              <label class="block text-sm font-semibold text-slate-700">
+                <!-- 文档图标 -->
+                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                描述信息
+              </label>
+              <input type="text" id="payment-method-description" 
+                placeholder="例如: 支持支付宝扫码支付" 
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+              <p class="text-xs text-slate-500">
+                可选，显示在支付方式下方的提示信息
+              </p>
+            </div>
+
+            <!-- 样式配置 -->
+            <div class="grid grid-cols-2 gap-4">
+              <!-- 边框颜色 -->
+              <div class="space-y-2">
+                <label class="block text-sm font-semibold text-slate-700">
+                  边框颜色
+                </label>
+                <select id="payment-method-border-color" 
+                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+                  <option value="hover:border-sky-500">蓝色 (Sky)</option>
+                  <option value="hover:border-green-500">绿色 (Green)</option>
+                  <option value="hover:border-yellow-500">黄色 (Yellow)</option>
+                  <option value="hover:border-red-500">红色 (Red)</option>
+                  <option value="hover:border-purple-500">紫色 (Purple)</option>
+                  <option value="hover:border-pink-500">粉色 (Pink)</option>
+                  <option value="hover:border-orange-500">橙色 (Orange)</option>
+                  <option value="hover:border-indigo-500">靛蓝 (Indigo)</option>
+                </select>
+              </div>
+
+              <!-- 文字颜色 -->
+              <div class="space-y-2">
+                <label class="block text-sm font-semibold text-slate-700">
+                  文字颜色
+                </label>
+                <select id="payment-method-text-color" 
+                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+                  <option value="text-sky-600">蓝色 (Sky)</option>
+                  <option value="text-green-600">绿色 (Green)</option>
+                  <option value="text-yellow-600">黄色 (Yellow)</option>
+                  <option value="text-red-600">红色 (Red)</option>
+                  <option value="text-purple-600">紫色 (Purple)</option>
+                  <option value="text-pink-600">粉色 (Pink)</option>
+                  <option value="text-orange-600">橙色 (Orange)</option>
+                  <option value="text-indigo-600">靛蓝 (Indigo)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 错误提示区域 -->
+            <div id="payment-method-error" class="hidden">
+              <!-- 错误信息将由JavaScript动态填充 -->
+            </div>
+          </div>
+
+          <!-- 模态框底部按钮 -->
+          <div class="sticky bottom-0 bg-slate-50 p-6 rounded-b-xl border-t border-slate-200 flex gap-3">
+            <!-- 取消按钮 -->
+            <button onclick="closePaymentMethodModal()" 
+              class="flex-1 py-2.5 bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-300 active:bg-slate-400 transition-colors">
+              取消
+            </button>
+            <!-- 保存按钮 -->
+            <button onclick="savePaymentMethod()" 
+              class="flex-1 py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
+              <!-- 保存图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              保存
+            </button>
           </div>
         </div>
       </div>
@@ -12506,100 +12654,186 @@
      * API端点：GET /api/payment/methods_config
      * 预期返回格式：{ alipay: true, wechat: true, qq: false, unionpay: false }
      */
+    /**
+     * 加载支付方式配置（重构版）
+     * 功能：从服务器动态加载所有已定义的支付方式配置，并渲染到页面上
+     * 
+     * 改造说明：
+     * 1. 从 /api/payment/methods_config 获取所有支付方式的定义（名称、Logo、样式等）
+     * 2. 从 /api/admin/payment/config 获取当前启用的支付方式列表
+     * 3. 动态生成支付方式列表，每个支付方式包含：Logo、名称、开关、编辑按钮、删除按钮
+     * 4. 支持SVG和图片两种Logo类型
+     * 
+     * API端点：
+     * - GET /api/payment/methods_config - 获取所有支付方式定义
+     * - GET /api/admin/payment/config - 获取当前启用的支付方式
+     */
     async function loadPaymentMethodsConfig() {
-      // 在控制台输出日志，便于调试和追踪函数执行
+      // 输出日志，便于调试和追踪函数执行
       console.log('[支付配置] 开始加载支付方式配置...');
 
+      // 检查会话ID是否存在，不存在则无法进行API调用
       if (!sessionUUID) {
         console.error('[支付配置] 会话ID未定义，无法加载配置');
-        // showModalAlert('会话无效，请刷新页面重试。');
         return;
       }
       
       try {
-        // === 第1步：发起HTTP GET请求获取配置数据 ===
-        // 使用fetch API调用后端接口
-        // await关键字会等待请求完成，确保获取到响应后再继续执行
-        const response = await fetch('/api/payment/methods_config', {
-          method: 'GET', // HTTP方法：GET用于获取数据
-          headers: {
-            // 设置请求头，告知服务器期望返回JSON格式的数据
-            'Content-Type': 'application/json', 
-            "X-Session-ID": sessionUUID,         // 附加会话ID用于身份验证
-          }
-        });
+        // === 第1步：并行获取支付方式定义和启用状态 ===
+        // 使用Promise.all同时发起两个请求，提高加载速度
+        const [methodsResponse, configResponse] = await Promise.all([
+          // 获取所有支付方式的定义（名称、Logo、样式等）
+          fetch('/api/payment/methods_config', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID
+            }
+          }),
+          // 获取当前启用的支付方式列表
+          fetch('/api/admin/payment/config', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID
+            }
+          })
+        ]);
         
-        // === 第2步：检查HTTP响应状态码 ===
-        // response.ok 为true表示状态码在200-299范围内（成功）
-        if (!response.ok) {
-          // 如果响应状态码不是成功状态（如404、500等）
-          // 抛出错误，中断执行流程，进入catch块处理
-          throw new Error(`加载配置失败：HTTP状态码 ${response.status}`);
+        // === 第2步：检查两个请求的响应状态 ===
+        if (!methodsResponse.ok || !configResponse.ok) {
+          throw new Error(`加载配置失败：HTTP状态码 ${methodsResponse.status} / ${configResponse.status}`);
         }
         
         // === 第3步：解析JSON响应数据 ===
-        // 将响应体解析为JavaScript对象
-        // 预期格式：{ alipay: true, wechat: true, qq: false, unionpay: false }
-        const config = await response.json();
+        const methodsData = await methodsResponse.json();
+        const configData = await configResponse.json();
         
-        // 在控制台输出获取到的配置数据，方便开发者查看和调试
-        console.log('[支付配置] 成功获取支付方式配置：', config);
+        // 提取支付方式定义（methods）和启用列表（enabled_payment_methods）
+        const methods = methodsData.methods || {};
+        const enabledMethods = configData.config?.enabled_payment_methods || [];
         
-        // === 第4步：根据配置数据更新页面上的checkbox状态 ===
+        console.log('[支付配置] 成功获取配置：', { methods, enabledMethods });
         
-        // 4.1 更新支付宝checkbox
-        // 使用getElementById获取DOM元素
-        const alipayCheckbox = document.getElementById('payment-method-alipay');
-        // 如果元素存在（避免null引用错误）
-        if (alipayCheckbox) {
-          // 设置checkbox的checked属性
-          // 使用 !! 将值转换为布尔类型，确保只有true/false
-          alipayCheckbox.checked = !!config.alipay;
+        // === 第4步：动态渲染支付方式列表 ===
+        const listContainer = document.getElementById('payment-methods-list_modal');
+        if (!listContainer) {
+          console.error('[支付配置] 找不到支付方式列表容器');
+          return;
         }
         
-        // 4.2 更新微信支付checkbox
-        // 同样的逻辑：获取元素 -> 检查存在性 -> 设置状态
-        const wechatCheckbox = document.getElementById('payment-method-wechat');
-        if (wechatCheckbox) {
-          wechatCheckbox.checked = !!config.wechat;
+        // 清空现有内容
+        listContainer.innerHTML = '';
+        
+        // 如果没有任何支付方式定义，显示提示信息
+        if (Object.keys(methods).length === 0) {
+          listContainer.innerHTML = `
+            <div class="col-span-2 text-center py-8 text-slate-500">
+              <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+              </svg>
+              <p class="text-sm">暂无支付方式，点击"添加支付方式"按钮开始添加</p>
+            </div>
+          `;
+          return;
         }
         
-        // 4.3 更新QQ钱包checkbox
-        const qqCheckbox = document.getElementById('payment-method-qq');
-        if (qqCheckbox) {
-          qqCheckbox.checked = !!config.qq;
-        }
-        
-        // 4.4 更新云闪付checkbox
-        const unionpayCheckbox = document.getElementById('payment-method-unionpay');
-        if (unionpayCheckbox) {
-          unionpayCheckbox.checked = !!config.unionpay;
+        // === 第5步：遍历所有支付方式，生成HTML ===
+        for (const [code, method] of Object.entries(methods)) {
+          // 判断该支付方式是否已启用
+          const isEnabled = enabledMethods.includes(code);
+          
+          // 渲染Logo：支持SVG代码和图片URL两种类型
+          let logoHTML = '';
+          if (method.icon === 'svg' && method.svg) {
+            // 使用SVG代码作为Logo
+            // 注意：使用textContent而不是innerHTML防止XSS攻击（但这里需要innerHTML来渲染SVG）
+            // 服务器端应该对SVG内容进行严格验证
+            logoHTML = `<div class="w-10 h-10 flex items-center justify-center">${method.svg}</div>`;
+          } else if (method.icon === 'image' && method.image) {
+            // 使用图片URL作为Logo
+            logoHTML = `<img src="${method.image}" alt="${method.name}" class="w-10 h-10 object-contain">`;
+          } else {
+            // 没有Logo时显示默认图标（支付图标）
+            logoHTML = `
+              <svg class="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+              </svg>
+            `;
+          }
+          
+          // 生成支付方式卡片HTML
+          // 包含：Logo、名称、启用开关、编辑按钮、删除按钮
+          const itemHTML = `
+            <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 ${method.borderColor || 'hover:border-sky-500'} transition-colors">
+              <!-- 左侧：Logo和名称 -->
+              <div class="flex items-center gap-3 flex-1 min-w-0">
+                <!-- Logo -->
+                ${logoHTML}
+                <!-- 名称和描述 -->
+                <div class="flex-1 min-w-0">
+                  <span class="text-sm font-semibold text-slate-700 block truncate">${method.name || code}</span>
+                  ${method.description ? `<span class="text-xs text-slate-500 block truncate">${method.description}</span>` : ''}
+                </div>
+              </div>
+              
+              <!-- 右侧：操作按钮组 -->
+              <div class="flex items-center gap-2 ml-3">
+                <!-- 启用/禁用开关 -->
+                <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
+                  <input type="checkbox" id="payment-method-${code}_modal" class="sr-only peer" ${isEnabled ? 'checked' : ''}>
+                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+                </label>
+                
+                <!-- 编辑按钮 -->
+                <button onclick="openEditPaymentMethodModal('${code}')" 
+                  class="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="编辑">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                  </svg>
+                </button>
+                
+                <!-- 删除按钮 -->
+                <button onclick="deletePaymentMethod('${code}')" 
+                  class="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="删除">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          `;
+          
+          // 将生成的HTML添加到容器中
+          listContainer.innerHTML += itemHTML;
         }
         
         // 记录成功日志
-        console.log('[支付配置] 支付方式配置已成功应用到页面');
+        console.log('[支付配置] 支付方式列表渲染完成');
         
       } catch (error) {
         // === 错误处理 ===
-        // 当任何步骤发生错误时（网络失败、JSON解析失败、服务器错误等）
-        // 都会被捕获到这里
-        
-        // 在控制台输出详细的错误信息，帮助开发者定位问题
         console.error('[支付配置] 加载支付方式配置时发生错误：', error);
-        
-        // 向用户显示友好的错误提示
-        // 使用alert弹窗，确保用户能够看到错误信息
         showModalAlert('无法加载支付方式配置，请刷新页面重试。如果问题持续，请联系管理员。');
       }
     }
     
     /**
-     * 保存支付方式配置
-     * 读取页面上4个checkbox的当前状态，并将配置提交到服务器保存
-     * 保存成功后会显示提示信息，并重新加载配置以确保数据同步
+     * 保存支付方式配置（重构版）
+     * 功能：收集所有支付方式的启用状态，提交到服务器保存
+     * 
+     * 改造说明：
+     * 1. 动态收集所有支付方式的checkbox状态（不再硬编码4个支付方式）
+     * 2. 构建enabled_payment_methods数组，只包含启用的支付方式代码
+     * 3. 调用PUT /api/admin/payment/config保存配置
+     * 4. 保存成功后重新加载列表
      * 
      * API端点：PUT /api/admin/payment/config
-     * 请求体格式：{ alipay: true, wechat: true, qq: false, unionpay: false }
+     * 请求体格式：{ enabled_payment_methods: ["alipay", "wxpay", ...] }
      */
     async function savePaymentMethodsConfig() {
       // 输出日志，标记保存操作开始
@@ -12607,33 +12841,42 @@
       
       // 获取结果显示区域的DOM元素
       // 这个元素用于向用户显示操作成功或失败的消息
-      const resultDiv = document.getElementById('payment-config-result');
+      const resultDiv = document.getElementById('admin-payment-config-result_modal');
       
       try {
-        // === 第1步：从页面读取checkbox的当前状态 ===
+        // === 第1步：获取所有支付方式的checkbox并收集启用状态 ===
         
-        // 1.1 获取支付宝checkbox元素
-        const alipayCheckbox = document.getElementById('payment-method-alipay');
-        // 1.2 获取微信支付checkbox元素
-        const wechatCheckbox = document.getElementById('payment-method-wechat');
-        // 1.3 获取QQ钱包checkbox元素
-        const qqCheckbox = document.getElementById('payment-method-qq');
-        // 1.4 获取云闪付checkbox元素
-        const unionpayCheckbox = document.getElementById('payment-method-unionpay');
+        // 获取支付方式列表容器
+        const listContainer = document.getElementById('payment-methods-list_modal');
+        if (!listContainer) {
+          throw new Error('找不到支付方式列表容器');
+        }
         
-        // === 第2步：构建要提交的配置对象 ===
-        // 创建一个JavaScript对象，包含4个支付方式的启用状态
-        // 使用?.checked来安全访问checked属性，如果元素不存在则返回undefined
-        // 使用 || false 确保即使元素不存在也返回false而不是undefined
-        const config = {
-          alipay: alipayCheckbox?.checked || false,    // 支付宝启用状态
-          wechat: wechatCheckbox?.checked || false,    // 微信支付启用状态
-          qq: qqCheckbox?.checked || false,            // QQ钱包启用状态
-          unionpay: unionpayCheckbox?.checked || false // 云闪付启用状态
-        };
+        // 查找所有以 payment-method- 开头且以 _modal 结尾的checkbox
+        // 使用querySelectorAll选择所有匹配的checkbox元素
+        const checkboxes = listContainer.querySelectorAll('input[type="checkbox"][id^="payment-method-"][id$="_modal"]');
+        
+        // 创建一个数组来存储启用的支付方式代码
+        const enabledMethods = [];
+        
+        // 遍历所有checkbox，收集已选中（启用）的支付方式
+        checkboxes.forEach(checkbox => {
+          if (checkbox.checked) {
+            // 从checkbox的ID中提取支付方式代码
+            // ID格式：payment-method-{code}_modal
+            // 例如：payment-method-alipay_modal -> alipay
+            const code = checkbox.id.replace('payment-method-', '').replace('_modal', '');
+            enabledMethods.push(code);
+          }
+        });
         
         // 在控制台输出即将提交的配置，便于调试
-        console.log('[支付配置] 准备提交的配置数据：', config);
+        console.log('[支付配置] 准备提交的启用支付方式：', enabledMethods);
+        
+        // === 第2步：验证至少启用一种支付方式 ===
+        if (enabledMethods.length === 0) {
+          throw new Error('至少需要启用一种支付方式');
+        }
         
         // === 第3步：发起HTTP PUT请求保存配置 ===
         // 使用fetch API调用后端接口
@@ -12641,23 +12884,24 @@
           method: 'PUT', // HTTP方法：PUT用于更新资源
           headers: {
             // 设置请求头
-            // Content-Type告知服务器请求体是JSON格式
             'Content-Type': 'application/json',
-            "X-Session-ID": sessionUUID
+            'X-Session-ID': sessionUUID
           },
           // 将配置对象转换为JSON字符串作为请求体
-          body: JSON.stringify(config)
+          // 后端期望接收 enabled_payment_methods 数组
+          body: JSON.stringify({
+            enabled_payment_methods: enabledMethods
+          })
         });
         
         // === 第4步：检查响应状态 ===
         if (!response.ok) {
-          // 如果服务器返回错误状态码（如400、500等）
-          // 抛出错误，进入catch块处理
-          throw new Error(`保存配置失败：HTTP状态码 ${response.status}`);
+          // 如果服务器返回错误状态码，抛出错误
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `保存配置失败：HTTP状态码 ${response.status}`);
         }
         
         // === 第5步：解析服务器响应 ===
-        // 获取服务器返回的JSON数据（可能包含成功消息或其他信息）
         const result = await response.json();
         
         // 输出成功日志
@@ -12665,29 +12909,27 @@
         
         // === 第6步：显示成功提示 ===
         
-        // 6.1 更新结果显示区域的HTML内容
-        // 显示绿色的成功提示框
-        resultDiv.innerHTML = `
-          <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
-            ✓ 配置已成功保存
-          </div>
-        `;
-        
-        // 6.2 移除hidden类，让提示框可见
-        resultDiv.classList.remove('hidden');
-        
-        // 6.3 设置定时器，3秒后自动隐藏提示框
-        // setTimeout在指定毫秒后执行回调函数（3000ms = 3秒）
-        setTimeout(() => {
-          // 添加hidden类，隐藏提示框
-          resultDiv.classList.add('hidden');
-        }, 3000);
+        // 检查resultDiv是否存在
+        if (resultDiv) {
+          // 更新结果显示区域为绿色成功提示框
+          // 使用textContent避免XSS攻击
+          resultDiv.innerHTML = `
+            <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+              ✓ 配置已成功保存，已启用 ${enabledMethods.length} 个支付方式
+            </div>
+          `;
+          
+          // 移除hidden类，让提示框可见
+          resultDiv.classList.remove('hidden');
+          
+          // 设置定时器，3秒后自动隐藏提示框
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 3000);
+        }
         
         // === 第7步：重新加载配置以确保数据同步 ===
         // 调用loadPaymentMethodsConfig函数，从服务器重新获取最新配置
-        // 注意：这会产生一个额外的网络请求，但能确保页面显示的状态与服务器保存的状态完全一致
-        // 这是一个有意的设计选择，因为服务器可能会对提交的数据进行验证或修改
-        // 如果需要优化性能，可以让服务器在保存响应中直接返回更新后的配置
         await loadPaymentMethodsConfig();
         
       } catch (error) {
@@ -12698,7 +12940,6 @@
         console.error('[支付配置] 保存支付方式配置时发生错误：', error);
         
         // 向用户显示错误提示
-        // 检查resultDiv是否存在，避免null引用错误
         if (resultDiv) {
           // 更新结果显示区域为红色错误提示框
           resultDiv.innerHTML = `
@@ -12709,7 +12950,7 @@
           // 显示错误提示框
           resultDiv.classList.remove('hidden');
           
-          // 5秒后自动隐藏错误提示（比成功提示多2秒，让用户有更多时间阅读）
+          // 5秒后自动隐藏错误提示
           setTimeout(() => {
             resultDiv.classList.add('hidden');
           }, 5000);
@@ -12717,6 +12958,359 @@
           // 如果结果显示区域不存在，使用alert作为备用方案
           showModalAlert(`保存失败：${error.message || '未知错误'}。请重试。`);
         }
+      }
+    }
+
+    /**
+     * 打开添加支付方式的模态框
+     * 功能：清空表单，设置为添加模式，显示模态框
+     */
+    function openAddPaymentMethodModal() {
+      console.log('[支付配置] 打开添加支付方式模态框');
+      
+      // 获取模态框元素
+      const modal = document.getElementById('payment-method-modal');
+      if (!modal) {
+        console.error('[支付配置] 找不到支付方式模态框');
+        return;
+      }
+      
+      // 设置模态框标题为"添加支付方式"
+      const titleElement = document.getElementById('payment-method-modal-title');
+      if (titleElement) {
+        titleElement.textContent = '添加支付方式';
+      }
+      
+      // 清空所有表单字段
+      document.getElementById('payment-method-code').value = '';
+      document.getElementById('payment-method-name').value = '';
+      document.getElementById('payment-method-svg').value = '';
+      document.getElementById('payment-method-image').value = '';
+      document.getElementById('payment-method-description').value = '';
+      document.getElementById('payment-method-border-color').value = 'hover:border-sky-500';
+      document.getElementById('payment-method-text-color').value = 'text-sky-600';
+      
+      // 启用支付方式代码输入框（添加模式下可以输入代码）
+      document.getElementById('payment-method-code').disabled = false;
+      
+      // 默认选择SVG类型
+      document.getElementById('logo-type-svg').checked = true;
+      toggleLogoInput();
+      
+      // 隐藏错误提示
+      const errorDiv = document.getElementById('payment-method-error');
+      if (errorDiv) {
+        errorDiv.classList.add('hidden');
+      }
+      
+      // 显示模态框
+      modal.classList.remove('hidden');
+      
+      // 设置模态框为添加模式（用于savePaymentMethod函数判断）
+      modal.dataset.mode = 'add';
+    }
+
+    /**
+     * 打开编辑支付方式的模态框
+     * 功能：加载现有支付方式的配置，设置为编辑模式，显示模态框
+     * 
+     * @param {string} code - 支付方式代码
+     */
+    async function openEditPaymentMethodModal(code) {
+      console.log('[支付配置] 打开编辑支付方式模态框：', code);
+      
+      // 获取模态框元素
+      const modal = document.getElementById('payment-method-modal');
+      if (!modal) {
+        console.error('[支付配置] 找不到支付方式模态框');
+        return;
+      }
+      
+      try {
+        // 从服务器获取支付方式配置
+        const response = await fetch('/api/payment/methods_config', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error('获取支付方式配置失败');
+        }
+        
+        const data = await response.json();
+        const method = data.methods[code];
+        
+        if (!method) {
+          throw new Error('找不到指定的支付方式');
+        }
+        
+        // 设置模态框标题为"编辑支付方式"
+        const titleElement = document.getElementById('payment-method-modal-title');
+        if (titleElement) {
+          titleElement.textContent = '编辑支付方式';
+        }
+        
+        // 填充表单字段
+        document.getElementById('payment-method-code').value = code;
+        document.getElementById('payment-method-name').value = method.name || '';
+        document.getElementById('payment-method-description').value = method.description || '';
+        document.getElementById('payment-method-border-color').value = method.borderColor || 'hover:border-sky-500';
+        document.getElementById('payment-method-text-color').value = method.textColor || 'text-sky-600';
+        
+        // 设置Logo类型和内容
+        if (method.icon === 'svg' && method.svg) {
+          document.getElementById('logo-type-svg').checked = true;
+          document.getElementById('payment-method-svg').value = method.svg;
+        } else if (method.icon === 'image' && method.image) {
+          document.getElementById('logo-type-image').checked = true;
+          document.getElementById('payment-method-image').value = method.image;
+        } else {
+          document.getElementById('logo-type-svg').checked = true;
+          document.getElementById('payment-method-svg').value = '';
+        }
+        toggleLogoInput();
+        
+        // 禁用支付方式代码输入框（编辑模式下不能修改代码）
+        document.getElementById('payment-method-code').disabled = true;
+        
+        // 隐藏错误提示
+        const errorDiv = document.getElementById('payment-method-error');
+        if (errorDiv) {
+          errorDiv.classList.add('hidden');
+        }
+        
+        // 显示模态框
+        modal.classList.remove('hidden');
+        
+        // 设置模态框为编辑模式
+        modal.dataset.mode = 'edit';
+        
+      } catch (error) {
+        console.error('[支付配置] 加载支付方式配置失败：', error);
+        showModalAlert('无法加载支付方式配置，请重试。');
+      }
+    }
+
+    /**
+     * 关闭支付方式模态框
+     */
+    function closePaymentMethodModal() {
+      console.log('[支付配置] 关闭支付方式模态框');
+      
+      // 获取模态框元素并隐藏
+      const modal = document.getElementById('payment-method-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+      }
+    }
+
+    /**
+     * 切换Logo输入类型（SVG代码 / 图片URL）
+     */
+    function toggleLogoInput() {
+      // 获取SVG和图片输入容器
+      const svgContainer = document.getElementById('svg-input-container');
+      const imageContainer = document.getElementById('image-input-container');
+      
+      // 检查当前选中的Logo类型
+      const isSvg = document.getElementById('logo-type-svg').checked;
+      
+      // 根据选择显示/隐藏相应的输入框
+      if (isSvg) {
+        svgContainer.classList.remove('hidden');
+        imageContainer.classList.add('hidden');
+      } else {
+        svgContainer.classList.add('hidden');
+        imageContainer.classList.remove('hidden');
+      }
+    }
+
+    /**
+     * 保存支付方式配置（添加或更新）
+     * 功能：验证表单，提交到服务器，刷新列表
+     */
+    async function savePaymentMethod() {
+      console.log('[支付配置] 开始保存支付方式...');
+      
+      // 获取模态框和错误提示区域
+      const modal = document.getElementById('payment-method-modal');
+      const errorDiv = document.getElementById('payment-method-error');
+      
+      try {
+        // === 第1步：收集表单数据 ===
+        
+        // 获取支付方式代码（必填）
+        const code = document.getElementById('payment-method-code').value.trim();
+        if (!code) {
+          throw new Error('支付方式代码不能为空');
+        }
+        
+        // 验证代码格式：只允许字母、数字和下划线
+        if (!/^[a-zA-Z0-9_]+$/.test(code)) {
+          throw new Error('支付方式代码只能包含字母、数字和下划线');
+        }
+        
+        // 获取显示名称（必填）
+        const name = document.getElementById('payment-method-name').value.trim();
+        if (!name) {
+          throw new Error('显示名称不能为空');
+        }
+        
+        // 获取Logo类型和内容
+        const isSvg = document.getElementById('logo-type-svg').checked;
+        let icon, svg, image;
+        
+        if (isSvg) {
+          icon = 'svg';
+          svg = document.getElementById('payment-method-svg').value.trim();
+          if (!svg) {
+            throw new Error('请输入SVG代码');
+          }
+          image = '';
+        } else {
+          icon = 'image';
+          image = document.getElementById('payment-method-image').value.trim();
+          if (!image) {
+            throw new Error('请输入图片URL');
+          }
+          svg = '';
+        }
+        
+        // 获取描述、边框颜色和文字颜色（可选）
+        const description = document.getElementById('payment-method-description').value.trim();
+        const borderColor = document.getElementById('payment-method-border-color').value;
+        const textColor = document.getElementById('payment-method-text-color').value;
+        
+        // === 第2步：构建请求数据 ===
+        const methodData = {
+          name,
+          icon,
+          svg,
+          image,
+          description,
+          borderColor,
+          textColor
+        };
+        
+        console.log('[支付配置] 准备提交的数据：', { code, ...methodData });
+        
+        // === 第3步：判断是添加还是编辑模式 ===
+        const mode = modal.dataset.mode || 'add';
+        const isEditMode = mode === 'edit';
+        
+        // === 第4步：发起HTTP请求 ===
+        let url, method;
+        if (isEditMode) {
+          // 编辑模式：PUT请求更新现有支付方式
+          url = `/api/admin/payment_methods/${code}`;
+          method = 'PUT';
+        } else {
+          // 添加模式：POST请求创建新支付方式
+          url = '/api/admin/payment_methods';
+          method = 'POST';
+          // 添加模式需要在请求体中包含code
+          methodData.code = code;
+        }
+        
+        const response = await fetch(url, {
+          method: method,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID
+          },
+          body: JSON.stringify(methodData)
+        });
+        
+        // === 第5步：检查响应状态 ===
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `保存失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第6步：解析响应 ===
+        const result = await response.json();
+        console.log('[支付配置] 支付方式保存成功：', result);
+        
+        // === 第7步：关闭模态框并刷新列表 ===
+        closePaymentMethodModal();
+        
+        // 显示成功提示
+        showModalAlert(isEditMode ? '支付方式已更新' : '支付方式已添加');
+        
+        // 重新加载支付方式列表
+        await loadPaymentMethodsConfig();
+        
+      } catch (error) {
+        // === 错误处理 ===
+        console.error('[支付配置] 保存支付方式失败：', error);
+        
+        // 在模态框中显示错误信息
+        if (errorDiv) {
+          errorDiv.innerHTML = `
+            <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              ✗ ${error.message || '保存失败，请重试'}
+            </div>
+          `;
+          errorDiv.classList.remove('hidden');
+          
+          // 5秒后自动隐藏错误提示
+          setTimeout(() => {
+            errorDiv.classList.add('hidden');
+          }, 5000);
+        }
+      }
+    }
+
+    /**
+     * 删除支付方式
+     * 功能：确认后调用API删除支付方式，刷新列表
+     * 
+     * @param {string} code - 支付方式代码
+     */
+    async function deletePaymentMethod(code) {
+      console.log('[支付配置] 请求删除支付方式：', code);
+      
+      // === 第1步：显示确认对话框 ===
+      // 使用confirm函数让用户确认是否真的要删除
+      // 这是一个破坏性操作，需要二次确认
+      if (!confirm(`确定要删除支付方式 "${code}" 吗？删除后无法恢复。`)) {
+        console.log('[支付配置] 用户取消了删除操作');
+        return;
+      }
+      
+      try {
+        // === 第2步：发起DELETE请求 ===
+        const response = await fetch(`/api/admin/payment_methods/${code}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID
+          }
+        });
+        
+        // === 第3步：检查响应状态 ===
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `删除失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第4步：解析响应 ===
+        const result = await response.json();
+        console.log('[支付配置] 支付方式删除成功：', result);
+        
+        // === 第5步：显示成功提示并刷新列表 ===
+        showModalAlert('支付方式已删除');
+        
+        // 重新加载支付方式列表
+        await loadPaymentMethodsConfig();
+        
+      } catch (error) {
+        // === 错误处理 ===
+        console.error('[支付配置] 删除支付方式失败：', error);
+        showModalAlert(`删除失败：${error.message || '未知错误'}。请重试。`);
       }
     }
 

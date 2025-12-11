@@ -28714,17 +28714,33 @@ def start_web_server(args_param):
                         "message": "至少需要启用一种支付方式"
                     }), 400
                 
-                # 验证每个支付方式是否有效
-                invalid_methods = [m for m in new_methods if m not in all_methods]
-                if invalid_methods:
-                    return jsonify({
-                        "success": False,
-                        "message": f"不支持的支付方式：{', '.join(invalid_methods)}"
-                    }), 400
+                # === 改造：验证每个支付方式是否在 payment_methods_config 中定义 ===
                 
                 # 读取当前配置
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
+                
+                # 从 payment_methods_config 获取所有已定义的支付方式
+                try:
+                    methods_config_str = config.get(
+                        "Rainbow_YiPay",
+                        "payment_methods_config",
+                        fallback="{}"
+                    )
+                    methods_config = json.loads(methods_config_str)
+                    available_methods = set(methods_config.keys())
+                except (json.JSONDecodeError, Exception) as e:
+                    logging.error(f"[支付配置] 解析 payment_methods_config 失败: {str(e)}")
+                    # 如果解析失败，使用默认支持的支付方式
+                    available_methods = set(all_methods.keys())
+                
+                # 验证每个支付方式是否已定义
+                invalid_methods = [m for m in new_methods if m not in available_methods]
+                if invalid_methods:
+                    return jsonify({
+                        "success": False,
+                        "message": f"以下支付方式未定义，请先在支付方式管理中添加：{', '.join(invalid_methods)}"
+                    }), 400
                 
                 # 获取旧的配置（用于日志记录）
                 old_methods_str = config.get(
@@ -28755,7 +28771,15 @@ def start_web_server(args_param):
                 )
                 
                 # 构造中文名称列表用于返回消息
-                method_names = [all_methods[m] for m in new_methods]
+                # 从 payment_methods_config 中获取名称
+                method_names = []
+                for m in new_methods:
+                    if m in methods_config:
+                        method_names.append(methods_config[m].get('name', m))
+                    elif m in all_methods:
+                        method_names.append(all_methods[m])
+                    else:
+                        method_names.append(m)
                 method_names_str = "、".join(method_names)
                 
                 # 返回成功响应
@@ -28767,6 +28791,352 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[支付配置] 管理支付配置接口异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"操作失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment_methods", methods=["POST"])
+    @login_required
+    def add_payment_method():
+        """
+        添加新的支付方式接口（管理员专用）
+        
+        请求方法：POST
+        权限要求：modify_config权限
+        
+        请求参数（JSON格式）：
+            - code (str): 支付方式代码（必填），例如：alipay, wxpay
+            - name (str): 显示名称（必填），例如：支付宝支付
+            - icon (str): Logo类型（必填），可选值：svg, image
+            - svg (str): SVG代码（当icon为svg时必填）
+            - image (str): 图片URL（当icon为image时必填）
+            - description (str): 描述信息（可选）
+            - borderColor (str): 边框颜色CSS类（可选），例如：hover:border-sky-500
+            - textColor (str): 文字颜色CSS类（可选），例如：text-sky-600
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 操作结果信息
+        
+        功能说明：
+        - 将新的支付方式添加到 payment_methods_config（JSON配置）
+        - 支付方式代码必须唯一，不能与现有支付方式重复
+        - 配置立即保存到 config.ini 文件
+        """
+        try:
+            # === 权限检查 ===
+            # 需要 modify_config 权限才能添加支付方式
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要修改配置权限（modify_config）"
+                }), 403
+            
+            # === 获取并验证请求数据 ===
+            data = request.get_json() or {}
+            
+            # 验证必填字段：支付方式代码
+            code = data.get("code", "").strip()
+            if not code:
+                return jsonify({
+                    "success": False,
+                    "message": "支付方式代码不能为空"
+                }), 400
+            
+            # 验证代码格式：只允许字母、数字和下划线
+            import re
+            if not re.match(r'^[a-zA-Z0-9_]+$', code):
+                return jsonify({
+                    "success": False,
+                    "message": "支付方式代码只能包含字母、数字和下划线"
+                }), 400
+            
+            # 验证必填字段：显示名称
+            name = data.get("name", "").strip()
+            if not name:
+                return jsonify({
+                    "success": False,
+                    "message": "显示名称不能为空"
+                }), 400
+            
+            # 验证必填字段：Logo类型
+            icon = data.get("icon", "").strip()
+            if icon not in ["svg", "image"]:
+                return jsonify({
+                    "success": False,
+                    "message": "Logo类型必须是 svg 或 image"
+                }), 400
+            
+            # 验证Logo内容
+            svg = data.get("svg", "").strip()
+            image = data.get("image", "").strip()
+            
+            if icon == "svg" and not svg:
+                return jsonify({
+                    "success": False,
+                    "message": "选择SVG类型时，SVG代码不能为空"
+                }), 400
+            
+            if icon == "image" and not image:
+                return jsonify({
+                    "success": False,
+                    "message": "选择图片类型时，图片URL不能为空"
+                }), 400
+            
+            # 获取可选字段
+            description = data.get("description", "").strip()
+            border_color = data.get("borderColor", "hover:border-sky-500").strip()
+            text_color = data.get("textColor", "text-sky-600").strip()
+            
+            # === 读取当前配置 ===
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 确保 Rainbow_YiPay 节存在
+            if not config.has_section("Rainbow_YiPay"):
+                config.add_section("Rainbow_YiPay")
+            
+            # 读取现有的 payment_methods_config
+            methods_config_str = config.get(
+                "Rainbow_YiPay",
+                "payment_methods_config",
+                fallback="{}"
+            )
+            
+            try:
+                methods_config = json.loads(methods_config_str)
+            except json.JSONDecodeError:
+                # 如果JSON解析失败，使用空字典
+                methods_config = {}
+            
+            # === 检查支付方式代码是否已存在 ===
+            if code in methods_config:
+                return jsonify({
+                    "success": False,
+                    "message": f"支付方式代码 '{code}' 已存在，请使用其他代码或编辑现有支付方式"
+                }), 400
+            
+            # === 构建新支付方式配置 ===
+            new_method = {
+                "name": name,
+                "icon": icon,
+                "svg": svg if icon == "svg" else "",
+                "image": image if icon == "image" else "",
+                "description": description,
+                "borderColor": border_color,
+                "textColor": text_color
+            }
+            
+            # 添加到配置中
+            methods_config[code] = new_method
+            
+            # === 保存配置 ===
+            # 将字典转换为JSON字符串
+            methods_config_str = json.dumps(methods_config, ensure_ascii=False, indent=2)
+            config.set("Rainbow_YiPay", "payment_methods_config", methods_config_str)
+            
+            # 使用 _write_config_with_comments() 函数保持注释
+            _write_config_with_comments(config, "config.ini")
+            
+            # === 记录日志 ===
+            logging.info(
+                f"[支付方式管理] 管理员添加新支付方式 - "
+                f"操作者: {g.user}, 代码: {code}, 名称: {name}"
+            )
+            
+            # 返回成功响应
+            return jsonify({
+                "success": True,
+                "message": f"支付方式 '{name}' 已成功添加"
+            })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付方式管理] 添加支付方式失败: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"添加失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment_methods/<code>", methods=["PUT", "DELETE"])
+    @login_required
+    def manage_payment_method(code):
+        """
+        更新或删除支付方式接口（管理员专用）
+        
+        请求方法：PUT（更新）、DELETE（删除）
+        权限要求：modify_config权限
+        
+        URL参数：
+            - code (str): 支付方式代码
+        
+        PUT请求参数（JSON格式）：
+            - name (str): 显示名称（必填）
+            - icon (str): Logo类型（必填），可选值：svg, image
+            - svg (str): SVG代码（当icon为svg时必填）
+            - image (str): 图片URL（当icon为image时必填）
+            - description (str): 描述信息（可选）
+            - borderColor (str): 边框颜色CSS类（可选）
+            - textColor (str): 文字颜色CSS类（可选）
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 操作结果信息
+        """
+        try:
+            # === 权限检查 ===
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要修改配置权限（modify_config）"
+                }), 403
+            
+            # === 读取当前配置 ===
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 确保 Rainbow_YiPay 节存在
+            if not config.has_section("Rainbow_YiPay"):
+                config.add_section("Rainbow_YiPay")
+            
+            # 读取现有的 payment_methods_config
+            methods_config_str = config.get(
+                "Rainbow_YiPay",
+                "payment_methods_config",
+                fallback="{}"
+            )
+            
+            try:
+                methods_config = json.loads(methods_config_str)
+            except json.JSONDecodeError:
+                methods_config = {}
+            
+            # === 检查支付方式是否存在 ===
+            if code not in methods_config:
+                return jsonify({
+                    "success": False,
+                    "message": f"支付方式 '{code}' 不存在"
+                }), 404
+            
+            if request.method == "PUT":
+                # ========== 处理PUT请求：更新支付方式 ==========
+                
+                # 获取并验证请求数据
+                data = request.get_json() or {}
+                
+                # 验证必填字段：显示名称
+                name = data.get("name", "").strip()
+                if not name:
+                    return jsonify({
+                        "success": False,
+                        "message": "显示名称不能为空"
+                    }), 400
+                
+                # 验证必填字段：Logo类型
+                icon = data.get("icon", "").strip()
+                if icon not in ["svg", "image"]:
+                    return jsonify({
+                        "success": False,
+                        "message": "Logo类型必须是 svg 或 image"
+                    }), 400
+                
+                # 验证Logo内容
+                svg = data.get("svg", "").strip()
+                image = data.get("image", "").strip()
+                
+                if icon == "svg" and not svg:
+                    return jsonify({
+                        "success": False,
+                        "message": "选择SVG类型时，SVG代码不能为空"
+                    }), 400
+                
+                if icon == "image" and not image:
+                    return jsonify({
+                        "success": False,
+                        "message": "选择图片类型时，图片URL不能为空"
+                    }), 400
+                
+                # 获取可选字段
+                description = data.get("description", "").strip()
+                border_color = data.get("borderColor", "hover:border-sky-500").strip()
+                text_color = data.get("textColor", "text-sky-600").strip()
+                
+                # 更新支付方式配置
+                methods_config[code] = {
+                    "name": name,
+                    "icon": icon,
+                    "svg": svg if icon == "svg" else "",
+                    "image": image if icon == "image" else "",
+                    "description": description,
+                    "borderColor": border_color,
+                    "textColor": text_color
+                }
+                
+                # 保存配置
+                methods_config_str = json.dumps(methods_config, ensure_ascii=False, indent=2)
+                config.set("Rainbow_YiPay", "payment_methods_config", methods_config_str)
+                _write_config_with_comments(config, "config.ini")
+                
+                # 记录日志
+                logging.info(
+                    f"[支付方式管理] 管理员更新支付方式 - "
+                    f"操作者: {g.user}, 代码: {code}, 名称: {name}"
+                )
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"支付方式 '{name}' 已成功更新"
+                })
+            
+            elif request.method == "DELETE":
+                # ========== 处理DELETE请求：删除支付方式 ==========
+                
+                # 获取支付方式名称（用于日志和返回消息）
+                method_name = methods_config[code].get("name", code)
+                
+                # 从配置中删除该支付方式
+                del methods_config[code]
+                
+                # 保存配置
+                methods_config_str = json.dumps(methods_config, ensure_ascii=False, indent=2)
+                config.set("Rainbow_YiPay", "payment_methods_config", methods_config_str)
+                _write_config_with_comments(config, "config.ini")
+                
+                # 同时从 enabled_payment_methods 中移除该支付方式
+                # 避免启用列表中包含已删除的支付方式
+                enabled_methods_str = config.get(
+                    "Rainbow_YiPay",
+                    "enabled_payment_methods",
+                    fallback=""
+                )
+                enabled_methods = [
+                    m.strip() for m in enabled_methods_str.split(",") if m.strip()
+                ]
+                
+                # 如果启用列表中包含该支付方式，移除它
+                if code in enabled_methods:
+                    enabled_methods.remove(code)
+                    new_enabled_str = ",".join(enabled_methods)
+                    config.set("Rainbow_YiPay", "enabled_payment_methods", new_enabled_str)
+                    _write_config_with_comments(config, "config.ini")
+                
+                # 记录日志
+                logging.info(
+                    f"[支付方式管理] 管理员删除支付方式 - "
+                    f"操作者: {g.user}, 代码: {code}, 名称: {method_name}"
+                )
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"支付方式 '{method_name}' 已成功删除"
+                })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付方式管理] 管理支付方式失败: {str(e)}")
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
