@@ -12962,41 +12962,54 @@
       }
       
       try {
-        // === 第1步：并行获取支付方式定义和启用状态 ===
-        // 使用Promise.all同时发起两个请求，提高加载速度
-        const [methodsResponse, configResponse] = await Promise.all([
-          // 获取所有支付方式的定义（名称、Logo、样式等）
-          fetch('/api/payment/methods_config', {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Session-ID': sessionUUID
-            }
-          }),
-          // 获取当前启用的支付方式列表
-          fetch('/api/admin/payment/config', {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Session-ID': sessionUUID
-            }
-          })
-        ]);
+        // === 第1步：获取支付方式定义（必需）===
+        // 先获取支付方式的定义数据（名称、Logo、样式等）
+        const methodsResponse = await fetch('/api/payment/methods_config', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID
+          }
+        });
         
-        // === 第2步：检查两个请求的响应状态 ===
-        if (!methodsResponse.ok || !configResponse.ok) {
-          throw new Error(`加载配置失败：HTTP状态码 ${methodsResponse.status} / ${configResponse.status}`);
+        // 检查支付方式定义请求是否成功
+        if (!methodsResponse.ok) {
+          throw new Error(`获取支付方式定义失败：HTTP状态码 ${methodsResponse.status}`);
         }
         
-        // === 第3步：解析JSON响应数据 ===
         const methodsData = await methodsResponse.json();
-        const configData = await configResponse.json();
-        
-        // 提取支付方式定义（methods）和启用列表（enabled_payment_methods）
         const methods = methodsData.methods || {};
-        const enabledMethods = configData.config?.enabled_payment_methods || [];
         
-        console.log('[支付配置] 成功获取配置：', { methods, enabledMethods });
+        console.log('[支付配置] 成功获取支付方式定义：', methods);
+        
+        // === 第2步：尝试获取启用状态（可选，失败不影响显示）===
+        // 获取当前启用的支付方式列表，如果用户没有权限则默认全部为启用状态
+        let enabledMethods = [];
+        try {
+          const configResponse = await fetch('/api/admin/payment/config', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID
+            }
+          });
+          
+          if (configResponse.ok) {
+            const configData = await configResponse.json();
+            enabledMethods = configData.config?.enabled_payment_methods || [];
+            console.log('[支付配置] 成功获取启用状态：', enabledMethods);
+          } else {
+            // 如果获取启用状态失败（可能是权限问题），默认显示所有支付方式为启用
+            console.warn('[支付配置] 无法获取启用状态（可能无权限），默认显示所有支付方式');
+            enabledMethods = Object.keys(methods);
+          }
+        } catch (configError) {
+          // 获取启用状态失败，默认显示所有支付方式为启用
+          console.warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：', configError);
+          enabledMethods = Object.keys(methods);
+        }
+        
+        console.log('[支付配置] 最终配置：', { methods, enabledMethods });
         
         // === 第4步：动态渲染支付方式列表 ===
         const listContainer = document.getElementById('payment-methods-list_modal');
