@@ -5973,12 +5973,13 @@ function refreshMobileSessionPicker() {
             // [显示面板] 移除hidden类，使价格设置面板可见
             pricingPanel.classList.remove("hidden");
             
-            // [面板说明] 价格设置面板可能需要加载当前的价格配置
-            // 如果存在loadPricingConfig或类似的函数，应在此处调用
-            // 该函数会从后端获取当前的价格配置，包括：
-            // - 各个服务的定价、折扣设置、套餐配置等
-            // 注意：如果没有这样的函数，面板会显示默认配置或静态表单
-            console.log("[面板说明] 价格设置面板已显示，如有配置加载函数将自动调用");
+            // [加载数据] 调用loadPricingConfig函数加载当前的价格配置
+            // 该函数会从后端获取价格策略配置，包括：
+            // - 是否需要付费（require_payment）
+            // - 单次跑步费用（per_run_cost）
+            // - 新用户默认免费次数（default_available_runs）
+            console.log("[数据加载] 开始加载价格配置...");
+            loadPricingConfig();
             
             // [停止自动刷新] 停止健康状态面板的自动刷新
             // 因为已经切换到了价格设置面板，不再需要刷新健康状态
@@ -36031,18 +36032,64 @@ async function loadPaymentLogs(page) {
             }
         });
         
-        // 步骤8：解析响应数据
-        const result = await response.json();
-        
-        // 步骤9：检查API调用结果
-        if (!result.success) {
-            // 加载失败，显示错误提示
-            container.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${result.message || '加载日志失败'}</p>`;
-            console.error('[管理员-支付日志] 加载失败:', result.message);
-            return;
+        // 步骤8：检查HTTP状态码
+        // 在尝试解析响应数据之前，首先验证HTTP请求是否成功
+        // 这样可以更准确地捕获和处理各种HTTP错误（401未授权、403禁止访问、404未找到、500服务器错误等）
+        if (!response.ok) {
+            // HTTP错误（401, 403, 404, 500等）
+            // 首先尝试读取响应体文本，它可能包含详细的错误信息
+            const errorText = await response.text();
+            // 初始化错误消息，默认显示HTTP状态码
+            let errorMessage = `HTTP错误: ${response.status}`;
+            
+            try {
+                // 尝试将错误文本解析为JSON对象
+                // 如果后端返回的是结构化的错误信息，我们可以提取message字段
+                const errorData = JSON.parse(errorText);
+                errorMessage = errorData.message || errorMessage;
+            } catch (e) {
+                // 解析失败，使用状态码文本
+                // 这种情况下，后端可能返回的是纯文本或HTML错误页面
+            }
+            
+            // 根据状态码显示不同的错误提示
+            // 这样可以为用户提供更友好、更具体的错误说明
+            if (response.status === 401) {
+                // 401 Unauthorized: 用户未登录或会话已过期
+                errorMessage = "未登录或会话已过期，请重新登录";
+            } else if (response.status === 403) {
+                // 403 Forbidden: 用户已登录但没有足够的权限访问此资源
+                errorMessage = "权限不足，需要审计日志查看权限";
+            }
+            
+            // 在页面上显示错误消息
+            // 使用红色文本和居中对齐，确保用户能够清楚地看到错误提示
+            container.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${errorMessage}</p>`;
+            
+            // 在控制台记录详细的错误信息，方便开发人员调试
+            console.error('[管理员-支付日志] HTTP错误:', {
+                status: response.status,
+                message: errorMessage
+            });
+            return;  // 提前返回，不再继续处理
         }
         
-        // 步骤10：获取日志列表数据
+        // 步骤9：解析响应数据（修改原来的步骤8）
+        // 只有在HTTP请求成功（status 200-299）时，才会执行到这里
+        const result = await response.json();
+        
+        // 步骤10：检查API调用结果（修改原来的步骤9）
+        // 即使HTTP请求成功（200 OK），API调用本身也可能失败
+        // 例如：后端业务逻辑检测到错误、数据库查询失败等
+        if (!result.success) {
+            // 加载失败，显示错误提示
+            // result.message包含后端返回的具体错误信息
+            container.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${result.message || '加载日志失败'}</p>`;
+            console.error('[管理员-支付日志] 加载失败:', result.message);
+            return;  // 提前返回，不再继续处理
+        }
+        
+        // 步骤11：获取日志列表数据（修改原来的步骤10）
         const logs = result.logs || [];
         const total = result.total || 0;
         const totalPages = Math.ceil(total / paymentLogsPerPage);
@@ -36050,7 +36097,7 @@ async function loadPaymentLogs(page) {
         // 输出日志：记录加载结果
         console.log('[管理员-支付日志] 日志列表加载成功:', { total, logs: logs.length });
         
-        // 步骤11：检查是否有日志数据
+        // 步骤12：检查是否有日志数据（修改原来的步骤11）
         if (logs.length === 0) {
             // 没有日志，显示空状态提示
             container.innerHTML = `
@@ -36062,7 +36109,7 @@ async function loadPaymentLogs(page) {
                 </div>
             `;
         } else {
-            // 步骤12：渲染日志列表
+            // 步骤13：渲染日志列表（修改原来的步骤12）
             // 清空容器，准备插入日志卡片
             container.innerHTML = '';
             
