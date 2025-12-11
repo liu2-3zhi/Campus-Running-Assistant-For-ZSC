@@ -2975,11 +2975,11 @@ class RainbowYiPayClient:
             # 记录日志：开始验证app_host
             # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
             challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(challenge) > 64 else challenge
-            logging.info(f"[支付验证] 开始验证app_host: {app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
+            logging.info(f"[支付验证] 开始验证app_host: {client_app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
             
             # 构造验证接口的完整URL
-            # 格式：{app_host}/api/payment/verify_challenge
-            verify_url = f"{app_host}/api/payment/verify_challenge"
+            # 格式：{client_app_host}/api/payment/verify_challenge
+            verify_url = f"{client_app_host}/api/payment/verify_challenge"
             
             try:
                 
@@ -3001,11 +3001,11 @@ class RainbowYiPayClient:
                     logging.warning(
                         f"[支付验证] HTTP请求失败 - 状态码: {response.status_code}"
                     )
-                    return jsonify({
+                    return {
                         "success": False,
                         "message": f"验证失败：HTTP状态码 {response.status_code}",
                         "verified": False
-                    })
+                    }
                 
                 # HTTP状态码为200，开始处理响应
                 # 尝试解析响应的JSON数据
@@ -3027,47 +3027,47 @@ class RainbowYiPayClient:
                     # JSON解析失败
                     # 这说明返回的响应不是有效的JSON格式，可能不是本服务器
                     logging.warning(f"[支付验证] 响应JSON解析失败: {str(e)}")
-                    return jsonify({
+                    return {
                         "success": False,
                         "message": "验证失败：服务器返回的数据格式不正确（非JSON）",
                         "verified": False
-                    })
+                    }
                 
                 except Exception as e:
                     # 其他解析异常
                     logging.error(f"[支付验证] 响应处理异常: {str(e)}")
-                    return jsonify({
+                    return {
                         "success": False,
                         "message": f"验证失败：响应处理异常 - {str(e)}",
                         "verified": False
-                    })
+                    }
             
             except requests.exceptions.Timeout:
                 # 请求超时
                 logging.warning(f"[支付验证] 请求超时 - {verify_url}")
-                return jsonify({
+                return {
                     "success": False,
                     "message": "验证失败：请求超时（5秒）",
                     "verified": False
-                })
+                }
             
             except requests.exceptions.ConnectionError:
                 # 连接错误（网络不通或域名无法解析）
                 logging.warning(f"[支付验证] 连接失败 - {verify_url}")
-                return jsonify({
+                return {
                     "success": False,
                     "message": "验证失败：无法连接到目标服务器",
                     "verified": False
-                })
+                }
             
             except Exception as e:
                 # 其他异常
                 logging.error(f"[支付验证] 验证过程异常: {str(e)}")
-                return jsonify({
+                return {
                     "success": False,
                     "message": f"验证失败：{str(e)}",
                     "verified": False
-                })
+                }
             
             # 比对发送的 challenge 和返回的 challenge
             # 如果两者完全一致，说明这确实是本服务器
@@ -3076,11 +3076,11 @@ class RainbowYiPayClient:
                 # 验证失败：返回的 challenge 与发送的不一致
                 # 这说明 app_host 指向的服务器不是本服务器
                 logging.warning(f"[支付验证] 验证码不匹配 - 验证失败")
-                return jsonify({
+                return {
                     "success": False,
                     "message": "彩虹易支付配置缺少 app_host，经过验证后确认不是本服务器，请联系管理员",
                     "verified": False
-                })
+                }
             else:
                 # 验证成功：返回的 challenge 与发送的完全一致
                 # 可以安全地使用 client_app_host 作为 app_host
