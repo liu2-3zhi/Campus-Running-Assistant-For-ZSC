@@ -11888,6 +11888,21 @@ body.mobile-mode #session-picker-modal {
               </p>
             </div>
 
+
+
+                          <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">
+                  商品ID (Product ID)
+                </label>
+                <input type="text" 
+                  id="admin-yipay-product-id_modal" 
+                  placeholder="请输入商品ID，例如: 1001" 
+                  class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+                <p class="mt-1 text-xs text-slate-500">
+                  用于区分商品类型，默认1001
+                </p>
+              </div>
+
             <!-- 字段4：启用的支付方式 (enabled_payment_methods) -->
             <div>
               <!-- 字段标签：指定启用哪些支付方式 -->
@@ -15692,6 +15707,7 @@ body.mobile-mode #session-picker-modal {
         // === 第6.5步：自动同步易支付启用方式 ===
         // 在保存支付方式配置成功后，自动将启用的支付方式同步到易支付配置中
         // 这样用户无需手动打开选择器，系统会自动维护两边的一致性
+        
         const yipayMethodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
         if (yipayMethodsInput) {
           // 将启用的支付方式数组转换为逗号分隔的字符串
@@ -17387,8 +17403,10 @@ body.mobile-mode #session-picker-modal {
         trade_no: tradeNo,
         amount: amount,
         product_name: productName,
-        payment_method: paymentMethod
+        pay_type: paymentMethod
       });
+
+      app_host=window.location.protocol + '//' + window.location.host;
       
       // ========== 第5步：先隐藏结果容器，避免显示旧数据 ==========
       resultContainer.classList.add('hidden');
@@ -17409,9 +17427,12 @@ body.mobile-mode #session-picker-modal {
           body: JSON.stringify({
             amount: amount,              // 支付金额
             product_name: productName,   // 商品名称
-            payment_method: paymentMethod // 支付方式
+            pay_type: paymentMethod, // 支付方式
+            app_host: app_host,         // 应用主机地址
+            return_url: window.location.href // 当前页面URL，支付完成后返回
           })
         });
+        
         
         // 6.2 检查HTTP响应状态码
         // response.ok 为true表示状态码在200-299范围内（成功）
@@ -17739,6 +17760,12 @@ body.mobile-mode #session-picker-modal {
             // 然后动态渲染到 payment-methods-list_modal 容器中
             loadPaymentMethodsConfig();
             console.log(`[PC端支付设置] 已触发支付方式配置加载`);
+          }
+
+          if (tab === 'yipay') {
+            // 调用 loadYiPayConfig() 函数加载易支付配置
+            loadAdminYiPayConfig()
+            console.log(`[PC端支付设置] 已触发易支付配置加载`);
           }
           
           // 在控制台输出日志，标记Tab激活成功
@@ -19122,7 +19149,8 @@ body.mobile-mode #session-picker-modal {
           amount: amount,                  // 支付金额
           payment_method: method,          // 支付方式（alipay/wechat/qq/unionpay）
           payment_type: paymentType,       // 支付接口类型（jump/web/jsapi/app/scan/applet）
-          product_name: productName        // [修改] 商品名称（手动输入或自动生成）
+          product_name: productName,        // [修改] 商品名称（手动输入或自动生成）
+          app_host: window.location.protocol + '//' + window.location.host
         };
         
         // 如果是扫码支付，添加付款码到请求数据
@@ -19445,6 +19473,12 @@ body.mobile-mode #session-picker-modal {
           keyInput.value = config.key || '';
         }
         
+        // [新增] 5.3.5 填充product_id字段
+        const productIdInput = document.getElementById('admin-yipay-product-id_modal');
+        if (productIdInput) {
+            productIdInput.value = config.product_id || '1001';
+        }
+        
         // 5.4 填充enabled_payment_methods字段（启用的支付方式）
         const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
         if (methodsInput) {
@@ -19622,6 +19656,8 @@ body.mobile-mode #session-picker-modal {
       const hostInput = document.getElementById('admin-yipay-host_modal');
       const pidInput = document.getElementById('admin-yipay-pid_modal');
       const keyInput = document.getElementById('admin-yipay-key_modal');
+      // [新增] 获取product_id输入框
+    const productIdInput = document.getElementById('admin-yipay-product-id_modal');
       const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
       const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
       
@@ -19655,6 +19691,10 @@ body.mobile-mode #session-picker-modal {
       // 2.4 获取启用的支付方式（可以为空，后端会使用默认值）
       const enabledMethods = methodsInput ? methodsInput.value.trim() : '';
       
+    // [新增] 获取product_id值
+    const productId = productIdInput ? productIdInput.value.trim() : '1001';
+
+
       // 2.5 获取支付接口类型（必填）
       const paymentMethod = typeSelect ? typeSelect.value : 'jump';
       if (!paymentMethod) {
@@ -19756,7 +19796,8 @@ body.mobile-mode #session-picker-modal {
             pid: pid,
             key: key,
             enabled_payment_methods: enabledMethods,
-            payment_method: paymentMethod
+            payment_method: paymentMethod,
+            product_id: productId  // [新增] 发送product_id
           })
         });
         

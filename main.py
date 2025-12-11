@@ -428,6 +428,40 @@ def initialize_global_variables():
     logging.info("全局变量初始化完成。")
 
 
+
+
+
+def is_private_ip(client_ip: str) -> bool:
+    """
+    判断一个 IPv4 地址是否为内网地址
+
+    参数:
+        client_ip (str): 待校验的 IP 地址字符串，例如 "192.168.1.100"
+
+    返回:
+        bool: True 表示是内网地址，False 表示不是内网地址或格式错误
+    """
+
+    PRIVATE_NETWORKS = [
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+    ]
+    
+    try:
+        ip = ipaddress.ip_address(client_ip)
+    except ValueError:
+        # 如果格式不合法，直接返回 False
+        return False
+
+    # 只处理 IPv4
+    if ip.version != 4:
+        return False
+
+    # 判断该 IP 是否落在任一私有网段内
+    return any(ip in net for net in PRIVATE_NETWORKS)
+
+
 # ==============================================================================
 #  辅助函数：获取客户端真实IP地址（任务2）
 # ==============================================================================
@@ -2867,7 +2901,7 @@ class RainbowYiPayClient:
         # 返回验证结果
         return is_valid
 
-    def create_order(self, out_trade_no, name, money, pay_type="alipay", return_url=None):
+    def create_order(self, out_trade_no, name, money, pay_type="alipay", return_url=None, client_app_host=None):
         """
         创建支付订单
         
@@ -2878,10 +2912,8 @@ class RainbowYiPayClient:
             pay_type (str): 支付方式，可选值：
                 - "alipay": 支付宝支付（默认）
                 - "wxpay": 微信支付
-            return_url (str, optional): 同步返回URL，用户支付完成后浏览器跳转的地址
-                - 如果传入此参数，则使用传入的URL（优先级最高）
-                - 如果不传入，则使用配置文件中的 return_url（兼容旧版本）
-                - 这使得每个订单可以有不同的返回地址，提高了灵活性
+            return_url (str, optional): 同步返回URL
+            client_app_host (str, optional): 前端自动获取的应用域名（用于未配置app_host时的自动回退）
         
         返回:
             dict: 包含以下字段的字典
@@ -2933,8 +2965,83 @@ class RainbowYiPayClient:
             # 记录错误日志：缺少应用访问域名配置
             logging.error("[彩虹易支付] 配置缺少 app_host（应用访问域名），无法构造异步通知URL")
             # 返回失败响应，提示管理员配置 app_host
-            return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
-        
+            if not client_app_host:
+                return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
+            
+
+
+            challenge = ''.join(random.choices(string.ascii_letters + string.digits, k=2048))
+            
+            # 记录日志：开始验证app_host
+            # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
+            challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(challenge) > 64 else challenge
+            logging.info(f"[支付验证] 开始验证app_host: {app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
+            
+            # 构造验证接口的完整URL
+            # 格式：{app_host}/api/payment/verify_challenge
+            verify_url = f"{app_host}/api/payment/verify_challenge"
+            
+            try:
+                
+                # 向verify_challenge接口发送POST请求
+                # json参数：以JSON格式发送验证码
+                # timeout参数：设置5秒超时，避免长时间等待
+                # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
+                response = requests.post(
+                    verify_url,
+                    json={"challenge": challenge},
+                    timeout=5
+                )
+                
+                # 检查HTTP响应状态码
+                # 200表示请求成功
+                if response.status_code != 200:
+                
+                    # HTTP状态码不是200
+                    logging.warning(
+                        f"[支付验证] HTTP请求失败 - 状态码: {response.status_code}"
+                    )
+                    return jsonify({
+                        "success": False,
+                        "message": f"验证失败：HTTP状态码 {response.status_code}",
+                        "verified": False
+                    })
+            
+            except requests.exceptions.Timeout:
+                # 请求超时
+                logging.warning(f"[支付验证] 请求超时 - {verify_url}")
+                return jsonify({
+                    "success": False,
+                    "message": "验证失败：请求超时（5秒）",
+                    "verified": False
+                })
+            
+            except requests.exceptions.ConnectionError:
+                # 连接错误（网络不通或域名无法解析）
+                logging.warning(f"[支付验证] 连接失败 - {verify_url}")
+                return jsonify({
+                    "success": False,
+                    "message": "验证失败：无法连接到目标服务器",
+                    "verified": False
+                })
+            
+            except Exception as e:
+                # 其他异常
+                logging.error(f"[支付验证] 验证过程异常: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "message": f"验证失败：{str(e)}",
+                    "verified": False
+                })
+            
+            if challenge != returned_challenge:
+                return {"success": False, "message": "彩虹易支付配置缺少 app_host，经过验证后确认不是本服务器，请联系管理员"}
+            else:
+                app_host = client_app_host
+
+
+
+
         # 验证 app_host 格式是否正确
         # 必须以 http:// 或 https:// 开头，以确保URL格式正确
         if not (app_host.startswith("http://") or app_host.startswith("https://")):
@@ -26690,13 +26797,16 @@ def start_web_server(args_param):
             # 从请求数据中提取支付金额，并去除首尾空白字符
             # .get() 方法如果键不存在返回空字符串
             # .strip() 去除字符串首尾的空格、换行等空白字符
-            amount = data.get("amount", "").strip()
+            amount = str(data.get("amount", "")).strip()
             
             # 从请求数据中提取商品名称
-            product_name = data.get("product_name", "").strip()
+            product_name = str(data.get("product_name", "")).strip()
             
             # 从请求数据中提取支付方式，默认为支付宝
             pay_type = data.get("pay_type", "alipay").strip()
+
+            # [新增] 提取前端传递的应用域名 (用于自动配置 app_host)
+            client_app_host = data.get("app_host", "").strip()
             
             # 从请求数据中提取同步返回URL（可选参数）
             # return_url 是用户支付完成后浏览器跳转的地址
@@ -26814,7 +26924,8 @@ def start_web_server(args_param):
                 name=product_name,
                 money=amount,
                 pay_type=pay_type,
-                return_url=return_url  # 传递 return_url 参数（可能为 None）
+                return_url=return_url,
+                client_app_host=client_app_host
             )
             
             # 检查订单创建是否成功
@@ -28619,39 +28730,12 @@ def start_web_server(args_param):
                 "verified": False
             }), 500
 
+
+
     @app.route("/api/payment/verify_challenge", methods=["POST"])
     def payment_verify_challenge():
         """
         验证挑战响应接口（用于配合verify_host验证）
-        
-        请求方法：POST
-        权限要求：无（公开接口，但只用于内部验证）
-        
-        请求参数（JSON格式）：
-            - challenge (str): 验证码（由verify_host接口发送）
-        
-        返回数据（JSON格式）：
-            - success (bool): 是否成功
-            - challenge (str): 原样返回接收到的验证码
-        
-        功能说明：
-        这是一个简单的回显接口，用于配合verify_host进行服务器验证。
-        当verify_host向本服务器发送验证请求时，这个接口会原样返回验证码。
-        
-        工作原理：
-        1. 接收来自verify_host的验证码（challenge）
-        2. 不做任何处理，直接原样返回
-        3. verify_host接收到返回值后，对比是否与发送的一致
-        
-        安全说明：
-        - 这个接口不涉及敏感操作，仅用于验证域名是否指向本服务器
-        - 每次验证使用不同的随机验证码，防止重放攻击
-        - 不需要登录验证，因为这是服务器自我验证的一部分
-        
-        使用场景：
-        - 仅由verify_host接口调用
-        - 不应被前端直接调用
-        - 用于确认app_host配置正确性
         """
         try:
             # 从请求体中获取JSON数据
@@ -28659,19 +28743,28 @@ def start_web_server(args_param):
             
             # 提取验证码参数
             # 使用.get()方法安全地获取，如果不存在返回空字符串
+            global payment_verify_challenge_get
             challenge = data.get("challenge", "")
+
+
+
             
             # 记录日志：收到验证请求
             # 记录请求来源IP，用于安全审计
             client_ip = request.remote_addr
+
+            if is_private_ip(client_ip):
+                payment_verify_challenge_get = challenge
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": "仅允许内网IP访问此接口",
+                }), 403
+
             logging.info(f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码: {challenge}")
             
-            # 原样返回验证码
-            # 非常简单的逻辑：收到什么就返回什么
-            # 这样verify_host就能验证响应是否来自本服务器
             return jsonify({
-                "success": True,
-                "challenge": challenge
+                "success": True
             })
         
         except Exception as e:
@@ -29639,7 +29732,7 @@ def start_web_server(args_param):
             # 即使用户具有 modify_config 权限，也必须是管理员或超级管理员用户组
             # 这样可以防止普通用户通过自定义权限配置访问敏感的易支付配置
             # 商户密钥是高度敏感的信息，只有真正的管理员才能查看和修改
-            user_data = auth_system.get_user(g.user)
+            user_data = auth_system.get_user_details(g.user)
             if not user_data:
                 logging.error(f"[易支付配置-权限拒绝] 无法获取用户 {g.user} 的数据")
                 return jsonify({"success": False, "message": "用户数据异常"}), 500
@@ -29714,6 +29807,10 @@ def start_web_server(args_param):
                     "payment_method",
                     fallback="jump"  # 默认值：跳转支付
                 )
+
+                product_id = config.get(
+                    "Rainbow_YiPay", "product_id", fallback="1001"
+                )
                 
                 # 构造返回数据
                 # 将读取到的配置以 JSON 格式返回给前端
@@ -29725,7 +29822,8 @@ def start_web_server(args_param):
                         "pid": pid,
                         "key": key,  # 完整的商户密钥（不脱敏）
                         "enabled_payment_methods": enabled_payment_methods,
-                        "payment_method": payment_method
+                        "payment_method": payment_method,
+                        "product_id": product_id  # [新增] 返回商品ID
                     }
                 })
             
@@ -29772,6 +29870,11 @@ def start_web_server(args_param):
                 new_payment_method = data.get(
                     "payment_method",
                     config.get("Rainbow_YiPay", "payment_method", fallback="jump")
+                ).strip()
+
+                # [新增] 获取新的 product_id 值
+                new_product_id = data.get(
+                    "product_id", config.get("Rainbow_YiPay", "product_id", fallback="1001")
                 ).strip()
                 
                 # ========== 验证参数的有效性 ==========
@@ -29837,6 +29940,7 @@ def start_web_server(args_param):
                 config.set("Rainbow_YiPay", "key", new_key)
                 config.set("Rainbow_YiPay", "enabled_payment_methods", new_enabled_payment_methods)
                 config.set("Rainbow_YiPay", "payment_method", new_payment_method)
+                config.set("Rainbow_YiPay", "product_id", new_product_id) # [新增] 保存商品ID
                 
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
