@@ -5637,6 +5637,14 @@
                 onclick="switchPaymentSettingsTab('test')">
                 测试支付
               </button>
+              
+              <!-- Tab 5: 易支付配置 -->
+              <!-- 移动端的易支付配置Tab，样式与其他Tab保持一致 -->
+              <button id="payment-settings-tab-yipay" 
+                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+                onclick="switchPaymentSettingsTab('yipay')">
+                易支付配置
+              </button>
             </div>
 
             <!-- ========================================
@@ -5978,6 +5986,152 @@
                 <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
                   ✗ <span id="test-order-error-message">生成测试订单失败</span>
                 </div>
+              </div>
+            </div>
+
+            <!-- ========================================
+                 Tab 5 内容区域：易支付配置（移动端）
+                 ========================================
+                 功能：管理员配置易支付接口参数
+                 包含：host、pid、key、启用的支付方式、接口类型
+                 API端点：/api/admin/yipay_config
+                 权限要求：modify_config权限 + admin或super_admin用户组
+                 ======================================== -->
+            <div id="payment-settings-content-yipay" class="hidden space-y-3">
+              <!-- 配置说明文本 -->
+              <!-- 使用蓝色背景的提示框，告知管理员此功能的作用 -->
+              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                💡 提示：配置易支付接口参数后，系统将使用该接口处理支付请求
+              </p>
+
+              <!-- 易支付配置表单 -->
+              <!-- 使用浅灰色背景的容器，包含所有配置字段 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                
+                <!-- 字段1：易支付接口域名 (host) -->
+                <div>
+                  <!-- 字段标签：使用粗体文字，标注必填项（红色星号）-->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    易支付接口域名
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 文本输入框：用于输入易支付平台的API域名 -->
+                  <input type="text" 
+                    id="yipay-host" 
+                    placeholder="https://pay.example.com" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段提示：帮助文字，说明此字段的用途 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    易支付平台的API接口地址
+                  </p>
+                </div>
+
+                <!-- 字段2：商户ID (pid) -->
+                <div>
+                  <!-- 字段标签：商户ID是易支付平台分配的唯一标识符 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商户ID (PID)
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 文本输入框：用于输入商户ID -->
+                  <input type="text" 
+                    id="yipay-pid" 
+                    placeholder="请输入商户ID" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段提示：说明商户ID的来源 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    由易支付平台分配的商户标识
+                  </p>
+                </div>
+
+                <!-- 字段3：商户密钥 (key) -->
+                <div>
+                  <!-- 字段标签：商户密钥用于签名验证，是敏感信息 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商户密钥 (KEY)
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 密码输入框：使用password类型保护密钥在屏幕上的显示 -->
+                  <input type="password" 
+                    id="yipay-key" 
+                    placeholder="请输入商户密钥" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段提示：强调密钥的重要性 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    用于签名验证，请妥善保管
+                  </p>
+                </div>
+
+                <!-- 字段4：启用的支付方式 (enabled_payment_methods) -->
+                <div>
+                  <!-- 字段标签：指定启用哪些支付方式 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    启用的支付方式
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 文本输入框：输入逗号分隔的支付方式代码 -->
+                  <input type="text" 
+                    id="yipay-enabled-methods" 
+                    placeholder="alipay,wxpay,qqpay" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段提示：说明输入格式 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    多个支付方式用逗号分隔
+                  </p>
+                </div>
+
+                <!-- 字段5：支付接口类型 (payment_method) -->
+                <div>
+                  <!-- 字段标签：指定使用哪种支付接口类型 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    支付接口类型
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 下拉选择框：从预定义的接口类型中选择 -->
+                  <select id="yipay-payment-method" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <!-- 选项1：跳转支付（jump） - 默认选项 -->
+                    <option value="jump">跳转支付 (jump)</option>
+                    <!-- 选项2：网页支付（web） -->
+                    <option value="web">网页支付 (web)</option>
+                    <!-- 选项3：JSAPI支付（jsapi） -->
+                    <option value="jsapi">JSAPI支付 (jsapi)</option>
+                    <!-- 选项4：APP支付（app） -->
+                    <option value="app">APP支付 (app)</option>
+                    <!-- 选项5：扫码支付（scan） -->
+                    <option value="scan">扫码支付 (scan)</option>
+                    <!-- 选项6：小程序支付（applet） -->
+                    <option value="applet">小程序支付 (applet)</option>
+                  </select>
+                  <!-- 字段提示：说明不同接口类型的使用场景 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    常用：跳转支付（适用于大多数场景）
+                  </p>
+                </div>
+              </div>
+
+              <!-- 操作按钮组 -->
+              <!-- 使用网格布局，将"刷新"和"保存"按钮并排显示 -->
+              <div class="grid grid-cols-2 gap-2">
+                
+                <!-- 刷新配置按钮：从服务器重新加载当前的配置 -->
+                <button onclick="loadMobileYiPayConfig()" 
+                  class="py-2.5 bg-slate-500 text-white rounded-lg text-sm font-medium hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm">
+                  刷新配置
+                </button>
+
+                <!-- 保存配置按钮：将表单中的配置保存到服务器 -->
+                <button onclick="saveMobileYiPayConfig()" 
+                  class="py-2.5 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm">
+                  保存配置
+                </button>
+              </div>
+
+              <!-- 操作结果提示区域：显示成功或错误消息 -->
+              <!-- 默认隐藏，由JavaScript根据操作结果动态显示 -->
+              <div id="yipay-config-result" class="hidden">
+                <!-- 成功/错误提示 -->
+                <!-- 此内容将由JavaScript动态更新 -->
               </div>
             </div>
           </div>
@@ -9226,6 +9380,174 @@
             <!-- 此内容将由JavaScript动态更新 -->
           </div>
         </div>
+
+        <!-- ========================================
+             Tab 5 内容区域：易支付配置
+             ========================================
+             功能：管理员配置易支付接口参数
+             包含：host、pid、key、启用的支付方式、接口类型
+             API端点：/api/admin/yipay_config
+             权限要求：modify_config权限 + admin或super_admin用户组
+             ======================================== -->
+        <div id="admin-payment-settings-content-yipay_modal" class="hidden space-y-4">
+          <!-- 配置说明文本 -->
+          <!-- 使用蓝色背景的提示框，告知管理员此功能的作用 -->
+          <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            💡 提示：配置易支付接口参数后，系统将使用该接口处理支付请求。请确保参数正确无误。
+          </p>
+
+          <!-- 易支付配置表单 -->
+          <!-- 使用浅灰色背景的容器，包含所有配置字段 -->
+          <div class="space-y-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
+            
+            <!-- 字段1：易支付接口域名 (host) -->
+            <div>
+              <!-- 字段标签：使用粗体文字，标注必填项（红色星号）-->
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                易支付接口域名
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 文本输入框：用于输入易支付平台的API域名 -->
+              <!-- 例如：https://pay.example.com -->
+              <input type="text" 
+                id="admin-yipay-host_modal" 
+                placeholder="例如：https://pay.example.com" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+              <!-- 字段提示：帮助文字，说明此字段的用途和格式 -->
+              <p class="mt-1 text-xs text-slate-500">
+                易支付平台的API接口地址，必须以http://或https://开头
+              </p>
+            </div>
+
+            <!-- 字段2：商户ID (pid) -->
+            <div>
+              <!-- 字段标签：商户ID是易支付平台分配的唯一标识符 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                商户ID (PID)
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 文本输入框：用于输入商户ID -->
+              <input type="text" 
+                id="admin-yipay-pid_modal" 
+                placeholder="请输入商户ID" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+              <!-- 字段提示：说明商户ID的来源 -->
+              <p class="mt-1 text-xs text-slate-500">
+                由易支付平台分配的商户唯一标识
+              </p>
+            </div>
+
+            <!-- 字段3：商户密钥 (key) -->
+            <div>
+              <!-- 字段标签：商户密钥用于签名验证，是敏感信息 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                商户密钥 (KEY)
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 密码输入框：使用password类型保护密钥在屏幕上的显示 -->
+              <!-- 但保存到服务器后会完整存储（不脱敏） -->
+              <input type="password" 
+                id="admin-yipay-key_modal" 
+                placeholder="请输入商户密钥" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+              <!-- 字段提示：强调密钥的重要性和保密性 -->
+              <p class="mt-1 text-xs text-slate-500">
+                用于签名验证的密钥，请妥善保管，不要泄露
+              </p>
+            </div>
+
+            <!-- 字段4：启用的支付方式 (enabled_payment_methods) -->
+            <div>
+              <!-- 字段标签：指定启用哪些支付方式 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                启用的支付方式
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 文本输入框：输入逗号分隔的支付方式代码 -->
+              <!-- 例如：alipay,wxpay,qqpay,unionpay -->
+              <input type="text" 
+                id="admin-yipay-enabled-methods_modal" 
+                placeholder="例如：alipay,wxpay,qqpay" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+              <!-- 字段提示：说明输入格式和支持的支付方式 -->
+              <p class="mt-1 text-xs text-slate-500">
+                多个支付方式用逗号分隔。支持：alipay（支付宝）、wxpay（微信）、qqpay（QQ钱包）、unionpay（云闪付）
+              </p>
+            </div>
+
+            <!-- 字段5：支付接口类型 (payment_method) -->
+            <div>
+              <!-- 字段标签：指定使用哪种支付接口类型 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                支付接口类型
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 下拉选择框：从预定义的接口类型中选择 -->
+              <!-- 不同的接口类型对应不同的支付场景和用户体验 -->
+              <select id="admin-yipay-payment-method_modal" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow">
+                <!-- 选项1：跳转支付（jump） - 默认选项 -->
+                <!-- 用户在当前页面点击支付后，跳转到支付页面完成支付 -->
+                <option value="jump">跳转支付 (jump)</option>
+                <!-- 选项2：网页支付（web） -->
+                <!-- 在网页中直接显示支付界面 -->
+                <option value="web">网页支付 (web)</option>
+                <!-- 选项3：JSAPI支付（jsapi） -->
+                <!-- 用于微信公众号等场景，需要用户授权 -->
+                <option value="jsapi">JSAPI支付 (jsapi)</option>
+                <!-- 选项4：APP支付（app） -->
+                <!-- 用于移动APP内的支付场景 -->
+                <option value="app">APP支付 (app)</option>
+                <!-- 选项5：扫码支付（scan） -->
+                <!-- 生成二维码，用户扫码后完成支付 -->
+                <option value="scan">扫码支付 (scan)</option>
+                <!-- 选项6：小程序支付（applet） -->
+                <!-- 用于微信小程序等场景 -->
+                <option value="applet">小程序支付 (applet)</option>
+              </select>
+              <!-- 字段提示：说明不同接口类型的使用场景 -->
+              <p class="mt-1 text-xs text-slate-500">
+                根据您的使用场景选择合适的接口类型。常用：跳转支付（适用于大多数网页场景）
+              </p>
+            </div>
+          </div>
+
+          <!-- 操作按钮组 -->
+          <!-- 使用网格布局，将"刷新配置"和"保存配置"按钮并排显示 -->
+          <div class="grid grid-cols-2 gap-3">
+            
+            <!-- 刷新配置按钮：从服务器重新加载当前的配置 -->
+            <!-- 使用灰色主题，表示这是一个辅助操作 -->
+            <button onclick="loadAdminYiPayConfig()" 
+              class="py-3 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md">
+              <!-- 刷新图标：循环箭头，表示重新加载 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              刷新配置
+            </button>
+
+            <!-- 保存配置按钮：将表单中的配置保存到服务器 -->
+            <!-- 使用绿色主题，表示这是一个积极的操作 -->
+            <button onclick="saveAdminYiPayConfig()" 
+              class="py-3 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm hover:shadow-md">
+              <!-- 保存图标：软盘或勾选标志 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M5 13l4 4L19 7"/>
+              </svg>
+              保存配置
+            </button>
+          </div>
+
+          <!-- 操作结果提示区域：显示成功或错误消息 -->
+          <!-- 默认隐藏，由JavaScript根据操作结果动态显示 -->
+          <div id="admin-yipay-config-result_modal" class="hidden">
+            <!-- 成功/错误提示 -->
+            <!-- 此内容将由JavaScript动态更新 -->
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -12071,7 +12393,8 @@
     function switchPaymentSettingsTab(tabName) {
       // 定义所有标签页的名称数组
       // 这样可以统一管理所有标签页，便于维护
-      const tabs = ['config', 'query', 'refund', 'test'];
+      // 新增 'yipay' - 易支付配置标签页（移动端）
+      const tabs = ['config', 'query', 'refund', 'test', 'yipay'];
       
       // 遍历所有标签页，执行显示/隐藏操作
       tabs.forEach(tab => {
@@ -13588,7 +13911,8 @@
       // 定义所有标签页的名称数组
       // 这样可以统一管理所有标签页，便于维护
       // 如果将来需要添加新的Tab，只需在这里添加名称即可
-      const tabs = ['config', 'query', 'refund', 'test'];
+      // 新增 'yipay' - 易支付配置标签页
+      const tabs = ['config', 'query', 'refund', 'test', 'yipay'];
       
       // 遍历所有标签页，执行显示/隐藏操作
       // forEach循环：对数组中的每个元素执行一次指定函数
@@ -14789,6 +15113,589 @@
         } catch (err) {
           console.error('[PC端测试支付] Fallback复制失败：', err);
           alert('复制失败，请手动复制链接。');
+        }
+      }
+    }
+
+    // ==========================================
+    // Tab 5: 易支付配置管理功能（PC端）
+    // ==========================================
+    // 【功能说明】
+    // 实现易支付接口参数的加载和保存功能
+    // 包括host、pid、key、enabled_payment_methods、payment_method
+    // ==========================================
+
+    /**
+     * 加载PC端管理员易支付配置
+     * 
+     * 功能说明：
+     * 从服务器获取当前的易支付配置，并填充到表单中
+     * 此函数会在用户点击"刷新配置"按钮或切换到易支付Tab时调用
+     * 
+     * API端点：GET /api/admin/yipay_config
+     * 权限要求：modify_config权限 + admin或super_admin用户组
+     * 
+     * 预期返回格式：
+     * {
+     *   success: true,
+     *   config: {
+     *     host: "https://pay.example.com",
+     *     pid: "12345",
+     *     key: "abcdef123456",
+     *     enabled_payment_methods: "alipay,wxpay",
+     *     payment_method: "jump"
+     *   }
+     * }
+     */
+    async function loadAdminYiPayConfig() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[PC端易支付配置] 开始加载易支付配置...');
+      
+      try {
+        // === 第1步：发起HTTP GET请求获取配置数据 ===
+        // 使用fetch API调用后端接口
+        // await关键字会等待请求完成，确保获取到响应后再继续执行
+        const response = await fetch('/api/admin/yipay_config', {
+          method: 'GET', // HTTP方法：GET用于获取数据
+          headers: {
+            // 设置请求头，告知服务器期望返回JSON格式的数据
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        // === 第2步：检查HTTP响应状态码 ===
+        // response.ok 为true表示状态码在200-299范围内（成功）
+        if (!response.ok) {
+          // 如果响应状态码不是成功状态（如404、500等）
+          // 特别处理403错误（权限不足）
+          if (response.status === 403) {
+            throw new Error('权限不足，需要管理员权限');
+          }
+          // 抛出错误，中断执行流程，进入catch块处理
+          throw new Error(`加载配置失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第3步：解析JSON响应数据 ===
+        // 将响应体解析为JavaScript对象
+        const result = await response.json();
+        
+        // 在控制台输出获取到的配置数据，方便开发者查看和调试
+        console.log('[PC端易支付配置] 成功获取易支付配置：', result);
+        
+        // === 第4步：检查业务状态 ===
+        // 即使HTTP状态码成功，也需要检查业务逻辑是否成功
+        if (!result.success) {
+          throw new Error(result.message || '加载配置失败');
+        }
+        
+        // === 第5步：将配置数据填充到表单字段中 ===
+        
+        const config = result.config || {};
+        
+        // 5.1 填充host字段（易支付接口域名）
+        const hostInput = document.getElementById('admin-yipay-host_modal');
+        if (hostInput) {
+          // 使用textContent的方式更安全，但input.value是正确的方式
+          hostInput.value = config.host || '';
+        }
+        
+        // 5.2 填充pid字段（商户ID）
+        const pidInput = document.getElementById('admin-yipay-pid_modal');
+        if (pidInput) {
+          pidInput.value = config.pid || '';
+        }
+        
+        // 5.3 填充key字段（商户密钥）
+        const keyInput = document.getElementById('admin-yipay-key_modal');
+        if (keyInput) {
+          // 注意：后端返回的是完整密钥（不脱敏），直接填充到密码输入框
+          keyInput.value = config.key || '';
+        }
+        
+        // 5.4 填充enabled_payment_methods字段（启用的支付方式）
+        const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
+        if (methodsInput) {
+          // 支付方式以逗号分隔的字符串形式存储，如 "alipay,wxpay"
+          methodsInput.value = config.enabled_payment_methods || '';
+        }
+        
+        // 5.5 填充payment_method字段（支付接口类型）
+        const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
+        if (typeSelect) {
+          // 设置下拉框的选中值
+          typeSelect.value = config.payment_method || 'jump';
+        }
+        
+        // === 第6步：显示成功提示 ===
+        
+        const resultDiv = document.getElementById('admin-yipay-config-result_modal');
+        if (resultDiv) {
+          // 使用textContent防止XSS攻击，但这里需要HTML结构，所以使用innerHTML
+          // 由于这是管理员功能且数据来自服务器，风险可控
+          resultDiv.innerHTML = `
+            <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✓ 配置已加载
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          // 3秒后自动隐藏成功提示
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 3000);
+        }
+        
+        console.log('[PC端易支付配置] 配置已成功填充到表单');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        // 当任何步骤发生错误时（网络失败、JSON解析失败、服务器错误等）
+        // 都会被捕获到这里
+        console.error('[PC端易支付配置] 加载配置时发生错误：', error);
+        
+        // 显示错误提示
+        const resultDiv = document.getElementById('admin-yipay-config-result_modal');
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✗ 加载失败：${error.message || '未知错误'}
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          // 8秒后自动隐藏错误提示（比成功提示稍长）
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 8000);
+        } else {
+          // 如果结果显示区域不存在，使用alert作为备选方案
+          alert(`加载失败：${error.message || '未知错误'}`);
+        }
+      }
+    }
+
+    /**
+     * 保存PC端管理员易支付配置
+     * 
+     * 功能说明：
+     * 从表单中收集用户输入的易支付配置，验证后发送到服务器保存
+     * 此函数会在用户点击"保存配置"按钮时调用
+     * 
+     * API端点：PUT /api/admin/yipay_config
+     * 权限要求：modify_config权限 + admin或super_admin用户组
+     * 
+     * 请求数据格式：
+     * {
+     *   host: "https://pay.example.com",
+     *   pid: "12345",
+     *   key: "abcdef123456",
+     *   enabled_payment_methods: "alipay,wxpay",
+     *   payment_method: "jump"
+     * }
+     */
+    async function saveAdminYiPayConfig() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[PC端易支付配置] 开始保存易支付配置...');
+      
+      // === 第1步：获取DOM元素 ===
+      
+      const hostInput = document.getElementById('admin-yipay-host_modal');
+      const pidInput = document.getElementById('admin-yipay-pid_modal');
+      const keyInput = document.getElementById('admin-yipay-key_modal');
+      const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
+      const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
+      
+      // === 第2步：获取并验证输入值 ===
+      
+      // 2.1 获取host值并去除首尾空格
+      const host = hostInput ? hostInput.value.trim() : '';
+      if (!host) {
+        alert('请输入易支付接口域名');
+        // 聚焦到host输入框，引导用户输入
+        if (hostInput) hostInput.focus();
+        return; // 中断函数执行
+      }
+      
+      // 2.2 获取pid值并去除首尾空格
+      const pid = pidInput ? pidInput.value.trim() : '';
+      if (!pid) {
+        alert('请输入商户ID');
+        if (pidInput) pidInput.focus();
+        return;
+      }
+      
+      // 2.3 获取key值并去除首尾空格
+      const key = keyInput ? keyInput.value.trim() : '';
+      if (!key) {
+        alert('请输入商户密钥');
+        if (keyInput) keyInput.focus();
+        return;
+      }
+      
+      // 2.4 获取启用的支付方式（可以为空，后端会使用默认值）
+      const enabledMethods = methodsInput ? methodsInput.value.trim() : '';
+      
+      // 2.5 获取支付接口类型（必填）
+      const paymentMethod = typeSelect ? typeSelect.value : 'jump';
+      if (!paymentMethod) {
+        alert('请选择支付接口类型');
+        if (typeSelect) typeSelect.focus();
+        return;
+      }
+      
+      // 在控制台输出要提交的配置数据
+      console.log('[PC端易支付配置] 准备提交的配置：', {
+        host,
+        pid,
+        key: '***隐藏***', // 在日志中隐藏密钥，保护敏感信息
+        enabled_payment_methods: enabledMethods,
+        payment_method: paymentMethod
+      });
+      
+      try {
+        // === 第3步：发起HTTP PUT请求保存配置 ===
+        
+        const response = await fetch('/api/admin/yipay_config', {
+          method: 'PUT', // HTTP方法：PUT用于更新数据
+          headers: {
+            // 设置请求头，告知服务器发送的是JSON格式的数据
+            'Content-Type': 'application/json'
+          },
+          // 将配置对象转换为JSON字符串并发送
+          body: JSON.stringify({
+            host: host,
+            pid: pid,
+            key: key,
+            enabled_payment_methods: enabledMethods,
+            payment_method: paymentMethod
+          })
+        });
+        
+        // === 第4步：检查HTTP响应状态码 ===
+        
+        if (!response.ok) {
+          // 特别处理403错误（权限不足）
+          if (response.status === 403) {
+            throw new Error('权限不足，需要管理员权限');
+          }
+          throw new Error(`保存配置失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第5步：解析响应数据 ===
+        
+        const result = await response.json();
+        
+        console.log('[PC端易支付配置] API响应：', result);
+        
+        // === 第6步：检查业务状态 ===
+        
+        if (!result.success) {
+          throw new Error(result.message || '保存配置失败');
+        }
+        
+        // === 第7步：显示成功提示 ===
+        
+        const resultDiv = document.getElementById('admin-yipay-config-result_modal');
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✓ 配置保存成功
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          // 3秒后自动隐藏成功提示
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 3000);
+        }
+        
+        console.log('[PC端易支付配置] 配置保存成功');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        
+        console.error('[PC端易支付配置] 保存配置时发生错误：', error);
+        
+        // 显示错误提示
+        const resultDiv = document.getElementById('admin-yipay-config-result_modal');
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ✗ 保存失败：${error.message || '未知错误'}
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          // 8秒后自动隐藏错误提示
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 8000);
+        } else {
+          alert(`保存失败：${error.message || '未知错误'}`);
+        }
+      }
+    }
+
+    // ==========================================
+    // Tab 5: 易支付配置管理功能（移动端）
+    // ==========================================
+    // 【功能说明】
+    // 移动端的易支付配置加载和保存功能
+    // 与PC端功能相同，但使用不同的DOM元素ID
+    // ==========================================
+
+    /**
+     * 加载移动端易支付配置
+     * 
+     * 功能说明：
+     * 从服务器获取当前的易支付配置，并填充到移动端表单中
+     * 
+     * API端点：GET /api/admin/yipay_config
+     * 权限要求：modify_config权限 + admin或super_admin用户组
+     */
+    async function loadMobileYiPayConfig() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[移动端易支付配置] 开始加载易支付配置...');
+      
+      try {
+        // === 发起HTTP GET请求 ===
+        const response = await fetch('/api/admin/yipay_config', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        // === 检查响应状态 ===
+        if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error('权限不足，需要管理员权限');
+          }
+          throw new Error(`加载配置失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 解析响应数据 ===
+        const result = await response.json();
+        console.log('[移动端易支付配置] 成功获取易支付配置：', result);
+        
+        // === 检查业务状态 ===
+        if (!result.success) {
+          throw new Error(result.message || '加载配置失败');
+        }
+        
+        // === 填充表单字段（使用移动端的元素ID）===
+        
+        const config = result.config || {};
+        
+        // 填充host字段
+        const hostInput = document.getElementById('yipay-host');
+        if (hostInput) {
+          hostInput.value = config.host || '';
+        }
+        
+        // 填充pid字段
+        const pidInput = document.getElementById('yipay-pid');
+        if (pidInput) {
+          pidInput.value = config.pid || '';
+        }
+        
+        // 填充key字段
+        const keyInput = document.getElementById('yipay-key');
+        if (keyInput) {
+          keyInput.value = config.key || '';
+        }
+        
+        // 填充enabled_payment_methods字段
+        const methodsInput = document.getElementById('yipay-enabled-methods');
+        if (methodsInput) {
+          methodsInput.value = config.enabled_payment_methods || '';
+        }
+        
+        // 填充payment_method字段
+        const typeSelect = document.getElementById('yipay-payment-method');
+        if (typeSelect) {
+          typeSelect.value = config.payment_method || 'jump';
+        }
+        
+        // === 显示成功提示 ===
+        const resultDiv = document.getElementById('yipay-config-result');
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+              ✓ 配置已加载
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          // 3秒后自动隐藏
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 3000);
+        }
+        
+        console.log('[移动端易支付配置] 配置已成功填充到表单');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        console.error('[移动端易支付配置] 加载配置时发生错误：', error);
+        
+        const resultDiv = document.getElementById('yipay-config-result');
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+              ✗ 加载失败：${error.message || '未知错误'}
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 8000);
+        } else {
+          alert(`加载失败：${error.message || '未知错误'}`);
+        }
+      }
+    }
+
+    /**
+     * 保存移动端易支付配置
+     * 
+     * 功能说明：
+     * 从移动端表单中收集用户输入的易支付配置，验证后发送到服务器保存
+     * 
+     * API端点：PUT /api/admin/yipay_config
+     * 权限要求：modify_config权限 + admin或super_admin用户组
+     */
+    async function saveMobileYiPayConfig() {
+      // 在控制台输出日志
+      console.log('[移动端易支付配置] 开始保存易支付配置...');
+      
+      // === 获取DOM元素（使用移动端的元素ID）===
+      const hostInput = document.getElementById('yipay-host');
+      const pidInput = document.getElementById('yipay-pid');
+      const keyInput = document.getElementById('yipay-key');
+      const methodsInput = document.getElementById('yipay-enabled-methods');
+      const typeSelect = document.getElementById('yipay-payment-method');
+      
+      // === 获取并验证输入值 ===
+      
+      const host = hostInput ? hostInput.value.trim() : '';
+      if (!host) {
+        alert('请输入易支付接口域名');
+        if (hostInput) hostInput.focus();
+        return;
+      }
+      
+      const pid = pidInput ? pidInput.value.trim() : '';
+      if (!pid) {
+        alert('请输入商户ID');
+        if (pidInput) pidInput.focus();
+        return;
+      }
+      
+      const key = keyInput ? keyInput.value.trim() : '';
+      if (!key) {
+        alert('请输入商户密钥');
+        if (keyInput) keyInput.focus();
+        return;
+      }
+      
+      const enabledMethods = methodsInput ? methodsInput.value.trim() : '';
+      const paymentMethod = typeSelect ? typeSelect.value : 'jump';
+      
+      console.log('[移动端易支付配置] 准备提交的配置：', {
+        host,
+        pid,
+        key: '***隐藏***',
+        enabled_payment_methods: enabledMethods,
+        payment_method: paymentMethod
+      });
+      
+      try {
+        // === 发起HTTP PUT请求 ===
+        const response = await fetch('/api/admin/yipay_config', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            host: host,
+            pid: pid,
+            key: key,
+            enabled_payment_methods: enabledMethods,
+            payment_method: paymentMethod
+          })
+        });
+        
+        // === 检查响应状态 ===
+        if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error('权限不足，需要管理员权限');
+          }
+          throw new Error(`保存配置失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 解析响应数据 ===
+        const result = await response.json();
+        console.log('[移动端易支付配置] API响应：', result);
+        
+        // === 检查业务状态 ===
+        if (!result.success) {
+          throw new Error(result.message || '保存配置失败');
+        }
+        
+        // === 显示成功提示 ===
+        const resultDiv = document.getElementById('yipay-config-result');
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+              ✓ 配置保存成功
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 3000);
+        }
+        
+        console.log('[移动端易支付配置] 配置保存成功');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        console.error('[移动端易支付配置] 保存配置时发生错误：', error);
+        
+        const resultDiv = document.getElementById('yipay-config-result');
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+              ✗ 保存失败：${error.message || '未知错误'}
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+          
+          setTimeout(() => {
+            resultDiv.classList.add('hidden');
+          }, 8000);
+        } else {
+          alert(`保存失败：${error.message || '未知错误'}`);
         }
       }
     }
