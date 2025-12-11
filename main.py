@@ -26633,46 +26633,6 @@ def start_web_server(args_param):
     def payment_methods_config():
         """
         获取支付方式配置接口
-        
-        功能说明：
-        返回所有支持的支付方式及其显示信息（名称、SVG图标、描述、样式等）
-        前端通过此接口获取支付方式配置，实现完全的配置驱动，无需硬编码
-        
-        请求方法：GET
-        权限要求：无（公开接口）
-        
-        返回格式：
-        {
-            "success": true,
-            "methods": {
-                "alipay": {
-                    "name": "支付宝支付",
-                    "icon": "svg",
-                    "svg": "<svg>...</svg>",
-                    "description": "支持支付宝扫码支付",
-                    "borderColor": "hover:border-sky-500",
-                    "textColor": "text-sky-600"
-                },
-                "wxpay": { ... },
-                ...
-            }
-        }
-        
-        错误返回：
-        {
-            "success": false,
-            "message": "读取配置失败"
-        }
-        
-        使用场景：
-        1. 页面加载时自动调用，动态生成支付方式选择界面
-        2. 管理员修改配置后，前端可重新调用以刷新显示
-        3. 支持动态添加/删除支付方式，无需修改前端代码
-        
-        注意事项：
-        1. 返回的是所有定义的支付方式，实际可用的支付方式还需要结合 enabled_payment_methods 配置
-        2. SVG图标代码已包含样式类，前端可直接渲染
-        3. 如果配置文件中不存在此配置，返回空对象 {}
         """
         try:
             # 调用 _read_payment_methods_config() 函数从 JSON 文件读取配置
