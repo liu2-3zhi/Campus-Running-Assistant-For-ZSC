@@ -1606,19 +1606,6 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 格式：通常为32位随机字符串\n")
         f.write("# 示例：abcdef1234567890abcdef1234567890\n")
         f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
-        f.write("# 应用访问域名（必填）\n")
-        f.write("# 本应用的公网访问地址，用于自动构造异步通知URL\n")
-        f.write("# 格式示例：https://yourdomain.com 或 https://www.example.com\n")
-        f.write("# 注意：\n")
-        f.write("# 1. 必须是公网可访问的HTTPS地址\n")
-        f.write("# 2. 包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
-        f.write("# 3. 系统会自动拼接为：{app_host}/api/payment/yipay_notify\n")
-        f.write(f"app_host = {config_obj.get('Rainbow_YiPay', 'app_host', fallback='')}\n")
-        f.write("# 异步通知URL（已废弃）\n")
-        f.write("# ⚠️ 此配置项已废弃，现在 notify_url 会根据 app_host 自动构造\n")
-        f.write("# 格式：{app_host}/api/payment/yipay_notify\n")
-        f.write("# 无需手动配置，保留此项仅为向后兼容\n")
-        f.write(f"notify_url = {config_obj.get('Rainbow_YiPay', 'notify_url', fallback='')}\n")
         f.write("# 同步返回URL（可选）\n")
         f.write("# 用户支付完成后，浏览器会跳转到此URL显示支付结果\n")
         f.write("# 格式示例：https://yourdomain.com/payment/success\n")
@@ -26478,6 +26465,7 @@ def start_web_server(args_param):
             logging.error(traceback.format_exc())
 
     @app.route("/api/payment/methods_config", methods=["GET"])
+    @login_required
     def payment_methods_config():
         """
         获取支付方式配置接口
