@@ -7488,6 +7488,16 @@ body.mobile-mode #session-picker-modal {
                 onclick="switchPaymentSettingsTab('yipay')">
                 易支付配置
               </button>
+              
+              <!-- ========================================
+                   [新增] Tab 6: 商品名测试（移动端）
+                   功能：测试商品名称生成器，验证生成结果
+                   ======================================== -->
+              <button id="payment-settings-tab-product-test" 
+                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+                onclick="switchPaymentSettingsTab('product-test')">
+                商品名测试
+              </button>
             </div>
 
             <!-- ========================================
@@ -8040,6 +8050,99 @@ body.mobile-mode #session-picker-modal {
               <div id="yipay-config-result" class="hidden">
                 <!-- 成功/错误提示 -->
                 <!-- 此内容将由JavaScript动态更新 -->
+              </div>
+            </div>
+            
+            <!-- ========================================
+                 [新增] Tab 6 内容区域：商品名测试面板（移动端）
+                 功能：测试商品名称生成器，验证生成结果
+                 API端点：/api/admin/generate_product_name
+                 ======================================== -->
+            <div id="payment-settings-content-product-test" class="hidden space-y-3">
+              <!-- 测试说明文本 -->
+              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                💡 提示：此功能用于测试商品名称生成器，验证生成的商品名是否符合预期
+              </p>
+
+              <!-- 单次测试表单区域 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <!-- 区域标题 -->
+                <h5 class="font-semibold text-xs text-slate-700 border-b border-slate-300 pb-2">
+                  单次测试
+                </h5>
+                
+                <!-- 数量输入框 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商品数量
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 商品数量输入框（整数，1-9999）-->
+                  <input type="number" 
+                    id="product-test-quantity" 
+                    placeholder="请输入商品数量" 
+                    value="5" 
+                    min="1" 
+                    max="9999" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 提示文字 -->
+                  <p class="text-xs text-slate-500 mt-1">
+                    输入商品数量（1-9999），系统将根据此数量生成趣味商品名称
+                  </p>
+                </div>
+
+                <!-- 生成按钮 -->
+                <button id="generate-product-name-btn" 
+                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm"
+                  onclick="testGenerateProductName()">
+                  <!-- 生成图标 -->
+                  <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                  生成商品名
+                </button>
+
+                <!-- 结果显示区域 -->
+                <div id="product-test-result" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
+                  <h6 class="font-semibold text-xs text-slate-700 border-b border-slate-200 pb-1">
+                    生成结果：
+                  </h6>
+                  <!-- 商品名称显示 -->
+                  <div class="bg-slate-50 p-2 rounded-md">
+                    <p class="text-xs text-slate-500 mb-1">商品名称：</p>
+                    <p id="product-test-name" class="text-sm font-medium text-slate-800 break-all"></p>
+                  </div>
+                  <!-- 字节长度显示 -->
+                  <div class="bg-slate-50 p-2 rounded-md">
+                    <p class="text-xs text-slate-500 mb-1">字节长度：</p>
+                    <p id="product-test-length" class="text-sm font-medium text-slate-800"></p>
+                    <p class="text-xs text-slate-400 mt-1">（支付接口限制最大127字节）</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 批量测试按钮 -->
+              <button id="batch-test-product-names-btn" 
+                class="w-full py-2.5 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm"
+                onclick="batchTestProductNames()">
+                <!-- 批量图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                批量测试（生成10个示例）
+              </button>
+
+              <!-- 批量测试结果显示区域 -->
+              <div id="batch-test-results" class="hidden space-y-2">
+                <h5 class="font-semibold text-xs text-slate-700 border-b border-slate-200 pb-2">
+                  批量测试结果：
+                </h5>
+                <!-- 结果列表容器 -->
+                <div id="batch-test-list" class="space-y-2 max-h-96 overflow-y-auto">
+                  <!-- 批量测试结果将动态插入到这里 -->
+                </div>
               </div>
             </div>
           </div>
@@ -16620,6 +16723,182 @@ body.mobile-mode #session-picker-modal {
       }
     }
     
+    /**
+     * [新增] 测试商品名称生成器（移动端）- 单次测试
+     * 
+     * 功能说明：
+     * 根据用户输入的商品数量，调用后端API生成趣味商品名称
+     * 并显示生成结果（商品名称和字节长度）
+     * 
+     * API端点：POST /api/admin/generate_product_name
+     * 
+     * 调用时机：
+     * - 用户在商品名测试面板点击"生成商品名"按钮时
+     */
+    async function testGenerateProductName() {
+      console.log('[移动端商品名测试] 开始单次测试...');
+      
+      // === 第1步：获取输入元素 ===
+      const quantityInput = document.getElementById('product-test-quantity');
+      const resultContainer = document.getElementById('product-test-result');
+      const productNameDisplay = document.getElementById('product-test-name');
+      const byteLengthDisplay = document.getElementById('product-test-length');
+      
+      // === 第2步：验证输入 ===
+      const quantity = quantityInput ? parseInt(quantityInput.value) : 0;
+      
+      // 验证数量是否有效
+      if (!quantity || quantity < 1 || quantity > 9999) {
+        showModalAlert('请输入有效的商品数量（1-9999）');
+        return;
+      }
+      
+      console.log('[移动端商品名测试] 商品数量：', quantity);
+      
+      try {
+        // === 第3步：调用后端API生成商品名 ===
+        const response = await fetch('/api/admin/generate_product_name', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            quantity: quantity
+          })
+        });
+        
+        // 解析响应JSON
+        const result = await response.json();
+        console.log('[移动端商品名测试] API响应：', result);
+        
+        // === 第4步：处理响应 ===
+        if (result.success) {
+          // 生成成功：显示结果
+          if (productNameDisplay) {
+            productNameDisplay.textContent = result.product_name;
+          }
+          if (byteLengthDisplay) {
+            byteLengthDisplay.textContent = `${result.byte_length} 字节`;
+          }
+          // 显示结果容器
+          if (resultContainer) {
+            resultContainer.classList.remove('hidden');
+          }
+          console.log('[移动端商品名测试] 生成成功');
+        } else {
+          // 生成失败：显示错误消息
+          showModalAlert('生成失败：' + (result.message || '未知错误'));
+        }
+      } catch (error) {
+        // === 第5步：错误处理 ===
+        console.error('[移动端商品名测试] 请求失败：', error);
+        showModalAlert('网络错误，请稍后重试');
+      }
+    }
+    
+    /**
+     * [新增] 测试商品名称生成器（移动端）- 批量测试
+     * 
+     * 功能说明：
+     * 生成10个不同数量的商品名称示例（1, 2, 5, 10, 20, 50, 100, 200, 500, 1000）
+     * 用于验证生成器在不同数量级下的表现
+     * 
+     * API端点：POST /api/admin/generate_product_name
+     * 
+     * 调用时机：
+     * - 用户在商品名测试面板点击"批量测试（生成10个示例）"按钮时
+     */
+    async function batchTestProductNames() {
+      console.log('[移动端商品名测试] 开始批量测试...');
+      
+      // === 第1步：获取容器元素 ===
+      const batchResultsContainer = document.getElementById('batch-test-results');
+      const batchListContainer = document.getElementById('batch-test-list');
+      
+      // 验证元素是否存在
+      if (!batchListContainer) {
+        console.error('[移动端商品名测试] 找不到批量测试结果列表容器');
+        return;
+      }
+      
+      // === 第2步：定义测试数量数组 ===
+      // 涵盖不同数量级：个位数、十位数、百位数、千位数
+      const testQuantities = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+      
+      // 清空之前的结果
+      batchListContainer.innerHTML = '<p class="text-slate-400 text-center py-4 text-xs">正在生成...</p>';
+      
+      // 显示结果容器
+      if (batchResultsContainer) {
+        batchResultsContainer.classList.remove('hidden');
+      }
+      
+      // === 第3步：逐个调用API生成 ===
+      const results = [];
+      
+      for (const quantity of testQuantities) {
+        try {
+          // 调用API
+          const response = await fetch('/api/admin/generate_product_name', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              quantity: quantity
+            })
+          });
+          
+          const result = await response.json();
+          
+          // 保存结果
+          if (result.success) {
+            results.push({
+              quantity: quantity,
+              productName: result.product_name,
+              byteLength: result.byte_length
+            });
+            console.log(`[移动端商品名测试] 数量${quantity}：${result.product_name}`);
+          }
+        } catch (error) {
+          console.error(`[移动端商品名测试] 数量${quantity}生成失败：`, error);
+        }
+      }
+      
+      // === 第4步：渲染结果列表 ===
+      if (results.length === 0) {
+        batchListContainer.innerHTML = '<p class="text-red-500 text-center py-4 text-xs">批量生成失败，请检查网络连接</p>';
+        return;
+      }
+      
+      // 构建HTML字符串（移动端使用更小的间距和字体）
+      let html = '';
+      results.forEach((item, index) => {
+        html += `
+          <div class="bg-white border border-slate-200 rounded-lg p-2">
+            <!-- 序号和数量 -->
+            <div class="flex justify-between items-center mb-1 pb-1 border-b border-slate-100">
+              <span class="text-xs font-semibold text-slate-500">示例 ${index + 1}</span>
+              <span class="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">数量：${item.quantity}</span>
+            </div>
+            <!-- 商品名称 -->
+            <div class="mb-1">
+              <p class="text-xs text-slate-500 mb-0.5">商品名称：</p>
+              <p class="text-xs font-medium text-slate-800 break-all">${item.productName}</p>
+            </div>
+            <!-- 字节长度 -->
+            <div class="text-xs text-slate-500">
+              字节长度：<span class="font-semibold text-slate-700">${item.byteLength}</span> 字节
+              ${item.byteLength > 127 ? '<span class="text-red-600 ml-1">（超出限制！）</span>' : '<span class="text-green-600 ml-1">（符合限制）</span>'}
+            </div>
+          </div>
+        `;
+      });
+      
+      batchListContainer.innerHTML = html;
+      console.log(`[移动端商品名测试] 批量测试完成，成功生成${results.length}个示例`);
+    }
+    
     async function createTestOrder() {
       // 在控制台输出日志，标记创建测试订单操作开始
       console.log('[测试支付] 开始创建测试订单...');
@@ -18176,6 +18455,194 @@ body.mobile-mode #session-picker-modal {
         autoContainer.classList.remove('hidden');
         console.log('[PC端测试支付] 已切换到自动生成模式');
       }
+    }
+    
+    /**
+     * [新增] 测试商品名称生成器（PC端）- 单次测试
+     * 
+     * 功能说明：
+     * 根据用户输入的商品数量，调用后端API生成趣味商品名称
+     * 并显示生成结果（商品名称和字节长度）
+     * 
+     * API端点：POST /api/admin/generate_product_name
+     * 
+     * 请求体格式：
+     * {
+     *   quantity: 5  // 商品数量（整数，1-9999）
+     * }
+     * 
+     * 预期返回格式：
+     * {
+     *   success: true,
+     *   product_name: "五串麻辣鸭脖配上三根秘制烤肠",  // 生成的商品名称
+     *   byte_length: 51                                 // 字节长度（UTF-8编码）
+     * }
+     * 
+     * 调用时机：
+     * - 用户在商品名测试面板点击"生成商品名"按钮时
+     */
+    async function testGenerateProductName_modal() {
+      console.log('[PC端商品名测试] 开始单次测试...');
+      
+      // === 第1步：获取输入元素 ===
+      const quantityInput = document.getElementById('product-test-quantity_modal');
+      const resultContainer = document.getElementById('product-test-result_modal');
+      const productNameDisplay = document.getElementById('product-test-name_modal');
+      const byteLengthDisplay = document.getElementById('product-test-length_modal');
+      
+      // === 第2步：验证输入 ===
+      const quantity = quantityInput ? parseInt(quantityInput.value) : 0;
+      
+      // 验证数量是否有效
+      if (!quantity || quantity < 1 || quantity > 9999) {
+        showModalAlert('请输入有效的商品数量（1-9999）');
+        return;
+      }
+      
+      console.log('[PC端商品名测试] 商品数量：', quantity);
+      
+      try {
+        // === 第3步：调用后端API生成商品名 ===
+        const response = await fetch('/api/admin/generate_product_name', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            quantity: quantity
+          })
+        });
+        
+        // 解析响应JSON
+        const result = await response.json();
+        console.log('[PC端商品名测试] API响应：', result);
+        
+        // === 第4步：处理响应 ===
+        if (result.success) {
+          // 生成成功：显示结果
+          if (productNameDisplay) {
+            productNameDisplay.textContent = result.product_name;
+          }
+          if (byteLengthDisplay) {
+            byteLengthDisplay.textContent = `${result.byte_length} 字节`;
+          }
+          // 显示结果容器
+          if (resultContainer) {
+            resultContainer.classList.remove('hidden');
+          }
+          console.log('[PC端商品名测试] 生成成功');
+        } else {
+          // 生成失败：显示错误消息
+          showModalAlert('生成失败：' + (result.message || '未知错误'));
+        }
+      } catch (error) {
+        // === 第5步：错误处理 ===
+        console.error('[PC端商品名测试] 请求失败：', error);
+        showModalAlert('网络错误，请稍后重试');
+      }
+    }
+    
+    /**
+     * [新增] 测试商品名称生成器（PC端）- 批量测试
+     * 
+     * 功能说明：
+     * 生成10个不同数量的商品名称示例（1, 2, 5, 10, 20, 50, 100, 200, 500, 1000）
+     * 用于验证生成器在不同数量级下的表现
+     * 
+     * API端点：POST /api/admin/generate_product_name
+     * 
+     * 调用时机：
+     * - 用户在商品名测试面板点击"批量测试（生成10个示例）"按钮时
+     */
+    async function batchTestProductNames_modal() {
+      console.log('[PC端商品名测试] 开始批量测试...');
+      
+      // === 第1步：获取容器元素 ===
+      const batchResultsContainer = document.getElementById('batch-test-results_modal');
+      const batchListContainer = document.getElementById('batch-test-list_modal');
+      
+      // 验证元素是否存在
+      if (!batchListContainer) {
+        console.error('[PC端商品名测试] 找不到批量测试结果列表容器');
+        return;
+      }
+      
+      // === 第2步：定义测试数量数组 ===
+      // 涵盖不同数量级：个位数、十位数、百位数、千位数
+      const testQuantities = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+      
+      // 清空之前的结果
+      batchListContainer.innerHTML = '<p class="text-slate-400 text-center py-4 text-sm">正在生成...</p>';
+      
+      // 显示结果容器
+      if (batchResultsContainer) {
+        batchResultsContainer.classList.remove('hidden');
+      }
+      
+      // === 第3步：逐个调用API生成 ===
+      const results = [];
+      
+      for (const quantity of testQuantities) {
+        try {
+          // 调用API
+          const response = await fetch('/api/admin/generate_product_name', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              quantity: quantity
+            })
+          });
+          
+          const result = await response.json();
+          
+          // 保存结果
+          if (result.success) {
+            results.push({
+              quantity: quantity,
+              productName: result.product_name,
+              byteLength: result.byte_length
+            });
+            console.log(`[PC端商品名测试] 数量${quantity}：${result.product_name}`);
+          }
+        } catch (error) {
+          console.error(`[PC端商品名测试] 数量${quantity}生成失败：`, error);
+        }
+      }
+      
+      // === 第4步：渲染结果列表 ===
+      if (results.length === 0) {
+        batchListContainer.innerHTML = '<p class="text-red-500 text-center py-4 text-sm">批量生成失败，请检查网络连接</p>';
+        return;
+      }
+      
+      // 构建HTML字符串
+      let html = '';
+      results.forEach((item, index) => {
+        html += `
+          <div class="bg-white border border-slate-200 rounded-lg p-3">
+            <!-- 序号和数量 -->
+            <div class="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
+              <span class="text-xs font-semibold text-slate-500">示例 ${index + 1}</span>
+              <span class="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">数量：${item.quantity}</span>
+            </div>
+            <!-- 商品名称 -->
+            <div class="mb-2">
+              <p class="text-xs text-slate-500 mb-1">商品名称：</p>
+              <p class="text-sm font-medium text-slate-800 break-all">${item.productName}</p>
+            </div>
+            <!-- 字节长度 -->
+            <div class="text-xs text-slate-500">
+              字节长度：<span class="font-semibold text-slate-700">${item.byteLength}</span> 字节
+              ${item.byteLength > 127 ? '<span class="text-red-600 ml-1">（超出限制！）</span>' : '<span class="text-green-600 ml-1">（符合限制）</span>'}
+            </div>
+          </div>
+        `;
+      });
+      
+      batchListContainer.innerHTML = html;
+      console.log(`[PC端商品名测试] 批量测试完成，成功生成${results.length}个示例`);
     }
     
     /**
