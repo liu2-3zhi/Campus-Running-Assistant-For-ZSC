@@ -9526,7 +9526,7 @@
                 class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
               <!-- 字段提示：说明输入格式和支持的支付方式 -->
               <p class="mt-1 text-xs text-slate-500">
-                多个支付方式用逗号分隔。支持：alipay（支付宝）、wxpay（微信）、qqpay（QQ钱包）、unionpay（云闪付）
+                多个支付方式用逗号分隔。
               </p>
             </div>
 
@@ -12642,7 +12642,8 @@
           headers: {
             // 设置请求头
             // Content-Type告知服务器请求体是JSON格式
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           // 将配置对象转换为JSON字符串作为请求体
           body: JSON.stringify(config)
@@ -16348,7 +16349,8 @@
         const response = await fetch('/api/admin/pricing_config', {
           method: 'GET',  // HTTP方法：GET（获取数据）
           headers: {
-            'Content-Type': 'application/json'  // 请求头：指定内容类型为JSON
+            'Content-Type': 'application/json',  // 请求头：指定内容类型为JSON
+            "X-Session-ID": sessionUUID
           },
           credentials: 'include'  // 包含认证凭证（cookies），用于身份验证
         });
