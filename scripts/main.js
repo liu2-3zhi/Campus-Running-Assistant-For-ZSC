@@ -5365,6 +5365,94 @@ function refreshMobileSessionPicker() {
             console.error("[密码恢复Tab错误] 未找到ID为'admin-tab-bruteforce_modal'的元素");
           }
 
+          // ========== [修复] 添加4个新标签的显示控制逻辑 ==========
+          // 这4个标签分别是：欠费查询、支付日志、支付设置、价格设置
+          // 它们应该仅对admin和super_admin用户组可见
+          
+          // 步骤1：通过ID获取4个标签的DOM元素
+          // 使用 $ 函数（document.getElementById 的简写）查找元素
+          const overdueTab = $("admin-tab-overdue_modal");              // 欠费查询标签
+          const paymentLogsTab = $("admin-tab-payment-logs_modal");     // 支付日志标签
+          const paymentSettingsTab = $("admin-tab-payment-settings_modal"); // 支付设置标签
+          const pricingTab = $("admin-tab-pricing_modal");              // 价格设置标签
+
+          // 步骤2：从全局对象中获取当前登录用户的组别信息
+          // currentUserData 是一个全局对象，在用户登录成功后由登录流程设置
+          // 如果 currentUserData 未定义或其 group 属性缺失，使用安全的默认值 "guest"
+          const userGroup = currentUserData?.group || "guest";
+          
+          // 步骤3：判断当前用户是否具有管理员权限
+          // 只有 "admin" 或 "super_admin" 组别的用户才能查看这4个管理功能标签
+          const isAdmin = userGroup === "admin" || userGroup === "super_admin";
+
+          // 步骤4：设置"欠费查询"标签的显示状态
+          if (overdueTab) {
+            // 根据管理员权限设置显示/隐藏
+            // isAdmin 为 true 时显示（display: "block"），否则隐藏（display: "none"）
+            overdueTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 记录欠费查询标签的显示控制信息
+            // 这对于调试权限问题和UI状态非常有用
+            console.log("[欠费查询Tab] 显示状态:", {
+              userGroup: userGroup,                         // 当前用户的组别
+              isAdmin: isAdmin,                             // 是否拥有管理员权限
+              display: overdueTab.style.display             // 设置后的display属性值
+            });
+          } else {
+            // [错误日志] 如果找不到欠费查询标签元素，记录警告
+            // 这可能表示HTML结构中缺少对应的元素，或ID不匹配
+            console.warn("[欠费查询Tab警告] 未找到ID为'admin-tab-overdue_modal'的元素");
+          }
+
+          // 步骤5：设置"支付日志"标签的显示状态
+          if (paymentLogsTab) {
+            // 与欠费查询标签相同的显示逻辑
+            paymentLogsTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 记录支付日志标签的显示控制信息
+            console.log("[支付日志Tab] 显示状态:", {
+              userGroup: userGroup,                         // 当前用户的组别
+              isAdmin: isAdmin,                             // 是否拥有管理员权限
+              display: paymentLogsTab.style.display         // 设置后的display属性值
+            });
+          } else {
+            // [错误日志] 如果找不到支付日志标签元素，记录警告
+            console.warn("[支付日志Tab警告] 未找到ID为'admin-tab-payment-logs_modal'的元素");
+          }
+
+          // 步骤6：设置"支付设置"标签的显示状态
+          if (paymentSettingsTab) {
+            // 与前面标签相同的显示逻辑
+            paymentSettingsTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 记录支付设置标签的显示控制信息
+            console.log("[支付设置Tab] 显示状态:", {
+              userGroup: userGroup,                         // 当前用户的组别
+              isAdmin: isAdmin,                             // 是否拥有管理员权限
+              display: paymentSettingsTab.style.display     // 设置后的display属性值
+            });
+          } else {
+            // [错误日志] 如果找不到支付设置标签元素，记录警告
+            console.warn("[支付设置Tab警告] 未找到ID为'admin-tab-payment-settings_modal'的元素");
+          }
+
+          // 步骤7：设置"价格设置"标签的显示状态
+          if (pricingTab) {
+            // 与前面标签相同的显示逻辑
+            pricingTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 记录价格设置标签的显示控制信息
+            console.log("[价格设置Tab] 显示状态:", {
+              userGroup: userGroup,                         // 当前用户的组别
+              isAdmin: isAdmin,                             // 是否拥有管理员权限
+              display: pricingTab.style.display             // 设置后的display属性值
+            });
+          } else {
+            // [错误日志] 如果找不到价格设置标签元素，记录警告
+            console.warn("[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素");
+          }
+          // ========== [修复结束] 4个新标签的显示控制逻辑添加完成 ==========
+
           if (modalCaptchaTab)
             modalCaptchaTab.style.display = canViewCaptchaHistory
               ? "block"
@@ -35932,7 +36020,15 @@ async function loadPaymentLogs(page) {
         }
         
         // 步骤7：调用后端API获取日志列表
-        const response = await fetch(url);
+        // [修复] 添加X-Session-ID请求头，用于后端身份验证
+        // sessionUUID是全局会话标识符，在用户登录时由服务器生成并存储在客户端
+        // 后端通过此header验证请求的合法性，防止未授权访问
+        const response = await fetch(url, {
+            method: 'GET',                      // 明确指定HTTP方法为GET
+            headers: {
+                'X-Session-ID': sessionUUID     // 添加会话ID用于身份验证
+            }
+        });
         
         // 步骤8：解析响应数据
         const result = await response.json();
