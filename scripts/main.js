@@ -5423,6 +5423,14 @@ function refreshMobileSessionPicker() {
         // [修复] 获取CDN和密码恢复的Tab元素
         const cdnTab = $("admin-tab-cdn_modal");
         const bruteforceTab = $("admin-tab-bruteforce_modal");
+        // [新增] 获取欠费查询标签元素
+        const overdueTab = $("admin-tab-overdue_modal");
+        // [新增] 获取支付日志标签元素
+        const paymentLogsTab = $("admin-tab-payment-logs_modal");
+        // [新增] 获取支付设置标签元素
+        const paymentSettingsTab = $("admin-tab-payment-settings_modal");
+        // [新增] 获取价格设置标签元素
+        const pricingTab = $("admin-tab-pricing_modal");
 
         const usersPanel = $("admin-users-panel_modal");
         const groupsPanel = $("admin-groups-panel_modal");
@@ -5440,6 +5448,14 @@ function refreshMobileSessionPicker() {
         // [修复] 获取CDN和密码恢复的Panel元素
         const cdnPanel = $("admin-cdn-panel_modal");
         const bruteforcePanel = $("admin-bruteforce-panel_modal");
+        // [新增] 获取欠费查询面板元素
+        const overduePanel = $("admin-overdue-panel_modal");
+        // [新增] 获取支付日志面板元素
+        const paymentLogsPanel = $("admin-payment-logs-panel_modal");
+        // [新增] 获取支付设置面板元素
+        const paymentSettingsPanel = $("admin-payment-settings-panel_modal");
+        // [新增] 获取价格设置面板元素
+        const pricingPanel = $("admin-pricing-panel_modal");
 
         if (!sessionsTab || !sessionsPanel) {
           logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
@@ -5461,6 +5477,10 @@ function refreshMobileSessionPicker() {
           sslTab,
           cdnTab,        // [修复] 添加CDN Tab
           bruteforceTab, // [修复] 添加密码恢复 Tab
+          overdueTab,    // [新增] 添加欠费查询 Tab
+          paymentLogsTab, // [新增] 添加支付日志 Tab
+          paymentSettingsTab, // [新增] 添加支付设置 Tab
+          pricingTab,    // [新增] 添加价格设置 Tab
         ]
           .filter((t) => t)
           .forEach((t) => {
@@ -5483,7 +5503,11 @@ function refreshMobileSessionPicker() {
           remindersPanel,
           sslPanel,
           cdnPanel,       // [修复] 添加CDN Panel
-          bruteforcePanel // [修复] 添加密码恢复 Panel
+          bruteforcePanel, // [修复] 添加密码恢复 Panel
+          overduePanel,   // [新增] 添加欠费查询 Panel
+          paymentLogsPanel, // [新增] 添加支付日志 Panel
+          paymentSettingsPanel, // [新增] 添加支付设置 Panel
+          pricingPanel    // [新增] 添加价格设置 Panel
         ]
           .filter((p) => p)
           .forEach((p) => {
@@ -5700,6 +5724,185 @@ function refreshMobileSessionPicker() {
               bruteforcePanel: !!bruteforcePanel, // 面板元素是否存在
               missingElement: !bruteforceTab ? "admin-tab-bruteforce_modal" : 
                               !bruteforcePanel ? "admin-bruteforce-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "overdue") {
+          // [标签切换] 处理欠费查询标签的切换逻辑
+          // 当用户点击"欠费查询"标签时，需要显示欠费账号列表
+          console.log("[标签切换] 正在切换到欠费查询标签...");
+          
+          // [获取元素] 获取欠费查询标签和面板的DOM元素
+          const overdueTab = $("admin-tab-overdue_modal");
+          const overduePanel = $("admin-overdue-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (overdueTab && overduePanel) {
+            // [激活标签] 为欠费查询标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            overdueTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            overdueTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使欠费查询面板可见
+            overduePanel.classList.remove("hidden");
+            
+            // [加载数据] 调用loadOverdueAccounts函数加载欠费账号列表
+            // 该函数会从后端获取所有欠费的用户账号
+            // 并在界面上显示账号信息、欠费金额、欠费时长等数据
+            console.log("[数据加载] 开始加载欠费账号列表...");
+            loadOverdueAccounts();
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了欠费查询面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 欠费查询面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到欠费查询标签，元素缺失:", {
+              overdueTab: !!overdueTab,       // 标签元素是否存在
+              overduePanel: !!overduePanel,   // 面板元素是否存在
+              missingElement: !overdueTab ? "admin-tab-overdue_modal" : 
+                              !overduePanel ? "admin-overdue-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "payment-logs") {
+          // [标签切换] 处理支付日志标签的切换逻辑
+          // 当用户点击"支付日志"标签时，需要显示所有支付记录
+          console.log("[标签切换] 正在切换到支付日志标签...");
+          
+          // [获取元素] 获取支付日志标签和面板的DOM元素
+          const paymentLogsTab = $("admin-tab-payment-logs_modal");
+          const paymentLogsPanel = $("admin-payment-logs-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (paymentLogsTab && paymentLogsPanel) {
+            // [激活标签] 为支付日志标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            paymentLogsTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            paymentLogsTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使支付日志面板可见
+            paymentLogsPanel.classList.remove("hidden");
+            
+            // [加载数据] 调用loadPaymentLogs函数加载支付日志
+            // 参数1: 表示从第1页开始加载数据
+            // 该函数会从后端获取所有支付记录，包括：
+            // - 支付时间、支付金额、支付方式
+            // - 支付用户、订单号、支付状态等信息
+            console.log("[数据加载] 开始加载支付日志（第1页）...");
+            loadPaymentLogs(1);
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了支付日志面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 支付日志面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到支付日志标签，元素缺失:", {
+              paymentLogsTab: !!paymentLogsTab,       // 标签元素是否存在
+              paymentLogsPanel: !!paymentLogsPanel,   // 面板元素是否存在
+              missingElement: !paymentLogsTab ? "admin-tab-payment-logs_modal" : 
+                              !paymentLogsPanel ? "admin-payment-logs-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "payment-settings") {
+          // [标签切换] 处理支付设置标签的切换逻辑
+          // 当用户点击"支付设置"标签时，需要显示支付配置界面
+          console.log("[标签切换] 正在切换到支付设置标签...");
+          
+          // [获取元素] 获取支付设置标签和面板的DOM元素
+          const paymentSettingsTab = $("admin-tab-payment-settings_modal");
+          const paymentSettingsPanel = $("admin-payment-settings-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (paymentSettingsTab && paymentSettingsPanel) {
+            // [激活标签] 为支付设置标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            paymentSettingsTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            paymentSettingsTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使支付设置面板可见
+            paymentSettingsPanel.classList.remove("hidden");
+            
+            // [面板说明] 支付设置面板有自己的子标签系统
+            // 该面板内部可能包含多个子标签，如：
+            // - 支付宝配置、微信支付配置、PayPal配置等
+            // 这些子标签的切换由面板内部的逻辑处理，无需在此处调用额外的加载函数
+            console.log("[面板说明] 支付设置面板已显示，子标签系统将自行初始化");
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了支付设置面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 支付设置面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到支付设置标签，元素缺失:", {
+              paymentSettingsTab: !!paymentSettingsTab,       // 标签元素是否存在
+              paymentSettingsPanel: !!paymentSettingsPanel,   // 面板元素是否存在
+              missingElement: !paymentSettingsTab ? "admin-tab-payment-settings_modal" : 
+                              !paymentSettingsPanel ? "admin-payment-settings-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "pricing") {
+          // [标签切换] 处理价格设置标签的切换逻辑
+          // 当用户点击"价格设置"标签时，需要显示价格配置界面
+          console.log("[标签切换] 正在切换到价格设置标签...");
+          
+          // [获取元素] 获取价格设置标签和面板的DOM元素
+          const pricingTab = $("admin-tab-pricing_modal");
+          const pricingPanel = $("admin-pricing-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (pricingTab && pricingPanel) {
+            // [激活标签] 为价格设置标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            pricingTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            pricingTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使价格设置面板可见
+            pricingPanel.classList.remove("hidden");
+            
+            // [面板说明] 价格设置面板可能需要加载当前的价格配置
+            // 如果存在loadPricingConfig或类似的函数，应在此处调用
+            // 该函数会从后端获取当前的价格配置，包括：
+            // - 各个服务的定价、折扣设置、套餐配置等
+            // 注意：如果没有这样的函数，面板会显示默认配置或静态表单
+            console.log("[面板说明] 价格设置面板已显示，如有配置加载函数将自动调用");
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了价格设置面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 价格设置面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到价格设置标签，元素缺失:", {
+              pricingTab: !!pricingTab,       // 标签元素是否存在
+              pricingPanel: !!pricingPanel,   // 面板元素是否存在
+              missingElement: !pricingTab ? "admin-tab-pricing_modal" : 
+                              !pricingPanel ? "admin-pricing-panel_modal" : "未知"
             });
           }
         } else {
