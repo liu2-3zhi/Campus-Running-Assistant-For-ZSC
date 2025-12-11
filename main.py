@@ -3006,6 +3006,41 @@ class RainbowYiPayClient:
                         "message": f"验证失败：HTTP状态码 {response.status_code}",
                         "verified": False
                     })
+                
+                # HTTP状态码为200，开始处理响应
+                # 尝试解析响应的JSON数据
+                try:
+                    # 解析响应体中的JSON数据
+                    # 期望格式：{"success": True, "challenge": "..."}
+                    response_data = response.json()
+                    
+                    # 从响应中提取 challenge 字段
+                    # 这是服务器返回的 challenge，用于验证这确实是本服务器
+                    returned_challenge = response_data.get("challenge", "")
+                    
+                    # 记录日志：成功接收到返回的验证码
+                    # 同样只记录前32位和后32位，避免日志过长
+                    returned_preview = f"{returned_challenge[:32]}...{returned_challenge[-32:]}" if len(returned_challenge) > 64 else returned_challenge
+                    logging.info(f"[支付验证] 成功接收返回的验证码，长度: {len(returned_challenge)}位, 预览: {returned_preview}")
+                    
+                except ValueError as e:
+                    # JSON解析失败
+                    # 这说明返回的响应不是有效的JSON格式，可能不是本服务器
+                    logging.warning(f"[支付验证] 响应JSON解析失败: {str(e)}")
+                    return jsonify({
+                        "success": False,
+                        "message": "验证失败：服务器返回的数据格式不正确（非JSON）",
+                        "verified": False
+                    })
+                
+                except Exception as e:
+                    # 其他解析异常
+                    logging.error(f"[支付验证] 响应处理异常: {str(e)}")
+                    return jsonify({
+                        "success": False,
+                        "message": f"验证失败：响应处理异常 - {str(e)}",
+                        "verified": False
+                    })
             
             except requests.exceptions.Timeout:
                 # 请求超时
@@ -3034,9 +3069,23 @@ class RainbowYiPayClient:
                     "verified": False
                 })
             
+            # 比对发送的 challenge 和返回的 challenge
+            # 如果两者完全一致，说明这确实是本服务器
+            # 如果不一致，说明 app_host 指向的不是本服务器，验证失败
             if challenge != returned_challenge:
-                return {"success": False, "message": "彩虹易支付配置缺少 app_host，经过验证后确认不是本服务器，请联系管理员"}
+                # 验证失败：返回的 challenge 与发送的不一致
+                # 这说明 app_host 指向的服务器不是本服务器
+                logging.warning(f"[支付验证] 验证码不匹配 - 验证失败")
+                return jsonify({
+                    "success": False,
+                    "message": "彩虹易支付配置缺少 app_host，经过验证后确认不是本服务器，请联系管理员",
+                    "verified": False
+                })
             else:
+                # 验证成功：返回的 challenge 与发送的完全一致
+                # 可以安全地使用 client_app_host 作为 app_host
+                # 将验证通过的 client_app_host 赋值给 app_host
+                logging.info(f"[支付验证] 验证成功 - 将使用 client_app_host: {client_app_host}")
                 app_host = client_app_host
 
 
@@ -28763,8 +28812,12 @@ def start_web_server(args_param):
 
             logging.info(f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码: {challenge}")
             
+            # 返回验证成功响应，同时返回接收到的 challenge
+            # 这是验证机制的核心：返回相同的 challenge 证明这确实是本服务器
+            # 调用方会比对发送的 challenge 和返回的 challenge 是否一致
             return jsonify({
-                "success": True
+                "success": True,
+                "challenge": challenge  # 返回接收到的验证码，用于调用方验证
             })
         
         except Exception as e:
