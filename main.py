@@ -29814,8 +29814,13 @@ def start_web_server(args_param):
                     }), 400
                 
                 # ========== 保存旧配置用于日志记录 ==========
+                # 【重要】在执行 config.set() 之前保存所有旧值
+                # 这样才能正确比较新旧值，记录准确的变更日志
                 old_host = config.get("Rainbow_YiPay", "host", fallback="")
                 old_pid = config.get("Rainbow_YiPay", "pid", fallback="")
+                # 【任务1修复】保存旧的密钥值，用于后续判断密钥是否被修改
+                # 必须在 config.set("Rainbow_YiPay", "key", new_key) 之前获取
+                old_key = config.get("Rainbow_YiPay", "key", fallback="")
                 old_enabled_payment_methods = config.get("Rainbow_YiPay", "enabled_payment_methods", fallback="")
                 old_payment_method = config.get("Rainbow_YiPay", "payment_method", fallback="")
                 
@@ -29841,7 +29846,10 @@ def start_web_server(args_param):
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
                 # 注意：不记录完整的密钥，只记录是否修改了密钥
-                key_changed = (new_key != config.get("Rainbow_YiPay", "key", fallback=""))
+                # 【任务1修复】使用 old_key 与 new_key 比较，而不是从已更新的config中读取
+                # 因为在此之前已经执行了 config.set("Rainbow_YiPay", "key", new_key)
+                # 所以必须使用预先保存的 old_key 变量进行比较
+                key_changed = (new_key != old_key)
                 logging.info(
                     f"[易支付配置] 管理员更新易支付配置 - "
                     f"操作者: {g.user}, "
