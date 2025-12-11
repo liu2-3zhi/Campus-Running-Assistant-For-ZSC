@@ -15202,7 +15202,11 @@ function refreshMobileSessionPicker() {
           showMainApp();
           $("loading-overlay").classList.add("hidden");
           currentUserData = result.userInfo;
-          currentUserData.group = result.auth_group || "user";
+          // [修复] 从API返回的result中获取group字段，而不是auth_group
+          // 原因：后端登录API（main.py第16868行）返回的字段名是"group"，不是"auth_group"
+          // 错误使用auth_group会导致currentUserData.group总是默认为"user"
+          // 这会使管理员权限验证失败（如第5326行的isAdmin判断）
+          currentUserData.group = result.group || "user";
           currentSessionUA = uaOnLoginScreen;
           const name = currentUserData.name || "";
           $("user-name-label").textContent = `姓名: ${name}`;
