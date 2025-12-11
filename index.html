@@ -48254,6 +48254,19 @@ function initMobileAdminPanel(prefix) {
       permission: "admin",  // 权限要求：管理员级别
     },
     // ========================================
+    // [新增] 支付历史标签
+    // 移动端支付历史面板的标签，与PC端功能对应
+    // 功能：查看支付相关操作日志，支持按操作类型、日期范围筛选
+    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    {
+      id: "payment-logs",  // 标签ID，用于标识和切换面板
+      label: "支付历史",  // 标签显示的文本
+      // 文档图标：表示日志/历史记录
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
+      permission: "admin",  // 权限要求：管理员级别
+    },
+    // ========================================
     // [新增] 支付设置标签
     // 移动端支付设置面板的标签，与PC端功能对应
     // 功能：配置支付方式、查询订单、处理退款、测试支付
@@ -49373,25 +49386,33 @@ function switchMobileAdminTab(tabId, prefix) {
   }
   Array.from(tabsNav.children).forEach((button) => {
     const buttonText = button.textContent.trim();
+    // ========================================
+    // 标签文本到ID的映射表
+    // 用于将按钮上的中文标签文本转换为对应的标签ID
+    // 这样可以根据按钮文本准确识别当前应该高亮哪个标签
+    // ========================================
     const tabMap = {
-      用户: "users",
-      权限组: "groups",
-      日志: "logs",
-      状态: "health",
-      资料: "profile",
-      会话: "sessions",
-      留言: "messages",
-      IP封禁: "ipban",
-      短信: "sms",
-      配置: "config",
-      验证码: "captcha",
-      提醒: "reminders",
-      HTTPS: "ssl",
-      支付配置: "payment-config", // 支付配置标签映射
-      支付日志: "payment-logs", // 支付日志标签映射
-      // [修复] 添加新标签的中文映射
-      CDN: "cdn", 
-      密码恢复: "bruteforce",
+      用户: "users",              // 用户管理标签
+      权限组: "groups",           // 权限组管理标签
+      日志: "logs",               // 日志查看标签
+      状态: "health",             // 系统状态标签
+      资料: "profile",            // 个人信息标签
+      会话: "sessions",           // 会话管理标签
+      留言: "messages",           // 留言板标签
+      IP封禁: "ipban",            // IP封禁管理标签
+      短信: "sms",                // 短信配置标签
+      配置: "config",             // 系统配置标签
+      验证码: "captcha",          // 验证码管理标签
+      提醒: "reminders",          // 定时提醒标签
+      HTTPS: "ssl",               // HTTPS设置标签
+      支付配置: "payment-config", // 支付配置标签映射（旧版，已弃用）
+      支付日志: "payment-logs",   // [修复] 支付日志标签映射（旧版名称，保留兼容性）
+      支付历史: "payment-logs",   // [新增] 支付历史标签映射（新版标准名称）
+      支付设置: "payment-settings", // [新增] 支付设置标签映射
+      价格设置: "pricing",        // [新增] 价格设置标签映射
+      欠费查询: "overdue",        // [新增] 欠费查询标签映射
+      CDN: "cdn",                 // CDN缓存管理标签
+      密码恢复: "bruteforce",     // 密码恢复标签
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -49539,12 +49560,13 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-captcha-panel", // 验证码管理面板
       "mobile-multi-admin-reminders-panel", // 定时提醒面板
       "mobile-multi-admin-ssl-panel", // HTTPS设置面板
-      "mobile-multi-admin-payment-config-panel", // 支付配置面板
-      "mobile-multi-admin-payment-logs-panel", // 支付日志面板
-      // [修复] 添加CDN和密码恢复面板ID
-      "mobile-multi-admin-cdn-panel", 
-      "mobile-multi-admin-bruteforce-panel",
-      "mobile-multi-admin-overdue-panel",
+      "mobile-multi-admin-payment-config-panel", // 支付配置面板（旧版，已弃用）
+      "mobile-multi-admin-payment-logs-panel", // [新增] 支付历史面板
+      "mobile-multi-admin-payment-settings-panel", // [新增] 支付设置面板
+      "mobile-multi-admin-pricing-panel", // [新增] 价格设置面板
+      "mobile-multi-admin-cdn-panel", // CDN缓存管理面板
+      "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
+      "mobile-multi-admin-overdue-panel", // [新增] 欠费查询面板
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -49670,6 +49692,38 @@ function switchMobileAdminTab(tabId, prefix) {
       // [修复] 添加密码恢复加载逻辑
       case "bruteforce":
         loadBruteforceStatus();
+        break;
+      // ========================================
+      // [新增] 欠费查询面板加载逻辑
+      // 当管理员切换到"欠费查询"标签时，自动调用loadOverdueAccounts函数
+      // 该函数会从后端加载所有有欠费记录的学校账号，按欠费次数排序
+      // ========================================
+      case "overdue":
+        // 自动触发加载欠费账号列表
+        loadOverdueAccounts();
+        break;
+      // ========================================
+      // [新增] 支付设置面板加载逻辑
+      // 当管理员切换到"支付设置"标签时，需要初始化支付设置面板
+      // 该面板包含4个子标签：支付方式配置、订单查询、退款处理、支付测试
+      // 默认显示"支付方式配置"子标签
+      // ========================================
+      case "payment-settings":
+        // 切换到支付设置面板的默认子标签（支付方式配置）
+        // 该函数会自动调用loadPaymentConfig()加载支付方式配置
+        switchPaymentSettingsTab('config');
+        break;
+      // ========================================
+      // [新增] 价格设置面板加载逻辑
+      // 当管理员切换到"价格设置"标签时，调用loadMobilePricingConfig函数
+      // 该函数会从后端加载价格策略配置，包括：
+      // - 是否启用付费模式（require_payment）
+      // - 单次请求费用（price_per_request）
+      // - 新用户免费次数（free_requests_for_new_users）
+      // ========================================
+      case "pricing":
+        // 加载价格配置数据并填充到表单
+        loadMobilePricingConfig();
         break;
     }
     // 处理完成后直接返回，不执行后续的通用处理逻辑
