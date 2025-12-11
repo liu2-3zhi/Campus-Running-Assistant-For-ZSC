@@ -29323,6 +29323,36 @@ def start_web_server(args_param):
                     config.getint("Payment_Settings", "default_available_runs", fallback=10)
                 )
                 
+                # ========== [新增] 获取UI显示配置的值 ==========
+                
+                # 获取新的 show_available_runs 值（布尔类型）
+                # 控制是否在个人资料页面显示剩余次数
+                new_show_available_runs = data.get(
+                    "show_available_runs",
+                    config.getboolean("Profile_Display", "show_available_runs", fallback=True)
+                )
+                
+                # 获取新的 available_runs_format 值（字符串类型）
+                # 剩余次数的显示格式模板
+                new_available_runs_format = data.get(
+                    "available_runs_format",
+                    config.get("Profile_Display", "available_runs_format", fallback="剩余免费次数：{available_runs} 次")
+                )
+                
+                # 获取新的 show_available_runs_on_register 值（布尔类型）
+                # 控制是否在注册页面显示免费次数提示
+                new_show_available_runs_on_register = data.get(
+                    "show_available_runs_on_register",
+                    config.getboolean("Registration_Display", "show_available_runs_on_register", fallback=True)
+                )
+                
+                # 获取新的 register_available_runs_hint 值（字符串类型）
+                # 注册页面的免费次数提示文本模板
+                new_register_available_runs_hint = data.get(
+                    "register_available_runs_hint",
+                    config.get("Registration_Display", "register_available_runs_hint", fallback="注册即可得 {available_runs} 次校园跑")
+                )
+                
                 # ========== 验证参数的有效性 ==========
                 
                 # 验证 require_payment 是否为布尔类型
@@ -29363,10 +29393,60 @@ def start_web_server(args_param):
                         "message": "default_available_runs 不能为负数"
                     }), 400
                 
+                # ========== [新增] 验证UI显示配置字段的有效性 ==========
+                
+                # 验证 show_available_runs 是否为布尔类型
+                if not isinstance(new_show_available_runs, bool):
+                    return jsonify({
+                        "success": False,
+                        "message": "show_available_runs 必须是布尔值（true/false）"
+                    }), 400
+                
+                # 验证 available_runs_format 是否为字符串类型
+                if not isinstance(new_available_runs_format, str):
+                    return jsonify({
+                        "success": False,
+                        "message": "available_runs_format 必须是字符串"
+                    }), 400
+                
+                # 验证 available_runs_format 不能为空
+                if not new_available_runs_format.strip():
+                    return jsonify({
+                        "success": False,
+                        "message": "available_runs_format 不能为空"
+                    }), 400
+                
+                # 验证 show_available_runs_on_register 是否为布尔类型
+                if not isinstance(new_show_available_runs_on_register, bool):
+                    return jsonify({
+                        "success": False,
+                        "message": "show_available_runs_on_register 必须是布尔值（true/false）"
+                    }), 400
+                
+                # 验证 register_available_runs_hint 是否为字符串类型
+                if not isinstance(new_register_available_runs_hint, str):
+                    return jsonify({
+                        "success": False,
+                        "message": "register_available_runs_hint 必须是字符串"
+                    }), 400
+                
+                # 验证 register_available_runs_hint 不能为空
+                if not new_register_available_runs_hint.strip():
+                    return jsonify({
+                        "success": False,
+                        "message": "register_available_runs_hint 不能为空"
+                    }), 400
+                
                 # ========== 保存旧配置用于日志记录 ==========
                 old_require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
                 old_per_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
                 old_default_available_runs = config.getint("Payment_Settings", "default_available_runs", fallback=10)
+                
+                # [新增] 保存UI显示配置的旧值，用于日志记录
+                old_show_available_runs = config.getboolean("Profile_Display", "show_available_runs", fallback=True)
+                old_available_runs_format = config.get("Profile_Display", "available_runs_format", fallback="剩余免费次数：{available_runs} 次")
+                old_show_available_runs_on_register = config.getboolean("Registration_Display", "show_available_runs_on_register", fallback=True)
+                old_register_available_runs_hint = config.get("Registration_Display", "register_available_runs_hint", fallback="注册即可得 {available_runs} 次校园跑")
                 
                 # ========== 更新配置 ==========
                 
@@ -29382,6 +29462,28 @@ def start_web_server(args_param):
                 config.set("Payment_Settings", "single_run_cost", str(new_per_run_cost))
                 config.set("Payment_Settings", "default_available_runs", str(new_default_available_runs))
                 
+                # ========== [新增] 更新UI显示配置 ==========
+                
+                # 确保 Profile_Display 配置节存在
+                if not config.has_section("Profile_Display"):
+                    config.add_section("Profile_Display")
+                
+                # 设置个人资料页显示配置
+                # show_available_runs: 是否显示剩余次数
+                config.set("Profile_Display", "show_available_runs", str(new_show_available_runs).lower())
+                # available_runs_format: 剩余次数的显示格式模板
+                config.set("Profile_Display", "available_runs_format", new_available_runs_format)
+                
+                # 确保 Registration_Display 配置节存在
+                if not config.has_section("Registration_Display"):
+                    config.add_section("Registration_Display")
+                
+                # 设置注册页面显示配置
+                # show_available_runs_on_register: 是否在注册页显示提示
+                config.set("Registration_Display", "show_available_runs_on_register", str(new_show_available_runs_on_register).lower())
+                # register_available_runs_hint: 注册页提示文本模板
+                config.set("Registration_Display", "register_available_runs_hint", new_register_available_runs_hint)
+                
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
                 # 这样可以避免覆盖配置文件时丢失注释信息
@@ -29394,7 +29496,11 @@ def start_web_server(args_param):
                     f"操作者: {g.user}, "
                     f"require_payment: {old_require_payment} -> {new_require_payment}, "
                     f"per_run_cost: {old_per_run_cost} -> {new_per_run_cost}, "
-                    f"default_available_runs: {old_default_available_runs} -> {new_default_available_runs}"
+                    f"default_available_runs: {old_default_available_runs} -> {new_default_available_runs}, "
+                    f"show_available_runs: {old_show_available_runs} -> {new_show_available_runs}, "
+                    f"available_runs_format: '{old_available_runs_format}' -> '{new_available_runs_format}', "
+                    f"show_available_runs_on_register: {old_show_available_runs_on_register} -> {new_show_available_runs_on_register}, "
+                    f"register_available_runs_hint: '{old_register_available_runs_hint}' -> '{new_register_available_runs_hint}'"
                 )
                 
                 # ========== 返回成功响应 ==========
