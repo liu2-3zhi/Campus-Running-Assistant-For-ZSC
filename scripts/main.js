@@ -25,11 +25,31 @@
     controller.abort();
   }, 10000); // 10秒超时
   
+  // 尝试从 URL 中提取 session UUID，用于身份验证
+  // URL 格式通常为: /uuid=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  var extractedSessionUUID = null;
+  var urlPath = window.location.pathname;
+  var uuidMatch = urlPath.match(/\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i);
+  if (uuidMatch && uuidMatch[1]) {
+    extractedSessionUUID = uuidMatch[1]; // 提取到的 UUID
+  }
+  
+  // 构建请求配置对象，包含超时控制和会话认证
+  var fetchOptions = {
+    signal: controller.signal, // 用于超时控制
+    cache: "no-cache" // 禁用缓存，确保获取最新配置
+  };
+  
+  // 如果提取到了 session UUID，添加认证 header
+  // X-Session-ID header 用于后端识别用户会话，几乎所有 API 都需要此 header
+  if (extractedSessionUUID) {
+    fetchOptions.headers = {
+      'X-Session-ID': extractedSessionUUID
+    };
+  }
+  
   // 异步获取真实配置
-  fetch("/api/frontend-config", {
-    signal: controller.signal,
-    cache: "no-cache"
-  })
+  fetch("/api/frontend-config", fetchOptions)
     .then(function(response) {
       clearTimeout(timeoutId);
       if (!response.ok) {
@@ -120,7 +140,8 @@ async function loadPaymentMethodsConfig() {
         const response = await fetch('/api/payment/methods_config', {
             method: 'GET', // GET请求，获取数据
             headers: {
-                'Content-Type': 'application/json' // 设置请求头，告知服务器期望返回JSON格式数据
+                'Content-Type': 'application/json', // 设置请求头，告知服务器期望返回JSON格式数据
+                'X-Session-ID': sessionUUID  // 添加会话ID用于身份验证，解决"未登录或会话无效"的问题
             }
         });
         
@@ -1290,7 +1311,16 @@ function refreshMobileSessionPicker() {
         );
         if (mobileGuestSection) {
           // 修正：独立获取配置，不依赖桌面端 DOM 状态
-          fetch("/auth/get_config")
+          // 构建请求头，添加会话ID用于身份验证
+          // X-Session-ID 是后端识别用户会话的关键header，几乎所有需要认证的API都需要
+          const headers = {};
+          if (sessionUUID) {
+            headers['X-Session-ID'] = sessionUUID;
+          }
+          
+          fetch("/auth/get_config", {
+            headers: headers
+          })
             .then((res) => res.json())
             .then((data) => {
               if (data.success && data.allow_guest_login) {
@@ -3304,7 +3334,17 @@ function refreshMobileSessionPicker() {
 
       async function checkGuestLoginEnabled() {
         try {
-          const result = await fetch("/auth/get_config");
+          // 构建请求头，添加会话ID用于身份验证
+          // X-Session-ID header 用于后端识别用户会话，几乎所有需要认证的API都需要此header
+          const headers = {};
+          if (sessionUUID) {
+            headers['X-Session-ID'] = sessionUUID;
+          }
+          
+          // 发起请求获取认证配置，检查是否启用游客登录功能
+          const result = await fetch("/auth/get_config", {
+            headers: headers
+          });
           const data = await result.json();
           if (data.success && data.allow_guest_login) {
             $("guest-login-section").classList.remove("hidden");
@@ -5365,6 +5405,94 @@ function refreshMobileSessionPicker() {
             console.error("[密码恢复Tab错误] 未找到ID为'admin-tab-bruteforce_modal'的元素");
           }
 
+          // ========== [修复] 添加4个新标签的显示控制逻辑 ==========
+          // 这4个标签分别是：欠费查询、支付日志、支付设置、价格设置
+          // 它们应该仅对admin和super_admin用户组可见
+          
+          // 步骤1：通过ID获取4个标签的DOM元素
+          // 使用 $ 函数（document.getElementById 的简写）查找元素
+          const overdueTab = $("admin-tab-overdue_modal");              // 欠费查询标签
+          const paymentLogsTab = $("admin-tab-payment-logs_modal");     // 支付日志标签
+          const paymentSettingsTab = $("admin-tab-payment-settings_modal"); // 支付设置标签
+          const pricingTab = $("admin-tab-pricing_modal");              // 价格设置标签
+
+          // 步骤2：从全局对象中获取当前登录用户的组别信息
+          // currentUserData 是一个全局对象，在用户登录成功后由登录流程设置
+          // 如果 currentUserData 未定义或其 group 属性缺失，使用安全的默认值 "guest"
+          const userGroup = currentUserData?.group || "guest";
+          
+          // 步骤3：判断当前用户是否具有管理员权限
+          // 只有 "admin" 或 "super_admin" 组别的用户才能查看这4个管理功能标签
+          const isAdmin = userGroup === "admin" || userGroup === "super_admin";
+
+          // 步骤4：设置"欠费查询"标签的显示状态
+          if (overdueTab) {
+            // 根据管理员权限设置显示/隐藏
+            // isAdmin 为 true 时显示（display: "block"），否则隐藏（display: "none"）
+            overdueTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 记录欠费查询标签的显示控制信息
+            // 这对于调试权限问题和UI状态非常有用
+            console.log("[欠费查询Tab] 显示状态:", {
+              userGroup: userGroup,                         // 当前用户的组别
+              isAdmin: isAdmin,                             // 是否拥有管理员权限
+              display: overdueTab.style.display             // 设置后的display属性值
+            });
+          } else {
+            // [错误日志] 如果找不到欠费查询标签元素，记录警告
+            // 这可能表示HTML结构中缺少对应的元素，或ID不匹配
+            console.warn("[欠费查询Tab警告] 未找到ID为'admin-tab-overdue_modal'的元素");
+          }
+
+          // 步骤5：设置"支付日志"标签的显示状态
+          if (paymentLogsTab) {
+            // 与欠费查询标签相同的显示逻辑
+            paymentLogsTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 记录支付日志标签的显示控制信息
+            console.log("[支付日志Tab] 显示状态:", {
+              userGroup: userGroup,                         // 当前用户的组别
+              isAdmin: isAdmin,                             // 是否拥有管理员权限
+              display: paymentLogsTab.style.display         // 设置后的display属性值
+            });
+          } else {
+            // [错误日志] 如果找不到支付日志标签元素，记录警告
+            console.warn("[支付日志Tab警告] 未找到ID为'admin-tab-payment-logs_modal'的元素");
+          }
+
+          // 步骤6：设置"支付设置"标签的显示状态
+          if (paymentSettingsTab) {
+            // 与前面标签相同的显示逻辑
+            paymentSettingsTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 记录支付设置标签的显示控制信息
+            console.log("[支付设置Tab] 显示状态:", {
+              userGroup: userGroup,                         // 当前用户的组别
+              isAdmin: isAdmin,                             // 是否拥有管理员权限
+              display: paymentSettingsTab.style.display     // 设置后的display属性值
+            });
+          } else {
+            // [错误日志] 如果找不到支付设置标签元素，记录警告
+            console.warn("[支付设置Tab警告] 未找到ID为'admin-tab-payment-settings_modal'的元素");
+          }
+
+          // 步骤7：设置"价格设置"标签的显示状态
+          if (pricingTab) {
+            // 与前面标签相同的显示逻辑
+            pricingTab.style.display = isAdmin ? "block" : "none";
+            
+            // [调试日志] 记录价格设置标签的显示控制信息
+            console.log("[价格设置Tab] 显示状态:", {
+              userGroup: userGroup,                         // 当前用户的组别
+              isAdmin: isAdmin,                             // 是否拥有管理员权限
+              display: pricingTab.style.display             // 设置后的display属性值
+            });
+          } else {
+            // [错误日志] 如果找不到价格设置标签元素，记录警告
+            console.warn("[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素");
+          }
+          // ========== [修复结束] 4个新标签的显示控制逻辑添加完成 ==========
+
           if (modalCaptchaTab)
             modalCaptchaTab.style.display = canViewCaptchaHistory
               ? "block"
@@ -5423,6 +5551,14 @@ function refreshMobileSessionPicker() {
         // [修复] 获取CDN和密码恢复的Tab元素
         const cdnTab = $("admin-tab-cdn_modal");
         const bruteforceTab = $("admin-tab-bruteforce_modal");
+        // [新增] 获取欠费查询标签元素
+        const overdueTab = $("admin-tab-overdue_modal");
+        // [新增] 获取支付日志标签元素
+        const paymentLogsTab = $("admin-tab-payment-logs_modal");
+        // [新增] 获取支付设置标签元素
+        const paymentSettingsTab = $("admin-tab-payment-settings_modal");
+        // [新增] 获取价格设置标签元素
+        const pricingTab = $("admin-tab-pricing_modal");
 
         const usersPanel = $("admin-users-panel_modal");
         const groupsPanel = $("admin-groups-panel_modal");
@@ -5440,6 +5576,14 @@ function refreshMobileSessionPicker() {
         // [修复] 获取CDN和密码恢复的Panel元素
         const cdnPanel = $("admin-cdn-panel_modal");
         const bruteforcePanel = $("admin-bruteforce-panel_modal");
+        // [新增] 获取欠费查询面板元素
+        const overduePanel = $("admin-overdue-panel_modal");
+        // [新增] 获取支付日志面板元素
+        const paymentLogsPanel = $("admin-payment-logs-panel_modal");
+        // [新增] 获取支付设置面板元素
+        const paymentSettingsPanel = $("admin-payment-settings-panel_modal");
+        // [新增] 获取价格设置面板元素
+        const pricingPanel = $("admin-pricing-panel_modal");
 
         if (!sessionsTab || !sessionsPanel) {
           logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
@@ -5461,6 +5605,10 @@ function refreshMobileSessionPicker() {
           sslTab,
           cdnTab,        // [修复] 添加CDN Tab
           bruteforceTab, // [修复] 添加密码恢复 Tab
+          overdueTab,    // [新增] 添加欠费查询 Tab
+          paymentLogsTab, // [新增] 添加支付日志 Tab
+          paymentSettingsTab, // [新增] 添加支付设置 Tab
+          pricingTab,    // [新增] 添加价格设置 Tab
         ]
           .filter((t) => t)
           .forEach((t) => {
@@ -5483,7 +5631,11 @@ function refreshMobileSessionPicker() {
           remindersPanel,
           sslPanel,
           cdnPanel,       // [修复] 添加CDN Panel
-          bruteforcePanel // [修复] 添加密码恢复 Panel
+          bruteforcePanel, // [修复] 添加密码恢复 Panel
+          overduePanel,   // [新增] 添加欠费查询 Panel
+          paymentLogsPanel, // [新增] 添加支付日志 Panel
+          paymentSettingsPanel, // [新增] 添加支付设置 Panel
+          pricingPanel    // [新增] 添加价格设置 Panel
         ]
           .filter((p) => p)
           .forEach((p) => {
@@ -5700,6 +5852,186 @@ function refreshMobileSessionPicker() {
               bruteforcePanel: !!bruteforcePanel, // 面板元素是否存在
               missingElement: !bruteforceTab ? "admin-tab-bruteforce_modal" : 
                               !bruteforcePanel ? "admin-bruteforce-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "overdue") {
+          // [标签切换] 处理欠费查询标签的切换逻辑
+          // 当用户点击"欠费查询"标签时，需要显示欠费账号列表
+          console.log("[标签切换] 正在切换到欠费查询标签...");
+          
+          // [获取元素] 获取欠费查询标签和面板的DOM元素
+          const overdueTab = $("admin-tab-overdue_modal");
+          const overduePanel = $("admin-overdue-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (overdueTab && overduePanel) {
+            // [激活标签] 为欠费查询标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            overdueTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            overdueTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使欠费查询面板可见
+            overduePanel.classList.remove("hidden");
+            
+            // [加载数据] 调用loadOverdueAccounts函数加载欠费账号列表
+            // 该函数会从后端获取所有欠费的用户账号
+            // 并在界面上显示账号信息、欠费金额、欠费时长等数据
+            console.log("[数据加载] 开始加载欠费账号列表...");
+            loadOverdueAccounts();
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了欠费查询面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 欠费查询面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到欠费查询标签，元素缺失:", {
+              overdueTab: !!overdueTab,       // 标签元素是否存在
+              overduePanel: !!overduePanel,   // 面板元素是否存在
+              missingElement: !overdueTab ? "admin-tab-overdue_modal" : 
+                              !overduePanel ? "admin-overdue-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "payment-logs") {
+          // [标签切换] 处理支付日志标签的切换逻辑
+          // 当用户点击"支付日志"标签时，需要显示所有支付记录
+          console.log("[标签切换] 正在切换到支付日志标签...");
+          
+          // [获取元素] 获取支付日志标签和面板的DOM元素
+          const paymentLogsTab = $("admin-tab-payment-logs_modal");
+          const paymentLogsPanel = $("admin-payment-logs-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (paymentLogsTab && paymentLogsPanel) {
+            // [激活标签] 为支付日志标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            paymentLogsTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            paymentLogsTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使支付日志面板可见
+            paymentLogsPanel.classList.remove("hidden");
+            
+            // [加载数据] 调用loadPaymentLogs函数加载支付日志
+            // 参数1: 表示从第1页开始加载数据
+            // 该函数会从后端获取所有支付记录，包括：
+            // - 支付时间、支付金额、支付方式
+            // - 支付用户、订单号、支付状态等信息
+            console.log("[数据加载] 开始加载支付日志（第1页）...");
+            loadPaymentLogs(1);
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了支付日志面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 支付日志面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到支付日志标签，元素缺失:", {
+              paymentLogsTab: !!paymentLogsTab,       // 标签元素是否存在
+              paymentLogsPanel: !!paymentLogsPanel,   // 面板元素是否存在
+              missingElement: !paymentLogsTab ? "admin-tab-payment-logs_modal" : 
+                              !paymentLogsPanel ? "admin-payment-logs-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "payment-settings") {
+          // [标签切换] 处理支付设置标签的切换逻辑
+          // 当用户点击"支付设置"标签时，需要显示支付配置界面
+          console.log("[标签切换] 正在切换到支付设置标签...");
+          
+          // [获取元素] 获取支付设置标签和面板的DOM元素
+          const paymentSettingsTab = $("admin-tab-payment-settings_modal");
+          const paymentSettingsPanel = $("admin-payment-settings-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (paymentSettingsTab && paymentSettingsPanel) {
+            // [激活标签] 为支付设置标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            paymentSettingsTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            paymentSettingsTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使支付设置面板可见
+            paymentSettingsPanel.classList.remove("hidden");
+            
+            // [面板说明] 支付设置面板有自己的子标签系统
+            // 该面板内部可能包含多个子标签，如：
+            // - 支付宝配置、微信支付配置、PayPal配置等
+            // 这些子标签的切换由面板内部的逻辑处理，无需在此处调用额外的加载函数
+            console.log("[面板说明] 支付设置面板已显示，子标签系统将自行初始化");
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了支付设置面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 支付设置面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到支付设置标签，元素缺失:", {
+              paymentSettingsTab: !!paymentSettingsTab,       // 标签元素是否存在
+              paymentSettingsPanel: !!paymentSettingsPanel,   // 面板元素是否存在
+              missingElement: !paymentSettingsTab ? "admin-tab-payment-settings_modal" : 
+                              !paymentSettingsPanel ? "admin-payment-settings-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "pricing") {
+          // [标签切换] 处理价格设置标签的切换逻辑
+          // 当用户点击"价格设置"标签时，需要显示价格配置界面
+          console.log("[标签切换] 正在切换到价格设置标签...");
+          
+          // [获取元素] 获取价格设置标签和面板的DOM元素
+          const pricingTab = $("admin-tab-pricing_modal");
+          const pricingPanel = $("admin-pricing-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (pricingTab && pricingPanel) {
+            // [激活标签] 为价格设置标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            pricingTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            pricingTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使价格设置面板可见
+            pricingPanel.classList.remove("hidden");
+            
+            // [加载数据] 调用loadPricingConfig函数加载当前的价格配置
+            // 该函数会从后端获取价格策略配置，包括：
+            // - 是否需要付费（require_payment）
+            // - 单次跑步费用（per_run_cost）
+            // - 新用户默认免费次数（default_available_runs）
+            console.log("[数据加载] 开始加载价格配置...");
+            loadPricingConfig();
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了价格设置面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 价格设置面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到价格设置标签，元素缺失:", {
+              pricingTab: !!pricingTab,       // 标签元素是否存在
+              pricingPanel: !!pricingPanel,   // 面板元素是否存在
+              missingElement: !pricingTab ? "admin-tab-pricing_modal" : 
+                              !pricingPanel ? "admin-pricing-panel_modal" : "未知"
             });
           }
         } else {
@@ -15202,7 +15534,11 @@ function refreshMobileSessionPicker() {
           showMainApp();
           $("loading-overlay").classList.add("hidden");
           currentUserData = result.userInfo;
-          currentUserData.group = result.auth_group || "user";
+          // [修复] 从API返回的result中获取group字段，而不是auth_group
+          // 原因：后端登录API（main.py第16868行）返回的字段名是"group"，不是"auth_group"
+          // 错误使用auth_group会导致currentUserData.group总是默认为"user"
+          // 这会使管理员权限验证失败（如第5326行的isAdmin判断）
+          currentUserData.group = result.group || "user";
           currentSessionUA = uaOnLoginScreen;
           const name = currentUserData.name || "";
           $("user-name-label").textContent = `姓名: ${name}`;
@@ -35725,20 +36061,74 @@ async function loadPaymentLogs(page) {
         }
         
         // 步骤7：调用后端API获取日志列表
-        const response = await fetch(url);
+        // [修复] 添加X-Session-ID请求头，用于后端身份验证
+        // sessionUUID是全局会话标识符，在用户登录时由服务器生成并存储在客户端
+        // 后端通过此header验证请求的合法性，防止未授权访问
+        const response = await fetch(url, {
+            method: 'GET',                      // 明确指定HTTP方法为GET
+            headers: {
+                'X-Session-ID': sessionUUID     // 添加会话ID用于身份验证
+            }
+        });
         
-        // 步骤8：解析响应数据
-        const result = await response.json();
-        
-        // 步骤9：检查API调用结果
-        if (!result.success) {
-            // 加载失败，显示错误提示
-            container.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${result.message || '加载日志失败'}</p>`;
-            console.error('[管理员-支付日志] 加载失败:', result.message);
-            return;
+        // 步骤8：检查HTTP状态码
+        // 在尝试解析响应数据之前，首先验证HTTP请求是否成功
+        // 这样可以更准确地捕获和处理各种HTTP错误（401未授权、403禁止访问、404未找到、500服务器错误等）
+        if (!response.ok) {
+            // HTTP错误（401, 403, 404, 500等）
+            // 首先尝试读取响应体文本，它可能包含详细的错误信息
+            const errorText = await response.text();
+            // 初始化错误消息，默认显示HTTP状态码
+            let errorMessage = `HTTP错误: ${response.status}`;
+            
+            try {
+                // 尝试将错误文本解析为JSON对象
+                // 如果后端返回的是结构化的错误信息，我们可以提取message字段
+                const errorData = JSON.parse(errorText);
+                errorMessage = errorData.message || errorMessage;
+            } catch (e) {
+                // 解析失败，使用状态码文本
+                // 这种情况下，后端可能返回的是纯文本或HTML错误页面
+            }
+            
+            // 根据状态码显示不同的错误提示
+            // 这样可以为用户提供更友好、更具体的错误说明
+            if (response.status === 401) {
+                // 401 Unauthorized: 用户未登录或会话已过期
+                errorMessage = "未登录或会话已过期，请重新登录";
+            } else if (response.status === 403) {
+                // 403 Forbidden: 用户已登录但没有足够的权限访问此资源
+                errorMessage = "权限不足，需要审计日志查看权限";
+            }
+            
+            // 在页面上显示错误消息
+            // 使用红色文本和居中对齐，确保用户能够清楚地看到错误提示
+            container.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${errorMessage}</p>`;
+            
+            // 在控制台记录详细的错误信息，方便开发人员调试
+            console.error('[管理员-支付日志] HTTP错误:', {
+                status: response.status,
+                message: errorMessage
+            });
+            return;  // 提前返回，不再继续处理
         }
         
-        // 步骤10：获取日志列表数据
+        // 步骤9：解析响应数据（修改原来的步骤8）
+        // 只有在HTTP请求成功（status 200-299）时，才会执行到这里
+        const result = await response.json();
+        
+        // 步骤10：检查API调用结果（修改原来的步骤9）
+        // 即使HTTP请求成功（200 OK），API调用本身也可能失败
+        // 例如：后端业务逻辑检测到错误、数据库查询失败等
+        if (!result.success) {
+            // 加载失败，显示错误提示
+            // result.message包含后端返回的具体错误信息
+            container.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${result.message || '加载日志失败'}</p>`;
+            console.error('[管理员-支付日志] 加载失败:', result.message);
+            return;  // 提前返回，不再继续处理
+        }
+        
+        // 步骤11：获取日志列表数据（修改原来的步骤10）
         const logs = result.logs || [];
         const total = result.total || 0;
         const totalPages = Math.ceil(total / paymentLogsPerPage);
@@ -35746,7 +36136,7 @@ async function loadPaymentLogs(page) {
         // 输出日志：记录加载结果
         console.log('[管理员-支付日志] 日志列表加载成功:', { total, logs: logs.length });
         
-        // 步骤11：检查是否有日志数据
+        // 步骤12：检查是否有日志数据（修改原来的步骤11）
         if (logs.length === 0) {
             // 没有日志，显示空状态提示
             container.innerHTML = `
@@ -35758,7 +36148,7 @@ async function loadPaymentLogs(page) {
                 </div>
             `;
         } else {
-            // 步骤12：渲染日志列表
+            // 步骤13：渲染日志列表（修改原来的步骤12）
             // 清空容器，准备插入日志卡片
             container.innerHTML = '';
             

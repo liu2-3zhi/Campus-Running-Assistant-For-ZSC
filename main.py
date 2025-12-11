@@ -1606,19 +1606,6 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 格式：通常为32位随机字符串\n")
         f.write("# 示例：abcdef1234567890abcdef1234567890\n")
         f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
-        f.write("# 应用访问域名（必填）\n")
-        f.write("# 本应用的公网访问地址，用于自动构造异步通知URL\n")
-        f.write("# 格式示例：https://yourdomain.com 或 https://www.example.com\n")
-        f.write("# 注意：\n")
-        f.write("# 1. 必须是公网可访问的HTTPS地址\n")
-        f.write("# 2. 包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
-        f.write("# 3. 系统会自动拼接为：{app_host}/api/payment/yipay_notify\n")
-        f.write(f"app_host = {config_obj.get('Rainbow_YiPay', 'app_host', fallback='')}\n")
-        f.write("# 异步通知URL（已废弃）\n")
-        f.write("# ⚠️ 此配置项已废弃，现在 notify_url 会根据 app_host 自动构造\n")
-        f.write("# 格式：{app_host}/api/payment/yipay_notify\n")
-        f.write("# 无需手动配置，保留此项仅为向后兼容\n")
-        f.write(f"notify_url = {config_obj.get('Rainbow_YiPay', 'notify_url', fallback='')}\n")
         f.write("# 同步返回URL（可选）\n")
         f.write("# 用户支付完成后，浏览器会跳转到此URL显示支付结果\n")
         f.write("# 格式示例：https://yourdomain.com/payment/success\n")
@@ -19164,6 +19151,98 @@ def start_web_server(args_param):
                 500,
             )
 
+    @app.route("/api/user/is_admin", methods=["GET"])
+    @login_required
+    def api_user_is_admin():
+        """
+        检查当前用户是否为管理员（admin或super_admin）
+        
+        此API用于前端权限验证，解决admin-users-panel_modal无法显示需要组别验证的按钮问题。
+        
+        功能说明：
+        - 获取当前登录用户的组别（group）信息
+        - 判断用户是否属于管理员组（admin）或超级管理员组（super_admin）
+        - 只返回当前用户的信息，确保安全性
+        
+        返回格式：
+        {
+            "success": True,           # 请求是否成功
+            "is_admin": True/False,    # 是否为管理员
+            "group": "用户组别"         # 当前用户的组别（user/admin/super_admin）
+        }
+        
+        错误处理：
+        - 如果用户未登录，@login_required装饰器会自动返回401
+        - 如果获取用户信息失败，返回500错误
+        """
+        try:
+            # 从Flask的全局对象g中获取当前登录的用户名
+            # g.user 由 @login_required 装饰器自动设置
+            # 这确保了此API只能由已登录用户调用
+            current_username = g.user
+            
+            # 使用auth_system的get_user_details方法获取用户的详细信息
+            # 这个方法返回一个包含用户所有信息的字典
+            user_details = auth_system.get_user_details(current_username)
+            
+            # 检查是否成功获取到用户详细信息
+            # 如果user_details为None或空，说明用户数据不存在（理论上不应该发生）
+            if user_details:
+                # 从用户详细信息中提取group字段
+                # group字段表示用户的权限组别，可能的值：user, admin, super_admin
+                user_group = user_details.get("group", "user")
+                
+                # 判断用户是否为管理员
+                # 管理员的定义：group为"admin"或"super_admin"
+                # 这个判断逻辑与前端main.js第5326行的判断逻辑保持一致
+                is_admin = user_group in ["admin", "super_admin"]
+                
+                # 记录调试日志，便于排查权限问题
+                # 这对于定位为什么某些按钮不显示非常有帮助
+                logging.info(
+                    f"[API] 用户 {current_username} 管理员状态检查: "
+                    f"组别={user_group}, 是否管理员={is_admin}"
+                )
+                
+                # 返回JSON格式的响应
+                # success: True 表示请求成功处理
+                # is_admin: 布尔值，表示是否为管理员
+                # group: 字符串，表示用户的具体组别
+                return jsonify(
+                    {
+                        "success": True,
+                        "is_admin": is_admin,
+                        "group": user_group
+                    }
+                )
+            
+            # 如果无法获取用户详细信息，返回404错误
+            # 这种情况理论上不应该发生，因为用户已经通过了@login_required验证
+            logging.error(f"[API] 用户 {current_username} 的详细信息不存在")
+            return jsonify(
+                {
+                    "success": False,
+                    "message": "用户数据不存在"
+                }
+            ), 404
+            
+        except Exception as e:
+            # 捕获所有可能的异常，确保API不会崩溃
+            # 记录完整的错误堆栈信息（exc_info=True），便于调试
+            logging.error(f"[API] 检查管理员状态失败: {e}", exc_info=True)
+            
+            # 返回500错误，表示服务器内部错误
+            # 将错误信息返回给前端，便于定位问题
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": f"检查管理员状态失败: {str(e)}"
+                    }
+                ),
+                500,
+            )
+
     @app.route("/auth/user/details", methods=["GET"])
     def auth_user_details():
         """获取用户详细信息"""
@@ -26386,6 +26465,7 @@ def start_web_server(args_param):
             logging.error(traceback.format_exc())
 
     @app.route("/api/payment/methods_config", methods=["GET"])
+    @login_required
     def payment_methods_config():
         """
         获取支付方式配置接口
