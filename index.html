@@ -9603,142 +9603,142 @@
             <!-- 此内容将由JavaScript动态更新 -->
           </div>
         </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- ========================================
-       PC端价格设置面板 (admin-pricing-panel_modal)
-       用途：管理员配置价格策略
-       权限：需要modify_config权限
-       功能：配置是否需要付费、单次费用、新用户免费次数
-       API端点：/api/admin/pricing_config
-       
-       面板结构：
-       - 顶部：面板标题和描述
-       - 中间：配置表单（开关、数字输入框）
-       - 底部：保存按钮
-       
-       配置项：
-       1. require_payment: 是否需要付费（开关）
-       2. per_run_cost: 单次跑步费用（数字输入）
-       3. default_available_runs: 新用户默认免费次数（数字输入）
-       ======================================== -->
-  <div id="admin-pricing-panel_modal" class="hidden space-y-4">
-    <!-- 面板顶部：标题和描述 -->
-    <div class="bg-gradient-to-r from-sky-50 to-blue-50 p-4 rounded-lg border border-sky-200">
-      <h3 class="text-lg font-bold text-sky-700 mb-2">
-        <!-- 价格图标 -->
-        <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-        价格配置管理
-      </h3>
-      <!-- 面板描述文本 -->
-      <p class="text-sm text-slate-600">
-        配置系统的价格策略，包括是否启用付费模式、单次跑步费用和新用户的默认免费次数。
-      </p>
-    </div>
-
-    <!-- 配置表单区域 -->
-    <div class="space-y-4">
-      <!-- 配置项1: 是否需要付费 -->
-      <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
-        <div class="flex items-center justify-between">
-          <div class="flex-1">
-            <!-- 配置项标题 -->
-            <label class="block text-sm font-semibold text-slate-700 mb-1">
-              <!-- 图标：开关 -->
-              <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- ========================================
+             PC端价格设置面板 (admin-pricing-panel_modal)
+             用途：管理员配置价格策略
+             权限：需要modify_config权限
+             功能：配置是否需要付费、单次费用、新用户免费次数
+             API端点：/api/admin/pricing_config
+             
+             面板结构：
+             - 顶部：面板标题和描述
+             - 中间：配置表单（开关、数字输入框）
+             - 底部：保存按钮
+             
+             配置项：
+             1. require_payment: 是否需要付费（开关）
+             2. per_run_cost: 单次跑步费用（数字输入）
+             3. default_available_runs: 新用户默认免费次数（数字输入）
+             ======================================== -->
+        <div id="admin-pricing-panel_modal" class="hidden space-y-4">
+          <!-- 面板顶部：标题和描述 -->
+          <div class="bg-gradient-to-r from-sky-50 to-blue-50 p-4 rounded-lg border border-sky-200">
+            <h3 class="text-lg font-bold text-sky-700 mb-2">
+              <!-- 价格图标 -->
+              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
-              是否需要付费
-            </label>
-            <!-- 配置项说明 -->
-            <p class="text-xs text-slate-500">
-              开启后，用户需要支付才能使用跑步服务；关闭后，所有用户可免费使用。
+              价格配置管理
+            </h3>
+            <!-- 面板描述文本 -->
+            <p class="text-sm text-slate-600">
+              配置系统的价格策略，包括是否启用付费模式、单次跑步费用和新用户的默认免费次数。
             </p>
           </div>
-          <!-- 开关按钮 -->
-          <label class="relative inline-flex items-center cursor-pointer ml-4">
-            <!-- 隐藏的复选框，实际控制开关状态 -->
-            <input type="checkbox" id="pricing-require-payment_modal" class="sr-only peer">
-            <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
-            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
-          </label>
+
+          <!-- 配置表单区域 -->
+          <div class="space-y-4">
+            <!-- 配置项1: 是否需要付费 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <!-- 配置项标题 -->
+                  <label class="block text-sm font-semibold text-slate-700 mb-1">
+                    <!-- 图标：开关 -->
+                    <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                    是否需要付费
+                  </label>
+                  <!-- 配置项说明 -->
+                  <p class="text-xs text-slate-500">
+                    开启后，用户需要支付才能使用跑步服务；关闭后，所有用户可免费使用。
+                  </p>
+                </div>
+                <!-- 开关按钮 -->
+                <label class="relative inline-flex items-center cursor-pointer ml-4">
+                  <!-- 隐藏的复选框，实际控制开关状态 -->
+                  <input type="checkbox" id="pricing-require-payment_modal" class="sr-only peer">
+                  <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
+                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- 配置项2: 单次跑步费用 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+              <!-- 配置项标题 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-1">
+                <!-- 图标：金钱 -->
+                <svg class="w-4 h-4 inline mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                单次跑步费用（元）
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500 mb-2">
+                用于计算用户欠费金额 = 欠费次数 × 单次费用。设置为0表示免费。
+              </p>
+              <!-- 数字输入框 -->
+              <input type="number" id="pricing-per-run-cost_modal"
+                class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
+                placeholder="例如：1.0"
+                min="0"
+                step="0.01"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400 mt-1">
+                支持小数，最多两位小数（如1.50）
+              </p>
+            </div>
+
+            <!-- 配置项3: 新用户默认免费次数 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+              <!-- 配置项标题 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-1">
+                <!-- 图标：礼物 -->
+                <svg class="w-4 h-4 inline mr-1 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
+                </svg>
+                新用户默认免费次数
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500 mb-2">
+                新用户注册时自动获得的免费跑步次数。设置为0表示无免费次数。
+              </p>
+              <!-- 数字输入框 -->
+              <input type="number" id="pricing-default-runs_modal"
+                class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
+                placeholder="例如：10"
+                min="0"
+                step="1"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400 mt-1">
+                必须是非负整数（如0、10、100）
+              </p>
+            </div>
+          </div>
+
+          <!-- 保存按钮 -->
+          <div class="flex justify-end pt-4">
+            <button onclick="savePricingConfig()" 
+              class="px-6 py-2.5 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md">
+              <!-- 保存图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M5 13l4 4L19 7"/>
+              </svg>
+              保存配置
+            </button>
+          </div>
         </div>
       </div>
-
-      <!-- 配置项2: 单次跑步费用 -->
-      <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
-        <!-- 配置项标题 -->
-        <label class="block text-sm font-semibold text-slate-700 mb-1">
-          <!-- 图标：金钱 -->
-          <svg class="w-4 h-4 inline mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          单次跑步费用（元）
-        </label>
-        <!-- 配置项说明 -->
-        <p class="text-xs text-slate-500 mb-2">
-          用于计算用户欠费金额 = 欠费次数 × 单次费用。设置为0表示免费。
-        </p>
-        <!-- 数字输入框 -->
-        <input type="number" id="pricing-per-run-cost_modal"
-          class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
-          placeholder="例如：1.0"
-          min="0"
-          step="0.01"
-          required>
-        <!-- 输入提示 -->
-        <p class="text-xs text-slate-400 mt-1">
-          支持小数，最多两位小数（如1.50）
-        </p>
-      </div>
-
-      <!-- 配置项3: 新用户默认免费次数 -->
-      <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
-        <!-- 配置项标题 -->
-        <label class="block text-sm font-semibold text-slate-700 mb-1">
-          <!-- 图标：礼物 -->
-          <svg class="w-4 h-4 inline mr-1 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
-          </svg>
-          新用户默认免费次数
-        </label>
-        <!-- 配置项说明 -->
-        <p class="text-xs text-slate-500 mb-2">
-          新用户注册时自动获得的免费跑步次数。设置为0表示无免费次数。
-        </p>
-        <!-- 数字输入框 -->
-        <input type="number" id="pricing-default-runs_modal"
-          class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
-          placeholder="例如：10"
-          min="0"
-          step="1"
-          required>
-        <!-- 输入提示 -->
-        <p class="text-xs text-slate-400 mt-1">
-          必须是非负整数（如0、10、100）
-        </p>
-      </div>
-    </div>
-
-    <!-- 保存按钮 -->
-    <div class="flex justify-end pt-4">
-      <button onclick="savePricingConfig()" 
-        class="px-6 py-2.5 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md">
-        <!-- 保存图标 -->
-        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M5 13l4 4L19 7"/>
-        </svg>
-        保存配置
-      </button>
     </div>
   </div>
 
