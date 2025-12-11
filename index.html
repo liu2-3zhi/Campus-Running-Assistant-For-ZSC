@@ -19125,7 +19125,7 @@ body.mobile-mode #session-picker-modal {
           method: 'GET', // HTTP方法：GET用于获取数据
           headers: {
             // 设置请求头，告知服务器期望返回JSON格式的数据
-            "X-Session-ID": sessionUUID
+            "X-Session-ID": sessionUUID,
             'Content-Type': 'application/json'
           }
         });
@@ -19481,7 +19481,7 @@ body.mobile-mode #session-picker-modal {
           method: 'PUT', // HTTP方法：PUT用于更新数据
           headers: {
             // 设置请求头，告知服务器发送的是JSON格式的数据
-            "X-Session-ID": sessionUUID
+            "X-Session-ID": sessionUUID,
             'Content-Type': 'application/json'
           },
           // 将配置对象转换为JSON字符串并发送
@@ -19594,7 +19594,7 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/yipay_config', {
           method: 'GET',
           headers: {
-            "X-Session-ID": sessionUUID
+            "X-Session-ID": sessionUUID,
             'Content-Type': 'application/json'
           }
         });
@@ -19749,7 +19749,7 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/yipay_config', {
           method: 'PUT',
           headers: {
-            "X-Session-ID": sessionUUID
+            "X-Session-ID": sessionUUID,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
@@ -20457,7 +20457,7 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/pricing_config', {
           method: 'PUT',  // HTTP方法：PUT（更新数据）
           headers: {
-            "X-Session-ID": sessionUUID
+            "X-Session-ID": sessionUUID,
             'Content-Type': 'application/json'  // 请求头：指定内容类型为JSON
           },
           credentials: 'include',  // 包含认证凭证
