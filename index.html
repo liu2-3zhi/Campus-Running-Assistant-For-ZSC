@@ -15064,15 +15064,33 @@ body.mobile-mode #session-picker-modal {
           const methodsString = enabledMethods.join(',');
           
           // 更新易支付启用方式输入框的值
+          // 即使输入框设置了readonly属性，JavaScript仍然可以修改其value
           yipayMethodsInput.value = methodsString;
           
-          // 在控制台输出日志，记录自动同步操作
-          console.log('[支付配置] 已自动同步到易支付启用方式：', methodsString);
+          // 触发input事件，确保任何监听此输入框的代码能够感知到值的变化
+          // bubbles: true 表示事件会向上冒泡到父元素
+          yipayMethodsInput.dispatchEvent(new Event('input', { bubbles: true }));
+          
+          // 添加视觉反馈：短暂高亮输入框，让用户知道值已更新
+          // 使用Tailwind CSS的ring类创建绿色边框效果
+          yipayMethodsInput.classList.add('ring-2', 'ring-green-500');
+          
+          // 设置定时器，1.5秒后自动移除高亮效果
+          setTimeout(() => {
+            yipayMethodsInput.classList.remove('ring-2', 'ring-green-500');
+          }, 1500);
+          
+          // 在控制台输出详细的日志，记录自动同步操作
+          // 使用 ✓ 符号标记成功操作，便于快速识别
+          console.log('[支付配置] ✓ 已自动同步到易支付启用方式');
+          console.log('[支付配置] 同步的支付方式代码：', methodsString);
           console.log('[支付配置] 同步的支付方式数量：', enabledMethods.length);
+          console.log('[支付配置] 输入框当前值：', yipayMethodsInput.value);
         } else {
           // 如果找不到易支付输入框元素，在控制台输出警告
-          // 这不是致命错误，不影响主要功能，但需要记录以便排查
-          console.warn('[支付配置] 未找到易支付启用方式输入框，无法自动同步');
+          // 使用 ✗ 符号标记失败操作，并提供详细的调试信息
+          console.warn('[支付配置] ✗ 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
+          console.warn('[支付配置] 请检查HTML中是否存在此元素');
         }
         
         // === 第7步：重新加载配置以确保数据同步 ===
@@ -26154,6 +26172,21 @@ function refreshMobileSessionPicker() {
             }
           } catch (e) {
             logMessage_Warning("[loadPersonalInfo] 加载主题设置失败:", e);
+          }
+          
+          // === 更新 available_runs 显示 ===
+          // 调用 updateProfileAvailableRuns 函数来更新个人资料中的 available_runs 显示
+          // 该函数会根据 config[Profile_Display].available_runs_format 的格式来显示可用次数
+          // 传入完整的用户数据对象，函数内部会提取 available_runs 字段并格式化显示
+          try {
+            // 调用更新函数，传入用户数据
+            await updateProfileAvailableRuns(user);
+            // 记录成功日志
+            logMessage_Info("[loadPersonalInfo] ✓ 已更新 available_runs 显示");
+          } catch (e) {
+            // 如果更新失败，记录警告日志但不影响主流程
+            // 这是一个增强功能，即使失败也不应该阻断个人信息的加载
+            logMessage_Warning("[loadPersonalInfo] 更新 available_runs 显示失败:", e);
           }
         } catch (e) {
           logMessage_Error("加载个人信息失败:", e);
@@ -49068,6 +49101,21 @@ async function loadMobileUnifiedProfile() {
         } catch (e) {
           console.error("[移动端统一面板-个人信息] 加载全局参数失败:", e);
           showModalAlert("加载全局参数失败: " + e.message, "错误");
+        }
+        
+        // === 更新 available_runs 显示 ===
+        // 调用 updateProfileAvailableRuns 函数来更新移动端个人资料中的 available_runs 显示
+        // 该函数会根据 config[Profile_Display].available_runs_format 的格式来显示可用次数
+        // 传入完整的用户数据对象，函数内部会提取 available_runs 字段并格式化显示
+        try {
+          // 调用更新函数，传入用户数据
+          await updateProfileAvailableRuns(data);
+          // 记录成功日志，使用移动端统一面板的日志前缀便于调试
+          console.log("[移动端统一面板-个人信息] ✓ 已更新 available_runs 显示");
+        } catch (e) {
+          // 如果更新失败，记录警告日志但不影响主流程
+          // 这是一个增强功能，即使失败也不应该阻断个人信息的加载
+          console.warn("[移动端统一面板-个人信息] 更新 available_runs 显示失败:", e);
         }
       }
     } else {
