@@ -9494,11 +9494,24 @@ body.mobile-mode #session-picker-modal {
         </button>
 
         <!-- ========================================
-             支付日志标签按钮 - 仅管理员可见
-             功能：查询当前用户的支付相关操作日志
-             权限：管理员（admin）和超级管理员（super_admin）
+             支付日志标签按钮 - 显示逻辑依赖于 require_payment 配置
+             ========================================
+             功能：查询支付相关操作日志
+             
+             显示权限规则（根据config.ini的[Payment_Settings].require_payment配置）：
+             - 如果 require_payment = true（启用付费模式）：
+               → 所有用户（包括普通用户）都能看到支付历史标签
+               → 普通用户查看自己的支付记录
+               → 管理员可查看所有用户的支付记录
+             - 如果 require_payment = false（免费模式）：
+               → 只有管理员（admin）和超级管理员（super_admin）可以看到
+               → 用于系统监控和审计目的
+             
              位置：管理员面板标签栏，位于欠费查询之后
-             API端点：/api/payment_logs
+             API端点：/api/payment_logs（普通用户）、/api/admin/payment_logs（管理员）
+             
+             实现逻辑位置：toggleAdminPanel() 函数中
+             显示条件：shouldShowPaymentLogs = isAdmin || requirePayment
              ======================================== -->
         <button id="admin-tab-payment-logs_modal"
           class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap"
@@ -11249,29 +11262,6 @@ body.mobile-mode #session-picker-modal {
             💡 提示：启用相应的支付方式后，用户可在支付页面选择使用。可以通过"添加支付方式"按钮新增其他支付方式。更改后请点击"保存配置"按钮。
           </p>
 
-          <!-- ========================================
-               刷新按钮区域
-               ========================================
-               功能：重新从服务器加载支付方式配置数据
-               点击后调用 loadPaymentMethodsConfig() 函数
-               按钮样式：幽灵按钮风格，与其他面板保持一致
-               ======================================== -->
-          <div class="flex justify-end">
-            <!-- 刷新按钮：点击后重新加载支付方式配置 -->
-            <button onclick="loadPaymentMethodsConfig()" 
-              class="btn btn-ghost !py-1 !px-3 !text-sm hover:bg-sky-50 transition-colors"
-              title="点击刷新支付方式配置">
-              <!-- 刷新图标：使用SVG绘制旋转箭头图标 -->
-              <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <!-- SVG路径：绘制顺时针旋转的双箭头，symbolizing刷新/重载操作 -->
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
-              <!-- 按钮文本：向用户说明此按钮的功能 -->
-              刷新
-            </button>
-          </div>
-
           <!-- 添加支付方式按钮 -->
           <!-- 点击后打开添加支付方式的模态框 -->
           <button onclick="openAddPaymentMethodModal()" 
@@ -11295,17 +11285,45 @@ body.mobile-mode #session-picker-modal {
             -->
           </div>
 
-          <!-- 保存按钮：提交配置更改 -->
-          <!-- 点击后会调用 savePaymentMethodsConfig() 函数保存所有支付方式的启用状态 -->
-          <button id="admin-save-payment-methods-btn_modal" 
-            class="w-full py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
-            <!-- 保存图标：对勾 -->
-            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M5 13l4 4L19 7"/>
-            </svg>
-            保存配置
-          </button>
+          <!-- ========================================
+               操作按钮组
+               ========================================
+               功能：包含刷新配置和保存配置两个按钮
+               布局：使用grid布局，两列并排显示
+               参考样式：admin-payment-settings-content-yipay_modal 面板的按钮组
+               ======================================== -->
+          <div class="grid grid-cols-2 gap-3">
+            <!-- 刷新配置按钮：从服务器重新加载当前的支付方式配置 -->
+            <!-- 点击后调用 loadPaymentMethodsConfig() 函数 -->
+            <!-- 使用灰色主题（bg-slate-500），表示这是一个辅助/次要操作 -->
+            <button onclick="loadPaymentMethodsConfig()" 
+              class="py-3 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md"
+              title="点击从服务器重新加载支付方式配置">
+              <!-- 刷新图标：循环箭头，表示重新加载/刷新操作 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <!-- SVG路径：绘制顺时针旋转的双箭头，symbolizing刷新/重载操作 -->
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              <!-- 按钮文本：向用户说明此按钮的功能 -->
+              刷新配置
+            </button>
+
+            <!-- 保存配置按钮：将表单中的配置保存到服务器 -->
+            <!-- 点击后调用 savePaymentMethodsConfig() 函数保存所有支付方式的启用状态 -->
+            <!-- 使用蓝色主题（bg-sky-500），表示这是一个主要/积极操作 -->
+            <button id="admin-save-payment-methods-btn_modal" 
+              class="py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md"
+              title="点击保存当前的支付方式配置">
+              <!-- 保存图标：对勾，表示确认/保存操作 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M5 13l4 4L19 7"/>
+              </svg>
+              <!-- 按钮文本：向用户说明此按钮的功能 -->
+              保存配置
+            </button>
+          </div>
 
           <!-- 操作结果提示区域：用于显示成功或错误消息 -->
           <!-- hidden类会让元素默认隐藏，成功或失败时通过JavaScript移除hidden类来显示提示 -->
@@ -12112,30 +12130,6 @@ body.mobile-mode #session-picker-modal {
           </p>
         </div>
 
-        <!-- ========================================
-             刷新按钮区域
-             ========================================
-             功能：重新从服务器加载价格配置数据
-             点击后调用 loadPricingConfig() 函数
-             按钮样式：幽灵按钮风格，与其他面板保持一致
-             位置：放置在面板顶部标题下方，配置表单上方
-             ======================================== -->
-        <div class="flex justify-end mt-3">
-          <!-- 刷新按钮：点击后重新加载价格配置数据 -->
-          <button onclick="loadPricingConfig()" 
-            class="btn btn-ghost !py-1 !px-3 !text-sm hover:bg-sky-50 transition-colors"
-            title="点击刷新价格配置">
-            <!-- 刷新图标：使用SVG绘制旋转箭头图标 -->
-            <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <!-- SVG路径：绘制顺时针旋转的双箭头，symbolizing刷新/重载操作 -->
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            <!-- 按钮文本：向用户说明此按钮的功能 -->
-            刷新
-          </button>
-        </div>
-
         <!-- 配置表单区域 -->
         <div class="space-y-4">
           <!-- 配置项1: 是否需要付费 -->
@@ -12335,15 +12329,42 @@ body.mobile-mode #session-picker-modal {
           </div>
         </div>
 
-        <!-- 保存按钮 -->
-        <div class="flex justify-end pt-4">
+        <!-- ========================================
+             操作按钮组
+             ========================================
+             功能：包含刷新配置和保存配置两个按钮
+             布局：使用grid布局，两列并排显示
+             参考样式：admin-payment-settings-content-yipay_modal 面板的按钮组
+             ======================================== -->
+        <div class="grid grid-cols-2 gap-3 pt-4">
+          <!-- 刷新配置按钮：从服务器重新加载当前的价格配置 -->
+          <!-- 点击后调用 loadPricingConfig() 函数 -->
+          <!-- 使用灰色主题（bg-slate-500），表示这是一个辅助/次要操作 -->
+          <button onclick="loadPricingConfig()" 
+            class="py-3 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md"
+            title="点击从服务器重新加载价格配置">
+            <!-- 刷新图标：循环箭头，表示重新加载/刷新操作 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <!-- SVG路径：绘制顺时针旋转的双箭头，symbolizing刷新/重载操作 -->
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <!-- 按钮文本：向用户说明此按钮的功能 -->
+            刷新配置
+          </button>
+
+          <!-- 保存配置按钮：将表单中的价格配置保存到服务器 -->
+          <!-- 点击后调用 savePricingConfig() 函数保存所有价格配置项 -->
+          <!-- 使用蓝色主题（bg-sky-600），表示这是一个主要/积极操作 -->
           <button onclick="savePricingConfig()" 
-            class="px-6 py-2.5 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md">
-            <!-- 保存图标 -->
+            class="py-3 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md"
+            title="点击保存当前的价格配置">
+            <!-- 保存图标：对勾，表示确认/保存操作 -->
             <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M5 13l4 4L19 7"/>
             </svg>
+            <!-- 按钮文本：向用户说明此按钮的功能 -->
             保存配置
           </button>
         </div>
@@ -26538,15 +26559,32 @@ function refreshMobileSessionPicker() {
             console.warn("[欠费查询Tab警告] 未找到ID为'admin-tab-overdue_modal'的元素");
           }
 
-          // 步骤6：【核心逻辑】设置"支付日志"标签的显示状态
-          // 显示条件（满足任一即显示）：
-          // 1. 用户是管理员或超级管理员（isAdmin为true）
-          // 2. require_payment配置为true（表示系统启用了付费功能，所有用户都应该能看到自己的支付历史）
+          // 步骤6：【核心逻辑 - 任务3】设置"支付日志"标签的显示状态
+          // ========================================================================
+          // 【业务需求说明】
+          // 支付历史标签的显示需要根据 config.ini 中的 [Payment_Settings].require_payment 配置：
+          // 
+          // 场景A: require_payment = true（启用付费模式）
+          //   → 显示条件：所有用户都能看到
+          //   → 原因：用户需要查看自己的支付记录、消费明细等
+          //   → 管理员额外功能：可以查看所有用户的支付记录
+          //
+          // 场景B: require_payment = false（免费模式）
+          //   → 显示条件：只有管理员可以看到
+          //   → 原因：系统免费使用，普通用户无需查看支付信息
+          //   → 管理员用途：监控、审计、历史记录查询等
+          //
+          // 【逻辑表达式】shouldShowPaymentLogs = isAdmin || requirePayment
+          //   - 当 isAdmin = true 时：无论 requirePayment 值为何，结果都是 true（管理员始终可见）
+          //   - 当 isAdmin = false 且 requirePayment = true 时：结果是 true（普通用户在付费模式下可见）
+          //   - 当 isAdmin = false 且 requirePayment = false 时：结果是 false（普通用户在免费模式下不可见）
+          // ========================================================================
           if (paymentLogsTab) {
             // [显示逻辑判断]
-            // - 如果isAdmin为true：管理员始终可以查看所有用户的支付日志
-            // - 如果requirePayment为true：即使是普通用户，也应该能看到自己的支付记录
-            // - 两个条件满足其一，就显示支付日志标签
+            // 使用逻辑或（||）运算符组合两个条件：
+            // - 条件1 (isAdmin)：用户是管理员或超级管理员 → 管理员始终可以查看所有用户的支付日志
+            // - 条件2 (requirePayment)：系统启用了付费功能 → 即使是普通用户，也应该能看到自己的支付记录
+            // 只要满足其中任一条件，就显示支付日志标签
             const shouldShowPaymentLogs = isAdmin || requirePayment;
             
             // 设置DOM元素的display样式属性
@@ -48144,8 +48182,74 @@ function toggleMobileMultiAdminPanel(show) {
     }
   }
 }
-function initMobileAdminPanel(prefix) {
+// ========================================
+// 【移动端管理面板初始化函数】
+// 负责初始化移动端管理面板的标签页导航和内容区域
+// 【重要修改】将函数改为异步函数(async)，以便获取require_payment配置
+// ========================================
+async function initMobileAdminPanel(prefix) {
+  // 获取当前用户的组别信息，用于权限判断
+  // 如果currentUserData未定义或缺少group属性，默认为"user"
   const userGroup = currentUserData?.group || "user";
+  
+  // 【权限判断】判断当前用户是否为管理员
+  // 管理员包括"admin"和"super_admin"两种组别
+  const isAdmin = userGroup === "admin" || userGroup === "super_admin";
+  
+  // ========================================
+  // 【关键修复】获取require_payment配置
+  // 用于实现与PC端相同的支付历史标签显示逻辑：
+  // - require_payment = true 时，所有用户都能看到支付历史
+  // - require_payment = false 时，只有管理员能看到支付历史
+  // ========================================
+  let requirePayment = false; // 默认值：不需要付费（安全默认值）
+  
+  try {
+    // [异步请求] 向后端API发起GET请求，获取价格配置
+    // 这个配置包含了require_payment字段，用于判断是否启用付费功能
+    const pricingConfigResponse = await fetch('/api/admin/pricing_config', {
+      method: 'GET',                      // HTTP方法：GET（查询数据）
+      headers: {
+        'Content-Type': 'application/json', // 请求头：指定返回内容类型为JSON
+        'X-Session-ID': sessionUUID        // 请求头：传递会话UUID用于身份验证
+      },
+      credentials: 'include'               // 包含认证凭证（cookies），确保有权访问
+    });
+    
+    // [JSON解析] 将响应体解析为JavaScript对象
+    const pricingConfigData = await pricingConfigResponse.json();
+    
+    // [成功检查] 验证API调用是否成功，并提取require_payment字段
+    if (pricingConfigData.success && pricingConfigData.config) {
+      // 从配置对象中提取require_payment字段
+      // 这个布尔值决定了是否对普通用户启用付费相关功能
+      requirePayment = pricingConfigData.config.require_payment || false;
+      
+      // [调试日志] 记录成功获取的配置信息
+      console.log("[移动端支付历史标签] 成功获取require_payment配置:", {
+        requirePayment: requirePayment,               // 是否需要付费
+        userGroup: userGroup,                         // 当前用户组别
+        isAdmin: isAdmin                              // 是否为管理员
+      });
+    } else {
+      // [警告日志] API调用失败或返回数据格式不正确
+      console.warn("[移动端支付历史标签] 获取require_payment配置失败，使用默认值false:", {
+        success: pricingConfigData.success,           // API调用是否成功
+        hasConfig: !!pricingConfigData.config         // 是否包含config字段
+      });
+    }
+  } catch (error) {
+    // [错误捕获] 如果网络请求失败或发生其他异常，记录错误并使用默认值
+    // 可能的错误原因：网络断开、服务器无响应、JSON解析失败等
+    console.error("[移动端支付历史标签] 获取require_payment配置时发生异常:", {
+      error: error,                                   // 错误对象
+      errorMessage: error.message,                    // 错误消息
+      defaultValue: requirePayment                    // 使用的默认值
+    });
+    // 发生异常时保持requirePayment为默认值false（安全策略）
+  }
+  
+  // 根据prefix参数确定标签导航容器和内容容器的ID
   let tabsNavId, contentId;
   if (prefix === "mobile-multi-admin") {
     tabsNavId = "mobile-multi-admin-tabs-nav";
@@ -48297,14 +48401,19 @@ function initMobileAdminPanel(prefix) {
     // [新增] 支付历史标签
     // 移动端支付历史面板的标签，与PC端功能对应
     // 功能：查看支付相关操作日志，支持按操作类型、日期范围筛选
-    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    // 【特殊权限逻辑 - 与PC端保持一致】
+    // 此标签的显示逻辑不同于其他管理员专属标签：
+    // - require_payment = true（启用付费模式）：所有用户都能看到
+    // - require_payment = false（免费模式）：只有管理员能看到
+    // 使用特殊权限值 "payment-logs-special" 来标识这种特殊逻辑
     // ========================================
     {
       id: "payment-logs",  // 标签ID，用于标识和切换面板
       label: "支付历史",  // 标签显示的文本
       // 文档图标：表示日志/历史记录
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
-      permission: "admin",  // 权限要求：管理员级别
+      permission: "payment-logs-special",  // 特殊权限：需要根据require_payment配置和用户角色共同判断
     },
     // ========================================
     // [新增] 支付设置标签
@@ -48333,16 +48442,56 @@ function initMobileAdminPanel(prefix) {
       permission: "admin",  // 权限要求：管理员级别
     },
   ];
+  // ========================================
+  // 【标签权限过滤逻辑】
+  // 根据用户权限组别和特殊权限配置过滤可见的标签
+  // ========================================
   const visibleTabs = allTabs.filter((tab) => {
+    // 权限类型1: "all" - 所有用户可见
     if (tab.permission === "all") return true;
+    
+    // 权限类型2: "admin" - 仅管理员和超级管理员可见
     if (
       tab.permission === "admin" &&
       (userGroup === "admin" || userGroup === "super_admin")
     )
       return true;
-    // [修复] 增加超级管理员专属权限过滤
+    
+    // [修复] 权限类型3: "super_admin" - 仅超级管理员可见
     if (tab.permission === "super_admin" && userGroup === "super_admin")
       return true;
+    
+    // ========================================
+    // 【关键修复】权限类型4: "payment-logs-special" - 支付历史标签的特殊权限逻辑
+    // 与PC端保持一致的显示规则：
+    // - 当 requirePayment = true（启用付费模式）时：所有用户都能看到
+    // - 当 requirePayment = false（免费模式）时：只有管理员能看到
+    // 
+    // 逻辑表达式：shouldShow = isAdmin || requirePayment
+    // - 当 isAdmin = true 时：无论 requirePayment 值为何，结果都是 true（管理员始终可见）
+    // - 当 isAdmin = false 且 requirePayment = true 时：结果是 true（普通用户在付费模式下可见）
+    // - 当 isAdmin = false 且 requirePayment = false 时：结果是 false（普通用户在免费模式下不可见）
+    // ========================================
+    if (tab.permission === "payment-logs-special") {
+      // 计算是否应该显示支付历史标签
+      const shouldShowPaymentLogs = isAdmin || requirePayment;
+      
+      // [调试日志] 记录支付历史标签的显示决策过程
+      console.log("[移动端支付历史标签] 显示状态判断:", {
+        userGroup: userGroup,                         // 当前用户的组别
+        isAdmin: isAdmin,                             // 是否拥有管理员权限
+        requirePayment: requirePayment,               // 系统是否启用付费功能
+        shouldShowPaymentLogs: shouldShowPaymentLogs, // 最终是否显示标签
+        决策说明: isAdmin 
+          ? "管理员：始终显示" 
+          : (requirePayment 
+            ? "普通用户：系统启用付费，显示支付历史" 
+            : "普通用户：系统未启用付费，隐藏支付历史")
+      });
+      
+      return shouldShowPaymentLogs;
+    }
+    
     return false;
   });
   tabsNav.innerHTML = "";
