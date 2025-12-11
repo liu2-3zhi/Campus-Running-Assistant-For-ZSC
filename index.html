@@ -9474,15 +9474,33 @@
                 启用的支付方式
                 <span class="text-red-500">*</span>
               </label>
-              <!-- 文本输入框：输入逗号分隔的支付方式代码 -->
-              <!-- 例如：alipay,wxpay,qqpay,unionpay -->
+              
+              <!-- 文本输入框：显示已选择的支付方式代码（只读状态） -->
+              <!-- 改为只读状态，防止用户直接编辑，必须通过选择器来选择支付方式 -->
+              <!-- readonly属性：使输入框不可编辑，但仍可显示值并可以被选中复制 -->
               <input type="text" 
                 id="admin-yipay-enabled-methods_modal" 
-                placeholder="例如：alipay,wxpay,qqpay" 
-                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
-              <!-- 字段提示：说明输入格式和支持的支付方式 -->
+                placeholder="点击下方按钮选择支付方式" 
+                readonly
+                class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow cursor-not-allowed" />
+              
+              <!-- 选择支付方式按钮：点击后打开支付方式选择器模态框 -->
+              <!-- 使用蓝色主题，与其他操作按钮保持一致的视觉风格 -->
+              <button 
+                type="button"
+                onclick="openYiPayMethodsSelector()" 
+                class="mt-2 w-full py-2.5 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 active:bg-blue-700 transition-colors shadow-sm hover:shadow-md flex items-center justify-center">
+                <!-- 列表图标：表示这是一个选择操作 -->
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+                选择支付方式
+              </button>
+              
+              <!-- 字段提示：说明通过选择器来选择支付方式 -->
               <p class="mt-1 text-xs text-slate-500">
-                多个支付方式用逗号分隔。
+                💡 从已配置的支付方式中选择要在易支付中启用的方式
               </p>
             </div>
 
@@ -9750,6 +9768,112 @@
               保存
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- ========================================
+         易支付支付方式选择器模态框 (yipay-methods-selector-modal)
+           用途：从已配置的支付方式中选择要在易支付中启用的方式
+           功能：显示所有在 payment_methods_config 中配置的支付方式，
+                 让管理员通过checkbox勾选要启用的方式
+           联动：与 admin-payment-settings-content-config_modal 关联
+         ======================================== -->
+      <div id="yipay-methods-selector-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <!-- 模态框主体容器 -->
+        <!-- max-w-2xl: 最大宽度为2xl（672px） -->
+        <!-- max-h-[90vh]: 最大高度为视口高度的90%，防止内容过长溢出屏幕 -->
+        <!-- overflow-y-auto: 内容超出时显示垂直滚动条 -->
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          
+          <!-- ========== 模态框头部 ========== -->
+          <!-- sticky top-0: 头部固定在顶部，内容滚动时头部保持可见 -->
+          <!-- bg-gradient-to-r: 使用渐变背景，从天蓝色到蓝色，提升视觉效果 -->
+          <div class="sticky top-0 bg-gradient-to-r from-sky-500 to-blue-600 text-white p-6 rounded-t-xl z-10">
+            <div class="flex items-center justify-between">
+              <!-- 模态框标题 -->
+              <h3 class="text-xl font-bold flex items-center gap-2">
+                <!-- 支付图标：使用SVG图标表示这是支付相关的操作 -->
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                </svg>
+                选择易支付启用的支付方式
+              </h3>
+              
+              <!-- 关闭按钮：点击后关闭模态框 -->
+              <!-- hover:text-slate-200: 鼠标悬停时改变颜色，提供视觉反馈 -->
+              <button onclick="closeYiPayMethodsSelector()" class="text-white hover:text-slate-200 transition-colors">
+                <!-- X图标：标准的关闭图标 -->
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- ========== 模态框内容区域 ========== -->
+          <div class="p-6 space-y-4">
+            
+            <!-- 提示信息 -->
+            <!-- bg-blue-50: 浅蓝色背景，与信息提示的语义相符 -->
+            <!-- border-blue-200: 蓝色边框，形成视觉边界 -->
+            <div class="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+              <!-- 信息图标 -->
+              <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div>
+                💡 <strong>提示：</strong>从已配置的支付方式中选择要在易支付中启用的方式。<br>
+                如果列表为空，请先在"支付方式配置"中添加支付方式。
+              </div>
+            </div>
+
+            <!-- 支付方式列表容器 -->
+            <!-- id用于JavaScript动态插入支付方式列表 -->
+            <!-- min-h-[200px]: 最小高度200px，即使没有内容也保持一定高度 -->
+            <div id="yipay-methods-list" class="space-y-2 min-h-[200px]">
+              <!-- 加载中提示（初始状态） -->
+              <!-- 在JavaScript加载支付方式数据前显示此提示 -->
+              <div class="text-center text-slate-500 py-8">
+                <!-- 加载动画图标 -->
+                <svg class="animate-spin h-8 w-8 mx-auto mb-2 text-sky-500" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" 
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                正在加载支付方式...
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ========== 模态框底部操作按钮区域 ========== -->
+          <!-- sticky bottom-0: 底部固定，内容滚动时底部按钮保持可见 -->
+          <!-- border-t: 顶部边框，与内容区域形成视觉分隔 -->
+          <div class="sticky bottom-0 bg-slate-50 p-6 rounded-b-xl border-t border-slate-200 flex gap-3">
+            
+            <!-- 取消按钮：点击后关闭模态框，不保存任何更改 -->
+            <!-- flex-1: 按钮占据相等的空间 -->
+            <!-- bg-slate-200: 灰色背景，表示这是一个中性操作 -->
+            <button onclick="closeYiPayMethodsSelector()" 
+              class="flex-1 py-2.5 bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-300 active:bg-slate-400 transition-colors">
+              取消
+            </button>
+            
+            <!-- 确定按钮：点击后保存选择的支付方式 -->
+            <!-- bg-sky-500: 天蓝色背景，表示这是一个积极的操作 -->
+            <!-- shadow-sm: 添加阴影，提升按钮的立体感 -->
+            <button onclick="confirmYiPayMethods()" 
+              class="flex-1 py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
+              <!-- 勾选图标：表示确认操作 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              确定选择
+            </button>
+          </div>
+          
         </div>
       </div>
 
@@ -15994,27 +16118,106 @@
           typeSelect.value = config.payment_method || 'jump';
         }
         
-        // === 第6步：显示成功提示 ===
+        // === 第6步：验证启用的支付方式是否在 payment_methods_config 中定义 ===
+        // 这一步是为了确保数据的一致性和完整性
+        
+        // 6.1 获取启用的支付方式列表
+        const enabledMethods = config.enabled_payment_methods || '';
+        if (enabledMethods) {
+          // 将逗号分隔的字符串拆分为数组
+          const enabledMethodsArray = enabledMethods.split(',').map(m => m.trim()).filter(m => m);
+          
+          console.log('[PC端易支付配置] 验证启用的支付方式：', enabledMethodsArray);
+          
+          // 6.2 获取所有已定义的支付方式（从 payment_methods_config）
+          try {
+            // 发起请求获取支付方式配置
+            const methodsConfigResponse = await fetch('/api/payment/methods_config', {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                // 添加Session ID请求头（如果存在）
+                ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+              }
+            });
+            
+            // 检查响应状态
+            if (methodsConfigResponse.ok) {
+              const methodsConfigResult = await methodsConfigResponse.json();
+              
+              if (methodsConfigResult.success && methodsConfigResult.data) {
+                // 获取所有已定义的支付方式代码
+                // methodsConfigResult.data 是一个对象，键是支付方式代码
+                const definedMethodCodes = Object.keys(methodsConfigResult.data);
+                
+                console.log('[PC端易支付配置] 已定义的支付方式：', definedMethodCodes);
+                
+                // 6.3 检查是否有未定义的支付方式
+                // 遍历启用的支付方式，检查每个是否在已定义的列表中
+                const undefinedMethods = enabledMethodsArray.filter(method => !definedMethodCodes.includes(method));
+                
+                if (undefinedMethods.length > 0) {
+                  // 发现有未定义的支付方式，显示警告
+                  console.warn('[PC端易支付配置] 发现未定义的支付方式：', undefinedMethods);
+                  
+                  // 在结果区域显示警告提示
+                  const resultDiv = document.getElementById('admin-yipay-config-result_modal');
+                  if (resultDiv) {
+                    resultDiv.innerHTML = `
+                      <div class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        ⚠ 警告：以下支付方式未在"支付方式配置"中定义：<strong>${undefinedMethods.join(', ')}</strong><br>
+                        请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。
+                      </div>
+                    `;
+                    resultDiv.classList.remove('hidden');
+                    // 警告提示保持显示，不自动隐藏，让管理员注意到问题
+                  }
+                } else {
+                  // 所有启用的支付方式都已定义，验证通过
+                  console.log('[PC端易支付配置] 所有启用的支付方式都已定义，验证通过');
+                }
+              }
+            }
+          } catch (validationError) {
+            // 验证过程中发生错误（如网络问题），只记录日志，不影响主流程
+            console.error('[PC端易支付配置] 验证支付方式时发生错误：', validationError);
+            // 不显示错误提示，避免干扰用户
+          }
+        }
+        
+        // === 第7步：显示成功提示（如果没有警告） ===
+        // 只有在没有显示警告的情况下，才显示成功提示
         
         const resultDiv = document.getElementById('admin-yipay-config-result_modal');
         if (resultDiv) {
-          // 使用textContent防止XSS攻击，但这里需要HTML结构，所以使用innerHTML
-          // 由于这是管理员功能且数据来自服务器，风险可控
-          resultDiv.innerHTML = `
-            <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
-              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              ✓ 配置已加载
-            </div>
-          `;
-          resultDiv.classList.remove('hidden');
+          // 检查resultDiv中是否已经有警告提示
+          // 如果有警告（包含text-amber-700类），则不显示成功提示
+          const hasWarning = resultDiv.innerHTML.includes('text-amber-700');
           
-          // 3秒后自动隐藏成功提示
-          setTimeout(() => {
-            resultDiv.classList.add('hidden');
-          }, 3000);
+          if (!hasWarning) {
+            // 没有警告，显示成功提示
+            // 使用textContent防止XSS攻击，但这里需要HTML结构，所以使用innerHTML
+            // 由于这是管理员功能且数据来自服务器，风险可控
+            resultDiv.innerHTML = `
+              <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+                <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                ✓ 配置已加载
+              </div>
+            `;
+            resultDiv.classList.remove('hidden');
+            
+            // 3秒后自动隐藏成功提示
+            setTimeout(() => {
+              resultDiv.classList.add('hidden');
+            }, 3000);
+          }
         }
         
         console.log('[PC端易支付配置] 配置已成功填充到表单');
@@ -16128,6 +16331,74 @@
         payment_method: paymentMethod
       });
       
+      // === 第2.6步：验证启用的支付方式是否在 payment_methods_config 中定义 ===
+      // 这是一个重要的数据完整性检查
+      // 防止管理员保存未定义的支付方式代码，导致后续支付流程出错
+      
+      if (enabledMethods) {
+        // 将逗号分隔的字符串拆分为数组
+        const enabledMethodsArray = enabledMethods.split(',').map(m => m.trim()).filter(m => m);
+        
+        console.log('[PC端易支付配置] 验证启用的支付方式：', enabledMethodsArray);
+        
+        try {
+          // 发起请求获取支付方式配置
+          const methodsConfigResponse = await fetch('/api/payment/methods_config', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              // 添加Session ID请求头（如果存在）
+              ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+            }
+          });
+          
+          // 检查响应状态
+          if (methodsConfigResponse.ok) {
+            const methodsConfigResult = await methodsConfigResponse.json();
+            
+            if (methodsConfigResult.success && methodsConfigResult.data) {
+              // 获取所有已定义的支付方式代码
+              const definedMethodCodes = Object.keys(methodsConfigResult.data);
+              
+              console.log('[PC端易支付配置] 已定义的支付方式：', definedMethodCodes);
+              
+              // 检查是否有未定义的支付方式
+              const undefinedMethods = enabledMethodsArray.filter(method => !definedMethodCodes.includes(method));
+              
+              if (undefinedMethods.length > 0) {
+                // 发现有未定义的支付方式，阻止保存操作
+                console.error('[PC端易支付配置] 发现未定义的支付方式，阻止保存：', undefinedMethods);
+                
+                // 显示详细的错误提示
+                showModalAlert(
+                  `❌ 保存失败\n\n` +
+                  `以下支付方式未在"支付方式配置"中定义：\n` +
+                  `${undefinedMethods.join(', ')}\n\n` +
+                  `请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。`
+                );
+                
+                // 聚焦到支付方式输入框，引导用户修改
+                if (methodsInput) methodsInput.focus();
+                
+                // 阻止保存操作，直接返回
+                return;
+              } else {
+                // 所有启用的支付方式都已定义，验证通过
+                console.log('[PC端易支付配置] 所有启用的支付方式都已定义，验证通过');
+              }
+            }
+          } else {
+            // 获取支付方式配置失败，记录警告但不阻止保存
+            // 因为可能是网络问题或临时性错误，不应该完全阻止管理员的操作
+            console.warn('[PC端易支付配置] 无法验证支付方式配置，跳过验证');
+          }
+        } catch (validationError) {
+          // 验证过程中发生错误，记录日志但不阻止保存
+          console.error('[PC端易支付配置] 验证支付方式时发生错误：', validationError);
+          // 不阻止保存，让管理员可以继续操作
+        }
+      }
+      
       try {
         // === 第3步：发起HTTP PUT请求保存配置 ===
         
@@ -16218,6 +16489,329 @@
         } else {
           showModalAlert(`保存失败：${error.message || '未知错误'}`);
         }
+      }
+    }
+
+    // ==========================================
+    // 易支付支付方式选择器相关函数
+    // ==========================================
+    
+    /**
+     * 函数名：openYiPayMethodsSelector
+     * 功能：打开易支付支付方式选择器模态框
+     * 
+     * 执行流程：
+     * 1. 从 /api/payment/methods_config 获取所有已配置的支付方式
+     * 2. 读取 admin-yipay-enabled-methods_modal 输入框的当前值
+     * 3. 根据当前值，标记哪些支付方式已被选中
+     * 4. 动态生成支付方式列表，每个支付方式包含checkbox、logo、名称
+     * 5. 显示模态框
+     * 
+     * 错误处理：
+     * - 如果API请求失败，显示错误提示
+     * - 如果没有配置任何支付方式，显示空状态提示
+     */
+    async function openYiPayMethodsSelector() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[易支付支付方式选择器] 开始打开选择器...');
+      
+      try {
+        // === 第1步：显示模态框 ===
+        // 先显示模态框，让用户看到加载中的状态
+        const modal = document.getElementById('yipay-methods-selector-modal');
+        if (!modal) {
+          console.error('[易支付支付方式选择器] 未找到模态框元素');
+          showModalAlert('系统错误：模态框未找到');
+          return;
+        }
+        // 移除hidden类，显示模态框
+        modal.classList.remove('hidden');
+        
+        // === 第2步：获取当前已启用的支付方式 ===
+        // 从输入框中读取当前已启用的支付方式（逗号分隔的字符串）
+        const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
+        const currentMethods = methodsInput ? methodsInput.value.trim() : '';
+        
+        // 将逗号分隔的字符串拆分为数组，方便后续判断某个方式是否已启用
+        // 例如："alipay,wxpay" => ["alipay", "wxpay"]
+        const enabledMethodsArray = currentMethods ? currentMethods.split(',').map(m => m.trim()).filter(m => m) : [];
+        console.log('[易支付支付方式选择器] 当前已启用的支付方式：', enabledMethodsArray);
+        
+        // === 第3步：从API获取所有已配置的支付方式 ===
+        // 使用fetch发起GET请求，获取支付方式配置
+        const response = await fetch('/api/payment/methods_config', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            // 添加Session ID请求头（如果存在）
+            // 某些API可能需要此头部来识别用户会话
+            ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+          }
+        });
+        
+        // === 第4步：检查HTTP响应状态 ===
+        // response.ok为true表示状态码在200-299范围内
+        if (!response.ok) {
+          throw new Error(`获取支付方式配置失败：HTTP状态码 ${response.status}`);
+        }
+        
+        // === 第5步：解析JSON响应 ===
+        const result = await response.json();
+        console.log('[易支付支付方式选择器] API响应：', result);
+        
+        // 检查业务状态
+        if (!result.success) {
+          throw new Error(result.message || '获取支付方式配置失败');
+        }
+        
+        // === 第6步：处理支付方式数据 ===
+        // result.data 应该是一个对象，键是支付方式代码（如"alipay"），值是配置对象
+        // 例如：{ alipay: { name: "支付宝支付", logo: "...", ... }, wxpay: { ... } }
+        const methodsConfig = result.data || {};
+        
+        // 将对象转换为数组，方便遍历和渲染
+        // Object.entries() 将对象转换为 [key, value] 对的数组
+        const methodsArray = Object.entries(methodsConfig);
+        
+        console.log('[易支付支付方式选择器] 解析到的支付方式数量：', methodsArray.length);
+        
+        // === 第7步：动态生成支付方式列表HTML ===
+        const listContainer = document.getElementById('yipay-methods-list');
+        if (!listContainer) {
+          console.error('[易支付支付方式选择器] 未找到列表容器元素');
+          return;
+        }
+        
+        // 清空列表容器中的现有内容（包括"加载中"提示）
+        listContainer.innerHTML = '';
+        
+        // 判断是否有支付方式
+        if (methodsArray.length === 0) {
+          // === 情况A：没有配置任何支付方式 ===
+          // 显示空状态提示，引导管理员先去配置支付方式
+          listContainer.innerHTML = `
+            <div class="text-center text-slate-500 py-8">
+              <svg class="w-16 h-16 mx-auto mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+              </svg>
+              <p class="text-lg font-semibold mb-2">暂无可用的支付方式</p>
+              <p class="text-sm">请先在"支付方式配置"中添加支付方式</p>
+            </div>
+          `;
+        } else {
+          // === 情况B：有支付方式，动态渲染列表 ===
+          // 遍历每个支付方式，生成对应的HTML元素
+          methodsArray.forEach(([code, config]) => {
+            // code: 支付方式代码（如 "alipay"）
+            // config: 支付方式配置对象（包含 name, logo, logo_type 等）
+            
+            // 判断当前支付方式是否已启用
+            // 使用includes()方法检查code是否在enabledMethodsArray数组中
+            const isChecked = enabledMethodsArray.includes(code);
+            
+            // 创建一个新的div元素，作为支付方式项的容器
+            const item = document.createElement('div');
+            
+            // 设置容器的CSS类
+            // bg-white: 白色背景
+            // border: 边框
+            // rounded-lg: 圆角
+            // p-4: 内边距
+            // hover:bg-slate-50: 鼠标悬停时变为浅灰色背景，提供视觉反馈
+            // transition-colors: 颜色变化时使用过渡动画
+            // cursor-pointer: 鼠标指针变为手形，表示可点击
+            item.className = 'bg-white border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors cursor-pointer';
+            
+            // 为整个容器添加点击事件，点击容器任何位置都会切换checkbox状态
+            item.onclick = function() {
+              const checkbox = item.querySelector('input[type="checkbox"]');
+              if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+              }
+            };
+            
+            // === 构建支付方式项的HTML结构 ===
+            // 使用模板字符串构建复杂的HTML
+            let logoHtml = '';
+            
+            // 根据logo_type决定如何渲染logo
+            if (config.logo_type === 'svg' && config.logo) {
+              // 如果是SVG类型，直接插入SVG代码
+              // config.logo 应该包含完整的 <svg>...</svg> 标签
+              logoHtml = `<div class="w-10 h-10 flex items-center justify-center">${config.logo}</div>`;
+            } else if (config.logo_type === 'image' && config.logo) {
+              // 如果是图片类型，使用<img>标签显示
+              // config.logo 应该是图片的URL
+              logoHtml = `<img src="${config.logo}" alt="${config.name}" class="w-10 h-10 object-contain">`;
+            } else {
+              // 如果没有logo或类型未知，显示默认的支付图标
+              logoHtml = `
+                <svg class="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+              `;
+            }
+            
+            // 设置item元素的内部HTML
+            // 结构：[checkbox] [logo] [名称和代码]
+            item.innerHTML = `
+              <div class="flex items-center gap-4">
+                <!-- Checkbox：用于选择该支付方式 -->
+                <!-- data-code属性存储支付方式代码，方便后续获取 -->
+                <!-- ${isChecked ? 'checked' : ''}: 如果已启用则设置为选中状态 -->
+                <input 
+                  type="checkbox" 
+                  data-code="${code}"
+                  ${isChecked ? 'checked' : ''}
+                  onclick="event.stopPropagation()"
+                  class="w-5 h-5 text-sky-600 border-slate-300 rounded focus:ring-2 focus:ring-sky-500 cursor-pointer">
+                
+                <!-- Logo容器 -->
+                <div class="flex-shrink-0">
+                  ${logoHtml}
+                </div>
+                
+                <!-- 支付方式信息 -->
+                <div class="flex-1">
+                  <!-- 支付方式名称 -->
+                  <div class="font-semibold text-slate-800">${config.name || code}</div>
+                  <!-- 支付方式代码 -->
+                  <div class="text-xs text-slate-500">代码: ${code}</div>
+                </div>
+              </div>
+            `;
+            
+            // 将构建好的item元素添加到列表容器中
+            listContainer.appendChild(item);
+          });
+        }
+        
+        console.log('[易支付支付方式选择器] 选择器已成功打开');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        // 捕获所有可能的错误（网络错误、JSON解析错误、业务错误等）
+        console.error('[易支付支付方式选择器] 打开选择器时发生错误：', error);
+        
+        // 在列表容器中显示错误提示
+        const listContainer = document.getElementById('yipay-methods-list');
+        if (listContainer) {
+          listContainer.innerHTML = `
+            <div class="text-center text-red-600 py-8">
+              <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <p class="text-lg font-semibold mb-2">加载失败</p>
+              <p class="text-sm">${error.message || '未知错误'}</p>
+            </div>
+          `;
+        }
+        
+        // 同时显示弹窗提示
+        showModalAlert(`加载支付方式失败：${error.message || '未知错误'}`);
+      }
+    }
+    
+    /**
+     * 函数名：confirmYiPayMethods
+     * 功能：确认选择的支付方式，更新输入框的值
+     * 
+     * 执行流程：
+     * 1. 获取所有选中的checkbox
+     * 2. 提取这些checkbox的data-code属性值
+     * 3. 用逗号连接成字符串（如 "alipay,wxpay,qqpay"）
+     * 4. 更新 admin-yipay-enabled-methods_modal 输入框的值
+     * 5. 关闭模态框
+     */
+    function confirmYiPayMethods() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[易支付支付方式选择器] 开始确认选择...');
+      
+      try {
+        // === 第1步：获取列表容器 ===
+        const listContainer = document.getElementById('yipay-methods-list');
+        if (!listContainer) {
+          console.error('[易支付支付方式选择器] 未找到列表容器');
+          showModalAlert('系统错误：列表容器未找到');
+          return;
+        }
+        
+        // === 第2步：查找所有选中的checkbox ===
+        // querySelectorAll() 返回所有匹配的元素（NodeList）
+        // 选择器：'input[type="checkbox"]:checked' - 所有类型为checkbox且处于选中状态的input元素
+        const checkedCheckboxes = listContainer.querySelectorAll('input[type="checkbox"]:checked');
+        
+        console.log('[易支付支付方式选择器] 选中的checkbox数量：', checkedCheckboxes.length);
+        
+        // === 第3步：提取支付方式代码 ===
+        // 使用Array.from()将NodeList转换为真正的数组
+        // map() 遍历数组，提取每个checkbox的data-code属性值
+        // filter() 过滤掉空值（防止某些checkbox没有设置data-code）
+        const selectedCodes = Array.from(checkedCheckboxes)
+          .map(cb => cb.getAttribute('data-code'))
+          .filter(code => code); // 过滤掉null、undefined、空字符串
+        
+        console.log('[易支付支付方式选择器] 选中的支付方式代码：', selectedCodes);
+        
+        // === 第4步：生成逗号分隔的字符串 ===
+        // join(',') 用逗号连接数组元素
+        // 例如：["alipay", "wxpay"] => "alipay,wxpay"
+        const methodsString = selectedCodes.join(',');
+        
+        console.log('[易支付支付方式选择器] 生成的字符串：', methodsString);
+        
+        // === 第5步：更新输入框的值 ===
+        const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
+        if (methodsInput) {
+          // 将生成的字符串设置为输入框的值
+          methodsInput.value = methodsString;
+          console.log('[易支付支付方式选择器] 输入框已更新');
+        } else {
+          console.error('[易支付支付方式选择器] 未找到输入框元素');
+        }
+        
+        // === 第6步：关闭模态框 ===
+        closeYiPayMethodsSelector();
+        
+        // === 第7步：显示成功提示（可选） ===
+        // 如果选择了至少一个支付方式，显示成功提示
+        if (selectedCodes.length > 0) {
+          console.log(`[易支付支付方式选择器] 已选择 ${selectedCodes.length} 个支付方式`);
+          // 可以添加一个toast提示，告知用户操作成功
+          // showToast(`已选择 ${selectedCodes.length} 个支付方式`);
+        }
+        
+      } catch (error) {
+        // === 错误处理 ===
+        console.error('[易支付支付方式选择器] 确认选择时发生错误：', error);
+        showModalAlert(`确认选择失败：${error.message || '未知错误'}`);
+      }
+    }
+    
+    /**
+     * 函数名：closeYiPayMethodsSelector
+     * 功能：关闭易支付支付方式选择器模态框
+     * 
+     * 执行流程：
+     * 1. 获取模态框元素
+     * 2. 添加hidden类，隐藏模态框
+     */
+    function closeYiPayMethodsSelector() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[易支付支付方式选择器] 关闭选择器');
+      
+      // 获取模态框元素
+      const modal = document.getElementById('yipay-methods-selector-modal');
+      if (modal) {
+        // 添加hidden类，隐藏模态框
+        // Tailwind CSS的hidden类相当于 display: none
+        modal.classList.add('hidden');
+      } else {
+        // 如果找不到模态框元素，在控制台输出警告
+        console.warn('[易支付支付方式选择器] 未找到模态框元素');
       }
     }
 
