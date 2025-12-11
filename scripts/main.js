@@ -5928,7 +5928,7 @@ function refreshMobileSessionPicker() {
             // - 支付时间、支付金额、支付方式
             // - 支付用户、订单号、支付状态等信息
             console.log("[数据加载] 开始加载支付日志（第1页）...");
-            loadPaymentLogs(1);
+            loadAdminPaymentLogs(1);
             
             // [停止自动刷新] 停止健康状态面板的自动刷新
             // 因为已经切换到了支付日志面板，不再需要刷新健康状态

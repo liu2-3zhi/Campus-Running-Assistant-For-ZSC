@@ -6983,6 +6983,309 @@
     </div>
   </div>
 
+
+      <!-- ========================================
+         添加/编辑支付方式模态框
+         用途：管理员添加新的支付方式或编辑现有支付方式
+         权限：需要modify_config权限
+         功能：配置支付方式的代码、名称、Logo、描述、样式等
+         ======================================== -->
+      <div id="payment-method-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[51] flex items-center justify-center p-4">
+        <!-- 模态框主体 -->
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <!-- 模态框头部 -->
+          <div class="sticky top-0 bg-gradient-to-r from-sky-500 to-blue-600 text-white p-6 rounded-t-xl">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xl font-bold flex items-center gap-2">
+                <!-- 支付图标 -->
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+                <span id="payment-method-modal-title">添加支付方式</span>
+              </h3>
+              <!-- 关闭按钮 -->
+              <button onclick="closePaymentMethodModal()" class="text-white hover:text-slate-200 transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- 模态框表单内容 -->
+          <div class="p-6 space-y-4">
+            <!-- 支付方式代码 -->
+            <div class="space-y-2">
+              <label class="block text-sm font-semibold text-slate-700">
+                <!-- 代码图标 -->
+                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                </svg>
+                支付方式代码 <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="payment-method-code" 
+                placeholder="例如: alipay, wxpay, unionpay" 
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+              <p class="text-xs text-slate-500">
+                唯一标识符，只能包含字母、数字和下划线，编辑时不可修改
+              </p>
+            </div>
+
+            <!-- 显示名称 -->
+            <div class="space-y-2">
+              <label class="block text-sm font-semibold text-slate-700">
+                <!-- 标签图标 -->
+                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                </svg>
+                显示名称 <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="payment-method-name" 
+                placeholder="例如: 支付宝支付" 
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+              <p class="text-xs text-slate-500">
+                显示给用户的支付方式名称
+              </p>
+            </div>
+
+            <!-- Logo设置 -->
+            <div class="space-y-2">
+              <label class="block text-sm font-semibold text-slate-700">
+                <!-- 图片图标 -->
+                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                Logo类型 <span class="text-red-500">*</span>
+              </label>
+              <!-- Logo类型选择 -->
+              <div class="flex gap-4 mb-3">
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="logo-type" value="svg" id="logo-type-svg" checked 
+                    class="mr-2" onchange="toggleLogoInput()">
+                  <span class="text-sm text-slate-700">SVG代码</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="logo-type" value="image" id="logo-type-image" 
+                    class="mr-2" onchange="toggleLogoInput()">
+                  <span class="text-sm text-slate-700">图片URL</span>
+                </label>
+              </div>
+              <!-- SVG代码输入 -->
+              <div id="svg-input-container">
+                <textarea id="payment-method-svg" rows="4" 
+                  placeholder='例如: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">...</svg>' 
+                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm font-mono"></textarea>
+                <p class="text-xs text-slate-500 mt-1">
+                  粘贴完整的SVG代码，建议使用简洁的图标SVG
+                </p>
+              </div>
+              <!-- 图片URL输入 -->
+              <div id="image-input-container" class="hidden">
+                <input type="text" id="payment-method-image" 
+                  placeholder="例如: https://example.com/logo.png" 
+                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+                <p class="text-xs text-slate-500 mt-1">
+                  输入图片的完整URL地址
+                </p>
+              </div>
+            </div>
+
+            <!-- 描述信息 -->
+            <div class="space-y-2">
+              <label class="block text-sm font-semibold text-slate-700">
+                <!-- 文档图标 -->
+                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                描述信息
+              </label>
+              <input type="text" id="payment-method-description" 
+                placeholder="例如: 支持支付宝扫码支付" 
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+              <p class="text-xs text-slate-500">
+                可选，显示在支付方式下方的提示信息
+              </p>
+            </div>
+
+            <!-- 样式配置 -->
+            <div class="grid grid-cols-2 gap-4">
+              <!-- 边框颜色 -->
+              <div class="space-y-2">
+                <label class="block text-sm font-semibold text-slate-700">
+                  边框颜色
+                </label>
+                <select id="payment-method-border-color" 
+                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+                  <option value="hover:border-sky-500">蓝色 (Sky)</option>
+                  <option value="hover:border-green-500">绿色 (Green)</option>
+                  <option value="hover:border-yellow-500">黄色 (Yellow)</option>
+                  <option value="hover:border-red-500">红色 (Red)</option>
+                  <option value="hover:border-purple-500">紫色 (Purple)</option>
+                  <option value="hover:border-pink-500">粉色 (Pink)</option>
+                  <option value="hover:border-orange-500">橙色 (Orange)</option>
+                  <option value="hover:border-indigo-500">靛蓝 (Indigo)</option>
+                </select>
+              </div>
+
+              <!-- 文字颜色 -->
+              <div class="space-y-2">
+                <label class="block text-sm font-semibold text-slate-700">
+                  文字颜色
+                </label>
+                <select id="payment-method-text-color" 
+                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+                  <option value="text-sky-600">蓝色 (Sky)</option>
+                  <option value="text-green-600">绿色 (Green)</option>
+                  <option value="text-yellow-600">黄色 (Yellow)</option>
+                  <option value="text-red-600">红色 (Red)</option>
+                  <option value="text-purple-600">紫色 (Purple)</option>
+                  <option value="text-pink-600">粉色 (Pink)</option>
+                  <option value="text-orange-600">橙色 (Orange)</option>
+                  <option value="text-indigo-600">靛蓝 (Indigo)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 错误提示区域 -->
+            <div id="payment-method-error" class="hidden">
+              <!-- 错误信息将由JavaScript动态填充 -->
+            </div>
+          </div>
+
+          <!-- 模态框底部按钮 -->
+          <div class="sticky bottom-0 bg-slate-50 p-6 rounded-b-xl border-t border-slate-200 flex gap-3">
+            <!-- 取消按钮 -->
+            <button onclick="closePaymentMethodModal()" 
+              class="flex-1 py-2.5 bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-300 active:bg-slate-400 transition-colors">
+              取消
+            </button>
+            <!-- 保存按钮 -->
+            <button onclick="savePaymentMethod()" 
+              class="flex-1 py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
+              <!-- 保存图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ========================================
+         易支付支付方式选择器模态框 (yipay-methods-selector-modal)
+           用途：从已配置的支付方式中选择要在易支付中启用的方式
+           功能：显示所有在 payment_methods_config 中配置的支付方式，
+                 让管理员通过checkbox勾选要启用的方式
+           联动：与 admin-payment-settings-content-config_modal 关联
+         ======================================== -->
+      <div id="yipay-methods-selector-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <!-- 模态框主体容器 -->
+        <!-- max-w-2xl: 最大宽度为2xl（672px） -->
+        <!-- max-h-[90vh]: 最大高度为视口高度的90%，防止内容过长溢出屏幕 -->
+        <!-- overflow-y-auto: 内容超出时显示垂直滚动条 -->
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          
+          <!-- ========== 模态框头部 ========== -->
+          <!-- sticky top-0: 头部固定在顶部，内容滚动时头部保持可见 -->
+          <!-- bg-gradient-to-r: 使用渐变背景，从天蓝色到蓝色，提升视觉效果 -->
+          <div class="sticky top-0 bg-gradient-to-r from-sky-500 to-blue-600 text-white p-6 rounded-t-xl z-10">
+            <div class="flex items-center justify-between">
+              <!-- 模态框标题 -->
+              <h3 class="text-xl font-bold flex items-center gap-2">
+                <!-- 支付图标：使用SVG图标表示这是支付相关的操作 -->
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                </svg>
+                选择易支付启用的支付方式
+              </h3>
+              
+              <!-- 关闭按钮：点击后关闭模态框 -->
+              <!-- hover:text-slate-200: 鼠标悬停时改变颜色，提供视觉反馈 -->
+              <button onclick="closeYiPayMethodsSelector()" class="text-white hover:text-slate-200 transition-colors">
+                <!-- X图标：标准的关闭图标 -->
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- ========== 模态框内容区域 ========== -->
+          <div class="p-6 space-y-4">
+            
+            <!-- 提示信息 -->
+            <!-- bg-blue-50: 浅蓝色背景，与信息提示的语义相符 -->
+            <!-- border-blue-200: 蓝色边框，形成视觉边界 -->
+            <div class="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+              <!-- 信息图标 -->
+              <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div>
+                💡 <strong>提示：</strong>从已配置的支付方式中选择要在易支付中启用的方式。<br>
+                如果列表为空，请先在"支付方式配置"中添加支付方式。
+              </div>
+            </div>
+
+            <!-- 支付方式列表容器 -->
+            <!-- id用于JavaScript动态插入支付方式列表 -->
+            <!-- min-h-[200px]: 最小高度200px，即使没有内容也保持一定高度 -->
+            <div id="yipay-methods-list" class="space-y-2 min-h-[200px]">
+              <!-- 加载中提示（初始状态） -->
+              <!-- 在JavaScript加载支付方式数据前显示此提示 -->
+              <div class="text-center text-slate-500 py-8">
+                <!-- 加载动画图标 -->
+                <svg class="animate-spin h-8 w-8 mx-auto mb-2 text-sky-500" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" 
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                正在加载支付方式...
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ========== 模态框底部操作按钮区域 ========== -->
+          <!-- sticky bottom-0: 底部固定，内容滚动时底部按钮保持可见 -->
+          <!-- border-t: 顶部边框，与内容区域形成视觉分隔 -->
+          <div class="sticky bottom-0 bg-slate-50 p-6 rounded-b-xl border-t border-slate-200 flex gap-3">
+            
+            <!-- 取消按钮：点击后关闭模态框，不保存任何更改 -->
+            <!-- flex-1: 按钮占据相等的空间 -->
+            <!-- bg-slate-200: 灰色背景，表示这是一个中性操作 -->
+            <button onclick="closeYiPayMethodsSelector()" 
+              class="flex-1 py-2.5 bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-300 active:bg-slate-400 transition-colors">
+              取消
+            </button>
+            
+            <!-- 确定按钮：点击后保存选择的支付方式 -->
+            <!-- bg-sky-500: 天蓝色背景，表示这是一个积极的操作 -->
+            <!-- shadow-sm: 添加阴影，提升按钮的立体感 -->
+            <button onclick="confirmYiPayMethods()" 
+              class="flex-1 py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
+              <!-- 勾选图标：表示确认操作 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              确定选择
+            </button>
+          </div>
+          
+        </div>
+      </div>
+
+
+
+
   <!-- 
     ===================================================================
     管理面板模态框
@@ -8599,7 +8902,7 @@
            位置：管理员面板内容区
            默认隐藏：需要通过标签切换显示
            ======================================== -->
-      <div id="admin-overdue-panel_modal" class="hidden space-y-4">
+      <div id="admin-overdue-panel_modal" class="hidden space-y-4 overflow-auto">
         <!-- 面板头部：标题和刷新按钮 -->
         <div class="flex justify-between items-center">
           <!-- 面板标题 -->
@@ -8650,7 +8953,7 @@
            
            参考移动端实现：第5486-5570行
            ======================================== -->
-      <div id="admin-payment-logs-panel_modal" class="hidden space-y-4">
+      <div id="admin-payment-logs-panel_modal" class="hidden overflow-y-auto overflow-x-hidden">
         <!-- ========== 面板头部 ========== -->
         <!-- 包含面板标题和刷新按钮 -->
         <div class="flex justify-between items-center">
@@ -8826,7 +9129,7 @@
            - 使用网格布局（grid）来优化空间利用
            - 更大的字体和间距，适合桌面端操作
            ======================================== -->
-      <div id="admin-payment-settings-panel_modal" class="hidden space-y-4">
+      <div id="admin-payment-settings-panel_modal" class="hidden overflow-auto">
         <!-- ========== 面板头部 ========== -->
         <!-- 包含标题和功能说明 -->
         <div class="flex justify-between items-center">
@@ -9579,303 +9882,8 @@
         </div>
       </div>
 
-      <!-- ========================================
-         添加/编辑支付方式模态框
-         用途：管理员添加新的支付方式或编辑现有支付方式
-         权限：需要modify_config权限
-         功能：配置支付方式的代码、名称、Logo、描述、样式等
-         ======================================== -->
-      <div id="payment-method-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
-        <!-- 模态框主体 -->
-        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-          <!-- 模态框头部 -->
-          <div class="sticky top-0 bg-gradient-to-r from-sky-500 to-blue-600 text-white p-6 rounded-t-xl">
-            <div class="flex items-center justify-between">
-              <h3 class="text-xl font-bold flex items-center gap-2">
-                <!-- 支付图标 -->
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                    d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
-                </svg>
-                <span id="payment-method-modal-title">添加支付方式</span>
-              </h3>
-              <!-- 关闭按钮 -->
-              <button onclick="closePaymentMethodModal()" class="text-white hover:text-slate-200 transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-          </div>
 
-          <!-- 模态框表单内容 -->
-          <div class="p-6 space-y-4">
-            <!-- 支付方式代码 -->
-            <div class="space-y-2">
-              <label class="block text-sm font-semibold text-slate-700">
-                <!-- 代码图标 -->
-                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
-                </svg>
-                支付方式代码 <span class="text-red-500">*</span>
-              </label>
-              <input type="text" id="payment-method-code" 
-                placeholder="例如: alipay, wxpay, unionpay" 
-                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
-              <p class="text-xs text-slate-500">
-                唯一标识符，只能包含字母、数字和下划线，编辑时不可修改
-              </p>
-            </div>
 
-            <!-- 显示名称 -->
-            <div class="space-y-2">
-              <label class="block text-sm font-semibold text-slate-700">
-                <!-- 标签图标 -->
-                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                    d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
-                </svg>
-                显示名称 <span class="text-red-500">*</span>
-              </label>
-              <input type="text" id="payment-method-name" 
-                placeholder="例如: 支付宝支付" 
-                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
-              <p class="text-xs text-slate-500">
-                显示给用户的支付方式名称
-              </p>
-            </div>
-
-            <!-- Logo设置 -->
-            <div class="space-y-2">
-              <label class="block text-sm font-semibold text-slate-700">
-                <!-- 图片图标 -->
-                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                </svg>
-                Logo类型 <span class="text-red-500">*</span>
-              </label>
-              <!-- Logo类型选择 -->
-              <div class="flex gap-4 mb-3">
-                <label class="flex items-center cursor-pointer">
-                  <input type="radio" name="logo-type" value="svg" id="logo-type-svg" checked 
-                    class="mr-2" onchange="toggleLogoInput()">
-                  <span class="text-sm text-slate-700">SVG代码</span>
-                </label>
-                <label class="flex items-center cursor-pointer">
-                  <input type="radio" name="logo-type" value="image" id="logo-type-image" 
-                    class="mr-2" onchange="toggleLogoInput()">
-                  <span class="text-sm text-slate-700">图片URL</span>
-                </label>
-              </div>
-              <!-- SVG代码输入 -->
-              <div id="svg-input-container">
-                <textarea id="payment-method-svg" rows="4" 
-                  placeholder='例如: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">...</svg>' 
-                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm font-mono"></textarea>
-                <p class="text-xs text-slate-500 mt-1">
-                  粘贴完整的SVG代码，建议使用简洁的图标SVG
-                </p>
-              </div>
-              <!-- 图片URL输入 -->
-              <div id="image-input-container" class="hidden">
-                <input type="text" id="payment-method-image" 
-                  placeholder="例如: https://example.com/logo.png" 
-                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
-                <p class="text-xs text-slate-500 mt-1">
-                  输入图片的完整URL地址
-                </p>
-              </div>
-            </div>
-
-            <!-- 描述信息 -->
-            <div class="space-y-2">
-              <label class="block text-sm font-semibold text-slate-700">
-                <!-- 文档图标 -->
-                <svg class="w-4 h-4 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                描述信息
-              </label>
-              <input type="text" id="payment-method-description" 
-                placeholder="例如: 支持支付宝扫码支付" 
-                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
-              <p class="text-xs text-slate-500">
-                可选，显示在支付方式下方的提示信息
-              </p>
-            </div>
-
-            <!-- 样式配置 -->
-            <div class="grid grid-cols-2 gap-4">
-              <!-- 边框颜色 -->
-              <div class="space-y-2">
-                <label class="block text-sm font-semibold text-slate-700">
-                  边框颜色
-                </label>
-                <select id="payment-method-border-color" 
-                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
-                  <option value="hover:border-sky-500">蓝色 (Sky)</option>
-                  <option value="hover:border-green-500">绿色 (Green)</option>
-                  <option value="hover:border-yellow-500">黄色 (Yellow)</option>
-                  <option value="hover:border-red-500">红色 (Red)</option>
-                  <option value="hover:border-purple-500">紫色 (Purple)</option>
-                  <option value="hover:border-pink-500">粉色 (Pink)</option>
-                  <option value="hover:border-orange-500">橙色 (Orange)</option>
-                  <option value="hover:border-indigo-500">靛蓝 (Indigo)</option>
-                </select>
-              </div>
-
-              <!-- 文字颜色 -->
-              <div class="space-y-2">
-                <label class="block text-sm font-semibold text-slate-700">
-                  文字颜色
-                </label>
-                <select id="payment-method-text-color" 
-                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
-                  <option value="text-sky-600">蓝色 (Sky)</option>
-                  <option value="text-green-600">绿色 (Green)</option>
-                  <option value="text-yellow-600">黄色 (Yellow)</option>
-                  <option value="text-red-600">红色 (Red)</option>
-                  <option value="text-purple-600">紫色 (Purple)</option>
-                  <option value="text-pink-600">粉色 (Pink)</option>
-                  <option value="text-orange-600">橙色 (Orange)</option>
-                  <option value="text-indigo-600">靛蓝 (Indigo)</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- 错误提示区域 -->
-            <div id="payment-method-error" class="hidden">
-              <!-- 错误信息将由JavaScript动态填充 -->
-            </div>
-          </div>
-
-          <!-- 模态框底部按钮 -->
-          <div class="sticky bottom-0 bg-slate-50 p-6 rounded-b-xl border-t border-slate-200 flex gap-3">
-            <!-- 取消按钮 -->
-            <button onclick="closePaymentMethodModal()" 
-              class="flex-1 py-2.5 bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-300 active:bg-slate-400 transition-colors">
-              取消
-            </button>
-            <!-- 保存按钮 -->
-            <button onclick="savePaymentMethod()" 
-              class="flex-1 py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
-              <!-- 保存图标 -->
-              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-              </svg>
-              保存
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ========================================
-         易支付支付方式选择器模态框 (yipay-methods-selector-modal)
-           用途：从已配置的支付方式中选择要在易支付中启用的方式
-           功能：显示所有在 payment_methods_config 中配置的支付方式，
-                 让管理员通过checkbox勾选要启用的方式
-           联动：与 admin-payment-settings-content-config_modal 关联
-         ======================================== -->
-      <div id="yipay-methods-selector-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
-        <!-- 模态框主体容器 -->
-        <!-- max-w-2xl: 最大宽度为2xl（672px） -->
-        <!-- max-h-[90vh]: 最大高度为视口高度的90%，防止内容过长溢出屏幕 -->
-        <!-- overflow-y-auto: 内容超出时显示垂直滚动条 -->
-        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-          
-          <!-- ========== 模态框头部 ========== -->
-          <!-- sticky top-0: 头部固定在顶部，内容滚动时头部保持可见 -->
-          <!-- bg-gradient-to-r: 使用渐变背景，从天蓝色到蓝色，提升视觉效果 -->
-          <div class="sticky top-0 bg-gradient-to-r from-sky-500 to-blue-600 text-white p-6 rounded-t-xl z-10">
-            <div class="flex items-center justify-between">
-              <!-- 模态框标题 -->
-              <h3 class="text-xl font-bold flex items-center gap-2">
-                <!-- 支付图标：使用SVG图标表示这是支付相关的操作 -->
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-                </svg>
-                选择易支付启用的支付方式
-              </h3>
-              
-              <!-- 关闭按钮：点击后关闭模态框 -->
-              <!-- hover:text-slate-200: 鼠标悬停时改变颜色，提供视觉反馈 -->
-              <button onclick="closeYiPayMethodsSelector()" class="text-white hover:text-slate-200 transition-colors">
-                <!-- X图标：标准的关闭图标 -->
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- ========== 模态框内容区域 ========== -->
-          <div class="p-6 space-y-4">
-            
-            <!-- 提示信息 -->
-            <!-- bg-blue-50: 浅蓝色背景，与信息提示的语义相符 -->
-            <!-- border-blue-200: 蓝色边框，形成视觉边界 -->
-            <div class="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-              <!-- 信息图标 -->
-              <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              <div>
-                💡 <strong>提示：</strong>从已配置的支付方式中选择要在易支付中启用的方式。<br>
-                如果列表为空，请先在"支付方式配置"中添加支付方式。
-              </div>
-            </div>
-
-            <!-- 支付方式列表容器 -->
-            <!-- id用于JavaScript动态插入支付方式列表 -->
-            <!-- min-h-[200px]: 最小高度200px，即使没有内容也保持一定高度 -->
-            <div id="yipay-methods-list" class="space-y-2 min-h-[200px]">
-              <!-- 加载中提示（初始状态） -->
-              <!-- 在JavaScript加载支付方式数据前显示此提示 -->
-              <div class="text-center text-slate-500 py-8">
-                <!-- 加载动画图标 -->
-                <svg class="animate-spin h-8 w-8 mx-auto mb-2 text-sky-500" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" 
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                正在加载支付方式...
-              </div>
-            </div>
-
-          </div>
-
-          <!-- ========== 模态框底部操作按钮区域 ========== -->
-          <!-- sticky bottom-0: 底部固定，内容滚动时底部按钮保持可见 -->
-          <!-- border-t: 顶部边框，与内容区域形成视觉分隔 -->
-          <div class="sticky bottom-0 bg-slate-50 p-6 rounded-b-xl border-t border-slate-200 flex gap-3">
-            
-            <!-- 取消按钮：点击后关闭模态框，不保存任何更改 -->
-            <!-- flex-1: 按钮占据相等的空间 -->
-            <!-- bg-slate-200: 灰色背景，表示这是一个中性操作 -->
-            <button onclick="closeYiPayMethodsSelector()" 
-              class="flex-1 py-2.5 bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-300 active:bg-slate-400 transition-colors">
-              取消
-            </button>
-            
-            <!-- 确定按钮：点击后保存选择的支付方式 -->
-            <!-- bg-sky-500: 天蓝色背景，表示这是一个积极的操作 -->
-            <!-- shadow-sm: 添加阴影，提升按钮的立体感 -->
-            <button onclick="confirmYiPayMethods()" 
-              class="flex-1 py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
-              <!-- 勾选图标：表示确认操作 -->
-              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-              </svg>
-              确定选择
-            </button>
-          </div>
-          
-        </div>
-      </div>
 
       <!-- ========================================
          PC端价格设置面板 (admin-pricing-panel_modal)
@@ -9894,7 +9902,7 @@
            2. per_run_cost: 单次跑步费用（数字输入）
            3. default_available_runs: 新用户默认免费次数（数字输入）
            ======================================== -->
-      <div id="admin-pricing-panel_modal" class="hidden space-y-4">
+      <div id="admin-pricing-panel_modal" class="hidden overflow-y-auto">
         <!-- 面板顶部：标题和描述 -->
         <div class="bg-gradient-to-r from-sky-50 to-blue-50 p-4 rounded-lg border border-sky-200">
           <h3 class="text-lg font-bold text-sky-700 mb-2">
@@ -12109,7 +12117,12 @@
       // 使用fetch API发起HTTP GET请求
       // fetch是现代浏览器提供的原生API，用于发起网络请求
       // 它返回一个Promise对象，支持链式调用
-      fetch(url)
+      fetch(url,{
+        method: 'GET', // 请求方法为GET
+        headers: {
+          "X-Session-ID": sessionUUID,
+        }
+      })
         .then(response => {
           // ========== 第一步：检查HTTP响应状态 ==========
           
@@ -16773,6 +16786,7 @@
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID,
             // 添加Session ID请求头（如果存在）
             // 某些API可能需要此头部来识别用户会话
             ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})

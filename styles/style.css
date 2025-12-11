@@ -1833,3 +1833,7 @@ body.mobile-mode #session-picker-modal {
   /* 激活时的背景色和文字颜色通过JavaScript动态添加 */
   /* bg-sky-500 和 text-white 类名 */
 }
+
+.swal2-popup {
+  border-radius: 16px;
+}
