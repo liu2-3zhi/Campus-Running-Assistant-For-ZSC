@@ -55597,7 +55597,6 @@ async function createPaymentOrder() {
         const createResponse = await fetch('/api/payment/create', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
                 'Content-Type': 'application/json',
                 'X-Session-ID': sessionUUID
             },
