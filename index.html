@@ -13418,7 +13418,13 @@ body.mobile-mode #session-picker-modal {
       }
       
       // 发送API请求
-      fetch(url)
+      fetch(url,{
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-ID': sessionUUID
+        }
+      })
         .then(response => {
           // 检查HTTP响应状态
           if (!response.ok) {
@@ -13670,7 +13676,13 @@ body.mobile-mode #session-picker-modal {
 
       // ========== 发送API请求 ==========
       
-      fetch(url)
+      fetch(url,{
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-ID': sessionUUID
+        }
+      })
         .then(response => {
           // 检查HTTP响应状态码
           // 如果状态码不是2xx（成功），抛出错误
@@ -14620,7 +14632,12 @@ body.mobile-mode #session-picker-modal {
       // ==========================================
       // API端点: /api/public/beian_config
       // 此接口是公开的，不需要认证，返回格式化的JSON数据
-      fetch("/api/public/beian_config")
+      fetch("/api/public/beian_config",{
+        method: "GET",
+        headers: {
+          "X-Session-ID": sessionUUID,
+        }
+      })
         // 解析响应体为JSON对象
         // response.json()返回一个Promise，包含解析后的JavaScript对象
         .then((response) => response.json())
@@ -16083,7 +16100,8 @@ body.mobile-mode #session-picker-modal {
           method: 'POST', // HTTP方法：POST用于提交数据查询
           headers: {
             // 设置请求头，告知服务器请求体是JSON格式
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID // 包含会话ID，进行身份验证
           },
           // 将查询参数转换为JSON字符串作为请求体
           body: JSON.stringify({
@@ -16509,7 +16527,8 @@ body.mobile-mode #session-picker-modal {
           method: 'POST', // HTTP方法：POST用于提交退款请求
           headers: {
             // 设置请求头，告知服务器请求体是JSON格式
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID // 包含会话ID，进行身份验证
           },
           // 将退款参数转换为JSON字符串作为请求体
           body: JSON.stringify({
@@ -17117,7 +17136,8 @@ body.mobile-mode #session-picker-modal {
           method: 'POST', // HTTP方法：POST用于创建新订单
           headers: {
             // 设置请求头，告知服务器请求体是JSON格式
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID // 包含会话ID，进行身份验证
           },
           // 将订单参数转换为JSON字符串作为请求体
           body: JSON.stringify({
@@ -17928,7 +17948,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/payment/query', {
           method: 'POST',  // 使用POST方法发送查询请求
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID,         // 附加会话ID用于身份验证
           },
           // 将订单号作为请求体发送
           body: JSON.stringify({
@@ -18235,7 +18256,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/payment/refund', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID,         // 附加会话ID用于身份验证
           },
           body: JSON.stringify({
             trade_no: tradeNo,
@@ -18847,7 +18869,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/payment/create', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID,         // 附加会话ID用于身份验证
           },
           // 将请求数据对象转换为JSON字符串并发送
           body: JSON.stringify(requestData)
@@ -19102,8 +19125,8 @@ body.mobile-mode #session-picker-modal {
           method: 'GET', // HTTP方法：GET用于获取数据
           headers: {
             // 设置请求头，告知服务器期望返回JSON格式的数据
-            'Content-Type': 'application/json',
             "X-Session-ID": sessionUUID
+            'Content-Type': 'application/json'
           }
         });
         
@@ -19458,8 +19481,8 @@ body.mobile-mode #session-picker-modal {
           method: 'PUT', // HTTP方法：PUT用于更新数据
           headers: {
             // 设置请求头，告知服务器发送的是JSON格式的数据
-            'Content-Type': 'application/json',
             "X-Session-ID": sessionUUID
+            'Content-Type': 'application/json'
           },
           // 将配置对象转换为JSON字符串并发送
           body: JSON.stringify({
@@ -19571,8 +19594,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/yipay_config', {
           method: 'GET',
           headers: {
-            'Content-Type': 'application/json',
             "X-Session-ID": sessionUUID
+            'Content-Type': 'application/json'
           }
         });
         
@@ -19726,8 +19749,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/yipay_config', {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json',
             "X-Session-ID": sessionUUID
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             host: host,
@@ -19881,7 +19904,14 @@ body.mobile-mode #session-picker-modal {
         
         // 使用fetch()发送GET请求到配置读取接口
         // fetch()返回一个Promise对象，需要用await等待响应
-        const response = await fetch('/api/config/registration_display');
+        const response = await fetch('/api/config/registration_display', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            // 添加Session ID请求头（如果存在）
+            ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+          }
+        });
         
         // 检查HTTP响应状态码是否成功（200-299）
         if (!response.ok) {
@@ -20053,7 +20083,14 @@ body.mobile-mode #session-picker-modal {
         // ========== 步骤2：调用API获取显示配置 ==========
         
         // 使用fetch()发送GET请求到配置读取接口
-        const response = await fetch('/api/config/profile_display');
+        const response = await fetch('/api/config/profile_display',{
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            // 添加Session ID请求头（如果存在）
+            ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+          }
+        });
         
         // 检查HTTP响应状态码是否成功
         if (!response.ok) {
@@ -20420,8 +20457,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/pricing_config', {
           method: 'PUT',  // HTTP方法：PUT（更新数据）
           headers: {
-            'Content-Type': 'application/json',  // 请求头：指定内容类型为JSON
             "X-Session-ID": sessionUUID
+            'Content-Type': 'application/json'  // 请求头：指定内容类型为JSON
           },
           credentials: 'include',  // 包含认证凭证
           body: JSON.stringify(requestData)  // 请求体：将JavaScript对象转换为JSON字符串
@@ -20470,7 +20507,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/pricing_config', {
           method: 'GET',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           credentials: 'include'
         });
@@ -20573,7 +20611,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/pricing_config', {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
           },
           credentials: 'include',
           body: JSON.stringify(requestData)
@@ -20649,7 +20688,8 @@ body.mobile-mode #session-picker-modal {
   // X-Session-ID header 用于后端识别用户会话，几乎所有 API 都需要此 header
   if (extractedSessionUUID) {
     fetchOptions.headers = {
-      'X-Session-ID': extractedSessionUUID
+      'X-Session-ID': extractedSessionUUID,
+      'X-Session-ID': sessionUUID
     };
   }
   
@@ -52584,7 +52624,7 @@ async function openMobileHistoryModal(taskId, taskName) {
   try {
     const response = await fetch(`/api/history/${taskId}`, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json",'X-Session-ID': sessionUUID },
     });
 
     if (!response.ok) {
@@ -52679,7 +52719,7 @@ async function openMobileTrackModal(recordId, taskId) {
       `/api/get_historical_track?task_id=${taskId}&record_id=${recordId}`,
       {
         method: "GET",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",'X-Session-ID': sessionUUID },
       }
     );
     if (!response.ok) {
@@ -55558,6 +55598,8 @@ async function createPaymentOrder() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Session-ID': sessionUUID
             },
             body: JSON.stringify({
                 amount: amount,
@@ -55654,7 +55696,8 @@ async function queryOrderStatus(orderId) {
         const response = await fetch('/api/payment/query', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Session-ID': sessionUUID
             },
             body: JSON.stringify({ order_id: orderId })
         });
@@ -55920,7 +55963,13 @@ async function loadPaymentOrders(status, page) {
         }
         
         // 步骤6：调用后端API获取订单列表
-        const response = await fetch(url);
+        const response = await fetch(url,{
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-ID': sessionUUID
+            }
+        });
         
         // 步骤7：解析响应数据
         const result = await response.json();
@@ -56704,7 +56753,8 @@ async function savePaymentConfig() {
         const response = await fetch('/api/admin/payment/config', {
             method: 'PUT',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Session-ID': sessionUUID
             },
             body: JSON.stringify({
                 enabled_payment_methods: enabledMethodsStr
