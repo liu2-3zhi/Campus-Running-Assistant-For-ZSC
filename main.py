@@ -1042,30 +1042,12 @@ def _get_default_config():
         # 这是一个重要的安全参数，用于生成和验证支付请求的签名，请妥善保管，切勿泄露
         # 格式：通常为32位随机字符串，例如 "abcdef1234567890abcdef1234567890"
         "key": "",
-        # 应用访问域名：本应用的公网访问地址（必填）
-        # 用于自动构造异步通知URL（notify_url）
-        # 格式示例："https://yourdomain.com" 或 "https://www.example.com"
-        # 注意：必须是公网可访问的HTTPS地址，包含协议头，末尾不要添加斜杠
-        # 系统会自动拼接为：{app_host}/api/payment/yipay_notify
-        "app_host": "",
-        # 异步通知URL：支付成功后彩虹易支付服务器回调的接口地址（已废弃）
-        # ⚠️ 此配置项已废弃，现在 notify_url 会根据 app_host 自动构造
-        # 格式：{app_host}/api/payment/yipay_notify
-        # 无需手动配置，保留此项仅为向后兼容
-        "notify_url": "",
-        # 同步返回URL：用户支付完成后浏览器跳转的页面地址（可选）
-        # 这是一个用户可见的跳转地址，用于显示支付结果页面
-        # 格式示例："https://yourdomain.com/payment/success"
-        # 注意：
-        # 1. 此URL仅用于展示，不可用于判断支付状态，支付结果以异步通知为准
-        # 2. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值
-        "return_url": "",
-        # 商品ID：用于标识商品类型的唯一标识符（可选）
+        # 商品ID：用于标识商品类型的唯一标识符
         # 格式：整数，例如 "1001"
         # 默认值：1001（跑步助手服务）
         # 用途：在支付记录中区分不同类型的商品或服务
         "product_id": "1001",
-        # 支付接口类型：指定使用的支付接口类型（可选）
+        # 支付接口类型：指定使用的支付接口类型
         # 格式：字符串，可选值包括：
         #   - web: 网页版支付（PC端）
         #   - jump: 跳转支付（推荐，默认值）
@@ -1076,7 +1058,7 @@ def _get_default_config():
         # 默认值：jump（跳转支付，适用于大多数场景）
         # 注意：不同接口类型可能需要额外的参数，请参考易支付平台文档
         "payment_method": "jump",
-        # 启用的支付方式：管理员可配置的支付方式列表（可选）
+        # 启用的支付方式：管理员可配置的支付方式列表
         # 格式：使用逗号分隔的支付方式代码字符串
         # 支持的支付方式：
         #   - alipay: 支付宝支付（推荐，覆盖率最高）
@@ -1538,8 +1520,6 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 使用前需要：\n")
         f.write("# 1. 在彩虹易支付平台注册商户账号\n")
         f.write("# 2. 获取商户ID（PID）和商户密钥（KEY）\n")
-        f.write("# 3. 配置应用访问域名（app_host），系统会自动构造异步通知URL\n")
-        f.write("# 4. 可选配置同步返回URL（return_url），也可在创建订单时动态传入\n")
         f.write("# ============================================================\n\n")
         f.write("[Rainbow_YiPay]\n")
         f.write("# 易支付接口域名（必填）\n")
@@ -1556,16 +1536,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 格式：通常为32位随机字符串\n")
         f.write("# 示例：abcdef1234567890abcdef1234567890\n")
         f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
-        f.write("# 同步返回URL（可选）\n")
-        f.write("# 用户支付完成后，浏览器会跳转到此URL显示支付结果\n")
-        f.write("# 格式示例：https://yourdomain.com/payment/success\n")
-        f.write("# 注意：\n")
-        f.write("# 1. 此URL仅用于页面展示，不能作为支付成功的判断依据\n")
-        f.write("# 2. 支付状态必须以异步通知（notify_url）的结果为准\n")
-        f.write("# 3. 用户可能不会访问此页面（如直接关闭浏览器）\n")
-        f.write("# 4. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值\n")
-        f.write(f"return_url = {config_obj.get('Rainbow_YiPay', 'return_url', fallback='')}\n")
-        f.write("# 启用的支付方式（可选）\n")
+        f.write("# 启用的支付方式\n")
         f.write("# 管理员可配置启用哪些支付方式，使用逗号分隔\n")
         f.write("# 支持的支付方式：\n")
         f.write("#   - alipay: 支付宝支付（推荐，覆盖率最高）\n")
@@ -1587,7 +1558,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 默认值：1001（跑步助手服务）\n")
         f.write("# 用途：在支付记录中区分不同类型的商品或服务\n")
         f.write(f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
-        f.write("# 支付接口类型（可选）\n")
+        f.write("# 支付接口类型\n")
         f.write("# 指定使用的支付接口类型\n")
         f.write("# 可选值：web（网页版）、jump（跳转支付，推荐）、jsapi（公众号）、app（APP支付）、scan（扫码支付）、applet（小程序支付）\n")
         f.write("# 默认值：jump（跳转支付，适用于大多数场景）\n")

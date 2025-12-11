@@ -29,6 +29,7 @@ services:
       - ./tokens:/app/tokens
       - ./system_accounts:/app/system_accounts
       - ./payment_orders:/app/payment_orders
+      - ./payment_methods.json:/app/payment_methods.json
 
     environment:
       - PYTHONUNBUFFERED=1

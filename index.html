@@ -11466,12 +11466,12 @@ body.mobile-mode #session-picker-modal {
                 测试金额（元）
                 <span class="text-red-500">*</span>
               </label>
-              <!-- 建议使用小额测试，如0.01元 -->
+              <!-- 建议使用小额测试，如0.50元 -->
               <input type="number" id="admin-test-payment-amount_modal" 
-                placeholder="0.01" 
-                min="0.01" 
+                placeholder="0.50" 
+                min="0.5" 
                 step="0.01" 
-                value="0.01" 
+                value="0.5" 
                 class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
             </div>
 
@@ -11869,7 +11869,7 @@ body.mobile-mode #session-picker-modal {
             <!-- 此内容将由JavaScript动态更新 -->
           </div>
         </div>
-      </div>
+      
 
 
 
@@ -11879,7 +11879,7 @@ body.mobile-mode #session-picker-modal {
            功能：测试商品名称生成器，验证生成结果
            API端点：/api/admin/test_product_name
            ======================================== -->
-      <div id="admin-payment-settings-content-product-test_modal" class="hidden space-y-4">
+      <div id="admin-payment-settings-content-product-test_modal" class="hidden space-y-4 ">
         <!-- 测试说明文本 -->
         <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
           💡 提示：此功能用于测试商品名称生成器，验证生成的商品名是否符合预期
@@ -11946,6 +11946,7 @@ body.mobile-mode #session-picker-modal {
         <!-- 批量测试按钮 -->
         <button id="batch-test-product-names-btn_modal" 
           class="w-full py-3 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm hover:shadow-md"
+          style="display:none" 
           onclick="batchTestProductNames_modal()">
           <!-- 批量图标 -->
           <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11965,6 +11966,7 @@ body.mobile-mode #session-picker-modal {
             <!-- 批量测试结果将动态插入到这里 -->
           </div>
         </div>
+      </div>
       </div>
 
       <!-- ========================================
@@ -16760,7 +16762,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/generate_product_name', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           body: JSON.stringify({
             quantity: quantity
@@ -16842,7 +16845,8 @@ body.mobile-mode #session-picker-modal {
           const response = await fetch('/api/admin/generate_product_name', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              "X-Session-ID": sessionUUID
             },
             body: JSON.stringify({
               quantity: quantity
@@ -17395,7 +17399,7 @@ body.mobile-mode #session-picker-modal {
       // 这样可以统一管理所有标签页，便于维护
       // 如果将来需要添加新的Tab，只需在这里添加名称即可
       // 新增 'yipay' - 易支付配置标签页
-      const tabs = ['config', 'query', 'refund', 'test', 'yipay'];
+      const tabs = ['config', 'query', 'refund', 'test', 'yipay',"product-test"];
       
       // 遍历所有标签页，执行显示/隐藏操作
       // forEach循环：对数组中的每个元素执行一次指定函数
@@ -17711,7 +17715,8 @@ body.mobile-mode #session-picker-modal {
           headers: {
             // Content-Type告知服务器请求体是JSON格式
             // 服务器需要根据这个标头解析请求体
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           // body必须是字符串，使用JSON.stringify()将对象转换为JSON字符串
           // JSON格式示例：{"alipay":true,"wechat":true,"qq":false,"unionpay":false}
@@ -18506,7 +18511,9 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/generate_product_name', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
+
           },
           body: JSON.stringify({
             quantity: quantity
@@ -18588,7 +18595,8 @@ body.mobile-mode #session-picker-modal {
           const response = await fetch('/api/admin/generate_product_name', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              "X-Session-ID": sessionUUID
             },
             body: JSON.stringify({
               quantity: quantity
@@ -19094,7 +19102,8 @@ body.mobile-mode #session-picker-modal {
           method: 'GET', // HTTP方法：GET用于获取数据
           headers: {
             // 设置请求头，告知服务器期望返回JSON格式的数据
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           }
         });
         
@@ -19449,7 +19458,8 @@ body.mobile-mode #session-picker-modal {
           method: 'PUT', // HTTP方法：PUT用于更新数据
           headers: {
             // 设置请求头，告知服务器发送的是JSON格式的数据
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           // 将配置对象转换为JSON字符串并发送
           body: JSON.stringify({
@@ -19561,7 +19571,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/yipay_config', {
           method: 'GET',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           }
         });
         
@@ -19715,7 +19726,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/yipay_config', {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           body: JSON.stringify({
             host: host,
@@ -20408,7 +20420,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/pricing_config', {
           method: 'PUT',  // HTTP方法：PUT（更新数据）
           headers: {
-            'Content-Type': 'application/json'  // 请求头：指定内容类型为JSON
+            'Content-Type': 'application/json',  // 请求头：指定内容类型为JSON
+            "X-Session-ID": sessionUUID
           },
           credentials: 'include',  // 包含认证凭证
           body: JSON.stringify(requestData)  // 请求体：将JavaScript对象转换为JSON字符串
@@ -45375,7 +45388,7 @@ async function loadSystemConfig() {
       "available_runs_format",
       "剩余次数显示格式",
       "text",
-      "在个人信息中显示剩余次数时使用的文字标签，例如："剩余次数"、"可用次数"等"
+      "在个人信息中显示剩余次数时使用的文字标签，例如：\"剩余次数\"、\"可用次数\"等"
     );
     
     // ==================== [新增] 注册页面显示设置 ====================
@@ -45397,7 +45410,7 @@ async function loadSystemConfig() {
       "show_available_runs_on_register",
       "显示注册提示",
       "boolean",
-      "是否在注册页面显示"注册即可得XX次"的提示信息"
+      "是否在注册页面显示\"注册即可得XX次\"的提示信息"
     );
     
     // 注册提示的文本内容配置项
@@ -45411,7 +45424,7 @@ async function loadSystemConfig() {
       "register_available_runs_hint",
       "注册提示文本",
       "text",
-      "注册页面提示的文本内容，使用 {available_runs} 作为占位符，例如："注册即可得 {available_runs} 次校园跑""
+      "注册页面提示的文本内容，使用 {available_runs} 作为占位符，例如：\"注册即可得 {available_runs} 次校园跑\""
     );
     // ==================== 配置项添加完成 ====================
     
@@ -47727,26 +47740,26 @@ function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>',
       permission: "admin",
     },
-    // ========================================
-    // 支付配置标签
-    // 管理员可以在此启用/禁用支付方式
-    // ========================================
-    {
-      id: "payment-config",
-      label: "支付配置",
-      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
-      permission: "admin",
-    },
-    // ========================================
-    // 支付日志标签
-    // 管理员可以在此查看所有支付操作日志
-    // ========================================
-    {
-      id: "payment-logs",
-      label: "支付日志",
-      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
-      permission: "admin",
-    },
+    // // ========================================
+    // // 支付配置标签
+    // // 管理员可以在此启用/禁用支付方式
+    // // ========================================
+    // {
+    //   id: "payment-config",
+    //   label: "支付配置",
+    //   icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+    //   permission: "admin",
+    // },
+    // // ========================================
+    // // 支付日志标签
+    // // 管理员可以在此查看所有支付操作日志
+    // // ========================================
+    // {
+    //   id: "payment-logs",
+    //   label: "支付日志",
+    //   icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
+    //   permission: "admin",
+    // },
     // [修复] 添加CDN缓存标签
     {
       id: "cdn",
@@ -49065,6 +49078,7 @@ function switchMobileAdminTab(tabId, prefix) {
       // [修复] 添加CDN和密码恢复面板ID
       "mobile-multi-admin-cdn-panel", 
       "mobile-multi-admin-bruteforce-panel",
+      "mobile-multi-admin-overdue-panel",
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -55285,7 +55299,13 @@ async function openPaymentModal() {
     try {
         // 调用后端API获取支付配置
         // 使用await等待异步请求完成，确保数据加载后再继续
-        const response = await fetch('/api/admin/payment/config');
+        const response = await fetch('/api/admin/payment/config', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID
+            }
+          });
         
         // 将响应转换为JSON格式
         const result = await response.json();
@@ -56475,7 +56495,13 @@ async function loadPaymentConfig() {
     
     try {
         // 步骤1：调用后端API获取支付配置
-        const response = await fetch('/api/admin/payment/config');
+        const response = await fetch('/api/admin/payment/config', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID
+            }
+          });
         
         // 步骤2：解析响应数据
         const result = await response.json();
