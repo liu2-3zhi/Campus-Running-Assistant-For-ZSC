@@ -14982,6 +14982,16 @@
           // hidden类由Tailwind CSS提供，相当于display: none
           tabContent.classList.remove('hidden');
           
+          // 步骤4：当切换到配置Tab时，加载支付方式列表
+          // 确保每次打开配置Tab时，支付方式列表都是最新的
+          if (tab === 'config') {
+            // 调用 loadPaymentMethodsConfig() 函数加载支付方式配置
+            // 此函数会从服务器获取所有支付方式的定义和启用状态
+            // 然后动态渲染到 payment-methods-list_modal 容器中
+            loadPaymentMethodsConfig();
+            console.log(`[PC端支付设置] 已触发支付方式配置加载`);
+          }
+          
           // 在控制台输出日志，标记Tab激活成功
           console.log(`[PC端支付设置] Tab "${tab}" 已激活`);
         } else {
