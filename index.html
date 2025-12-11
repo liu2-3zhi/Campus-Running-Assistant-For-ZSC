@@ -26358,9 +26358,11 @@ function refreshMobileSessionPicker() {
             console.error("[密码恢复Tab错误] 未找到ID为'admin-tab-bruteforce_modal'的元素");
           }
 
-          // ========== [修复] 添加4个新标签的显示控制逻辑 ==========
+          // ========== [任务3修复] 添加4个新标签的显示控制逻辑（支付日志标签需根据require_payment配置） ==========
           // 这4个标签分别是：欠费查询、支付日志、支付设置、价格设置
-          // 它们应该仅对admin和super_admin用户组可见
+          // 其中：
+          // - 欠费查询、支付设置、价格设置：仅对admin和super_admin用户组可见
+          // - 支付日志：需要根据require_payment配置和用户权限共同决定
           
           // 步骤1：通过ID获取4个标签的DOM元素
           // 使用 $ 函数（document.getElementById 的简写）查找元素
@@ -26375,10 +26377,62 @@ function refreshMobileSessionPicker() {
           const userGroup = currentUserData?.group || "guest";
           
           // 步骤3：判断当前用户是否具有管理员权限
-          // 只有 "admin" 或 "super_admin" 组别的用户才能查看这4个管理功能标签
+          // 只有 "admin" 或 "super_admin" 组别的用户才能查看管理功能标签
           const isAdmin = userGroup === "admin" || userGroup === "super_admin";
 
-          // 步骤4：设置"欠费查询"标签的显示状态
+          // 步骤4：【关键】获取pricing配置中的require_payment设置
+          // 这个配置决定了是否需要对普通用户启用付费功能
+          // 需要调用后端API获取最新的配置数据
+          let requirePayment = false; // 默认值：不需要付费（安全默认值）
+          
+          try {
+            // [异步请求] 向后端API发起GET请求，获取价格配置
+            // 这个配置包含了require_payment字段，用于判断是否启用付费功能
+            const pricingConfigResponse = await fetch('/api/admin/pricing_config', {
+              method: 'GET',                      // HTTP方法：GET（查询数据）
+              headers: {
+                'Content-Type': 'application/json', // 请求头：指定返回内容类型为JSON
+                'X-Session-ID': sessionUUID        // 请求头：传递会话UUID用于身份验证
+              },
+              credentials: 'include'               // 包含认证凭证（cookies），确保有权访问
+            });
+            
+            // [JSON解析] 将响应体解析为JavaScript对象
+            const pricingConfigData = await pricingConfigResponse.json();
+            
+            // [成功检查] 验证API调用是否成功，并提取require_payment字段
+            if (pricingConfigData.success && pricingConfigData.config) {
+              // 从配置对象中提取require_payment字段
+              // 这个布尔值决定了是否对普通用户启用付费相关功能
+              requirePayment = pricingConfigData.config.require_payment || false;
+              
+              // [调试日志] 记录成功获取的配置信息
+              console.log("[支付日志Tab配置] 成功获取require_payment配置:", {
+                requirePayment: requirePayment,               // 是否需要付费
+                fullConfig: pricingConfigData.config          // 完整的配置对象（用于调试）
+              });
+            } else {
+              // [警告日志] API调用失败或返回数据格式不正确
+              console.warn("[支付日志Tab配置] 获取require_payment配置失败，使用默认值false:", {
+                success: pricingConfigData.success,           // API调用是否成功
+                hasConfig: !!pricingConfigData.config,        // 是否包含config字段
+                response: pricingConfigData                   // 完整响应（用于调试）
+              });
+            }
+          } catch (error) {
+            // [错误捕获] 如果网络请求失败或发生其他异常，记录错误并使用默认值
+            // 可能的错误原因：网络断开、服务器无响应、JSON解析失败等
+            console.error("[支付日志Tab配置] 获取require_payment配置时发生异常:", {
+              error: error,                                   // 错误对象
+              errorMessage: error.message,                    // 错误消息
+              errorStack: error.stack,                        // 错误堆栈（用于调试）
+              defaultValue: requirePayment                    // 使用的默认值
+            });
+            // 发生异常时保持requirePayment为默认值false（安全策略）
+          }
+
+          // 步骤5：设置"欠费查询"标签的显示状态
+          // 逻辑：仅管理员可见
           if (overdueTab) {
             // 根据管理员权限设置显示/隐藏
             // isAdmin 为 true 时显示（display: "block"），否则隐藏（display: "none"）
@@ -26397,25 +26451,42 @@ function refreshMobileSessionPicker() {
             console.warn("[欠费查询Tab警告] 未找到ID为'admin-tab-overdue_modal'的元素");
           }
 
-          // 步骤5：设置"支付日志"标签的显示状态
+          // 步骤6：【核心逻辑】设置"支付日志"标签的显示状态
+          // 显示条件（满足任一即显示）：
+          // 1. 用户是管理员或超级管理员（isAdmin为true）
+          // 2. require_payment配置为true（表示系统启用了付费功能，所有用户都应该能看到自己的支付历史）
           if (paymentLogsTab) {
-            // 与欠费查询标签相同的显示逻辑
-            paymentLogsTab.style.display = isAdmin ? "block" : "none";
+            // [显示逻辑判断]
+            // - 如果isAdmin为true：管理员始终可以查看所有用户的支付日志
+            // - 如果requirePayment为true：即使是普通用户，也应该能看到自己的支付记录
+            // - 两个条件满足其一，就显示支付日志标签
+            const shouldShowPaymentLogs = isAdmin || requirePayment;
             
-            // [调试日志] 记录支付日志标签的显示控制信息
-            console.log("[支付日志Tab] 显示状态:", {
+            // 设置DOM元素的display样式属性
+            paymentLogsTab.style.display = shouldShowPaymentLogs ? "block" : "none";
+            
+            // [调试日志] 记录支付日志标签的显示控制信息（包含详细的决策过程）
+            console.log("[支付日志Tab] 显示状态（根据require_payment和用户权限）:", {
               userGroup: userGroup,                         // 当前用户的组别
               isAdmin: isAdmin,                             // 是否拥有管理员权限
-              display: paymentLogsTab.style.display         // 设置后的display属性值
+              requirePayment: requirePayment,               // 系统是否启用付费功能
+              shouldShowPaymentLogs: shouldShowPaymentLogs, // 最终是否显示标签
+              display: paymentLogsTab.style.display,        // 设置后的display属性值
+              决策说明: isAdmin 
+                ? "管理员：始终显示" 
+                : (requirePayment 
+                  ? "普通用户：系统启用付费，显示支付历史" 
+                  : "普通用户：系统未启用付费，隐藏支付历史")
             });
           } else {
             // [错误日志] 如果找不到支付日志标签元素，记录警告
             console.warn("[支付日志Tab警告] 未找到ID为'admin-tab-payment-logs_modal'的元素");
           }
 
-          // 步骤6：设置"支付设置"标签的显示状态
+          // 步骤7：设置"支付设置"标签的显示状态
+          // 逻辑：仅管理员可见（用于配置支付方式，如支付宝、微信等）
           if (paymentSettingsTab) {
-            // 与前面标签相同的显示逻辑
+            // 与欠费查询标签相同的显示逻辑
             paymentSettingsTab.style.display = isAdmin ? "block" : "none";
             
             // [调试日志] 记录支付设置标签的显示控制信息
@@ -26429,9 +26500,10 @@ function refreshMobileSessionPicker() {
             console.warn("[支付设置Tab警告] 未找到ID为'admin-tab-payment-settings_modal'的元素");
           }
 
-          // 步骤7：设置"价格设置"标签的显示状态
+          // 步骤8：设置"价格设置"标签的显示状态
+          // 逻辑：仅管理员可见（用于配置单次跑步费用、默认免费次数等）
           if (pricingTab) {
-            // 与前面标签相同的显示逻辑
+            // 与前面管理员专属标签相同的显示逻辑
             pricingTab.style.display = isAdmin ? "block" : "none";
             
             // [调试日志] 记录价格设置标签的显示控制信息
@@ -26444,7 +26516,7 @@ function refreshMobileSessionPicker() {
             // [错误日志] 如果找不到价格设置标签元素，记录警告
             console.warn("[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素");
           }
-          // ========== [修复结束] 4个新标签的显示控制逻辑添加完成 ==========
+          // ========== [任务3修复结束] 4个新标签的显示控制逻辑添加完成 ==========
 
           if (modalCaptchaTab)
             modalCaptchaTab.style.display = canViewCaptchaHistory
