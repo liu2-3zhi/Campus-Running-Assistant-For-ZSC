@@ -48182,8 +48182,74 @@ function toggleMobileMultiAdminPanel(show) {
     }
   }
 }
-function initMobileAdminPanel(prefix) {
+// ========================================
+// 【移动端管理面板初始化函数】
+// 负责初始化移动端管理面板的标签页导航和内容区域
+// 【重要修改】将函数改为异步函数(async)，以便获取require_payment配置
+// ========================================
+async function initMobileAdminPanel(prefix) {
+  // 获取当前用户的组别信息，用于权限判断
+  // 如果currentUserData未定义或缺少group属性，默认为"user"
   const userGroup = currentUserData?.group || "user";
+  
+  // 【权限判断】判断当前用户是否为管理员
+  // 管理员包括"admin"和"super_admin"两种组别
+  const isAdmin = userGroup === "admin" || userGroup === "super_admin";
+  
+  // ========================================
+  // 【关键修复】获取require_payment配置
+  // 用于实现与PC端相同的支付历史标签显示逻辑：
+  // - require_payment = true 时，所有用户都能看到支付历史
+  // - require_payment = false 时，只有管理员能看到支付历史
+  // ========================================
+  let requirePayment = false; // 默认值：不需要付费（安全默认值）
+  
+  try {
+    // [异步请求] 向后端API发起GET请求，获取价格配置
+    // 这个配置包含了require_payment字段，用于判断是否启用付费功能
+    const pricingConfigResponse = await fetch('/api/admin/pricing_config', {
+      method: 'GET',                      // HTTP方法：GET（查询数据）
+      headers: {
+        'Content-Type': 'application/json', // 请求头：指定返回内容类型为JSON
+        'X-Session-ID': sessionUUID        // 请求头：传递会话UUID用于身份验证
+      },
+      credentials: 'include'               // 包含认证凭证（cookies），确保有权访问
+    });
+    
+    // [JSON解析] 将响应体解析为JavaScript对象
+    const pricingConfigData = await pricingConfigResponse.json();
+    
+    // [成功检查] 验证API调用是否成功，并提取require_payment字段
+    if (pricingConfigData.success && pricingConfigData.config) {
+      // 从配置对象中提取require_payment字段
+      // 这个布尔值决定了是否对普通用户启用付费相关功能
+      requirePayment = pricingConfigData.config.require_payment || false;
+      
+      // [调试日志] 记录成功获取的配置信息
+      console.log("[移动端支付历史标签] 成功获取require_payment配置:", {
+        requirePayment: requirePayment,               // 是否需要付费
+        userGroup: userGroup,                         // 当前用户组别
+        isAdmin: isAdmin                              // 是否为管理员
+      });
+    } else {
+      // [警告日志] API调用失败或返回数据格式不正确
+      console.warn("[移动端支付历史标签] 获取require_payment配置失败，使用默认值false:", {
+        success: pricingConfigData.success,           // API调用是否成功
+        hasConfig: !!pricingConfigData.config         // 是否包含config字段
+      });
+    }
+  } catch (error) {
+    // [错误捕获] 如果网络请求失败或发生其他异常，记录错误并使用默认值
+    // 可能的错误原因：网络断开、服务器无响应、JSON解析失败等
+    console.error("[移动端支付历史标签] 获取require_payment配置时发生异常:", {
+      error: error,                                   // 错误对象
+      errorMessage: error.message,                    // 错误消息
+      defaultValue: requirePayment                    // 使用的默认值
+    });
+    // 发生异常时保持requirePayment为默认值false（安全策略）
+  }
+  
+  // 根据prefix参数确定标签导航容器和内容容器的ID
   let tabsNavId, contentId;
   if (prefix === "mobile-multi-admin") {
     tabsNavId = "mobile-multi-admin-tabs-nav";
@@ -48335,14 +48401,19 @@ function initMobileAdminPanel(prefix) {
     // [新增] 支付历史标签
     // 移动端支付历史面板的标签，与PC端功能对应
     // 功能：查看支付相关操作日志，支持按操作类型、日期范围筛选
-    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    // 【特殊权限逻辑 - 与PC端保持一致】
+    // 此标签的显示逻辑不同于其他管理员专属标签：
+    // - require_payment = true（启用付费模式）：所有用户都能看到
+    // - require_payment = false（免费模式）：只有管理员能看到
+    // 使用特殊权限值 "payment-logs-special" 来标识这种特殊逻辑
     // ========================================
     {
       id: "payment-logs",  // 标签ID，用于标识和切换面板
       label: "支付历史",  // 标签显示的文本
       // 文档图标：表示日志/历史记录
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
-      permission: "admin",  // 权限要求：管理员级别
+      permission: "payment-logs-special",  // 特殊权限：需要根据require_payment配置和用户角色共同判断
     },
     // ========================================
     // [新增] 支付设置标签
@@ -48371,16 +48442,56 @@ function initMobileAdminPanel(prefix) {
       permission: "admin",  // 权限要求：管理员级别
     },
   ];
+  // ========================================
+  // 【标签权限过滤逻辑】
+  // 根据用户权限组别和特殊权限配置过滤可见的标签
+  // ========================================
   const visibleTabs = allTabs.filter((tab) => {
+    // 权限类型1: "all" - 所有用户可见
     if (tab.permission === "all") return true;
+    
+    // 权限类型2: "admin" - 仅管理员和超级管理员可见
     if (
       tab.permission === "admin" &&
       (userGroup === "admin" || userGroup === "super_admin")
     )
       return true;
-    // [修复] 增加超级管理员专属权限过滤
+    
+    // [修复] 权限类型3: "super_admin" - 仅超级管理员可见
     if (tab.permission === "super_admin" && userGroup === "super_admin")
       return true;
+    
+    // ========================================
+    // 【关键修复】权限类型4: "payment-logs-special" - 支付历史标签的特殊权限逻辑
+    // 与PC端保持一致的显示规则：
+    // - 当 requirePayment = true（启用付费模式）时：所有用户都能看到
+    // - 当 requirePayment = false（免费模式）时：只有管理员能看到
+    // 
+    // 逻辑表达式：shouldShow = isAdmin || requirePayment
+    // - 当 isAdmin = true 时：无论 requirePayment 值为何，结果都是 true（管理员始终可见）
+    // - 当 isAdmin = false 且 requirePayment = true 时：结果是 true（普通用户在付费模式下可见）
+    // - 当 isAdmin = false 且 requirePayment = false 时：结果是 false（普通用户在免费模式下不可见）
+    // ========================================
+    if (tab.permission === "payment-logs-special") {
+      // 计算是否应该显示支付历史标签
+      const shouldShowPaymentLogs = isAdmin || requirePayment;
+      
+      // [调试日志] 记录支付历史标签的显示决策过程
+      console.log("[移动端支付历史标签] 显示状态判断:", {
+        userGroup: userGroup,                         // 当前用户的组别
+        isAdmin: isAdmin,                             // 是否拥有管理员权限
+        requirePayment: requirePayment,               // 系统是否启用付费功能
+        shouldShowPaymentLogs: shouldShowPaymentLogs, // 最终是否显示标签
+        决策说明: isAdmin 
+          ? "管理员：始终显示" 
+          : (requirePayment 
+            ? "普通用户：系统启用付费，显示支付历史" 
+            : "普通用户：系统未启用付费，隐藏支付历史")
+      });
+      
+      return shouldShowPaymentLogs;
+    }
+    
     return false;
   });
   tabsNav.innerHTML = "";
