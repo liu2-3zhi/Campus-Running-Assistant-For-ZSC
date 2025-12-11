@@ -11249,6 +11249,29 @@ body.mobile-mode #session-picker-modal {
             💡 提示：启用相应的支付方式后，用户可在支付页面选择使用。可以通过"添加支付方式"按钮新增其他支付方式。更改后请点击"保存配置"按钮。
           </p>
 
+          <!-- ========================================
+               刷新按钮区域
+               ========================================
+               功能：重新从服务器加载支付方式配置数据
+               点击后调用 loadPaymentMethodsConfig() 函数
+               按钮样式：幽灵按钮风格，与其他面板保持一致
+               ======================================== -->
+          <div class="flex justify-end">
+            <!-- 刷新按钮：点击后重新加载支付方式配置 -->
+            <button onclick="loadPaymentMethodsConfig()" 
+              class="btn btn-ghost !py-1 !px-3 !text-sm hover:bg-sky-50 transition-colors"
+              title="点击刷新支付方式配置">
+              <!-- 刷新图标：使用SVG绘制旋转箭头图标 -->
+              <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <!-- SVG路径：绘制顺时针旋转的双箭头，symbolizing刷新/重载操作 -->
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              <!-- 按钮文本：向用户说明此按钮的功能 -->
+              刷新
+            </button>
+          </div>
+
           <!-- 添加支付方式按钮 -->
           <!-- 点击后打开添加支付方式的模态框 -->
           <button onclick="openAddPaymentMethodModal()" 
@@ -12087,6 +12110,30 @@ body.mobile-mode #session-picker-modal {
           <p class="text-sm text-slate-600">
             配置系统的价格策略，包括是否启用付费模式、单次跑步费用和新用户的默认免费次数。
           </p>
+        </div>
+
+        <!-- ========================================
+             刷新按钮区域
+             ========================================
+             功能：重新从服务器加载价格配置数据
+             点击后调用 loadPricingConfig() 函数
+             按钮样式：幽灵按钮风格，与其他面板保持一致
+             位置：放置在面板顶部标题下方，配置表单上方
+             ======================================== -->
+        <div class="flex justify-end mt-3">
+          <!-- 刷新按钮：点击后重新加载价格配置数据 -->
+          <button onclick="loadPricingConfig()" 
+            class="btn btn-ghost !py-1 !px-3 !text-sm hover:bg-sky-50 transition-colors"
+            title="点击刷新价格配置">
+            <!-- 刷新图标：使用SVG绘制旋转箭头图标 -->
+            <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <!-- SVG路径：绘制顺时针旋转的双箭头，symbolizing刷新/重载操作 -->
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <!-- 按钮文本：向用户说明此按钮的功能 -->
+            刷新
+          </button>
         </div>
 
         <!-- 配置表单区域 -->
