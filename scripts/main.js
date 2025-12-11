@@ -120,7 +120,8 @@ async function loadPaymentMethodsConfig() {
         const response = await fetch('/api/payment/methods_config', {
             method: 'GET', // GET请求，获取数据
             headers: {
-                'Content-Type': 'application/json' // 设置请求头，告知服务器期望返回JSON格式数据
+                'Content-Type': 'application/json', // 设置请求头，告知服务器期望返回JSON格式数据
+                'X-Session-ID': sessionUUID  // 添加会话ID用于身份验证，解决"未登录或会话无效"的问题
             }
         });
         
