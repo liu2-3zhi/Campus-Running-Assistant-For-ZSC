@@ -16809,9 +16809,9 @@
         }
         
         // === 第6步：处理支付方式数据 ===
-        // result.data 应该是一个对象，键是支付方式代码（如"alipay"），值是配置对象
-        // 例如：{ alipay: { name: "支付宝支付", logo: "...", ... }, wxpay: { ... } }
-        const methodsConfig = result.data || {};
+        // result.methods 应该是一个对象，键是支付方式代码（如"alipay"），值是配置对象
+        // 例如：{ alipay: { name: "支付宝支付", svg: "...", ... }, wxpay: { ... } }
+        const methodsConfig = result.methods || {};
         
         // 将对象转换为数组，方便遍历和渲染
         // Object.entries() 将对象转换为 [key, value] 对的数组
@@ -16879,15 +16879,16 @@
             // 使用模板字符串构建复杂的HTML
             let logoHtml = '';
             
-            // 根据logo_type决定如何渲染logo
-            if (config.logo_type === 'svg' && config.logo) {
+            // 根据icon类型决定如何渲染logo
+            // 注意：JSON文件中使用的是 icon 和 svg 属性，不是 logo_type 和 logo
+            if (config.icon === 'svg' && config.svg) {
               // 如果是SVG类型，直接插入SVG代码
-              // config.logo 应该包含完整的 <svg>...</svg> 标签
-              logoHtml = `<div class="w-10 h-10 flex items-center justify-center">${config.logo}</div>`;
-            } else if (config.logo_type === 'image' && config.logo) {
+              // config.svg 应该包含完整的 <svg>...</svg> 标签
+              logoHtml = `<div class="w-10 h-10 flex items-center justify-center">${config.svg}</div>`;
+            } else if (config.icon === 'image' && config.image) {
               // 如果是图片类型，使用<img>标签显示
-              // config.logo 应该是图片的URL
-              logoHtml = `<img src="${config.logo}" alt="${config.name}" class="w-10 h-10 object-contain">`;
+              // config.image 应该是图片的URL
+              logoHtml = `<img src="${config.image}" alt="${config.name}" class="w-10 h-10 object-contain">`;
             } else {
               // 如果没有logo或类型未知，显示默认的支付图标
               logoHtml = `
