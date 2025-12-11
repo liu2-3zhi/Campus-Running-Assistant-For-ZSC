@@ -25,11 +25,31 @@
     controller.abort();
   }, 10000); // 10秒超时
   
+  // 尝试从 URL 中提取 session UUID，用于身份验证
+  // URL 格式通常为: /uuid=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  var extractedSessionUUID = null;
+  var urlPath = window.location.pathname;
+  var uuidMatch = urlPath.match(/\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i);
+  if (uuidMatch && uuidMatch[1]) {
+    extractedSessionUUID = uuidMatch[1]; // 提取到的 UUID
+  }
+  
+  // 构建请求配置对象，包含超时控制和会话认证
+  var fetchOptions = {
+    signal: controller.signal, // 用于超时控制
+    cache: "no-cache" // 禁用缓存，确保获取最新配置
+  };
+  
+  // 如果提取到了 session UUID，添加认证 header
+  // X-Session-ID header 用于后端识别用户会话，几乎所有 API 都需要此 header
+  if (extractedSessionUUID) {
+    fetchOptions.headers = {
+      'X-Session-ID': extractedSessionUUID
+    };
+  }
+  
   // 异步获取真实配置
-  fetch("/api/frontend-config", {
-    signal: controller.signal,
-    cache: "no-cache"
-  })
+  fetch("/api/frontend-config", fetchOptions)
     .then(function(response) {
       clearTimeout(timeoutId);
       if (!response.ok) {
@@ -1291,7 +1311,16 @@ function refreshMobileSessionPicker() {
         );
         if (mobileGuestSection) {
           // 修正：独立获取配置，不依赖桌面端 DOM 状态
-          fetch("/auth/get_config")
+          // 构建请求头，添加会话ID用于身份验证
+          // X-Session-ID 是后端识别用户会话的关键header，几乎所有需要认证的API都需要
+          const headers = {};
+          if (sessionUUID) {
+            headers['X-Session-ID'] = sessionUUID;
+          }
+          
+          fetch("/auth/get_config", {
+            headers: headers
+          })
             .then((res) => res.json())
             .then((data) => {
               if (data.success && data.allow_guest_login) {
@@ -3305,7 +3334,17 @@ function refreshMobileSessionPicker() {
 
       async function checkGuestLoginEnabled() {
         try {
-          const result = await fetch("/auth/get_config");
+          // 构建请求头，添加会话ID用于身份验证
+          // X-Session-ID header 用于后端识别用户会话，几乎所有需要认证的API都需要此header
+          const headers = {};
+          if (sessionUUID) {
+            headers['X-Session-ID'] = sessionUUID;
+          }
+          
+          // 发起请求获取认证配置，检查是否启用游客登录功能
+          const result = await fetch("/auth/get_config", {
+            headers: headers
+          });
           const data = await result.json();
           if (data.success && data.allow_guest_login) {
             $("guest-login-section").classList.remove("hidden");
