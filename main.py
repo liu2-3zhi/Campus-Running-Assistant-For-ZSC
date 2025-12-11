@@ -30554,6 +30554,153 @@ def start_web_server(args_param):
     # 付费配置获取接口
     # ==============================================================================
     
+    # ==============================================================================
+    # [新增] 商品名称生成测试API
+    # 路由: /api/admin/generate_product_name
+    # 方法: POST
+    # 权限: 管理员
+    # 功能: 根据商品数量生成趣味商品名称
+    # ==============================================================================
+    
+    @app.route("/api/admin/generate_product_name", methods=["POST"])
+    @login_required
+    @admin_required
+    def generate_product_name():
+        """
+        商品名称生成API
+        
+        功能说明：
+        - 根据商品数量调用product_name_generator生成趣味商品名称
+        - 用于测试商品名生成器的功能
+        - 也用于支付测试面板的自动生成商品名功能
+        
+        请求方法：POST
+        权限要求：需要登录且为管理员（admin或super_admin）
+        
+        请求参数（JSON格式）：
+        {
+            "quantity": 5  // 商品数量（整数，1-9999）
+        }
+        
+        返回数据（JSON格式）：
+        成功时：
+        {
+            "success": true,
+            "product_name": "五串麻辣鸭脖配上三根秘制烤肠",  // 生成的商品名称
+            "byte_length": 51                                 // 字节长度（UTF-8编码）
+        }
+        
+        失败时：
+        {
+            "success": false,
+            "message": "错误信息描述"
+        }
+        
+        使用场景：
+        - 商品名测试面板：管理员测试生成器的输出
+        - 测试支付功能：自动生成模式下创建支付订单
+        - 批量测试：一次性生成多个不同数量的商品名
+        """
+        try:
+            # ========== 步骤1：获取请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            # 如果请求体不是JSON格式，get_json()会返回None
+            data = request.get_json()
+            
+            # 防御性检查：验证data是否存在
+            if not data:
+                return jsonify({
+                    "success": False,
+                    "message": "请求体不能为空"
+                }), 400
+            
+            # 从data字典中获取quantity参数
+            # 使用.get()方法提供默认值，避免KeyError
+            quantity = data.get("quantity")
+            
+            # 验证quantity是否提供
+            if quantity is None:
+                return jsonify({
+                    "success": False,
+                    "message": "缺少必要参数：quantity（商品数量）"
+                }), 400
+            
+            # ========== 步骤2：验证参数有效性 ==========
+            
+            # 尝试将quantity转换为整数
+            # 如果转换失败（非数字字符串），会抛出ValueError
+            try:
+                quantity = int(quantity)
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "message": "商品数量必须是整数"
+                }), 400
+            
+            # 验证数量范围：必须在1到9999之间
+            # 这个范围是product_name_generator所支持的范围
+            if quantity < 1 or quantity > 9999:
+                return jsonify({
+                    "success": False,
+                    "message": "商品数量必须在1到9999之间"
+                }), 400
+            
+            # ========== 步骤3：调用生成器生成商品名 ==========
+            
+            # 导入product_name_generator模块（在文件顶部已导入）
+            # 创建LoMeiGenerator实例
+            from product_name_generator import LoMeiGenerator
+            generator = LoMeiGenerator()
+            
+            # 调用generate()方法生成商品名
+            # 传入商品数量，返回字符串或None（如果输入非法）
+            product_name = generator.generate(quantity)
+            
+            # 验证生成是否成功
+            # generate()在输入非法时会返回None
+            if product_name is None:
+                return jsonify({
+                    "success": False,
+                    "message": "生成商品名失败，请检查输入参数"
+                }), 500
+            
+            # ========== 步骤4：计算字节长度 ==========
+            
+            # 计算生成的商品名的UTF-8字节长度
+            # 支付接口通常限制商品名最大127字节
+            # encode('utf-8')将字符串转换为UTF-8编码的字节序列
+            # len()计算字节序列的长度
+            byte_length = len(product_name.encode('utf-8'))
+            
+            # 记录日志：生成成功，输出商品名和字节长度
+            logging.info(
+                f"[商品名生成] 生成成功 - 数量: {quantity}, "
+                f"商品名: {product_name}, 字节长度: {byte_length}"
+            )
+            
+            # ========== 步骤5：返回成功响应 ==========
+            
+            return jsonify({
+                "success": True,
+                "product_name": product_name,      # 生成的商品名称
+                "byte_length": byte_length          # 字节长度
+            })
+            
+        except Exception as e:
+            # ========== 异常处理 ==========
+            
+            # 捕获所有未预期的异常，记录错误日志
+            logging.error(f"[商品名生成] 发生异常: {str(e)}", exc_info=True)
+            
+            # 返回500错误，告知前端服务器内部错误
+            return jsonify({
+                "success": False,
+                "message": f"服务器内部错误: {str(e)}"
+            }), 500
+    
+    # ==============================================================================
+    
     @app.route("/api/config/pricing", methods=["GET"])
     @login_required
     def get_pricing_config():
