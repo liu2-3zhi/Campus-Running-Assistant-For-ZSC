@@ -9314,6 +9314,57 @@
               </select>
             </div>
 
+            <!-- 支付接口类型选择下拉框（新增）-->
+            <!-- 允许管理员选择不同的支付接口类型进行测试 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                支付接口类型
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 下拉选择框：提供多种支付接口类型供测试 -->
+              <!-- onchange事件：当选择改变时，自动显示/隐藏auth_code输入框 -->
+              <select id="admin-test-payment-type_modal" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow"
+                onchange="toggleAuthCodeField()">
+                <!-- 选项1：跳转支付 - 最常用的支付方式 -->
+                <option value="jump">跳转支付 (jump)</option>
+                <!-- 选项2：网页支付 - 在当前页面显示支付界面 -->
+                <option value="web">网页支付 (web)</option>
+                <!-- 选项3：JSAPI支付 - 用于微信公众号等场景 -->
+                <option value="jsapi">JSAPI支付 (jsapi)</option>
+                <!-- 选项4：APP支付 - 用于移动APP内支付 -->
+                <option value="app">APP支付 (app)</option>
+                <!-- 选项5：扫码支付 - 需要提供付款码 -->
+                <option value="scan">扫码支付 (scan)</option>
+                <!-- 选项6：小程序支付 - 用于微信小程序 -->
+                <option value="applet">小程序支付 (applet)</option>
+              </select>
+              <!-- 提示文字：说明扫码支付需要付款码 -->
+              <p class="text-xs text-slate-500 mt-1">
+                扫码支付(scan)需要提供付款码（auth_code）
+              </p>
+            </div>
+
+            <!-- 付款码输入框（扫码支付专用）-->
+            <!-- 默认隐藏，只在选择"扫码支付"时显示 -->
+            <div id="admin-test-auth-code-container_modal" class="hidden">
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                付款码（auth_code）
+                <span class="text-red-500">*</span>
+              </label>
+              <!-- 文本输入框：用于输入18位付款码 -->
+              <!-- 付款码是用户扫码支付时生成的授权码 -->
+              <input type="text" 
+                id="admin-test-auth-code_modal" 
+                placeholder="请输入18位付款码" 
+                maxlength="18" 
+                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+              <!-- 提示文字：说明付款码的用途和格式 -->
+              <p class="text-xs text-slate-500 mt-1">
+                扫码支付需要用户出示的付款条码或二维码的授权码（通常为18位数字）
+              </p>
+            </div>
+
             <!-- 创建测试订单按钮 -->
             <button id="admin-create-test-order-btn_modal" 
               class="w-full py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md"
@@ -14840,6 +14891,66 @@
     // ==========================================
     
     /**
+     * 切换付款码输入框的显示/隐藏
+     * 
+     * 功能说明：
+     * 当用户选择"扫码支付(scan)"接口类型时，显示付款码输入框
+     * 选择其他接口类型时，隐藏付款码输入框
+     * 
+     * 调用时机：
+     * - 支付接口类型下拉框的onchange事件触发时
+     * 
+     * 实现逻辑：
+     * 1. 获取支付接口类型下拉框的当前选中值
+     * 2. 如果选中"scan"，则显示付款码输入框
+     * 3. 否则隐藏付款码输入框
+     */
+    function toggleAuthCodeField() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[PC端测试支付] 切换付款码输入框显示状态...');
+      
+      // === 第1步：获取DOM元素 ===
+      
+      // 获取支付接口类型下拉框元素
+      const typeSelect = document.getElementById('admin-test-payment-type_modal');
+      // 获取付款码输入框的容器元素
+      const authCodeContainer = document.getElementById('admin-test-auth-code-container_modal');
+      
+      // === 第2步：防御性检查 ===
+      // 确保DOM元素存在，避免null引用错误
+      if (!typeSelect || !authCodeContainer) {
+        console.warn('[PC端测试支付] 警告：找不到必需的DOM元素');
+        return; // 如果元素不存在，直接返回，不执行后续操作
+      }
+      
+      // === 第3步：获取当前选中的接口类型 ===
+      const selectedType = typeSelect.value;
+      console.log('[PC端测试支付] 当前选中的接口类型：', selectedType);
+      
+      // === 第4步：根据接口类型决定是否显示付款码输入框 ===
+      
+      // 判断是否为扫码支付类型
+      if (selectedType === 'scan') {
+        // 如果是扫码支付，则显示付款码输入框
+        // 移除hidden类，使容器可见
+        authCodeContainer.classList.remove('hidden');
+        console.log('[PC端测试支付] 付款码输入框已显示');
+      } else {
+        // 如果不是扫码支付，则隐藏付款码输入框
+        // 添加hidden类，使容器不可见
+        authCodeContainer.classList.add('hidden');
+        
+        // 清空付款码输入框的值，避免用户误以为需要输入
+        const authCodeInput = document.getElementById('admin-test-auth-code_modal');
+        if (authCodeInput) {
+          authCodeInput.value = ''; // 清空输入框
+        }
+        
+        console.log('[PC端测试支付] 付款码输入框已隐藏');
+      }
+    }
+    
+    /**
      * 创建PC端管理员测试支付订单
      * 
      * 功能说明：
@@ -14872,6 +14983,8 @@
       
       const amountInput = document.getElementById('admin-test-payment-amount_modal');
       const methodSelect = document.getElementById('admin-test-payment-method_modal');
+      const typeSelect = document.getElementById('admin-test-payment-type_modal'); // 新增：支付接口类型选择框
+      const authCodeInput = document.getElementById('admin-test-auth-code_modal'); // 新增：付款码输入框
       const linkContainer = document.getElementById('admin-test-payment-link-container_modal');
       const payUrlInput = document.getElementById('admin-test-pay-url_modal');
       const openBtn = document.getElementById('admin-open-test-pay-url-btn_modal');
@@ -14879,35 +14992,77 @@
       
       // === 第2步：获取并验证输入 ===
       
-      // 获取测试金额
+      // 2.1 获取测试金额
       const amount = amountInput ? parseFloat(amountInput.value) : 0;
       if (!amount || amount <= 0) {
         alert('请输入有效的测试金额（大于0）');
         return;
       }
       
-      // 获取支付方式
+      // 2.2 获取支付方式
       const method = methodSelect ? methodSelect.value : '';
       if (!method) {
         alert('请选择支付方式');
         return;
       }
       
-      console.log('[PC端测试支付] 测试订单数据：', { amount, method });
+      // 2.3 获取支付接口类型（新增）
+      // 如果未选择，默认使用'jump'（跳转支付）
+      const paymentType = typeSelect ? typeSelect.value : 'jump';
+      
+      // 2.4 获取付款码（仅扫码支付需要）
+      let authCode = '';
+      // 如果选择的是扫码支付，则需要验证付款码
+      if (paymentType === 'scan') {
+        authCode = authCodeInput ? authCodeInput.value.trim() : '';
+        // 验证付款码是否为空
+        if (!authCode) {
+          alert('扫码支付需要提供付款码（auth_code）');
+          // 聚焦到付款码输入框，引导用户输入
+          if (authCodeInput) authCodeInput.focus();
+          return; // 中断函数执行
+        }
+        // 验证付款码长度（通常为18位）
+        if (authCode.length !== 18) {
+          alert('付款码长度不正确，通常为18位数字');
+          if (authCodeInput) authCodeInput.focus();
+          return;
+        }
+      }
+      
+      // 在控制台输出测试订单数据，方便调试
+      console.log('[PC端测试支付] 测试订单数据：', { 
+        amount, 
+        method, 
+        payment_type: paymentType,
+        auth_code: authCode ? '***已提供***' : '未提供' // 在日志中隐藏完整的付款码
+      });
       
       try {
-        // === 第3步：发起HTTP POST请求创建订单 ===
+        // === 第3步：构建请求体 ===
+        
+        // 创建基本的请求数据对象
+        const requestData = {
+          amount: amount,                  // 支付金额
+          payment_method: method,          // 支付方式（alipay/wechat/qq/unionpay）
+          payment_type: paymentType,       // 支付接口类型（jump/web/jsapi/app/scan/applet）
+          product_name: '测试订单'          // 商品名称
+        };
+        
+        // 如果是扫码支付，添加付款码到请求数据
+        if (paymentType === 'scan' && authCode) {
+          requestData.auth_code = authCode;
+        }
+        
+        // === 第4步：发起HTTP POST请求创建订单 ===
         
         const response = await fetch('/api/payment/create', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            amount: amount,
-            payment_method: method,
-            product_name: '测试订单'
-          })
+          // 将请求数据对象转换为JSON字符串并发送
+          body: JSON.stringify(requestData)
         });
         
         // === 第4步：检查响应状态 ===
