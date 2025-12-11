@@ -22077,8 +22077,13 @@ def start_web_server(args_param):
                 config.set("SMS_Service_SMSBao", "rate_limit_per_ip_day", "20")
             if not config.has_option("SMS_Service_SMSBao", "rate_limit_per_phone_day"):
                 config.set("SMS_Service_SMSBao", "rate_limit_per_phone_day", "5")
-            with open("config.ini", "w", encoding="utf-8") as f:
-                config.write(f)
+            
+            # 使用 _write_config_with_comments() 函数写入配置文件
+            # 这个函数的作用是：在写入配置的同时保留config.ini中的注释内容
+            # 原因：config.write() 会丢失配置文件中的所有注释，导致配置文件可读性变差
+            # _write_config_with_comments() 会先读取原文件的注释，然后在写入新配置时保留这些注释
+            # 这对于维护配置文件的可读性和文档性非常重要
+            _write_config_with_comments(config, "config.ini")
             sms_config = {
                 "enable_sms_service": config.getboolean(
                     "Features", "enable_sms_service", fallback=False
