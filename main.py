@@ -506,6 +506,10 @@ def is_allowed_ip(client_ip: str) -> bool:
     
     global public_ip_cache, public_ip_cache_lock, public_ip_cache_time
     
+    # 导入 requests 库用于发送HTTP请求
+    # 在函数内导入以确保模块可用性
+    import requests
+    
     # 缓存过期时间：5分钟（300秒）
     # 公网IP通常不会频繁变化，5分钟的缓存可以有效减少API请求
     CACHE_EXPIRE_SECONDS = 300
@@ -3142,6 +3146,10 @@ class RainbowYiPayClient:
             # 构造验证接口的完整URL
             # 格式：{client_app_host}/api/payment/verify_challenge
             verify_url = f"{client_app_host}/api/payment/verify_challenge"
+            
+            # 导入 requests 库用于发送HTTP请求
+            # 在使用前导入以确保模块可用性
+            import requests
             
             try:
                 
