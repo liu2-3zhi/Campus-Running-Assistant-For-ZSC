@@ -8265,6 +8265,92 @@ body.mobile-mode #session-picker-modal {
               </p>
             </div>
 
+            <!-- ==================== [新增] UI显示配置（移动端） ==================== -->
+            
+            <!-- 配置项4: 是否在个人资料页显示剩余次数 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <!-- 配置项标题 -->
+                  <label class="block text-sm font-semibold text-slate-700 mb-1">
+                    个人资料页显示剩余次数
+                  </label>
+                  <!-- 配置项说明 -->
+                  <p class="text-xs text-slate-500">
+                    开启后，用户在个人资料页面可以看到自己的剩余跑步次数
+                  </p>
+                </div>
+                <!-- 开关按钮 -->
+                <label class="relative inline-flex items-center cursor-pointer ml-2">
+                  <input type="checkbox" id="mobile-pricing-show-available-runs" class="sr-only peer">
+                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- 配置项5: 剩余次数显示格式 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+              <!-- 配置项标题 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-1">
+                剩余次数显示格式
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500">
+                使用 {available_runs} 作为占位符
+              </p>
+              <!-- 文本输入框 -->
+              <input type="text" id="mobile-pricing-available-runs-format"
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                placeholder="例如：剩余免费次数：{available_runs} 次"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400">
+                示例：剩余免费次数：{available_runs} 次
+              </p>
+            </div>
+
+            <!-- 配置项6: 是否在注册页显示免费次数提示 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <!-- 配置项标题 -->
+                  <label class="block text-sm font-semibold text-slate-700 mb-1">
+                    注册页显示免费次数提示
+                  </label>
+                  <!-- 配置项说明 -->
+                  <p class="text-xs text-slate-500">
+                    开启后，用户在注册页面可以看到注册即可获得的免费次数提示
+                  </p>
+                </div>
+                <!-- 开关按钮 -->
+                <label class="relative inline-flex items-center cursor-pointer ml-2">
+                  <input type="checkbox" id="mobile-pricing-show-register-hint" class="sr-only peer">
+                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- 配置项7: 注册页提示文本 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+              <!-- 配置项标题 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-1">
+                注册页提示文本
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500">
+                使用 {available_runs} 作为占位符
+              </p>
+              <!-- 文本输入框 -->
+              <input type="text" id="mobile-pricing-register-hint-text"
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                placeholder="例如：注册即可得 {available_runs} 次校园跑"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400">
+                示例：注册即可得 {available_runs} 次校园跑
+              </p>
+            </div>
+
             <!-- 保存按钮 -->
             <button onclick="saveMobilePricingConfig()" 
               class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
@@ -11163,6 +11249,29 @@ body.mobile-mode #session-picker-modal {
             💡 提示：启用相应的支付方式后，用户可在支付页面选择使用。可以通过"添加支付方式"按钮新增其他支付方式。更改后请点击"保存配置"按钮。
           </p>
 
+          <!-- ========================================
+               刷新按钮区域
+               ========================================
+               功能：重新从服务器加载支付方式配置数据
+               点击后调用 loadPaymentMethodsConfig() 函数
+               按钮样式：幽灵按钮风格，与其他面板保持一致
+               ======================================== -->
+          <div class="flex justify-end">
+            <!-- 刷新按钮：点击后重新加载支付方式配置 -->
+            <button onclick="loadPaymentMethodsConfig()" 
+              class="btn btn-ghost !py-1 !px-3 !text-sm hover:bg-sky-50 transition-colors"
+              title="点击刷新支付方式配置">
+              <!-- 刷新图标：使用SVG绘制旋转箭头图标 -->
+              <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <!-- SVG路径：绘制顺时针旋转的双箭头，symbolizing刷新/重载操作 -->
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              <!-- 按钮文本：向用户说明此按钮的功能 -->
+              刷新
+            </button>
+          </div>
+
           <!-- 添加支付方式按钮 -->
           <!-- 点击后打开添加支付方式的模态框 -->
           <button onclick="openAddPaymentMethodModal()" 
@@ -12003,6 +12112,30 @@ body.mobile-mode #session-picker-modal {
           </p>
         </div>
 
+        <!-- ========================================
+             刷新按钮区域
+             ========================================
+             功能：重新从服务器加载价格配置数据
+             点击后调用 loadPricingConfig() 函数
+             按钮样式：幽灵按钮风格，与其他面板保持一致
+             位置：放置在面板顶部标题下方，配置表单上方
+             ======================================== -->
+        <div class="flex justify-end mt-3">
+          <!-- 刷新按钮：点击后重新加载价格配置数据 -->
+          <button onclick="loadPricingConfig()" 
+            class="btn btn-ghost !py-1 !px-3 !text-sm hover:bg-sky-50 transition-colors"
+            title="点击刷新价格配置">
+            <!-- 刷新图标：使用SVG绘制旋转箭头图标 -->
+            <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <!-- SVG路径：绘制顺时针旋转的双箭头，symbolizing刷新/重载操作 -->
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <!-- 按钮文本：向用户说明此按钮的功能 -->
+            刷新
+          </button>
+        </div>
+
         <!-- 配置表单区域 -->
         <div class="space-y-4">
           <!-- 配置项1: 是否需要付费 -->
@@ -12086,6 +12219,118 @@ body.mobile-mode #session-picker-modal {
             <!-- 输入提示 -->
             <p class="text-xs text-slate-400 mt-1">
               必须是非负整数（如0、10、100）
+            </p>
+          </div>
+
+          <!-- ==================== [新增] UI显示配置 ==================== -->
+          
+          <!-- 配置项4: 是否在个人资料页显示剩余次数 -->
+          <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex-1">
+                <!-- 配置项标题 -->
+                <label class="block text-sm font-semibold text-slate-700 mb-1">
+                  <!-- 图标：眼睛（显示） -->
+                  <svg class="w-4 h-4 inline mr-1 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                  个人资料页显示剩余次数
+                </label>
+                <!-- 配置项说明 -->
+                <p class="text-xs text-slate-500">
+                  开启后，用户在个人资料页面可以看到自己的剩余跑步次数。
+                </p>
+              </div>
+              <!-- 开关按钮 -->
+              <label class="relative inline-flex items-center cursor-pointer ml-4">
+                <!-- 隐藏的复选框，实际控制开关状态 -->
+                <input type="checkbox" id="pricing-show-available-runs_modal" class="sr-only peer">
+                <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 配置项5: 剩余次数显示格式 -->
+          <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+            <!-- 配置项标题 -->
+            <label class="block text-sm font-semibold text-slate-700 mb-1">
+              <!-- 图标：文本格式 -->
+              <svg class="w-4 h-4 inline mr-1 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+              </svg>
+              剩余次数显示格式
+            </label>
+            <!-- 配置项说明 -->
+            <p class="text-xs text-slate-500 mb-2">
+              自定义剩余次数在个人资料页面的显示格式。使用 {available_runs} 作为占位符。
+            </p>
+            <!-- 文本输入框 -->
+            <input type="text" id="pricing-available-runs-format_modal"
+              class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
+              placeholder="例如：剩余免费次数：{available_runs} 次"
+              required>
+            <!-- 输入提示 -->
+            <p class="text-xs text-slate-400 mt-1">
+              示例：剩余免费次数：{available_runs} 次 → 剩余免费次数：10 次
+            </p>
+          </div>
+
+          <!-- 配置项6: 是否在注册页显示免费次数提示 -->
+          <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex-1">
+                <!-- 配置项标题 -->
+                <label class="block text-sm font-semibold text-slate-700 mb-1">
+                  <!-- 图标：用户添加 -->
+                  <svg class="w-4 h-4 inline mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                  </svg>
+                  注册页显示免费次数提示
+                </label>
+                <!-- 配置项说明 -->
+                <p class="text-xs text-slate-500">
+                  开启后，用户在注册页面可以看到注册即可获得的免费次数提示。
+                </p>
+              </div>
+              <!-- 开关按钮 -->
+              <label class="relative inline-flex items-center cursor-pointer ml-4">
+                <!-- 隐藏的复选框，实际控制开关状态 -->
+                <input type="checkbox" id="pricing-show-register-hint_modal" class="sr-only peer">
+                <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 配置项7: 注册页提示文本 -->
+          <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+            <!-- 配置项标题 -->
+            <label class="block text-sm font-semibold text-slate-700 mb-1">
+              <!-- 图标：消息 -->
+              <svg class="w-4 h-4 inline mr-1 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+              </svg>
+              注册页提示文本
+            </label>
+            <!-- 配置项说明 -->
+            <p class="text-xs text-slate-500 mb-2">
+              自定义注册页面的免费次数提示文本。使用 {available_runs} 作为占位符。
+            </p>
+            <!-- 文本输入框 -->
+            <input type="text" id="pricing-register-hint-text_modal"
+              class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
+              placeholder="例如：注册即可得 {available_runs} 次校园跑"
+              required>
+            <!-- 输入提示 -->
+            <p class="text-xs text-slate-400 mt-1">
+              示例：注册即可得 {available_runs} 次校园跑 → 注册即可得 10 次校园跑
             </p>
           </div>
         </div>
@@ -20360,6 +20605,52 @@ body.mobile-mode #session-picker-modal {
           console.warn('[价格配置] 警告：找不到元素 #pricing-default-runs_modal');
         }
 
+        // ========== [新增] 填充UI显示配置字段 ==========
+        
+        // 填充"个人资料页显示剩余次数"复选框
+        // 从后端API返回的config对象中获取show_available_runs字段
+        const showAvailableRunsCheckbox = document.getElementById('pricing-show-available-runs_modal');
+        if (showAvailableRunsCheckbox) {
+          // 设置复选框的选中状态
+          // checked属性为true表示选中（显示剩余次数），false表示未选中（不显示）
+          showAvailableRunsCheckbox.checked = config.show_available_runs;
+        } else {
+          // 如果找不到元素，记录警告日志
+          console.warn('[价格配置] 警告：找不到元素 #pricing-show-available-runs_modal');
+        }
+
+        // 填充"剩余次数显示格式"输入框
+        // 这是一个文本模板，包含{available_runs}占位符
+        const availableRunsFormatInput = document.getElementById('pricing-available-runs-format_modal');
+        if (availableRunsFormatInput) {
+          // 设置输入框的值
+          // 如果后端没有返回该字段，使用默认值
+          availableRunsFormatInput.value = config.available_runs_format || '剩余免费次数：{available_runs} 次';
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #pricing-available-runs-format_modal');
+        }
+
+        // 填充"注册页显示免费次数提示"复选框
+        // 控制是否在用户注册页面显示提示信息
+        const showRegisterHintCheckbox = document.getElementById('pricing-show-register-hint_modal');
+        if (showRegisterHintCheckbox) {
+          // 设置复选框的选中状态
+          showRegisterHintCheckbox.checked = config.show_available_runs_on_register;
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #pricing-show-register-hint_modal');
+        }
+
+        // 填充"注册页提示文本"输入框
+        // 这是注册页面显示的提示文本模板
+        const registerHintTextInput = document.getElementById('pricing-register-hint-text_modal');
+        if (registerHintTextInput) {
+          // 设置输入框的值
+          // 如果后端没有返回该字段，使用默认值
+          registerHintTextInput.value = config.register_available_runs_hint || '注册即可得 {available_runs} 次校园跑';
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #pricing-register-hint-text_modal');
+        }
+
         // ========== 记录成功日志 ==========
         console.log('[价格配置] 价格配置加载成功', config);
 
@@ -20400,10 +20691,22 @@ body.mobile-mode #session-picker-modal {
         const perRunCostInput = document.getElementById('pricing-per-run-cost_modal');
         // 获取"新用户默认免费次数"输入框
         const defaultRunsInput = document.getElementById('pricing-default-runs_modal');
+        
+        // [新增] 获取UI显示配置的表单元素
+        // 获取"个人资料页显示剩余次数"复选框
+        const showAvailableRunsCheckbox = document.getElementById('pricing-show-available-runs_modal');
+        // 获取"剩余次数显示格式"输入框
+        const availableRunsFormatInput = document.getElementById('pricing-available-runs-format_modal');
+        // 获取"注册页显示免费次数提示"复选框
+        const showRegisterHintCheckbox = document.getElementById('pricing-show-register-hint_modal');
+        // 获取"注册页提示文本"输入框
+        const registerHintTextInput = document.getElementById('pricing-register-hint-text_modal');
 
         // ========== 验证表单元素是否存在 ==========
         // 如果任何一个表单元素不存在，抛出错误
-        if (!requirePaymentCheckbox || !perRunCostInput || !defaultRunsInput) {
+        if (!requirePaymentCheckbox || !perRunCostInput || !defaultRunsInput ||
+            !showAvailableRunsCheckbox || !availableRunsFormatInput || 
+            !showRegisterHintCheckbox || !registerHintTextInput) {
           throw new Error('表单元素未找到，请刷新页面后重试');
         }
 
@@ -20419,6 +20722,20 @@ body.mobile-mode #session-picker-modal {
         // 读取"新用户默认免费次数"的值（整数类型）
         // parseInt() 将字符串转换为整数
         const defaultRuns = parseInt(defaultRunsInput.value);
+        
+        // [新增] 读取UI显示配置的值
+        // 读取"个人资料页显示剩余次数"的值（布尔类型）
+        const showAvailableRuns = showAvailableRunsCheckbox.checked;
+        
+        // 读取"剩余次数显示格式"的值（字符串类型）
+        // .trim() 去除首尾空格
+        const availableRunsFormat = availableRunsFormatInput.value.trim();
+        
+        // 读取"注册页显示免费次数提示"的值（布尔类型）
+        const showRegisterHint = showRegisterHintCheckbox.checked;
+        
+        // 读取"注册页提示文本"的值（字符串类型）
+        const registerHintText = registerHintTextInput.value.trim();
 
         // ========== 客户端验证 ==========
         
@@ -20441,13 +20758,29 @@ body.mobile-mode #session-picker-modal {
         if (defaultRuns < 0) {
           throw new Error('新用户默认免费次数不能为负数');
         }
+        
+        // [新增] 验证UI显示配置字段
+        // 验证"剩余次数显示格式"不能为空
+        if (!availableRunsFormat) {
+          throw new Error('剩余次数显示格式不能为空');
+        }
+        
+        // 验证"注册页提示文本"不能为空
+        if (!registerHintText) {
+          throw new Error('注册页提示文本不能为空');
+        }
 
         // ========== 构造请求数据 ==========
         // 将表单数据封装为JSON对象
         const requestData = {
           require_payment: requirePayment,
           per_run_cost: perRunCost,
-          default_available_runs: defaultRuns
+          default_available_runs: defaultRuns,
+          // [新增] 添加UI显示配置字段
+          show_available_runs: showAvailableRuns,
+          available_runs_format: availableRunsFormat,
+          show_available_runs_on_register: showRegisterHint,
+          register_available_runs_hint: registerHintText
         };
 
         // ========== 记录请求日志 ==========
@@ -20550,6 +20883,40 @@ body.mobile-mode #session-picker-modal {
           console.warn('[价格配置] 警告：找不到元素 #mobile-pricing-default-runs');
         }
 
+        // ========== [新增] 填充UI显示配置字段（移动端） ==========
+        
+        // 填充"个人资料页显示剩余次数"复选框
+        const showAvailableRunsCheckbox = document.getElementById('mobile-pricing-show-available-runs');
+        if (showAvailableRunsCheckbox) {
+          showAvailableRunsCheckbox.checked = config.show_available_runs;
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #mobile-pricing-show-available-runs');
+        }
+
+        // 填充"剩余次数显示格式"输入框
+        const availableRunsFormatInput = document.getElementById('mobile-pricing-available-runs-format');
+        if (availableRunsFormatInput) {
+          availableRunsFormatInput.value = config.available_runs_format || '剩余免费次数：{available_runs} 次';
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #mobile-pricing-available-runs-format');
+        }
+
+        // 填充"注册页显示免费次数提示"复选框
+        const showRegisterHintCheckbox = document.getElementById('mobile-pricing-show-register-hint');
+        if (showRegisterHintCheckbox) {
+          showRegisterHintCheckbox.checked = config.show_available_runs_on_register;
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #mobile-pricing-show-register-hint');
+        }
+
+        // 填充"注册页提示文本"输入框
+        const registerHintTextInput = document.getElementById('mobile-pricing-register-hint-text');
+        if (registerHintTextInput) {
+          registerHintTextInput.value = config.register_available_runs_hint || '注册即可得 {available_runs} 次校园跑';
+        } else {
+          console.warn('[价格配置] 警告：找不到元素 #mobile-pricing-register-hint-text');
+        }
+
         // 记录成功日志
         console.log('[价格配置] 价格配置加载成功（移动端）', config);
 
@@ -20572,9 +20939,17 @@ body.mobile-mode #session-picker-modal {
         const requirePaymentCheckbox = document.getElementById('mobile-pricing-require-payment');
         const perRunCostInput = document.getElementById('mobile-pricing-per-run-cost');
         const defaultRunsInput = document.getElementById('mobile-pricing-default-runs');
+        
+        // [新增] 获取UI显示配置的表单元素（移动端）
+        const showAvailableRunsCheckbox = document.getElementById('mobile-pricing-show-available-runs');
+        const availableRunsFormatInput = document.getElementById('mobile-pricing-available-runs-format');
+        const showRegisterHintCheckbox = document.getElementById('mobile-pricing-show-register-hint');
+        const registerHintTextInput = document.getElementById('mobile-pricing-register-hint-text');
 
         // 验证表单元素是否存在
-        if (!requirePaymentCheckbox || !perRunCostInput || !defaultRunsInput) {
+        if (!requirePaymentCheckbox || !perRunCostInput || !defaultRunsInput ||
+            !showAvailableRunsCheckbox || !availableRunsFormatInput || 
+            !showRegisterHintCheckbox || !registerHintTextInput) {
           throw new Error('表单元素未找到，请刷新页面后重试');
         }
 
@@ -20582,6 +20957,12 @@ body.mobile-mode #session-picker-modal {
         const requirePayment = requirePaymentCheckbox.checked;
         const perRunCost = parseFloat(perRunCostInput.value);
         const defaultRuns = parseInt(defaultRunsInput.value);
+        
+        // [新增] 读取UI显示配置的值（移动端）
+        const showAvailableRuns = showAvailableRunsCheckbox.checked;
+        const availableRunsFormat = availableRunsFormatInput.value.trim();
+        const showRegisterHint = showRegisterHintCheckbox.checked;
+        const registerHintText = registerHintTextInput.value.trim();
 
         // 客户端验证
         if (isNaN(perRunCost)) {
@@ -20596,12 +20977,25 @@ body.mobile-mode #session-picker-modal {
         if (defaultRuns < 0) {
           throw new Error('新用户默认免费次数不能为负数');
         }
+        
+        // [新增] 验证UI显示配置字段（移动端）
+        if (!availableRunsFormat) {
+          throw new Error('剩余次数显示格式不能为空');
+        }
+        if (!registerHintText) {
+          throw new Error('注册页提示文本不能为空');
+        }
 
         // 构造请求数据
         const requestData = {
           require_payment: requirePayment,
           per_run_cost: perRunCost,
-          default_available_runs: defaultRuns
+          default_available_runs: defaultRuns,
+          // [新增] 添加UI显示配置字段（移动端）
+          show_available_runs: showAvailableRuns,
+          available_runs_format: availableRunsFormat,
+          show_available_runs_on_register: showRegisterHint,
+          register_available_runs_hint: registerHintText
         };
 
         // 记录请求日志
@@ -26051,9 +26445,11 @@ function refreshMobileSessionPicker() {
             console.error("[密码恢复Tab错误] 未找到ID为'admin-tab-bruteforce_modal'的元素");
           }
 
-          // ========== [修复] 添加4个新标签的显示控制逻辑 ==========
+          // ========== [任务3修复] 添加4个新标签的显示控制逻辑（支付日志标签需根据require_payment配置） ==========
           // 这4个标签分别是：欠费查询、支付日志、支付设置、价格设置
-          // 它们应该仅对admin和super_admin用户组可见
+          // 其中：
+          // - 欠费查询、支付设置、价格设置：仅对admin和super_admin用户组可见
+          // - 支付日志：需要根据require_payment配置和用户权限共同决定
           
           // 步骤1：通过ID获取4个标签的DOM元素
           // 使用 $ 函数（document.getElementById 的简写）查找元素
@@ -26068,10 +26464,62 @@ function refreshMobileSessionPicker() {
           const userGroup = currentUserData?.group || "guest";
           
           // 步骤3：判断当前用户是否具有管理员权限
-          // 只有 "admin" 或 "super_admin" 组别的用户才能查看这4个管理功能标签
+          // 只有 "admin" 或 "super_admin" 组别的用户才能查看管理功能标签
           const isAdmin = userGroup === "admin" || userGroup === "super_admin";
 
-          // 步骤4：设置"欠费查询"标签的显示状态
+          // 步骤4：【关键】获取pricing配置中的require_payment设置
+          // 这个配置决定了是否需要对普通用户启用付费功能
+          // 需要调用后端API获取最新的配置数据
+          let requirePayment = false; // 默认值：不需要付费（安全默认值）
+          
+          try {
+            // [异步请求] 向后端API发起GET请求，获取价格配置
+            // 这个配置包含了require_payment字段，用于判断是否启用付费功能
+            const pricingConfigResponse = await fetch('/api/admin/pricing_config', {
+              method: 'GET',                      // HTTP方法：GET（查询数据）
+              headers: {
+                'Content-Type': 'application/json', // 请求头：指定返回内容类型为JSON
+                'X-Session-ID': sessionUUID        // 请求头：传递会话UUID用于身份验证
+              },
+              credentials: 'include'               // 包含认证凭证（cookies），确保有权访问
+            });
+            
+            // [JSON解析] 将响应体解析为JavaScript对象
+            const pricingConfigData = await pricingConfigResponse.json();
+            
+            // [成功检查] 验证API调用是否成功，并提取require_payment字段
+            if (pricingConfigData.success && pricingConfigData.config) {
+              // 从配置对象中提取require_payment字段
+              // 这个布尔值决定了是否对普通用户启用付费相关功能
+              requirePayment = pricingConfigData.config.require_payment || false;
+              
+              // [调试日志] 记录成功获取的配置信息
+              console.log("[支付日志Tab配置] 成功获取require_payment配置:", {
+                requirePayment: requirePayment,               // 是否需要付费
+                fullConfig: pricingConfigData.config          // 完整的配置对象（用于调试）
+              });
+            } else {
+              // [警告日志] API调用失败或返回数据格式不正确
+              console.warn("[支付日志Tab配置] 获取require_payment配置失败，使用默认值false:", {
+                success: pricingConfigData.success,           // API调用是否成功
+                hasConfig: !!pricingConfigData.config,        // 是否包含config字段
+                response: pricingConfigData                   // 完整响应（用于调试）
+              });
+            }
+          } catch (error) {
+            // [错误捕获] 如果网络请求失败或发生其他异常，记录错误并使用默认值
+            // 可能的错误原因：网络断开、服务器无响应、JSON解析失败等
+            console.error("[支付日志Tab配置] 获取require_payment配置时发生异常:", {
+              error: error,                                   // 错误对象
+              errorMessage: error.message,                    // 错误消息
+              errorStack: error.stack,                        // 错误堆栈（用于调试）
+              defaultValue: requirePayment                    // 使用的默认值
+            });
+            // 发生异常时保持requirePayment为默认值false（安全策略）
+          }
+
+          // 步骤5：设置"欠费查询"标签的显示状态
+          // 逻辑：仅管理员可见
           if (overdueTab) {
             // 根据管理员权限设置显示/隐藏
             // isAdmin 为 true 时显示（display: "block"），否则隐藏（display: "none"）
@@ -26090,25 +26538,42 @@ function refreshMobileSessionPicker() {
             console.warn("[欠费查询Tab警告] 未找到ID为'admin-tab-overdue_modal'的元素");
           }
 
-          // 步骤5：设置"支付日志"标签的显示状态
+          // 步骤6：【核心逻辑】设置"支付日志"标签的显示状态
+          // 显示条件（满足任一即显示）：
+          // 1. 用户是管理员或超级管理员（isAdmin为true）
+          // 2. require_payment配置为true（表示系统启用了付费功能，所有用户都应该能看到自己的支付历史）
           if (paymentLogsTab) {
-            // 与欠费查询标签相同的显示逻辑
-            paymentLogsTab.style.display = isAdmin ? "block" : "none";
+            // [显示逻辑判断]
+            // - 如果isAdmin为true：管理员始终可以查看所有用户的支付日志
+            // - 如果requirePayment为true：即使是普通用户，也应该能看到自己的支付记录
+            // - 两个条件满足其一，就显示支付日志标签
+            const shouldShowPaymentLogs = isAdmin || requirePayment;
             
-            // [调试日志] 记录支付日志标签的显示控制信息
-            console.log("[支付日志Tab] 显示状态:", {
+            // 设置DOM元素的display样式属性
+            paymentLogsTab.style.display = shouldShowPaymentLogs ? "block" : "none";
+            
+            // [调试日志] 记录支付日志标签的显示控制信息（包含详细的决策过程）
+            console.log("[支付日志Tab] 显示状态（根据require_payment和用户权限）:", {
               userGroup: userGroup,                         // 当前用户的组别
               isAdmin: isAdmin,                             // 是否拥有管理员权限
-              display: paymentLogsTab.style.display         // 设置后的display属性值
+              requirePayment: requirePayment,               // 系统是否启用付费功能
+              shouldShowPaymentLogs: shouldShowPaymentLogs, // 最终是否显示标签
+              display: paymentLogsTab.style.display,        // 设置后的display属性值
+              决策说明: isAdmin 
+                ? "管理员：始终显示" 
+                : (requirePayment 
+                  ? "普通用户：系统启用付费，显示支付历史" 
+                  : "普通用户：系统未启用付费，隐藏支付历史")
             });
           } else {
             // [错误日志] 如果找不到支付日志标签元素，记录警告
             console.warn("[支付日志Tab警告] 未找到ID为'admin-tab-payment-logs_modal'的元素");
           }
 
-          // 步骤6：设置"支付设置"标签的显示状态
+          // 步骤7：设置"支付设置"标签的显示状态
+          // 逻辑：仅管理员可见（用于配置支付方式，如支付宝、微信等）
           if (paymentSettingsTab) {
-            // 与前面标签相同的显示逻辑
+            // 与欠费查询标签相同的显示逻辑
             paymentSettingsTab.style.display = isAdmin ? "block" : "none";
             
             // [调试日志] 记录支付设置标签的显示控制信息
@@ -26122,9 +26587,10 @@ function refreshMobileSessionPicker() {
             console.warn("[支付设置Tab警告] 未找到ID为'admin-tab-payment-settings_modal'的元素");
           }
 
-          // 步骤7：设置"价格设置"标签的显示状态
+          // 步骤8：设置"价格设置"标签的显示状态
+          // 逻辑：仅管理员可见（用于配置单次跑步费用、默认免费次数等）
           if (pricingTab) {
-            // 与前面标签相同的显示逻辑
+            // 与前面管理员专属标签相同的显示逻辑
             pricingTab.style.display = isAdmin ? "block" : "none";
             
             // [调试日志] 记录价格设置标签的显示控制信息
@@ -26137,7 +26603,7 @@ function refreshMobileSessionPicker() {
             // [错误日志] 如果找不到价格设置标签元素，记录警告
             console.warn("[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素");
           }
-          // ========== [修复结束] 4个新标签的显示控制逻辑添加完成 ==========
+          // ========== [任务3修复结束] 4个新标签的显示控制逻辑添加完成 ==========
 
           if (modalCaptchaTab)
             modalCaptchaTab.style.display = canViewCaptchaHistory
@@ -47828,6 +48294,19 @@ function initMobileAdminPanel(prefix) {
       permission: "admin",  // 权限要求：管理员级别
     },
     // ========================================
+    // [新增] 支付历史标签
+    // 移动端支付历史面板的标签，与PC端功能对应
+    // 功能：查看支付相关操作日志，支持按操作类型、日期范围筛选
+    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    {
+      id: "payment-logs",  // 标签ID，用于标识和切换面板
+      label: "支付历史",  // 标签显示的文本
+      // 文档图标：表示日志/历史记录
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
+      permission: "admin",  // 权限要求：管理员级别
+    },
+    // ========================================
     // [新增] 支付设置标签
     // 移动端支付设置面板的标签，与PC端功能对应
     // 功能：配置支付方式、查询订单、处理退款、测试支付
@@ -48947,25 +49426,33 @@ function switchMobileAdminTab(tabId, prefix) {
   }
   Array.from(tabsNav.children).forEach((button) => {
     const buttonText = button.textContent.trim();
+    // ========================================
+    // 标签文本到ID的映射表
+    // 用于将按钮上的中文标签文本转换为对应的标签ID
+    // 这样可以根据按钮文本准确识别当前应该高亮哪个标签
+    // ========================================
     const tabMap = {
-      用户: "users",
-      权限组: "groups",
-      日志: "logs",
-      状态: "health",
-      资料: "profile",
-      会话: "sessions",
-      留言: "messages",
-      IP封禁: "ipban",
-      短信: "sms",
-      配置: "config",
-      验证码: "captcha",
-      提醒: "reminders",
-      HTTPS: "ssl",
-      支付配置: "payment-config", // 支付配置标签映射
-      支付日志: "payment-logs", // 支付日志标签映射
-      // [修复] 添加新标签的中文映射
-      CDN: "cdn", 
-      密码恢复: "bruteforce",
+      用户: "users",              // 用户管理标签
+      权限组: "groups",           // 权限组管理标签
+      日志: "logs",               // 日志查看标签
+      状态: "health",             // 系统状态标签
+      资料: "profile",            // 个人信息标签
+      会话: "sessions",           // 会话管理标签
+      留言: "messages",           // 留言板标签
+      IP封禁: "ipban",            // IP封禁管理标签
+      短信: "sms",                // 短信配置标签
+      配置: "config",             // 系统配置标签
+      验证码: "captcha",          // 验证码管理标签
+      提醒: "reminders",          // 定时提醒标签
+      HTTPS: "ssl",               // HTTPS设置标签
+      支付配置: "payment-config", // 支付配置标签映射（旧版，已弃用）
+      支付日志: "payment-logs",   // [修复] 支付日志标签映射（旧版名称，保留兼容性）
+      支付历史: "payment-logs",   // [新增] 支付历史标签映射（新版标准名称）
+      支付设置: "payment-settings", // [新增] 支付设置标签映射
+      价格设置: "pricing",        // [新增] 价格设置标签映射
+      欠费查询: "overdue",        // [新增] 欠费查询标签映射
+      CDN: "cdn",                 // CDN缓存管理标签
+      密码恢复: "bruteforce",     // 密码恢复标签
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -49113,12 +49600,13 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-captcha-panel", // 验证码管理面板
       "mobile-multi-admin-reminders-panel", // 定时提醒面板
       "mobile-multi-admin-ssl-panel", // HTTPS设置面板
-      "mobile-multi-admin-payment-config-panel", // 支付配置面板
-      "mobile-multi-admin-payment-logs-panel", // 支付日志面板
-      // [修复] 添加CDN和密码恢复面板ID
-      "mobile-multi-admin-cdn-panel", 
-      "mobile-multi-admin-bruteforce-panel",
-      "mobile-multi-admin-overdue-panel",
+      "mobile-multi-admin-payment-config-panel", // 支付配置面板（旧版，已弃用）
+      "mobile-multi-admin-payment-logs-panel", // [新增] 支付历史面板
+      "mobile-multi-admin-payment-settings-panel", // [新增] 支付设置面板
+      "mobile-multi-admin-pricing-panel", // [新增] 价格设置面板
+      "mobile-multi-admin-cdn-panel", // CDN缓存管理面板
+      "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
+      "mobile-multi-admin-overdue-panel", // [新增] 欠费查询面板
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -49244,6 +49732,38 @@ function switchMobileAdminTab(tabId, prefix) {
       // [修复] 添加密码恢复加载逻辑
       case "bruteforce":
         loadBruteforceStatus();
+        break;
+      // ========================================
+      // [新增] 欠费查询面板加载逻辑
+      // 当管理员切换到"欠费查询"标签时，自动调用loadOverdueAccounts函数
+      // 该函数会从后端加载所有有欠费记录的学校账号，按欠费次数排序
+      // ========================================
+      case "overdue":
+        // 自动触发加载欠费账号列表
+        loadOverdueAccounts();
+        break;
+      // ========================================
+      // [新增] 支付设置面板加载逻辑
+      // 当管理员切换到"支付设置"标签时，需要初始化支付设置面板
+      // 该面板包含4个子标签：支付方式配置、订单查询、退款处理、支付测试
+      // 默认显示"支付方式配置"子标签
+      // ========================================
+      case "payment-settings":
+        // 切换到支付设置面板的默认子标签（支付方式配置）
+        // 该函数会自动调用loadPaymentConfig()加载支付方式配置
+        switchPaymentSettingsTab('config');
+        break;
+      // ========================================
+      // [新增] 价格设置面板加载逻辑
+      // 当管理员切换到"价格设置"标签时，调用loadMobilePricingConfig函数
+      // 该函数会从后端加载价格策略配置，包括：
+      // - 是否启用付费模式（require_payment）
+      // - 单次请求费用（price_per_request）
+      // - 新用户免费次数（free_requests_for_new_users）
+      // ========================================
+      case "pricing":
+        // 加载价格配置数据并填充到表单
+        loadMobilePricingConfig();
         break;
     }
     // 处理完成后直接返回，不执行后续的通用处理逻辑
