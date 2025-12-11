@@ -1042,30 +1042,12 @@ def _get_default_config():
         # 这是一个重要的安全参数，用于生成和验证支付请求的签名，请妥善保管，切勿泄露
         # 格式：通常为32位随机字符串，例如 "abcdef1234567890abcdef1234567890"
         "key": "",
-        # 应用访问域名：本应用的公网访问地址（必填）
-        # 用于自动构造异步通知URL（notify_url）
-        # 格式示例："https://yourdomain.com" 或 "https://www.example.com"
-        # 注意：必须是公网可访问的HTTPS地址，包含协议头，末尾不要添加斜杠
-        # 系统会自动拼接为：{app_host}/api/payment/yipay_notify
-        "app_host": "",
-        # 异步通知URL：支付成功后彩虹易支付服务器回调的接口地址（已废弃）
-        # ⚠️ 此配置项已废弃，现在 notify_url 会根据 app_host 自动构造
-        # 格式：{app_host}/api/payment/yipay_notify
-        # 无需手动配置，保留此项仅为向后兼容
-        "notify_url": "",
-        # 同步返回URL：用户支付完成后浏览器跳转的页面地址（可选）
-        # 这是一个用户可见的跳转地址，用于显示支付结果页面
-        # 格式示例："https://yourdomain.com/payment/success"
-        # 注意：
-        # 1. 此URL仅用于展示，不可用于判断支付状态，支付结果以异步通知为准
-        # 2. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值
-        "return_url": "",
-        # 商品ID：用于标识商品类型的唯一标识符（可选）
+        # 商品ID：用于标识商品类型的唯一标识符
         # 格式：整数，例如 "1001"
         # 默认值：1001（跑步助手服务）
         # 用途：在支付记录中区分不同类型的商品或服务
         "product_id": "1001",
-        # 支付接口类型：指定使用的支付接口类型（可选）
+        # 支付接口类型：指定使用的支付接口类型
         # 格式：字符串，可选值包括：
         #   - web: 网页版支付（PC端）
         #   - jump: 跳转支付（推荐，默认值）
@@ -1076,7 +1058,7 @@ def _get_default_config():
         # 默认值：jump（跳转支付，适用于大多数场景）
         # 注意：不同接口类型可能需要额外的参数，请参考易支付平台文档
         "payment_method": "jump",
-        # 启用的支付方式：管理员可配置的支付方式列表（可选）
+        # 启用的支付方式：管理员可配置的支付方式列表
         # 格式：使用逗号分隔的支付方式代码字符串
         # 支持的支付方式：
         #   - alipay: 支付宝支付（推荐，覆盖率最高）
@@ -1538,8 +1520,6 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 使用前需要：\n")
         f.write("# 1. 在彩虹易支付平台注册商户账号\n")
         f.write("# 2. 获取商户ID（PID）和商户密钥（KEY）\n")
-        f.write("# 3. 配置应用访问域名（app_host），系统会自动构造异步通知URL\n")
-        f.write("# 4. 可选配置同步返回URL（return_url），也可在创建订单时动态传入\n")
         f.write("# ============================================================\n\n")
         f.write("[Rainbow_YiPay]\n")
         f.write("# 易支付接口域名（必填）\n")
@@ -1556,16 +1536,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 格式：通常为32位随机字符串\n")
         f.write("# 示例：abcdef1234567890abcdef1234567890\n")
         f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
-        f.write("# 同步返回URL（可选）\n")
-        f.write("# 用户支付完成后，浏览器会跳转到此URL显示支付结果\n")
-        f.write("# 格式示例：https://yourdomain.com/payment/success\n")
-        f.write("# 注意：\n")
-        f.write("# 1. 此URL仅用于页面展示，不能作为支付成功的判断依据\n")
-        f.write("# 2. 支付状态必须以异步通知（notify_url）的结果为准\n")
-        f.write("# 3. 用户可能不会访问此页面（如直接关闭浏览器）\n")
-        f.write("# 4. 可以在创建订单时动态传入不同的 return_url，此处配置的是默认值\n")
-        f.write(f"return_url = {config_obj.get('Rainbow_YiPay', 'return_url', fallback='')}\n")
-        f.write("# 启用的支付方式（可选）\n")
+        f.write("# 启用的支付方式\n")
         f.write("# 管理员可配置启用哪些支付方式，使用逗号分隔\n")
         f.write("# 支持的支付方式：\n")
         f.write("#   - alipay: 支付宝支付（推荐，覆盖率最高）\n")
@@ -1587,7 +1558,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 默认值：1001（跑步助手服务）\n")
         f.write("# 用途：在支付记录中区分不同类型的商品或服务\n")
         f.write(f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
-        f.write("# 支付接口类型（可选）\n")
+        f.write("# 支付接口类型\n")
         f.write("# 指定使用的支付接口类型\n")
         f.write("# 可选值：web（网页版）、jump（跳转支付，推荐）、jsapi（公众号）、app（APP支付）、scan（扫码支付）、applet（小程序支付）\n")
         f.write("# 默认值：jump（跳转支付，适用于大多数场景）\n")
@@ -30552,6 +30523,150 @@ def start_web_server(args_param):
 
     # ==============================================================================
     # 付费配置获取接口
+    # ==============================================================================
+    
+    # ==============================================================================
+    # [新增] 商品名称生成测试API
+    # 路由: /api/admin/generate_product_name
+    # 方法: POST
+    # 权限: 管理员
+    # 功能: 根据商品数量生成趣味商品名称
+    # ==============================================================================
+    
+    @app.route("/api/admin/generate_product_name", methods=["POST"])
+    @login_required
+    @admin_required
+    def generate_product_name():
+        """
+        商品名称生成API
+        
+        功能说明：
+        - 根据商品数量调用product_name_generator生成趣味商品名称
+        - 用于测试商品名生成器的功能
+        - 也用于支付测试面板的自动生成商品名功能
+        
+        请求方法：POST
+        权限要求：需要登录且为管理员（admin或super_admin）
+        
+        请求参数（JSON格式）：
+        {
+            "quantity": 5  // 商品数量（整数，1-9999）
+        }
+        
+        返回数据（JSON格式）：
+        成功时：
+        {
+            "success": true,
+            "product_name": "五串麻辣鸭脖配上三根秘制烤肠",  // 生成的商品名称
+            "byte_length": 51                                 // 字节长度（UTF-8编码）
+        }
+        
+        失败时：
+        {
+            "success": false,
+            "message": "错误信息描述"
+        }
+        
+        使用场景：
+        - 商品名测试面板：管理员测试生成器的输出
+        - 测试支付功能：自动生成模式下创建支付订单
+        - 批量测试：一次性生成多个不同数量的商品名
+        """
+        try:
+            # ========== 步骤1：获取请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            # 如果请求体不是JSON格式，get_json()会返回None
+            data = request.get_json()
+            
+            # 防御性检查：验证data是否存在
+            if not data:
+                return jsonify({
+                    "success": False,
+                    "message": "请求体不能为空"
+                }), 400
+            
+            # 从data字典中获取quantity参数
+            # 使用.get()方法提供默认值，避免KeyError
+            quantity = data.get("quantity")
+            
+            # 验证quantity是否提供
+            if quantity is None:
+                return jsonify({
+                    "success": False,
+                    "message": "缺少必要参数：quantity（商品数量）"
+                }), 400
+            
+            # ========== 步骤2：验证参数有效性 ==========
+            
+            # 尝试将quantity转换为整数
+            # 如果转换失败（非数字字符串），会抛出ValueError
+            try:
+                quantity = int(quantity)
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "message": "商品数量必须是整数"
+                }), 400
+            
+            # 验证数量范围：必须在1到9999之间
+            # 这个范围是product_name_generator所支持的范围
+            if quantity < 1 or quantity > 9999:
+                return jsonify({
+                    "success": False,
+                    "message": "商品数量必须在1到9999之间"
+                }), 400
+            
+            # ========== 步骤3：调用生成器生成商品名 ==========
+            
+            # 调用generate()方法生成商品名
+            # 传入商品数量，返回字符串或None（如果输入非法）
+            # 注意：LoMeiGenerator已在文件顶部导入并可以直接使用
+            generator = LoMeiGenerator()
+            product_name = generator.generate(quantity)
+            
+            # 验证生成是否成功
+            # generate()在输入非法时会返回None
+            if product_name is None:
+                return jsonify({
+                    "success": False,
+                    "message": "商品名生成器内部错误，无法生成有效的商品名称"
+                }), 500
+            
+            # ========== 步骤4：计算字节长度 ==========
+            
+            # 计算生成的商品名的UTF-8字节长度
+            # 支付接口通常限制商品名最大127字节
+            # encode('utf-8')将字符串转换为UTF-8编码的字节序列
+            # len()计算字节序列的长度
+            byte_length = len(product_name.encode('utf-8'))
+            
+            # 记录日志：生成成功，输出商品名和字节长度
+            logging.info(
+                f"[商品名生成] 生成成功 - 数量: {quantity}, "
+                f"商品名: {product_name}, 字节长度: {byte_length}"
+            )
+            
+            # ========== 步骤5：返回成功响应 ==========
+            
+            return jsonify({
+                "success": True,
+                "product_name": product_name,      # 生成的商品名称
+                "byte_length": byte_length          # 字节长度
+            })
+            
+        except Exception as e:
+            # ========== 异常处理 ==========
+            
+            # 捕获所有未预期的异常，记录错误日志
+            logging.error(f"[商品名生成] 发生异常: {str(e)}", exc_info=True)
+            
+            # 返回500错误，告知前端服务器内部错误
+            return jsonify({
+                "success": False,
+                "message": f"服务器内部错误: {str(e)}"
+            }), 500
+    
     # ==============================================================================
     
     @app.route("/api/config/pricing", methods=["GET"])

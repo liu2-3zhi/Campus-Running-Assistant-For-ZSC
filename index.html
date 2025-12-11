@@ -7488,6 +7488,16 @@ body.mobile-mode #session-picker-modal {
                 onclick="switchPaymentSettingsTab('yipay')">
                 易支付配置
               </button>
+              
+              <!-- ========================================
+                   [新增] Tab 6: 商品名测试（移动端）
+                   功能：测试商品名称生成器，验证生成结果
+                   ======================================== -->
+              <button id="payment-settings-tab-product-test" 
+                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+                onclick="switchPaymentSettingsTab('product-test')">
+                商品名测试
+              </button>
             </div>
 
             <!-- ========================================
@@ -7763,13 +7773,78 @@ body.mobile-mode #session-picker-modal {
                     class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
                 </div>
 
-                <!-- 商品名称输入框 -->
+                <!-- ========================================
+                     [新增] 商品名称配置区域（移动端测试支付）
+                     功能：允许管理员选择手动输入或自动生成商品名称
+                     包含：单选按钮、手动输入框、数量输入框（用于生成）
+                     默认：手动输入模式
+                     样式：使用更小的字体和间距，适配移动端
+                     ======================================== -->
                 <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">商品名称<span class="text-red-500">*</span></label>
-                  <input type="text" id="test-payment-product" 
-                    placeholder="测试商品" 
-                    value="测试商品" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段标题 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商品名称<span class="text-red-500">*</span>
+                  </label>
+                  
+                  <!-- 输入方式选择：单选按钮组 -->
+                  <!-- 使用flex布局横向排列两个选项 -->
+                  <div class="flex gap-3 mb-2">
+                    <!-- 选项1：手动输入（默认选中）-->
+                    <label class="flex items-center cursor-pointer">
+                      <!-- 单选按钮：name属性相同，确保只能选中一个 -->
+                      <input type="radio" 
+                        name="product-name-input-method" 
+                        value="manual" 
+                        checked 
+                        onchange="toggleProductNameInputMethod()" 
+                        class="w-3.5 h-3.5 text-sky-600 focus:ring-2 focus:ring-sky-500 border-slate-300" />
+                      <!-- 选项标签文字 -->
+                      <span class="ml-1.5 text-xs text-slate-700">手动输入</span>
+                    </label>
+                    
+                    <!-- 选项2：自动生成 -->
+                    <label class="flex items-center cursor-pointer">
+                      <input type="radio" 
+                        name="product-name-input-method" 
+                        value="auto" 
+                        onchange="toggleProductNameInputMethod()" 
+                        class="w-3.5 h-3.5 text-sky-600 focus:ring-2 focus:ring-sky-500 border-slate-300" />
+                      <span class="ml-1.5 text-xs text-slate-700">自动生成</span>
+                    </label>
+                  </div>
+                  
+                  <!-- 手动输入模式：文本输入框 -->
+                  <!-- 默认显示，当选择"自动生成"时隐藏 -->
+                  <div id="manual-product-name-container" class="space-y-1">
+                    <!-- 商品名称文本输入框 -->
+                    <input type="text" 
+                      id="test-payment-product" 
+                      placeholder="请输入商品名称" 
+                      value="测试商品" 
+                      class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                    <!-- 提示文字：移动端使用更小的字体 -->
+                    <p class="text-xs text-slate-500">
+                      手动输入，最大127字节
+                    </p>
+                  </div>
+                  
+                  <!-- 自动生成模式：数量输入框 -->
+                  <!-- 默认隐藏，当选择"自动生成"时显示 -->
+                  <div id="auto-product-name-container" class="hidden space-y-1">
+                    <!-- 商品数量输入框 -->
+                    <!-- 用于传递给product_name_generator生成趣味商品名 -->
+                    <input type="number" 
+                      id="test-payment-quantity" 
+                      placeholder="商品数量" 
+                      value="1" 
+                      min="1" 
+                      max="9999" 
+                      class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                    <!-- 提示文字：说明数量将用于生成器 -->
+                    <p class="text-xs text-slate-500">
+                      输入数量（1-9999），自动生成趣味名称
+                    </p>
+                  </div>
                 </div>
 
                 <!-- 支付方式选择 -->
@@ -7975,6 +8050,99 @@ body.mobile-mode #session-picker-modal {
               <div id="yipay-config-result" class="hidden">
                 <!-- 成功/错误提示 -->
                 <!-- 此内容将由JavaScript动态更新 -->
+              </div>
+            </div>
+            
+            <!-- ========================================
+                 [新增] Tab 6 内容区域：商品名测试面板（移动端）
+                 功能：测试商品名称生成器，验证生成结果
+                 API端点：/api/admin/generate_product_name
+                 ======================================== -->
+            <div id="payment-settings-content-product-test" class="hidden space-y-3">
+              <!-- 测试说明文本 -->
+              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                💡 提示：此功能用于测试商品名称生成器，验证生成的商品名是否符合预期
+              </p>
+
+              <!-- 单次测试表单区域 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <!-- 区域标题 -->
+                <h5 class="font-semibold text-xs text-slate-700 border-b border-slate-300 pb-2">
+                  单次测试
+                </h5>
+                
+                <!-- 数量输入框 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商品数量
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 商品数量输入框（整数，1-9999）-->
+                  <input type="number" 
+                    id="product-test-quantity" 
+                    placeholder="请输入商品数量" 
+                    value="5" 
+                    min="1" 
+                    max="9999" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 提示文字 -->
+                  <p class="text-xs text-slate-500 mt-1">
+                    输入商品数量（1-9999），系统将根据此数量生成趣味商品名称
+                  </p>
+                </div>
+
+                <!-- 生成按钮 -->
+                <button id="generate-product-name-btn" 
+                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm"
+                  onclick="testGenerateProductName()">
+                  <!-- 生成图标 -->
+                  <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                  生成商品名
+                </button>
+
+                <!-- 结果显示区域 -->
+                <div id="product-test-result" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
+                  <h6 class="font-semibold text-xs text-slate-700 border-b border-slate-200 pb-1">
+                    生成结果：
+                  </h6>
+                  <!-- 商品名称显示 -->
+                  <div class="bg-slate-50 p-2 rounded-md">
+                    <p class="text-xs text-slate-500 mb-1">商品名称：</p>
+                    <p id="product-test-name" class="text-sm font-medium text-slate-800 break-all"></p>
+                  </div>
+                  <!-- 字节长度显示 -->
+                  <div class="bg-slate-50 p-2 rounded-md">
+                    <p class="text-xs text-slate-500 mb-1">字节长度：</p>
+                    <p id="product-test-length" class="text-sm font-medium text-slate-800"></p>
+                    <p class="text-xs text-slate-400 mt-1">（支付接口限制最大127字节）</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 批量测试按钮 -->
+              <button id="batch-test-product-names-btn" 
+                class="w-full py-2.5 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm"
+                onclick="batchTestProductNames()">
+                <!-- 批量图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                批量测试（生成10个示例）
+              </button>
+
+              <!-- 批量测试结果显示区域 -->
+              <div id="batch-test-results" class="hidden space-y-2">
+                <h5 class="font-semibold text-xs text-slate-700 border-b border-slate-200 pb-2">
+                  批量测试结果：
+                </h5>
+                <!-- 结果列表容器 -->
+                <div id="batch-test-list" class="space-y-2 max-h-96 overflow-y-auto">
+                  <!-- 批量测试结果将动态插入到这里 -->
+                </div>
               </div>
             </div>
           </div>
@@ -10965,6 +11133,21 @@ body.mobile-mode #session-picker-modal {
             </svg>
             易支付配置
           </button>
+          
+          <!-- ========================================
+               [新增] Tab 6: 商品名测试
+               功能：测试商品名称生成器，验证生成结果
+               ======================================== -->
+          <button id="admin-payment-settings-tab-product-test_modal" 
+            class="px-4 py-2.5 text-sm font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+            onclick="switchAdminPaymentSettingsTab('product-test')">
+            <!-- 测试图标：烧杯 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+            </svg>
+            商品名测试
+          </button>
         </div>
 
         <!-- ========================================
@@ -11283,12 +11466,12 @@ body.mobile-mode #session-picker-modal {
                 测试金额（元）
                 <span class="text-red-500">*</span>
               </label>
-              <!-- 建议使用小额测试，如0.01元 -->
+              <!-- 建议使用小额测试，如0.50元 -->
               <input type="number" id="admin-test-payment-amount_modal" 
-                placeholder="0.01" 
-                min="0.01" 
+                placeholder="0.50" 
+                min="0.5" 
                 step="0.01" 
-                value="0.01" 
+                value="0.5" 
                 class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
             </div>
 
@@ -11360,6 +11543,80 @@ body.mobile-mode #session-picker-modal {
               <p class="text-xs text-slate-500 mt-1">
                 扫码支付需要用户出示的付款条码或二维码的授权码（通常为18位数字）
               </p>
+            </div>
+
+            <!-- ========================================
+                 [新增] 商品名称配置区域（PC端测试支付）
+                 功能：允许管理员选择手动输入或自动生成商品名称
+                 包含：单选按钮、手动输入框、数量输入框（用于生成）
+                 默认：手动输入模式
+                 ======================================== -->
+            <div>
+              <!-- 字段标题 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-2">
+                商品名称
+                <span class="text-red-500">*</span>
+              </label>
+              
+              <!-- 输入方式选择：单选按钮组 -->
+              <!-- 使用flex布局横向排列两个选项 -->
+              <div class="flex gap-4 mb-3">
+                <!-- 选项1：手动输入（默认选中）-->
+                <label class="flex items-center cursor-pointer">
+                  <!-- 单选按钮：name属性相同，确保只能选中一个 -->
+                  <input type="radio" 
+                    name="product-name-input-method_modal" 
+                    value="manual" 
+                    checked 
+                    onchange="toggleProductNameInputMethod_modal()" 
+                    class="w-4 h-4 text-sky-600 focus:ring-2 focus:ring-sky-500 border-slate-300" />
+                  <!-- 选项标签文字 -->
+                  <span class="ml-2 text-sm text-slate-700">手动输入</span>
+                </label>
+                
+                <!-- 选项2：自动生成 -->
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" 
+                    name="product-name-input-method_modal" 
+                    value="auto" 
+                    onchange="toggleProductNameInputMethod_modal()" 
+                    class="w-4 h-4 text-sky-600 focus:ring-2 focus:ring-sky-500 border-slate-300" />
+                  <span class="ml-2 text-sm text-slate-700">自动生成</span>
+                </label>
+              </div>
+              
+              <!-- 手动输入模式：文本输入框 -->
+              <!-- 默认显示，当选择"自动生成"时隐藏 -->
+              <div id="manual-product-name-container_modal" class="space-y-2">
+                <!-- 商品名称文本输入框 -->
+                <input type="text" 
+                  id="admin-test-payment-product_modal" 
+                  placeholder="请输入商品名称" 
+                  value="测试商品" 
+                  class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+                <!-- 提示文字 -->
+                <p class="text-xs text-slate-500">
+                  手动输入商品名称，最大长度127字节（约42个汉字）
+                </p>
+              </div>
+              
+              <!-- 自动生成模式：数量输入框 -->
+              <!-- 默认隐藏，当选择"自动生成"时显示 -->
+              <div id="auto-product-name-container_modal" class="hidden space-y-2">
+                <!-- 商品数量输入框 -->
+                <!-- 用于传递给product_name_generator生成趣味商品名 -->
+                <input type="number" 
+                  id="admin-test-payment-quantity_modal" 
+                  placeholder="请输入商品数量" 
+                  value="1" 
+                  min="1" 
+                  max="9999" 
+                  class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+                <!-- 提示文字：说明数量将用于生成器 -->
+                <p class="text-xs text-slate-500">
+                  输入商品数量（1-9999），系统将自动生成趣味商品名称
+                </p>
+              </div>
             </div>
 
             <!-- 创建测试订单按钮 -->
@@ -11612,10 +11869,105 @@ body.mobile-mode #session-picker-modal {
             <!-- 此内容将由JavaScript动态更新 -->
           </div>
         </div>
+      
+
+
+
+
+      <!-- ========================================
+           [新增] Tab 6 内容区域：商品名测试面板 (PC端)
+           功能：测试商品名称生成器，验证生成结果
+           API端点：/api/admin/test_product_name
+           ======================================== -->
+      <div id="admin-payment-settings-content-product-test_modal" class="hidden space-y-4 ">
+        <!-- 测试说明文本 -->
+        <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          💡 提示：此功能用于测试商品名称生成器，验证生成的商品名是否符合预期
+        </p>
+
+        <!-- 单次测试表单区域 -->
+        <div class="space-y-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <!-- 区域标题 -->
+          <h5 class="font-semibold text-base text-slate-700 border-b border-slate-300 pb-2">
+            单次测试
+          </h5>
+          
+          <!-- 数量输入框 -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-2">
+              商品数量
+              <span class="text-red-500">*</span>
+            </label>
+            <!-- 商品数量输入框（整数，1-9999）-->
+            <input type="number" 
+              id="product-test-quantity_modal" 
+              placeholder="请输入商品数量" 
+              value="5" 
+              min="1" 
+              max="9999" 
+              class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+            <!-- 提示文字 -->
+            <p class="text-xs text-slate-500 mt-1">
+              输入商品数量（1-9999），系统将根据此数量生成趣味商品名称
+            </p>
+          </div>
+
+          <!-- 生成按钮 -->
+          <button id="generate-product-name-btn_modal" 
+            class="w-full py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md"
+            onclick="testGenerateProductName_modal()">
+            <!-- 生成图标 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            生成商品名
+          </button>
+
+          <!-- 结果显示区域 -->
+          <div id="product-test-result_modal" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
+            <h6 class="font-semibold text-sm text-slate-700 border-b border-slate-200 pb-1">
+              生成结果：
+            </h6>
+            <!-- 商品名称显示 -->
+            <div class="bg-slate-50 p-3 rounded-md">
+              <p class="text-xs text-slate-500 mb-1">商品名称：</p>
+              <p id="product-test-name_modal" class="text-sm font-medium text-slate-800 break-all"></p>
+            </div>
+            <!-- 字节长度显示 -->
+            <div class="bg-slate-50 p-3 rounded-md">
+              <p class="text-xs text-slate-500 mb-1">字节长度：</p>
+              <p id="product-test-length_modal" class="text-sm font-medium text-slate-800"></p>
+              <p class="text-xs text-slate-400 mt-1">（支付接口限制最大127字节）</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 批量测试按钮 -->
+        <button id="batch-test-product-names-btn_modal" 
+          class="w-full py-3 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm hover:shadow-md"
+          style="display:none" 
+          onclick="batchTestProductNames_modal()">
+          <!-- 批量图标 -->
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          批量测试（生成10个示例）
+        </button>
+
+        <!-- 批量测试结果显示区域 -->
+        <div id="batch-test-results_modal" class="hidden space-y-2">
+          <h5 class="font-semibold text-base text-slate-700 border-b border-slate-200 pb-2">
+            批量测试结果：
+          </h5>
+          <!-- 结果列表容器 -->
+          <div id="batch-test-list_modal" class="space-y-2 max-h-96 overflow-y-auto">
+            <!-- 批量测试结果将动态插入到这里 -->
+          </div>
+        </div>
       </div>
-
-
-
+      </div>
 
       <!-- ========================================
          PC端价格设置面板 (admin-pricing-panel_modal)
@@ -16315,6 +16667,242 @@ body.mobile-mode #session-picker-modal {
      *   }
      * }
      */
+    /**
+     * [新增] 切换商品名称输入方式（移动端）
+     * 
+     * 功能说明：
+     * 当用户选择"手动输入"或"自动生成"单选按钮时，切换对应的输入框显示/隐藏
+     * 
+     * 实现逻辑：
+     * 1. 获取选中的单选按钮值（manual或auto）
+     * 2. 如果选择"手动输入"：显示文本输入框，隐藏数量输入框
+     * 3. 如果选择"自动生成"：隐藏文本输入框，显示数量输入框
+     * 
+     * 调用时机：
+     * - 单选按钮的onchange事件触发时
+     */
+    function toggleProductNameInputMethod() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[移动端测试支付] 切换商品名称输入方式...');
+      
+      // === 第1步：获取选中的单选按钮值 ===
+      // 获取所有name为"product-name-input-method"的单选按钮
+      const radioButtons = document.getElementsByName('product-name-input-method');
+      // 变量用于存储选中的值
+      let selectedMethod = 'manual'; // 默认为手动输入
+      
+      // 遍历所有单选按钮，找到被选中的那个
+      for (const radio of radioButtons) {
+        if (radio.checked) {
+          selectedMethod = radio.value; // 获取选中按钮的value值
+          break; // 找到后退出循环
+        }
+      }
+      
+      console.log('[移动端测试支付] 选中的输入方式：', selectedMethod);
+      
+      // === 第2步：获取两个容器的DOM元素 ===
+      const manualContainer = document.getElementById('manual-product-name-container');
+      const autoContainer = document.getElementById('auto-product-name-container');
+      
+      // === 第3步：防御性检查，确保元素存在 ===
+      if (!manualContainer || !autoContainer) {
+        console.warn('[移动端测试支付] 警告：找不到商品名称容器元素');
+        return; // 元素不存在则退出
+      }
+      
+      // === 第4步：根据选中值切换显示/隐藏 ===
+      if (selectedMethod === 'manual') {
+        // 手动输入模式：显示文本输入框，隐藏数量输入框
+        manualContainer.classList.remove('hidden');
+        autoContainer.classList.add('hidden');
+        console.log('[移动端测试支付] 已切换到手动输入模式');
+      } else if (selectedMethod === 'auto') {
+        // 自动生成模式：隐藏文本输入框，显示数量输入框
+        manualContainer.classList.add('hidden');
+        autoContainer.classList.remove('hidden');
+        console.log('[移动端测试支付] 已切换到自动生成模式');
+      }
+    }
+    
+    /**
+     * [新增] 测试商品名称生成器（移动端）- 单次测试
+     * 
+     * 功能说明：
+     * 根据用户输入的商品数量，调用后端API生成趣味商品名称
+     * 并显示生成结果（商品名称和字节长度）
+     * 
+     * API端点：POST /api/admin/generate_product_name
+     * 
+     * 调用时机：
+     * - 用户在商品名测试面板点击"生成商品名"按钮时
+     */
+    async function testGenerateProductName() {
+      console.log('[移动端商品名测试] 开始单次测试...');
+      
+      // === 第1步：获取输入元素 ===
+      const quantityInput = document.getElementById('product-test-quantity');
+      const resultContainer = document.getElementById('product-test-result');
+      const productNameDisplay = document.getElementById('product-test-name');
+      const byteLengthDisplay = document.getElementById('product-test-length');
+      
+      // === 第2步：验证输入 ===
+      const quantity = quantityInput ? parseInt(quantityInput.value) : 0;
+      
+      // 验证数量是否有效
+      if (!quantity || quantity < 1 || quantity > 9999) {
+        showModalAlert('请输入有效的商品数量（1-9999）');
+        return;
+      }
+      
+      console.log('[移动端商品名测试] 商品数量：', quantity);
+      
+      try {
+        // === 第3步：调用后端API生成商品名 ===
+        const response = await fetch('/api/admin/generate_product_name', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
+          },
+          body: JSON.stringify({
+            quantity: quantity
+          })
+        });
+        
+        // 解析响应JSON
+        const result = await response.json();
+        console.log('[移动端商品名测试] API响应：', result);
+        
+        // === 第4步：处理响应 ===
+        if (result.success) {
+          // 生成成功：显示结果
+          if (productNameDisplay) {
+            productNameDisplay.textContent = result.product_name;
+          }
+          if (byteLengthDisplay) {
+            byteLengthDisplay.textContent = `${result.byte_length} 字节`;
+          }
+          // 显示结果容器
+          if (resultContainer) {
+            resultContainer.classList.remove('hidden');
+          }
+          console.log('[移动端商品名测试] 生成成功');
+        } else {
+          // 生成失败：显示错误消息
+          showModalAlert('生成失败：' + (result.message || '未知错误'));
+        }
+      } catch (error) {
+        // === 第5步：错误处理 ===
+        console.error('[移动端商品名测试] 请求失败：', error);
+        showModalAlert('网络错误，请稍后重试');
+      }
+    }
+    
+    /**
+     * [新增] 测试商品名称生成器（移动端）- 批量测试
+     * 
+     * 功能说明：
+     * 生成10个不同数量的商品名称示例（1, 2, 5, 10, 20, 50, 100, 200, 500, 1000）
+     * 用于验证生成器在不同数量级下的表现
+     * 
+     * API端点：POST /api/admin/generate_product_name
+     * 
+     * 调用时机：
+     * - 用户在商品名测试面板点击"批量测试（生成10个示例）"按钮时
+     */
+    async function batchTestProductNames() {
+      console.log('[移动端商品名测试] 开始批量测试...');
+      
+      // === 第1步：获取容器元素 ===
+      const batchResultsContainer = document.getElementById('batch-test-results');
+      const batchListContainer = document.getElementById('batch-test-list');
+      
+      // 验证元素是否存在
+      if (!batchListContainer) {
+        console.error('[移动端商品名测试] 找不到批量测试结果列表容器');
+        return;
+      }
+      
+      // === 第2步：定义测试数量数组 ===
+      // 涵盖不同数量级：个位数、十位数、百位数、千位数
+      const testQuantities = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+      
+      // 清空之前的结果
+      batchListContainer.innerHTML = '<p class="text-slate-400 text-center py-4 text-xs">正在生成...</p>';
+      
+      // 显示结果容器
+      if (batchResultsContainer) {
+        batchResultsContainer.classList.remove('hidden');
+      }
+      
+      // === 第3步：逐个调用API生成 ===
+      const results = [];
+      
+      for (const quantity of testQuantities) {
+        try {
+          // 调用API
+          const response = await fetch('/api/admin/generate_product_name', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              "X-Session-ID": sessionUUID
+            },
+            body: JSON.stringify({
+              quantity: quantity
+            })
+          });
+          
+          const result = await response.json();
+          
+          // 保存结果
+          if (result.success) {
+            results.push({
+              quantity: quantity,
+              productName: result.product_name,
+              byteLength: result.byte_length
+            });
+            console.log(`[移动端商品名测试] 数量${quantity}：${result.product_name}`);
+          }
+        } catch (error) {
+          console.error(`[移动端商品名测试] 数量${quantity}生成失败：`, error);
+        }
+      }
+      
+      // === 第4步：渲染结果列表 ===
+      if (results.length === 0) {
+        batchListContainer.innerHTML = '<p class="text-red-500 text-center py-4 text-xs">批量生成失败，请检查网络连接</p>';
+        return;
+      }
+      
+      // 构建HTML字符串（移动端使用更小的间距和字体）
+      let html = '';
+      results.forEach((item, index) => {
+        html += `
+          <div class="bg-white border border-slate-200 rounded-lg p-2">
+            <!-- 序号和数量 -->
+            <div class="flex justify-between items-center mb-1 pb-1 border-b border-slate-100">
+              <span class="text-xs font-semibold text-slate-500">示例 ${index + 1}</span>
+              <span class="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">数量：${item.quantity}</span>
+            </div>
+            <!-- 商品名称 -->
+            <div class="mb-1">
+              <p class="text-xs text-slate-500 mb-0.5">商品名称：</p>
+              <p class="text-xs font-medium text-slate-800 break-all">${item.productName}</p>
+            </div>
+            <!-- 字节长度 -->
+            <div class="text-xs text-slate-500">
+              字节长度：<span class="font-semibold text-slate-700">${item.byteLength}</span> 字节
+              ${item.byteLength > 127 ? '<span class="text-red-600 ml-1">（超出限制！）</span>' : '<span class="text-green-600 ml-1">（符合限制）</span>'}
+            </div>
+          </div>
+        `;
+      });
+      
+      batchListContainer.innerHTML = html;
+      console.log(`[移动端商品名测试] 批量测试完成，成功生成${results.length}个示例`);
+    }
+    
     async function createTestOrder() {
       // 在控制台输出日志，标记创建测试订单操作开始
       console.log('[测试支付] 开始创建测试订单...');
@@ -16399,12 +16987,89 @@ body.mobile-mode #session-picker-modal {
         return;
       }
       
-      // 3.6 获取商品名称（可选项，为空时使用默认值）
-      let productName = productInput.value.trim();
-      if (!productName) {
-        // 如果用户没有填写商品名称，使用默认值
-        productName = '测试商品';
-        console.log('[测试支付] 使用默认商品名称：', productName);
+      // 3.6 [修改] 获取商品名称
+      // 根据用户选择的输入方式，获取商品名称
+      // 两种方式：1. 手动输入  2. 自动生成（调用后端API）
+      
+      let productName = '测试商品'; // 默认值，防止获取失败时使用
+      
+      // 3.6.1 获取用户选择的输入方式
+      const radioButtons = document.getElementsByName('product-name-input-method');
+      let inputMethod = 'manual'; // 默认为手动输入
+      
+      // 遍历单选按钮，找到选中的那个
+      for (const radio of radioButtons) {
+        if (radio.checked) {
+          inputMethod = radio.value;
+          break;
+        }
+      }
+      
+      console.log('[移动端测试支付] 商品名称输入方式：', inputMethod);
+      
+      // 3.6.2 根据输入方式获取商品名称
+      if (inputMethod === 'manual') {
+        // 手动输入模式：从文本输入框获取
+        productName = productInput.value.trim();
+        if (!productName) {
+          // 如果用户没有填写商品名称，使用默认值
+          productName = '测试商品';
+          console.log('[移动端测试支付] 使用默认商品名称：', productName);
+        } else {
+          console.log('[移动端测试支付] 手动输入的商品名称：', productName);
+        }
+        
+      } else if (inputMethod === 'auto') {
+        // 自动生成模式：从数量输入框获取数值，然后调用后端API生成商品名
+        const quantityInput = document.getElementById('test-payment-quantity');
+        const quantity = quantityInput ? parseInt(quantityInput.value) : 0;
+        
+        // 验证数量是否有效
+        if (!quantity || quantity < 1 || quantity > 9999) {
+          showModalAlert('请输入有效的商品数量（1-9999）');
+          if (quantityInput) quantityInput.focus();
+          return; // 中断函数执行
+        }
+        
+        console.log('[移动端测试支付] 商品数量：', quantity, '，正在调用生成器API...');
+        
+        try {
+          // 调用后端API生成商品名称
+          // API端点：/api/admin/generate_product_name
+          // 请求参数：{ quantity: 数量 }
+          // 返回格式：{ success: true, product_name: "生成的商品名" }
+          const genResponse = await fetch('/api/admin/generate_product_name', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID // 需要管理员权限
+            },
+            body: JSON.stringify({ quantity: quantity })
+          });
+          
+          // 检查HTTP响应状态
+          if (!genResponse.ok) {
+            throw new Error(`生成商品名失败：HTTP状态码 ${genResponse.status}`);
+          }
+          
+          // 解析JSON响应
+          const genResult = await genResponse.json();
+          
+          // 检查业务状态
+          if (!genResult.success || !genResult.product_name) {
+            throw new Error(genResult.message || '生成商品名失败');
+          }
+          
+          // 使用生成的商品名称
+          productName = genResult.product_name;
+          console.log('[移动端测试支付] 自动生成的商品名称：', productName);
+          
+        } catch (error) {
+          // 生成商品名失败，显示错误并中断
+          console.error('[移动端测试支付] 生成商品名失败：', error);
+          showModalAlert(`生成商品名失败：${error.message}`);
+          return; // 中断函数执行
+        }
       }
       
       // 3.7 获取支付方式（必填项）
@@ -16734,7 +17399,7 @@ body.mobile-mode #session-picker-modal {
       // 这样可以统一管理所有标签页，便于维护
       // 如果将来需要添加新的Tab，只需在这里添加名称即可
       // 新增 'yipay' - 易支付配置标签页
-      const tabs = ['config', 'query', 'refund', 'test', 'yipay'];
+      const tabs = ['config', 'query', 'refund', 'test', 'yipay',"product-test"];
       
       // 遍历所有标签页，执行显示/隐藏操作
       // forEach循环：对数组中的每个元素执行一次指定函数
@@ -17050,7 +17715,8 @@ body.mobile-mode #session-picker-modal {
           headers: {
             // Content-Type告知服务器请求体是JSON格式
             // 服务器需要根据这个标头解析请求体
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           // body必须是字符串，使用JSON.stringify()将对象转换为JSON字符串
           // JSON格式示例：{"alipay":true,"wechat":true,"qq":false,"unionpay":false}
@@ -17739,6 +18405,255 @@ body.mobile-mode #session-picker-modal {
     }
     
     /**
+     * [新增] 切换商品名称输入方式（PC端）
+     * 
+     * 功能说明：
+     * 当用户选择"手动输入"或"自动生成"单选按钮时，切换对应的输入框显示/隐藏
+     * 
+     * 实现逻辑：
+     * 1. 获取选中的单选按钮值（manual或auto）
+     * 2. 如果选择"手动输入"：显示文本输入框，隐藏数量输入框
+     * 3. 如果选择"自动生成"：隐藏文本输入框，显示数量输入框
+     * 
+     * 调用时机：
+     * - 单选按钮的onchange事件触发时
+     */
+    function toggleProductNameInputMethod_modal() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[PC端测试支付] 切换商品名称输入方式...');
+      
+      // === 第1步：获取选中的单选按钮值 ===
+      // 获取所有name为"product-name-input-method_modal"的单选按钮
+      const radioButtons = document.getElementsByName('product-name-input-method_modal');
+      // 变量用于存储选中的值
+      let selectedMethod = 'manual'; // 默认为手动输入
+      
+      // 遍历所有单选按钮，找到被选中的那个
+      for (const radio of radioButtons) {
+        if (radio.checked) {
+          selectedMethod = radio.value; // 获取选中按钮的value值
+          break; // 找到后退出循环
+        }
+      }
+      
+      console.log('[PC端测试支付] 选中的输入方式：', selectedMethod);
+      
+      // === 第2步：获取两个容器的DOM元素 ===
+      const manualContainer = document.getElementById('manual-product-name-container_modal');
+      const autoContainer = document.getElementById('auto-product-name-container_modal');
+      
+      // === 第3步：防御性检查，确保元素存在 ===
+      if (!manualContainer || !autoContainer) {
+        console.warn('[PC端测试支付] 警告：找不到商品名称容器元素');
+        return; // 元素不存在则退出
+      }
+      
+      // === 第4步：根据选中值切换显示/隐藏 ===
+      if (selectedMethod === 'manual') {
+        // 手动输入模式：显示文本输入框，隐藏数量输入框
+        manualContainer.classList.remove('hidden');
+        autoContainer.classList.add('hidden');
+        console.log('[PC端测试支付] 已切换到手动输入模式');
+      } else if (selectedMethod === 'auto') {
+        // 自动生成模式：隐藏文本输入框，显示数量输入框
+        manualContainer.classList.add('hidden');
+        autoContainer.classList.remove('hidden');
+        console.log('[PC端测试支付] 已切换到自动生成模式');
+      }
+    }
+    
+    /**
+     * [新增] 测试商品名称生成器（PC端）- 单次测试
+     * 
+     * 功能说明：
+     * 根据用户输入的商品数量，调用后端API生成趣味商品名称
+     * 并显示生成结果（商品名称和字节长度）
+     * 
+     * API端点：POST /api/admin/generate_product_name
+     * 
+     * 请求体格式：
+     * {
+     *   quantity: 5  // 商品数量（整数，1-9999）
+     * }
+     * 
+     * 预期返回格式：
+     * {
+     *   success: true,
+     *   product_name: "五串麻辣鸭脖配上三根秘制烤肠",  // 生成的商品名称
+     *   byte_length: 51                                 // 字节长度（UTF-8编码）
+     * }
+     * 
+     * 调用时机：
+     * - 用户在商品名测试面板点击"生成商品名"按钮时
+     */
+    async function testGenerateProductName_modal() {
+      console.log('[PC端商品名测试] 开始单次测试...');
+      
+      // === 第1步：获取输入元素 ===
+      const quantityInput = document.getElementById('product-test-quantity_modal');
+      const resultContainer = document.getElementById('product-test-result_modal');
+      const productNameDisplay = document.getElementById('product-test-name_modal');
+      const byteLengthDisplay = document.getElementById('product-test-length_modal');
+      
+      // === 第2步：验证输入 ===
+      const quantity = quantityInput ? parseInt(quantityInput.value) : 0;
+      
+      // 验证数量是否有效
+      if (!quantity || quantity < 1 || quantity > 9999) {
+        showModalAlert('请输入有效的商品数量（1-9999）');
+        return;
+      }
+      
+      console.log('[PC端商品名测试] 商品数量：', quantity);
+      
+      try {
+        // === 第3步：调用后端API生成商品名 ===
+        const response = await fetch('/api/admin/generate_product_name', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
+
+          },
+          body: JSON.stringify({
+            quantity: quantity
+          })
+        });
+        
+        // 解析响应JSON
+        const result = await response.json();
+        console.log('[PC端商品名测试] API响应：', result);
+        
+        // === 第4步：处理响应 ===
+        if (result.success) {
+          // 生成成功：显示结果
+          if (productNameDisplay) {
+            productNameDisplay.textContent = result.product_name;
+          }
+          if (byteLengthDisplay) {
+            byteLengthDisplay.textContent = `${result.byte_length} 字节`;
+          }
+          // 显示结果容器
+          if (resultContainer) {
+            resultContainer.classList.remove('hidden');
+          }
+          console.log('[PC端商品名测试] 生成成功');
+        } else {
+          // 生成失败：显示错误消息
+          showModalAlert('生成失败：' + (result.message || '未知错误'));
+        }
+      } catch (error) {
+        // === 第5步：错误处理 ===
+        console.error('[PC端商品名测试] 请求失败：', error);
+        showModalAlert('网络错误，请稍后重试');
+      }
+    }
+    
+    /**
+     * [新增] 测试商品名称生成器（PC端）- 批量测试
+     * 
+     * 功能说明：
+     * 生成10个不同数量的商品名称示例（1, 2, 5, 10, 20, 50, 100, 200, 500, 1000）
+     * 用于验证生成器在不同数量级下的表现
+     * 
+     * API端点：POST /api/admin/generate_product_name
+     * 
+     * 调用时机：
+     * - 用户在商品名测试面板点击"批量测试（生成10个示例）"按钮时
+     */
+    async function batchTestProductNames_modal() {
+      console.log('[PC端商品名测试] 开始批量测试...');
+      
+      // === 第1步：获取容器元素 ===
+      const batchResultsContainer = document.getElementById('batch-test-results_modal');
+      const batchListContainer = document.getElementById('batch-test-list_modal');
+      
+      // 验证元素是否存在
+      if (!batchListContainer) {
+        console.error('[PC端商品名测试] 找不到批量测试结果列表容器');
+        return;
+      }
+      
+      // === 第2步：定义测试数量数组 ===
+      // 涵盖不同数量级：个位数、十位数、百位数、千位数
+      const testQuantities = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+      
+      // 清空之前的结果
+      batchListContainer.innerHTML = '<p class="text-slate-400 text-center py-4 text-sm">正在生成...</p>';
+      
+      // 显示结果容器
+      if (batchResultsContainer) {
+        batchResultsContainer.classList.remove('hidden');
+      }
+      
+      // === 第3步：逐个调用API生成 ===
+      const results = [];
+      
+      for (const quantity of testQuantities) {
+        try {
+          // 调用API
+          const response = await fetch('/api/admin/generate_product_name', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              "X-Session-ID": sessionUUID
+            },
+            body: JSON.stringify({
+              quantity: quantity
+            })
+          });
+          
+          const result = await response.json();
+          
+          // 保存结果
+          if (result.success) {
+            results.push({
+              quantity: quantity,
+              productName: result.product_name,
+              byteLength: result.byte_length
+            });
+            console.log(`[PC端商品名测试] 数量${quantity}：${result.product_name}`);
+          }
+        } catch (error) {
+          console.error(`[PC端商品名测试] 数量${quantity}生成失败：`, error);
+        }
+      }
+      
+      // === 第4步：渲染结果列表 ===
+      if (results.length === 0) {
+        batchListContainer.innerHTML = '<p class="text-red-500 text-center py-4 text-sm">批量生成失败，请检查网络连接</p>';
+        return;
+      }
+      
+      // 构建HTML字符串
+      let html = '';
+      results.forEach((item, index) => {
+        html += `
+          <div class="bg-white border border-slate-200 rounded-lg p-3">
+            <!-- 序号和数量 -->
+            <div class="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
+              <span class="text-xs font-semibold text-slate-500">示例 ${index + 1}</span>
+              <span class="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-medium">数量：${item.quantity}</span>
+            </div>
+            <!-- 商品名称 -->
+            <div class="mb-2">
+              <p class="text-xs text-slate-500 mb-1">商品名称：</p>
+              <p class="text-sm font-medium text-slate-800 break-all">${item.productName}</p>
+            </div>
+            <!-- 字节长度 -->
+            <div class="text-xs text-slate-500">
+              字节长度：<span class="font-semibold text-slate-700">${item.byteLength}</span> 字节
+              ${item.byteLength > 127 ? '<span class="text-red-600 ml-1">（超出限制！）</span>' : '<span class="text-green-600 ml-1">（符合限制）</span>'}
+            </div>
+          </div>
+        `;
+      });
+      
+      batchListContainer.innerHTML = html;
+      console.log(`[PC端商品名测试] 批量测试完成，成功生成${results.length}个示例`);
+    }
+    
+    /**
      * 创建PC端管理员测试支付订单
      * 
      * 功能说明：
@@ -17826,6 +18741,91 @@ body.mobile-mode #session-picker-modal {
         auth_code: authCode ? '***已提供***' : '未提供' // 在日志中隐藏完整的付款码
       });
       
+      // === 第2.5步：[新增] 获取商品名称 ===
+      // 根据用户选择的输入方式，获取商品名称
+      // 两种方式：1. 手动输入  2. 自动生成（调用后端API）
+      
+      let productName = '测试订单'; // 默认值，防止获取失败时使用
+      
+      // 2.5.1 获取用户选择的输入方式
+      const radioButtons = document.getElementsByName('product-name-input-method_modal');
+      let inputMethod = 'manual'; // 默认为手动输入
+      
+      // 遍历单选按钮，找到选中的那个
+      for (const radio of radioButtons) {
+        if (radio.checked) {
+          inputMethod = radio.value;
+          break;
+        }
+      }
+      
+      console.log('[PC端测试支付] 商品名称输入方式：', inputMethod);
+      
+      // 2.5.2 根据输入方式获取商品名称
+      if (inputMethod === 'manual') {
+        // 手动输入模式：从文本输入框获取
+        const productInput = document.getElementById('admin-test-payment-product_modal');
+        if (productInput && productInput.value.trim()) {
+          productName = productInput.value.trim();
+        } else {
+          // 如果输入框为空，显示错误提示
+          showModalAlert('请输入商品名称');
+          return; // 中断函数执行
+        }
+        console.log('[PC端测试支付] 手动输入的商品名称：', productName);
+        
+      } else if (inputMethod === 'auto') {
+        // 自动生成模式：从数量输入框获取数值，然后调用后端API生成商品名
+        const quantityInput = document.getElementById('admin-test-payment-quantity_modal');
+        const quantity = quantityInput ? parseInt(quantityInput.value) : 0;
+        
+        // 验证数量是否有效
+        if (!quantity || quantity < 1 || quantity > 9999) {
+          showModalAlert('请输入有效的商品数量（1-9999）');
+          return; // 中断函数执行
+        }
+        
+        console.log('[PC端测试支付] 商品数量：', quantity, '，正在调用生成器API...');
+        
+        try {
+          // 调用后端API生成商品名称
+          // API端点：/api/admin/generate_product_name
+          // 请求参数：{ quantity: 数量 }
+          // 返回格式：{ success: true, product_name: "生成的商品名" }
+          const genResponse = await fetch('/api/admin/generate_product_name', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID // 需要管理员权限
+            },
+            body: JSON.stringify({ quantity: quantity })
+          });
+          
+          // 检查HTTP响应状态
+          if (!genResponse.ok) {
+            throw new Error(`生成商品名失败：HTTP状态码 ${genResponse.status}`);
+          }
+          
+          // 解析JSON响应
+          const genResult = await genResponse.json();
+          
+          // 检查业务状态
+          if (!genResult.success || !genResult.product_name) {
+            throw new Error(genResult.message || '生成商品名失败');
+          }
+          
+          // 使用生成的商品名称
+          productName = genResult.product_name;
+          console.log('[PC端测试支付] 自动生成的商品名称：', productName);
+          
+        } catch (error) {
+          // 生成商品名失败，显示错误并中断
+          console.error('[PC端测试支付] 生成商品名失败：', error);
+          showModalAlert(`生成商品名失败：${error.message}`);
+          return; // 中断函数执行
+        }
+      }
+      
       try {
         // === 第3步：构建请求体 ===
         
@@ -17834,7 +18834,7 @@ body.mobile-mode #session-picker-modal {
           amount: amount,                  // 支付金额
           payment_method: method,          // 支付方式（alipay/wechat/qq/unionpay）
           payment_type: paymentType,       // 支付接口类型（jump/web/jsapi/app/scan/applet）
-          product_name: '测试订单'          // 商品名称
+          product_name: productName        // [修改] 商品名称（手动输入或自动生成）
         };
         
         // 如果是扫码支付，添加付款码到请求数据
@@ -18102,7 +19102,8 @@ body.mobile-mode #session-picker-modal {
           method: 'GET', // HTTP方法：GET用于获取数据
           headers: {
             // 设置请求头，告知服务器期望返回JSON格式的数据
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           }
         });
         
@@ -18457,7 +19458,8 @@ body.mobile-mode #session-picker-modal {
           method: 'PUT', // HTTP方法：PUT用于更新数据
           headers: {
             // 设置请求头，告知服务器发送的是JSON格式的数据
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           // 将配置对象转换为JSON字符串并发送
           body: JSON.stringify({
@@ -18569,7 +19571,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/yipay_config', {
           method: 'GET',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           }
         });
         
@@ -18723,7 +19726,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/yipay_config', {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            "X-Session-ID": sessionUUID
           },
           body: JSON.stringify({
             host: host,
@@ -19416,7 +20420,8 @@ body.mobile-mode #session-picker-modal {
         const response = await fetch('/api/admin/pricing_config', {
           method: 'PUT',  // HTTP方法：PUT（更新数据）
           headers: {
-            'Content-Type': 'application/json'  // 请求头：指定内容类型为JSON
+            'Content-Type': 'application/json',  // 请求头：指定内容类型为JSON
+            "X-Session-ID": sessionUUID
           },
           credentials: 'include',  // 包含认证凭证
           body: JSON.stringify(requestData)  // 请求体：将JavaScript对象转换为JSON字符串
@@ -44351,6 +45356,76 @@ async function loadSystemConfig() {
       "boolean",
       "启用后，留言将通过百度云文本审核服务检测后才能发布"
     );
+    
+    // ==================== [新增] 个人信息显示配置 ====================
+    // 添加个人信息中剩余次数显示的相关配置项
+    // 功能：控制是否在个人资料页面中显示用户的剩余跑步次数（available_runs）
+    // 用途：管理员可以根据需要决定是否向用户展示剩余次数信息，以及自定义显示格式
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">👤 个人信息显示设置</h5>';
+    
+    // 添加说明文字，引导管理员了解此配置的用途
+    html +=
+      '<p class="text-xs text-slate-500 mb-3">控制在用户个人资料中是否显示剩余跑步次数及其显示格式</p>';
+    
+    // 是否显示剩余次数的开关
+    // 类型：boolean（布尔值选择器，显示"启用"或"禁用"）
+    // 启用后，用户在个人资料页面可以看到自己的剩余跑步次数
+    html += createInput(
+      "UI",
+      "show_available_runs",
+      "显示剩余次数",
+      "boolean",
+      "是否在个人信息中显示用户的剩余跑步次数（available_runs）"
+    );
+    
+    // 剩余次数的显示格式配置项
+    // 类型：text（文本输入框）
+    // 管理员可以自定义显示的文字标签，例如："剩余次数"、"可用次数"、"余额"等
+    // 这个格式文本将用作前端显示的标签
+    html += createInput(
+      "UI",
+      "available_runs_format",
+      "剩余次数显示格式",
+      "text",
+      "在个人信息中显示剩余次数时使用的文字标签，例如：\"剩余次数\"、\"可用次数\"等"
+    );
+    
+    // ==================== [新增] 注册页面显示设置 ====================
+    // 区域标题：注册页面显示设置
+    // 用途：管理员可以控制注册页面是否显示提示信息，以及提示的具体内容
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">📝 注册页面显示设置</h5>';
+    
+    // 添加说明文字，引导管理员了解此配置的用途
+    html +=
+      '<p class="text-xs text-slate-500 mb-3">控制在用户注册页面是否显示提示信息（如"注册即可得XX次"），以及提示的具体内容</p>';
+    
+    // 是否显示注册提示的开关
+    // 类型：boolean（布尔值选择器，显示"启用"或"禁用"）
+    // 启用后，用户在注册页面可以看到注册即可获得的免费次数提示
+    // 配置键：Registration_Display.show_available_runs_on_register
+    html += createInput(
+      "Registration_Display",
+      "show_available_runs_on_register",
+      "显示注册提示",
+      "boolean",
+      "是否在注册页面显示\"注册即可得XX次\"的提示信息"
+    );
+    
+    // 注册提示的文本内容配置项
+    // 类型：text（文本输入框）
+    // 管理员可以自定义提示的文字内容，包含占位符 {available_runs}
+    // 占位符将被实际的免费次数替换
+    // 例如："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
+    // 配置键：Registration_Display.register_available_runs_hint
+    html += createInput(
+      "Registration_Display",
+      "register_available_runs_hint",
+      "注册提示文本",
+      "text",
+      "注册页面提示的文本内容，使用 {available_runs} 作为占位符，例如：\"注册即可得 {available_runs} 次校园跑\""
+    );
     // ==================== 配置项添加完成 ====================
     
     formContainer.innerHTML = html;
@@ -46665,26 +47740,26 @@ function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>',
       permission: "admin",
     },
-    // ========================================
-    // 支付配置标签
-    // 管理员可以在此启用/禁用支付方式
-    // ========================================
-    {
-      id: "payment-config",
-      label: "支付配置",
-      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
-      permission: "admin",
-    },
-    // ========================================
-    // 支付日志标签
-    // 管理员可以在此查看所有支付操作日志
-    // ========================================
-    {
-      id: "payment-logs",
-      label: "支付日志",
-      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
-      permission: "admin",
-    },
+    // // ========================================
+    // // 支付配置标签
+    // // 管理员可以在此启用/禁用支付方式
+    // // ========================================
+    // {
+    //   id: "payment-config",
+    //   label: "支付配置",
+    //   icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+    //   permission: "admin",
+    // },
+    // // ========================================
+    // // 支付日志标签
+    // // 管理员可以在此查看所有支付操作日志
+    // // ========================================
+    // {
+    //   id: "payment-logs",
+    //   label: "支付日志",
+    //   icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
+    //   permission: "admin",
+    // },
     // [修复] 添加CDN缓存标签
     {
       id: "cdn",
@@ -46710,6 +47785,32 @@ function initMobileAdminPanel(prefix) {
       label: "欠费查询",  // 标签显示的文本
       // 警告图标：表示欠费/异常状态
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+      permission: "admin",  // 权限要求：管理员级别
+    },
+    // ========================================
+    // [新增] 支付设置标签
+    // 移动端支付设置面板的标签，与PC端功能对应
+    // 功能：配置支付方式、查询订单、处理退款、测试支付
+    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    {
+      id: "payment-settings",  // 标签ID，用于标识和切换面板
+      label: "支付设置",  // 标签显示的文本
+      // 设置图标：表示支付配置
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>',
+      permission: "admin",  // 权限要求：管理员级别
+    },
+    // ========================================
+    // [新增] 价格设置标签
+    // 移动端价格设置面板的标签，与PC端功能对应
+    // 功能：配置系统价格策略，包括是否启用付费、单次费用、免费次数
+    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    {
+      id: "pricing",  // 标签ID，用于标识和切换面板
+      label: "价格设置",  // 标签显示的文本
+      // 价格图标：表示定价管理
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
       permission: "admin",  // 权限要求：管理员级别
     },
   ];
@@ -47977,6 +49078,7 @@ function switchMobileAdminTab(tabId, prefix) {
       // [修复] 添加CDN和密码恢复面板ID
       "mobile-multi-admin-cdn-panel", 
       "mobile-multi-admin-bruteforce-panel",
+      "mobile-multi-admin-overdue-panel",
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -48192,6 +49294,29 @@ function switchMobileAdminTab(tabId, prefix) {
     case "ssl":
       loadSSLInfo();
       setTimeout(() => copyAdminContentToMobile("ssl", contentId), 500);
+      break;
+    // ========================================
+    // [新增] 支付设置面板加载逻辑（移动端）
+    // 当管理员切换到"支付设置"标签时，显示支付设置面板
+    // 移动端的支付设置面板已经存在（mobile-multi-admin-payment-settings-panel）
+    // 包含：支付方式配置、订单查询、退款处理、测试支付等功能
+    // ========================================
+    case "payment-settings":
+      // 移动端支付设置面板已经在HTML中定义，无需额外加载
+      // 面板ID: mobile-multi-admin-payment-settings-panel
+      // 默认显示第一个Tab（支付方式配置）
+      content.innerHTML = '<p class="text-green-600 text-center py-10 text-sm">✓ 支付设置面板已加载</p>';
+      break;
+    // ========================================
+    // [新增] 价格设置面板加载逻辑（移动端）
+    // 当管理员切换到"价格设置"标签时，加载价格配置
+    // 移动端的价格设置面板已经存在（mobile-multi-admin-pricing-panel）
+    // 包含：是否需要付费、单次费用、默认免费次数等配置项
+    // ========================================
+    case "pricing":
+      // 调用移动端专用的价格配置加载函数
+      // 该函数会从后端API加载价格配置并填充到移动端输入框
+      loadMobilePricingConfig();
       break;
     default:
       content.innerHTML =
@@ -54174,7 +55299,13 @@ async function openPaymentModal() {
     try {
         // 调用后端API获取支付配置
         // 使用await等待异步请求完成，确保数据加载后再继续
-        const response = await fetch('/api/admin/payment/config');
+        const response = await fetch('/api/admin/payment/config', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID
+            }
+          });
         
         // 将响应转换为JSON格式
         const result = await response.json();
@@ -55364,7 +56495,13 @@ async function loadPaymentConfig() {
     
     try {
         // 步骤1：调用后端API获取支付配置
-        const response = await fetch('/api/admin/payment/config');
+        const response = await fetch('/api/admin/payment/config', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-ID': sessionUUID
+            }
+          });
         
         // 步骤2：解析响应数据
         const result = await response.json();
