@@ -11718,6 +11718,50 @@ body.mobile-mode #session-picker-modal {
             </div>
 
             <!-- ========================================
+                 [新增] JSAPI支付参数输入框容器
+                 功能：为JSAPI支付提供sub_openid和sub_appid参数的输入
+                 显示时机：只在选择"JSAPI支付"接口类型时显示
+                 默认状态：隐藏（使用hidden类）
+                 ======================================== -->
+            <div id="admin-test-jsapi-params-container_modal" class="hidden space-y-3">
+              <!-- sub_openid 输入框 -->
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">
+                  用户Openid（sub_openid）
+                  <span class="text-red-500">*</span>
+                </label>
+                <!-- 文本输入框：用于输入用户的Openid -->
+                <!-- Openid是微信/支付宝等平台中用户的唯一标识符 -->
+                <input type="text" 
+                  id="admin-test-sub-openid_modal" 
+                  placeholder="请输入用户Openid（如：oUpF8uMuAJO_M2pxb1Q9zNjWeS6o）" 
+                  class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+                <!-- 提示文字：说明Openid的用途 -->
+                <p class="text-xs text-slate-500 mt-1">
+                  JSAPI支付需要用户在公众号或小程序中的唯一标识符（Openid）
+                </p>
+              </div>
+              
+              <!-- sub_appid 输入框 -->
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">
+                  公众号AppId（sub_appid）
+                  <span class="text-red-500">*</span>
+                </label>
+                <!-- 文本输入框：用于输入公众号或小程序的AppId -->
+                <!-- AppId是应用在平台中的唯一标识符 -->
+                <input type="text" 
+                  id="admin-test-sub-appid_modal" 
+                  placeholder="请输入公众号AppId（如：wx1234567890abcdef）" 
+                  class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+                <!-- 提示文字：说明AppId的用途 -->
+                <p class="text-xs text-slate-500 mt-1">
+                  JSAPI支付需要公众号或小程序的应用标识符（AppId）
+                </p>
+              </div>
+            </div>
+
+            <!-- ========================================
                  [新增] 商品名称配置区域（PC端测试支付）
                  功能：允许管理员选择手动输入或自动生成商品名称
                  包含：单选按钮、手动输入框、数量输入框（用于生成）
@@ -15685,6 +15729,87 @@ body.mobile-mode #session-picker-modal {
         // 记录成功日志
         console.log('[支付配置] 支付方式列表渲染完成');
         
+        // === 【新增功能】动态填充测试支付方式下拉框 ===
+        // 功能说明：将已启用的支付方式动态填充到"测试支付"模块的支付方式下拉框中
+        // 优点：避免硬编码，支持动态配置的支付方式
+        // 位置：admin-test-payment-method_modal（测试支付模态框中的支付方式选择下拉框）
+        
+        // 第1步：获取测试支付方式下拉框DOM元素
+        const testPaymentMethodSelect = document.getElementById('admin-test-payment-method_modal');
+        
+        // 第2步：防御性检查 - 确保下拉框元素存在
+        if (testPaymentMethodSelect) {
+          console.log('[支付配置] 开始更新测试支付方式下拉框...');
+          
+          // 第3步：保存当前选中的值（如果存在）
+          // 目的：在更新选项后，如果之前选中的支付方式仍然可用，保持选中状态
+          const currentSelectedValue = testPaymentMethodSelect.value;
+          console.log('[支付配置] 当前选中的支付方式：', currentSelectedValue || '无');
+          
+          // 第4步：清空现有的所有选项
+          // 使用innerHTML = ''清空比循环删除选项更高效
+          testPaymentMethodSelect.innerHTML = '';
+          
+          // 第5步：遍历所有支付方式，只添加已启用的支付方式到下拉框
+          let optionAdded = false; // 标记是否至少添加了一个选项
+          let previousValueStillExists = false; // 标记之前选中的值是否仍然存在
+          
+          for (const [code, method] of Object.entries(methods)) {
+            // 只处理已启用的支付方式
+            const isEnabled = enabledMethods.includes(code);
+            
+            if (isEnabled) {
+              // 第6步：创建新的option元素
+              const option = document.createElement('option');
+              
+              // 设置option的value属性为支付方式代码（如：alipay, wxpay）
+              option.value = code;
+              
+              // 设置option的显示文本为支付方式名称（如：支付宝, 微信支付）
+              // 使用textContent而非innerHTML，防止XSS攻击
+              option.textContent = method.name || code;
+              
+              // 第7步：将option添加到select下拉框中
+              testPaymentMethodSelect.appendChild(option);
+              
+              // 标记已添加选项
+              optionAdded = true;
+              
+              // 检查这个支付方式是否是之前选中的
+              if (code === currentSelectedValue) {
+                previousValueStillExists = true;
+              }
+              
+              // 输出日志，记录添加的支付方式
+              console.log(`[支付配置] 添加测试支付选项：${code} - ${method.name || code}`);
+            }
+          }
+          
+          // 第8步：恢复之前的选中状态（如果该支付方式仍然可用）
+          if (previousValueStillExists && currentSelectedValue) {
+            testPaymentMethodSelect.value = currentSelectedValue;
+            console.log('[支付配置] 已恢复之前选中的支付方式：', currentSelectedValue);
+          } else if (optionAdded) {
+            // 如果之前的选中值不可用，但至少有一个选项，则选中第一个
+            console.log('[支付配置] 之前选中的支付方式不可用，已自动选中第一个可用选项');
+          }
+          
+          // 第9步：如果没有任何已启用的支付方式，添加一个提示选项
+          if (!optionAdded) {
+            const emptyOption = document.createElement('option');
+            emptyOption.value = '';
+            emptyOption.textContent = '暂无可用的支付方式';
+            emptyOption.disabled = true; // 禁用该选项，不可选择
+            testPaymentMethodSelect.appendChild(emptyOption);
+            console.warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
+          }
+          
+          console.log('[支付配置] 测试支付方式下拉框更新完成');
+        } else {
+          // 如果找不到测试支付方式下拉框元素，输出警告日志
+          console.warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
+        }
+        
       } catch (error) {
         // === 错误处理 ===
         console.error('[支付配置] 加载支付方式配置时发生错误：', error);
@@ -18814,14 +18939,16 @@ body.mobile-mode #session-picker-modal {
      */
     function toggleAuthCodeField() {
       // 在控制台输出日志，记录函数调用
-      console.log('[PC端测试支付] 切换付款码输入框显示状态...');
+      console.log('[PC端测试支付] 切换支付类型参数输入框显示状态...');
       
       // === 第1步：获取DOM元素 ===
       
       // 获取支付接口类型下拉框元素
       const typeSelect = document.getElementById('admin-test-payment-type_modal');
-      // 获取付款码输入框的容器元素
+      // 获取付款码输入框的容器元素（扫码支付专用）
       const authCodeContainer = document.getElementById('admin-test-auth-code-container_modal');
+      // 【新增】获取JSAPI支付参数容器元素
+      const jsapiParamsContainer = document.getElementById('admin-test-jsapi-params-container_modal');
       
       // === 第2步：防御性检查 ===
       // 确保DOM元素存在，避免null引用错误
@@ -18834,17 +18961,44 @@ body.mobile-mode #session-picker-modal {
       const selectedType = typeSelect.value;
       console.log('[PC端测试支付] 当前选中的接口类型：', selectedType);
       
-      // === 第4步：根据接口类型决定是否显示付款码输入框 ===
+      // === 第4步：根据接口类型决定显示哪些参数输入框 ===
       
-      // 判断是否为扫码支付类型
+      // 4.1 判断是否为扫码支付类型
       if (selectedType === 'scan') {
         // 如果是扫码支付，则显示付款码输入框
         // 移除hidden类，使容器可见
         authCodeContainer.classList.remove('hidden');
         console.log('[PC端测试支付] 付款码输入框已显示');
-      } else {
-        // 如果不是扫码支付，则隐藏付款码输入框
-        // 添加hidden类，使容器不可见
+        
+        // 同时隐藏JSAPI参数容器（互斥关系）
+        if (jsapiParamsContainer) {
+          jsapiParamsContainer.classList.add('hidden');
+          // 清空JSAPI参数输入框的值
+          const subOpenidInput = document.getElementById('admin-test-sub-openid_modal');
+          const subAppidInput = document.getElementById('admin-test-sub-appid_modal');
+          if (subOpenidInput) subOpenidInput.value = '';
+          if (subAppidInput) subAppidInput.value = '';
+        }
+      } 
+      // 4.2 判断是否为JSAPI支付类型
+      else if (selectedType === 'jsapi') {
+        // 如果是JSAPI支付，则显示JSAPI参数容器
+        if (jsapiParamsContainer) {
+          jsapiParamsContainer.classList.remove('hidden');
+          console.log('[PC端测试支付] JSAPI参数输入框已显示');
+        }
+        
+        // 同时隐藏付款码输入框（互斥关系）
+        authCodeContainer.classList.add('hidden');
+        // 清空付款码输入框的值
+        const authCodeInput = document.getElementById('admin-test-auth-code_modal');
+        if (authCodeInput) {
+          authCodeInput.value = ''; // 清空输入框
+        }
+      } 
+      // 4.3 其他支付类型（web、jump、app、applet等）
+      else {
+        // 隐藏付款码输入框
         authCodeContainer.classList.add('hidden');
         
         // 清空付款码输入框的值，避免用户误以为需要输入
@@ -18853,7 +19007,17 @@ body.mobile-mode #session-picker-modal {
           authCodeInput.value = ''; // 清空输入框
         }
         
-        console.log('[PC端测试支付] 付款码输入框已隐藏');
+        // 隐藏JSAPI参数容器
+        if (jsapiParamsContainer) {
+          jsapiParamsContainer.classList.add('hidden');
+          // 清空JSAPI参数输入框的值
+          const subOpenidInput = document.getElementById('admin-test-sub-openid_modal');
+          const subAppidInput = document.getElementById('admin-test-sub-appid_modal');
+          if (subOpenidInput) subOpenidInput.value = '';
+          if (subAppidInput) subAppidInput.value = '';
+        }
+        
+        console.log('[PC端测试支付] 所有额外参数输入框已隐藏');
       }
     }
     
@@ -19186,12 +19350,61 @@ body.mobile-mode #session-picker-modal {
         }
       }
       
+      // 2.5 【新增】获取JSAPI支付参数（仅JSAPI支付需要）
+      let subOpenid = '';
+      let subAppid = '';
+      // 如果选择的是JSAPI支付，则需要验证sub_openid和sub_appid
+      if (paymentType === 'jsapi') {
+        // 获取sub_openid输入框元素
+        const subOpenidInput = document.getElementById('admin-test-sub-openid_modal');
+        // 获取sub_appid输入框元素
+        const subAppidInput = document.getElementById('admin-test-sub-appid_modal');
+        
+        // 获取并清理sub_openid的值（去除首尾空格）
+        subOpenid = subOpenidInput ? subOpenidInput.value.trim() : '';
+        // 获取并清理sub_appid的值（去除首尾空格）
+        subAppid = subAppidInput ? subAppidInput.value.trim() : '';
+        
+        // 验证sub_openid是否为空
+        if (!subOpenid) {
+          showModalAlert('JSAPI支付需要提供用户Openid（sub_openid）');
+          // 聚焦到sub_openid输入框，引导用户输入
+          if (subOpenidInput) subOpenidInput.focus();
+          return; // 中断函数执行
+        }
+        
+        // 验证sub_appid是否为空
+        if (!subAppid) {
+          showModalAlert('JSAPI支付需要提供公众号AppId（sub_appid）');
+          // 聚焦到sub_appid输入框，引导用户输入
+          if (subAppidInput) subAppidInput.focus();
+          return; // 中断函数执行
+        }
+        
+        // 可选：验证sub_openid的格式（通常以字母o开头，长度约28个字符）
+        // 这是一个简单的格式验证，实际的openid格式可能会有所不同
+        if (subOpenid.length < 10) {
+          showModalAlert('用户Openid格式可能不正确，长度过短');
+          if (subOpenidInput) subOpenidInput.focus();
+          return;
+        }
+        
+        // 可选：验证sub_appid的格式（通常以wx开头，长度约18个字符）
+        if (!subAppid.startsWith('wx') || subAppid.length < 10) {
+          showModalAlert('公众号AppId格式可能不正确（应以wx开头）');
+          if (subAppidInput) subAppidInput.focus();
+          return;
+        }
+      }
+      
       // 在控制台输出测试订单数据，方便调试
       console.log('[PC端测试支付] 测试订单数据：', { 
         amount, 
         method, 
         payment_type: paymentType,
-        auth_code: authCode ? '***已提供***' : '未提供' // 在日志中隐藏完整的付款码
+        auth_code: authCode ? '***已提供***' : '未提供', // 在日志中隐藏完整的付款码
+        sub_openid: subOpenid ? '***已提供***' : '未提供', // 在日志中隐藏完整的openid
+        sub_appid: subAppid ? '***已提供***' : '未提供' // 在日志中隐藏完整的appid
       });
       
       // === 第2.5步：[新增] 获取商品名称 ===
@@ -19290,8 +19503,8 @@ body.mobile-mode #session-picker-modal {
           product_name: productName,        // 商品名称（手动输入或自动生成）
           app_host: window.location.protocol + '//' + window.location.host,
           return_url: window.location.href,    //浏览器当前地址
-          sub_openid: "",
-          sub_appid: "",
+          sub_openid: subOpenid,          // 【修改】JSAPI支付所需的用户Openid（从输入框获取）
+          sub_appid: subAppid,            // 【修改】JSAPI支付所需的公众号AppId（从输入框获取）
           device: Get_YiPAi_device(),
         };
         
@@ -19468,26 +19681,10 @@ body.mobile-mode #session-picker-modal {
           linkContainer.classList.add('hidden');
         }
         
-        // 显示错误提示
-        if (resultDiv) {
-          resultDiv.innerHTML = `
-            <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
-              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              ✗ 创建失败：${error.message || '未知错误'}
-            </div>
-          `;
-          resultDiv.classList.remove('hidden');
-          
-          // 5秒后自动隐藏错误提示
-          setTimeout(() => {
-            resultDiv.classList.add('hidden');
-          }, 5000);
-        } else {
-          showModalAlert(`创建失败：${error.message || '未知错误'}`);
-        }
+        // 【修改】使用 showModalAlert() 显示错误提示
+        // 优点：统一的错误提示样式，用户体验更好
+        // 第二个参数传递 "错误" 表示这是一个错误类型的提示
+        showModalAlert(`创建失败：${error.message || '未知错误'}`, '错误');
       }
     }
     
