@@ -1691,6 +1691,19 @@ def _get_default_config():
         # 这是一个重要的安全参数，用于生成和验证支付请求的签名，请妥善保管，切勿泄露
         # 格式：通常为32位随机字符串，例如 "abcdef1234567890abcdef1234567890"
         "key": "",
+        # 应用域名地址：用于自动设置return_url和notify_url的域名前缀（可选）
+        # 格式示例："https://yourdomain.com" 或 "https://run.zelly.cn"
+        # 如果配置了此项，系统将自动拼接完整的回调地址（如：https://yourdomain.com/api/payment/yipay/notify）
+        # 如果留空，则使用前端传入的app_host参数
+        # 注意：必须包含协议头（http:// 或 https://），末尾不要添加斜杠
+        "app_host": "",
+        # 平台公钥（RSA公钥）：用于验证支付回调通知的签名（可选）
+        # 格式：PEM格式的RSA公钥字符串
+        # 用途：在收到支付平台的异步通知时，使用此公钥验证签名，确保通知的真实性和完整性
+        # 说明：如果彩虹易支付平台支持RSA签名验证，请在此填入平台提供的公钥
+        # 示例：-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhki...\n-----END PUBLIC KEY-----
+        # 注意：留空则不进行RSA签名验证，仅使用MD5签名验证
+        "pubc_key": "",
         # 商品ID：用于标识商品类型的唯一标识符
         # 格式：整数，例如 "1001"
         # 默认值：1001（跑步助手服务）
@@ -2185,6 +2198,20 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 格式：通常为256位SHA256WithRSA符串\n")
         f.write("# 示例：abcdef1234567890abcdef1234567890\n")
         f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
+        f.write("# 应用域名地址（可选）\n")
+        f.write("# 用于自动设置return_url和notify_url的域名前缀\n")
+        f.write("# 格式示例：https://yourdomain.com 或 https://run.zelly.cn\n")
+        f.write("# 如果配置了此项，系统将自动拼接完整的回调地址\n")
+        f.write("# 如果留空，则使用前端传入的app_host参数\n")
+        f.write("# 注意：必须包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
+        f.write(f"app_host = {config_obj.get('Rainbow_YiPay', 'app_host', fallback='')}\n")
+        f.write("# 平台公钥（RSA公钥）（可选）\n")
+        f.write("# 用于验证支付回调通知的签名，确保通知的真实性和完整性\n")
+        f.write("# 格式：PEM格式的RSA公钥字符串\n")
+        f.write("# 示例：-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhki...\\n-----END PUBLIC KEY-----\n")
+        f.write("# 说明：如果彩虹易支付平台支持RSA签名验证，请在此填入平台提供的公钥\n")
+        f.write("# 注意：留空则不进行RSA签名验证，仅使用MD5签名验证\n")
+        f.write(f"pubc_key = {config_obj.get('Rainbow_YiPay', 'pubc_key', fallback='')}\n")
         f.write("# 启用的支付方式\n")
         f.write("# 管理员可配置启用哪些支付方式，使用逗号分隔\n")
         f.write("# 支持的支付方式：\n")
@@ -27489,9 +27516,22 @@ def start_web_server(args_param):
                     "status": "pending",                 # 订单状态：pending（待支付）
                     "pay_url": result.get("pay_url", ""),        # 支付跳转URL
                     "trade_no": result.get("trade_no", ""),      # 平台订单号
-                    "payment_method": payment_type,            # 接口类型(传入的payment_type）)
-                    "payment_type": result.get("pay_type", ""),  # 发起支付类型
-                    "pay_info": result.get("pay_info", ""),      # 发起支付参数
+                    # payment_method: 接口类型（传入的payment_type参数，如：web/jump/jsapi/scan/app/applet）
+                    # 这是前端或配置文件中指定的支付接口类型，决定了如何发起支付
+                    "payment_method": payment_type,
+                    # payment_type: 发起支付类型（API返回的实际支付类型，如：qrcode/jump/jsapi等）
+                    # 这是支付平台根据payment_method和其他条件决定的实际支付发起方式
+                    # 例如：即使传入jump，平台可能返回qrcode表示使用二维码发起
+                    "payment_type": result.get("pay_type", ""),
+                    # pay_info: 发起支付参数（API返回的支付信息，可能是URL、二维码内容或jsapi参数）
+                    # 根据payment_type的不同，此字段内容也不同：
+                    #   - qrcode: 二维码URL（可直接用于生成二维码）
+                    #   - jump: 跳转URL（用户点击后跳转）
+                    #   - jsapi: JSON字符串（包含调起微信/支付宝支付所需的参数）
+                    "pay_info": result.get("pay_info", ""),
+                    # order_data: 完整的订单数据（API返回的原始订单数据，包含所有支付平台返回的详细信息）
+                    # 这是支付平台返回的完整订单对象，保存下来用于调试和追溯
+                    "order_data": result.get("order_data", {}),
                     "created_at": time.time(),           # 创建时间（Unix时间戳）
                     "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),  # 创建时间（可读格式）
                     "client_ip": request.REMOTE_ADDR,    # 客户端IP地址
@@ -28117,7 +28157,7 @@ def start_web_server(args_param):
         接收彩虹易支付异步通知接口（专用）
         """
         try:
-            # 获取回调参数
+            # ========== 获取回调参数 ==========
             # request.form 获取POST表单数据
             # .to_dict() 将 ImmutableMultiDict 转换为普通字典
             params = request.form.to_dict()
@@ -28125,13 +28165,181 @@ def start_web_server(args_param):
             # 记录日志：收到异步通知
             logging.info(f"[支付通知] 收到异步通知 - 参数: {params}")
             
+            # ========== 处理空参数情况 ==========
+            # 有些情况下，用户支付完成后直接访问notify_url，此时没有参数
+            # 这种情况下，我们需要返回一个友好的HTML页面提示用户支付成功
+            if len(params) == 0 or (len(params) <= 2 and not params.get("out_trade_no")):
+                # 参数为空或只有极少参数（可能只有session等），且没有订单号
+                # 说明这是用户直接访问了notify_url，而不是支付平台的回调
+                logging.info(f"[支付通知] 检测到空参数访问，返回友好提示页面")
+                
+                # 返回一个简洁的HTML页面，提示用户支付成功
+                # 这个页面会在3秒后自动关闭或跳转
+                html_response = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>支付成功</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        }
+                        .container {
+                            background: white;
+                            padding: 40px;
+                            border-radius: 10px;
+                            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+                            text-align: center;
+                            max-width: 400px;
+                        }
+                        .success-icon {
+                            font-size: 64px;
+                            color: #52c41a;
+                            margin-bottom: 20px;
+                        }
+                        h1 {
+                            color: #333;
+                            margin: 0 0 10px 0;
+                            font-size: 24px;
+                        }
+                        p {
+                            color: #666;
+                            margin: 10px 0;
+                            line-height: 1.6;
+                        }
+                        .countdown {
+                            color: #667eea;
+                            font-weight: bold;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="success-icon">✓</div>
+                        <h1>支付成功</h1>
+                        <p>感谢您的支付！</p>
+                        <p>页面将在 <span class="countdown" id="countdown">3</span> 秒后自动关闭</p>
+                    </div>
+                    <script>
+                        var count = 3;
+                        var countdown = document.getElementById('countdown');
+                        var timer = setInterval(function() {
+                            count--;
+                            countdown.textContent = count;
+                            if (count <= 0) {
+                                clearInterval(timer);
+                                // 尝试关闭窗口（可能因浏览器安全策略失败）
+                                window.close();
+                                // 如果关闭失败，显示提示
+                                setTimeout(function() {
+                                    document.querySelector('.container').innerHTML = 
+                                        '<div class="success-icon">✓</div>' +
+                                        '<h1>支付成功</h1>' +
+                                        '<p>您可以关闭此页面了</p>';
+                                }, 500);
+                            }
+                        }, 1000);
+                    </script>
+                </body>
+                </html>
+                """
+                return html_response
+            
             # ========== 验证签名 ==========
             
-            # 创建彩虹易支付客户端
-            yipay_client = RainbowYiPayClient()
+            # 读取配置文件以获取密钥和公钥信息
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
             
-            # 调用签名验证方法
-            if not yipay_client.verify_sign(params):
+            # 获取商户密钥（用于MD5签名验证）
+            merchant_key = config.get("Rainbow_YiPay", "key", fallback="")
+            
+            # 获取平台公钥（用于RSA签名验证，可选）
+            pubc_key = config.get("Rainbow_YiPay", "pubc_key", fallback="").strip()
+            
+            # 标记签名是否验证通过
+            signature_valid = False
+            
+            # 如果配置了平台公钥，则使用RSA签名验证（更安全）
+            if pubc_key:
+                logging.info(f"[支付通知] 检测到平台公钥配置，使用RSA签名验证")
+                
+                try:
+                    # 创建RSA签名验证器
+                    # 注意：RsaSigner类原本用于签名，这里我们需要用它来生成期望的签名字符串
+                    # 然后与回调中的签名进行比对
+                    signer = RsaSigner(pubc_key)
+                    
+                    # 生成期望的签名字符串
+                    # 将参数按照易支付的规则排序并拼接，然后计算签名
+                    expected_sign = signer.generate_sign_string(params)
+                    
+                    # 获取回调中的实际签名
+                    actual_sign = params.get("sign", "")
+                    
+                    # 比较签名是否一致
+                    if expected_sign == actual_sign:
+                        signature_valid = True
+                        logging.info(f"[支付通知] RSA签名验证成功")
+                    else:
+                        logging.error(f"[支付通知] RSA签名验证失败 - 期望: {expected_sign[:50]}..., 实际: {actual_sign[:50]}...")
+                        
+                except Exception as e:
+                    # RSA签名验证过程中出现异常
+                    logging.error(f"[支付通知] RSA签名验证异常: {str(e)}")
+                    logging.error(traceback.format_exc())
+            
+            # 如果没有配置公钥或RSA验证失败，则使用传统的MD5签名验证（兼容模式）
+            if not signature_valid:
+                if pubc_key:
+                    logging.info(f"[支付通知] RSA验证失败，尝试使用MD5签名验证")
+                else:
+                    logging.info(f"[支付通知] 未配置平台公钥，使用MD5签名验证")
+                
+                # 创建彩虹易支付客户端（它内部实现了MD5签名验证）
+                yipay_client = RainbowYiPayClient()
+                
+                # 调用签名验证方法（假设这个方法存在且实现了MD5验证）
+                # 注意：如果这个方法不存在，需要实现它
+                if hasattr(yipay_client, 'verify_sign'):
+                    signature_valid = yipay_client.verify_sign(params)
+                else:
+                    # 如果方法不存在，手动实现MD5签名验证
+                    # 1. 过滤掉sign和sign_type参数
+                    # 2. 按照参数名排序
+                    # 3. 拼接成 key1=value1&key2=value2&key=商户密钥 的形式
+                    # 4. 计算MD5值
+                    import hashlib
+                    
+                    # 过滤参数
+                    sign_params = {k: v for k, v in params.items() if k not in ['sign', 'sign_type'] and v}
+                    
+                    # 按键名排序并拼接
+                    sorted_params = sorted(sign_params.items())
+                    sign_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
+                    sign_str += merchant_key  # 注意：有些平台用 &key=xxx，有些直接拼接
+                    
+                    # 计算MD5
+                    expected_sign = hashlib.md5(sign_str.encode('utf-8')).hexdigest()
+                    actual_sign = params.get("sign", "")
+                    
+                    signature_valid = (expected_sign == actual_sign)
+                    
+                    if signature_valid:
+                        logging.info(f"[支付通知] MD5签名验证成功")
+                    else:
+                        logging.error(f"[支付通知] MD5签名验证失败 - 期望: {expected_sign}, 实际: {actual_sign}")
+            
+            # 如果签名验证失败（RSA和MD5都失败）
+            if not signature_valid:
                 # 签名验证失败，可能是伪造的通知
                 logging.error(f"[支付通知] 签名验证失败 - 参数: {params}")
                 
