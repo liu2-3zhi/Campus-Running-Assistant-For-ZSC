@@ -3342,20 +3342,51 @@ def get_session_file_path(session_id: str) -> str:
 
 
 class RsaSigner:
-    def __init__(self, private_key_str: str):
+    def __init__(self, private_key_str: str = None, public_key_str: str = None):
         """
-        初始化签名器
-        :param private_key_str: 私钥字符串（可以是带头尾的PEM格式，也可以是纯Base64字符串）
+        初始化签名器（用于签名和验签）
+        
+        参数说明:
+            private_key_str (str): 私钥字符串（用于签名，可以是带头尾的PEM格式，也可以是纯Base64字符串）
+            public_key_str (str): 公钥字符串（用于验签，可以是带头尾的PEM格式，也可以是纯Base64字符串）
+        
+        使用场景:
+            - 签名操作：需要传入 private_key_str
+            - 验签操作：需要传入 public_key_str
+            - 两者都传入时：可同时支持签名和验签
         """
-        self.private_key = self._load_private_key(private_key_str)
+        # 加载私钥（如果提供了私钥字符串）
+        # 私钥用于生成签名（sign）操作
+        self.private_key = self._load_private_key(private_key_str) if private_key_str else None
+        
+        # 加载公钥（如果提供了公钥字符串）
+        # 公钥用于验证签名（verify）操作
+        self.public_key = self._load_public_key(public_key_str) if public_key_str else None
 
     def _load_private_key(self, pk_str: str):
         """
         内部函数：处理私钥格式并加载
+        
+        功能说明:
+            将私钥字符串转换为cryptography库可用的私钥对象
+            支持两种输入格式：
+            1. 完整的PEM格式（包含 -----BEGIN PRIVATE KEY----- 头尾）
+            2. 纯Base64编码的密钥内容（自动补全头尾）
+        
+        参数:
+            pk_str (str): 私钥字符串
+        
+        返回:
+            私钥对象（cryptography.hazmat.primitives.asymmetric.rsa.RSAPrivateKey）
+        
+        异常:
+            ValueError: 当私钥格式错误或加载失败时抛出
         """
+        # 去除首尾空白字符（空格、换行等）
         pk_str = pk_str.strip()
         
-        # 检查是否包含头尾，如果没有则补全
+        # 检查是否包含PEM格式的头部标识
+        # 如果没有头部，说明是纯Base64字符串，需要补全标准的PEM格式头尾
         # 注意：这里默认补全为 PKCS#8 格式 (BEGIN PRIVATE KEY)
         # 如果是 PKCS#1 格式可能需要改为 BEGIN RSA PRIVATE KEY
         if not pk_str.startswith("-----BEGIN"):
@@ -3364,12 +3395,55 @@ class RsaSigner:
             pk_str = f"-----BEGIN PRIVATE KEY-----\n{pk_str}\n-----END PRIVATE KEY-----"
             
         try:
+            # 使用cryptography库加载PEM格式的私钥
+            # encode('utf-8') 将字符串转换为字节串
+            # password=None 表示私钥未加密（不需要密码）
             return cryptography.hazmat.primitives.serialization.load_pem_private_key(
                 pk_str.encode('utf-8'),
                 password=None
             )
         except Exception as e:
+            # 加载失败时抛出ValueError异常，包含详细的错误信息
             raise ValueError(f"私钥格式错误或加载失败: {str(e)}")
+    
+    def _load_public_key(self, pub_key_str: str):
+        """
+        内部函数：处理公钥格式并加载
+        
+        功能说明:
+            将公钥字符串转换为cryptography库可用的公钥对象
+            支持两种输入格式：
+            1. 完整的PEM格式（包含 -----BEGIN PUBLIC KEY----- 头尾）
+            2. 纯Base64编码的密钥内容（自动补全头尾）
+        
+        参数:
+            pub_key_str (str): 公钥字符串
+        
+        返回:
+            公钥对象（cryptography.hazmat.primitives.asymmetric.rsa.RSAPublicKey）
+        
+        异常:
+            ValueError: 当公钥格式错误或加载失败时抛出
+        """
+        # 去除首尾空白字符（空格、换行、制表符等）
+        pub_key_str = pub_key_str.strip()
+        
+        # 检查是否包含PEM格式的头部标识
+        # 如果没有头部，说明是纯Base64字符串，需要补全标准的PEM格式头尾
+        if not pub_key_str.startswith("-----BEGIN"):
+            # 补全PEM格式的头尾
+            # 标准格式：-----BEGIN PUBLIC KEY-----\n{base64内容}\n-----END PUBLIC KEY-----
+            pub_key_str = f"-----BEGIN PUBLIC KEY-----\n{pub_key_str}\n-----END PUBLIC KEY-----"
+        
+        try:
+            # 使用cryptography库加载PEM格式的公钥
+            # encode('utf-8') 将字符串转换为字节串
+            return cryptography.hazmat.primitives.serialization.load_pem_public_key(
+                pub_key_str.encode('utf-8')
+            )
+        except Exception as e:
+            # 加载失败时抛出ValueError异常，包含详细的错误信息
+            raise ValueError(f"公钥格式错误或加载失败: {str(e)}")
         
         
     def generate_sign_string(self, params: dict) -> str:
@@ -3391,6 +3465,101 @@ class RsaSigner:
         sign_b64 = base64.b64encode(signature).decode('utf-8')
 
         return sign_b64
+
+    def verify_sign(self, params: dict, signature: str, hash_algo: str = 'SHA256') -> bool:
+        """
+        验证RSA签名是否有效
+        
+        功能说明:
+            使用公钥验证签名字符串的有效性
+            这是支付回调通知中的核心安全机制，确保通知来自真实的支付平台
+        
+        参数:
+            params (dict): 需要验证的参数字典（包含所有参数，但不包含sign）
+            signature (str): Base64编码的签名字符串（从支付平台返回的sign参数）
+            hash_algo (str): 哈希算法，默认为'SHA256'，也支持'SHA1'
+        
+        返回:
+            bool: 验证成功返回True，验证失败返回False
+        
+        验证流程:
+            1. 使用 _build_string_to_sign() 构建待签名字符串（参数排序、拼接）
+            2. 使用公钥对签名进行解密
+            3. 比对解密后的哈希值与重新计算的哈希值是否一致
+        """
+        try:
+            # 第1步：构建待签名字符串
+            # 按照同样的规则（过滤、排序、拼接）生成原文
+            # 这个原文必须与签名时使用的原文完全一致
+            content = self._build_string_to_sign(params)
+            
+            # 记录日志：输出待验证的原文内容（用于调试）
+            logging.info(f"[RSA验签] 待验证原文: {content}")
+            
+            # 第2步：检查公钥是否已加载
+            # 如果初始化时没有提供公钥，则无法进行验签
+            if not self.public_key:
+                logging.error("[RSA验签] 错误：未加载公钥，无法验证签名")
+                return False
+            
+            # 第3步：处理签名字符串中的空格问题
+            # 问题场景：URL传输时，Base64中的"+"号可能被解码为空格
+            # 解决方案：检测到空格时，尝试替换回"+"号
+            if " " in signature:
+                logging.warning("[RSA验签] 检测到签名中包含空格，尝试替换为'+'（可能是URL解码导致）")
+                signature = signature.replace(" ", "+")
+            
+            # 第4步：Base64解码签名字符串
+            # 将Base64编码的签名字符串解码为原始字节串
+            try:
+                signature_bytes = base64.b64decode(signature)
+            except Exception as e:
+                # Base64解码失败，说明签名字符串格式不正确
+                logging.error(f"[RSA验签] Base64解码失败: {str(e)}")
+                return False
+            
+            # 第5步：选择哈希算法
+            # 根据参数选择SHA256或SHA1哈希算法
+            # 默认使用SHA256（更安全），部分旧系统可能使用SHA1
+            if hash_algo.upper() == 'SHA1':
+                chosen_hash = cryptography.hazmat.primitives.hashes.SHA1()
+            else:
+                chosen_hash = cryptography.hazmat.primitives.hashes.SHA256()
+            
+            # 第6步：执行RSA签名验证
+            # 使用公钥验证签名是否有效
+            # 验证过程：
+            #   1. 使用公钥解密签名（得到哈希值A）
+            #   2. 对原文进行哈希计算（得到哈希值B）
+            #   3. 比较A和B是否相同
+            # 如果验证成功，函数正常返回；如果失败，抛出InvalidSignature异常
+            self.public_key.verify(
+                signature_bytes,                                    # 签名字节串
+                content.encode('utf-8'),                            # 原文字节串
+                cryptography.hazmat.primitives.asymmetric.padding.PKCS1v15(),  # 填充方式
+                chosen_hash                                         # 哈希算法
+            )
+            
+            # 验证成功，记录日志并返回True
+            logging.info("[RSA验签] ✅ 验签通过！签名有效")
+            return True
+            
+        except cryptography.exceptions.InvalidSignature:
+            # 签名无效异常
+            # 原因可能是：
+            #   1. 签名被篡改
+            #   2. 原文被篡改
+            #   3. 使用了错误的公钥
+            #   4. 签名算法不匹配
+            logging.error("[RSA验签] ❌ 验签失败！签名无效")
+            return False
+            
+        except Exception as e:
+            # 其他未预期的异常
+            # 例如：公钥格式错误、加密库内部错误等
+            logging.error(f"[RSA验签] ⚠️ 验签过程发生错误: {str(e)}")
+            logging.error(traceback.format_exc())
+            return False
 
     def generate_sign(self, params: dict) -> str:
         """
@@ -23954,20 +24123,107 @@ def start_web_server(args_param):
             "enable_phone_modification": phone_modification_enabled,
         }
 
-    @app.route("/api/payment/yipay_notify", methods=["POST"])
+    @app.route("/api/payment/yipay_notify", methods=["GET", "POST"])
     def payment_yipay_notify():
         """
         接收彩虹易支付异步通知接口（专用）
+        
+        功能说明:
+            接收并处理易支付平台的支付成功通知
+            支持GET和POST两种请求方式
+            验证签名后更新订单状态
+            
+        请求方式:
+            - GET: 参数在URL查询字符串中
+            - POST: 参数在表单数据中
+            
+        安全机制:
+            - 使用RSA签名验证通知真实性
+            - 验证订单金额是否匹配
+            - 防止重复处理（幂等性）
         """
         try:
             # ========== 获取回调参数 ==========
+            # 优先使用GET参数（易支付V2主要使用GET方式通知）
+            # 兼容POST方式（部分配置或旧版本可能使用POST）
+            # request.args 获取GET参数（URL查询字符串）
             # request.form 获取POST表单数据
-            # .to_dict() 将 ImmutableMultiDict 转换为普通字典
-            # params = request.form.to_dict()
-            params = request.values.to_dict()
+            # request.values 自动合并GET和POST参数（GET优先）
+            if request.args:
+                # 如果存在GET参数，则使用GET参数
+                params = request.args.to_dict()
+                logging.info(f"[支付通知] 使用GET方式接收参数")
+            else:
+                # 否则尝试使用POST参数（兼容模式）
+                params = request.form.to_dict()
+                logging.info(f"[支付通知] 使用POST方式接收参数")
             
             # 记录日志：收到异步通知
             logging.info(f"[支付通知] 收到异步通知 - 参数: {params}")
+            
+            # ========== 检查是否有jump参数（支付完成后跳转）==========
+            # jump参数：支付完成后的跳转地址
+            # 如果存在jump参数，说明这是用户支付完成后的同步返回，需要跳转到指定页面
+            jump_url = params.get("jump", "").strip()
+            if jump_url:
+                # 存在jump参数，返回跳转页面
+                # 使用JavaScript自动跳转，提供更好的用户体验
+                logging.info(f"[支付通知] 检测到jump参数，跳转到: {jump_url}")
+                return f'''
+                <!DOCTYPE html>
+                <html lang="zh-CN">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>支付成功 - 跑步助手</title>
+                    <link rel="icon" href="/favicon.ico">
+                    <style>
+                        body {{
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            min-height: 100vh;
+                            margin: 0;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        }}
+                        .container {{
+                            background: white;
+                            padding: 40px;
+                            border-radius: 16px;
+                            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                            text-align: center;
+                        }}
+                        .icon {{
+                            font-size: 64px;
+                            color: #52c41a;
+                            margin-bottom: 20px;
+                        }}
+                        h1 {{
+                            color: #333;
+                            margin: 0 0 10px 0;
+                            font-size: 24px;
+                        }}
+                        p {{
+                            color: #666;
+                            margin: 0;
+                            font-size: 16px;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="icon">✓</div>
+                        <h1>支付成功</h1>
+                        <p>正在跳转，请稍候...</p>
+                    </div>
+                    <script>
+                        // 立即跳转到指定页面
+                        window.location.href = "{jump_url}";
+                    </script>
+                </body>
+                </html>
+                '''
             
             # ========== 处理空参数情况 ==========
             # 有些情况下，用户支付完成后直接访问notify_url，此时没有参数
@@ -24219,34 +24475,45 @@ def start_web_server(args_param):
                 
                 return "fail"  # 返回 fail，易支付会继续重试通知
             
-            # 使用RSA签名验证（商户密钥也是RSA加密）
+            # ========== 使用RSA签名验证（正确的验签方式）==========
+            # 重要说明：
+            #   - 签名验证是支付回调的核心安全机制
+            #   - 必须使用平台公钥验证签名，而不是重新生成签名比对
+            #   - 验证流程：平台使用私钥签名 -> 我们使用公钥验签
             if pubc_key:
                 logging.info(f"[支付通知] 开始进行RSA签名验证")
                 
                 try:
                     # 创建RSA签名验证器
-                    # 注意：RsaSigner类原本用于签名，这里我们需要用它来生成期望的签名字符串
-                    # 然后与回调中的签名进行比对
-                    signer = RsaSigner(pubc_key)
+                    # 注意：这里必须传入public_key_str参数（平台公钥）
+                    # 不需要传入private_key_str，因为我们只做验签不做签名
+                    signer = RsaSigner(public_key_str=pubc_key)
                     
-                    # 生成期望的签名字符串
-                    # 将参数按照易支付的规则排序并拼接，然后计算签名
-                    expected_sign = signer.generate_sign_string(params)
+                    # 从params中提取签名字符串
+                    # sign参数是平台使用私钥对参数进行签名后的结果（Base64编码）
+                    signature = params.get("sign", "")
                     
-                    # 获取回调中的实际签名
-                    actual_sign = params.get("sign", "")
+                    # 调用 verify_sign() 方法验证签名
+                    # 该方法会：
+                    #   1. 按规则构建待验签字符串（排序、拼接）
+                    #   2. 使用公钥对签名进行解密
+                    #   3. 比对哈希值是否匹配
+                    # 返回True表示签名有效，False表示签名无效
+                    signature_valid = signer.verify_sign(params, signature)
                     
-                    # 比较签名是否一致
-                    if expected_sign == actual_sign:
-                        signature_valid = True
-                        logging.info(f"[支付通知] RSA签名验证成功")
+                    if signature_valid:
+                        # 签名验证成功
+                        logging.info(f"[支付通知] ✅ RSA签名验证成功")
                     else:
-                        logging.error(f"[支付通知] RSA签名验证失败 - 期望: {expected_sign[:50]}..., 实际: {actual_sign[:50]}...")
+                        # 签名验证失败
+                        logging.error(f"[支付通知] ❌ RSA签名验证失败")
                         
                 except Exception as e:
                     # RSA签名验证过程中出现异常
-                    logging.error(f"[支付通知] RSA签名验证异常: {str(e)}")
+                    # 可能原因：公钥格式错误、签名格式错误、加密库内部错误等
+                    logging.error(f"[支付通知] ⚠️ RSA签名验证异常: {str(e)}")
                     logging.error(traceback.format_exc())
+                    signature_valid = False
             
             # 如果签名验证失败
             if not signature_valid:
@@ -28019,6 +28286,413 @@ def start_web_server(args_param):
                 "success": False,  # 标识请求失败
                 "message": "读取配置失败"  # 错误提示信息
             }), 500
+
+    @app.route("/api/payment/refund", methods=["POST"])
+    @login_required
+    @admin_required
+    def payment_refund():
+        """
+        处理退款请求接口
+        
+        功能说明:
+            管理员专用接口，用于处理订单退款请求
+            支持全额退款和部分退款
+            退款成功后会更新订单状态并记录退款记录
+        
+        请求参数:
+            - trade_no (str): 商户订单号（必填）
+            - refund_amount (float): 退款金额（必填，必须大于0）
+            - refund_no (str): 商户退款单号（可选，不提供则自动生成）
+            - reason (str): 退款原因（可选）
+        
+        返回结果:
+            成功: {"success": True, "refund_no": "...", "out_refund_no": "...", ...}
+            失败: {"success": False, "message": "错误信息"}
+        """
+        try:
+            # ========== 第1步：获取并验证请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            # request.get_json() 解析POST请求的JSON数据
+            # 如果解析失败或没有数据，返回空字典 {}
+            data = request.get_json() or {}
+            
+            # 提取退款参数
+            # trade_no: 商户订单号（系统生成的订单号，格式：ORDERyyyymmddHHMMSSxxxxxx）
+            trade_no = str(data.get("trade_no", "")).strip()
+            
+            # refund_amount: 退款金额（支持字符串或数字，会统一转换为字符串处理）
+            refund_amount = str(data.get("refund_amount", "")).strip()
+            
+            # refund_no: 商户退款单号（可选，如果不提供则自动生成）
+            refund_no = str(data.get("refund_no", "")).strip() or None
+            
+            # reason: 退款原因（可选，用于记录退款说明）
+            reason = str(data.get("reason", "")).strip() or "管理员发起退款"
+            
+            # 记录日志：收到退款请求
+            logging.info(f"[退款请求] 管理员 {g.user} 发起退款 - 订单号: {trade_no}, 金额: {refund_amount}")
+            
+            # ========== 第2步：验证必填参数 ==========
+            
+            # 验证订单号是否为空
+            if not trade_no:
+                logging.warning(f"[退款请求] 参数错误：订单号为空")
+                return jsonify({
+                    "success": False,
+                    "message": "订单号不能为空"
+                })
+            
+            # 验证退款金额是否为空
+            if not refund_amount:
+                logging.warning(f"[退款请求] 参数错误：退款金额为空")
+                return jsonify({
+                    "success": False,
+                    "message": "退款金额不能为空"
+                })
+            
+            # ========== 第3步：验证退款金额格式和范围 ==========
+            
+            try:
+                # 将退款金额转换为浮点数
+                # 使用 round() 保留2位小数，避免浮点数精度问题
+                refund_amount_float = round(float(refund_amount), 2)
+                
+                # 验证退款金额必须大于0
+                if refund_amount_float <= 0:
+                    logging.warning(f"[退款请求] 参数错误：退款金额必须大于0 - {refund_amount_float}")
+                    return jsonify({
+                        "success": False,
+                        "message": "退款金额必须大于0"
+                    })
+                    
+            except ValueError:
+                # 金额格式错误（例如：输入了非数字字符）
+                logging.warning(f"[退款请求] 参数错误：退款金额格式不正确 - {refund_amount}")
+                return jsonify({
+                    "success": False,
+                    "message": "退款金额格式不正确"
+                })
+            
+            # ========== 第4步：读取订单信息 ==========
+            
+            # 构造订单文件路径
+            # 订单文件存储在 payment_orders 目录下，文件名为：{订单号}.json
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{trade_no}.json")
+            
+            # 检查订单文件是否存在
+            if not os.path.exists(order_file):
+                logging.error(f"[退款请求] 订单不存在 - 订单号: {trade_no}")
+                return jsonify({
+                    "success": False,
+                    "message": f"订单不存在：{trade_no}"
+                })
+            
+            # 读取订单数据
+            # 使用 UTF-8 编码读取JSON文件
+            with open(order_file, "r", encoding="utf-8") as f:
+                order_data = json.load(f)
+            
+            # ========== 第5步：验证订单状态 ==========
+            
+            # 获取订单当前状态
+            order_status = order_data.get("status", "")
+            
+            # 只有"已支付"状态的订单才能退款
+            # 如果订单状态是pending（待支付）或failed（失败），不允许退款
+            if order_status != "paid" and not order_status.startswith("refunded_"):
+                logging.error(f"[退款请求] 订单状态不允许退款 - 订单号: {trade_no}, 状态: {order_status}")
+                return jsonify({
+                    "success": False,
+                    "message": f"订单状态不允许退款，当前状态：{order_status}"
+                })
+            
+            # ========== 第6步：验证退款金额不超过可退金额 ==========
+            
+            # 获取订单金额
+            order_amount = round(float(order_data.get("amount", "0")), 2)
+            
+            # 计算已退款总额
+            # refund_records 是一个数组，记录了所有的退款记录
+            # 每条记录包含：refund_amount（退款金额）、refund_time（退款时间）等
+            refund_records = order_data.get("refund_records", [])
+            total_refunded = sum(round(float(record.get("refund_amount", 0)), 2) for record in refund_records)
+            
+            # 计算剩余可退金额
+            remaining_amount = round(order_amount - total_refunded, 2)
+            
+            # 验证退款金额不能超过剩余可退金额
+            if refund_amount_float > remaining_amount:
+                logging.error(
+                    f"[退款请求] 退款金额超过可退金额 - "
+                    f"订单号: {trade_no}, "
+                    f"订单金额: {order_amount}, "
+                    f"已退金额: {total_refunded}, "
+                    f"剩余可退: {remaining_amount}, "
+                    f"本次退款: {refund_amount_float}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": f"退款金额不能超过剩余可退金额 {remaining_amount} 元"
+                })
+            
+            # ========== 第7步：生成退款单号（如果未提供）==========
+            
+            # 如果前端没有提供退款单号，则自动生成
+            # 格式：REFUND + 年月日时分秒 + 6位随机数
+            # 例如：REFUND20231215143025123456
+            if not refund_no:
+                # 生成时间戳部分：年月日时分秒（14位）
+                timestamp_part = time.strftime("%Y%m%d%H%M%S")
+                
+                # 生成随机数部分：6位随机数
+                random_part = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+                
+                # 组合成完整的退款单号
+                refund_no = f"REFUND{timestamp_part}{random_part}"
+                
+                logging.info(f"[退款请求] 自动生成退款单号: {refund_no}")
+            
+            # ========== 第8步：读取配置并准备调用退款API ==========
+            
+            # 读取配置文件
+            # 配置文件包含易支付平台的商户信息（host, pid, key等）
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 从配置文件读取易支付平台配置
+            yipay_host = config.get("Rainbow_YiPay", "host", fallback="")
+            yipay_pid = config.get("Rainbow_YiPay", "pid", fallback="")
+            yipay_key = config.get("Rainbow_YiPay", "key", fallback="")
+            
+            # 验证配置是否完整
+            if not yipay_host or not yipay_pid or not yipay_key:
+                logging.error("[退款请求] 易支付配置不完整")
+                return jsonify({
+                    "success": False,
+                    "message": "易支付配置不完整，请联系管理员"
+                })
+            
+            # 从订单数据中获取平台订单号（易支付的订单号）
+            # 这个订单号是调用易支付创建订单接口时返回的trade_no
+            platform_trade_no = order_data.get("trade_no", "")
+            
+            # 验证平台订单号是否存在
+            if not platform_trade_no:
+                logging.error(f"[退款请求] 订单数据中缺少平台订单号 - 订单号: {trade_no}")
+                return jsonify({
+                    "success": False,
+                    "message": "订单数据异常，缺少平台订单号"
+                })
+            
+            # ========== 第9步：构造退款请求参数 ==========
+            
+            # 构造退款API请求参数
+            # 参考易支付退款接口文档
+            refund_params = {
+                "pid": yipay_pid,                        # 商户ID
+                "trade_no": platform_trade_no,           # 平台订单号（易支付的订单号）
+                "out_trade_no": trade_no,                # 商户订单号（我们系统的订单号）
+                "money": str(refund_amount_float),       # 退款金额（必须是字符串格式）
+                "out_refund_no": refund_no,              # 商户退款单号
+                "timestamp": str(int(time.time()))       # 当前时间戳（秒级）
+            }
+            
+            # 记录日志：输出退款请求参数（不含签名）
+            logging.info(f"[退款请求] 退款参数（签名前）: {refund_params}")
+            
+            # ========== 第10步：生成签名 ==========
+            
+            # 创建RSA签名器
+            # 使用商户私钥对退款参数进行签名
+            signer = RsaSigner(private_key_str=yipay_key)
+            
+            # 调用 generate_sign() 方法生成签名
+            # 该方法会：
+            #   1. 按规则过滤、排序、拼接参数
+            #   2. 使用私钥生成RSA签名
+            #   3. 将签名添加到参数字典中
+            signed_params = signer.generate_sign(refund_params)
+            
+            # 记录日志：输出签名后的参数（包含sign和sign_type）
+            logging.info(f"[退款请求] 退款参数（签名后）: {signed_params}")
+            
+            # ========== 第11步：调用易支付退款API ==========
+            
+            # 构造退款API的完整URL
+            # 易支付退款接口路径：/api/pay/refund
+            refund_api_url = f"{yipay_host}/api/pay/refund"
+            
+            # 记录日志：准备发起HTTP请求
+            logging.info(f"[退款请求] 正在调用退款API: {refund_api_url}")
+            
+            # 发起POST请求到易支付退款接口
+            # 使用 requests.post() 发送HTTP POST请求
+            # data 参数传递表单数据（application/x-www-form-urlencoded格式）
+            # timeout 设置超时时间为30秒
+            response = requests.post(
+                refund_api_url,
+                data=signed_params,
+                timeout=30
+            )
+            
+            # 记录日志：收到API响应
+            logging.info(f"[退款请求] API响应状态码: {response.status_code}")
+            logging.info(f"[退款请求] API响应内容: {response.text}")
+            
+            # ========== 第12步：解析退款响应 ==========
+            
+            # 验证HTTP响应状态码
+            # 200表示请求成功，其他状态码表示HTTP层面的错误
+            if response.status_code != 200:
+                logging.error(f"[退款请求] API请求失败 - 状态码: {response.status_code}")
+                return jsonify({
+                    "success": False,
+                    "message": f"退款API请求失败，状态码：{response.status_code}"
+                })
+            
+            # 解析JSON响应
+            try:
+                # 将响应内容解析为JSON对象
+                refund_result = response.json()
+            except Exception as e:
+                # JSON解析失败
+                logging.error(f"[退款请求] API响应JSON解析失败: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "message": "退款API响应格式错误"
+                })
+            
+            # 检查业务层面的返回码
+            # code=0 表示退款成功
+            # code!=0 表示退款失败（例如：余额不足、订单状态错误等）
+            result_code = refund_result.get("code", -1)
+            result_msg = refund_result.get("msg", "未知错误")
+            
+            # ========== 第13步：处理退款结果 ==========
+            
+            if result_code == 0:
+                # ========== 退款成功：更新订单数据 ==========
+                
+                logging.info(f"[退款请求] 退款成功 - 订单号: {trade_no}, 退款单号: {refund_no}")
+                
+                # 获取平台退款单号（易支付返回的退款单号）
+                platform_refund_no = refund_result.get("refund_no", refund_no)
+                
+                # 构造退款记录
+                # 将本次退款的详细信息记录到订单的refund_records数组中
+                refund_record = {
+                    "out_refund_no": refund_no,                              # 商户退款单号
+                    "refund_no": platform_refund_no,                         # 平台退款单号
+                    "refund_amount": refund_amount_float,                    # 退款金额
+                    "reason": reason,                                        # 退款原因
+                    "refund_time": time.strftime("%Y-%m-%d %H:%M:%S"),      # 退款时间（可读格式）
+                    "refund_timestamp": time.time(),                         # 退款时间戳
+                    "operator": g.user,                                      # 操作员（管理员用户名）
+                    "api_response": refund_result                            # 完整的API响应（用于调试）
+                }
+                
+                # 将退款记录添加到订单的refund_records数组
+                # 如果数组不存在，则初始化为空数组
+                if "refund_records" not in order_data:
+                    order_data["refund_records"] = []
+                order_data["refund_records"].append(refund_record)
+                
+                # 重新计算已退款总额（包含本次退款）
+                total_refunded_new = total_refunded + refund_amount_float
+                
+                # 更新订单状态
+                # 如果退款金额 >= 订单金额，则状态改为"已全额退款"
+                # 否则状态改为"已部分退款"
+                if total_refunded_new >= order_amount:
+                    order_data["status"] = "refunded_full"      # 已全额退款
+                    logging.info(f"[退款请求] 订单状态更新为：已全额退款")
+                else:
+                    order_data["status"] = "refunded_partial"   # 已部分退款
+                    logging.info(f"[退款请求] 订单状态更新为：已部分退款")
+                
+                # 保存更新后的订单数据到文件
+                # 使用 indent=2 格式化输出，便于人工查看
+                # ensure_ascii=False 保留中文字符
+                with open(order_file, "w", encoding="utf-8") as f:
+                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                # ========== 记录退款日志 ==========
+                
+                # 写入支付操作日志
+                # 这是独立于订单文件的详细操作日志，用于审计和调试
+                _write_payment_log(
+                    user_id=g.user,                  # 操作员
+                    order_id=trade_no,               # 订单号
+                    action="refund",                 # 操作类型：退款
+                    log_data={
+                        "refund_no": refund_no,                      # 商户退款单号
+                        "platform_refund_no": platform_refund_no,    # 平台退款单号
+                        "refund_amount": refund_amount_float,        # 退款金额
+                        "reason": reason,                            # 退款原因
+                        "order_amount": order_amount,                # 订单金额
+                        "total_refunded": total_refunded_new,        # 已退款总额
+                        "remaining_amount": order_amount - total_refunded_new,  # 剩余金额
+                        "new_status": order_data["status"],          # 更新后的订单状态
+                        "success": True,
+                        "api_response": refund_result
+                    }
+                )
+                
+                # 返回成功响应给前端
+                return jsonify({
+                    "success": True,
+                    "refund_no": platform_refund_no,         # 平台退款单号
+                    "out_refund_no": refund_no,              # 商户退款单号
+                    "trade_no": platform_trade_no,           # 平台订单号
+                    "refund_amount": refund_amount_float,    # 退款金额
+                    "message": "退款成功"
+                })
+                
+            else:
+                # ========== 退款失败：记录日志并返回错误 ==========
+                
+                logging.error(
+                    f"[退款请求] 退款失败 - "
+                    f"订单号: {trade_no}, "
+                    f"错误码: {result_code}, "
+                    f"错误信息: {result_msg}"
+                )
+                
+                # 写入失败日志
+                _write_payment_log(
+                    user_id=g.user,
+                    order_id=trade_no,
+                    action="refund_failed",
+                    log_data={
+                        "refund_no": refund_no,
+                        "refund_amount": refund_amount_float,
+                        "reason": reason,
+                        "error_code": result_code,
+                        "error_message": result_msg,
+                        "success": False,
+                        "api_response": refund_result
+                    }
+                )
+                
+                # 返回失败响应给前端
+                return jsonify({
+                    "success": False,
+                    "message": f"退款失败：{result_msg}"
+                })
+                
+        except Exception as e:
+            # ========== 异常处理：捕获所有未预期的异常 ==========
+            
+            # 记录详细的异常信息（包含堆栈跟踪）
+            logging.error(f"[退款请求] 处理退款请求时发生异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            
+            # 返回通用错误响应
+            return jsonify({
+                "success": False,
+                "message": f"退款处理异常：{str(e)}"
+            })
 
     @app.route("/api/payment/create", methods=["POST"])
     @login_required
