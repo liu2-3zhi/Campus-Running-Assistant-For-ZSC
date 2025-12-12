@@ -3608,6 +3608,22 @@ class RainbowYiPayClient:
         if return_url is None:
             return_url = notify_url
             
+        def is_yipay_notify(url):
+            # 1. 预处理：如果 URL 不包含协议头（://），临时加上 http:// 以便解析
+            if "://" not in url:
+                url = "http://" + url
+                
+            # 2. 解析 URL
+            parsed_url = urlparse(url)
+            
+            # 3. 获取路径部分 (path) 并进行比对
+            # parsed_url.path 会自动去除 ? 后面的参数
+            return parsed_url.path == "/api/payment/yipay_notify"
+            
+        if not is_yipay_notify(return_url):
+            logging.info("[彩虹易支付] return_url 不是 /api/payment/yipay_notify，正在尝试修正...")
+            return_url = parsed_url.path == "/api/payment/yipay_notify?jump=" + return_url
+            
         if device_get in ["pc","mobile","qq","wechat","alipay"]:
             device=device_get
         else:
@@ -17096,7 +17112,7 @@ def start_web_server(args_param):
         全局IP封禁检查拦截器
         """
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = request.REMOTE_ADDR
+        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
         if (
             request.path.startswith("/static/")
             or request.path.startswith("/css/")
@@ -17380,7 +17396,7 @@ def start_web_server(args_param):
                             }
 
                         # 使用统一函数获取客户端真实IP（任务2）
-                        ip_address = request.REMOTE_ADDR
+                        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
                         index_data["files"][filename] = {
                             "username": "Guest",
                             "upload_time": time.time(),
@@ -17481,7 +17497,7 @@ def start_web_server(args_param):
 
         session_id = request.headers.get("X-Session-ID", "")
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.REMOTE_ADDR or ""
+        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr or ""
         user_agent = request.headers.get("User-Agent", "")
         auth_result = None
         target_username = None
@@ -18142,7 +18158,7 @@ def start_web_server(args_param):
 
                 auth_system._save_permissions()
                 # 使用统一函数获取客户端真实IP（任务2）
-                ip_address = request.REMOTE_ADDR
+                ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
                 auth_system.log_audit(
                     auth_username,
                     "set_user_permissions_batch",
@@ -18177,7 +18193,7 @@ def start_web_server(args_param):
                     auth_system._save_permissions()
 
                     # 使用统一函数获取客户端真实IP（任务2）
-                    ip_address = request.REMOTE_ADDR
+                    ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
                     auth_system.log_audit(
                         auth_username,
                         "set_user_permissions_batch",
@@ -18199,7 +18215,7 @@ def start_web_server(args_param):
             )
 
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "set_user_permission",
@@ -18570,7 +18586,7 @@ def start_web_server(args_param):
         result = auth_system.register_user(new_username, password, group)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
 
             # 如果提供了手机号，绑定到新用户
             if phone:
@@ -18615,7 +18631,7 @@ def start_web_server(args_param):
         result = auth_system.ban_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "ban_user",
@@ -18644,7 +18660,7 @@ def start_web_server(args_param):
         result = auth_system.unban_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "unban_user",
@@ -18675,7 +18691,7 @@ def start_web_server(args_param):
         result = auth_system.delete_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "delete_user",
@@ -18716,7 +18732,7 @@ def start_web_server(args_param):
 
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "force_disable_2fa",
@@ -18793,7 +18809,7 @@ def start_web_server(args_param):
 
         # 5. 记录审计日志
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.REMOTE_ADDR
+        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
             auth_username,
             "force_logout_user",
@@ -18835,7 +18851,7 @@ def start_web_server(args_param):
         result = auth_system.reset_user_password(target_username, new_password)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "force_reset_password",
@@ -18879,7 +18895,7 @@ def start_web_server(args_param):
             with open(user_file_path, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "update_basic_info",
@@ -18941,7 +18957,7 @@ def start_web_server(args_param):
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "admin_update_nickname",
@@ -19033,7 +19049,7 @@ def start_web_server(args_param):
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "admin_update_phone",
@@ -19738,7 +19754,7 @@ def start_web_server(args_param):
                         "files": {},
                     }
                 # 使用统一函数获取客户端真实IP（任务2）
-                ip_address = request.REMOTE_ADDR
+                ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
                 index_data["files"][filename] = {
                     "username": auth_username,
                     "upload_time": time.time(),
@@ -19917,7 +19933,7 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"清除头像文件时出错: {e}", exc_info=True)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "clear_user_avatar",
@@ -20173,7 +20189,7 @@ def start_web_server(args_param):
 
         result = auth_system.update_max_sessions(target_username, max_sessions)
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.REMOTE_ADDR
+        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
             auth_username,
             "update_max_sessions",
@@ -20267,7 +20283,7 @@ def start_web_server(args_param):
         
         # 步骤10：记录审计日志 - 记录管理员的操作行为，便于追溯
         # 获取客户端真实IP地址
-        ip_address = request.REMOTE_ADDR
+        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
             auth_username,  # 操作者（管理员）
             "update_available_runs",  # 操作类型
@@ -20527,7 +20543,7 @@ def start_web_server(args_param):
                 cleanup_thread.start()
             auth_system.link_session_to_user(auth_username, new_session_id)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             audit_details = f"创建新会话持久化文件，会话ID: {new_session_id}"
             if cleanup_message:
                 audit_details += f"; {cleanup_message}"
@@ -20771,7 +20787,7 @@ def start_web_server(args_param):
             if target_session_id in web_sessions:
                 del web_sessions[target_session_id]
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.REMOTE_ADDR
+        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
             auth_username,
             "destroy_session",
@@ -20854,7 +20870,7 @@ def start_web_server(args_param):
                         "retry_after": remaining_seconds,
                     }
                 )
-            client_ip = request.REMOTE_ADDR
+            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
             current_date = time.strftime("%Y-%m-%d")
             ip_limit_key = f"sms_ip_{client_ip}_{current_date}"
             ip_count = cache.get(ip_limit_key, 0)
@@ -21145,11 +21161,11 @@ def start_web_server(args_param):
                 "content": content,
                 
                 # 短信宝平台服务器的IP地址
-                # request.REMOTE_ADDR 获取发起HTTP请求的客户端IP
+                # request.environ.get("REMOTE_ADDR") or request.remote_addr 获取发起HTTP请求的客户端IP
                 # 记录IP地址的目的：
                 # - 安全审计：验证请求确实来自短信宝平台的官方服务器
                 # - 问题排查：如果出现异常请求，可以通过IP追溯来源
-                "ip": request.REMOTE_ADDR,
+                "ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
             }
 
             # ========== 第六步：持久化到文件 ==========
@@ -21314,7 +21330,7 @@ def start_web_server(args_param):
                         log_dir = LOGIN_LOGS_DIR
                         os.makedirs(log_dir, exist_ok=True)
 
-                        client_ip = request.REMOTE_ADDR
+                        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
                         history_entry = {
                             "username": f"{current_user}(测试)",
                             "phone": phone,
@@ -22109,7 +22125,7 @@ def start_web_server(args_param):
             
             _write_config_with_comments(config, CONFIG_FILE)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 g.user,
                 "update_system_config",
@@ -22137,7 +22153,7 @@ def start_web_server(args_param):
             # 获取公共信息
             session_id = request.headers.get("X-Session-ID", "UnknownSession")
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             username = "Guest/Unknown"
 
             # 查找用户信息（只查一次锁）
@@ -22192,7 +22208,7 @@ def start_web_server(args_param):
         except Exception as e:
             session_id_err = request.headers.get("X-Session-ID", "UnknownSession")
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address_err = request.REMOTE_ADDR
+            ip_address_err = request.environ.get("REMOTE_ADDR") or request.remote_addr
             logging.error(
                 f"[前端日志处理错误][IP:{ip_address_err}][Sess:{session_id_err[:8]}] {e}",
                 exc_info=True,
@@ -22525,7 +22541,7 @@ def start_web_server(args_param):
             del sms_verification_codes[new_phone]
 
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.REMOTE_ADDR
+            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
             # 记录审计日志
             auth_system.log_audit(
                 current_username,
@@ -22674,7 +22690,7 @@ def start_web_server(args_param):
             }), 403
         
         try:
-            client_ip = request.REMOTE_ADDR
+            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
             data = request.get_json() or {}
             scope = data.get("scope", "all")
             is_banned = check_ip_ban(client_ip, scope=scope)
@@ -23167,7 +23183,7 @@ def start_web_server(args_param):
                     else None
                 )
                 # 使用统一函数获取客户端真实IP（任务2）
-                client_ip = request.REMOTE_ADDR
+                client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
                 content = f"管理员 {g.user} 手动添加的验证码: {code}，{code_expire_minutes}分钟内有效。"
 
                 history_entry = {
@@ -23938,6 +23954,667 @@ def start_web_server(args_param):
             "enable_phone_modification": phone_modification_enabled,
         }
 
+    @app.route("/api/payment/yipay_notify", methods=["POST"])
+    def payment_yipay_notify():
+        """
+        接收彩虹易支付异步通知接口（专用）
+        """
+        try:
+            # ========== 获取回调参数 ==========
+            # request.form 获取POST表单数据
+            # .to_dict() 将 ImmutableMultiDict 转换为普通字典
+            # params = request.form.to_dict()
+            params = request.values.to_dict()
+            
+            # 记录日志：收到异步通知
+            logging.info(f"[支付通知] 收到异步通知 - 参数: {params}")
+            
+            # ========== 处理空参数情况 ==========
+            # 有些情况下，用户支付完成后直接访问notify_url，此时没有参数
+            # 这种情况下，我们需要返回一个友好的HTML页面提示用户支付成功
+            if len(params) == 0 or (len(params) <= 2 and not params.get("out_trade_no")):
+                # 参数为空或只有极少参数（可能只有session等），且没有订单号
+                # 说明这是用户直接访问了notify_url，而不是支付平台的回调
+                logging.info(f"[支付通知] 检测到空参数访问，返回友好提示页面")
+                
+                # 返回一个简洁的HTML页面，提示用户支付成功
+                # 这个页面会在3秒后自动关闭或跳转
+                html_response = """
+                <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>跑步助手</title>
+    <link rel="icon" href="/favicon.ico">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+
+        .container {
+            background: white;
+            padding: 40px 30px;
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .icon-circle {
+            width: 70px;
+            height: 70px;
+            background-color: #f6ffed;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px auto;
+            border: 2px solid #b7eb8f;
+        }
+
+        .success-svg {
+            width: 40px;
+            height: 40px;
+            fill: #52c41a;
+        }
+
+        h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        p {
+            color: #666;
+            margin: 10px 0 25px 0;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .btn {
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-close {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 10px rgba(118, 75, 162, 0.3);
+        }
+
+        .btn-close:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(118, 75, 162, 0.4);
+        }
+
+        /* 新增：返回首页按钮（作为关闭失败的备选） */
+        .btn-home {
+            background-color: #f0f2f5;
+            color: #666;
+        }
+        
+        .btn-home:hover {
+            background-color: #e6e8eb;
+            color: #333;
+        }
+
+        .countdown-text {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #999;
+            height: 20px; /* 占位防止抖动 */
+        }
+        
+        /* 针对关闭失败时的提示样式 */
+        .close-failed-tip {
+            color: #faad14;
+            display: none;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon-circle">
+            <svg class="success-svg" viewBox="0 0 24 24">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
+        </div>
+
+        <h1>支付成功</h1>
+        <p id="msg-content">您已成功开通服务<br>窗口将在 <span id="countdown" style="color:#667eea;font-weight:bold;">3</span> 秒后关闭</p>
+        
+        <p class="close-failed-tip" id="fail-tip">浏览器限制自动关闭，请点击下方按钮</p>
+
+        <div class="btn-group">
+            <a href="/" class="btn btn-home">返回首页</a>
+            <button class="btn btn-close" onclick="attemptClose()">关闭窗口</button>
+        </div>
+    </div>
+
+    <script>
+        var count = 3;
+        var countdownEl = document.getElementById('countdown');
+        var msgContent = document.getElementById('msg-content');
+        var failTip = document.getElementById('fail-tip');
+        var timer;
+
+        // 核心关闭逻辑：尝试多种方式
+        function attemptClose() {
+            // 1. 针对微信/支付宝/百度等App内置浏览器
+            if (typeof WeixinJSBridge !== "undefined") {
+                WeixinJSBridge.call('closeWindow');
+                return;
+            }
+            if (typeof AlipayJSBridge !== "undefined") {
+                AlipayJSBridge.call('closeWebview');
+                return;
+            }
+
+            // 2. 针对普通浏览器的 Hack 尝试 (Chrome/Edge 可能会拦截，但在某些弹窗模式下有效)
+            try {
+                window.opener = null;
+                window.open('', '_self');
+                window.close();
+            } catch (e) {
+                console.log("Close failed");
+            }
+
+            // 3. 检测是否真的关闭了
+            setTimeout(function() {
+                // 如果代码还在运行，说明窗口没关掉
+                handleCloseFail();
+            }, 200);
+        }
+
+        // 处理关闭失败的情况：优化UI体验
+        function handleCloseFail() {
+            if (timer) clearInterval(timer);
+            
+            // 修改提示语，不再显示倒计时，而是引导用户
+            failTip.style.display = 'block';
+            msgContent.innerHTML = "您已完成支付";
+            
+            // 可以在这里选择自动跳转回首页（可选，去掉注释即可启用）
+            // window.location.href = "/"; 
+        }
+
+        // 启动倒计时
+        timer = setInterval(function() {
+            count--;
+            if (countdownEl) countdownEl.textContent = count;
+
+            if (count <= 0) {
+                clearInterval(timer);
+                attemptClose();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
+                """
+                return html_response
+            
+            # ========== 验证签名 ==========
+            
+            # 读取配置文件以获取密钥和公钥信息
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 获取平台公钥（用于RSA签名验证）
+            pubc_key = config.get("Rainbow_YiPay", "pubc_key", fallback="").strip()
+            
+            # 标记签名是否验证通过
+            signature_valid = False
+            
+            # 如果没有配置平台公钥，无法进行签名验证
+            if not pubc_key:
+                logging.error(f"[支付通知] 未配置平台公钥，无法验证签名")
+                
+                # ========== 写入支付操作日志（未配置公钥） ==========
+                
+                # 记录这个配置缺失的安全事件
+                _write_payment_log(
+                    user_id="system",                           # 系统记录
+                    order_id=params.get("out_trade_no", "unknown"),  # 订单号（可能为空）
+                    action="payment_notify_no_public_key",      # 操作类型：未配置公钥
+                    log_data={
+                        # 通知参数
+                        "notify_params": params,                # 完整的通知参数
+                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,       # 通知来源IP
+                        # 安全信息
+                        "security_event": "public_key_not_configured",  # 安全事件类型
+                        "risk_level": "high",                   # 风险级别：高
+                        # 操作结果
+                        "success": False,
+                        "message": "未配置平台公钥，无法验证签名"
+                    }
+                )
+                
+                return "fail"  # 返回 fail，易支付会继续重试通知
+            
+            # 使用RSA签名验证（商户密钥也是RSA加密）
+            if pubc_key:
+                logging.info(f"[支付通知] 开始进行RSA签名验证")
+                
+                try:
+                    # 创建RSA签名验证器
+                    # 注意：RsaSigner类原本用于签名，这里我们需要用它来生成期望的签名字符串
+                    # 然后与回调中的签名进行比对
+                    signer = RsaSigner(pubc_key)
+                    
+                    # 生成期望的签名字符串
+                    # 将参数按照易支付的规则排序并拼接，然后计算签名
+                    expected_sign = signer.generate_sign_string(params)
+                    
+                    # 获取回调中的实际签名
+                    actual_sign = params.get("sign", "")
+                    
+                    # 比较签名是否一致
+                    if expected_sign == actual_sign:
+                        signature_valid = True
+                        logging.info(f"[支付通知] RSA签名验证成功")
+                    else:
+                        logging.error(f"[支付通知] RSA签名验证失败 - 期望: {expected_sign[:50]}..., 实际: {actual_sign[:50]}...")
+                        
+                except Exception as e:
+                    # RSA签名验证过程中出现异常
+                    logging.error(f"[支付通知] RSA签名验证异常: {str(e)}")
+                    logging.error(traceback.format_exc())
+            
+            # 如果签名验证失败
+            if not signature_valid:
+                # 签名验证失败，可能是伪造的通知或RSA验证出错
+                logging.error(f"[支付通知] RSA签名验证失败 - 参数: {params}")
+                
+                # ========== 写入支付操作日志（签名验证失败） ==========
+                
+                # 这是严重的安全事件，必须记录
+                _write_payment_log(
+                    user_id="system",                           # 系统记录
+                    order_id=params.get("out_trade_no", "unknown"),  # 订单号（可能为空）
+                    action="payment_notify_signature_failed",   # 操作类型：签名验证失败
+                    log_data={
+                        # 通知参数
+                        "notify_params": params,                # 完整的通知参数
+                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,       # 通知来源IP
+                        # 安全信息
+                        "security_event": "signature_verification_failed",  # 安全事件类型
+                        "risk_level": "high",                   # 风险级别：高
+                        # 操作结果
+                        "success": False,
+                        "message": "RSA签名验证失败，可能是伪造的支付通知"
+                    }
+                )
+                
+                return "fail"  # 返回 fail，易支付会继续重试通知
+            
+            # ========== 提取关键参数 ==========
+            
+            # 商户订单号
+            out_trade_no = params.get("out_trade_no", "")
+            
+            # 易支付订单号
+            trade_no = params.get("trade_no", "")
+            
+            # 支付状态（TRADE_SUCCESS 表示支付成功）
+            trade_status = params.get("trade_status", "")
+            
+            # 实际支付金额
+            money = params.get("money", "")
+            
+            # 验证必要参数是否存在
+            if not out_trade_no or not trade_status:
+                logging.error(f"[支付通知] 缺少必要参数 - 参数: {params}")
+                return "fail"
+            
+            # ========== 读取订单信息 ==========
+            
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+            
+            # 检查订单是否存在
+            if not os.path.exists(order_file):
+                logging.error(f"[支付通知] 订单不存在 - 订单号: {out_trade_no}")
+                return "fail"
+            
+            # 读取订单数据
+            with open(order_file, "r", encoding="utf-8") as f:
+                order_data = json.load(f)
+            
+            # ========== 验证订单金额 ==========
+            # 防止支付金额与订单金额不一致的情况
+            
+            try:
+                # 将字符串金额转换为浮点数进行比较
+                # round() 函数保留2位小数，避免浮点数精度问题
+                paid_amount = round(float(money), 2)
+                order_amount = round(float(order_data.get("amount", "0")), 2)
+                
+                # 比较金额是否一致
+                if paid_amount != order_amount:
+                    # 金额不一致，记录错误日志
+                    logging.error(
+                        f"[支付通知] 金额不一致 - 订单: {out_trade_no}, "
+                        f"订单金额: {order_amount}, 支付金额: {paid_amount}"
+                    )
+                    return "fail"
+            except ValueError:
+                # 金额格式错误
+                logging.error(f"[支付通知] 金额格式错误 - 订单: {out_trade_no}, 金额: {money}")
+                return "fail"
+            
+            # ========== 处理支付成功通知 ==========
+            
+            if trade_status == "TRADE_SUCCESS":
+                # ========== 检查订单是否已经支付过（幂等性保护）==========
+                # 这是防止重复处理的核心机制
+                # 场景：易支付可能会多次发送支付成功通知（网络重试、系统重试等）
+                # 我们必须确保即使收到多次通知，也只处理一次业务逻辑
+                
+                if order_data.get("status") == "paid":
+                    # ========== 订单已支付，这是一个重复通知 ==========
+                    
+                    # 获取当前的通知计数并+1
+                    # 情况1：如果notify_count字段存在，说明之前已经记录过，直接+1
+                    # 情况2：如果notify_count字段不存在，说明这是旧订单（在添加计数功能之前创建的）
+                    #        由于订单status="paid"，说明至少收到过1次通知
+                    #        现在收到重复通知，默认为1，然后+1=2（第2次通知）
+                    notify_count = order_data.get("notify_count", 1) + 1
+                    
+                    # 更新通知计数
+                    order_data["notify_count"] = notify_count
+                    
+                    # 记录最后一次收到通知的时间戳（用于审计和分析）
+                    order_data["last_notify_at"] = time.time()
+                    
+                    # 记录最后一次收到通知的可读时间（便于人工查看）
+                    order_data["last_notify_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
+                    # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                    
+                    # 记录日志：订单已支付，跳过重复处理
+                    logging.info(
+                        f"[支付通知] 订单已支付，跳过处理（重复通知#{notify_count}）- 订单: {out_trade_no}"
+                    )
+                    
+                    # ========== 写入支付操作日志（重复通知）==========
+                    # 虽然不处理业务逻辑，但我们仍然需要记录这次重复通知
+                    # 这对于安全审计和问题排查非常重要
+                    _write_payment_log(
+                        user_id=order_data.get("username", "unknown"),  # 订单所有者
+                        order_id=out_trade_no,                          # 商户订单号
+                        action="payment_duplicate_notify",              # 操作类型：重复通知
+                        log_data={
+                            # 重复通知信息
+                            "notify_count": notify_count,               # 这是第几次通知
+                            "notify_params": params,                    # 本次通知的参数
+                            "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,           # 通知来源IP
+                            "last_notify_at": order_data["last_notify_at"],     # 通知时间戳
+                            "last_notify_time": order_data["last_notify_time"], # 通知时间（可读）
+                            # 订单信息
+                            "order_status": order_data.get("status"),   # 订单状态（应该是paid）
+                            "first_paid_at": order_data.get("paid_at"), # 首次支付时间
+                            "first_paid_time": order_data.get("paid_time"), # 首次支付时间（可读）
+                            # 操作结果
+                            "success": True,
+                            "message": f"重复通知（第{notify_count}次），订单已处理，跳过业务逻辑"
+                        }
+                    )
+                    
+                    # 返回success告诉易支付我们已经收到通知
+                    # 这样易支付就不会继续重试了
+                    return "success"
+                
+                # ========== 首次处理支付通知 ==========
+                # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
+                
+                # 更新订单状态为已支付
+                order_data["status"] = "paid"
+                order_data["trade_no"] = trade_no          # 保存易支付订单号
+                order_data["paid_at"] = time.time()        # 支付时间（时间戳）
+                order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
+                order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
+                
+                # ========== 添加首次处理标记（用于幂等性保护）==========
+                # notify_processed_at: 首次处理通知的时间戳（用于审计）
+                order_data["notify_processed_at"] = time.time()
+                # notify_count: 通知计数，初始值为1（表示这是第一次处理）
+                order_data["notify_count"] = 1
+                
+                # 保存更新后的订单数据
+                with open(order_file, "w", encoding="utf-8") as f:
+                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                # ========== 写入支付操作日志（支付成功通知） ==========
+                
+                # 记录支付成功的异步通知，这是最重要的支付日志
+                _write_payment_log(
+                    user_id=order_data.get("username", "unknown"),  # 订单所有者
+                    order_id=out_trade_no,                          # 商户订单号
+                    action="payment_success_notify",                # 操作类型：支付成功通知
+                    log_data={
+                        # 支付信息
+                        "trade_no": trade_no,                       # 易支付订单号
+                        "trade_status": trade_status,               # 支付状态
+                        "paid_amount": paid_amount,                 # 实际支付金额
+                        "order_amount": order_amount,               # 订单金额
+                        "pay_type": params.get("type", ""),         # 支付方式
+                        "paid_at": order_data["paid_at"],           # 支付时间戳
+                        "paid_time": order_data["paid_time"],       # 支付时间（可读）
+                        # 通知信息
+                        "notify_params": params,                    # 完整的通知参数
+                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,           # 通知来源IP（易支付服务器IP）
+                        # 订单信息
+                        "product_name": order_data.get("product_name", ""),  # 商品名称
+                        # 操作结果
+                        "success": True,
+                        "message": "支付成功，订单已完成"
+                    }
+                )
+                
+                # 记录日志：支付成功
+                logging.info(
+                    f"[支付通知] 支付成功 - 订单: {out_trade_no}, 用户: {order_data.get('username')}, "
+                    f"金额: {money}元, 易支付订单号: {trade_no}"
+                )
+                
+                # ========== 支付成功后的业务逻辑处理 ==========
+                
+                # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
+                # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
+                if "overdue_accounts" in order_data and "auth_username" in order_data:
+                    # 这是一个欠费补缴订单，需要：
+                    # 1. 增加用户的available_runs
+                    # 2. 清零所有欠费账号的overdue_count
+                    
+                    # 提取订单中保存的用户名
+                    auth_username = order_data.get("auth_username", "")
+                    
+                    # 提取欠费账号列表
+                    # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
+                    overdue_accounts = order_data.get("overdue_accounts", [])
+                    
+                    # 提取总欠费次数（订单创建时已计算好）
+                    total_count = order_data.get("total_count", 0)
+                    
+                    # 验证必要字段是否存在
+                    if auth_username and overdue_accounts and total_count > 0:
+                        try:
+                            # ========== 步骤1：增加用户的available_runs ==========
+                            
+                            # 获取用户数据文件路径
+                            user_file = auth_system.get_user_file_path(auth_username)
+                            
+                            # 检查用户文件是否存在
+                            if os.path.exists(user_file):
+                                # 使用线程锁确保文件操作的原子性（防止并发修改）
+                                with auth_system.lock:
+                                    # 读取用户数据
+                                    with open(user_file, "r", encoding="utf-8") as f:
+                                        user_data = json.load(f)
+                                    
+                                    # 获取当前的available_runs值
+                                    # 如果字段不存在，默认为0
+                                    current_runs = user_data.get("available_runs", 0)
+                                    
+                                    # 增加available_runs：当前值 + 总欠费次数
+                                    # 例如：当前剩余5次，补缴了8次欠费，更新后为13次
+                                    new_runs = current_runs + total_count
+                                    user_data["available_runs"] = new_runs
+                                    
+                                    # 将更新后的用户数据写回文件
+                                    with open(user_file, "w", encoding="utf-8") as f:
+                                        json.dump(user_data, f, indent=2, ensure_ascii=False)
+                                    
+                                    # 记录日志：available_runs更新成功
+                                    logging.info(
+                                        f"[欠费支付] available_runs更新成功 - 用户: {auth_username}, "
+                                        f"原值: {current_runs}, 增加: {total_count}, 新值: {new_runs}"
+                                    )
+                            else:
+                                # 用户文件不存在（异常情况）
+                                logging.error(
+                                    f"[欠费支付] 用户文件不存在，无法更新available_runs - 用户: {auth_username}"
+                                )
+                            
+                            # ========== 步骤2：清零所有欠费账号的overdue_count ==========
+                            
+                            # 遍历所有欠费账号
+                            for account in overdue_accounts:
+                                # 提取学校账号用户名
+                                school_username = account.get("school_username", "")
+                                
+                                # 验证学校账号用户名是否有效
+                                if not school_username:
+                                    # 如果用户名为空，跳过该账号
+                                    continue
+                                
+                                # 调用auth_system的update_school_account_overdue_count方法
+                                # 该方法用于更新学校账号的overdue_count字段
+                                # 第三个参数传入0，表示将欠费次数清零
+                                result = auth_system.update_school_account_overdue_count(
+                                    auth_username,      # 用户名
+                                    school_username,    # 学校账号用户名
+                                    0                   # 新的overdue_count值（清零）
+                                )
+                                
+                                # 检查更新是否成功
+                                if result.get("success"):
+                                    # 更新成功，记录日志
+                                    logging.info(
+                                        f"[欠费支付] 清零欠费成功 - 用户: {auth_username}, "
+                                        f"学校账号: {school_username}"
+                                    )
+                                else:
+                                    # 更新失败，记录错误日志（但不影响后续处理）
+                                    logging.error(
+                                        f"[欠费支付] 清零欠费失败 - 用户: {auth_username}, "
+                                        f"学校账号: {school_username}, 错误: {result.get('message')}"
+                                    )
+                            
+                            # ========== 步骤3：记录欠费支付成功日志 ==========
+                            
+                            _write_payment_log(
+                                user_id=auth_username,
+                                order_id=out_trade_no,
+                                action="overdue_payment_completed",  # 操作类型：欠费支付完成
+                                log_data={
+                                    "total_count": total_count,
+                                    "overdue_accounts": overdue_accounts,
+                                    "available_runs_updated": True,
+                                    "overdue_cleared": True,
+                                    "trade_no": trade_no,
+                                    "paid_amount": paid_amount
+                                }
+                            )
+                            
+                            # 记录总结日志
+                            logging.info(
+                                f"[欠费支付] 欠费补缴处理完成 - 用户: {auth_username}, "
+                                f"已增加available_runs: {total_count} 次, "
+                                f"已清零 {len(overdue_accounts)} 个学校账号的欠费"
+                            )
+                        
+                        except Exception as e:
+                            # 捕获欠费处理过程中的异常
+                            # 即使处理失败，也要返回success给支付平台（防止重复通知）
+                            # 但需要记录详细的错误日志，便于人工介入处理
+                            logging.error(
+                                f"[欠费支付] 处理欠费补缴异常 - 用户: {auth_username}, "
+                                f"订单: {out_trade_no}, 错误: {str(e)}"
+                            )
+                            logging.error(traceback.format_exc())
+                            
+                            # 记录错误日志到支付操作日志
+                            _write_payment_log(
+                                user_id=auth_username,
+                                order_id=out_trade_no,
+                                action="overdue_payment_error",
+                                log_data={
+                                    "error": str(e),
+                                    "traceback": traceback.format_exc(),
+                                    "overdue_accounts": overdue_accounts
+                                }
+                            )
+                    else:
+                        # 订单数据不完整（异常情况）
+                        logging.warning(
+                            f"[欠费支付] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
+                            f"auth_username: {auth_username}, total_count: {total_count}"
+                        )
+                
+                # 返回 success，告知易支付不要再次通知
+                # 无论业务逻辑是否成功，都要返回success（幂等性原则）
+                return "success"
+            else:
+                # 其他支付状态（如支付失败、已关闭等）
+                logging.warning(f"[支付通知] 非成功状态 - 订单: {out_trade_no}, 状态: {trade_status}")
+                
+                # 可以根据状态更新订单状态
+                if trade_status == "TRADE_CLOSED":
+                    order_data["status"] = "closed"
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                
+                return "success"
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[支付通知] 处理异步通知异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return "fail"  # 返回 fail，让易支付重试
+
+
+
     # ========== 新增路由：前端配置API ==========
     @app.route("/api/frontend-config")
     def api_frontend_config():
@@ -24044,6 +24721,8 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
     @app.route("/api/cdn/refresh", methods=["POST"])
+    @admin_required
+    @login_required
     def refresh_cdn_cache():
         """
         手动刷新CDN缓存（管理员功能）
@@ -24179,7 +24858,7 @@ def start_web_server(args_param):
             session_id = request.headers.get("X-Session-ID", "")
 
             # 获取客户端信息用于日志记录
-            client_ip = request.REMOTE_ADDR
+            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
             user_agent = request.headers.get("User-Agent", "Unknown")
 
             # 记录用户登出请求日志
@@ -24867,6 +25546,9 @@ def start_web_server(args_param):
     def api_call(method):
         """API调用端点：将前端调用转发到Python后端"""
         session_id = request.headers.get("X-Session-ID", "")
+        
+        if method.startswith("payment/yipay_notify"):
+            return payment_yipay_notify()
 
         if not session_id:
             return jsonify({"success": False, "message": "缺少会话ID"}), 401
@@ -25255,7 +25937,7 @@ def start_web_server(args_param):
         # ============================================================
         # IP封禁检查：留言板功能专项封禁
         # ============================================================
-        client_ip = request.REMOTE_ADDR
+        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
         if check_ip_ban(client_ip, scope="messages_only"):
             logging.warning(
                 f"[IP封禁] 留言功能封禁拦截：IP {client_ip} 尝试访问 /api/messages/list"
@@ -25424,7 +26106,7 @@ def start_web_server(args_param):
         # IP封禁检查：留言板功能专项封禁
         # ============================================================
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = request.REMOTE_ADDR
+        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
 
         if check_ip_ban(client_ip, scope="messages_only"):
             logging.warning(f"[IP封禁] 留言功能封禁拦截：IP {client_ip} 尝试发表留言")
@@ -25693,7 +26375,7 @@ def start_web_server(args_param):
         # 为留言添加更丰富的用户信息和位置信息
         # ============================================================
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = request.REMOTE_ADDR
+        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
         ip_city = get_ip_location(client_ip)
         user_nickname = nickname
         avatar_url = "default_avatar.png"
@@ -26323,7 +27005,7 @@ def start_web_server(args_param):
             import threading
 
             # 使用统一函数获取客户端真实IP（任务2）
-            client_ip_data = request.REMOTE_ADDR or "unknown"
+            client_ip_data = request.environ.get("REMOTE_ADDR") or request.remote_addr or "unknown"
             user_agent_data = request.headers.get("User-Agent", "unknown")
             threading.Thread(
                 target=log_captcha_history,
@@ -27120,7 +27802,7 @@ def start_web_server(args_param):
                     "html": html,
                     "session_id": request.headers.get("X-Session-ID", "unknown"),
                     # 使用统一函数获取客户端真实IP（任务2）
-                    "client_ip": request.REMOTE_ADDR,
+                    "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                     "user_agent": request.headers.get("User-Agent", "unknown"),
                     "timestamp": time.time(),
                     "timestamp_readable": datetime.datetime.now().strftime(
@@ -27284,7 +27966,7 @@ def start_web_server(args_param):
                 "user_id": user_id,                                # 用户标识
                 "order_id": order_id,                              # 订单号
                 # 请求元信息（在Flask请求上下文中可用）
-                "client_ip": request.REMOTE_ADDR if request else None,      # 客户端IP
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,      # 客户端IP
                 "user_agent": request.headers.get("User-Agent", "") if request else "",  # 浏览器UA
                 # 自定义数据（从参数传入）
                 **log_data
@@ -27477,7 +28159,7 @@ def start_web_server(args_param):
             # 客户端会自动从 config.ini 读取配置参数
             yipay_client = RainbowYiPayClient()
             
-            clientip=request.REMOTE_ADDR
+            clientip=request.environ.get("REMOTE_ADDR") or request.remote_addr
 
             yipay_client_data = {
                 "out_trade_no": order_id,
@@ -27539,7 +28221,7 @@ def start_web_server(args_param):
                     "order_data": result.get("order_data", {}),
                     "created_at": time.time(),           # 创建时间（Unix时间戳）
                     "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),  # 创建时间（可读格式）
-                    "client_ip": request.REMOTE_ADDR,    # 客户端IP地址
+                    "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,    # 客户端IP地址
                     "user_agent": request.headers.get("User-Agent", ""),  # 用户浏览器信息
                     "device":device,  # 设备类型
                 }
@@ -27572,7 +28254,7 @@ def start_web_server(args_param):
                         "pay_url": result["pay_url"],          # 支付跳转URL
                         "return_url": return_url,              # 同步返回URL
                         # 请求信息
-                        "client_ip": request.REMOTE_ADDR,      # 客户端IP
+                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,      # 客户端IP
                         "user_agent": request.headers.get("User-Agent", ""),  # 浏览器UA
                         # 操作结果
                         "success": True,                       # 操作是否成功
@@ -27618,7 +28300,7 @@ def start_web_server(args_param):
                         "pay_type": pay_type,                  # 请求的支付方式
                         "return_url": return_url,              # 请求的返回URL
                         # 请求信息
-                        "client_ip": request.REMOTE_ADDR,      # 客户端IP
+                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,      # 客户端IP
                         "user_agent": request.headers.get("User-Agent", ""),  # 浏览器UA
                         # 失败信息
                         "success": False,                      # 操作失败
@@ -27747,7 +28429,7 @@ def start_web_server(args_param):
                             "query_user": g.user,                    # 查询者
                             "query_result": query_result,            # 易支付查询结果
                             # 请求信息
-                            "client_ip": request.REMOTE_ADDR,
+                            "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                             "user_agent": request.headers.get("User-Agent", ""),
                             # 操作结果
                             "success": True,
@@ -27771,7 +28453,7 @@ def start_web_server(args_param):
                     "order_owner": order_data.get("username"),    # 订单所有者
                     "amount": order_data.get("amount"),           # 金额
                     # 请求信息
-                    "client_ip": request.REMOTE_ADDR,
+                    "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                     "user_agent": request.headers.get("User-Agent", ""),
                     # 操作结果
                     "success": True,
@@ -28016,9 +28698,9 @@ def start_web_server(args_param):
             
             # ========== 步骤8：获取客户端IP地址 ==========
             
-            # request.REMOTE_ADDR 获取客户端IP地址
+            # request.environ.get("REMOTE_ADDR") or request.remote_addr 获取客户端IP地址
             # 在反向代理环境下，可能需要从X-Forwarded-For等请求头获取真实IP
-            clientip = request.REMOTE_ADDR or "unknown"
+            clientip = request.environ.get("REMOTE_ADDR") or request.remote_addr or "unknown"
             
             # ========== 步骤9：读取彩虹易支付配置 ==========
             
@@ -28156,976 +28838,445 @@ def start_web_server(args_param):
                 "message": f"创建订单失败: {str(e)}"
             }), 500
 
-    @app.route("/api/payment/yipay_notify", methods=["POST"])
-    def payment_yipay_notify():
-        """
-        接收彩虹易支付异步通知接口（专用）
-        """
-        try:
-            # ========== 获取回调参数 ==========
-            # request.form 获取POST表单数据
-            # .to_dict() 将 ImmutableMultiDict 转换为普通字典
-            params = request.form.to_dict()
-            
-            # 记录日志：收到异步通知
-            logging.info(f"[支付通知] 收到异步通知 - 参数: {params}")
-            
-            # ========== 处理空参数情况 ==========
-            # 有些情况下，用户支付完成后直接访问notify_url，此时没有参数
-            # 这种情况下，我们需要返回一个友好的HTML页面提示用户支付成功
-            if len(params) == 0 or (len(params) <= 2 and not params.get("out_trade_no")):
-                # 参数为空或只有极少参数（可能只有session等），且没有订单号
-                # 说明这是用户直接访问了notify_url，而不是支付平台的回调
-                logging.info(f"[支付通知] 检测到空参数访问，返回友好提示页面")
-                
-                # 返回一个简洁的HTML页面，提示用户支付成功
-                # 这个页面会在3秒后自动关闭或跳转
-                html_response = """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>支付成功</title>
-                    <style>
-                        body {
-                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            height: 100vh;
-                            margin: 0;
-                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        }
-                        .container {
-                            background: white;
-                            padding: 40px;
-                            border-radius: 10px;
-                            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-                            text-align: center;
-                            max-width: 400px;
-                        }
-                        .success-icon {
-                            font-size: 64px;
-                            color: #52c41a;
-                            margin-bottom: 20px;
-                        }
-                        h1 {
-                            color: #333;
-                            margin: 0 0 10px 0;
-                            font-size: 24px;
-                        }
-                        p {
-                            color: #666;
-                            margin: 10px 0;
-                            line-height: 1.6;
-                        }
-                        .countdown {
-                            color: #667eea;
-                            font-weight: bold;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="success-icon">✓</div>
-                        <h1>支付成功</h1>
-                        <p>感谢您的支付！</p>
-                        <p>页面将在 <span class="countdown" id="countdown">3</span> 秒后自动关闭</p>
-                    </div>
-                    <script>
-                        var count = 3;
-                        var countdown = document.getElementById('countdown');
-                        var timer = setInterval(function() {
-                            count--;
-                            countdown.textContent = count;
-                            if (count <= 0) {
-                                clearInterval(timer);
-                                // 尝试关闭窗口（可能因浏览器安全策略失败）
-                                window.close();
-                                // 如果关闭失败，显示提示
-                                setTimeout(function() {
-                                    document.querySelector('.container').innerHTML = 
-                                        '<div class="success-icon">✓</div>' +
-                                        '<h1>支付成功</h1>' +
-                                        '<p>您可以关闭此页面了</p>';
-                                }, 500);
-                            }
-                        }, 1000);
-                    </script>
-                </body>
-                </html>
-                """
-                return html_response
-            
-            # ========== 验证签名 ==========
-            
-            # 读取配置文件以获取密钥和公钥信息
-            config = configparser.ConfigParser()
-            config.read("config.ini", encoding="utf-8")
-            
-            # 获取平台公钥（用于RSA签名验证）
-            pubc_key = config.get("Rainbow_YiPay", "pubc_key", fallback="").strip()
-            
-            # 标记签名是否验证通过
-            signature_valid = False
-            
-            # 如果没有配置平台公钥，无法进行签名验证
-            if not pubc_key:
-                logging.error(f"[支付通知] 未配置平台公钥，无法验证签名")
-                
-                # ========== 写入支付操作日志（未配置公钥） ==========
-                
-                # 记录这个配置缺失的安全事件
-                _write_payment_log(
-                    user_id="system",                           # 系统记录
-                    order_id=params.get("out_trade_no", "unknown"),  # 订单号（可能为空）
-                    action="payment_notify_no_public_key",      # 操作类型：未配置公钥
-                    log_data={
-                        # 通知参数
-                        "notify_params": params,                # 完整的通知参数
-                        "notify_ip": request.REMOTE_ADDR,       # 通知来源IP
-                        # 安全信息
-                        "security_event": "public_key_not_configured",  # 安全事件类型
-                        "risk_level": "high",                   # 风险级别：高
-                        # 操作结果
-                        "success": False,
-                        "message": "未配置平台公钥，无法验证签名"
-                    }
-                )
-                
-                return "fail"  # 返回 fail，易支付会继续重试通知
-            
-            # 使用RSA签名验证（商户密钥也是RSA加密）
-            if pubc_key:
-                logging.info(f"[支付通知] 开始进行RSA签名验证")
-                
-                try:
-                    # 创建RSA签名验证器
-                    # 注意：RsaSigner类原本用于签名，这里我们需要用它来生成期望的签名字符串
-                    # 然后与回调中的签名进行比对
-                    signer = RsaSigner(pubc_key)
-                    
-                    # 生成期望的签名字符串
-                    # 将参数按照易支付的规则排序并拼接，然后计算签名
-                    expected_sign = signer.generate_sign_string(params)
-                    
-                    # 获取回调中的实际签名
-                    actual_sign = params.get("sign", "")
-                    
-                    # 比较签名是否一致
-                    if expected_sign == actual_sign:
-                        signature_valid = True
-                        logging.info(f"[支付通知] RSA签名验证成功")
-                    else:
-                        logging.error(f"[支付通知] RSA签名验证失败 - 期望: {expected_sign[:50]}..., 实际: {actual_sign[:50]}...")
-                        
-                except Exception as e:
-                    # RSA签名验证过程中出现异常
-                    logging.error(f"[支付通知] RSA签名验证异常: {str(e)}")
-                    logging.error(traceback.format_exc())
-            
-            # 如果签名验证失败
-            if not signature_valid:
-                # 签名验证失败，可能是伪造的通知或RSA验证出错
-                logging.error(f"[支付通知] RSA签名验证失败 - 参数: {params}")
-                
-                # ========== 写入支付操作日志（签名验证失败） ==========
-                
-                # 这是严重的安全事件，必须记录
-                _write_payment_log(
-                    user_id="system",                           # 系统记录
-                    order_id=params.get("out_trade_no", "unknown"),  # 订单号（可能为空）
-                    action="payment_notify_signature_failed",   # 操作类型：签名验证失败
-                    log_data={
-                        # 通知参数
-                        "notify_params": params,                # 完整的通知参数
-                        "notify_ip": request.REMOTE_ADDR,       # 通知来源IP
-                        # 安全信息
-                        "security_event": "signature_verification_failed",  # 安全事件类型
-                        "risk_level": "high",                   # 风险级别：高
-                        # 操作结果
-                        "success": False,
-                        "message": "RSA签名验证失败，可能是伪造的支付通知"
-                    }
-                )
-                
-                return "fail"  # 返回 fail，易支付会继续重试通知
-            
-            # ========== 提取关键参数 ==========
-            
-            # 商户订单号
-            out_trade_no = params.get("out_trade_no", "")
-            
-            # 易支付订单号
-            trade_no = params.get("trade_no", "")
-            
-            # 支付状态（TRADE_SUCCESS 表示支付成功）
-            trade_status = params.get("trade_status", "")
-            
-            # 实际支付金额
-            money = params.get("money", "")
-            
-            # 验证必要参数是否存在
-            if not out_trade_no or not trade_status:
-                logging.error(f"[支付通知] 缺少必要参数 - 参数: {params}")
-                return "fail"
-            
-            # ========== 读取订单信息 ==========
-            
-            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
-            
-            # 检查订单是否存在
-            if not os.path.exists(order_file):
-                logging.error(f"[支付通知] 订单不存在 - 订单号: {out_trade_no}")
-                return "fail"
-            
-            # 读取订单数据
-            with open(order_file, "r", encoding="utf-8") as f:
-                order_data = json.load(f)
-            
-            # ========== 验证订单金额 ==========
-            # 防止支付金额与订单金额不一致的情况
-            
-            try:
-                # 将字符串金额转换为浮点数进行比较
-                # round() 函数保留2位小数，避免浮点数精度问题
-                paid_amount = round(float(money), 2)
-                order_amount = round(float(order_data.get("amount", "0")), 2)
-                
-                # 比较金额是否一致
-                if paid_amount != order_amount:
-                    # 金额不一致，记录错误日志
-                    logging.error(
-                        f"[支付通知] 金额不一致 - 订单: {out_trade_no}, "
-                        f"订单金额: {order_amount}, 支付金额: {paid_amount}"
-                    )
-                    return "fail"
-            except ValueError:
-                # 金额格式错误
-                logging.error(f"[支付通知] 金额格式错误 - 订单: {out_trade_no}, 金额: {money}")
-                return "fail"
-            
-            # ========== 处理支付成功通知 ==========
-            
-            if trade_status == "TRADE_SUCCESS":
-                # ========== 检查订单是否已经支付过（幂等性保护）==========
-                # 这是防止重复处理的核心机制
-                # 场景：易支付可能会多次发送支付成功通知（网络重试、系统重试等）
-                # 我们必须确保即使收到多次通知，也只处理一次业务逻辑
-                
-                if order_data.get("status") == "paid":
-                    # ========== 订单已支付，这是一个重复通知 ==========
-                    
-                    # 获取当前的通知计数并+1
-                    # 情况1：如果notify_count字段存在，说明之前已经记录过，直接+1
-                    # 情况2：如果notify_count字段不存在，说明这是旧订单（在添加计数功能之前创建的）
-                    #        由于订单status="paid"，说明至少收到过1次通知
-                    #        现在收到重复通知，默认为1，然后+1=2（第2次通知）
-                    notify_count = order_data.get("notify_count", 1) + 1
-                    
-                    # 更新通知计数
-                    order_data["notify_count"] = notify_count
-                    
-                    # 记录最后一次收到通知的时间戳（用于审计和分析）
-                    order_data["last_notify_at"] = time.time()
-                    
-                    # 记录最后一次收到通知的可读时间（便于人工查看）
-                    order_data["last_notify_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
-                    # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(order_data, f, indent=2, ensure_ascii=False)
-                    
-                    # 记录日志：订单已支付，跳过重复处理
-                    logging.info(
-                        f"[支付通知] 订单已支付，跳过处理（重复通知#{notify_count}）- 订单: {out_trade_no}"
-                    )
-                    
-                    # ========== 写入支付操作日志（重复通知）==========
-                    # 虽然不处理业务逻辑，但我们仍然需要记录这次重复通知
-                    # 这对于安全审计和问题排查非常重要
-                    _write_payment_log(
-                        user_id=order_data.get("username", "unknown"),  # 订单所有者
-                        order_id=out_trade_no,                          # 商户订单号
-                        action="payment_duplicate_notify",              # 操作类型：重复通知
-                        log_data={
-                            # 重复通知信息
-                            "notify_count": notify_count,               # 这是第几次通知
-                            "notify_params": params,                    # 本次通知的参数
-                            "notify_ip": request.REMOTE_ADDR,           # 通知来源IP
-                            "last_notify_at": order_data["last_notify_at"],     # 通知时间戳
-                            "last_notify_time": order_data["last_notify_time"], # 通知时间（可读）
-                            # 订单信息
-                            "order_status": order_data.get("status"),   # 订单状态（应该是paid）
-                            "first_paid_at": order_data.get("paid_at"), # 首次支付时间
-                            "first_paid_time": order_data.get("paid_time"), # 首次支付时间（可读）
-                            # 操作结果
-                            "success": True,
-                            "message": f"重复通知（第{notify_count}次），订单已处理，跳过业务逻辑"
-                        }
-                    )
-                    
-                    # 返回success告诉易支付我们已经收到通知
-                    # 这样易支付就不会继续重试了
-                    return "success"
-                
-                # ========== 首次处理支付通知 ==========
-                # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
-                
-                # 更新订单状态为已支付
-                order_data["status"] = "paid"
-                order_data["trade_no"] = trade_no          # 保存易支付订单号
-                order_data["paid_at"] = time.time()        # 支付时间（时间戳）
-                order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
-                order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
-                
-                # ========== 添加首次处理标记（用于幂等性保护）==========
-                # notify_processed_at: 首次处理通知的时间戳（用于审计）
-                order_data["notify_processed_at"] = time.time()
-                # notify_count: 通知计数，初始值为1（表示这是第一次处理）
-                order_data["notify_count"] = 1
-                
-                # 保存更新后的订单数据
-                with open(order_file, "w", encoding="utf-8") as f:
-                    json.dump(order_data, f, indent=2, ensure_ascii=False)
-                
-                # ========== 写入支付操作日志（支付成功通知） ==========
-                
-                # 记录支付成功的异步通知，这是最重要的支付日志
-                _write_payment_log(
-                    user_id=order_data.get("username", "unknown"),  # 订单所有者
-                    order_id=out_trade_no,                          # 商户订单号
-                    action="payment_success_notify",                # 操作类型：支付成功通知
-                    log_data={
-                        # 支付信息
-                        "trade_no": trade_no,                       # 易支付订单号
-                        "trade_status": trade_status,               # 支付状态
-                        "paid_amount": paid_amount,                 # 实际支付金额
-                        "order_amount": order_amount,               # 订单金额
-                        "pay_type": params.get("type", ""),         # 支付方式
-                        "paid_at": order_data["paid_at"],           # 支付时间戳
-                        "paid_time": order_data["paid_time"],       # 支付时间（可读）
-                        # 通知信息
-                        "notify_params": params,                    # 完整的通知参数
-                        "notify_ip": request.REMOTE_ADDR,           # 通知来源IP（易支付服务器IP）
-                        # 订单信息
-                        "product_name": order_data.get("product_name", ""),  # 商品名称
-                        # 操作结果
-                        "success": True,
-                        "message": "支付成功，订单已完成"
-                    }
-                )
-                
-                # 记录日志：支付成功
-                logging.info(
-                    f"[支付通知] 支付成功 - 订单: {out_trade_no}, 用户: {order_data.get('username')}, "
-                    f"金额: {money}元, 易支付订单号: {trade_no}"
-                )
-                
-                # ========== 支付成功后的业务逻辑处理 ==========
-                
-                # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
-                # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
-                if "overdue_accounts" in order_data and "auth_username" in order_data:
-                    # 这是一个欠费补缴订单，需要：
-                    # 1. 增加用户的available_runs
-                    # 2. 清零所有欠费账号的overdue_count
-                    
-                    # 提取订单中保存的用户名
-                    auth_username = order_data.get("auth_username", "")
-                    
-                    # 提取欠费账号列表
-                    # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
-                    overdue_accounts = order_data.get("overdue_accounts", [])
-                    
-                    # 提取总欠费次数（订单创建时已计算好）
-                    total_count = order_data.get("total_count", 0)
-                    
-                    # 验证必要字段是否存在
-                    if auth_username and overdue_accounts and total_count > 0:
-                        try:
-                            # ========== 步骤1：增加用户的available_runs ==========
-                            
-                            # 获取用户数据文件路径
-                            user_file = auth_system.get_user_file_path(auth_username)
-                            
-                            # 检查用户文件是否存在
-                            if os.path.exists(user_file):
-                                # 使用线程锁确保文件操作的原子性（防止并发修改）
-                                with auth_system.lock:
-                                    # 读取用户数据
-                                    with open(user_file, "r", encoding="utf-8") as f:
-                                        user_data = json.load(f)
-                                    
-                                    # 获取当前的available_runs值
-                                    # 如果字段不存在，默认为0
-                                    current_runs = user_data.get("available_runs", 0)
-                                    
-                                    # 增加available_runs：当前值 + 总欠费次数
-                                    # 例如：当前剩余5次，补缴了8次欠费，更新后为13次
-                                    new_runs = current_runs + total_count
-                                    user_data["available_runs"] = new_runs
-                                    
-                                    # 将更新后的用户数据写回文件
-                                    with open(user_file, "w", encoding="utf-8") as f:
-                                        json.dump(user_data, f, indent=2, ensure_ascii=False)
-                                    
-                                    # 记录日志：available_runs更新成功
-                                    logging.info(
-                                        f"[欠费支付] available_runs更新成功 - 用户: {auth_username}, "
-                                        f"原值: {current_runs}, 增加: {total_count}, 新值: {new_runs}"
-                                    )
-                            else:
-                                # 用户文件不存在（异常情况）
-                                logging.error(
-                                    f"[欠费支付] 用户文件不存在，无法更新available_runs - 用户: {auth_username}"
-                                )
-                            
-                            # ========== 步骤2：清零所有欠费账号的overdue_count ==========
-                            
-                            # 遍历所有欠费账号
-                            for account in overdue_accounts:
-                                # 提取学校账号用户名
-                                school_username = account.get("school_username", "")
-                                
-                                # 验证学校账号用户名是否有效
-                                if not school_username:
-                                    # 如果用户名为空，跳过该账号
-                                    continue
-                                
-                                # 调用auth_system的update_school_account_overdue_count方法
-                                # 该方法用于更新学校账号的overdue_count字段
-                                # 第三个参数传入0，表示将欠费次数清零
-                                result = auth_system.update_school_account_overdue_count(
-                                    auth_username,      # 用户名
-                                    school_username,    # 学校账号用户名
-                                    0                   # 新的overdue_count值（清零）
-                                )
-                                
-                                # 检查更新是否成功
-                                if result.get("success"):
-                                    # 更新成功，记录日志
-                                    logging.info(
-                                        f"[欠费支付] 清零欠费成功 - 用户: {auth_username}, "
-                                        f"学校账号: {school_username}"
-                                    )
-                                else:
-                                    # 更新失败，记录错误日志（但不影响后续处理）
-                                    logging.error(
-                                        f"[欠费支付] 清零欠费失败 - 用户: {auth_username}, "
-                                        f"学校账号: {school_username}, 错误: {result.get('message')}"
-                                    )
-                            
-                            # ========== 步骤3：记录欠费支付成功日志 ==========
-                            
-                            _write_payment_log(
-                                user_id=auth_username,
-                                order_id=out_trade_no,
-                                action="overdue_payment_completed",  # 操作类型：欠费支付完成
-                                log_data={
-                                    "total_count": total_count,
-                                    "overdue_accounts": overdue_accounts,
-                                    "available_runs_updated": True,
-                                    "overdue_cleared": True,
-                                    "trade_no": trade_no,
-                                    "paid_amount": paid_amount
-                                }
-                            )
-                            
-                            # 记录总结日志
-                            logging.info(
-                                f"[欠费支付] 欠费补缴处理完成 - 用户: {auth_username}, "
-                                f"已增加available_runs: {total_count} 次, "
-                                f"已清零 {len(overdue_accounts)} 个学校账号的欠费"
-                            )
-                        
-                        except Exception as e:
-                            # 捕获欠费处理过程中的异常
-                            # 即使处理失败，也要返回success给支付平台（防止重复通知）
-                            # 但需要记录详细的错误日志，便于人工介入处理
-                            logging.error(
-                                f"[欠费支付] 处理欠费补缴异常 - 用户: {auth_username}, "
-                                f"订单: {out_trade_no}, 错误: {str(e)}"
-                            )
-                            logging.error(traceback.format_exc())
-                            
-                            # 记录错误日志到支付操作日志
-                            _write_payment_log(
-                                user_id=auth_username,
-                                order_id=out_trade_no,
-                                action="overdue_payment_error",
-                                log_data={
-                                    "error": str(e),
-                                    "traceback": traceback.format_exc(),
-                                    "overdue_accounts": overdue_accounts
-                                }
-                            )
-                    else:
-                        # 订单数据不完整（异常情况）
-                        logging.warning(
-                            f"[欠费支付] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
-                            f"auth_username: {auth_username}, total_count: {total_count}"
-                        )
-                
-                # 返回 success，告知易支付不要再次通知
-                # 无论业务逻辑是否成功，都要返回success（幂等性原则）
-                return "success"
-            else:
-                # 其他支付状态（如支付失败、已关闭等）
-                logging.warning(f"[支付通知] 非成功状态 - 订单: {out_trade_no}, 状态: {trade_status}")
-                
-                # 可以根据状态更新订单状态
-                if trade_status == "TRADE_CLOSED":
-                    order_data["status"] = "closed"
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(order_data, f, indent=2, ensure_ascii=False)
-                
-                return "success"
-        
-        except Exception as e:
-            # 捕获所有异常
-            logging.error(f"[支付通知] 处理异步通知异常: {str(e)}")
-            logging.error(traceback.format_exc())
-            return "fail"  # 返回 fail，让易支付重试
 
-    @app.route("/api/payment/return", methods=["GET"])
-    def payment_return():
-        """
-        支付返回页面（同步通知）
+    # @app.route("/api/payment/return", methods=["GET"])
+    # def payment_return():
+    #     """
+    #     支付返回页面（同步通知）
         
-        请求方法：GET
-        权限要求：无（公开页面）
+    #     请求方法：GET
+    #     权限要求：无（公开页面）
         
-        功能说明：
-        用户在支付页面完成支付后，浏览器会跳转到这个URL。
-        这个页面用于显示支付结果，提供友好的用户体验。
+    #     功能说明：
+    #     用户在支付页面完成支付后，浏览器会跳转到这个URL。
+    #     这个页面用于显示支付结果，提供友好的用户体验。
         
-        ========== 重要的安全说明 ==========
-        1. **这个页面仅用于向用户展示支付结果**
-        2. **不要依赖这个页面更新订单状态**（因为用户可以刷新页面）
-        3. **订单状态的更新必须通过异步通知（notify）完成**
-        4. **这个页面只是"查询并显示"订单状态，不执行任何业务逻辑**
-        5. 用户可能不会访问这个页面（例如直接关闭浏览器）
-        6. 恶意用户可能会伪造访问，所以必须验证签名
+    #     ========== 重要的安全说明 ==========
+    #     1. **这个页面仅用于向用户展示支付结果**
+    #     2. **不要依赖这个页面更新订单状态**（因为用户可以刷新页面）
+    #     3. **订单状态的更新必须通过异步通知（notify）完成**
+    #     4. **这个页面只是"查询并显示"订单状态，不执行任何业务逻辑**
+    #     5. 用户可能不会访问这个页面（例如直接关闭浏览器）
+    #     6. 恶意用户可能会伪造访问，所以必须验证签名
         
-        为什么不能用return页面更新订单状态？
-        - 用户可以刷新页面（导致重复处理）
-        - 恶意用户可以伪造请求
-        - 用户可能不访问这个页面（直接关闭支付窗口）
-        - 网络问题可能导致页面无法加载
+    #     为什么不能用return页面更新订单状态？
+    #     - 用户可以刷新页面（导致重复处理）
+    #     - 恶意用户可以伪造请求
+    #     - 用户可能不访问这个页面（直接关闭支付窗口）
+    #     - 网络问题可能导致页面无法加载
         
-        请求参数（查询字符串）：
-        彩虹易支付会在URL中附加参数，例如：
-            - out_trade_no: 商户订单号
-            - trade_no: 易支付订单号
-            - trade_status: 支付状态
-            - sign: 签名（用于验证请求的真实性）
+    #     请求参数（查询字符串）：
+    #     彩虹易支付会在URL中附加参数，例如：
+    #         - out_trade_no: 商户订单号
+    #         - trade_no: 易支付订单号
+    #         - trade_status: 支付状态
+    #         - sign: 签名（用于验证请求的真实性）
         
-        返回：HTML页面（支付结果展示页面）
-        """
-        try:
-            # ========== 获取URL查询参数 ==========
-            # request.args 获取GET请求的查询字符串参数
-            params = request.args.to_dict()
+    #     返回：HTML页面（支付结果展示页面）
+    #     """
+    #     try:
+    #         # ========== 获取URL查询参数 ==========
+    #         # request.args 获取GET请求的查询字符串参数
+    #         params = request.args.to_dict()
             
-            # 提取关键参数
-            out_trade_no = params.get("out_trade_no", "")
-            trade_status = params.get("trade_status", "")
+    #         # 提取关键参数
+    #         out_trade_no = params.get("out_trade_no", "")
+    #         trade_status = params.get("trade_status", "")
             
-            # 记录return页面访问日志
-            logging.info(
-                f"[支付返回] 用户访问支付返回页面 - 订单: {out_trade_no}, "
-                f"IP: {request.REMOTE_ADDR}, 状态: {trade_status}"
-            )
+    #         ip_for_pay=request.environ.get("REMOTE_ADDR") or request.remote_addr
             
-            # ========== 安全检查：验证签名 ==========
-            # 防止恶意用户伪造支付成功页面
-            # 即使这个页面不执行业务逻辑，我们也要验证签名
-            yipay_client = RainbowYiPayClient()
-            if not yipay_client.verify_sign(params):
-                # 签名验证失败，记录警告日志
-                logging.warning(
-                    f"[支付返回] 签名验证失败 - 订单: {out_trade_no}, "
-                    f"IP: {request.REMOTE_ADDR}, 参数: {params}"
-                )
-                # 返回错误页面
-                return """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>验证失败</title>
-                    <style>
-                        body {
-                            font-family: Arial, sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            height: 100vh;
-                            margin: 0;
-                            background-color: #f5f5f5;
-                        }
-                        .result-box {
-                            background: white;
-                            padding: 40px;
-                            border-radius: 10px;
-                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                            text-align: center;
-                        }
-                        .fail-icon {
-                            font-size: 60px;
-                            color: #f5222d;
-                            margin-bottom: 20px;
-                        }
-                        .title {
-                            font-size: 24px;
-                            color: #333;
-                            margin-bottom: 10px;
-                        }
-                        .info {
-                            color: #666;
-                            margin-bottom: 30px;
-                        }
-                        .button {
-                            display: inline-block;
-                            padding: 10px 30px;
-                            background-color: #1890ff;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 5px;
-                            transition: background-color 0.3s;
-                        }
-                        .button:hover {
-                            background-color: #40a9ff;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="result-box">
-                        <div class="fail-icon">⚠</div>
-                        <div class="title">验证失败</div>
-                        <div class="info">
-                            <p>请求验证失败，请联系客服</p>
-                        </div>
-                        <a href="/" class="button">返回首页</a>
-                    </div>
-                </body>
-                </html>
-                """, 400
+    #         # 记录return页面访问日志
+    #         logging.info(
+    #             f"[支付返回] 用户访问支付返回页面 - 订单: {out_trade_no}, "
+    #             f"IP: {ip_for_pay}, 状态: {trade_status}"
+    #         )
             
-            # ========== 仅查询订单状态，不执行业务逻辑 ==========
-            # 构造订单文件路径
-            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+    #         # ========== 安全检查：验证签名 ==========
+    #         # 防止恶意用户伪造支付成功页面
+    #         # 即使这个页面不执行业务逻辑，我们也要验证签名
+    #         yipay_client = RainbowYiPayClient()
+    #         if not yipay_client.verify_sign(params):
+    #             # 签名验证失败，记录警告日志
+    #             logging.warning(
+    #                 f"[支付返回] 签名验证失败 - 订单: {out_trade_no}, "
+    #                 f"IP: {ip_for_pay}, 参数: {params}"
+    #             )
+    #             # 返回错误页面
+    #             return """
+    #             <!DOCTYPE html>
+    #             <html>
+    #             <head>
+    #                 <meta charset="UTF-8">
+    #                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    #                 <title>验证失败</title>
+    #                 <style>
+    #                     body {
+    #                         font-family: Arial, sans-serif;
+    #                         display: flex;
+    #                         justify-content: center;
+    #                         align-items: center;
+    #                         height: 100vh;
+    #                         margin: 0;
+    #                         background-color: #f5f5f5;
+    #                     }
+    #                     .result-box {
+    #                         background: white;
+    #                         padding: 40px;
+    #                         border-radius: 10px;
+    #                         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    #                         text-align: center;
+    #                     }
+    #                     .fail-icon {
+    #                         font-size: 60px;
+    #                         color: #f5222d;
+    #                         margin-bottom: 20px;
+    #                     }
+    #                     .title {
+    #                         font-size: 24px;
+    #                         color: #333;
+    #                         margin-bottom: 10px;
+    #                     }
+    #                     .info {
+    #                         color: #666;
+    #                         margin-bottom: 30px;
+    #                     }
+    #                     .button {
+    #                         display: inline-block;
+    #                         padding: 10px 30px;
+    #                         background-color: #1890ff;
+    #                         color: white;
+    #                         text-decoration: none;
+    #                         border-radius: 5px;
+    #                         transition: background-color 0.3s;
+    #                     }
+    #                     .button:hover {
+    #                         background-color: #40a9ff;
+    #                     }
+    #                 </style>
+    #             </head>
+    #             <body>
+    #                 <div class="result-box">
+    #                     <div class="fail-icon">⚠</div>
+    #                     <div class="title">验证失败</div>
+    #                     <div class="info">
+    #                         <p>请求验证失败，请联系客服</p>
+    #                     </div>
+    #                     <a href="/" class="button">返回首页</a>
+    #                 </div>
+    #             </body>
+    #             </html>
+    #             """, 400
             
-            # 初始化订单数据（用于日志记录）
-            order_data = None
-            order_exists = False
+    #         # ========== 仅查询订单状态，不执行业务逻辑 ==========
+    #         # 构造订单文件路径
+    #         order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
             
-            # 检查订单是否存在并读取
-            if os.path.exists(order_file):
-                order_exists = True
-                try:
-                    # 读取订单数据（只读，不修改）
-                    with open(order_file, "r", encoding="utf-8") as f:
-                        order_data = json.load(f)
-                except Exception as e:
-                    logging.error(f"[支付返回] 读取订单文件失败 - 订单: {out_trade_no}, 错误: {str(e)}")
+    #         # 初始化订单数据（用于日志记录）
+    #         order_data = None
+    #         order_exists = False
             
-            # ========== 写入访问日志（用于安全审计）==========
-            # 记录每次return页面的访问，便于监控和排查问题
-            if order_data:
-                _write_payment_log(
-                    user_id=order_data.get("username", "unknown"),  # 订单所有者
-                    order_id=out_trade_no,                          # 商户订单号
-                    action="payment_return_page_visit",             # 操作类型：访问返回页面
-                    log_data={
-                        # 返回页面信息
-                        "return_params": params,                    # URL中的参数
-                        "visitor_ip": request.REMOTE_ADDR,          # 访问者IP
-                        "user_agent": request.headers.get("User-Agent", ""),  # 浏览器信息
-                        # 订单信息
-                        "order_exists": order_exists,               # 订单是否存在
-                        "order_status": order_data.get("status", "unknown"),  # 订单状态
-                        "paid_at": order_data.get("paid_at"),       # 支付时间
-                        "paid_time": order_data.get("paid_time"),   # 支付时间（可读）
-                        # 操作结果
-                        "success": True,
-                        "message": "用户访问支付返回页面（仅展示，不执行业务逻辑）"
-                    }
-                )
+    #         # 检查订单是否存在并读取
+    #         if os.path.exists(order_file):
+    #             order_exists = True
+    #             try:
+    #                 # 读取订单数据（只读，不修改）
+    #                 with open(order_file, "r", encoding="utf-8") as f:
+    #                     order_data = json.load(f)
+    #             except Exception as e:
+    #                 logging.error(f"[支付返回] 读取订单文件失败 - 订单: {out_trade_no}, 错误: {str(e)}")
             
-            # ========== 构造HTML支付结果页面 ==========
-            # 根据订单状态和trade_status显示不同的页面
+    #         # ========== 写入访问日志（用于安全审计）==========
+    #         # 记录每次return页面的访问，便于监控和排查问题
+    #         if order_data:
+    #             _write_payment_log(
+    #                 user_id=order_data.get("username", "unknown"),  # 订单所有者
+    #                 order_id=out_trade_no,                          # 商户订单号
+    #                 action="payment_return_page_visit",             # 操作类型：访问返回页面
+    #                 log_data={
+    #                     # 返回页面信息
+    #                     "return_params": params,                    # URL中的参数
+    #                     "visitor_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,          # 访问者IP
+    #                     "user_agent": request.headers.get("User-Agent", ""),  # 浏览器信息
+    #                     # 订单信息
+    #                     "order_exists": order_exists,               # 订单是否存在
+    #                     "order_status": order_data.get("status", "unknown"),  # 订单状态
+    #                     "paid_at": order_data.get("paid_at"),       # 支付时间
+    #                     "paid_time": order_data.get("paid_time"),   # 支付时间（可读）
+    #                     # 操作结果
+    #                     "success": True,
+    #                     "message": "用户访问支付返回页面（仅展示，不执行业务逻辑）"
+    #                 }
+    #             )
             
-            # 情况1：订单存在且已支付（正常情况）
-            if order_exists and order_data and order_data.get("status") == "paid":
-                html = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>支付成功</title>
-                    <style>
-                        body {{
-                            font-family: Arial, sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            height: 100vh;
-                            margin: 0;
-                            background-color: #f5f5f5;
-                        }}
-                        .result-box {{
-                            background: white;
-                            padding: 40px;
-                            border-radius: 10px;
-                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                            text-align: center;
-                        }}
-                        .success-icon {{
-                            font-size: 60px;
-                            color: #52c41a;
-                            margin-bottom: 20px;
-                        }}
-                        .title {{
-                            font-size: 24px;
-                            color: #333;
-                            margin-bottom: 10px;
-                        }}
-                        .info {{
-                            color: #666;
-                            margin-bottom: 30px;
-                        }}
-                        .button {{
-                            display: inline-block;
-                            padding: 10px 30px;
-                            background-color: #1890ff;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 5px;
-                            transition: background-color 0.3s;
-                        }}
-                        .button:hover {{
-                            background-color: #40a9ff;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class="result-box">
-                        <div class="success-icon">✓</div>
-                        <div class="title">支付成功！</div>
-                        <div class="info">
-                            <p>订单号：{out_trade_no}</p>
-                            <p>支付金额：{order_data.get("amount", "未知")}元</p>
-                            <p>商品：{order_data.get("product_name", "未知")}</p>
-                            <p>支付时间：{order_data.get("paid_time", "未知")}</p>
-                            <p>感谢您的支付，订单已完成！</p>
-                            <p id="redirect-text">页面将在 5 秒后自动跳转...</p>
-                        </div>
-                        <a href="/" class="button">立即返回首页</a>
-                    </div>
-                    <script>
-                        // 显示倒计时，提升用户体验
-                        var countdown = 5;
-                        var redirectText = document.getElementById('redirect-text');
-                        var timer = setInterval(function() {{
-                            countdown--;
-                            if (countdown > 0) {{
-                                redirectText.textContent = '页面将在 ' + countdown + ' 秒后自动跳转...';
-                            }} else {{
-                                redirectText.textContent = '正在跳转...';
-                                clearInterval(timer);
-                                window.location.href = '/';
-                            }}
-                        }}, 1000);
-                    </script>
-                </body>
-                </html>
-                """
-            # 情况2：trade_status显示成功，但订单状态未更新（可能通知还未到达）
-            elif trade_status == "TRADE_SUCCESS":
-                html = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>支付处理中</title>
-                    <style>
-                        body {{
-                            font-family: Arial, sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            height: 100vh;
-                            margin: 0;
-                            background-color: #f5f5f5;
-                        }}
-                        .result-box {{
-                            background: white;
-                            padding: 40px;
-                            border-radius: 10px;
-                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                            text-align: center;
-                        }}
-                        .pending-icon {{
-                            font-size: 60px;
-                            color: #faad14;
-                            margin-bottom: 20px;
-                        }}
-                        .title {{
-                            font-size: 24px;
-                            color: #333;
-                            margin-bottom: 10px;
-                        }}
-                        .info {{
-                            color: #666;
-                            margin-bottom: 30px;
-                        }}
-                        .button {{
-                            display: inline-block;
-                            padding: 10px 30px;
-                            background-color: #1890ff;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 5px;
-                            transition: background-color 0.3s;
-                        }}
-                        .button:hover {{
-                            background-color: #40a9ff;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class="result-box">
-                        <div class="pending-icon">⏳</div>
-                        <div class="title">支付处理中...</div>
-                        <div class="info">
-                            <p>订单号：{out_trade_no}</p>
-                            <p>您的支付正在处理中，请稍候</p>
-                            <p id="status-text">订单状态将在几秒内更新</p>
-                        </div>
-                        <a href="/" class="button">返回首页</a>
-                    </div>
-                    <script>
-                        // 自动刷新逻辑（带次数限制，防止无限刷新）
-                        // 从localStorage读取刷新次数
-                        var refreshCount = parseInt(localStorage.getItem('payment_refresh_count_{out_trade_no}') || '0');
-                        var maxRefreshes = 5; // 最多刷新5次（约25秒）
+    #         # ========== 构造HTML支付结果页面 ==========
+    #         # 根据订单状态和trade_status显示不同的页面
+            
+    #         # 情况1：订单存在且已支付（正常情况）
+    #         if order_exists and order_data and order_data.get("status") == "paid":
+    #             html = f"""
+    #             <!DOCTYPE html>
+    #             <html>
+    #             <head>
+    #                 <meta charset="UTF-8">
+    #                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    #                 <title>支付成功</title>
+    #                 <style>
+    #                     body {{
+    #                         font-family: Arial, sans-serif;
+    #                         display: flex;
+    #                         justify-content: center;
+    #                         align-items: center;
+    #                         height: 100vh;
+    #                         margin: 0;
+    #                         background-color: #f5f5f5;
+    #                     }}
+    #                     .result-box {{
+    #                         background: white;
+    #                         padding: 40px;
+    #                         border-radius: 10px;
+    #                         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    #                         text-align: center;
+    #                     }}
+    #                     .success-icon {{
+    #                         font-size: 60px;
+    #                         color: #52c41a;
+    #                         margin-bottom: 20px;
+    #                     }}
+    #                     .title {{
+    #                         font-size: 24px;
+    #                         color: #333;
+    #                         margin-bottom: 10px;
+    #                     }}
+    #                     .info {{
+    #                         color: #666;
+    #                         margin-bottom: 30px;
+    #                     }}
+    #                     .button {{
+    #                         display: inline-block;
+    #                         padding: 10px 30px;
+    #                         background-color: #1890ff;
+    #                         color: white;
+    #                         text-decoration: none;
+    #                         border-radius: 5px;
+    #                         transition: background-color 0.3s;
+    #                     }}
+    #                     .button:hover {{
+    #                         background-color: #40a9ff;
+    #                     }}
+    #                 </style>
+    #             </head>
+    #             <body>
+    #                 <div class="result-box">
+    #                     <div class="success-icon">✓</div>
+    #                     <div class="title">支付成功！</div>
+    #                     <div class="info">
+    #                         <p>订单号：{out_trade_no}</p>
+    #                         <p>支付金额：{order_data.get("amount", "未知")}元</p>
+    #                         <p>商品：{order_data.get("product_name", "未知")}</p>
+    #                         <p>支付时间：{order_data.get("paid_time", "未知")}</p>
+    #                         <p>感谢您的支付，订单已完成！</p>
+    #                         <p id="redirect-text">页面将在 5 秒后自动跳转...</p>
+    #                     </div>
+    #                     <a href="/" class="button">立即返回首页</a>
+    #                 </div>
+    #                 <script>
+    #                     // 显示倒计时，提升用户体验
+    #                     var countdown = 5;
+    #                     var redirectText = document.getElementById('redirect-text');
+    #                     var timer = setInterval(function() {{
+    #                         countdown--;
+    #                         if (countdown > 0) {{
+    #                             redirectText.textContent = '页面将在 ' + countdown + ' 秒后自动跳转...';
+    #                         }} else {{
+    #                             redirectText.textContent = '正在跳转...';
+    #                             clearInterval(timer);
+    #                             window.location.href = '/';
+    #                         }}
+    #                     }}, 1000);
+    #                 </script>
+    #             </body>
+    #             </html>
+    #             """
+    #         # 情况2：trade_status显示成功，但订单状态未更新（可能通知还未到达）
+    #         elif trade_status == "TRADE_SUCCESS":
+    #             html = f"""
+    #             <!DOCTYPE html>
+    #             <html>
+    #             <head>
+    #                 <meta charset="UTF-8">
+    #                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    #                 <title>支付处理中</title>
+    #                 <style>
+    #                     body {{
+    #                         font-family: Arial, sans-serif;
+    #                         display: flex;
+    #                         justify-content: center;
+    #                         align-items: center;
+    #                         height: 100vh;
+    #                         margin: 0;
+    #                         background-color: #f5f5f5;
+    #                     }}
+    #                     .result-box {{
+    #                         background: white;
+    #                         padding: 40px;
+    #                         border-radius: 10px;
+    #                         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    #                         text-align: center;
+    #                     }}
+    #                     .pending-icon {{
+    #                         font-size: 60px;
+    #                         color: #faad14;
+    #                         margin-bottom: 20px;
+    #                     }}
+    #                     .title {{
+    #                         font-size: 24px;
+    #                         color: #333;
+    #                         margin-bottom: 10px;
+    #                     }}
+    #                     .info {{
+    #                         color: #666;
+    #                         margin-bottom: 30px;
+    #                     }}
+    #                     .button {{
+    #                         display: inline-block;
+    #                         padding: 10px 30px;
+    #                         background-color: #1890ff;
+    #                         color: white;
+    #                         text-decoration: none;
+    #                         border-radius: 5px;
+    #                         transition: background-color 0.3s;
+    #                     }}
+    #                     .button:hover {{
+    #                         background-color: #40a9ff;
+    #                     }}
+    #                 </style>
+    #             </head>
+    #             <body>
+    #                 <div class="result-box">
+    #                     <div class="pending-icon">⏳</div>
+    #                     <div class="title">支付处理中...</div>
+    #                     <div class="info">
+    #                         <p>订单号：{out_trade_no}</p>
+    #                         <p>您的支付正在处理中，请稍候</p>
+    #                         <p id="status-text">订单状态将在几秒内更新</p>
+    #                     </div>
+    #                     <a href="/" class="button">返回首页</a>
+    #                 </div>
+    #                 <script>
+    #                     // 自动刷新逻辑（带次数限制，防止无限刷新）
+    #                     // 从localStorage读取刷新次数
+    #                     var refreshCount = parseInt(localStorage.getItem('payment_refresh_count_{out_trade_no}') || '0');
+    #                     var maxRefreshes = 5; // 最多刷新5次（约25秒）
                         
-                        if (refreshCount < maxRefreshes) {{
-                            // 更新刷新次数
-                            localStorage.setItem('payment_refresh_count_{out_trade_no}', refreshCount + 1);
+    #                     if (refreshCount < maxRefreshes) {{
+    #                         // 更新刷新次数
+    #                         localStorage.setItem('payment_refresh_count_{out_trade_no}', refreshCount + 1);
                             
-                            // 显示倒计时
-                            var countdown = 5;
-                            var statusText = document.getElementById('status-text');
-                            var timer = setInterval(function() {{
-                                countdown--;
-                                if (countdown > 0) {{
-                                    statusText.textContent = '订单状态将在 ' + countdown + ' 秒后刷新...（剩余' + (maxRefreshes - refreshCount) + '次）';
-                                }} else {{
-                                    statusText.textContent = '正在刷新...';
-                                    clearInterval(timer);
-                                }}
-                            }}, 1000);
+    #                         // 显示倒计时
+    #                         var countdown = 5;
+    #                         var statusText = document.getElementById('status-text');
+    #                         var timer = setInterval(function() {{
+    #                             countdown--;
+    #                             if (countdown > 0) {{
+    #                                 statusText.textContent = '订单状态将在 ' + countdown + ' 秒后刷新...（剩余' + (maxRefreshes - refreshCount) + '次）';
+    #                             }} else {{
+    #                                 statusText.textContent = '正在刷新...';
+    #                                 clearInterval(timer);
+    #                             }}
+    #                         }}, 1000);
                             
-                            // 5秒后刷新页面
-                            setTimeout(function() {{
-                                window.location.reload();
-                            }}, 5000);
-                        }} else {{
-                            // 达到最大刷新次数，清理localStorage并提示用户
-                            localStorage.removeItem('payment_refresh_count_{out_trade_no}');
-                            document.getElementById('status-text').textContent = '请稍后手动刷新查看订单状态，或返回首页查看';
-                        }}
-                    </script>
-                </body>
-                </html>
-                """
-            # 情况3：支付失败或其他状态
-            else:
-                html = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>支付失败</title>
-                    <style>
-                        body {{
-                            font-family: Arial, sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            height: 100vh;
-                            margin: 0;
-                            background-color: #f5f5f5;
-                        }}
-                        .result-box {{
-                            background: white;
-                            padding: 40px;
-                            border-radius: 10px;
-                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                            text-align: center;
-                        }}
-                        .fail-icon {{
-                            font-size: 60px;
-                            color: #f5222d;
-                            margin-bottom: 20px;
-                        }}
-                        .title {{
-                            font-size: 24px;
-                            color: #333;
-                            margin-bottom: 10px;
-                        }}
-                        .info {{
-                            color: #666;
-                            margin-bottom: 30px;
-                        }}
-                        .button {{
-                            display: inline-block;
-                            padding: 10px 30px;
-                            background-color: #1890ff;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 5px;
-                            margin: 0 10px;
-                            transition: background-color 0.3s;
-                        }}
-                        .button:hover {{
-                            background-color: #40a9ff;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class="result-box">
-                        <div class="fail-icon">✗</div>
-                        <div class="title">支付失败</div>
-                        <div class="info">
-                            <p>订单号：{out_trade_no}</p>
-                            <p>支付未完成，请重试或联系客服</p>
-                        </div>
-                        <a href="/" class="button">返回首页</a>
-                        <a href="javascript:history.back()" class="button">重新支付</a>
-                    </div>
-                </body>
-                </html>
-                """
+    #                         // 5秒后刷新页面
+    #                         setTimeout(function() {{
+    #                             window.location.reload();
+    #                         }}, 5000);
+    #                     }} else {{
+    #                         // 达到最大刷新次数，清理localStorage并提示用户
+    #                         localStorage.removeItem('payment_refresh_count_{out_trade_no}');
+    #                         document.getElementById('status-text').textContent = '请稍后手动刷新查看订单状态，或返回首页查看';
+    #                     }}
+    #                 </script>
+    #             </body>
+    #             </html>
+    #             """
+    #         # 情况3：支付失败或其他状态
+    #         else:
+    #             html = f"""
+    #             <!DOCTYPE html>
+    #             <html>
+    #             <head>
+    #                 <meta charset="UTF-8">
+    #                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    #                 <title>支付失败</title>
+    #                 <style>
+    #                     body {{
+    #                         font-family: Arial, sans-serif;
+    #                         display: flex;
+    #                         justify-content: center;
+    #                         align-items: center;
+    #                         height: 100vh;
+    #                         margin: 0;
+    #                         background-color: #f5f5f5;
+    #                     }}
+    #                     .result-box {{
+    #                         background: white;
+    #                         padding: 40px;
+    #                         border-radius: 10px;
+    #                         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    #                         text-align: center;
+    #                     }}
+    #                     .fail-icon {{
+    #                         font-size: 60px;
+    #                         color: #f5222d;
+    #                         margin-bottom: 20px;
+    #                     }}
+    #                     .title {{
+    #                         font-size: 24px;
+    #                         color: #333;
+    #                         margin-bottom: 10px;
+    #                     }}
+    #                     .info {{
+    #                         color: #666;
+    #                         margin-bottom: 30px;
+    #                     }}
+    #                     .button {{
+    #                         display: inline-block;
+    #                         padding: 10px 30px;
+    #                         background-color: #1890ff;
+    #                         color: white;
+    #                         text-decoration: none;
+    #                         border-radius: 5px;
+    #                         margin: 0 10px;
+    #                         transition: background-color 0.3s;
+    #                     }}
+    #                     .button:hover {{
+    #                         background-color: #40a9ff;
+    #                     }}
+    #                 </style>
+    #             </head>
+    #             <body>
+    #                 <div class="result-box">
+    #                     <div class="fail-icon">✗</div>
+    #                     <div class="title">支付失败</div>
+    #                     <div class="info">
+    #                         <p>订单号：{out_trade_no}</p>
+    #                         <p>支付未完成，请重试或联系客服</p>
+    #                     </div>
+    #                     <a href="/" class="button">返回首页</a>
+    #                     <a href="javascript:history.back()" class="button">重新支付</a>
+    #                 </div>
+    #             </body>
+    #             </html>
+    #             """
             
-            # 返回HTML页面
-            return html
+    #         # 返回HTML页面
+    #         return html
         
-        except Exception as e:
-            # 捕获所有异常，记录日志
-            logging.error(f"[支付返回] 处理返回页面异常: {str(e)}")
-            logging.error(traceback.format_exc())
-            # 返回友好的错误页面
-            return "<html><body><h1>页面加载失败</h1><p>请联系客服</p></body></html>", 500
+    #     except Exception as e:
+    #         # 捕获所有异常，记录日志
+    #         logging.error(f"[支付返回] 处理返回页面异常: {str(e)}")
+    #         logging.error(traceback.format_exc())
+    #         # 返回友好的错误页面
+    #         return "<html><body><h1>页面加载失败</h1><p>请联系客服</p></body></html>", 500
 
     @app.route("/api/payment/orders", methods=["GET"])
     @login_required
@@ -29469,7 +29620,7 @@ def start_web_server(args_param):
             
             # 记录日志：收到验证请求
             # 记录请求来源IP，用于安全审计
-            client_ip = request.REMOTE_ADDR
+            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
             logging.info(f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码长度: {len(challenge)}位")
             
             # 验证请求来源IP是否被允许
@@ -30456,11 +30607,12 @@ def start_web_server(args_param):
             # 检查用户是否具有 modify_config 权限
             # modify_config 权限允许修改系统配置，包括易支付配置
             # 易支付配置包含敏感信息（商户密钥），需要严格的权限控制
+            ip_for_pay=request.environ.get("REMOTE_ADDR") or request.remote_addr
             if not auth_system.check_permission(g.user, "modify_config"):
                 # 记录权限不足的访问尝试
                 logging.warning(
                     f"[易支付配置-权限拒绝] 用户 {g.user} 尝试访问易支付配置接口，但缺少 modify_config 权限 - "
-                    f"IP: {request.REMOTE_ADDR}, 方法: {request.method}"
+                    f"IP: {ip_for_pay}, 方法: {request.method}"
                 )
                 return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
             
@@ -30480,7 +30632,7 @@ def start_web_server(args_param):
             if user_group not in ["admin", "super_admin"]:
                 logging.warning(
                     f"[易支付配置-权限拒绝] 用户 {g.user}（用户组：{user_group}）尝试访问易支付配置接口，"
-                    f"但不是管理员组成员 - IP: {request.REMOTE_ADDR}, 方法: {request.method}"
+                    f"但不是管理员组成员 - IP: {ip_for_pay}, 方法: {request.method}"
                 )
                 return jsonify({
                     "success": False,
@@ -30490,7 +30642,7 @@ def start_web_server(args_param):
             # 记录合法的访问（用于审计）
             logging.info(
                 f"[易支付配置-访问] 管理员 {g.user}（用户组：{user_group}）正在访问易支付配置接口 - "
-                f"IP: {request.REMOTE_ADDR}, 方法: {request.method}"
+                f"IP: {ip_for_pay}, 方法: {request.method}"
             )
             
             if request.method == "GET":
@@ -32562,11 +32714,18 @@ def start_web_server(args_param):
         # 取第一个IP作为原始客户端IP
         forwarded_for = request.headers.get("X-Forwarded-For", "")
         if forwarded_for:
-            # 按逗号分割，取第一个IP（原始客户端IP）
-            # strip()去除可能存在的首尾空格
-            real_ip = forwarded_for.split(",")[0].strip()
-            request.environ["REMOTE_ADDR"] = real_ip
-            logging.info(f"真实客户端IP已设置为: {real_ip}")
+            # 获取第一个部分
+            first_part = forwarded_for.split(",")[0]
+            
+            # 使用正则查找第一个合法的IPv4地址
+            match = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', first_part)
+            
+            if match:
+                real_ip = match.group(0)
+                request.environ["REMOTE_ADDR"] = real_ip
+                logging.info(f"真实客户端IP已设置为: {real_ip}")
+            else:
+                logging.warning(f"无法从Header解析出有效IP: {first_part}")
         
         # 处理HTTPS重定向逻辑
         forwarded_proto = request.headers.get("X-Forwarded-Proto", "")

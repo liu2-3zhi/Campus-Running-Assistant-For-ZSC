@@ -1869,6 +1869,7 @@ body.mobile-mode #session-picker-modal {
   border-radius: 16px;
 }
 
+#admin-payment-logs-panel_modal,
 #admin-payment-settings-panel_modal {
   margin-top: 0px;
 }
@@ -11064,7 +11065,7 @@ body.mobile-mode #session-picker-modal {
               <!-- 支付失败：订单支付失败的记录 -->
               <option value="payment_fail">支付失败</option>
               <!-- 配置更新：支付配置更新的记录 -->
-              <option value="config_update">配置更新</option>
+              <option value="create_order_failed">创建失败</option>
             </select>
           </div>
 
@@ -13711,6 +13712,21 @@ body.mobile-mode #session-picker-modal {
   <!-- 功能说明：实现SMS回复记录modal的打开、关闭和数据加载功能 -->
   <!-- 作者注释：提供详细的中文注释，便于理解和维护 -->
   <script>
+
+
+      function getUUIDFromURL() {
+        const urlPath = window.location.pathname;
+
+        const match = urlPath.match(
+          /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i
+        );
+
+        if (match && match[1]) {
+          return match[1];
+        } else {
+          return null;
+        }
+      }
     /**
      * 打开SMS回复记录Modal
      * 功能说明：
@@ -14725,10 +14741,10 @@ body.mobile-mode #session-picker-modal {
                 // 支付失败：红色
                 actionBadgeClass = 'bg-red-100 text-red-700';
                 actionText = '支付失败';
-              } else if (log.action === 'config_update') {
+              } else if (log.action === 'create_order_failed') {
                 // 配置更新：橙色
                 actionBadgeClass = 'bg-orange-100 text-orange-700';
-                actionText = '配置更新';
+                actionText = '创建失败';
               }
 
               // 格式化金额显示
@@ -15051,6 +15067,11 @@ body.mobile-mode #session-picker-modal {
       // ==========================================
       // API端点: /api/public/beian_config
       // 此接口是公开的，不需要认证，返回格式化的JSON数据
+
+      if (typeof sessionUUID === 'undefined' || sessionUUID===null || sessionUUID==="" || sessionUUID===undefined || sessionUUID==="undefined" || sessionUUID==="null" || sessionUUID==="undefined" ){
+        sessionUUID=getUUIDFromURL();
+      }
+
       fetch("/api/public/beian_config",{
         method: "GET",
         headers: {
@@ -18509,7 +18530,7 @@ body.mobile-mode #session-picker-modal {
           },
           // 将订单号作为请求体发送
           body: JSON.stringify({
-            trade_no: tradeNo
+            order_id: tradeNo
           })
         });
         
@@ -23443,19 +23464,7 @@ function refreshMobileSessionPicker() {
         }
       }
 
-      function getUUIDFromURL() {
-        const urlPath = window.location.pathname;
 
-        const match = urlPath.match(
-          /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i
-        );
-
-        if (match && match[1]) {
-          return match[1];
-        } else {
-          return null;
-        }
-      }
 
       async function loadMobileUserCombo() {
         if (
@@ -36579,6 +36588,7 @@ function refreshMobileSessionPicker() {
         }
       }
       function initMap(AMap) {
+        Remove_watermark_from_Gaode_Map();
         if (map) {
           const container = map.getContainer();
           if (container && container.id === "map-container") {
@@ -40035,7 +40045,58 @@ function refreshMobileSessionPicker() {
           logMessage_Warning("forceProjectionRefresh warning:", e);
         }
       }
+
+      function Remove_watermark_from_Gaode_Map() 
+        {
+          // 保存原始的 fillText 方法
+          var originalFillText = CanvasRenderingContext2D.prototype.fillText;
+
+          // 重写 fillText 方法
+          CanvasRenderingContext2D.prototype.fillText = function(text, x, y, maxWidth) {
+              // 1. 检查颜色是否为红色 (源码中定义为 rgba(255, 0, 0, 1))
+              var isRed = this.fillStyle === 'rgba(255, 0, 0, 1)' || 
+                          this.fillStyle === '#ff0000' || 
+                          this.fillStyle === 'red';
+
+              // 2. 定义水印文字的字符集
+              var watermarkText = "未获得高德地图商用授权";
+
+              // 3. 如果颜色是红色，且文字内容属于水印的一部分，则不执行绘制
+              if (isRed && (typeof text === 'string') && 
+                  (watermarkText.indexOf(text) !== -1 || text.indexOf(watermarkText) !== -1)) {
+                  // 此时直接返回，即“屏蔽”该次绘制
+                  return;
+              }
+
+              // 4. 其他情况正常绘制
+              return originalFillText.apply(this, arguments);
+          };
+          
+          // 可选：同样拦截 strokeText 以防万一（虽然源码主要用 fillText）
+          var originalStrokeText = CanvasRenderingContext2D.prototype.strokeText;
+          CanvasRenderingContext2D.prototype.strokeText = function(text, x, y, maxWidth) {
+              var isRed = this.strokeStyle === 'rgba(255, 0, 0, 1)' || 
+                          this.strokeStyle === '#ff0000' || 
+                          this.strokeStyle === 'red';
+              var watermarkText = "未获得高德地图商用授权";
+              if (isRed && (typeof text === 'string') && 
+                  (watermarkText.indexOf(text) !== -1 || text.indexOf(watermarkText) !== -1)) {
+                  return;
+              }
+              return originalStrokeText.apply(this, arguments);
+          };
+        }
+
       function drawOnMap_signature() {
+
+
+        
+
+        
+
+
+
+
         if (!map) return;
         clearMapOverlays();
         const data = currentRunData;
