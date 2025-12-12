@@ -7883,7 +7883,7 @@ body.mobile-mode #session-picker-modal {
                     <option value="applet">小程序支付 (applet)</option>
                   </select>
                   <p class="text-xs text-slate-500 mt-1">
-                    💡 返回格式：jump/web返回链接或二维码，jsapi/app返回JSON参数，scan返回支付结果
+                    💡 返回格式：jump/html返回链接，qrcode返回二维码，urlscheme返回小程序跳转链接，jsapi/app/wxplugin/wxapp返回JSON参数，scan返回支付结果
                   </p>
                 </div>
 
@@ -11675,10 +11675,11 @@ body.mobile-mode #session-picker-modal {
               </select>
               <p class="text-xs text-slate-500 mt-2">
                 💡 不同接口类型返回不同格式的支付信息：<br>
-                • jump/web → 返回跳转链接或二维码<br>
-                • jsapi/app → 返回JSON支付参数<br>
-                • scan → 返回支付结果信息<br>
-                • applet → 返回小程序跳转参数
+                • jump/html → 返回跳转链接<br>
+                • qrcode → 返回支付二维码<br>
+                • urlscheme → 返回微信/支付宝小程序跳转链接<br>
+                • jsapi/app/wxplugin/wxapp → 返回JSON支付参数<br>
+                • scan → 返回支付结果信息
               </p>
               <!-- 提示文字：说明扫码支付需要付款码 -->
               <p class="text-xs text-slate-500 mt-1">
@@ -17540,7 +17541,10 @@ body.mobile-mode #session-picker-modal {
             displayText = payInfo.length > 60 ? payInfo.substring(0, 60) + '...' : payInfo;
           } else if (payType === 'qrcode') {
             // 二维码支付：显示二维码链接
-            displayText = '二维码链接: ' + (payInfo.length > 50 ? payInfo.substring(0, 50) + '...' : payInfo);
+            displayText = '二维码: ' + (payInfo.length > 50 ? payInfo.substring(0, 50) + '...' : payInfo);
+          } else if (payType === 'urlscheme') {
+            // URL Scheme：显示微信/支付宝小程序跳转链接
+            displayText = '小程序跳转: ' + (payInfo.length > 50 ? payInfo.substring(0, 50) + '...' : payInfo);
           } else if (payType === 'jsapi' || payType === 'app' || payType === 'wxplugin' || payType === 'wxapp') {
             // JSAPI/APP/小程序支付：显示JSON参数（格式化）
             try {
@@ -17560,8 +17564,8 @@ body.mobile-mode #session-picker-modal {
           payUrlSpan.textContent = displayText;
           
           // 将完整的支付信息保存到按钮的data-url属性中
-          // 对于jump类型，保存链接；对于其他类型，保存完整信息
-          if (payType === 'jump' || payType === 'html') {
+          // 对于jump/html/urlscheme类型，保存链接并启用打开按钮
+          if (payType === 'jump' || payType === 'html' || payType === 'urlscheme') {
             openPayBtn.setAttribute('data-url', payInfo);
             // 启用"打开支付链接"按钮
             openPayBtn.disabled = false;
@@ -19283,6 +19287,9 @@ body.mobile-mode #session-picker-modal {
           } else if (payType === 'qrcode') {
             // 二维码支付：显示二维码链接
             payUrlInput.value = `二维码: ${payInfo}`;
+          } else if (payType === 'urlscheme') {
+            // URL Scheme：显示微信/支付宝小程序跳转链接
+            payUrlInput.value = `小程序跳转: ${payInfo}`;
           } else if (payType === 'jsapi' || payType === 'app' || payType === 'wxplugin' || payType === 'wxapp') {
             // JSAPI/APP/小程序支付：显示格式化的JSON参数
             try {
@@ -19301,9 +19308,9 @@ body.mobile-mode #session-picker-modal {
         }
         
         // 将支付信息保存到打开按钮的data属性
-        // 只有jump和html类型可以直接打开
+        // jump/html/urlscheme类型可以直接打开
         if (openBtn) {
-          if (payType === 'jump' || payType === 'html') {
+          if (payType === 'jump' || payType === 'html' || payType === 'urlscheme') {
             openBtn.setAttribute('data-url', payInfo);
             openBtn.disabled = false;
             openBtn.classList.remove('opacity-50', 'cursor-not-allowed');
