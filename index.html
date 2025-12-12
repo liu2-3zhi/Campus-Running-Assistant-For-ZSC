@@ -7883,7 +7883,16 @@ body.mobile-mode #session-picker-modal {
                     <option value="applet">小程序支付 (applet)</option>
                   </select>
                   <p class="text-xs text-slate-500 mt-1">
-                    💡 返回格式：jump/html返回链接，qrcode返回二维码，urlscheme返回小程序跳转链接，jsapi/app/wxplugin/wxapp返回JSON参数，scan返回支付结果
+                    💡 API返回的发起支付类型（pay_type）：<br>
+                    • <strong>jump</strong> - 返回支付跳转url<br>
+                    • <strong>html</strong> - 返回html代码，用于支付跳转<br>
+                    • <strong>qrcode</strong> - 返回支付二维码<br>
+                    • <strong>urlscheme</strong> - 返回微信/支付宝小程序跳转url scheme<br>
+                    • <strong>jsapi</strong> - 返回用于发起JSAPI支付的参数<br>
+                    • <strong>app</strong> - 返回用于发起APP支付的参数<br>
+                    • <strong>scan</strong> - 付款码支付成功,返回支付订单信息<br>
+                    • <strong>wxplugin</strong> - 返回要拉起的微信小程序插件参数<br>
+                    • <strong>wxapp</strong> - 返回要拉起的微信小程序和路径
                   </p>
                 </div>
 
@@ -11674,12 +11683,16 @@ body.mobile-mode #session-picker-modal {
                 <option value="applet">小程序支付 (applet)</option>
               </select>
               <p class="text-xs text-slate-500 mt-2">
-                💡 不同接口类型返回不同格式的支付信息：<br>
-                • jump/html → 返回跳转链接<br>
-                • qrcode → 返回支付二维码<br>
-                • urlscheme → 返回微信/支付宝小程序跳转链接<br>
-                • jsapi/app/wxplugin/wxapp → 返回JSON支付参数<br>
-                • scan → 返回支付结果信息
+                💡 API返回的发起支付类型说明（pay_type）：<br>
+                • <strong>jump</strong> - 返回支付跳转url<br>
+                • <strong>html</strong> - 返回html代码，用于支付跳转<br>
+                • <strong>qrcode</strong> - 返回支付二维码<br>
+                • <strong>urlscheme</strong> - 返回微信/支付宝小程序跳转url scheme<br>
+                • <strong>jsapi</strong> - 返回用于发起JSAPI支付的参数<br>
+                • <strong>app</strong> - 返回用于发起APP支付的参数<br>
+                • <strong>scan</strong> - 付款码支付成功,返回支付订单信息<br>
+                • <strong>wxplugin</strong> - 返回要拉起的微信小程序插件参数<br>
+                • <strong>wxapp</strong> - 返回要拉起的微信小程序和路径
               </p>
               <!-- 提示文字：说明扫码支付需要付款码 -->
               <p class="text-xs text-slate-500 mt-1">
