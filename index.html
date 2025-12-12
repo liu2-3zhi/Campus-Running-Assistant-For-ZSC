@@ -7869,18 +7869,24 @@ body.mobile-mode #session-picker-modal {
                   <!-- 下拉选择框：提供多种支付接口类型供测试 -->
                   <select id="test-payment-type" 
                     class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
-                    <!-- 选项1：跳转支付 - 最常用的支付方式 -->
+                    <!-- 选项1：跳转支付 -->
                     <option value="jump">跳转支付 (jump)</option>
-                    <!-- 选项2：网页支付 - 在当前页面显示支付界面 -->
-                    <option value="web">网页支付 (web)</option>
-                    <!-- 选项3：JSAPI支付 - 微信小程序内使用 -->
+                    <!-- 选项2：HTML支付 -->
+                    <option value="html">HTML支付 (html)</option>
+                    <!-- 选项3：二维码支付 -->
+                    <option value="qrcode">二维码支付 (qrcode)</option>
+                    <!-- 选项4：小程序跳转 -->
+                    <option value="urlscheme">小程序跳转 (urlscheme)</option>
+                    <!-- 选项5：JSAPI支付 -->
                     <option value="jsapi">JSAPI支付 (jsapi)</option>
-                    <!-- 选项4：APP支付 - iOS/安卓APP内使用 -->
+                    <!-- 选项6：APP支付 -->
                     <option value="app">APP支付 (app)</option>
-                    <!-- 选项5：扫码支付 - 用户出示付款码 -->
+                    <!-- 选项7：扫码支付 -->
                     <option value="scan">扫码支付 (scan)</option>
-                    <!-- 选项6：小程序支付 - 微信小程序内使用 -->
-                    <option value="applet">小程序支付 (applet)</option>
+                    <!-- 选项8：小程序插件支付 -->
+                    <option value="wxplugin">小程序插件支付 (wxplugin)</option>
+                    <!-- 选项9：小程序支付 -->
+                    <option value="wxapp">小程序支付 (wxapp)</option>
                   </select>
                   <p class="text-xs text-slate-500 mt-1">
                     💡 API返回的发起支付类型（pay_type）：<br>
@@ -11669,18 +11675,24 @@ body.mobile-mode #session-picker-modal {
               <select id="admin-test-payment-type_modal" 
                 class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow"
                 onchange="toggleAuthCodeField()">
-                <!-- 选项1：跳转支付 - 最常用的支付方式 -->
-                <option value="jump">跳转支付 (jump)</option>
-                <!-- 选项2：网页支付 - 在当前页面显示支付界面 -->
-                <option value="web">网页支付 (web)</option>
-                <!-- 选项3：JSAPI支付 - 用于微信公众号等场景 -->
-                <option value="jsapi">JSAPI支付 (jsapi)</option>
-                <!-- 选项4：APP支付 - 用于移动APP内支付 -->
-                <option value="app">APP支付 (app)</option>
-                <!-- 选项5：扫码支付 - 需要提供付款码 -->
-                <option value="scan">扫码支付 (scan)</option>
-                <!-- 选项6：小程序支付 - 用于微信小程序 -->
-                <option value="applet">小程序支付 (applet)</option>
+                <!-- 选项1：跳转支付 -->
+                <option value="jump">跳转支付 (jump) - 返回支付跳转url</option>
+                <!-- 选项2：HTML支付 -->
+                <option value="html">HTML支付 (html) - 返回html代码，用于支付跳转</option>
+                <!-- 选项3：二维码支付 -->
+                <option value="qrcode">二维码支付 (qrcode) - 返回支付二维码</option>
+                <!-- 选项4：小程序跳转 -->
+                <option value="urlscheme">小程序跳转 (urlscheme) - 返回微信/支付宝小程序跳转url scheme</option>
+                <!-- 选项5：JSAPI支付 -->
+                <option value="jsapi">JSAPI支付 (jsapi) - 返回用于发起JSAPI支付的参数</option>
+                <!-- 选项6：APP支付 -->
+                <option value="app">APP支付 (app) - 返回用于发起APP支付的参数</option>
+                <!-- 选项7：扫码支付 -->
+                <option value="scan">扫码支付 (scan) - 付款码支付成功,返回支付订单信息</option>
+                <!-- 选项8：小程序插件支付 -->
+                <option value="wxplugin">小程序插件支付 (wxplugin) - 返回要拉起的微信小程序插件参数</option>
+                <!-- 选项9：小程序支付 -->
+                <option value="wxapp">小程序支付 (wxapp) - 返回要拉起的微信小程序和路径</option>
               </select>
               <p class="text-xs text-slate-500 mt-2">
                 💡 API返回的发起支付类型说明（pay_type）：<br>
