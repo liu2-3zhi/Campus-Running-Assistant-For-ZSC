@@ -11676,39 +11676,24 @@ body.mobile-mode #session-picker-modal {
                 class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow"
                 onchange="toggleAuthCodeField()">
                 <!-- 选项1：跳转支付 -->
-                <option value="jump">跳转支付 (jump) - 返回支付跳转url</option>
+                <option value="web">通用网页支付(web)</option>
                 <!-- 选项2：HTML支付 -->
-                <option value="html">HTML支付 (html) - 返回html代码，用于支付跳转</option>
+                <option value="jump">跳转支付(jump)</option>
                 <!-- 选项3：二维码支付 -->
-                <option value="qrcode">二维码支付 (qrcode) - 返回支付二维码</option>
+                <option value="jsapi">JSAPI支付</option>
                 <!-- 选项4：小程序跳转 -->
-                <option value="urlscheme">小程序跳转 (urlscheme) - 返回微信/支付宝小程序跳转url scheme</option>
+                <option value="app">APP支付</option>
                 <!-- 选项5：JSAPI支付 -->
                 <option value="jsapi">JSAPI支付 (jsapi) - 返回用于发起JSAPI支付的参数</option>
                 <!-- 选项6：APP支付 -->
-                <option value="app">APP支付 (app) - 返回用于发起APP支付的参数</option>
+                <option value="applet">小程序支付</option>
                 <!-- 选项7：扫码支付 -->
                 <option value="scan">扫码支付 (scan) - 付款码支付成功,返回支付订单信息</option>
-                <!-- 选项8：小程序插件支付 -->
-                <option value="wxplugin">小程序插件支付 (wxplugin) - 返回要拉起的微信小程序插件参数</option>
-                <!-- 选项9：小程序支付 -->
-                <option value="wxapp">小程序支付 (wxapp) - 返回要拉起的微信小程序和路径</option>
               </select>
-              <p class="text-xs text-slate-500 mt-2">
-                💡 API返回的发起支付类型说明（pay_type）：<br>
-                • <strong>jump</strong> - 返回支付跳转url<br>
-                • <strong>html</strong> - 返回html代码，用于支付跳转<br>
-                • <strong>qrcode</strong> - 返回支付二维码<br>
-                • <strong>urlscheme</strong> - 返回微信/支付宝小程序跳转url scheme<br>
-                • <strong>jsapi</strong> - 返回用于发起JSAPI支付的参数<br>
-                • <strong>app</strong> - 返回用于发起APP支付的参数<br>
-                • <strong>scan</strong> - 付款码支付成功,返回支付订单信息<br>
-                • <strong>wxplugin</strong> - 返回要拉起的微信小程序插件参数<br>
-                • <strong>wxapp</strong> - 返回要拉起的微信小程序和路径
-              </p>
               <!-- 提示文字：说明扫码支付需要付款码 -->
               <p class="text-xs text-slate-500 mt-1">
                 扫码支付(scan)需要提供付款码（auth_code）
+                JSAPI支付需要提供sub_openid和sub_appid
               </p>
             </div>
 
@@ -17554,7 +17539,7 @@ body.mobile-mode #session-picker-modal {
             pay_type: paymentMethod,     // 支付方式
             method: paymentType,         // 接口类型（web/jump/jsapi/app/scan/applet）
             app_host: app_host,          // 应用主机地址
-            return_url: window.location.href // 当前页面URL，支付完成后返回
+            // return_url: window.location.href // 当前页面URL，支付完成后返回
           })
         });
         
@@ -19304,7 +19289,10 @@ body.mobile-mode #session-picker-modal {
           payment_type: paymentType,       // 支付接口类型（jump/web/jsapi/app/scan/applet）
           product_name: productName,        // 商品名称（手动输入或自动生成）
           app_host: window.location.protocol + '//' + window.location.host,
-          return_url: window.location.href    //浏览器当前地址
+          return_url: window.location.href,    //浏览器当前地址
+          sub_openid: "",
+          sub_appid: "",
+          device: Get_YiPAi_device(),
         };
         
         // 如果是扫码支付，添加付款码到请求数据
@@ -19314,6 +19302,8 @@ body.mobile-mode #session-picker-modal {
         
         // === 第4步：发起HTTP POST请求创建订单 ===
         
+        logMessage_Info('[PC端测试支付] 发送创建订单请求，API：/api/payment/create 数据：' + JSON.stringify(requestData));
+
         const response = await fetch('/api/payment/create', {
           method: 'POST',
           headers: {
@@ -31068,6 +31058,34 @@ function refreshMobileSessionPicker() {
           showModalAlert("操作失败: " + e.message, "错误");
         }
       }
+
+      function Get_YiPAi_device() {
+        const ua = navigator.userAgent.toLowerCase();
+
+        // 1. 支付宝
+        if (ua.includes('alipayclient') || ua.includes('alipay')) {
+          return 'alipay';
+        }
+
+        // 2. 微信
+        if (ua.includes('micromessenger')) {
+          return 'wechat';
+        }
+
+        // 3. QQ 内置浏览器（注意：QQ 浏览器和 QQ 内置浏览器 UA 不同）
+        if (ua.includes('qq/') || ua.includes('mqqbrowser') && ua.includes('mobile')) {
+          return 'qq';
+        }
+
+        // 4. 手机浏览器（只要 UA 里出现 mobile 字样，就认为是手机浏览器）
+        if (/mobile|android|touch|webos|hpwos/.test(ua)) {
+          return 'mobile';
+        }
+
+        // 5. 默认返回 pc
+        return 'pc';
+      }
+
       async function deleteGroup(groupKey) {
         const confirmed = await jsShowConfirm(
           "确认删除",
