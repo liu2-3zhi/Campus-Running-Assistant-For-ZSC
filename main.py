@@ -28259,18 +28259,41 @@ def start_web_server(args_param):
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
             
-            # 获取商户密钥（用于MD5签名验证）
-            merchant_key = config.get("Rainbow_YiPay", "key", fallback="")
-            
-            # 获取平台公钥（用于RSA签名验证，可选）
+            # 获取平台公钥（用于RSA签名验证）
             pubc_key = config.get("Rainbow_YiPay", "pubc_key", fallback="").strip()
             
             # 标记签名是否验证通过
             signature_valid = False
             
-            # 如果配置了平台公钥，则使用RSA签名验证（更安全）
+            # 如果没有配置平台公钥，无法进行签名验证
+            if not pubc_key:
+                logging.error(f"[支付通知] 未配置平台公钥，无法验证签名")
+                
+                # ========== 写入支付操作日志（未配置公钥） ==========
+                
+                # 记录这个配置缺失的安全事件
+                _write_payment_log(
+                    user_id="system",                           # 系统记录
+                    order_id=params.get("out_trade_no", "unknown"),  # 订单号（可能为空）
+                    action="payment_notify_no_public_key",      # 操作类型：未配置公钥
+                    log_data={
+                        # 通知参数
+                        "notify_params": params,                # 完整的通知参数
+                        "notify_ip": request.REMOTE_ADDR,       # 通知来源IP
+                        # 安全信息
+                        "security_event": "public_key_not_configured",  # 安全事件类型
+                        "risk_level": "high",                   # 风险级别：高
+                        # 操作结果
+                        "success": False,
+                        "message": "未配置平台公钥，无法验证签名"
+                    }
+                )
+                
+                return "fail"  # 返回 fail，易支付会继续重试通知
+            
+            # 使用RSA签名验证（商户密钥也是RSA加密）
             if pubc_key:
-                logging.info(f"[支付通知] 检测到平台公钥配置，使用RSA签名验证")
+                logging.info(f"[支付通知] 开始进行RSA签名验证")
                 
                 try:
                     # 创建RSA签名验证器
@@ -28297,51 +28320,10 @@ def start_web_server(args_param):
                     logging.error(f"[支付通知] RSA签名验证异常: {str(e)}")
                     logging.error(traceback.format_exc())
             
-            # 如果没有配置公钥或RSA验证失败，则使用传统的MD5签名验证（兼容模式）
+            # 如果签名验证失败
             if not signature_valid:
-                if pubc_key:
-                    logging.info(f"[支付通知] RSA验证失败，尝试使用MD5签名验证")
-                else:
-                    logging.info(f"[支付通知] 未配置平台公钥，使用MD5签名验证")
-                
-                # 创建彩虹易支付客户端（它内部实现了MD5签名验证）
-                yipay_client = RainbowYiPayClient()
-                
-                # 调用签名验证方法（假设这个方法存在且实现了MD5验证）
-                # 注意：如果这个方法不存在，需要实现它
-                if hasattr(yipay_client, 'verify_sign'):
-                    signature_valid = yipay_client.verify_sign(params)
-                else:
-                    # 如果方法不存在，手动实现MD5签名验证
-                    # 1. 过滤掉sign和sign_type参数
-                    # 2. 按照参数名排序
-                    # 3. 拼接成 key1=value1&key2=value2&key=商户密钥 的形式
-                    # 4. 计算MD5值
-                    import hashlib
-                    
-                    # 过滤参数
-                    sign_params = {k: v for k, v in params.items() if k not in ['sign', 'sign_type'] and v}
-                    
-                    # 按键名排序并拼接
-                    sorted_params = sorted(sign_params.items())
-                    sign_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
-                    sign_str += merchant_key  # 注意：有些平台用 &key=xxx，有些直接拼接
-                    
-                    # 计算MD5
-                    expected_sign = hashlib.md5(sign_str.encode('utf-8')).hexdigest()
-                    actual_sign = params.get("sign", "")
-                    
-                    signature_valid = (expected_sign == actual_sign)
-                    
-                    if signature_valid:
-                        logging.info(f"[支付通知] MD5签名验证成功")
-                    else:
-                        logging.error(f"[支付通知] MD5签名验证失败 - 期望: {expected_sign}, 实际: {actual_sign}")
-            
-            # 如果签名验证失败（RSA和MD5都失败）
-            if not signature_valid:
-                # 签名验证失败，可能是伪造的通知
-                logging.error(f"[支付通知] 签名验证失败 - 参数: {params}")
+                # 签名验证失败，可能是伪造的通知或RSA验证出错
+                logging.error(f"[支付通知] RSA签名验证失败 - 参数: {params}")
                 
                 # ========== 写入支付操作日志（签名验证失败） ==========
                 
@@ -28359,7 +28341,7 @@ def start_web_server(args_param):
                         "risk_level": "high",                   # 风险级别：高
                         # 操作结果
                         "success": False,
-                        "message": "签名验证失败，可能是伪造的支付通知"
+                        "message": "RSA签名验证失败，可能是伪造的支付通知"
                     }
                 )
                 
