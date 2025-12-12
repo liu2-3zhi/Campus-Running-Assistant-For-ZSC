@@ -7854,10 +7854,37 @@ body.mobile-mode #session-picker-modal {
                   <select id="test-payment-method" 
                     class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
                     <option value="alipay">支付宝</option>
-                    <option value="wechat">微信支付</option>
-                    <option value="qq">QQ钱包</option>
+                    <option value="wxpay">微信支付</option>
+                    <option value="qqpay">QQ钱包</option>
                     <option value="unionpay">云闪付</option>
                   </select>
+                </div>
+
+                <!-- [新增] 支付接口类型选择 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    接口类型
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 下拉选择框：提供多种支付接口类型供测试 -->
+                  <select id="test-payment-type" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <!-- 选项1：跳转支付 - 最常用的支付方式 -->
+                    <option value="jump">跳转支付 (jump)</option>
+                    <!-- 选项2：网页支付 - 在当前页面显示支付界面 -->
+                    <option value="web">网页支付 (web)</option>
+                    <!-- 选项3：JSAPI支付 - 微信小程序内使用 -->
+                    <option value="jsapi">JSAPI支付 (jsapi)</option>
+                    <!-- 选项4：APP支付 - iOS/安卓APP内使用 -->
+                    <option value="app">APP支付 (app)</option>
+                    <!-- 选项5：扫码支付 - 用户出示付款码 -->
+                    <option value="scan">扫码支付 (scan)</option>
+                    <!-- 选项6：小程序支付 - 微信小程序内使用 -->
+                    <option value="applet">小程序支付 (applet)</option>
+                  </select>
+                  <p class="text-xs text-slate-500 mt-1">
+                    💡 返回格式：jump/web返回链接或二维码，jsapi/app返回JSON参数，scan返回支付结果
+                  </p>
                 </div>
 
                 <!-- 生成测试订单按钮 -->
@@ -11613,9 +11640,9 @@ body.mobile-mode #session-picker-modal {
                 <!-- 支付宝 -->
                 <option value="alipay">支付宝</option>
                 <!-- 微信支付 -->
-                <option value="wechat">微信支付</option>
+                <option value="wxpay">微信支付</option>
                 <!-- QQ钱包 -->
-                <option value="qq">QQ钱包</option>
+                <option value="qqpay">QQ钱包</option>
                 <!-- 云闪付 -->
                 <option value="unionpay">云闪付</option>
               </select>
@@ -11646,6 +11673,13 @@ body.mobile-mode #session-picker-modal {
                 <!-- 选项6：小程序支付 - 用于微信小程序 -->
                 <option value="applet">小程序支付 (applet)</option>
               </select>
+              <p class="text-xs text-slate-500 mt-2">
+                💡 不同接口类型返回不同格式的支付信息：<br>
+                • jump/web → 返回跳转链接或二维码<br>
+                • jsapi/app → 返回JSON支付参数<br>
+                • scan → 返回支付结果信息<br>
+                • applet → 返回小程序跳转参数
+              </p>
               <!-- 提示文字：说明扫码支付需要付款码 -->
               <p class="text-xs text-slate-500 mt-1">
                 扫码支付(scan)需要提供付款码（auth_code）
@@ -17384,6 +17418,20 @@ body.mobile-mode #session-picker-modal {
         return;
       }
       
+      // 3.9 [新增] 获取支付接口类型（必填项）
+      const typeSelect = document.getElementById('test-payment-type');
+      const paymentType = typeSelect ? typeSelect.value : 'jump';
+      
+      // 验证接口类型已选择
+      if (!paymentType) {
+        console.log('[测试支付] 验证失败：未选择接口类型');
+        showModalAlert('请选择接口类型');
+        if (typeSelect) typeSelect.focus();
+        return;
+      }
+      
+      console.log('[测试支付] 接口类型：', paymentType);
+      
       // ========== 第4步：生成订单号 ==========
       
       // 订单号生成规则：当前时间戳（毫秒） + 6位随机数
@@ -17403,7 +17451,8 @@ body.mobile-mode #session-picker-modal {
         trade_no: tradeNo,
         amount: amount,
         product_name: productName,
-        pay_type: paymentMethod
+        pay_type: paymentMethod,
+        method: paymentType
       });
 
       app_host=window.location.protocol + '//' + window.location.host;
@@ -17427,8 +17476,9 @@ body.mobile-mode #session-picker-modal {
           body: JSON.stringify({
             amount: amount,              // 支付金额
             product_name: productName,   // 商品名称
-            pay_type: paymentMethod, // 支付方式
-            app_host: app_host,         // 应用主机地址
+            pay_type: paymentMethod,     // 支付方式
+            method: paymentType,         // 接口类型（web/jump/jsapi/app/scan/applet）
+            app_host: app_host,          // 应用主机地址
             return_url: window.location.href // 当前页面URL，支付完成后返回
           })
         });

@@ -3075,14 +3075,14 @@ class RainbowYiPayClient:
             return_url (str, optional): 同步返回URL
             client_app_host (str, optional): 前端自动获取的应用域名（用于未配置app_host时的自动回退）
             method (str, optional): 接口类型，可选值：
-                - "web": 通用网页支付（默认，会根据device判断返回跳转url/二维码/小程序跳转url等）
-                - "jump": 跳转支付（仅返回跳转url）
+                - "jump": 跳转支付（默认，仅返回跳转url）
+                - "web": 通用网页支付（会根据device判断返回跳转url/二维码/小程序跳转url等）
                 - "jsapi": JSAPI支付（小程序内支付，需传入sub_openid和sub_appid）
                 - "app": APP支付（iOS/安卓APP内支付）
                 - "scan": 付款码支付（需传入auth_code参数）
                 - "applet": 小程序支付（微信小程序内使用）
             device (str, optional): 设备类型（仅web接口类型需要），可选值：
-                - "pc": 电脑浏览器（默认）
+                - "pc": 电脑浏览器
                 - "mobile": 手机浏览器
                 - "qq": 手机QQ内浏览器
                 - "wechat": 微信内浏览器
@@ -3342,9 +3342,9 @@ class RainbowYiPayClient:
         }
         
         # 根据接口类型添加可选参数
-        # device参数：仅web接口类型需要
-        if device and method == "web":
-            params["device"] = device
+        # device参数：仅web接口类型需要，如果未提供则使用默认值pc
+        if method == "web":
+            params["device"] = device if device else "pc"
         
         # auth_code参数：仅scan接口类型需要
         if auth_code and method == "scan":
