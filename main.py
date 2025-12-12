@@ -3131,6 +3131,8 @@ class RainbowYiPayClient:
         - 如果网络请求失败，返回错误并记录异常日志
         - 如果易支付API返回错误，返回错误信息
         """
+
+        logging.info(f"[彩虹易支付] 创建订单请求 - 订单号: {out_trade_no}, 商品: {name}, 金额: {money}, 支付方式: {pay_type}, 接口类型: {method}")
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
         global requests, payment_verify_challenge_get
@@ -3366,11 +3368,13 @@ class RainbowYiPayClient:
         params["sign_type"] = "MD5"
         
         # 构造完整的API请求URL
-        # 彩虹易支付的创建订单接口路径为 /submit.php
-        api_url = f"{self.host}/submit.php"
+        # 彩虹易支付的创建订单接口路径为 /api/pay/create
+        api_url = f"{self.host}/api/pay/create"
         
         # 记录信息日志：开始创建订单
         logging.info(f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
+
+        logging.info(f"[彩虹易支付] 发起请求 - URL: {api_url}, 数据: {params}", extra={"method": "POST"})
         
         try:
             # 向彩虹易支付API发送POST请求
@@ -27100,12 +27104,12 @@ def start_web_server(args_param):
             
             # 从请求数据中提取支付方式，默认为支付宝
             # 支持两种参数名：pay_type（标准）和payment_method（PC端兼容）
-            pay_type = data.get("pay_type", "").strip() or data.get("payment_method", "alipay").strip()
+            pay_type = data.get("payment_type", "").strip()
 
             # [新增] 提取前端传递的应用域名 (用于自动配置 app_host)
             client_app_host = data.get("app_host", "").strip()
             
-            # 从请求数据中提取同步返回URL（可选参数）
+            # 从请求数据中提取同步返回URL
             # return_url 是用户支付完成后浏览器跳转的地址
             # 如果前端传入此参数，则使用前端指定的URL
             # 如果不传入或为空字符串，create_order() 方法会使用配置文件中的默认值
@@ -27113,11 +27117,6 @@ def start_web_server(args_param):
             # 使用 strip() 去除空白字符，空字符串会被转为 None
             return_url = data.get("return_url", "").strip() or None
             
-            # [新增] 提取支付接口类型参数
-            # method: 接口类型（web/jump/jsapi/app/scan/applet）
-            # 支持两种参数名：method（标准）和payment_type（PC端兼容）
-            # 默认为jump（跳转支付），与配置文件中的默认值一致
-            method = data.get("method", "").strip() or data.get("payment_type", "jump").strip()
             
             # [新增] 提取设备类型参数（仅web接口类型需要）
             # device: 设备类型（pc/mobile/qq/wechat/alipay）
@@ -27249,7 +27248,6 @@ def start_web_server(args_param):
                 pay_type=pay_type,
                 return_url=return_url,
                 client_app_host=client_app_host,
-                method=method,
                 device=device,
                 auth_code=auth_code,
                 sub_openid=sub_openid,

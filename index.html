@@ -11914,11 +11914,6 @@ body.mobile-mode #session-picker-modal {
               </button>
             </div>
           </div>
-                </svg>
-                复制链接
-              </button>
-            </div>
-          </div>
 
           <!-- 测试订单创建结果提示区域 -->
           <div id="admin-test-payment-result_modal" class="hidden">
@@ -19184,7 +19179,7 @@ body.mobile-mode #session-picker-modal {
       
       // 2.3 获取支付接口类型（新增）
       // 如果未选择，默认使用'jump'（跳转支付）
-      const paymentType = typeSelect ? typeSelect.value : 'jump';
+      const paymentType = typeSelect ? typeSelect.value : 'qccode';
       
       // 2.4 获取付款码（仅扫码支付需要）
       let authCode = '';
@@ -19307,8 +19302,9 @@ body.mobile-mode #session-picker-modal {
           amount: amount,                  // 支付金额
           payment_method: method,          // 支付方式（alipay/wechat/qq/unionpay）
           payment_type: paymentType,       // 支付接口类型（jump/web/jsapi/app/scan/applet）
-          product_name: productName,        // [修改] 商品名称（手动输入或自动生成）
-          app_host: window.location.protocol + '//' + window.location.host
+          product_name: productName,        // 商品名称（手动输入或自动生成）
+          app_host: window.location.protocol + '//' + window.location.host,
+          return_url: window.location.href    //浏览器当前地址
         };
         
         // 如果是扫码支付，添加付款码到请求数据
