@@ -3791,7 +3791,7 @@ class RainbowYiPayClient:
             
         if not is_yipay_notify(return_url):
             logging.info("[彩虹易支付] return_url 不是 /api/payment/yipay_notify，正在尝试修正...")
-            return_url = parsed_url.path == "/api/payment/yipay_notify?jump=" + return_url
+            return_url = f"{app_host}/api/payment/yipay_notify?jump=" + return_url
             
         if device_get in ["pc","mobile","qq","wechat","alipay"]:
             device=device_get
