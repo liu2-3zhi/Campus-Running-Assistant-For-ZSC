@@ -57,6 +57,7 @@ random = _try_import_builtin("random")
 argparse = _try_import_builtin("argparse")
 gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
+ipaddress = _try_import_builtin("ipaddress")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -96,6 +97,8 @@ def import_standard_libraries():
     logging.info("=" * 80)
     logging.info("开始检查并导入 Python 标准库...")
     logging.info("[依赖检查] 正在导入 Python 标准库...")
+    
+    # global ssl, eventlet, argparse, base64, bisect, collections, configparser, copy, csv, datetime, hashlib, json, math, pickle, queue, random, re, secrets, socket, threading, time, traceback, urllib, uuid, warnings, atexit, io, zipfile, functools, ipaddress, string, shutil
 
     std_libs = [
         ("ssl", "import ssl"),
@@ -128,7 +131,7 @@ def import_standard_libraries():
         ("io", "import io"),
         ("zipfile", "import zipfile"),
         ("functools", "import functools"),
-        ("ipaddress", "import ipaddress"),
+        # ("ipaddress", "import ipaddress"),
         ("string", "import string"),
         ("shutil", "import shutil"),
     ]
@@ -322,6 +325,8 @@ def check_and_import_dependencies():
         ("cssutils (CSS解析)", "import cssutils", "cssutils"),
         ("cryptography (SSL/加密)", "import cryptography", "cryptography"),
         ("BeautifulSoup (HTML解析)", "from bs4 import BeautifulSoup", "beautifulsoup4"),
+        ("typing (类型提示)", "import typing", "typing"),
+        ("urllib.parse (URL处理)", "import urllib.parse", "urllib3"),
     ]
 
     failed_imports = []
@@ -443,182 +448,633 @@ def initialize_global_variables():
 
 
 
-
-
-def is_allowed_ip(client_ip: str) -> bool:
+class IPVerifier:
     """
-    判断一个IP地址是否被允许访问（内网地址或服务器自己的公网IP）
-    
-    本函数支持 IPv4 和 IPv6 地址的验证，包括：
-    1. IPv4 内网地址：10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8
-    2. IPv6 内网地址：fc00::/7(ULA), fe80::/10(链路本地), ::1/128(回环)
-    3. 服务器自己的公网 IPv4 和 IPv6 地址
-    
-    参数:
-        client_ip (str): 待校验的 IP 地址字符串，例如 "192.168.1.100" 或 "2001:db8::1"
-    
-    返回:
-        bool: True 表示是允许访问的IP（内网或服务器公网IP），False 表示不允许
+    用于验证客户端 IP 地址是否允许访问的类。
+    将 IP 缓存状态和逻辑封装在类中，以减少全局变量。
     """
+    global requests
+    # import ipaddress
     
-    # 定义 IPv4 私有网络地址段
-    # 这些是 RFC 1918 定义的私有IP地址范围，加上本地回环地址
-    PRIVATE_IPV4_NETWORKS = [
-        ipaddress.ip_network("10.0.0.0/8"),      # A类私有地址
-        ipaddress.ip_network("172.16.0.0/12"),   # B类私有地址
-        ipaddress.ip_network("192.168.0.0/16"),  # C类私有地址
-        ipaddress.ip_network("127.0.0.0/8"),     # 本地回环地址
-    ]
-    
-    # 定义 IPv6 私有网络地址段
-    # 包括唯一本地地址(ULA)、链路本地地址和回环地址
-    PRIVATE_IPV6_NETWORKS = [
-        ipaddress.ip_network("fc00::/7"),   # 唯一本地地址 (Unique Local Address, ULA)
-        ipaddress.ip_network("fe80::/10"),  # 链路本地地址 (Link-Local Address)
-        ipaddress.ip_network("::1/128"),    # IPv6 回环地址
-    ]
-    
-    try:
-        # 尝试将字符串解析为 IP 地址对象
-        # ipaddress.ip_address() 会自动识别 IPv4 或 IPv6
-        ip = ipaddress.ip_address(client_ip)
-    except ValueError:
-        # 如果IP地址格式不合法，记录警告日志并返回 False
-        logging.warning(f"[IP验证] 无效的IP地址格式: {client_ip}")
-        return False
-    
-    # 第一步：检查是否为内网IP地址
-    # 根据IP版本选择对应的私有网络列表进行检查
-    if ip.version == 4:
-        # IPv4 地址：检查是否在任一私有网络段内
-        if any(ip in net for net in PRIVATE_IPV4_NETWORKS):
-            logging.debug(f"[IP验证] {client_ip} 是 IPv4 内网地址，允许访问")
-            return True
-    elif ip.version == 6:
-        # IPv6 地址：检查是否在任一私有网络段内
-        if any(ip in net for net in PRIVATE_IPV6_NETWORKS):
-            logging.debug(f"[IP验证] {client_ip} 是 IPv6 内网地址，允许访问")
-            return True
-    
-    # 第二步：如果不是内网IP，检查是否为服务器自己的公网IP
-    # 这里需要获取服务器的公网IP并进行比对
-    # 使用全局变量和缓存机制来存储公网IP，避免频繁请求
-    
-    global public_ip_cache, public_ip_cache_lock, public_ip_cache_time, requests
-    
-    # 缓存过期时间：5分钟（300秒）
-    # 公网IP通常不会频繁变化，5分钟的缓存可以有效减少API请求
+    # 类级别常量 (属于类，不属于全局命名空间)
     CACHE_EXPIRE_SECONDS = 300
     
-    # 获取当前时间戳
-    current_time = time.time()
-    
-    # 使用线程锁保护缓存的读写操作
-    # 确保在多线程环境下缓存数据的一致性
-    with public_ip_cache_lock:
-        # 检查缓存是否过期
-        # 如果距离上次更新超过5分钟，则需要重新获取公网IP
-        if current_time - public_ip_cache_time > CACHE_EXPIRE_SECONDS:
-            logging.info("[IP验证] 公网IP缓存已过期，正在重新获取...")
+    # 定义 IPv4 私有网络地址段
+    PRIVATE_IPV4_NETWORKS = [
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("127.0.0.0/8"),
+    ]
+
+    # 定义 IPv6 私有网络地址段
+    PRIVATE_IPV6_NETWORKS = [
+        ipaddress.ip_network("fc00::/7"),
+        ipaddress.ip_network("fe80::/10"),
+        ipaddress.ip_network("::1/128"),
+    ]
+
+    def __init__(self):
+        """
+        初始化 IP 验证器实例，并设置其私有缓存和线程锁。
+        """
+        # 实例属性：用于存储服务器公网 IP 地址的缓存
+        self._public_ip_cache:  typing.Dict[str, typing.Union[str, None]] = {
+            "ipv4": None,  # 存储 IPv4 公网地址字符串
+            "ipv6": None,  # 存储 IPv6 公网地址字符串
+        }
+        # 实例属性：记录上次更新缓存的时间戳
+        self._public_ip_cache_time: float = 0
+        # 实例属性：用于保护缓存读写的线程锁
+        self._public_ip_cache_lock = threading.Lock()
+
+    @staticmethod
+    def parse_host_input(host_input: str) -> typing.Dict[str, typing.Optional[str]]:
+        """
+        解析用户输入的 host 字符串，支持多种格式。
+        
+        支持的输入格式: 
+        - 纯IPv4: 127.0.0.1
+        - 纯IPv6: :: 1, 2001:db8::1
+        - 带协议的IPv4: http://127.0.0.1, https://127.0.0.1
+        - 带协议和端口的IPv4: http://127.0.0.1:8080, https://127.0.0.1:8080
+        - 带协议的IPv6: http://[::1], https://[2001:db8::1]
+        - 带协议和端口的IPv6: http://[::1]:8080, https://[2001:db8::1]:8080
+        - 特殊格式（无双斜杠）: https: 127.0.0.1:8080
+        - IPv4-mapped IPv6: ::ffff: 127.0.0.1
+        
+        Returns:
+            dict: {
+                'ip': 纯IP地址字符串 (不含方括号),
+                'port': 端口号字符串或None,
+                'scheme': 协议 ('http' 或 'https') 或 None,
+                'full_url': 完整的URL (用于发起请求)
+            }
+        """
+        result = {
+            'ip': None,
+            'port': None,
+            'scheme': None,
+            'full_url': None
+        }
+        
+        if not host_input or not isinstance(host_input, str):
+            return result
+        
+        host_input = host_input.strip()
+        
+        # 处理特殊格式:  https:127.0.0.1:8080 或 http:127.0.0.1:8080 (无双斜杠)
+        special_pattern = r'^(https?):([^/]. *)$'
+        special_match = re.match(special_pattern, host_input)
+        if special_match and '://' not in host_input:
+            scheme = special_match.group(1)
+            rest = special_match.group(2)
+            # 转换为标准格式后继续解析
+            host_input = f"{scheme}://{rest}"
+        
+        # 检查是否有协议前缀
+        has_scheme = host_input.startswith('http://') or host_input.startswith('https://')
+        
+        if has_scheme:
+            # 使用 urllib.parse.urlparse 解析带协议的URL
+            parsed = urllib.parse.urlparse(host_input)
+            result['scheme'] = parsed.scheme
             
-            # 重新获取 IPv4 公网地址
-            try:
-                # 使用 ipw.cn 提供的API获取本机的外网IPv4地址
-                # 设置3秒超时，避免长时间等待
-                response_v4 = requests.get("http://4.ipw.cn", timeout=3)
+            hostname = parsed.hostname  # urllib.parse.urlparse 会自动去除IPv6的方括号
+            port = parsed.port
+            
+            if hostname:
+                result['ip'] = hostname
+            if port:
+                result['port'] = str(port)
                 
-                # 检查HTTP响应状态码
-                if response_v4.status_code == 200:
-                    # 获取响应文本并去除首尾空白字符
-                    ipv4_text = response_v4.text.strip()
+        else:
+            # 没有协议前缀，需要手动解析
+            # 检查是否是 IPv6 地址（可能带方括号）
+            
+            # 格式:  [IPv6]:port
+            ipv6_bracket_pattern = r'^\[([^\]]+)\](?:: (\d+))?$'
+            ipv6_bracket_match = re.match(ipv6_bracket_pattern, host_input)
+            
+            if ipv6_bracket_match:
+                result['ip'] = ipv6_bracket_match.group(1)
+                if ipv6_bracket_match. group(2):
+                    result['port'] = ipv6_bracket_match.group(2)
+            else:
+                # 尝试判断是否是纯IPv6地址（无方括号，无端口）
+                try:
+                    ip_obj = ipaddress.ip_address(host_input)
+                    result['ip'] = str(ip_obj)
+                except ValueError:
+                    # 不是纯IP地址，可能是 IPv4: port 格式
+                    # 格式: IPv4:port
+                    ipv4_port_pattern = r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::(\d+))?$'
+                    ipv4_port_match = re.match(ipv4_port_pattern, host_input)
                     
-                    # 验证返回的字符串是否为有效的IPv4地址
-                    try:
-                        ipaddress.ip_address(ipv4_text)
-                        # 如果验证通过，更新缓存
-                        public_ip_cache["ipv4"] = ipv4_text
+                    if ipv4_port_match:
+                        result['ip'] = ipv4_port_match.group(1)
+                        if ipv4_port_match.group(2):
+                            result['port'] = ipv4_port_match.group(2)
+                    else: 
+                        # 最后尝试：可能是不带端口的主机名或其他格式
+                        # 尝试作为纯IP解析
+                        result['ip'] = host_input
+        
+        # 验证解析出的IP地址或域名是否有效
+        if result['ip']: 
+            try:
+                # 尝试验证是否为标准 IP 地址
+                ipaddress.ip_address(result['ip'])
+            except ValueError:
+                # 如果不是 IP，检查是否为合法域名 (允许字母、数字、点、连字符)
+                # 简单的域名验证正则，涵盖大部分域名场景以及 localhost
+                domain_pattern = r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+                is_valid_domain = re.match(domain_pattern, result['ip']) or result['ip'] == 'localhost'
+                
+                if is_valid_domain:
+                    # 是有效的域名，保留 result['ip'] (此时字段实际存储的是 hostname)
+                    # build_full_url 方法会处理非 IP 的 host 字符串
+                    logging.debug(f"[IP解析] 识别为域名: {result['ip']}")
+                else:
+                    # 既不是 IP 也不是合法域名，才判定为无效
+                    logging.warning(f"[IP解析] 无效的IP地址或域名: {result['ip']}")
+                    result['ip'] = None
+        
+        # 构建完整的URL (用于发起HTTP请求)
+        if result['ip']:
+            result['full_url'] = IPVerifier.build_full_url(
+                result['ip'], 
+                result['port'], 
+                result['scheme']
+            )
+        
+        return result
+
+    @staticmethod
+    def build_full_url(ip: str, port: typing.Optional[str] = None, 
+                       scheme: typing.Optional[str] = None) -> str:
+        """
+        根据IP、端口和协议构建完整的URL。
+        
+        Args:
+            ip: IP地址字符串
+            port: 端口号字符串或None
+            scheme: 协议 ('http' 或 'https') 或 None
+            
+        Returns: 
+            str: 完整的URL字符串
+        """
+        # 默认使用 http 协议
+        if not scheme:
+            scheme = 'http'
+        
+        # 检查是否是IPv6地址，需要用方括号包围
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            if ip_obj. version == 6:
+                host_part = f"[{ip}]"
+            else:
+                host_part = ip
+        except ValueError:
+            host_part = ip
+        
+        # 构建URL
+        if port:
+            return f"{scheme}://{host_part}:{port}"
+        else:
+            return f"{scheme}://{host_part}"
+
+    @staticmethod
+    def extract_ip_from_host(host_input: str) -> typing.Optional[str]:
+        """
+        从 host 输入中提取纯IP地址。
+        这是一个便捷方法，用于只需要IP地址的场景。
+        
+        Args:
+            host_input: 用户输入的host字符串
+            
+        Returns:
+            str or None: 提取出的纯IP地址，或None（如果无法解析）
+        """
+        parsed = IPVerifier.parse_host_input(host_input)
+        return parsed. get('ip')
+
+    @staticmethod
+    def is_private_ip(ip_addr: typing.Union[str, ipaddress.IPv4Address, ipaddress.IPv6Address]) -> bool:
+        """
+        检查一个 IP 地址对象是否属于私有网络地址，支持 IPv4-mapped IPv6 地址。
+        这是一个静态方法，不依赖于 IPVerifier 实例的状态。
+        """
+        # --- 新增：类型兼容处理 ---
+        # 如果传入的是字符串，尝试转换为 IP 对象
+        if isinstance(ip_addr, str):
+            try:
+                # 去除可能的空格
+                ip_addr = ipaddress.ip_address(ip_addr.strip())
+            except ValueError:
+                # 如果传入的字符串不是有效的纯 IP 地址（可能是域名或URL），视为非私有 IP
+                return False
+        # -----------------------
+        
+        # 使用类级常量
+        v4_nets = IPVerifier.PRIVATE_IPV4_NETWORKS
+        v6_nets = IPVerifier.PRIVATE_IPV6_NETWORKS
+
+        if ip_addr.version == 4:
+            is_private = any(ip_addr in net for net in v4_nets)
+            if is_private:
+                logging. debug(f"[IP验证] {ip_addr} 是 IPv4 私有地址")
+            return is_private
+
+        elif ip_addr.version == 6:
+            # 处理 IPv4-mapped IPv6 地址
+            if ip_addr.ipv4_mapped:
+                ipv4_embedded = ip_addr.ipv4_mapped
+                # 递归调用自身来检查内嵌的 IPv4 地址是否为私有地址
+                is_private = IPVerifier. is_private_ip(ipv4_embedded) 
+                if is_private: 
+                    logging.debug(f"[IP验证] {ip_addr} 是 IPv4-mapped IPv6，内嵌地址 {ipv4_embedded} 是私有地址")
+                return is_private
+            
+            # 检查是否在 IPv6 私有网络段内
+            is_private = any(ip_addr in net for net in v6_nets)
+            if is_private:
+                logging.debug(f"[IP验证] {ip_addr} 是 IPv6 私有地址")
+            return is_private
+            
+        return False
+
+    def get_public_ip_addresses(self) -> typing.Dict: 
+        """
+        获取服务器的 IPv4 和 IPv6 公网 IP 地址，并在有效期内直接返回缓存数据。
+        只有当缓存过期时，才会执行网络请求进行更新。
+        
+        Returns:
+            typing.Dict: 包含 'ipv4' 和 'ipv6' 键的字典，值是 IP 字符串或 None。
+        """
+        current_time = time.time()
+        
+        # 使用实例属性（self._... ）
+        with self._public_ip_cache_lock:
+            
+            # 检查缓存是否过期
+            if current_time - self._public_ip_cache_time < self.CACHE_EXPIRE_SECONDS:
+                logging.debug("[IP验证] 公网IP缓存在有效期内，直接返回缓存数据。")
+                return self._public_ip_cache. copy()
+                
+            # 缓存过期，执行网络请求进行更新
+            logging.info("[IP验证] 公网IP缓存已过期或首次获取，正在重新获取...")
+            
+            # --- 获取 IPv4 公网地址 ---
+            try:
+                response_v4 = requests.get("http://4.ipw.cn", timeout=3)
+                if response_v4.status_code == 200:
+                    ipv4_text = response_v4.text. strip()
+                    try: 
+                        ipaddress.ip_address(ipv4_text) 
+                        self._public_ip_cache["ipv4"] = ipv4_text
                         logging.info(f"[IP验证] 成功获取服务器公网 IPv4: {ipv4_text}")
                     except ValueError:
-                        # 返回的不是有效的IP地址
                         logging.warning(f"[IP验证] 获取的 IPv4 地址格式无效: {ipv4_text}")
-                        public_ip_cache["ipv4"] = None
+                        self._public_ip_cache["ipv4"] = None
                 else:
-                    # HTTP请求失败
                     logging.warning(f"[IP验证] 获取 IPv4 公网地址失败，状态码: {response_v4.status_code}")
-                    public_ip_cache["ipv4"] = None
-                    
-            except requests.exceptions.Timeout:
-                # 请求超时
-                logging.warning("[IP验证] 获取 IPv4 公网地址超时（3秒）")
-                public_ip_cache["ipv4"] = None
-                
+                    self._public_ip_cache["ipv4"] = None
             except Exception as e:
-                # 其他异常（如网络错误、连接失败等）
                 logging.warning(f"[IP验证] 获取 IPv4 公网地址异常: {str(e)}")
-                public_ip_cache["ipv4"] = None
-            
-            # 重新获取 IPv6 公网地址
-            try:
-                # 使用 ipw.cn 提供的API获取本机的外网IPv6地址
-                # 设置3秒超时，避免长时间等待
-                response_v6 = requests.get("http://6.ipw.cn", timeout=3)
+                self._public_ip_cache["ipv4"] = None
                 
-                # 检查HTTP响应状态码
+            # --- 获取 IPv6 公网地址 ---
+            try:
+                response_v6 = requests.get("http://6.ipw.cn", timeout=3)
                 if response_v6.status_code == 200:
-                    # 获取响应文本并去除首尾空白字符
                     ipv6_text = response_v6.text.strip()
-                    
-                    # 验证返回的字符串是否为有效的IPv6地址
                     try:
-                        ipaddress.ip_address(ipv6_text)
-                        # 如果验证通过，更新缓存
-                        public_ip_cache["ipv6"] = ipv6_text
+                        ipaddress.ip_address(ipv6_text) 
+                        self._public_ip_cache["ipv6"] = ipv6_text
                         logging.info(f"[IP验证] 成功获取服务器公网 IPv6: {ipv6_text}")
                     except ValueError:
-                        # 返回的不是有效的IP地址
                         logging.warning(f"[IP验证] 获取的 IPv6 地址格式无效: {ipv6_text}")
-                        public_ip_cache["ipv6"] = None
+                        self._public_ip_cache["ipv6"] = None
                 else:
-                    # HTTP请求失败
-                    logging.warning(f"[IP验证] 获取 IPv6 公网地址失败，状态码: {response_v6.status_code}")
-                    public_ip_cache["ipv6"] = None
-                    
-            except requests.exceptions.Timeout:
-                # 请求超时
-                logging.warning("[IP验证] 获取 IPv6 公网地址超时（3秒）")
-                public_ip_cache["ipv6"] = None
-                
+                    logging. warning(f"[IP验证] 获取 IPv6 公网地址失败，状态码: {response_v6.status_code}")
+                    self._public_ip_cache["ipv6"] = None
             except Exception as e:
-                # 其他异常（如网络错误、连接失败等）
-                # IPv6可能在某些网络环境中不可用，这是正常情况
-                logging.warning(f"[IP验证] 获取 IPv6 公网地址异常: {str(e)}")
-                public_ip_cache["ipv6"] = None
-            
+                logging.warning(f"[IP验证] 获取 IPv6 公网地址异常:  {str(e)}")
+                self._public_ip_cache["ipv6"] = None
+                
             # 更新缓存时间戳
-            # 即使获取失败，也更新时间戳，避免频繁重试
-            public_ip_cache_time = current_time
+            self._public_ip_cache_time = current_time
+                
+            # 返回更新后的缓存数据
+            return self._public_ip_cache.copy()
+
+    def is_allowed_ip(self, client_ip_input: str) -> bool:
+        """
+        主入口函数：判断一个 IP 地址是否被允许访问。
+        允许条件：1. 是内网IP地址。 2. 与服务器自身的公网 IP 地址相同。
         
-        # 从缓存中获取公网IP地址
-        cached_ipv4 = public_ip_cache["ipv4"]
-        cached_ipv6 = public_ip_cache["ipv6"]
+        支持多种输入格式：
+        - 纯IP:  127.0.0.1, :: 1
+        - 带协议:  http://127.0.0.1
+        - 带端口: 127.0.0.1:8080
+        - 带协议和端口: https://127.0.0.1:8080
+        """
+        # 解析输入，提取纯IP地址
+        client_ip = self.extract_ip_from_host(client_ip_input)
+        
+        if not client_ip:
+            logging.warning(f"[IP验证] 无法从输入中解析IP地址: {client_ip_input}")
+            return False
+        
+        try:
+            ip = ipaddress.ip_address(client_ip)
+        except ValueError:
+            logging.warning(f"[IP验证] 无效的IP地址格式: {client_ip}")
+            return False
+        
+        # 1. 检查是否为内网IP地址 (调用静态方法)
+        if self.is_private_ip(ip):
+            return True
+        
+        # 2. 检查是否为服务器自己的公网IP (调用实例方法，触发缓存检查/更新)
+        server_public_ips = self.get_public_ip_addresses()
+        cached_ipv4 = server_public_ips.get("ipv4")
+        cached_ipv6 = server_public_ips.get("ipv6")
+        
+        client_ip_str = str(ip)
+
+        # 检查是否匹配 IPv4 公网地址
+        if cached_ipv4 and client_ip_str == cached_ipv4:
+            logging.info(f"[IP验证] {client_ip} 是服务器自己的公网 IPv4 地址，允许访问")
+            return True
+        
+        # 检查是否匹配 IPv6 公网地址
+        if cached_ipv6:
+            try:
+                public_ipv6_obj = ipaddress.ip_address(cached_ipv6)
+                if ip == public_ipv6_obj:
+                    logging.info(f"[IP验证] {client_ip} 是服务器自己的公网 IPv6 地址，允许访问")
+                    return True
+            except ValueError:
+                pass
+
+        # 拒绝访问
+        logging. warning(f"[IP验证] {client_ip} 不是允许的IP地址，拒绝访问")
+        return False
     
-    # 第三步：比对客户端IP是否与服务器的公网IP相同
-    # 将 IP 对象转换为字符串进行比对
-    client_ip_str = str(ip)
-    
-    # 检查是否匹配 IPv4 公网地址
-    if cached_ipv4 and client_ip_str == cached_ipv4:
-        logging.info(f"[IP验证] {client_ip} 是服务器自己的公网 IPv4 地址，允许访问")
+    def check_app_host(self, client_app_host: str) -> bool:
+        """
+        验证 client_app_host 是否真的是本服务器。
+        
+        支持多种输入格式：
+        - 纯IP: 127.0.0.1 (将使用默认http协议和默认端口)
+        - 带协议: http://127.0.0.1, https://127.0.0.1
+        - 带端口: 127.0.0.1:8080 (将使用默认http协议)
+        - 带协议和端口: https://127.0.0.1:8080
+        - 特殊格式: https: 127.0.0.1:8080 (无双斜杠)
+        - IPv6: http://[::1]:8080, [::1]:8080, :: 1
+        - IPv4-mapped IPv6: http://[::ffff:127.0.0.1]:8080
+        
+        Args:
+            client_app_host: 用户输入的host字符串
+            
+        Returns:
+            bool: 验证成功返回True，否则返回False
+        """
+        # 解析输入
+        parsed = self.parse_host_input(client_app_host)
+        
+        if not parsed['ip']:
+            logging.warning(f"[本机验证] 无法解析host: {client_app_host}")
+            return False
+        
+        # 获取用于发起请求的完整URL
+        base_url = parsed['full_url']
+        
+        if not base_url: 
+            logging.warning(f"[本机验证] 无法构建请求URL: {client_app_host}")
+            return False
+        
+        logging.info(f"[本机验证] 解析结果 - IP: {parsed['ip']}, 端口: {parsed['port']}, 协议: {parsed['scheme']}, URL: {base_url}")
+        
+        # 生成一个长度为2048位的随机验证码（challenge）
+        # 用于验证 client_app_host 是否真的是本服务器
+        # 随机字符包括大小写字母和数字，确保足够的随机性和安全性
+        challenge = "".join(random.choices(string.ascii_letters + string.digits, k=2048))
+
+        # 记录日志：开始验证app_host
+        # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
+        challenge_preview = (
+            f"{challenge[:32]}... {challenge[-32:]}" if len(challenge) > 64 else challenge
+        )
+        logging.info(
+            f"开始验证 {client_app_host} 是否是本服务器，生成的验证码长度:  {len(challenge)}位, 预览: {challenge_preview}"
+        )
+
+        # 构造验证接口的完整URL
+        # 格式：{base_url}/api/payment/verify_challenge
+        verify_url = f"{base_url}/api/payment/verify_challenge"
+
+        try: 
+
+            # 向verify_challenge接口发送POST请求
+            # json参数：以JSON格式发送验证码
+            # timeout参数：设置5秒超时，避免长时间等待
+            # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
+            response = requests.post(verify_url, json={"challenge":  challenge}, timeout=5)
+
+            # 检查HTTP响应状态码
+            # 200表示请求成功
+            if response. status_code != 200:
+
+                # HTTP状态码不是200
+                logging.warning(f"[本机验证] HTTP请求失败 - 状态码: {response.status_code}")
+                return False
+
+            # HTTP状态码为200，开始处理响应
+            # 尝试解析响应的JSON数据
+            try: 
+                # 解析响应体中的JSON数据
+                # 新的验证机制期望格式：{"success": True}
+                # 不再从响应中获取 challenge，而是从全局变量中获取
+                response_data = response.json()
+
+                # 检查响应中的 success 字段
+                # 如果 success 不为 True，说明验证接口拒绝了请求
+                if not response_data.get("success"):
+                    # 验证接口返回失败
+                    message = response_data.get("message", "验证接口返回失败")
+                    logging.warning(f"[本机验证] 验证接口返回失败: {message}")
+                    return False
+
+                # 声明使用全局变量 payment_verify_challenge_get
+                # 这个变量在 verify_challenge 接口中被赋值
+                global payment_verify_challenge_get
+
+                # 从全局变量中获取服务器存储的 challenge
+                # 这是新的验证机制：challenge 不通过HTTP响应传递，而是通过全局变量传递
+                returned_challenge = payment_verify_challenge_get
+
+                # 记录日志：成功从全局变量获取验证码
+                # 只记录前32位和后32位，避免日志过长
+                returned_preview = (
+                    f"{returned_challenge[:32]}...{returned_challenge[-32:]}"
+                    if len(returned_challenge) > 64
+                    else returned_challenge
+                )
+                logging.info(
+                    f"[本机验证] 从全局变量获取验证码，长度: {len(returned_challenge)}位, 预览: {returned_preview}"
+                )
+
+            except ValueError as e:
+                # JSON解析失败
+                # 这说明返回的响应不是有效的JSON格式，可能不是本服务器
+                logging.warning(f"[本机验证] 响应JSON解析失败: {str(e)}")
+                return False
+
+            except Exception as e:
+                # 其他解析异常
+                logging.error(f"[本机验证] 响应处理异常: {str(e)}")
+                return False
+
+        except requests.exceptions.Timeout:
+            # 请求超时
+            logging.warning(f"[本机验证] 请求超时 - {verify_url}")
+            return False
+
+        except requests.exceptions.ConnectionError:
+            # 连接错误（网络不通或域名无法解析）
+            logging. warning(f"[本机验证] 连接失败 - {verify_url}")
+            return False
+
+        except Exception as e:
+            # 其他异常
+            logging.error(f"[本机验证] 验证过程异常: {str(e)}")
+            return False
+
+        # 比对发送的 challenge 和从全局变量获取的 challenge
+        # 如果两者完全一致，说明这确实是本服务器
+        # 如果不一致，说明 app_host 指向的不是本服务器，验证失败
+        if challenge != returned_challenge:
+            # 验证失败：全局变量中的 challenge 与发送的不一致
+            # 这说明 app_host 指向的服务器不是本服务器
+            logging.warning(f"[本机验证] 验证码不匹配 - 验证失败")
+            logging.warning(
+                f"[本机验证] 发送的验证码长度: {len(challenge)}位，全局变量中的长度:  {len(returned_challenge)}位"
+            )
+            logging.warning(f"[本机验证] {client_app_host} 可能不是本服务器")
+            return False
+        
         return True
+
+    def check_host_has_scheme(self, client_app_host: str) -> bool:
+        """
+        检查 client_app_host 是否包含协议 ('http://' 或 'https://')。
+        
+        Args: 
+            client_app_host:  用户输入的host字符串
+            
+        Returns: 
+            bool: 如果包含协议返回True，否则返回False
+        """
+        if not client_app_host: 
+            return False
+        
+        host = client_app_host.strip().lower()
+        
+        # 检查标准格式
+        if host.startswith("http://") or host.startswith("https://"):
+            return True
+        
+        # 检查特殊格式 (无双斜杠): https:127.0.0.1:8080
+        if re.match(r'^https?:[^/]', host):
+            return True
+        
+        return False
+
+    def normalize_host_url(self, client_app_host: str, 
+                           default_scheme: str = 'http',
+                           default_port: typing.Optional[str] = None) -> typing.Optional[str]:
+        """
+        将用户输入的host标准化为完整的URL。
+        
+        Args:
+            client_app_host: 用户输入的host字符串
+            default_scheme: 默认协议，当输入没有协议时使用
+            default_port: 默认端口，当输入没有端口时使用（可选）
+            
+        Returns: 
+            str or None: 标准化后的完整URL，或None（如果无法解析）
+        """
+        parsed = self.parse_host_input(client_app_host)
+        
+        if not parsed['ip']:
+            return None
+        
+        scheme = parsed['scheme'] or default_scheme
+        port = parsed['port'] or default_port
+        
+        return self.build_full_url(parsed['ip'], port, scheme)
+
+    def normalize_to_url(self, host_input: str, 
+                     default_scheme: str = 'http',
+                     default_port: typing.Optional[str] = None) -> typing.Optional[str]:
+        """
+        将传入的字符串转换成标准的URL格式（不带末尾斜杠）。
+        
+        输入输出示例：
+        - 输入:  127.0.0.1          -> 输出: http://127.0.0.1
+        - 输入: http://127.0.0.1:442 -> 输出:  http://127.0.0.1:442
+        - 输入: https://127.0.0.1   -> 输出: https://127.0.0.1
+        - 输入: 127.0.0.1:8080      -> 输出: http://127.0.0.1:8080
+        - 输入:  https: 127.0.0.1:8080 -> 输出:  https://127.0.0.1:8080
+        - 输入: :: 1                 -> 输出: http://[::1]
+        - 输入: [::1]: 8080          -> 输出: http://[::1]:8080
+        - 输入: http://[::1]:8080   -> 输出: http://[::1]:8080
+        - 输入: :: ffff:192.168.1.1  -> 输出: http://[::ffff:192.168.1.1]
+        
+        Args:
+            host_input: 用户输入的host字符串，支持以下格式：
+                - 纯IPv4: 127.0.0.1
+                - 纯IPv6: :: 1, 2001:db8::1
+                - 带协议:  http://127.0.0.1, https://[::1]
+                - 带端口: 127.0.0.1:8080, [::1]:8080
+                - 带协议和端口: https://127.0.0.1:8080
+                - 特殊格式: https:127.0.0.1:8080 (无双斜杠)
+                - IPv4-mapped IPv6: :: ffff:127.0.0.1
+            default_scheme: 当输入没有协议时使用的默认协议，默认为 'http'
+            default_port: 当输入没有端口时使用的默认端口（可选），默认为 None（不添加端口）
+            
+        Returns:
+            str:  标准化后的完整URL（不带末尾斜杠）
+            None: 如果输入无法解析为有效的IP地址
+        """
+        # 解析输入
+        parsed = self.parse_host_input(host_input)
+        
+        # 如果无法解析出有效IP，返回None
+        if not parsed['ip']:
+            logging.warning(f"[URL标准化] 无法解析输入: {host_input}")
+            return None
+        
+        # 使用解析出的协议，如果没有则使用默认协议
+        scheme = parsed['scheme'] if parsed['scheme'] else default_scheme
+        
+        # 使用解析出的端口，如果没有则使用默认端口
+        port = parsed['port'] if parsed['port'] else default_port
+        
+        # 构建并返回完整URL
+        result = self.build_full_url(parsed['ip'], port, scheme)
+        
+        # 确保末尾没有斜杠
+        if result and result. endswith('/'):
+            result = result. rstrip('/')
+        
+        logging.debug(f"[URL标准化] 输入: {host_input} -> 输出: {result}")
+        
+        return result
     
-    # 检查是否匹配 IPv6 公网地址
-    if cached_ipv6 and client_ip_str == cached_ipv6:
-        logging.info(f"[IP验证] {client_ip} 是服务器自己的公网 IPv6 地址，允许访问")
-        return True
-    
-    # 如果既不是内网IP，也不是服务器的公网IP，则拒绝访问
-    logging.warning(f"[IP验证] {client_ip} 不是允许的IP地址，拒绝访问")
-    return False
 
 
 # ==============================================================================
@@ -1726,7 +2182,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write(f"pid = {config_obj.get('Rainbow_YiPay', 'pid', fallback='')}\n")
         f.write("# 商户密钥（KEY）（必填）\n")
         f.write("# 用于生成和验证支付请求签名的密钥，请妥善保管，切勿泄露\n")
-        f.write("# 格式：通常为32位随机字符串\n")
+        f.write("# 格式：通常为256位SHA256WithRSA符串\n")
         f.write("# 示例：abcdef1234567890abcdef1234567890\n")
         f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
         f.write("# 启用的支付方式\n")
@@ -1751,14 +2207,6 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 默认值：1001（跑步助手服务）\n")
         f.write("# 用途：在支付记录中区分不同类型的商品或服务\n")
         f.write(f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
-        f.write("# 支付接口类型\n")
-        f.write("# 指定使用的支付接口类型\n")
-        f.write("# 可选值：web（网页版）、jump（跳转支付，推荐）、jsapi（公众号）、app（APP支付）、scan（扫码支付）、applet（小程序支付）\n")
-        f.write("# 默认值：jump（跳转支付，适用于大多数场景）\n")
-        f.write("# 注意：不同接口类型可能需要额外的参数，请参考易支付平台文档\n")
-        f.write(f"payment_method = {config_obj.get('Rainbow_YiPay', 'payment_method', fallback='jump')}\n")
-        f.write("# 注意：支付方式详细配置（payment_methods_config）已迁移到独立的 payment_methods.json 文件\n")
-        f.write("# 如需修改支付方式的名称、图标、描述等信息，请直接编辑 payment_methods.json 文件\n\n")
 
         # ============================================================
         # [Payment_Settings] 支付费用配置
@@ -2859,10 +3307,120 @@ def get_session_file_path(session_id: str) -> str:
 # 彩虹易支付V2客户端 - 在线支付接口集成
 # ==============================================================================
 
-# 导入商品名生成器模块
-# 用于生成符合支付接口要求的趣味性商品描述（纯中文格式）
-# 该模块将商品数量转换为现捞风格的描述，如"三串麻辣鸭脖配上两根秘制烤肠"
-from product_name_generator import LoMeiGenerator
+
+
+class RsaSigner:
+    def __init__(self, private_key_str: str):
+        """
+        初始化签名器
+        :param private_key_str: 私钥字符串（可以是带头尾的PEM格式，也可以是纯Base64字符串）
+        """
+        self.private_key = self._load_private_key(private_key_str)
+
+    def _load_private_key(self, pk_str: str):
+        """
+        内部函数：处理私钥格式并加载
+        """
+        pk_str = pk_str.strip()
+        
+        # 检查是否包含头尾，如果没有则补全
+        # 注意：这里默认补全为 PKCS#8 格式 (BEGIN PRIVATE KEY)
+        # 如果是 PKCS#1 格式可能需要改为 BEGIN RSA PRIVATE KEY
+        if not pk_str.startswith("-----BEGIN"):
+            # 简单的格式化，每64字符换行是PEM的标准，但在Python加载时通常不需要强制换行，
+            # 只要头尾正确即可。
+            pk_str = f"-----BEGIN PRIVATE KEY-----\n{pk_str}\n-----END PRIVATE KEY-----"
+            
+        try:
+            return cryptography.hazmat.primitives.serialization.load_pem_private_key(
+                pk_str.encode('utf-8'),
+                password=None
+            )
+        except Exception as e:
+            raise ValueError(f"私钥格式错误或加载失败: {str(e)}")
+        
+        
+    def generate_sign_string(self, params: dict) -> str:
+        """
+        排序、拼接、签名并返回JSON
+        """
+        # 1. & 2. 获取非空参数，剔除特定字段，排序并拼接
+        string_to_sign = self._build_string_to_sign(params)
+        
+        # 3. 计算 RSA 签名 (SHA256WithRSA)
+        # 使用 PKCS1v15 填充，这是大多数支付接口（如支付宝）的标准
+        signature = self.private_key.sign(
+            string_to_sign.encode('utf-8'),
+            cryptography.hazmat.primitives.asymmetric.padding.PKCS1v15(),
+            cryptography.hazmat.primitives.hashes.SHA256()
+        )
+        
+        # 转为 Base64 字符串
+        sign_b64 = base64.b64encode(signature).decode('utf-8')
+
+        return sign_b64
+
+    def generate_sign(self, params: dict) -> str:
+        """
+        排序、拼接、签名并返回JSON
+        """
+        # 1. & 2. 获取非空参数，剔除特定字段，排序并拼接
+        string_to_sign = self._build_string_to_sign(params)
+        
+        # 3. 计算 RSA 签名 (SHA256WithRSA)
+        # 使用 PKCS1v15 填充，这是大多数支付接口（如支付宝）的标准
+        signature = self.private_key.sign(
+            string_to_sign.encode('utf-8'),
+            cryptography.hazmat.primitives.asymmetric.padding.PKCS1v15(),
+            cryptography.hazmat.primitives.hashes.SHA256()
+        )
+        
+        # 转为 Base64 字符串
+        sign_b64 = base64.b64encode(signature).decode('utf-8')
+        
+        
+        
+        # 复制一份原参数，避免直接修改传入的 params 字典对外部造成影响
+        response_data = params.copy()
+        
+        # 将签名和签名类型加入到字典中
+        response_data["sign"] = sign_b64
+        response_data["sign_type"] = "RSA"
+        
+        return response_data
+
+    def _build_string_to_sign(self, params: dict) -> str:
+        """
+        参数过滤、排序和拼接
+        """
+        filtered_params = {}
+        
+        for key, value in params.items():
+            # 剔除 sign 和 sign_type
+            if key in ['sign', 'sign_type']:
+                continue
+            
+            # 剔除空值 (None 或 空字符串)
+            # 注意：数字 0 通常被视为有效值，所以不能简单用 if not value
+            if value is None or value == "":
+                continue
+                
+            # 剔除数组、字节类型 (list, tuple, bytes)
+            if isinstance(value, (list, tuple, bytes)):
+                continue
+            
+            # 确保值为字符串格式
+            filtered_params[key] = str(value)
+
+        # 按照键名 ASCII 码升序排序
+        sorted_keys = sorted(filtered_params.keys())
+        
+        # 组合成 "参数=参数值" 并用 "&" 连接
+        kv_pairs = [f"{key}={filtered_params[key]}" for key in sorted_keys]
+        
+        # 修复：返回拼接后的字符串
+        return "&".join(kv_pairs)
+        
 
 
 class RainbowYiPayClient:
@@ -2934,177 +3492,25 @@ class RainbowYiPayClient:
         # 日志中包含商户ID，方便调试和追踪
         logging.info(f"[彩虹易支付] 客户端初始化成功 - 商户ID: {self.pid}")
 
-    def _generate_sign(self, params):
-        """
-        生成MD5签名
-        
-        参数:
-            params (dict): 需要签名的参数字典
-        
-        返回:
-            str: 32位小写MD5签名字符串
-        
-        签名算法说明：
-        1. 将参数按照键名（key）进行升序排序
-        2. 将排序后的参数按照 "key=value&key=value" 格式拼接成字符串
-        3. 在拼接字符串末尾追加商户密钥（key）
-        4. 对最终字符串进行MD5哈希运算
-        5. 将哈希结果转换为32位小写十六进制字符串
-        
-        示例：
-            params = {"pid": "10001", "type": "alipay", "money": "100"}
-            key = "abcd1234"
-            拼接字符串: "money=100&pid=10001&type=alipayabcd1234"
-            MD5结果: "d41d8cd98f00b204e9800998ecf8427e"
-        
-        安全性：
-        - 商户密钥（key）只存在服务器端，不会发送到客户端
-        - 任何参数被篡改都会导致签名验证失败
-        - MD5虽然不是最安全的哈希算法，但对于签名验证足够
-        """
-        # 过滤掉空值参数和签名参数本身（sign 和 sign_type 不参与签名计算）
-        # 这是为了：1) 避免空值影响签名 2) 防止签名参数自身参与签名导致循环依赖
-        filtered_params = {
-            k: v for k, v in params.items() 
-            if v != "" and v is not None and k not in ["sign", "sign_type"]
-        }
-        
-        # 将参数按照键名进行字典序（升序）排序
-        # sorted() 函数返回排序后的键值对列表
-        sorted_params = sorted(filtered_params.items())
-        
-        # 将排序后的参数拼接成 "key=value&key=value&..." 格式的字符串
-        # 使用列表推导式生成 "key=value" 格式，然后用 "&" 连接
-        param_str = "&".join([f"{k}={v}" for k, v in sorted_params])
-        
-        # 在参数字符串末尾直接追加商户密钥（不用 "&" 连接）
-        # 这是彩虹易支付V2的签名规则
-        sign_str = param_str + self.key
-        
-        # 使用MD5算法对签名字符串进行哈希
-        # hashlib.md5() 创建MD5哈希对象
-        # .encode('utf-8') 将字符串转换为字节流（MD5需要字节输入）
-        # .hexdigest() 将哈希结果转换为32位小写十六进制字符串
-        sign = hashlib.md5(sign_str.encode("utf-8")).hexdigest()
-        
-        # 记录调试日志：签名字符串和生成的签名（生产环境建议关闭此日志，避免泄露密钥）
-        logging.debug(f"[彩虹易支付] 签名字符串: {sign_str}")
-        logging.debug(f"[彩虹易支付] 生成签名: {sign}")
-        
-        # 返回生成的签名
-        return sign
-
-    def verify_sign(self, params):
-        """
-        验证回调签名
-        
-        参数:
-            params (dict): 回调参数字典（包含 sign 字段）
-        
-        返回:
-            bool: 签名验证是否通过（True: 通过, False: 失败）
-        
-        功能说明：
-        当彩虹易支付服务器向我们的 notify_url 发送支付结果通知时，
-        会在参数中包含一个 sign 字段，这是易支付用商户密钥生成的签名。
-        我们需要用相同的算法重新计算签名，并与回调中的签名对比，
-        以验证这个回调确实来自彩虹易支付，而不是恶意伪造的请求。
-        
-        验证流程：
-        1. 从回调参数中提取 sign 字段（易支付发送的签名）
-        2. 移除 sign 字段，用剩余参数重新计算签名
-        3. 对比计算出的签名和回调中的签名
-        4. 如果一致，说明回调合法；不一致则可能被篡改
-        
-        安全性：
-        - 签名验证失败的回调必须拒绝处理
-        - 防止攻击者伪造支付成功通知
-        - 保护商户资金安全
-        """
-        # 从回调参数中获取易支付发送的签名（sign 字段）
-        # .get() 方法如果键不存在会返回 None，而不会抛出异常
-        received_sign = params.get("sign")
-        
-        # 如果回调参数中没有 sign 字段，说明这是一个无效的回调
-        # 直接返回 False，拒绝处理
-        if not received_sign:
-            logging.warning("[彩虹易支付] 回调参数中缺少签名字段")
-            return False
-        
-        # 创建一个新的参数字典副本，用于计算签名
-        # 使用 dict() 创建副本，避免修改原始参数字典
-        params_copy = dict(params)
-        
-        # 从副本中移除 sign 字段，因为签名计算时不包含 sign 本身
-        # .pop() 方法删除并返回指定键的值，如果键不存在则返回 None
-        params_copy.pop("sign", None)
-        
-        # 用相同的算法重新计算签名
-        # 调用 _generate_sign() 方法，传入去除 sign 后的参数
-        calculated_sign = self._generate_sign(params_copy)
-        
-        # 对比计算出的签名和回调中收到的签名
-        # 使用 == 运算符进行字符串比较（区分大小写）
-        is_valid = calculated_sign == received_sign
-        
-        # 记录日志：签名验证结果
-        if is_valid:
-            # 验证通过，记录信息日志
-            logging.info(f"[彩虹易支付] 签名验证通过")
-        else:
-            # 验证失败，记录警告日志，并输出两个签名进行对比
-            logging.warning(
-                f"[彩虹易支付] 签名验证失败 - 收到: {received_sign}, 计算: {calculated_sign}"
-            )
-        
-        # 返回验证结果
-        return is_valid
-
-    def create_order(self, out_trade_no, name, money, pay_type="alipay", return_url=None, client_app_host=None):
+    def create_order(self, out_trade_no, name, money, pay_type="alipay", 
+                     return_url=None, client_app_host=None, payment_type="jump", 
+                     device_get=None, auth_code=None, sub_openid=None, sub_appid=None, 
+                     clientip=None):
         """
         创建支付订单
-        
-        参数:
-            out_trade_no (str): 商户订单号（必须唯一，建议使用时间戳+随机数）
-            name (str): 商品名称（显示在支付页面，例如："在线支付100元"）
-            money (str/float): 支付金额（单位：元，最少0.01元）
-            pay_type (str): 支付方式，可选值：
-                - "alipay": 支付宝支付（默认）
-                - "wxpay": 微信支付
-            return_url (str, optional): 同步返回URL
-            client_app_host (str, optional): 前端自动获取的应用域名（用于未配置app_host时的自动回退）
-        
-        返回:
-            dict: 包含以下字段的字典
-                - success (bool): 是否成功
-                - message (str): 错误信息或成功提示
-                - pay_url (str): 支付跳转URL（成功时返回）
-                - order_data (dict): 完整的订单参数（用于记录日志）
-        
-        功能说明：
-        这个方法会构造支付订单参数，生成签名，然后向彩虹易支付API发送请求。
-        如果请求成功，会返回一个支付URL，前端可以重定向用户到这个URL进行支付。
-        
-        使用示例：
-            client = RainbowYiPayClient()
-            result = client.create_order(
-                out_trade_no="ORDER20230101001",
-                name="在线支付100元",
-                money="100.00",
-                pay_type="alipay"
-            )
-            if result["success"]:
-                # 跳转到 result["pay_url"] 进行支付
-                print(f"支付URL: {result['pay_url']}")
-            else:
-                # 显示错误信息
-                print(f"创建订单失败: {result['message']}")
-        
-        异常处理：
-        - 如果配置不完整（如 host、pid、key 为空），返回错误
-        - 如果网络请求失败，返回错误并记录异常日志
-        - 如果易支付API返回错误，返回错误信息
         """
+        method=payment_type
+        logging.info(f"[彩虹易支付] 创建订单请求 - 订单号: {out_trade_no}, 商品名称: {name}, 金额: {money}, 支付方式: {pay_type}, 接口类型: {payment_type}，服务器端地址：{client_app_host}，接口类型：{payment_type}，设备：{device_get}")
+        if pay_type == "jsapi":
+            if not sub_openid or not sub_appid:
+                return {"success": False, "message": "jsapi支付方式需要提供sub_openid和sub_appid"}
+            logging.info(f"[彩虹易支付] 检测到jsapi支付方式，sub_openid: {sub_openid}, sub_appid: {sub_appid}")
+        if pay_type == "scan":
+            if not auth_code:
+                return {"success": False, "message": "scan支付方式需要提供auth_code"}
+            logging.info(f"[彩虹易支付] 检测到scan支付方式，auth_code: {auth_code}")
+
+        
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
         global requests, payment_verify_challenge_get
@@ -3120,160 +3526,29 @@ class RainbowYiPayClient:
         # 构造异步通知URL（notify_url）
         # 从配置文件中读取应用的公网访问域名（app_host）
         # app_host 是本应用的公网访问地址，例如："https://yourdomain.com"
-        app_host = self.config.get("Rainbow_YiPay", "app_host", fallback="").strip()
+        app_host_frome_config = self.config.get("Rainbow_YiPay", "app_host", fallback="").strip()
         
-        # 验证 app_host 是否已配置
-        # app_host 必须配置，因为彩虹易支付需要回调这个地址
-        if not app_host:
+        app_host = None
+        
+        
+        if not app_host and app_host_frome_config and ( IPVerifier().is_private_ip(app_host_frome_config) == False ):
+            # 检查 app_host_frome_config 是否为有效的应用访问域名
+            if IPVerifier().check_app_host(app_host_frome_config):
+                app_host = IPVerifier().normalize_host_url(app_host_frome_config)
+                logging.info(f"[支付验证] 验证成功 - 将使用 app_host_from_config: {app_host_frome_config}")
+        
+        if not app_host and client_app_host and ( IPVerifier().is_private_ip(client_app_host) == False ):
+            # 使用传入的 client_app_host 进行验证
+            if IPVerifier().check_app_host(client_app_host):
+                app_host = IPVerifier().normalize_host_url(client_app_host)
+                logging.info(f"[支付验证] 验证成功 - 将使用 client_app_host: {client_app_host}")
+        
+        if not app_host:    
             # 记录错误日志：缺少应用访问域名配置
             logging.error("[彩虹易支付] 配置缺少 app_host（应用访问域名），无法构造异步通知URL")
             # 返回失败响应，提示管理员配置 app_host
             if not client_app_host:
                 return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
-            
-
-
-            # 生成一个长度为2048位的随机验证码（challenge）
-            # 用于验证 client_app_host 是否真的是本服务器
-            # 随机字符包括大小写字母和数字，确保足够的随机性和安全性
-            challenge = ''.join(random.choices(string.ascii_letters + string.digits, k=2048))
-            
-            # 记录日志：开始验证app_host
-            # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
-            challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(challenge) > 64 else challenge
-            logging.info(f"[支付验证] 开始验证app_host: {client_app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
-            
-            # 构造验证接口的完整URL
-            # 格式：{client_app_host}/api/payment/verify_challenge
-            verify_url = f"{client_app_host}/api/payment/verify_challenge"
-            
-            try:
-                
-                # 向verify_challenge接口发送POST请求
-                # json参数：以JSON格式发送验证码
-                # timeout参数：设置5秒超时，避免长时间等待
-                # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
-                response = requests.post(
-                    verify_url,
-                    json={"challenge": challenge},
-                    timeout=5
-                )
-                
-                # 检查HTTP响应状态码
-                # 200表示请求成功
-                if response.status_code != 200:
-                
-                    # HTTP状态码不是200
-                    logging.warning(
-                        f"[支付验证] HTTP请求失败 - 状态码: {response.status_code}"
-                    )
-                    return {
-                        "success": False,
-                        "message": f"验证失败：HTTP状态码 {response.status_code}",
-                        "verified": False
-                    }
-                
-                # HTTP状态码为200，开始处理响应
-                # 尝试解析响应的JSON数据
-                try:
-                    # 解析响应体中的JSON数据
-                    # 新的验证机制期望格式：{"success": True}
-                    # 不再从响应中获取 challenge，而是从全局变量中获取
-                    response_data = response.json()
-                    
-                    # 检查响应中的 success 字段
-                    # 如果 success 不为 True，说明验证接口拒绝了请求
-                    if not response_data.get("success"):
-                        # 验证接口返回失败
-                        message = response_data.get("message", "验证接口返回失败")
-                        logging.warning(f"[支付验证] 验证接口返回失败: {message}")
-                        return {
-                            "success": False,
-                            "message": f"验证失败：{message}",
-                            "verified": False
-                        }
-                    
-                    # 声明使用全局变量 payment_verify_challenge_get
-                    # 这个变量在 verify_challenge 接口中被赋值
-                    global payment_verify_challenge_get
-                    
-                    # 从全局变量中获取服务器存储的 challenge
-                    # 这是新的验证机制：challenge 不通过HTTP响应传递，而是通过全局变量传递
-                    returned_challenge = payment_verify_challenge_get
-                    
-                    # 记录日志：成功从全局变量获取验证码
-                    # 只记录前32位和后32位，避免日志过长
-                    returned_preview = f"{returned_challenge[:32]}...{returned_challenge[-32:]}" if len(returned_challenge) > 64 else returned_challenge
-                    logging.info(f"[支付验证] 从全局变量获取验证码，长度: {len(returned_challenge)}位, 预览: {returned_preview}")
-                    
-                except ValueError as e:
-                    # JSON解析失败
-                    # 这说明返回的响应不是有效的JSON格式，可能不是本服务器
-                    logging.warning(f"[支付验证] 响应JSON解析失败: {str(e)}")
-                    return {
-                        "success": False,
-                        "message": "验证失败：服务器返回的数据格式不正确（非JSON）",
-                        "verified": False
-                    }
-                
-                except Exception as e:
-                    # 其他解析异常
-                    logging.error(f"[支付验证] 响应处理异常: {str(e)}")
-                    return {
-                        "success": False,
-                        "message": f"验证失败：响应处理异常 - {str(e)}",
-                        "verified": False
-                    }
-            
-            except requests.exceptions.Timeout:
-                # 请求超时
-                logging.warning(f"[支付验证] 请求超时 - {verify_url}")
-                return {
-                    "success": False,
-                    "message": "验证失败：请求超时（5秒）",
-                    "verified": False
-                }
-            
-            except requests.exceptions.ConnectionError:
-                # 连接错误（网络不通或域名无法解析）
-                logging.warning(f"[支付验证] 连接失败 - {verify_url}")
-                return {
-                    "success": False,
-                    "message": "验证失败：无法连接到目标服务器",
-                    "verified": False
-                }
-            
-            except Exception as e:
-                # 其他异常
-                logging.error(f"[支付验证] 验证过程异常: {str(e)}")
-                return {
-                    "success": False,
-                    "message": f"验证失败：{str(e)}",
-                    "verified": False
-                }
-            
-            # 比对发送的 challenge 和从全局变量获取的 challenge
-            # 如果两者完全一致，说明这确实是本服务器
-            # 如果不一致，说明 app_host 指向的不是本服务器，验证失败
-            if challenge != returned_challenge:
-                # 验证失败：全局变量中的 challenge 与发送的不一致
-                # 这说明 app_host 指向的服务器不是本服务器
-                logging.warning(f"[支付验证] 验证码不匹配 - 验证失败")
-                logging.warning(f"[支付验证] 发送的验证码长度: {len(challenge)}位，全局变量中的长度: {len(returned_challenge)}位")
-                return {
-                    "success": False,
-                    "message": "彩虹易支付配置缺少 app_host，经过验证后确认不是本服务器，请联系管理员",
-                    "verified": False
-                }
-            else:
-                # 验证成功：全局变量中的 challenge 与发送的完全一致
-                # 可以安全地使用 client_app_host 作为 app_host
-                # 将验证通过的 client_app_host 赋值给 app_host
-                logging.info(f"[支付验证] 验证成功 - 将使用 client_app_host: {client_app_host}")
-                app_host = client_app_host
-
-
-
 
         # 验证 app_host 格式是否正确
         # 必须以 http:// 或 https:// 开头，以确保URL格式正确
@@ -3299,8 +3574,12 @@ class RainbowYiPayClient:
         # 如果没有传入，则使用配置文件中的 return_url（向后兼容）
         # 用户支付完成后，浏览器会跳转到这个URL
         if return_url is None:
-            # 使用配置文件中的默认 return_url
-            return_url = self.return_url
+            return_url = notify_url
+            
+        if device_get in ["pc","mobile","qq","wechat","alipay"]:
+            device=device_get
+        else:
+            device="pc"
         
         # 构造订单参数字典
         # 这些参数将被发送到彩虹易支付API
@@ -3312,28 +3591,51 @@ class RainbowYiPayClient:
             "return_url": return_url,           # 同步返回URL（可动态传入）
             "name": name,                       # 商品名称
             "money": str(money),                # 支付金额（转为字符串）
+            "method": method,                   # 接口类型（web/jump/jsapi/app/scan/applet）
+            "device": device,                   # 支付设备（pc/mobile/qq/wechat/alipay）
+            "clientip": clientip,                
         }
         
-        # 生成签名并添加到参数中
-        # 调用 _generate_sign() 方法计算MD5签名
-        params["sign"] = self._generate_sign(params)
+
         
-        # 设置签名类型为 MD5
-        # 这是彩虹易支付V2的标准签名类型
-        params["sign_type"] = "MD5"
+        # auth_code参数：仅scan接口类型需要
+        if auth_code and method == "scan":
+            params["auth_code"] = auth_code
+        
+        # sub_openid和sub_appid参数：仅jsapi接口类型需要
+        if method == "jsapi":
+            if sub_openid:
+                params["sub_openid"] = sub_openid
+            if sub_appid:
+                params["sub_appid"] = sub_appid
+        
+        # 获取当前时间戳
+        params["timestamp"]=int(time.time())
+        
+        RainbowYiPayRsaSigner = RsaSigner(self.key)
+        
+        data_to_sent = RainbowYiPayRsaSigner.generate_sign(params)
         
         # 构造完整的API请求URL
-        # 彩虹易支付的创建订单接口路径为 /submit.php
-        api_url = f"{self.host}/submit.php"
+        # 彩虹易支付的创建订单接口路径为 /api/pay/create
+        api_url = f"{self.host}/api/pay/create"
+        
+        
         
         # 记录信息日志：开始创建订单
         logging.info(f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
+
+        logging.info(f"[彩虹易支付] 发起请求 - URL: {api_url}, 数据: {data_to_sent}", extra={"method": "POST"})
+        
         
         try:
             # 向彩虹易支付API发送POST请求
-            # data 参数指定POST请求体（表单格式）
-            # timeout 设置超时时间为10秒，避免长时间等待
-            response = requests.post(api_url, data=params, timeout=10)
+            response = requests.post(api_url, data=data_to_sent, timeout=10)
+            
+            logging.info(f"[彩虹易支付] 发起[请求头] Headers: {response.request.headers}")
+            logging.info(f"[彩虹易支付] 发起[请求体] Body (Raw): {response.request.body}")
+            
+            logging.info(f"[彩虹易支付] 收到响应 - 状态码: {response.status_code}, 响应内容: {response.text}")
             
             # 检查HTTP响应状态码
             # status_code 200 表示请求成功
@@ -3355,26 +3657,45 @@ class RainbowYiPayClient:
                     }
                 
                 # 检查API响应中的状态码
-                # code=1 表示成功，其他值表示失败
-                if result.get("code") == 1:
+                # code=0 表示成功，其他值表示失败（根据API文档）
+                if result.get("code") == 0:
                     # 订单创建成功
-                    pay_url = result.get("payurl") or result.get("url") or result.get("qrcode")
+                    # 获取平台订单号
+                    trade_no = result.get("trade_no", "")
                     
-                    # 检查是否成功获取到支付URL
-                    if pay_url:
-                        logging.info(f"[彩虹易支付] 订单创建成功 - 支付URL: {pay_url}")
-                        return {
+                    # 获取发起支付类型（jump/html/qrcode/urlscheme/jsapi/app/scan/wxplugin/wxapp）
+                    pay_type_response = result.get("pay_type", "")
+                    
+                    # 获取发起支付参数
+                    pay_info = result.get("pay_info", "")
+                    
+                    # 兼容旧版：提取支付URL
+                    # pay_url可能直接是pay_info（当pay_type为jump时），或者需要从pay_info中解析
+                    pay_url = pay_info
+                    if not pay_url:
+                        # 如果pay_info为空，尝试从其他字段获取
+                        pay_url = result.get("payurl") or result.get("url") or result.get("qrcode")
+                    
+                    # 检查是否成功获取到支付信息
+                    if pay_info or pay_url:
+                        logging.info(f"[彩虹易支付] 订单创建成功 - 平台订单号: {trade_no}, 支付类型: {pay_type_response}")
+                        data_to_sent2 = {
                             "success": True,
                             "message": "订单创建成功",
-                            "pay_url": pay_url,
+                            "pay_url": pay_url,           # 兼容旧版
+                            "trade_no": trade_no,         # 平台订单号
+                            "pay_type": pay_type_response, # 发起支付类型
+                            "pay_info": pay_info,         # 发起支付参数
                             "order_data": params,
                         }
+                        logging.info(f"[彩虹易支付] 订单创建成功 - 详细信息:"+ json.dumps(data_to_sent2, ensure_ascii=False))   
+                        return data_to_sent2
                     else:
-                        # API响应中没有支付URL
-                        logging.error(f"[彩虹易支付] API响应中缺少支付URL: {result}")
+                        # API响应中没有支付信息
+                        logging.error(f"[彩虹易支付] API响应中缺少支付信息: {result}")
                         return {
                             "success": False,
-                            "message": "易支付API响应异常，缺少支付URL",
+                            "message": "易支付API响应异常，缺少支付信息",
                         }
                 else:
                     # 订单创建失败，API返回了错误信息
@@ -16743,7 +17064,7 @@ def start_web_server(args_param):
         全局IP封禁检查拦截器
         """
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = request.remote_addr
+        client_ip = request.REMOTE_ADDR
         if (
             request.path.startswith("/static/")
             or request.path.startswith("/css/")
@@ -17027,7 +17348,7 @@ def start_web_server(args_param):
                             }
 
                         # 使用统一函数获取客户端真实IP（任务2）
-                        ip_address = request.remote_addr
+                        ip_address = request.REMOTE_ADDR
                         index_data["files"][filename] = {
                             "username": "Guest",
                             "upload_time": time.time(),
@@ -17128,7 +17449,7 @@ def start_web_server(args_param):
 
         session_id = request.headers.get("X-Session-ID", "")
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.remote_addr or ""
+        ip_address = request.REMOTE_ADDR or ""
         user_agent = request.headers.get("User-Agent", "")
         auth_result = None
         target_username = None
@@ -17789,7 +18110,7 @@ def start_web_server(args_param):
 
                 auth_system._save_permissions()
                 # 使用统一函数获取客户端真实IP（任务2）
-                ip_address = request.remote_addr
+                ip_address = request.REMOTE_ADDR
                 auth_system.log_audit(
                     auth_username,
                     "set_user_permissions_batch",
@@ -17824,7 +18145,7 @@ def start_web_server(args_param):
                     auth_system._save_permissions()
 
                     # 使用统一函数获取客户端真实IP（任务2）
-                    ip_address = request.remote_addr
+                    ip_address = request.REMOTE_ADDR
                     auth_system.log_audit(
                         auth_username,
                         "set_user_permissions_batch",
@@ -17846,7 +18167,7 @@ def start_web_server(args_param):
             )
 
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 auth_username,
                 "set_user_permission",
@@ -18217,7 +18538,7 @@ def start_web_server(args_param):
         result = auth_system.register_user(new_username, password, group)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
 
             # 如果提供了手机号，绑定到新用户
             if phone:
@@ -18262,7 +18583,7 @@ def start_web_server(args_param):
         result = auth_system.ban_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 auth_username,
                 "ban_user",
@@ -18291,7 +18612,7 @@ def start_web_server(args_param):
         result = auth_system.unban_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 auth_username,
                 "unban_user",
@@ -18322,7 +18643,7 @@ def start_web_server(args_param):
         result = auth_system.delete_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 auth_username,
                 "delete_user",
@@ -18363,7 +18684,7 @@ def start_web_server(args_param):
 
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 auth_username,
                 "force_disable_2fa",
@@ -18440,7 +18761,7 @@ def start_web_server(args_param):
 
         # 5. 记录审计日志
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.remote_addr
+        ip_address = request.REMOTE_ADDR
         auth_system.log_audit(
             auth_username,
             "force_logout_user",
@@ -18482,7 +18803,7 @@ def start_web_server(args_param):
         result = auth_system.reset_user_password(target_username, new_password)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 auth_username,
                 "force_reset_password",
@@ -18526,7 +18847,7 @@ def start_web_server(args_param):
             with open(user_file_path, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 current_username,
                 "update_basic_info",
@@ -18588,7 +18909,7 @@ def start_web_server(args_param):
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 current_username,
                 "admin_update_nickname",
@@ -18680,7 +19001,7 @@ def start_web_server(args_param):
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 current_username,
                 "admin_update_phone",
@@ -19385,7 +19706,7 @@ def start_web_server(args_param):
                         "files": {},
                     }
                 # 使用统一函数获取客户端真实IP（任务2）
-                ip_address = request.remote_addr
+                ip_address = request.REMOTE_ADDR
                 index_data["files"][filename] = {
                     "username": auth_username,
                     "upload_time": time.time(),
@@ -19564,7 +19885,7 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"清除头像文件时出错: {e}", exc_info=True)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 auth_username,
                 "clear_user_avatar",
@@ -19820,7 +20141,7 @@ def start_web_server(args_param):
 
         result = auth_system.update_max_sessions(target_username, max_sessions)
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.remote_addr
+        ip_address = request.REMOTE_ADDR
         auth_system.log_audit(
             auth_username,
             "update_max_sessions",
@@ -19914,7 +20235,7 @@ def start_web_server(args_param):
         
         # 步骤10：记录审计日志 - 记录管理员的操作行为，便于追溯
         # 获取客户端真实IP地址
-        ip_address = request.remote_addr
+        ip_address = request.REMOTE_ADDR
         auth_system.log_audit(
             auth_username,  # 操作者（管理员）
             "update_available_runs",  # 操作类型
@@ -20174,7 +20495,7 @@ def start_web_server(args_param):
                 cleanup_thread.start()
             auth_system.link_session_to_user(auth_username, new_session_id)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             audit_details = f"创建新会话持久化文件，会话ID: {new_session_id}"
             if cleanup_message:
                 audit_details += f"; {cleanup_message}"
@@ -20418,7 +20739,7 @@ def start_web_server(args_param):
             if target_session_id in web_sessions:
                 del web_sessions[target_session_id]
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.remote_addr
+        ip_address = request.REMOTE_ADDR
         auth_system.log_audit(
             auth_username,
             "destroy_session",
@@ -20501,7 +20822,7 @@ def start_web_server(args_param):
                         "retry_after": remaining_seconds,
                     }
                 )
-            client_ip = request.remote_addr
+            client_ip = request.REMOTE_ADDR
             current_date = time.strftime("%Y-%m-%d")
             ip_limit_key = f"sms_ip_{client_ip}_{current_date}"
             ip_count = cache.get(ip_limit_key, 0)
@@ -20792,11 +21113,11 @@ def start_web_server(args_param):
                 "content": content,
                 
                 # 短信宝平台服务器的IP地址
-                # request.remote_addr 获取发起HTTP请求的客户端IP
+                # request.REMOTE_ADDR 获取发起HTTP请求的客户端IP
                 # 记录IP地址的目的：
                 # - 安全审计：验证请求确实来自短信宝平台的官方服务器
                 # - 问题排查：如果出现异常请求，可以通过IP追溯来源
-                "ip": request.remote_addr,
+                "ip": request.REMOTE_ADDR,
             }
 
             # ========== 第六步：持久化到文件 ==========
@@ -20961,7 +21282,7 @@ def start_web_server(args_param):
                         log_dir = LOGIN_LOGS_DIR
                         os.makedirs(log_dir, exist_ok=True)
 
-                        client_ip = request.remote_addr
+                        client_ip = request.REMOTE_ADDR
                         history_entry = {
                             "username": f"{current_user}(测试)",
                             "phone": phone,
@@ -21756,7 +22077,7 @@ def start_web_server(args_param):
             
             _write_config_with_comments(config, CONFIG_FILE)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             auth_system.log_audit(
                 g.user,
                 "update_system_config",
@@ -21784,7 +22105,7 @@ def start_web_server(args_param):
             # 获取公共信息
             session_id = request.headers.get("X-Session-ID", "UnknownSession")
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             username = "Guest/Unknown"
 
             # 查找用户信息（只查一次锁）
@@ -21839,7 +22160,7 @@ def start_web_server(args_param):
         except Exception as e:
             session_id_err = request.headers.get("X-Session-ID", "UnknownSession")
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address_err = request.remote_addr
+            ip_address_err = request.REMOTE_ADDR
             logging.error(
                 f"[前端日志处理错误][IP:{ip_address_err}][Sess:{session_id_err[:8]}] {e}",
                 exc_info=True,
@@ -21853,7 +22174,7 @@ def start_web_server(args_param):
 
         接受的数据格式：
         {
-            "remote_addr": "客户端IP",
+            "REMOTE_ADDR": "客户端IP",
             "remote_user": "认证用户",
             "time_local": "本地时间",
             "request": "请求行",
@@ -21874,7 +22195,7 @@ def start_web_server(args_param):
             # 定义单条nginx日志处理函数
             def process_nginx_log(log_entry):
                 # 提取nginx日志字段
-                remote_addr = log_entry.get("remote_addr", "-")
+                REMOTE_ADDR = log_entry.get("REMOTE_ADDR", "-")
                 remote_user = log_entry.get("remote_user", "-")
                 time_local = log_entry.get("time_local", "")
                 request_line = log_entry.get("request", "-")
@@ -21886,7 +22207,7 @@ def start_web_server(args_param):
 
                 # 格式化日志消息（类似nginx access.log格式）
                 log_message = (
-                    f"[Nginx访问日志] {remote_addr} - {remote_user} [{time_local}] "
+                    f"[Nginx访问日志] {REMOTE_ADDR} - {remote_user} [{time_local}] "
                     f'"{request_line}" {status} {body_bytes} '
                     f'"{referer}" "{user_agent}" "{forwarded_for}"'
                 )
@@ -22172,7 +22493,7 @@ def start_web_server(args_param):
             del sms_verification_codes[new_phone]
 
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.remote_addr
+            ip_address = request.REMOTE_ADDR
             # 记录审计日志
             auth_system.log_audit(
                 current_username,
@@ -22321,7 +22642,7 @@ def start_web_server(args_param):
             }), 403
         
         try:
-            client_ip = request.remote_addr
+            client_ip = request.REMOTE_ADDR
             data = request.get_json() or {}
             scope = data.get("scope", "all")
             is_banned = check_ip_ban(client_ip, scope=scope)
@@ -22814,7 +23135,7 @@ def start_web_server(args_param):
                     else None
                 )
                 # 使用统一函数获取客户端真实IP（任务2）
-                client_ip = request.remote_addr
+                client_ip = request.REMOTE_ADDR
                 content = f"管理员 {g.user} 手动添加的验证码: {code}，{code_expire_minutes}分钟内有效。"
 
                 history_entry = {
@@ -23826,7 +24147,7 @@ def start_web_server(args_param):
             session_id = request.headers.get("X-Session-ID", "")
 
             # 获取客户端信息用于日志记录
-            client_ip = request.remote_addr
+            client_ip = request.REMOTE_ADDR
             user_agent = request.headers.get("User-Agent", "Unknown")
 
             # 记录用户登出请求日志
@@ -24902,7 +25223,7 @@ def start_web_server(args_param):
         # ============================================================
         # IP封禁检查：留言板功能专项封禁
         # ============================================================
-        client_ip = request.remote_addr
+        client_ip = request.REMOTE_ADDR
         if check_ip_ban(client_ip, scope="messages_only"):
             logging.warning(
                 f"[IP封禁] 留言功能封禁拦截：IP {client_ip} 尝试访问 /api/messages/list"
@@ -25071,7 +25392,7 @@ def start_web_server(args_param):
         # IP封禁检查：留言板功能专项封禁
         # ============================================================
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = request.remote_addr
+        client_ip = request.REMOTE_ADDR
 
         if check_ip_ban(client_ip, scope="messages_only"):
             logging.warning(f"[IP封禁] 留言功能封禁拦截：IP {client_ip} 尝试发表留言")
@@ -25340,7 +25661,7 @@ def start_web_server(args_param):
         # 为留言添加更丰富的用户信息和位置信息
         # ============================================================
         # 使用统一函数获取客户端真实IP（任务2）
-        client_ip = request.remote_addr
+        client_ip = request.REMOTE_ADDR
         ip_city = get_ip_location(client_ip)
         user_nickname = nickname
         avatar_url = "default_avatar.png"
@@ -25970,7 +26291,7 @@ def start_web_server(args_param):
             import threading
 
             # 使用统一函数获取客户端真实IP（任务2）
-            client_ip_data = request.remote_addr or "unknown"
+            client_ip_data = request.REMOTE_ADDR or "unknown"
             user_agent_data = request.headers.get("User-Agent", "unknown")
             threading.Thread(
                 target=log_captcha_history,
@@ -26767,7 +27088,7 @@ def start_web_server(args_param):
                     "html": html,
                     "session_id": request.headers.get("X-Session-ID", "unknown"),
                     # 使用统一函数获取客户端真实IP（任务2）
-                    "client_ip": request.remote_addr,
+                    "client_ip": request.REMOTE_ADDR,
                     "user_agent": request.headers.get("User-Agent", "unknown"),
                     "timestamp": time.time(),
                     "timestamp_readable": datetime.datetime.now().strftime(
@@ -26931,7 +27252,7 @@ def start_web_server(args_param):
                 "user_id": user_id,                                # 用户标识
                 "order_id": order_id,                              # 订单号
                 # 请求元信息（在Flask请求上下文中可用）
-                "client_ip": request.remote_addr if request else None,      # 客户端IP
+                "client_ip": request.REMOTE_ADDR if request else None,      # 客户端IP
                 "user_agent": request.headers.get("User-Agent", "") if request else "",  # 浏览器UA
                 # 自定义数据（从参数传入）
                 **log_data
@@ -26990,39 +27311,6 @@ def start_web_server(args_param):
     def payment_create_order():
         """
         创建支付订单接口
-        
-        请求方法：POST
-        权限要求：需要登录
-        
-        请求参数（JSON格式）：
-            - amount (str/float): 支付金额（单位：元，例如 "100" 或 "99.99"）
-            - product_name (str): 商品名称（显示在支付页面，例如："跑步服务费用结算"）
-            - pay_type (str): 支付方式，可选值：
-                - "alipay": 支付宝（默认）
-                - "wxpay": 微信支付
-        
-        返回数据（JSON格式）：
-            - success (bool): 是否成功
-            - message (str): 提示信息
-            - pay_url (str): 支付跳转URL（成功时返回）
-            - order_id (str): 订单号（成功时返回）
-        
-        功能说明：
-        1. 验证用户登录状态
-        2. 验证请求参数（金额、商品名称等）
-        3. 生成唯一订单号
-        4. 调用彩虹易支付API创建支付订单
-        5. 保存订单信息到本地文件
-        6. 返回支付URL给前端
-        
-        使用流程：
-        前端 -> POST /api/payment/create -> 后端创建订单 -> 返回支付URL -> 前端跳转到支付页面
-        
-        安全措施：
-        - 必须登录才能创建订单
-        - 验证金额格式和范围
-        - 生成唯一订单号（时间戳+随机数）
-        - 记录详细的操作日志
         """
         try:
             # 从请求体中获取JSON数据
@@ -27039,18 +27327,40 @@ def start_web_server(args_param):
             product_name = str(data.get("product_name", "")).strip()
             
             # 从请求数据中提取支付方式，默认为支付宝
-            pay_type = data.get("pay_type", "alipay").strip()
+            # 支持两种参数名：pay_type（标准）和payment_method（PC端兼容）
+            pay_type = data.get("payment_method", "").strip()
 
             # [新增] 提取前端传递的应用域名 (用于自动配置 app_host)
             client_app_host = data.get("app_host", "").strip()
             
-            # 从请求数据中提取同步返回URL（可选参数）
+            # 从请求数据中提取同步返回URL
             # return_url 是用户支付完成后浏览器跳转的地址
             # 如果前端传入此参数，则使用前端指定的URL
             # 如果不传入或为空字符串，create_order() 方法会使用配置文件中的默认值
             # 这使得不同的支付场景可以跳转到不同的页面
             # 使用 strip() 去除空白字符，空字符串会被转为 None
             return_url = data.get("return_url", "").strip() or None
+            
+            if (not return_url) or return_url.strip() == '' or return_url.strip() == "null" or return_url.strip() == "undefind" or IPVerifier().is_allowed_ip(return_url):
+                return_url = None
+            
+            # [新增] 提取设备类型参数（仅web接口类型需要）
+            # device: 设备类型（pc/mobile/qq/wechat/alipay）
+            device = data.get("device", "").strip() or None
+            
+            # [新增] 提取扫码支付授权码参数（仅scan接口类型需要）
+            # auth_code: 被扫支付授权码（18位数字）
+            auth_code = data.get("auth_code", "").strip() or None
+            
+            # [新增] 提取JSAPI支付参数（仅jsapi接口类型需要）
+            # sub_openid: 用户Openid
+            # sub_appid: 公众号AppId
+            sub_openid = data.get("sub_openid", "").strip() or None
+            sub_appid = data.get("sub_appid", "").strip() or None
+
+            payment_type = data.get("payment_type", "").strip() or None
+            
+            
             
             # ========== 参数验证 ==========
             
@@ -27092,25 +27402,12 @@ def start_web_server(args_param):
             
             # 验证请求的支付方式是否在启用列表中
             if pay_type not in enabled_methods:
-                # 支付方式未启用或不支持
-                # 构造友好的错误提示信息，告知用户当前支持哪些支付方式
-                supported_methods_display = {
-                    "alipay": "支付宝",
-                    "wxpay": "微信支付",
-                    "bank": "网银支付"
-                }
-                # 生成支持的支付方式的中文名称列表
-                enabled_names = [
-                    supported_methods_display.get(m, m) 
-                    for m in enabled_methods
-                ]
-                # 拼接成字符串，例如："支付宝、微信支付"
-                enabled_names_str = "、".join(enabled_names)
+                
                 
                 # 返回错误信息
                 return jsonify({
                     "success": False, 
-                    "message": f"该支付方式未启用，当前支持：{enabled_names_str}"
+                    "message": f"该支付方式未启用，获取当前启用的支付方式失败。"
                 })
             
             # 尝试将金额转换为浮点数，验证格式是否正确
@@ -27148,22 +27445,35 @@ def start_web_server(args_param):
             # 客户端会自动从 config.ini 读取配置参数
             yipay_client = RainbowYiPayClient()
             
-            # 调用 create_order() 方法创建支付订单
-            # 参数说明：
-            # - out_trade_no: 商户订单号（我们生成的唯一订单号）
-            # - name: 商品名称（显示在支付页面）
-            # - money: 支付金额（元）
-            # - pay_type: 支付方式（alipay/wxpay）
-            # - return_url: 同步返回URL（可选，如果前端传入则使用前端指定的URL）
-            result = yipay_client.create_order(
-                out_trade_no=order_id,
-                name=product_name,
-                money=amount,
-                pay_type=pay_type,
-                return_url=return_url,
-                client_app_host=client_app_host
-            )
+            clientip=request.REMOTE_ADDR
+
+            yipay_client_data = {
+                "out_trade_no": order_id,
+                "name": product_name,
+                "money": amount,
+                "pay_type": pay_type,
+                "return_url": return_url,
+                "client_app_host": client_app_host,
+                "device_get": device,
+                "payment_type": payment_type,
+                "clientip": clientip,
+            }
+
+            if auth_code is not None:
+                yipay_client_data["auth_code"] = auth_code
+            if sub_openid is not None:
+                yipay_client_data["sub_openid"] = sub_openid
+            if sub_appid is not None:
+                yipay_client_data["sub_appid"] = sub_appid
+
+            logging.debug(f"[支付订单] 调用 create_order() 方法，参数: {yipay_client_data}")
+
+            result = yipay_client.create_order(**yipay_client_data)
             
+            logging.debug(f"[支付订单] create_order() 方法返回结果: {result}")
+         
+
+         
             # 检查订单创建是否成功
             if result["success"]:
                 # ========== 保存订单信息到本地文件 ==========
@@ -27171,17 +27481,22 @@ def start_web_server(args_param):
                 # 构造订单数据字典
                 # 包含订单的所有关键信息，用于后续查询和管理
                 order_data = {
-                    "order_id": order_id,               # 订单号
+                    "order_id": order_id,               # 订单号(系统生成)
                     "username": g.user,                  # 下单用户名（从 Flask g 对象获取）
                     "amount": amount,                    # 支付金额
                     "product_name": product_name,        # 商品名称
-                    "pay_type": pay_type,                # 支付方式
+                    "pay_type": pay_type,                # 支付方式(支付宝\微信)
                     "status": "pending",                 # 订单状态：pending（待支付）
-                    "pay_url": result["pay_url"],        # 支付跳转URL
+                    "pay_url": result.get("pay_url", ""),        # 支付跳转URL
+                    "trade_no": result.get("trade_no", ""),      # 平台订单号
+                    "payment_method": payment_type,            # 接口类型(传入的payment_type）)
+                    "payment_type": result.get("pay_type", ""),  # 发起支付类型
+                    "pay_info": result.get("pay_info", ""),      # 发起支付参数
                     "created_at": time.time(),           # 创建时间（Unix时间戳）
                     "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),  # 创建时间（可读格式）
-                    "client_ip": request.remote_addr,    # 客户端IP地址
+                    "client_ip": request.REMOTE_ADDR,    # 客户端IP地址
                     "user_agent": request.headers.get("User-Agent", ""),  # 用户浏览器信息
+                    "device":device,  # 设备类型
                 }
                 
                 # 构造订单文件路径
@@ -27212,7 +27527,7 @@ def start_web_server(args_param):
                         "pay_url": result["pay_url"],          # 支付跳转URL
                         "return_url": return_url,              # 同步返回URL
                         # 请求信息
-                        "client_ip": request.remote_addr,      # 客户端IP
+                        "client_ip": request.REMOTE_ADDR,      # 客户端IP
                         "user_agent": request.headers.get("User-Agent", ""),  # 浏览器UA
                         # 操作结果
                         "success": True,                       # 操作是否成功
@@ -27229,8 +27544,15 @@ def start_web_server(args_param):
                 return jsonify({
                     "success": True,
                     "message": "订单创建成功",
-                    "pay_url": result["pay_url"],  # 支付URL（前端用于跳转）
-                    "order_id": order_id,          # 订单号（前端用于查询）
+                    "pay_url": result.get("pay_url", ""),      # 支付URL（兼容旧版，前端用于跳转）
+                    "order_id": order_id,                      # 订单号（前端用于查询）
+                    "trade_no": result.get("trade_no", ""),    # 平台订单号
+                    "pay_type": result.get("pay_type", ""),    # 发起支付类型（jump/html/qrcode等）
+                    "pay_info": result.get("pay_info", ""),    # 发起支付参数（根据pay_type不同而不同）
+                    "order": {                                  # 订单详情（兼容前端）
+                        "trade_no": order_id,
+                        "pay_url": result.get("pay_url", "")
+                    }
                 })
             else:
                 # 订单创建失败
@@ -27251,7 +27573,7 @@ def start_web_server(args_param):
                         "pay_type": pay_type,                  # 请求的支付方式
                         "return_url": return_url,              # 请求的返回URL
                         # 请求信息
-                        "client_ip": request.remote_addr,      # 客户端IP
+                        "client_ip": request.REMOTE_ADDR,      # 客户端IP
                         "user_agent": request.headers.get("User-Agent", ""),  # 浏览器UA
                         # 失败信息
                         "success": False,                      # 操作失败
@@ -27380,7 +27702,7 @@ def start_web_server(args_param):
                             "query_user": g.user,                    # 查询者
                             "query_result": query_result,            # 易支付查询结果
                             # 请求信息
-                            "client_ip": request.remote_addr,
+                            "client_ip": request.REMOTE_ADDR,
                             "user_agent": request.headers.get("User-Agent", ""),
                             # 操作结果
                             "success": True,
@@ -27404,7 +27726,7 @@ def start_web_server(args_param):
                     "order_owner": order_data.get("username"),    # 订单所有者
                     "amount": order_data.get("amount"),           # 金额
                     # 请求信息
-                    "client_ip": request.remote_addr,
+                    "client_ip": request.REMOTE_ADDR,
                     "user_agent": request.headers.get("User-Agent", ""),
                     # 操作结果
                     "success": True,
@@ -27649,9 +27971,9 @@ def start_web_server(args_param):
             
             # ========== 步骤8：获取客户端IP地址 ==========
             
-            # request.remote_addr 获取客户端IP地址
+            # request.REMOTE_ADDR 获取客户端IP地址
             # 在反向代理环境下，可能需要从X-Forwarded-For等请求头获取真实IP
-            clientip = request.remote_addr or "unknown"
+            clientip = request.REMOTE_ADDR or "unknown"
             
             # ========== 步骤9：读取彩虹易支付配置 ==========
             
@@ -27793,52 +28115,6 @@ def start_web_server(args_param):
     def payment_yipay_notify():
         """
         接收彩虹易支付异步通知接口（专用）
-        
-        请求方法：POST
-        权限要求：无（公开接口，但需要验证签名）
-        路由路径：/api/payment/yipay_notify
-        
-        功能说明：
-        这是一个服务器到服务器的回调接口，当用户支付成功后，
-        彩虹易支付服务器会向这个URL发送POST请求，通知支付结果。
-        
-        重要更新：
-        - 此路由路径已从 /api/payment/notify 更改为 /api/payment/yipay_notify
-        - notify_url 会在 create_order() 方法中自动构造为此地址
-        - 管理员只需在配置文件中设置 app_host（应用访问域名）即可
-        
-        这是一个服务器到服务器的回调接口，当用户支付成功后，
-        彩虹易支付服务器会向这个URL发送POST请求，通知支付结果。
-        
-        请求参数（表单格式）：
-        彩虹易支付会发送以下参数（具体参数以官方文档为准）：
-            - pid: 商户ID
-            - out_trade_no: 商户订单号
-            - trade_no: 易支付订单号
-            - type: 支付方式
-            - name: 商品名称
-            - money: 支付金额
-            - trade_status: 支付状态（TRADE_SUCCESS表示成功）
-            - sign: 签名
-            - sign_type: 签名类型
-        
-        返回数据：
-        - 如果验证成功，返回 "success"
-        - 如果验证失败，返回 "fail"
-        
-        重要说明：
-        1. 这个接口必须是公网可访问的HTTPS地址
-        2. 必须验证签名，防止伪造通知
-        3. 必须处理重复通知（幂等性）
-        4. 必须快速响应，不要执行耗时操作
-        5. 返回 "success" 后，易支付不会再次通知
-        6. 如果返回其他内容，易支付会重复通知
-        
-        安全机制：
-        - 签名验证：防止伪造通知
-        - 金额验证：确保支付金额与订单金额一致
-        - 状态验证：防止重复处理已支付订单
-        - IP白名单：可选，限制只接受来自易支付服务器的请求
         """
         try:
             # 获取回调参数
@@ -27869,7 +28145,7 @@ def start_web_server(args_param):
                     log_data={
                         # 通知参数
                         "notify_params": params,                # 完整的通知参数
-                        "notify_ip": request.remote_addr,       # 通知来源IP
+                        "notify_ip": request.REMOTE_ADDR,       # 通知来源IP
                         # 安全信息
                         "security_event": "signature_verification_failed",  # 安全事件类型
                         "risk_level": "high",                   # 风险级别：高
@@ -27983,7 +28259,7 @@ def start_web_server(args_param):
                             # 重复通知信息
                             "notify_count": notify_count,               # 这是第几次通知
                             "notify_params": params,                    # 本次通知的参数
-                            "notify_ip": request.remote_addr,           # 通知来源IP
+                            "notify_ip": request.REMOTE_ADDR,           # 通知来源IP
                             "last_notify_at": order_data["last_notify_at"],     # 通知时间戳
                             "last_notify_time": order_data["last_notify_time"], # 通知时间（可读）
                             # 订单信息
@@ -28038,7 +28314,7 @@ def start_web_server(args_param):
                         "paid_time": order_data["paid_time"],       # 支付时间（可读）
                         # 通知信息
                         "notify_params": params,                    # 完整的通知参数
-                        "notify_ip": request.remote_addr,           # 通知来源IP（易支付服务器IP）
+                        "notify_ip": request.REMOTE_ADDR,           # 通知来源IP（易支付服务器IP）
                         # 订单信息
                         "product_name": order_data.get("product_name", ""),  # 商品名称
                         # 操作结果
@@ -28266,7 +28542,7 @@ def start_web_server(args_param):
             # 记录return页面访问日志
             logging.info(
                 f"[支付返回] 用户访问支付返回页面 - 订单: {out_trade_no}, "
-                f"IP: {request.remote_addr}, 状态: {trade_status}"
+                f"IP: {request.REMOTE_ADDR}, 状态: {trade_status}"
             )
             
             # ========== 安全检查：验证签名 ==========
@@ -28277,7 +28553,7 @@ def start_web_server(args_param):
                 # 签名验证失败，记录警告日志
                 logging.warning(
                     f"[支付返回] 签名验证失败 - 订单: {out_trade_no}, "
-                    f"IP: {request.remote_addr}, 参数: {params}"
+                    f"IP: {request.REMOTE_ADDR}, 参数: {params}"
                 )
                 # 返回错误页面
                 return """
@@ -28373,7 +28649,7 @@ def start_web_server(args_param):
                     log_data={
                         # 返回页面信息
                         "return_params": params,                    # URL中的参数
-                        "visitor_ip": request.remote_addr,          # 访问者IP
+                        "visitor_ip": request.REMOTE_ADDR,          # 访问者IP
                         "user_agent": request.headers.get("User-Agent", ""),  # 浏览器信息
                         # 订单信息
                         "order_exists": order_exists,               # 订单是否存在
@@ -28998,12 +29274,12 @@ def start_web_server(args_param):
             
             # 记录日志：收到验证请求
             # 记录请求来源IP，用于安全审计
-            client_ip = request.remote_addr
+            client_ip = request.REMOTE_ADDR
             logging.info(f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码长度: {len(challenge)}位")
             
             # 验证请求来源IP是否被允许
-            # 使用新的 is_allowed_ip() 函数，支持 IPv4/IPv6 和公网IP验证
-            if not is_allowed_ip(client_ip):
+            # 使用新的 IPVerifier.is_allowed_ip() 函数，支持 IPv4/IPv6 和公网IP验证
+            if not IPVerifier().is_allowed_ip(client_ip):
                 # IP验证失败：不是内网IP，也不是服务器的公网IP
                 # 返回403 Forbidden状态码，拒绝访问
                 logging.warning(f"[支付验证] IP验证失败 - 拒绝访问: {client_ip}")
@@ -29989,7 +30265,7 @@ def start_web_server(args_param):
                 # 记录权限不足的访问尝试
                 logging.warning(
                     f"[易支付配置-权限拒绝] 用户 {g.user} 尝试访问易支付配置接口，但缺少 modify_config 权限 - "
-                    f"IP: {request.remote_addr}, 方法: {request.method}"
+                    f"IP: {request.REMOTE_ADDR}, 方法: {request.method}"
                 )
                 return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
             
@@ -30009,7 +30285,7 @@ def start_web_server(args_param):
             if user_group not in ["admin", "super_admin"]:
                 logging.warning(
                     f"[易支付配置-权限拒绝] 用户 {g.user}（用户组：{user_group}）尝试访问易支付配置接口，"
-                    f"但不是管理员组成员 - IP: {request.remote_addr}, 方法: {request.method}"
+                    f"但不是管理员组成员 - IP: {request.REMOTE_ADDR}, 方法: {request.method}"
                 )
                 return jsonify({
                     "success": False,
@@ -30019,7 +30295,7 @@ def start_web_server(args_param):
             # 记录合法的访问（用于审计）
             logging.info(
                 f"[易支付配置-访问] 管理员 {g.user}（用户组：{user_group}）正在访问易支付配置接口 - "
-                f"IP: {request.remote_addr}, 方法: {request.method}"
+                f"IP: {request.REMOTE_ADDR}, 方法: {request.method}"
             )
             
             if request.method == "GET":
@@ -30067,11 +30343,8 @@ def start_web_server(args_param):
                 
                 # 读取支付接口类型
                 # 可选值：web、jump、jsapi、app、scan、applet
-                payment_method = config.get(
-                    "Rainbow_YiPay",
-                    "payment_method",
-                    fallback="jump"  # 默认值：跳转支付
-                )
+                payment_method = "jump"
+                
 
                 product_id = config.get(
                     "Rainbow_YiPay", "product_id", fallback="1001"
@@ -32098,6 +32371,7 @@ def start_web_server(args_param):
             # strip()去除可能存在的首尾空格
             real_ip = forwarded_for.split(",")[0].strip()
             request.environ["REMOTE_ADDR"] = real_ip
+            logging.info(f"真实客户端IP已设置为: {real_ip}")
         
         # 处理HTTPS重定向逻辑
         forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
@@ -32361,6 +32635,12 @@ def main():
     import_standard_libraries()
     import_core_third_party()
     check_and_import_dependencies()
+    global LoMeiGenerator
+    if os.path.exists("product_name_generator.py"):
+        from product_name_generator import LoMeiGenerator
+    else:
+        raise ImportError("缺少 product_name_generator.py 文件，无法继续运行。")
+
     # ========== 第4步：初始化系统 ==========
     auto_init_system()
     initialize_global_variables()

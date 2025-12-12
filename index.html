@@ -7854,10 +7854,52 @@ body.mobile-mode #session-picker-modal {
                   <select id="test-payment-method" 
                     class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
                     <option value="alipay">支付宝</option>
-                    <option value="wechat">微信支付</option>
-                    <option value="qq">QQ钱包</option>
+                    <option value="wxpay">微信支付</option>
+                    <option value="qqpay">QQ钱包</option>
                     <option value="unionpay">云闪付</option>
                   </select>
+                </div>
+
+                <!-- [新增] 支付接口类型选择 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    接口类型
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 下拉选择框：提供多种支付接口类型供测试 -->
+                  <select id="test-payment-type" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <!-- 选项1：跳转支付 -->
+                    <option value="jump">跳转支付 (jump)</option>
+                    <!-- 选项2：HTML支付 -->
+                    <option value="html">HTML支付 (html)</option>
+                    <!-- 选项3：二维码支付 -->
+                    <option value="qrcode">二维码支付 (qrcode)</option>
+                    <!-- 选项4：小程序跳转 -->
+                    <option value="urlscheme">小程序跳转 (urlscheme)</option>
+                    <!-- 选项5：JSAPI支付 -->
+                    <option value="jsapi">JSAPI支付 (jsapi)</option>
+                    <!-- 选项6：APP支付 -->
+                    <option value="app">APP支付 (app)</option>
+                    <!-- 选项7：扫码支付 -->
+                    <option value="scan">扫码支付 (scan)</option>
+                    <!-- 选项8：小程序插件支付 -->
+                    <option value="wxplugin">小程序插件支付 (wxplugin)</option>
+                    <!-- 选项9：小程序支付 -->
+                    <option value="wxapp">小程序支付 (wxapp)</option>
+                  </select>
+                  <p class="text-xs text-slate-500 mt-1">
+                    💡 API返回的发起支付类型（pay_type）：<br>
+                    • <strong>jump</strong> - 返回支付跳转url<br>
+                    • <strong>html</strong> - 返回html代码，用于支付跳转<br>
+                    • <strong>qrcode</strong> - 返回支付二维码<br>
+                    • <strong>urlscheme</strong> - 返回微信/支付宝小程序跳转url scheme<br>
+                    • <strong>jsapi</strong> - 返回用于发起JSAPI支付的参数<br>
+                    • <strong>app</strong> - 返回用于发起APP支付的参数<br>
+                    • <strong>scan</strong> - 付款码支付成功,返回支付订单信息<br>
+                    • <strong>wxplugin</strong> - 返回要拉起的微信小程序插件参数<br>
+                    • <strong>wxapp</strong> - 返回要拉起的微信小程序和路径
+                  </p>
                 </div>
 
                 <!-- 生成测试订单按钮 -->
@@ -11613,9 +11655,9 @@ body.mobile-mode #session-picker-modal {
                 <!-- 支付宝 -->
                 <option value="alipay">支付宝</option>
                 <!-- 微信支付 -->
-                <option value="wechat">微信支付</option>
+                <option value="wxpay">微信支付</option>
                 <!-- QQ钱包 -->
-                <option value="qq">QQ钱包</option>
+                <option value="qqpay">QQ钱包</option>
                 <!-- 云闪付 -->
                 <option value="unionpay">云闪付</option>
               </select>
@@ -11633,22 +11675,25 @@ body.mobile-mode #session-picker-modal {
               <select id="admin-test-payment-type_modal" 
                 class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow"
                 onchange="toggleAuthCodeField()">
-                <!-- 选项1：跳转支付 - 最常用的支付方式 -->
-                <option value="jump">跳转支付 (jump)</option>
-                <!-- 选项2：网页支付 - 在当前页面显示支付界面 -->
-                <option value="web">网页支付 (web)</option>
-                <!-- 选项3：JSAPI支付 - 用于微信公众号等场景 -->
-                <option value="jsapi">JSAPI支付 (jsapi)</option>
-                <!-- 选项4：APP支付 - 用于移动APP内支付 -->
-                <option value="app">APP支付 (app)</option>
-                <!-- 选项5：扫码支付 - 需要提供付款码 -->
-                <option value="scan">扫码支付 (scan)</option>
-                <!-- 选项6：小程序支付 - 用于微信小程序 -->
-                <option value="applet">小程序支付 (applet)</option>
+                <!-- 选项1：跳转支付 -->
+                <option value="web">通用网页支付(web)</option>
+                <!-- 选项2：HTML支付 -->
+                <option value="jump">跳转支付(jump)</option>
+                <!-- 选项3：二维码支付 -->
+                <option value="jsapi">JSAPI支付</option>
+                <!-- 选项4：小程序跳转 -->
+                <option value="app">APP支付</option>
+                <!-- 选项5：JSAPI支付 -->
+                <option value="jsapi">JSAPI支付 (jsapi) - 返回用于发起JSAPI支付的参数</option>
+                <!-- 选项6：APP支付 -->
+                <option value="applet">小程序支付</option>
+                <!-- 选项7：扫码支付 -->
+                <option value="scan">扫码支付 (scan) - 付款码支付成功,返回支付订单信息</option>
               </select>
               <!-- 提示文字：说明扫码支付需要付款码 -->
               <p class="text-xs text-slate-500 mt-1">
                 扫码支付(scan)需要提供付款码（auth_code）
+                JSAPI支付需要提供sub_openid和sub_appid
               </p>
             </div>
 
@@ -11759,31 +11804,80 @@ body.mobile-mode #session-picker-modal {
             </button>
           </div>
 
-          <!-- 支付链接显示区域：创建订单成功后显示 -->
-          <div id="admin-test-payment-link-container_modal" class="hidden space-y-3 bg-white border border-slate-200 rounded-lg p-4">
-            <h5 class="font-semibold text-base text-slate-700 border-b border-slate-200 pb-2">
-              <!-- 链接图标 -->
-              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <!-- 支付结果显示区域：创建订单成功后显示 -->
+          <div id="admin-test-payment-link-container_modal" class="hidden space-y-4 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-4">
+            <!-- 标题 -->
+            <h5 class="font-bold text-lg text-green-700 border-b-2 border-green-300 pb-2 flex items-center">
+              <!-- 成功图标 -->
+              <svg class="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
-              支付链接已生成
+              测试订单创建成功
             </h5>
             
-            <!-- 支付链接显示框：可复制 -->
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">支付链接：</label>
-              <!-- 只读输入框，显示完整的支付链接 -->
-              <input type="text" id="admin-test-pay-url_modal" 
+            <!-- 订单信息卡片 -->
+            <div class="bg-white rounded-lg p-4 space-y-3 shadow-sm">
+              <h6 class="font-semibold text-sm text-slate-700 mb-2">📋 订单信息</h6>
+              
+              <!-- 商户订单号 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">商户订单号：</span>
+                <span id="admin-test-order-id_modal" class="text-sm font-mono font-semibold text-slate-800">-</span>
+              </div>
+              
+              <!-- 平台订单号 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">平台订单号：</span>
+                <span id="admin-test-trade-no_modal" class="text-sm font-mono font-semibold text-slate-800">-</span>
+              </div>
+              
+              <!-- 支付金额 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">支付金额：</span>
+                <span id="admin-test-amount_modal" class="text-base font-bold text-red-600">-</span>
+              </div>
+              
+              <!-- 支付方式 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">支付方式：</span>
+                <span id="admin-test-pay-method_modal" class="text-sm font-medium text-slate-800">-</span>
+              </div>
+              
+              <!-- 接口类型 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">接口类型：</span>
+                <span id="admin-test-method-type_modal" class="text-sm font-medium text-blue-600">-</span>
+              </div>
+              
+              <!-- 发起支付类型 (pay_type) -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">发起支付类型：</span>
+                <span id="admin-test-pay-type_modal" class="text-sm font-bold text-purple-600">-</span>
+              </div>
+            </div>
+            
+            <!-- 支付信息卡片 -->
+            <div class="bg-white rounded-lg p-4 space-y-2 shadow-sm">
+              <h6 class="font-semibold text-sm text-slate-700 mb-2">💳 支付信息 (pay_info)</h6>
+              
+              <!-- 支付信息显示框 -->
+              <textarea id="admin-test-pay-url_modal" 
                 readonly 
-                class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono text-slate-600 cursor-text select-all" />
+                rows="4"
+                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-sky-500"></textarea>
+              
+              <!-- 支付信息说明 -->
+              <p id="admin-test-pay-info-desc_modal" class="text-xs text-slate-500 italic">
+                根据不同的支付类型，这里显示相应的支付参数
+              </p>
             </div>
 
-            <!-- 操作按钮组：使用网格布局 -->
+            <!-- 操作按钮组 -->
             <div class="grid grid-cols-2 gap-3">
               <!-- 打开支付链接按钮 -->
               <button id="admin-open-test-pay-url-btn_modal" 
-                class="py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm hover:shadow-md"
+                class="py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onclick="openAdminPaymentLink()">
                 <!-- 外部链接图标 -->
                 <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11793,15 +11887,15 @@ body.mobile-mode #session-picker-modal {
                 打开链接
               </button>
               
-              <!-- 复制链接按钮 -->
+              <!-- 复制信息按钮 -->
               <button onclick="copyAdminTestPayUrl()" 
-                class="py-2.5 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md">
+                class="py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
                 <!-- 复制图标 -->
                 <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
                 </svg>
-                复制链接
+                复制信息
               </button>
             </div>
           </div>
@@ -17384,6 +17478,20 @@ body.mobile-mode #session-picker-modal {
         return;
       }
       
+      // 3.9 [新增] 获取支付接口类型（必填项）
+      const typeSelect = document.getElementById('test-payment-type');
+      const paymentType = typeSelect ? typeSelect.value : 'jump';
+      
+      // 验证接口类型已选择
+      if (!paymentType) {
+        console.log('[测试支付] 验证失败：未选择接口类型');
+        showModalAlert('请选择接口类型');
+        if (typeSelect) typeSelect.focus();
+        return;
+      }
+      
+      console.log('[测试支付] 接口类型：', paymentType);
+      
       // ========== 第4步：生成订单号 ==========
       
       // 订单号生成规则：当前时间戳（毫秒） + 6位随机数
@@ -17403,7 +17511,8 @@ body.mobile-mode #session-picker-modal {
         trade_no: tradeNo,
         amount: amount,
         product_name: productName,
-        pay_type: paymentMethod
+        pay_type: paymentMethod,
+        method: paymentType
       });
 
       app_host=window.location.protocol + '//' + window.location.host;
@@ -17427,9 +17536,10 @@ body.mobile-mode #session-picker-modal {
           body: JSON.stringify({
             amount: amount,              // 支付金额
             product_name: productName,   // 商品名称
-            pay_type: paymentMethod, // 支付方式
-            app_host: app_host,         // 应用主机地址
-            return_url: window.location.href // 当前页面URL，支付完成后返回
+            pay_type: paymentMethod,     // 支付方式
+            method: paymentType,         // 接口类型（web/jump/jsapi/app/scan/applet）
+            app_host: app_host,          // 应用主机地址
+            // return_url: window.location.href // 当前页面URL，支付完成后返回
           })
         });
         
@@ -17455,58 +17565,86 @@ body.mobile-mode #session-picker-modal {
           throw new Error(result.message || '创建订单失败，未知错误');
         }
         
-        // 6.5 检查订单数据是否存在
-        if (!result.order) {
-          throw new Error('未返回订单信息');
+        // 6.5 检查是否有支付信息（pay_url或pay_info）
+        if (!result.pay_url && !result.pay_info) {
+          throw new Error('未返回支付信息');
         }
         
         // ========== 第7步：显示订单信息 ==========
         
         // 7.1 获取订单数据
-        const order = result.order;
+        const order = result.order || {};
         
         // 输出成功日志
-        console.log('[测试支付] 订单创建成功：', order);
+        console.log('[测试支付] 订单创建成功：', result);
         
         // 7.2 显示订单号
-        // 优先使用API返回的订单号，如果没有则使用生成的订单号
-        tradeNoSpan.textContent = order.trade_no || tradeNo;
+        // 优先使用平台订单号（trade_no），如果没有则使用商户订单号
+        tradeNoSpan.textContent = result.trade_no || order.trade_no || tradeNo;
         
         // 7.3 显示订单金额
         // 格式化金额：添加货币符号¥，保留2位小数
         const displayAmount = order.amount || amount;
         amountSpan.textContent = `¥${parseFloat(displayAmount).toFixed(2)}`;
         
-        // 7.4 显示支付链接
-        // 如果API返回了支付链接，显示链接；否则显示提示信息
-        if (order.pay_url) {
-          // 显示支付链接（截断显示，避免过长）
-          // 最多显示60个字符，超出部分用...表示
-          const displayUrl = order.pay_url.length > 60 
-            ? order.pay_url.substring(0, 60) + '...' 
-            : order.pay_url;
-          payUrlSpan.textContent = displayUrl;
+        // 7.4 显示支付信息（根据pay_type类型显示不同内容）
+        const payType = result.pay_type || 'jump';
+        const payInfo = result.pay_info || result.pay_url || '';
+        
+        if (payInfo) {
+          // 根据支付类型显示不同的信息
+          let displayText = '';
           
-          // 将完整的支付链接保存到按钮的data-url属性中
-          // 这样openTestPayUrl函数可以从这里获取完整链接
-          openPayBtn.setAttribute('data-url', order.pay_url);
+          if (payType === 'jump' || payType === 'html') {
+            // 跳转支付：显示链接（截断显示）
+            displayText = payInfo.length > 60 ? payInfo.substring(0, 60) + '...' : payInfo;
+          } else if (payType === 'qrcode') {
+            // 二维码支付：显示二维码链接
+            displayText = '二维码: ' + (payInfo.length > 50 ? payInfo.substring(0, 50) + '...' : payInfo);
+          } else if (payType === 'urlscheme') {
+            // URL Scheme：显示微信/支付宝小程序跳转链接
+            displayText = '小程序跳转: ' + (payInfo.length > 50 ? payInfo.substring(0, 50) + '...' : payInfo);
+          } else if (payType === 'jsapi' || payType === 'app' || payType === 'wxplugin' || payType === 'wxapp') {
+            // JSAPI/APP/小程序支付：显示JSON参数（格式化）
+            try {
+              const jsonObj = typeof payInfo === 'string' ? JSON.parse(payInfo) : payInfo;
+              displayText = 'JSON参数: ' + JSON.stringify(jsonObj, null, 2).substring(0, 100) + '...';
+            } catch (e) {
+              displayText = payInfo.substring(0, 60) + '...';
+            }
+          } else if (payType === 'scan') {
+            // 扫码支付成功：显示订单信息
+            displayText = '支付成功: ' + payInfo;
+          } else {
+            // 其他类型：直接显示
+            displayText = payInfo.length > 60 ? payInfo.substring(0, 60) + '...' : payInfo;
+          }
           
-          // 启用"打开支付链接"按钮
-          // 移除disabled属性，让按钮可点击
-          openPayBtn.disabled = false;
-          // 移除禁用状态的视觉样式
-          openPayBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          payUrlSpan.textContent = displayText;
           
-          console.log('[测试支付] 支付链接已保存到按钮data-url属性');
+          // 将完整的支付信息保存到按钮的data-url属性中
+          // 对于jump/html/urlscheme类型，保存链接并启用打开按钮
+          if (payType === 'jump' || payType === 'html' || payType === 'urlscheme') {
+            openPayBtn.setAttribute('data-url', payInfo);
+            // 启用"打开支付链接"按钮
+            openPayBtn.disabled = false;
+            openPayBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          } else {
+            // 其他类型不支持直接打开，禁用按钮
+            openPayBtn.disabled = true;
+            openPayBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          }
+          
+          console.log('[测试支付] 支付信息已保存，类型：', payType);
         } else {
-          // 如果没有返回支付链接，显示提示信息
-          payUrlSpan.textContent = '（未返回支付链接）';
+          // 如果没有返回支付信息，显示提示信息
+          payUrlSpan.textContent = '（未返回支付信息）';
           
           // 禁用"打开支付链接"按钮
           openPayBtn.disabled = true;
           openPayBtn.classList.add('opacity-50', 'cursor-not-allowed');
           
-          console.warn('[测试支付] 警告：API未返回支付链接');
+          console.warn('[测试支付] 警告：API未返回支付信息');
         }
         
         // 7.5 显示订单结果容器
@@ -19026,7 +19164,7 @@ body.mobile-mode #session-picker-modal {
       
       // 2.3 获取支付接口类型（新增）
       // 如果未选择，默认使用'jump'（跳转支付）
-      const paymentType = typeSelect ? typeSelect.value : 'jump';
+      const paymentType = typeSelect ? typeSelect.value : 'qccode';
       
       // 2.4 获取付款码（仅扫码支付需要）
       let authCode = '';
@@ -19149,8 +19287,12 @@ body.mobile-mode #session-picker-modal {
           amount: amount,                  // 支付金额
           payment_method: method,          // 支付方式（alipay/wechat/qq/unionpay）
           payment_type: paymentType,       // 支付接口类型（jump/web/jsapi/app/scan/applet）
-          product_name: productName,        // [修改] 商品名称（手动输入或自动生成）
-          app_host: window.location.protocol + '//' + window.location.host
+          product_name: productName,        // 商品名称（手动输入或自动生成）
+          app_host: window.location.protocol + '//' + window.location.host,
+          return_url: window.location.href,    //浏览器当前地址
+          sub_openid: "",
+          sub_appid: "",
+          device: Get_YiPAi_device(),
         };
         
         // 如果是扫码支付，添加付款码到请求数据
@@ -19160,6 +19302,8 @@ body.mobile-mode #session-picker-modal {
         
         // === 第4步：发起HTTP POST请求创建订单 ===
         
+        logMessage_Info('[PC端测试支付] 发送创建订单请求，API：/api/payment/create 数据：' + JSON.stringify(requestData));
+
         const response = await fetch('/api/payment/create', {
           method: 'POST',
           headers: {
@@ -19184,20 +19328,122 @@ body.mobile-mode #session-picker-modal {
         
         // === 第6步：检查业务状态 ===
         
-        if (!result.success || !result.pay_url) {
+        if (!result.success) {
           throw new Error(result.message || '创建订单失败');
         }
         
-        // === 第7步：显示支付链接 ===
-        
-        // 填充支付链接到输入框
-        if (payUrlInput) {
-          payUrlInput.value = result.pay_url;
+        // 检查是否有支付信息（pay_url或pay_info）
+        if (!result.pay_url && !result.pay_info) {
+          throw new Error('未返回支付信息');
         }
         
-        // 将支付链接保存到打开按钮的data属性
+        // === 第7步：显示支付信息 ===
+        
+        // 获取支付类型和支付信息
+        const payType = result.pay_type || 'jump';
+        const payInfo = result.pay_info || result.pay_url || '';
+        
+        // 填充订单详细信息到新增的显示字段
+        const orderIdElem = document.getElementById('admin-test-order-id_modal');
+        const tradeNoElem = document.getElementById('admin-test-trade-no_modal');
+        const amountElem = document.getElementById('admin-test-amount_modal');
+        const payMethodElem = document.getElementById('admin-test-pay-method_modal');
+        const methodTypeElem = document.getElementById('admin-test-method-type_modal');
+        const payTypeElem = document.getElementById('admin-test-pay-type_modal');
+        const payInfoDescElem = document.getElementById('admin-test-pay-info-desc_modal');
+        
+        // 填充商户订单号
+        if (orderIdElem) {
+          orderIdElem.textContent = result.order_id || '-';
+        }
+        
+        // 填充平台订单号
+        if (tradeNoElem) {
+          tradeNoElem.textContent = result.trade_no || '-';
+        }
+        
+        // 填充支付金额
+        if (amountElem) {
+          amountElem.textContent = amount ? `¥${parseFloat(amount).toFixed(2)}` : '-';
+        }
+        
+        // 填充支付方式（翻译为中文）
+        if (payMethodElem) {
+          const methodNames = {
+            'alipay': '支付宝',
+            'wxpay': '微信支付',
+            'qqpay': 'QQ钱包',
+            'unionpay': '云闪付'
+          };
+          payMethodElem.textContent = methodNames[method] || method || '-';
+        }
+        
+        // 填充接口类型
+        if (methodTypeElem) {
+          methodTypeElem.textContent = paymentType || '-';
+        }
+        
+        // 填充发起支付类型
+        if (payTypeElem) {
+          payTypeElem.textContent = payType || '-';
+        }
+        
+        // 根据支付类型设置说明文字
+        if (payInfoDescElem) {
+          const payTypeDescriptions = {
+            'jump': '跳转链接 - 可直接打开进行支付',
+            'html': 'HTML代码 - 用于支付跳转',
+            'qrcode': '二维码链接 - 可生成二维码供用户扫描',
+            'urlscheme': '小程序跳转链接 - 可在微信/支付宝中打开',
+            'jsapi': 'JSAPI支付参数 - JSON格式，用于小程序内支付',
+            'app': 'APP支付参数 - JSON格式，用于APP内支付',
+            'scan': '扫码支付结果 - 付款码支付成功的订单信息',
+            'wxplugin': '小程序插件参数 - JSON格式，用于拉起微信小程序插件',
+            'wxapp': '小程序跳转参数 - JSON格式，用于APP内拉起微信小程序'
+          };
+          payInfoDescElem.textContent = payTypeDescriptions[payType] || '支付信息';
+        }
+        
+        // 填充支付信息到输入框
+        if (payUrlInput) {
+          // 根据支付类型显示不同格式的信息
+          if (payType === 'jump' || payType === 'html') {
+            // 跳转支付：直接显示链接
+            payUrlInput.value = payInfo;
+          } else if (payType === 'qrcode') {
+            // 二维码支付：显示二维码链接
+            payUrlInput.value = `二维码: ${payInfo}`;
+          } else if (payType === 'urlscheme') {
+            // URL Scheme：显示微信/支付宝小程序跳转链接
+            payUrlInput.value = `小程序跳转: ${payInfo}`;
+          } else if (payType === 'jsapi' || payType === 'app' || payType === 'wxplugin' || payType === 'wxapp') {
+            // JSAPI/APP/小程序支付：显示格式化的JSON参数
+            try {
+              const jsonObj = typeof payInfo === 'string' ? JSON.parse(payInfo) : payInfo;
+              payUrlInput.value = JSON.stringify(jsonObj, null, 2);
+            } catch (e) {
+              payUrlInput.value = payInfo;
+            }
+          } else if (payType === 'scan') {
+            // 扫码支付成功：显示订单信息
+            payUrlInput.value = `扫码支付成功: ${payInfo}`;
+          } else {
+            // 其他类型：直接显示
+            payUrlInput.value = payInfo;
+          }
+        }
+        
+        // 将支付信息保存到打开按钮的data属性
+        // jump/html/urlscheme类型可以直接打开
         if (openBtn) {
-          openBtn.setAttribute('data-url', result.pay_url);
+          if (payType === 'jump' || payType === 'html' || payType === 'urlscheme') {
+            openBtn.setAttribute('data-url', payInfo);
+            openBtn.disabled = false;
+            openBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          } else {
+            openBtn.disabled = true;
+            openBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          }
         }
         
         // 显示支付链接容器
@@ -19210,7 +19456,7 @@ body.mobile-mode #session-picker-modal {
           resultDiv.classList.add('hidden');
         }
         
-        console.log('[PC端测试支付] 测试订单创建成功，支付链接：', result.pay_url);
+        console.log('[PC端测试支付] 测试订单创建成功，支付类型：', payType, '，支付信息：', payInfo);
         
       } catch (error) {
         // === 错误处理 ===
@@ -30812,6 +31058,34 @@ function refreshMobileSessionPicker() {
           showModalAlert("操作失败: " + e.message, "错误");
         }
       }
+
+      function Get_YiPAi_device() {
+        const ua = navigator.userAgent.toLowerCase();
+
+        // 1. 支付宝
+        if (ua.includes('alipayclient') || ua.includes('alipay')) {
+          return 'alipay';
+        }
+
+        // 2. 微信
+        if (ua.includes('micromessenger')) {
+          return 'wechat';
+        }
+
+        // 3. QQ 内置浏览器（注意：QQ 浏览器和 QQ 内置浏览器 UA 不同）
+        if (ua.includes('qq/') || ua.includes('mqqbrowser') && ua.includes('mobile')) {
+          return 'qq';
+        }
+
+        // 4. 手机浏览器（只要 UA 里出现 mobile 字样，就认为是手机浏览器）
+        if (/mobile|android|touch|webos|hpwos/.test(ua)) {
+          return 'mobile';
+        }
+
+        // 5. 默认返回 pc
+        return 'pc';
+      }
+
       async function deleteGroup(groupKey) {
         const confirmed = await jsShowConfirm(
           "确认删除",
