@@ -56267,10 +56267,10 @@ async function createPaymentOrder() {
         return;
     }
     
-    // 步骤8：获取当前页面的app_host（域名）
-    // location.hostname返回域名（如：example.com）
-    // location.port返回端口号（如：8080），如果是默认端口则为空字符串
-    const appHost = location.hostname + (location.port ? ':' + location.port : '');
+    // 步骤8：获取当前页面的app_host（完整URL，包含协议和域名）
+    // location.protocol 返回协议（如：https:）
+    // location.host 返回域名和端口（如：example.com:8080）
+    const appHost = window.location.protocol + '//' + window.location.host;
     
     // 输出日志：记录即将创建的订单信息
     console.log('[支付] 准备创建订单:', { amount, payType, productName, appHost });

@@ -419,6 +419,20 @@ def initialize_global_variables():
     browsing_activity = {}
     browsing_activity_lock = threading.Lock()
 
+    # 全局变量：用于存储从 verify_challenge 接口接收到的验证码
+    # 这个变量在 payment_verify_challenge() 函数中被赋值
+    # 在 create_order() 方法中被读取用于验证
+    global payment_verify_challenge_get
+    payment_verify_challenge_get = ""
+
+    # 全局变量：缓存服务器的公网IP地址（IPv4 和 IPv6）
+    # 用于 is_allowed_ip() 函数中判断请求是否来自服务器本身
+    # 缓存机制可以避免频繁调用外部API查询公网IP
+    global public_ip_cache, public_ip_cache_lock, public_ip_cache_time
+    public_ip_cache = {"ipv4": None, "ipv6": None}  # 存储公网IP的字典
+    public_ip_cache_lock = threading.Lock()  # 线程锁，保护缓存数据的并发访问
+    public_ip_cache_time = 0  # 缓存的时间戳，用于判断缓存是否过期
+
     logging.info("会话存储和锁已初始化。")
 
     chrome_pool = None
@@ -431,35 +445,180 @@ def initialize_global_variables():
 
 
 
-def is_private_ip(client_ip: str) -> bool:
+def is_allowed_ip(client_ip: str) -> bool:
     """
-    判断一个 IPv4 地址是否为内网地址
-
+    判断一个IP地址是否被允许访问（内网地址或服务器自己的公网IP）
+    
+    本函数支持 IPv4 和 IPv6 地址的验证，包括：
+    1. IPv4 内网地址：10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8
+    2. IPv6 内网地址：fc00::/7(ULA), fe80::/10(链路本地), ::1/128(回环)
+    3. 服务器自己的公网 IPv4 和 IPv6 地址
+    
     参数:
-        client_ip (str): 待校验的 IP 地址字符串，例如 "192.168.1.100"
-
+        client_ip (str): 待校验的 IP 地址字符串，例如 "192.168.1.100" 或 "2001:db8::1"
+    
     返回:
-        bool: True 表示是内网地址，False 表示不是内网地址或格式错误
+        bool: True 表示是允许访问的IP（内网或服务器公网IP），False 表示不允许
     """
-
-    PRIVATE_NETWORKS = [
-        ipaddress.ip_network("10.0.0.0/8"),
-        ipaddress.ip_network("172.16.0.0/12"),
-        ipaddress.ip_network("192.168.0.0/16"),
+    
+    # 定义 IPv4 私有网络地址段
+    # 这些是 RFC 1918 定义的私有IP地址范围，加上本地回环地址
+    PRIVATE_IPV4_NETWORKS = [
+        ipaddress.ip_network("10.0.0.0/8"),      # A类私有地址
+        ipaddress.ip_network("172.16.0.0/12"),   # B类私有地址
+        ipaddress.ip_network("192.168.0.0/16"),  # C类私有地址
+        ipaddress.ip_network("127.0.0.0/8"),     # 本地回环地址
+    ]
+    
+    # 定义 IPv6 私有网络地址段
+    # 包括唯一本地地址(ULA)、链路本地地址和回环地址
+    PRIVATE_IPV6_NETWORKS = [
+        ipaddress.ip_network("fc00::/7"),   # 唯一本地地址 (Unique Local Address, ULA)
+        ipaddress.ip_network("fe80::/10"),  # 链路本地地址 (Link-Local Address)
+        ipaddress.ip_network("::1/128"),    # IPv6 回环地址
     ]
     
     try:
+        # 尝试将字符串解析为 IP 地址对象
+        # ipaddress.ip_address() 会自动识别 IPv4 或 IPv6
         ip = ipaddress.ip_address(client_ip)
     except ValueError:
-        # 如果格式不合法，直接返回 False
+        # 如果IP地址格式不合法，记录警告日志并返回 False
+        logging.warning(f"[IP验证] 无效的IP地址格式: {client_ip}")
         return False
-
-    # 只处理 IPv4
-    if ip.version != 4:
-        return False
-
-    # 判断该 IP 是否落在任一私有网段内
-    return any(ip in net for net in PRIVATE_NETWORKS)
+    
+    # 第一步：检查是否为内网IP地址
+    # 根据IP版本选择对应的私有网络列表进行检查
+    if ip.version == 4:
+        # IPv4 地址：检查是否在任一私有网络段内
+        if any(ip in net for net in PRIVATE_IPV4_NETWORKS):
+            logging.debug(f"[IP验证] {client_ip} 是 IPv4 内网地址，允许访问")
+            return True
+    elif ip.version == 6:
+        # IPv6 地址：检查是否在任一私有网络段内
+        if any(ip in net for net in PRIVATE_IPV6_NETWORKS):
+            logging.debug(f"[IP验证] {client_ip} 是 IPv6 内网地址，允许访问")
+            return True
+    
+    # 第二步：如果不是内网IP，检查是否为服务器自己的公网IP
+    # 这里需要获取服务器的公网IP并进行比对
+    # 使用全局变量和缓存机制来存储公网IP，避免频繁请求
+    
+    global public_ip_cache, public_ip_cache_lock, public_ip_cache_time, requests
+    
+    # 缓存过期时间：5分钟（300秒）
+    # 公网IP通常不会频繁变化，5分钟的缓存可以有效减少API请求
+    CACHE_EXPIRE_SECONDS = 300
+    
+    # 获取当前时间戳
+    current_time = time.time()
+    
+    # 使用线程锁保护缓存的读写操作
+    # 确保在多线程环境下缓存数据的一致性
+    with public_ip_cache_lock:
+        # 检查缓存是否过期
+        # 如果距离上次更新超过5分钟，则需要重新获取公网IP
+        if current_time - public_ip_cache_time > CACHE_EXPIRE_SECONDS:
+            logging.info("[IP验证] 公网IP缓存已过期，正在重新获取...")
+            
+            # 重新获取 IPv4 公网地址
+            try:
+                # 使用 ipw.cn 提供的API获取本机的外网IPv4地址
+                # 设置3秒超时，避免长时间等待
+                response_v4 = requests.get("http://4.ipw.cn", timeout=3)
+                
+                # 检查HTTP响应状态码
+                if response_v4.status_code == 200:
+                    # 获取响应文本并去除首尾空白字符
+                    ipv4_text = response_v4.text.strip()
+                    
+                    # 验证返回的字符串是否为有效的IPv4地址
+                    try:
+                        ipaddress.ip_address(ipv4_text)
+                        # 如果验证通过，更新缓存
+                        public_ip_cache["ipv4"] = ipv4_text
+                        logging.info(f"[IP验证] 成功获取服务器公网 IPv4: {ipv4_text}")
+                    except ValueError:
+                        # 返回的不是有效的IP地址
+                        logging.warning(f"[IP验证] 获取的 IPv4 地址格式无效: {ipv4_text}")
+                        public_ip_cache["ipv4"] = None
+                else:
+                    # HTTP请求失败
+                    logging.warning(f"[IP验证] 获取 IPv4 公网地址失败，状态码: {response_v4.status_code}")
+                    public_ip_cache["ipv4"] = None
+                    
+            except requests.exceptions.Timeout:
+                # 请求超时
+                logging.warning("[IP验证] 获取 IPv4 公网地址超时（3秒）")
+                public_ip_cache["ipv4"] = None
+                
+            except Exception as e:
+                # 其他异常（如网络错误、连接失败等）
+                logging.warning(f"[IP验证] 获取 IPv4 公网地址异常: {str(e)}")
+                public_ip_cache["ipv4"] = None
+            
+            # 重新获取 IPv6 公网地址
+            try:
+                # 使用 ipw.cn 提供的API获取本机的外网IPv6地址
+                # 设置3秒超时，避免长时间等待
+                response_v6 = requests.get("http://6.ipw.cn", timeout=3)
+                
+                # 检查HTTP响应状态码
+                if response_v6.status_code == 200:
+                    # 获取响应文本并去除首尾空白字符
+                    ipv6_text = response_v6.text.strip()
+                    
+                    # 验证返回的字符串是否为有效的IPv6地址
+                    try:
+                        ipaddress.ip_address(ipv6_text)
+                        # 如果验证通过，更新缓存
+                        public_ip_cache["ipv6"] = ipv6_text
+                        logging.info(f"[IP验证] 成功获取服务器公网 IPv6: {ipv6_text}")
+                    except ValueError:
+                        # 返回的不是有效的IP地址
+                        logging.warning(f"[IP验证] 获取的 IPv6 地址格式无效: {ipv6_text}")
+                        public_ip_cache["ipv6"] = None
+                else:
+                    # HTTP请求失败
+                    logging.warning(f"[IP验证] 获取 IPv6 公网地址失败，状态码: {response_v6.status_code}")
+                    public_ip_cache["ipv6"] = None
+                    
+            except requests.exceptions.Timeout:
+                # 请求超时
+                logging.warning("[IP验证] 获取 IPv6 公网地址超时（3秒）")
+                public_ip_cache["ipv6"] = None
+                
+            except Exception as e:
+                # 其他异常（如网络错误、连接失败等）
+                # IPv6可能在某些网络环境中不可用，这是正常情况
+                logging.warning(f"[IP验证] 获取 IPv6 公网地址异常: {str(e)}")
+                public_ip_cache["ipv6"] = None
+            
+            # 更新缓存时间戳
+            # 即使获取失败，也更新时间戳，避免频繁重试
+            public_ip_cache_time = current_time
+        
+        # 从缓存中获取公网IP地址
+        cached_ipv4 = public_ip_cache["ipv4"]
+        cached_ipv6 = public_ip_cache["ipv6"]
+    
+    # 第三步：比对客户端IP是否与服务器的公网IP相同
+    # 将 IP 对象转换为字符串进行比对
+    client_ip_str = str(ip)
+    
+    # 检查是否匹配 IPv4 公网地址
+    if cached_ipv4 and client_ip_str == cached_ipv4:
+        logging.info(f"[IP验证] {client_ip} 是服务器自己的公网 IPv4 地址，允许访问")
+        return True
+    
+    # 检查是否匹配 IPv6 公网地址
+    if cached_ipv6 and client_ip_str == cached_ipv6:
+        logging.info(f"[IP验证] {client_ip} 是服务器自己的公网 IPv6 地址，允许访问")
+        return True
+    
+    # 如果既不是内网IP，也不是服务器的公网IP，则拒绝访问
+    logging.warning(f"[IP验证] {client_ip} 不是允许的IP地址，拒绝访问")
+    return False
 
 
 # ==============================================================================
@@ -2946,6 +3105,10 @@ class RainbowYiPayClient:
         - 如果网络请求失败，返回错误并记录异常日志
         - 如果易支付API返回错误，返回错误信息
         """
+        # 声明使用全局 requests 变量
+        # requests 已在 check_and_import_dependencies() 中导入
+        global requests, payment_verify_challenge_get
+        
         # 检查必需的配置参数是否已填写
         # 如果 host、pid 或 key 为空，说明配置不完整，无法创建订单
         if not self.host or not self.pid or not self.key:
@@ -2970,16 +3133,19 @@ class RainbowYiPayClient:
             
 
 
+            # 生成一个长度为2048位的随机验证码（challenge）
+            # 用于验证 client_app_host 是否真的是本服务器
+            # 随机字符包括大小写字母和数字，确保足够的随机性和安全性
             challenge = ''.join(random.choices(string.ascii_letters + string.digits, k=2048))
             
             # 记录日志：开始验证app_host
             # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
             challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(challenge) > 64 else challenge
-            logging.info(f"[支付验证] 开始验证app_host: {app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
+            logging.info(f"[支付验证] 开始验证app_host: {client_app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
             
             # 构造验证接口的完整URL
-            # 格式：{app_host}/api/payment/verify_challenge
-            verify_url = f"{app_host}/api/payment/verify_challenge"
+            # 格式：{client_app_host}/api/payment/verify_challenge
+            verify_url = f"{client_app_host}/api/payment/verify_challenge"
             
             try:
                 
@@ -3001,42 +3167,109 @@ class RainbowYiPayClient:
                     logging.warning(
                         f"[支付验证] HTTP请求失败 - 状态码: {response.status_code}"
                     )
-                    return jsonify({
+                    return {
                         "success": False,
                         "message": f"验证失败：HTTP状态码 {response.status_code}",
                         "verified": False
-                    })
+                    }
+                
+                # HTTP状态码为200，开始处理响应
+                # 尝试解析响应的JSON数据
+                try:
+                    # 解析响应体中的JSON数据
+                    # 新的验证机制期望格式：{"success": True}
+                    # 不再从响应中获取 challenge，而是从全局变量中获取
+                    response_data = response.json()
+                    
+                    # 检查响应中的 success 字段
+                    # 如果 success 不为 True，说明验证接口拒绝了请求
+                    if not response_data.get("success"):
+                        # 验证接口返回失败
+                        message = response_data.get("message", "验证接口返回失败")
+                        logging.warning(f"[支付验证] 验证接口返回失败: {message}")
+                        return {
+                            "success": False,
+                            "message": f"验证失败：{message}",
+                            "verified": False
+                        }
+                    
+                    # 声明使用全局变量 payment_verify_challenge_get
+                    # 这个变量在 verify_challenge 接口中被赋值
+                    global payment_verify_challenge_get
+                    
+                    # 从全局变量中获取服务器存储的 challenge
+                    # 这是新的验证机制：challenge 不通过HTTP响应传递，而是通过全局变量传递
+                    returned_challenge = payment_verify_challenge_get
+                    
+                    # 记录日志：成功从全局变量获取验证码
+                    # 只记录前32位和后32位，避免日志过长
+                    returned_preview = f"{returned_challenge[:32]}...{returned_challenge[-32:]}" if len(returned_challenge) > 64 else returned_challenge
+                    logging.info(f"[支付验证] 从全局变量获取验证码，长度: {len(returned_challenge)}位, 预览: {returned_preview}")
+                    
+                except ValueError as e:
+                    # JSON解析失败
+                    # 这说明返回的响应不是有效的JSON格式，可能不是本服务器
+                    logging.warning(f"[支付验证] 响应JSON解析失败: {str(e)}")
+                    return {
+                        "success": False,
+                        "message": "验证失败：服务器返回的数据格式不正确（非JSON）",
+                        "verified": False
+                    }
+                
+                except Exception as e:
+                    # 其他解析异常
+                    logging.error(f"[支付验证] 响应处理异常: {str(e)}")
+                    return {
+                        "success": False,
+                        "message": f"验证失败：响应处理异常 - {str(e)}",
+                        "verified": False
+                    }
             
             except requests.exceptions.Timeout:
                 # 请求超时
                 logging.warning(f"[支付验证] 请求超时 - {verify_url}")
-                return jsonify({
+                return {
                     "success": False,
                     "message": "验证失败：请求超时（5秒）",
                     "verified": False
-                })
+                }
             
             except requests.exceptions.ConnectionError:
                 # 连接错误（网络不通或域名无法解析）
                 logging.warning(f"[支付验证] 连接失败 - {verify_url}")
-                return jsonify({
+                return {
                     "success": False,
                     "message": "验证失败：无法连接到目标服务器",
                     "verified": False
-                })
+                }
             
             except Exception as e:
                 # 其他异常
                 logging.error(f"[支付验证] 验证过程异常: {str(e)}")
-                return jsonify({
+                return {
                     "success": False,
                     "message": f"验证失败：{str(e)}",
                     "verified": False
-                })
+                }
             
+            # 比对发送的 challenge 和从全局变量获取的 challenge
+            # 如果两者完全一致，说明这确实是本服务器
+            # 如果不一致，说明 app_host 指向的不是本服务器，验证失败
             if challenge != returned_challenge:
-                return {"success": False, "message": "彩虹易支付配置缺少 app_host，经过验证后确认不是本服务器，请联系管理员"}
+                # 验证失败：全局变量中的 challenge 与发送的不一致
+                # 这说明 app_host 指向的服务器不是本服务器
+                logging.warning(f"[支付验证] 验证码不匹配 - 验证失败")
+                logging.warning(f"[支付验证] 发送的验证码长度: {len(challenge)}位，全局变量中的长度: {len(returned_challenge)}位")
+                return {
+                    "success": False,
+                    "message": "彩虹易支付配置缺少 app_host，经过验证后确认不是本服务器，请联系管理员",
+                    "verified": False
+                }
             else:
+                # 验证成功：全局变量中的 challenge 与发送的完全一致
+                # 可以安全地使用 client_app_host 作为 app_host
+                # 将验证通过的 client_app_host 赋值给 app_host
+                logging.info(f"[支付验证] 验证成功 - 将使用 client_app_host: {client_app_host}")
                 app_host = client_app_host
 
 
@@ -3097,10 +3330,6 @@ class RainbowYiPayClient:
         logging.info(f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
         
         try:
-            # 导入 requests 库，用于发送HTTP请求
-            # 在函数内部导入，避免全局导入影响启动速度
-            import requests
-            
             # 向彩虹易支付API发送POST请求
             # data 参数指定POST请求体（表单格式）
             # timeout 设置超时时间为10秒，避免长时间等待
@@ -3216,6 +3445,10 @@ class RainbowYiPayClient:
         - 查询接口有频率限制，不要频繁调用
         - 订单状态最终以异步通知为准
         """
+        # 声明使用全局 requests 变量
+        # requests 已在 check_and_import_dependencies() 中导入
+        global requests
+        
         # 检查配置是否完整
         if not self.host or not self.pid or not self.key:
             logging.error("[彩虹易支付] 配置不完整，无法查询订单")
@@ -3238,8 +3471,6 @@ class RainbowYiPayClient:
         
         try:
             # 发送GET请求查询订单
-            import requests
-            
             response = requests.get(api_url, params=params, timeout=10)
             
             # 检查HTTP状态码
@@ -15893,6 +16124,10 @@ def _send_startup_notification_to_log_forwarder(host, port):
     """
     import socket
     import time
+    
+    # 声明使用全局 requests 变量
+    # requests 已在 check_and_import_dependencies() 中导入
+    global requests
 
     # UDP配置
     LOG_FORWARDER_UDP_PORT = 9999  # 日志转发器监听端口
@@ -15910,8 +16145,6 @@ def _send_startup_notification_to_log_forwarder(host, port):
 
         while time.time() - health_check_start < 30:  # 最多等待30秒
             try:
-                import requests
-
                 response = requests.get(f"http://{host}:{port}/", timeout=1)
                 if response.status_code in [
                     200,
@@ -25235,12 +25468,15 @@ def start_web_server(args_param):
         """
         验证高德地图API Key的有效性
         """
+        # 声明使用全局 requests 变量
+        # requests 已在 check_and_import_dependencies() 中导入
+        global requests
+        
         try:
             data = request.get_json() or {}
             amap_key = data.get("key", "").strip()
             if not amap_key:
                 return jsonify({"success": False, "message": "API Key不能为空"})
-            import requests
 
             test_url = f"https://restapi.amap.com/v3/geocode/regeo?location=116.397428,39.90923&key={amap_key}"
             response = requests.get(test_url, timeout=5)
@@ -28572,6 +28808,10 @@ def start_web_server(args_param):
         - 管理员在配置彩虹易支付时，验证app_host配置是否正确
         - 前端动态传入app_host前，先进行验证
         """
+        # 声明使用全局 requests 变量
+        # requests 已在 check_and_import_dependencies() 中导入
+        global requests
+        
         try:
             # 从请求体中获取JSON数据
             data = request.get_json() or {}
@@ -28629,9 +28869,6 @@ def start_web_server(args_param):
             verify_url = f"{app_host}/api/payment/verify_challenge"
             
             try:
-                # 导入requests库用于发送HTTP请求
-                import requests
-                
                 # 向verify_challenge接口发送POST请求
                 # json参数：以JSON格式发送验证码
                 # timeout参数：设置5秒超时，避免长时间等待
@@ -28736,33 +28973,60 @@ def start_web_server(args_param):
     def payment_verify_challenge():
         """
         验证挑战响应接口（用于配合verify_host验证）
+        
+        本接口的作用：
+        1. 接收客户端发送的 challenge（验证码）
+        2. 验证请求来源IP是否为内网或服务器自己的公网IP
+        3. 如果验证通过，将 challenge 存储到全局变量中
+        4. 返回验证成功的响应（不包含challenge，由全局变量存储）
+        
+        新的验证机制：
+        - 不再在响应中返回 challenge
+        - 而是存储到全局变量 payment_verify_challenge_get 中
+        - create_order 方法会从全局变量中读取进行比对
         """
         try:
             # 从请求体中获取JSON数据
+            # 使用 request.get_json() 解析请求体中的 JSON 数据
+            # 如果解析失败或请求体为空，则返回空字典
             data = request.get_json() or {}
             
             # 提取验证码参数
             # 使用.get()方法安全地获取，如果不存在返回空字符串
-            global payment_verify_challenge_get
+            # 这样可以避免 KeyError 异常
             challenge = data.get("challenge", "")
-
-
-
             
             # 记录日志：收到验证请求
             # 记录请求来源IP，用于安全审计
             client_ip = request.remote_addr
-
-            if is_private_ip(client_ip):
-                payment_verify_challenge_get = challenge
-            else:
+            logging.info(f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码长度: {len(challenge)}位")
+            
+            # 验证请求来源IP是否被允许
+            # 使用新的 is_allowed_ip() 函数，支持 IPv4/IPv6 和公网IP验证
+            if not is_allowed_ip(client_ip):
+                # IP验证失败：不是内网IP，也不是服务器的公网IP
+                # 返回403 Forbidden状态码，拒绝访问
+                logging.warning(f"[支付验证] IP验证失败 - 拒绝访问: {client_ip}")
                 return jsonify({
                     "success": False,
-                    "message": "仅允许内网IP访问此接口",
+                    "message": "仅允许内网IP或服务器本机IP访问此接口",
                 }), 403
-
-            logging.info(f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码: {challenge}")
             
+            # IP验证通过，将接收到的 challenge 存储到全局变量
+            # 声明使用全局变量 payment_verify_challenge_get
+            global payment_verify_challenge_get
+            
+            # 将 challenge 赋值给全局变量
+            # 这个值将在 create_order 方法中被读取用于验证
+            payment_verify_challenge_get = challenge
+            
+            # 记录日志：成功存储验证码
+            # 只记录验证码的长度，不记录完整内容（太长）
+            logging.info(f"[支付验证] 验证码已存储到全局变量，长度: {len(challenge)}位")
+            
+            # 返回验证成功响应
+            # 注意：新的机制中不再返回 challenge
+            # 只返回 success: True，表示验证码已成功接收和存储
             return jsonify({
                 "success": True
             })
@@ -28770,6 +29034,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             # 即使出现异常，也返回错误信息而不是让请求失败
+            # 这样可以让调用方知道发生了什么错误
             logging.error(f"[支付验证] verify_challenge接口异常: {str(e)}")
             logging.error(traceback.format_exc())
             return jsonify({
