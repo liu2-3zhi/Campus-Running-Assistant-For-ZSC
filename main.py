@@ -1687,9 +1687,11 @@ def _get_default_config():
         # 商户ID（PID）：在彩虹易支付平台注册后获取的唯一商户标识（必填）
         # 格式：通常为纯数字，例如 "10001"
         "pid": "",
-        # 商户密钥（KEY）：在彩虹易支付平台获取的用于签名验证的密钥（必填）
-        # 这是一个重要的安全参数，用于生成和验证支付请求的签名，请妥善保管，切勿泄露
-        # 格式：通常为32位随机字符串，例如 "abcdef1234567890abcdef1234567890"
+        # 商户私钥（KEY）：在彩虹易支付平台获取的商户RSA私钥（必填）
+        # 这是一个重要的安全参数，用于对发送给支付平台的请求进行RSA签名，请妥善保管，切勿泄露
+        # 格式：PEM格式的RSA私钥字符串
+        # 示例：-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----
+        # 用途：商户使用私钥对请求参数签名，平台使用商户公钥验证签名
         "key": "",
         # 应用域名地址：用于自动设置return_url和notify_url的域名前缀（可选）
         # 格式示例："https://yourdomain.com" 或 "https://run.zelly.cn"
@@ -1697,12 +1699,12 @@ def _get_default_config():
         # 如果留空，则使用前端传入的app_host参数
         # 注意：必须包含协议头（http:// 或 https://），末尾不要添加斜杠
         "app_host": "",
-        # 平台公钥（RSA公钥）：用于验证支付回调通知的签名（可选）
+        # 平台公钥（RSA公钥）：彩虹易支付平台的RSA公钥（必填）
         # 格式：PEM格式的RSA公钥字符串
-        # 用途：在收到支付平台的异步通知时，使用此公钥验证签名，确保通知的真实性和完整性
-        # 说明：如果彩虹易支付平台支持RSA签名验证，请在此填入平台提供的公钥
+        # 用途：在收到支付平台的异步通知时，使用此公钥验证平台的签名，确保通知的真实性和完整性
+        # 说明：平台使用私钥对回调通知签名，商户使用平台公钥验证签名
         # 示例：-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhki...\n-----END PUBLIC KEY-----
-        # 注意：留空则不进行RSA签名验证，仅使用MD5签名验证
+        # 注意：必须配置此公钥，否则无法验证支付回调通知的真实性
         "pubc_key": "",
         # 商品ID：用于标识商品类型的唯一标识符
         # 格式：整数，例如 "1001"
@@ -2193,10 +2195,12 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 在彩虹易支付平台注册后获取的唯一商户标识\n")
         f.write("# 格式：通常为纯数字，例如：10001\n")
         f.write(f"pid = {config_obj.get('Rainbow_YiPay', 'pid', fallback='')}\n")
-        f.write("# 商户密钥（KEY）（必填）\n")
-        f.write("# 用于生成和验证支付请求签名的密钥，请妥善保管，切勿泄露\n")
-        f.write("# 格式：通常为256位SHA256WithRSA符串\n")
-        f.write("# 示例：abcdef1234567890abcdef1234567890\n")
+        f.write("# 商户私钥（KEY）（必填）\n")
+        f.write("# 这是商户的RSA私钥，用于对发送给支付平台的请求进行签名\n")
+        f.write("# 格式：PEM格式的RSA私钥字符串\n")
+        f.write("# 示例：-----BEGIN RSA PRIVATE KEY-----\\nMIIEowIBAAKCAQEA...\\n-----END RSA PRIVATE KEY-----\n")
+        f.write("# 用途：商户使用私钥签名请求，平台使用商户公钥验证签名\n")
+        f.write("# 注意：请妥善保管私钥，切勿泄露\n")
         f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
         f.write("# 应用域名地址（可选）\n")
         f.write("# 用于自动设置return_url和notify_url的域名前缀\n")
@@ -2205,12 +2209,13 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 如果留空，则使用前端传入的app_host参数\n")
         f.write("# 注意：必须包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
         f.write(f"app_host = {config_obj.get('Rainbow_YiPay', 'app_host', fallback='')}\n")
-        f.write("# 平台公钥（RSA公钥）（可选）\n")
-        f.write("# 用于验证支付回调通知的签名，确保通知的真实性和完整性\n")
+        f.write("# 平台公钥（RSA公钥）（必填）\n")
+        f.write("# 这是彩虹易支付平台的RSA公钥，用于验证平台返回的回调通知签名\n")
         f.write("# 格式：PEM格式的RSA公钥字符串\n")
         f.write("# 示例：-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhki...\\n-----END PUBLIC KEY-----\n")
-        f.write("# 说明：如果彩虹易支付平台支持RSA签名验证，请在此填入平台提供的公钥\n")
-        f.write("# 注意：留空则不进行RSA签名验证，仅使用MD5签名验证\n")
+        f.write("# 用途：平台使用私钥对回调通知签名，商户使用平台公钥验证签名\n")
+        f.write("# 说明：请在彩虹易支付平台获取并填入平台的RSA公钥\n")
+        f.write("# 注意：必须配置此公钥，否则无法验证支付回调通知的真实性\n")
         f.write(f"pubc_key = {config_obj.get('Rainbow_YiPay', 'pubc_key', fallback='')}\n")
         f.write("# 启用的支付方式\n")
         f.write("# 管理员可配置启用哪些支付方式，使用逗号分隔\n")
