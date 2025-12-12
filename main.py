@@ -504,11 +504,7 @@ def is_allowed_ip(client_ip: str) -> bool:
     # 这里需要获取服务器的公网IP并进行比对
     # 使用全局变量和缓存机制来存储公网IP，避免频繁请求
     
-    global public_ip_cache, public_ip_cache_lock, public_ip_cache_time
-    
-    # 导入 requests 库用于发送HTTP请求
-    # 在函数内导入以确保模块可用性
-    import requests
+    global public_ip_cache, public_ip_cache_lock, public_ip_cache_time, requests
     
     # 缓存过期时间：5分钟（300秒）
     # 公网IP通常不会频繁变化，5分钟的缓存可以有效减少API请求
@@ -3109,6 +3105,10 @@ class RainbowYiPayClient:
         - 如果网络请求失败，返回错误并记录异常日志
         - 如果易支付API返回错误，返回错误信息
         """
+        # 声明使用全局 requests 变量
+        # requests 已在 check_and_import_dependencies() 中导入
+        global requests, payment_verify_challenge_get
+        
         # 检查必需的配置参数是否已填写
         # 如果 host、pid 或 key 为空，说明配置不完整，无法创建订单
         if not self.host or not self.pid or not self.key:
@@ -3146,10 +3146,6 @@ class RainbowYiPayClient:
             # 构造验证接口的完整URL
             # 格式：{client_app_host}/api/payment/verify_challenge
             verify_url = f"{client_app_host}/api/payment/verify_challenge"
-            
-            # 导入 requests 库用于发送HTTP请求
-            # 在使用前导入以确保模块可用性
-            import requests
             
             try:
                 
@@ -3334,10 +3330,6 @@ class RainbowYiPayClient:
         logging.info(f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
         
         try:
-            # 导入 requests 库，用于发送HTTP请求
-            # 在函数内部导入，避免全局导入影响启动速度
-            import requests
-            
             # 向彩虹易支付API发送POST请求
             # data 参数指定POST请求体（表单格式）
             # timeout 设置超时时间为10秒，避免长时间等待
@@ -3453,6 +3445,10 @@ class RainbowYiPayClient:
         - 查询接口有频率限制，不要频繁调用
         - 订单状态最终以异步通知为准
         """
+        # 声明使用全局 requests 变量
+        # requests 已在 check_and_import_dependencies() 中导入
+        global requests
+        
         # 检查配置是否完整
         if not self.host or not self.pid or not self.key:
             logging.error("[彩虹易支付] 配置不完整，无法查询订单")
@@ -3475,8 +3471,6 @@ class RainbowYiPayClient:
         
         try:
             # 发送GET请求查询订单
-            import requests
-            
             response = requests.get(api_url, params=params, timeout=10)
             
             # 检查HTTP状态码
@@ -16130,6 +16124,10 @@ def _send_startup_notification_to_log_forwarder(host, port):
     """
     import socket
     import time
+    
+    # 声明使用全局 requests 变量
+    # requests 已在 check_and_import_dependencies() 中导入
+    global requests
 
     # UDP配置
     LOG_FORWARDER_UDP_PORT = 9999  # 日志转发器监听端口
@@ -16147,8 +16145,6 @@ def _send_startup_notification_to_log_forwarder(host, port):
 
         while time.time() - health_check_start < 30:  # 最多等待30秒
             try:
-                import requests
-
                 response = requests.get(f"http://{host}:{port}/", timeout=1)
                 if response.status_code in [
                     200,
@@ -25472,12 +25468,15 @@ def start_web_server(args_param):
         """
         验证高德地图API Key的有效性
         """
+        # 声明使用全局 requests 变量
+        # requests 已在 check_and_import_dependencies() 中导入
+        global requests
+        
         try:
             data = request.get_json() or {}
             amap_key = data.get("key", "").strip()
             if not amap_key:
                 return jsonify({"success": False, "message": "API Key不能为空"})
-            import requests
 
             test_url = f"https://restapi.amap.com/v3/geocode/regeo?location=116.397428,39.90923&key={amap_key}"
             response = requests.get(test_url, timeout=5)
@@ -28809,6 +28808,10 @@ def start_web_server(args_param):
         - 管理员在配置彩虹易支付时，验证app_host配置是否正确
         - 前端动态传入app_host前，先进行验证
         """
+        # 声明使用全局 requests 变量
+        # requests 已在 check_and_import_dependencies() 中导入
+        global requests
+        
         try:
             # 从请求体中获取JSON数据
             data = request.get_json() or {}
@@ -28866,9 +28869,6 @@ def start_web_server(args_param):
             verify_url = f"{app_host}/api/payment/verify_challenge"
             
             try:
-                # 导入requests库用于发送HTTP请求
-                import requests
-                
                 # 向verify_challenge接口发送POST请求
                 # json参数：以JSON格式发送验证码
                 # timeout参数：设置5秒超时，避免长时间等待
