@@ -24604,7 +24604,7 @@ def start_web_server(args_param):
                 # 场景：易支付可能会多次发送支付成功通知（网络重试、系统重试等）
                 # 我们必须确保即使收到多次通知，也只处理一次业务逻辑
                 
-                if order_data.get("status") == "paid":
+                if order_data.get("status") == ORDER_STATUS_PAID:
                     # ========== 订单已支付，这是一个重复通知 ==========
                     
                     # 获取当前的通知计数并+1
@@ -24665,7 +24665,7 @@ def start_web_server(args_param):
                 # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
                 
                 # 更新订单状态为已支付
-                order_data["status"] = "paid"
+                order_data["status"] = ORDER_STATUS_PAID
                 order_data["trade_no"] = trade_no          # 保存易支付订单号
                 order_data["paid_at"] = time.time()        # 支付时间（时间戳）
                 order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
@@ -24868,7 +24868,7 @@ def start_web_server(args_param):
                 
                 # 可以根据状态更新订单状态
                 if trade_status == "TRADE_CLOSED":
-                    order_data["status"] = "closed"
+                    order_data["status"] = ORDER_STATUS_FAILED
                     with open(order_file, "w", encoding="utf-8") as f:
                         json.dump(order_data, f, indent=2, ensure_ascii=False)
                 
@@ -28126,6 +28126,14 @@ def start_web_server(args_param):
     # 5. 管理订单列表
     # ==============================================================================
 
+    # 订单状态常量定义
+    # 用于确保整个系统中订单状态的一致性
+    ORDER_STATUS_FAILED = "failed"                    # 创建失败
+    ORDER_STATUS_PENDING = "pending"                  # 已创建待支付
+    ORDER_STATUS_PAID = "paid"                        # 已支付
+    ORDER_STATUS_REFUNDED_PARTIAL = "refunded_partial"  # 已部分退款
+    ORDER_STATUS_REFUNDED_FULL = "refunded_full"      # 已全额退款
+    
     # 订单数据存储目录常量定义
     # 用于存储所有支付订单的JSON文件
     PAYMENT_ORDERS_DIR = "payment_orders"
@@ -28398,9 +28406,9 @@ def start_web_server(args_param):
             # 获取订单当前状态
             order_status = order_data.get("status", "")
             
-            # 只有"已支付"状态的订单才能退款
+            # 只有"已支付"或"已部分退款"状态的订单才能退款
             # 如果订单状态是pending（待支付）或failed（失败），不允许退款
-            if order_status != "paid" and not order_status.startswith("refunded_"):
+            if order_status not in (ORDER_STATUS_PAID, ORDER_STATUS_REFUNDED_PARTIAL):
                 logging.error(f"[退款请求] 订单状态不允许退款 - 订单号: {trade_no}, 状态: {order_status}")
                 return jsonify({
                     "success": False,
@@ -28605,10 +28613,10 @@ def start_web_server(args_param):
                 # 如果退款金额 >= 订单金额，则状态改为"已全额退款"
                 # 否则状态改为"已部分退款"
                 if total_refunded_new >= order_amount:
-                    order_data["status"] = "refunded_full"      # 已全额退款
+                    order_data["status"] = ORDER_STATUS_REFUNDED_FULL      # 已全额退款
                     logging.info(f"[退款请求] 订单状态更新为：已全额退款")
                 else:
-                    order_data["status"] = "refunded_partial"   # 已部分退款
+                    order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL   # 已部分退款
                     logging.info(f"[退款请求] 订单状态更新为：已部分退款")
                 
                 # 保存更新后的订单数据到文件
@@ -28874,7 +28882,7 @@ def start_web_server(args_param):
                     "amount": amount,                    # 支付金额
                     "product_name": product_name,        # 商品名称
                     "pay_type": pay_type,                # 支付方式(支付宝\微信)
-                    "status": "pending",                 # 订单状态：pending（待支付）
+                    "status": ORDER_STATUS_PENDING,      # 订单状态：pending（待支付）
                     "pay_url": result.get("pay_url", ""),        # 支付跳转URL
                     "trade_no": result.get("trade_no", ""),      # 平台订单号
                     # payment_method: 接口类型（传入的payment_type参数，如：web/jump/jsapi/scan/app/applet）
@@ -29078,7 +29086,7 @@ def start_web_server(args_param):
                 # 如果查询成功且订单已支付
                 if query_result["success"] and query_result.get("status") == "TRADE_SUCCESS":
                     # 更新订单状态为已支付
-                    order_data["status"] = "paid"
+                    order_data["status"] = ORDER_STATUS_PAID
                     order_data["paid_at"] = time.time()
                     order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
                     
@@ -29442,7 +29450,7 @@ def start_web_server(args_param):
                 "pay_type": "alipay",                  # 支付方式
                 "device": device,                      # 设备类型（mobile/pc）
                 "clientip": clientip,                  # 客户端IP
-                "status": "pending",                   # 订单状态（pending: 待支付）
+                "status": ORDER_STATUS_PENDING,        # 订单状态（pending: 待支付）
                 "created_at": time.time(),             # 创建时间（时间戳）
                 "notify_url": notify_url,              # 异步通知URL
                 "return_url": return_url               # 同步返回URL
@@ -32057,8 +32065,8 @@ def start_web_server(args_param):
                     # 统计总订单数
                     stats["total_orders"] += 1
                     
-                    # 统计已支付订单数
-                    if order_data.get("status") == "paid":
+                    # 统计已支付订单数（包括已支付、已部分退款、已全额退款）
+                    if order_data.get("status") in (ORDER_STATUS_PAID, ORDER_STATUS_REFUNDED_PARTIAL, ORDER_STATUS_REFUNDED_FULL):
                         stats["paid_orders"] += 1
                     
                     # 获取通知计数（notify_count字段）
