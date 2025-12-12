@@ -11819,31 +11819,80 @@ body.mobile-mode #session-picker-modal {
             </button>
           </div>
 
-          <!-- 支付链接显示区域：创建订单成功后显示 -->
-          <div id="admin-test-payment-link-container_modal" class="hidden space-y-3 bg-white border border-slate-200 rounded-lg p-4">
-            <h5 class="font-semibold text-base text-slate-700 border-b border-slate-200 pb-2">
-              <!-- 链接图标 -->
-              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <!-- 支付结果显示区域：创建订单成功后显示 -->
+          <div id="admin-test-payment-link-container_modal" class="hidden space-y-4 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-4">
+            <!-- 标题 -->
+            <h5 class="font-bold text-lg text-green-700 border-b-2 border-green-300 pb-2 flex items-center">
+              <!-- 成功图标 -->
+              <svg class="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
-              支付链接已生成
+              测试订单创建成功
             </h5>
             
-            <!-- 支付链接显示框：可复制 -->
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">支付链接：</label>
-              <!-- 只读输入框，显示完整的支付链接 -->
-              <input type="text" id="admin-test-pay-url_modal" 
+            <!-- 订单信息卡片 -->
+            <div class="bg-white rounded-lg p-4 space-y-3 shadow-sm">
+              <h6 class="font-semibold text-sm text-slate-700 mb-2">📋 订单信息</h6>
+              
+              <!-- 商户订单号 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">商户订单号：</span>
+                <span id="admin-test-order-id_modal" class="text-sm font-mono font-semibold text-slate-800">-</span>
+              </div>
+              
+              <!-- 平台订单号 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">平台订单号：</span>
+                <span id="admin-test-trade-no_modal" class="text-sm font-mono font-semibold text-slate-800">-</span>
+              </div>
+              
+              <!-- 支付金额 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">支付金额：</span>
+                <span id="admin-test-amount_modal" class="text-base font-bold text-red-600">-</span>
+              </div>
+              
+              <!-- 支付方式 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">支付方式：</span>
+                <span id="admin-test-pay-method_modal" class="text-sm font-medium text-slate-800">-</span>
+              </div>
+              
+              <!-- 接口类型 -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">接口类型：</span>
+                <span id="admin-test-method-type_modal" class="text-sm font-medium text-blue-600">-</span>
+              </div>
+              
+              <!-- 发起支付类型 (pay_type) -->
+              <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-600">发起支付类型：</span>
+                <span id="admin-test-pay-type_modal" class="text-sm font-bold text-purple-600">-</span>
+              </div>
+            </div>
+            
+            <!-- 支付信息卡片 -->
+            <div class="bg-white rounded-lg p-4 space-y-2 shadow-sm">
+              <h6 class="font-semibold text-sm text-slate-700 mb-2">💳 支付信息 (pay_info)</h6>
+              
+              <!-- 支付信息显示框 -->
+              <textarea id="admin-test-pay-url_modal" 
                 readonly 
-                class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono text-slate-600 cursor-text select-all" />
+                rows="4"
+                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-sky-500"></textarea>
+              
+              <!-- 支付信息说明 -->
+              <p id="admin-test-pay-info-desc_modal" class="text-xs text-slate-500 italic">
+                根据不同的支付类型，这里显示相应的支付参数
+              </p>
             </div>
 
-            <!-- 操作按钮组：使用网格布局 -->
+            <!-- 操作按钮组 -->
             <div class="grid grid-cols-2 gap-3">
               <!-- 打开支付链接按钮 -->
               <button id="admin-open-test-pay-url-btn_modal" 
-                class="py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm hover:shadow-md"
+                class="py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onclick="openAdminPaymentLink()">
                 <!-- 外部链接图标 -->
                 <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11853,13 +11902,18 @@ body.mobile-mode #session-picker-modal {
                 打开链接
               </button>
               
-              <!-- 复制链接按钮 -->
+              <!-- 复制信息按钮 -->
               <button onclick="copyAdminTestPayUrl()" 
-                class="py-2.5 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md">
+                class="py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md">
                 <!-- 复制图标 -->
                 <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                复制信息
+              </button>
+            </div>
+          </div>
                 </svg>
                 复制链接
               </button>
@@ -19302,6 +19356,67 @@ body.mobile-mode #session-picker-modal {
         // 获取支付类型和支付信息
         const payType = result.pay_type || 'jump';
         const payInfo = result.pay_info || result.pay_url || '';
+        
+        // 填充订单详细信息到新增的显示字段
+        const orderIdElem = document.getElementById('admin-test-order-id_modal');
+        const tradeNoElem = document.getElementById('admin-test-trade-no_modal');
+        const amountElem = document.getElementById('admin-test-amount_modal');
+        const payMethodElem = document.getElementById('admin-test-pay-method_modal');
+        const methodTypeElem = document.getElementById('admin-test-method-type_modal');
+        const payTypeElem = document.getElementById('admin-test-pay-type_modal');
+        const payInfoDescElem = document.getElementById('admin-test-pay-info-desc_modal');
+        
+        // 填充商户订单号
+        if (orderIdElem) {
+          orderIdElem.textContent = result.order_id || '-';
+        }
+        
+        // 填充平台订单号
+        if (tradeNoElem) {
+          tradeNoElem.textContent = result.trade_no || '-';
+        }
+        
+        // 填充支付金额
+        if (amountElem) {
+          amountElem.textContent = amount ? `¥${parseFloat(amount).toFixed(2)}` : '-';
+        }
+        
+        // 填充支付方式（翻译为中文）
+        if (payMethodElem) {
+          const methodNames = {
+            'alipay': '支付宝',
+            'wxpay': '微信支付',
+            'qqpay': 'QQ钱包',
+            'unionpay': '云闪付'
+          };
+          payMethodElem.textContent = methodNames[method] || method || '-';
+        }
+        
+        // 填充接口类型
+        if (methodTypeElem) {
+          methodTypeElem.textContent = paymentType || '-';
+        }
+        
+        // 填充发起支付类型
+        if (payTypeElem) {
+          payTypeElem.textContent = payType || '-';
+        }
+        
+        // 根据支付类型设置说明文字
+        if (payInfoDescElem) {
+          const payTypeDescriptions = {
+            'jump': '跳转链接 - 可直接打开进行支付',
+            'html': 'HTML代码 - 用于支付跳转',
+            'qrcode': '二维码链接 - 可生成二维码供用户扫描',
+            'urlscheme': '小程序跳转链接 - 可在微信/支付宝中打开',
+            'jsapi': 'JSAPI支付参数 - JSON格式，用于小程序内支付',
+            'app': 'APP支付参数 - JSON格式，用于APP内支付',
+            'scan': '扫码支付结果 - 付款码支付成功的订单信息',
+            'wxplugin': '小程序插件参数 - JSON格式，用于拉起微信小程序插件',
+            'wxapp': '小程序跳转参数 - JSON格式，用于APP内拉起微信小程序'
+          };
+          payInfoDescElem.textContent = payTypeDescriptions[payType] || '支付信息';
+        }
         
         // 填充支付信息到输入框
         if (payUrlInput) {
