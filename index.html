@@ -17455,58 +17455,83 @@ body.mobile-mode #session-picker-modal {
           throw new Error(result.message || '创建订单失败，未知错误');
         }
         
-        // 6.5 检查订单数据是否存在
-        if (!result.order) {
-          throw new Error('未返回订单信息');
+        // 6.5 检查是否有支付信息（pay_url或pay_info）
+        if (!result.pay_url && !result.pay_info) {
+          throw new Error('未返回支付信息');
         }
         
         // ========== 第7步：显示订单信息 ==========
         
         // 7.1 获取订单数据
-        const order = result.order;
+        const order = result.order || {};
         
         // 输出成功日志
-        console.log('[测试支付] 订单创建成功：', order);
+        console.log('[测试支付] 订单创建成功：', result);
         
         // 7.2 显示订单号
-        // 优先使用API返回的订单号，如果没有则使用生成的订单号
-        tradeNoSpan.textContent = order.trade_no || tradeNo;
+        // 优先使用平台订单号（trade_no），如果没有则使用商户订单号
+        tradeNoSpan.textContent = result.trade_no || order.trade_no || tradeNo;
         
         // 7.3 显示订单金额
         // 格式化金额：添加货币符号¥，保留2位小数
         const displayAmount = order.amount || amount;
         amountSpan.textContent = `¥${parseFloat(displayAmount).toFixed(2)}`;
         
-        // 7.4 显示支付链接
-        // 如果API返回了支付链接，显示链接；否则显示提示信息
-        if (order.pay_url) {
-          // 显示支付链接（截断显示，避免过长）
-          // 最多显示60个字符，超出部分用...表示
-          const displayUrl = order.pay_url.length > 60 
-            ? order.pay_url.substring(0, 60) + '...' 
-            : order.pay_url;
-          payUrlSpan.textContent = displayUrl;
+        // 7.4 显示支付信息（根据pay_type类型显示不同内容）
+        const payType = result.pay_type || 'jump';
+        const payInfo = result.pay_info || result.pay_url || '';
+        
+        if (payInfo) {
+          // 根据支付类型显示不同的信息
+          let displayText = '';
           
-          // 将完整的支付链接保存到按钮的data-url属性中
-          // 这样openTestPayUrl函数可以从这里获取完整链接
-          openPayBtn.setAttribute('data-url', order.pay_url);
+          if (payType === 'jump' || payType === 'html') {
+            // 跳转支付：显示链接（截断显示）
+            displayText = payInfo.length > 60 ? payInfo.substring(0, 60) + '...' : payInfo;
+          } else if (payType === 'qrcode') {
+            // 二维码支付：显示二维码链接
+            displayText = '二维码链接: ' + (payInfo.length > 50 ? payInfo.substring(0, 50) + '...' : payInfo);
+          } else if (payType === 'jsapi' || payType === 'app' || payType === 'wxplugin' || payType === 'wxapp') {
+            // JSAPI/APP/小程序支付：显示JSON参数（格式化）
+            try {
+              const jsonObj = typeof payInfo === 'string' ? JSON.parse(payInfo) : payInfo;
+              displayText = 'JSON参数: ' + JSON.stringify(jsonObj, null, 2).substring(0, 100) + '...';
+            } catch (e) {
+              displayText = payInfo.substring(0, 60) + '...';
+            }
+          } else if (payType === 'scan') {
+            // 扫码支付成功：显示订单信息
+            displayText = '支付成功: ' + payInfo;
+          } else {
+            // 其他类型：直接显示
+            displayText = payInfo.length > 60 ? payInfo.substring(0, 60) + '...' : payInfo;
+          }
           
-          // 启用"打开支付链接"按钮
-          // 移除disabled属性，让按钮可点击
-          openPayBtn.disabled = false;
-          // 移除禁用状态的视觉样式
-          openPayBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          payUrlSpan.textContent = displayText;
           
-          console.log('[测试支付] 支付链接已保存到按钮data-url属性');
+          // 将完整的支付信息保存到按钮的data-url属性中
+          // 对于jump类型，保存链接；对于其他类型，保存完整信息
+          if (payType === 'jump' || payType === 'html') {
+            openPayBtn.setAttribute('data-url', payInfo);
+            // 启用"打开支付链接"按钮
+            openPayBtn.disabled = false;
+            openPayBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          } else {
+            // 其他类型不支持直接打开，禁用按钮
+            openPayBtn.disabled = true;
+            openPayBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          }
+          
+          console.log('[测试支付] 支付信息已保存，类型：', payType);
         } else {
-          // 如果没有返回支付链接，显示提示信息
-          payUrlSpan.textContent = '（未返回支付链接）';
+          // 如果没有返回支付信息，显示提示信息
+          payUrlSpan.textContent = '（未返回支付信息）';
           
           // 禁用"打开支付链接"按钮
           openPayBtn.disabled = true;
           openPayBtn.classList.add('opacity-50', 'cursor-not-allowed');
           
-          console.warn('[测试支付] 警告：API未返回支付链接');
+          console.warn('[测试支付] 警告：API未返回支付信息');
         }
         
         // 7.5 显示订单结果容器
@@ -19184,20 +19209,58 @@ body.mobile-mode #session-picker-modal {
         
         // === 第6步：检查业务状态 ===
         
-        if (!result.success || !result.pay_url) {
+        if (!result.success) {
           throw new Error(result.message || '创建订单失败');
         }
         
-        // === 第7步：显示支付链接 ===
-        
-        // 填充支付链接到输入框
-        if (payUrlInput) {
-          payUrlInput.value = result.pay_url;
+        // 检查是否有支付信息（pay_url或pay_info）
+        if (!result.pay_url && !result.pay_info) {
+          throw new Error('未返回支付信息');
         }
         
-        // 将支付链接保存到打开按钮的data属性
+        // === 第7步：显示支付信息 ===
+        
+        // 获取支付类型和支付信息
+        const payType = result.pay_type || 'jump';
+        const payInfo = result.pay_info || result.pay_url || '';
+        
+        // 填充支付信息到输入框
+        if (payUrlInput) {
+          // 根据支付类型显示不同格式的信息
+          if (payType === 'jump' || payType === 'html') {
+            // 跳转支付：直接显示链接
+            payUrlInput.value = payInfo;
+          } else if (payType === 'qrcode') {
+            // 二维码支付：显示二维码链接
+            payUrlInput.value = `二维码: ${payInfo}`;
+          } else if (payType === 'jsapi' || payType === 'app' || payType === 'wxplugin' || payType === 'wxapp') {
+            // JSAPI/APP/小程序支付：显示格式化的JSON参数
+            try {
+              const jsonObj = typeof payInfo === 'string' ? JSON.parse(payInfo) : payInfo;
+              payUrlInput.value = JSON.stringify(jsonObj, null, 2);
+            } catch (e) {
+              payUrlInput.value = payInfo;
+            }
+          } else if (payType === 'scan') {
+            // 扫码支付成功：显示订单信息
+            payUrlInput.value = `扫码支付成功: ${payInfo}`;
+          } else {
+            // 其他类型：直接显示
+            payUrlInput.value = payInfo;
+          }
+        }
+        
+        // 将支付信息保存到打开按钮的data属性
+        // 只有jump和html类型可以直接打开
         if (openBtn) {
-          openBtn.setAttribute('data-url', result.pay_url);
+          if (payType === 'jump' || payType === 'html') {
+            openBtn.setAttribute('data-url', payInfo);
+            openBtn.disabled = false;
+            openBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          } else {
+            openBtn.disabled = true;
+            openBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          }
         }
         
         // 显示支付链接容器
@@ -19210,7 +19273,7 @@ body.mobile-mode #session-picker-modal {
           resultDiv.classList.add('hidden');
         }
         
-        console.log('[PC端测试支付] 测试订单创建成功，支付链接：', result.pay_url);
+        console.log('[PC端测试支付] 测试订单创建成功，支付类型：', payType, '，支付信息：', payInfo);
         
       } catch (error) {
         // === 错误处理 ===

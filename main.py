@@ -3060,7 +3060,8 @@ class RainbowYiPayClient:
         # 返回验证结果
         return is_valid
 
-    def create_order(self, out_trade_no, name, money, pay_type="alipay", return_url=None, client_app_host=None):
+    def create_order(self, out_trade_no, name, money, pay_type="alipay", return_url=None, client_app_host=None, 
+                     method="jump", device=None, auth_code=None, sub_openid=None, sub_appid=None):
         """
         创建支付订单
         
@@ -3073,32 +3074,57 @@ class RainbowYiPayClient:
                 - "wxpay": 微信支付
             return_url (str, optional): 同步返回URL
             client_app_host (str, optional): 前端自动获取的应用域名（用于未配置app_host时的自动回退）
+            method (str, optional): 接口类型，可选值：
+                - "web": 通用网页支付（默认，会根据device判断返回跳转url/二维码/小程序跳转url等）
+                - "jump": 跳转支付（仅返回跳转url）
+                - "jsapi": JSAPI支付（小程序内支付，需传入sub_openid和sub_appid）
+                - "app": APP支付（iOS/安卓APP内支付）
+                - "scan": 付款码支付（需传入auth_code参数）
+                - "applet": 小程序支付（微信小程序内使用）
+            device (str, optional): 设备类型（仅web接口类型需要），可选值：
+                - "pc": 电脑浏览器（默认）
+                - "mobile": 手机浏览器
+                - "qq": 手机QQ内浏览器
+                - "wechat": 微信内浏览器
+                - "alipay": 支付宝客户端
+            auth_code (str, optional): 被扫支付授权码（仅scan接口类型需要）
+            sub_openid (str, optional): 用户Openid（仅jsapi接口类型需要）
+            sub_appid (str, optional): 公众号AppId（仅jsapi接口类型需要）
         
         返回:
             dict: 包含以下字段的字典
                 - success (bool): 是否成功
                 - message (str): 错误信息或成功提示
-                - pay_url (str): 支付跳转URL（成功时返回）
+                - pay_url (str): 支付跳转URL（兼容旧版，成功时返回）
+                - pay_type (str): 发起支付类型（jump/html/qrcode/urlscheme/jsapi/app/scan/wxplugin/wxapp）
+                - pay_info (str): 发起支付参数（根据pay_type不同而不同）
+                - trade_no (str): 平台订单号（成功时返回）
                 - order_data (dict): 完整的订单参数（用于记录日志）
         
         功能说明：
         这个方法会构造支付订单参数，生成签名，然后向彩虹易支付API发送请求。
-        如果请求成功，会返回一个支付URL，前端可以重定向用户到这个URL进行支付。
+        根据不同的method参数，API会返回不同类型的支付信息（跳转链接、二维码、JSAPI参数等）。
         
         使用示例：
+            # 跳转支付
             client = RainbowYiPayClient()
             result = client.create_order(
                 out_trade_no="ORDER20230101001",
                 name="在线支付100元",
                 money="100.00",
-                pay_type="alipay"
+                pay_type="alipay",
+                method="jump"
             )
-            if result["success"]:
-                # 跳转到 result["pay_url"] 进行支付
-                print(f"支付URL: {result['pay_url']}")
-            else:
-                # 显示错误信息
-                print(f"创建订单失败: {result['message']}")
+            
+            # 扫码支付
+            result = client.create_order(
+                out_trade_no="ORDER20230101002",
+                name="在线支付50元",
+                money="50.00",
+                pay_type="wxpay",
+                method="scan",
+                auth_code="134567890123456789"
+            )
         
         异常处理：
         - 如果配置不完整（如 host、pid、key 为空），返回错误
@@ -3312,7 +3338,24 @@ class RainbowYiPayClient:
             "return_url": return_url,           # 同步返回URL（可动态传入）
             "name": name,                       # 商品名称
             "money": str(money),                # 支付金额（转为字符串）
+            "method": method,                   # 接口类型（web/jump/jsapi/app/scan/applet）
         }
+        
+        # 根据接口类型添加可选参数
+        # device参数：仅web接口类型需要
+        if device and method == "web":
+            params["device"] = device
+        
+        # auth_code参数：仅scan接口类型需要
+        if auth_code and method == "scan":
+            params["auth_code"] = auth_code
+        
+        # sub_openid和sub_appid参数：仅jsapi接口类型需要
+        if method == "jsapi":
+            if sub_openid:
+                params["sub_openid"] = sub_openid
+            if sub_appid:
+                params["sub_appid"] = sub_appid
         
         # 生成签名并添加到参数中
         # 调用 _generate_sign() 方法计算MD5签名
@@ -3355,26 +3398,43 @@ class RainbowYiPayClient:
                     }
                 
                 # 检查API响应中的状态码
-                # code=1 表示成功，其他值表示失败
-                if result.get("code") == 1:
+                # code=0 表示成功，其他值表示失败（根据API文档）
+                if result.get("code") == 0:
                     # 订单创建成功
-                    pay_url = result.get("payurl") or result.get("url") or result.get("qrcode")
+                    # 获取平台订单号
+                    trade_no = result.get("trade_no", "")
                     
-                    # 检查是否成功获取到支付URL
-                    if pay_url:
-                        logging.info(f"[彩虹易支付] 订单创建成功 - 支付URL: {pay_url}")
+                    # 获取发起支付类型（jump/html/qrcode/urlscheme/jsapi/app/scan/wxplugin/wxapp）
+                    pay_type_response = result.get("pay_type", "")
+                    
+                    # 获取发起支付参数
+                    pay_info = result.get("pay_info", "")
+                    
+                    # 兼容旧版：提取支付URL
+                    # pay_url可能直接是pay_info（当pay_type为jump时），或者需要从pay_info中解析
+                    pay_url = pay_info
+                    if not pay_url:
+                        # 如果pay_info为空，尝试从其他字段获取
+                        pay_url = result.get("payurl") or result.get("url") or result.get("qrcode")
+                    
+                    # 检查是否成功获取到支付信息
+                    if pay_info or pay_url:
+                        logging.info(f"[彩虹易支付] 订单创建成功 - 平台订单号: {trade_no}, 支付类型: {pay_type_response}")
                         return {
                             "success": True,
                             "message": "订单创建成功",
-                            "pay_url": pay_url,
+                            "pay_url": pay_url,           # 兼容旧版
+                            "trade_no": trade_no,         # 平台订单号
+                            "pay_type": pay_type_response, # 发起支付类型
+                            "pay_info": pay_info,         # 发起支付参数
                             "order_data": params,
                         }
                     else:
-                        # API响应中没有支付URL
-                        logging.error(f"[彩虹易支付] API响应中缺少支付URL: {result}")
+                        # API响应中没有支付信息
+                        logging.error(f"[彩虹易支付] API响应中缺少支付信息: {result}")
                         return {
                             "success": False,
-                            "message": "易支付API响应异常，缺少支付URL",
+                            "message": "易支付API响应异常，缺少支付信息",
                         }
                 else:
                     # 订单创建失败，API返回了错误信息
@@ -27039,7 +27099,8 @@ def start_web_server(args_param):
             product_name = str(data.get("product_name", "")).strip()
             
             # 从请求数据中提取支付方式，默认为支付宝
-            pay_type = data.get("pay_type", "alipay").strip()
+            # 支持两种参数名：pay_type（标准）和payment_method（PC端兼容）
+            pay_type = data.get("pay_type", "").strip() or data.get("payment_method", "alipay").strip()
 
             # [新增] 提取前端传递的应用域名 (用于自动配置 app_host)
             client_app_host = data.get("app_host", "").strip()
@@ -27051,6 +27112,26 @@ def start_web_server(args_param):
             # 这使得不同的支付场景可以跳转到不同的页面
             # 使用 strip() 去除空白字符，空字符串会被转为 None
             return_url = data.get("return_url", "").strip() or None
+            
+            # [新增] 提取支付接口类型参数
+            # method: 接口类型（web/jump/jsapi/app/scan/applet）
+            # 支持两种参数名：method（标准）和payment_type（PC端兼容）
+            # 默认为jump（跳转支付），与配置文件中的默认值一致
+            method = data.get("method", "").strip() or data.get("payment_type", "jump").strip()
+            
+            # [新增] 提取设备类型参数（仅web接口类型需要）
+            # device: 设备类型（pc/mobile/qq/wechat/alipay）
+            device = data.get("device", "").strip() or None
+            
+            # [新增] 提取扫码支付授权码参数（仅scan接口类型需要）
+            # auth_code: 被扫支付授权码（18位数字）
+            auth_code = data.get("auth_code", "").strip() or None
+            
+            # [新增] 提取JSAPI支付参数（仅jsapi接口类型需要）
+            # sub_openid: 用户Openid
+            # sub_appid: 公众号AppId
+            sub_openid = data.get("sub_openid", "").strip() or None
+            sub_appid = data.get("sub_appid", "").strip() or None
             
             # ========== 参数验证 ==========
             
@@ -27155,13 +27236,24 @@ def start_web_server(args_param):
             # - money: 支付金额（元）
             # - pay_type: 支付方式（alipay/wxpay）
             # - return_url: 同步返回URL（可选，如果前端传入则使用前端指定的URL）
+            # - client_app_host: 前端传递的应用域名（用于自动配置）
+            # - method: 接口类型（web/jump/jsapi/app/scan/applet）
+            # - device: 设备类型（pc/mobile/qq/wechat/alipay，仅web接口需要）
+            # - auth_code: 被扫支付授权码（仅scan接口需要）
+            # - sub_openid: 用户Openid（仅jsapi接口需要）
+            # - sub_appid: 公众号AppId（仅jsapi接口需要）
             result = yipay_client.create_order(
                 out_trade_no=order_id,
                 name=product_name,
                 money=amount,
                 pay_type=pay_type,
                 return_url=return_url,
-                client_app_host=client_app_host
+                client_app_host=client_app_host,
+                method=method,
+                device=device,
+                auth_code=auth_code,
+                sub_openid=sub_openid,
+                sub_appid=sub_appid
             )
             
             # 检查订单创建是否成功
@@ -27177,7 +27269,11 @@ def start_web_server(args_param):
                     "product_name": product_name,        # 商品名称
                     "pay_type": pay_type,                # 支付方式
                     "status": "pending",                 # 订单状态：pending（待支付）
-                    "pay_url": result["pay_url"],        # 支付跳转URL
+                    "pay_url": result.get("pay_url", ""),        # 支付跳转URL
+                    "trade_no": result.get("trade_no", ""),      # 平台订单号
+                    "payment_method": method,            # 接口类型（web/jump/jsapi等）
+                    "payment_type": result.get("pay_type", ""),  # 发起支付类型
+                    "pay_info": result.get("pay_info", ""),      # 发起支付参数
                     "created_at": time.time(),           # 创建时间（Unix时间戳）
                     "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),  # 创建时间（可读格式）
                     "client_ip": request.remote_addr,    # 客户端IP地址
@@ -27229,8 +27325,15 @@ def start_web_server(args_param):
                 return jsonify({
                     "success": True,
                     "message": "订单创建成功",
-                    "pay_url": result["pay_url"],  # 支付URL（前端用于跳转）
-                    "order_id": order_id,          # 订单号（前端用于查询）
+                    "pay_url": result.get("pay_url", ""),      # 支付URL（兼容旧版，前端用于跳转）
+                    "order_id": order_id,                      # 订单号（前端用于查询）
+                    "trade_no": result.get("trade_no", ""),    # 平台订单号
+                    "pay_type": result.get("pay_type", ""),    # 发起支付类型（jump/html/qrcode等）
+                    "pay_info": result.get("pay_info", ""),    # 发起支付参数（根据pay_type不同而不同）
+                    "order": {                                  # 订单详情（兼容前端）
+                        "trade_no": order_id,
+                        "pay_url": result.get("pay_url", "")
+                    }
                 })
             else:
                 # 订单创建失败
