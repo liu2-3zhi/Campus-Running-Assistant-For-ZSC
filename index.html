@@ -60210,6 +60210,15 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
             const dept = data.deptInfo || {};
             const user = data.userInfo || {};
 
+            // ========== 检查当前用户是否为管理员 ==========
+            // 从sessionStorage中获取用户组信息
+            // 用户组存储在sessionStorage.user_group中，登录时由后端设置
+            const userGroup = sessionStorage.getItem('user_group') || '';
+            
+            // 判断是否为管理员：只有admin或super_admin才能看到"结清"按钮
+            // 这是前端的安全检查，后端API还会再次验证权限
+            const isAdmin = (userGroup === 'admin' || userGroup === 'super_admin');
+
             // 构建HTML内容
             const htmlContent = `
                 <div class="text-left space-y-3 font-sans text-sm max-h-[65vh] overflow-y-auto px-1 pr-2">
@@ -60229,6 +60238,16 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
                                 <div class="font-bold text-emerald-600 text-lg leading-none">${data.completed_count}</div>
                             </div>
                         </div>
+                        ${isAdmin && data.overdue_count > 0 ? `
+                            <button onclick="adminClearOverdue('${school_username}', '${escapeHtml(user.username || '')}')" 
+                                class="ml-3 px-3 py-1.5 bg-emerald-500 text-white text-xs font-semibold rounded-lg hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm hover:shadow-md"
+                                title="管理员：清除此账号的欠费">
+                                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                结清
+                            </button>
+                        ` : ''}
                     </div>
 
                     <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
@@ -60316,6 +60335,163 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
     }
 }
 
+
+/**
+ * 管理员清除欠费功能
+ * 
+ * 功能说明：
+ * 此函数允许管理员修改指定用户的指定学校账号的欠费次数。
+ * 可以清零欠费（设置为0），也可以设置为其他非负整数。
+ * 
+ * 工作流程：
+ * 1. 显示输入对话框，让管理员输入新的欠费次数
+ * 2. 验证输入是否为有效的非负整数
+ * 3. 调用后端API执行修改操作
+ * 4. 显示操作结果并刷新界面
+ * 
+ * @param {string} school_username - 学校账号用户名（如：2021001）
+ * @param {string} auth_username - 账号所属用户名（认证系统中的用户名）
+ * 
+ * @returns {Promise<void>} - 无返回值（异步函数）
+ * 
+ * 使用场景：
+ * - 用户线下支付后，管理员手动清零欠费
+ * - 系统误判导致欠费错误，管理员纠正数据
+ * - 特殊情况需要调整欠费次数
+ */
+async function adminClearOverdue(school_username, auth_username) {
+    try {
+        // ========== 步骤1：显示输入对话框 ==========
+        
+        // 使用SweetAlert2显示输入对话框
+        // SweetAlert2是现代化的弹窗库，提供美观的UI和丰富的功能
+        const result = await Swal.fire({
+            title: '修改欠费次数',
+            
+            // html参数支持完整的HTML内容
+            // 这里显示学校账号、所属用户信息，以及输入框
+            html: `
+                <p class="text-sm text-slate-600 mb-3">学校账号：<span class="font-semibold">${escapeHtml(school_username)}</span></p>
+                <p class="text-sm text-slate-600 mb-3">所属用户：<span class="font-semibold">${escapeHtml(auth_username)}</span></p>
+                <input id="new-overdue-count" type="number" min="0" value="0" 
+                    class="swal2-input" placeholder="输入新的欠费次数（0表示清零）">
+            `,
+            
+            icon: 'question',           // 图标类型：问号
+            showCancelButton: true,     // 显示取消按钮
+            confirmButtonText: '确认修改',
+            cancelButtonText: '取消',
+            confirmButtonColor: '#10b981',  // 绿色确认按钮（emerald-500）
+            
+            // preConfirm: 在用户点击确认时执行的验证函数
+            // 返回false会阻止对话框关闭，返回其他值则作为result.value
+            preConfirm: () => {
+                // 获取输入框的值
+                const value = document.getElementById('new-overdue-count').value;
+                
+                // 尝试转换为整数
+                const count = parseInt(value);
+                
+                // 验证是否为有效的非负整数
+                if (isNaN(count) || count < 0) {
+                    // 显示验证错误信息（不关闭对话框）
+                    Swal.showValidationMessage('请输入有效的非负整数');
+                    return false;
+                }
+                
+                // 返回验证通过的值
+                return count;
+            }
+        });
+        
+        // ========== 步骤2：检查用户是否取消 ==========
+        
+        // 如果用户点击了取消按钮，result.isConfirmed为false
+        if (!result.isConfirmed) {
+            return;  // 直接返回，不执行后续操作
+        }
+        
+        // 获取用户输入的新欠费次数
+        const newOverdueCount = result.value;
+        
+        // ========== 步骤3：显示加载动画 ==========
+        
+        // 在调用API期间显示加载动画，提升用户体验
+        Swal.fire({
+            title: '正在处理...',
+            text: '请稍候',
+            allowOutsideClick: false,  // 禁止点击外部关闭
+            didOpen: () => {
+                Swal.showLoading();  // 显示旋转的加载图标
+            }
+        });
+        
+        // ========== 步骤4：调用后端API ==========
+        
+        // 发送POST请求到后端API
+        const response = await fetch('/api/admin/clear_overdue', {
+            method: 'POST',
+            
+            headers: {
+                'Content-Type': 'application/json',  // 指定请求体为JSON格式
+                'X-Session-ID': sessionUUID          // 会话ID，用于身份验证
+            },
+            
+            // 将参数转换为JSON字符串发送
+            body: JSON.stringify({
+                auth_username: auth_username,           // 目标用户名
+                school_username: school_username,       // 学校账号用户名
+                new_overdue_count: newOverdueCount      // 新的欠费次数
+            })
+        });
+        
+        // 解析后端返回的JSON响应
+        const apiResult = await response.json();
+        
+        // ========== 步骤5：处理API响应 ==========
+        
+        if (apiResult.success) {
+            // ===== 操作成功 =====
+            
+            // 显示成功提示
+            await Swal.fire({
+                title: '操作成功',
+                text: `已将欠费次数修改为 ${newOverdueCount}`,
+                icon: 'success',
+                confirmButtonText: '确定'
+            });
+            
+            // 刷新当前显示的详情页面，让用户看到最新数据
+            // 调用View_details_of_users_with_outstanding_payments函数重新加载数据
+            await View_details_of_users_with_outstanding_payments(school_username);
+            
+        } else {
+            // ===== 操作失败 =====
+            
+            // 显示失败提示，展示后端返回的错误信息
+            await Swal.fire({
+                title: '操作失败',
+                text: apiResult.message || '未知错误',
+                icon: 'error',
+                confirmButtonText: '确定'
+            });
+        }
+        
+    } catch (error) {
+        // ========== 异常处理 ==========
+        
+        // 捕获网络错误、解析错误等异常
+        console.error('管理员清除欠费失败:', error);
+        
+        // 显示友好的错误提示
+        await Swal.fire({
+            title: '操作失败',
+            text: '网络错误或服务器异常',
+            icon: 'error',
+            confirmButtonText: '确定'
+        });
+    }
+}
 
 
 // ============================================================================

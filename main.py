@@ -35468,6 +35468,167 @@ def start_web_server(args_param):
 
     # ==============================================================================
 
+    @app.route("/api/admin/clear_overdue", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_clear_overdue():
+        """
+        管理员清除/修改学校账号欠费次数
+        
+        功能说明：
+        此接口允许管理员直接修改指定用户的指定学校账号的欠费次数。
+        主要用于帮助用户结清欠费、纠正错误的欠费记录，或进行其他管理操作。
+        
+        权限要求：管理员（admin或super_admin）
+        请求方法：POST
+        
+        请求参数（JSON格式）：
+        {
+            "auth_username": "user123",        // 用户名（账号所属用户）
+            "school_username": "2021001",      // 学校账号用户名
+            "new_overdue_count": 0             // 新的欠费次数（默认0，表示清零）
+        }
+        
+        返回数据（JSON格式）：
+        成功时：
+        {
+            "success": true,
+            "message": "欠费次数已更新为 0"
+        }
+        
+        失败时：
+        {
+            "success": false,
+            "message": "错误信息描述"
+        }
+        
+        使用场景：
+        1. 用户完成线下支付后，管理员手动清零欠费
+        2. 系统误判导致欠费次数错误，管理员纠正数据
+        3. 特殊情况下需要重置或调整欠费次数
+        
+        安全机制：
+        1. 必须有管理员权限（@admin_required装饰器）
+        2. 参数验证：用户名、学校账号不能为空
+        3. 参数验证：欠费次数必须是非负整数
+        4. 记录详细的管理员操作日志，便于审计追溯
+        """
+        try:
+            # ========== 步骤1：获取并验证请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            # 如果请求体为空或不是JSON格式，使用空字典作为默认值
+            data = request.get_json() or {}
+            
+            # 从请求数据中提取参数，并去除首尾空白字符
+            # auth_username: 目标用户的用户名（认证系统中的用户）
+            auth_username = data.get("auth_username", "").strip()
+            
+            # school_username: 要操作的学校账号用户名
+            school_username = data.get("school_username", "").strip()
+            
+            # new_overdue_count: 新的欠费次数，默认为0（清零）
+            new_overdue_count = data.get("new_overdue_count", 0)
+            
+            # ========== 步骤2：基本参数验证 ==========
+            
+            # 验证用户名和学校账号不能为空
+            # 这是最基本的安全检查，防止误操作或恶意请求
+            if not auth_username or not school_username:
+                return jsonify({
+                    "success": False,
+                    "message": "用户名和学校账号不能为空"
+                }), 400
+            
+            # ========== 步骤3：验证欠费次数参数 ==========
+            
+            # 尝试将new_overdue_count转换为整数
+            # 这里需要捕获两种异常：
+            # - ValueError: 当输入的是非数字字符串时（如"abc"）
+            # - TypeError: 当输入的是None或其他不可转换类型时
+            try:
+                new_overdue_count = int(new_overdue_count)
+                
+                # 验证欠费次数不能为负数
+                # 欠费次数是非负整数，负数没有业务意义
+                if new_overdue_count < 0:
+                    return jsonify({
+                        "success": False,
+                        "message": "欠费次数不能为负数"
+                    }), 400
+                    
+            except (ValueError, TypeError):
+                # 如果转换失败，返回400错误
+                return jsonify({
+                    "success": False,
+                    "message": "欠费次数必须是整数"
+                }), 400
+            
+            # ========== 步骤4：记录管理员操作日志（操作前） ==========
+            
+            # 从Flask的g对象中获取当前登录的管理员用户名
+            # g对象是Flask提供的请求上下文对象，用于存储请求期间的数据
+            # 在login_required装饰器中，会将当前用户信息存储到g.user中
+            admin_username = g.user.get("auth_username", "unknown")
+            
+            # 记录INFO级别日志，包含管理员和目标信息
+            # 这对于安全审计和问题追溯非常重要
+            logging.info(
+                f"[管理员操作] {admin_username} 正在修改欠费次数 - "
+                f"目标用户: {auth_username}, 学校账号: {school_username}, "
+                f"新欠费次数: {new_overdue_count}"
+            )
+            
+            # ========== 步骤5：调用业务逻辑更新欠费次数 ==========
+            
+            # 调用auth_system（认证系统）的方法来更新欠费次数
+            # auth_system是全局的认证管理对象，负责用户和学校账号管理
+            # update_school_account_overdue_count方法会：
+            # 1. 验证用户和学校账号是否存在
+            # 2. 使用线程锁确保并发安全
+            # 3. 更新欠费次数到数据文件中
+            # 4. 返回包含success和message的字典
+            result = auth_system.update_school_account_overdue_count(
+                auth_username,         # 目标用户名
+                school_username,       # 学校账号用户名
+                new_overdue_count      # 新的欠费次数
+            )
+            
+            # ========== 步骤6：记录操作结果日志 ==========
+            
+            # 如果操作成功，记录成功日志
+            if result.get("success"):
+                # 记录详细的成功信息，便于审计
+                logging.info(
+                    f"[管理员操作] 欠费次数修改成功 - "
+                    f"管理员: {admin_username}, 目标用户: {auth_username}, "
+                    f"学校账号: {school_username}, 新欠费次数: {new_overdue_count}"
+                )
+            
+            # ========== 步骤7：返回操作结果给前端 ==========
+            
+            # 直接返回auth_system方法的结果
+            # result已经包含了success和message字段
+            return jsonify(result)
+            
+        except Exception as e:
+            # ========== 异常处理 ==========
+            
+            # 捕获所有未预期的异常
+            # 记录ERROR级别日志，包含异常信息
+            logging.error(f"[管理员操作] 清除欠费异常: {str(e)}")
+            
+            # 记录完整的异常堆栈信息，便于调试
+            logging.error(traceback.format_exc())
+            
+            # 返回500错误，告知前端服务器内部错误
+            return jsonify({
+                "success": False,
+                "message": f"操作失败: {str(e)}"
+            }), 500
+
+    # ==============================================================================
+
     @app.route("/api/config/pricing", methods=["GET"])
     @login_required
     def get_pricing_config():
