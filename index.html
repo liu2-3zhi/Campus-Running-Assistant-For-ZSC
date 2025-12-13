@@ -6209,81 +6209,181 @@ body.mobile-mode #session-picker-modal {
 
             <!-- ========================================
                  Tab 2 内容区域：订单查询
-                 管理员可以通过订单号查询订单详情
+                 ========================================
+                 功能：移动端订单查询和管理界面（参考PC端admin-payment-settings-content-query_modal）
+                 包含：筛选条件、手动查询、平台拉取、订单列表显示
+                 适配：使用移动端样式（text-xs、更紧凑的间距）、元素ID不带_modal后缀
                  ======================================== -->
             <div id="payment-settings-content-query" class="hidden space-y-3">
-              <!-- 查询说明文本 -->
-              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                💡 提示：输入完整的订单号进行查询
-              </p>
-
-              <!-- 订单号输入表单 -->
-              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <!-- 订单号输入框 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">订单号（trade_no）</label>
-                  <!-- 输入框：支持粘贴长订单号，有焦点高亮效果 -->
-                  <input type="text" id="query-order-trade-no" 
-                    placeholder="例如：20231210123456789012" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                </div>
-
-                <!-- 查询按钮 -->
-                <button id="query-order-btn" 
-                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
-                  查询订单
-                </button>
+              <!-- 操作说明提示框：告知用户如何使用此功能 -->
+              <div class="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                <p class="text-xs text-blue-800">
+                  <!-- 信息图标：提供视觉提示 -->
+                  <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  💡 说明：订单列表需要手动加载，可使用筛选条件进行筛选，或手动查询指定订单号。
+                </p>
               </div>
 
-              <!-- 订单详情显示区域：初始隐藏，查询成功后显示 -->
-              <div id="order-detail-container" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
-                <h5 class="font-semibold text-sm text-slate-700 border-b border-slate-200 pb-2">订单详情</h5>
-                
-                <!-- 订单信息列表：使用键值对布局 -->
-                <div class="space-y-1.5 text-xs">
-                  <!-- 订单号 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">订单号：</span>
-                    <span id="order-detail-trade-no" class="text-slate-700 font-medium">-</span>
+              <!-- ========================================
+                   筛选条件区域
+                   ========================================
+                   功能：提供订单状态、支付方式、用户名、订单号的筛选
+                   参考：admin-payment-settings-content-query_modal 的筛选区域（第11345-11404行）
+                   适配：使用移动端样式（text-xs、p-2）
+                   ======================================== -->
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-2">
+                <!-- 第一行：订单状态和支付方式筛选下拉框 -->
+                <div class="grid grid-cols-2 gap-2">
+                  <!-- 订单状态筛选下拉框 -->
+                  <div>
+                    <!-- 标签：使用较小字体，font-semibold加粗强调 -->
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">订单状态</label>
+                    <!-- 下拉选择框：用户可选择不同状态来筛选订单列表 -->
+                    <!-- onchange事件：用户更改选择时，立即调用filterPaymentOrders()重新筛选列表 -->
+                    <select id="admin-filter-status" 
+                      onchange="filterPaymentOrders()"
+                      class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                      <!-- 提供所有可能的订单状态选项，空值表示不筛选状态 -->
+                      <option value="">全部状态</option>
+                      <option value="pending">已创建待支付</option>
+                      <option value="paid">已支付</option>
+                      <option value="refunded_partial">已部分退款</option>
+                      <option value="refunded_full">已全额退款</option>
+                      <option value="frozen">已冻结</option>
+                      <option value="preauth">预授权</option>
+                      <option value="timeout">支付超时</option>
+                      <option value="failed">创建失败</option>
+                    </select>
                   </div>
-                  <!-- 订单状态：使用彩色标签显示 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">状态：</span>
-                    <span id="order-detail-status" class="px-2 py-0.5 rounded-full text-xs font-medium">-</span>
+
+                  <!-- 支付方式筛选下拉框 -->
+                  <div>
+                    <!-- 标签：指示用户此控件用于筛选支付方式 -->
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">支付方式</label>
+                    <!-- 下拉选择框：筛选支付宝、微信支付等不同支付方式的订单 -->
+                    <select id="admin-filter-paytype" 
+                      onchange="filterPaymentOrders()"
+                      class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                      <!-- 提供所有支持的支付方式选项 -->
+                      <option value="">全部支付方式</option>
+                      <option value="alipay">支付宝</option>
+                      <option value="wxpay">微信支付</option>
+                    </select>
                   </div>
-                  <!-- 支付金额：强调显示 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">金额：</span>
-                    <span id="order-detail-amount" class="text-red-600 font-bold">-</span>
+                </div>
+
+                <!-- 第二行：用户名和订单号搜索输入框 -->
+                <div class="grid grid-cols-2 gap-2">
+                  <!-- 用户名搜索输入框 -->
+                  <div>
+                    <!-- 标签：提示用户可输入用户名进行搜索 -->
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">用户名</label>
+                    <!-- 文本输入框：支持实时搜索（oninput事件） -->
+                    <!-- oninput：用户输入时立即触发filterPaymentOrders()进行筛选 -->
+                    <input type="text" id="admin-filter-username" 
+                      placeholder="搜索用户名"
+                      oninput="filterPaymentOrders()"
+                      class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
                   </div>
-                  <!-- 支付方式 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">支付方式：</span>
-                    <span id="order-detail-method" class="text-slate-700">-</span>
+
+                  <!-- 订单号搜索输入框 -->
+                  <div>
+                    <!-- 标签：提示用户可输入订单号进行搜索 -->
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">订单号</label>
+                    <!-- 文本输入框：支持系统订单号和平台订单号搜索 -->
+                    <input type="text" id="admin-filter-orderno" 
+                      placeholder="系统订单号或平台订单号"
+                      oninput="filterPaymentOrders()"
+                      class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
                   </div>
-                  <!-- 创建时间 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">创建时间：</span>
-                    <span id="order-detail-create-time" class="text-slate-700">-</span>
-                  </div>
-                  <!-- 支付时间 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">支付时间：</span>
-                    <span id="order-detail-pay-time" class="text-slate-700">-</span>
-                  </div>
-                  <!-- 商品名称 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">商品：</span>
-                    <span id="order-detail-product" class="text-slate-700">-</span>
+                </div>
+
+                <!-- 第三行：手动查询订单号输入框和操作按钮 -->
+                <!-- 使用flex布局，输入框占据剩余空间，按钮固定宽度 -->
+                <div class="space-y-2">
+                  <!-- 手动查询订单号输入框：用于从平台查询指定的单个订单 -->
+                  <input type="text" id="admin-manual-query-order-no" 
+                    placeholder="输入订单号手动查询（支持商户订单号或平台订单号）"
+                    class="w-full px-2 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  
+                  <!-- 操作按钮组：三个按钮并排显示，使用grid布局确保等宽 -->
+                  <div class="grid grid-cols-3 gap-2">
+                    <!-- 加载本地订单按钮：从本地存储或缓存文件加载订单列表 -->
+                    <button onclick="loadAllPaymentOrders()" 
+                      class="px-2 py-2 bg-slate-500 text-white rounded-lg text-xs font-semibold hover:bg-slate-600 transition-colors">
+                      <!-- 刷新图标：表示重新加载数据 -->
+                      <svg class="w-3 h-3 inline mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                      加载本地
+                    </button>
+                    
+                    <!-- 手动查询按钮：根据上方输入框中的订单号，调用API查询单个订单 -->
+                    <button onclick="queryOrderManually()" 
+                      class="px-2 py-2 bg-sky-500 text-white rounded-lg text-xs font-semibold hover:bg-sky-600 transition-colors">
+                      <!-- 搜索图标：表示查询操作 -->
+                      <svg class="w-3 h-3 inline mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                      </svg>
+                      查询
+                    </button>
+
+                    <!-- 从平台拉取订单按钮：批量从支付平台同步最新订单到本地 -->
+                    <button onclick="fetchOrdersFromPlatform()" 
+                      class="px-2 py-2 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors">
+                      <!-- 下载图标：表示从远程拉取数据 -->
+                      <svg class="w-3 h-3 inline mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                      </svg>
+                      从平台拉取
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <!-- 查询结果提示区域：用于显示错误或提示消息 -->
-              <div id="query-order-result" class="hidden">
-                <!-- 错误提示：红色背景 -->
-                <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
-                  ✗ 查询失败，请检查订单号
+              <!-- ========================================
+                   订单列表显示区域
+                   ========================================
+                   功能：显示订单总数和订单卡片网格
+                   参考：admin-payment-settings-content-query_modal 的订单列表（第11449-11477行）
+                   适配：使用移动端样式，卡片更紧凑
+                   ======================================== -->
+              <div class="bg-white border border-slate-200 rounded-lg overflow-hidden" id="admin-orders-table-container">
+                <!-- 容器标题栏：显示"订单列表"标题和订单总数 -->
+                <div class="bg-slate-100 px-2 py-2 border-b border-slate-200">
+                  <h5 class="font-semibold text-xs text-slate-700">
+                    <!-- 列表图标：clipboard图标，表示订单列表 -->
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    订单列表
+                    <!-- 订单总数显示：动态更新，初始显示"加载中..." -->
+                    <span id="admin-orders-count" class="text-sky-600 ml-2">(加载中...)</span>
+                  </h5>
+                </div>
+
+                <!-- 卡片网格容器：使用响应式网格布局显示订单卡片 -->
+                <!-- 移动端：默认1列，可根据屏幕宽度自动调整 -->
+                <div id="admin-orders-table-body" class="grid grid-cols-1 gap-2 p-2">
+                  <!-- 初始加载提示：在订单数据加载前显示 -->
+                  <div class="col-span-full text-center py-6 text-slate-500">
+                    <!-- 加载图标：旋转的spinner，提供视觉反馈 -->
+                    <svg class="w-6 h-6 inline animate-spin text-sky-500" fill="none" viewBox="0 0 24 24">
+                      <!-- 圆形背景：半透明灰色 -->
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <!-- 动态路径：旋转的部分，天蓝色 -->
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <!-- 加载文本提示 -->
+                    <div class="mt-2 text-xs">加载中...</div>
+                  </div>
                 </div>
               </div>
             </div>
