@@ -19249,8 +19249,11 @@ body.mobile-mode #session-picker-modal {
               <!-- 订单号区域 -->
               <div class="flex-1 min-w-0 mr-2">
                 <div class="text-xs text-slate-500 mb-1">订单号</div>
-                <div class="text-sm font-semibold text-slate-800 truncate" title="${orderId}">${orderId}</div>
-                <div class="text-xs text-slate-600 truncate mt-0.5" title="${tradeNo}">${tradeNo}</div>
+                <!-- 系统订单号：使用 break-all 确保长订单号完整显示，允许在任意字符处换行 -->
+                <!-- 原本使用 truncate 会截断超长文本并显示省略号，导致订单号无法完整查看 -->
+                <div class="text-sm font-semibold text-slate-800 break-all" title="${orderId}">${orderId}</div>
+                <!-- 平台订单号：同样使用 break-all 确保完整显示 -->
+                <div class="text-xs text-slate-600 break-all mt-0.5" title="${tradeNo}">${tradeNo}</div>
               </div>
               <!-- 状态标签 -->
               <div class="flex-shrink-0">
