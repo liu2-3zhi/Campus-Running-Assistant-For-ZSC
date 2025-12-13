@@ -33261,7 +33261,7 @@ def start_web_server(args_param):
                         "order_id": out_trade_no,                                    # 商户订单号
                         "trade_no": platform_order.get("trade_no", ""),              # 平台订单号
                         "amount": platform_order.get("money", "0"),                  # 订单金额
-                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称
+                        "product_name": platform_order.get("name", "未知"),       # 商品名称
                         "username": "unknown",                                       # 用户名（平台数据中可能没有）
                         "created_at": platform_order.get("addtime", ""),            # 创建时间
                         "paid_time": platform_order.get("endtime", ""),             # 支付时间
@@ -33290,7 +33290,7 @@ def start_web_server(args_param):
                                 existing_order = json.load(f)
                             
                             # 保留本地的一些字段（例如：username、notify_count等）
-                            if "username" in existing_order and existing_order["username"] != "unknown":
+                            if "username" in existing_order and existing_order["username"] != "未知":
                                 local_order_data["username"] = existing_order["username"]
                             if "notify_count" in existing_order:
                                 local_order_data["notify_count"] = existing_order["notify_count"]
