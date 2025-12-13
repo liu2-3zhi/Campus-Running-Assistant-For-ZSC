@@ -24679,7 +24679,7 @@ def start_web_server(args_param):
                             # 修复退款状态判断逻辑
                             # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
                             platform_status = platform_order.get("status", 1)
-                            if platform_status == 2:
+                            if platform_status == 2 or platform_status == "2":
                                 refundmoney = float(platform_order.get("refundmoney", "0"))
                                 order_amount = float(platform_order.get("money", money))
                                 # 使用 >= 比较，而不是 ==
@@ -29050,7 +29050,7 @@ def start_web_server(args_param):
                 
                 # 平台状态码：0-未支付, 1-已支付, 2-已退款, 3-已冻结, 4-预授权
                 # 如果平台显示已退款(status=2)，则不允许再次退款
-                if platform_status == 2:
+                if platform_status == 2 or platform_status== "2":
                     logging.error(
                         f"[退款请求] 平台订单已退款，禁止重复退款 - "
                         f"订单号: {trade_no}"
@@ -32969,19 +32969,25 @@ def start_web_server(args_param):
                         "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读）
                         "platform_data": platform_order                               # 保存完整的平台数据
                     }
-                    
+                    logging.info(f"[管理员查询订单] 平台订单数据转换完成 - 单号: {local_order_data['order_id']}，数据：{local_order_data}")
                     # 修复退款状态判断逻辑
                     # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
-                    platform_status = platform_order.get("status", 0)
-                    if platform_status == 2:
-                        refundmoney = float(platform_order.get("refundmoney", "0"))
-                        order_amount = float(platform_order.get("money", "0"))
+                    
+                    platform_status = local_order_data["platform_data"].get("status", 0)
+                    logging.info(f"[管理员查询订单] 订单退款状态检查 - 单号: {out_trade_no}, 平台状态: {platform_status}")
+
+                    if platform_status == 2 or platform_status == '2':
+                        refundmoney = float(local_order_data["platform_data"].get("refundmoney", "0"))
+                        order_amount = float(local_order_data["platform_data"].get("money", "0"))
+                        logging.info(f"[管理员查询订单] 订单退款状态处理 - 单号: {out_trade_no}, 订单金额: {order_amount}, 退款金额: {refundmoney}")
                         # 使用 >= 比较，而不是 ==
                         # 当退款金额 >= 订单金额时，才是全额退款
                         if refundmoney >= order_amount:
                             local_order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+                            logging.info(f"[管理员查询订单] 订单全额退款 - 单号: {out_trade_no}")
                         else:
                             local_order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
+                            logging.info(f"[管理员查询订单] 订单部分退款 - 单号: {out_trade_no}")
                     
                     # 保存到本地文件
                     order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
@@ -33313,7 +33319,7 @@ def start_web_server(args_param):
                     # 修复退款状态判断逻辑
                     # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
                     platform_status = platform_order.get("status", 0)
-                    if platform_status == 2:
+                    if platform_status == 2 or platform_status == '2':
                         refundmoney = float(platform_order.get("refundmoney", "0"))
                         order_amount = float(platform_order.get("money", "0"))
                         # 使用 >= 比较，而不是 ==

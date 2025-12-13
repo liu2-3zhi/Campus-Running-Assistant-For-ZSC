@@ -16636,7 +16636,7 @@ body.mobile-mode #session-picker-modal {
       // 调用loadPaymentMethodsConfig函数，从服务器获取当前配置
       // 这确保了用户打开页面时，看到的checkbox状态与服务器保存的状态一致
       // 注意：这个调用不会等待完成就继续执行（异步调用）
-      loadPaymentMethodsConfig();
+      loadPaymentMethodsConfig(show_Modal_Alert=false);
       
       // ========== Tab 3: 绑定"处理退款"按钮的点击事件 ==========
       
@@ -19821,15 +19821,18 @@ body.mobile-mode #session-picker-modal {
         
         // 调用管理员平台订单查询API
         // 该API会从支付平台查询订单最新状态，并自动更新本地文件
-        const response = await fetch(`/api/admin/payment/query_order?order_id=${encodeURIComponent(orderId)}`, {
-          method: 'GET',
+        const response = await fetch('/api/admin/payment/query_order', { // URL 中移除参数
+          method: 'POST', // 大小写皆可，习惯大写
           headers: {
             'Content-Type': 'application/json',
             'X-Session-ID': sessionUUID
-          }
+          },
+          // 关键修正：参数放在 body 中，并转为 JSON 字符串
+          body: JSON.stringify({
+            order_id: orderId 
+          })
         });
-        
-        // 解析响应
+
         const result = await response.json();
         
         // 检查响应是否成功
@@ -21827,7 +21830,7 @@ body.mobile-mode #session-picker-modal {
       
       // 延迟100ms后加载配置，确保DOM完全准备就绪
       setTimeout(() => {
-        loadPaymentMethodsConfig();
+        loadPaymentMethodsConfig(show_Modal_Alert=false);
       }, 100);
       
       console.log('[PC端支付设置] PC端管理员支付设置面板初始化完成');
@@ -22958,7 +22961,7 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
 document.addEventListener('DOMContentLoaded', function() {
     // 加载支付方式配置
     // 这是异步操作，会在后台执行，不阻塞其他初始化逻辑
-    loadPaymentMethodsConfig();
+    loadPaymentMethodsConfig(show_Modal_Alert=false);
 });
 
 function handleCdnError(resourceName) {
