@@ -11485,9 +11485,9 @@ class Api:
                             status = roll_call_info.get("status")
                             finished = data.get("attendFinish")
 
-                        if status == -1:
+                        if status == -1 or status == "-1":
                             att_expired += 1
-                        elif status != -1 and (finished == 1 or finished is True):
+                        elif (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
                             att_completed += 1
                         else:
                             att_pending += 1
@@ -12423,14 +12423,14 @@ class Api:
 
                 status = roll_call_info.get("status")
                 finished = data.get("attendFinish")
-            if status == -1:
+            if status == -1 or status == "-1":
                 if not is_makeup:
                     log_func("此签到任务已过期（status=-1）。")
                     return {"success": False, "message": "任务已过期"}
                 else:
                     log_func(f"任务 {roll_call_id} 已过期，正在尝试[补签]...")
 
-                if status != -1 and (finished == 1 or finished is True):
+                if (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
                     log_func("你已经签到过了 (status!=-1 and attendFinish=1)。")
                     return {"success": True, "message": "已签到"}
 
@@ -12641,9 +12641,9 @@ class Api:
                             notice["attendance_finished"] = finished
                             notice["attendance_status_code"] = status
 
-                            if status == -1:
+                            if status == -1 or status == "-1":
                                 notice["attendance_code"] = -1
-                            elif status != -1 and (finished == 1 or finished is True):
+                            elif (status != -1 and status != "-1") and ( (finished == 1 or finished == "1") or finished is True):
                                 notice["attendance_code"] = 1
                             else:
                                 notice["attendance_code"] = 0
@@ -12783,7 +12783,7 @@ class Api:
 
     def _check_and_trigger_auto_attendance(self, context: "Api | AccountSession"):
         """
-        (辅助函数) 检查并执行单个上下文(Api或AccountSession)的自动签到。
+        检查并执行单个上下文(Api或AccountSession)的自动签到。
         """
         if isinstance(context, AccountSession):
             client = context.api_client
@@ -12843,7 +12843,7 @@ class Api:
                     roll_call_info = data.get("rollCallInfo", {})
                     status = roll_call_info.get("status")
                     finished = data.get("attendFinish")
-                if status != -1 and not (finished == 1 or finished is True):
+                if (status != -1 and status != "-1") and not ((finished == 1 or finished == "1") or finished is True):
                     log_func(
                         f"检测到待签到任务 '{notice.get('title')}'，正在自动签到..."
                     )
