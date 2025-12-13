@@ -17930,10 +17930,10 @@ body.mobile-mode #session-picker-modal {
           return; // 中断函数执行
         }
         
-        // 验证付款码长度（通常为18位数字）
-        if (auth_code.length !== 18) {
-          console.log('[移动端测试支付] 验证失败：付款码长度不正确，当前长度：', auth_code.length);
-          showModalAlert('付款码长度不正确，通常为18位数字');
+        // 验证付款码长度和格式（通常为18位数字）
+        if (auth_code.length !== 18 || !/^\d+$/.test(auth_code)) {
+          console.log('[移动端测试支付] 验证失败：付款码格式不正确，当前长度：', auth_code.length);
+          showModalAlert('付款码格式不正确，应为18位纯数字');
           if (authCodeInput) authCodeInput.focus();
           return; // 中断函数执行
         }
@@ -17975,19 +17975,20 @@ body.mobile-mode #session-picker-modal {
           return; // 中断函数执行
         }
         
-        // 可选：验证sub_openid的格式（通常以字母o开头，长度约28个字符）
-        // 这是一个简单的格式验证，实际的openid格式可能会有所不同
-        if (subOpenid.length < 10) {
-          console.log('[移动端测试支付] 警告：用户Openid格式可能不正确，长度过短');
-          showModalAlert('用户Openid格式可能不正确，长度过短');
+        // 验证sub_openid的格式（微信openid通常以字母o开头，支付宝以数字2开头，长度约28个字符）
+        // 这里使用宽松的验证规则，确保长度合理即可
+        if (subOpenid.length < 20 || subOpenid.length > 64) {
+          console.log('[移动端测试支付] 警告：用户Openid格式可能不正确，长度不在合理范围');
+          showModalAlert('用户Openid格式可能不正确，长度应在20-64字符之间');
           if (subOpenidInput) subOpenidInput.focus();
           return; // 中断函数执行
         }
         
-        // 可选：验证sub_appid的格式（通常以wx开头，长度约18个字符）
-        if (!subAppid.startsWith('wx') || subAppid.length < 10) {
+        // 验证sub_appid的格式（微信以wx开头，支付宝以数字开头，长度约18个字符）
+        // 使用宽松验证：长度在10-32字符之间即可
+        if (subAppid.length < 10 || subAppid.length > 32) {
           console.log('[移动端测试支付] 警告：公众号AppId格式可能不正确');
-          showModalAlert('公众号AppId格式可能不正确（应以wx开头）');
+          showModalAlert('公众号AppId格式可能不正确，长度应在10-32字符之间');
           if (subAppidInput) subAppidInput.focus();
           return; // 中断函数执行
         }
@@ -18018,7 +18019,7 @@ body.mobile-mode #session-picker-modal {
         method: paymentType
       });
 
-      app_host=window.location.protocol + '//' + window.location.host;
+      const app_host = window.location.protocol + '//' + window.location.host;
       
       // ========== 第5步：先隐藏结果容器，避免显示旧数据 ==========
       resultContainer.classList.add('hidden');
