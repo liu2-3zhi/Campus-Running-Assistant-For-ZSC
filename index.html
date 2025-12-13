@@ -19680,6 +19680,29 @@ body.mobile-mode #session-picker-modal {
       if (modalOverlay) {
         modalOverlay.classList.remove('hidden');
       }
+
+      // === 第3步：自动刷新订单信息 ===
+      // 为什么要在弹窗打开时自动刷新？
+      // 1. 确保显示的订单信息是最新的：订单状态可能在后台发生了变化（例如从"待支付"变为"已支付"）
+      // 2. 同步最新的平台数据：如果订单有平台同步记录，可以获取最新的支付时间、退款等信息
+      // 3. 提升用户体验：用户每次打开详情，都能看到最准确的订单状态和金额
+      //
+      // 实现方式：
+      // - 使用 setTimeout 延迟100毫秒执行刷新操作
+      // - 延迟的原因：确保弹窗的DOM完全渲染后再进行数据更新，避免视觉闪烁
+      // - refreshOrderDetailLocal() 会从本地API重新拉取订单数据并更新弹窗内容
+      setTimeout(() => {
+        // 检查 window.currentOrderDetail 是否已设置
+        // 这个检查是防御性编程，确保有订单信息才执行刷新
+        if (window.currentOrderDetail && window.currentOrderDetail.order_id) {
+          // 调用本地刷新函数，更新订单详情
+          // 该函数会异步获取最新数据并更新弹窗显示
+          refreshOrderDetailLocal();
+          
+          // 输出日志：记录自动刷新操作
+          console.log('[订单详情] 弹窗打开，自动刷新订单信息（订单号：' + window.currentOrderDetail.order_id + '）');
+        }
+      }, 100); // 100毫秒的延迟，既保证DOM渲染完成，又不会让用户感觉到明显的等待
     }
 
     /**
