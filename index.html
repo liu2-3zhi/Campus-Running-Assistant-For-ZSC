@@ -15700,7 +15700,7 @@ body.mobile-mode #session-picker-modal {
      * - GET /api/payment/methods_config - 获取所有支付方式定义
      * - GET /api/admin/payment/config - 获取当前启用的支付方式
      */
-    async function loadPaymentMethodsConfig(show_Modal_Alert=true) {
+    async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_Event=false) {
       // 输出日志，便于调试和追踪函数执行
       console.log('[支付配置] 开始加载支付方式配置...');
       if(show_Modal_Alert){
@@ -15731,7 +15731,9 @@ body.mobile-mode #session-picker-modal {
           console.log('[支付配置] 成功获取支付方式定义响应：', methodsData);
         } else {
           console.error('[支付配置] 获取支付方式定义失败：', methodsData.message || '未知错误');
+          if (!DOMContentLoaded_Event){
           showModalAlert('获取支付方式定义失败：' + (methodsData.message || '未知错误'),"错误");
+          }
           return;
         }
 
@@ -15761,7 +15763,9 @@ body.mobile-mode #session-picker-modal {
             console.log('[支付配置] 成功获取启用状态响应：', configData);
           } else {
             console.warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：', configData.message || '未知错误');
+            if (!DOMContentLoaded_Event){
             showModalAlert('获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'),"警告");
+          }
             return;
           }
           
@@ -15774,7 +15778,9 @@ body.mobile-mode #session-picker-modal {
         } catch (configError) {
           // 获取启用状态失败，默认显示所有支付方式为启用
           console.warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：', configError);
+          if (!DOMContentLoaded_Event){
           showModalAlert('获取启用状态时出错，默认显示所有支付方式：' + configError,"警告");
+          }
           enabledMethods = Object.keys(methods);
         }
         
@@ -15784,7 +15790,9 @@ body.mobile-mode #session-picker-modal {
         const listContainer = document.getElementById('payment-methods-list_modal');
         if (!listContainer) {
           console.error('[支付配置] 找不到支付方式列表容器');
+          if (!DOMContentLoaded_Event){
           showModalAlert('找不到支付方式列表容器',"错误");
+          }
           return;
         }
         
@@ -16052,7 +16060,9 @@ body.mobile-mode #session-picker-modal {
       } catch (error) {
         // === 错误处理 ===
         console.error('[支付配置] 加载支付方式配置时发生错误：', error);
+        if (!DOMContentLoaded_Event){
         showModalAlert('无法加载支付方式配置，请刷新页面重试。如果问题持续，请联系管理员。');
+        }
       }
     }
     
@@ -16636,7 +16646,7 @@ body.mobile-mode #session-picker-modal {
       // 调用loadPaymentMethodsConfig函数，从服务器获取当前配置
       // 这确保了用户打开页面时，看到的checkbox状态与服务器保存的状态一致
       // 注意：这个调用不会等待完成就继续执行（异步调用）
-      loadPaymentMethodsConfig(show_Modal_Alert=false);
+      loadPaymentMethodsConfig(show_Modal_Alert=false,DOMContentLoaded_Event=true);
       
       // ========== Tab 3: 绑定"处理退款"按钮的点击事件 ==========
       
@@ -21830,7 +21840,7 @@ body.mobile-mode #session-picker-modal {
       
       // 延迟100ms后加载配置，确保DOM完全准备就绪
       setTimeout(() => {
-        loadPaymentMethodsConfig(show_Modal_Alert=false);
+        loadPaymentMethodsConfig(show_Modal_Alert=false,DOMContentLoaded_Event=true);
       }, 100);
       
       console.log('[PC端支付设置] PC端管理员支付设置面板初始化完成');
@@ -22961,7 +22971,7 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
 document.addEventListener('DOMContentLoaded', function() {
     // 加载支付方式配置
     // 这是异步操作，会在后台执行，不阻塞其他初始化逻辑
-    loadPaymentMethodsConfig(show_Modal_Alert=false);
+    loadPaymentMethodsConfig(show_Modal_Alert=false,DOMContentLoaded_Event=true);
 });
 
 function handleCdnError(resourceName) {
