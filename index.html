@@ -21386,7 +21386,25 @@ body.mobile-mode #session-picker-modal {
       // === 第2步：获取并验证输入值 ===
       
       // 2.1 获取host值并去除首尾空格
-      const host = hostInput ? hostInput.value.trim() : '';
+      // 首先去除首尾空格
+      let host = hostInput ? hostInput.value.trim() : '';
+      
+      // 去除末尾的所有斜杠
+      // 这是必要的，因为：
+      // 1. API接口拼接时会自动添加斜杠，如果host末尾已有斜杠会导致双斜杠
+      // 2. 统一格式便于后续处理和显示
+      // 3. 避免因为斜杠问题导致的请求失败
+      // 正则表达式 /\/+$/ 的含义：
+      // - \/ 表示匹配斜杠字符（需要转义）
+      // - + 表示匹配一个或多个
+      // - $ 表示匹配字符串末尾
+      // 例如：
+      // - "https://example.com/" → "https://example.com"
+      // - "https://example.com" → "https://example.com" (保持不变)
+      // - "https://example.com///" → "https://example.com" (去除所有末尾斜杠)
+      host = host.replace(/\/+$/, '');
+      
+      // 验证host不能为空
       if (!host) {
         showModalAlert('请输入易支付接口域名');
         // 聚焦到host输入框，引导用户输入
@@ -38475,6 +38493,15 @@ function refreshMobileSessionPicker() {
           // 错误使用auth_group会导致currentUserData.group总是默认为"user"
           // 这会使管理员权限验证失败（如第5326行的isAdmin判断）
           currentUserData.group = result.group || "user";
+          
+          // 添加调试日志，验证 group 字段是否正确设置
+          console.log('[登录成功] currentUserData.group =', currentUserData.group);
+          console.log('[登录成功] result.group =', result.group);
+          console.log('[登录成功] currentUserData 完整数据:', currentUserData);
+          logMessage_Info(
+            `[登录成功] 权限组设置为: ${currentUserData.group}`
+          );
+          
           currentSessionUA = uaOnLoginScreen;
           const name = currentUserData.name || "";
           $("user-name-label").textContent = `姓名: ${name}`;
@@ -40056,7 +40083,35 @@ function refreshMobileSessionPicker() {
           use_delay,
           run_only_incomplete
         );
+        
+        // 检查是否是欠费错误
+        // 后端在检测到欠费时会返回特定的错误代码
+        if (!result.success && result.error_code === "OVERDUE_PAYMENT") {
+          // 构建欠费账号列表的显示文本
+          let overdueList = "";
+          if (result.overdue_accounts && result.overdue_accounts.length > 0) {
+            // 遍历每个欠费账号，格式化为易读的文本
+            // 例如：账号1 (欠费3次)
+            overdueList = result.overdue_accounts.map(acc => 
+              `${acc.school_username} (欠费${acc.overdue_count}次)`
+            ).join("\n");
+          }
+          
+          // 构建完整的提示消息
+          const message = `检测到以下账号存在欠费：\n\n${overdueList}\n\n请先完成缴费后再执行任务。`;
+          
+          // 显示友好的弹窗提示
+          showModalAlert(message, "欠费提示");
+          
+          // 可选：自动跳转到缴费页面（如果需要的话）
+          // switchToTab('tab4'); // 取消注释此行以启用自动跳转
+          
+          // 阻止任务启动，直接返回
+          return;
+        }
+        
         if (!result || !result.success) {
+          // 其他错误（非欠费），显示标准错误消息
           showModalAlert(result?.message || "无法开始全部账号任务。");
 
           return;
@@ -40566,9 +40621,11 @@ function refreshMobileSessionPicker() {
       async function multi_startSelected() {
         const usernames = multi_getSelectedUsernames();
         if (usernames.length === 0) {
-          showModalAlert("请至少选择一个账号再执行“开始选中”。");
+          showModalAlert("请至少选择一个账号再执行"开始选中"。");
           return;
-// ========== 添加欠费检查 ==========
+        }
+        
+        // ========== 添加欠费检查 ==========
         // 在开始选中的账号前，检查所有学校账号是否有欠费
         const canStart = await checkOverdueBeforeStart();
         if (!canStart) {
@@ -40576,28 +40633,57 @@ function refreshMobileSessionPicker() {
           return;
         }
         // ========== 欠费检查结束 ==========
-        }
+        
         const use_delay = $("multi-use-delay-check")?.checked ?? true;
         const min_delay = parseInt($("multi-min-delay-input")?.value) || 0;
         const max_delay = parseInt($("multi-max-delay-input")?.value) || 300;
         const run_only_incomplete =
           $("multi-run-only-incomplete-check")?.checked ?? true;
+        
         for (const u of usernames) {
           try {
             if (use_delay && max_delay >= min_delay) {
               const d = Math.random() * (max_delay - min_delay) + min_delay;
               await new Promise((res) => setTimeout(res, d * 10));
             }
-            await callPythonAPI(
+            
+            // 调用后端 API 启动单个账号
+            const result = await callPythonAPI(
               "multi_start_single_account",
               u,
               run_only_incomplete
             );
+            
+            // 检查是否是欠费错误
+            // 后端在检测到欠费时会返回特定的错误代码
+            if (result && !result.success && result.error_code === "OVERDUE_PAYMENT") {
+              // 构建欠费账号列表的显示文本
+              let overdueList = "";
+              if (result.overdue_accounts && result.overdue_accounts.length > 0) {
+                // 遍历每个欠费账号，格式化为易读的文本
+                overdueList = result.overdue_accounts.map(acc => 
+                  `${acc.school_username} (欠费${acc.overdue_count}次)`
+                ).join("\n");
+              }
+              
+              // 构建完整的提示消息
+              const message = `检测到以下账号存在欠费：\n\n${overdueList}\n\n请先完成缴费后再执行任务。`;
+              
+              // 显示友好的弹窗提示
+              showModalAlert(message, "欠费提示");
+              
+              // 可选：自动跳转到缴费页面
+              // switchToTab('tab4'); // 取消注释此行以启用自动跳转
+              
+              // 发现欠费后，停止启动其他账号
+              break;
+            }
           } catch (e) {
             logMessage_Error(`开始账号 ${u} 失败`, e);
           }
         }
       }
+
 
       async function multi_stopSelected() {
         const usernames = multi_getSelectedUsernames();
@@ -41864,6 +41950,33 @@ function refreshMobileSessionPicker() {
             }
           );
 
+          // 检查是否是欠费错误
+          // 后端在检测到欠费时会返回特定的错误代码
+          if (!result.success && result.error_code === "OVERDUE_PAYMENT") {
+            // 构建欠费账号列表的显示文本
+            let overdueList = "";
+            if (result.overdue_accounts && result.overdue_accounts.length > 0) {
+              // 遍历每个欠费账号，格式化为易读的文本
+              // 例如：账号1 (欠费3次)
+              overdueList = result.overdue_accounts.map(acc => 
+                `${acc.school_username} (欠费${acc.overdue_count}次)`
+              ).join("\n");
+            }
+            
+            // 构建完整的提示消息
+            const message = `检测到以下账号存在欠费：\n\n${overdueList}\n\n请先完成缴费后再执行任务。`;
+            
+            // 显示友好的弹窗提示
+            // 使用 showModalAlert 确保用户看到提示信息
+            showModalAlert(message, "欠费提示");
+            
+            // 可选：自动跳转到缴费页面（如果需要的话）
+            // switchToTab('tab4'); // 取消注释此行以启用自动跳转
+            
+            // 阻止任务启动，直接返回
+            return;
+          }
+
           if (result.success) {
             btn.textContent = "停止";
             btn.classList.remove("btn-primary");
@@ -41871,6 +41984,7 @@ function refreshMobileSessionPicker() {
             updateSingleProgress(0, "0 / 0 点");
             setTimeout(() => startBackgroundTaskPolling(), 500);
           } else {
+            // 其他错误（非欠费），显示标准错误消息
             showModalAlert(result.message);
           }
         } else {

@@ -6715,6 +6715,213 @@ class Api:
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
         return os.path.join(user_accounts_dir, f"{auth_username}.json")
 
+    def _get_school_account_ini_file(self, school_username):
+        """
+        获取指定学校账号的统计数据 INI 文件路径。
+        
+        功能说明：
+            为了将账号的统计数据（overdue_count 和 completed_count）与账号密码分离存储，
+            我们为每个学校账号单独创建一个 INI 文件来存储这些统计信息。
+            
+        参数:
+            school_username (str): 学校账号用户名
+            
+        返回:
+            str: INI 文件的完整路径
+            格式: ./school_accounts/user_accounts/{school_username}.ini
+            
+        设计理由：
+            1. 数据分离：将敏感的账号密码（JSON）与统计数据（INI）分开存储
+            2. 易于管理：INI 文件更适合存储简单的键值对统计数据
+            3. 独立更新：统计数据的更新不会影响账号密码文件
+            4. 清晰结构：文件名与账号名一一对应，易于查找和维护
+        """
+        # 获取 user_accounts 目录路径
+        # 这个目录用于存储所有用户的学校账号相关文件
+        user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        
+        # 返回该学校账号对应的 INI 文件完整路径
+        # 文件名格式：{school_username}.ini
+        return os.path.join(user_accounts_dir, f"{school_username}.ini")
+
+    def _load_school_account_stats_from_ini(self, school_username):
+        """
+        从 INI 文件读取指定学校账号的统计数据（overdue_count 和 completed_count）。
+        
+        功能说明：
+            读取学校账号的统计 INI 文件，获取欠费次数和已完成任务数。
+            如果文件不存在或读取失败，返回默认值（都为 0）。
+            
+        参数:
+            school_username (str): 学校账号用户名
+            
+        返回:
+            dict: 包含统计数据的字典
+            格式: {
+                "overdue_count": int,      # 欠费次数，默认 0
+                "completed_count": int     # 已完成任务数，默认 0
+            }
+            
+        INI 文件格式示例:
+            [stats]
+            overdue_count = 5
+            completed_count = 120
+            
+        错误处理：
+            - 如果 INI 文件不存在：返回默认值 {"overdue_count": 0, "completed_count": 0}
+            - 如果某个字段缺失：该字段使用默认值 0
+            - 如果读取失败：记录错误日志并返回默认值
+            
+        向后兼容性：
+            为了确保平滑升级，如果 INI 文件不存在（旧数据），不会报错，
+            而是返回默认值 0，系统会在第一次更新时自动创建文件。
+        """
+        # 获取该学校账号对应的 INI 文件路径
+        ini_file = self._get_school_account_ini_file(school_username)
+        
+        # 准备默认返回值
+        # 如果文件不存在或读取失败，使用这些默认值
+        default_stats = {
+            "overdue_count": 0,      # 默认欠费次数为 0（无欠费）
+            "completed_count": 0     # 默认已完成任务数为 0（新账号）
+        }
+        
+        # 检查 INI 文件是否存在
+        if not os.path.exists(ini_file):
+            # 文件不存在是正常情况（新账号或从旧版本升级）
+            # 不记录错误日志，直接返回默认值
+            logging.debug(
+                f"[统计数据] INI 文件不存在，返回默认值: {school_username}"
+            )
+            return default_stats
+        
+        try:
+            # 创建 ConfigParser 对象用于读取 INI 文件
+            config = configparser.ConfigParser()
+            
+            # 读取 INI 文件
+            # encoding='utf-8' 确保正确处理中文字符
+            config.read(ini_file, encoding='utf-8')
+            
+            # 从 [stats] 配置节读取统计数据
+            # getint() 方法会自动将字符串转换为整数
+            # fallback 参数指定默认值，当键不存在时使用
+            overdue_count = config.getint('stats', 'overdue_count', fallback=0)
+            completed_count = config.getint('stats', 'completed_count', fallback=0)
+            
+            # 记录成功读取的日志（调试级别）
+            logging.debug(
+                f"[统计数据] 成功读取 INI 文件: {school_username}, "
+                f"overdue_count={overdue_count}, completed_count={completed_count}"
+            )
+            
+            # 返回读取到的统计数据
+            return {
+                "overdue_count": overdue_count,
+                "completed_count": completed_count
+            }
+            
+        except Exception as e:
+            # 捕获所有可能的异常（文件读取错误、解析错误等）
+            # 记录详细的错误信息，但不抛出异常，确保系统稳定运行
+            logging.error(
+                f"[统计数据] 读取 INI 文件失败: {school_username}, 错误: {e}",
+                exc_info=True
+            )
+            # 返回默认值，确保调用方能够继续正常工作
+            return default_stats
+
+    def _save_school_account_stats_to_ini(self, school_username, overdue_count, completed_count):
+        """
+        将学校账号的统计数据保存到 INI 文件。
+        
+        功能说明：
+            将指定学校账号的欠费次数和已完成任务数保存到对应的 INI 文件中。
+            如果 INI 文件或目录不存在，会自动创建。
+            
+        参数:
+            school_username (str): 学校账号用户名
+            overdue_count (int): 欠费次数
+            completed_count (int): 已完成任务数
+            
+        返回:
+            bool: 保存成功返回 True，失败返回 False
+            
+        INI 文件格式:
+            [stats]
+            overdue_count = 5
+            completed_count = 120
+            
+        实现逻辑：
+            1. 获取 INI 文件路径
+            2. 确保父目录存在（如果不存在则创建）
+            3. 创建 ConfigParser 对象
+            4. 设置 [stats] 配置节的数据
+            5. 写入文件
+            
+        错误处理：
+            - 如果目录创建失败：记录错误并返回 False
+            - 如果文件写入失败：记录错误并返回 False
+            - 所有错误都会记录详细的异常堆栈信息
+            
+        注意事项：
+            - 此函数会覆盖整个 INI 文件内容
+            - 使用 UTF-8 编码确保支持中文
+            - 数值会被转换为字符串存储（INI 文件特性）
+        """
+        # 获取该学校账号对应的 INI 文件路径
+        ini_file = self._get_school_account_ini_file(school_username)
+        
+        try:
+            # 确保父目录存在
+            # 获取 INI 文件所在的目录路径
+            ini_dir = os.path.dirname(ini_file)
+            
+            # 如果目录不存在，创建它（包括所有必要的父目录）
+            # exist_ok=True 表示如果目录已存在不会报错
+            if not os.path.exists(ini_dir):
+                os.makedirs(ini_dir, exist_ok=True)
+                logging.debug(f"[统计数据] 创建目录: {ini_dir}")
+            
+            # 创建 ConfigParser 对象用于写入 INI 文件
+            config = configparser.ConfigParser()
+            
+            # 添加 [stats] 配置节（如果不存在）
+            # 这个配置节用于存储所有的统计数据
+            config.add_section('stats')
+            
+            # 设置欠费次数
+            # 注意：ConfigParser 存储的是字符串，所以需要将整数转换为字符串
+            config.set('stats', 'overdue_count', str(overdue_count))
+            
+            # 设置已完成任务数
+            config.set('stats', 'completed_count', str(completed_count))
+            
+            # 将配置写入 INI 文件
+            # 'w' 模式：如果文件存在则覆盖，不存在则创建
+            # encoding='utf-8'：使用 UTF-8 编码，确保支持中文
+            with open(ini_file, 'w', encoding='utf-8') as f:
+                config.write(f)
+            
+            # 记录成功保存的日志（调试级别）
+            logging.debug(
+                f"[统计数据] 成功保存 INI 文件: {school_username}, "
+                f"overdue_count={overdue_count}, completed_count={completed_count}"
+            )
+            
+            # 返回 True 表示保存成功
+            return True
+            
+        except Exception as e:
+            # 捕获所有可能的异常（文件写入错误、权限错误、磁盘空间不足等）
+            # 记录详细的错误信息，包括完整的异常堆栈
+            logging.error(
+                f"[统计数据] 保存 INI 文件失败: {school_username}, 错误: {e}",
+                exc_info=True
+            )
+            # 返回 False 表示保存失败
+            return False
+
     def _load_user_school_accounts(self, auth_username):
         """
         加载指定认证用户的所有 school_account 账户密码和UA。
@@ -6734,33 +6941,43 @@ class Api:
             return {}
 
         try:
+            # 步骤1：从 JSON 文件读取账号密码和 UA 信息
+            # JSON 文件只包含账号基本信息，不包含统计数据
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             
-            # 向后兼容：为每个账户添加 overdue_count 和 completed_count 字段（如果不存在）
-            # overdue_count 用于记录该学校账号的欠费次数
-            # 当用户的 available_runs <= 0 时，每次任务执行完成会增加此计数
-            # completed_count 用于记录该学校账号已完成的任务总数
-            # 每次任务成功提交后会增加此计数，用于统计和追踪
+            # 步骤2：处理并标准化每个账号的数据格式
+            # 同时从对应的 INI 文件读取统计数据（overdue_count 和 completed_count）
             for school_username, account_info in data.items():
-                # 如果是新格式（字典），确保包含 overdue_count 和 completed_count 字段
+                # 如果是新格式（字典类型），处理并加载统计数据
                 if isinstance(account_info, dict):
-                    if "overdue_count" not in account_info:
-                        account_info["overdue_count"] = 0
-                    # 添加 completed_count 字段，用于统计已完成的任务数量
-                    if "completed_count" not in account_info:
-                        account_info["completed_count"] = 0
-                # 如果是旧格式（字符串密码），转换为新格式
+                    # 从 INI 文件加载该学校账号的统计数据
+                    # _load_school_account_stats_from_ini() 返回：
+                    # {"overdue_count": int, "completed_count": int}
+                    stats = self._load_school_account_stats_from_ini(school_username)
+                    
+                    # 将从 INI 读取的统计数据合并到账号信息中
+                    # 这样返回的数据结构就包含了完整信息：密码、UA、欠费次数、完成次数
+                    account_info["overdue_count"] = stats["overdue_count"]
+                    account_info["completed_count"] = stats["completed_count"]
+                    
+                # 如果是旧格式（字符串密码），转换为新格式并加载统计数据
                 elif isinstance(account_info, str):
+                    # 从 INI 文件加载统计数据
+                    stats = self._load_school_account_stats_from_ini(school_username)
+                    
+                    # 转换为新格式：将字符串密码转换为字典结构
                     data[school_username] = {
-                        "password": account_info,
-                        "ua": None,
-                        "overdue_count": 0,
-                        "completed_count": 0
+                        "password": account_info,    # 保留原密码
+                        "ua": None,                  # UA 默认为 None
+                        "overdue_count": stats["overdue_count"],      # 从 INI 读取
+                        "completed_count": stats["completed_count"]   # 从 INI 读取
                     }
             
+            # 记录加载成功的日志
             logging.debug(
-                f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户"
+                f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户 "
+                f"(从 JSON 加载密码和 UA，从 INI 加载统计数据)"
             )
             return data
         except Exception as e:
@@ -6772,10 +6989,22 @@ class Api:
     def _save_user_school_accounts(self, auth_username, accounts_dict):
         """
         保存指定认证用户的所有 school_account 账户密码和UA。
+        
+        功能说明：
+            将账号的密码和 UA 信息保存到 JSON 文件。
+            同时将统计数据（overdue_count 和 completed_count）保存到各自的 INI 文件。
+            实现了数据分离存储：敏感信息（密码）在 JSON，统计数据在 INI。
 
         参数:
             auth_username: 认证用户名
-            accounts_dict: 字典，格式为 {school_username: {"password": "xxx", "ua": "xxx"}, ...}
+            accounts_dict: 字典，格式为 {school_username: {"password": "xxx", "ua": "xxx", 
+                          "overdue_count": 0, "completed_count": 0}, ...}
+        
+        实现逻辑：
+            1. 遍历所有账号，提取统计数据
+            2. 将统计数据保存到各账号对应的 INI 文件
+            3. 从字典中移除统计数据字段
+            4. 将剩余的账号信息（密码和 UA）保存到 JSON 文件
         """
         if not auth_username or auth_username == "guest":
             logging.debug("游客用户不保存 school_accounts")
@@ -6784,10 +7013,45 @@ class Api:
         file_path = self._get_user_accounts_file(auth_username)
 
         try:
+            # 步骤1：创建一个新的字典用于保存到 JSON
+            # 这个字典只包含密码和 UA 信息，不包含统计数据
+            json_data = {}
+            
+            # 步骤2：遍历所有账号，分离统计数据和账号信息
+            for school_username, account_info in accounts_dict.items():
+                # 如果账号信息是字典格式（新格式）
+                if isinstance(account_info, dict):
+                    # 提取统计数据（如果存在）
+                    overdue_count = account_info.get("overdue_count", 0)
+                    completed_count = account_info.get("completed_count", 0)
+                    
+                    # 将统计数据保存到该账号对应的 INI 文件
+                    # 这样统计数据就与密码信息分离存储了
+                    self._save_school_account_stats_to_ini(
+                        school_username, 
+                        overdue_count, 
+                        completed_count
+                    )
+                    
+                    # 创建一个只包含密码和 UA 的字典，用于保存到 JSON
+                    # 注意：这里不包含 overdue_count 和 completed_count
+                    json_data[school_username] = {
+                        "password": account_info.get("password", ""),
+                        "ua": account_info.get("ua", "")
+                    }
+                else:
+                    # 如果是旧格式（字符串密码），直接保存
+                    # 旧格式不包含统计数据，所以不需要特殊处理
+                    json_data[school_username] = account_info
+            
+            # 步骤3：将处理后的数据（只包含密码和 UA）保存到 JSON 文件
             with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(accounts_dict, f, ensure_ascii=False, indent=2)
+                json.dump(json_data, f, ensure_ascii=False, indent=2)
+            
+            # 记录成功保存的日志
             logging.debug(
-                f"成功保存用户 {auth_username} 的 school_accounts，共 {len(accounts_dict)} 个账户"
+                f"成功保存用户 {auth_username} 的 school_accounts，共 {len(json_data)} 个账户 "
+                f"(密码和 UA 保存到 JSON，统计数据保存到各账号的 INI 文件)"
             )
         except Exception as e:
             logging.error(
@@ -6880,6 +7144,7 @@ class Api:
         功能说明：
         此方法用于更新用户的某个学校账号的overdue_count字段。
         主要用于支付成功后清零欠费次数，也可用于管理员手动调整欠费。
+        统计数据现在存储在独立的 INI 文件中，与账号密码分离。
         
         参数:
             auth_username (str): 认证用户名（system_accounts中的用户）
@@ -6902,7 +7167,7 @@ class Api:
         注意事项：
         - 使用线程锁确保并发安全
         - 如果学校账号不存在，不会创建新账号，而是返回错误
-        - 如果欠费次数字段不存在，会自动创建并设置为指定值
+        - 统计数据存储在 INI 文件中，与密码分离
         """
         # 验证参数有效性
         # 欠费次数不能为负数
@@ -6930,7 +7195,7 @@ class Api:
             # 使用线程锁确保文件操作的原子性
             # 防止多个请求同时修改同一个用户的数据导致数据不一致
             with self.lock:
-                # 步骤1：加载用户的所有学校账号数据
+                # 步骤1：加载用户的所有学校账号数据（验证账号是否存在）
                 # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
                 accounts = self._load_user_school_accounts(auth_username)
                 
@@ -6943,28 +7208,25 @@ class Api:
                         "message": f"学校账号 {school_username} 不存在"
                     }
                 
-                # 步骤3：获取该学校账号的数据
-                account_data = accounts[school_username]
+                # 步骤3：从 INI 文件读取当前的统计数据
+                # 这样我们可以保留 completed_count，只更新 overdue_count
+                stats = self._load_school_account_stats_from_ini(school_username)
+                current_completed_count = stats["completed_count"]
                 
-                # 兼容旧格式：如果账号数据是字符串（只保存了密码），转换为字典格式
-                if isinstance(account_data, str):
-                    # 旧格式：account_data = "password123"
-                    # 转换为新格式：account_data = {"password": "password123", "ua": "", "overdue_count": 0}
-                    account_data = {
-                        "password": account_data,  # 保留原密码
-                        "ua": "",                  # UA默认为空
-                        "overdue_count": 0         # 欠费次数默认为0
+                # 步骤4：将新的 overdue_count 和原有的 completed_count 保存到 INI 文件
+                # 使用专门的 INI 写入函数，实现数据分离存储
+                success = self._save_school_account_stats_to_ini(
+                    school_username, 
+                    new_overdue_count,           # 使用新的欠费次数
+                    current_completed_count      # 保留原有的完成次数
+                )
+                
+                # 步骤5：检查保存是否成功
+                if not success:
+                    return {
+                        "success": False,
+                        "message": "保存统计数据到 INI 文件失败"
                     }
-                    # 更新到accounts字典中
-                    accounts[school_username] = account_data
-                
-                # 步骤4：更新overdue_count字段
-                # 直接覆盖为新值
-                account_data["overdue_count"] = new_overdue_count
-                
-                # 步骤5：保存更新后的数据到文件
-                # 调用_save_user_school_accounts方法将整个accounts字典写回文件
-                self._save_user_school_accounts(auth_username, accounts)
                 
                 # 步骤6：记录操作日志
                 logging.info(
@@ -7134,17 +7396,17 @@ class Api:
         
         功能说明：
             当一个任务成功提交并完成后，调用此函数为对应的学校账号增加已完成任务计数。
-            计数器存储在 school_accounts JSON 文件中的 completed_count 字段。
+            计数器现在存储在独立的 INI 文件中，与账号密码分离。
         
         参数：
             auth_username: 认证用户名（system_accounts中的用户名）
             school_username: 学校账号用户名（school_accounts中的账户）
         
         实现逻辑：
-            1. 读取用户的 school_accounts JSON 文件
-            2. 找到对应的学校账号
+            1. 验证学校账号是否存在（通过加载 school_accounts）
+            2. 从 INI 文件读取当前的统计数据
             3. 将 completed_count 字段加1
-            4. 保存更新后的 JSON 文件
+            4. 将更新后的统计数据保存回 INI 文件
         
         错误处理：
             如果更新失败（文件不存在、账号不存在等），记录错误日志但不影响主流程。
@@ -7154,8 +7416,8 @@ class Api:
             None
         """
         try:
-            # 步骤1：读取 school_accounts 配置文件
-            # 使用已有的 _load_user_school_accounts 方法加载用户的所有学校账号配置
+            # 步骤1：验证学校账号是否存在
+            # 加载用户的所有学校账号配置，用于验证账号是否存在
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0, "completed_count": 0}, ...}
             accounts = self._load_user_school_accounts(auth_username)
             
@@ -7166,47 +7428,48 @@ class Api:
                 )
                 return
             
-            # 步骤2：在配置中查找对应的学校账号
-            # 学校账号用户名作为字典的键
+            # 步骤2：检查学校账号是否存在
+            # 如果账号不存在，不进行任何操作
             if school_username not in accounts:
                 logging.warning(
                     f"[任务计数] 在用户 {auth_username} 的配置中未找到学校账号 {school_username}，无法更新计数"
                 )
                 return
             
-            # 获取该学校账号的信息（字典类型）
-            account_info = accounts[school_username]
-            
-            # 步骤3：确保 account_info 是字典格式（向后兼容处理）
-            # 如果是旧格式（字符串），转换为新格式
-            if not isinstance(account_info, dict):
-                account_info = {
-                    "password": account_info if isinstance(account_info, str) else "",
-                    "ua": None,
-                    "overdue_count": 0,
-                    "completed_count": 0
-                }
-                accounts[school_username] = account_info
+            # 步骤3：从 INI 文件读取当前的统计数据
+            # 获取当前的 overdue_count 和 completed_count
+            stats = self._load_school_account_stats_from_ini(school_username)
+            current_overdue_count = stats["overdue_count"]
+            current_completed_count = stats["completed_count"]
             
             # 步骤4：增加已完成任务计数
-            # 获取当前的 completed_count 值，如果不存在则默认为 0
-            current_count = account_info.get("completed_count", 0)
-            # 将计数器加1
-            account_info["completed_count"] = current_count + 1
+            # 将 completed_count 加1
+            new_completed_count = current_completed_count + 1
             
-            # 记录日志：显示更新后的计数值
+            # 记录日志：显示更新前后的计数值
             logging.info(
                 f"[任务计数] 用户 {auth_username} 的学校账号 {school_username} "
-                f"已完成任务数: {current_count} → {account_info['completed_count']}"
+                f"已完成任务数: {current_completed_count} → {new_completed_count}"
             )
             
-            # 步骤5：保存更新后的数据到 JSON 文件
-            # 使用已有的 _save_user_school_accounts 方法保存整个配置
-            self._save_user_school_accounts(auth_username, accounts)
-            
-            logging.debug(
-                f"[任务计数] 成功更新并保存学校账号 {school_username} 的任务计数"
+            # 步骤5：将更新后的统计数据保存到 INI 文件
+            # 使用专门的 INI 写入函数保存
+            # overdue_count 保持不变，只更新 completed_count
+            success = self._save_school_account_stats_to_ini(
+                school_username, 
+                current_overdue_count,      # 保持原有的欠费次数
+                new_completed_count         # 使用新的完成次数
             )
+            
+            # 步骤6：检查保存是否成功
+            if success:
+                logging.debug(
+                    f"[任务计数] 成功更新学校账号 {school_username} 的任务计数到 INI 文件"
+                )
+            else:
+                logging.warning(
+                    f"[任务计数] 保存学校账号 {school_username} 的任务计数到 INI 文件失败"
+                )
         
         except Exception as e:
             # 捕获所有可能的异常（文件IO错误、权限错误等）
@@ -8060,16 +8323,29 @@ class Api:
                 backup_filename = f"{ud.username}_backup.json"
                 backup_filepath = os.path.join(self.user_dir, backup_filename)
 
+                # 从 INI 文件加载统计数据（overdue_count 和 completed_count）
+                # 这些数据与账号密码分离存储，需要单独读取
+                stats = self._load_school_account_stats_from_ini(ud.username)
+                
+                # 创建备份数据字典
+                # 包含用户信息、部门信息、备份时间戳以及统计数据
                 backup_data = {
-                    "userInfo": user_info,
-                    "deptInfo": dept_info,
-                    "backup_timestamp": time.time(),
+                    "userInfo": user_info,        # 用户基本信息（姓名、学号等）
+                    "deptInfo": dept_info,        # 部门/学校信息
+                    "backup_timestamp": time.time(),  # 备份创建时间
+                    "overdue_count": stats.get("overdue_count", 0),      # 欠费次数
+                    "completed_count": stats.get("completed_count", 0)   # 已完成任务数
                 }
 
+                # 将备份数据写入 JSON 文件
                 with open(backup_filepath, "w", encoding="utf-8") as f:
                     json.dump(backup_data, f, indent=2, ensure_ascii=False)
 
-                logging.info(f"已成功备份 user_info 到: {backup_filepath}")
+                logging.info(
+                    f"已成功备份 user_info 到: {backup_filepath} "
+                    f"(包含统计数据: overdue={stats.get('overdue_count', 0)}, "
+                    f"completed={stats.get('completed_count', 0)})"
+                )
             elif not ud.username:
                 logging.warning("备份 user_info 失败：无法确定用户名(学号)")
 
@@ -11199,14 +11475,50 @@ class Api:
     def multi_start_single_account(self, username, run_only_incomplete: bool = True):
         """
         启动指定账号的任务执行线程。
+        
+        功能说明：
+            在启动任务前，会检查该账号是否存在欠费。
+            如果存在欠费（overdue_count > 0），则拒绝启动任务。
+        
+        参数：
+            username: 学校账号用户名
+            run_only_incomplete: 是否只运行未完成的任务
+            
+        返回：
+            包含 success 和 message 的字典
+            如果存在欠费，还会包含 error_code 和 overdue_accounts
         """
+        # 步骤1：检查账号是否存在
         if username not in self.accounts:
             return {"success": False, "message": "账号不存在"}
+        
+        # 步骤2：欠费检查（在启动任务前执行）
+        # 从 INI 文件读取该账号的统计数据
+        stats = self._load_school_account_stats_from_ini(username)
+        overdue_count = stats.get("overdue_count", 0)
+        
+        # 如果存在欠费，拒绝启动任务
+        if overdue_count > 0:
+            self.log(f"[欠费检查] 账号 {username} 存在欠费 ({overdue_count} 次)，拒绝启动任务")
+            return {
+                "success": False,
+                "message": "有账号存在欠费，请先缴费",
+                "error_code": "OVERDUE_PAYMENT",
+                "overdue_accounts": [
+                    {
+                        "school_username": username,
+                        "overdue_count": overdue_count
+                    }
+                ]
+            }
+        
+        # 步骤3：检查账号是否已在运行
         acc = self.accounts[username]
         if acc.worker_thread and acc.worker_thread.is_alive():
             self.log(f"账号 {username} 已在运行中。")
             return {"success": False, "message": "该账号已在运行"}
 
+        # 步骤4：启动任务线程
         acc.stop_event.clear()
         if self.multi_run_stop_flag.is_set():
             self.multi_run_stop_flag.clear()
@@ -11258,7 +11570,24 @@ class Api:
     def multi_start_all_accounts(
         self, min_delay, max_delay, use_delay, run_only_incomplete
     ):
-        """一键启动所有账号的任务"""
+        """
+        一键启动所有账号的任务
+        
+        功能说明：
+            在启动所有任务前，会检查所有账号是否存在欠费。
+            如果任何账号存在欠费（overdue_count > 0），则拒绝启动所有任务。
+            
+        参数：
+            min_delay: 最小延迟时间（秒）
+            max_delay: 最大延迟时间（秒）
+            use_delay: 是否使用延迟
+            run_only_incomplete: 是否只运行未完成的任务
+            
+        返回：
+            包含 success 和 message 的字典
+            如果存在欠费，还会包含 error_code 和 overdue_accounts
+        """
+        # 步骤1：检查账号列表是否为空
         if not self.accounts:
             self.log("账号列表为空，无法开始。请先添加账号。")
             return {
@@ -11266,6 +11595,34 @@ class Api:
                 "message": "账号列表为空，无法开始。请先添加账号。",
             }
 
+        # 步骤2：欠费检查（在启动任务前执行）
+        # 遍历所有账号，检查是否存在欠费
+        overdue_accounts_list = []
+        for username in self.accounts.keys():
+            # 从 INI 文件读取该账号的统计数据
+            stats = self._load_school_account_stats_from_ini(username)
+            overdue_count = stats.get("overdue_count", 0)
+            
+            # 如果存在欠费，记录到列表中
+            if overdue_count > 0:
+                overdue_accounts_list.append({
+                    "school_username": username,
+                    "overdue_count": overdue_count
+                })
+        
+        # 如果发现任何账号有欠费，拒绝启动所有任务
+        if overdue_accounts_list:
+            self.log(
+                f"[欠费检查] 发现 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
+            )
+            return {
+                "success": False,
+                "message": "有账号存在欠费，请先缴费",
+                "error_code": "OVERDUE_PAYMENT",
+                "overdue_accounts": overdue_accounts_list
+            }
+
+        # 步骤3：检查是否所有账号都已在运行
         total_accounts = len(self.accounts)
         running_count = sum(
             1
@@ -11275,6 +11632,7 @@ class Api:
         if total_accounts > 0 and running_count == total_accounts:
             return {"success": False, "message": "任务已在运行中"}
 
+        # 步骤4：准备启动所有账号
         self.log("开始执行所有账号...")
         self._update_multi_global_buttons()
         if self.multi_run_stop_flag.is_set():
@@ -11284,6 +11642,7 @@ class Api:
         num_accounts = len(account_list)
         delays = [0] * num_accounts
 
+        # 步骤5：计算延迟时间（如果启用）
         if use_delay and num_accounts > 0 and max_delay >= min_delay:
             try:
                 delays = [
@@ -11296,6 +11655,7 @@ class Api:
 
         random.shuffle(account_list)
 
+        # 步骤6：启动所有账号的任务线程
         started_threads = 0
         for i, acc in enumerate(account_list):
             if acc.worker_thread and acc.worker_thread.is_alive():
@@ -11830,14 +12190,23 @@ class Api:
                         backup_filepath = os.path.join(self.user_dir, backup_filename)
                         
                         # 构建要备份的数据结构（Python 字典）
+                        # 从 INI 文件加载统计数据（overdue_count 和 completed_count）
+                        # 这些数据与账号密码分离存储，需要单独读取
+                        stats = self._load_school_account_stats_from_ini(acc.user_data.username)
+                        
+                        # 创建备份数据字典
                         # 包含三个关键字段：
                         # 1. userInfo: 用户基本信息（姓名、手机号、学号、ID等）
                         # 2. deptInfo: 部门/学校信息（学校名称、性别、属性类型等）
                         # 3. backup_timestamp: 备份创建的时间戳（Unix时间戳，便于后续判断备份的新旧）
+                        # 4. overdue_count: 欠费次数（从 INI 文件读取）
+                        # 5. completed_count: 已完成任务数（从 INI 文件读取）
                         backup_data = {
                             "userInfo": user_info,
                             "deptInfo": dept_info,
                             "backup_timestamp": time.time(),
+                            "overdue_count": stats.get("overdue_count", 0),      # 欠费次数
+                            "completed_count": stats.get("completed_count", 0)   # 已完成任务数
                         }
                         
                         # 将备份数据写入到 JSON 文件
@@ -11849,9 +12218,13 @@ class Api:
                         with open(backup_filepath, "w", encoding="utf-8") as f:
                             json.dump(backup_data, f, indent=2, ensure_ascii=False)
                         
-                        # 记录备份成功的日志信息
+                        # 记录备份成功的日志信息，包含统计数据
                         # 使用 logging.info 而非 acc.log，因为这是系统级操作
-                        logging.info(f"[多账号模式] 已成功备份 user_info 到: {backup_filepath}")
+                        logging.info(
+                            f"[多账号模式] 已成功备份 user_info 到: {backup_filepath} "
+                            f"(包含统计数据: overdue={stats.get('overdue_count', 0)}, "
+                            f"completed={stats.get('completed_count', 0)})"
+                        )
                     
                     # 如果 username 不存在，记录警告日志
                     # 这种情况理论上不应该发生，因为上面已经设置了 username
@@ -14744,7 +15117,59 @@ class BackgroundTaskManager:
     def start_background_task(
         self, session_id, api_instance, task_indices, auto_generate=False
     ):
-        """启动后台任务执行"""
+        """
+        启动后台任务执行
+        
+        功能说明：
+            在启动任务前，会检查当前用户的所有学校账号是否存在欠费。
+            如果任何账号存在欠费（overdue_count > 0），则拒绝启动任务。
+            
+        参数：
+            session_id: 会话ID
+            api_instance: API实例，包含用户信息
+            task_indices: 要执行的任务索引列表
+            auto_generate: 是否自动生成路径
+            
+        返回：
+            包含 success 和 message 的字典
+            如果存在欠费，还会包含 error_code 和 overdue_accounts
+        """
+        # 步骤1：欠费检查（在启动任务前执行）
+        # 获取当前用户的认证用户名
+        auth_username = getattr(api_instance, 'auth_username', None)
+        
+        # 如果能获取到用户名，进行欠费检查
+        if auth_username:
+            # 加载该用户的所有学校账号
+            accounts = api_instance._load_user_school_accounts(auth_username)
+            
+            # 检查每个账号是否存在欠费
+            overdue_accounts_list = []
+            for school_username in accounts.keys():
+                # 从 INI 文件读取统计数据
+                stats = api_instance._load_school_account_stats_from_ini(school_username)
+                overdue_count = stats.get("overdue_count", 0)
+                
+                # 如果存在欠费，记录到列表中
+                if overdue_count > 0:
+                    overdue_accounts_list.append({
+                        "school_username": school_username,
+                        "overdue_count": overdue_count
+                    })
+            
+            # 如果发现任何账号有欠费，拒绝启动任务
+            if overdue_accounts_list:
+                logging.warning(
+                    f"[欠费检查] 用户 {auth_username} 有 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
+                )
+                return {
+                    "success": False,
+                    "message": "有账号存在欠费，请先缴费",
+                    "error_code": "OVERDUE_PAYMENT",
+                    "overdue_accounts": overdue_accounts_list
+                }
+        
+        # 步骤2：启动任务（没有欠费问题）
         with self.lock:
             task_state = {
                 "session_id": session_id,
