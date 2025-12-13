@@ -24578,430 +24578,482 @@ def start_web_server(args_param):
                 logging.error(f"[支付通知] 缺少必要参数 - 参数: {params}")
                 return "fail"
             
-            # ========== 读取订单信息 ==========
+            # ========== 提取request相关信息（用于异步处理）==========
+            # 注意：在异步线程中，request对象可能不可用
+            # 因此需要在启动异步线程前，提取所有需要的request相关信息
             
-            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+            # 提取客户端IP地址（易支付服务器的IP）
+            # 优先使用environ中的REMOTE_ADDR，如果不存在则使用request.remote_addr
+            notify_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
             
-            # 检查订单是否存在
-            if not os.path.exists(order_file):
-                # ========== 订单不存在：记录日志并尝试从平台查询 ==========
+            # ========== 签名验证通过后立即返回success，避免超时 ==========
+            
+            # 重要说明：
+            # 为了避免易支付平台等待超时（通常15-30秒），我们需要尽快返回响应
+            # 签名验证通过后，立即返回"success"，然后在后台异步处理订单逻辑
+            # 这样可以确保易支付平台及时收到响应，不会重复发送通知
+            
+            logging.info(f"[支付通知] ✅ 签名验证通过，立即返回success - 订单号: {out_trade_no}")
+            
+            # ========== 定义异步处理函数 ==========
+            # 此函数将在独立线程中运行，处理所有耗时的订单逻辑
+            # 包括：查询订单、验证金额、更新状态、执行业务逻辑
+            
+            def process_payment_notify_async():
+                """
+                异步处理支付通知的订单逻辑
                 
-                logging.warning(f"[支付通知] 本地订单不存在 - 订单号: {out_trade_no}")
-                
-                # 记录支付通知日志（即使订单不存在也要记录）
-                # 这对于排查问题和防止丢失通知非常重要
-                _write_payment_log(
-                    user_id="system",                           # 系统记录
-                    order_id=out_trade_no,                      # 商户订单号
-                    action="payment_notify_order_not_found",    # 操作类型：订单不存在
-                    log_data={
-                        # 通知参数
-                        "notify_params": params,                # 完整的通知参数
-                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,       # 通知来源IP
-                        "trade_no": trade_no,                   # 平台订单号
-                        "trade_status": trade_status,           # 支付状态
-                        "money": money,                         # 支付金额
-                        # 操作结果
-                        "success": False,
-                        "message": "本地订单不存在，尝试从平台查询"
-                    }
-                )
-                
-                # 尝试从易支付平台查询订单
-                logging.info(f"[支付通知] 尝试从易支付平台查询订单 - 订单号: {out_trade_no}")
-                
-                query_result = _query_yipay_order(order_id=out_trade_no, trade_no=trade_no)
-                
-                if query_result.get("success"):
-                    # ========== 平台查询成功：创建订单文件 ==========
+                此函数在独立线程中运行，不会阻塞主响应
+                处理内容包括：
+                1. 查询订单文件
+                2. 从平台查询订单（如果本地不存在）
+                3. 验证订单金额
+                4. 更新订单状态
+                5. 写入日志
+                6. 执行业务逻辑（清除欠费、更新可用次数）
+                """
+                try:
+                    logging.info(f"[支付通知-异步] 开始处理订单逻辑 - 订单号: {out_trade_no}")
                     
-                    platform_order = query_result.get("data", {})
+                    # ========== 读取订单信息 ==========
                     
-                    logging.info(f"[支付通知] 从平台查询到订单信息 - 订单号: {out_trade_no}")
+                    order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
                     
-                    # 构造本地订单数据结构
-                    order_data = {
-                        "order_id": out_trade_no,                                    # 商户订单号
-                        "trade_no": trade_no,                                        # 平台订单号
-                        "amount": platform_order.get("money", money),                # 订单金额
-                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称
-                        "username": "unknown",                                       # 用户名（无法从平台获取）
-                        "created_at": platform_order.get("addtime", ""),            # 创建时间
-                        "paid_time": platform_order.get("endtime", ""),             # 支付时间
-                        "param": platform_order.get("param", ""),                    # 业务扩展参数
-                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识
-                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP
-                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号
-                        "pay_type": platform_order.get("type", params.get("type", "")),  # 支付方式
-                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额
-                        # 转换支付状态
-                        "status": _convert_yipay_status(platform_order.get("status", 1)),
-                        "created_from_notify": True,                                  # 标记：从通知创建
-                        "notify_params": params,                                     # 保存通知参数
-                        "synced_from_platform": True,                                # 标记：从平台同步
-                        "synced_at": time.time(),                                    # 同步时间戳
-                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),          # 同步时间（可读）
-                        "platform_data": platform_order                              # 保存完整的平台数据
-                    }
-                    
-                    # 确保订单目录存在
-                    os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-                    
-                    # 保存订单文件
-                    try:
-                        with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2, ensure_ascii=False)
+                    # 检查订单是否存在
+                    if not os.path.exists(order_file):
+                        # ========== 订单不存在：记录日志并尝试从平台查询 ==========
                         
-                        logging.info(f"[支付通知] 订单文件已创建 - 订单号: {out_trade_no}")
+                        logging.warning(f"[支付通知-异步] 本地订单不存在 - 订单号: {out_trade_no}")
                         
-                        # 记录创建订单日志
+                        # 记录支付通知日志（即使订单不存在也要记录）
                         _write_payment_log(
                             user_id="system",
                             order_id=out_trade_no,
-                            action="create_order_from_notify",
+                            action="payment_notify_order_not_found",
                             log_data={
-                                "source": "yipay_notify",
-                                "platform_data": platform_order,
                                 "notify_params": params,
-                                "success": True
+                                "notify_ip": notify_ip,  # 使用预先提取的IP地址
+                                "trade_no": trade_no,
+                                "trade_status": trade_status,
+                                "money": money,
+                                "success": False,
+                                "message": "本地订单不存在，尝试从平台查询"
                             }
                         )
-                    
-                    except Exception as e:
-                        logging.error(f"[支付通知] 创建订单文件失败: {str(e)}")
-                        # 即使保存失败，也继续处理通知（因为已经验证签名）
-                
-                else:
-                    # ========== 平台查询失败：无法补全订单 ==========
-                    
-                    error_msg = query_result.get("message", "查询失败")
-                    logging.error(f"[支付通知] 从平台查询订单失败: {error_msg}")
-                    
-                    # 记录查询失败日志
-                    _write_payment_log(
-                        user_id="system",
-                        order_id=out_trade_no,
-                        action="query_platform_order_failed",
-                        log_data={
-                            "error_message": error_msg,
-                            "notify_params": params,
-                            "success": False
-                        }
-                    )
-                    
-                    # 返回 fail，让易支付继续重试
-                    return "fail"
-                
-                # 如果到这里，说明order_data已经被填充（从平台查询并保存）
-                # 继续执行后续的金额验证和业务逻辑
-            else:
-                # 读取订单数据
-                with open(order_file, "r", encoding="utf-8") as f:
-                    order_data = json.load(f)
-            
-            # ========== 验证订单金额 ==========
-            # 防止支付金额与订单金额不一致的情况
-            
-            try:
-                # 将字符串金额转换为浮点数进行比较
-                # round() 函数保留2位小数，避免浮点数精度问题
-                paid_amount = round(float(money), 2)
-                order_amount = round(float(order_data.get("amount", "0")), 2)
-                
-                # 比较金额是否一致
-                if paid_amount != order_amount:
-                    # 金额不一致，记录错误日志
-                    logging.error(
-                        f"[支付通知] 金额不一致 - 订单: {out_trade_no}, "
-                        f"订单金额: {order_amount}, 支付金额: {paid_amount}"
-                    )
-                    return "fail"
-            except ValueError:
-                # 金额格式错误
-                logging.error(f"[支付通知] 金额格式错误 - 订单: {out_trade_no}, 金额: {money}")
-                return "fail"
-            
-            # ========== 处理支付成功通知 ==========
-            
-            if trade_status == "TRADE_SUCCESS":
-                # ========== 检查订单是否已经支付过（幂等性保护）==========
-                # 这是防止重复处理的核心机制
-                # 场景：易支付可能会多次发送支付成功通知（网络重试、系统重试等）
-                # 我们必须确保即使收到多次通知，也只处理一次业务逻辑
-                
-                if order_data.get("status") == ORDER_STATUS_PAID:
-                    # ========== 订单已支付，这是一个重复通知 ==========
-                    
-                    # 获取当前的通知计数并+1
-                    # 情况1：如果notify_count字段存在，说明之前已经记录过，直接+1
-                    # 情况2：如果notify_count字段不存在，说明这是旧订单（在添加计数功能之前创建的）
-                    #        由于订单status="paid"，说明至少收到过1次通知
-                    #        现在收到重复通知，默认为1，然后+1=2（第2次通知）
-                    notify_count = order_data.get("notify_count", 1) + 1
-                    
-                    # 更新通知计数
-                    order_data["notify_count"] = notify_count
-                    
-                    # 记录最后一次收到通知的时间戳（用于审计和分析）
-                    order_data["last_notify_at"] = time.time()
-                    
-                    # 记录最后一次收到通知的可读时间（便于人工查看）
-                    order_data["last_notify_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
-                    # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(order_data, f, indent=2, ensure_ascii=False)
-                    
-                    # 记录日志：订单已支付，跳过重复处理
-                    logging.info(
-                        f"[支付通知] 订单已支付，跳过处理（重复通知#{notify_count}）- 订单: {out_trade_no}"
-                    )
-                    
-                    # ========== 写入支付操作日志（重复通知）==========
-                    # 虽然不处理业务逻辑，但我们仍然需要记录这次重复通知
-                    # 这对于安全审计和问题排查非常重要
-                    _write_payment_log(
-                        user_id=order_data.get("username", "unknown"),  # 订单所有者
-                        order_id=out_trade_no,                          # 商户订单号
-                        action="payment_duplicate_notify",              # 操作类型：重复通知
-                        log_data={
-                            # 重复通知信息
-                            "notify_count": notify_count,               # 这是第几次通知
-                            "notify_params": params,                    # 本次通知的参数
-                            "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,           # 通知来源IP
-                            "last_notify_at": order_data["last_notify_at"],     # 通知时间戳
-                            "last_notify_time": order_data["last_notify_time"], # 通知时间（可读）
-                            # 订单信息
-                            "order_status": order_data.get("status"),   # 订单状态（应该是paid）
-                            "first_paid_at": order_data.get("paid_at"), # 首次支付时间
-                            "first_paid_time": order_data.get("paid_time"), # 首次支付时间（可读）
-                            # 操作结果
-                            "success": True,
-                            "message": f"重复通知（第{notify_count}次），订单已处理，跳过业务逻辑"
-                        }
-                    )
-                    
-                    # 返回success告诉易支付我们已经收到通知
-                    # 这样易支付就不会继续重试了
-                    return "success"
-                
-                # ========== 首次处理支付通知 ==========
-                # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
-                
-                # 更新订单状态为已支付
-                order_data["status"] = ORDER_STATUS_PAID
-                order_data["trade_no"] = trade_no          # 保存易支付订单号
-                order_data["paid_at"] = time.time()        # 支付时间（时间戳）
-                order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
-                order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
-                
-                # ========== 添加首次处理标记（用于幂等性保护）==========
-                # notify_processed_at: 首次处理通知的时间戳（用于审计）
-                order_data["notify_processed_at"] = time.time()
-                # notify_count: 通知计数，初始值为1（表示这是第一次处理）
-                order_data["notify_count"] = 1
-                
-                # 保存更新后的订单数据
-                with open(order_file, "w", encoding="utf-8") as f:
-                    json.dump(order_data, f, indent=2, ensure_ascii=False)
-                
-                # ========== 写入支付操作日志（支付成功通知） ==========
-                
-                # 记录支付成功的异步通知，这是最重要的支付日志
-                _write_payment_log(
-                    user_id=order_data.get("username", "unknown"),  # 订单所有者
-                    order_id=out_trade_no,                          # 商户订单号
-                    action="payment_success_notify",                # 操作类型：支付成功通知
-                    log_data={
-                        # 支付信息
-                        "trade_no": trade_no,                       # 易支付订单号
-                        "trade_status": trade_status,               # 支付状态
-                        "paid_amount": paid_amount,                 # 实际支付金额
-                        "order_amount": order_amount,               # 订单金额
-                        "pay_type": params.get("type", ""),         # 支付方式
-                        "paid_at": order_data["paid_at"],           # 支付时间戳
-                        "paid_time": order_data["paid_time"],       # 支付时间（可读）
-                        # 通知信息
-                        "notify_params": params,                    # 完整的通知参数
-                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,           # 通知来源IP（易支付服务器IP）
-                        # 订单信息
-                        "product_name": order_data.get("product_name", ""),  # 商品名称
-                        # 操作结果
-                        "success": True,
-                        "message": "支付成功，订单已完成"
-                    }
-                )
-                
-                # 记录日志：支付成功
-                logging.info(
-                    f"[支付通知] 支付成功 - 订单: {out_trade_no}, 用户: {order_data.get('username')}, "
-                    f"金额: {money}元, 易支付订单号: {trade_no}"
-                )
-                
-                # ========== 支付成功后的业务逻辑处理 ==========
-                
-                # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
-                # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
-                if "overdue_accounts" in order_data and "auth_username" in order_data:
-                    # 这是一个欠费补缴订单，需要：
-                    # 1. 增加用户的available_runs
-                    # 2. 清零所有欠费账号的overdue_count
-                    
-                    # 提取订单中保存的用户名
-                    auth_username = order_data.get("auth_username", "")
-                    
-                    # 提取欠费账号列表
-                    # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
-                    overdue_accounts = order_data.get("overdue_accounts", [])
-                    
-                    # 提取总欠费次数（订单创建时已计算好）
-                    total_count = order_data.get("total_count", 0)
-                    
-                    # 验证必要字段是否存在
-                    if auth_username and overdue_accounts and total_count > 0:
-                        try:
-                            # ========== 步骤1：增加用户的available_runs ==========
+                        
+                        # 尝试从易支付平台查询订单
+                        logging.info(f"[支付通知-异步] 尝试从易支付平台查询订单 - 订单号: {out_trade_no}")
+                        
+                        query_result = _query_yipay_order(order_id=out_trade_no, trade_no=trade_no)
+                        
+                        if query_result.get("success"):
+                            # 平台查询成功：创建订单文件
+                            platform_order = query_result.get("data", {})
                             
-                            # 获取用户数据文件路径
-                            user_file = auth_system.get_user_file_path(auth_username)
+                            logging.info(f"[支付通知-异步] 从平台查询到订单信息 - 订单号: {out_trade_no}")
                             
-                            # 检查用户文件是否存在
-                            if os.path.exists(user_file):
-                                # 使用线程锁确保文件操作的原子性（防止并发修改）
-                                with auth_system.lock:
-                                    # 读取用户数据
-                                    with open(user_file, "r", encoding="utf-8") as f:
-                                        user_data = json.load(f)
+                            # 构造本地订单数据结构
+                            order_data = {
+                                "order_id": out_trade_no,
+                                "trade_no": trade_no,
+                                "amount": platform_order.get("money", money),
+                                "product_name": platform_order.get("name", "未知商品"),
+                                "username": "unknown",
+                                "created_at": platform_order.get("addtime", ""),
+                                "paid_time": platform_order.get("endtime", ""),
+                                "param": platform_order.get("param", ""),
+                                "buyer": platform_order.get("buyer", ""),
+                                "clientip": platform_order.get("clientip", ""),
+                                "api_trade_no": platform_order.get("api_trade_no", ""),
+                                "pay_type": platform_order.get("type", params.get("type", "")),
+                                "refundmoney": platform_order.get("refundmoney", "0"),
+                                "status": _convert_yipay_status(platform_order.get("status", 1)),
+                                "created_from_notify": True,
+                                "notify_params": params,
+                                "synced_from_platform": True,
+                                "synced_at": time.time(),
+                                "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                "platform_data": platform_order
+                            }
+                            
+                            # 确保订单目录存在
+                            os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+                            
+                            # 保存订单文件
+                            try:
+                                with open(order_file, "w", encoding="utf-8") as f:
+                                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                                
+                                logging.info(f"[支付通知-异步] 订单文件已创建 - 订单号: {out_trade_no}")
+                                
+                                # 记录创建订单日志
+                                _write_payment_log(
+                                    user_id="system",
+                                    order_id=out_trade_no,
+                                    action="create_order_from_notify",
+                                    log_data={
+                                        "source": "yipay_notify",
+                                        "platform_data": platform_order,
+                                        "notify_params": params,
+                                        "success": True
+                                    }
+                                )
+                            
+                            except Exception as e:
+                                logging.error(f"[支付通知-异步] 创建订单文件失败: {str(e)}")
+                                return
+                        else:
+                            # 平台查询失败：记录日志
+                            error_msg = query_result.get("message", "查询失败")
+                            logging.error(f"[支付通知-异步] 从平台查询订单失败: {error_msg}")
+                            
+                            _write_payment_log(
+                                user_id="system",
+                                order_id=out_trade_no,
+                                action="query_platform_order_failed",
+                                log_data={
+                                    "error_message": error_msg,
+                                    "notify_params": params,
+                                    "success": False
+                                }
+                            )
+                            return
+                    else:
+                        # 读取订单数据
+                        with open(order_file, "r", encoding="utf-8") as f:
+                            order_data = json.load(f)
+                    
+                    # ========== 验证订单金额 ==========
+                    # 防止支付金额与订单金额不一致的情况
+                    
+                    try:
+                        # 将字符串金额转换为浮点数进行比较
+                        # round() 函数保留2位小数，避免浮点数精度问题
+                        paid_amount = round(float(money), 2)
+                        order_amount = round(float(order_data.get("amount", "0")), 2)
+                        
+                        # 比较金额是否一致
+                        if paid_amount != order_amount:
+                            # 金额不一致，记录错误日志
+                            logging.error(
+                                f"[支付通知-异步] 金额不一致 - 订单: {out_trade_no}, "
+                                f"订单金额: {order_amount}, 支付金额: {paid_amount}"
+                            )
+                            return  # 在异步线程中，直接return退出，不返回给易支付
+                    except ValueError:
+                        # 金额格式错误
+                        logging.error(f"[支付通知-异步] 金额格式错误 - 订单: {out_trade_no}, 金额: {money}")
+                        return  # 在异步线程中，直接return退出，不返回给易支付
+                    
+                    # ========== 处理支付成功通知 ==========
+                    
+                    if trade_status == "TRADE_SUCCESS":
+                        # ========== 检查订单是否已经支付过（幂等性保护）==========
+                        # 这是防止重复处理的核心机制
+                        # 场景：易支付可能会多次发送支付成功通知（网络重试、系统重试等）
+                        # 我们必须确保即使收到多次通知，也只处理一次业务逻辑
+                        
+                        if order_data.get("status") == ORDER_STATUS_PAID:
+                            # ========== 订单已支付，这是一个重复通知 ==========
+                            
+                            # 获取当前的通知计数并+1
+                            # 情况1：如果notify_count字段存在，说明之前已经记录过，直接+1
+                            # 情况2：如果notify_count字段不存在，说明这是旧订单（在添加计数功能之前创建的）
+                            #        由于订单status="paid"，说明至少收到过1次通知
+                            #        现在收到重复通知，默认为1，然后+1=2（第2次通知）
+                            notify_count = order_data.get("notify_count", 1) + 1
+                            
+                            # 更新通知计数
+                            order_data["notify_count"] = notify_count
+                            
+                            # 记录最后一次收到通知的时间戳（用于审计和分析）
+                            order_data["last_notify_at"] = time.time()
+                            
+                            # 记录最后一次收到通知的可读时间（便于人工查看）
+                            order_data["last_notify_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                            
+                            # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
+                            # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
+                            with open(order_file, "w", encoding="utf-8") as f:
+                                json.dump(order_data, f, indent=2, ensure_ascii=False)
+                            
+                            # 记录日志：订单已支付，跳过重复处理
+                            logging.info(
+                                f"[支付通知-异步] 订单已支付，跳过处理（重复通知#{notify_count}）- 订单: {out_trade_no}"
+                            )
+                            
+                            # ========== 写入支付操作日志（重复通知）==========
+                            # 虽然不处理业务逻辑，但我们仍然需要记录这次重复通知
+                            # 这对于安全审计和问题排查非常重要
+                            _write_payment_log(
+                                user_id=order_data.get("username", "unknown"),  # 订单所有者
+                                order_id=out_trade_no,                          # 商户订单号
+                                action="payment_duplicate_notify",              # 操作类型：重复通知
+                                log_data={
+                                    # 重复通知信息
+                                    "notify_count": notify_count,               # 这是第几次通知
+                                    "notify_params": params,                    # 本次通知的参数
+                                    "notify_ip": notify_ip,                     # 使用预先提取的IP地址
+                                    "last_notify_at": order_data["last_notify_at"],     # 通知时间戳
+                                    "last_notify_time": order_data["last_notify_time"], # 通知时间（可读）
+                                    # 订单信息
+                                    "order_status": order_data.get("status"),   # 订单状态（应该是paid）
+                                    "first_paid_at": order_data.get("paid_at"), # 首次支付时间
+                                    "first_paid_time": order_data.get("paid_time"), # 首次支付时间（可读）
+                                    # 操作结果
+                                    "success": True,
+                                    "message": f"重复通知（第{notify_count}次），订单已处理，跳过业务逻辑"
+                                }
+                            )
+                            
+                            # 在异步线程中，不需要返回给易支付，直接return退出函数
+                            return
+                        
+                        # ========== 首次处理支付通知 ==========
+                        # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
+                        
+                        # 更新订单状态为已支付
+                        order_data["status"] = ORDER_STATUS_PAID
+                        order_data["trade_no"] = trade_no          # 保存易支付订单号
+                        order_data["paid_at"] = time.time()        # 支付时间（时间戳）
+                        order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
+                        order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
+                        
+                        # ========== 添加首次处理标记（用于幂等性保护）==========
+                        # notify_processed_at: 首次处理通知的时间戳（用于审计）
+                        order_data["notify_processed_at"] = time.time()
+                        # notify_count: 通知计数，初始值为1（表示这是第一次处理）
+                        order_data["notify_count"] = 1
+                        
+                        # 保存更新后的订单数据
+                        with open(order_file, "w", encoding="utf-8") as f:
+                            json.dump(order_data, f, indent=2, ensure_ascii=False)
+                        
+                        # ========== 写入支付操作日志（支付成功通知） ==========
+                        
+                        # 记录支付成功的异步通知，这是最重要的支付日志
+                        _write_payment_log(
+                            user_id=order_data.get("username", "unknown"),  # 订单所有者
+                            order_id=out_trade_no,                          # 商户订单号
+                            action="payment_success_notify",                # 操作类型：支付成功通知
+                            log_data={
+                                # 支付信息
+                                "trade_no": trade_no,                       # 易支付订单号
+                                "trade_status": trade_status,               # 支付状态
+                                "paid_amount": paid_amount,                 # 实际支付金额
+                                "order_amount": order_amount,               # 订单金额
+                                "pay_type": params.get("type", ""),         # 支付方式
+                                "paid_at": order_data["paid_at"],           # 支付时间戳
+                                "paid_time": order_data["paid_time"],       # 支付时间（可读）
+                                # 通知信息
+                                "notify_params": params,                    # 完整的通知参数
+                                "notify_ip": notify_ip,                     # 使用预先提取的IP地址
+                                # 订单信息
+                                "product_name": order_data.get("product_name", ""),  # 商品名称
+                                # 操作结果
+                                "success": True,
+                                "message": "支付成功，订单已完成"
+                            }
+                        )
+                        
+                        # 记录日志：支付成功
+                        logging.info(
+                            f"[支付通知-异步] 支付成功 - 订单: {out_trade_no}, 用户: {order_data.get('username')}, "
+                            f"金额: {money}元, 易支付订单号: {trade_no}"
+                        )
+                        
+                        # ========== 支付成功后的业务逻辑处理 ==========
+                        
+                        # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
+                        # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
+                        if "overdue_accounts" in order_data and "auth_username" in order_data:
+                            # 这是一个欠费补缴订单，需要：
+                            # 1. 增加用户的available_runs
+                            # 2. 清零所有欠费账号的overdue_count
+                            
+                            # 提取订单中保存的用户名
+                            auth_username = order_data.get("auth_username", "")
+                            
+                            # 提取欠费账号列表
+                            # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
+                            overdue_accounts = order_data.get("overdue_accounts", [])
+                            
+                            # 提取总欠费次数（订单创建时已计算好）
+                            total_count = order_data.get("total_count", 0)
+                            
+                            # 验证必要字段是否存在
+                            if auth_username and overdue_accounts and total_count > 0:
+                                try:
+                                    # ========== 步骤1：增加用户的available_runs ==========
                                     
-                                    # 获取当前的available_runs值
-                                    # 如果字段不存在，默认为0
-                                    current_runs = user_data.get("available_runs", 0)
+                                    # 获取用户数据文件路径
+                                    user_file = auth_system.get_user_file_path(auth_username)
                                     
-                                    # 增加available_runs：当前值 + 总欠费次数
-                                    # 例如：当前剩余5次，补缴了8次欠费，更新后为13次
-                                    new_runs = current_runs + total_count
-                                    user_data["available_runs"] = new_runs
+                                    # 检查用户文件是否存在
+                                    if os.path.exists(user_file):
+                                        # 使用线程锁确保文件操作的原子性（防止并发修改）
+                                        with auth_system.lock:
+                                            # 读取用户数据
+                                            with open(user_file, "r", encoding="utf-8") as f:
+                                                user_data = json.load(f)
+                                            
+                                            # 获取当前的available_runs值
+                                            # 如果字段不存在，默认为0
+                                            current_runs = user_data.get("available_runs", 0)
+                                            
+                                            # 增加available_runs：当前值 + 总欠费次数
+                                            # 例如：当前剩余5次，补缴了8次欠费，更新后为13次
+                                            new_runs = current_runs + total_count
+                                            user_data["available_runs"] = new_runs
+                                            
+                                            # 将更新后的用户数据写回文件
+                                            with open(user_file, "w", encoding="utf-8") as f:
+                                                json.dump(user_data, f, indent=2, ensure_ascii=False)
+                                            
+                                            # 记录日志：available_runs更新成功
+                                            logging.info(
+                                                f"[欠费支付-异步] available_runs更新成功 - 用户: {auth_username}, "
+                                                f"原值: {current_runs}, 增加: {total_count}, 新值: {new_runs}"
+                                            )
+                                    else:
+                                        # 用户文件不存在（异常情况）
+                                        logging.error(
+                                            f"[欠费支付-异步] 用户文件不存在，无法更新available_runs - 用户: {auth_username}"
+                                        )
                                     
-                                    # 将更新后的用户数据写回文件
-                                    with open(user_file, "w", encoding="utf-8") as f:
-                                        json.dump(user_data, f, indent=2, ensure_ascii=False)
+                                    # ========== 步骤2：清零所有欠费账号的overdue_count ==========
                                     
-                                    # 记录日志：available_runs更新成功
+                                    # 遍历所有欠费账号
+                                    for account in overdue_accounts:
+                                        # 提取学校账号用户名
+                                        school_username = account.get("school_username", "")
+                                        
+                                        # 验证学校账号用户名是否有效
+                                        if not school_username:
+                                            # 如果用户名为空，跳过该账号
+                                            continue
+                                        
+                                        # 调用auth_system的update_school_account_overdue_count方法
+                                        # 该方法用于更新学校账号的overdue_count字段
+                                        # 第三个参数传入0，表示将欠费次数清零
+                                        result = auth_system.update_school_account_overdue_count(
+                                            auth_username,      # 用户名
+                                            school_username,    # 学校账号用户名
+                                            0                   # 新的overdue_count值（清零）
+                                        )
+                                        
+                                        # 检查更新是否成功
+                                        if result.get("success"):
+                                            # 更新成功，记录日志
+                                            logging.info(
+                                                f"[欠费支付-异步] 清零欠费成功 - 用户: {auth_username}, "
+                                                f"学校账号: {school_username}"
+                                            )
+                                        else:
+                                            # 更新失败，记录错误日志（但不影响后续处理）
+                                            logging.error(
+                                                f"[欠费支付-异步] 清零欠费失败 - 用户: {auth_username}, "
+                                                f"学校账号: {school_username}, 错误: {result.get('message')}"
+                                            )
+                                    
+                                    # ========== 步骤3：记录欠费支付成功日志 ==========
+                                    
+                                    _write_payment_log(
+                                        user_id=auth_username,
+                                        order_id=out_trade_no,
+                                        action="overdue_payment_completed",  # 操作类型：欠费支付完成
+                                        log_data={
+                                            "total_count": total_count,
+                                            "overdue_accounts": overdue_accounts,
+                                            "available_runs_updated": True,
+                                            "overdue_cleared": True,
+                                            "trade_no": trade_no,
+                                            "paid_amount": paid_amount
+                                        }
+                                    )
+                                    
+                                    # 记录总结日志
                                     logging.info(
-                                        f"[欠费支付] available_runs更新成功 - 用户: {auth_username}, "
-                                        f"原值: {current_runs}, 增加: {total_count}, 新值: {new_runs}"
+                                        f"[欠费支付-异步] 欠费补缴处理完成 - 用户: {auth_username}, "
+                                        f"已增加available_runs: {total_count} 次, "
+                                        f"已清零 {len(overdue_accounts)} 个学校账号的欠费"
+                                    )
+                                
+                                except Exception as e:
+                                    # 捕获欠费处理过程中的异常
+                                    # 即使处理失败，也不影响异步线程的执行
+                                    # 但需要记录详细的错误日志，便于人工介入处理
+                                    logging.error(
+                                        f"[欠费支付-异步] 处理欠费补缴异常 - 用户: {auth_username}, "
+                                        f"订单: {out_trade_no}, 错误: {str(e)}"
+                                    )
+                                    logging.error(traceback.format_exc())
+                                    
+                                    # 记录错误日志到支付操作日志
+                                    _write_payment_log(
+                                        user_id=auth_username,
+                                        order_id=out_trade_no,
+                                        action="overdue_payment_error",
+                                        log_data={
+                                            "error": str(e),
+                                            "traceback": traceback.format_exc(),
+                                            "overdue_accounts": overdue_accounts
+                                        }
                                     )
                             else:
-                                # 用户文件不存在（异常情况）
-                                logging.error(
-                                    f"[欠费支付] 用户文件不存在，无法更新available_runs - 用户: {auth_username}"
+                                # 订单数据不完整（异常情况）
+                                logging.warning(
+                                    f"[欠费支付-异步] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
+                                    f"auth_username: {auth_username}, total_count: {total_count}"
                                 )
-                            
-                            # ========== 步骤2：清零所有欠费账号的overdue_count ==========
-                            
-                            # 遍历所有欠费账号
-                            for account in overdue_accounts:
-                                # 提取学校账号用户名
-                                school_username = account.get("school_username", "")
-                                
-                                # 验证学校账号用户名是否有效
-                                if not school_username:
-                                    # 如果用户名为空，跳过该账号
-                                    continue
-                                
-                                # 调用auth_system的update_school_account_overdue_count方法
-                                # 该方法用于更新学校账号的overdue_count字段
-                                # 第三个参数传入0，表示将欠费次数清零
-                                result = auth_system.update_school_account_overdue_count(
-                                    auth_username,      # 用户名
-                                    school_username,    # 学校账号用户名
-                                    0                   # 新的overdue_count值（清零）
-                                )
-                                
-                                # 检查更新是否成功
-                                if result.get("success"):
-                                    # 更新成功，记录日志
-                                    logging.info(
-                                        f"[欠费支付] 清零欠费成功 - 用户: {auth_username}, "
-                                        f"学校账号: {school_username}"
-                                    )
-                                else:
-                                    # 更新失败，记录错误日志（但不影响后续处理）
-                                    logging.error(
-                                        f"[欠费支付] 清零欠费失败 - 用户: {auth_username}, "
-                                        f"学校账号: {school_username}, 错误: {result.get('message')}"
-                                    )
-                            
-                            # ========== 步骤3：记录欠费支付成功日志 ==========
-                            
-                            _write_payment_log(
-                                user_id=auth_username,
-                                order_id=out_trade_no,
-                                action="overdue_payment_completed",  # 操作类型：欠费支付完成
-                                log_data={
-                                    "total_count": total_count,
-                                    "overdue_accounts": overdue_accounts,
-                                    "available_runs_updated": True,
-                                    "overdue_cleared": True,
-                                    "trade_no": trade_no,
-                                    "paid_amount": paid_amount
-                                }
-                            )
-                            
-                            # 记录总结日志
-                            logging.info(
-                                f"[欠费支付] 欠费补缴处理完成 - 用户: {auth_username}, "
-                                f"已增加available_runs: {total_count} 次, "
-                                f"已清零 {len(overdue_accounts)} 个学校账号的欠费"
-                            )
                         
-                        except Exception as e:
-                            # 捕获欠费处理过程中的异常
-                            # 即使处理失败，也要返回success给支付平台（防止重复通知）
-                            # 但需要记录详细的错误日志，便于人工介入处理
-                            logging.error(
-                                f"[欠费支付] 处理欠费补缴异常 - 用户: {auth_username}, "
-                                f"订单: {out_trade_no}, 错误: {str(e)}"
-                            )
-                            logging.error(traceback.format_exc())
-                            
-                            # 记录错误日志到支付操作日志
-                            _write_payment_log(
-                                user_id=auth_username,
-                                order_id=out_trade_no,
-                                action="overdue_payment_error",
-                                log_data={
-                                    "error": str(e),
-                                    "traceback": traceback.format_exc(),
-                                    "overdue_accounts": overdue_accounts
-                                }
-                            )
+                        # 异步处理完成，不需要返回值
+                        logging.info(f"[支付通知-异步] 订单处理完成 - 订单号: {out_trade_no}")
+                        return
                     else:
-                        # 订单数据不完整（异常情况）
-                        logging.warning(
-                            f"[欠费支付] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
-                            f"auth_username: {auth_username}, total_count: {total_count}"
-                        )
+                        # 其他支付状态（如支付失败、已关闭等）
+                        logging.warning(f"[支付通知-异步] 非成功状态 - 订单: {out_trade_no}, 状态: {trade_status}")
+                        
+                        # 可以根据状态更新订单状态
+                        if trade_status == "TRADE_CLOSED":
+                            order_data["status"] = ORDER_STATUS_FAILED
+                            with open(order_file, "w", encoding="utf-8") as f:
+                                json.dump(order_data, f, indent=2, ensure_ascii=False)
+                        
+                        # 异步处理完成
+                        return
                 
-                # 返回 success，告知易支付不要再次通知
-                # 无论业务逻辑是否成功，都要返回success（幂等性原则）
-                return "success"
-            else:
-                # 其他支付状态（如支付失败、已关闭等）
-                logging.warning(f"[支付通知] 非成功状态 - 订单: {out_trade_no}, 状态: {trade_status}")
-                
-                # 可以根据状态更新订单状态
-                if trade_status == "TRADE_CLOSED":
-                    order_data["status"] = ORDER_STATUS_FAILED
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(order_data, f, indent=2, ensure_ascii=False)
-                
-                return "success"
+                except Exception as e:
+                    # 捕获异步处理过程中的所有异常
+                    # 异常不会影响主响应（已经返回success给易支付）
+                    # 但需要记录详细的错误日志，便于排查问题
+                    logging.error(f"[支付通知-异步] 处理订单逻辑异常: {str(e)}")
+                    logging.error(traceback.format_exc())
+            
+            # ========== 启动异步线程处理订单逻辑 ==========
+            
+            # 导入threading模块（用于创建后台线程）
+            import threading
+            
+            # 创建后台线程，执行process_payment_notify_async函数
+            # daemon=True: 设置为守护线程，当主程序退出时，守护线程会自动结束
+            # 这样可以确保程序正常退出，不会因为后台线程而挂起
+            thread = threading.Thread(target=process_payment_notify_async, daemon=True)
+            
+            # 启动线程（开始异步处理订单逻辑）
+            thread.start()
+            
+            # 记录日志：异步线程已启动
+            logging.info(f"[支付通知] 异步线程已启动 - 订单号: {out_trade_no}")
+            
+            # ========== 立即返回success，不等待异步处理完成 ==========
+            # 这是本次修改的核心：确保易支付平台在超时时间内收到响应
+            return "success"
         
         except Exception as e:
-            # 捕获所有异常
-            logging.error(f"[支付通知] 处理异步通知异常: {str(e)}")
+            # 捕获主流程中的所有异常（签名验证前的异常）
+            # 这些异常发生在返回success之前，需要返回fail让易支付重试
+            logging.error(f"[支付通知] 处理支付通知异常: {str(e)}")
             logging.error(traceback.format_exc())
             return "fail"  # 返回 fail，让易支付重试
 
