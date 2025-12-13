@@ -9165,6 +9165,49 @@ class Api:
     def start_single_run(self):
         """开始执行单个任务"""
         logging.info("API调用: start_single_run - 开始执行单个任务")
+        
+        # ============================================================
+        # [安全加固] 欠费检查：防止单账号模式绕过欠费限制
+        # ============================================================
+        # 检查当前是否已登录学校账号
+        # 这一步骤确保只有无欠费的账号才能启动任务，防止欠费用户通过单账号模式绕过限制
+        if self.user_data and self.user_data.username:
+            # 获取当前登录的学校账号用户名
+            school_username = self.user_data.username
+            
+            # 从 INI 文件读取该账号的欠费统计数据
+            # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
+            stats = self._load_school_account_stats_from_ini(school_username)
+            overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
+            
+            # 如果存在欠费（overdue_count > 0），拒绝启动任务
+            # 这是关键的安全检查点，防止欠费用户继续使用服务
+            if overdue_count > 0:
+                logging.warning(
+                    f"[欠费检查] 账号 {school_username} 存在欠费 ({overdue_count} 次)，拒绝启动单个任务"
+                )
+                # 返回错误信息，包含欠费详情
+                return {
+                    "success": False,  # 操作失败
+                    "message": "当前账号存在欠费，请先缴费后再启动任务",  # 用户友好的错误提示
+                    "error_code": "OVERDUE_PAYMENT",  # 错误代码，前端可以据此做特殊处理
+                    "overdue_accounts": [  # 欠费账号列表（单账号模式下只有一个）
+                        {
+                            "school_username": school_username,  # 欠费账号的用户名
+                            "overdue_count": overdue_count  # 欠费次数
+                        }
+                    ]
+                }
+        else:
+            # 如果没有登录或无用户信息，也应该拒绝启动任务
+            # 这是另一层安全保障，防止未认证用户启动任务
+            logging.warning("[欠费检查] 未登录或无用户信息，拒绝启动任务")
+            return {
+                "success": False,
+                "message": "请先登录后再启动任务"
+            }
+        
+        # 通过欠费检查后，继续执行原有的任务启动逻辑
         if not self.stop_run_flag.is_set():
             return {"success": False, "message": "已有任务在运行"}
         if (
@@ -9788,6 +9831,49 @@ class Api:
         logging.info(
             f"API CALL: start_all_runs (ignore_completed={ignore_completed}, auto_generate={auto_generate})"
         )
+        
+        # ============================================================
+        # [安全加固] 欠费检查：防止单账号模式绕过欠费限制
+        # ============================================================
+        # 检查当前是否已登录学校账号
+        # 这一步骤确保只有无欠费的账号才能批量启动所有任务，防止欠费用户通过单账号模式绕过限制
+        if self.user_data and self.user_data.username:
+            # 获取当前登录的学校账号用户名
+            school_username = self.user_data.username
+            
+            # 从 INI 文件读取该账号的欠费统计数据
+            # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
+            stats = self._load_school_account_stats_from_ini(school_username)
+            overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
+            
+            # 如果存在欠费（overdue_count > 0），拒绝启动所有任务
+            # 这是关键的安全检查点，防止欠费用户批量启动任务继续使用服务
+            if overdue_count > 0:
+                logging.warning(
+                    f"[欠费检查] 账号 {school_username} 存在欠费 ({overdue_count} 次)，拒绝启动所有任务"
+                )
+                # 返回错误信息，包含欠费详情
+                return {
+                    "success": False,  # 操作失败
+                    "message": "当前账号存在欠费，请先缴费后再启动任务",  # 用户友好的错误提示
+                    "error_code": "OVERDUE_PAYMENT",  # 错误代码，前端可以据此做特殊处理
+                    "overdue_accounts": [  # 欠费账号列表（单账号模式下只有一个）
+                        {
+                            "school_username": school_username,  # 欠费账号的用户名
+                            "overdue_count": overdue_count  # 欠费次数
+                        }
+                    ]
+                }
+        else:
+            # 如果没有登录或无用户信息，也应该拒绝启动任务
+            # 这是另一层安全保障，防止未认证用户启动任务
+            logging.warning("[欠费检查] 未登录或无用户信息，拒绝启动所有任务")
+            return {
+                "success": False,
+                "message": "请先登录后再启动任务"
+            }
+        
+        # 通过欠费检查后，继续执行原有的任务启动逻辑
         if not self.stop_run_flag.is_set():
             return {"success": False, "message": "已有任务在运行"}
 
@@ -30247,27 +30333,87 @@ def start_web_server(args_param):
     def payment_methods_config():
         """
         获取支付方式配置接口
+        
+        功能说明：
+        此接口返回支付方式的完整配置信息和当前启用的支付方式列表。
+        
+        返回数据格式：
+        {
+            "success": true,
+            "methods": {
+                "alipay": {"name": "支付宝", "svg": "...", ...},
+                "wxpay": {"name": "微信支付", "svg": "...", ...},
+                ...
+            },
+            "enabled_methods": ["alipay", "wxpay", ...]
+        }
         """
         try:
-            # 调用 _read_payment_methods_config() 函数从 JSON 文件读取配置
-            # 此函数会自动处理文件不存在、格式错误等异常情况，并返回默认配置
+            # ========== 第1步：读取支付方式的完整配置信息 ==========
+            # 调用 _read_payment_methods_config() 函数从 payment_methods.json 文件读取配置
+            # 此函数返回所有支付方式的详细配置（名称、SVG图标、颜色等）
+            # 如果文件不存在或读取失败，函数会自动返回默认配置
             methods_config = _read_payment_methods_config()
 
             # 记录日志，便于调试和监控
-            # 输出当前读取到的支付方式数量
+            # 输出当前读取到的支付方式总数
             logging.info(f"[支付方式配置] 成功读取配置，共 {len(methods_config)} 个支付方式")
 
-            # 返回成功响应，包含所有支付方式的配置信息
-            # 前端可以直接使用这个字典，无需再次解析
+            # ========== 第2步：从 config.ini 读取启用的支付方式列表 ==========
+            # 启用状态存储在 config.ini 文件的 [Rainbow_YiPay] 节中
+            # 配置格式为逗号分隔的字符串，例如："alipay,wxpay"
+            
+            # 创建配置解析器对象
+            config = configparser.ConfigParser()
+            
+            # 读取配置文件
+            # encoding="utf-8" 确保正确读取中文内容
+            config.read("config.ini", encoding="utf-8")
+            
+            # 获取启用的支付方式配置
+            # fallback 参数指定默认值："alipay,wxpay"（当配置项不存在时使用）
+            enabled_methods_str = config.get(
+                "Rainbow_YiPay",
+                "enabled_payment_methods",
+                fallback="alipay,wxpay"
+            ).strip()
+            
+            # 将逗号分隔的字符串转换为列表
+            # 使用列表推导式处理字符串：
+            # 1. split(",") 按逗号分割
+            # 2. method.strip() 去除空格
+            # 3. if method.strip() 过滤空字符串
+            enabled_methods = [
+                method.strip() 
+                for method in enabled_methods_str.split(",") 
+                if method.strip()
+            ]
+            
+            # 如果解析结果为空，使用默认列表
+            if not enabled_methods:
+                enabled_methods = ["alipay", "wxpay"]
+                logging.warning(
+                    f"[支付方式配置] config.ini中未配置启用的支付方式，使用默认值: {enabled_methods}"
+                )
+            
+            # 记录当前启用的支付方式
+            logging.info(f"[支付方式配置] 当前启用的支付方式: {enabled_methods}")
+
+            # ========== 第3步：返回完整的配置信息 ==========
+            # 返回成功响应，包含完整配置和启用列表
+            # 前端可以根据需要使用这两个字段
             return jsonify({
                 "success": True,  # 标识请求成功
-                "methods": methods_config  # 支付方式配置字典
+                "methods": methods_config,  # 所有支付方式的完整配置信息
+                "enabled_methods": enabled_methods  # 当前启用的支付方式列表
             })
+            
         except Exception as e:
-            # 捕获所有可能的异常（虽然 _read_payment_methods_config 已经处理了大部分异常）
+            # 捕获所有可能的异常
             # 记录错误日志，包含完整的异常堆栈，便于排查问题
             logging.error(f"[支付方式配置] 读取配置失败: {str(e)}")
             logging.error(traceback.format_exc())
+            
             # 返回错误响应，HTTP状态码 500 表示服务器内部错误
             return jsonify({
                 "success": False,  # 标识请求失败
@@ -30976,11 +31122,11 @@ def start_web_server(args_param):
                 "clientip": clientip,
             }
 
-            if auth_code is not None:
+            if auth_code is not None and auth_code != "":
                 yipay_client_data["auth_code"] = auth_code
-            if sub_openid is not None:
+            if sub_openid is not None and sub_openid != "":
                 yipay_client_data["sub_openid"] = sub_openid
-            if sub_appid is not None:
+            if sub_appid is not None and sub_appid != "":
                 yipay_client_data["sub_appid"] = sub_appid
 
             logging.debug(
@@ -31368,6 +31514,102 @@ def start_web_server(args_param):
             # .get() 方法如果键不存在返回空列表 []
             overdue_accounts = data.get("overdue_accounts", [])
 
+            # ========== 提取并验证支付方式（pay_type） ==========
+
+            # 提取支付方式参数
+            # 用户可以选择：alipay（支付宝）、wxpay（微信）、qqpay（QQ钱包）等
+            # 如果前端未传递此参数，默认使用支付宝
+            pay_type = data.get("pay_type", "alipay")
+
+            # ========== 从配置文件读取启用的支付方式列表 ==========
+            # 启用的支付方式列表存储在 config.ini 文件的 [Rainbow_YiPay] 节中
+            # 配置格式为逗号分隔的字符串，例如："alipay,wxpay,bank"
+            try:
+                # 创建配置解析器对象
+                # ConfigParser 是 Python 标准库中用于读取 INI 格式配置文件的类
+                config = configparser.ConfigParser()
+                
+                # 读取配置文件
+                # encoding="utf-8" 确保正确读取中文内容
+                config.read("config.ini", encoding="utf-8")
+                
+                # 获取启用的支付方式配置
+                # config.get() 方法从指定节（Rainbow_YiPay）获取指定键（enabled_payment_methods）的值
+                # fallback 参数指定默认值："alipay,wxpay"（当配置项不存在时使用）
+                enabled_methods_str = config.get(
+                    "Rainbow_YiPay",
+                    "enabled_payment_methods",
+                    fallback="alipay,wxpay"
+                ).strip()
+                
+                # 将逗号分隔的字符串转换为列表
+                # 使用列表推导式（List Comprehension）处理字符串：
+                # 1. split(",") 按逗号分割字符串
+                # 2. method.strip() 去除每个元素的前后空格
+                # 3. if method.strip() 过滤掉空字符串
+                # 例如："alipay, wxpay, " -> ["alipay", "wxpay"]
+                enabled_methods = [
+                    method.strip() 
+                    for method in enabled_methods_str.split(",") 
+                    if method.strip()
+                ]
+                
+                # 记录读取到的启用支付方式
+                # 这有助于调试和审计
+                logging.info(
+                    f"[欠费支付] 从config.ini读取到 {len(enabled_methods)} 个启用的支付方式: {enabled_methods}"
+                )
+                
+                # 如果配置为空或解析失败，使用默认的支付方式列表
+                # 这是一个回退机制，确保系统始终有可用的支付方式
+                if not enabled_methods:
+                    enabled_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
+                    logging.warning(
+                        f"[欠费支付] config.ini中没有配置启用的支付方式，使用默认列表: {enabled_methods}"
+                    )
+                
+                # ========== 验证用户选择的支付方式是否在启用列表中 ==========
+                # 使用 in 操作符检查 pay_type 是否在 enabled_methods 列表中
+                if pay_type not in enabled_methods:
+                    # 用户选择的支付方式未启用，记录警告日志
+                    # 这可能是因为：
+                    # 1. 前端缓存了旧的支付方式列表
+                    # 2. 用户篡改了请求数据
+                    # 3. 管理员刚刚禁用了该支付方式
+                    logging.warning(
+                        f"[欠费支付] 收到未启用的支付方式: {pay_type}，"
+                        f"已启用的支付方式: {enabled_methods}，将使用第一个启用的支付方式"
+                    )
+                    
+                    # 自动切换到启用列表中的第一个支付方式
+                    # 这是一个友好的回退机制，避免直接返回错误
+                    # 如果启用列表为空（理论上不可能，因为上面有回退逻辑），则使用 "alipay"
+                    pay_type = enabled_methods[0] if enabled_methods else "alipay"
+                    
+                    # 记录最终使用的支付方式
+                    logging.info(
+                        f"[欠费支付] 已自动切换到支付方式: {pay_type}"
+                    )
+                    
+            except Exception as e:
+                # 捕获所有异常（文件读取错误、配置解析错误等）
+                # 这确保即使配置文件有问题，系统也能继续运行
+                logging.error(f"[欠费支付] 读取config.ini配置失败: {str(e)}")
+                logging.error(traceback.format_exc())
+                
+                # 出错时使用默认的支付方式验证逻辑
+                # 使用硬编码的默认支付方式列表作为最后的回退方案
+                default_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
+                if pay_type not in default_methods:
+                    logging.warning(
+                        f"[欠费支付] 支付方式 {pay_type} 不在默认列表中，强制使用 alipay"
+                    )
+                    pay_type = "alipay"
+
+            # 记录用户最终使用的支付方式（用于调试和统计）
+            # 这条日志会出现在每次支付订单创建时
+            logging.info(f"[欠费支付] 用户选择的支付方式: {pay_type}")
+
             # 验证欠费账号列表是否为空
             # 如果列表为空或不是列表类型，返回错误
             if not overdue_accounts or not isinstance(overdue_accounts, list):
@@ -31379,13 +31621,13 @@ def start_web_server(args_param):
             # 获取当前登录用户的用户名
             # g.user 是由 @login_required 装饰器在请求上下文中设置的
             # 包含当前登录用户的完整信息
-            auth_username = g.user.get("auth_username", "")
+            auth_username = g.user
 
             # ========== 步骤2：验证欠费账号是否属于当前用户 ==========
 
             # 调用 auth_system.get_school_accounts() 获取当前用户的所有学校账号
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
-            user_school_accounts = auth_system.get_school_accounts(
+            user_school_accounts = g.api_instance._load_user_school_accounts(
                 auth_username)
 
             # 验证每个欠费账号是否属于当前用户
@@ -31470,15 +31712,15 @@ def start_web_server(args_param):
 
             # 计算总金额：总欠费次数 × 单次费用
             # round(..., 2) 保留2位小数
-            total_amount = round(total_overdue_count * single_run_cost, 2)
+            amount_old = round(total_overdue_count * single_run_cost, 2)
 
             # 验证总金额是否合理（必须大于0）
-            if total_amount <= 0:
+            if amount_old <= 0:
                 return jsonify({
                     "success": False,
                     "message": "支付金额必须大于0"
                 })
-
+            amount = f"{amount_old:.2f}"  # 格式化为字符串，保留2位小数
             # ========== 步骤6：生成唯一订单号 ==========
 
             # 订单号格式：YYYYMMDD + 15位随机数字
@@ -31496,24 +31738,15 @@ def start_web_server(args_param):
             date_part = datetime.datetime.now().strftime('%Y%m%d')
 
             # 拼接订单号：日期 + 随机数
-            out_trade_no = date_part + random_part
+            out_trade_no = f"ORDER{time.strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"
 
             # ========== 步骤7：判断设备类型（根据User-Agent） ==========
 
-            # 获取请求头中的User-Agent字符串
-            # request.user_agent 是Flask提供的UserAgent对象
-            # .string 属性返回原始的User-Agent字符串
-            ua_string = request.user_agent.string or ""
-
-            # 将User-Agent转换为小写，方便后续判断
-            ua_lower = ua_string.lower()
-
-            # 根据User-Agent关键词判断设备类型
-            # 移动设备通常包含 "mobile"、"android"、"iphone" 等关键词
-            if "mobile" in ua_lower or "android" in ua_lower or "iphone" in ua_lower:
-                device = "mobile"  # 移动设备
-            else:
-                device = "pc"      # PC设备
+            device = data.get("device", "").strip()
+            
+            payment_type= data.get("payment_type", "web").strip()
+            
+            payment_method=pay_type
 
             # ========== 步骤8：获取客户端IP地址 ==========
 
@@ -31526,8 +31759,7 @@ def start_web_server(args_param):
 
             # 从配置文件读取app_host（应用访问域名）
             # app_host是本应用的公网访问地址，用于构造回调URL
-            app_host = config.get(
-                "Rainbow_YiPay", "app_host", fallback="").strip()
+            app_host = data.get("app_host", "").strip()
 
             # 验证app_host是否配置
             if not app_host:
@@ -31545,7 +31777,13 @@ def start_web_server(args_param):
 
             # 构造同步返回URL（用户支付完成后浏览器跳转的地址）
             # 这里使用前端主页作为返回地址（可根据需求修改）
-            return_url = f"{app_host}/"
+            return_url = data.get("return_url", "").strip()
+            
+            sub_openid=data.get("sub_openid","").strip()
+            
+            sub_appid=data.get("sub_appid","").strip()
+            
+            auth_code=data.get("auth_code","").strip()
 
             # ========== 步骤10：创建彩虹易支付订单 ==========
 
@@ -31557,17 +31795,55 @@ def start_web_server(args_param):
             #   - out_trade_no: 商户订单号（唯一标识）
             #   - name: 商品名称（显示在支付页面）
             #   - money: 支付金额（单位：元）
-            #   - pay_type: 支付方式（默认支付宝）
+            #   - pay_type: 支付方式（用户选择的支付方式：alipay/wxpay/qqpay等）
             #   - return_url: 同步返回URL
-            result = yipay_client.create_order(
-                out_trade_no=out_trade_no,
-                name=product_name,
-                money=str(total_amount),
-                pay_type="alipay",  # 默认使用支付宝（可扩展为支持用户选择）
-                return_url=return_url
-            )
+            
+            data_need_to_pay = {
+                "out_trade_no": out_trade_no,
+                "name": product_name,
+                "money": amount,
+                "pay_type": pay_type,
+                "return_url": return_url,
+                "client_app_host": app_host,
+                "device_get": device,
+                "payment_type": payment_type,
+                "clientip": clientip,
+            }
+
+            if auth_code is not None and auth_code != "":
+                data_need_to_pay["auth_code"] = auth_code
+            if sub_openid is not None and sub_openid != "":
+                data_need_to_pay["sub_openid"] = sub_openid
+            if sub_appid is not None and sub_appid != "":
+                data_need_to_pay["sub_appid"] = sub_appid
+            
+            
+            
+            
+            result = yipay_client.create_order(**data_need_to_pay)
+
+            # ========== 步骤10.1：验证返回值类型 ==========
+            
+            # 检查返回值的类型，防止出现 'str' object has no attribute 'get' 错误
+            # 正常情况下，yipay_client.create_order() 应该返回字典类型
+            # 但在某些错误情况下（如网络异常、配置错误），可能返回字符串类型的错误信息
+            if not isinstance(result, dict):
+                # 如果返回值不是字典类型，说明发生了异常
+                # 记录详细的错误日志，包含返回值的类型和内容，便于调试
+                logging.error(
+                    f"[欠费支付] create_order 返回值类型错误: "
+                    f"期望dict, 实际{type(result).__name__}, 值: {result}"
+                )
+                
+                # 返回友好的错误信息给前端
+                # 将返回值转换为字符串，方便用户查看具体错误
+                return jsonify({
+                    "success": False,
+                    "message": f"创建支付订单失败: {str(result)}"
+                })
 
             # 检查订单创建是否成功
+            # 此时已确保 result 是字典类型，可以安全调用 .get() 方法
             if not result.get("success"):
                 # 如果失败，返回错误信息
                 logging.error(f"[欠费支付] 创建支付订单失败: {result.get('message')}")
@@ -31581,18 +31857,23 @@ def start_web_server(args_param):
             # 构造订单数据字典
             order_data = {
                 "order_id": out_trade_no,              # 订单号
-                "auth_username": auth_username,        # 用户名（关键！用于支付回调时更新用户数据）
+                "username": auth_username,        # 用户名（关键！用于支付回调时更新用户数据）
+                "amount": amount,           # 支付金额（字符串格式）
                 "product_name": product_name,          # 商品名称
-                "amount": str(total_amount),           # 支付金额（字符串格式）
                 "total_count": total_overdue_count,    # 总欠费次数
                 "overdue_accounts": overdue_accounts,  # 欠费账号列表（关键！用于支付回调时清零overdue_count）
-                "pay_type": "alipay",                  # 支付方式
-                "device": device,                      # 设备类型（mobile/pc）
-                "clientip": clientip,                  # 客户端IP
+                "pay_type": pay_type,                  # 支付方式（已验证，如果用户传入非法值已重置为默认值）
                 "status": ORDER_STATUS_PENDING,        # 订单状态（pending: 待支付）
-                "created_at": time.time(),             # 创建时间（时间戳）
-                "notify_url": notify_url,              # 异步通知URL
-                "return_url": return_url               # 同步返回URL
+                "pay_url": result.get("pay_url", ""),        # 支付跳转URL
+                "trade_no": result.get("trade_no", ""),      # 平台订单号
+                "payment_type": result.get("pay_type", ""),
+                "pay_info": result.get("pay_info", ""),
+                "order_data": result.get("order_data", {}),
+                "created_at": time.time(),           # 创建时间（Unix时间戳）
+                "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                "user_agent": request.headers.get("User-Agent", ""),
+                "device": device,  # 设备类型
             }
 
             # 确保payment_orders目录存在
@@ -31618,7 +31899,7 @@ def start_web_server(args_param):
             logging.info(
                 f"[欠费支付] 创建订单成功 - 用户: {auth_username}, "
                 f"订单号: {out_trade_no}, 总次数: {total_overdue_count}, "
-                f"总金额: {total_amount}元"
+                f"总金额: {amount}元"
             )
 
             # ========== 步骤13：写入支付操作日志（用于审计） ==========
@@ -31629,11 +31910,20 @@ def start_web_server(args_param):
                 action="create_overdue_order",  # 操作类型：创建欠费订单
                 log_data={
                     "total_count": total_overdue_count,
-                    "total_amount": total_amount,
-                    "overdue_accounts": overdue_accounts,
-                    "product_name": product_name,
-                    "device": device,
-                    "clientip": clientip
+                    "total_amount": amount,
+                    "amount": amount,                      # 支付金额
+                        "product_name": product_name,          # 商品名称
+                        "pay_type": pay_type,                  # 支付方式
+                        "pay_url": result["pay_url"],          # 支付跳转URL
+                        "return_url": return_url,              # 同步返回URL
+                        # 请求信息
+                        # 客户端IP
+                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                        # 浏览器UA
+                        "user_agent": request.headers.get("User-Agent", ""),
+                        # 操作结果
+                        "success": True,                       # 操作是否成功
+                        "message": "订单创建成功"              # 操作消息
                 }
             )
 
@@ -31645,7 +31935,7 @@ def start_web_server(args_param):
                 "pay_url": result.get("pay_url"),      # 支付跳转URL
                 "order_id": out_trade_no,              # 订单号
                 "total_count": total_overdue_count,    # 总欠费次数
-                "total_amount": str(total_amount)      # 总金额（字符串格式）
+                "total_amount": amount,      # 总金额（字符串格式）
             })
 
         except Exception as e:
@@ -32551,10 +32841,13 @@ def start_web_server(args_param):
                 # ========== 处理GET请求：获取当前配置 ==========
 
                 # 读取配置文件
+                # ConfigParser 用于读取 INI 格式的配置文件
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
 
                 # 获取当前启用的支付方式
+                # 从 [Rainbow_YiPay] 节读取 enabled_payment_methods 配置项
+                # 格式为逗号分隔的字符串，如 "alipay,wxpay"
                 enabled_methods_str = config.get(
                     "Rainbow_YiPay",
                     "enabled_payment_methods",
@@ -32562,6 +32855,7 @@ def start_web_server(args_param):
                 ).strip()
 
                 # 解析为列表
+                # 使用列表推导式将逗号分隔的字符串转换为列表
                 enabled_methods = [
                     method.strip()
                     for method in enabled_methods_str.split(",")
@@ -32572,8 +32866,19 @@ def start_web_server(args_param):
                 if not enabled_methods:
                     enabled_methods = ["alipay", "wxpay"]
 
+                # ========== 读取支付方式的完整配置信息 ==========
+                # 调用 _read_payment_methods_config() 从 payment_methods.json 读取
+                # 该文件包含所有支付方式的详细配置（名称、SVG图标、颜色等）
+                payment_methods = _read_payment_methods_config()
+                
+                # 记录日志
+                logging.info(
+                    f"[管理员配置] 读取支付方式配置 - 启用: {enabled_methods}, "
+                    f"总数: {len(payment_methods)}"
+                )
+
                 # 构造返回数据
-                # 包含当前启用的支付方式和所有可用的支付方式
+                # 包含当前启用的支付方式、所有支付方式列表和完整配置
                 return jsonify({
                     "success": True,
                     "config": {
@@ -32582,7 +32887,8 @@ def start_web_server(args_param):
                             {"code": code, "name": name}
                             for code, name in all_methods.items()
                         ]
-                    }
+                    },
+                    "payment_methods": payment_methods  # 添加完整的支付方式配置
                 })
 
             elif request.method == "PUT":
@@ -35464,6 +35770,165 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"服务器内部错误: {str(e)}"
+            }), 500
+
+    # ==============================================================================
+
+    @app.route("/api/admin/clear_overdue", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_clear_overdue():
+        """
+        管理员清除/修改学校账号欠费次数
+        
+        功能说明：
+        此接口允许管理员直接修改指定用户的指定学校账号的欠费次数。
+        主要用于帮助用户结清欠费、纠正错误的欠费记录，或进行其他管理操作。
+        
+        权限要求：管理员（admin或super_admin）
+        请求方法：POST
+        
+        请求参数（JSON格式）：
+        {
+            "auth_username": "user123",        // 用户名（账号所属用户）
+            "school_username": "2021001",      // 学校账号用户名
+            "new_overdue_count": 0             // 新的欠费次数（默认0，表示清零）
+        }
+        
+        返回数据（JSON格式）：
+        成功时：
+        {
+            "success": true,
+            "message": "欠费次数已更新为 0"
+        }
+        
+        失败时：
+        {
+            "success": false,
+            "message": "错误信息描述"
+        }
+        
+        使用场景：
+        1. 用户完成线下支付后，管理员手动清零欠费
+        2. 系统误判导致欠费次数错误，管理员纠正数据
+        3. 特殊情况下需要重置或调整欠费次数
+        
+        安全机制：
+        1. 必须有管理员权限（@admin_required装饰器）
+        2. 参数验证：用户名、学校账号不能为空
+        3. 参数验证：欠费次数必须是非负整数
+        4. 记录详细的管理员操作日志，便于审计追溯
+        """
+        try:
+            # ========== 步骤1：获取并验证请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            # 如果请求体为空或不是JSON格式，使用空字典作为默认值
+            data = request.get_json() or {}
+            
+            # 从请求数据中提取参数，并去除首尾空白字符
+            # auth_username: 目标用户的用户名（认证系统中的用户）
+            auth_username = data.get("auth_username", "").strip()
+            
+            # school_username: 要操作的学校账号用户名
+            school_username = data.get("school_username", "").strip()
+            
+            # new_overdue_count: 新的欠费次数，默认为0（清零）
+            new_overdue_count = data.get("new_overdue_count", 0)
+            
+            # ========== 步骤2：基本参数验证 ==========
+            
+            # 验证学校账号不能为空（这是必须的）
+            if not school_username:
+                return jsonify({
+                    "success": False,
+                    "message": "学校账号不能为空"
+                }), 400
+            
+            # 如果auth_username为空，尝试自动查找
+            # 这种情况通常发生在管理员只知道school_username的情况下
+
+        
+        
+            # ========== 步骤3：验证欠费次数参数 ==========
+            try:
+                new_overdue_count = int(new_overdue_count)
+                # 验证欠费次数不能为负数
+                if new_overdue_count < 0:
+                    return jsonify({ "success": False, "message": "欠费次数不能为负数" }), 400
+            except (ValueError, TypeError):
+                # 如果转换失败，返回400错误
+                return jsonify({ "success": False, "message": "欠费次数必须是整数" }), 400
+
+            # ========== 步骤4：直接修改INI文件 (不查找用户) ==========
+            try:
+                # 构造INI文件路径 (全局变量 SCHOOL_ACCOUNTS_DIR 指向 school_accounts 目录)
+                ini_file = os.path.join(SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
+                
+                # 检查文件是否存在
+                if not os.path.exists(ini_file):
+                    return jsonify({
+                        "success": False, 
+                        "message": f"学校账号配置文件不存在: {school_username}"
+                    }), 404
+
+                # 读取配置文件
+                config = configparser.RawConfigParser()
+                config.optionxform = str
+                config.read(ini_file, encoding='utf-8')
+                
+                # 确保 [stats] 节存在
+                if not config.has_section('stats'):
+                    config.add_section('stats')
+                
+                # 更新欠费次数
+                config.set('stats', 'overdue_count', str(new_overdue_count))
+                
+                # 保存文件
+                with open(ini_file, 'w', encoding='utf-8') as f:
+                    config.write(f)
+                    
+                # 获取当前登录管理员（用于日志）
+                admin_username = g.user if hasattr(g, 'user') else "unknown"
+                # 兼容处理 g.user 可能是字典的情况
+                if isinstance(admin_username, dict):
+                    admin_username = admin_username.get("auth_username", "unknown")
+                
+                logging.info(
+                    f"[管理员操作] {admin_username} 已直接修改INI文件 - "
+                    f"学校账号: {school_username}, 新欠费次数: {new_overdue_count}"
+                )
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"已将学校账号 {school_username} 的欠费次数更新为 {new_overdue_count}"
+                })
+
+            except Exception as e:
+                logging.error(f"[管理员操作] 修改INI文件失败: {str(e)}", exc_info=True)
+                return jsonify({
+                    "success": False,
+                    "message": f"操作失败: {str(e)}"
+                }), 500
+        
+        
+        
+        
+            
+        except Exception as e:
+            # ========== 异常处理 ==========
+            
+            # 捕获所有未预期的异常
+            # 记录ERROR级别日志，包含异常信息
+            logging.error(f"[管理员操作] 清除欠费异常: {str(e)}")
+            
+            # 记录完整的异常堆栈信息，便于调试
+            logging.error(traceback.format_exc())
+            
+            # 返回500错误，告知前端服务器内部错误
+            return jsonify({
+                "success": False,
+                "message": f"操作失败: {str(e)}"
             }), 500
 
     # ==============================================================================
