@@ -33049,6 +33049,76 @@ def start_web_server(args_param):
                 "message": f"查询失败：{str(e)}"
             }), 500
 
+    @app.route("/api/admin/payment/order_detail", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_get_order_detail():
+        """
+        管理员获取单个订单详情接口（仅从本地读取）
+        
+        功能说明:
+            管理员专用接口，用于快速获取本地订单详情。
+            与 query_order 不同，此接口仅读取本地文件，不会查询支付平台。
+            
+        请求参数（JSON）:
+            - order_id (str, 必需): 商户订单号（out_trade_no）
+        
+        返回结果（JSON）:
+            成功: {"success": True, "order": {...}}
+            失败: {"success": False, "message": "错误信息"}
+        
+        权限要求:
+            - 登录用户（@login_required）
+            - 管理员权限（@admin_required）
+        """
+        try:
+            # 获取并验证请求参数
+            data = request.get_json() or {}
+            order_id = str(data.get("order_id", "")).strip()
+            
+            if not order_id:
+                logging.warning("[管理员获取订单详情] 参数错误：未提供 order_id")
+                return jsonify({
+                    "success": False,
+                    "message": "参数错误：必须提供订单号"
+                }), 400
+            
+            logging.info(f"[管理员获取订单详情] 管理员 {g.user} 查询订单 - order_id: {order_id}")
+            
+            # 从本地文件读取订单
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            
+            if not os.path.exists(order_file):
+                logging.warning(f"[管理员获取订单详情] 订单文件不存在: {order_id}")
+                return jsonify({
+                    "success": False,
+                    "message": "订单不存在"
+                }), 404
+            
+            try:
+                with open(order_file, "r", encoding="utf-8") as f:
+                    order_data = json.load(f)
+                
+                logging.info(f"[管理员获取订单详情] 成功读取订单 - 订单号: {order_id}")
+                return jsonify({
+                    "success": True,
+                    "order": order_data
+                })
+            
+            except Exception as e:
+                logging.error(f"[管理员获取订单详情] 读取订单文件失败: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "message": f"读取订单文件失败: {str(e)}"
+                }), 500
+                
+        except Exception as e:
+            logging.error(f"[管理员获取订单详情] 处理请求时发生错误: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": f"服务器错误: {str(e)}"
+            }), 500
+
     def _convert_yipay_status(status_code):
         """
         转换易支付状态码到本地订单状态常量（内部辅助函数）

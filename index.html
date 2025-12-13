@@ -19740,14 +19740,17 @@ body.mobile-mode #session-picker-modal {
         
         // === 第2步：从本地API获取最新订单数据 ===
         
-        // 调用本地订单列表API
-        // 该API只读取本地文件，不查询支付平台
-        const response = await fetch('/api/admin/payment/local_orders', {
-          method: 'GET',
+        // 调用订单详情API（仅读取本地文件）
+        // 该API专门用于获取单个订单的详情，不查询支付平台
+        const response = await fetch('/api/admin/payment/order_detail', {
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-Session-ID': sessionUUID
-          }
+          },
+          body: JSON.stringify({
+            order_id: orderId
+          })
         });
         
         // 解析响应
@@ -19762,11 +19765,10 @@ body.mobile-mode #session-picker-modal {
           return;
         }
         
-        // === 第3步：从订单列表中找到当前订单 ===
+        // === 第3步：获取返回的订单数据 ===
         
-        // 从返回的订单列表中查找当前订单
-        const orders = result.orders || [];
-        const updatedOrder = orders.find(o => o.order_id === orderId);
+        // 从API响应中提取订单数据
+        const updatedOrder = result.order;
         
         if (!updatedOrder) {
           // 如果没找到订单，显示提示
