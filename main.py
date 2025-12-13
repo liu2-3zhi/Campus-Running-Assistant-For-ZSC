@@ -32286,6 +32286,13 @@ def start_web_server(args_param):
         请求方法：GET
         权限要求：登录用户（login_required装饰器）
         
+        权限说明（任务5新增）：
+        1. 如果用户是管理员（admin/super_admin）：可以访问，返回自己的日志
+           （管理员查看所有用户日志请使用 /api/admin/payment_logs 接口）
+        2. 如果用户不是管理员：
+           - 如果 require_payment = true（启用付费）：可以访问，只返回自己的日志
+           - 如果 require_payment = false（免费模式）：拒绝访问（返回403错误）
+        
         查询参数（URL参数）：
             - action (str, 可选): 按操作类型筛选
                 - "create_order": 创建订单
@@ -32319,10 +32326,70 @@ def start_web_server(args_param):
         - 查询支付问题
         """
         try:
-            # ========== 获取当前用户ID ==========
+            # ========== 步骤1：获取当前用户信息并检查管理员权限 ==========
             
-            # 获取当前登录用户
+            # 获取当前登录用户的用户名
+            # g.user 由 @login_required 装饰器设置，保证此时用户已经登录
             current_user = g.user
+            
+            # 初始化管理员标志为 False（默认假设用户不是管理员）
+            is_admin = False
+            
+            # 如果当前用户存在（已登录），检查其是否具有管理员权限
+            if current_user:
+                # 调用 auth_manager 的 get_user_group() 方法获取用户所属的权限组
+                # 返回值可能是："guest"（游客）、"user"（普通用户）、"admin"（管理员）、"super_admin"（超级管理员）
+                user_group = auth_manager.get_user_group(current_user)
+                
+                # 判断用户是否属于管理员组
+                # 只有 "admin" 或 "super_admin" 才被认为是管理员
+                is_admin = user_group in ["admin", "super_admin"]
+                
+                # [调试日志] 记录用户权限检查结果，便于追踪权限问题
+                logging.info(
+                    f"[用户支付日志] 权限检查 - 用户: {current_user}, "
+                    f"组别: {user_group}, 是否管理员: {is_admin}"
+                )
+            
+            # ========== 步骤2：权限控制检查（任务5核心逻辑） ==========
+            # 如果用户不是管理员，需要额外检查系统是否启用了付费功能
+            # 只有在启用付费功能时，普通用户才被允许查看自己的支付日志
+            if not is_admin:
+                # 读取配置文件中的 require_payment 配置项
+                # getboolean() 方法会自动将字符串 "true"/"false" 转换为 Python 的 bool 类型
+                # fallback=True 表示如果配置项不存在，默认值为 True（需要付费）
+                config = _get_config()
+                require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+                
+                # 如果系统未启用付费功能（免费模式），拒绝普通用户访问
+                # 原因：免费模式下，普通用户无需关注支付日志，只有管理员才需要查看历史记录
+                if not require_payment:
+                    # [安全日志] 记录访问被拒绝的情况，用于安全审计
+                    logging.warning(
+                        f"[用户支付日志] 访问被拒绝 - 用户 {current_user} 不是管理员且系统未启用付费功能 "
+                        f"(require_payment={require_payment})"
+                    )
+                    
+                    # 返回 HTTP 403 Forbidden 错误，表示权限不足
+                    # 这是一个标准的权限拒绝响应码
+                    return jsonify({
+                        "success": False,
+                        "message": "当前系统未启用付费功能，普通用户无法访问支付日志"
+                    }), 403
+                
+                # [调试日志] 记录权限检查通过（普通用户在付费模式下）
+                logging.info(
+                    f"[用户支付日志] 权限检查通过 - 用户 {current_user} 为普通用户，"
+                    f"系统已启用付费功能 (require_payment={require_payment})"
+                )
+            else:
+                # [调试日志] 记录管理员访问（管理员无需检查 require_payment 配置）
+                logging.info(
+                    f"[用户支付日志] 权限检查通过 - 用户 {current_user} 为管理员，无条件允许访问"
+                )
+            
+            # ========== 步骤3：确定当前用户的用户ID ==========
+            # 权限检查通过后，继续处理支付日志查询逻辑
             
             # 确定用户ID
             # 如果g.user不为None，说明是注册用户，使用username
@@ -32339,7 +32406,7 @@ def start_web_server(args_param):
                         "message": "无法识别用户身份，请重新登录"
                     }), 401
             
-            # ========== 获取查询参数 ==========
+            # ========== 步骤4：获取查询参数 ==========
             
             # 操作类型筛选（可选）
             action_filter = request.args.get("action", "").strip()
@@ -32388,7 +32455,7 @@ def start_web_server(args_param):
                 except ValueError:
                     app.logger.warning(f"[用户支付日志] 日期格式不正确: {end_date_str}")
             
-            # ========== 读取当前用户的支付日志文件 ==========
+            # ========== 步骤5：读取当前用户的支付日志文件 ==========
             
             logs = []
             
@@ -32450,7 +32517,7 @@ def start_web_server(args_param):
                         app.logger.warning(f"[用户支付日志] 读取文件失败: {file_path}, 错误: {str(e)}")
                         continue
             
-            # ========== 排序和分页 ==========
+            # ========== 步骤6：排序和分页 ==========
             
             # 按时间戳倒序排序（最新的在前面）
             logs.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
@@ -32465,7 +32532,7 @@ def start_web_server(args_param):
             # 获取当前页的数据
             page_logs = logs[start_index:end_index]
             
-            # ========== 返回结果 ==========
+            # ========== 步骤7：返回结果 ==========
             
             return jsonify({
                 "success": True,
