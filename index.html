@@ -2323,7 +2323,7 @@ body.mobile-mode #session-picker-modal {
     </div>
   </div>
 
-  <div id="auth-login-container" class="hidden w-full h-full flex items-center justify-center">
+  <div id="auth-login-container" class="hidden h-screen w-screen flex items-center justify-center">
     <div class="panel rounded-2xl w-full max-w-[600px] p-6 space-y-6">
       <div class="text-center">
         <h2 class="text-3xl font-bold text-sky-700 card-title mb-2">
@@ -2644,7 +2644,7 @@ body.mobile-mode #session-picker-modal {
        ======================================== -->
   <div id="desktop-container">
     <!-- 登录界面 -->
-    <div id="login-container" class="w-full h-full grid grid-cols-1 lg:grid-cols-3">
+    <main id="login-container" class="h-screen w-screen grid grid-cols-1 lg:grid-cols-3">
       <div
         class="flex flex-col items-center justify-center p-8 lg:p-12 bg-gradient-to-br from-purple-50 via-violet-50 to-purple-100 relative overflow-hidden">
         <div
@@ -2891,7 +2891,7 @@ body.mobile-mode #session-picker-modal {
           </div>
         </div>
       </div>
-    </div>
+    </main>
 
     <main id="main-app" class="hidden h-screen w-screen grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
       <div class="lg:col-span-1 xl:col-span-1 flex flex-col gap-4 h-full min-h-0 min-w-[320px]">
@@ -18270,7 +18270,7 @@ body.mobile-mode #session-picker-modal {
             // 调用 loadPaymentMethodsConfig() 函数加载支付方式配置
             // 此函数会从服务器获取所有支付方式的定义和启用状态
             // 然后动态渲染到 payment-methods-list_modal 容器中
-            loadPaymentMethodsConfig();
+            loadPaymentMethodsConfig(show_Modal_Alert=false);
             console.log(`[PC端支付设置] 已触发支付方式配置加载`);
           }
 
@@ -19291,7 +19291,7 @@ body.mobile-mode #session-picker-modal {
                 ${createdAt}
               </div>
               <!-- 查看详情按钮 -->
-              <button onclick='showOrderDetailModal(${JSON.stringify(order)})' 
+              <button onclick='showOrderDetailModal_form_botton(${JSON.stringify(order)})' 
                 class="px-3 py-1.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition-colors flex items-center gap-1">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -19496,6 +19496,11 @@ body.mobile-mode #session-picker-modal {
       }
     }
 
+
+    function showOrderDetailModal_form_botton(order) {
+      showOrderDetailModal(order);
+      refreshOrderDetailLocal(show_Modal_Alert=false);
+    }
     /**
      * 显示订单详情弹窗
      * 
@@ -19694,18 +19699,18 @@ body.mobile-mode #session-picker-modal {
       // - 使用 setTimeout 延迟100毫秒执行刷新操作
       // - 延迟的原因：确保弹窗的DOM完全渲染后再进行数据更新，避免视觉闪烁
       // - refreshOrderDetailLocal() 会从本地API重新拉取订单数据并更新弹窗内容
-      setTimeout(() => {
-        // 检查 window.currentOrderDetail 是否已设置
-        // 这个检查是防御性编程，确保有订单信息才执行刷新
-        if (window.currentOrderDetail && window.currentOrderDetail.order_id) {
-          // 调用本地刷新函数，更新订单详情
-          // 该函数会异步获取最新数据并更新弹窗显示
-          refreshOrderDetailLocal();
+      // setTimeout(() => {
+      //   // 检查 window.currentOrderDetail 是否已设置
+      //   // 这个检查是防御性编程，确保有订单信息才执行刷新
+      //   if (window.currentOrderDetail && window.currentOrderDetail.order_id) {
+      //     // 调用本地刷新函数，更新订单详情
+      //     // 该函数会异步获取最新数据并更新弹窗显示
+      //     refreshOrderDetailLocal();
           
-          // 输出日志：记录自动刷新操作
-          console.log('[订单详情] 弹窗打开，自动刷新订单信息（订单号：' + window.currentOrderDetail.order_id + '）');
-        }
-      }, 100); // 100毫秒的延迟，既保证DOM渲染完成，又不会让用户感觉到明显的等待
+      //     // 输出日志：记录自动刷新操作
+      //     console.log('[订单详情] 弹窗打开，自动刷新订单信息（订单号：' + window.currentOrderDetail.order_id + '）');
+      //   }
+      // }, 100); // 100毫秒的延迟，既保证DOM渲染完成，又不会让用户感觉到明显的等待
     }
 
     /**
@@ -19745,9 +19750,12 @@ body.mobile-mode #session-picker-modal {
      * 2. 调用本地订单API重新获取订单数据
      * 3. 更新弹窗显示内容
      */
-    async function refreshOrderDetailLocal() {
+    async function refreshOrderDetailLocal(show_Modal_Alert=true) {
       // 输出日志：标记本地刷新操作开始
       console.log('[订单详情] 开始本地刷新订单详情...');
+      if (show_Modal_Alert) {
+        showModalAlert('正在本地刷新订单详情，请稍候...', '提示');
+      }
       
       try {
         // === 第1步：获取当前订单号 ===
@@ -19807,13 +19815,15 @@ body.mobile-mode #session-picker-modal {
         
         // 调用showOrderDetailModal函数重新显示订单详情
         // 这会用最新的数据刷新弹窗中的所有字段
-        showOrderDetailModal(updatedOrder);
+        showOrderDetailModal(updatedOrder,);
         
         // 输出成功日志
         console.log('[订单详情] 本地刷新成功');
         
         // 显示成功提示（短暂显示）
-        showModalAlert('本地刷新成功', '成功');
+        if (show_Modal_Alert) {
+          showModalAlert('本地刷新成功', '成功');
+        }
         
       } catch (error) {
         // === 错误处理 ===
@@ -31682,7 +31692,7 @@ function refreshMobileSessionPicker() {
                 <p class="text-xs text-blue-700">💡 提示：</p>
                 <ul class="text-xs text-blue-600 mt-1 ml-4 list-disc">
                   <li>输入 <strong>-1</strong> 表示无限次数</li>
-                  <li>输入 <strong>0</strong> 表示暂停使用权限</li>
+                  <li>输入 <strong>0</strong> 表示没有可用次数</li>
                   <li>输入正整数表示具体可用次数</li>
                 </ul>
               </div>
@@ -35352,7 +35362,7 @@ function refreshMobileSessionPicker() {
 
           Swal.fire({
             icon: "success",
-            title: "上帝模式",
+            title: "正在切换会话...",
             text: "正在以管理员身份进入会话...",
             timer: 800,
             showConfirmButton: false,
@@ -38492,15 +38502,15 @@ function refreshMobileSessionPicker() {
           // 原因：后端登录API（main.py第16868行）返回的字段名是"group"，不是"auth_group"
           // 错误使用auth_group会导致currentUserData.group总是默认为"user"
           // 这会使管理员权限验证失败（如第5326行的isAdmin判断）
-          currentUserData.group = result.group || "user";
+          // currentUserData.group = result.group || "user";
           
           // 添加调试日志，验证 group 字段是否正确设置
-          console.log('[登录成功] currentUserData.group =', currentUserData.group);
-          console.log('[登录成功] result.group =', result.group);
-          console.log('[登录成功] currentUserData 完整数据:', currentUserData);
-          logMessage_Info(
-            `[登录成功] 权限组设置为: ${currentUserData.group}`
-          );
+          // console.log('[登录成功] currentUserData.group =', currentUserData.group);
+          // console.log('[登录成功] result.group =', result.group);
+          // console.log('[登录成功] currentUserData 完整数据:', currentUserData);
+          // logMessage_Info(
+          //   `[登录成功] 权限组设置为: ${currentUserData.group}`
+          // );
           
           currentSessionUA = uaOnLoginScreen;
           const name = currentUserData.name || "";
@@ -40621,7 +40631,7 @@ function refreshMobileSessionPicker() {
       async function multi_startSelected() {
         const usernames = multi_getSelectedUsernames();
         if (usernames.length === 0) {
-          showModalAlert("请至少选择一个账号再执行"开始选中"。");
+          showModalAlert("请至少选择一个账号再执行\"开始选中\"。");
           return;
         }
         
@@ -57785,6 +57795,14 @@ async function loadInitialData(options = {}) {
                 // 注意：accounts数据已经在response中
                 // 调用方可以直接从response.accounts中提取并使用
                 // 这里不需要额外处理，因为调用方会处理这些数据
+            }
+
+            if(response.auth_group) {
+              logMessage_Info('[初始化] 获取到用户权限组:', response.auth_group);
+              if (currentUserData.auth_group !== response.auth_group || currentUserData.group !== response.auth_group) {
+                currentUserData.auth_group = response.auth_group;
+                currentUserData.group=response.auth_group;
+                console.log('[初始化] 用户权限组已更新为:', response.auth_group);}
             }
         }
         
