@@ -9342,81 +9342,117 @@ body.mobile-mode #session-picker-modal {
               <div class="p-6 space-y-4">
                 <!-- 订单信息网格：使用两列布局展示详细信息 -->
                 <div class="grid grid-cols-2 gap-4 text-sm">
-                  <!-- 系统订单号 -->
+                  <!-- 系统订单号 (order_id) -->
                   <div class="col-span-2">
                     <span class="text-slate-500 font-medium">系统订单号：</span>
                     <span id="admin-detail-order-id_modal" class="text-slate-800 font-semibold break-all ml-2">-</span>
                   </div>
-                  <!-- 平台订单号 -->
+                  <!-- 平台订单号 (trade_no) -->
                   <div class="col-span-2">
                     <span class="text-slate-500 font-medium">平台订单号：</span>
                     <span id="admin-detail-trade-no_modal" class="text-slate-800 font-semibold break-all ml-2">-</span>
                   </div>
-                  <!-- 接口订单号 -->
+                  <!-- 接口订单号 (api_trade_no) -->
                   <div class="col-span-2">
                     <span class="text-slate-500 font-medium">接口订单号：</span>
                     <span id="admin-detail-api-trade-no_modal" class="text-slate-700 break-all ml-2">-</span>
                   </div>
-                  <!-- 订单状态 -->
+                  <!-- 订单状态 (status) -->
                   <div>
                     <span class="text-slate-500 font-medium">订单状态：</span>
                     <span id="admin-detail-status_modal" class="ml-2">-</span>
                   </div>
-                  <!-- 支付金额 -->
+                  <!-- 支付金额 (amount) -->
                   <div>
                     <span class="text-slate-500 font-medium">支付金额：</span>
                     <span id="admin-detail-amount_modal" class="text-red-600 font-bold ml-2">-</span>
                   </div>
-                  <!-- 支付方式 -->
-                  <div>
-                    <span class="text-slate-500 font-medium">支付方式：</span>
-                    <span id="admin-detail-pay-type_modal" class="text-slate-700 ml-2">-</span>
-                  </div>
-                  <!-- 用户名 -->
-                  <div>
-                    <span class="text-slate-500 font-medium">用户名：</span>
-                    <span id="admin-detail-username_modal" class="text-slate-700 ml-2">-</span>
-                  </div>
-                  <!-- 支付用户标识 -->
-                  <div class="col-span-2">
-                    <span class="text-slate-500 font-medium">支付用户标识：</span>
-                    <span id="admin-detail-buyer_modal" class="text-slate-700 ml-2">-</span>
-                  </div>
-                  <!-- 商品名称 -->
-                  <div class="col-span-2">
-                    <span class="text-slate-500 font-medium">商品名称：</span>
-                    <span id="admin-detail-product-name_modal" class="text-slate-700 ml-2">-</span>
-                  </div>
-                  <!-- 创建时间 -->
-                  <div>
-                    <span class="text-slate-500 font-medium">创建时间：</span>
-                    <span id="admin-detail-created-at_modal" class="text-slate-700 ml-2">-</span>
-                  </div>
-                  <!-- 支付时间 -->
-                  <div>
-                    <span class="text-slate-500 font-medium">支付时间：</span>
-                    <span id="admin-detail-paid-time_modal" class="text-slate-700 ml-2">-</span>
-                  </div>
-                  <!-- 客户端IP -->
-                  <div>
-                    <span class="text-slate-500 font-medium">客户端IP：</span>
-                    <span id="admin-detail-clientip_modal" class="text-slate-700 ml-2">-</span>
-                  </div>
-                  <!-- 已退款金额 -->
+                  <!-- 已退款金额 (refundmoney) -->
                   <div>
                     <span class="text-slate-500 font-medium">已退款金额：</span>
                     <span id="admin-detail-refundmoney_modal" class="text-orange-600 font-semibold ml-2">-</span>
                   </div>
-                  <!-- 业务扩展参数 -->
+                  <!-- 支付方式 (pay_type) -->
+                  <div>
+                    <span class="text-slate-500 font-medium">支付方式：</span>
+                    <span id="admin-detail-pay-type_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 用户名 (username) -->
+                  <div>
+                    <span class="text-slate-500 font-medium">用户名：</span>
+                    <span id="admin-detail-username_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 支付用户标识 (buyer) -->
+                  <div>
+                    <span class="text-slate-500 font-medium">买家标识：</span>
+                    <span id="admin-detail-buyer_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 客户端IP (clientip) -->
+                  <div>
+                    <span class="text-slate-500 font-medium">客户端IP：</span>
+                    <span id="admin-detail-clientip_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 商品名称 (product_name) -->
+                  <div class="col-span-2">
+                    <span class="text-slate-500 font-medium">商品名称：</span>
+                    <span id="admin-detail-product-name_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 创建时间 (created_at) -->
+                  <div>
+                    <span class="text-slate-500 font-medium">创建时间：</span>
+                    <span id="admin-detail-created-at_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 支付时间 (paid_time) -->
+                  <div>
+                    <span class="text-slate-500 font-medium">支付时间：</span>
+                    <span id="admin-detail-paid-time_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 业务扩展参数 (param) -->
                   <div class="col-span-2">
                     <span class="text-slate-500 font-medium">业务参数：</span>
                     <span id="admin-detail-param_modal" class="text-slate-700 ml-2 break-all">-</span>
+                  </div>
+                  <!-- 是否从平台同步 (synced_from_platform) -->
+                  <div>
+                    <span class="text-slate-500 font-medium">数据来源：</span>
+                    <span id="admin-detail-synced-from-platform_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 同步时间 (synced_time) -->
+                  <div>
+                    <span class="text-slate-500 font-medium">同步时间：</span>
+                    <span id="admin-detail-synced-time_modal" class="text-slate-700 ml-2">-</span>
                   </div>
                 </div>
               </div>
 
               <!-- 弹窗底部按钮区域 -->
-              <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end">
+              <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-between items-center">
+                <!-- 左侧：刷新按钮组 -->
+                <div class="flex gap-2">
+                  <!-- 本地刷新按钮：重新读取本地订单文件 -->
+                  <button onclick="refreshOrderDetailLocal()" 
+                    class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors flex items-center gap-1"
+                    title="重新读取本地订单文件，刷新显示内容">
+                    <!-- 刷新图标 -->
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    本地刷新
+                  </button>
+                  <!-- 从平台刷新按钮：调用API从支付平台查询最新状态 -->
+                  <button onclick="refreshOrderDetailFromPlatform()" 
+                    class="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors flex items-center gap-1"
+                    title="从支付平台查询订单最新状态并更新">
+                    <!-- 云同步图标 -->
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    从平台刷新
+                  </button>
+                </div>
+                <!-- 右侧：关闭按钮 -->
                 <button onclick="closeOrderDetailModal()" 
                   class="px-6 py-2 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 transition-colors">
                   关闭
@@ -11610,9 +11646,9 @@ body.mobile-mode #session-picker-modal {
             </div>
           </div>
 
-          <!-- 订单列表表格区域 -->
+          <!-- 订单列表容器区域 -->
           <div class="bg-white border border-slate-200 rounded-lg overflow-hidden" id="admin-orders-table-container_modal">
-            <!-- 表格标题栏 -->
+            <!-- 容器标题栏 -->
             <div class="bg-slate-100 px-4 py-3 border-b border-slate-200">
               <h5 class="font-semibold text-sm text-slate-700">
                 <!-- 列表图标 -->
@@ -11626,38 +11662,18 @@ body.mobile-mode #session-picker-modal {
               </h5>
             </div>
 
-            <!-- 表格容器：使用overflow-x-auto实现横向滚动 -->
-            <div class="overflow-x-auto">
-              <!-- 订单列表表格 -->
-              <table class="w-full text-sm">
-                <!-- 表头：定义各列标题 -->
-                <thead class="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th class="px-4 py-3 text-left font-semibold text-slate-700">系统订单号</th>
-                    <th class="px-4 py-3 text-left font-semibold text-slate-700">平台订单号</th>
-                    <th class="px-4 py-3 text-left font-semibold text-slate-700">接口订单号</th>
-                    <th class="px-4 py-3 text-left font-semibold text-slate-700">用户名</th>
-                    <th class="px-4 py-3 text-left font-semibold text-slate-700">金额</th>
-                    <th class="px-4 py-3 text-left font-semibold text-slate-700">支付方式</th>
-                    <th class="px-4 py-3 text-left font-semibold text-slate-700">状态</th>
-                    <th class="px-4 py-3 text-center font-semibold text-slate-700">操作</th>
-                  </tr>
-                </thead>
-                <!-- 表体：动态加载订单数据 -->
-                <tbody id="admin-orders-table-body_modal" class="divide-y divide-slate-100">
-                  <!-- 初始加载提示行 -->
-                  <tr>
-                    <td colspan="8" class="px-4 py-8 text-center text-slate-500">
-                      <!-- 加载动画图标 -->
-                      <svg class="animate-spin h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      正在加载订单数据...
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <!-- 卡片网格容器：使用响应式网格布局 -->
+            <!-- 小屏幕(默认): 1列，中等屏幕(md): 2列，大屏幕(lg): 3列 -->
+            <div id="admin-orders-table-body_modal" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+              <!-- 初始加载提示 -->
+              <div class="col-span-full text-center py-8 text-slate-500">
+                <!-- 加载图标 -->
+                <svg class="w-8 h-8 inline animate-spin text-sky-500" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <div class="mt-2">加载中...</div>
+              </div>
             </div>
           </div>
 
@@ -18480,37 +18496,54 @@ body.mobile-mode #session-picker-modal {
       // 输出日志，标记保存操作开始
       console.log('[PC端支付配置] 开始保存支付方式配置...');
       
-      // 获取结果显示区域的DOM元素
-      // 这个元素用于向用户显示操作成功或失败的消息
-      const resultDiv = document.getElementById('admin-payment-config-result_modal');
-      
       try {
-        // === 第1步：从页面读取checkbox的当前状态 ===
+        // === 第1步：从payment-methods-list_modal容器中读取所有checkbox的状态 ===
         
-        // 1.1 获取支付宝checkbox元素
-        const alipayCheckbox = document.getElementById('admin-payment-method-alipay_modal');
-        // 1.2 获取微信支付checkbox元素
-        const wechatCheckbox = document.getElementById('admin-payment-method-wechat_modal');
-        // 1.3 获取QQ钱包checkbox元素
-        const qqCheckbox = document.getElementById('admin-payment-method-qq_modal');
-        // 1.4 获取云闪付checkbox元素
-        const unionpayCheckbox = document.getElementById('admin-payment-method-unionpay_modal');
+        // 1.1 获取支付方式列表容器
+        // 这个容器中包含了所有动态生成的支付方式项，每个项都有一个checkbox
+        const listContainer = document.getElementById('payment-methods-list_modal');
+        if (!listContainer) {
+          // 如果容器不存在，抛出错误
+          throw new Error('找不到支付方式列表容器');
+        }
+        
+        // 1.2 查找容器内所有的checkbox元素
+        // 选择器：input[type="checkbox"][id^="payment-method-"]
+        // 含义：查找所有type为checkbox且id以"payment-method-"开头的input元素
+        // 这样可以动态获取所有支付方式的checkbox，无需硬编码每个支付方式的ID
+        const checkboxes = listContainer.querySelectorAll('input[type="checkbox"][id^="payment-method-"]');
+        
+        // 1.3 构建启用的支付方式列表
+        // 遍历所有checkbox，将已选中的支付方式代码收集到数组中
+        const enabledMethods = [];
+        checkboxes.forEach(checkbox => {
+          // 检查checkbox是否被选中
+          if (checkbox.checked) {
+            // 从checkbox的id中提取支付方式代码
+            // id格式：payment-method-{code}_modal
+            // 例如：payment-method-alipay_modal -> alipay
+            const id = checkbox.id;
+            // 使用字符串操作提取代码：
+            // 1. 去掉前缀 "payment-method-"
+            // 2. 去掉后缀 "_modal"
+            const code = id.replace('payment-method-', '').replace('_modal', '');
+            // 将支付方式代码添加到启用列表中
+            enabledMethods.push(code);
+          }
+        });
+        
+        // 在控制台输出即将提交的启用列表，便于调试
+        console.log('[PC端支付配置] 已启用的支付方式：', enabledMethods);
         
         // === 第2步：构建要提交的配置对象 ===
         
-        // 创建一个JavaScript对象，包含4个支付方式的启用状态
-        // 使用可选链操作符（?.）安全访问checked属性
-        // 如果元素不存在，?.checked会返回undefined
-        // 使用逻辑或（||）确保即使元素不存在也返回false而不是undefined
+        // 创建配置对象，包含启用的支付方式列表
+        // 服务器端会根据这个列表更新配置
         const config = {
-          alipay: alipayCheckbox?.checked || false,    // 支付宝启用状态
-          wechat: wechatCheckbox?.checked || false,    // 微信支付启用状态
-          qq: qqCheckbox?.checked || false,            // QQ钱包启用状态
-          unionpay: unionpayCheckbox?.checked || false // 云闪付启用状态
+          enabled_payment_methods: enabledMethods
         };
         
         // 在控制台输出即将提交的配置，便于调试
-        // 这样可以在发送请求前确认数据的正确性
         console.log('[PC端支付配置] 准备提交的配置数据：', config);
         
         // === 第3步：发起HTTP PUT请求保存配置 ===
@@ -18523,105 +18556,61 @@ body.mobile-mode #session-picker-modal {
             // Content-Type告知服务器请求体是JSON格式
             // 服务器需要根据这个标头解析请求体
             'Content-Type': 'application/json',
+            // X-Session-ID用于身份验证
             "X-Session-ID": sessionUUID
           },
           // body必须是字符串，使用JSON.stringify()将对象转换为JSON字符串
-          // JSON格式示例：{"alipay":true,"wechat":true,"qq":false,"unionpay":false}
           body: JSON.stringify(config)
         });
         
-        // === 第4步：检查响应状态 ===
+        // === 第4步：解析服务器响应 ===
         
-        if (!response.ok) {
-          // 如果服务器返回错误状态码（如400 Bad Request、500 Internal Server Error等）
-          // 抛出错误，进入catch块处理
-          throw new Error(`保存配置失败：HTTP状态码 ${response.status}`);
-        }
-        
-        // === 第5步：解析服务器响应 ===
-        
-        // 获取服务器返回的JSON数据
-        // 响应可能包含成功消息、更新后的配置或其他信息
+        // 无论响应状态如何，都尝试解析JSON响应体
+        // 这样可以在错误时也能获取服务器返回的错误消息
         const result = await response.json();
         
-        // 输出成功日志
-        console.log('[PC端支付配置] 支付方式配置保存成功：', result);
+        // === 第5步：检查响应状态并显示相应提示 ===
         
-        // === 第6步：显示成功提示 ===
-        
-        // 防御性检查：确保结果显示区域元素存在
-        if (resultDiv) {
-          // 6.1 更新结果显示区域的HTML内容
-          // 显示绿色的成功提示框
-          // 使用textContent会更安全，但这里的内容是静态的，使用innerHTML也可接受
-          resultDiv.innerHTML = `
-            <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
-              <!-- 成功图标 -->
-              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              ✓ 配置已成功保存
-            </div>
-          `;
+        if (response.ok && result.success) {
+          // 5.1 成功情况：响应状态为200且result.success为true
           
-          // 6.2 移除hidden类，让提示框可见
-          resultDiv.classList.remove('hidden');
+          // 输出成功日志
+          console.log('[PC端支付配置] 支付方式配置保存成功：', result);
           
-          // 6.3 设置定时器，3秒后自动隐藏提示框
-          // setTimeout在指定毫秒后执行回调函数（3000ms = 3秒）
-          // 这样可以避免提示框一直显示，影响用户体验
-          setTimeout(() => {
-            // 添加hidden类，隐藏提示框
-            resultDiv.classList.add('hidden');
-          }, 3000);
+          // 使用showModalAlert()显示成功提示（绿色样式）
+          // 标题设置为"成功"，会触发showModalAlert内部的样式判断，显示为绿色
+          showModalAlert('配置已成功保存', '成功');
+          
+          // 重新加载配置以确保数据同步
+          // 传入false参数，避免loadPaymentMethodsConfig再次显示加载提示框
+          await loadPaymentMethodsConfig(false);
+          
+        } else {
+          // 5.2 失败情况：响应状态不为200或result.success为false
+          
+          // 从响应中提取错误消息
+          // 优先使用result.message，如果不存在则使用默认错误消息
+          const errorMessage = result.message || '保存配置失败，请重试';
+          
+          // 输出错误日志
+          console.error('[PC端支付配置] 保存支付方式配置失败：', errorMessage);
+          
+          // 使用showModalAlert()显示错误提示（红色样式）
+          // 标题设置为"错误"或"失败"，会触发showModalAlert内部的样式判断，显示为红色
+          showModalAlert(errorMessage, '错误');
         }
-        
-        // === 第7步：重新加载配置以确保数据同步 ===
-        
-        // 调用loadAdminPaymentMethodsConfig函数，从服务器重新获取最新配置
-        // 注意：这会产生一个额外的网络请求，但能确保页面显示的状态与服务器保存的状态完全一致
-        // 这是一个有意的设计选择，因为：
-        // 1. 服务器可能会对提交的数据进行验证或修改
-        // 2. 确保客户端和服务器端数据的一致性
-        // 3. 防止因网络问题导致的数据不同步
-        // 如果需要优化性能，可以让服务器在保存响应中直接返回更新后的配置
-        await loadPaymentMethodsConfig();
         
       } catch (error) {
         // === 错误处理 ===
         
-        // 捕获所有可能的错误：网络错误、服务器错误、JSON解析错误等
+        // 捕获所有可能的错误：网络错误、服务器错误、JSON解析错误、DOM操作错误等
         
         // 在控制台输出详细的错误信息
         console.error('[PC端支付配置] 保存支付方式配置时发生错误：', error);
         
-        // 向用户显示错误提示
-        // 检查resultDiv是否存在，避免null引用错误
-        if (resultDiv) {
-          // 更新结果显示区域为红色错误提示框
-          resultDiv.innerHTML = `
-            <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
-              <!-- 错误图标 -->
-              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              ✗ 保存失败：${error.message || '未知错误'}。请重试或联系管理员。
-            </div>
-          `;
-          
-          // 显示错误提示框
-          resultDiv.classList.remove('hidden');
-          
-          // 5秒后自动隐藏错误提示（比成功提示多2秒，让用户有更多时间阅读错误信息）
-          setTimeout(() => {
-            resultDiv.classList.add('hidden');
-          }, 5000);
-        } else {
-          // 如果结果显示区域不存在，使用alert作为备用方案
-          showModalAlert(`保存失败：${error.message || '未知错误'}。\n请重试或联系管理员。`);
-        }
+        // 使用showModalAlert()显示错误提示
+        // 显示用户友好的错误消息
+        showModalAlert(`保存失败：${error.message || '未知错误'}。\n请重试或联系管理员。`, '错误');
       }
     }
 
@@ -19006,19 +18995,18 @@ body.mobile-mode #session-picker-modal {
         // === 错误处理 ===
         console.error('[订单列表] 加载订单时发生错误：', error);
 
-        // 在表格中显示错误提示
-        const tableBody = document.getElementById('admin-orders-table-body_modal');
-        if (tableBody) {
-          tableBody.innerHTML = `
-            <tr>
-              <td colspan="8" class="px-4 py-8 text-center text-red-600">
-                <svg class="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                加载订单失败，请稍后重试
-              </td>
-            </tr>
+        // 在容器中显示错误提示
+        const cardsContainer = document.getElementById('admin-orders-table-body_modal');
+        if (cardsContainer) {
+          cardsContainer.innerHTML = `
+            <div class="col-span-full text-center py-12 text-red-600">
+              <svg class="w-12 h-12 inline mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div class="text-base font-medium">加载订单失败</div>
+              <div class="text-sm text-slate-500 mt-1">请稍后重试或联系管理员</div>
+            </div>
           `;
         }
 
@@ -19121,32 +19109,33 @@ body.mobile-mode #session-picker-modal {
     }
 
     /**
-     * 渲染支付订单表格
+     * 渲染支付订单卡片列表
      * 
      * 功能说明：
-     * 将 filteredPaymentOrders 中的订单数据渲染到表格中
+     * 将 filteredPaymentOrders 中的订单数据渲染为卡片布局
+     * 每个订单显示为一个独立的卡片，包含订单的关键信息
      * 
-     * 表格列：
+     * 卡片内容：
      * 1. 系统订单号（order_id）
      * 2. 平台订单号（trade_no）
-     * 3. 接口订单号（api_trade_no）
-     * 4. 用户名（username）
-     * 5. 金额（amount）
-     * 6. 支付方式（pay_type）
-     * 7. 状态（status）
-     * 8. 操作（查看详情按钮）
+     * 3. 用户名（username）
+     * 4. 金额（amount）
+     * 5. 支付方式（pay_type）
+     * 6. 状态（status）
+     * 7. 创建时间（created_at）
+     * 8. 查看详情按钮
      */
     function renderPaymentOrdersTable() {
-      // 输出日志：标记开始渲染表格
-      console.log('[订单表格] 开始渲染订单表格...');
+      // 输出日志：标记开始渲染卡片
+      console.log('[订单卡片] 开始渲染订单卡片...');
 
-      // === 第1步：获取表格元素 ===
-      const tableBody = document.getElementById('admin-orders-table-body_modal');
+      // === 第1步：获取容器元素 ===
+      const cardsContainer = document.getElementById('admin-orders-table-body_modal');
       const countElem = document.getElementById('admin-orders-count_modal');
 
-      // 防御性检查：确保表格元素存在
-      if (!tableBody) {
-        console.error('[订单表格] 错误：找不到表格元素');
+      // 防御性检查：确保容器元素存在
+      if (!cardsContainer) {
+        console.error('[订单卡片] 错误：找不到容器元素');
         return;
       }
 
@@ -19158,46 +19147,50 @@ body.mobile-mode #session-picker-modal {
       // === 第3步：检查是否有订单数据 ===
       if (filteredPaymentOrders.length === 0) {
         // 如果没有订单，显示空状态提示
-        tableBody.innerHTML = `
-          <tr>
-            <td colspan="8" class="px-4 py-8 text-center text-slate-500">
-              <svg class="w-12 h-12 inline mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
-              </svg>
-              <div>暂无订单数据</div>
-              <div class="text-xs mt-1">请尝试调整筛选条件或点击"从平台拉取"按钮同步订单</div>
-            </td>
-          </tr>
+        cardsContainer.innerHTML = `
+          <div class="col-span-full text-center py-12 text-slate-500">
+            <!-- 空状态图标 -->
+            <svg class="w-16 h-16 inline mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+            </svg>
+            <div class="text-base font-medium">暂无订单数据</div>
+            <div class="text-xs mt-2">请尝试调整筛选条件或点击"从平台拉取"按钮同步订单</div>
+          </div>
         `;
         return;
       }
 
-      // === 第4步：生成表格行HTML ===
+      // === 第4步：生成卡片HTML ===
       
-      // 使用 Array.map() 将每个订单对象转换为表格行HTML
-      const tableRows = filteredPaymentOrders.map(order => {
+      // 使用 Array.map() 将每个订单对象转换为卡片HTML
+      const orderCards = filteredPaymentOrders.map(order => {
         // 4.1 清理和格式化订单数据（使用 escapeHtml 防止XSS攻击）
         const orderId = escapeHtml(order.order_id || '-');
         const tradeNo = escapeHtml(order.trade_no || '-');
-        const apiTradeNo = escapeHtml(order.api_trade_no || '-');
         const username = escapeHtml(order.username || '-');
         const amount = order.amount ? `¥${parseFloat(order.amount).toFixed(2)}` : '-';
+        const createdAt = escapeHtml(order.created_at || '-');
         
         // 4.2 格式化支付方式显示
         let payTypeText = '-';
+        let payTypeColor = 'text-slate-600';
         switch (order.pay_type) {
           case 'alipay':
             payTypeText = '支付宝';
+            payTypeColor = 'text-blue-600';
             break;
           case 'wxpay':
             payTypeText = '微信支付';
+            payTypeColor = 'text-green-600';
             break;
           case 'qq':
             payTypeText = 'QQ钱包';
+            payTypeColor = 'text-sky-600';
             break;
           case 'unionpay':
             payTypeText = '云闪付';
+            payTypeColor = 'text-red-600';
             break;
           default:
             payTypeText = escapeHtml(order.pay_type || '-');
@@ -19234,31 +19227,76 @@ body.mobile-mode #session-picker-modal {
             statusHtml = `<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded text-xs font-semibold">${escapeHtml(order.status || '-')}</span>`;
         }
 
-        // 4.4 生成表格行HTML
-        // 注意：订单数据存储在 data-order 属性中（JSON格式），供详情弹窗使用
+        // 4.4 生成卡片HTML
+        // 每个卡片包含：
+        // - 顶部：订单号和状态标签
+        // - 中间：用户名、金额、支付方式
+        // - 底部：创建时间和查看详情按钮
         return `
-          <tr class="hover:bg-slate-50 transition-colors">
-            <td class="px-4 py-3 text-slate-700">${orderId}</td>
-            <td class="px-4 py-3 text-slate-700">${tradeNo}</td>
-            <td class="px-4 py-3 text-slate-700 text-xs">${apiTradeNo}</td>
-            <td class="px-4 py-3 text-slate-700">${username}</td>
-            <td class="px-4 py-3 text-red-600 font-semibold">${amount}</td>
-            <td class="px-4 py-3 text-slate-700">${payTypeText}</td>
-            <td class="px-4 py-3">${statusHtml}</td>
-            <td class="px-4 py-3 text-center">
+          <div class="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-lg transition-shadow">
+            <!-- 卡片顶部：订单号和状态 -->
+            <div class="flex justify-between items-start mb-3">
+              <!-- 订单号区域 -->
+              <div class="flex-1 min-w-0 mr-2">
+                <div class="text-xs text-slate-500 mb-1">订单号</div>
+                <div class="text-sm font-semibold text-slate-800 truncate" title="${orderId}">${orderId}</div>
+                <div class="text-xs text-slate-600 truncate mt-0.5" title="${tradeNo}">${tradeNo}</div>
+              </div>
+              <!-- 状态标签 -->
+              <div class="flex-shrink-0">
+                ${statusHtml}
+              </div>
+            </div>
+            
+            <!-- 卡片中部：订单详情 -->
+            <div class="space-y-2 mb-3 text-sm">
+              <!-- 用户名 -->
+              <div class="flex justify-between">
+                <span class="text-slate-500">用户：</span>
+                <span class="text-slate-700 font-medium">${username}</span>
+              </div>
+              <!-- 金额 -->
+              <div class="flex justify-between">
+                <span class="text-slate-500">金额：</span>
+                <span class="text-red-600 font-bold">${amount}</span>
+              </div>
+              <!-- 支付方式 -->
+              <div class="flex justify-between">
+                <span class="text-slate-500">支付：</span>
+                <span class="${payTypeColor} font-medium">${payTypeText}</span>
+              </div>
+            </div>
+            
+            <!-- 卡片底部：创建时间和操作按钮 -->
+            <div class="flex justify-between items-center pt-3 border-t border-slate-100">
+              <!-- 创建时间 -->
+              <div class="text-xs text-slate-500">
+                <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                ${createdAt}
+              </div>
+              <!-- 查看详情按钮 -->
               <button onclick='showOrderDetailModal(${JSON.stringify(order)})' 
-                class="px-3 py-1 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition-colors">
-                查看详情
+                class="px-3 py-1.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition-colors flex items-center gap-1">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                查看
               </button>
-            </td>
-          </tr>
+            </div>
+          </div>
         `;
-      }).join('');  // 将所有表格行拼接成一个字符串
+      }).join('');  // 将所有卡片拼接成一个字符串
 
-      // === 第5步：更新表格内容 ===
-      tableBody.innerHTML = tableRows;
+      // === 第5步：更新容器内容 ===
+      cardsContainer.innerHTML = orderCards;
 
-      console.log('[订单表格] 表格渲染完成');
+      console.log('[订单卡片] 卡片渲染完成');
     }
 
     /**
@@ -19465,6 +19503,10 @@ body.mobile-mode #session-picker-modal {
       // 输出日志：标记显示订单详情
       console.log('[订单详情] 显示订单详情：', order);
 
+      // === 保存当前订单信息到全局变量，供刷新功能使用 ===
+      // 将订单对象存储为全局变量，这样刷新按钮的函数可以知道要刷新哪个订单
+      window.currentOrderDetail = order;
+
       // === 第1步：填充订单详情数据到弹窗 ===
 
       // 1.1 系统订单号
@@ -19598,6 +19640,31 @@ body.mobile-mode #session-picker-modal {
         paramElem.textContent = order.param || '-';
       }
 
+      // 1.15 数据来源（是否从平台同步）
+      // synced_from_platform字段表示订单数据是否从支付平台同步而来
+      const syncedFromPlatformElem = document.getElementById('admin-detail-synced-from-platform_modal');
+      if (syncedFromPlatformElem) {
+        // 根据synced_from_platform字段的值显示不同的文本
+        // true表示从平台同步，false或undefined表示本地创建
+        if (order.synced_from_platform === true) {
+          syncedFromPlatformElem.textContent = '平台同步';
+        } else if (order.synced_from_platform === false) {
+          syncedFromPlatformElem.textContent = '本地创建';
+        } else {
+          // 字段不存在或为其他值，显示"未知"
+          syncedFromPlatformElem.textContent = '未知';
+        }
+      }
+
+      // 1.16 同步时间
+      // synced_time字段记录订单从平台同步的时间
+      const syncedTimeElem = document.getElementById('admin-detail-synced-time_modal');
+      if (syncedTimeElem) {
+        // 如果存在synced_time字段且不为空，显示该时间
+        // 否则显示"-"表示没有同步记录
+        syncedTimeElem.textContent = order.synced_time || '-';
+      }
+
       // === 第2步：显示弹窗 ===
       const modalOverlay = document.getElementById('admin-order-detail-modal_overlay');
       if (modalOverlay) {
@@ -19628,6 +19695,183 @@ body.mobile-mode #session-picker-modal {
       }
 
       console.log('[订单详情] 关闭订单详情弹窗');
+    }
+
+    /**
+     * 本地刷新订单详情
+     * 
+     * 功能说明：
+     * 重新读取本地订单文件，刷新订单详情弹窗的显示内容
+     * 不查询支付平台，仅从本地文件系统读取最新数据
+     * 
+     * 实现步骤：
+     * 1. 获取当前正在查看的订单号
+     * 2. 调用本地订单API重新获取订单数据
+     * 3. 更新弹窗显示内容
+     */
+    async function refreshOrderDetailLocal() {
+      // 输出日志：标记本地刷新操作开始
+      console.log('[订单详情] 开始本地刷新订单详情...');
+      
+      try {
+        // === 第1步：获取当前订单号 ===
+        
+        // 从全局变量中获取当前正在查看的订单对象
+        // 这个变量在showOrderDetailModal函数中被设置
+        const currentOrder = window.currentOrderDetail;
+        if (!currentOrder || !currentOrder.order_id) {
+          // 如果没有当前订单信息，显示错误提示
+          showModalAlert('无法刷新：未找到当前订单信息', '错误');
+          return;
+        }
+        
+        const orderId = currentOrder.order_id;
+        console.log('[订单详情] 正在刷新订单：', orderId);
+        
+        // === 第2步：从本地API获取最新订单数据 ===
+        
+        // 调用本地订单列表API
+        // 该API只读取本地文件，不查询支付平台
+        const response = await fetch('/api/admin/payment/local_orders', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID
+          }
+        });
+        
+        // 解析响应
+        const result = await response.json();
+        
+        // 检查响应是否成功
+        if (!response.ok || !result.success) {
+          // 获取失败，显示错误消息
+          const errorMessage = result.message || '获取订单数据失败';
+          console.error('[订单详情] 本地刷新失败：', errorMessage);
+          showModalAlert(`本地刷新失败：${errorMessage}`, '错误');
+          return;
+        }
+        
+        // === 第3步：从订单列表中找到当前订单 ===
+        
+        // 从返回的订单列表中查找当前订单
+        const orders = result.orders || [];
+        const updatedOrder = orders.find(o => o.order_id === orderId);
+        
+        if (!updatedOrder) {
+          // 如果没找到订单，显示提示
+          console.warn('[订单详情] 本地未找到该订单');
+          showModalAlert('本地未找到该订单，可能已被删除', '警告');
+          return;
+        }
+        
+        // === 第4步：更新显示内容 ===
+        
+        // 调用showOrderDetailModal函数重新显示订单详情
+        // 这会用最新的数据刷新弹窗中的所有字段
+        showOrderDetailModal(updatedOrder);
+        
+        // 输出成功日志
+        console.log('[订单详情] 本地刷新成功');
+        
+        // 显示成功提示（短暂显示）
+        showModalAlert('本地刷新成功', '成功');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        
+        // 捕获所有可能的错误：网络错误、JSON解析错误等
+        console.error('[订单详情] 本地刷新时发生错误：', error);
+        showModalAlert(`本地刷新失败：${error.message || '未知错误'}`, '错误');
+      }
+    }
+
+    /**
+     * 从平台刷新订单详情
+     * 
+     * 功能说明：
+     * 调用支付平台API查询订单最新状态，并更新本地数据和显示内容
+     * 这个操作会从支付平台获取最新的订单状态、退款信息等
+     * 
+     * 实现步骤：
+     * 1. 获取当前正在查看的订单号
+     * 2. 调用平台查询API获取最新状态
+     * 3. 更新本地订单文件
+     * 4. 刷新弹窗显示内容
+     */
+    async function refreshOrderDetailFromPlatform() {
+      // 输出日志：标记平台刷新操作开始
+      console.log('[订单详情] 开始从平台刷新订单详情...');
+      
+      try {
+        // === 第1步：获取当前订单号 ===
+        
+        // 从全局变量中获取当前正在查看的订单对象
+        const currentOrder = window.currentOrderDetail;
+        if (!currentOrder || !currentOrder.order_id) {
+          // 如果没有当前订单信息，显示错误提示
+          showModalAlert('无法刷新：未找到当前订单信息', '错误');
+          return;
+        }
+        
+        const orderId = currentOrder.order_id;
+        console.log('[订单详情] 正在从平台刷新订单：', orderId);
+        
+        // === 第2步：调用平台查询API ===
+        
+        // 调用管理员平台订单查询API
+        // 该API会从支付平台查询订单最新状态，并自动更新本地文件
+        const response = await fetch(`/api/admin/payment/query_order?order_id=${encodeURIComponent(orderId)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID
+          }
+        });
+        
+        // 解析响应
+        const result = await response.json();
+        
+        // 检查响应是否成功
+        if (!response.ok || !result.success) {
+          // 查询失败，显示错误消息
+          const errorMessage = result.message || '从平台查询订单失败';
+          console.error('[订单详情] 平台刷新失败：', errorMessage);
+          showModalAlert(`平台刷新失败：${errorMessage}`, '错误');
+          return;
+        }
+        
+        // === 第3步：获取更新后的订单数据 ===
+        
+        // API返回的result.order包含了从平台查询并更新后的订单数据
+        const updatedOrder = result.order;
+        
+        if (!updatedOrder) {
+          // 如果没有返回订单数据，显示提示
+          console.warn('[订单详情] 平台返回数据为空');
+          showModalAlert('平台返回数据为空', '警告');
+          return;
+        }
+        
+        // === 第4步：更新显示内容 ===
+        
+        // 调用showOrderDetailModal函数重新显示订单详情
+        // 这会用从平台获取的最新数据刷新弹窗中的所有字段
+        showOrderDetailModal(updatedOrder);
+        
+        // 输出成功日志
+        console.log('[订单详情] 平台刷新成功');
+        
+        // 显示成功提示
+        showModalAlert('平台刷新成功，订单状态已更新', '成功');
+        
+      } catch (error) {
+        // === 错误处理 ===
+        
+        // 捕获所有可能的错误：网络错误、JSON解析错误等
+        console.error('[订单详情] 平台刷新时发生错误：', error);
+        showModalAlert(`平台刷新失败：${error.message || '未知错误'}`, '错误');
+      }
     }
 
     // ==========================================

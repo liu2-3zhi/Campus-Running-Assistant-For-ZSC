@@ -24676,6 +24676,19 @@ def start_web_server(args_param):
                                 "platform_data": platform_order
                             }
                             
+                            # 修复退款状态判断逻辑
+                            # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
+                            platform_status = platform_order.get("status", 1)
+                            if platform_status == 2:
+                                refundmoney = float(platform_order.get("refundmoney", "0"))
+                                order_amount = float(platform_order.get("money", money))
+                                # 使用 >= 比较，而不是 ==
+                                # 当退款金额 >= 订单金额时，才是全额退款
+                                if refundmoney >= order_amount:
+                                    order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+                                else:
+                                    order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
+                            
                             # 确保订单目录存在
                             os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
                             
@@ -29046,11 +29059,16 @@ def start_web_server(args_param):
                     # 同步更新本地订单状态
                     if order_data.get("status") not in (ORDER_STATUS_REFUNDED_FULL, ORDER_STATUS_REFUNDED_PARTIAL):
                         # 本地状态与平台不一致，更新本地状态
-                        refundmoney = platform_order.get("refundmoney", "0")
-                        order_amount_str = str(order_data.get("amount", "0"))
+                        # 获取退款金额和订单金额，转换为浮点数进行比较
+                        refundmoney = float(platform_order.get("refundmoney", "0"))
+                        order_amount = float(order_data.get("amount", "0"))
                         
                         # 判断是全额退款还是部分退款
-                        if refundmoney == order_amount_str:
+                        # 修复：使用 >= 而不是 == 进行比较
+                        # 原因：当 refundmoney >= amount 时，应该标记为全额退款
+                        # 例如：refundmoney=5.00, amount=5.00 -> 全额退款
+                        #      refundmoney=3.75, amount=5.00 -> 部分退款
+                        if refundmoney >= order_amount:
                             order_data["status"] = ORDER_STATUS_REFUNDED_FULL
                         else:
                             order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
@@ -32952,6 +32970,19 @@ def start_web_server(args_param):
                         "platform_data": platform_order                               # 保存完整的平台数据
                     }
                     
+                    # 修复退款状态判断逻辑
+                    # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
+                    platform_status = platform_order.get("status", 0)
+                    if platform_status == 2:
+                        refundmoney = float(platform_order.get("refundmoney", "0"))
+                        order_amount = float(platform_order.get("money", "0"))
+                        # 使用 >= 比较，而不是 ==
+                        # 当退款金额 >= 订单金额时，才是全额退款
+                        if refundmoney >= order_amount:
+                            local_order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+                        else:
+                            local_order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
+                    
                     # 保存到本地文件
                     order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
                     
@@ -33278,6 +33309,19 @@ def start_web_server(args_param):
                         "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读）
                         "platform_data": platform_order                               # 保存完整的平台数据
                     }
+                    
+                    # 修复退款状态判断逻辑
+                    # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
+                    platform_status = platform_order.get("status", 0)
+                    if platform_status == 2:
+                        refundmoney = float(platform_order.get("refundmoney", "0"))
+                        order_amount = float(platform_order.get("money", "0"))
+                        # 使用 >= 比较，而不是 ==
+                        # 当退款金额 >= 订单金额时，才是全额退款
+                        if refundmoney >= order_amount:
+                            local_order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+                        else:
+                            local_order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
                     
                     # 检查本地是否已存在该订单
                     order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
