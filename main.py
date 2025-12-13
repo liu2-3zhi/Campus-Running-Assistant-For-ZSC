@@ -9165,6 +9165,49 @@ class Api:
     def start_single_run(self):
         """开始执行单个任务"""
         logging.info("API调用: start_single_run - 开始执行单个任务")
+        
+        # ============================================================
+        # [安全加固] 欠费检查：防止单账号模式绕过欠费限制
+        # ============================================================
+        # 检查当前是否已登录学校账号
+        # 这一步骤确保只有无欠费的账号才能启动任务，防止欠费用户通过单账号模式绕过限制
+        if self.user_data and self.user_data.username:
+            # 获取当前登录的学校账号用户名
+            school_username = self.user_data.username
+            
+            # 从 INI 文件读取该账号的欠费统计数据
+            # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
+            stats = self._load_school_account_stats_from_ini(school_username)
+            overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
+            
+            # 如果存在欠费（overdue_count > 0），拒绝启动任务
+            # 这是关键的安全检查点，防止欠费用户继续使用服务
+            if overdue_count > 0:
+                logging.warning(
+                    f"[欠费检查] 账号 {school_username} 存在欠费 ({overdue_count} 次)，拒绝启动单个任务"
+                )
+                # 返回错误信息，包含欠费详情
+                return {
+                    "success": False,  # 操作失败
+                    "message": "当前账号存在欠费，请先缴费后再启动任务",  # 用户友好的错误提示
+                    "error_code": "OVERDUE_PAYMENT",  # 错误代码，前端可以据此做特殊处理
+                    "overdue_accounts": [  # 欠费账号列表（单账号模式下只有一个）
+                        {
+                            "school_username": school_username,  # 欠费账号的用户名
+                            "overdue_count": overdue_count  # 欠费次数
+                        }
+                    ]
+                }
+        else:
+            # 如果没有登录或无用户信息，也应该拒绝启动任务
+            # 这是另一层安全保障，防止未认证用户启动任务
+            logging.warning("[欠费检查] 未登录或无用户信息，拒绝启动任务")
+            return {
+                "success": False,
+                "message": "请先登录后再启动任务"
+            }
+        
+        # 通过欠费检查后，继续执行原有的任务启动逻辑
         if not self.stop_run_flag.is_set():
             return {"success": False, "message": "已有任务在运行"}
         if (
@@ -9788,6 +9831,49 @@ class Api:
         logging.info(
             f"API CALL: start_all_runs (ignore_completed={ignore_completed}, auto_generate={auto_generate})"
         )
+        
+        # ============================================================
+        # [安全加固] 欠费检查：防止单账号模式绕过欠费限制
+        # ============================================================
+        # 检查当前是否已登录学校账号
+        # 这一步骤确保只有无欠费的账号才能批量启动所有任务，防止欠费用户通过单账号模式绕过限制
+        if self.user_data and self.user_data.username:
+            # 获取当前登录的学校账号用户名
+            school_username = self.user_data.username
+            
+            # 从 INI 文件读取该账号的欠费统计数据
+            # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
+            stats = self._load_school_account_stats_from_ini(school_username)
+            overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
+            
+            # 如果存在欠费（overdue_count > 0），拒绝启动所有任务
+            # 这是关键的安全检查点，防止欠费用户批量启动任务继续使用服务
+            if overdue_count > 0:
+                logging.warning(
+                    f"[欠费检查] 账号 {school_username} 存在欠费 ({overdue_count} 次)，拒绝启动所有任务"
+                )
+                # 返回错误信息，包含欠费详情
+                return {
+                    "success": False,  # 操作失败
+                    "message": "当前账号存在欠费，请先缴费后再启动任务",  # 用户友好的错误提示
+                    "error_code": "OVERDUE_PAYMENT",  # 错误代码，前端可以据此做特殊处理
+                    "overdue_accounts": [  # 欠费账号列表（单账号模式下只有一个）
+                        {
+                            "school_username": school_username,  # 欠费账号的用户名
+                            "overdue_count": overdue_count  # 欠费次数
+                        }
+                    ]
+                }
+        else:
+            # 如果没有登录或无用户信息，也应该拒绝启动任务
+            # 这是另一层安全保障，防止未认证用户启动任务
+            logging.warning("[欠费检查] 未登录或无用户信息，拒绝启动所有任务")
+            return {
+                "success": False,
+                "message": "请先登录后再启动任务"
+            }
+        
+        # 通过欠费检查后，继续执行原有的任务启动逻辑
         if not self.stop_run_flag.is_set():
             return {"success": False, "message": "已有任务在运行"}
 
