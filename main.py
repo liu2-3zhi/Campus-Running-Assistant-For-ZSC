@@ -97,7 +97,7 @@ def import_standard_libraries():
     logging.info("=" * 80)
     logging.info("开始检查并导入 Python 标准库...")
     logging.info("[依赖检查] 正在导入 Python 标准库...")
-    
+
     # global ssl, eventlet, argparse, base64, bisect, collections, configparser, copy, csv, datetime, hashlib, json, math, pickle, queue, random, re, secrets, socket, threading, time, traceback, urllib, uuid, warnings, atexit, io, zipfile, functools, ipaddress, string, shutil
 
     std_libs = [
@@ -447,7 +447,6 @@ def initialize_global_variables():
     logging.info("全局变量初始化完成。")
 
 
-
 class IPVerifier:
     """
     用于验证客户端 IP 地址是否允许访问的类。
@@ -455,10 +454,10 @@ class IPVerifier:
     """
     global requests
     # import ipaddress
-    
+
     # 类级别常量 (属于类，不属于全局命名空间)
     CACHE_EXPIRE_SECONDS = 300
-    
+
     # 定义 IPv4 私有网络地址段
     PRIVATE_IPV4_NETWORKS = [
         ipaddress.ip_network("10.0.0.0/8"),
@@ -492,7 +491,7 @@ class IPVerifier:
     def parse_host_input(host_input: str) -> typing.Dict[str, typing.Optional[str]]:
         """
         解析用户输入的 host 字符串，支持多种格式。
-        
+
         支持的输入格式: 
         - 纯IPv4: 127.0.0.1
         - 纯IPv6: :: 1, 2001:db8::1
@@ -502,7 +501,7 @@ class IPVerifier:
         - 带协议和端口的IPv6: http://[::1]:8080, https://[2001:db8::1]:8080
         - 特殊格式（无双斜杠）: https: 127.0.0.1:8080
         - IPv4-mapped IPv6: ::ffff: 127.0.0.1
-        
+
         Returns:
             dict: {
                 'ip': 纯IP地址字符串 (不含方括号),
@@ -517,12 +516,12 @@ class IPVerifier:
             'scheme': None,
             'full_url': None
         }
-        
+
         if not host_input or not isinstance(host_input, str):
             return result
-        
+
         host_input = host_input.strip()
-        
+
         # 处理特殊格式:  https:127.0.0.1:8080 或 http:127.0.0.1:8080 (无双斜杠)
         special_pattern = r'^(https?):([^/]. *)$'
         special_match = re.match(special_pattern, host_input)
@@ -531,31 +530,32 @@ class IPVerifier:
             rest = special_match.group(2)
             # 转换为标准格式后继续解析
             host_input = f"{scheme}://{rest}"
-        
+
         # 检查是否有协议前缀
-        has_scheme = host_input.startswith('http://') or host_input.startswith('https://')
-        
+        has_scheme = host_input.startswith(
+            'http://') or host_input.startswith('https://')
+
         if has_scheme:
             # 使用 urllib.parse.urlparse 解析带协议的URL
             parsed = urllib.parse.urlparse(host_input)
             result['scheme'] = parsed.scheme
-            
+
             hostname = parsed.hostname  # urllib.parse.urlparse 会自动去除IPv6的方括号
             port = parsed.port
-            
+
             if hostname:
                 result['ip'] = hostname
             if port:
                 result['port'] = str(port)
-                
+
         else:
             # 没有协议前缀，需要手动解析
             # 检查是否是 IPv6 地址（可能带方括号）
-            
+
             # 格式:  [IPv6]:port
             ipv6_bracket_pattern = r'^\[([^\]]+)\](?:: (\d+))?$'
             ipv6_bracket_match = re.match(ipv6_bracket_pattern, host_input)
-            
+
             if ipv6_bracket_match:
                 result['ip'] = ipv6_bracket_match.group(1)
                 if ipv6_bracket_match. group(2):
@@ -570,18 +570,18 @@ class IPVerifier:
                     # 格式: IPv4:port
                     ipv4_port_pattern = r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::(\d+))?$'
                     ipv4_port_match = re.match(ipv4_port_pattern, host_input)
-                    
+
                     if ipv4_port_match:
                         result['ip'] = ipv4_port_match.group(1)
                         if ipv4_port_match.group(2):
                             result['port'] = ipv4_port_match.group(2)
-                    else: 
+                    else:
                         # 最后尝试：可能是不带端口的主机名或其他格式
                         # 尝试作为纯IP解析
                         result['ip'] = host_input
-        
+
         # 验证解析出的IP地址或域名是否有效
-        if result['ip']: 
+        if result['ip']:
             try:
                 # 尝试验证是否为标准 IP 地址
                 ipaddress.ip_address(result['ip'])
@@ -589,8 +589,9 @@ class IPVerifier:
                 # 如果不是 IP，检查是否为合法域名 (允许字母、数字、点、连字符)
                 # 简单的域名验证正则，涵盖大部分域名场景以及 localhost
                 domain_pattern = r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
-                is_valid_domain = re.match(domain_pattern, result['ip']) or result['ip'] == 'localhost'
-                
+                is_valid_domain = re.match(
+                    domain_pattern, result['ip']) or result['ip'] == 'localhost'
+
                 if is_valid_domain:
                     # 是有效的域名，保留 result['ip'] (此时字段实际存储的是 hostname)
                     # build_full_url 方法会处理非 IP 的 host 字符串
@@ -599,35 +600,35 @@ class IPVerifier:
                     # 既不是 IP 也不是合法域名，才判定为无效
                     logging.warning(f"[IP解析] 无效的IP地址或域名: {result['ip']}")
                     result['ip'] = None
-        
+
         # 构建完整的URL (用于发起HTTP请求)
         if result['ip']:
             result['full_url'] = IPVerifier.build_full_url(
-                result['ip'], 
-                result['port'], 
+                result['ip'],
+                result['port'],
                 result['scheme']
             )
-        
+
         return result
 
     @staticmethod
-    def build_full_url(ip: str, port: typing.Optional[str] = None, 
+    def build_full_url(ip: str, port: typing.Optional[str] = None,
                        scheme: typing.Optional[str] = None) -> str:
         """
         根据IP、端口和协议构建完整的URL。
-        
+
         Args:
             ip: IP地址字符串
             port: 端口号字符串或None
             scheme: 协议 ('http' 或 'https') 或 None
-            
+
         Returns: 
             str: 完整的URL字符串
         """
         # 默认使用 http 协议
         if not scheme:
             scheme = 'http'
-        
+
         # 检查是否是IPv6地址，需要用方括号包围
         try:
             ip_obj = ipaddress.ip_address(ip)
@@ -637,7 +638,7 @@ class IPVerifier:
                 host_part = ip
         except ValueError:
             host_part = ip
-        
+
         # 构建URL
         if port:
             return f"{scheme}://{host_part}:{port}"
@@ -649,10 +650,10 @@ class IPVerifier:
         """
         从 host 输入中提取纯IP地址。
         这是一个便捷方法，用于只需要IP地址的场景。
-        
+
         Args:
             host_input: 用户输入的host字符串
-            
+
         Returns:
             str or None: 提取出的纯IP地址，或None（如果无法解析）
         """
@@ -675,7 +676,7 @@ class IPVerifier:
                 # 如果传入的字符串不是有效的纯 IP 地址（可能是域名或URL），视为非私有 IP
                 return False
         # -----------------------
-        
+
         # 使用类级常量
         v4_nets = IPVerifier.PRIVATE_IPV4_NETWORKS
         v6_nets = IPVerifier.PRIVATE_IPV6_NETWORKS
@@ -691,81 +692,84 @@ class IPVerifier:
             if ip_addr.ipv4_mapped:
                 ipv4_embedded = ip_addr.ipv4_mapped
                 # 递归调用自身来检查内嵌的 IPv4 地址是否为私有地址
-                is_private = IPVerifier. is_private_ip(ipv4_embedded) 
-                if is_private: 
-                    logging.debug(f"[IP验证] {ip_addr} 是 IPv4-mapped IPv6，内嵌地址 {ipv4_embedded} 是私有地址")
+                is_private = IPVerifier. is_private_ip(ipv4_embedded)
+                if is_private:
+                    logging.debug(
+                        f"[IP验证] {ip_addr} 是 IPv4-mapped IPv6，内嵌地址 {ipv4_embedded} 是私有地址")
                 return is_private
-            
+
             # 检查是否在 IPv6 私有网络段内
             is_private = any(ip_addr in net for net in v6_nets)
             if is_private:
                 logging.debug(f"[IP验证] {ip_addr} 是 IPv6 私有地址")
             return is_private
-            
+
         return False
 
-    def get_public_ip_addresses(self) -> typing.Dict: 
+    def get_public_ip_addresses(self) -> typing.Dict:
         """
         获取服务器的 IPv4 和 IPv6 公网 IP 地址，并在有效期内直接返回缓存数据。
         只有当缓存过期时，才会执行网络请求进行更新。
-        
+
         Returns:
             typing.Dict: 包含 'ipv4' 和 'ipv6' 键的字典，值是 IP 字符串或 None。
         """
         current_time = time.time()
-        
+
         # 使用实例属性（self._... ）
         with self._public_ip_cache_lock:
-            
+
             # 检查缓存是否过期
             if current_time - self._public_ip_cache_time < self.CACHE_EXPIRE_SECONDS:
                 logging.debug("[IP验证] 公网IP缓存在有效期内，直接返回缓存数据。")
                 return self._public_ip_cache. copy()
-                
+
             # 缓存过期，执行网络请求进行更新
             logging.info("[IP验证] 公网IP缓存已过期或首次获取，正在重新获取...")
-            
+
             # --- 获取 IPv4 公网地址 ---
             try:
                 response_v4 = requests.get("http://4.ipw.cn", timeout=3)
                 if response_v4.status_code == 200:
                     ipv4_text = response_v4.text. strip()
-                    try: 
-                        ipaddress.ip_address(ipv4_text) 
+                    try:
+                        ipaddress.ip_address(ipv4_text)
                         self._public_ip_cache["ipv4"] = ipv4_text
                         logging.info(f"[IP验证] 成功获取服务器公网 IPv4: {ipv4_text}")
                     except ValueError:
                         logging.warning(f"[IP验证] 获取的 IPv4 地址格式无效: {ipv4_text}")
                         self._public_ip_cache["ipv4"] = None
                 else:
-                    logging.warning(f"[IP验证] 获取 IPv4 公网地址失败，状态码: {response_v4.status_code}")
+                    logging.warning(
+                        f"[IP验证] 获取 IPv4 公网地址失败，状态码: {response_v4.status_code}")
                     self._public_ip_cache["ipv4"] = None
             except Exception as e:
                 logging.warning(f"[IP验证] 获取 IPv4 公网地址异常: {str(e)}")
                 self._public_ip_cache["ipv4"] = None
-                
+
             # --- 获取 IPv6 公网地址 ---
             try:
                 response_v6 = requests.get("http://6.ipw.cn", timeout=3)
                 if response_v6.status_code == 200:
                     ipv6_text = response_v6.text.strip()
                     try:
-                        ipaddress.ip_address(ipv6_text) 
+                        ipaddress.ip_address(ipv6_text)
                         self._public_ip_cache["ipv6"] = ipv6_text
                         logging.info(f"[IP验证] 成功获取服务器公网 IPv6: {ipv6_text}")
                     except ValueError:
                         logging.warning(f"[IP验证] 获取的 IPv6 地址格式无效: {ipv6_text}")
                         self._public_ip_cache["ipv6"] = None
                 else:
-                    logging. warning(f"[IP验证] 获取 IPv6 公网地址失败，状态码: {response_v6.status_code}")
+                    logging. warning(
+                        f"[IP验证] 获取 IPv6 公网地址失败，状态码: {response_v6.status_code}")
                     self._public_ip_cache["ipv6"] = None
             except Exception as e:
                 logging.warning(f"[IP验证] 获取 IPv6 公网地址异常:  {str(e)}")
                 self._public_ip_cache["ipv6"] = None
-                
+
             # 更新缓存时间戳
             self._public_ip_cache_time = current_time
-                
+
             # 返回更新后的缓存数据
             return self._public_ip_cache.copy()
 
@@ -773,7 +777,7 @@ class IPVerifier:
         """
         主入口函数：判断一个 IP 地址是否被允许访问。
         允许条件：1. 是内网IP地址。 2. 与服务器自身的公网 IP 地址相同。
-        
+
         支持多种输入格式：
         - 纯IP:  127.0.0.1, :: 1
         - 带协议:  http://127.0.0.1
@@ -782,33 +786,33 @@ class IPVerifier:
         """
         # 解析输入，提取纯IP地址
         client_ip = self.extract_ip_from_host(client_ip_input)
-        
+
         if not client_ip:
             logging.warning(f"[IP验证] 无法从输入中解析IP地址: {client_ip_input}")
             return False
-        
+
         try:
             ip = ipaddress.ip_address(client_ip)
         except ValueError:
             logging.warning(f"[IP验证] 无效的IP地址格式: {client_ip}")
             return False
-        
+
         # 1. 检查是否为内网IP地址 (调用静态方法)
         if self.is_private_ip(ip):
             return True
-        
+
         # 2. 检查是否为服务器自己的公网IP (调用实例方法，触发缓存检查/更新)
         server_public_ips = self.get_public_ip_addresses()
         cached_ipv4 = server_public_ips.get("ipv4")
         cached_ipv6 = server_public_ips.get("ipv6")
-        
+
         client_ip_str = str(ip)
 
         # 检查是否匹配 IPv4 公网地址
         if cached_ipv4 and client_ip_str == cached_ipv4:
             logging.info(f"[IP验证] {client_ip} 是服务器自己的公网 IPv4 地址，允许访问")
             return True
-        
+
         # 检查是否匹配 IPv6 公网地址
         if cached_ipv6:
             try:
@@ -822,11 +826,11 @@ class IPVerifier:
         # 拒绝访问
         logging. warning(f"[IP验证] {client_ip} 不是允许的IP地址，拒绝访问")
         return False
-    
+
     def check_app_host(self, client_app_host: str) -> bool:
         """
         验证 client_app_host 是否真的是本服务器。
-        
+
         支持多种输入格式：
         - 纯IP: 127.0.0.1 (将使用默认http协议和默认端口)
         - 带协议: http://127.0.0.1, https://127.0.0.1
@@ -835,38 +839,41 @@ class IPVerifier:
         - 特殊格式: https: 127.0.0.1:8080 (无双斜杠)
         - IPv6: http://[::1]:8080, [::1]:8080, :: 1
         - IPv4-mapped IPv6: http://[::ffff:127.0.0.1]:8080
-        
+
         Args:
             client_app_host: 用户输入的host字符串
-            
+
         Returns:
             bool: 验证成功返回True，否则返回False
         """
         # 解析输入
         parsed = self.parse_host_input(client_app_host)
-        
+
         if not parsed['ip']:
             logging.warning(f"[本机验证] 无法解析host: {client_app_host}")
             return False
-        
+
         # 获取用于发起请求的完整URL
         base_url = parsed['full_url']
-        
-        if not base_url: 
+
+        if not base_url:
             logging.warning(f"[本机验证] 无法构建请求URL: {client_app_host}")
             return False
-        
-        logging.info(f"[本机验证] 解析结果 - IP: {parsed['ip']}, 端口: {parsed['port']}, 协议: {parsed['scheme']}, URL: {base_url}")
-        
+
+        logging.info(
+            f"[本机验证] 解析结果 - IP: {parsed['ip']}, 端口: {parsed['port']}, 协议: {parsed['scheme']}, URL: {base_url}")
+
         # 生成一个长度为2048位的随机验证码（challenge）
         # 用于验证 client_app_host 是否真的是本服务器
         # 随机字符包括大小写字母和数字，确保足够的随机性和安全性
-        challenge = "".join(random.choices(string.ascii_letters + string.digits, k=2048))
+        challenge = "".join(random.choices(
+            string.ascii_letters + string.digits, k=2048))
 
         # 记录日志：开始验证app_host
         # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
         challenge_preview = (
-            f"{challenge[:32]}... {challenge[-32:]}" if len(challenge) > 64 else challenge
+            f"{challenge[:32]}... {challenge[-32:]}" if len(
+                challenge) > 64 else challenge
         )
         logging.info(
             f"开始验证 {client_app_host} 是否是本服务器，生成的验证码长度:  {len(challenge)}位, 预览: {challenge_preview}"
@@ -876,25 +883,27 @@ class IPVerifier:
         # 格式：{base_url}/api/payment/verify_challenge
         verify_url = f"{base_url}/api/payment/verify_challenge"
 
-        try: 
+        try:
 
             # 向verify_challenge接口发送POST请求
             # json参数：以JSON格式发送验证码
             # timeout参数：设置5秒超时，避免长时间等待
             # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
-            response = requests.post(verify_url, json={"challenge":  challenge}, timeout=5)
+            response = requests.post(
+                verify_url, json={"challenge":  challenge}, timeout=5)
 
             # 检查HTTP响应状态码
             # 200表示请求成功
             if response. status_code != 200:
 
                 # HTTP状态码不是200
-                logging.warning(f"[本机验证] HTTP请求失败 - 状态码: {response.status_code}")
+                logging.warning(
+                    f"[本机验证] HTTP请求失败 - 状态码: {response.status_code}")
                 return False
 
             # HTTP状态码为200，开始处理响应
             # 尝试解析响应的JSON数据
-            try: 
+            try:
                 # 解析响应体中的JSON数据
                 # 新的验证机制期望格式：{"success": True}
                 # 不再从响应中获取 challenge，而是从全局变量中获取
@@ -965,64 +974,64 @@ class IPVerifier:
             )
             logging.warning(f"[本机验证] {client_app_host} 可能不是本服务器")
             return False
-        
+
         return True
 
     def check_host_has_scheme(self, client_app_host: str) -> bool:
         """
         检查 client_app_host 是否包含协议 ('http://' 或 'https://')。
-        
+
         Args: 
             client_app_host:  用户输入的host字符串
-            
+
         Returns: 
             bool: 如果包含协议返回True，否则返回False
         """
-        if not client_app_host: 
+        if not client_app_host:
             return False
-        
+
         host = client_app_host.strip().lower()
-        
+
         # 检查标准格式
         if host.startswith("http://") or host.startswith("https://"):
             return True
-        
+
         # 检查特殊格式 (无双斜杠): https:127.0.0.1:8080
         if re.match(r'^https?:[^/]', host):
             return True
-        
+
         return False
 
-    def normalize_host_url(self, client_app_host: str, 
+    def normalize_host_url(self, client_app_host: str,
                            default_scheme: str = 'http',
                            default_port: typing.Optional[str] = None) -> typing.Optional[str]:
         """
         将用户输入的host标准化为完整的URL。
-        
+
         Args:
             client_app_host: 用户输入的host字符串
             default_scheme: 默认协议，当输入没有协议时使用
             default_port: 默认端口，当输入没有端口时使用（可选）
-            
+
         Returns: 
             str or None: 标准化后的完整URL，或None（如果无法解析）
         """
         parsed = self.parse_host_input(client_app_host)
-        
+
         if not parsed['ip']:
             return None
-        
+
         scheme = parsed['scheme'] or default_scheme
         port = parsed['port'] or default_port
-        
+
         return self.build_full_url(parsed['ip'], port, scheme)
 
-    def normalize_to_url(self, host_input: str, 
-                     default_scheme: str = 'http',
-                     default_port: typing.Optional[str] = None) -> typing.Optional[str]:
+    def normalize_to_url(self, host_input: str,
+                         default_scheme: str = 'http',
+                         default_port: typing.Optional[str] = None) -> typing.Optional[str]:
         """
         将传入的字符串转换成标准的URL格式（不带末尾斜杠）。
-        
+
         输入输出示例：
         - 输入:  127.0.0.1          -> 输出: http://127.0.0.1
         - 输入: http://127.0.0.1:442 -> 输出:  http://127.0.0.1:442
@@ -1033,7 +1042,7 @@ class IPVerifier:
         - 输入: [::1]: 8080          -> 输出: http://[::1]:8080
         - 输入: http://[::1]:8080   -> 输出: http://[::1]:8080
         - 输入: :: ffff:192.168.1.1  -> 输出: http://[::ffff:192.168.1.1]
-        
+
         Args:
             host_input: 用户输入的host字符串，支持以下格式：
                 - 纯IPv4: 127.0.0.1
@@ -1045,44 +1054,40 @@ class IPVerifier:
                 - IPv4-mapped IPv6: :: ffff:127.0.0.1
             default_scheme: 当输入没有协议时使用的默认协议，默认为 'http'
             default_port: 当输入没有端口时使用的默认端口（可选），默认为 None（不添加端口）
-            
+
         Returns:
             str:  标准化后的完整URL（不带末尾斜杠）
             None: 如果输入无法解析为有效的IP地址
         """
         # 解析输入
         parsed = self.parse_host_input(host_input)
-        
+
         # 如果无法解析出有效IP，返回None
         if not parsed['ip']:
             logging.warning(f"[URL标准化] 无法解析输入: {host_input}")
             return None
-        
+
         # 使用解析出的协议，如果没有则使用默认协议
         scheme = parsed['scheme'] if parsed['scheme'] else default_scheme
-        
+
         # 使用解析出的端口，如果没有则使用默认端口
         port = parsed['port'] if parsed['port'] else default_port
-        
+
         # 构建并返回完整URL
         result = self.build_full_url(parsed['ip'], port, scheme)
-        
+
         # 确保末尾没有斜杠
         if result and result. endswith('/'):
             result = result. rstrip('/')
-        
+
         logging.debug(f"[URL标准化] 输入: {host_input} -> 输出: {result}")
-        
+
         return result
-    
 
 
 # ==============================================================================
 #  辅助函数：获取客户端真实IP地址（任务2）
 # ==============================================================================
-
-
-
 
 
 # ==============================================================================
@@ -1164,7 +1169,8 @@ class CustomLogHandler(logging.FileHandler):
                         print(f"[日志轮转] 删除 {os.path.basename(old_log)} 失败: {e}")
             else:
                 if os.path.exists(old_log):
-                    new_log = os.path.join(log_dir, f"{base_name}-{i+1:02d}.log")
+                    new_log = os.path.join(
+                        log_dir, f"{base_name}-{i+1:02d}.log")
                     try:
                         os.rename(old_log, new_log)
                         print(
@@ -1257,7 +1263,8 @@ def cleanup_archive_directory(archive_dir, max_size_mb):
                 if os.path.isfile(file_path):
                     file_size = os.path.getsize(file_path)
                     mtime = os.path.getmtime(file_path)
-                    archive_files.append((file_path, filename, file_size, mtime))
+                    archive_files.append(
+                        (file_path, filename, file_size, mtime))
                     total_size += file_size
 
         max_size_bytes = max_size_mb * 1024 * 1024
@@ -1283,7 +1290,8 @@ def cleanup_archive_directory(archive_dir, max_size_mb):
             os.remove(file_path)
             total_size -= file_size
             deleted_count += 1
-            print(f"[归档清理] 已删除: {filename} ({file_size / (1024 * 1024):.2f}MB)")
+            print(
+                f"[归档清理] 已删除: {filename} ({file_size / (1024 * 1024):.2f}MB)")
 
         final_size_mb = total_size / (1024 * 1024)
         print(
@@ -1529,8 +1537,10 @@ def _create_directories():
         print(f"[配置读取] config.ini 不存在，使用默认目录配置")
 
     base_dir = os.path.dirname(__file__)
-    SCHOOL_ACCOUNTS_DIR = os.path.join(base_dir, default_dirs["school_accounts_dir"])
-    SYSTEM_ACCOUNTS_DIR = os.path.join(base_dir, default_dirs["system_accounts_dir"])
+    SCHOOL_ACCOUNTS_DIR = os.path.join(
+        base_dir, default_dirs["school_accounts_dir"])
+    SYSTEM_ACCOUNTS_DIR = os.path.join(
+        base_dir, default_dirs["system_accounts_dir"])
     LOGIN_LOGS_DIR = os.path.join(base_dir, default_dirs["log_dir"])
     SESSION_STORAGE_DIR = os.path.join(base_dir, default_dirs["sessions_dir"])
     TOKENS_STORAGE_DIR = os.path.join(base_dir, default_dirs["tokens_dir"])
@@ -1936,7 +1946,8 @@ def _write_config_with_comments(config_obj, filepath):
             f"archive_max_size_mb = {config_obj.get('Logging', 'archive_max_size_mb', fallback='500')}\n"
         )
         f.write("# 日志文件存储目录\n")
-        f.write(f"log_dir = {config_obj.get('Logging', 'log_dir', fallback='logs')}\n")
+        f.write(
+            f"log_dir = {config_obj.get('Logging', 'log_dir', fallback='logs')}\n")
         f.write("# 日志归档目录（启动时会自动压缩旧日志到此目录）\n")
         f.write(
             f"archive_dir = {config_obj.get('Logging', 'archive_dir', fallback='logs/archive')}\n\n"
@@ -1981,7 +1992,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# IP地理位置查询API密钥（可选）\n")
         f.write("# 用于获取用户登录IP的地理位置信息\n")
         f.write("# 留空则使用免费接口（有频率限制）\n")
-        f.write(f"ip_api_key = {config_obj.get('API', 'ip_api_key', fallback='')}\n")
+        f.write(
+            f"ip_api_key = {config_obj.get('API', 'ip_api_key', fallback='')}\n")
         f.write(
             "# 注意：验证码已改用本地生成器（见[Captcha]节），不再需要第三方API密钥\n\n"
         )
@@ -2017,7 +2029,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# ========================================\n\n")
         f.write("[Captcha]\n")
         f.write("# 验证码字符数（3-6）\n")
-        f.write(f"length = {config_obj.get('Captcha', 'length', fallback='4')}\n")
+        f.write(
+            f"length = {config_obj.get('Captcha', 'length', fallback='4')}\n")
         f.write("# 像素细分倍数（2-4）\n")
         f.write(
             f"scale_factor = {config_obj.get('Captcha', 'scale_factor', fallback='2')}\n"
@@ -2131,11 +2144,13 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# ICP备案号（工信部）\n")
         f.write("# 格式示例：京ICP备12345678号\n")
         f.write("# 留空则不显示（即使show_icp为true）\n")
-        f.write(f"icp_number = {config_obj.get('Beian', 'icp_number', fallback='')}\n")
+        f.write(
+            f"icp_number = {config_obj.get('Beian', 'icp_number', fallback='')}\n")
         f.write("# 是否在页面底部显示ICP备案信息（true/false）\n")
         f.write("# true：显示ICP备案号并链接至 http://beian.miit.gov.cn\n")
         f.write("# false：不显示ICP备案信息\n")
-        f.write(f"show_icp = {config_obj.get('Beian', 'show_icp', fallback='false')}\n")
+        f.write(
+            f"show_icp = {config_obj.get('Beian', 'show_icp', fallback='false')}\n")
         f.write("# 公安网备案号（公安部）\n")
         f.write("# 格式示例：京公网安备 11010802012345号\n")
         f.write("# 留空则不显示（即使show_police为true）\n")
@@ -2154,14 +2169,18 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("[baidu_cloud]\n")
         f.write("# 百度云文本审核服务配置\n")
         f.write("# 用于检测用户提交的文本内容是否包含违规信息（如色情、暴力、政治敏感等）\n")
-        f.write("# 申请地址：https://console.bce.baidu.com/ai/#/ai/antiporn/overview/index\n")
+        f.write(
+            "# 申请地址：https://console.bce.baidu.com/ai/#/ai/antiporn/overview/index\n")
         f.write("# API Key（必填）：在百度云控制台创建应用后获取\n")
-        f.write(f"api_key = {config_obj.get('baidu_cloud', 'api_key', fallback='')}\n")
+        f.write(
+            f"api_key = {config_obj.get('baidu_cloud', 'api_key', fallback='')}\n")
         f.write("# Secret Key（必填）：在百度云控制台创建应用后获取\n")
-        f.write(f"secret_key = {config_obj.get('baidu_cloud', 'secret_key', fallback='')}\n")
+        f.write(
+            f"secret_key = {config_obj.get('baidu_cloud', 'secret_key', fallback='')}\n")
         f.write("# 策略ID（可选）：不填则使用百度云默认审核策略\n")
         f.write("# 如需自定义审核策略，请在百度云控制台配置后填写策略ID\n")
-        f.write(f"strategy_id = {config_obj.get('baidu_cloud', 'strategy_id', fallback='')}\n\n")
+        f.write(
+            f"strategy_id = {config_obj.get('baidu_cloud', 'strategy_id', fallback='')}\n\n")
 
         # ============================================================
         # [Content_Review] 内容审核配置
@@ -2177,7 +2196,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("#       不合规的留言将被拒绝并保存到 logs/rejected_messages.json\n")
         f.write("# false：不启用审核，留言直接发布（默认）\n")
         f.write("# 注意：启用此功能需要先配置百度云API密钥（见上方[baidu_cloud]配置节）\n")
-        f.write(f"enable_message_review = {config_obj.get('Content_Review', 'enable_message_review', fallback='false')}\n\n")
+        f.write(
+            f"enable_message_review = {config_obj.get('Content_Review', 'enable_message_review', fallback='false')}\n\n")
 
         # ============================================================
         # [Rainbow_YiPay] 彩虹易支付V2配置
@@ -2198,33 +2218,40 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 这是彩虹易支付平台提供的API接口地址\n")
         f.write("# 格式示例：https://api.example.com 或 https://pay.yourdomain.com\n")
         f.write("# 注意：必须包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
-        f.write(f"host = {config_obj.get('Rainbow_YiPay', 'host', fallback='')}\n")
+        f.write(
+            f"host = {config_obj.get('Rainbow_YiPay', 'host', fallback='')}\n")
         f.write("# 商户ID（PID）（必填）\n")
         f.write("# 在彩虹易支付平台注册后获取的唯一商户标识\n")
         f.write("# 格式：通常为纯数字，例如：10001\n")
-        f.write(f"pid = {config_obj.get('Rainbow_YiPay', 'pid', fallback='')}\n")
+        f.write(
+            f"pid = {config_obj.get('Rainbow_YiPay', 'pid', fallback='')}\n")
         f.write("# 商户私钥（KEY）（必填）\n")
         f.write("# 这是商户的RSA私钥，用于对发送给支付平台的请求进行签名\n")
         f.write("# 格式：PEM格式的RSA私钥字符串\n")
-        f.write("# 示例：-----BEGIN RSA PRIVATE KEY-----\\nMIIEowIBAAKCAQEA...\\n-----END RSA PRIVATE KEY-----\n")
+        f.write(
+            "# 示例：-----BEGIN RSA PRIVATE KEY-----\\nMIIEowIBAAKCAQEA...\\n-----END RSA PRIVATE KEY-----\n")
         f.write("# 用途：商户使用私钥签名请求，平台使用商户公钥验证签名\n")
         f.write("# 注意：请妥善保管私钥，切勿泄露\n")
-        f.write(f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
+        f.write(
+            f"key = {config_obj.get('Rainbow_YiPay', 'key', fallback='')}\n")
         f.write("# 应用域名地址（可选）\n")
         f.write("# 用于自动设置return_url和notify_url的域名前缀\n")
         f.write("# 格式示例：https://yourdomain.com 或 https://run.zelly.cn\n")
         f.write("# 如果配置了此项，系统将自动拼接完整的回调地址\n")
         f.write("# 如果留空，则使用前端传入的app_host参数\n")
         f.write("# 注意：必须包含协议头（http:// 或 https://），末尾不要添加斜杠\n")
-        f.write(f"app_host = {config_obj.get('Rainbow_YiPay', 'app_host', fallback='')}\n")
+        f.write(
+            f"app_host = {config_obj.get('Rainbow_YiPay', 'app_host', fallback='')}\n")
         f.write("# 平台公钥（RSA公钥）（必填）\n")
         f.write("# 这是彩虹易支付平台的RSA公钥，用于验证平台返回的回调通知签名\n")
         f.write("# 格式：PEM格式的RSA公钥字符串\n")
-        f.write("# 示例：-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhki...\\n-----END PUBLIC KEY-----\n")
+        f.write(
+            "# 示例：-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhki...\\n-----END PUBLIC KEY-----\n")
         f.write("# 用途：平台使用私钥对回调通知签名，商户使用平台公钥验证签名\n")
         f.write("# 说明：请在彩虹易支付平台获取并填入平台的RSA公钥\n")
         f.write("# 注意：必须配置此公钥，否则无法验证支付回调通知的真实性\n")
-        f.write(f"pubc_key = {config_obj.get('Rainbow_YiPay', 'pubc_key', fallback='')}\n")
+        f.write(
+            f"pubc_key = {config_obj.get('Rainbow_YiPay', 'pubc_key', fallback='')}\n")
         f.write("# 启用的支付方式\n")
         f.write("# 管理员可配置启用哪些支付方式，使用逗号分隔\n")
         f.write("# 支持的支付方式：\n")
@@ -2240,13 +2267,15 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 1. 启用的支付方式必须在您的易支付商户后台已开通\n")
         f.write("# 2. 前端创建订单时会验证支付方式是否在启用列表中\n")
         f.write("# 3. 修改此配置后无需重启服务器，下次创建订单时生效\n")
-        f.write(f"enabled_payment_methods = {config_obj.get('Rainbow_YiPay', 'enabled_payment_methods', fallback='alipay,wxpay')}\n")
+        f.write(
+            f"enabled_payment_methods = {config_obj.get('Rainbow_YiPay', 'enabled_payment_methods', fallback='alipay,wxpay')}\n")
         f.write("# 商品ID（可选）\n")
         f.write("# 用于标识商品类型的唯一标识符\n")
         f.write("# 格式：整数，例如：1001\n")
         f.write("# 默认值：1001（跑步助手服务）\n")
         f.write("# 用途：在支付记录中区分不同类型的商品或服务\n")
-        f.write(f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
+        f.write(
+            f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
         f.write("# 支付超时时间（分钟）\n")
         f.write("# 订单创建后多长时间内未支付视为超时\n")
         f.write("# 格式：整数，单位为分钟\n")
@@ -2255,7 +2284,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 注意：\n")
         f.write("# 1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期\n")
         f.write("# 2. 建议设置为10-60分钟之间\n")
-        f.write(f"payment_timeout_minutes = {config_obj.get('Rainbow_YiPay', 'payment_timeout_minutes', fallback='30')}\n\n")
+        f.write(
+            f"payment_timeout_minutes = {config_obj.get('Rainbow_YiPay', 'payment_timeout_minutes', fallback='30')}\n\n")
 
         # ============================================================
         # [Payment_Settings] 支付费用配置
@@ -2274,7 +2304,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 注意：\n")
         f.write("# 1. 当设置为false时，或者single_run_cost<=0时，系统将跳过所有付费相关逻辑\n")
         f.write("# 2. 免费模式下，用户仍然可以手动结算费用，但不会自动扣费\n")
-        f.write(f"require_payment = {config_obj.get('Payment_Settings', 'require_payment', fallback='true')}\n\n")
+        f.write(
+            f"require_payment = {config_obj.get('Payment_Settings', 'require_payment', fallback='true')}\n\n")
         f.write("# 单次跑步任务费用（单位：元）\n")
         f.write("# 用于计算用户欠费金额 = 欠费次数 × single_run_cost\n")
         f.write("# 默认值：1.0元/次\n")
@@ -2283,7 +2314,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 1. 费用必须为正数，支持小数（如：0.5、1.5、2.0）\n")
         f.write("# 2. 修改后仅对新产生的欠费生效，已有订单不受影响\n")
         f.write("# 3. 设置为0或负数时，相当于关闭付费功能，所有用户可免费使用\n")
-        f.write(f"single_run_cost = {config_obj.get('Payment_Settings', 'single_run_cost', fallback='1.0')}\n\n")
+        f.write(
+            f"single_run_cost = {config_obj.get('Payment_Settings', 'single_run_cost', fallback='1.0')}\n\n")
         f.write("# 新用户注册时获得的默认免费次数（整数）\n")
         f.write("# 用于在用户注册时自动设置available_runs字段的初始值\n")
         f.write("# 默认值：10次\n")
@@ -2298,7 +2330,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 1. 此配置仅影响新注册用户，已注册用户不受影响\n")
         f.write("# 2. 管理员可随时通过用户管理面板修改个别用户的可用次数\n")
         f.write("# 3. 此值会在注册页面的提示文本中显示（如：注册即可得 {available_runs} 次校园跑）\n")
-        f.write(f"default_available_runs = {config_obj.get('Payment_Settings', 'default_available_runs', fallback='10')}\n\n")
+        f.write(
+            f"default_available_runs = {config_obj.get('Payment_Settings', 'default_available_runs', fallback='10')}\n\n")
 
         # ============================================================
         # [Profile_Display] 个人资料显示配置
@@ -2313,7 +2346,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# true：在个人资料页面显示available_runs字段\n")
         f.write("# false：不显示available_runs字段\n")
         f.write("# 默认值：true（显示）\n")
-        f.write(f"show_available_runs = {config_obj.get('Profile_Display', 'show_available_runs', fallback='true')}\n")
+        f.write(
+            f"show_available_runs = {config_obj.get('Profile_Display', 'show_available_runs', fallback='true')}\n")
         f.write("# 剩余免费次数的显示格式（字符串模板）\n")
         f.write("# 使用 {available_runs} 作为占位符，将被替换为实际的剩余次数数值\n")
         f.write("# 示例：\n")
@@ -2321,7 +2355,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("#   - 您还有 {available_runs} 次免费跑步机会\n")
         f.write("#   - Free runs left: {available_runs}\n")
         f.write("# 默认值：剩余免费次数：{available_runs} 次\n")
-        f.write(f"available_runs_format = {config_obj.get('Profile_Display', 'available_runs_format', fallback='剩余免费次数：{{available_runs}} 次')}\n\n")
+        f.write(
+            f"available_runs_format = {config_obj.get('Profile_Display', 'available_runs_format', fallback='剩余免费次数：{{available_runs}} 次')}\n\n")
 
         # ============================================================
         # [Registration_Display] 注册页面显示配置
@@ -2336,7 +2371,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# true：在注册表单中显示初始免费次数的提示信息\n")
         f.write("# false：不显示提示信息\n")
         f.write("# 默认值：true（显示）\n")
-        f.write(f"show_available_runs_on_register = {config_obj.get('Registration_Display', 'show_available_runs_on_register', fallback='true')}\n")
+        f.write(
+            f"show_available_runs_on_register = {config_obj.get('Registration_Display', 'show_available_runs_on_register', fallback='true')}\n")
         f.write("# 注册页面的免费次数提示文本（字符串模板）\n")
         f.write("# 使用 {available_runs} 作为占位符，将被替换为新用户注册时获得的初始免费次数\n")
         f.write("# 此数值从配置文件的 [Payment_Settings].default_available_runs 读取\n")
@@ -2346,7 +2382,8 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("#   - Sign up and get {available_runs} free runs!\n")
         f.write("# 默认值：注册即可得 {available_runs} 次校园跑\n")
         f.write("# 注意：此提示文本通常显示在注册按钮附近或表单顶部，用于吸引用户注册\n")
-        f.write(f"register_available_runs_hint = {config_obj.get('Registration_Display', 'register_available_runs_hint', fallback='注册即可得 {{available_runs}} 次校园跑')}\n\n")
+        f.write(
+            f"register_available_runs_hint = {config_obj.get('Registration_Display', 'register_available_runs_hint', fallback='注册即可得 {{available_runs}} 次校园跑')}\n\n")
 
 
 def is_weak_password(password):
@@ -2357,22 +2394,22 @@ def is_weak_password(password):
     # 密码长度必须至少8个字符，这是安全的基本要求
     if len(password) < 6:
         return (True, "密码长度不能少于6个字符")
-    
+
     # 2. 检查是否为纯数字
     # 纯数字密码容易被暴力破解，安全性极低
     if password.isdigit():
         return (True, "密码不能为纯数字")
-    
+
     # 3. 检查是否为纯字母
     # 纯字母密码缺乏复杂性，容易被字典攻击破解
     if password.isalpha():
         return (True, "密码不能为纯字母，需包含数字或特殊字符")
-    
+
     # 4. 常见弱密码列表
     # 这些密码在各种密码泄露事件中出现频率极高，黑客工具都会优先尝试
     common_weak_passwords = [
-        'password', 'password123', 'admin123', 'admin', 
-        '12345678', '123456789', '87654321', 'qwerty', 
+        'password', 'password123', 'admin123', 'admin',
+        '12345678', '123456789', '87654321', 'qwerty',
         'qwerty123', 'abc123', 'abcd1234', '11111111',
         '00000000', 'test1234', 'user1234', 'pass1234',
         'a1b2c3d4', '1q2w3e4r', 'qwertyui', 'asdfghjk',
@@ -2380,7 +2417,7 @@ def is_weak_password(password):
     # 使用 lower() 进行不区分大小写的比较，避免用户用大小写混淆绕过检测
     if password.lower() in common_weak_passwords:
         return (True, "密码过于简单，请使用更复杂的密码")
-    
+
     # 5. 检查键盘序列（连续的键盘按键）
     # 键盘序列容易被猜测，因为人们倾向于使用手指在键盘上连续按键的模式
     keyboard_patterns = [
@@ -2393,13 +2430,13 @@ def is_weak_password(password):
         # 检查密码中是否包含这些键盘序列模式
         if pattern in password_lower:
             return (True, "密码包含键盘序列，请使用更复杂的密码")
-    
+
     # 6. 检查重复字符（如：aaaa1111, 11112222）
     # 使用 set() 获取密码中不同字符的数量
     # 如果不同字符种类少于4种，说明密码重复性太高，缺乏多样性
     if len(set(password)) < 4:
         return (True, "密码字符重复过多，请使用更多样化的字符")
-    
+
     # 通过所有检查，密码强度合格
     # 返回 False 表示不是弱密码，reason 为空字符串
     return (False, "")
@@ -2408,19 +2445,19 @@ def is_weak_password(password):
 def get_baidu_access_token(api_key, secret_key):
     """
     获取百度云API的access_token
-    
+
     百度云的所有API调用都需要先获取access_token作为身份验证凭证。
     该函数通过API Key和Secret Key向百度OAuth 2.0服务请求access_token。
-    
+
     参数:
         api_key (str): 百度云应用的API Key，在百度云控制台创建应用后获取
         secret_key (str): 百度云应用的Secret Key，在百度云控制台创建应用后获取
-    
+
     返回:
         dict: 包含以下键的字典：
             - access_token (str or None): 成功时返回access_token字符串，失败时为None
             - error (str or None): 成功时为None，失败时返回错误信息
-    
+
     使用示例:
         result = get_baidu_access_token("your_api_key", "your_secret_key")
         if result["error"] is None:
@@ -2430,11 +2467,11 @@ def get_baidu_access_token(api_key, secret_key):
     """
     # 注意：requests库已在模块级别通过_try_import_third_party()导入
     # 不需要在函数内部重复导入
-    
+
     # 百度云OAuth 2.0 token获取接口的URL
     # 该接口使用client_credentials授权模式（客户端凭证模式）
     token_url = "https://aip.baidubce.com/oauth/2.0/token"
-    
+
     # 构造请求参数
     # grant_type: OAuth 2.0的授权类型，这里使用client_credentials（客户端凭证）
     # client_id: 即百度云的API Key
@@ -2444,22 +2481,22 @@ def get_baidu_access_token(api_key, secret_key):
         "client_id": api_key,                # 百度云API Key
         "client_secret": secret_key          # 百度云Secret Key
     }
-    
+
     try:
         # 发送GET请求到百度云token获取接口
         # timeout=10: 设置请求超时时间为10秒，防止长时间等待导致程序挂起
         # 如果10秒内没有响应，将抛出requests.exceptions.Timeout异常
         response = requests.get(token_url, params=params, timeout=10)
-        
+
         # 检查HTTP响应状态码
         # raise_for_status()会在状态码为4xx或5xx时抛出HTTPError异常
         # 例如：404 Not Found、500 Internal Server Error等
         response.raise_for_status()
-        
+
         # 尝试将响应内容解析为JSON格式
         # 百度云API的响应都是JSON格式的数据
         data = response.json()
-        
+
         # 检查响应中是否包含access_token字段
         # 成功的响应格式：{"access_token": "...", "expires_in": 2592000}
         # 失败的响应格式：{"error": "...", "error_description": "..."}
@@ -2472,12 +2509,13 @@ def get_baidu_access_token(api_key, secret_key):
         else:
             # 响应中没有access_token，说明请求失败
             # 从响应中提取错误信息，如果没有error字段则使用默认信息
-            error_msg = data.get("error_description", data.get("error", "未知错误"))
+            error_msg = data.get("error_description",
+                                 data.get("error", "未知错误"))
             return {
                 "access_token": None,                                  # token获取失败
                 "error": f"百度云API返回错误: {error_msg}"              # 返回错误信息
             }
-    
+
     except requests.exceptions.Timeout:
         # 捕获请求超时异常
         # 当请求时间超过timeout参数设置的时间时触发
@@ -2485,7 +2523,7 @@ def get_baidu_access_token(api_key, secret_key):
             "access_token": None,
             "error": "请求超时，请检查网络连接或稍后重试"
         }
-    
+
     except requests.exceptions.ConnectionError:
         # 捕获连接错误异常
         # 例如：DNS解析失败、网络不可达、服务器拒绝连接等
@@ -2493,7 +2531,7 @@ def get_baidu_access_token(api_key, secret_key):
             "access_token": None,
             "error": "网络连接失败，请检查网络设置"
         }
-    
+
     except requests.exceptions.HTTPError as e:
         # 捕获HTTP错误异常（4xx、5xx状态码）
         # 例如：401 Unauthorized、403 Forbidden、500 Internal Server Error
@@ -2501,7 +2539,7 @@ def get_baidu_access_token(api_key, secret_key):
             "access_token": None,
             "error": f"HTTP请求失败: {str(e)}"
         }
-    
+
     except ValueError:
         # 捕获JSON解析错误
         # 当响应内容不是有效的JSON格式时触发
@@ -2509,7 +2547,7 @@ def get_baidu_access_token(api_key, secret_key):
             "access_token": None,
             "error": "响应数据格式错误，无法解析JSON"
         }
-    
+
     except Exception as e:
         # 捕获所有其他未预期的异常
         # 作为最后的兜底处理，确保函数不会因为未知错误而崩溃
@@ -2522,10 +2560,10 @@ def get_baidu_access_token(api_key, secret_key):
 def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone_sha256=None, device_id=None):
     """
     调用百度云文本审核服务检测文本内容是否合规
-    
+
     该函数将文本内容提交到百度云内容审核平台进行审核，检测是否包含违规内容。
     百度云会根据预设的审核策略，检测文本中的色情、暴力、政治敏感、违禁品等内容。
-    
+
     参数:
         text (str): 待审核的文本内容（必填），这是唯一的必需参数
         strategy_id (str, 可选): 审核策略ID，不填则使用百度云默认策略
@@ -2533,7 +2571,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
         user_ip (str, 可选): 用户的IP地址，用于风险识别和统计分析
         phone_sha256 (str, 可选): 用户手机号的SHA256哈希值，用于风险识别
         device_id (str, 可选): 用户设备的唯一标识，用于风险识别
-    
+
     返回:
         dict: 包含以下键的字典：
             - success (bool): 是否成功调用API（True表示成功，False表示失败）
@@ -2549,7 +2587,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
                 * 4: 审核失败
             - data (list): 详细的审核结果数组，包含具体的违规类型和位置信息
             - error (str or None): 错误信息，成功时为None，失败时包含错误详情
-    
+
     使用示例:
         # 基本用法（只检测文本）
         result = check_text_content("这是一段需要审核的文本内容")
@@ -2561,7 +2599,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
                 print(f"详细信息: {result['data']}")
         else:
             print(f"审核失败: {result['error']}")
-        
+
         # 完整用法（包含所有可选参数）
         result = check_text_content(
             text="这是一段需要审核的文本内容",
@@ -2574,13 +2612,13 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
     """
     # 注意：requests库已在模块级别通过_try_import_third_party()导入
     # 不需要在函数内部重复导入
-    
+
     # 读取百度云配置信息
     # 使用统一的配置读取函数读取config.ini文件中的[baidu_cloud]配置节
     try:
         # 调用统一的配置读取函数，该函数会返回RawConfigParser对象或None
         config = _read_config_ini("config.ini")
-        
+
         # 检查配置文件是否成功读取
         # 如果返回None，说明配置文件读取失败（文件不存在、权限问题等）
         if config is None:
@@ -2592,23 +2630,27 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
                 "data": [],
                 "error": "无法读取配置文件config.ini"
             }
-        
+
         # 从配置文件中获取API Key和Secret Key
         # 如果配置项不存在或为空，则get方法会返回空字符串
         api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
-        secret_key = config.get("baidu_cloud", "secret_key", fallback="").strip()
-        
+        secret_key = config.get(
+            "baidu_cloud", "secret_key", fallback="").strip()
+
         # 验证API凭证格式
         # API Key和Secret Key必须至少24个字符（百度云实际长度通常更长）
         if api_key and len(api_key) < 24:
-            logging.warning(f"[百度云文本审核] API Key长度异常（{len(api_key)}字符），预期至少24字符")
+            logging.warning(
+                f"[百度云文本审核] API Key长度异常（{len(api_key)}字符），预期至少24字符")
         if secret_key and len(secret_key) < 24:
-            logging.warning(f"[百度云文本审核] Secret Key长度异常（{len(secret_key)}字符），预期至少24字符")
-        
+            logging.warning(
+                f"[百度云文本审核] Secret Key长度异常（{len(secret_key)}字符），预期至少24字符")
+
         # 如果配置文件中设置了策略ID，且函数调用时未指定，则使用配置文件中的值
         if not strategy_id:
-            strategy_id = config.get("baidu_cloud", "strategy_id", fallback="").strip()
-        
+            strategy_id = config.get(
+                "baidu_cloud", "strategy_id", fallback="").strip()
+
         # 检查API Key和Secret Key是否已配置
         # 这两个参数是调用百度云API的必需凭证
         if not api_key or not secret_key:
@@ -2619,7 +2661,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
                 "data": [],
                 "error": "百度云API Key或Secret Key未配置，请在config.ini中配置[baidu_cloud]节"
             }
-    
+
     except Exception as e:
         # 捕获配置文件读取过程中的任何异常
         # 例如：文件不存在、权限不足、编码错误等
@@ -2630,11 +2672,11 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             "data": [],
             "error": f"读取配置文件失败: {str(e)}"
         }
-    
+
     # 第一步：获取access_token
     # 调用上面定义的get_baidu_access_token函数获取API访问令牌
     token_result = get_baidu_access_token(api_key, secret_key)
-    
+
     # 检查token获取是否成功
     if token_result["error"] is not None:
         # token获取失败，直接返回错误
@@ -2645,27 +2687,27 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             "data": [],
             "error": f"获取access_token失败: {token_result['error']}"
         }
-    
+
     # 从token_result中提取access_token
     access_token = token_result["access_token"]
-    
+
     # 第二步：调用文本审核API
     # 百度云文本审核接口的URL，需要将access_token作为URL参数传递
     censor_url = f"https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v2/user_defined?access_token={access_token}"
-    
+
     # 设置HTTP请求头
     # Content-Type指定请求体的格式为表单编码（application/x-www-form-urlencoded）
     # 这是百度云文本审核API要求的格式
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    
+
     # 构造请求体数据
     # 使用字典存储所有参数，requests会自动将其编码为x-www-form-urlencoded格式
     data = {
         "text": text  # 必填参数：待审核的文本内容
     }
-    
+
     # 添加可选参数（如果提供了值）
     # 只有当参数不为None且不为空字符串时才添加到请求中
     if strategy_id:
@@ -2678,20 +2720,21 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
         data["phoneSha256"] = phone_sha256  # 手机号SHA256
     if device_id:
         data["deviceId"] = device_id  # 设备ID
-    
+
     try:
         # 发送POST请求到百度云文本审核接口
         # data参数会被自动编码为application/x-www-form-urlencoded格式
         # timeout=10：设置10秒超时，防止长时间等待
-        response = requests.post(censor_url, headers=headers, data=data, timeout=10)
-        
+        response = requests.post(
+            censor_url, headers=headers, data=data, timeout=10)
+
         # 检查HTTP响应状态码
         # 如果状态码不是2xx，raise_for_status()会抛出HTTPError异常
         response.raise_for_status()
-        
+
         # 解析响应的JSON数据
         result = response.json()
-        
+
         # 检查API是否返回了错误
         # 百度云API在出错时会返回error_code和error_msg字段
         if "error_code" in result:
@@ -2705,7 +2748,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
                 "data": [],
                 "error": f"百度云API错误 (错误码: {error_code}): {error_msg}"
             }
-        
+
         # 从响应中提取审核结果
         # conclusion: 审核结论文本（"合规"、"不合规"、"疑似"、"审核失败"）
         # conclusionType: 审核结论类型（1-4的整数）
@@ -2713,7 +2756,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
         conclusion = result.get("conclusion", "审核失败")
         conclusion_type = result.get("conclusionType", 4)
         data_list = result.get("data", [])
-        
+
         # 返回成功的结果
         return {
             "success": True,              # API调用成功
@@ -2722,7 +2765,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             "data": data_list,            # 详细审核结果
             "error": None                 # 没有错误
         }
-    
+
     except requests.exceptions.Timeout:
         # 请求超时异常
         # 当API响应时间超过timeout参数设置的时间时触发
@@ -2733,7 +2776,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             "data": [],
             "error": "请求超时，百度云服务响应时间过长，请稍后重试"
         }
-    
+
     except requests.exceptions.ConnectionError:
         # 网络连接错误
         # 例如：无法连接到百度云服务器、DNS解析失败等
@@ -2744,7 +2787,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             "data": [],
             "error": "网络连接失败，无法连接到百度云服务，请检查网络设置"
         }
-    
+
     except requests.exceptions.HTTPError as e:
         # HTTP错误（4xx、5xx状态码）
         # 例如：401未授权、403禁止访问、500服务器内部错误等
@@ -2755,7 +2798,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             "data": [],
             "error": f"HTTP请求失败: {str(e)}"
         }
-    
+
     except ValueError:
         # JSON解析错误
         # 当百度云API返回的响应不是有效的JSON格式时触发
@@ -2766,7 +2809,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
             "data": [],
             "error": "响应数据格式错误，无法解析百度云API返回的JSON数据"
         }
-    
+
     except Exception as e:
         # 捕获所有其他未预期的异常
         # 这是最后的兜底处理，确保函数始终返回标准格式的结果
@@ -2782,13 +2825,13 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
 def _read_config_ini(config_file="config.ini"):
     """
     统一的config.ini读取函数
-    
+
     参数:
         config_file: 配置文件路径，默认为"config.ini"
-        
+
     返回:
         configparser.RawConfigParser对象，如果读取失败返回None
-        
+
     说明:
         - 使用RawConfigParser保持键名的大小写
         - 设置optionxform = str保持选项名的原始大小写
@@ -2799,15 +2842,15 @@ def _read_config_ini(config_file="config.ini"):
         # 创建RawConfigParser对象，它不会对配置值进行插值处理
         # 这确保了配置值中的特殊字符（如%）不会被误解释
         config = configparser.RawConfigParser()
-        
+
         # 保持键名的原始大小写（默认会转换为小写）
         # 这对于区分大小写敏感的配置项很重要
         config.optionxform = str
-        
+
         # 读取配置文件，使用utf-8编码
         # 这确保能正确读取包含中文或其他Unicode字符的配置
         config.read(config_file, encoding="utf-8")
-        
+
         # 成功读取配置文件，返回配置对象
         return config
     except Exception as e:
@@ -2893,10 +2936,10 @@ def _create_config_ini():
 def _get_default_payment_methods_config():
     """
     获取默认的支付方式配置
-    
+
     返回值:
         dict: 默认的支付方式配置字典，包含所有支持的支付方式及其显示信息
-        
+
     说明:
         此函数返回系统默认支持的支付方式配置，包括：
         - alipay: 支付宝支付
@@ -2904,7 +2947,7 @@ def _get_default_payment_methods_config():
         - bank: 网银支付
         - qqpay: QQ钱包
         - unionpay: 云闪付
-        
+
         每个支付方式包含以下字段：
         - name: 中文名称，用于前端显示
         - icon: 图标类型，固定为 "svg"
@@ -2972,22 +3015,22 @@ def _get_default_payment_methods_config():
 def _read_payment_methods_config():
     """
     读取支付方式配置文件
-    
+
     返回值:
         dict: 支付方式配置字典，如果文件不存在或读取失败，则返回默认配置
-        
+
     说明:
         此函数负责从 payment_methods.json 文件中读取支付方式配置。
         - 如果文件存在且格式正确，返回文件中的配置
         - 如果文件不存在，返回默认配置
         - 如果读取过程中发生错误（如JSON格式错误），记录错误日志并返回默认配置
-        
+
     异常处理:
         所有异常都会被捕获，确保函数始终返回一个有效的配置字典
     """
     # 定义配置文件路径为当前目录下的 payment_methods.json
     config_file = "payment_methods.json"
-    
+
     try:
         # 检查配置文件是否存在
         if os.path.exists(config_file):
@@ -3012,22 +3055,22 @@ def _read_payment_methods_config():
 def _write_payment_methods_config(methods_config):
     """
     写入支付方式配置文件
-    
+
     参数:
         methods_config (dict): 支付方式配置字典，将被写入到JSON文件
-        
+
     说明:
         此函数负责将支付方式配置写入到 payment_methods.json 文件。
         - 使用 utf-8 编码确保中文内容正确保存
         - 使用 ensure_ascii=False 保持中文字符不被转义
         - 使用 indent=2 格式化JSON输出，便于人工编辑
-        
+
     异常处理:
         如果写入失败，会记录错误日志并重新抛出异常，由调用方处理
     """
     # 定义配置文件路径为当前目录下的 payment_methods.json
     config_file = "payment_methods.json"
-    
+
     try:
         # 打开文件进行写入，如果文件不存在则创建
         # 使用 utf-8 编码确保中文内容正确保存
@@ -3050,53 +3093,55 @@ def _write_payment_methods_config(methods_config):
 def _migrate_payment_methods_to_json():
     """
     一次性迁移：将 config.ini 中的 payment_methods_config 迁移到 JSON 文件
-    
+
     说明:
         此函数用于从旧版本升级时自动迁移配置数据。
         - 如果 payment_methods.json 已存在，则跳过迁移（避免覆盖用户自定义配置）
         - 如果 config.ini 中存在旧配置，则读取并迁移到新的JSON文件
         - 如果没有旧配置，则创建默认配置文件
-        
+
     迁移策略:
         1. 检查 JSON 文件是否已存在
         2. 如果不存在，尝试从 config.ini 读取旧配置
         3. 如果旧配置存在，迁移到新文件
         4. 如果旧配置不存在或读取失败，创建默认配置
-        
+
     异常处理:
         所有异常都会被捕获，确保即使迁移失败也不影响应用启动
     """
     # 定义目标配置文件路径
     config_file = "payment_methods.json"
-    
+
     # 检查 JSON 配置文件是否已存在
     if os.path.exists(config_file):
         # 文件已存在，说明已经迁移过或用户已自定义配置
         # 直接返回，避免覆盖用户的配置
         return
-    
+
     # JSON 文件不存在，尝试从 config.ini 迁移旧配置
     try:
         # 创建 ConfigParser 对象用于读取 INI 文件
         config = configparser.ConfigParser()
         # 读取 config.ini 文件，使用 utf-8 编码
         config.read("config.ini", encoding="utf-8")
-        
+
         # 检查 Rainbow_YiPay 节中是否存在 payment_methods_config 配置项
         if config.has_option("Rainbow_YiPay", "payment_methods_config"):
             # 旧配置存在，读取配置项的值（JSON字符串格式）
-            old_config_str = config.get("Rainbow_YiPay", "payment_methods_config")
+            old_config_str = config.get(
+                "Rainbow_YiPay", "payment_methods_config")
             # 将JSON字符串解析为字典对象
             methods_config = json.loads(old_config_str)
-            
+
             # 将解析后的配置写入新的 JSON 文件
             _write_payment_methods_config(methods_config)
-            
+
             # 记录迁移成功的日志
             logging.info("[支付方式配置] 已从 config.ini 迁移到 payment_methods.json")
         else:
             # config.ini 中没有旧配置，创建默认配置
-            _write_payment_methods_config(_get_default_payment_methods_config())
+            _write_payment_methods_config(
+                _get_default_payment_methods_config())
             # 记录创建默认配置的日志
             logging.info("[支付方式配置] 已创建默认配置文件 payment_methods.json")
     except Exception as e:
@@ -3105,7 +3150,8 @@ def _migrate_payment_methods_to_json():
         logging.error(f"[支付方式配置] 迁移失败: {str(e)}")
         # 即使迁移失败，也尝试创建默认配置，确保系统可以正常运行
         try:
-            _write_payment_methods_config(_get_default_payment_methods_config())
+            _write_payment_methods_config(
+                _get_default_payment_methods_config())
         except:
             # 如果创建默认配置也失败，只能记录错误
             # 这种情况下系统可能无法正常工作，需要用户手动处理
@@ -3357,16 +3403,15 @@ def get_session_file_path(session_id: str) -> str:
 # ==============================================================================
 
 
-
 class RsaSigner:
     def __init__(self, private_key_str: str = None, public_key_str: str = None):
         """
         初始化签名器（用于签名和验签）
-        
+
         参数说明:
             private_key_str (str): 私钥字符串（用于签名，可以是带头尾的PEM格式，也可以是纯Base64字符串）
             public_key_str (str): 公钥字符串（用于验签，可以是带头尾的PEM格式，也可以是纯Base64字符串）
-        
+
         使用场景:
             - 签名操作：需要传入 private_key_str
             - 验签操作：需要传入 public_key_str
@@ -3374,34 +3419,36 @@ class RsaSigner:
         """
         # 加载私钥（如果提供了私钥字符串）
         # 私钥用于生成签名（sign）操作
-        self.private_key = self._load_private_key(private_key_str) if private_key_str else None
-        
+        self.private_key = self._load_private_key(
+            private_key_str) if private_key_str else None
+
         # 加载公钥（如果提供了公钥字符串）
         # 公钥用于验证签名（verify）操作
-        self.public_key = self._load_public_key(public_key_str) if public_key_str else None
+        self.public_key = self._load_public_key(
+            public_key_str) if public_key_str else None
 
     def _load_private_key(self, pk_str: str):
         """
         内部函数：处理私钥格式并加载
-        
+
         功能说明:
             将私钥字符串转换为cryptography库可用的私钥对象
             支持两种输入格式：
             1. 完整的PEM格式（包含 -----BEGIN PRIVATE KEY----- 头尾）
             2. 纯Base64编码的密钥内容（自动补全头尾）
-        
+
         参数:
             pk_str (str): 私钥字符串
-        
+
         返回:
             私钥对象（cryptography.hazmat.primitives.asymmetric.rsa.RSAPrivateKey）
-        
+
         异常:
             ValueError: 当私钥格式错误或加载失败时抛出
         """
         # 去除首尾空白字符（空格、换行等）
         pk_str = pk_str.strip()
-        
+
         # 检查是否包含PEM格式的头部标识
         # 如果没有头部，说明是纯Base64字符串，需要补全标准的PEM格式头尾
         # 注意：这里默认补全为 PKCS#8 格式 (BEGIN PRIVATE KEY)
@@ -3410,7 +3457,7 @@ class RsaSigner:
             # 简单的格式化，每64字符换行是PEM的标准，但在Python加载时通常不需要强制换行，
             # 只要头尾正确即可。
             pk_str = f"-----BEGIN PRIVATE KEY-----\n{pk_str}\n-----END PRIVATE KEY-----"
-            
+
         try:
             # 使用cryptography库加载PEM格式的私钥
             # encode('utf-8') 将字符串转换为字节串
@@ -3422,36 +3469,36 @@ class RsaSigner:
         except Exception as e:
             # 加载失败时抛出ValueError异常，包含详细的错误信息
             raise ValueError(f"私钥格式错误或加载失败: {str(e)}")
-    
+
     def _load_public_key(self, pub_key_str: str):
         """
         内部函数：处理公钥格式并加载
-        
+
         功能说明:
             将公钥字符串转换为cryptography库可用的公钥对象
             支持两种输入格式：
             1. 完整的PEM格式（包含 -----BEGIN PUBLIC KEY----- 头尾）
             2. 纯Base64编码的密钥内容（自动补全头尾）
-        
+
         参数:
             pub_key_str (str): 公钥字符串
-        
+
         返回:
             公钥对象（cryptography.hazmat.primitives.asymmetric.rsa.RSAPublicKey）
-        
+
         异常:
             ValueError: 当公钥格式错误或加载失败时抛出
         """
         # 去除首尾空白字符（空格、换行、制表符等）
         pub_key_str = pub_key_str.strip()
-        
+
         # 检查是否包含PEM格式的头部标识
         # 如果没有头部，说明是纯Base64字符串，需要补全标准的PEM格式头尾
         if not pub_key_str.startswith("-----BEGIN"):
             # 补全PEM格式的头尾
             # 标准格式：-----BEGIN PUBLIC KEY-----\n{base64内容}\n-----END PUBLIC KEY-----
             pub_key_str = f"-----BEGIN PUBLIC KEY-----\n{pub_key_str}\n-----END PUBLIC KEY-----"
-        
+
         try:
             # 使用cryptography库加载PEM格式的公钥
             # encode('utf-8') 将字符串转换为字节串
@@ -3461,15 +3508,14 @@ class RsaSigner:
         except Exception as e:
             # 加载失败时抛出ValueError异常，包含详细的错误信息
             raise ValueError(f"公钥格式错误或加载失败: {str(e)}")
-        
-        
+
     def generate_sign_string(self, params: dict) -> str:
         """
         排序、拼接、签名并返回JSON
         """
         # 1. & 2. 获取非空参数，剔除特定字段，排序并拼接
         string_to_sign = self._build_string_to_sign(params)
-        
+
         # 3. 计算 RSA 签名 (SHA256WithRSA)
         # 使用 PKCS1v15 填充，这是大多数支付接口（如支付宝）的标准
         signature = self.private_key.sign(
@@ -3477,7 +3523,7 @@ class RsaSigner:
             cryptography.hazmat.primitives.asymmetric.padding.PKCS1v15(),
             cryptography.hazmat.primitives.hashes.SHA256()
         )
-        
+
         # 转为 Base64 字符串
         sign_b64 = base64.b64encode(signature).decode('utf-8')
 
@@ -3486,19 +3532,19 @@ class RsaSigner:
     def verify_sign(self, params: dict, signature: str, hash_algo: str = 'SHA256') -> bool:
         """
         验证RSA签名是否有效
-        
+
         功能说明:
             使用公钥验证签名字符串的有效性
             这是支付回调通知中的核心安全机制，确保通知来自真实的支付平台
-        
+
         参数:
             params (dict): 需要验证的参数字典（包含所有参数，但不包含sign）
             signature (str): Base64编码的签名字符串（从支付平台返回的sign参数）
             hash_algo (str): 哈希算法，默认为'SHA256'，也支持'SHA1'
-        
+
         返回:
             bool: 验证成功返回True，验证失败返回False
-        
+
         验证流程:
             1. 使用 _build_string_to_sign() 构建待签名字符串（参数排序、拼接）
             2. 使用公钥对签名进行解密
@@ -3509,23 +3555,23 @@ class RsaSigner:
             # 按照同样的规则（过滤、排序、拼接）生成原文
             # 这个原文必须与签名时使用的原文完全一致
             content = self._build_string_to_sign(params)
-            
+
             # 记录日志：输出待验证的原文内容（用于调试）
             logging.info(f"[RSA验签] 待验证原文: {content}")
-            
+
             # 第2步：检查公钥是否已加载
             # 如果初始化时没有提供公钥，则无法进行验签
             if not self.public_key:
                 logging.error("[RSA验签] 错误：未加载公钥，无法验证签名")
                 return False
-            
+
             # 第3步：处理签名字符串中的空格问题
             # 问题场景：URL传输时，Base64中的"+"号可能被解码为空格
             # 解决方案：检测到空格时，尝试替换回"+"号
             if " " in signature:
                 logging.warning("[RSA验签] 检测到签名中包含空格，尝试替换为'+'（可能是URL解码导致）")
                 signature = signature.replace(" ", "+")
-            
+
             # 第4步：Base64解码签名字符串
             # 将Base64编码的签名字符串解码为原始字节串
             try:
@@ -3534,7 +3580,7 @@ class RsaSigner:
                 # Base64解码失败，说明签名字符串格式不正确
                 logging.error(f"[RSA验签] Base64解码失败: {str(e)}")
                 return False
-            
+
             # 第5步：选择哈希算法
             # 根据参数选择SHA256或SHA1哈希算法
             # 默认使用SHA256（更安全），部分旧系统可能使用SHA1
@@ -3542,7 +3588,7 @@ class RsaSigner:
                 chosen_hash = cryptography.hazmat.primitives.hashes.SHA1()
             else:
                 chosen_hash = cryptography.hazmat.primitives.hashes.SHA256()
-            
+
             # 第6步：执行RSA签名验证
             # 使用公钥验证签名是否有效
             # 验证过程：
@@ -3556,11 +3602,11 @@ class RsaSigner:
                 cryptography.hazmat.primitives.asymmetric.padding.PKCS1v15(),  # 填充方式
                 chosen_hash                                         # 哈希算法
             )
-            
+
             # 验证成功，记录日志并返回True
             logging.info("[RSA验签] ✅ 验签通过！签名有效")
             return True
-            
+
         except cryptography.exceptions.InvalidSignature:
             # 签名无效异常
             # 原因可能是：
@@ -3570,7 +3616,7 @@ class RsaSigner:
             #   4. 签名算法不匹配
             logging.error("[RSA验签] ❌ 验签失败！签名无效")
             return False
-            
+
         except Exception as e:
             # 其他未预期的异常
             # 例如：公钥格式错误、加密库内部错误等
@@ -3584,7 +3630,7 @@ class RsaSigner:
         """
         # 1. & 2. 获取非空参数，剔除特定字段，排序并拼接
         string_to_sign = self._build_string_to_sign(params)
-        
+
         # 3. 计算 RSA 签名 (SHA256WithRSA)
         # 使用 PKCS1v15 填充，这是大多数支付接口（如支付宝）的标准
         signature = self.private_key.sign(
@@ -3592,19 +3638,17 @@ class RsaSigner:
             cryptography.hazmat.primitives.asymmetric.padding.PKCS1v15(),
             cryptography.hazmat.primitives.hashes.SHA256()
         )
-        
+
         # 转为 Base64 字符串
         sign_b64 = base64.b64encode(signature).decode('utf-8')
-        
-        
-        
+
         # 复制一份原参数，避免直接修改传入的 params 字典对外部造成影响
         response_data = params.copy()
-        
+
         # 将签名和签名类型加入到字典中
         response_data["sign"] = sign_b64
         response_data["sign_type"] = "RSA"
-        
+
         return response_data
 
     def _build_string_to_sign(self, params: dict) -> str:
@@ -3612,50 +3656,49 @@ class RsaSigner:
         参数过滤、排序和拼接
         """
         filtered_params = {}
-        
+
         for key, value in params.items():
             # 剔除 sign 和 sign_type
             if key in ['sign', 'sign_type']:
                 continue
-            
+
             # 剔除空值 (None 或 空字符串)
             # 注意：数字 0 通常被视为有效值，所以不能简单用 if not value
             if value is None or value == "":
                 continue
-                
+
             # 剔除数组、字节类型 (list, tuple, bytes)
             if isinstance(value, (list, tuple, bytes)):
                 continue
-            
+
             # 确保值为字符串格式
             filtered_params[key] = str(value)
 
         # 按照键名 ASCII 码升序排序
         sorted_keys = sorted(filtered_params.keys())
-        
+
         # 组合成 "参数=参数值" 并用 "&" 连接
         kv_pairs = [f"{key}={filtered_params[key]}" for key in sorted_keys]
-        
+
         # 修复：返回拼接后的字符串
         return "&".join(kv_pairs)
-        
 
 
 class RainbowYiPayClient:
     """
     彩虹易支付V2接口客户端类
-    
+
     功能说明：
     这个类封装了彩虹易支付（Rainbow Yi Pay）V2版本的所有API接口
     支持创建支付订单、查询订单状态、验证支付回调签名等功能
-    
+
     支付流程：
     1. 调用 create_order() 创建支付订单，获取支付跳转URL
     2. 用户在支付页面完成支付
     3. 支付成功后，彩虹易支付会异步回调 notify_url
     4. 调用 verify_sign() 验证回调签名，确认支付成功
     5. 可通过 query_order() 主动查询订单状态
-    
+
     安全机制：
     - 使用MD5签名算法验证所有请求和回调
     - 签名密钥存储在服务器端，不会暴露给客户端
@@ -3665,10 +3708,10 @@ class RainbowYiPayClient:
     def __init__(self, config_file="config.ini"):
         """
         初始化彩虹易支付客户端
-        
+
         参数:
             config_file (str): 配置文件路径，默认为 "config.ini"
-        
+
         功能:
             从配置文件中读取彩虹易支付的商户参数，包括：
             - host: 易支付接口域名
@@ -3676,63 +3719,66 @@ class RainbowYiPayClient:
             - key: 商户密钥（用于签名）
             - notify_url: 异步通知URL
             - return_url: 同步返回URL
-        
+
         异常:
             如果配置文件不存在或配置项缺失，会记录错误日志
         """
         # 创建一个新的配置解析器实例，用于读取配置文件
         # strict=False 允许配置项重复（虽然不推荐，但提高兼容性）
         self.config = configparser.ConfigParser(strict=False)
-        
+
         # optionxform=str 保持配置项的大小写敏感，默认会转为小写
         self.config.optionxform = str
-        
+
         # 读取配置文件，使用 UTF-8 编码以支持中文
         self.config.read(config_file, encoding="utf-8")
-        
+
         # 从配置文件的 [Rainbow_YiPay] 节读取易支付接口域名
         # fallback 参数指定当配置项不存在时的默认值（空字符串）
         self.host = self.config.get("Rainbow_YiPay", "host", fallback="")
-        
+
         # 读取商户ID（PID），这是商户在易支付平台的唯一标识
         self.pid = self.config.get("Rainbow_YiPay", "pid", fallback="")
-        
+
         # 读取商户密钥（KEY），用于生成和验证签名，必须保密
         self.key = self.config.get("Rainbow_YiPay", "key", fallback="")
-        
+
         # 读取异步通知URL，支付成功后易支付会向这个URL发送POST请求
-        self.notify_url = self.config.get("Rainbow_YiPay", "notify_url", fallback="")
-        
+        self.notify_url = self.config.get(
+            "Rainbow_YiPay", "notify_url", fallback="")
+
         # 读取同步返回URL，用户支付完成后浏览器会跳转到这个URL
-        self.return_url = self.config.get("Rainbow_YiPay", "return_url", fallback="")
-        
+        self.return_url = self.config.get(
+            "Rainbow_YiPay", "return_url", fallback="")
+
         # 记录日志：彩虹易支付客户端初始化成功
         # 日志中包含商户ID，方便调试和追踪
         logging.info(f"[彩虹易支付] 客户端初始化成功 - 商户ID: {self.pid}")
 
-    def create_order(self, out_trade_no, name, money, pay_type="alipay", 
-                     return_url=None, client_app_host=None, payment_type="jump", 
-                     device_get=None, auth_code=None, sub_openid=None, sub_appid=None, 
+    def create_order(self, out_trade_no, name, money, pay_type="alipay",
+                     return_url=None, client_app_host=None, payment_type="jump",
+                     device_get=None, auth_code=None, sub_openid=None, sub_appid=None,
                      clientip=None):
         """
         创建支付订单
         """
-        method=payment_type
-        logging.info(f"[彩虹易支付] 创建订单请求 - 订单号: {out_trade_no}, 商品名称: {name}, 金额: {money}, 支付方式: {pay_type}, 接口类型: {payment_type}，服务器端地址：{client_app_host}，接口类型：{payment_type}，设备：{device_get}")
+        method = payment_type
+        logging.info(
+            f"[彩虹易支付] 创建订单请求 - 订单号: {out_trade_no}, 商品名称: {name}, 金额: {money}, 支付方式: {pay_type}, 接口类型: {payment_type}，服务器端地址：{client_app_host}，接口类型：{payment_type}，设备：{device_get}")
         if pay_type == "jsapi":
             if not sub_openid or not sub_appid:
                 return {"success": False, "message": "jsapi支付方式需要提供sub_openid和sub_appid"}
-            logging.info(f"[彩虹易支付] 检测到jsapi支付方式，sub_openid: {sub_openid}, sub_appid: {sub_appid}")
+            logging.info(
+                f"[彩虹易支付] 检测到jsapi支付方式，sub_openid: {sub_openid}, sub_appid: {sub_appid}")
         if pay_type == "scan":
             if not auth_code:
                 return {"success": False, "message": "scan支付方式需要提供auth_code"}
             logging.info(f"[彩虹易支付] 检测到scan支付方式，auth_code: {auth_code}")
 
-        
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
         global requests, payment_verify_challenge_get
-        
+
         # 检查必需的配置参数是否已填写
         # 如果 host、pid 或 key 为空，说明配置不完整，无法创建订单
         if not self.host or not self.pid or not self.key:
@@ -3740,28 +3786,30 @@ class RainbowYiPayClient:
             logging.error("[彩虹易支付] 配置不完整，无法创建订单")
             # 返回失败响应
             return {"success": False, "message": "彩虹易支付配置不完整，请联系管理员"}
-        
+
         # 构造异步通知URL（notify_url）
         # 从配置文件中读取应用的公网访问域名（app_host）
         # app_host 是本应用的公网访问地址，例如："https://yourdomain.com"
-        app_host_frome_config = self.config.get("Rainbow_YiPay", "app_host", fallback="").strip()
-        
+        app_host_frome_config = self.config.get(
+            "Rainbow_YiPay", "app_host", fallback="").strip()
+
         app_host = None
-        
-        
-        if not app_host and app_host_frome_config and ( IPVerifier().is_private_ip(app_host_frome_config) == False ):
+
+        if not app_host and app_host_frome_config and (IPVerifier().is_private_ip(app_host_frome_config) == False):
             # 检查 app_host_frome_config 是否为有效的应用访问域名
             if IPVerifier().check_app_host(app_host_frome_config):
                 app_host = IPVerifier().normalize_host_url(app_host_frome_config)
-                logging.info(f"[支付验证] 验证成功 - 将使用 app_host_from_config: {app_host_frome_config}")
-        
-        if not app_host and client_app_host and ( IPVerifier().is_private_ip(client_app_host) == False ):
+                logging.info(
+                    f"[支付验证] 验证成功 - 将使用 app_host_from_config: {app_host_frome_config}")
+
+        if not app_host and client_app_host and (IPVerifier().is_private_ip(client_app_host) == False):
             # 使用传入的 client_app_host 进行验证
             if IPVerifier().check_app_host(client_app_host):
                 app_host = IPVerifier().normalize_host_url(client_app_host)
-                logging.info(f"[支付验证] 验证成功 - 将使用 client_app_host: {client_app_host}")
-        
-        if not app_host:    
+                logging.info(
+                    f"[支付验证] 验证成功 - 将使用 client_app_host: {client_app_host}")
+
+        if not app_host:
             # 记录错误日志：缺少应用访问域名配置
             logging.error("[彩虹易支付] 配置缺少 app_host（应用访问域名），无法构造异步通知URL")
             # 返回失败响应，提示管理员配置 app_host
@@ -3775,46 +3823,47 @@ class RainbowYiPayClient:
             logging.error(f"[彩虹易支付] app_host 格式不正确（缺少协议头）: {app_host}")
             # 返回失败响应，提示管理员修正配置
             return {"success": False, "message": "彩虹易支付配置 app_host 格式不正确，必须包含 http:// 或 https://"}
-        
+
         # 移除 app_host 末尾的斜杠（如果存在）
         # 这样可以避免构造出双斜杠的URL，例如：https://example.com//api/...
         # rstrip('/') 会移除字符串末尾的所有斜杠
         app_host = app_host.rstrip('/')
-        
+
         # 自动构造异步通知URL
         # 格式：{app_host}/api/payment/yipay_notify
         # 这是彩虹易支付专用的异步通知接收地址
         # 当用户支付成功后，彩虹易支付服务器会向这个URL发送POST请求
         notify_url = f"{app_host}/api/payment/yipay_notify"
-        
+
         # 确定同步返回URL（return_url）
         # 优先使用传入的 return_url 参数（如果提供）
         # 如果没有传入，则使用配置文件中的 return_url（向后兼容）
         # 用户支付完成后，浏览器会跳转到这个URL
         if return_url is None:
             return_url = notify_url
-            
+
         def is_yipay_notify(url):
             # 1. 预处理：如果 URL 不包含协议头（://），临时加上 http:// 以便解析
             if "://" not in url:
                 url = "http://" + url
-                
+
             # 2. 解析 URL
-            parsed_url = urlparse(url)
-            
+            parsed_url =  urllib.parse.urlparse(url)
+
             # 3. 获取路径部分 (path) 并进行比对
             # parsed_url.path 会自动去除 ? 后面的参数
             return parsed_url.path == "/api/payment/yipay_notify"
-            
+
         if not is_yipay_notify(return_url):
-            logging.info("[彩虹易支付] return_url 不是 /api/payment/yipay_notify，正在尝试修正...")
+            logging.info(
+                "[彩虹易支付] return_url 不是 /api/payment/yipay_notify，正在尝试修正...")
             return_url = f"{app_host}/api/payment/yipay_notify?jump=" + return_url
-            
-        if device_get in ["pc","mobile","qq","wechat","alipay"]:
-            device=device_get
+
+        if device_get in ["pc", "mobile", "qq", "wechat", "alipay"]:
+            device = device_get
         else:
-            device="pc"
-        
+            device = "pc"
+
         # 构造订单参数字典
         # 这些参数将被发送到彩虹易支付API
         params = {
@@ -3827,50 +3876,50 @@ class RainbowYiPayClient:
             "money": str(money),                # 支付金额（转为字符串）
             "method": method,                   # 接口类型（web/jump/jsapi/app/scan/applet）
             "device": device,                   # 支付设备（pc/mobile/qq/wechat/alipay）
-            "clientip": clientip,                
+            "clientip": clientip,
         }
-        
 
-        
         # auth_code参数：仅scan接口类型需要
         if auth_code and method == "scan":
             params["auth_code"] = auth_code
-        
+
         # sub_openid和sub_appid参数：仅jsapi接口类型需要
         if method == "jsapi":
             if sub_openid:
                 params["sub_openid"] = sub_openid
             if sub_appid:
                 params["sub_appid"] = sub_appid
-        
+
         # 获取当前时间戳
-        params["timestamp"]=int(time.time())
-        
+        params["timestamp"] = int(time.time())
+
         RainbowYiPayRsaSigner = RsaSigner(self.key)
-        
+
         data_to_sent = RainbowYiPayRsaSigner.generate_sign(params)
-        
+
         # 构造完整的API请求URL
         # 彩虹易支付的创建订单接口路径为 /api/pay/create
         api_url = f"{self.host}/api/pay/create"
-        
-        
-        
-        # 记录信息日志：开始创建订单
-        logging.info(f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
 
-        logging.info(f"[彩虹易支付] 发起请求 - URL: {api_url}, 数据: {data_to_sent}", extra={"method": "POST"})
-        
-        
+        # 记录信息日志：开始创建订单
+        logging.info(
+            f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
+
+        logging.info(
+            f"[彩虹易支付] 发起请求 - URL: {api_url}, 数据: {data_to_sent}", extra={"method": "POST"})
+
         try:
             # 向彩虹易支付API发送POST请求
             response = requests.post(api_url, data=data_to_sent, timeout=10)
-            
-            logging.info(f"[彩虹易支付] 发起[请求头] Headers: {response.request.headers}")
-            logging.info(f"[彩虹易支付] 发起[请求体] Body (Raw): {response.request.body}")
-            
-            logging.info(f"[彩虹易支付] 收到响应 - 状态码: {response.status_code}, 响应内容: {response.text}")
-            
+
+            logging.info(
+                f"[彩虹易支付] 发起[请求头] Headers: {response.request.headers}")
+            logging.info(
+                f"[彩虹易支付] 发起[请求体] Body (Raw): {response.request.body}")
+
+            logging.info(
+                f"[彩虹易支付] 收到响应 - 状态码: {response.status_code}, 响应内容: {response.text}")
+
             # 检查HTTP响应状态码
             # status_code 200 表示请求成功
             if response.status_code == 200:
@@ -3889,40 +3938,43 @@ class RainbowYiPayClient:
                         "pay_url": response.url,  # 使用重定向后的URL
                         "order_data": params,
                     }
-                
+
                 # 检查API响应中的状态码
                 # code=0 表示成功，其他值表示失败（根据API文档）
                 if result.get("code") == 0:
                     # 订单创建成功
                     # 获取平台订单号
                     trade_no = result.get("trade_no", "")
-                    
+
                     # 获取发起支付类型（jump/html/qrcode/urlscheme/jsapi/app/scan/wxplugin/wxapp）
                     pay_type_response = result.get("pay_type", "")
-                    
+
                     # 获取发起支付参数
                     pay_info = result.get("pay_info", "")
-                    
+
                     # 兼容旧版：提取支付URL
                     # pay_url可能直接是pay_info（当pay_type为jump时），或者需要从pay_info中解析
                     pay_url = pay_info
                     if not pay_url:
                         # 如果pay_info为空，尝试从其他字段获取
-                        pay_url = result.get("payurl") or result.get("url") or result.get("qrcode")
-                    
+                        pay_url = result.get("payurl") or result.get(
+                            "url") or result.get("qrcode")
+
                     # 检查是否成功获取到支付信息
                     if pay_info or pay_url:
-                        logging.info(f"[彩虹易支付] 订单创建成功 - 平台订单号: {trade_no}, 支付类型: {pay_type_response}")
+                        logging.info(
+                            f"[彩虹易支付] 订单创建成功 - 平台订单号: {trade_no}, 支付类型: {pay_type_response}")
                         data_to_sent2 = {
                             "success": True,
                             "message": "订单创建成功",
                             "pay_url": pay_url,           # 兼容旧版
                             "trade_no": trade_no,         # 平台订单号
-                            "pay_type": pay_type_response, # 发起支付类型
+                            "pay_type": pay_type_response,  # 发起支付类型
                             "pay_info": pay_info,         # 发起支付参数
                             "order_data": params,
                         }
-                        logging.info(f"[彩虹易支付] 订单创建成功 - 详细信息:"+ json.dumps(data_to_sent2, ensure_ascii=False))   
+                        logging.info(
+                            f"[彩虹易支付] 订单创建成功 - 详细信息:" + json.dumps(data_to_sent2, ensure_ascii=False))
                         return data_to_sent2
                     else:
                         # API响应中没有支付信息
@@ -3933,7 +3985,8 @@ class RainbowYiPayClient:
                         }
                 else:
                     # 订单创建失败，API返回了错误信息
-                    error_msg = result.get("msg") or result.get("message") or "未知错误"
+                    error_msg = result.get("msg") or result.get(
+                        "message") or "未知错误"
                     logging.error(f"[彩虹易支付] 创建订单失败 - {error_msg}")
                     return {"success": False, "message": f"创建订单失败: {error_msg}"}
             else:
@@ -3945,17 +3998,17 @@ class RainbowYiPayClient:
                     "success": False,
                     "message": f"支付接口请求失败 (HTTP {response.status_code})",
                 }
-        
+
         except requests.exceptions.Timeout:
             # 请求超时异常
             logging.error("[彩虹易支付] 请求超时")
             return {"success": False, "message": "支付接口请求超时，请稍后重试"}
-        
+
         except requests.exceptions.RequestException as e:
             # 其他网络请求异常（如网络不通、DNS解析失败等）
             logging.error(f"[彩虹易支付] 网络请求异常: {str(e)}")
             return {"success": False, "message": f"网络请求失败: {str(e)}"}
-        
+
         except Exception as e:
             # 捕获所有未预期的异常
             logging.error(f"[彩虹易支付] 创建订单异常: {str(e)}")
@@ -3965,10 +4018,10 @@ class RainbowYiPayClient:
     def query_order(self, out_trade_no):
         """
         查询订单状态
-        
+
         参数:
             out_trade_no (str): 商户订单号（创建订单时使用的订单号）
-        
+
         返回:
             dict: 包含以下字段的字典
                 - success (bool): 请求是否成功
@@ -3978,13 +4031,13 @@ class RainbowYiPayClient:
                     - "WAIT_BUYER_PAY": 等待支付
                     - "TRADE_CLOSED": 交易关闭
                 - data (dict): 完整的订单信息（成功时返回）
-        
+
         功能说明：
         主动查询订单的支付状态，可用于：
         1. 补充异步通知机制（防止通知丢失）
         2. 用户在支付页面查询支付结果
         3. 管理后台查看订单状态
-        
+
         使用示例：
             client = RainbowYiPayClient()
             result = client.query_order("ORDER20230101001")
@@ -3995,7 +4048,7 @@ class RainbowYiPayClient:
                     print("等待支付...")
             else:
                 print(f"查询失败: {result['message']}")
-        
+
         注意事项：
         - 查询接口有频率限制，不要频繁调用
         - 订单状态最终以异步通知为准
@@ -4003,12 +4056,12 @@ class RainbowYiPayClient:
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
         global requests
-        
+
         # 检查配置是否完整
         if not self.host or not self.pid or not self.key:
             logging.error("[彩虹易支付] 配置不完整，无法查询订单")
             return {"success": False, "message": "彩虹易支付配置不完整"}
-        
+
         # 构造查询参数
         params = {
             "act": "order",                 # 操作类型：订单查询
@@ -4016,29 +4069,30 @@ class RainbowYiPayClient:
             "key": self.key,                # 商户密钥
             "out_trade_no": out_trade_no,   # 商户订单号
         }
-        
+
         # 构造API请求URL
         # 彩虹易支付的查询接口路径为 /api.php
         api_url = f"{self.host}/api.php"
-        
+
         # 记录日志
         logging.info(f"[彩虹易支付] 查询订单状态 - 订单号: {out_trade_no}")
-        
+
         try:
             # 发送GET请求查询订单
             response = requests.get(api_url, params=params, timeout=10)
-            
+
             # 检查HTTP状态码
             if response.status_code == 200:
                 # 解析响应JSON
                 result = response.json()
-                
+
                 # 检查API返回的状态码
                 if result.get("code") == 1:
                     # 查询成功
-                    order_status = result.get("status") or result.get("trade_status")
+                    order_status = result.get(
+                        "status") or result.get("trade_status")
                     logging.info(f"[彩虹易支付] 订单状态: {order_status}")
-                    
+
                     return {
                         "success": True,
                         "message": "查询成功",
@@ -4047,7 +4101,8 @@ class RainbowYiPayClient:
                     }
                 else:
                     # 查询失败
-                    error_msg = result.get("msg") or result.get("message") or "未知错误"
+                    error_msg = result.get("msg") or result.get(
+                        "message") or "未知错误"
                     logging.error(f"[彩虹易支付] 查询订单失败 - {error_msg}")
                     return {"success": False, "message": error_msg}
             else:
@@ -4059,11 +4114,11 @@ class RainbowYiPayClient:
                     "success": False,
                     "message": f"查询接口请求失败 (HTTP {response.status_code})",
                 }
-        
+
         except requests.exceptions.Timeout:
             logging.error("[彩虹易支付] 查询请求超时")
             return {"success": False, "message": "查询请求超时"}
-        
+
         except Exception as e:
             logging.error(f"[彩虹易支付] 查询订单异常: {str(e)}")
             logging.error(traceback.format_exc())
@@ -4197,7 +4252,8 @@ class AuthSystem:
                         if user_data.get("phone") == phone:
                             user_data["phone"] = ""
                             with open(user_file, "w", encoding="utf-8") as f:
-                                json.dump(user_data, f, indent=2, ensure_ascii=False)
+                                json.dump(user_data, f, indent=2,
+                                          ensure_ascii=False)
                             logging.info(
                                 f"[手机号解绑] 已成功解绑用户 {bound_username} 的手机号。"
                             )
@@ -4317,7 +4373,8 @@ class AuthSystem:
         """
         获取密码存储方式配置。
         """
-        method = self.config.get("Security", "password_storage", fallback="plaintext")
+        method = self.config.get(
+            "Security", "password_storage", fallback="plaintext")
         logging.debug(f"_get_password_storage_method: 密码存储方式: {method}")
         return method
 
@@ -4371,7 +4428,8 @@ class AuthSystem:
             try:
 
                 result = bcrypt.checkpw(
-                    input_password.encode("utf-8"), stored_password.encode("utf-8")
+                    input_password.encode(
+                        "utf-8"), stored_password.encode("utf-8")
                 )
                 logging.debug(
                     f"[密码验证] bcrypt验证完成 --> 验证结果: {'✓ 成功' if result else '✗ 失败'} (✓ 安全: 使用bcrypt.checkpw，防时序攻击)"
@@ -4557,7 +4615,8 @@ class AuthSystem:
                     if totp.verify(verification_code):
                         user_data["2fa_enabled"] = True
                         with open(user_file, "w", encoding="utf-8") as f:
-                            json.dump(user_data, f, indent=2, ensure_ascii=False)
+                            json.dump(user_data, f, indent=2,
+                                      ensure_ascii=False)
                         return {"success": True, "message": "2FA已启用"}
                     return {"success": False, "message": "验证码错误"}
             return {"success": False, "message": "用户不存在"}
@@ -4603,7 +4662,8 @@ class AuthSystem:
         print(f"[用户注册] 开始注册新用户: {auth_username}, 权限组: {group}")
         with self.lock:
             if phone:
-                self.unbind_phone_from_user(phone, except_username=auth_username)
+                self.unbind_phone_from_user(
+                    phone, except_username=auth_username)
             user_file = self.get_user_file_path(auth_username)
             logging.debug(f"register_user: 检查用户文件是否存在: {user_file}")
             if os.path.exists(user_file):
@@ -4657,7 +4717,8 @@ class AuthSystem:
         self, auth_username, auth_password, ip_address="", user_agent="", two_fa_code=""
     ):
         """验证用户登录（支持2FA和暴力破解防护）"""
-        logging.info(f"authenticate: 开始认证用户: {auth_username}, IP: {ip_address}")
+        logging.info(
+            f"authenticate: 开始认证用户: {auth_username}, IP: {ip_address}")
         print(f"[用户认证] 开始认证用户: {auth_username}, IP: {ip_address}")
         with self.lock:
             if auth_username == "guest" and self.config.getboolean(
@@ -4677,7 +4738,8 @@ class AuthSystem:
 
             logging.debug(f"authenticate: 检查暴力破解防护: {auth_username}")
             print(f"[用户认证] 检查暴力破解: {auth_username}")
-            is_locked, lock_message = self.check_brute_force(auth_username, ip_address)
+            is_locked, lock_message = self.check_brute_force(
+                auth_username, ip_address)
             if is_locked:
                 logging.warning(
                     f"authenticate: 用户被锁定（暴力破解防护）: {auth_username}"
@@ -4752,7 +4814,8 @@ class AuthSystem:
             with open(user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
 
-            super_admin = self.config.get("Admin", "super_admin", fallback="admin")
+            super_admin = self.config.get(
+                "Admin", "super_admin", fallback="admin")
             if auth_username == super_admin:
                 group = "super_admin"
             else:
@@ -4761,7 +4824,8 @@ class AuthSystem:
             self._log_login_attempt(
                 auth_username, True, ip_address, user_agent, "success"
             )
-            logging.info(f"用户登录: {auth_username} (组: {group}) from {ip_address}")
+            logging.info(
+                f"用户登录: {auth_username} (组: {group}) from {ip_address}")
             print(f"[用户认证] ✓ 用户登录成功: {auth_username} (组: {group})")
             logging.info(f"authenticate: ✓ 认证成功，返回用户信息")
             return {
@@ -4780,7 +4844,8 @@ class AuthSystem:
         group = self.get_user_group(auth_username)
 
         group_perms = (
-            self.permissions["permission_groups"].get(group, {}).get("permissions", {})
+            self.permissions["permission_groups"].get(
+                group, {}).get("permissions", {})
         )
         has_permission = group_perms.get(permission, False)
 
@@ -4822,7 +4887,8 @@ class AuthSystem:
         group = self.get_user_group(auth_username)
 
         group_perms = (
-            self.permissions["permission_groups"].get(group, {}).get("permissions", {})
+            self.permissions["permission_groups"].get(
+                group, {}).get("permissions", {})
         )
 
         user_perms = dict(group_perms)
@@ -5214,7 +5280,7 @@ class AuthSystem:
         with self.lock:
             # 步骤1：根据用户名构建用户数据文件的完整路径
             user_file = self.get_user_file_path(auth_username)
-            
+
             # 步骤2：检查用户文件是否存在
             if not os.path.exists(user_file):
                 # 如果用户文件不存在，返回错误信息
@@ -5294,22 +5360,23 @@ class AuthSystem:
     def delete_user(self, auth_username):
         """
         删除用户（需要管理员权限）
-        
+
         在删除用户之前，会将用户的所有数据（system_accounts、school_accounts、permissions）
         备份到 system_accounts/remove/ 目录中，备份文件使用 UUID 命名。
         只有备份成功后才会执行实际的删除操作。
-        
+
         参数:
             auth_username (str): 要删除的用户的认证用户名
-            
+
         返回:
             dict: 包含 success (bool) 和 message (str) 的字典
         """
         with self.lock:  # 使用线程锁确保线程安全，防止并发删除导致数据不一致
             # ==================== 第一步：安全性检查 ====================
-            
+
             # 获取超级管理员用户名，防止删除超级管理员账号
-            super_admin = self.config.get("Admin", "super_admin", fallback="admin")
+            super_admin = self.config.get(
+                "Admin", "super_admin", fallback="admin")
             if auth_username == super_admin:
                 # 不允许删除超级管理员，这是系统安全的最后一道防线
                 return {"success": False, "message": "不允许删除超级管理员"}
@@ -5321,13 +5388,14 @@ class AuthSystem:
                 return {"success": False, "message": "用户不存在"}
 
             # ==================== 第二步：收集需要备份的数据 ====================
-            
+
             try:
                 # 1. 读取 system_accounts 中的用户数据
                 # 这包含用户的基本信息、密码哈希、会话信息等核心数据
                 with open(user_file, "r", encoding="utf-8") as f:
                     user_data = json.load(f)
-                logging.info(f"[删除用户备份] 已读取用户 {auth_username} 的 system_accounts 数据")
+                logging.info(
+                    f"[删除用户备份] 已读取用户 {auth_username} 的 system_accounts 数据")
             except Exception as e:
                 # 如果无法读取用户数据，则无法继续备份，返回错误
                 logging.error(f"[删除用户备份] 读取用户数据失败: {e}")
@@ -5341,14 +5409,16 @@ class AuthSystem:
                 try:
                     with open(school_accounts_file, "r", encoding="utf-8") as f:
                         school_accounts_data = json.load(f)
-                    logging.info(f"[删除用户备份] 已读取用户 {auth_username} 的 school_accounts 数据")
+                    logging.info(
+                        f"[删除用户备份] 已读取用户 {auth_username} 的 school_accounts 数据")
                 except Exception as e:
                     # 如果读取失败，记录警告但不阻止删除流程（可能用户没有学校账号）
                     logging.warning(f"[删除用户备份] 读取 school_accounts 数据失败: {e}")
                     school_accounts_data = None
             else:
                 # 用户可能没有绑定任何学校账号，这是正常情况
-                logging.info(f"[删除用户备份] 用户 {auth_username} 没有 school_accounts 文件")
+                logging.info(
+                    f"[删除用户备份] 用户 {auth_username} 没有 school_accounts 文件")
 
             # 3. 提取用户的权限信息（从 permissions.json）
             # 包括用户所属的用户组和自定义权限
@@ -5359,18 +5429,18 @@ class AuthSystem:
             if "user_custom_permissions" in self.permissions and auth_username in self.permissions["user_custom_permissions"]:
                 # 保存用户的自定义权限（如禁用某些功能、特殊访问权限等）
                 user_permissions["user_custom_permissions"] = self.permissions["user_custom_permissions"][auth_username]
-            
+
             if user_permissions:
                 logging.info(f"[删除用户备份] 已提取用户 {auth_username} 的权限信息")
             else:
                 logging.info(f"[删除用户备份] 用户 {auth_username} 没有特殊权限配置")
 
             # ==================== 第三步：创建备份 ====================
-            
+
             # 构建备份文件的保存路径
             # 备份目录位于 system_accounts/remove/
             backup_dir = os.path.join(SYSTEM_ACCOUNTS_DIR, "remove")
-            
+
             # 如果备份目录不存在，则创建它（包括所有必要的父目录）
             if not os.path.exists(backup_dir):
                 try:
@@ -5410,7 +5480,7 @@ class AuthSystem:
 
             # ==================== 第四步：执行删除操作 ====================
             # 只有在备份成功后，才会执行以下删除操作
-            
+
             # 1. 删除 system_accounts 中的用户文件
             try:
                 os.remove(user_file)
@@ -5424,7 +5494,8 @@ class AuthSystem:
             try:
                 if os.path.exists(school_accounts_file):
                     os.remove(school_accounts_file)
-                    logging.info(f"[删除用户] 已删除用户 {auth_username} 的 school_accounts 文件")
+                    logging.info(
+                        f"[删除用户] 已删除用户 {auth_username} 的 school_accounts 文件")
             except Exception as e:
                 # school_accounts 删除失败不影响主流程，仅记录警告
                 logging.warning(f"[删除用户] 删除 school_accounts 文件失败: {e}")
@@ -5452,11 +5523,12 @@ class AuthSystem:
                 logging.warning(f"[删除用户] 保存权限配置失败: {e}")
 
             # ==================== 第五步：返回成功结果 ====================
-            
+
             # 记录删除操作成功，包含备份文件路径供管理员参考
-            logging.info(f"[删除用户] 用户 {auth_username} 已成功删除，备份文件: {backup_filename}")
+            logging.info(
+                f"[删除用户] 用户 {auth_username} 已成功删除，备份文件: {backup_filename}")
             return {
-                "success": True, 
+                "success": True,
                 "message": f"用户已删除，备份文件: {os.path.basename(backup_filename)}"
             }
 
@@ -5528,9 +5600,12 @@ class AuthSystem:
 
             current_count = len(old_sessions)
             if current_count > max_sessions:
-                sessions_to_remove = old_sessions[: current_count - max_sessions + 1]
-                remaining_sessions = old_sessions[current_count - max_sessions + 1 :]
-                user_data["session_ids"] = remaining_sessions + [new_session_id]
+                sessions_to_remove = old_sessions[:
+                                                  current_count - max_sessions + 1]
+                remaining_sessions = old_sessions[current_count -
+                                                  max_sessions + 1:]
+                user_data["session_ids"] = remaining_sessions + \
+                    [new_session_id]
 
                 with open(user_file, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
@@ -5639,7 +5714,8 @@ class AuthSystem:
 
                 if super_admin_username not in user_groups:
                     user_groups[super_admin_username] = "super_admin"
-                    self._update_user_file_group(super_admin_username, "super_admin")  #
+                    self._update_user_file_group(
+                        super_admin_username, "super_admin")  #
                     logging.info(
                         f"[权限同步] config.ini 指定的超管 '{super_admin_username}' "
                         f"不在 permissions.json 中。已自动添加为 'super_admin'。"
@@ -5682,7 +5758,8 @@ class TokenManager:
     def _get_token_file_path(self, username):
         """获取用户的token文件路径"""
         file_path = os.path.join(self.tokens_dir, f"{username}.json")
-        logging.debug(f"_get_token_file_path: 用户 {username} 的令牌文件: {file_path}")
+        logging.debug(
+            f"_get_token_file_path: 用户 {username} 的令牌文件: {file_path}")
         return file_path
 
     def generate_token(self):
@@ -5989,7 +6066,8 @@ class ApiClient:
             for cookie in self.session.cookies:
                 if cookie.name == "shiroCookie":
                     auth_token = cookie.value
-                    logging.warning(f"手动查找到 'shiroCookie': {auth_token[:10]}...")
+                    logging.warning(
+                        f"手动查找到 'shiroCookie': {auth_token[:10]}...")
                     break
 
         if auth_token:
@@ -6012,7 +6090,8 @@ class ApiClient:
     ) -> requests.Response | None:
         """统一的网络请求方法（增强：支持取消）"""
 
-        log_func = self.app.log if hasattr(self.app, "log") else self.app.api_bridge.log
+        log_func = self.app.log if hasattr(
+            self.app, "log") else self.app.api_bridge.log
         is_offline = (
             self.app.is_offline_mode
             if hasattr(self.app, "is_offline_mode")
@@ -6154,7 +6233,8 @@ class ApiClient:
 
     def _json(self, resp: requests.Response | None) -> dict | None:
         """安全地将Response对象解析为JSON字典"""
-        log_func = self.app.log if hasattr(self.app, "log") else self.app.api_bridge.log
+        log_func = self.app.log if hasattr(
+            self.app, "log") else self.app.api_bridge.log
         if resp:
             try:
                 json_data = resp.json()
@@ -6326,7 +6406,8 @@ class ApiClient:
 
     def get_roll_call_info(self, roll_call_id, user_id):
         """获取指定签到活动的信息"""
-        params = {"id": roll_call_id, "userId": user_id, "appVersion": self.API_VERSION}
+        params = {"id": roll_call_id, "userId": user_id,
+                  "appVersion": self.API_VERSION}
         return self._json(
             self._request(
                 "POST",
@@ -6434,7 +6515,8 @@ class Api:
                 if threads_to_start > 0:
                     for i in range(threads_to_start):
                         t = threading.Thread(
-                            target=Api._submission_worker_static,  # [修正] 使用静态方法，不绑定self
+                            # [修正] 使用静态方法，不绑定self
+                            target=Api._submission_worker_static,
                             args=(
                                 Api._static_submission_queue,
                                 Api._static_submission_stop,
@@ -6506,16 +6588,16 @@ class Api:
         # 键: 账号标识符（字符串格式，例如 "12345"），值: 线程对象
         # 这个字典用于追踪每个账号的独立刷新线程，避免重复创建
         self.account_refresh_threads: dict[str, threading.Thread] = {}
-        
+
         # [新增] 线程锁，用于保护 account_refresh_threads 字典的并发访问
         # 在多线程环境下，对字典的读写操作需要加锁以确保线程安全
         self.threads_lock = threading.Lock()
-        
+
         # [新增] 多账号监控线程的停止事件
         # 用于优雅地停止多账号监控线程
         self.stop_account_monitor = threading.Event()
         self.stop_account_monitor.set()
-        
+
         # [新增] 多账号监控线程对象
         # 该线程负责定期检查所有账号，确保每个启用自动签到的账号都有刷新线程
         self.account_monitor_thread: threading.Thread | None = None
@@ -6554,7 +6636,8 @@ class Api:
         logging.info(message)
         if session_id and socketio:
             try:
-                socketio.emit("log_message", {"msg": str(message)}, room=session_id)
+                socketio.emit("log_message", {
+                              "msg": str(message)}, room=session_id)
             except Exception as e:
                 logging.error(
                     f"WebSocket emit log failed for session {session_id[:8]}: {e}"
@@ -6715,211 +6798,140 @@ class Api:
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
         return os.path.join(user_accounts_dir, f"{auth_username}.json")
 
-    def _get_school_account_ini_file(self, school_username):
-        """
-        获取指定学校账号的统计数据 INI 文件路径。
-        
-        功能说明：
-            为了将账号的统计数据（overdue_count 和 completed_count）与账号密码分离存储，
-            我们为每个学校账号单独创建一个 INI 文件来存储这些统计信息。
-            
-        参数:
-            school_username (str): 学校账号用户名
-            
-        返回:
-            str: INI 文件的完整路径
-            格式: ./school_accounts/user_accounts/{school_username}.ini
-            
-        设计理由：
-            1. 数据分离：将敏感的账号密码（JSON）与统计数据（INI）分开存储
-            2. 易于管理：INI 文件更适合存储简单的键值对统计数据
-            3. 独立更新：统计数据的更新不会影响账号密码文件
-            4. 清晰结构：文件名与账号名一一对应，易于查找和维护
-        """
-        # 获取 user_accounts 目录路径
-        # 这个目录用于存储所有用户的学校账号相关文件
-        user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
-        
-        # 返回该学校账号对应的 INI 文件完整路径
-        # 文件名格式：{school_username}.ini
-        return os.path.join(user_accounts_dir, f"{school_username}.ini")
-
     def _load_school_account_stats_from_ini(self, school_username):
         """
         从 INI 文件读取指定学校账号的统计数据（overdue_count 和 completed_count）。
-        
+
         功能说明：
-            读取学校账号的统计 INI 文件，获取欠费次数和已完成任务数。
+            读取学校账号的配置文件（school_accounts/{username}.ini），获取欠费次数和已完成任务数。
             如果文件不存在或读取失败，返回默认值（都为 0）。
-            
+
         参数:
             school_username (str): 学校账号用户名
-            
+
         返回:
             dict: 包含统计数据的字典
             格式: {
                 "overdue_count": int,      # 欠费次数，默认 0
                 "completed_count": int     # 已完成任务数，默认 0
             }
-            
+
         INI 文件格式示例:
+            [Config]
+            ...
             [stats]
             overdue_count = 5
             completed_count = 120
-            
-        错误处理：
-            - 如果 INI 文件不存在：返回默认值 {"overdue_count": 0, "completed_count": 0}
-            - 如果某个字段缺失：该字段使用默认值 0
-            - 如果读取失败：记录错误日志并返回默认值
-            
-        向后兼容性：
-            为了确保平滑升级，如果 INI 文件不存在（旧数据），不会报错，
-            而是返回默认值 0，系统会在第一次更新时自动创建文件。
         """
-        # 获取该学校账号对应的 INI 文件路径
-        ini_file = self._get_school_account_ini_file(school_username)
-        
+        # 直接构建 INI 文件路径，指向 school_accounts 目录
+        ini_file = os.path.join(self.user_dir, f"{school_username}.ini")
+
         # 准备默认返回值
-        # 如果文件不存在或读取失败，使用这些默认值
         default_stats = {
             "overdue_count": 0,      # 默认欠费次数为 0（无欠费）
             "completed_count": 0     # 默认已完成任务数为 0（新账号）
         }
-        
+
         # 检查 INI 文件是否存在
         if not os.path.exists(ini_file):
-            # 文件不存在是正常情况（新账号或从旧版本升级）
-            # 不记录错误日志，直接返回默认值
             logging.debug(
-                f"[统计数据] INI 文件不存在，返回默认值: {school_username}"
+                f"[统计数据] 配置文件不存在，返回默认值: {school_username}"
             )
             return default_stats
-        
+
         try:
-            # 创建 ConfigParser 对象用于读取 INI 文件
-            config = configparser.ConfigParser()
-            
+            # 创建 RawConfigParser 对象用于读取 INI 文件
+            # 使用 RawConfigParser 避免插值错误，并保持与 _save_config 一致
+            config = configparser.RawConfigParser()
+            config.optionxform = str
+
             # 读取 INI 文件
-            # encoding='utf-8' 确保正确处理中文字符
             config.read(ini_file, encoding='utf-8')
-            
+
             # 从 [stats] 配置节读取统计数据
-            # getint() 方法会自动将字符串转换为整数
-            # fallback 参数指定默认值，当键不存在时使用
             overdue_count = config.getint('stats', 'overdue_count', fallback=0)
-            completed_count = config.getint('stats', 'completed_count', fallback=0)
-            
+            completed_count = config.getint(
+                'stats', 'completed_count', fallback=0)
+
             # 记录成功读取的日志（调试级别）
             logging.debug(
                 f"[统计数据] 成功读取 INI 文件: {school_username}, "
                 f"overdue_count={overdue_count}, completed_count={completed_count}"
             )
-            
+
             # 返回读取到的统计数据
             return {
                 "overdue_count": overdue_count,
                 "completed_count": completed_count
             }
-            
+
         except Exception as e:
-            # 捕获所有可能的异常（文件读取错误、解析错误等）
-            # 记录详细的错误信息，但不抛出异常，确保系统稳定运行
             logging.error(
                 f"[统计数据] 读取 INI 文件失败: {school_username}, 错误: {e}",
                 exc_info=True
             )
-            # 返回默认值，确保调用方能够继续正常工作
             return default_stats
 
     def _save_school_account_stats_to_ini(self, school_username, overdue_count, completed_count):
         """
-        将学校账号的统计数据保存到 INI 文件。
-        
+        将学校账号的统计数据保存到 INI 文件（合并模式）。
+
         功能说明：
             将指定学校账号的欠费次数和已完成任务数保存到对应的 INI 文件中。
-            如果 INI 文件或目录不存在，会自动创建。
-            
+            注意：采用读取-修改-写入模式，确保不丢失文件中原有的其他配置（如密码）。
+
         参数:
             school_username (str): 学校账号用户名
             overdue_count (int): 欠费次数
             completed_count (int): 已完成任务数
-            
+
         返回:
             bool: 保存成功返回 True，失败返回 False
-            
-        INI 文件格式:
-            [stats]
-            overdue_count = 5
-            completed_count = 120
-            
-        实现逻辑：
-            1. 获取 INI 文件路径
-            2. 确保父目录存在（如果不存在则创建）
-            3. 创建 ConfigParser 对象
-            4. 设置 [stats] 配置节的数据
-            5. 写入文件
-            
-        错误处理：
-            - 如果目录创建失败：记录错误并返回 False
-            - 如果文件写入失败：记录错误并返回 False
-            - 所有错误都会记录详细的异常堆栈信息
-            
-        注意事项：
-            - 此函数会覆盖整个 INI 文件内容
-            - 使用 UTF-8 编码确保支持中文
-            - 数值会被转换为字符串存储（INI 文件特性）
         """
-        # 获取该学校账号对应的 INI 文件路径
-        ini_file = self._get_school_account_ini_file(school_username)
-        
+        # 获取该学校账号对应的 INI 文件路径 (使用 self.user_dir，即 school_accounts)
+        ini_file = os.path.join(self.user_dir, f"{school_username}.ini")
+
         try:
-            # 确保父目录存在
-            # 获取 INI 文件所在的目录路径
-            ini_dir = os.path.dirname(ini_file)
-            
-            # 如果目录不存在，创建它（包括所有必要的父目录）
-            # exist_ok=True 表示如果目录已存在不会报错
-            if not os.path.exists(ini_dir):
-                os.makedirs(ini_dir, exist_ok=True)
-                logging.debug(f"[统计数据] 创建目录: {ini_dir}")
-            
-            # 创建 ConfigParser 对象用于写入 INI 文件
-            config = configparser.ConfigParser()
-            
-            # 添加 [stats] 配置节（如果不存在）
-            # 这个配置节用于存储所有的统计数据
-            config.add_section('stats')
-            
-            # 设置欠费次数
-            # 注意：ConfigParser 存储的是字符串，所以需要将整数转换为字符串
+            # 创建 RawConfigParser 对象
+            config = configparser.RawConfigParser()
+            config.optionxform = str  # 保持键名大小写敏感
+
+            # 如果文件存在，先读取现有内容以进行合并
+            if os.path.exists(ini_file):
+                try:
+                    # 使用 normalize_chinese_config_to_english 确保格式兼容性
+                    # 虽然这通常在加载时做，但写入前标准化一下更安全
+                    self.normalize_chinese_config_to_english(ini_file)
+                    config.read(ini_file, encoding='utf-8')
+                except Exception as read_e:
+                    logging.warning(f"[统计数据] 读取现有配置文件出错 (将覆盖): {read_e}")
+
+            # 确保 [stats] 配置节存在
+            if not config.has_section('stats'):
+                config.add_section('stats')
+
+            # 设置统计数据
             config.set('stats', 'overdue_count', str(overdue_count))
-            
-            # 设置已完成任务数
             config.set('stats', 'completed_count', str(completed_count))
-            
-            # 将配置写入 INI 文件
-            # 'w' 模式：如果文件存在则覆盖，不存在则创建
-            # encoding='utf-8'：使用 UTF-8 编码，确保支持中文
+
+            # 将配置写回文件
+            # encoding='utf-8'：使用 UTF-8 编码
             with open(ini_file, 'w', encoding='utf-8') as f:
                 config.write(f)
-            
-            # 记录成功保存的日志（调试级别）
+
+            # 记录成功保存的日志
             logging.debug(
-                f"[统计数据] 成功保存 INI 文件: {school_username}, "
+                f"[统计数据] 成功合并保存 INI 文件: {school_username}, "
                 f"overdue_count={overdue_count}, completed_count={completed_count}"
             )
-            
-            # 返回 True 表示保存成功
+
             return True
-            
+
         except Exception as e:
-            # 捕获所有可能的异常（文件写入错误、权限错误、磁盘空间不足等）
-            # 记录详细的错误信息，包括完整的异常堆栈
             logging.error(
                 f"[统计数据] 保存 INI 文件失败: {school_username}, 错误: {e}",
                 exc_info=True
             )
-            # 返回 False 表示保存失败
             return False
 
     def _load_user_school_accounts(self, auth_username):
@@ -6945,7 +6957,7 @@ class Api:
             # JSON 文件只包含账号基本信息，不包含统计数据
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            
+
             # 步骤2：处理并标准化每个账号的数据格式
             # 同时从对应的 INI 文件读取统计数据（overdue_count 和 completed_count）
             for school_username, account_info in data.items():
@@ -6954,26 +6966,30 @@ class Api:
                     # 从 INI 文件加载该学校账号的统计数据
                     # _load_school_account_stats_from_ini() 返回：
                     # {"overdue_count": int, "completed_count": int}
-                    stats = self._load_school_account_stats_from_ini(school_username)
-                    
+                    stats = self._load_school_account_stats_from_ini(
+                        school_username)
+
                     # 将从 INI 读取的统计数据合并到账号信息中
                     # 这样返回的数据结构就包含了完整信息：密码、UA、欠费次数、完成次数
                     account_info["overdue_count"] = stats["overdue_count"]
                     account_info["completed_count"] = stats["completed_count"]
-                    
+
                 # 如果是旧格式（字符串密码），转换为新格式并加载统计数据
                 elif isinstance(account_info, str):
                     # 从 INI 文件加载统计数据
-                    stats = self._load_school_account_stats_from_ini(school_username)
-                    
+                    stats = self._load_school_account_stats_from_ini(
+                        school_username)
+
                     # 转换为新格式：将字符串密码转换为字典结构
                     data[school_username] = {
                         "password": account_info,    # 保留原密码
                         "ua": None,                  # UA 默认为 None
-                        "overdue_count": stats["overdue_count"],      # 从 INI 读取
-                        "completed_count": stats["completed_count"]   # 从 INI 读取
+                        # 从 INI 读取
+                        "overdue_count": stats["overdue_count"],
+                        # 从 INI 读取
+                        "completed_count": stats["completed_count"]
                     }
-            
+
             # 记录加载成功的日志
             logging.debug(
                 f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户 "
@@ -6989,7 +7005,7 @@ class Api:
     def _save_user_school_accounts(self, auth_username, accounts_dict):
         """
         保存指定认证用户的所有 school_account 账户密码和UA。
-        
+
         功能说明：
             将账号的密码和 UA 信息保存到 JSON 文件。
             同时将统计数据（overdue_count 和 completed_count）保存到各自的 INI 文件。
@@ -6999,7 +7015,7 @@ class Api:
             auth_username: 认证用户名
             accounts_dict: 字典，格式为 {school_username: {"password": "xxx", "ua": "xxx", 
                           "overdue_count": 0, "completed_count": 0}, ...}
-        
+
         实现逻辑：
             1. 遍历所有账号，提取统计数据
             2. 将统计数据保存到各账号对应的 INI 文件
@@ -7016,7 +7032,7 @@ class Api:
             # 步骤1：创建一个新的字典用于保存到 JSON
             # 这个字典只包含密码和 UA 信息，不包含统计数据
             json_data = {}
-            
+
             # 步骤2：遍历所有账号，分离统计数据和账号信息
             for school_username, account_info in accounts_dict.items():
                 # 如果账号信息是字典格式（新格式）
@@ -7024,15 +7040,15 @@ class Api:
                     # 提取统计数据（如果存在）
                     overdue_count = account_info.get("overdue_count", 0)
                     completed_count = account_info.get("completed_count", 0)
-                    
+
                     # 将统计数据保存到该账号对应的 INI 文件
                     # 这样统计数据就与密码信息分离存储了
                     self._save_school_account_stats_to_ini(
-                        school_username, 
-                        overdue_count, 
+                        school_username,
+                        overdue_count,
                         completed_count
                     )
-                    
+
                     # 创建一个只包含密码和 UA 的字典，用于保存到 JSON
                     # 注意：这里不包含 overdue_count 和 completed_count
                     json_data[school_username] = {
@@ -7043,11 +7059,11 @@ class Api:
                     # 如果是旧格式（字符串密码），直接保存
                     # 旧格式不包含统计数据，所以不需要特殊处理
                     json_data[school_username] = account_info
-            
+
             # 步骤3：将处理后的数据（只包含密码和 UA）保存到 JSON 文件
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(json_data, f, ensure_ascii=False, indent=2)
-            
+
             # 记录成功保存的日志
             logging.debug(
                 f"成功保存用户 {auth_username} 的 school_accounts，共 {len(json_data)} 个账户 "
@@ -7087,7 +7103,8 @@ class Api:
                 )
                 return
 
-        accounts[school_username] = {"password": password, "ua": ua if ua else ""}
+        accounts[school_username] = {
+            "password": password, "ua": ua if ua else ""}
         self._save_user_school_accounts(auth_username, accounts)
         logging.info(
             f"已更新用户 {auth_username} 的 school_account {school_username} 的密码和UA"
@@ -7140,30 +7157,30 @@ class Api:
     def update_school_account_overdue_count(self, auth_username, school_username, new_overdue_count):
         """
         更新指定学校账号的欠费次数（overdue_count）
-        
+
         功能说明：
         此方法用于更新用户的某个学校账号的overdue_count字段。
         主要用于支付成功后清零欠费次数，也可用于管理员手动调整欠费。
         统计数据现在存储在独立的 INI 文件中，与账号密码分离。
-        
+
         参数:
             auth_username (str): 认证用户名（system_accounts中的用户）
             school_username (str): 学校账号用户名（school_accounts中的账号）
             new_overdue_count (int): 新的欠费次数值
                 - 0: 表示清零欠费（支付成功后的常用操作）
                 - 正整数: 表示设置为指定的欠费次数
-        
+
         返回:
             dict: 包含success和message的字典
                 {
                     "success": True/False,
                     "message": "操作结果说明"
                 }
-        
+
         使用场景：
         1. 支付成功后清零欠费：update_school_account_overdue_count(user, account, 0)
         2. 管理员手动调整欠费：update_school_account_overdue_count(user, account, 5)
-        
+
         注意事项：
         - 使用线程锁确保并发安全
         - 如果学校账号不存在，不会创建新账号，而是返回错误
@@ -7176,21 +7193,21 @@ class Api:
                 "success": False,
                 "message": "欠费次数不能为负数"
             }
-        
+
         # 验证用户名和学校账号用户名不能为空
         if not auth_username or not school_username:
             return {
                 "success": False,
                 "message": "用户名和学校账号用户名不能为空"
             }
-        
+
         # 游客用户不允许操作学校账号
         if auth_username == "guest":
             return {
                 "success": False,
                 "message": "游客用户不允许操作学校账号"
             }
-        
+
         try:
             # 使用线程锁确保文件操作的原子性
             # 防止多个请求同时修改同一个用户的数据导致数据不一致
@@ -7198,7 +7215,7 @@ class Api:
                 # 步骤1：加载用户的所有学校账号数据（验证账号是否存在）
                 # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
                 accounts = self._load_user_school_accounts(auth_username)
-                
+
                 # 步骤2：检查指定的学校账号是否存在
                 if school_username not in accounts:
                     # 学校账号不存在，返回错误
@@ -7207,39 +7224,40 @@ class Api:
                         "success": False,
                         "message": f"学校账号 {school_username} 不存在"
                     }
-                
+
                 # 步骤3：从 INI 文件读取当前的统计数据
                 # 这样我们可以保留 completed_count，只更新 overdue_count
-                stats = self._load_school_account_stats_from_ini(school_username)
+                stats = self._load_school_account_stats_from_ini(
+                    school_username)
                 current_completed_count = stats["completed_count"]
-                
+
                 # 步骤4：将新的 overdue_count 和原有的 completed_count 保存到 INI 文件
                 # 使用专门的 INI 写入函数，实现数据分离存储
                 success = self._save_school_account_stats_to_ini(
-                    school_username, 
+                    school_username,
                     new_overdue_count,           # 使用新的欠费次数
                     current_completed_count      # 保留原有的完成次数
                 )
-                
+
                 # 步骤5：检查保存是否成功
                 if not success:
                     return {
                         "success": False,
                         "message": "保存统计数据到 INI 文件失败"
                     }
-                
+
                 # 步骤6：记录操作日志
                 logging.info(
                     f"[学校账号管理] 更新欠费次数成功 - 用户: {auth_username}, "
                     f"学校账号: {school_username}, 新欠费次数: {new_overdue_count}"
                 )
-                
+
                 # 步骤7：返回成功结果
                 return {
                     "success": True,
                     "message": f"已将学校账号 {school_username} 的欠费次数更新为 {new_overdue_count}"
                 }
-        
+
         except Exception as e:
             # 捕获所有异常（文件读写错误、JSON解析错误等）
             # 记录详细的错误日志，包含堆栈信息
@@ -7248,7 +7266,7 @@ class Api:
                 f"学校账号: {school_username}, 错误: {str(e)}"
             )
             logging.error(traceback.format_exc())
-            
+
             # 返回失败结果
             return {
                 "success": False,
@@ -7258,18 +7276,18 @@ class Api:
     def _deduct_available_runs_or_increment_overdue(self, auth_username, school_username):
         """
         任务完成后处理可用次数扣减或欠费次数增加的逻辑。
-        
+
         执行逻辑：
         0. 检查付费配置，如果不需要付费或价格<=0，则跳过所有付费逻辑
         1. 读取 system_accounts 中认证用户的 available_runs 字段
         2. 如果 available_runs == -1（无限次数），直接返回，不做任何处理
         3. 如果 available_runs >= 1，扣减1次，保存到 system_accounts
         4. 如果 available_runs <= 0，则增加 school_accounts 中对应学校账号的 overdue_count
-        
+
         参数:
             auth_username: 认证用户名（system_accounts 中的用户名）
             school_username: 学校账户用户名（school_accounts 中的账户）
-        
+
         返回:
             None
         """
@@ -7281,11 +7299,13 @@ class Api:
             config.read("config.ini", encoding="utf-8")
             # 读取 require_payment 配置项，默认值为 true（需要付费）
             # 如果配置为 false，表示系统运行在免费模式下
-            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+            require_payment = config.getboolean(
+                "Payment_Settings", "require_payment", fallback=True)
             # 读取 single_run_cost 配置项，默认值为 1.0元
             # 如果价格设置为0或负数，也表示免费模式
-            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
-            
+            single_run_cost = config.getfloat(
+                "Payment_Settings", "single_run_cost", fallback=1.0)
+
             # 判断是否需要跳过付费逻辑
             # 满足以下任一条件时跳过：
             # 1. require_payment 为 false（明确配置为免费模式）
@@ -7298,7 +7318,7 @@ class Api:
                 )
                 # 免费模式下，直接返回，不执行后续的扣减或欠费逻辑
                 return
-            
+
             # 步骤1：加载认证用户的 system_accounts 数据
             # 使用全局 auth_system 来获取用户文件路径
             global auth_system
@@ -7307,43 +7327,43 @@ class Api:
                     f"[次数扣减] auth_system 未初始化，跳过次数扣减逻辑"
                 )
                 return
-            
+
             user_file = auth_system.get_user_file_path(auth_username)
-            
+
             # 如果用户文件不存在，记录警告并返回
             if not os.path.exists(user_file):
                 logging.warning(
                     f"[次数扣减] 用户文件不存在: {user_file}，跳过次数扣减逻辑"
                 )
                 return
-            
+
             # 读取用户数据（JSON格式）
             with open(user_file, "r", encoding="utf-8") as f:
                 user_data = json.load(f)
-            
+
             # 步骤2：获取 available_runs 字段（向后兼容：如果不存在则默认为0）
             available_runs = user_data.get("available_runs", 0)
-            
+
             logging.debug(
                 f"[次数扣减] 用户 {auth_username} 当前可用次数: {available_runs}"
             )
-            
+
             # 步骤3：如果是无限次数（-1），直接返回
             if available_runs == -1:
                 logging.debug(
                     f"[次数扣减] 用户 {auth_username} 拥有无限次数，跳过扣减"
                 )
                 return
-            
+
             # 步骤4：判断是扣减 available_runs 还是增加 overdue_count
             if available_runs >= 1:
                 # 情况A：可用次数 >= 1，扣减1次
                 user_data["available_runs"] = available_runs - 1
-                
+
                 # 保存更新后的用户数据
                 with open(user_file, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
-                
+
                 logging.info(
                     f"[次数扣减] 用户 {auth_username} 扣减1次可用次数，"
                     f"剩余: {user_data['available_runs']} 次"
@@ -7351,12 +7371,13 @@ class Api:
             else:
                 # 情况B：可用次数 <= 0，增加对应学校账号的欠费次数
                 # 加载该认证用户的所有学校账号配置
-                school_accounts = self._load_user_school_accounts(auth_username)
-                
+                school_accounts = self._load_user_school_accounts(
+                    auth_username)
+
                 # 查找目标学校账号
                 if school_username in school_accounts:
                     account_info = school_accounts[school_username]
-                    
+
                     # 确保是字典格式（向后兼容）
                     if not isinstance(account_info, dict):
                         account_info = {
@@ -7365,14 +7386,15 @@ class Api:
                             "overdue_count": 0
                         }
                         school_accounts[school_username] = account_info
-                    
+
                     # 增加欠费次数
                     current_overdue = account_info.get("overdue_count", 0)
                     account_info["overdue_count"] = current_overdue + 1
-                    
+
                     # 保存更新后的学校账号配置
-                    self._save_user_school_accounts(auth_username, school_accounts)
-                    
+                    self._save_user_school_accounts(
+                        auth_username, school_accounts)
+
                     logging.info(
                         f"[次数扣减] 用户 {auth_username} 可用次数不足（当前: {available_runs}），"
                         f"学校账号 {school_username} 欠费次数 +1，当前欠费: {account_info['overdue_count']} 次"
@@ -7383,7 +7405,7 @@ class Api:
                         f"[次数扣减] 在用户 {auth_username} 的学校账号配置中未找到 {school_username}，"
                         f"无法增加欠费次数"
                     )
-        
+
         except Exception as e:
             # 捕获所有异常，避免影响主任务流程
             logging.error(
@@ -7394,25 +7416,25 @@ class Api:
     def _increment_completed_count(self, auth_username, school_username):
         """
         增加学校账号的已完成任务计数。
-        
+
         功能说明：
             当一个任务成功提交并完成后，调用此函数为对应的学校账号增加已完成任务计数。
             计数器现在存储在独立的 INI 文件中，与账号密码分离。
-        
+
         参数：
             auth_username: 认证用户名（system_accounts中的用户名）
             school_username: 学校账号用户名（school_accounts中的账户）
-        
+
         实现逻辑：
             1. 验证学校账号是否存在（通过加载 school_accounts）
             2. 从 INI 文件读取当前的统计数据
             3. 将 completed_count 字段加1
             4. 将更新后的统计数据保存回 INI 文件
-        
+
         错误处理：
             如果更新失败（文件不存在、账号不存在等），记录错误日志但不影响主流程。
             这样可以确保任务执行的稳定性，即使计数器更新失败也不会导致任务中断。
-        
+
         返回值：
             None
         """
@@ -7421,14 +7443,14 @@ class Api:
             # 加载用户的所有学校账号配置，用于验证账号是否存在
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0, "completed_count": 0}, ...}
             accounts = self._load_user_school_accounts(auth_username)
-            
+
             # 如果返回的是空字典，说明没有找到配置文件或加载失败
             if not accounts:
                 logging.warning(
                     f"[任务计数] 无法加载用户 {auth_username} 的学校账号配置，跳过计数更新"
                 )
                 return
-            
+
             # 步骤2：检查学校账号是否存在
             # 如果账号不存在，不进行任何操作
             if school_username not in accounts:
@@ -7436,32 +7458,32 @@ class Api:
                     f"[任务计数] 在用户 {auth_username} 的配置中未找到学校账号 {school_username}，无法更新计数"
                 )
                 return
-            
+
             # 步骤3：从 INI 文件读取当前的统计数据
             # 获取当前的 overdue_count 和 completed_count
             stats = self._load_school_account_stats_from_ini(school_username)
             current_overdue_count = stats["overdue_count"]
             current_completed_count = stats["completed_count"]
-            
+
             # 步骤4：增加已完成任务计数
             # 将 completed_count 加1
             new_completed_count = current_completed_count + 1
-            
+
             # 记录日志：显示更新前后的计数值
             logging.info(
                 f"[任务计数] 用户 {auth_username} 的学校账号 {school_username} "
                 f"已完成任务数: {current_completed_count} → {new_completed_count}"
             )
-            
+
             # 步骤5：将更新后的统计数据保存到 INI 文件
             # 使用专门的 INI 写入函数保存
             # overdue_count 保持不变，只更新 completed_count
             success = self._save_school_account_stats_to_ini(
-                school_username, 
+                school_username,
                 current_overdue_count,      # 保持原有的欠费次数
                 new_completed_count         # 使用新的完成次数
             )
-            
+
             # 步骤6：检查保存是否成功
             if success:
                 logging.debug(
@@ -7471,7 +7493,7 @@ class Api:
                 logging.warning(
                     f"[任务计数] 保存学校账号 {school_username} 的任务计数到 INI 文件失败"
                 )
-        
+
         except Exception as e:
             # 捕获所有可能的异常（文件IO错误、权限错误等）
             # 记录详细的错误信息，包括完整的异常堆栈（exc_info=True）
@@ -7550,7 +7572,8 @@ class Api:
         try:
             with open(user_ini_path, "w", encoding="utf-8") as f:
                 cfg_to_save.write(f)
-            logging.debug(f"Saved user config for {username} -> {user_ini_path}")
+            logging.debug(
+                f"Saved user config for {username} -> {user_ini_path}")
         except Exception as e:
             logging.error(f"写入用户配置文件 {user_ini_path} 失败: {e}", exc_info=True)
 
@@ -7593,7 +7616,8 @@ class Api:
             main_cfg.add_section("Map")
 
         amap_key_in_memory = self.global_params.get("amap_js_key", "").strip()
-        amap_key_in_file = main_cfg.get("Map", "amap_js_key", fallback="").strip()
+        amap_key_in_file = main_cfg.get(
+            "Map", "amap_js_key", fallback="").strip()
 
         if amap_key_in_memory:
             main_cfg.set("Map", "amap_js_key", amap_key_in_memory)
@@ -7643,7 +7667,8 @@ class Api:
                 )
 
             if cfg.has_option("Config", "theme_style"):
-                self.global_params["theme_style"] = cfg.get("Config", "theme_style")
+                self.global_params["theme_style"] = cfg.get(
+                    "Config", "theme_style")
 
             # [修正] auto_attendance_enabled 不再从全局配置文件读取，而是依赖会话持久化或默认值
             # 仅保留刷新间隔和半径作为全局默认值（如果需要的话），或者也完全移除
@@ -7707,7 +7732,8 @@ class Api:
             school_password = self._get_school_account_password(
                 self.auth_username, username
             )
-            school_ua = self._get_school_account_ua(self.auth_username, username)
+            school_ua = self._get_school_account_ua(
+                self.auth_username, username)
             if school_password:
                 password = school_password
                 logging.debug(
@@ -7817,7 +7843,8 @@ class Api:
                 is_guest = getattr(self, "is_guest", False)
 
                 # 确定用户名
-                username = "Guest" if is_guest else (auth_username or "Unknown")
+                username = "Guest" if is_guest else (
+                    auth_username or "Unknown")
 
                 # 处理日志列表
                 logs_to_process = (
@@ -7911,7 +7938,8 @@ class Api:
                 else:
                     users = []
 
-                    school_accounts = self._load_user_school_accounts(auth_username)
+                    school_accounts = self._load_user_school_accounts(
+                        auth_username)
 
                     if school_accounts:
                         users = list(school_accounts.keys())
@@ -7961,7 +7989,8 @@ class Api:
 
             self._load_global_config()
 
-            is_logged_in = hasattr(self, "login_success") and self.login_success
+            is_logged_in = hasattr(
+                self, "login_success") and self.login_success
             user_info = None
             if is_logged_in and hasattr(self, "user_info"):
                 user_info = self.user_info
@@ -8025,7 +8054,8 @@ class Api:
                     # 将账号状态数据添加到响应中
                     if multi_status and isinstance(multi_status, dict):
                         # 添加accounts字段
-                        response_data["accounts"] = multi_status.get("accounts", [])
+                        response_data["accounts"] = multi_status.get(
+                            "accounts", [])
                         logging.debug(
                             f"[多账号模式] 已添加 {len(response_data.get('accounts', []))} 个账号的状态信息"
                         )
@@ -8193,7 +8223,8 @@ class Api:
         auth_username = getattr(self, "auth_username", None)
         auth_group = getattr(self, "auth_group", "guest")
         is_guest = getattr(self, "is_guest", False)
-        is_authenticated = hasattr(self, "is_authenticated") and self.is_authenticated
+        is_authenticated = hasattr(
+            self, "is_authenticated") and self.is_authenticated
         if is_authenticated and auth_username and not is_guest:
             has_view_all_permission = False
 
@@ -8216,7 +8247,8 @@ class Api:
                     pass
 
             if not has_view_all_permission:
-                school_accounts = self._load_user_school_accounts(auth_username)
+                school_accounts = self._load_user_school_accounts(
+                    auth_username)
 
                 if not school_accounts or username not in school_accounts:
                     logging.warning(
@@ -8244,7 +8276,8 @@ class Api:
             f"on_user_selected: username={username}, ua={ua}, password={'***' if password else 'empty'}"
         )
 
-        info = {"name": self.user_data.name, "student_id": self.user_data.student_id}
+        info = {"name": self.user_data.name,
+                "student_id": self.user_data.student_id}
 
         return {
             "password": password or "",
@@ -8264,7 +8297,8 @@ class Api:
             try:
                 cfg.read(self.user_config_path, encoding="utf-8")
             except Exception as e:
-                logging.warning(f"读取配置文件 {self.user_config_path} 失败: {e}，将创建新配置")
+                logging.warning(
+                    f"读取配置文件 {self.user_config_path} 失败: {e}，将创建新配置")
                 # 如果读取失败，cfg 保持为空或部分内容，继续执行不会崩溃
 
             if not cfg.has_section("System"):
@@ -8327,7 +8361,7 @@ class Api:
                 # 从 INI 文件加载统计数据（overdue_count 和 completed_count）
                 # 这些数据与账号密码分离存储，需要单独读取
                 stats = self._load_school_account_stats_from_ini(ud.username)
-                
+
                 # 创建备份数据字典
                 # 包含用户信息、部门信息、备份时间戳以及统计数据
                 backup_data = {
@@ -8335,7 +8369,8 @@ class Api:
                     "deptInfo": dept_info,        # 部门/学校信息
                     "backup_timestamp": time.time(),  # 备份创建时间
                     "overdue_count": stats.get("overdue_count", 0),      # 欠费次数
-                    "completed_count": stats.get("completed_count", 0)   # 已完成任务数
+                    # 已完成任务数
+                    "completed_count": stats.get("completed_count", 0)
                 }
 
                 # 将备份数据写入 JSON 文件
@@ -8367,10 +8402,12 @@ class Api:
             )
 
         try:
-            self._fetch_server_attendance_radius_if_needed(self.api_client, None)
+            self._fetch_server_attendance_radius_if_needed(
+                self.api_client, None)
         except Exception as e:
             self.log(f"获取签到半径失败: {e}")
-            logging.warning(f"Failed to fetch attendance radius post-login: {e}")
+            logging.warning(
+                f"Failed to fetch attendance radius post-login: {e}")
 
         self._first_center_done = False
         logging.info(
@@ -8383,22 +8420,22 @@ class Api:
                 logging.debug(
                     "Attempt to trigger front-end refreshTasks failed (non-fatal)."
                 )
-        
+
         # [新版] 使用统一的线程管理机制启动账号刷新线程
         # 不再使用旧的 auto_refresh_thread，而是使用 account_refresh_threads 字典
         try:
             # 清除旧的停止标志（为了向后兼容）
             self.stop_auto_refresh.clear()
-            
+
             # 检查是否已登录且有用户ID
             if self.user_data and self.user_data.id:
                 # 规范化账号ID为字符串
                 account_id = str(self.user_data.id)
-                
+
                 # 确保该账号有刷新线程
                 # 这个函数会自动检查是否已有活跃线程，避免重复创建
                 self._ensure_account_refresh_thread(account_id)
-                
+
                 logging.info(f"[单账号登录] 已为账号 {account_id} 确保刷新线程")
             else:
                 logging.warning("[单账号登录] 无法启动刷新线程：用户未登录或无ID")
@@ -8451,7 +8488,7 @@ class Api:
         logging.info("API调用: logout - 用户注销登出操作")
         self.log("已注销。")
         logging.info("用户已成功登出，正在清除会话和状态数据")
-        
+
         # [旧版] 停止旧的自动刷新线程（为了向后兼容）
         try:
             self.stop_auto_refresh.set()
@@ -8466,18 +8503,18 @@ class Api:
             # 如果已登录，获取当前账号ID
             if self.user_data and self.user_data.id:
                 account_id = str(self.user_data.id)
-                
+
                 # 使用线程锁保护对字典的访问
                 with self.threads_lock:
                     # 检查是否有该账号的刷新线程
                     if account_id in self.account_refresh_threads:
                         thread = self.account_refresh_threads[account_id]
-                        
+
                         # 从字典中移除（线程会自动退出，因为检测到账号已注销）
                         del self.account_refresh_threads[account_id]
-                        
+
                         logging.info(f"[登出] 已停止账号 {account_id} 的刷新线程")
-                        
+
                         # 可选：等待线程停止
                         if thread.is_alive():
                             thread.join(timeout=1.0)
@@ -8517,7 +8554,8 @@ class Api:
 
         with self._load_tasks_lock:
             if self._load_tasks_inflight:
-                logging.debug("load_tasks skipped: another refresh is in-flight.")
+                logging.debug(
+                    "load_tasks skipped: another refresh is in-flight.")
                 tasks_for_js = []
                 for run in self.all_run_data:
                     task_dict = run.__dict__.copy()
@@ -8536,7 +8574,8 @@ class Api:
                 dup_count = 0
 
                 while True:
-                    resp = self.api_client.get_run_list(self.user_data.id, offset)
+                    resp = self.api_client.get_run_list(
+                        self.user_data.id, offset)
                     if not resp or not resp.get("success"):
                         self.log("获取任务列表失败。")
                         logging.warning("从服务器获取任务列表失败")
@@ -8566,7 +8605,8 @@ class Api:
                             run.status = int(td.get("isExecute") or 0)
                         except (TypeError, ValueError):
                             run.status = (
-                                1 if str(td.get("isExecute")).strip() == "1" else 0
+                                1 if str(td.get("isExecute")
+                                         ).strip() == "1" else 0
                             )
 
                         run.errand_id = td.get("errandId")
@@ -8779,7 +8819,8 @@ class Api:
                             and pt[1] is not None
                         ):
                             try:
-                                temp_coords.append((float(pt[0]), float(pt[1])))
+                                temp_coords.append(
+                                    (float(pt[0]), float(pt[1])))
                             except (TypeError, ValueError):
                                 logging.warning(
                                     f"Invalid coordinate in recommended path: {pt}"
@@ -8883,7 +8924,8 @@ class Api:
 
         a = (
             math.sin(delta_lat / 2) ** 2
-            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon / 2) ** 2
+            + math.cos(lat1_rad) * math.cos(lat2_rad) *
+            math.sin(delta_lon / 2) ** 2
         )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         distance = R * c
@@ -9017,8 +9059,10 @@ class Api:
                 if seg_dist >= dist_to_go:
                     ratio = dist_to_go / seg_dist if seg_dist > 0 else 0
                     final_pos = (
-                        seg_start_gps[0] + ratio * (seg_end_gps[0] - seg_start_gps[0]),
-                        seg_start_gps[1] + ratio * (seg_end_gps[1] - seg_start_gps[1]),
+                        seg_start_gps[0] + ratio *
+                        (seg_end_gps[0] - seg_start_gps[0]),
+                        seg_start_gps[1] + ratio *
+                        (seg_end_gps[1] - seg_start_gps[1]),
                     )
                     dist_to_go, draft_idx = 0, temp_draft_idx
                 else:
@@ -9081,7 +9125,8 @@ class Api:
 
         tar_lon, tar_lat = run_data.target_points[run_data.target_sequence]
 
-        dist = self._calculate_distance_m(current_lon, current_lat, tar_lon, tar_lat)
+        dist = self._calculate_distance_m(
+            current_lon, current_lat, tar_lon, tar_lat)
 
         is_in_zone = dist < self.target_range_m
 
@@ -9194,7 +9239,8 @@ class Api:
     ):
         """将一小块轨迹数据提交到服务器"""
         log_func = (
-            client.app.log if hasattr(client.app, "log") else client.app.api_bridge.log
+            client.app.log if hasattr(
+                client.app, "log") else client.app.api_bridge.log
         )
 
         if self.is_offline_mode:
@@ -9359,7 +9405,8 @@ class Api:
         }
         try:
             qsize = self._submission_queue.qsize()
-            logging.debug(f"Enqueue submit task. Queue size before push: {qsize}")
+            logging.debug(
+                f"Enqueue submit task. Queue size before push: {qsize}")
         except Exception:
             pass
         self._submission_queue.put(task)
@@ -9372,7 +9419,8 @@ class Api:
     def _finalize_run(self, run_data: RunData, task_index: int, client: ApiClient):
         """在所有数据提交后，查询服务器确认任务是否已标记为完成"""
         log_func = (
-            client.app.log if hasattr(client.app, "log") else client.app.api_bridge.log
+            client.app.log if hasattr(
+                client.app, "log") else client.app.api_bridge.log
         )
         log_func("正在确认任务状态...")
         logging.debug(f"正在确认任务完成状态，任务追踪ID: trid={run_data.trid}")
@@ -9393,7 +9441,8 @@ class Api:
                                 room=session_id,
                             )
                         except Exception as e:
-                            logging.error(f"SocketIO发送'task_completed'事件失败: {e}")
+                            logging.error(
+                                f"SocketIO发送'task_completed'事件失败: {e}")
                     return
             time.sleep(1)
         log_func("暂未确认完成，请稍后刷新。")
@@ -9409,10 +9458,12 @@ class Api:
     ):
         """模拟跑步和提交数据的主线程函数"""
         log_func = (
-            client.app.log if hasattr(client.app, "log") else client.app.api_bridge.log
+            client.app.log if hasattr(
+                client.app, "log") else client.app.api_bridge.log
         )
         user_data = (
-            client.app.user_data if hasattr(client.app, "user_data") else self.user_data
+            client.app.user_data if hasattr(
+                client.app, "user_data") else self.user_data
         )
         stop_flag = (
             client.app.stop_event
@@ -9443,7 +9494,7 @@ class Api:
                     logging.info("检测到停止标志，正在中止任务运行")
                     break
 
-                chunk = run_data.run_coords[i : i + 40]
+                chunk = run_data.run_coords[i: i + 40]
 
                 for lon, lat, dur_ms in chunk:
                     if stop_flag.wait(timeout=dur_ms / 1000.0):
@@ -9576,7 +9627,8 @@ class Api:
 
             if finished_event:
                 finished_event.set()
-            logging.info(f"Submission thread finished for task: {run_data.run_name}")
+            logging.info(
+                f"Submission thread finished for task: {run_data.run_name}")
 
     def _get_path_for_distance(self, path, cumulative_distances, target_dist):
         """如果路径总长不足，则通过来回走的方式凑足目标距离"""
@@ -9597,7 +9649,8 @@ class Api:
                     ratio = (rem - acc) / seg if seg > 0 else 0
                     s, e = rev[i], rev[i + 1]
                     final_path.append(
-                        (s[0] + (e[0] - s[0]) * ratio, s[1] + (e[1] - s[1]) * ratio)
+                        (s[0] + (e[0] - s[0]) * ratio,
+                         s[1] + (e[1] - s[1]) * ratio)
                     )
                     break
         return final_path
@@ -9692,7 +9745,8 @@ class Api:
         while t_elapsed < target_time_s:
             interval = min(
                 random.uniform(
-                    self.params["interval_ms"] * 0.9, self.params["interval_ms"] * 1.1
+                    self.params["interval_ms"] *
+                    0.9, self.params["interval_ms"] * 1.1
                 )
                 / 1000.0,
                 target_time_s - t_elapsed,
@@ -9701,7 +9755,8 @@ class Api:
                 break
 
             d_covered = min(
-                d_covered + random.uniform(avg_speed * 0.9, avg_speed * 1.1) * interval,
+                d_covered +
+                random.uniform(avg_speed * 0.9, avg_speed * 1.1) * interval,
                 actual_total_dist,
             )
             lon, lat = self._get_point_at_distance(
@@ -9784,7 +9839,8 @@ class Api:
             f"Starting 'run all' process. Queue={list(queue)}, auto-generate={auto_generate}"
         )
         threading.Thread(
-            target=self._run_all_tasks_manager, args=(queue, auto_generate), daemon=True
+            target=self._run_all_tasks_manager, args=(
+                queue, auto_generate), daemon=True
         ).start()
         return {"success": True}
 
@@ -9986,9 +10042,11 @@ class Api:
             coords = []
             for track_point_list in resp.get("data", {}).get("trackPointList", []):
                 try:
-                    coords_list = json.loads(track_point_list.get("coordinate", "[]"))
+                    coords_list = json.loads(
+                        track_point_list.get("coordinate", "[]"))
                     for item in coords_list:
-                        lon, lat = map(float, item.get("location", "0,0").split(","))
+                        lon, lat = map(float, item.get(
+                            "location", "0,0").split(","))
                         coords.append((lon, lat))
                 except (json.JSONDecodeError, ValueError):
                     continue
@@ -10060,7 +10118,8 @@ class Api:
                 if not username_to_update:
                     cfg = configparser.ConfigParser()
                     cfg.read(self.config_path, encoding="utf-8")
-                    username_to_update = cfg.get("Config", "LastUser", fallback=None)
+                    username_to_update = cfg.get(
+                        "Config", "LastUser", fallback=None)
 
                 if username_to_update and not self.is_multi_account_mode:
                     self._save_config(username_to_update)
@@ -10069,7 +10128,8 @@ class Api:
 
                 # [新版] 当自动签到相关参数改变时，重启相关线程
                 if (
-                    key in ("auto_attendance_enabled", "auto_attendance_refresh_s")
+                    key in ("auto_attendance_enabled",
+                            "auto_attendance_refresh_s")
                     and not self.is_multi_account_mode
                 ):
                     # 单账号模式：重启当前账号的刷新线程
@@ -10077,7 +10137,7 @@ class Api:
                         # 如果已登录且有用户ID
                         if self.user_data and self.user_data.id:
                             account_id = str(self.user_data.id)
-                            
+
                             # 如果禁用了自动签到，停止并移除线程
                             if not self.params.get("auto_attendance_enabled", False):
                                 with self.threads_lock:
@@ -10086,17 +10146,19 @@ class Api:
                                         # 这里只是从字典中移除记录
                                         del self.account_refresh_threads[account_id]
                                         self.log("自动签到已禁用，刷新线程将停止。")
-                                        logging.info(f"[参数更新] 已停止账号 {account_id} 的刷新线程")
+                                        logging.info(
+                                            f"[参数更新] 已停止账号 {account_id} 的刷新线程")
                             else:
                                 # 启用了自动签到，确保有刷新线程
                                 self._ensure_account_refresh_thread(account_id)
                                 self.log("自动签到设置已更新，刷新线程已启动/重启。")
-                                logging.info(f"[参数更新] 已确保账号 {account_id} 有刷新线程")
+                                logging.info(
+                                    f"[参数更新] 已确保账号 {account_id} 有刷新线程")
                         else:
                             logging.warning("[参数更新] 无法更新刷新线程：用户未登录")
                     except Exception as e:
                         logging.error(f"[参数更新] 更新刷新线程失败: {e}", exc_info=True)
-                
+
                 # [多账号模式] 当自动签到参数改变时，监控线程会自动处理
                 # 无需在这里额外操作，监控线程会在下一次检查时发现变化
 
@@ -10212,7 +10274,8 @@ class Api:
             debug_run = RunData()
             debug_run.run_name = data.get("task_name", "调试任务 (离线)")
             debug_run.errand_id = data.get("errand_id", "debug_id")
-            debug_run.errand_schedule = data.get("errand_schedule", "debug_schedule")
+            debug_run.errand_schedule = data.get(
+                "errand_schedule", "debug_schedule")
             debug_run.target_points = data.get("target_points", [])
             if "target_point_names" in data and data["target_point_names"]:
                 debug_run.target_point_names = data["target_point_names"]
@@ -10393,17 +10456,18 @@ class Api:
                     "accounts_updated", {"accounts": accounts_data}, room=session_id
                 )
             except Exception as e:
-                logging.error(f"Failed to emit accounts_updated on mode entry: {e}")
+                logging.error(
+                    f"Failed to emit accounts_updated on mode entry: {e}")
 
         # [新版] 使用统一的多账号监控线程机制
         # 不再使用旧的 multi_auto_refresh_thread，而是启动监控线程
         try:
             # 清除停止标志（为了向后兼容旧代码）
             self.stop_multi_auto_refresh.clear()
-            
+
             # 清除新的监控线程停止标志
             self.stop_account_monitor.clear()
-            
+
             # 检查是否已有监控线程在运行
             if (
                 self.account_monitor_thread is None
@@ -10420,7 +10484,7 @@ class Api:
                 logging.info("[多账号模式] 已启动账号监控线程")
             else:
                 logging.debug("[多账号模式] 监控线程已在运行")
-            
+
             # 立即为所有已登录且启用自动签到的账号创建刷新线程
             for username, acc in list(self.accounts.items()):
                 try:
@@ -10428,9 +10492,11 @@ class Api:
                     if acc.params.get("auto_attendance_enabled", False) and acc.user_data and acc.user_data.id:
                         account_id = str(acc.user_data.id)
                         self._ensure_account_refresh_thread(account_id)
-                        logging.info(f"[多账号模式] 已为账号 {username} (ID: {account_id}) 创建刷新线程")
+                        logging.info(
+                            f"[多账号模式] 已为账号 {username} (ID: {account_id}) 创建刷新线程")
                 except Exception as e:
-                    logging.error(f"[多账号模式] 为账号 {username} 创建刷新线程失败: {e}", exc_info=True)
+                    logging.error(
+                        f"[多账号模式] 为账号 {username} 创建刷新线程失败: {e}", exc_info=True)
         except Exception as e:
             self.log(f"启动多账号监控线程失败: {e}")
             logging.error(f"[多账号模式] 启动监控线程失败: {e}", exc_info=True)
@@ -10487,7 +10553,7 @@ class Api:
         try:
             # 设置停止标志
             self.stop_account_monitor.set()
-            
+
             # 等待监控线程停止
             if (
                 self.account_monitor_thread
@@ -10495,7 +10561,7 @@ class Api:
             ):
                 self.account_monitor_thread.join(timeout=2.0)
                 logging.info("[退出多账号模式] 监控线程已停止")
-            
+
             self.account_monitor_thread = None
         except Exception as e:
             logging.warning(f"[退出多账号模式] 停止监控线程失败: {e}")
@@ -10506,7 +10572,7 @@ class Api:
             with self.threads_lock:
                 # 获取所有线程的副本（避免在迭代时修改字典）
                 threads_to_stop = list(self.account_refresh_threads.items())
-            
+
             # 停止每个线程
             # 注意：由于线程是守护线程且使用 stop_event，它们会自动退出
             # 这里主要是清理记录
@@ -10518,7 +10584,7 @@ class Api:
                         thread.join(timeout=1.0)
                 except Exception as e:
                     logging.warning(f"[退出多账号模式] 等待账号 {account_id} 线程失败: {e}")
-            
+
             # 清空线程字典
             with self.threads_lock:
                 self.account_refresh_threads.clear()
@@ -10552,7 +10618,8 @@ class Api:
                 except Exception:
                     pass
         except Exception:
-            logging.debug("enter_single_account_mode: stop multi failed (non-fatal).")
+            logging.debug(
+                "enter_single_account_mode: stop multi failed (non-fatal).")
 
         for key, (path_result, completion_event) in list(
             self.path_gen_callbacks.items()
@@ -10610,7 +10677,8 @@ class Api:
         }
 
         if getattr(self, "is_multi_account_mode", False):
-            mode_info["multi_account_count"] = len(getattr(self, "accounts", {}))
+            mode_info["multi_account_count"] = len(
+                getattr(self, "accounts", {}))
             mode_info["multi_account_usernames"] = list(
                 getattr(self, "accounts", {}).keys()
             )
@@ -10631,7 +10699,8 @@ class Api:
         else:
             mode_info["has_tasks"] = len(getattr(self, "all_run_data", [])) > 0
             mode_info["task_count"] = len(getattr(self, "all_run_data", []))
-            mode_info["selected_task_index"] = getattr(self, "current_run_idx", -1)
+            mode_info["selected_task_index"] = getattr(
+                self, "current_run_idx", -1)
 
             if hasattr(self, "user_data") and self.user_data:
                 user_data = self.user_data
@@ -10662,7 +10731,8 @@ class Api:
         filtered_users = []
 
         if hasattr(self, "auth_username") and self.auth_username:
-            school_accounts = self._load_user_school_accounts(self.auth_username)
+            school_accounts = self._load_user_school_accounts(
+                self.auth_username)
 
             for username in all_users:
                 if username in school_accounts:
@@ -10751,7 +10821,8 @@ class Api:
             return self.multi_get_all_accounts_status([{"success": True}])
 
         loaded_tag = self._load_account_tag(username)
-        final_tag = tag if tag is not None else (loaded_tag if loaded_tag else "")
+        final_tag = tag if tag is not None else (
+            loaded_tag if loaded_tag else "")
         self.accounts[username] = AccountSession(
             username, password, self, tag=final_tag
         )
@@ -10842,30 +10913,30 @@ class Api:
         """移除一个账号"""
         if username in self.accounts:
             acc = self.accounts[username]
-            
+
             # 停止账号的工作线程
             if (
                 acc.worker_thread
                 and acc.worker_thread.is_alive()
             ):
                 acc.stop_event.set()
-            
+
             # [新版] 停止并清理该账号的刷新线程
             try:
                 if acc.user_data and acc.user_data.id:
                     account_id = str(acc.user_data.id)
-                    
+
                     # 使用线程锁保护对字典的访问
                     with self.threads_lock:
                         # 如果该账号有刷新线程，从字典中移除
                         if account_id in self.account_refresh_threads:
                             thread = self.account_refresh_threads[account_id]
                             del self.account_refresh_threads[account_id]
-                            
+
                             logging.info(
                                 f"[移除账号] 已停止账号 {username} (ID: {account_id}) 的刷新线程"
                             )
-                            
+
                             # 可选：等待线程停止
                             if thread.is_alive():
                                 thread.join(timeout=1.0)
@@ -10874,11 +10945,11 @@ class Api:
                     f"[移除账号] 清理账号 {username} 的刷新线程失败: {e}",
                     exc_info=True
                 )
-            
+
             # 从账号字典中删除
             del self.accounts[username]
             self.log(f"已移除账号: {username}")
-        
+
         self._update_multi_global_buttons()
         if hasattr(self, "_web_session_id") and self._web_session_id:
             save_session_state(self._web_session_id, self, force_save=True)
@@ -10897,7 +10968,8 @@ class Api:
 
         self.log("正在刷新所有账号状态...")
         for acc in self.accounts.values():
-            is_running = bool(acc.worker_thread and acc.worker_thread.is_alive())
+            is_running = bool(
+                acc.worker_thread and acc.worker_thread.is_alive())
             if not is_running:
                 self._update_account_status_js(acc, status_text="刷新中...")
             threading.Thread(
@@ -10944,7 +11016,8 @@ class Api:
                 if not acc.is_first_login_verified:
                     acc.is_verifying = True
                     if not preserve_now:
-                        self._update_account_status_js(acc, status_text="首次验证中...")
+                        self._update_account_status_js(
+                            acc, status_text="首次验证中...")
 
                 login_resp = self._queued_login(
                     acc, respect_global_stop=False, ignore_all_stops=True
@@ -10984,12 +11057,14 @@ class Api:
                     acc.is_first_login_verified = True
                     acc.is_verifying = False
                     try:
-                        self._save_config(acc.username, acc.password, acc.device_ua)
+                        self._save_config(
+                            acc.username, acc.password, acc.device_ua)
                         acc.log(f"首次登录验证成功，密码已保存到配置文件。")
                     except Exception as e:
                         logging.error(f"保存密码到配置文件失败: {e}", exc_info=True)
                 else:
-                    ini_path = os.path.join(self.user_dir, f"{acc.username}.ini")
+                    ini_path = os.path.join(
+                        self.user_dir, f"{acc.username}.ini")
                     if os.path.exists(ini_path):
                         self._save_config(acc.username)
 
@@ -11031,7 +11106,7 @@ class Api:
             try:
                 if acc.user_data and acc.user_data.id:
                     account_id = str(acc.user_data.id)
-                    
+
                     # 检查是否启用了自动签到
                     if acc.params.get("auto_attendance_enabled", False):
                         # 确保该账号有刷新线程
@@ -11054,7 +11129,8 @@ class Api:
                 def delayed_save():
                     time.sleep(2)
                     try:
-                        save_session_state(self._web_session_id, self, force_save=True)
+                        save_session_state(
+                            self._web_session_id, self, force_save=True)
                         logging.debug(f"账号 {acc.username} 刷新完成后已保存会话状态")
                     except Exception as e:
                         logging.error(f"延迟保存会话状态失败: {e}")
@@ -11062,7 +11138,8 @@ class Api:
                 threading.Thread(target=delayed_save, daemon=True).start()
 
         except Exception as e:
-            logging.error(f"Error refreshing {acc.username}: {traceback.format_exc()}")
+            logging.error(
+                f"Error refreshing {acc.username}: {traceback.format_exc()}")
             if not preserve_status:
                 self._update_account_status_js(acc, status_text="刷新出错")
 
@@ -11120,8 +11197,10 @@ class Api:
                         }
                     )
 
-            is_running = bool(acc.worker_thread and acc.worker_thread.is_alive())
-            current_pos = getattr(acc, "current_position", None) if is_running else None
+            is_running = bool(
+                acc.worker_thread and acc.worker_thread.is_alive())
+            current_pos = getattr(acc, "current_position",
+                                  None) if is_running else None
 
             status_list.append(
                 {
@@ -11176,7 +11255,8 @@ class Api:
             }
         except Exception as e:
             self.log(f"模板生成失败：{e}")
-            logging.error(f"Template generation failed: {traceback.format_exc()}")
+            logging.error(
+                f"Template generation failed: {traceback.format_exc()}")
             return {"success": False, "message": f"生成失败: {e}"}
 
     def multi_import_accounts(self, filename, base64_content):
@@ -11225,7 +11305,8 @@ class Api:
                     if not row or len(row) < 1:
                         continue
                     username = str(row[0] or "").strip()
-                    password = str(row[1] or "").strip() if len(row) > 1 else ""
+                    password = str(row[1] or "").strip() if len(
+                        row) > 1 else ""
                     tag = None
                     if len(row) > 2 and row[2]:
                         tag = str(row[2]).strip()
@@ -11273,7 +11354,8 @@ class Api:
                             skipped_no_password.append(username)
                             continue
 
-                        self.multi_add_account(username, final_password, tag=tag)
+                        self.multi_add_account(
+                            username, final_password, tag=tag)
                         imported += 1
 
             elif ext == ".csv":
@@ -11314,7 +11396,8 @@ class Api:
                             skipped_no_password.append(username)
                             continue
 
-                        self.multi_add_account(username, final_password, tag=tag)
+                        self.multi_add_account(
+                            username, final_password, tag=tag)
                         imported += 1
 
             else:
@@ -11329,7 +11412,8 @@ class Api:
                     if self.window:
                         self.window.evaluate_js(f"alert({json.dumps(msg)})")
                 except Exception:
-                    logging.debug("Alert skipped_no_password failed (non-fatal).")
+                    logging.debug(
+                        "Alert skipped_no_password failed (non-fatal).")
                 self.log(
                     f"缺少密码的账号（共 {len(skipped_no_password)}）：{', '.join(skipped_no_password)}"
                 )
@@ -11402,7 +11486,8 @@ class Api:
             }
         except Exception as e:
             self.log(f"导出失败: {e}")
-            logging.error(f"Export accounts summary failed: {traceback.format_exc()}")
+            logging.error(
+                f"Export accounts summary failed: {traceback.format_exc()}")
             return {"success": False, "message": f"导出失败: {e}"}
 
     def multi_get_account_params(self, username):
@@ -11443,7 +11528,7 @@ class Api:
                         # 检查账号是否已登录且有用户ID
                         if acc.user_data and acc.user_data.id:
                             account_id = str(acc.user_data.id)
-                            
+
                             # 如果启用了自动签到，确保有刷新线程
                             if acc.params.get("auto_attendance_enabled", False):
                                 self._ensure_account_refresh_thread(account_id)
@@ -11467,7 +11552,8 @@ class Api:
                         )
 
                 if hasattr(self, "_web_session_id") and self._web_session_id:
-                    save_session_state(self._web_session_id, self, force_save=True)
+                    save_session_state(self._web_session_id,
+                                       self, force_save=True)
 
                 return {"success": True}
             except (ValueError, TypeError) as e:
@@ -11477,15 +11563,15 @@ class Api:
     def multi_start_single_account(self, username, run_only_incomplete: bool = True):
         """
         启动指定账号的任务执行线程。
-        
+
         功能说明：
             在启动任务前，会检查该账号是否存在欠费。
             如果存在欠费（overdue_count > 0），则拒绝启动任务。
-        
+
         参数：
             username: 学校账号用户名
             run_only_incomplete: 是否只运行未完成的任务
-            
+
         返回：
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
@@ -11493,12 +11579,12 @@ class Api:
         # 步骤1：检查账号是否存在
         if username not in self.accounts:
             return {"success": False, "message": "账号不存在"}
-        
+
         # 步骤2：欠费检查（在启动任务前执行）
         # 从 INI 文件读取该账号的统计数据
         stats = self._load_school_account_stats_from_ini(username)
         overdue_count = stats.get("overdue_count", 0)
-        
+
         # 如果存在欠费，拒绝启动任务
         if overdue_count > 0:
             self.log(f"[欠费检查] 账号 {username} 存在欠费 ({overdue_count} 次)，拒绝启动任务")
@@ -11513,7 +11599,7 @@ class Api:
                     }
                 ]
             }
-        
+
         # 步骤3：检查账号是否已在运行
         acc = self.accounts[username]
         if acc.worker_thread and acc.worker_thread.is_alive():
@@ -11574,17 +11660,17 @@ class Api:
     ):
         """
         一键启动所有账号的任务
-        
+
         功能说明：
             在启动所有任务前，会检查所有账号是否存在欠费。
             如果任何账号存在欠费（overdue_count > 0），则拒绝启动所有任务。
-            
+
         参数：
             min_delay: 最小延迟时间（秒）
             max_delay: 最大延迟时间（秒）
             use_delay: 是否使用延迟
             run_only_incomplete: 是否只运行未完成的任务
-            
+
         返回：
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
@@ -11604,14 +11690,14 @@ class Api:
             # 从 INI 文件读取该账号的统计数据
             stats = self._load_school_account_stats_from_ini(username)
             overdue_count = stats.get("overdue_count", 0)
-            
+
             # 如果存在欠费，记录到列表中
             if overdue_count > 0:
                 overdue_accounts_list.append({
                     "school_username": username,
                     "overdue_count": overdue_count
                 })
-        
+
         # 如果发现任何账号有欠费，拒绝启动所有任务
         if overdue_accounts_list:
             self.log(
@@ -11753,7 +11839,8 @@ class Api:
                 )
                 time.sleep(0.001)
             except Exception as e:
-                logging.error(f"SocketIO emit 'multi_status_update' failed: {e}")
+                logging.error(
+                    f"SocketIO emit 'multi_status_update' failed: {e}")
 
         self._update_multi_global_buttons()
 
@@ -11774,7 +11861,8 @@ class Api:
             executable = acc.summary.get("executable", 0)
             candidates = max(0, total - expired - not_started)
             has_tasks = (
-                (executable > 0) if self.multi_run_only_incomplete else (candidates > 0)
+                (executable > 0) if self.multi_run_only_incomplete else (
+                    candidates > 0)
             )
             if has_tasks:
                 active_accounts.append(acc)
@@ -11814,7 +11902,8 @@ class Api:
                 room=session_id,
             )
         except Exception as e:
-            logging.error(f"SocketIO emit 'multi_global_buttons_update' failed: {e}")
+            logging.error(
+                f"SocketIO emit 'multi_global_buttons_update' failed: {e}")
 
     def _queued_login(
         self,
@@ -11981,7 +12070,8 @@ class Api:
                 start_dt = None
             try:
                 if r.end_time:
-                    end_dt = datetime.datetime.strptime(r.end_time, "%Y-%m-%d %H:%M:%S")
+                    end_dt = datetime.datetime.strptime(
+                        r.end_time, "%Y-%m-%d %H:%M:%S")
             except (ValueError, TypeError):
                 end_dt = None
 
@@ -12102,7 +12192,8 @@ class Api:
     def multi_path_generation_callback(self, username: str, success: bool, data: any):
         """接收来自JS的路径规划结果并唤醒对应线程"""
         if username in self.path_gen_callbacks:
-            path_result, completion_event = self.path_gen_callbacks.pop(username)
+            path_result, completion_event = self.path_gen_callbacks.pop(
+                username)
             if success:
                 path_result["path"] = data
             else:
@@ -12152,7 +12243,8 @@ class Api:
                         if login_resp
                         else "网络错误"
                     )
-                    self._update_account_status_js(acc, status_text=f"登录失败: {msg}")
+                    self._update_account_status_js(
+                        acc, status_text=f"登录失败: {msg}")
                     return
 
                 data = login_resp.get("data", {})
@@ -12160,14 +12252,14 @@ class Api:
                 acc.user_data.name = user_info.get("name", "")
                 acc.user_data.id = user_info.get("id", "")
                 acc.user_data.student_id = user_info.get("account", "")
-                
+
                 # 设置 username 字段，用于后续备份文件命名
                 # 优先使用学号(student_id)，如果学号不存在则使用账号登录名(acc.username)
                 # 这确保了备份文件名的一致性和可追溯性
                 acc.user_data.username = acc.user_data.student_id or acc.username
-                
+
                 acc.log("登录成功。")
-                
+
                 # ========== 开始：备份用户信息到本地文件 ==========
                 # 此备份功能与 login() 函数（第6376-6395行）保持一致
                 # 目的：在多账号模式下，也能为每个账号创建用户信息的本地备份
@@ -12176,7 +12268,7 @@ class Api:
                     # 从登录响应中提取部门信息（deptInfo）
                     # deptInfo 包含学校名称、性别、属性类型等扩展信息
                     dept_info = data.get("deptInfo", {})
-                    
+
                     # 检查前置条件：
                     # 1. acc.user_data.username 必须存在（用于生成备份文件名）
                     # 2. self.user_dir 目录必须存在（备份文件的存储目录）
@@ -12186,16 +12278,18 @@ class Api:
                         # 例如：20210001_backup.json
                         # 这种命名方式便于识别和管理不同用户的备份文件
                         backup_filename = f"{acc.user_data.username}_backup.json"
-                        
+
                         # 拼接完整的备份文件路径
                         # user_dir 通常是 "school_accounts" 目录
-                        backup_filepath = os.path.join(self.user_dir, backup_filename)
-                        
+                        backup_filepath = os.path.join(
+                            self.user_dir, backup_filename)
+
                         # 构建要备份的数据结构（Python 字典）
                         # 从 INI 文件加载统计数据（overdue_count 和 completed_count）
                         # 这些数据与账号密码分离存储，需要单独读取
-                        stats = self._load_school_account_stats_from_ini(acc.user_data.username)
-                        
+                        stats = self._load_school_account_stats_from_ini(
+                            acc.user_data.username)
+
                         # 创建备份数据字典
                         # 包含三个关键字段：
                         # 1. userInfo: 用户基本信息（姓名、手机号、学号、ID等）
@@ -12207,10 +12301,12 @@ class Api:
                             "userInfo": user_info,
                             "deptInfo": dept_info,
                             "backup_timestamp": time.time(),
-                            "overdue_count": stats.get("overdue_count", 0),      # 欠费次数
-                            "completed_count": stats.get("completed_count", 0)   # 已完成任务数
+                            # 欠费次数
+                            "overdue_count": stats.get("overdue_count", 0),
+                            # 已完成任务数
+                            "completed_count": stats.get("completed_count", 0)
                         }
-                        
+
                         # 将备份数据写入到 JSON 文件
                         # 参数说明：
                         # - "w": 以写入模式打开文件（如果文件存在则覆盖）
@@ -12218,8 +12314,9 @@ class Api:
                         # - indent=2: JSON 格式化时使用2个空格缩进，提高可读性
                         # - ensure_ascii=False: 允许保存非 ASCII 字符（如中文），不转义为 \uXXXX
                         with open(backup_filepath, "w", encoding="utf-8") as f:
-                            json.dump(backup_data, f, indent=2, ensure_ascii=False)
-                        
+                            json.dump(backup_data, f, indent=2,
+                                      ensure_ascii=False)
+
                         # 记录备份成功的日志信息，包含统计数据
                         # 使用 logging.info 而非 acc.log，因为这是系统级操作
                         logging.info(
@@ -12227,7 +12324,7 @@ class Api:
                             f"(包含统计数据: overdue={stats.get('overdue_count', 0)}, "
                             f"completed={stats.get('completed_count', 0)})"
                         )
-                    
+
                     # 如果 username 不存在，记录警告日志
                     # 这种情况理论上不应该发生，因为上面已经设置了 username
                     # 但作为防御性编程，仍然进行检查
@@ -12235,7 +12332,7 @@ class Api:
                         logging.warning(
                             f"[多账号模式] 备份 user_info 失败：无法确定用户名(学号)，账号: {acc.username}"
                         )
-                
+
                 # 捕获并记录任何可能发生的异常
                 # 备份失败不应该影响主流程（登录、任务分析等），因此只记录错误不中断程序
                 # exc_info=True 会将完整的异常堆栈信息记录到日志中，便于调试
@@ -12245,7 +12342,7 @@ class Api:
                         exc_info=True,
                     )
                 # ========== 结束：备份用户信息到本地文件 ==========
-                
+
                 self._update_account_status_js(
                     acc, status_text="分析任务", name=acc.user_data.name
                 )
@@ -12414,7 +12511,8 @@ class Api:
 
                     amap_loaded = False
                     try:
-                        amap_loaded = page.evaluate("typeof AMapLoader !== 'undefined'")
+                        amap_loaded = page.evaluate(
+                            "typeof AMapLoader !== 'undefined'")
                     except Exception as e:
                         logging.debug(f"检查AMap SDK时出错（可能尚未加载）: {e}")
 
@@ -12652,7 +12750,8 @@ class Api:
                 new_run_coords = []
                 start = final_geo_path[0]
                 new_run_coords.append(
-                    self._gps_random_offset(start[0], start[1], acc.params) + (0,)
+                    self._gps_random_offset(
+                        start[0], start[1], acc.params) + (0,)
                 )
                 t_elapsed, d_covered = 0.0, 0.0
 
@@ -12670,13 +12769,15 @@ class Api:
 
                     d_covered = min(
                         d_covered
-                        + random.uniform(avg_speed * 0.9, avg_speed * 1.1) * interval,
+                        + random.uniform(avg_speed * 0.9,
+                                         avg_speed * 1.1) * interval,
                         actual_total_dist,
                     )
                     lon, lat = self._get_point_at_distance(
                         final_geo_path, final_cumulative, d_covered
                     )
-                    lon_o, lat_o = self._gps_random_offset(lon, lat, acc.params)
+                    lon_o, lat_o = self._gps_random_offset(
+                        lon, lat, acc.params)
                     new_run_coords.append((lon_o, lat_o, int(interval * 1000)))
                     t_elapsed += interval
                     if d_covered >= actual_total_dist:
@@ -12707,7 +12808,7 @@ class Api:
                         submission_successful = False
                         break
 
-                    chunk = run_data.run_coords[chunk_idx : chunk_idx + 40]
+                    chunk = run_data.run_coords[chunk_idx: chunk_idx + 40]
                     processed_points = chunk_idx
                     for lon, lat, dur_ms in chunk:
                         if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
@@ -12776,7 +12877,7 @@ class Api:
                     self._multi_fetch_and_summarize_tasks(acc)
                     self._update_account_status_js(acc, summary=acc.summary)
                     acc.log(f"任务 {run_data.run_name} 执行流程完成。")
-                    
+
                     # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
                     # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
                     # auth_username: 认证用户名（system_accounts 中的用户）
@@ -12785,19 +12886,19 @@ class Api:
                         # 从 Api 实例（api_bridge）获取认证用户名
                         auth_username = getattr(self, "auth_username", None)
                         school_username = acc.username  # AccountSession 的 username 是学校账号
-                        
+
                         # 只有当认证用户名存在且不是游客时，才执行扣减逻辑
                         if auth_username and auth_username != "guest":
                             logging.debug(
                                 f"[多账号任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
                                 f"学校账号={school_username}, 任务={run_data.run_name}"
                             )
-                            
+
                             # 调用辅助函数处理可用次数扣减或欠费次数增加
                             self._deduct_available_runs_or_increment_overdue(
                                 auth_username, school_username
                             )
-                            
+
                             # ========== 增加已完成任务计数器 ==========
                             # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
                             # 这个计数器用于统计每个学校账号总共完成了多少个任务
@@ -12807,10 +12908,11 @@ class Api:
                                     f"[多账号任务] 开始增加任务计数：认证用户={auth_username}, "
                                     f"学校账号={school_username}, 任务={run_data.run_name}"
                                 )
-                                
+
                                 # 调用辅助函数增加已完成任务计数
-                                self._increment_completed_count(auth_username, school_username)
-                                
+                                self._increment_completed_count(
+                                    auth_username, school_username)
+
                             except Exception as e_count:
                                 # 捕获计数更新异常，记录日志但不影响主流程
                                 logging.error(
@@ -12829,7 +12931,7 @@ class Api:
                             exc_info=True
                         )
                     # ========== 结束：次数扣减处理 ==========
-                    
+
                     self._update_account_status_js(
                         acc,
                         status_text="任务已完成",
@@ -12900,7 +13002,8 @@ class Api:
                             )
                             or not acc.status_text
                         ):
-                            self._update_account_status_js(acc, status_text="待命")
+                            self._update_account_status_js(
+                                acc, status_text="待命")
 
             except Exception:
                 logging.debug(
@@ -12955,7 +13058,8 @@ class Api:
                 log_func("获取半径API失败，默认为精确签到。")
         except Exception as e:
             log_func(f"获取半径时出错: {e}，默认为精确签到。")
-            logging.error(f"Failed to fetch attendance radius: {e}", exc_info=True)
+            logging.error(
+                f"Failed to fetch attendance radius: {e}", exc_info=True)
 
         if acc:
             acc.server_attendance_radius_m = new_radius
@@ -13008,7 +13112,8 @@ class Api:
 
         log_func(f"正在处理签到: {roll_call_id}")
 
-        server_radius_m = self._fetch_server_attendance_radius_if_needed(client, acc)
+        server_radius_m = self._fetch_server_attendance_radius_if_needed(
+            client, acc)
         is_precise_checkin = server_radius_m <= 0
 
         try:
@@ -13036,7 +13141,8 @@ class Api:
                 log_func("获取签到信息失败，将继续尝试签到...")
         except Exception as e:
             log_func(f"检查签到状态时出错: {e}，将继续尝试...")
-            logging.error(f"Error checking roll call status: {e}", exc_info=True)
+            logging.error(
+                f"Error checking roll call status: {e}", exc_info=True)
 
         final_lon, final_lat = 0.0, 0.0
         target_lon, target_lat = target_coords
@@ -13050,7 +13156,8 @@ class Api:
 
             if not is_precise_checkin:
                 user_radius_m = params.get("attendance_user_radius_m", 40)
-                radius_for_random = max(0.0, min(user_radius_m, server_radius_m))
+                radius_for_random = max(
+                    0.0, min(user_radius_m, server_radius_m))
 
             if radius_for_random <= 0:
                 final_lon, final_lat = target_lon, target_lat
@@ -13109,7 +13216,8 @@ class Api:
             submit_resp = client.submit_attendance(payload)
             if submit_resp and submit_resp.get("success"):
                 log_func("签到成功！")
-                logging.info(f"Attendance submitted successfully for {roll_call_id}")
+                logging.info(
+                    f"Attendance submitted successfully for {roll_call_id}")
                 return {"success": True, "message": "签到成功"}
             else:
                 msg = (
@@ -13162,7 +13270,8 @@ class Api:
             count_resp = self.api_client.get_unread_notice_count()
             unread_count = 0
             if count_resp and count_resp.get("success"):
-                unread_count = count_resp.get("data", {}).get("unreadNumber", 0)
+                unread_count = count_resp.get(
+                    "data", {}).get("unreadNumber", 0)
 
             all_notices = []
             offset = request_offset
@@ -13239,7 +13348,7 @@ class Api:
 
                             if status == -1 or status == "-1":
                                 notice["attendance_code"] = -1
-                            elif (status != -1 and status != "-1") and ( (finished == 1 or finished == "1") or finished is True):
+                            elif (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
                                 notice["attendance_code"] = 1
                             else:
                                 notice["attendance_code"] = 0
@@ -13254,7 +13363,8 @@ class Api:
                     offset=offset, limit=1, type_id=0
                 )
                 if peek_resp and peek_resp.get("success"):
-                    peek_notices = peek_resp.get("data", {}).get("noticeList", [])
+                    peek_notices = peek_resp.get(
+                        "data", {}).get("noticeList", [])
                     has_more = len(peek_notices) > 0
 
             if not is_auto_refresh:
@@ -13324,20 +13434,20 @@ class Api:
     def _get_account_by_id(self, account_id: str):
         """
         根据账号ID获取账号对象
-        
+
         此函数用于在单账号模式和多账号模式下统一获取账号对象。
         它会规范化账号ID（转为字符串），然后在相应的模式下查找账号。
-        
+
         参数:
             account_id: 账号标识符，可以是数字或字符串，会被自动转换为字符串
-        
+
         返回值:
             Api 或 AccountSession 对象，如果找不到则返回 None
         """
         # 规范化账号ID：统一转换为字符串格式
         # 这确保数字 1 和字符串 "1" 被视为同一个账号
         account_id = str(account_id)
-        
+
         # 单账号模式：检查当前用户
         # 在单账号模式下，只有一个账号（self），检查其user_data.id是否匹配
         if not self.is_multi_account_mode:
@@ -13349,7 +13459,7 @@ class Api:
                     return self
             # 如果不匹配或未登录，返回 None
             return None
-        
+
         # 多账号模式：从 accounts 字典查找
         # accounts 是一个字典，键是用户名（username），值是 AccountSession 对象
         for username, acc in self.accounts.items():
@@ -13359,24 +13469,24 @@ class Api:
                 if str(acc.user_data.id) == account_id:
                     # 返回找到的 AccountSession 对象
                     return acc
-        
+
         # 如果在多账号模式下也没找到匹配的账号，返回 None
         return None
 
     def _ensure_account_refresh_thread(self, account_id):
         """
         确保指定账号有刷新线程在运行
-        
+
         此函数会检查指定账号是否已有活跃的刷新线程。
         如果没有或线程已停止，则创建新的线程。
         这是线程去重机制的核心函数。
-        
+
         参数:
             account_id: 账号标识符（任意类型，会被转换为字符串）
         """
         # 规范化账号ID为字符串
         account_id = str(account_id)
-        
+
         # 使用线程锁保护对 account_refresh_threads 字典的访问
         # 这确保在多线程环境下不会发生竞态条件
         with self.threads_lock:
@@ -13392,7 +13502,7 @@ class Api:
                 else:
                     # 线程已停止，记录日志，稍后会创建新线程
                     logging.info(f"[线程管理] 账号 {account_id} 的线程已停止，将创建新线程")
-            
+
             # 创建新的后台刷新线程
             # target: 线程要执行的函数
             # args: 传递给目标函数的参数（账号ID）
@@ -13404,40 +13514,40 @@ class Api:
                 daemon=True,
                 name=f"AccountRefresh-{account_id}"
             )
-            
+
             # 将新线程记录到字典中
             self.account_refresh_threads[account_id] = thread
-            
+
             # 启动线程
             thread.start()
-            
+
             # 记录日志，表明新线程已创建并启动
             logging.info(f"[线程管理] 已为账号 {account_id} 创建并启动刷新线程")
 
     def _account_refresh_worker(self, account_id: str):
         """
         单个账号的后台刷新和签到线程（新版统一实现）
-        
+
         这是每个账号独立运行的后台线程函数。
         它会定期执行以下操作：
         1. 检查账号是否启用了自动签到
         2. 如果启用，执行签到检查
         3. 刷新通知
         4. 等待指定时间后重复
-        
+
         参数:
             account_id: 账号标识符（字符串格式）
         """
         # 规范化账号ID为字符串（确保类型一致）
         account_id = str(account_id)
-        
+
         # 记录线程启动日志
         logging.info(f"[账号刷新线程] 启动 - 账号ID: {account_id}")
-        
+
         # 创建一个停止事件，用于优雅地停止线程
         # 注意：这是线程本地的停止事件，与全局停止事件不同
         stop_event = threading.Event()
-        
+
         try:
             # 主循环：持续运行直到收到停止信号
             while not stop_event.is_set():
@@ -13445,26 +13555,28 @@ class Api:
                     # === 第一步：获取账号对象 ===
                     # 使用辅助函数根据账号ID获取对应的账号对象
                     account = self._get_account_by_id(account_id)
-                    
+
                     # 如果账号不存在（可能已被删除），退出线程
                     if not account:
                         logging.warning(f"[账号刷新线程] 账号不存在: {account_id}，线程退出")
                         break
-                    
+
                     # === 第二步：检查是否启用自动签到 ===
                     # 从账号参数中获取自动签到开关状态
-                    is_auto_attendance_enabled = account.params.get("auto_attendance_enabled", False)
-                    
+                    is_auto_attendance_enabled = account.params.get(
+                        "auto_attendance_enabled", False)
+
                     if not is_auto_attendance_enabled:
                         # 未启用自动签到，等待30秒后重新检查
-                        logging.debug(f"[账号刷新线程] 账号 {account_id} 未启用自动签到，等待...")
+                        logging.debug(
+                            f"[账号刷新线程] 账号 {account_id} 未启用自动签到，等待...")
                         # 使用 wait 而不是 sleep，以便能响应停止信号
                         if stop_event.wait(timeout=30):
                             # 如果收到停止信号，退出循环
                             break
                         # 继续下一次循环
                         continue
-                    
+
                     # === 第三步：检查是否已登录 ===
                     # 确保账号已登录（有有效的 user_data.id）
                     if not account.user_data or not account.user_data.id:
@@ -13473,33 +13585,36 @@ class Api:
                         if stop_event.wait(timeout=30):
                             break
                         continue
-                    
+
                     # === 第四步：获取刷新间隔 ===
                     # 从账号参数中获取刷新间隔（秒）
-                    refresh_interval_s = account.params.get("auto_attendance_refresh_s", 30)
+                    refresh_interval_s = account.params.get(
+                        "auto_attendance_refresh_s", 30)
                     # 确保刷新间隔不小于15秒（防止过于频繁的请求）
                     refresh_interval_s = max(15, refresh_interval_s)
-                    
+
                     # === 第五步：执行自动签到检查 ===
                     logging.info(f"[账号刷新线程] 账号 {account_id} 开始自动签到检查")
-                    
+
                     # 调用签到检查函数
                     # 这个函数会检查是否有需要签到的活动，并自动执行签到
                     self._check_and_trigger_auto_attendance(account)
-                    
+
                     # === 第六步：刷新通知 ===
                     logging.info(f"[账号刷新线程] 账号 {account_id} 刷新通知")
-                    
+
                     # 检查账号对象是否有 get_notifications 方法
                     if hasattr(account, 'get_notifications'):
                         # 调用获取通知方法（is_auto_refresh=True 表示是后台自动刷新）
-                        result = account.get_notifications(is_auto_refresh=True)
-                        
+                        result = account.get_notifications(
+                            is_auto_refresh=True)
+
                         # 如果成功获取通知，尝试通过 SocketIO 推送给前端
                         if result.get("success"):
                             # 获取会话ID（用于 SocketIO 推送）
-                            session_id = getattr(account, "_web_session_id", None)
-                            
+                            session_id = getattr(
+                                account, "_web_session_id", None)
+
                             # 检查是否有 SocketIO 实例和会话ID
                             if session_id and "socketio" in globals():
                                 try:
@@ -13518,7 +13633,7 @@ class Api:
                                         f"[账号刷新线程] 账号 {account_id} SocketIO推送通知失败: {e}",
                                         exc_info=True
                                     )
-                    
+
                     # === 第七步：更新多账号统计信息 ===
                     # 如果是多账号模式且账号是 AccountSession 类型
                     if self.is_multi_account_mode and hasattr(account, 'summary'):
@@ -13526,24 +13641,25 @@ class Api:
                             # 获取该账号的考勤统计
                             self._multi_fetch_attendance_stats(account)
                             # 更新前端显示的账号状态
-                            self._update_account_status_js(account, summary=account.summary)
+                            self._update_account_status_js(
+                                account, summary=account.summary)
                         except Exception as e:
                             logging.error(
                                 f"[账号刷新线程] 账号 {account_id} 更新统计失败: {e}",
                                 exc_info=True
                             )
-                    
+
                     # === 第八步：等待下一次刷新 ===
                     logging.info(
                         f"[账号刷新线程] 账号 {account_id} 等待 {refresh_interval_s} 秒后再次刷新"
                     )
-                    
+
                     # 等待指定的刷新间隔
                     # 使用 wait 而不是 sleep，以便能响应停止信号
                     if stop_event.wait(timeout=refresh_interval_s):
                         # 如果收到停止信号，退出循环
                         break
-                
+
                 except Exception as e:
                     # 捕获并记录执行过程中的任何异常
                     logging.error(
@@ -13553,36 +13669,36 @@ class Api:
                     # 发生错误后等待60秒再重试（避免错误循环）
                     if stop_event.wait(timeout=60):
                         break
-        
+
         finally:
             # === 清理阶段 ===
             # 无论线程是正常退出还是异常退出，都会执行此清理代码
-            
+
             # 使用线程锁保护对共享字典的访问
             with self.threads_lock:
                 # 从线程管理字典中移除该线程的记录
                 if account_id in self.account_refresh_threads:
                     del self.account_refresh_threads[account_id]
                     logging.info(f"[账号刷新线程] 已从线程字典中移除账号 {account_id}")
-            
+
             # 记录线程停止日志
             logging.info(f"[账号刷新线程] 停止 - 账号ID: {account_id}")
 
     def _multi_account_monitor_worker(self):
         """
         多账号模式监控线程（新版实现）
-        
+
         这是一个守护线程，在多账号模式下持续运行。
         它的职责是：
         1. 定期遍历所有账号
         2. 检查每个账号是否启用了自动签到
         3. 确保每个启用自动签到的账号都有独立的刷新线程在运行
-        
+
         这个监控线程不直接执行签到，而是确保每个账号都有自己的工作线程。
         """
         # 记录监控线程启动日志
         logging.info("[多账号监控] 监控线程已启动")
-        
+
         # 主循环：持续运行直到收到停止信号
         # 使用 wait 而不是直接循环，可以更快地响应停止信号
         while not self.stop_account_monitor.wait(timeout=1.0):
@@ -13593,58 +13709,59 @@ class Api:
                     # 这种情况可能发生在退出多账号模式后
                     time.sleep(5)
                     continue
-                
+
                 # === 第二步：检查是否有账号 ===
                 if not self.accounts:
                     # 如果没有任何账号，等待5秒后重新检查
                     time.sleep(5)
                     continue
-                
+
                 # === 第三步：遍历所有账号 ===
                 # 使用 list() 创建副本，避免在迭代时字典被修改导致错误
                 for username, acc in list(self.accounts.items()):
                     try:
                         # 检查账号是否启用了自动签到
-                        is_auto_enabled = acc.params.get("auto_attendance_enabled", False)
-                        
+                        is_auto_enabled = acc.params.get(
+                            "auto_attendance_enabled", False)
+
                         # 检查账号是否已登录（有有效的 user_data.id）
                         has_user_id = acc.user_data and acc.user_data.id
-                        
+
                         # 只有同时满足以下条件才需要刷新线程：
                         # 1. 启用了自动签到
                         # 2. 账号已登录
                         if is_auto_enabled and has_user_id:
                             # 规范化账号ID为字符串
                             account_id = str(acc.user_data.id)
-                            
+
                             # 确保该账号有刷新线程
                             # 如果没有或线程已停止，会自动创建新线程
                             self._ensure_account_refresh_thread(account_id)
-                            
+
                             logging.debug(
                                 f"[多账号监控] 已检查账号 {username} (ID: {account_id})"
                             )
-                    
+
                     except Exception as e:
                         # 处理单个账号时出错，记录日志但继续处理其他账号
                         logging.error(
                             f"[多账号监控] 处理账号 {username} 时出错: {e}",
                             exc_info=True
                         )
-                
+
                 # === 第四步：等待一段时间后再次检查 ===
                 # 每60秒检查一次所有账号的线程状态
                 # 使用 wait 而不是 sleep，以便能响应停止信号
                 if self.stop_account_monitor.wait(timeout=60):
                     # 如果收到停止信号，退出循环
                     break
-            
+
             except Exception as e:
                 # 捕获并记录监控循环中的任何异常
                 logging.error(f"[多账号监控] 出错: {e}", exc_info=True)
                 # 发生错误后等待60秒再重试
                 time.sleep(60)
-        
+
         # 记录监控线程停止日志
         logging.info("[多账号监控] 监控线程已停止")
 
@@ -13656,7 +13773,8 @@ class Api:
                     if self.stop_auto_refresh.wait(timeout=5.0):
                         break
                     continue
-                refresh_interval_s = self.params.get("auto_attendance_refresh_s", 30)
+                refresh_interval_s = self.params.get(
+                    "auto_attendance_refresh_s", 30)
                 refresh_interval_s = max(15, refresh_interval_s)
                 if self.is_multi_account_mode or not self.user_data.id:
                     continue
@@ -13738,7 +13856,8 @@ class Api:
             # 3. 加快通知遍历处理速度
             # 4. 降低内存占用
             # 实践中，前几条通知足以覆盖绝大多数签到任务场景
-            list_resp = client.get_notice_list(offset=0, limit=AUTO_ATTENDANCE_NOTICE_LIMIT, type_id=0)
+            list_resp = client.get_notice_list(
+                offset=0, limit=AUTO_ATTENDANCE_NOTICE_LIMIT, type_id=0)
             if not (list_resp and list_resp.get("success")):
                 log_func("获取通知列表失败，跳过自动签到。")
                 return
@@ -13823,7 +13942,8 @@ class Api:
                     time.sleep(5)
                     continue
 
-                refresh_interval_s = self.global_params.get("auto_attendance_refresh_s")
+                refresh_interval_s = self.global_params.get(
+                    "auto_attendance_refresh_s")
 
                 self.log(f"(多账号) 自动签到: 等待 {refresh_interval_s} 秒...")
                 if self.stop_multi_auto_refresh.wait(timeout=refresh_interval_s):
@@ -13845,7 +13965,8 @@ class Api:
                         if acc.user_data.id:
                             self._check_and_trigger_auto_attendance(acc)
                             self._multi_fetch_attendance_stats(acc)
-                            self._update_account_status_js(acc, summary=acc.summary)
+                            self._update_account_status_js(
+                                acc, summary=acc.summary)
                             time.sleep(random.uniform(1.0, 3.0))
                         else:
 
@@ -13856,7 +13977,8 @@ class Api:
 
             except Exception as e:
                 self.log(f"(多账号) 自动签到线程出错: {e}")
-                logging.error(f"Multi-auto-attendance worker error: {e}", exc_info=True)
+                logging.error(
+                    f"Multi-auto-attendance worker error: {e}", exc_info=True)
                 time.sleep(60)
 
         logging.info("Multi-auto-attendance worker stopped.")
@@ -14049,7 +14171,8 @@ def cleanup_inactive_session(session_id):
 
                 del web_sessions[session_id]
         session_hash = hashlib.sha256(session_id.encode()).hexdigest()
-        session_file = os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
+        session_file = os.path.join(
+            SESSION_STORAGE_DIR, f"{session_hash}.json")
         if os.path.exists(session_file):
             os.remove(session_file)
             logging.info(f"已删除会话文件: {session_hash}")
@@ -14122,11 +14245,13 @@ def monitor_session_inactivity():
                 ):
                     has_background_activity = True
                     logging.debug(f"[会话监控] {session_id} 多账号跑步任务执行中")
-                is_multi = getattr(api_instance, "is_multi_account_mode", False)
+                is_multi = getattr(
+                    api_instance, "is_multi_account_mode", False)
 
                 if is_multi:
                     accounts = getattr(api_instance, "accounts", {})
-                    global_params = getattr(api_instance, "multi_global_params", {})
+                    global_params = getattr(
+                        api_instance, "multi_global_params", {})
                     auto_attendance = global_params.get(
                         "auto_attendance_enabled", False
                     )
@@ -14138,7 +14263,8 @@ def monitor_session_inactivity():
                         logging.debug(f"[会话监控] {session_id} 多账号自动签到开启中")
                 else:
                     params = getattr(api_instance, "params", {})
-                    auto_attendance = params.get("auto_attendance_enabled", False)
+                    auto_attendance = params.get(
+                        "auto_attendance_enabled", False)
                     logging.debug(
                         f"[会话监控] {session_id} 单账号模式自动签到状态: {auto_attendance}"
                     )
@@ -14177,7 +14303,8 @@ def monitor_session_inactivity():
 
 def start_session_monitor():
     """启动会话不活跃监控"""
-    monitor_thread = threading.Thread(target=monitor_session_inactivity, daemon=True)
+    monitor_thread = threading.Thread(
+        target=monitor_session_inactivity, daemon=True)
     monitor_thread.start()
     logging.info("会话监控线程已启动")
 
@@ -14216,14 +14343,16 @@ def save_session_state(session_id, api_instance, force_save=False):
         return
     try:
         session_hash = hashlib.sha256(session_id.encode()).hexdigest()
-        session_file = os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
+        session_file = os.path.join(
+            SESSION_STORAGE_DIR, f"{session_hash}.json")
         with session_file_locks_lock:
             if session_hash not in session_file_locks:
                 session_file_locks[session_hash] = threading.Lock()
             file_lock = session_file_locks[session_hash]
         with file_lock:
             if not force_save:
-                last_save_time = getattr(api_instance, "_last_session_save_time", 0)
+                last_save_time = getattr(
+                    api_instance, "_last_session_save_time", 0)
                 if time.time() - last_save_time < 2.0:
                     return
             api_instance._last_session_save_time = time.time()
@@ -14240,7 +14369,8 @@ def save_session_state(session_id, api_instance, force_save=False):
             }
             if hasattr(api_instance, "auth_username"):
                 state["auth_username"] = api_instance.auth_username
-                state["auth_group"] = getattr(api_instance, "auth_group", "guest")
+                state["auth_group"] = getattr(
+                    api_instance, "auth_group", "guest")
                 state["is_guest"] = getattr(api_instance, "is_guest", False)
                 state["is_authenticated"] = getattr(
                     api_instance, "is_authenticated", False
@@ -14304,7 +14434,8 @@ def save_session_state(session_id, api_instance, force_save=False):
                     }
                     loaded_tasks.append(task_dict)
                 state["loaded_tasks"] = loaded_tasks
-            state["is_offline_mode"] = getattr(api_instance, "is_offline_mode", False)
+            state["is_offline_mode"] = getattr(
+                api_instance, "is_offline_mode", False)
 
             if (
                 hasattr(api_instance, "api_client")
@@ -14495,7 +14626,8 @@ def load_session_state(session_id):
                 f"索引中未找到，计算会话哈希: {session_id[:32]}... -> {session_hash[:16]}..."
             )
 
-        session_file = os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
+        session_file = os.path.join(
+            SESSION_STORAGE_DIR, f"{session_hash}.json")
 
         if os.path.exists(session_file):
             with session_file_locks_lock:
@@ -14595,7 +14727,8 @@ def restore_session_to_api_instance(api_instance, state):
             api_instance.auth_username = state["auth_username"]
             api_instance.auth_group = state.get("auth_group", "guest")
             api_instance.is_guest = state.get("is_guest", False)
-            api_instance.is_authenticated = state.get("is_authenticated", False)
+            api_instance.is_authenticated = state.get(
+                "is_authenticated", False)
         if "login_success" in state:
             api_instance.login_success = state["login_success"]
         if "user_info" in state:
@@ -14610,11 +14743,14 @@ def restore_session_to_api_instance(api_instance, state):
             user_data_dict = state["user_data"]
             api_instance.user_data.name = user_data_dict.get("name", "")
             api_instance.user_data.phone = user_data_dict.get("phone", "")
-            api_instance.user_data.student_id = user_data_dict.get("student_id", "")
+            api_instance.user_data.student_id = user_data_dict.get(
+                "student_id", "")
             api_instance.user_data.id = user_data_dict.get("id", "")
-            api_instance.user_data.username = user_data_dict.get("username", "")
+            api_instance.user_data.username = user_data_dict.get(
+                "username", "")
             api_instance.user_data.gender = user_data_dict.get("gender", "")
-            api_instance.user_data.school_name = user_data_dict.get("school_name", "")
+            api_instance.user_data.school_name = user_data_dict.get(
+                "school_name", "")
         if "loaded_tasks" in state:
             api_instance.all_run_data = []
             for task_dict in state["loaded_tasks"]:
@@ -14626,14 +14762,16 @@ def restore_session_to_api_instance(api_instance, state):
                 run_data.start_time = task_dict.get("start_time", "")
                 run_data.end_time = task_dict.get("end_time", "")
                 run_data.upload_time = task_dict.get("upload_time", "")
-                run_data.total_run_time_s = task_dict.get("total_run_time_s", 0.0)
+                run_data.total_run_time_s = task_dict.get(
+                    "total_run_time_s", 0.0)
                 run_data.total_run_distance_m = task_dict.get(
                     "total_run_distance_m", 0.0
                 )
                 run_data.target_points = [
                     tuple(p) for p in task_dict.get("target_points", [])
                 ]
-                run_data.target_point_names = task_dict.get("target_point_names", "")
+                run_data.target_point_names = task_dict.get(
+                    "target_point_names", "")
                 run_data.recommended_coords = [
                     tuple(p) for p in task_dict.get("recommended_coords", [])
                 ]
@@ -14644,10 +14782,13 @@ def restore_session_to_api_instance(api_instance, state):
                     tuple(p) for p in task_dict.get("run_coords", [])
                 ]
                 run_data.target_sequence = task_dict.get("target_sequence", 0)
-                run_data.is_in_target_zone = task_dict.get("is_in_target_zone", False)
+                run_data.is_in_target_zone = task_dict.get(
+                    "is_in_target_zone", False)
                 run_data.trid = task_dict.get("trid", "")
-                run_data.details_fetched = task_dict.get("details_fetched", False)
-                run_data.distance_covered_m = task_dict.get("distance_covered_m", 0.0)
+                run_data.details_fetched = task_dict.get(
+                    "details_fetched", False)
+                run_data.distance_covered_m = task_dict.get(
+                    "distance_covered_m", 0.0)
 
                 api_instance.all_run_data.append(run_data)
         if "current_run_idx" in state:
@@ -14669,8 +14810,10 @@ def restore_session_to_api_instance(api_instance, state):
                     for username, account_state in multi_account_states.items():
                         if username not in api_instance.accounts:
                             try:
-                                loaded_password = api_instance._load_config(username)
-                                loaded_tag = api_instance._load_account_tag(username)
+                                loaded_password = api_instance._load_config(
+                                    username)
+                                loaded_tag = api_instance._load_account_tag(
+                                    username)
                                 acc = AccountSession(
                                     username=username,
                                     password=loaded_password or "",
@@ -14680,7 +14823,8 @@ def restore_session_to_api_instance(api_instance, state):
                                 acc.status_text = account_state.get(
                                     "status_text", "待命"
                                 )
-                                acc.params = account_state.get("params", acc.params)
+                                acc.params = account_state.get(
+                                    "params", acc.params)
                                 acc.summary = account_state.get(
                                     "summary",
                                     {
@@ -14792,7 +14936,8 @@ def get_captcha_original_width(html_content):
         if not spans:
             return None
 
-        pixel_classes = list(set([s.get("class")[0] for s in spans if s.get("class")]))
+        pixel_classes = list(set([s.get("class")[0]
+                             for s in spans if s.get("class")]))
         if not pixel_classes:
             return None
         first_line_spans = 0
@@ -14910,7 +15055,8 @@ def resize_captcha_html(html_content, target_width):
         )
         if bor_match:
             border_w = float(bor_match.group(1)) * 2
-        original_grid_width = (num_cols * old_pixel_w) + ((num_cols - 1) * old_gap)
+        original_grid_width = (num_cols * old_pixel_w) + \
+            ((num_cols - 1) * old_gap)
 
         if original_grid_width <= 0:
             return html_content
@@ -14959,7 +15105,8 @@ def resize_captcha_html(html_content, target_width):
             flags=re.IGNORECASE,
         )
         spans = container.find_all("span")
-        pixel_classes = set([s.get("class")[0] for s in spans if s.get("class")])
+        pixel_classes = set([s.get("class")[0]
+                            for s in spans if s.get("class")])
 
         for p_class in pixel_classes:
             new_css = re.sub(
@@ -15019,7 +15166,8 @@ def load_all_sessions(args):
                         logging.error(f"删除过期会话文件 {filename} 失败: {remove_err}")
                     continue
                 api_instance = Api(args)
-                api_instance._session_created_at = state.get("created_at", time.time())
+                api_instance._session_created_at = state.get(
+                    "created_at", time.time())
                 api_instance._web_session_id = session_id
                 restore_session_to_api_instance(api_instance, state)
                 logging.info(
@@ -15121,17 +15269,17 @@ class BackgroundTaskManager:
     ):
         """
         启动后台任务执行
-        
+
         功能说明：
             在启动任务前，会检查当前用户的所有学校账号是否存在欠费。
             如果任何账号存在欠费（overdue_count > 0），则拒绝启动任务。
-            
+
         参数：
             session_id: 会话ID
             api_instance: API实例，包含用户信息
             task_indices: 要执行的任务索引列表
             auto_generate: 是否自动生成路径
-            
+
         返回：
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
@@ -15139,26 +15287,27 @@ class BackgroundTaskManager:
         # 步骤1：欠费检查（在启动任务前执行）
         # 获取当前用户的认证用户名
         auth_username = getattr(api_instance, 'auth_username', None)
-        
+
         # 如果能获取到用户名，进行欠费检查
         if auth_username:
             # 加载该用户的所有学校账号
             accounts = api_instance._load_user_school_accounts(auth_username)
-            
+
             # 检查每个账号是否存在欠费
             overdue_accounts_list = []
             for school_username in accounts.keys():
                 # 从 INI 文件读取统计数据
-                stats = api_instance._load_school_account_stats_from_ini(school_username)
+                stats = api_instance._load_school_account_stats_from_ini(
+                    school_username)
                 overdue_count = stats.get("overdue_count", 0)
-                
+
                 # 如果存在欠费，记录到列表中
                 if overdue_count > 0:
                     overdue_accounts_list.append({
                         "school_username": school_username,
                         "overdue_count": overdue_count
                     })
-            
+
             # 如果发现任何账号有欠费，拒绝启动任务
             if overdue_accounts_list:
                 logging.warning(
@@ -15170,7 +15319,7 @@ class BackgroundTaskManager:
                     "error_code": "OVERDUE_PAYMENT",
                     "overdue_accounts": overdue_accounts_list
                 }
-        
+
         # 步骤2：启动任务（没有欠费问题）
         with self.lock:
             task_state = {
@@ -15230,7 +15379,7 @@ class BackgroundTaskManager:
                 logging.info(
                     f"正在执行后台任务 {i+1}/{len(task_indices)}，会话ID前缀: {session_id[:8]}"
                 )
-                
+
                 # [修正] 添加索引边界检查，防止列表变化导致越界崩溃
                 if task_idx < 0 or task_idx >= len(api_instance.all_run_data):
                     error_msg = f"任务索引 {task_idx} 超出范围 (任务列表长度: {len(api_instance.all_run_data)})，跳过此任务"
@@ -15248,7 +15397,8 @@ class BackgroundTaskManager:
                             logging.info(
                                 f"正在获取任务详细信息: {run_data.run_name}..."
                             )
-                            details_resp = api_instance.get_task_details(task_idx)
+                            details_resp = api_instance.get_task_details(
+                                task_idx)
                             if not details_resp.get("success"):
                                 logging.error(
                                     f"获取任务详情失败，任务名称: {run_data.run_name}，错误信息: {details_resp.get('message', '未知错误')}"
@@ -15282,14 +15432,16 @@ class BackgroundTaskManager:
                             if os.path.exists(CONFIG_FILE):
                                 cfg = configparser.ConfigParser()
                                 cfg.read(CONFIG_FILE, encoding="utf-8")
-                                amap_key = cfg.get("Map", "amap_js_key", fallback="")
+                                amap_key = cfg.get(
+                                    "Map", "amap_js_key", fallback="")
                                 if not amap_key:
                                     amap_key = cfg.get(
                                         "System", "AmapJsKey", fallback=""
                                     )
 
                             if amap_key:
-                                logging.info(f"已从 {CONFIG_FILE} 实时加载 AMap Key。")
+                                logging.info(
+                                    f"已从 {CONFIG_FILE} 实时加载 AMap Key。")
                             else:
                                 logging.error(
                                     f"无法为 {run_data.run_name} 自动规划路径：实时读取 {CONFIG_FILE} 失败，[Map] -> amap_js_key 缺失或为空。"
@@ -15299,7 +15451,8 @@ class BackgroundTaskManager:
                                     task_state["error"] = (
                                         "缺少高德地图API Key (实时读取失败)"
                                     )
-                                    self.save_task_state(session_id, task_state)
+                                    self.save_task_state(
+                                        session_id, task_state)
                                 continue
 
                         except Exception as e:
@@ -15532,7 +15685,8 @@ class BackgroundTaskManager:
                                         with self.lock:
                                             if session_id in self.tasks:
                                                 task_state = self.tasks[session_id]
-                                                task_state["last_update"] = time.time()
+                                                task_state["last_update"] = time.time(
+                                                )
                                                 task_state["estimated_total_time_s"] = (
                                                     run_data.total_run_time_s
                                                 )
@@ -15565,7 +15719,8 @@ class BackgroundTaskManager:
                                                     if hasattr(run_data, "run_coords")
                                                     else []
                                                 )
-                                                total_points = len(run_data.run_coords)
+                                                total_points = len(
+                                                    run_data.run_coords)
                                                 task_state["singleTotalPoints"] = (
                                                     total_points
                                                 )
@@ -15581,7 +15736,8 @@ class BackgroundTaskManager:
                                         continue
                                 else:
                                     error_msg = (
-                                        path_coords.get("error", "Unknown error")
+                                        path_coords.get(
+                                            "error", "Unknown error")
                                         if path_coords
                                         else "No response from path planning"
                                     )
@@ -15629,7 +15785,8 @@ class BackgroundTaskManager:
                     )
                     thread.start()
                     tasks_executed += 1
-                    total_time_s = sum(p[2] for p in run_data.run_coords) / 1000.0
+                    total_time_s = sum(p[2]
+                                       for p in run_data.run_coords) / 1000.0
                     timeout = max(total_time_s * 2, 300)
                     start_wait = time.time()
                     while not finished_event.is_set():
@@ -15680,7 +15837,8 @@ class BackgroundTaskManager:
                                     if hasattr(run_data, "target_points")
                                     else 0
                                 )
-                                task_state["elapsed_time_s"] = time.time() - start_wait
+                                task_state["elapsed_time_s"] = time.time() - \
+                                    start_wait
                                 task_state["current_distance_m"] = getattr(
                                     run_data, "distance_covered_m", 0
                                 )
@@ -15712,7 +15870,7 @@ class BackgroundTaskManager:
 
                 except Exception as e:
                     logging.error(f"任务执行失败，异常信息: {e}", exc_info=True)
-                
+
                 # 标记当前任务已完成（更新进度状态）
                 with self.lock:
                     task_state["completed_tasks"] = i + 1
@@ -15726,27 +15884,29 @@ class BackgroundTaskManager:
                 logging.info(
                     f"任务 {i+1}/{len(task_indices)} 已完成，会话ID前缀: {session_id[:8]}"
                 )
-                
+
                 # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
                 # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
                 # 这里处理单账号模式下的后台任务完成情况
                 try:
                     # 从 api_instance 获取认证用户名和学校账号用户名
-                    auth_username = getattr(api_instance, "auth_username", None)
-                    school_username = getattr(api_instance.user_data, "username", None)
-                    
+                    auth_username = getattr(
+                        api_instance, "auth_username", None)
+                    school_username = getattr(
+                        api_instance.user_data, "username", None)
+
                     # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
                     if auth_username and auth_username != "guest" and school_username:
                         logging.debug(
                             f"[单账号后台任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
                             f"学校账号={school_username}, 任务={run_data.run_name}"
                         )
-                        
+
                         # 调用 api_instance 的辅助函数处理可用次数扣减或欠费次数增加
                         api_instance._deduct_available_runs_or_increment_overdue(
                             auth_username, school_username
                         )
-                        
+
                         # ========== 增加已完成任务计数器 ==========
                         # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
                         # 这个计数器用于统计每个学校账号总共完成了多少个任务
@@ -15756,10 +15916,11 @@ class BackgroundTaskManager:
                                 f"[单账号后台任务] 开始增加任务计数：认证用户={auth_username}, "
                                 f"学校账号={school_username}, 任务={run_data.run_name}"
                             )
-                            
+
                             # 调用 api_instance 的辅助函数增加已完成任务计数
-                            api_instance._increment_completed_count(auth_username, school_username)
-                            
+                            api_instance._increment_completed_count(
+                                auth_username, school_username)
+
                         except Exception as e_count:
                             # 捕获计数更新异常，记录日志但不影响主流程
                             logging.error(
@@ -15937,7 +16098,8 @@ class MicroPixelCaptcha:
             if random.random() < noise_level:
                 is_fg = not is_fg
 
-            pixels.append(f'<span class="{cls_fg if is_fg else cls_bg}"></span>')
+            pixels.append(
+                f'<span class="{cls_fg if is_fg else cls_bg}"></span>')
 
         html_content = "".join(pixels)
         pixel_size = 12 // scale_factor
@@ -16188,7 +16350,8 @@ class ChromeBrowserPool:
             try:
                 # 从请求队列获取操作请求，设置超时避免无限阻塞
                 # 使用 QUEUE_POLL_TIMEOUT_SEC 常量控制轮询间隔
-                request = self._request_queue.get(timeout=self.QUEUE_POLL_TIMEOUT_SEC)
+                request = self._request_queue.get(
+                    timeout=self.QUEUE_POLL_TIMEOUT_SEC)
             except self._native_queue.Empty:
                 # 队列为空且超时，继续循环检查停止标志
                 continue
@@ -16230,7 +16393,8 @@ class ChromeBrowserPool:
                 elif operation == "page_goto":
                     # 导航到指定 URL
                     result = self._do_page_goto(
-                        args.get("session_id"), args.get("url"), args.get("options", {})
+                        args.get("session_id"), args.get(
+                            "url"), args.get("options", {})
                     )
                 elif operation == "page_set_content":
                     # 设置页面 HTML 内容
@@ -16252,7 +16416,8 @@ class ChromeBrowserPool:
 
             except Exception as e:
                 # 捕获操作执行过程中的任何异常
-                logging.error(f"Playwright 操作 {operation} 失败: {e}", exc_info=True)
+                logging.error(
+                    f"Playwright 操作 {operation} 失败: {e}", exc_info=True)
                 result = {"success": False, "error": str(e)}
 
             # 将结果存入结果容器并通知等待的调用者
@@ -16369,7 +16534,8 @@ class ChromeBrowserPool:
             result = page.evaluate(script, js_args)
             return {"success": True, "result": result}
         except Exception as e:
-            logging.error(f"执行 JS 失败 (session={session_id}): {e}", exc_info=True)
+            logging.error(
+                f"执行 JS 失败 (session={session_id}): {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _do_close_context(self, session_id):
@@ -16449,7 +16615,8 @@ class ChromeBrowserPool:
             page = self._contexts[session_id]["page"]
             # 设置页面内容
             result = (
-                page.set_content(html, **options) if options else page.set_content(html)
+                page.set_content(
+                    html, **options) if options else page.set_content(html)
             )
             return {"success": True, "result": result}
         except Exception as e:
@@ -16674,7 +16841,8 @@ class ChromeBrowserPool:
                 return None
 
         except Exception as e:
-            logging.error(f"执行 JS 异常 (session={session_id}): {e}", exc_info=True)
+            logging.error(
+                f"执行 JS 异常 (session={session_id}): {e}", exc_info=True)
             return None
 
     def close_context(self, session_id):
@@ -16686,7 +16854,8 @@ class ChromeBrowserPool:
         """
         try:
             # 向专用线程发送关闭上下文请求
-            result = self._send_request("close_context", {"session_id": session_id})
+            result = self._send_request(
+                "close_context", {"session_id": session_id})
             if not result.get("success"):
                 error_msg = result.get("error", "未知错误")
                 logging.error(f"关闭上下文失败 (session={session_id}): {error_msg}")
@@ -16979,16 +17148,20 @@ def save_ssl_config(ssl_config):
         if not config.has_section("SSL"):
             config.add_section("SSL")
         config.set(
-            "SSL", "ssl_enabled", str(ssl_config.get("ssl_enabled", False)).lower()
+            "SSL", "ssl_enabled", str(
+                ssl_config.get("ssl_enabled", False)).lower()
         )
         config.set(
-            "SSL", "ssl_cert_path", ssl_config.get("ssl_cert_path", "ssl/fullchain.pem")
+            "SSL", "ssl_cert_path", ssl_config.get(
+                "ssl_cert_path", "ssl/fullchain.pem")
         )
         config.set(
-            "SSL", "ssl_key_path", ssl_config.get("ssl_key_path", "ssl/privkey.key")
+            "SSL", "ssl_key_path", ssl_config.get(
+                "ssl_key_path", "ssl/privkey.key")
         )
         config.set(
-            "SSL", "https_only", str(ssl_config.get("https_only", False)).lower()
+            "SSL", "https_only", str(
+                ssl_config.get("https_only", False)).lower()
         )
         _write_config_with_comments(config, config_file)
 
@@ -17044,7 +17217,8 @@ class BruteForceTaskManager:
         self.logs_dir = logs_dir
 
         # 已尝试密码的文件路径
-        self.attempts_file = os.path.join(logs_dir, "brute_force_attempts.json")
+        self.attempts_file = os.path.join(
+            logs_dir, "brute_force_attempts.json")
 
         # 破解结果的文件路径
         self.results_file = os.path.join(logs_dir, "brute_force_results.json")
@@ -17166,7 +17340,8 @@ class BruteForceTaskManager:
                     if fname.endswith(".json"):
                         auth_username = os.path.splitext(fname)[0]
                         # 使用已有的 auth_system 方法加载账户信息，更健壮
-                        accounts = auth_system._load_user_school_accounts(auth_username)
+                        accounts = auth_system._load_user_school_accounts(
+                            auth_username)
 
                         if accounts and target_account in accounts:
                             val = accounts[target_account]
@@ -17284,7 +17459,8 @@ class BruteForceTaskManager:
                     self.log = lambda msg: logging.debug(f"[密码恢复临时登录] {msg}")
                     # [修复] 补充缺失属性，防止 ApiClient._request 报错
                     self.is_offline_mode = False
-                    self.api_bridge = None  # ApiClient 会先检查 is_offline_mode，有了上面这行通常不需要 api_bridge，但为了保险起见设为 None 或 self
+                    # ApiClient 会先检查 is_offline_mode，有了上面这行通常不需要 api_bridge，但为了保险起见设为 None 或 self
+                    self.api_bridge = None
 
             temp_app = TempApp()
             api_client = ApiClient(temp_app)
@@ -17362,7 +17538,8 @@ class BruteForceTaskManager:
                                     "end_time"
                                 ] = datetime.datetime.now().isoformat()
                                 # [修正] 持久化任务状态更新
-                                self._save_json_file(self.tasks_file, self.tasks)
+                                self._save_json_file(
+                                    self.tasks_file, self.tasks)
 
                                 self.results[account] = {
                                     "status": "failed",
@@ -17372,7 +17549,8 @@ class BruteForceTaskManager:
                                     "end_time": self.tasks[account]["end_time"],
                                     "error": "账号不存在",
                                 }
-                                self._save_json_file(self.results_file, self.results)
+                                self._save_json_file(
+                                    self.results_file, self.results)
                             return
 
                 except Exception as e:
@@ -17427,7 +17605,8 @@ class BruteForceTaskManager:
             # 所有密码都尝试完毕，未找到
             with self.lock:
                 self.tasks[account]["status"] = "failed"
-                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                self.tasks[account]["end_time"] = datetime.datetime.now(
+                ).isoformat()
 
                 # [修正] 持久化任务状态更新
                 self._save_json_file(self.tasks_file, self.tasks)
@@ -17451,7 +17630,8 @@ class BruteForceTaskManager:
             )
             with self.lock:
                 self.tasks[account]["status"] = "failed"
-                self.tasks[account]["end_time"] = datetime.datetime.now().isoformat()
+                self.tasks[account]["end_time"] = datetime.datetime.now(
+                ).isoformat()
                 # [修正] 持久化任务状态更新
                 self._save_json_file(self.tasks_file, self.tasks)
 
@@ -17662,7 +17842,7 @@ def _send_startup_notification_to_log_forwarder(host, port):
     """
     import socket
     import time
-    
+
     # 声明使用全局 requests 变量
     # requests 已在 check_and_import_dependencies() 中导入
     global requests
@@ -17789,7 +17969,8 @@ def start_web_server(args_param):
     session_activity_lock = threading.Lock()
     logging.info("内存锁和会话状态已重置。")
     try:
-        chrome_pool = ChromeBrowserPool(headless=getattr(args, "headless", True))
+        chrome_pool = ChromeBrowserPool(
+            headless=getattr(args, "headless", True))
         logging.info("Chrome浏览器池初始化成功")
         atexit.register(_cleanup_playwright)
         logging.info("已注册 Playwright 退出清理函数。")
@@ -17957,7 +18138,8 @@ def start_web_server(args_param):
         for original_url, font_key in font_urls:
             # 下载字体文件（二进制模式）
             logging.info(f"[CDN缓存] 正在下载字体: {font_key}")
-            font_content = fetch_cdn_file(original_url, timeout=60, binary=True)
+            font_content = fetch_cdn_file(
+                original_url, timeout=60, binary=True)
 
             if font_content:
                 # 缓存字体文件（二进制）
@@ -18191,7 +18373,8 @@ def start_web_server(args_param):
     init_cdn_cache()
 
     # 启动CDN缓存定时更新线程
-    cdn_update_thread = threading.Thread(target=cdn_cache_update_worker, daemon=True)
+    cdn_update_thread = threading.Thread(
+        target=cdn_cache_update_worker, daemon=True)
     cdn_update_thread.start()
     logging.info("[CDN缓存] 定时更新线程已启动（每小时检查一次）")
 
@@ -18215,7 +18398,8 @@ def start_web_server(args_param):
                         is_authenticated = getattr(
                             api_instance, "is_authenticated", False
                         )
-                        auth_username = getattr(api_instance, "auth_username", None)
+                        auth_username = getattr(
+                            api_instance, "auth_username", None)
             if not is_authenticated or not api_instance or not auth_username:
                 return jsonify({"success": False, "message": "未登录或会话无效"}), 401
             if getattr(api_instance, "is_guest", False):
@@ -18249,9 +18433,11 @@ def start_web_server(args_param):
                         is_authenticated = getattr(
                             api_instance, "is_authenticated", False
                         )
-                        auth_username = getattr(api_instance, "auth_username", None)
+                        auth_username = getattr(
+                            api_instance, "auth_username", None)
                         # 获取权限组（用于后续的组判断）
-                        auth_group = getattr(api_instance, "auth_group", "guest")
+                        auth_group = getattr(
+                            api_instance, "auth_group", "guest")
 
             if not is_authenticated or not api_instance or not auth_username:
                 logging.warning(
@@ -18468,7 +18654,7 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": captcha_error_msg})
             if not auth_username or not auth_password:
                 return jsonify({"success": False, "message": "用户名和密码不能为空"})
-            
+
             # [新增] 检查弱密码
             # 调用 is_weak_password 函数检测密码强度
             # 如果密码过弱，立即返回错误信息，不允许注册
@@ -18476,7 +18662,7 @@ def start_web_server(args_param):
             if is_weak:
                 # 将弱密码检测的具体原因返回给前端，提示用户修改密码
                 return jsonify({"success": False, "message": f"密码强度不足：{weak_reason}"}), 400
-            
+
             if re.search(r"[\u4e00-\u9fff]", auth_username):
                 return jsonify({"success": False, "message": "用户名不能包含中文字符"})
             if phone and not re.match(r"^1[3-9]\d{9}$", phone):
@@ -18544,7 +18730,8 @@ def start_web_server(args_param):
                     png_buffer = io.BytesIO()
                     img.save(png_buffer, format="PNG", optimize=True)
                     png_content = png_buffer.getvalue()
-                    avatar_sha256_hash = hashlib.sha256(png_content).hexdigest()
+                    avatar_sha256_hash = hashlib.sha256(
+                        png_content).hexdigest()
                     images_dir = os.path.join("system_accounts", "images")
                     os.makedirs(images_dir, exist_ok=True)
                     filename = f"{avatar_sha256_hash}.png"
@@ -18565,7 +18752,8 @@ def start_web_server(args_param):
                             }
 
                         # 使用统一函数获取客户端真实IP（任务2）
-                        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+                        ip_address = request.environ.get(
+                            "REMOTE_ADDR") or request.remote_addr
                         index_data["files"][filename] = {
                             "username": "Guest",
                             "upload_time": time.time(),
@@ -18577,7 +18765,8 @@ def start_web_server(args_param):
                         }
 
                         with open(index_file, "w", encoding="utf-8") as f:
-                            json.dump(index_data, f, indent=2, ensure_ascii=False)
+                            json.dump(index_data, f, indent=2,
+                                      ensure_ascii=False)
 
                         logging.info(
                             f"访客 (注册前) 从 {ip_address} 上传头像: {filename}"
@@ -18660,13 +18849,15 @@ def start_web_server(args_param):
         two_fa_code = data.get("two_fa_code", "").strip()
         captcha_input = data.get("captcha", "").strip()
         captcha_id = data.get("captcha_id", "").strip()
-        is_captcha_valid, captcha_error_msg = verify_captcha(captcha_id, captcha_input)
+        is_captcha_valid, captcha_error_msg = verify_captcha(
+            captcha_id, captcha_input)
         if not is_captcha_valid:
             return jsonify({"success": False, "message": captcha_error_msg})
 
         session_id = request.headers.get("X-Session-ID", "")
         # 使用统一函数获取客户端真实IP（任务2）
-        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr or ""
+        ip_address = request.environ.get(
+            "REMOTE_ADDR") or request.remote_addr or ""
         user_agent = request.headers.get("User-Agent", "")
         auth_result = None
         target_username = None
@@ -18678,12 +18869,14 @@ def start_web_server(args_param):
             logging.info(f"[登录] 模式: 手机号/验证码 (用户: {target_username})")
 
             if (
-                config.get("Features", "enable_phone_login", fallback="false").lower()
+                config.get("Features", "enable_phone_login",
+                           fallback="false").lower()
                 != "true"
             ):
                 return jsonify({"success": False, "message": "手机号登录功能未启用"})
             if (
-                config.get("Features", "enable_sms_service", fallback="false").lower()
+                config.get("Features", "enable_sms_service",
+                           fallback="false").lower()
                 != "true"
             ):
                 return jsonify({"success": False, "message": "短信服务未启用"})
@@ -18740,7 +18933,8 @@ def start_web_server(args_param):
             logging.info(f"[登录] 模式: 手机号/密码 (用户: {target_username})")
 
             if (
-                config.get("Features", "enable_phone_login", fallback="false").lower()
+                config.get("Features", "enable_phone_login",
+                           fallback="false").lower()
                 != "true"
             ):
                 return jsonify({"success": False, "message": "手机号登录功能未启用"})
@@ -18794,7 +18988,8 @@ def start_web_server(args_param):
                         def cleanup_old_sessions_async():
                             for old_sid in old_sessions:
                                 try:
-                                    cleanup_session(old_sid, "session_limit_exceeded")
+                                    cleanup_session(
+                                        old_sid, "session_limit_exceeded")
                                 except Exception as e:
                                     logging.error(
                                         f"后台清理旧会话失败 {old_sid[:16]}...: {e}"
@@ -18990,7 +19185,8 @@ def start_web_server(args_param):
         if not success:
             return jsonify({"success": False, "has_permission": False})
         auth_username = result["username"]
-        has_permission = auth_system.check_permission(auth_username, permission)
+        has_permission = auth_system.check_permission(
+            auth_username, permission)
         return jsonify({"success": True, "has_permission": has_permission})
 
     @app.route("/auth/switch_session", methods=["POST"])
@@ -19040,7 +19236,8 @@ def start_web_server(args_param):
             response = make_response(jsonify(response_data), 401)
             response.set_cookie("auth_token", "", max_age=0)
             return response
-        new_token_for_target = token_manager.create_token(username, target_session_id)
+        new_token_for_target = token_manager.create_token(
+            username, target_session_id)
         logging.info(
             f"用户 {username} 切换会话：为目标会话 {target_session_id[:8]} 生成新 token"
         )
@@ -19081,7 +19278,7 @@ def start_web_server(args_param):
         # 从Flask的g对象中获取当前登录的用户名
         # g.user 已由 @login_required 装饰器设置
         auth_username = g.user
-        
+
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许用户查看、创建、修改、删除用户信息
         if not auth_system.check_permission(auth_username, "manage_users"):
@@ -19097,12 +19294,12 @@ def start_web_server(args_param):
         """
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许修改用户的权限组分配
         if not auth_system.check_permission(auth_username, "manage_users"):
             return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
-        
+
         data = request.get_json() or {}
         target_username = data.get("target_username", "")
         new_group = data.get("new_group", "")
@@ -19114,7 +19311,8 @@ def start_web_server(args_param):
 
         # 安全检查：不允许修改超级管理员的用户组
         # 保护系统最高权限用户不被修改
-        super_admin = auth_system.config.get("Admin", "super_admin", fallback="admin")
+        super_admin = auth_system.config.get(
+            "Admin", "super_admin", fallback="admin")
         if target_username == super_admin:
             return jsonify(
                 {"success": False, "message": "不允许修改超级管理员用户组的用户"}
@@ -19130,7 +19328,7 @@ def start_web_server(args_param):
         """
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：权限管理权限
         # manage_permissions 权限允许查看、管理权限组和用户权限
         if not auth_system.check_permission(auth_username, "manage_permissions"):
@@ -19159,18 +19357,18 @@ def start_web_server(args_param):
         # 从Flask的g对象中获取当前登录的用户名和API实例
         auth_username = g.user
         api_instance = g.api_instance
-        
+
         # 检查细粒度权限：创建权限组权限
         # create_permission_groups 权限允许创建新的权限组
         # 这是敏感操作，通常只有超级管理员才具备此权限
         if not auth_system.check_permission(auth_username, "create_permission_groups"):
             return jsonify({"success": False, "message": "权限不足，需要创建权限组权限（create_permission_groups）"}), 403
-        
+
         data = request.get_json() or {}
         group_name = data.get("group_name", "").strip()
         display_name = data.get("display_name", "").strip()
         permissions = data.get("permissions", {})
-        
+
         # 参数验证：权限组标识不能为空
         if not group_name:
             return jsonify(
@@ -19194,22 +19392,22 @@ def start_web_server(args_param):
         # 从Flask的g对象中获取当前登录的用户名和API实例
         auth_username = g.user
         api_instance = g.api_instance
-        
+
         # 检查细粒度权限：修改权限组权限
         # modify_permission_groups 权限允许修改现有权限组的权限配置
         # 这是敏感操作，通常只有超级管理员才具备此权限
         if not auth_system.check_permission(auth_username, "modify_permission_groups"):
             return jsonify({"success": False, "message": "权限不足，需要修改权限组权限（modify_permission_groups）"}), 403
-        
+
         data = request.get_json() or {}
         group_name = data.get("group_key") or data.get("group_name", "")
         permissions = data.get("permissions", {})
-        
+
         # 安全检查：不允许修改超级管理员组
         # 保护系统最高权限组不被修改
         if group_name == "super_admin":
             return jsonify({"success": False, "message": "不允许修改超级管理员组"})
-        
+
         # 参数验证：权限组标识不能为空
         if not group_name:
             return jsonify({"success": False, "message": "权限组标识不能为空"})
@@ -19229,13 +19427,13 @@ def start_web_server(args_param):
         # 从Flask的g对象中获取当前登录的用户名和API实例
         auth_username = g.user
         api_instance = g.api_instance
-        
+
         # 检查细粒度权限：删除权限组权限
         # delete_permission_groups 权限允许删除现有的权限组
         # 这是敏感操作，通常只有超级管理员才具备此权限
         if not auth_system.check_permission(auth_username, "delete_permission_groups"):
             return jsonify({"success": False, "message": "权限不足，需要删除权限组权限（delete_permission_groups）"}), 403
-        
+
         data = request.get_json() or {}
         group_name = data.get("group_name", "")
 
@@ -19248,16 +19446,17 @@ def start_web_server(args_param):
         """管理员：获取用户的完整权限列表"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：权限管理权限
         # manage_permissions 权限允许查看用户的权限配置
         if not auth_system.check_permission(auth_username, "manage_permissions"):
             return jsonify({"success": False, "message": "权限不足，需要权限管理权限（manage_permissions）"}), 403
-        
+
         data = request.get_json() or {}
         target_username = data.get("username", "")
 
-        user_current_permissions = auth_system.get_user_permissions(target_username)
+        user_current_permissions = auth_system.get_user_permissions(
+            target_username)
 
         all_possible_keys = set()
         super_admin_perms = (
@@ -19304,12 +19503,12 @@ def start_web_server(args_param):
         """管理员：为用户设置自定义权限（差分化存储）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：权限管理权限
         # manage_permissions 权限允许为用户设置自定义权限
         if not auth_system.check_permission(auth_username, "manage_permissions"):
             return jsonify({"success": False, "message": "权限不足，需要权限管理权限（manage_permissions）"}), 403
-        
+
         data = request.get_json() or {}
         target_username = data.get("username", "")
         added_permissions = data.get("added_permissions", {})
@@ -19327,7 +19526,8 @@ def start_web_server(args_param):
 
                 auth_system._save_permissions()
                 # 使用统一函数获取客户端真实IP（任务2）
-                ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+                ip_address = request.environ.get(
+                    "REMOTE_ADDR") or request.remote_addr
                 auth_system.log_audit(
                     auth_username,
                     "set_user_permissions_batch",
@@ -19362,7 +19562,8 @@ def start_web_server(args_param):
                     auth_system._save_permissions()
 
                     # 使用统一函数获取客户端真实IP（任务2）
-                    ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+                    ip_address = request.environ.get(
+                        "REMOTE_ADDR") or request.remote_addr
                     auth_system.log_audit(
                         auth_username,
                         "set_user_permissions_batch",
@@ -19375,7 +19576,8 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"批量更新权限失败: {e}", exc_info=True)
                     return (
-                        jsonify({"success": False, "message": f"更新失败: {str(e)}"}),
+                        jsonify(
+                            {"success": False, "message": f"更新失败: {str(e)}"}),
                         500,
                     )
 
@@ -19384,7 +19586,8 @@ def start_web_server(args_param):
             )
 
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "set_user_permission",
@@ -19712,7 +19915,7 @@ def start_web_server(args_param):
         """
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许创建新用户账号
         if not auth_system.check_permission(auth_username, "manage_users"):
@@ -19755,7 +19958,8 @@ def start_web_server(args_param):
         result = auth_system.register_user(new_username, password, group)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
 
             # 如果提供了手机号，绑定到新用户
             if phone:
@@ -19788,7 +19992,7 @@ def start_web_server(args_param):
         """管理员：封禁用户"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许封禁用户账号
         if not auth_system.check_permission(auth_username, "manage_users"):
@@ -19800,7 +20004,8 @@ def start_web_server(args_param):
         result = auth_system.ban_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "ban_user",
@@ -19817,7 +20022,7 @@ def start_web_server(args_param):
         """管理员：解封用户"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许解封用户账号
         if not auth_system.check_permission(auth_username, "manage_users"):
@@ -19829,7 +20034,8 @@ def start_web_server(args_param):
         result = auth_system.unban_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "unban_user",
@@ -19846,12 +20052,12 @@ def start_web_server(args_param):
         """管理员：删除用户"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许删除用户账号
         if not auth_system.check_permission(auth_username, "manage_users"):
             return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
-        
+
         session_id = request.headers.get("X-Session-ID", "")
 
         data = request.json
@@ -19860,7 +20066,8 @@ def start_web_server(args_param):
         result = auth_system.delete_user(target_username)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "delete_user",
@@ -19878,16 +20085,16 @@ def start_web_server(args_param):
         # 从Flask的g对象中获取当前登录的用户名
         # @login_required装饰器已经确保用户已登录并将用户名存储在g.user中
         auth_username = g.user
-        
+
         # 细粒度权限检查：需要 'manage_users' 权限
         # manage_users 权限允许管理用户相关的设置，包括强制关闭2FA等安全功能
         # 这是为了防止普通管理员随意操作用户的安全设置
         if not auth_system.check_permission(auth_username, "manage_users"):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "权限不足，需要用户管理权限（manage_users）"
             }), 403
-        
+
         session_id = request.headers.get("X-Session-ID", "")
 
         data = request.json
@@ -19901,7 +20108,8 @@ def start_web_server(args_param):
 
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "force_disable_2fa",
@@ -19921,13 +20129,13 @@ def start_web_server(args_param):
         """管理员：强制登出指定用户"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：强制登出用户权限
         # force_logout_users 权限允许强制登出其他用户的所有会话
         # 这是敏感的安全操作，用于应对账号被盗用等紧急情况
         if not auth_system.check_permission(auth_username, "force_logout_users"):
             return jsonify({"success": False, "message": "权限不足，需要强制登出用户权限（force_logout_users）"}), 403
-        
+
         session_id = request.headers.get("X-Session-ID", "")
 
         data = request.json
@@ -20003,13 +20211,13 @@ def start_web_server(args_param):
         """
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：重置用户密码权限
         # reset_user_password 权限允许管理员强制重置其他用户的密码
         # 这是敏感操作，通常用于用户忘记密码或账号被盗的情况
         if not auth_system.check_permission(auth_username, "reset_user_password"):
             return jsonify({"success": False, "message": "权限不足，需要重置用户密码权限（reset_user_password）"}), 403
-        
+
         session_id = request.headers.get("X-Session-ID", "")
         data = request.json
         target_username = data.get("target_username", "")
@@ -20020,7 +20228,8 @@ def start_web_server(args_param):
         result = auth_system.reset_user_password(target_username, new_password)
         if result.get("success"):
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "force_reset_password",
@@ -20041,7 +20250,8 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "未登录"}), 401
         api_instance = web_sessions[session_id]
         current_username = getattr(api_instance, "auth_username", "")
-        is_admin = auth_system.check_permission(current_username, "manage_users")
+        is_admin = auth_system.check_permission(
+            current_username, "manage_users")
         if not is_admin and current_username != username:
             return (
                 jsonify(
@@ -20064,7 +20274,8 @@ def start_web_server(args_param):
             with open(user_file_path, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "update_basic_info",
@@ -20093,14 +20304,14 @@ def start_web_server(args_param):
         try:
             # 从Flask的g对象中获取当前登录的用户名
             current_username = g.user
-            
+
             # 细粒度权限检查：需要 'manage_users' 权限
             # manage_users 权限允许管理用户的基本信息（昵称、手机号等）
             # 修改用户昵称虽然不是敏感操作，但仍需要专门的用户管理权限
             if not auth_system.check_permission(current_username, "manage_users"):
                 return (
                     jsonify({
-                        "success": False, 
+                        "success": False,
                         "message": "权限不足，需要用户管理权限（manage_users）"
                     }),
                     403,
@@ -20126,13 +20337,15 @@ def start_web_server(args_param):
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "admin_update_nickname",
                 f"管理员 {current_username} 更新了用户 {target_username} 的昵称为: {new_nickname}",
                 ip_address,
-                g.api_instance._web_session_id if hasattr(g, "api_instance") else "",
+                g.api_instance._web_session_id if hasattr(
+                    g, "api_instance") else "",
             )
             return jsonify(
                 {
@@ -20160,19 +20373,19 @@ def start_web_server(args_param):
         # 从Flask的g对象中获取当前登录的用户名
         # @login_required装饰器已确保用户已登录
         current_username = g.user
-        
+
         # 细粒度权限检查：需要 'manage_users' 权限
         # manage_users 权限允许管理用户的联系方式（手机号）
         # 修改手机号是敏感操作，可能影响用户的登录和验证功能
         if not auth_system.check_permission(current_username, "manage_users"):
             return (
                 jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要用户管理权限（manage_users）"
                 }),
                 403,
             )
-        
+
         session_id = request.headers.get("X-Session-ID", "")
         data = request.get_json() or {}
         username = data.get("username", "").strip()
@@ -20210,7 +20423,8 @@ def start_web_server(args_param):
             user_file_path = auth_system.get_user_file_path(username)
             if not os.path.exists(user_file_path):
                 return jsonify({"success": False, "message": "用户不存在"}), 404
-            auth_system.unbind_phone_from_user(new_phone, except_username=username)
+            auth_system.unbind_phone_from_user(
+                new_phone, except_username=username)
             with auth_system.lock:
                 with open(user_file_path, "r", encoding="utf-8") as f:
                     user_data = json.load(f)
@@ -20218,7 +20432,8 @@ def start_web_server(args_param):
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 current_username,
                 "admin_update_phone",
@@ -20245,16 +20460,16 @@ def start_web_server(args_param):
         """获取登录日志（管理员）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 细粒度权限检查：需要 'view_audit_logs' 权限
         # view_audit_logs 权限允许查看系统审计日志，包括登录历史
         # 这是敏感信息，可以了解用户的登录行为和安全状况
         if not auth_system.check_permission(auth_username, "view_audit_logs"):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
             }), 403
-        
+
         # 获取查询参数
         username = request.args.get("username", None)
         limit = int(request.args.get("limit", 100))
@@ -20268,19 +20483,19 @@ def start_web_server(args_param):
         """获取指定认证用户的所有 school_account（管理员或有 auto_fill_password 权限）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 细粒度权限检查：需要 'manage_users' 权限
         # manage_users 权限允许查看和管理用户的学校账号信息
         # 这是敏感信息，包含用户的学校账户凭证
         if not auth_system.check_permission(auth_username, "manage_users"):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "权限不足，需要用户管理权限（manage_users）"
             }), 403
-        
+
         # 获取目标用户名，如果未指定则默认为当前用户
         target_username = request.args.get("username", auth_username)
-        
+
         # 获取api_instance用于调用内部方法
         session_id = request.headers.get("X-Session-ID", "")
         if session_id and session_id in web_sessions:
@@ -20288,7 +20503,7 @@ def start_web_server(args_param):
         else:
             # 如果没有有效的session，返回错误
             return jsonify({"success": False, "message": "会话无效"}), 401
-        
+
         # 加载并返回用户的学校账号信息
         accounts = api_instance._load_user_school_accounts(target_username)
 
@@ -20302,16 +20517,16 @@ def start_web_server(args_param):
         """获取所有认证用户的 school_account 列表（管理员或有 auto_fill_password 权限）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 细粒度权限检查：需要 'manage_users' 权限
         # manage_users 权限允许查看所有用户的学校账号信息
         # 这是高度敏感的批量数据访问操作
         if not auth_system.check_permission(auth_username, "manage_users"):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "权限不足，需要用户管理权限（manage_users）"
             }), 403
-        
+
         # 定义用户账号目录路径
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
         all_users_accounts = {}
@@ -20341,16 +20556,16 @@ def start_web_server(args_param):
         """
         # 从Flask的g对象中获取当前登录的用户名
         current_auth_username = g.user
-        
+
         # 细粒度权限检查：需要 'manage_users' 权限
         # manage_users 权限允许管理用户的学校账号，包括添加、修改和删除
         # 学校账号包含敏感的登录凭证，需要严格的权限控制
         if not auth_system.check_permission(current_auth_username, "manage_users"):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "权限不足，需要用户管理权限（manage_users）"
             }), 403
-        
+
         # 获取session_id用于后续操作
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id or session_id not in web_sessions:
@@ -20380,7 +20595,8 @@ def start_web_server(args_param):
             # [新增] 如果前端未提供UA（为空），则自动生成一个随机UA
             if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
                 ua = ApiClient.generate_random_ua()
-                logging.info(f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
+                logging.info(
+                    f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
 
         except Exception as e:
             logging.error(f"解析school_account保存请求失败: {e}", exc_info=True)
@@ -20428,6 +20644,54 @@ def start_web_server(args_param):
                 f"保存用户 {auth_username} 的 school_accounts 失败: {e}", exc_info=True
             )
             return jsonify({"success": False, "message": "保存账户数据失败"}), 500
+        
+    @app.route("/api/admin/backup-info", methods=["GET"])
+    @login_required
+    @admin_required
+    def api_admin_view_backup_info():
+        """
+        查看学校账号备份信息
+        读取 school_accounts/{school_username}_backup.json 文件并返回内容
+        """
+        # 细粒度权限检查：需要 'manage_users' 权限
+        if not auth_system.check_permission(g.user, "manage_users"):
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限"}), 403
+
+        school_username = request.args.get("school_username", "").strip()
+        if not school_username:
+            return jsonify({"success": False, "message": "缺少 school_username 参数"}), 400
+
+        # 安全检查：防止路径遍历，只允许字母数字下划线等安全字符
+        # 如果用户名包含特殊字符，建议根据实际情况调整正则
+        if ".." in school_username or "/" in school_username or "\\" in school_username:
+            return jsonify({"success": False, "message": "非法的用户名格式"}), 400
+
+        # 构建备份文件路径
+        # SCHOOL_ACCOUNTS_DIR 是全局变量，通常是 "school_accounts"
+        backup_filename = f"{school_username}_backup.json"
+        backup_filepath = os.path.join(SCHOOL_ACCOUNTS_DIR, backup_filename)
+
+        if not os.path.exists(backup_filepath):
+            return jsonify({
+                "success": False, 
+                "message": f"未找到该账号的备份数据 ({backup_filename})，请确认是否已执行过备份操作。"
+            }), 404
+
+        try:
+            with open(backup_filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            return jsonify({
+                "success": True, 
+                "data": data,
+                "message": "获取成功"
+            })
+        except json.JSONDecodeError:
+            return jsonify({"success": False, "message": "备份文件格式错误(非有效JSON)"}), 500
+        except Exception as e:
+            app.logger.error(f"读取备份文件失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"读取文件出错: {str(e)}"}), 500
+        
 
     @app.route("/api/admin/school_account/delete", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
@@ -20437,22 +20701,22 @@ def start_web_server(args_param):
         """
         # 从Flask的g对象中获取当前登录的用户名
         current_auth_username = g.user
-        
+
         # 细粒度权限检查：需要 'manage_users' 权限
         # manage_users 权限允许删除用户的学校账号
         # 删除账号是敏感操作，可能导致用户无法正常使用服务
         if not auth_system.check_permission(current_auth_username, "manage_users"):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "权限不足，需要用户管理权限（manage_users）"
             }), 403
-        
+
         # ========== 1. 验证会话 ==========
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id or session_id not in web_sessions:
             return jsonify({"success": False, "message": "未登录或会话无效"}), 401
         api_instance = web_sessions[session_id]
-        
+
         # ========== 2. 解析请求数据 ==========
         try:
             data = request.get_json()
@@ -20530,22 +20794,22 @@ def start_web_server(args_param):
         """
         # 从Flask的g对象中获取当前登录的用户名
         current_auth_username = g.user
-        
+
         # 细粒度权限检查：需要 'manage_users' 权限
         # manage_users 权限允许更新用户的学校账号信息
         # 更新账号密码等信息是敏感操作，需要严格的权限控制
         if not auth_system.check_permission(current_auth_username, "manage_users"):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "权限不足，需要用户管理权限（manage_users）"
             }), 403
-        
+
         # ========== 1. 验证会话 ==========
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id or session_id not in web_sessions:
             return jsonify({"success": False, "message": "未登录或会话无效"}), 401
         api_instance = web_sessions[session_id]
-        
+
         # ========== 2. 解析请求数据 ==========
         try:
             data = request.get_json()
@@ -20567,7 +20831,8 @@ def start_web_server(args_param):
                 )
             if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
                 ua = ApiClient.generate_random_ua()
-                logging.info(f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
+                logging.info(
+                    f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
         except Exception as e:
             logging.error(f"解析school_account更新请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400
@@ -20602,7 +20867,8 @@ def start_web_server(args_param):
                 ),
                 404,
             )
-        accounts[school_username] = {"password": password, "ua": ua if ua else ""}
+        accounts[school_username] = {
+            "password": password, "ua": ua if ua else ""}
         logging.info(
             f"更新 school_account: 认证用户={auth_username}, 学校账户={school_username}, 操作者={current_auth_username}"
         )
@@ -20716,7 +20982,7 @@ def start_web_server(args_param):
         # 验证必填参数：目标用户名和新密码
         if not target_username or not new_password:
             return jsonify({"success": False, "message": "参数缺失"})
-        
+
         # [新增] 检查新密码强度
         # 在允许密码重置之前，检查新密码是否为弱密码
         # 这可以防止用户设置不安全的密码，提高账户安全性
@@ -20923,7 +21189,8 @@ def start_web_server(args_param):
                         "files": {},
                     }
                 # 使用统一函数获取客户端真实IP（任务2）
-                ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+                ip_address = request.environ.get(
+                    "REMOTE_ADDR") or request.remote_addr
                 index_data["files"][filename] = {
                     "username": auth_username,
                     "upload_time": time.time(),
@@ -20962,7 +21229,8 @@ def start_web_server(args_param):
                     if filename in index_data.get("files", {}):
                         del index_data["files"][filename]
                         with open(index_file, "w", encoding="utf-8") as f:
-                            json.dump(index_data, f, indent=2, ensure_ascii=False)
+                            json.dump(index_data, f, indent=2,
+                                      ensure_ascii=False)
             except (OSError, PermissionError) as e:
                 logging.warning(f"[会话索引] 更新索引文件失败: {e}")
             return jsonify(result)
@@ -20982,10 +21250,12 @@ def start_web_server(args_param):
             if os.path.exists(default_avatar_path):
                 return send_file(default_avatar_path, mimetype="image/png")
             else:
-                logging.warning(f"Default avatar not found at {default_avatar_path}")
+                logging.warning(
+                    f"Default avatar not found at {default_avatar_path}")
                 return "Default avatar not found", 404
         except NameError as e:
-            logging.error(f"Serve default avatar failed: {e}. Is send_file imported?")
+            logging.error(
+                f"Serve default avatar failed: {e}. Is send_file imported?")
             return "Server configuration error", 500
         except Exception as e:
             logging.error(f"Error serving default avatar: {e}", exc_info=True)
@@ -21021,7 +21291,8 @@ def start_web_server(args_param):
                 except Exception as e:
                     return (
                         jsonify(
-                            {"success": False, "message": f"读取默认头像失败: {str(e)}"}
+                            {"success": False,
+                                "message": f"读取默认头像失败: {str(e)}"}
                         ),
                         500,
                     )
@@ -21047,7 +21318,7 @@ def start_web_server(args_param):
         # 获取当前登录用户
         # 使用Flask的g对象获取用户名，这是由@login_required装饰器设置的
         auth_username = g.user
-        
+
         # 检查细粒度权限：用户管理权限
         # manage_users 权限允许管理员执行用户相关的管理操作，包括清除用户头像
         # 这是一个涉及用户数据修改的敏感操作，需要专门的用户管理权限
@@ -21067,13 +21338,15 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "用户不存在"}), 404
 
         old_avatar_url = user_details.get("avatar_url", "")
-        result = auth_system.update_user_avatar(target_username, "default_avatar.png")
+        result = auth_system.update_user_avatar(
+            target_username, "default_avatar.png")
 
         if result.get("success"):
             if old_avatar_url:
                 try:
                     filename = old_avatar_url.split("/")[-1]
-                    filepath = os.path.join("system_accounts", "images", filename)
+                    filepath = os.path.join(
+                        "system_accounts", "images", filename)
                     index_file = os.path.join(
                         "system_accounts", "images", "_index.json"
                     )
@@ -21081,7 +21354,8 @@ def start_web_server(args_param):
                         with open(index_file, "r", encoding="utf-8") as f:
                             index_data = json.load(f)
 
-                        file_info = index_data.get("files", {}).get(filename, {})
+                        file_info = index_data.get(
+                            "files", {}).get(filename, {})
                         if file_info.get("username") == target_username:
                             if os.path.exists(filepath):
                                 os.remove(filepath)
@@ -21102,7 +21376,8 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"清除头像文件时出错: {e}", exc_info=True)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 auth_username,
                 "clear_user_avatar",
@@ -21175,21 +21450,21 @@ def start_web_server(args_param):
     def api_user_is_admin():
         """
         检查当前用户是否为管理员（admin或super_admin）
-        
+
         此API用于前端权限验证，解决admin-users-panel_modal无法显示需要组别验证的按钮问题。
-        
+
         功能说明：
         - 获取当前登录用户的组别（group）信息
         - 判断用户是否属于管理员组（admin）或超级管理员组（super_admin）
         - 只返回当前用户的信息，确保安全性
-        
+
         返回格式：
         {
             "success": True,           # 请求是否成功
             "is_admin": True/False,    # 是否为管理员
             "group": "用户组别"         # 当前用户的组别（user/admin/super_admin）
         }
-        
+
         错误处理：
         - 如果用户未登录，@login_required装饰器会自动返回401
         - 如果获取用户信息失败，返回500错误
@@ -21199,30 +21474,30 @@ def start_web_server(args_param):
             # g.user 由 @login_required 装饰器自动设置
             # 这确保了此API只能由已登录用户调用
             current_username = g.user
-            
+
             # 使用auth_system的get_user_details方法获取用户的详细信息
             # 这个方法返回一个包含用户所有信息的字典
             user_details = auth_system.get_user_details(current_username)
-            
+
             # 检查是否成功获取到用户详细信息
             # 如果user_details为None或空，说明用户数据不存在（理论上不应该发生）
             if user_details:
                 # 从用户详细信息中提取group字段
                 # group字段表示用户的权限组别，可能的值：user, admin, super_admin
                 user_group = user_details.get("group", "user")
-                
+
                 # 判断用户是否为管理员
                 # 管理员的定义：group为"admin"或"super_admin"
                 # 这个判断逻辑与前端main.js第5326行的判断逻辑保持一致
                 is_admin = user_group in ["admin", "super_admin"]
-                
+
                 # 记录调试日志，便于排查权限问题
                 # 这对于定位为什么某些按钮不显示非常有帮助
                 logging.info(
                     f"[API] 用户 {current_username} 管理员状态检查: "
                     f"组别={user_group}, 是否管理员={is_admin}"
                 )
-                
+
                 # 返回JSON格式的响应
                 # success: True 表示请求成功处理
                 # is_admin: 布尔值，表示是否为管理员
@@ -21234,7 +21509,7 @@ def start_web_server(args_param):
                         "group": user_group
                     }
                 )
-            
+
             # 如果无法获取用户详细信息，返回404错误
             # 这种情况理论上不应该发生，因为用户已经通过了@login_required验证
             logging.error(f"[API] 用户 {current_username} 的详细信息不存在")
@@ -21244,12 +21519,12 @@ def start_web_server(args_param):
                     "message": "用户数据不存在"
                 }
             ), 404
-            
+
         except Exception as e:
             # 捕获所有可能的异常，确保API不会崩溃
             # 记录完整的错误堆栈信息（exc_info=True），便于调试
             logging.error(f"[API] 检查管理员状态失败: {e}", exc_info=True)
-            
+
             # 返回500错误，表示服务器内部错误
             # 将错误信息返回给前端，便于定位问题
             return (
@@ -21297,7 +21572,8 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "未登录"}), 401
 
         current_username = getattr(api_instance, "auth_username", "")
-        is_admin = auth_system.check_permission(current_username, "manage_users")
+        is_admin = auth_system.check_permission(
+            current_username, "manage_users")
         if not target_username:
             target_username = current_username
 
@@ -21328,16 +21604,16 @@ def start_web_server(args_param):
         """更新用户最大会话数量（管理员）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 细粒度权限检查：需要 'manage_system' 权限
         # manage_system 权限允许管理系统级别的配置，包括用户会话数量限制
         # 这是影响系统资源和用户体验的重要配置
         if not auth_system.check_permission(auth_username, "manage_system"):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "权限不足，需要系统管理权限（manage_system）"
             }), 403
-        
+
         session_id = request.headers.get("X-Session-ID", "")
 
         data = request.json
@@ -21374,31 +21650,31 @@ def start_web_server(args_param):
     def api_admin_update_available_runs():
         """
         更新用户的可用执行次数（管理员API）
-        
+
         请求头:
             X-Session-ID: 当前会话ID，用于身份验证和权限检查
-        
+
         请求体 (JSON):
             {
                 "username": "目标用户名",
                 "available_runs": 新的可用次数（整数）
             }
-        
+
         返回 (JSON):
             {
                 "success": true/false,
                 "message": "操作结果说明"
             }
-        
+
         权限要求:
             - 需要有 manage_users 权限（通常为管理员）
-        
+
         参数说明:
             - available_runs: -1表示无限次数，0表示无可用次数，正数表示具体次数
         """
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许修改用户的可用执行次数配额
         if not auth_system.check_permission(auth_username, "manage_users"):
@@ -21409,7 +21685,7 @@ def start_web_server(args_param):
         # 提取目标用户名和新的可用次数值
         target_username = data.get("username", "")
         available_runs = data.get("available_runs", 0)
-        
+
         # 步骤6：数据验证 - 检查目标用户名是否为空
         if not target_username:
             return (
@@ -21421,7 +21697,7 @@ def start_web_server(args_param):
                 ),
                 400,  # 400 Bad Request - 客户端请求参数错误
             )
-        
+
         # 步骤7：数据验证 - 检查可用次数是否为整数类型
         if not isinstance(available_runs, int):
             return (
@@ -21433,7 +21709,7 @@ def start_web_server(args_param):
                 ),
                 400,
             )
-        
+
         # 步骤8：数据验证 - 检查可用次数的取值范围
         # 有效值: -1（无限）或 >= 0 的整数
         if available_runs < -1:
@@ -21448,15 +21724,17 @@ def start_web_server(args_param):
             )
 
         # 步骤9：调用 AuthSystem 的方法执行实际的更新操作
-        result = auth_system.update_available_runs(target_username, available_runs)
-        
+        result = auth_system.update_available_runs(
+            target_username, available_runs)
+
         # 步骤10：记录审计日志 - 记录管理员的操作行为，便于追溯
         # 获取客户端真实IP地址
         ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
             auth_username,  # 操作者（管理员）
             "update_available_runs",  # 操作类型
-            f"修改用户 {target_username} 的可用次数为: {available_runs} ({'无限' if available_runs == -1 else str(available_runs) + '次'})",  # 操作详情
+            # 操作详情
+            f"修改用户 {target_username} 的可用次数为: {available_runs} ({'无限' if available_runs == -1 else str(available_runs) + '次'})",
             ip_address,  # 操作者IP
             session_id,  # 会话ID
         )
@@ -21539,7 +21817,8 @@ def start_web_server(args_param):
                 f"auth_user_sessions: Found linked session IDs for {auth_username}: {session_ids}"
             )
             user_details = auth_system.get_user_details(auth_username)
-            max_sessions = user_details.get("max_sessions", 1) if user_details else 1
+            max_sessions = user_details.get(
+                "max_sessions", 1) if user_details else 1
 
             for sid in session_ids:
                 session_file = get_session_file_path(sid)
@@ -21683,7 +21962,8 @@ def start_web_server(args_param):
         new_api_instance._web_session_id = new_session_id
         if hasattr(api_instance, "auth_username"):
             new_api_instance.auth_username = api_instance.auth_username
-            new_api_instance.auth_group = getattr(api_instance, "auth_group", "guest")
+            new_api_instance.auth_group = getattr(
+                api_instance, "auth_group", "guest")
             new_api_instance.is_guest = is_guest
             new_api_instance.is_authenticated = True
         if hasattr(api_instance, "params"):
@@ -21712,7 +21992,8 @@ def start_web_server(args_param):
                 cleanup_thread.start()
             auth_system.link_session_to_user(auth_username, new_session_id)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             audit_details = f"创建新会话持久化文件，会话ID: {new_session_id}"
             if cleanup_message:
                 audit_details += f"; {cleanup_message}"
@@ -21726,7 +22007,8 @@ def start_web_server(args_param):
             )
         with web_sessions_lock:
             web_sessions[new_session_id] = new_api_instance
-            save_session_state(new_session_id, new_api_instance, force_save=True)
+            save_session_state(
+                new_session_id, new_api_instance, force_save=True)
 
         response_data = {
             "success": True,
@@ -21740,7 +22022,8 @@ def start_web_server(args_param):
         response = make_response(jsonify(response_data))
         if not is_guest and auth_username:
             try:
-                new_token = token_manager.create_token(auth_username, new_session_id)
+                new_token = token_manager.create_token(
+                    auth_username, new_session_id)
                 logging.info(f"为新会话 {new_session_id[:8]}... 生成了 Token")
                 response.set_cookie(
                     "auth_token",
@@ -21767,13 +22050,13 @@ def start_web_server(args_param):
         """管理员：获取所有活跃会话（查看所有会话）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：查看所有会话权限
         # view_all_sessions 权限允许查看系统中所有用户的活跃会话信息
         # 这用于监控系统活动和安全审计
         if not auth_system.check_permission(auth_username, "view_all_sessions"):
             return jsonify({"success": False, "message": "权限不足，需要查看所有会话权限（view_all_sessions）"}), 403
-        
+
         session_id = request.headers.get("X-Session-ID", "")
 
         with web_sessions_lock:
@@ -21876,11 +22159,14 @@ def start_web_server(args_param):
                         sid = state.get("session_id")
                         if not sid or sid in session_ids_in_memory:
                             continue
-                        is_multi_mode = state.get("is_multi_account_mode", False)
-                        session_login_success = state.get("login_success", False)
+                        is_multi_mode = state.get(
+                            "is_multi_account_mode", False)
+                        session_login_success = state.get(
+                            "login_success", False)
 
                         if is_multi_mode:
-                            account_states = state.get("multi_account_states", {})
+                            account_states = state.get(
+                                "multi_account_states", {})
                             session_login_success = any(
                                 acc.get("school_account_logged_in", False)
                                 for acc in account_states.values()
@@ -21922,13 +22208,13 @@ def start_web_server(args_param):
         """管理员：强制销毁任意会话（管理用户会话）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：管理用户会话权限
         # manage_user_sessions 权限允许强制销毁任意用户的会话
         # 这是敏感操作，用于应对安全事件或异常会话
         if not auth_system.check_permission(auth_username, "manage_user_sessions"):
             return jsonify({"success": False, "message": "权限不足，需要管理用户会话权限（manage_user_sessions）"}), 403
-        
+
         session_id = request.headers.get("X-Session-ID", "")
 
         data = request.json
@@ -21942,11 +22228,14 @@ def start_web_server(args_param):
         with web_sessions_lock:
             if target_session_id in web_sessions:
                 target_api = web_sessions[target_session_id]
-                target_username = getattr(target_api, "auth_username", "unknown")
+                target_username = getattr(
+                    target_api, "auth_username", "unknown")
         if target_username != "unknown" and target_username != "guest":
-            auth_system.unlink_session_from_user(target_username, target_session_id)
+            auth_system.unlink_session_from_user(
+                target_username, target_session_id)
         session_hash = hashlib.sha256(target_session_id.encode()).hexdigest()
-        session_file = os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
+        session_file = os.path.join(
+            SESSION_STORAGE_DIR, f"{session_hash}.json")
         if os.path.exists(session_file):
             try:
                 os.remove(session_file)
@@ -21975,7 +22264,7 @@ def start_web_server(args_param):
         """获取审计日志（管理员）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        
+
         # 检查细粒度权限：查看审计日志权限
         # view_audit_logs 权限允许查看系统的操作审计日志
         # 审计日志记录了所有敏感操作，用于安全审计和合规要求
@@ -21999,7 +22288,8 @@ def start_web_server(args_param):
             config.optionxform = str
             config.read("config.ini", encoding="utf-8")
             if (
-                config.get("Features", "enable_sms_service", fallback="false").lower()
+                config.get("Features", "enable_sms_service",
+                           fallback="false").lower()
                 != "true"
             ):
                 return jsonify({"success": False, "message": "短信服务未启用"})
@@ -22039,12 +22329,14 @@ def start_web_server(args_param):
                         "retry_after": remaining_seconds,
                     }
                 )
-            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            client_ip = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             current_date = time.strftime("%Y-%m-%d")
             ip_limit_key = f"sms_ip_{client_ip}_{current_date}"
             ip_count = cache.get(ip_limit_key, 0)
             ip_limit = int(
-                config.get("SMS_Service_SMSBao", "rate_limit_per_ip_day", fallback="20")
+                config.get("SMS_Service_SMSBao",
+                           "rate_limit_per_ip_day", fallback="20")
             )
             if ip_count >= ip_limit:
                 return jsonify(
@@ -22068,13 +22360,15 @@ def start_web_server(args_param):
                     }
                 )
             code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            username = config.get("SMS_Service_SMSBao", "username", fallback="")
+            username = config.get("SMS_Service_SMSBao",
+                                  "username", fallback="")
             api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
             signature = config.get(
                 "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
             )
             code_expire_minutes = int(
-                config.get("SMS_Service_SMSBao", "code_expire_minutes", fallback="5")
+                config.get("SMS_Service_SMSBao",
+                           "code_expire_minutes", fallback="5")
             )
             template = config.get(
                 "SMS_Service_SMSBao",
@@ -22150,10 +22444,12 @@ def start_web_server(args_param):
                             and session_id != "null"
                         ):
                             history_entry["session_id"] = session_id
-                        history_file = os.path.join(log_dir, "sms_history.jsonl")
+                        history_file = os.path.join(
+                            log_dir, "sms_history.jsonl")
                         with open(history_file, "a", encoding="utf-8") as f:
                             f.write(
-                                json.dumps(history_entry, ensure_ascii=False) + "\n"
+                                json.dumps(history_entry,
+                                           ensure_ascii=False) + "\n"
                             )
 
                         app.logger.debug(
@@ -22221,49 +22517,49 @@ def start_web_server(args_param):
     def sms_reply_webhook():
         """
         【短信宝平台回调接口】接收用户回复推送
-        
+
         这是一个符合短信宝（smsbao.com）平台规范的Webhook端点，用于接收用户对短信的回复。
-        
+
         技术规范：
         - HTTP方法：GET（短信宝平台使用GET请求推送数据）
         - 请求参数：
           * m（必须）：发送方的手机号（11位中国大陆手机号）
           * c（必须）：用户回复的短信内容，采用 UTF-8 URLENCODE 编码
         - 响应要求：必须返回字符串 "0" 表示成功接收
-        
+
         业务逻辑：
         1. 接收并解析短信宝推送的回复数据
         2. 对内容进行 UTF-8 URL解码（因为短信宝会对中文进行URL编码）
         3. 持久化到本地JSON日志文件，便于后续分析和追溯
         4. 记录应用日志，方便实时监控
         5. 返回 "0" 告知短信宝平台已成功接收
-        
+
         返回值:
         str: 固定返回 "0"，这是短信宝平台约定的成功响应码
         """
         try:
             # ========== 第一步：获取短信宝平台推送的参数 ==========
-            
+
             # 获取参数 "m"（mobile的缩写）：发送方的手机号
             # 使用 request.args.get() 从URL查询字符串中安全地获取参数
             # 如果参数不存在，默认返回空字符串（而非None），避免后续处理时出现类型错误
             phone = request.args.get("m", "")
-            
+
             # 获取参数 "c"（content的缩写）：用户回复的短信内容
             # 注意：短信宝会对这个参数进行 UTF-8 URLENCODE 编码
             # 例如："你好" 会被编码为 "%E4%BD%A0%E5%A5%BD"
             content = request.args.get("c", "")
 
             # ========== 第二步：参数有效性校验 ==========
-            
+
             # 校验必需参数是否存在且不为空
             # 如果手机号或内容任一缺失，说明这不是一个有效的短信宝回调请求
             # 即使数据无效，我们也返回 "0"，避免短信宝平台重复推送
             if not phone or not content:
                 return "0"  # 返回成功响应，避免平台重试
-            
+
             # ========== 第三步：内容解码（关键步骤）==========
-            
+
             try:
                 # 导入 urllib.parse 模块，用于URL解码
                 import urllib.parse
@@ -22273,35 +22569,35 @@ def start_web_server(args_param):
                 # - 短信宝平台为了确保中文字符在HTTP传输中不出错，会对内容进行URL编码
                 # - 例如："你好" -> "%E4%BD%A0%E5%A5%BD"
                 # - 我们需要将其还原为可读的中文："你好"
-                # 
+                #
                 # urllib.parse.unquote() 参数说明：
                 # - 第一个参数：要解码的字符串
                 # - encoding="utf-8"：指定解码使用的字符编码为UTF-8（与短信宝平台保持一致）
                 content = urllib.parse.unquote(content, encoding="utf-8")
-                
+
             except Exception:
                 # 捕获解码过程中可能出现的任何异常
                 # 可能的异常场景：
                 # - 内容格式异常（虽然不太可能）
                 # - 编码格式不匹配
-                # 
+                #
                 # 异常处理策略：使用 pass 静默忽略
                 # 原因：即使解码失败，我们仍然可以使用原始（编码后的）内容进行记录
                 # 这样可以确保不会因为解码问题导致整个回调处理失败
                 pass
-            
+
             # ========== 第四步：准备持久化存储 ==========
-            
+
             # 指定日志文件的存储目录
             # LOGIN_LOGS_DIR 是全局配置的日志目录路径（通常为 "logs"）
             log_dir = LOGIN_LOGS_DIR
-            
+
             # 确保日志目录存在
             # os.makedirs() 参数说明：
             # - exist_ok=True：如果目录已存在，不抛出异常，静默成功
             # 这是一个防御性编程实践，避免因目录不存在导致后续文件写入失败
             os.makedirs(log_dir, exist_ok=True)
-            
+
             # 构建完整的日志文件路径
             # 日志文件名固定为 "sms_replies.json"
             # 最终路径示例："/path/to/logs/sms_replies.json"
@@ -22311,24 +22607,24 @@ def start_web_server(args_param):
             import json
 
             # ========== 第五步：构建日志条目 ==========
-            
+
             # 创建一个字典，包含本次短信回复的完整信息
             # 这个结构化数据便于后续进行数据分析、审计和问题追溯
             log_entry = {
                 # Unix时间戳（秒级浮点数）
                 # 便于程序进行时间计算（例如，计算两次回复的时间间隔）
                 "timestamp": time.time(),
-                
+
                 # 人类可读的日期时间字符串，格式：YYYY-MM-DD HH:MM:SS
                 # 便于人工查看日志时快速了解时间信息
                 "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                
+
                 # 回复者的手机号（来自参数 "m"）
                 "phone": phone,
-                
+
                 # 回复内容（已解码，为可读的中文文本）
                 "content": content,
-                
+
                 # 短信宝平台服务器的IP地址
                 # request.environ.get("REMOTE_ADDR") or request.remote_addr 获取发起HTTP请求的客户端IP
                 # 记录IP地址的目的：
@@ -22338,7 +22634,7 @@ def start_web_server(args_param):
             }
 
             # ========== 第六步：持久化到文件 ==========
-            
+
             # 以追加模式（append mode）打开日志文件
             # 参数说明：
             # - "a"：追加模式，不会覆盖现有内容，而是在文件末尾添加新内容
@@ -22349,23 +22645,23 @@ def start_web_server(args_param):
                 # - ensure_ascii=False：不将非ASCII字符（如中文）转义为 \uXXXX 形式
                 #   这样可以让日志文件中直接显示中文，而不是 Unicode 编码
                 # - 最后的 "\n"：添加换行符，确保每条日志占一行（JSONL格式）
-                # 
+                #
                 # JSONL格式（JSON Lines）的优势：
                 # - 每行是一个独立的JSON对象，便于逐行读取和流式处理
                 # - 追加写入时不会破坏已有数据的格式
                 f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
             # ========== 第七步：记录应用日志 ==========
-            
+
             # 使用 Flask 应用的日志记录器记录一条信息级别的日志
             # 这条日志会输出到应用的标准日志系统（例如控制台、日志文件等）
             # 用途：
             # - 实时监控：管理员可以通过查看应用日志实时了解短信回复情况
             # - 快速排查：如果出现问题，可以快速从应用日志中定位
             app.logger.info(f"[短信回复] 收到用户 {phone} 的回复：{content}")
-            
+
             # ========== 第八步：返回成功响应 ==========
-            
+
             # 返回字符串 "0" 给短信宝平台
             # 为什么必须返回 "0"？
             # - 这是短信宝平台的技术约定，表示"已成功接收并处理"
@@ -22376,17 +22672,17 @@ def start_web_server(args_param):
 
         except Exception as e:
             # ========== 异常处理：确保健壮性 ==========
-            
+
             # 捕获所有可能的异常，防止服务崩溃
             # 可能的异常场景：
             # - 文件系统错误（磁盘已满、权限不足等）
             # - 内存错误
             # - 其他未预见的运行时错误
-            
+
             # 记录错误日志，便于后续排查问题
             # 日志中包含完整的异常信息（str(e)）
             app.logger.error(f"[短信回复] 处理异常：{str(e)}")
-            
+
             # 即使发生异常，仍然返回 "0"
             # 原因：避免短信宝平台因为我们的内部错误而反复重试
             # 这是一种"宽进严出"的设计理念：
@@ -22404,25 +22700,25 @@ def start_web_server(args_param):
             # 获取当前登录的用户名
             # g.user 由 @login_required 装饰器设置，包含已验证的用户身份
             current_user = g.user
-            
+
             # [修复] 使用用户组别判断而非权限判断
-            # 
+            #
             # 修复原因：
             # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
             # 例如：user组的用户可能被配置为拥有 manage_users 或 god_mode 权限
             # 因此，不能通过检查权限来判断用户是否是真正的管理员
             # 必须直接读取用户组别（group）来准确判断用户的管理员身份
-            # 
+            #
             # 技术实现：
             # - 使用 get_user_group() 方法直接获取用户所属的组别
             # - 只允许 "admin" 和 "super_admin" 组的用户访问此功能
             # - 这样确保即使普通用户拥有管理员权限，也无法访问管理员专属功能
-            # 
+            #
             # 安全考虑：
             # - 短信测试功能是管理员专属操作，不应对普通用户开放
             # - 通过组别判断可以严格控制访问权限，避免权限滥用
             user_group = auth_system.get_user_group(current_user)
-            
+
             # 检查用户组别：只允许管理员和超级管理员访问
             if user_group not in ["admin", "super_admin"]:
                 # 权限不足时返回403禁止访问状态码
@@ -22440,7 +22736,8 @@ def start_web_server(args_param):
             config.optionxform = str
             config.read("config.ini", encoding="utf-8")
             if (
-                config.get("Features", "enable_sms_service", fallback="false").lower()
+                config.get("Features", "enable_sms_service",
+                           fallback="false").lower()
                 != "true"
             ):
                 return jsonify(
@@ -22464,13 +22761,15 @@ def start_web_server(args_param):
                 import random
 
                 code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            username = config.get("SMS_Service_SMSBao", "username", fallback="")
+            username = config.get("SMS_Service_SMSBao",
+                                  "username", fallback="")
             api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
             signature = config.get(
                 "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
             )
             code_expire_minutes = int(
-                config.get("SMS_Service_SMSBao", "code_expire_minutes", fallback="5")
+                config.get("SMS_Service_SMSBao",
+                           "code_expire_minutes", fallback="5")
             )
 
             if not username or not api_key:
@@ -22499,7 +22798,8 @@ def start_web_server(args_param):
                         log_dir = LOGIN_LOGS_DIR
                         os.makedirs(log_dir, exist_ok=True)
 
-                        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+                        client_ip = request.environ.get(
+                            "REMOTE_ADDR") or request.remote_addr
                         history_entry = {
                             "username": f"{current_user}(测试)",
                             "phone": phone,
@@ -22511,10 +22811,12 @@ def start_web_server(args_param):
                             "test_code": code,
                         }
 
-                        history_file = os.path.join(log_dir, "sms_history.jsonl")
+                        history_file = os.path.join(
+                            log_dir, "sms_history.jsonl")
                         with open(history_file, "a", encoding="utf-8") as f:
                             f.write(
-                                json.dumps(history_entry, ensure_ascii=False) + "\n"
+                                json.dumps(history_entry,
+                                           ensure_ascii=False) + "\n"
                             )
 
                         logging.info(
@@ -22564,18 +22866,18 @@ def start_web_server(args_param):
     def sms_reply_logs():
         """
         获取短信回复记录API
-        
+
         功能说明：
         查询短信宝webhook接收到的用户短信回复记录。
         仅管理员可访问此接口，用于查看用户回复的短信内容。
-        
+
         权限要求：
         - 需要管理员或超级管理员权限
-        
+
         查询参数（URL参数）：
             - limit (int, 可选): 返回记录数量，默认100，最大1000
             - phone (str, 可选): 按手机号筛选
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - logs (list): 回复记录列表（按时间倒序）
@@ -22587,7 +22889,7 @@ def start_web_server(args_param):
                 - ip: 请求IP地址
             - total (int): 总记录数
             - message (str): 错误信息（失败时）
-        
+
         使用场景：
         - 查看用户通过短信回复的内容
         - 分析用户反馈
@@ -22600,26 +22902,26 @@ def start_web_server(args_param):
             # 2. 会话有效性已检查（第15720-15725行）
             # 3. 用户身份已认证（第15726-15727行）
             current_user = g.user
-            
+
             # [修复] 使用用户组别判断而非权限判断
-            # 
+            #
             # 修复原因：
             # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
             # 例如：user组的用户可能被配置为拥有 view_logs 权限
             # 因此，不能通过检查权限来判断用户是否是真正的管理员
             # 必须直接读取用户组别（group）来准确判断用户的管理员身份
-            # 
+            #
             # 技术实现：
             # - 使用 get_user_group() 方法直接获取用户所属的组别
             # - 只允许 "admin" 和 "super_admin" 组的用户访问此功能
             # - 这样确保即使普通用户拥有日志查看权限，也无法访问管理员专属的短信回复日志
-            # 
+            #
             # 安全考虑：
             # - 短信回复日志可能包含敏感的用户通信内容
             # - 必须严格限制为管理员和超级管理员才能访问
             # - 通过组别判断可以严格控制访问权限，避免权限滥用
             user_group = auth_system.get_user_group(current_user)
-            
+
             # 检查用户组别：只允许管理员和超级管理员访问
             if user_group not in ["admin", "super_admin"]:
                 # 权限不足时返回403禁止访问状态码
@@ -22627,7 +22929,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "权限不足，仅管理员可查看短信回复记录"
                 }), 403
-            
+
             # 获取查询参数
             # limit: 返回记录数量，默认100，最大1000
             limit = int(request.args.get("limit", "100"))
@@ -22635,17 +22937,17 @@ def start_web_server(args_param):
                 limit = 100
             if limit > 1000:
                 limit = 1000
-            
+
             # phone: 按手机号筛选（可选）
             phone_filter = request.args.get("phone", "").strip()
-            
+
             # 读取短信回复日志文件
             log_dir = LOGIN_LOGS_DIR  # 使用登录日志目录
             log_file = os.path.join(log_dir, "sms_replies.json")
-            
+
             # 初始化日志列表
             logs = []
-            
+
             # 检查日志文件是否存在
             if os.path.exists(log_file):
                 try:
@@ -22656,29 +22958,31 @@ def start_web_server(args_param):
                             line = line.strip()
                             if not line:
                                 continue  # 跳过空行
-                            
+
                             try:
                                 # 解析JSON行
                                 entry = json.loads(line)
-                                
+
                                 # 如果指定了手机号筛选，则进行筛选
                                 if phone_filter and entry.get("phone") != phone_filter:
                                     continue
-                                
+
                                 # 添加到日志列表
                                 logs.append(entry)
                             except json.JSONDecodeError as e:
                                 # 如果某行JSON解析失败，记录错误但继续处理其他行
-                                app.logger.warning(f"[SMS回复日志] 解析JSON失败: {line[:50]}... 错误: {str(e)}")
+                                app.logger.warning(
+                                    f"[SMS回复日志] 解析JSON失败: {line[:50]}... 错误: {str(e)}")
                                 continue
-                    
+
                     # 按时间戳倒序排序（最新的在前面）
-                    logs.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
-                    
+                    logs.sort(key=lambda x: x.get(
+                        "timestamp", 0), reverse=True)
+
                     # 限制返回数量
                     total = len(logs)
                     logs = logs[:limit]
-                    
+
                     # 返回成功响应
                     return jsonify({
                         "success": True,
@@ -22686,7 +22990,7 @@ def start_web_server(args_param):
                         "total": total,
                         "limit": limit
                     })
-                    
+
                 except Exception as e:
                     # 文件读取异常
                     app.logger.error(f"[SMS回复日志] 读取日志文件失败: {str(e)}")
@@ -22703,7 +23007,7 @@ def start_web_server(args_param):
                     "limit": limit,
                     "message": "暂无短信回复记录"
                 })
-        
+
         except Exception as e:
             # 处理请求异常
             app.logger.error(f"[SMS回复日志] 处理请求异常: {str(e)}", exc_info=True)
@@ -22725,20 +23029,20 @@ def start_web_server(args_param):
         try:
             # 从Flask的g对象中获取当前登录的用户名
             current_user = g.user
-            
+
             # 细粒度权限检查：需要 'view_audit_logs' 权限
             # view_audit_logs 权限允许查看用户的登录历史记录
             # 这是审计功能的一部分，用于安全监控和合规检查
             if not auth_system.check_permission(current_user, "view_audit_logs"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
                 }), 403
-            
+
             # 获取查询参数
             target_username = request.args.get("username", "").strip()
             limit = int(request.args.get("limit", 100))
-            
+
             # 确定要查询的用户名
             # 如果没有指定target_username，则查询所有用户的登录历史
             username_to_query = target_username if target_username else None
@@ -22810,10 +23114,10 @@ def start_web_server(args_param):
             # 系统配置包含敏感的运行参数，需要谨慎管理
             if not auth_system.check_permission(g.user, "modify_config"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要配置修改权限（modify_config）"
                 }), 403
-            
+
             # 获取默认配置
             default_config = _get_default_config()
             config = configparser.ConfigParser()
@@ -22955,7 +23259,8 @@ def start_web_server(args_param):
                         config,
                         "Map",
                         "amap_js_key",
-                        fallback=default_config.get("Map", "amap_js_key", fallback=""),
+                        fallback=default_config.get(
+                            "Map", "amap_js_key", fallback=""),
                     )
                 },
                 "API": {
@@ -22963,7 +23268,8 @@ def start_web_server(args_param):
                         config,
                         "API",
                         "ip_api_key",
-                        fallback=default_config.get("API", "ip_api_key", fallback=""),
+                        fallback=default_config.get(
+                            "API", "ip_api_key", fallback=""),
                     ),
                     "captcha_api_key": _get_config_value(
                         config,
@@ -22978,7 +23284,7 @@ def start_web_server(args_param):
                 # 功能说明：从 config.ini 文件中读取网站备案相关的配置信息
                 # 包括 ICP 备案号（工信部）和公安网备案号（公安部）
                 # 这些信息将在前端管理面板中显示，供管理员查看和编辑
-                # 
+                #
                 # 修复说明：
                 # - 原有问题：config_data 字典中缺少 Beian 配置部分
                 # - 导致前端无法正确读取和显示 Beian 配置项
@@ -22993,7 +23299,8 @@ def start_web_server(args_param):
                         "icp_number",  # 配置键（key）名称
                         # fallback 参数：如果配置文件中没有该项，使用默认配置中的值
                         # 如果默认配置中也没有，则使用空字符串
-                        fallback=default_config.get("Beian", "icp_number", fallback=""),
+                        fallback=default_config.get(
+                            "Beian", "icp_number", fallback=""),
                     ),
                     # 是否显示 ICP 备案信息的开关
                     # 类型：布尔值（True/False）
@@ -23018,7 +23325,8 @@ def start_web_server(args_param):
                         "Beian",  # 配置节
                         "police_number",  # 配置键
                         # fallback：如果配置文件中没有该项，使用默认配置或空字符串
-                        fallback=default_config.get("Beian", "police_number", fallback=""),
+                        fallback=default_config.get(
+                            "Beian", "police_number", fallback=""),
                     ),
                     # 是否显示公安网备案信息的开关
                     # 类型：布尔值（True/False）
@@ -23036,12 +23344,12 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== Beian 配置加载结束 ====================
-                
+
                 # ==================== 百度云文本审核服务配置加载 ====================
                 # 功能说明：从 config.ini 文件中读取百度云文本审核API的配置信息
                 # 用途：对用户发布的留言内容进行智能审核，检测色情、暴力、政治敏感等违规信息
                 # 依赖：需要在百度智能云控制台创建"内容审核"应用并获取API密钥
-                # 
+                #
                 # 配置项说明：
                 # - api_key: 百度云控制台获取的API Key（应用凭证）
                 # - secret_key: 百度云控制台获取的Secret Key（应用密钥）
@@ -23077,12 +23385,12 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== 百度云配置加载结束 ====================
-                
+
                 # ==================== 内容审核功能配置加载 ====================
                 # 功能说明：控制留言内容审核功能的开关
                 # 用途：决定是否对用户发布的留言进行实时内容审核
                 # 依赖：需要先配置上方的 baidu_cloud API 密钥才能正常工作
-                # 
+                #
                 # 工作流程：
                 # 1. 用户提交留言
                 # 2. 系统调用百度云文本审核API检测内容
@@ -23093,7 +23401,7 @@ def start_web_server(args_param):
                     # 类型：布尔值（True/False）
                     # - True：启用审核，所有留言提交前会先通过百度云API检测
                     # - False：关闭审核，留言直接发布（不推荐，可能导致违规内容）
-                    # 
+                    #
                     # 注意事项：
                     # 1. 启用此功能前，必须先在上方的 baidu_cloud 中配置有效的API密钥
                     # 2. 每次审核会调用百度云API，可能产生一定的API调用费用（根据百度云计费规则）
@@ -23214,8 +23522,9 @@ def start_web_server(args_param):
                 if "ip_api_key" in api_data:
                     config.set("API", "ip_api_key", api_data["ip_api_key"])
                 if "captcha_api_key" in api_data:
-                    config.set("API", "captcha_api_key", api_data["captcha_api_key"])
-            
+                    config.set("API", "captcha_api_key",
+                               api_data["captcha_api_key"])
+
             # [新增] 处理 Beian 备案配置
             # 备案信息用于在网站底部显示ICP备案号和公安网备案号
             # 这是中国法律要求的合规信息
@@ -23223,27 +23532,31 @@ def start_web_server(args_param):
                 # 确保 Beian 配置节存在
                 ensure_section(config, "Beian")
                 beian_data = data["Beian"]
-                
+
                 # 处理 ICP 备案号（工信部）
                 # ICP备案号格式如：京ICP备12345678号
                 if "icp_number" in beian_data:
-                    config.set("Beian", "icp_number", str(beian_data["icp_number"]))
-                
+                    config.set("Beian", "icp_number",
+                               str(beian_data["icp_number"]))
+
                 # 处理是否显示 ICP 备案信息
                 # 布尔值转换为小写字符串 "true" 或 "false"
                 if "show_icp" in beian_data:
-                    config.set("Beian", "show_icp", str(beian_data["show_icp"]).lower())
-                
+                    config.set("Beian", "show_icp", str(
+                        beian_data["show_icp"]).lower())
+
                 # 处理公安网备案号（公安部）
                 # 公安网备案号格式如：京公网安备 11010802012345号
                 if "police_number" in beian_data:
-                    config.set("Beian", "police_number", str(beian_data["police_number"]))
-                
+                    config.set("Beian", "police_number",
+                               str(beian_data["police_number"]))
+
                 # 处理是否显示公安网备案信息
                 # 布尔值转换为小写字符串 "true" 或 "false"
                 if "show_police" in beian_data:
-                    config.set("Beian", "show_police", str(beian_data["show_police"]).lower())
-            
+                    config.set("Beian", "show_police", str(
+                        beian_data["show_police"]).lower())
+
             # [新增] 处理百度云文本审核服务配置
             # 百度云API用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）
             # 配置项来源：百度智能云控制台 -> 内容审核 -> 应用管理
@@ -23252,23 +23565,26 @@ def start_web_server(args_param):
                 # 如果 config.ini 中没有 [baidu_cloud] 节，则自动创建
                 ensure_section(config, "baidu_cloud")
                 cloud_data = data["baidu_cloud"]
-                
+
                 # 处理 API Key（百度云控制台获取的应用凭证）
                 # API Key 用于标识应用身份，是调用百度云API的必需参数
                 if "api_key" in cloud_data:
-                    config.set("baidu_cloud", "api_key", str(cloud_data["api_key"]))
-                
+                    config.set("baidu_cloud", "api_key",
+                               str(cloud_data["api_key"]))
+
                 # 处理 Secret Key（百度云控制台获取的应用密钥）
                 # Secret Key 与 API Key 配合使用，用于生成访问令牌（Access Token）
                 # 注意：Secret Key 非常重要，应妥善保管，避免泄露
                 if "secret_key" in cloud_data:
-                    config.set("baidu_cloud", "secret_key", str(cloud_data["secret_key"]))
-                
+                    config.set("baidu_cloud", "secret_key",
+                               str(cloud_data["secret_key"]))
+
                 # 处理策略ID（可选配置项，用于自定义审核规则）
                 # 百度云支持创建自定义审核策略，可以设置不同的审核严格程度
                 # 如果留空，系统将使用百度云的默认审核策略
                 if "strategy_id" in cloud_data:
-                    config.set("baidu_cloud", "strategy_id", str(cloud_data["strategy_id"]))
+                    config.set("baidu_cloud", "strategy_id",
+                               str(cloud_data["strategy_id"]))
 
             # [新增] 处理内容审核功能配置
             # 控制是否启用留言内容审核功能
@@ -23278,29 +23594,31 @@ def start_web_server(args_param):
                 # 如果 config.ini 中没有 [Content_Review] 节，则自动创建
                 ensure_section(config, "Content_Review")
                 review_data = data["Content_Review"]
-                
+
                 # 处理是否启用留言审核的开关（布尔值：true 或 false）
                 # 前端传递的是 JavaScript 的 true/false，需要转换为字符串 "true"/"false"
                 # configparser 只能存储字符串，读取时会通过 getboolean() 转换回布尔值
-                # 
+                #
                 # 工作流程：
                 # 1. 用户在管理面板勾选"启用留言审核"复选框
                 # 2. 前端发送 enable_message_review: true
                 # 3. 这里将 true 转换为小写字符串 "true" 保存到 config.ini
                 # 4. 下次加载时，通过 config.getboolean() 将 "true" 转换回 True
                 if "enable_message_review" in review_data:
-                    config.set("Content_Review", "enable_message_review", 
+                    config.set("Content_Review", "enable_message_review",
                                str(review_data["enable_message_review"]).lower())
-            
+
             _write_config_with_comments(config, CONFIG_FILE)
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
                 g.user,
                 "update_system_config",
                 "管理员更新了 config.ini 系统配置",
                 ip_address,
-                g.api_instance._web_session_id if hasattr(g, "api_instance") else "",
+                g.api_instance._web_session_id if hasattr(
+                    g, "api_instance") else "",
             )
 
             return jsonify({"success": True, "message": "系统配置已保存"})
@@ -23322,14 +23640,16 @@ def start_web_server(args_param):
             # 获取公共信息
             session_id = request.headers.get("X-Session-ID", "UnknownSession")
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             username = "Guest/Unknown"
 
             # 查找用户信息（只查一次锁）
             with web_sessions_lock:
                 if session_id in web_sessions:
                     api_instance = web_sessions[session_id]
-                    username_attr = getattr(api_instance, "auth_username", None)
+                    username_attr = getattr(
+                        api_instance, "auth_username", None)
                     if not username_attr and hasattr(api_instance, "user_data"):
                         username_attr = getattr(
                             api_instance.user_data, "username", None
@@ -23375,9 +23695,11 @@ def start_web_server(args_param):
             return jsonify({"success": True})
 
         except Exception as e:
-            session_id_err = request.headers.get("X-Session-ID", "UnknownSession")
+            session_id_err = request.headers.get(
+                "X-Session-ID", "UnknownSession")
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address_err = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address_err = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             logging.error(
                 f"[前端日志处理错误][IP:{ip_address_err}][Sess:{session_id_err[:8]}] {e}",
                 exc_info=True,
@@ -23523,7 +23845,8 @@ def start_web_server(args_param):
 
             # 读取是否显示公安备案号的布尔值
             # 如果配置项不存在，默认为 False（不显示）
-            show_police = config.getboolean("Beian", "show_police", fallback=False)
+            show_police = config.getboolean(
+                "Beian", "show_police", fallback=False)
 
             # 将读取到的配置信息组装成一个字典对象
             # 这个字典将作为 API 响应的数据部分返回给前端
@@ -23577,7 +23900,8 @@ def start_web_server(args_param):
 
             if bound_username:
                 return jsonify(
-                    {"success": True, "is_bound": True, "bound_to_user": bound_username}
+                    {"success": True, "is_bound": True,
+                        "bound_to_user": bound_username}
                 )
             else:
                 return jsonify({"success": True, "is_bound": False})
@@ -23710,7 +24034,8 @@ def start_web_server(args_param):
             del sms_verification_codes[new_phone]
 
             # 使用统一函数获取客户端真实IP（任务2）
-            ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_address = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             # 记录审计日志
             auth_system.log_audit(
                 current_username,
@@ -23848,7 +24173,7 @@ def start_web_server(args_param):
         # 获取当前登录用户
         # 使用Flask的g对象获取用户名，这是由@login_required装饰器设置的
         auth_username = g.user
-        
+
         # 检查细粒度权限：日志查看权限
         # view_logs 权限允许管理员查看系统日志和安全相关信息
         # IP封禁状态属于系统安全信息的一部分，需要日志查看权限
@@ -23857,9 +24182,10 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "权限不足，需要日志查看权限（view_logs）"
             }), 403
-        
+
         try:
-            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            client_ip = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             data = request.get_json() or {}
             scope = data.get("scope", "all")
             is_banned = check_ip_ban(client_ip, scope=scope)
@@ -23890,7 +24216,8 @@ def start_web_server(args_param):
                 elif ban["type"] == "range":
                     try:
                         start_ip_str, end_ip_str = ban["target"].split("-")
-                        start_ip = int(ipaddress.ip_address(start_ip_str.strip()))
+                        start_ip = int(ipaddress.ip_address(
+                            start_ip_str.strip()))
                         end_ip = int(ipaddress.ip_address(end_ip_str.strip()))
                         current_ip = int(ipaddress.ip_address(ip_address))
                         if start_ip <= current_ip <= end_ip:
@@ -23924,10 +24251,10 @@ def start_web_server(args_param):
             # 短信配置包含API密钥等敏感信息，需要严格控制访问
             if not auth_system.check_permission(g.user, "modify_config"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要配置修改权限（modify_config）"
                 }), 403
-            
+
             # 读取配置文件
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
@@ -23942,7 +24269,8 @@ def start_web_server(args_param):
             if not config.has_option("Features", "enable_phone_login"):
                 config.set("Features", "enable_phone_login", "false")
             if not config.has_option("Features", "enable_phone_registration_verify"):
-                config.set("Features", "enable_phone_registration_verify", "false")
+                config.set(
+                    "Features", "enable_phone_registration_verify", "false")
             if not config.has_option("SMS_Service_SMSBao", "username"):
                 config.set("SMS_Service_SMSBao", "username", "")
             if not config.has_option("SMS_Service_SMSBao", "api_key"):
@@ -23956,12 +24284,14 @@ def start_web_server(args_param):
             if not config.has_option(
                 "SMS_Service_SMSBao", "rate_limit_per_account_day"
             ):
-                config.set("SMS_Service_SMSBao", "rate_limit_per_account_day", "10")
+                config.set("SMS_Service_SMSBao",
+                           "rate_limit_per_account_day", "10")
             if not config.has_option("SMS_Service_SMSBao", "rate_limit_per_ip_day"):
                 config.set("SMS_Service_SMSBao", "rate_limit_per_ip_day", "20")
             if not config.has_option("SMS_Service_SMSBao", "rate_limit_per_phone_day"):
-                config.set("SMS_Service_SMSBao", "rate_limit_per_phone_day", "5")
-            
+                config.set("SMS_Service_SMSBao",
+                           "rate_limit_per_phone_day", "5")
+
             # 使用 _write_config_with_comments() 函数写入配置文件
             # 这个函数的作用是：在写入配置的同时保留config.ini中的注释内容
             # 原因：config.write() 会丢失配置文件中的所有注释，导致配置文件可读性变差
@@ -24018,10 +24348,10 @@ def start_web_server(args_param):
             # 修改配置会影响短信发送功能，包括API密钥等敏感信息
             if not auth_system.check_permission(g.user, "modify_config"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要配置修改权限（modify_config）"
                 }), 403
-            
+
             # 获取请求数据
             data = request.get_json() or {}
             config = configparser.ConfigParser()
@@ -24050,9 +24380,12 @@ def start_web_server(args_param):
             )
             if "SMS_Service_SMSBao" not in config:
                 config.add_section("SMS_Service_SMSBao")
-            config.set("SMS_Service_SMSBao", "username", data.get("username", ""))
-            config.set("SMS_Service_SMSBao", "api_key", data.get("api_key", ""))
-            config.set("SMS_Service_SMSBao", "signature", data.get("signature", ""))
+            config.set("SMS_Service_SMSBao", "username",
+                       data.get("username", ""))
+            config.set("SMS_Service_SMSBao", "api_key",
+                       data.get("api_key", ""))
+            config.set("SMS_Service_SMSBao", "signature",
+                       data.get("signature", ""))
             config.set(
                 "SMS_Service_SMSBao",
                 "template_register",
@@ -24094,7 +24427,7 @@ def start_web_server(args_param):
         """
         # 获取当前登录用户（由@login_required装饰器设置到g.user）
         auth_username = g.user
-        
+
         # 检查细粒度权限：日志查看权限
         # view_logs 权限允许管理员查看系统的运行状态和配置信息
         # 短信余额是系统运行状态的一部分，属于查询类操作，使用view_logs权限
@@ -24103,7 +24436,7 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "权限不足，需要日志查看权限（view_logs）"
             }), 403
-        
+
         try:
             cache_key = "sms_balance_cache"
             current_time = time.time()
@@ -24127,7 +24460,8 @@ def start_web_server(args_param):
             config.optionxform = str
             config.read("config.ini", encoding="utf-8")
 
-            username = config.get("SMS_Service_SMSBao", "username", fallback="")
+            username = config.get("SMS_Service_SMSBao",
+                                  "username", fallback="")
             api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
 
             if not username or not api_key:
@@ -24182,7 +24516,8 @@ def start_web_server(args_param):
                     "50": "内容含有敏感词",
                     "51": "手机号码不正确",
                 }
-                error_msg = error_codes.get(status_code, f"未知错误码: {status_code}")
+                error_msg = error_codes.get(
+                    status_code, f"未知错误码: {status_code}")
                 return jsonify({"success": False, "message": f"查询失败：{error_msg}"})
         except Exception as e:
             app.logger.error(f"[短信配置] 查询余额失败：{str(e)}")
@@ -24200,10 +24535,10 @@ def start_web_server(args_param):
             # 短信历史包含用户手机号等敏感信息，用于审计和问题排查
             if not auth_system.check_permission(g.user, "view_audit_logs"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
                 }), 403
-            
+
             # 获取过滤参数
             date_filter = request.args.get("date", "").strip()
             phone_filter = request.args.get("phone", "").strip()
@@ -24248,7 +24583,7 @@ def start_web_server(args_param):
             # 验证码是敏感的临时凭证，查看权限需要严格控制
             if not auth_system.check_permission(g.user, "view_audit_logs"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
                 }), 403
 
@@ -24284,7 +24619,7 @@ def start_web_server(args_param):
             # 使验证码失效可能影响用户的注册或验证流程
             if not auth_system.check_permission(g.user, "manage_system"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要系统管理权限（manage_system）"
                 }), 403
 
@@ -24317,7 +24652,7 @@ def start_web_server(args_param):
             # 这是用于测试或紧急情况的特殊操作，需要严格控制
             if not auth_system.check_permission(g.user, "manage_system"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要系统管理权限（manage_system）"
                 }), 403
 
@@ -24332,7 +24667,8 @@ def start_web_server(args_param):
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
             code_expire_minutes = int(
-                config.get("SMS_Service_SMSBao", "code_expire_minutes", fallback="5")
+                config.get("SMS_Service_SMSBao",
+                           "code_expire_minutes", fallback="5")
             )
             code_expire_seconds = code_expire_minutes * 60
             expire_time = time.time() + code_expire_seconds
@@ -24352,7 +24688,8 @@ def start_web_server(args_param):
                     else None
                 )
                 # 使用统一函数获取客户端真实IP（任务2）
-                client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+                client_ip = request.environ.get(
+                    "REMOTE_ADDR") or request.remote_addr
                 content = f"管理员 {g.user} 手动添加的验证码: {code}，{code_expire_minutes}分钟内有效。"
 
                 history_entry = {
@@ -24400,7 +24737,7 @@ def start_web_server(args_param):
         """
         # 获取当前登录用户（由@login_required装饰器设置到g.user）
         auth_username = g.user
-        
+
         # 检查细粒度权限：日志查看权限
         # view_logs 权限允许管理员查看系统配置和状态信息
         # SSL证书信息属于系统配置的查看操作，使用view_logs权限即可
@@ -24410,7 +24747,7 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "权限不足，需要日志查看权限（view_logs）"
             }), 403
-        
+
         try:
             current_ssl_config = load_ssl_config()
             config_info = {
@@ -24680,7 +25017,7 @@ def start_web_server(args_param):
             if not auth_system.check_permission(g.user, "modify_config"):
                 # 权限不足，返回403 Forbidden状态码
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要配置修改权限（modify_config）"
                 }), 403
 
@@ -24704,7 +25041,8 @@ def start_web_server(args_param):
             config.read(CONFIG_FILE, encoding="utf-8")
 
             # 读取CDN配置，如果不存在则使用默认值
-            cdn_enabled = config.getboolean("CDN", "cdn_enabled", fallback=False)
+            cdn_enabled = config.getboolean(
+                "CDN", "cdn_enabled", fallback=False)
             cache_time = config.getint("CDN", "cache_time", fallback=3600)
 
             # 组装配置数据
@@ -24759,7 +25097,7 @@ def start_web_server(args_param):
             # 修改CDN配置会影响系统性能和静态资源的访问速度
             if not auth_system.check_permission(g.user, "modify_config"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要配置修改权限（modify_config）"
                 }), 403
 
@@ -24791,7 +25129,8 @@ def start_web_server(args_param):
             current_cdn_enabled = config.getboolean(
                 "CDN", "cdn_enabled", fallback=False
             )
-            current_cache_time = config.getint("CDN", "cache_time", fallback=3600)
+            current_cache_time = config.getint(
+                "CDN", "cache_time", fallback=3600)
 
             # 更新cdn_enabled配置（如果请求中提供了该字段）
             if "cdn_enabled" in data:
@@ -24859,36 +25198,6 @@ def start_web_server(args_param):
     # 警告：此功能仅用于合法的学校账号密码恢复
     # ============================================================================
 
-    def check_super_admin_permission():
-        """
-        检查当前用户是否为超级管理员
-
-        返回:
-            tuple: (is_super_admin: bool, error_response: tuple|None)
-                   如果不是超级管理员，返回(False, error_response)
-                   如果是超级管理员，返回(True, None)
-        """
-        try:
-            config = configparser.ConfigParser()
-            config.read(CONFIG_FILE, encoding="utf-8")
-            super_admin = config.get("Admin", "super_admin", fallback="admin")
-
-            if g.user != super_admin:
-                logging.warning(
-                    f"[权限检查] 非超级管理员 {g.user} 尝试访问超级管理员功能"
-                )
-                return False, (
-                    jsonify(
-                        {"success": False, "message": "权限不足：需要超级管理员权限"}
-                    ),
-                    403,
-                )
-
-            return True, None
-        except Exception as e:
-            logging.error(f"[权限检查] 检查超级管理员权限失败: {e}", exc_info=True)
-            return False, (jsonify({"success": False, "message": "权限检查失败"}), 500)
-
     @app.route("/api/admin/bruteforce/start", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def start_bruteforce():
@@ -24902,7 +25211,7 @@ def start_web_server(args_param):
             # 这是非常敏感的操作，涉及到批量密码恢复，需要严格控制
             if not auth_system.check_permission(g.user, "manage_system"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要系统管理权限（manage_system）"
                 }), 403
 
@@ -24965,7 +25274,7 @@ def start_web_server(args_param):
             # 这是管理系统资源和任务的重要操作
             if not auth_system.check_permission(g.user, "manage_system"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要系统管理权限（manage_system）"
                 }), 403
 
@@ -25034,7 +25343,7 @@ def start_web_server(args_param):
         """
         # 获取当前登录用户（由@login_required装饰器设置到g.user）
         auth_username = g.user
-        
+
         # 检查细粒度权限：日志查看权限
         # view_logs 权限允许管理员查看系统的运行状态和任务信息
         # 密码恢复任务状态属于系统运行信息的一部分，使用view_logs权限
@@ -25043,7 +25352,7 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "权限不足，需要日志查看权限（view_logs）"
             }), 403
-        
+
         try:
 
             global brute_force_manager
@@ -25100,7 +25409,8 @@ def start_web_server(args_param):
             config = _get_default_config()
 
         sms_enabled = (
-            config.get("Features", "enable_sms_service", fallback="false").lower()
+            config.get("Features", "enable_sms_service",
+                       fallback="false").lower()
             == "true"
         )
         reg_verify_enabled = (
@@ -25127,16 +25437,16 @@ def start_web_server(args_param):
     def payment_yipay_notify():
         """
         接收彩虹易支付异步通知接口（专用）
-        
+
         功能说明:
             接收并处理易支付平台的支付成功通知
             支持GET和POST两种请求方式
             验证签名后更新订单状态
-            
+
         请求方式:
             - GET: 参数在URL查询字符串中
             - POST: 参数在表单数据中
-            
+
         安全机制:
             - 使用RSA签名验证通知真实性
             - 验证订单金额是否匹配
@@ -25157,10 +25467,10 @@ def start_web_server(args_param):
                 # 否则尝试使用POST参数（兼容模式）
                 params = request.form.to_dict()
                 logging.info(f"[支付通知] 使用POST方式接收参数")
-            
+
             # 记录日志：收到异步通知
             logging.info(f"[支付通知] 收到异步通知 - 参数: {params}")
-            
+
             # ========== 检查是否有jump参数（支付完成后跳转）==========
             # jump参数：支付完成后的跳转地址
             # 如果存在jump参数，说明这是用户支付完成后的同步返回，需要跳转到指定页面
@@ -25224,7 +25534,7 @@ def start_web_server(args_param):
                 </body>
                 </html>
                 '''
-            
+
             # ========== 处理空参数情况 ==========
             # 有些情况下，用户支付完成后直接访问notify_url，此时没有参数
             # 这种情况下，我们需要返回一个友好的HTML页面提示用户支付成功
@@ -25232,7 +25542,7 @@ def start_web_server(args_param):
                 # 参数为空或只有极少参数（可能只有session等），且没有订单号
                 # 说明这是用户直接访问了notify_url，而不是支付平台的回调
                 logging.info(f"[支付通知] 检测到空参数访问，返回友好提示页面")
-                
+
                 # 返回一个简洁的HTML页面，提示用户支付成功
                 # 这个页面会在3秒后自动关闭或跳转
                 html_response = """
@@ -25436,34 +25746,37 @@ def start_web_server(args_param):
 </html>
                 """
                 return html_response
-            
+
             # ========== 验证签名 ==========
-            
+
             # 读取配置文件以获取密钥和公钥信息
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
-            
+
             # 获取平台公钥（用于RSA签名验证）
-            pubc_key = config.get("Rainbow_YiPay", "pubc_key", fallback="").strip()
-            
+            pubc_key = config.get(
+                "Rainbow_YiPay", "pubc_key", fallback="").strip()
+
             # 标记签名是否验证通过
             signature_valid = False
-            
+
             # 如果没有配置平台公钥，无法进行签名验证
             if not pubc_key:
                 logging.error(f"[支付通知] 未配置平台公钥，无法验证签名")
-                
+
                 # ========== 写入支付操作日志（未配置公钥） ==========
-                
+
                 # 记录这个配置缺失的安全事件
                 _write_payment_log(
                     user_id="system",                           # 系统记录
-                    order_id=params.get("out_trade_no", "unknown"),  # 订单号（可能为空）
+                    order_id=params.get(
+                        "out_trade_no", "unknown"),  # 订单号（可能为空）
                     action="payment_notify_no_public_key",      # 操作类型：未配置公钥
                     log_data={
                         # 通知参数
                         "notify_params": params,                # 完整的通知参数
-                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,       # 通知来源IP
+                        # 通知来源IP
+                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                         # 安全信息
                         "security_event": "public_key_not_configured",  # 安全事件类型
                         "risk_level": "high",                   # 风险级别：高
@@ -25472,9 +25785,9 @@ def start_web_server(args_param):
                         "message": "未配置平台公钥，无法验证签名"
                     }
                 )
-                
+
                 return "fail"  # 返回 fail，易支付会继续重试通知
-            
+
             # ========== 使用RSA签名验证（正确的验签方式）==========
             # 重要说明：
             #   - 签名验证是支付回调的核心安全机制
@@ -25482,17 +25795,17 @@ def start_web_server(args_param):
             #   - 验证流程：平台使用私钥签名 -> 我们使用公钥验签
             if pubc_key:
                 logging.info(f"[支付通知] 开始进行RSA签名验证")
-                
+
                 try:
                     # 创建RSA签名验证器
                     # 注意：这里必须传入public_key_str参数（平台公钥）
                     # 不需要传入private_key_str，因为我们只做验签不做签名
                     signer = RsaSigner(public_key_str=pubc_key)
-                    
+
                     # 从params中提取签名字符串
                     # sign参数是平台使用私钥对参数进行签名后的结果（Base64编码）
                     signature = params.get("sign", "")
-                    
+
                     # 调用 verify_sign() 方法验证签名
                     # 该方法会：
                     #   1. 按规则构建待验签字符串（排序、拼接）
@@ -25500,37 +25813,39 @@ def start_web_server(args_param):
                     #   3. 比对哈希值是否匹配
                     # 返回True表示签名有效，False表示签名无效
                     signature_valid = signer.verify_sign(params, signature)
-                    
+
                     if signature_valid:
                         # 签名验证成功
                         logging.info(f"[支付通知] ✅ RSA签名验证成功")
                     else:
                         # 签名验证失败
                         logging.error(f"[支付通知] ❌ RSA签名验证失败")
-                        
+
                 except Exception as e:
                     # RSA签名验证过程中出现异常
                     # 可能原因：公钥格式错误、签名格式错误、加密库内部错误等
                     logging.error(f"[支付通知] ⚠️ RSA签名验证异常: {str(e)}")
                     logging.error(traceback.format_exc())
                     signature_valid = False
-            
+
             # 如果签名验证失败
             if not signature_valid:
                 # 签名验证失败，可能是伪造的通知或RSA验证出错
                 logging.error(f"[支付通知] RSA签名验证失败 - 参数: {params}")
-                
+
                 # ========== 写入支付操作日志（签名验证失败） ==========
-                
+
                 # 这是严重的安全事件，必须记录
                 _write_payment_log(
                     user_id="system",                           # 系统记录
-                    order_id=params.get("out_trade_no", "unknown"),  # 订单号（可能为空）
+                    order_id=params.get(
+                        "out_trade_no", "unknown"),  # 订单号（可能为空）
                     action="payment_notify_signature_failed",   # 操作类型：签名验证失败
                     log_data={
                         # 通知参数
                         "notify_params": params,                # 完整的通知参数
-                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,       # 通知来源IP
+                        # 通知来源IP
+                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                         # 安全信息
                         "security_event": "signature_verification_failed",  # 安全事件类型
                         "risk_level": "high",                   # 风险级别：高
@@ -25539,53 +25854,54 @@ def start_web_server(args_param):
                         "message": "RSA签名验证失败，可能是伪造的支付通知"
                     }
                 )
-                
+
                 return "fail"  # 返回 fail，易支付会继续重试通知
-            
+
             # ========== 提取关键参数 ==========
-            
+
             # 商户订单号
             out_trade_no = params.get("out_trade_no", "")
-            
+
             # 易支付订单号
             trade_no = params.get("trade_no", "")
-            
+
             # 支付状态（TRADE_SUCCESS 表示支付成功）
             trade_status = params.get("trade_status", "")
-            
+
             # 实际支付金额
             money = params.get("money", "")
-            
+
             # 验证必要参数是否存在
             if not out_trade_no or not trade_status:
                 logging.error(f"[支付通知] 缺少必要参数 - 参数: {params}")
                 return "fail"
-            
+
             # ========== 提取request相关信息（用于异步处理）==========
             # 注意：在异步线程中，request对象可能不可用
             # 因此需要在启动异步线程前，提取所有需要的request相关信息
-            
+
             # 提取客户端IP地址（易支付服务器的IP）
             # 优先使用environ中的REMOTE_ADDR，如果不存在则使用request.remote_addr
-            notify_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
-            
+            notify_ip = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
+
             # ========== 签名验证通过后立即返回success，避免超时 ==========
-            
+
             # 重要说明：
             # 为了避免易支付平台等待超时（通常15-30秒），我们需要尽快返回响应
             # 签名验证通过后，立即返回"success"，然后在后台异步处理订单逻辑
             # 这样可以确保易支付平台及时收到响应，不会重复发送通知
-            
+
             logging.info(f"[支付通知] ✅ 签名验证通过，立即返回success - 订单号: {out_trade_no}")
-            
+
             # ========== 定义异步处理函数 ==========
             # 此函数将在独立线程中运行，处理所有耗时的订单逻辑
             # 包括：查询订单、验证金额、更新状态、执行业务逻辑
-            
+
             def process_payment_notify_async():
                 """
                 异步处理支付通知的订单逻辑
-                
+
                 此函数在独立线程中运行，不会阻塞主响应
                 处理内容包括：
                 1. 查询订单文件
@@ -25597,17 +25913,19 @@ def start_web_server(args_param):
                 """
                 try:
                     logging.info(f"[支付通知-异步] 开始处理订单逻辑 - 订单号: {out_trade_no}")
-                    
+
                     # ========== 读取订单信息 ==========
-                    
-                    order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
-                    
+
+                    order_file = os.path.join(
+                        PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+
                     # 检查订单是否存在
                     if not os.path.exists(order_file):
                         # ========== 订单不存在：记录日志并尝试从平台查询 ==========
-                        
-                        logging.warning(f"[支付通知-异步] 本地订单不存在 - 订单号: {out_trade_no}")
-                        
+
+                        logging.warning(
+                            f"[支付通知-异步] 本地订单不存在 - 订单号: {out_trade_no}")
+
                         # 记录支付通知日志（即使订单不存在也要记录）
                         _write_payment_log(
                             user_id="system",
@@ -25623,18 +25941,21 @@ def start_web_server(args_param):
                                 "message": "本地订单不存在，尝试从平台查询"
                             }
                         )
-                        
+
                         # 尝试从易支付平台查询订单
-                        logging.info(f"[支付通知-异步] 尝试从易支付平台查询订单 - 订单号: {out_trade_no}")
-                        
-                        query_result = _query_yipay_order(order_id=out_trade_no, trade_no=trade_no)
-                        
+                        logging.info(
+                            f"[支付通知-异步] 尝试从易支付平台查询订单 - 订单号: {out_trade_no}")
+
+                        query_result = _query_yipay_order(
+                            order_id=out_trade_no, trade_no=trade_no)
+
                         if query_result.get("success"):
                             # 平台查询成功：创建订单文件
                             platform_order = query_result.get("data", {})
-                            
-                            logging.info(f"[支付通知-异步] 从平台查询到订单信息 - 订单号: {out_trade_no}")
-                            
+
+                            logging.info(
+                                f"[支付通知-异步] 从平台查询到订单信息 - 订单号: {out_trade_no}")
+
                             # 构造本地订单数据结构
                             order_data = {
                                 "order_id": out_trade_no,
@@ -25658,30 +25979,34 @@ def start_web_server(args_param):
                                 "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),
                                 "platform_data": platform_order
                             }
-                            
+
                             # 修复退款状态判断逻辑
                             # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
                             platform_status = platform_order.get("status", 1)
                             if platform_status == 2 or platform_status == "2":
-                                refundmoney = float(platform_order.get("refundmoney", "0"))
-                                order_amount = float(platform_order.get("money", money))
+                                refundmoney = float(
+                                    platform_order.get("refundmoney", "0"))
+                                order_amount = float(
+                                    platform_order.get("money", money))
                                 # 使用 >= 比较，而不是 ==
                                 # 当退款金额 >= 订单金额时，才是全额退款
                                 if refundmoney >= order_amount:
                                     order_data["status"] = ORDER_STATUS_REFUNDED_FULL
                                 else:
                                     order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
-                            
+
                             # 确保订单目录存在
                             os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-                            
+
                             # 保存订单文件
                             try:
                                 with open(order_file, "w", encoding="utf-8") as f:
-                                    json.dump(order_data, f, indent=2, ensure_ascii=False)
-                                
-                                logging.info(f"[支付通知-异步] 订单文件已创建 - 订单号: {out_trade_no}")
-                                
+                                    json.dump(order_data, f, indent=2,
+                                              ensure_ascii=False)
+
+                                logging.info(
+                                    f"[支付通知-异步] 订单文件已创建 - 订单号: {out_trade_no}")
+
                                 # 记录创建订单日志
                                 _write_payment_log(
                                     user_id="system",
@@ -25694,7 +26019,7 @@ def start_web_server(args_param):
                                         "success": True
                                     }
                                 )
-                            
+
                             except Exception as e:
                                 logging.error(f"[支付通知-异步] 创建订单文件失败: {str(e)}")
                                 return
@@ -25702,7 +26027,7 @@ def start_web_server(args_param):
                             # 平台查询失败：记录日志
                             error_msg = query_result.get("message", "查询失败")
                             logging.error(f"[支付通知-异步] 从平台查询订单失败: {error_msg}")
-                            
+
                             _write_payment_log(
                                 user_id="system",
                                 order_id=out_trade_no,
@@ -25718,16 +26043,17 @@ def start_web_server(args_param):
                         # 读取订单数据
                         with open(order_file, "r", encoding="utf-8") as f:
                             order_data = json.load(f)
-                    
+
                     # ========== 验证订单金额 ==========
                     # 防止支付金额与订单金额不一致的情况
-                    
+
                     try:
                         # 将字符串金额转换为浮点数进行比较
                         # round() 函数保留2位小数，避免浮点数精度问题
                         paid_amount = round(float(money), 2)
-                        order_amount = round(float(order_data.get("amount", "0")), 2)
-                        
+                        order_amount = round(
+                            float(order_data.get("amount", "0")), 2)
+
                         # 比较金额是否一致
                         if paid_amount != order_amount:
                             # 金额不一致，记录错误日志
@@ -25738,51 +26064,56 @@ def start_web_server(args_param):
                             return  # 在异步线程中，直接return退出，不返回给易支付
                     except ValueError:
                         # 金额格式错误
-                        logging.error(f"[支付通知-异步] 金额格式错误 - 订单: {out_trade_no}, 金额: {money}")
+                        logging.error(
+                            f"[支付通知-异步] 金额格式错误 - 订单: {out_trade_no}, 金额: {money}")
                         return  # 在异步线程中，直接return退出，不返回给易支付
-                    
+
                     # ========== 处理支付成功通知 ==========
-                    
+
                     if trade_status == "TRADE_SUCCESS":
                         # ========== 检查订单是否已经支付过（幂等性保护）==========
                         # 这是防止重复处理的核心机制
                         # 场景：易支付可能会多次发送支付成功通知（网络重试、系统重试等）
                         # 我们必须确保即使收到多次通知，也只处理一次业务逻辑
-                        
+
                         if order_data.get("status") == ORDER_STATUS_PAID:
                             # ========== 订单已支付，这是一个重复通知 ==========
-                            
+
                             # 获取当前的通知计数并+1
                             # 情况1：如果notify_count字段存在，说明之前已经记录过，直接+1
                             # 情况2：如果notify_count字段不存在，说明这是旧订单（在添加计数功能之前创建的）
                             #        由于订单status="paid"，说明至少收到过1次通知
                             #        现在收到重复通知，默认为1，然后+1=2（第2次通知）
-                            notify_count = order_data.get("notify_count", 1) + 1
-                            
+                            notify_count = order_data.get(
+                                "notify_count", 1) + 1
+
                             # 更新通知计数
                             order_data["notify_count"] = notify_count
-                            
+
                             # 记录最后一次收到通知的时间戳（用于审计和分析）
                             order_data["last_notify_at"] = time.time()
-                            
+
                             # 记录最后一次收到通知的可读时间（便于人工查看）
-                            order_data["last_notify_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                            
+                            order_data["last_notify_time"] = time.strftime(
+                                "%Y-%m-%d %H:%M:%S")
+
                             # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
                             # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
                             with open(order_file, "w", encoding="utf-8") as f:
-                                json.dump(order_data, f, indent=2, ensure_ascii=False)
-                            
+                                json.dump(order_data, f, indent=2,
+                                          ensure_ascii=False)
+
                             # 记录日志：订单已支付，跳过重复处理
                             logging.info(
                                 f"[支付通知-异步] 订单已支付，跳过处理（重复通知#{notify_count}）- 订单: {out_trade_no}"
                             )
-                            
+
                             # ========== 写入支付操作日志（重复通知）==========
                             # 虽然不处理业务逻辑，但我们仍然需要记录这次重复通知
                             # 这对于安全审计和问题排查非常重要
                             _write_payment_log(
-                                user_id=order_data.get("username", "未知"),  # 订单所有者
+                                user_id=order_data.get(
+                                    "username", "未知"),  # 订单所有者
                                 order_id=out_trade_no,                          # 商户订单号
                                 action="payment_duplicate_notify",              # 操作类型：重复通知
                                 log_data={
@@ -25790,43 +26121,51 @@ def start_web_server(args_param):
                                     "notify_count": notify_count,               # 这是第几次通知
                                     "notify_params": params,                    # 本次通知的参数
                                     "notify_ip": notify_ip,                     # 使用预先提取的IP地址
-                                    "last_notify_at": order_data["last_notify_at"],     # 通知时间戳
-                                    "last_notify_time": order_data["last_notify_time"], # 通知时间（可读）
+                                    # 通知时间戳
+                                    "last_notify_at": order_data["last_notify_at"],
+                                    # 通知时间（可读）
+                                    "last_notify_time": order_data["last_notify_time"],
                                     # 订单信息
-                                    "order_status": order_data.get("status"),   # 订单状态（应该是paid）
-                                    "first_paid_at": order_data.get("paid_at"), # 首次支付时间
-                                    "first_paid_time": order_data.get("paid_time"), # 首次支付时间（可读）
+                                    # 订单状态（应该是paid）
+                                    "order_status": order_data.get("status"),
+                                    # 首次支付时间
+                                    "first_paid_at": order_data.get("paid_at"),
+                                    # 首次支付时间（可读）
+                                    "first_paid_time": order_data.get("paid_time"),
                                     # 操作结果
                                     "success": True,
                                     "message": f"重复通知（第{notify_count}次），订单已处理，跳过业务逻辑"
                                 }
                             )
-                            
+
                             # 在异步线程中，不需要返回给易支付，直接return退出函数
                             return
-                        
+
                         # ========== 首次处理支付通知 ==========
                         # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
-                        
+
                         # 更新订单状态为已支付
                         order_data["status"] = ORDER_STATUS_PAID
                         order_data["trade_no"] = trade_no          # 保存易支付订单号
                         order_data["paid_at"] = time.time()        # 支付时间（时间戳）
-                        order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
-                        order_data["notify_params"] = params       # 保存完整的回调参数（用于调试）
-                        
+                        order_data["paid_time"] = time.strftime(
+                            "%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
+                        # 保存完整的回调参数（用于调试）
+                        order_data["notify_params"] = params
+
                         # ========== 添加首次处理标记（用于幂等性保护）==========
                         # notify_processed_at: 首次处理通知的时间戳（用于审计）
                         order_data["notify_processed_at"] = time.time()
                         # notify_count: 通知计数，初始值为1（表示这是第一次处理）
                         order_data["notify_count"] = 1
-                        
+
                         # 保存更新后的订单数据
                         with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2, ensure_ascii=False)
-                        
+                            json.dump(order_data, f, indent=2,
+                                      ensure_ascii=False)
+
                         # ========== 写入支付操作日志（支付成功通知） ==========
-                        
+
                         # 记录支付成功的异步通知，这是最重要的支付日志
                         _write_payment_log(
                             user_id=order_data.get("username", "未知"),  # 订单所有者
@@ -25838,53 +26177,59 @@ def start_web_server(args_param):
                                 "trade_status": trade_status,               # 支付状态
                                 "paid_amount": paid_amount,                 # 实际支付金额
                                 "order_amount": order_amount,               # 订单金额
-                                "pay_type": params.get("type", ""),         # 支付方式
-                                "paid_at": order_data["paid_at"],           # 支付时间戳
-                                "paid_time": order_data["paid_time"],       # 支付时间（可读）
+                                # 支付方式
+                                "pay_type": params.get("type", ""),
+                                # 支付时间戳
+                                "paid_at": order_data["paid_at"],
+                                # 支付时间（可读）
+                                "paid_time": order_data["paid_time"],
                                 # 通知信息
                                 "notify_params": params,                    # 完整的通知参数
                                 "notify_ip": notify_ip,                     # 使用预先提取的IP地址
                                 # 订单信息
-                                "product_name": order_data.get("product_name", ""),  # 商品名称
+                                # 商品名称
+                                "product_name": order_data.get("product_name", ""),
                                 # 操作结果
                                 "success": True,
                                 "message": "支付成功，订单已完成"
                             }
                         )
-                        
+
                         # 记录日志：支付成功
                         logging.info(
                             f"[支付通知-异步] 支付成功 - 订单: {out_trade_no}, 用户: {order_data.get('username')}, "
                             f"金额: {money}元, 易支付订单号: {trade_no}"
                         )
-                        
+
                         # ========== 支付成功后的业务逻辑处理 ==========
-                        
+
                         # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
                         # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
                         if "overdue_accounts" in order_data and "auth_username" in order_data:
                             # 这是一个欠费补缴订单，需要：
                             # 1. 增加用户的available_runs
                             # 2. 清零所有欠费账号的overdue_count
-                            
+
                             # 提取订单中保存的用户名
                             auth_username = order_data.get("auth_username", "")
-                            
+
                             # 提取欠费账号列表
                             # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
-                            overdue_accounts = order_data.get("overdue_accounts", [])
-                            
+                            overdue_accounts = order_data.get(
+                                "overdue_accounts", [])
+
                             # 提取总欠费次数（订单创建时已计算好）
                             total_count = order_data.get("total_count", 0)
-                            
+
                             # 验证必要字段是否存在
                             if auth_username and overdue_accounts and total_count > 0:
                                 try:
                                     # ========== 步骤1：增加用户的available_runs ==========
-                                    
+
                                     # 获取用户数据文件路径
-                                    user_file = auth_system.get_user_file_path(auth_username)
-                                    
+                                    user_file = auth_system.get_user_file_path(
+                                        auth_username)
+
                                     # 检查用户文件是否存在
                                     if os.path.exists(user_file):
                                         # 使用线程锁确保文件操作的原子性（防止并发修改）
@@ -25892,20 +26237,22 @@ def start_web_server(args_param):
                                             # 读取用户数据
                                             with open(user_file, "r", encoding="utf-8") as f:
                                                 user_data = json.load(f)
-                                            
+
                                             # 获取当前的available_runs值
                                             # 如果字段不存在，默认为0
-                                            current_runs = user_data.get("available_runs", 0)
-                                            
+                                            current_runs = user_data.get(
+                                                "available_runs", 0)
+
                                             # 增加available_runs：当前值 + 总欠费次数
                                             # 例如：当前剩余5次，补缴了8次欠费，更新后为13次
                                             new_runs = current_runs + total_count
                                             user_data["available_runs"] = new_runs
-                                            
+
                                             # 将更新后的用户数据写回文件
                                             with open(user_file, "w", encoding="utf-8") as f:
-                                                json.dump(user_data, f, indent=2, ensure_ascii=False)
-                                            
+                                                json.dump(
+                                                    user_data, f, indent=2, ensure_ascii=False)
+
                                             # 记录日志：available_runs更新成功
                                             logging.info(
                                                 f"[欠费支付-异步] available_runs更新成功 - 用户: {auth_username}, "
@@ -25916,19 +26263,20 @@ def start_web_server(args_param):
                                         logging.error(
                                             f"[欠费支付-异步] 用户文件不存在，无法更新available_runs - 用户: {auth_username}"
                                         )
-                                    
+
                                     # ========== 步骤2：清零所有欠费账号的overdue_count ==========
-                                    
+
                                     # 遍历所有欠费账号
                                     for account in overdue_accounts:
                                         # 提取学校账号用户名
-                                        school_username = account.get("school_username", "")
-                                        
+                                        school_username = account.get(
+                                            "school_username", "")
+
                                         # 验证学校账号用户名是否有效
                                         if not school_username:
                                             # 如果用户名为空，跳过该账号
                                             continue
-                                        
+
                                         # 调用auth_system的update_school_account_overdue_count方法
                                         # 该方法用于更新学校账号的overdue_count字段
                                         # 第三个参数传入0，表示将欠费次数清零
@@ -25937,7 +26285,7 @@ def start_web_server(args_param):
                                             school_username,    # 学校账号用户名
                                             0                   # 新的overdue_count值（清零）
                                         )
-                                        
+
                                         # 检查更新是否成功
                                         if result.get("success"):
                                             # 更新成功，记录日志
@@ -25951,9 +26299,9 @@ def start_web_server(args_param):
                                                 f"[欠费支付-异步] 清零欠费失败 - 用户: {auth_username}, "
                                                 f"学校账号: {school_username}, 错误: {result.get('message')}"
                                             )
-                                    
+
                                     # ========== 步骤3：记录欠费支付成功日志 ==========
-                                    
+
                                     _write_payment_log(
                                         user_id=auth_username,
                                         order_id=out_trade_no,
@@ -25967,14 +26315,14 @@ def start_web_server(args_param):
                                             "paid_amount": paid_amount
                                         }
                                     )
-                                    
+
                                     # 记录总结日志
                                     logging.info(
                                         f"[欠费支付-异步] 欠费补缴处理完成 - 用户: {auth_username}, "
                                         f"已增加available_runs: {total_count} 次, "
                                         f"已清零 {len(overdue_accounts)} 个学校账号的欠费"
                                     )
-                                
+
                                 except Exception as e:
                                     # 捕获欠费处理过程中的异常
                                     # 即使处理失败，也不影响异步线程的执行
@@ -25984,7 +26332,7 @@ def start_web_server(args_param):
                                         f"订单: {out_trade_no}, 错误: {str(e)}"
                                     )
                                     logging.error(traceback.format_exc())
-                                    
+
                                     # 记录错误日志到支付操作日志
                                     _write_payment_log(
                                         user_id=auth_username,
@@ -26002,50 +26350,53 @@ def start_web_server(args_param):
                                     f"[欠费支付-异步] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
                                     f"auth_username: {auth_username}, total_count: {total_count}"
                                 )
-                        
+
                         # 异步处理完成，不需要返回值
                         logging.info(f"[支付通知-异步] 订单处理完成 - 订单号: {out_trade_no}")
                         return
                     else:
                         # 其他支付状态（如支付失败、已关闭等）
-                        logging.warning(f"[支付通知-异步] 非成功状态 - 订单: {out_trade_no}, 状态: {trade_status}")
-                        
+                        logging.warning(
+                            f"[支付通知-异步] 非成功状态 - 订单: {out_trade_no}, 状态: {trade_status}")
+
                         # 可以根据状态更新订单状态
                         if trade_status == "TRADE_CLOSED":
                             order_data["status"] = ORDER_STATUS_FAILED
                             with open(order_file, "w", encoding="utf-8") as f:
-                                json.dump(order_data, f, indent=2, ensure_ascii=False)
-                        
+                                json.dump(order_data, f, indent=2,
+                                          ensure_ascii=False)
+
                         # 异步处理完成
                         return
-                
+
                 except Exception as e:
                     # 捕获异步处理过程中的所有异常
                     # 异常不会影响主响应（已经返回success给易支付）
                     # 但需要记录详细的错误日志，便于排查问题
                     logging.error(f"[支付通知-异步] 处理订单逻辑异常: {str(e)}")
                     logging.error(traceback.format_exc())
-            
+
             # ========== 启动异步线程处理订单逻辑 ==========
-            
+
             # 导入threading模块（用于创建后台线程）
             import threading
-            
+
             # 创建后台线程，执行process_payment_notify_async函数
             # daemon=True: 设置为守护线程，当主程序退出时，守护线程会自动结束
             # 这样可以确保程序正常退出，不会因为后台线程而挂起
-            thread = threading.Thread(target=process_payment_notify_async, daemon=True)
-            
+            thread = threading.Thread(
+                target=process_payment_notify_async, daemon=True)
+
             # 启动线程（开始异步处理订单逻辑）
             thread.start()
-            
+
             # 记录日志：异步线程已启动
             logging.info(f"[支付通知] 异步线程已启动 - 订单号: {out_trade_no}")
-            
+
             # ========== 立即返回success，不等待异步处理完成 ==========
             # 这是本次修改的核心：确保易支付平台在超时时间内收到响应
             return "success"
-        
+
         except Exception as e:
             # 捕获主流程中的所有异常（签名验证前的异常）
             # 这些异常发生在返回success之前，需要返回fail让易支付重试
@@ -26053,9 +26404,8 @@ def start_web_server(args_param):
             logging.error(traceback.format_exc())
             return "fail"  # 返回 fail，让易支付重试
 
-
-
     # ========== 新增路由：前端配置API ==========
+
     @app.route("/api/frontend-config")
     def api_frontend_config():
         """
@@ -26298,7 +26648,8 @@ def start_web_server(args_param):
             session_id = request.headers.get("X-Session-ID", "")
 
             # 获取客户端信息用于日志记录
-            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            client_ip = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             user_agent = request.headers.get("User-Agent", "Unknown")
 
             # 记录用户登出请求日志
@@ -26334,7 +26685,8 @@ def start_web_server(args_param):
                         # 只有非访客用户才需要使token失效
                         if not is_guest and username:
                             # 调用token管理器使该用户的token失效
-                            token_manager.invalidate_token(username, session_id)
+                            token_manager.invalidate_token(
+                                username, session_id)
                             logging.info(
                                 f"[用户登出] 用户 {username} 的 token 已失效，session: {session_id[:16]}..."
                             )
@@ -26393,7 +26745,8 @@ def start_web_server(args_param):
                                 api_instance._session_created_at = state.get(
                                     "created_at", time.time()
                                 )
-                                restore_session_to_api_instance(api_instance, state)
+                                restore_session_to_api_instance(
+                                    api_instance, state)
 
                                 logging.info(
                                     f"[ConfigLoader] 从文件恢复已登录会话 : {uuid} (用户: {state.get('user_info', {}).get('username', 'Unknown')})"
@@ -26986,7 +27339,7 @@ def start_web_server(args_param):
     def api_call(method):
         """API调用端点：将前端调用转发到Python后端"""
         session_id = request.headers.get("X-Session-ID", "")
-        
+
         if method.startswith("payment/yipay_notify"):
             return payment_yipay_notify()
 
@@ -27082,7 +27435,8 @@ def start_web_server(args_param):
                                     )
                             # 刷新实际持有人(validated_user)的Token，而不是会话拥有者(username)的Token
                             # 否则管理员操作用户界面会导致管理员自己的Token过期或无法刷新
-                            token_manager.refresh_token(validated_user, session_id)
+                            token_manager.refresh_token(
+                                validated_user, session_id)
         update_session_activity(session_id)
 
         with web_sessions_lock:
@@ -27221,7 +27575,8 @@ def start_web_server(args_param):
 
                 if params:
                     result = (
-                        func(**params) if isinstance(params, dict) else func(*params)
+                        func(**params) if isinstance(params,
+                                                     dict) else func(*params)
                     )
                 else:
                     result = func()
@@ -27259,7 +27614,8 @@ def start_web_server(args_param):
                 if method in auto_save_methods:
                     save_session_state(session_id, api_instance)
                     logging.debug(f"API '{method}' 调用后自动保存会话状态")
-                response = jsonify(result if result is not None else {"success": True})
+                response = jsonify(
+                    result if result is not None else {"success": True})
                 if (
                     hasattr(api_instance, "is_authenticated")
                     and api_instance.is_authenticated
@@ -27433,7 +27789,8 @@ def start_web_server(args_param):
                 enriched_msg["avatar_url"] = "default_avatar.png"
 
             enriched_messages.append(enriched_msg)
-        enriched_messages.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+        enriched_messages.sort(key=lambda x: x.get(
+            "timestamp", 0), reverse=True)
 
         return jsonify({"success": True, "messages": enriched_messages})
 
@@ -27569,34 +27926,35 @@ def start_web_server(args_param):
 
         if len(content) > 1000:
             return jsonify({"success": False, "message": "留言内容不能超过1000字"})
-        
+
         # ============================================================
         # 预先判断用户类型：是否为游客
         # ============================================================
         # 这个判断需要在内容审核之前进行，因为审核日志需要记录用户类型
         # 判断逻辑：如果用户名为"guest"或为空，则视为游客
         is_guest = auth_username == "guest" or not auth_username
-        
+
         # ============================================================
         # 内容审核：使用百度云文本审核服务检测留言内容
         # ============================================================
         # 这个功能用于在用户发表留言前，先检测留言内容是否包含违规信息
         # 如果检测到不合规内容，将拒绝发布并记录到日志文件中
-        
+
         # 第1步：读取配置文件，检查是否启用了留言内容审核功能
         # 使用统一的配置读取函数_read_config_ini()读取config.ini文件
         config = _read_config_ini("config.ini")
-        
+
         # 初始化审核开关变量，默认为False（不启用审核）
         enable_review = False
-        
+
         # 检查配置文件是否成功读取，以及是否存在Content_Review配置节
         if config and config.has_section("Content_Review"):
             # 从配置文件中读取enable_message_review配置项
             # 如果配置项不存在，使用fallback值"false"
             # 使用.lower()转换为小写，然后与"true"比较，实现大小写不敏感的布尔判断
-            enable_review = config.get("Content_Review", "enable_message_review", fallback="false").lower() == "true"
-            
+            enable_review = config.get(
+                "Content_Review", "enable_message_review", fallback="false").lower() == "true"
+
             # ============================================================
             # [新增] 配置验证：检查百度云API密钥是否有效
             # ============================================================
@@ -27605,9 +27963,11 @@ def start_web_server(args_param):
             if enable_review:
                 # 读取百度云API密钥配置
                 # 使用strip()方法去除首尾空白字符（空格、制表符、换行符等）
-                api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
-                secret_key = config.get("baidu_cloud", "secret_key", fallback="").strip()
-                
+                api_key = config.get(
+                    "baidu_cloud", "api_key", fallback="").strip()
+                secret_key = config.get(
+                    "baidu_cloud", "secret_key", fallback="").strip()
+
                 # 检查API密钥是否为空（去除空白后仍为空字符串）
                 if not api_key or not secret_key:
                     # 密钥缺失，记录警告日志
@@ -27616,15 +27976,16 @@ def start_web_server(args_param):
                         "[内容审核] 检测到enable_message_review=true但百度云API密钥未配置，"
                         "自动禁用审核功能并更新配置文件"
                     )
-                    
+
                     # 将审核开关设置为False，使本次请求不进行审核
                     enable_review = False
-                    
+
                     # 回写配置文件，将enable_message_review持久化为false
                     # 使用_write_config_with_comments函数保留配置文件中的注释
                     try:
                         # 在配置对象中更新enable_message_review为false
-                        config.set("Content_Review", "enable_message_review", "false")
+                        config.set("Content_Review",
+                                   "enable_message_review", "false")
                         # 将更新后的配置写入文件
                         _write_config_with_comments(config, "config.ini")
                         logging.info(
@@ -27638,7 +27999,7 @@ def start_web_server(args_param):
                             "审核功能已在本次请求中禁用，但配置文件未更新",
                             exc_info=True
                         )
-        
+
         # 第2步：如果启用了审核功能，调用百度云文本审核服务
         if enable_review:
             # 调用check_text_content()函数进行文本审核
@@ -27651,21 +28012,21 @@ def start_web_server(args_param):
                 user_id=auth_username if auth_username else None,
                 user_ip=client_ip
             )
-            
+
             # 第3步：检查审核服务是否成功调用
             # review_result["success"]为True表示API调用成功（不表示审核通过）
             if review_result["success"]:
                 # 从审核结果中提取审核结论
                 # 可能的值："合规"、"不合规"、"疑似"
                 conclusion = review_result.get("conclusion", "")
-                
+
                 # 第4步：判断审核结果是否为"不合规"或"疑似"
                 # 这两种情况都需要拒绝留言发布
                 if conclusion in ["不合规", "疑似"]:
                     # ============================================================
                     # 留言被拒绝：记录到rejected_messages.json日志文件
                     # ============================================================
-                    
+
                     # 构建被拒绝留言的完整信息记录
                     # 这个记录将保存到日志文件中，方便后续分析和审计
                     rejected_message = {
@@ -27695,11 +28056,11 @@ def start_web_server(args_param):
                             "data": review_result.get("data", [])
                         }
                     }
-                    
+
                     # 第5步：保存被拒绝的留言到日志文件
                     # 日志文件路径：./logs/rejected_messages.json
                     logs_dir = "logs"
-                    
+
                     # 检查logs目录是否存在，如果不存在则创建
                     # 使用os.makedirs确保目录创建成功
                     if not os.path.exists(logs_dir):
@@ -27709,13 +28070,14 @@ def start_web_server(args_param):
                             # 目录创建失败，记录错误日志
                             # 注意：即使目录创建失败，我们仍然会继续执行，只是无法保存日志
                             logging.error(f"[留言审核] 创建logs目录失败: {e}")
-                    
+
                     # 日志文件的完整路径
-                    rejected_file = os.path.join(logs_dir, "rejected_messages.json")
-                    
+                    rejected_file = os.path.join(
+                        logs_dir, "rejected_messages.json")
+
                     # 初始化被拒绝留言列表
                     rejected_messages = []
-                    
+
                     # 第6步：读取已存在的被拒绝留言记录
                     # 如果文件已存在，先读取原有内容，然后追加新记录
                     if os.path.exists(rejected_file):
@@ -27726,20 +28088,22 @@ def start_web_server(args_param):
                         except (json.JSONDecodeError, OSError) as e:
                             # 文件读取或JSON解析失败，记录错误日志
                             # 将rejected_messages重置为空列表，继续执行
-                            logging.error(f"[留言审核] 读取rejected_messages.json失败: {e}")
+                            logging.error(
+                                f"[留言审核] 读取rejected_messages.json失败: {e}")
                             rejected_messages = []
-                    
+
                     # 第7步：将新的被拒绝留言添加到列表中
                     rejected_messages.append(rejected_message)
-                    
+
                     # 第8步：保存更新后的被拒绝留言列表到文件
                     try:
                         # 以UTF-8编码写入JSON文件
                         # indent=2: 使用2个空格缩进，使JSON文件更易读
                         # ensure_ascii=False: 允许写入中文字符，不转义为Unicode
                         with open(rejected_file, "w", encoding="utf-8") as f:
-                            json.dump(rejected_messages, f, indent=2, ensure_ascii=False)
-                        
+                            json.dump(rejected_messages, f,
+                                      indent=2, ensure_ascii=False)
+
                         # 记录警告日志，说明留言被拒绝的情况
                         # 日志包含：用户名、审核结论、内容长度、IP地址等关键信息
                         logging.warning(
@@ -27748,11 +28112,12 @@ def start_web_server(args_param):
                         )
                     except OSError as e:
                         # 文件写入失败，记录错误日志
-                        logging.error(f"[留言审核] 保存rejected_messages.json失败: {e}")
-                    
+                        logging.error(
+                            f"[留言审核] 保存rejected_messages.json失败: {e}")
+
                     # 第9步：返回审核失败的错误信息给用户
                     # 根据审核结论类型，返回不同的用户友好提示信息
-                    
+
                     # 根据审核结论选择错误提示文本
                     if conclusion == "不合规":
                         # 明确的违规内容，使用较强的提示语
@@ -27760,7 +28125,7 @@ def start_web_server(args_param):
                     else:  # 疑似
                         # 疑似违规内容，使用较温和的提示语，给用户修改机会
                         error_msg = "留言内容可能包含不当信息，请修改后重试"
-                    
+
                     # 第10步：从审核结果中提取具体的违规类型信息
                     # 如果审核结果中包含详细的违规信息，将其添加到错误提示中
                     data = review_result.get("data", [])
@@ -27771,7 +28136,7 @@ def start_web_server(args_param):
                         # 如果存在描述信息，将其附加到错误提示中（以括号形式显示）
                         if msg:
                             error_msg += f"（{msg}）"
-                    
+
                     # 返回HTTP 400错误响应，告知客户端留言审核未通过
                     # 响应格式：{"success": False, "message": "错误提示信息"}
                     return jsonify({"success": False, "message": error_msg}), 400
@@ -27781,10 +28146,10 @@ def start_web_server(args_param):
                 # ============================================================
                 # 如果审核服务调用失败（例如：网络错误、API配置错误、服务不可用等）
                 # 我们需要决定是否继续发布留言
-                
+
                 # 记录错误日志，说明审核服务调用失败的原因
                 logging.error(f"[留言审核] 审核服务调用失败: {review_result.get('error')}")
-                
+
                 # 降级策略选择：
                 # 选项1：继续发布留言（当前策略）
                 #        优点：用户体验好，不会因为审核服务故障而影响正常功能
@@ -27792,11 +28157,11 @@ def start_web_server(args_param):
                 # 选项2：拒绝留言发布
                 #        优点：更安全，确保没有未审核的内容发布
                 #        缺点：用户体验差，审核服务故障会导致留言功能不可用
-                
+
                 # 这里选择继续发布留言（降级策略），保证用户体验
                 # 如果需要更严格的策略，可以取消下面的注释，改为拒绝发布：
                 # return jsonify({"success": False, "message": "内容审核服务暂时不可用，请稍后重试"}), 503
-        
+
         # ============================================================
         # 审核通过或未启用审核，继续执行后续的留言发布流程
         # ============================================================
@@ -27823,13 +28188,16 @@ def start_web_server(args_param):
         if not is_guest and auth_username:
             try:
                 user_hash = hashlib.sha256(auth_username.encode()).hexdigest()
-                user_file = os.path.join(SYSTEM_ACCOUNTS_DIR, f"{user_hash}.json")
+                user_file = os.path.join(
+                    SYSTEM_ACCOUNTS_DIR, f"{user_hash}.json")
 
                 if os.path.exists(user_file):
                     with open(user_file, "r", encoding="utf-8") as f:
                         user_data = json.load(f)
-                        user_nickname = user_data.get("nickname", auth_username)
-                        avatar_url = user_data.get("avatar_url") or "default_avatar.png"
+                        user_nickname = user_data.get(
+                            "nickname", auth_username)
+                        avatar_url = user_data.get(
+                            "avatar_url") or "default_avatar.png"
             except Exception as e:
                 logging.warning(f"[留言板] 读取用户信息失败: {str(e)}")
                 user_nickname = auth_username
@@ -27946,7 +28314,7 @@ def start_web_server(args_param):
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
         global requests
-        
+
         try:
             data = request.get_json() or {}
             amap_key = data.get("key", "").strip()
@@ -28017,7 +28385,8 @@ def start_web_server(args_param):
             # 强制清空重建
             try:
                 with open(reminders_file, "w", encoding="utf-8") as f:
-                    json.dump({"reminders": []}, f, indent=2, ensure_ascii=False)
+                    json.dump({"reminders": []}, f,
+                              indent=2, ensure_ascii=False)
             except Exception as write_e:
                 logging.error(f"[定时提醒] 重建文件失败: {write_e}")
 
@@ -28112,7 +28481,8 @@ def start_web_server(args_param):
                     reminders = []
             reminders.append(new_reminder)
             with open(reminders_file, "w", encoding="utf-8") as f:
-                json.dump({"reminders": reminders}, f, indent=2, ensure_ascii=False)
+                json.dump({"reminders": reminders}, f,
+                          indent=2, ensure_ascii=False)
             logging.info(
                 f"[定时提醒] 用户 {auth_username} 添加提醒: {title} ({start_time}-{end_time})"
             )
@@ -28184,7 +28554,8 @@ def start_web_server(args_param):
 
                     if "start_time" in data:
                         start_time = data["start_time"].strip()
-                        time_pattern = re.compile(r"^([0-1][0-9]|2[0-3]):[0-5][0-9]$")
+                        time_pattern = re.compile(
+                            r"^([0-1][0-9]|2[0-3]):[0-5][0-9]$")
                         if not time_pattern.match(start_time):
                             return jsonify(
                                 {"success": False, "message": "开始时间格式错误"}
@@ -28193,7 +28564,8 @@ def start_web_server(args_param):
 
                     if "end_time" in data:
                         end_time = data["end_time"].strip()
-                        time_pattern = re.compile(r"^([0-1][0-9]|2[0-3]):[0-5][0-9]$")
+                        time_pattern = re.compile(
+                            r"^([0-1][0-9]|2[0-3]):[0-5][0-9]$")
                         if not time_pattern.match(end_time):
                             return jsonify(
                                 {"success": False, "message": "结束时间格式错误"}
@@ -28209,7 +28581,8 @@ def start_web_server(args_param):
             if not reminder_found:
                 return jsonify({"success": False, "message": "提醒不存在"}), 404
             with open(reminders_file, "w", encoding="utf-8") as f:
-                json.dump({"reminders": reminders}, f, indent=2, ensure_ascii=False)
+                json.dump({"reminders": reminders}, f,
+                          indent=2, ensure_ascii=False)
 
             logging.info(f"[定时提醒] 用户 {auth_username} 更新提醒: {reminder_id}")
 
@@ -28257,7 +28630,8 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "提醒不存在"}), 404
 
             with open(reminders_file, "w", encoding="utf-8") as f:
-                json.dump({"reminders": reminders}, f, indent=2, ensure_ascii=False)
+                json.dump({"reminders": reminders}, f,
+                          indent=2, ensure_ascii=False)
 
             logging.info(f"[定时提醒] 用户 {auth_username} 删除提醒: {reminder_id}")
 
@@ -28365,7 +28739,8 @@ def start_web_server(args_param):
                     cfg = configparser.ConfigParser()
                     cfg.read(config_file, encoding="utf-8")
                     length = int(cfg.get("Captcha", "length", fallback="4"))
-                    scale_factor = int(cfg.get("Captcha", "scale_factor", fallback="2"))
+                    scale_factor = int(
+                        cfg.get("Captcha", "scale_factor", fallback="2"))
                     noise_level = float(
                         cfg.get("Captcha", "noise_level", fallback="0.08")
                     )
@@ -28411,7 +28786,8 @@ def start_web_server(args_param):
                 p_captcha_id, p_code, p_html, p_session_id, p_client_ip, p_user_agent
             ):
                 try:
-                    history_dir = os.path.join(LOGIN_LOGS_DIR, "captcha_history")
+                    history_dir = os.path.join(
+                        LOGIN_LOGS_DIR, "captcha_history")
                     os.makedirs(history_dir, exist_ok=True)
                     history_data = {
                         "captcha_id": p_captcha_id,
@@ -28434,7 +28810,8 @@ def start_web_server(args_param):
                         history_dir, f"captcha_history_{date_str}.jsonl"
                     )
                     with open(history_file, "a", encoding="utf-8") as f:
-                        f.write(json.dumps(history_data, ensure_ascii=False) + "\n")
+                        f.write(json.dumps(history_data,
+                                ensure_ascii=False) + "\n")
 
                     logging.debug(
                         f"[验证码历史] 已记录验证码请求: ID={p_captcha_id[:8]}..."
@@ -28445,7 +28822,8 @@ def start_web_server(args_param):
             import threading
 
             # 使用统一函数获取客户端真实IP（任务2）
-            client_ip_data = request.environ.get("REMOTE_ADDR") or request.remote_addr or "unknown"
+            client_ip_data = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr or "unknown"
             user_agent_data = request.headers.get("User-Agent", "unknown")
             threading.Thread(
                 target=log_captcha_history,
@@ -28483,7 +28861,8 @@ def start_web_server(args_param):
 
             import threading
 
-            threading.Thread(target=cleanup_expired_captchas, daemon=True).start()
+            threading.Thread(target=cleanup_expired_captchas,
+                             daemon=True).start()
             if session_id and str(session_id).lower() not in ("null", "undefined", ""):
                 logging.info(
                     f"[本地验证码] 已生成验证码 ID: {captcha_id} 会话: {session_id} 长度: {length} 尺寸: {captcha_width}x{captcha_height}px"
@@ -28730,7 +29109,8 @@ def start_web_server(args_param):
                                     )
                                     record["verified_input"] = user_input_upper
                                     lines[i] = (
-                                        json.dumps(record, ensure_ascii=False) + "\n"
+                                        json.dumps(
+                                            record, ensure_ascii=False) + "\n"
                                     )
                                     updated = True
                                     break
@@ -28749,7 +29129,8 @@ def start_web_server(args_param):
 
             import threading
 
-            threading.Thread(target=update_captcha_history, daemon=True).start()
+            threading.Thread(target=update_captcha_history,
+                             daemon=True).start()
             try:
                 os.remove(captcha_file)
                 logging.debug(f"[验证码] 已删除验证码文件: {captcha_id}")
@@ -28844,7 +29225,8 @@ def start_web_server(args_param):
                             timestamp = record.get("timestamp", 0)
                             if current_time - timestamp > expiry_threshold:
                                 record["status"] = "expired"
-                                record["expired_at"] = timestamp + expiry_threshold
+                                record["expired_at"] = timestamp + \
+                                    expiry_threshold
                                 record["expired_at_readable"] = (
                                     datetime.datetime.fromtimestamp(
                                         timestamp + expiry_threshold
@@ -28874,7 +29256,8 @@ def start_web_server(args_param):
             if records and logging.getLogger().isEnabledFor(logging.DEBUG):
                 # 统计有 code 字段的记录数量
                 # 使用 'code' in r 检查字段是否存在，而不是检查值是否为真
-                records_with_code = sum(1 for r in records if "code" in r and r["code"])
+                records_with_code = sum(
+                    1 for r in records if "code" in r and r["code"])
                 # 统计 code 字段为空或不存在的记录数量
                 records_without_code = len(records) - records_with_code
                 # 输出调试信息
@@ -28916,7 +29299,8 @@ def start_web_server(args_param):
                                         )
                                         updated_count += 1
                                 lines.append(
-                                    json.dumps(record, ensure_ascii=False) + "\n"
+                                    json.dumps(
+                                        record, ensure_ascii=False) + "\n"
                                 )
                             except:
                                 lines.append(line)
@@ -28985,7 +29369,8 @@ def start_web_server(args_param):
                                     if record.get("captcha_id") == captcha_id:
                                         found_record = record
                                         if record.get("status") == "created":
-                                            timestamp = record.get("timestamp", 0)
+                                            timestamp = record.get(
+                                                "timestamp", 0)
                                             if (
                                                 current_time - timestamp
                                                 > expiry_threshold
@@ -29309,7 +29694,7 @@ def start_web_server(args_param):
     ORDER_STATUS_FROZEN = "frozen"                    # 已冻结
     ORDER_STATUS_PREAUTH = "preauth"                  # 预授权
     ORDER_STATUS_TIMEOUT = "timeout"                  # 支付超时
-    
+
     # 订单数据存储目录常量定义
     # 用于存储所有支付订单的JSON文件
     PAYMENT_ORDERS_DIR = "payment_orders"
@@ -29331,38 +29716,38 @@ def start_web_server(args_param):
     def _write_payment_log(user_id, order_id, action, log_data):
         """
         写入支付操作日志（内部函数）
-        
+
         参数:
             user_id (str): 用户标识（注册用户为username，游客为session UUID）
             order_id (str): 订单号
             action (str): 操作类型（例如："create_order", "query_order", "payment_notify"）
             log_data (dict): 要记录的日志数据
-        
+
         功能说明：
         这个函数负责将支付相关的操作记录到日志文件中，便于：
         1. 审计：追踪所有支付操作，发现异常行为
         2. 调试：当支付出现问题时，可以查看详细的操作历史
         3. 统计：分析用户支付行为，优化支付流程
         4. 合规：满足财务和法律的审计要求
-        
+
         日志文件命名规则（重构后）：
         - 格式：{timestamp}_{user_id}_{order_id}.json
         - 例如：20231201_120530_admin_ORDER20231201120530123456.json
         - 时间戳使用年月日_时分秒格式，便于按时间排序
         - user_id 包含在文件名中，便于快速识别用户
-        
+
         日志目录结构（重构后）：
         - logs/payment_logs/                          # 日志根目录，所有日志平铺存放
         -     ├── 20231201_120530_admin_ORDER123.json      # 管理员的支付日志
         -     ├── 20231201_130000_zhang_ORDER456.json      # 用户zhang的支付日志
         -     ├── 20231201_140000_abc-123_ORDER789.json    # 游客(UUID: abc-123)的支付日志
         -     └── 20231201_150000_admin_ORDER999.json      # 管理员的另一条日志
-        
+
         重构说明：
         - 移除了按用户分目录的结构，所有日志统一存放在 logs/payment_logs/ 目录下
         - 文件名中包含 user_id，便于筛选和查询
         - 简化了目录管理，提高了日志查询效率
-        
+
         日志内容包括（但不限于）：
         - timestamp: 操作时间戳
         - action: 操作类型
@@ -29371,7 +29756,7 @@ def start_web_server(args_param):
         - client_ip: 客户端IP地址
         - user_agent: 用户浏览器信息
         - 以及action特定的其他数据
-        
+
         异常处理：
         - 如果写入日志失败，只记录错误日志，不影响主业务流程
         - 确保支付功能的可用性优先于日志记录
@@ -29380,25 +29765,26 @@ def start_web_server(args_param):
             # 确保日志根目录存在
             # exist_ok=True 表示如果目录已存在不报错
             os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
-            
+
             # 规范化用户标识，用于文件名
             # 移除特殊字符，避免文件系统问题
             # 例如：guest_abc-123-def -> guest_abc-123-def (保留连字符)
             #      zhang -> zhang
             #      admin -> admin
-            safe_user_id = user_id.replace("/", "-").replace("\\", "-") if user_id else "unknown"
-            
+            safe_user_id = user_id.replace(
+                "/", "-").replace("\\", "-") if user_id else "unknown"
+
             # 生成日志文件名
             # 格式：{年月日}_{时分秒}_{用户ID}_{订单号}.json
             # 例如：20231201_120530_admin_ORDER20231201120530123456.json
             # 使用时间戳作为文件名的第一部分，便于按时间查找和排序
             timestamp_str = time.strftime("%Y%m%d_%H%M%S")
             log_filename = f"{timestamp_str}_{safe_user_id}_{order_id}.json"
-            
+
             # 构造日志文件完整路径
             # 所有日志文件统一存放在 PAYMENT_LOGS_DIR 目录下，不再按用户分子目录
             log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
-            
+
             # 准备要写入的完整日志数据
             # 合并基础信息和传入的自定义数据
             full_log_data = {
@@ -29409,55 +29795,59 @@ def start_web_server(args_param):
                 "user_id": user_id,                                # 用户标识
                 "order_id": order_id,                              # 订单号
                 # 请求元信息（在Flask请求上下文中可用）
-                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,      # 客户端IP
-                "user_agent": request.headers.get("User-Agent", "") if request else "",  # 浏览器UA
+                # 客户端IP
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,
+                # 浏览器UA
+                "user_agent": request.headers.get("User-Agent", "") if request else "",
                 # 自定义数据（从参数传入）
                 **log_data
             }
-            
+
             # 将日志数据写入JSON文件
             # 使用UTF-8编码支持中文
             # indent=2 使JSON格式化，便于人工阅读
             # ensure_ascii=False 保留中文字符，不转义为\uXXXX
             with open(log_filepath, "w", encoding="utf-8") as f:
                 json.dump(full_log_data, f, indent=2, ensure_ascii=False)
-            
+
             # 记录调试日志：日志写入成功
-            logging.debug(f"[支付日志] 写入成功 - 用户: {user_id}, 操作: {action}, 文件: {log_filename}")
-        
+            logging.debug(
+                f"[支付日志] 写入成功 - 用户: {user_id}, 操作: {action}, 文件: {log_filename}")
+
         except Exception as e:
             # 捕获所有异常，确保日志写入失败不影响主业务
             # 只记录错误日志，不抛出异常
-            logging.error(f"[支付日志] 写入失败 - 用户: {user_id}, 操作: {action}, 错误: {str(e)}")
+            logging.error(
+                f"[支付日志] 写入失败 - 用户: {user_id}, 操作: {action}, 错误: {str(e)}")
             logging.error(traceback.format_exc())
 
     def _query_yipay_order(order_id=None, trade_no=None):
         """
         查询易支付平台订单详情（内部函数）
-        
+
         参数:
             order_id (str, 可选): 商户订单号（out_trade_no）
             trade_no (str, 可选): 平台订单号（trade_no）
             注意：order_id 和 trade_no 必须至少提供一个
-        
+
         返回值:
             dict: 查询结果字典
                 - success (bool): 是否查询成功
                 - data (dict): 订单详情数据（仅在success=True时存在）
                 - message (str): 错误信息（仅在success=False时存在）
-        
+
         功能说明:
             这是一个内部工具函数，用于向易支付平台查询订单详情。
             主要应用场景：
             1. 订单文件丢失时，从平台补全订单信息
             2. 验证本地订单状态与平台状态是否一致
             3. 支付回调中订单不存在时，尝试从平台获取订单信息
-        
+
         调用易支付查询接口:
             - 接口路径: /api/pay/query
             - 请求方式: POST
             - 签名方式: RSA
-        
+
         异常处理:
             - 配置缺失：返回 success=False
             - 网络错误：返回 success=False
@@ -29465,7 +29855,7 @@ def start_web_server(args_param):
         """
         try:
             # ========== 第1步：参数验证 ==========
-            
+
             # 验证必须提供至少一个订单标识
             if not order_id and not trade_no:
                 logging.error("[易支付查询] 参数错误：必须提供 order_id 或 trade_no")
@@ -29473,18 +29863,21 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "参数错误：必须提供订单号"
                 }
-            
+
             # ========== 第2步：读取配置 ==========
-            
+
             # 读取易支付配置文件
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
-            
+
             # 从配置文件中获取易支付平台参数
-            yipay_host = config.get("Rainbow_YiPay", "host", fallback="").strip()  # 易支付平台域名
-            yipay_pid = config.get("Rainbow_YiPay", "pid", fallback="").strip()    # 商户ID
-            yipay_key = config.get("Rainbow_YiPay", "key", fallback="").strip()    # 商户私钥（用于签名）
-            
+            yipay_host = config.get(
+                "Rainbow_YiPay", "host", fallback="").strip()  # 易支付平台域名
+            yipay_pid = config.get(
+                "Rainbow_YiPay", "pid", fallback="").strip()    # 商户ID
+            yipay_key = config.get(
+                "Rainbow_YiPay", "key", fallback="").strip()    # 商户私钥（用于签名）
+
             # 验证配置是否完整
             if not yipay_host or not yipay_pid or not yipay_key:
                 logging.error("[易支付查询] 配置不完整：缺少 host、pid 或 key")
@@ -29492,17 +29885,18 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "易支付配置不完整"
                 }
-            
+
             # ========== 第3步：构造查询请求参数 ==========
-            
+
             # 准备查询接口的请求参数
             # 按照易支付API文档要求构造参数字典
             query_params = {
                 "pid": yipay_pid,                                    # 商户ID（必填）
-                "timestamp": str(int(time.time())),                  # 当前时间戳（10位整数，单位秒）
+                # 当前时间戳（10位整数，单位秒）
+                "timestamp": str(int(time.time())),
                 "sign_type": "RSA",                                  # 签名类型：RSA（必填）
             }
-            
+
             # 添加订单标识参数
             # trade_no（平台订单号）和 out_trade_no（商户订单号）二选一
             if trade_no:
@@ -29511,32 +29905,32 @@ def start_web_server(args_param):
             elif order_id:
                 # 使用商户订单号
                 query_params["out_trade_no"] = order_id
-            
+
             # 记录日志：准备查询订单
             logging.info(f"[易支付查询] 准备查询订单 - 参数: {query_params}")
-            
+
             # ========== 第4步：生成RSA签名 ==========
-            
+
             # 创建RSA签名器
             # 使用商户私钥对请求参数进行签名
             signer = RsaSigner(private_key_str=yipay_key)
-            
+
             # 生成签名并添加到参数字典中
             # generate_sign() 方法会自动过滤、排序、拼接参数，然后用私钥签名
             signed_params = signer.generate_sign(query_params)
-            
+
             # 记录日志：输出签名后的参数
             logging.debug(f"[易支付查询] 签名后的参数: {signed_params}")
-            
+
             # ========== 第5步：调用易支付查询API ==========
-            
+
             # 构造查询API的完整URL
             # 易支付查询接口路径：/api/pay/query
             query_api_url = f"{yipay_host}/api/pay/query"
-            
+
             # 记录日志：准备发起HTTP请求
             logging.info(f"[易支付查询] 正在调用查询API: {query_api_url}")
-            
+
             # 发起POST请求到易支付查询接口
             # 使用 requests.post() 发送HTTP POST请求
             # data 参数传递表单数据（application/x-www-form-urlencoded格式）
@@ -29546,13 +29940,13 @@ def start_web_server(args_param):
                 data=signed_params,
                 timeout=15
             )
-            
+
             # 记录日志：收到API响应
             logging.info(f"[易支付查询] API响应状态码: {response.status_code}")
             logging.debug(f"[易支付查询] API响应内容: {response.text}")
-            
+
             # ========== 第6步：解析查询响应 ==========
-            
+
             # 验证HTTP响应状态码
             if response.status_code != 200:
                 logging.error(f"[易支付查询] API请求失败 - 状态码: {response.status_code}")
@@ -29560,7 +29954,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"查询API请求失败，状态码：{response.status_code}"
                 }
-            
+
             # 解析JSON响应
             try:
                 # 将响应内容解析为JSON对象
@@ -29572,25 +29966,25 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "查询API响应格式错误"
                 }
-            
+
             # ========== 第7步：验证业务返回码 ==========
-            
+
             # 检查业务层面的返回码
             # code=0 表示查询成功
             # code!=0 表示查询失败（例如：订单不存在、参数错误等）
             result_code = query_result.get("code", -1)
             result_msg = query_result.get("msg", "未知错误")
-            
+
             if result_code == 0:
                 # ========== 查询成功：返回订单数据 ==========
-                
+
                 logging.info(
                     f"[易支付查询] 查询成功 - "
                     f"订单号: {query_result.get('out_trade_no', 'N/A')}, "
                     f"平台订单号: {query_result.get('trade_no', 'N/A')}, "
                     f"状态: {query_result.get('status', 'N/A')}"
                 )
-                
+
                 # 返回成功结果，包含完整的订单数据
                 return {
                     "success": True,
@@ -29598,18 +29992,18 @@ def start_web_server(args_param):
                 }
             else:
                 # ========== 查询失败：返回错误信息 ==========
-                
+
                 logging.warning(
                     f"[易支付查询] 查询失败 - "
                     f"错误码: {result_code}, "
                     f"错误信息: {result_msg}"
                 )
-                
+
                 return {
                     "success": False,
                     "message": f"平台返回错误：{result_msg}"
                 }
-        
+
         except requests.exceptions.Timeout:
             # 请求超时
             logging.error("[易支付查询] 请求超时")
@@ -29617,7 +30011,7 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "查询请求超时，请稍后重试"
             }
-        
+
         except requests.exceptions.RequestException as e:
             # 网络错误
             logging.error(f"[易支付查询] 网络错误: {str(e)}")
@@ -29625,7 +30019,7 @@ def start_web_server(args_param):
                 "success": False,
                 "message": f"网络错误：{str(e)}"
             }
-        
+
         except Exception as e:
             # 其他未预期的异常
             logging.error(f"[易支付查询] 未知异常: {str(e)}")
@@ -29638,30 +30032,30 @@ def start_web_server(args_param):
     def _fetch_yipay_orders(offset=0, limit=50):
         """
         批量获取易支付平台订单列表（内部函数）
-        
+
         参数:
             offset (int): 查询偏移量，从0开始（默认0）
             limit (int): 每页条数，最大50（默认50）
-        
+
         返回值:
             dict: 查询结果字典
                 - success (bool): 是否查询成功
                 - data (list): 订单列表（仅在success=True时存在）
                 - message (str): 错误信息（仅在success=False时存在）
-        
+
         功能说明:
             这是一个内部工具函数，用于从易支付平台批量拉取订单列表。
             主要应用场景：
             1. 管理员主动同步平台订单到本地
             2. 定时任务批量更新订单状态
             3. 订单对账和数据补全
-        
+
         调用易支付订单列表接口:
             - 接口路径: /api/merchant/orders
             - 请求方式: POST
             - 签名方式: RSA
             - 支持分页查询
-        
+
         异常处理:
             - 配置缺失：返回 success=False
             - 网络错误：返回 success=False
@@ -29669,28 +30063,31 @@ def start_web_server(args_param):
         """
         try:
             # ========== 第1步：参数验证 ==========
-            
+
             # 验证offset参数（必须>=0）
             if offset < 0:
                 offset = 0
-            
+
             # 验证limit参数（范围：1-50）
             if limit < 1:
                 limit = 1
             elif limit > 50:
                 limit = 50
-            
+
             # ========== 第2步：读取配置 ==========
-            
+
             # 读取易支付配置文件
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
-            
+
             # 从配置文件中获取易支付平台参数
-            yipay_host = config.get("Rainbow_YiPay", "host", fallback="").strip()  # 易支付平台域名
-            yipay_pid = config.get("Rainbow_YiPay", "pid", fallback="").strip()    # 商户ID
-            yipay_key = config.get("Rainbow_YiPay", "key", fallback="").strip()    # 商户私钥（用于签名）
-            
+            yipay_host = config.get(
+                "Rainbow_YiPay", "host", fallback="").strip()  # 易支付平台域名
+            yipay_pid = config.get(
+                "Rainbow_YiPay", "pid", fallback="").strip()    # 商户ID
+            yipay_key = config.get(
+                "Rainbow_YiPay", "key", fallback="").strip()    # 商户私钥（用于签名）
+
             # 验证配置是否完整
             if not yipay_host or not yipay_pid or not yipay_key:
                 logging.error("[易支付订单列表] 配置不完整：缺少 host、pid 或 key")
@@ -29698,48 +30095,51 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "易支付配置不完整"
                 }
-            
+
             # ========== 第3步：构造查询请求参数 ==========
-            
+
             # 准备订单列表接口的请求参数
             # 按照易支付API文档要求构造参数字典
             list_params = {
                 "pid": yipay_pid,                                    # 商户ID（必填）
-                "offset": str(offset),                               # 查询偏移量（必填）
+                # 查询偏移量（必填）
+                "offset": str(offset),
                 "limit": str(limit),                                 # 每页条数（必填）
-                "timestamp": str(int(time.time())),                  # 当前时间戳（10位整数，单位秒）
+                # 当前时间戳（10位整数，单位秒）
+                "timestamp": str(int(time.time())),
                 "sign_type": "RSA",                                  # 签名类型：RSA（必填）
             }
-            
+
             # 注意：根据需求，不传status参数，获取所有状态的订单
             # 如果需要过滤特定状态，可以添加：
             # list_params["status"] = "1"  # 1=已支付，0=未支付，2=已退款，3=已冻结，4=预授权
-            
+
             # 记录日志：准备查询订单列表
-            logging.info(f"[易支付订单列表] 准备查询订单列表 - offset: {offset}, limit: {limit}")
-            
+            logging.info(
+                f"[易支付订单列表] 准备查询订单列表 - offset: {offset}, limit: {limit}")
+
             # ========== 第4步：生成RSA签名 ==========
-            
+
             # 创建RSA签名器
             # 使用商户私钥对请求参数进行签名
             signer = RsaSigner(private_key_str=yipay_key)
-            
+
             # 生成签名并添加到参数字典中
             # generate_sign() 方法会自动过滤、排序、拼接参数，然后用私钥签名
             signed_params = signer.generate_sign(list_params)
-            
+
             # 记录日志：输出签名后的参数
             logging.debug(f"[易支付订单列表] 签名后的参数: {signed_params}")
-            
+
             # ========== 第5步：调用易支付订单列表API ==========
-            
+
             # 构造订单列表API的完整URL
             # 易支付订单列表接口路径：/api/merchant/orders
             list_api_url = f"{yipay_host}/api/merchant/orders"
-            
+
             # 记录日志：准备发起HTTP请求
             logging.info(f"[易支付订单列表] 正在调用订单列表API: {list_api_url}")
-            
+
             # 发起POST请求到易支付订单列表接口
             # 使用 requests.post() 发送HTTP POST请求
             # data 参数传递表单数据（application/x-www-form-urlencoded格式）
@@ -29749,21 +30149,23 @@ def start_web_server(args_param):
                 data=signed_params,
                 timeout=20
             )
-            
+
             # 记录日志：收到API响应
             logging.info(f"[易支付订单列表] API响应状态码: {response.status_code}")
-            logging.debug(f"[易支付订单列表] API响应内容: {response.text[:500]}...")  # 只记录前500字符，避免日志过长
-            
+            # 只记录前500字符，避免日志过长
+            logging.debug(f"[易支付订单列表] API响应内容: {response.text[:500]}...")
+
             # ========== 第6步：解析查询响应 ==========
-            
+
             # 验证HTTP响应状态码
             if response.status_code != 200:
-                logging.error(f"[易支付订单列表] API请求失败 - 状态码: {response.status_code}")
+                logging.error(
+                    f"[易支付订单列表] API请求失败 - 状态码: {response.status_code}")
                 return {
                     "success": False,
                     "message": f"订单列表API请求失败，状态码：{response.status_code}"
                 }
-            
+
             # 解析JSON响应
             try:
                 # 将响应内容解析为JSON对象
@@ -29775,27 +30177,27 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "订单列表API响应格式错误"
                 }
-            
+
             # ========== 第7步：验证业务返回码 ==========
-            
+
             # 检查业务层面的返回码
             # code=0 表示查询成功
             # code!=0 表示查询失败（例如：权限不足、参数错误等）
             result_code = list_result.get("code", -1)
             result_msg = list_result.get("msg", "未知错误")
-            
+
             if result_code == 0:
                 # ========== 查询成功：返回订单列表 ==========
-                
+
                 # 提取订单列表数据
                 # data 字段是一个数组，包含多个订单对象
                 orders_data = list_result.get("data", [])
-                
+
                 logging.info(
                     f"[易支付订单列表] 查询成功 - "
                     f"返回 {len(orders_data)} 个订单"
                 )
-                
+
                 # 返回成功结果，包含订单列表
                 return {
                     "success": True,
@@ -29803,18 +30205,18 @@ def start_web_server(args_param):
                 }
             else:
                 # ========== 查询失败：返回错误信息 ==========
-                
+
                 logging.warning(
                     f"[易支付订单列表] 查询失败 - "
                     f"错误码: {result_code}, "
                     f"错误信息: {result_msg}"
                 )
-                
+
                 return {
                     "success": False,
                     "message": f"平台返回错误：{result_msg}"
                 }
-        
+
         except requests.exceptions.Timeout:
             # 请求超时
             logging.error("[易支付订单列表] 请求超时")
@@ -29822,7 +30224,7 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "查询请求超时，请稍后重试"
             }
-        
+
         except requests.exceptions.RequestException as e:
             # 网络错误
             logging.error(f"[易支付订单列表] 网络错误: {str(e)}")
@@ -29830,7 +30232,7 @@ def start_web_server(args_param):
                 "success": False,
                 "message": f"网络错误：{str(e)}"
             }
-        
+
         except Exception as e:
             # 其他未预期的异常
             logging.error(f"[易支付订单列表] 未知异常: {str(e)}")
@@ -29850,11 +30252,11 @@ def start_web_server(args_param):
             # 调用 _read_payment_methods_config() 函数从 JSON 文件读取配置
             # 此函数会自动处理文件不存在、格式错误等异常情况，并返回默认配置
             methods_config = _read_payment_methods_config()
-            
+
             # 记录日志，便于调试和监控
             # 输出当前读取到的支付方式数量
             logging.info(f"[支付方式配置] 成功读取配置，共 {len(methods_config)} 个支付方式")
-            
+
             # 返回成功响应，包含所有支付方式的配置信息
             # 前端可以直接使用这个字典，无需再次解析
             return jsonify({
@@ -29878,48 +30280,49 @@ def start_web_server(args_param):
     def payment_refund():
         """
         处理退款请求接口
-        
+
         功能说明:
             管理员专用接口，用于处理订单退款请求
             支持全额退款和部分退款
             退款成功后会更新订单状态并记录退款记录
-        
+
         请求参数:
             - trade_no (str): 商户订单号（必填）
             - refund_amount (float): 退款金额（必填，必须大于0）
             - refund_no (str): 商户退款单号（可选，不提供则自动生成）
             - reason (str): 退款原因（可选）
-        
+
         返回结果:
             成功: {"success": True, "refund_no": "...", "out_refund_no": "...", ...}
             失败: {"success": False, "message": "错误信息"}
         """
         try:
             # ========== 第1步：获取并验证请求参数 ==========
-            
+
             # 从请求体中获取JSON数据
             # request.get_json() 解析POST请求的JSON数据
             # 如果解析失败或没有数据，返回空字典 {}
             data = request.get_json() or {}
-            
+
             # 提取退款参数
             # trade_no: 商户订单号（系统生成的订单号，格式：ORDERyyyymmddHHMMSSxxxxxx）
             trade_no = str(data.get("trade_no", "")).strip()
-            
+
             # refund_amount: 退款金额（支持字符串或数字，会统一转换为字符串处理）
             refund_amount = str(data.get("refund_amount", "")).strip()
-            
+
             # refund_no: 商户退款单号（可选，如果不提供则自动生成）
             refund_no = str(data.get("refund_no", "")).strip() or None
-            
+
             # reason: 退款原因（可选，用于记录退款说明）
             reason = str(data.get("reason", "")).strip() or "管理员发起退款"
-            
+
             # 记录日志：收到退款请求
-            logging.info(f"[退款请求] 管理员 {g.user} 发起退款 - 订单号: {trade_no}, 金额: {refund_amount}")
-            
+            logging.info(
+                f"[退款请求] 管理员 {g.user} 发起退款 - 订单号: {trade_no}, 金额: {refund_amount}")
+
             # ========== 第2步：验证必填参数 ==========
-            
+
             # 验证订单号是否为空
             if not trade_no:
                 logging.warning(f"[退款请求] 参数错误：订单号为空")
@@ -29927,7 +30330,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "订单号不能为空"
                 })
-            
+
             # 验证退款金额是否为空
             if not refund_amount:
                 logging.warning(f"[退款请求] 参数错误：退款金额为空")
@@ -29935,22 +30338,23 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "退款金额不能为空"
                 })
-            
+
             # ========== 第3步：验证退款金额格式和范围 ==========
-            
+
             try:
                 # 将退款金额转换为浮点数
                 # 使用 round() 保留2位小数，避免浮点数精度问题
                 refund_amount_float = round(float(refund_amount), 2)
-                
+
                 # 验证退款金额必须大于0
                 if refund_amount_float <= 0:
-                    logging.warning(f"[退款请求] 参数错误：退款金额必须大于0 - {refund_amount_float}")
+                    logging.warning(
+                        f"[退款请求] 参数错误：退款金额必须大于0 - {refund_amount_float}")
                     return jsonify({
                         "success": False,
                         "message": "退款金额必须大于0"
                     })
-                    
+
             except ValueError:
                 # 金额格式错误（例如：输入了非数字字符）
                 logging.warning(f"[退款请求] 参数错误：退款金额格式不正确 - {refund_amount}")
@@ -29958,13 +30362,13 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "退款金额格式不正确"
                 })
-            
+
             # ========== 第4步：读取订单信息 ==========
-            
+
             # 构造订单文件路径
             # 订单文件存储在 payment_orders 目录下，文件名为：{订单号}.json
             order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{trade_no}.json")
-            
+
             # 检查订单文件是否存在
             if not os.path.exists(order_file):
                 logging.error(f"[退款请求] 订单不存在 - 订单号: {trade_no}")
@@ -29972,33 +30376,34 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"订单不存在：{trade_no}"
                 })
-            
+
             # 读取订单数据
             # 使用 UTF-8 编码读取JSON文件
             with open(order_file, "r", encoding="utf-8") as f:
                 order_data = json.load(f)
-            
+
             # ========== 第5步：验证订单状态 ==========
-            
+
             # 获取订单当前状态
             order_status = order_data.get("status", "")
-            
+
             # 只有"已支付"或"已部分退款"状态的订单才能退款
             # 如果订单状态是pending（待支付）或failed（失败），不允许退款
             if order_status not in (ORDER_STATUS_PAID, ORDER_STATUS_REFUNDED_PARTIAL):
-                logging.error(f"[退款请求] 订单状态不允许退款 - 订单号: {trade_no}, 状态: {order_status}")
+                logging.error(
+                    f"[退款请求] 订单状态不允许退款 - 订单号: {trade_no}, 状态: {order_status}")
                 return jsonify({
                     "success": False,
                     "message": f"订单状态不允许退款，当前状态：{order_status}"
                 })
-            
+
             # ========== 新增：第5.5步：检查退款次数限制 ==========
-            
+
             # 获取订单的退款次数
             # refund_count 字段记录了该订单已经退款的次数
             # 如果不存在该字段，说明从未退款，默认为 0
             refund_count = order_data.get("refund_count", 0)
-            
+
             # 验证退款次数：每个订单只能退款一次
             # 这是业务规则，防止多次退款导致的财务混乱
             if refund_count >= 1:
@@ -30011,41 +30416,43 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "该订单已退款，每个订单只能退款一次"
                 })
-            
+
             # ========== 新增：第5.6步：从支付平台在线查询最新状态，避免重复退款 ==========
-            
+
             logging.info(f"[退款请求] 正在从支付平台查询订单最新状态 - 订单号: {trade_no}")
-            
+
             # 调用易支付查询接口获取订单最新状态
             # 这样可以确保订单状态与平台一致，防止重复退款
-            platform_query_result = _query_yipay_order(order_id=trade_no, trade_no=order_data.get("trade_no", ""))
-            
+            platform_query_result = _query_yipay_order(
+                order_id=trade_no, trade_no=order_data.get("trade_no", ""))
+
             if platform_query_result.get("success"):
                 # 成功获取平台订单信息
                 platform_order = platform_query_result.get("data", {})
                 platform_status = platform_order.get("status", -1)
-                
+
                 logging.info(
                     f"[退款请求] 平台订单状态 - "
                     f"订单号: {trade_no}, "
                     f"平台状态码: {platform_status}"
                 )
-                
+
                 # 平台状态码：0-未支付, 1-已支付, 2-已退款, 3-已冻结, 4-预授权
                 # 如果平台显示已退款(status=2)，则不允许再次退款
-                if platform_status == 2 or platform_status== "2":
+                if platform_status == 2 or platform_status == "2":
                     logging.error(
                         f"[退款请求] 平台订单已退款，禁止重复退款 - "
                         f"订单号: {trade_no}"
                     )
-                    
+
                     # 同步更新本地订单状态
                     if order_data.get("status") not in (ORDER_STATUS_REFUNDED_FULL, ORDER_STATUS_REFUNDED_PARTIAL):
                         # 本地状态与平台不一致，更新本地状态
                         # 获取退款金额和订单金额，转换为浮点数进行比较
-                        refundmoney = float(platform_order.get("refundmoney", "0"))
+                        refundmoney = float(
+                            platform_order.get("refundmoney", "0"))
                         order_amount = float(order_data.get("amount", "0"))
-                        
+
                         # 判断是全额退款还是部分退款
                         # 修复：使用 >= 而不是 == 进行比较
                         # 原因：当 refundmoney >= amount 时，应该标记为全额退款
@@ -30055,18 +30462,19 @@ def start_web_server(args_param):
                             order_data["status"] = ORDER_STATUS_REFUNDED_FULL
                         else:
                             order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
-                        
+
                         # 保存更新后的订单
                         with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2, ensure_ascii=False)
-                        
+                            json.dump(order_data, f, indent=2,
+                                      ensure_ascii=False)
+
                         logging.info(f"[退款请求] 已同步本地订单状态 - 订单号: {trade_no}")
-                    
+
                     return jsonify({
                         "success": False,
                         "message": "该订单在支付平台已退款，无法重复退款"
                     })
-                
+
                 # 如果平台状态不是"已支付"(1)，也不允许退款
                 if platform_status != 1:
                     logging.error(
@@ -30074,7 +30482,7 @@ def start_web_server(args_param):
                         f"订单号: {trade_no}, "
                         f"平台状态: {platform_status}"
                     )
-                    
+
                     status_names = {
                         0: "未支付",
                         1: "已支付",
@@ -30082,14 +30490,15 @@ def start_web_server(args_param):
                         3: "已冻结",
                         4: "预授权"
                     }
-                    
-                    status_name = status_names.get(platform_status, f"未知状态({platform_status})")
-                    
+
+                    status_name = status_names.get(
+                        platform_status, f"未知状态({platform_status})")
+
                     return jsonify({
                         "success": False,
                         "message": f"平台订单状态不允许退款，当前状态：{status_name}"
                     })
-                
+
                 # 更新本地订单的平台数据（可选，用于记录查询时间）
                 order_data["last_platform_check"] = {
                     "timestamp": time.time(),
@@ -30097,7 +30506,7 @@ def start_web_server(args_param):
                     "status": platform_status,
                     "action": "refund_pre_check"
                 }
-                
+
                 logging.info(f"[退款请求] 平台订单状态验证通过，允许退款 - 订单号: {trade_no}")
             else:
                 # 从平台查询失败
@@ -30107,28 +30516,29 @@ def start_web_server(args_param):
                     f"订单号: {trade_no}, "
                     f"错误: {error_msg}"
                 )
-                
+
                 # 查询失败时，给予管理员选择：是否继续退款
                 # 为了安全起见，建议不允许退款
                 return jsonify({
                     "success": False,
                     "message": f"无法从支付平台验证订单状态，为避免重复退款，请稍后重试。错误信息：{error_msg}"
                 })
-            
+
             # ========== 第6步：验证退款金额不超过可退金额 ==========
-            
+
             # 获取订单金额
             order_amount = round(float(order_data.get("amount", "0")), 2)
-            
+
             # 计算已退款总额
             # refund_records 是一个数组，记录了所有的退款记录
             # 每条记录包含：refund_amount（退款金额）、refund_time（退款时间）等
             refund_records = order_data.get("refund_records", [])
-            total_refunded = sum(round(float(record.get("refund_amount", 0)), 2) for record in refund_records)
-            
+            total_refunded = sum(
+                round(float(record.get("refund_amount", 0)), 2) for record in refund_records)
+
             # 计算剩余可退金额
             remaining_amount = round(order_amount - total_refunded, 2)
-            
+
             # 验证退款金额不能超过剩余可退金额
             if refund_amount_float > remaining_amount:
                 logging.error(
@@ -30143,36 +30553,37 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"退款金额不能超过剩余可退金额 {remaining_amount} 元"
                 })
-            
+
             # ========== 第7步：生成退款单号（如果未提供）==========
-            
+
             # 如果前端没有提供退款单号，则自动生成
             # 格式：REFUND + 年月日时分秒 + 6位随机数
             # 例如：REFUND20231215143025123456
             if not refund_no:
                 # 生成时间戳部分：年月日时分秒（14位）
                 timestamp_part = time.strftime("%Y%m%d%H%M%S")
-                
+
                 # 生成随机数部分：6位随机数
-                random_part = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-                
+                random_part = ''.join(
+                    [str(random.randint(0, 9)) for _ in range(6)])
+
                 # 组合成完整的退款单号
                 refund_no = f"REFUND{timestamp_part}{random_part}"
-                
+
                 logging.info(f"[退款请求] 自动生成退款单号: {refund_no}")
-            
+
             # ========== 第8步：读取配置并准备调用退款API ==========
-            
+
             # 读取配置文件
             # 配置文件包含易支付平台的商户信息（host, pid, key等）
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
-            
+
             # 从配置文件读取易支付平台配置
             yipay_host = config.get("Rainbow_YiPay", "host", fallback="")
             yipay_pid = config.get("Rainbow_YiPay", "pid", fallback="")
             yipay_key = config.get("Rainbow_YiPay", "key", fallback="")
-            
+
             # 验证配置是否完整
             if not yipay_host or not yipay_pid or not yipay_key:
                 logging.error("[退款请求] 易支付配置不完整")
@@ -30180,11 +30591,11 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "易支付配置不完整，请联系管理员"
                 })
-            
+
             # 从订单数据中获取平台订单号（易支付的订单号）
             # 这个订单号是调用易支付创建订单接口时返回的trade_no
             platform_trade_no = order_data.get("trade_no", "")
-            
+
             # 验证平台订单号是否存在
             if not platform_trade_no:
                 logging.error(f"[退款请求] 订单数据中缺少平台订单号 - 订单号: {trade_no}")
@@ -30192,9 +30603,9 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "订单数据异常，缺少平台订单号"
                 })
-            
+
             # ========== 第9步：构造退款请求参数 ==========
-            
+
             # 构造退款API请求参数
             # 参考易支付退款接口文档
             refund_params = {
@@ -30205,35 +30616,35 @@ def start_web_server(args_param):
                 "out_refund_no": refund_no,              # 商户退款单号
                 "timestamp": str(int(time.time()))       # 当前时间戳（秒级）
             }
-            
+
             # 记录日志：输出退款请求参数（不含签名）
             logging.info(f"[退款请求] 退款参数（签名前）: {refund_params}")
-            
+
             # ========== 第10步：生成签名 ==========
-            
+
             # 创建RSA签名器
             # 使用商户私钥对退款参数进行签名
             signer = RsaSigner(private_key_str=yipay_key)
-            
+
             # 调用 generate_sign() 方法生成签名
             # 该方法会：
             #   1. 按规则过滤、排序、拼接参数
             #   2. 使用私钥生成RSA签名
             #   3. 将签名添加到参数字典中
             signed_params = signer.generate_sign(refund_params)
-            
+
             # 记录日志：输出签名后的参数（包含sign和sign_type）
             logging.info(f"[退款请求] 退款参数（签名后）: {signed_params}")
-            
+
             # ========== 第11步：调用易支付退款API ==========
-            
+
             # 构造退款API的完整URL
             # 易支付退款接口路径：/api/pay/refund
             refund_api_url = f"{yipay_host}/api/pay/refund"
-            
+
             # 记录日志：准备发起HTTP请求
             logging.info(f"[退款请求] 正在调用退款API: {refund_api_url}")
-            
+
             # 发起POST请求到易支付退款接口
             # 使用 requests.post() 发送HTTP POST请求
             # data 参数传递表单数据（application/x-www-form-urlencoded格式）
@@ -30243,13 +30654,13 @@ def start_web_server(args_param):
                 data=signed_params,
                 timeout=30
             )
-            
+
             # 记录日志：收到API响应
             logging.info(f"[退款请求] API响应状态码: {response.status_code}")
             logging.info(f"[退款请求] API响应内容: {response.text}")
-            
+
             # ========== 第12步：解析退款响应 ==========
-            
+
             # 验证HTTP响应状态码
             # 200表示请求成功，其他状态码表示HTTP层面的错误
             if response.status_code != 200:
@@ -30258,7 +30669,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"退款API请求失败，状态码：{response.status_code}"
                 })
-            
+
             # 解析JSON响应
             try:
                 # 将响应内容解析为JSON对象
@@ -30270,23 +30681,24 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "退款API响应格式错误"
                 })
-            
+
             # 检查业务层面的返回码
             # code=0 表示退款成功
             # code!=0 表示退款失败（例如：余额不足、订单状态错误等）
             result_code = refund_result.get("code", -1)
             result_msg = refund_result.get("msg", "未知错误")
-            
+
             # ========== 第13步：处理退款结果 ==========
-            
+
             if result_code == 0:
                 # ========== 退款成功：更新订单数据 ==========
-                
-                logging.info(f"[退款请求] 退款成功 - 订单号: {trade_no}, 退款单号: {refund_no}")
-                
+
+                logging.info(
+                    f"[退款请求] 退款成功 - 订单号: {trade_no}, 退款单号: {refund_no}")
+
                 # 获取平台退款单号（易支付返回的退款单号）
                 platform_refund_no = refund_result.get("refund_no", refund_no)
-                
+
                 # 构造退款记录
                 # 将本次退款的详细信息记录到订单的refund_records数组中
                 refund_record = {
@@ -30294,46 +30706,49 @@ def start_web_server(args_param):
                     "refund_no": platform_refund_no,                         # 平台退款单号
                     "refund_amount": refund_amount_float,                    # 退款金额
                     "reason": reason,                                        # 退款原因
-                    "refund_time": time.strftime("%Y-%m-%d %H:%M:%S"),      # 退款时间（可读格式）
+                    # 退款时间（可读格式）
+                    "refund_time": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "refund_timestamp": time.time(),                         # 退款时间戳
                     "operator": g.user,                                      # 操作员（管理员用户名）
                     "api_response": refund_result                            # 完整的API响应（用于调试）
                 }
-                
+
                 # 将退款记录添加到订单的refund_records数组
                 # 如果数组不存在，则初始化为空数组
                 if "refund_records" not in order_data:
                     order_data["refund_records"] = []
                 order_data["refund_records"].append(refund_record)
-                
+
                 # 重新计算已退款总额（包含本次退款）
                 total_refunded_new = total_refunded + refund_amount_float
-                
+
                 # 更新订单状态
                 # 如果退款金额 >= 订单金额，则状态改为"已全额退款"
                 # 否则状态改为"已部分退款"
                 if total_refunded_new >= order_amount:
-                    order_data["status"] = ORDER_STATUS_REFUNDED_FULL      # 已全额退款
+                    # 已全额退款
+                    order_data["status"] = ORDER_STATUS_REFUNDED_FULL
                     logging.info(f"[退款请求] 订单状态更新为：已全额退款")
                 else:
-                    order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL   # 已部分退款
+                    # 已部分退款
+                    order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
                     logging.info(f"[退款请求] 订单状态更新为：已部分退款")
-                
+
                 # ========== 新增：更新退款次数 ==========
                 # 将退款次数设置为 1，表示该订单已退款一次
                 # 根据业务规则，每个订单只能退款一次
                 # 这个字段在下次退款请求时会被检查
                 order_data["refund_count"] = 1
                 logging.info(f"[退款请求] 退款次数已更新为：1")
-                
+
                 # 保存更新后的订单数据到文件
                 # 使用 indent=2 格式化输出，便于人工查看
                 # ensure_ascii=False 保留中文字符
                 with open(order_file, "w", encoding="utf-8") as f:
                     json.dump(order_data, f, indent=2, ensure_ascii=False)
-                
+
                 # ========== 记录退款日志 ==========
-                
+
                 # 写入支付操作日志
                 # 这是独立于订单文件的详细操作日志，用于审计和调试
                 _write_payment_log(
@@ -30353,7 +30768,7 @@ def start_web_server(args_param):
                         "api_response": refund_result
                     }
                 )
-                
+
                 # 返回成功响应给前端
                 return jsonify({
                     "success": True,
@@ -30363,17 +30778,17 @@ def start_web_server(args_param):
                     "refund_amount": refund_amount_float,    # 退款金额
                     "message": "退款成功"
                 })
-                
+
             else:
                 # ========== 退款失败：记录日志并返回错误 ==========
-                
+
                 logging.error(
                     f"[退款请求] 退款失败 - "
                     f"订单号: {trade_no}, "
                     f"错误码: {result_code}, "
                     f"错误信息: {result_msg}"
                 )
-                
+
                 # 写入失败日志
                 _write_payment_log(
                     user_id=g.user,
@@ -30389,20 +30804,20 @@ def start_web_server(args_param):
                         "api_response": refund_result
                     }
                 )
-                
+
                 # 返回失败响应给前端
                 return jsonify({
                     "success": False,
                     "message": f"退款失败：{result_msg}"
                 })
-                
+
         except Exception as e:
             # ========== 异常处理：捕获所有未预期的异常 ==========
-            
+
             # 记录详细的异常信息（包含堆栈跟踪）
             logging.error(f"[退款请求] 处理退款请求时发生异常: {str(e)}")
             logging.error(traceback.format_exc())
-            
+
             # 返回通用错误响应
             return jsonify({
                 "success": False,
@@ -30420,22 +30835,22 @@ def start_web_server(args_param):
             # request.get_json() 解析POST请求的JSON数据
             # 如果解析失败或没有数据，返回空字典 {}
             data = request.get_json() or {}
-            
+
             # 从请求数据中提取支付金额，并去除首尾空白字符
             # .get() 方法如果键不存在返回空字符串
             # .strip() 去除字符串首尾的空格、换行等空白字符
             amount = str(data.get("amount", "")).strip()
-            
+
             # 从请求数据中提取商品名称
             product_name = str(data.get("product_name", "")).strip()
-            
+
             # 从请求数据中提取支付方式，默认为支付宝
             # 支持两种参数名：pay_type（标准）和payment_method（PC端兼容）
             pay_type = data.get("payment_method", "").strip()
 
             # [新增] 提取前端传递的应用域名 (用于自动配置 app_host)
             client_app_host = data.get("app_host", "").strip()
-            
+
             # 从请求数据中提取同步返回URL
             # return_url 是用户支付完成后浏览器跳转的地址
             # 如果前端传入此参数，则使用前端指定的URL
@@ -30443,18 +30858,18 @@ def start_web_server(args_param):
             # 这使得不同的支付场景可以跳转到不同的页面
             # 使用 strip() 去除空白字符，空字符串会被转为 None
             return_url = data.get("return_url", "").strip() or None
-            
+
             if (not return_url) or return_url.strip() == '' or return_url.strip() == "null" or return_url.strip() == "undefind" or IPVerifier().is_allowed_ip(return_url):
                 return_url = None
-            
+
             # [新增] 提取设备类型参数（仅web接口类型需要）
             # device: 设备类型（pc/mobile/qq/wechat/alipay）
             device = data.get("device", "").strip() or None
-            
+
             # [新增] 提取扫码支付授权码参数（仅scan接口类型需要）
             # auth_code: 被扫支付授权码（18位数字）
             auth_code = data.get("auth_code", "").strip() or None
-            
+
             # [新增] 提取JSAPI支付参数（仅jsapi接口类型需要）
             # sub_openid: 用户Openid
             # sub_appid: 公众号AppId
@@ -30462,93 +30877,92 @@ def start_web_server(args_param):
             sub_appid = data.get("sub_appid", "").strip() or None
 
             payment_type = data.get("payment_type", "").strip() or None
-            
-            
-            
+
             # ========== 参数验证 ==========
-            
+
             # 验证金额是否为空
             if not amount:
                 return jsonify({"success": False, "message": "支付金额不能为空"})
-            
+
             # 验证商品名称是否为空
             if not product_name:
                 return jsonify({"success": False, "message": "商品名称不能为空"})
-            
+
             # ========== 验证支付方式是否启用 ==========
-            
+
             # 从配置文件读取启用的支付方式列表
             # 配置格式为逗号分隔的字符串，例如："alipay,wxpay,bank"
             # 需要实时读取配置，支持管理员动态修改而无需重启服务
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
-            
+
             # 获取启用的支付方式配置
             # fallback 参数指定默认值："alipay,wxpay"（启用支付宝和微信支付）
             enabled_methods_str = config.get(
-                "Rainbow_YiPay", 
-                "enabled_payment_methods", 
+                "Rainbow_YiPay",
+                "enabled_payment_methods",
                 fallback="alipay,wxpay"
             ).strip()
-            
+
             # 将逗号分隔的字符串转换为列表
             # 使用列表推导式去除每个方式名称的前后空格
             # 例如："alipay, wxpay " -> ["alipay", "wxpay"]
-            enabled_methods = [method.strip() for method in enabled_methods_str.split(",") if method.strip()]
-            
+            enabled_methods = [
+                method.strip() for method in enabled_methods_str.split(",") if method.strip()]
+
             # 如果配置为空或解析失败，使用默认的支付方式
             if not enabled_methods:
                 enabled_methods = ["alipay", "wxpay"]
-            
+
             # 记录调试日志：当前启用的支付方式
             logging.debug(f"[支付订单] 当前启用的支付方式: {enabled_methods}")
-            
+
             # 验证请求的支付方式是否在启用列表中
             if pay_type not in enabled_methods:
-                
-                
+
                 # 返回错误信息
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": f"该支付方式未启用，获取当前启用的支付方式失败。"
                 })
-            
+
             # 尝试将金额转换为浮点数，验证格式是否正确
             try:
                 # float() 函数将字符串转换为浮点数
                 # 如果字符串不是有效的数字格式，会抛出 ValueError 异常
                 amount_float = float(amount)
-                
+
                 # 验证金额是否大于0
                 # 支付金额必须是正数
                 if amount_float <= 0:
                     return jsonify({"success": False, "message": "支付金额必须大于0"})
-                
+
                 # 验证金额是否超过最大限制（例如10000元）
                 # 这是一个安全限制，防止误操作或恶意请求
                 if amount_float > 10000:
                     return jsonify({"success": False, "message": "单笔支付金额不能超过10000元"})
-                
+
             except ValueError:
                 # 如果金额格式不正确（例如 "abc" 或 "12.34.56"）
                 # 返回错误信息
                 return jsonify({"success": False, "message": "支付金额格式不正确"})
-            
+
             # ========== 生成唯一订单号 ==========
-            
+
             # 订单号格式：ORDER + 年月日时分秒 + 6位随机数
             # 例如：ORDER20230615123045123456
             # 使用时间戳确保订单号按时间排序
             # 使用随机数确保同一秒内的订单号不重复
             order_id = f"ORDER{time.strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"
-            
+
             # ========== 调用彩虹易支付API创建订单 ==========
-            
+
             # 创建彩虹易支付客户端实例
             # 客户端会自动从 config.ini 读取配置参数
             yipay_client = RainbowYiPayClient()
-            
-            clientip=request.environ.get("REMOTE_ADDR") or request.remote_addr
+
+            clientip = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
 
             yipay_client_data = {
                 "out_trade_no": order_id,
@@ -30569,18 +30983,17 @@ def start_web_server(args_param):
             if sub_appid is not None:
                 yipay_client_data["sub_appid"] = sub_appid
 
-            logging.debug(f"[支付订单] 调用 create_order() 方法，参数: {yipay_client_data}")
+            logging.debug(
+                f"[支付订单] 调用 create_order() 方法，参数: {yipay_client_data}")
 
             result = yipay_client.create_order(**yipay_client_data)
-            
-            logging.debug(f"[支付订单] create_order() 方法返回结果: {result}")
-         
 
-         
+            logging.debug(f"[支付订单] create_order() 方法返回结果: {result}")
+
             # 检查订单创建是否成功
             if result["success"]:
                 # ========== 保存订单信息到本地文件 ==========
-                
+
                 # 构造订单数据字典
                 # 包含订单的所有关键信息，用于后续查询和管理
                 order_data = {
@@ -30609,26 +31022,30 @@ def start_web_server(args_param):
                     # 这是支付平台返回的完整订单对象，保存下来用于调试和追溯
                     "order_data": result.get("order_data", {}),
                     "created_at": time.time(),           # 创建时间（Unix时间戳）
-                    "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),  # 创建时间（可读格式）
-                    "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,    # 客户端IP地址
-                    "user_agent": request.headers.get("User-Agent", ""),  # 用户浏览器信息
-                    "device":device,  # 设备类型
+                    # 创建时间（可读格式）
+                    "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    # 客户端IP地址
+                    "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                    # 用户浏览器信息
+                    "user_agent": request.headers.get("User-Agent", ""),
+                    "device": device,  # 设备类型
                 }
-                
+
                 # 构造订单文件路径
                 # 文件名格式：订单号.json
                 # 例如：payment_orders/ORDER20230615123045123456.json
-                order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
-                
+                order_file = os.path.join(
+                    PAYMENT_ORDERS_DIR, f"{order_id}.json")
+
                 # 将订单数据写入JSON文件
                 # 使用 UTF-8 编码支持中文
                 # indent=2 使JSON格式化输出，便于人工查看
                 # ensure_ascii=False 保留中文字符，不转义为 \uXXXX 格式
                 with open(order_file, "w", encoding="utf-8") as f:
                     json.dump(order_data, f, indent=2, ensure_ascii=False)
-                
+
                 # ========== 写入支付操作日志 ==========
-                
+
                 # 记录订单创建操作到支付日志系统
                 # 这是独立于订单文件的详细操作日志，用于审计和调试
                 _write_payment_log(
@@ -30643,28 +31060,33 @@ def start_web_server(args_param):
                         "pay_url": result["pay_url"],          # 支付跳转URL
                         "return_url": return_url,              # 同步返回URL
                         # 请求信息
-                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,      # 客户端IP
-                        "user_agent": request.headers.get("User-Agent", ""),  # 浏览器UA
+                        # 客户端IP
+                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                        # 浏览器UA
+                        "user_agent": request.headers.get("User-Agent", ""),
                         # 操作结果
                         "success": True,                       # 操作是否成功
                         "message": "订单创建成功"              # 操作消息
                     }
                 )
-                
+
                 # 记录信息日志：订单创建成功
                 logging.info(
                     f"[支付订单] 创建成功 - 用户: {g.user}, 订单号: {order_id}, 金额: {amount}元, 支付方式: {pay_type}"
                 )
-                
+
                 # 返回成功响应
                 return jsonify({
                     "success": True,
                     "message": "订单创建成功",
-                    "pay_url": result.get("pay_url", ""),      # 支付URL（兼容旧版，前端用于跳转）
+                    # 支付URL（兼容旧版，前端用于跳转）
+                    "pay_url": result.get("pay_url", ""),
                     "order_id": order_id,                      # 订单号（前端用于查询）
                     "trade_no": result.get("trade_no", ""),    # 平台订单号
-                    "pay_type": result.get("pay_type", ""),    # 发起支付类型（jump/html/qrcode等）
-                    "pay_info": result.get("pay_info", ""),    # 发起支付参数（根据pay_type不同而不同）
+                    # 发起支付类型（jump/html/qrcode等）
+                    "pay_type": result.get("pay_type", ""),
+                    # 发起支付参数（根据pay_type不同而不同）
+                    "pay_info": result.get("pay_info", ""),
                     "order": {                                  # 订单详情（兼容前端）
                         "trade_no": order_id,
                         "pay_url": result.get("pay_url", "")
@@ -30674,9 +31096,9 @@ def start_web_server(args_param):
                 # 订单创建失败
                 # 记录错误日志
                 logging.error(f"[支付订单] 创建失败 - {result['message']}")
-                
+
                 # ========== 写入支付操作日志（失败情况） ==========
-                
+
                 # 即使创建失败，也要记录日志，用于分析失败原因
                 _write_payment_log(
                     user_id=g.user,                # 用户标识
@@ -30689,27 +31111,29 @@ def start_web_server(args_param):
                         "pay_type": pay_type,                  # 请求的支付方式
                         "return_url": return_url,              # 请求的返回URL
                         # 请求信息
-                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,      # 客户端IP
-                        "user_agent": request.headers.get("User-Agent", ""),  # 浏览器UA
+                        # 客户端IP
+                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                        # 浏览器UA
+                        "user_agent": request.headers.get("User-Agent", ""),
                         # 失败信息
                         "success": False,                      # 操作失败
                         "message": result["message"],          # 失败原因
                         "error": result.get("error", "")       # 详细错误信息（如果有）
                     }
                 )
-                
+
                 # 返回失败响应，包含错误信息
                 return jsonify({
                     "success": False,
                     "message": result["message"]
                 })
-        
+
         except Exception as e:
             # 捕获所有未预期的异常
             # 记录错误日志和堆栈跟踪
             logging.error(f"[支付订单] 创建订单时发生异常: {str(e)}")
             logging.error(traceback.format_exc())
-            
+
             # 返回通用错误响应
             return jsonify({
                 "success": False,
@@ -30721,13 +31145,13 @@ def start_web_server(args_param):
     def payment_query_order():
         """
         查询订单支付状态接口
-        
+
         请求方法：POST
         权限要求：需要登录
-        
+
         请求参数（JSON格式）：
             - order_id (str): 订单号（创建订单时返回的订单号）
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - message (str): 提示信息
@@ -30736,13 +31160,13 @@ def start_web_server(args_param):
                 - "paid": 已支付
                 - "closed": 已关闭
             - order (dict): 完整的订单信息（成功时返回）
-        
+
         功能说明：
         1. 从本地文件读取订单信息
         2. 如果订单状态是待支付，调用易支付API查询最新状态
         3. 更新本地订单状态
         4. 返回订单信息给前端
-        
+
         使用场景：
         - 用户支付完成后查询支付结果
         - 管理员查看订单状态
@@ -30752,57 +31176,58 @@ def start_web_server(args_param):
             # 获取请求数据
             data = request.get_json() or {}
             order_id = data.get("order_id", "").strip()
-            
+
             # 验证订单号是否为空
             if not order_id:
                 return jsonify({"success": False, "message": "订单号不能为空"})
-            
+
             # ========== 从本地文件读取订单信息 ==========
-            
+
             # 构造订单文件路径
             order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
-            
+
             # 检查订单文件是否存在
             if not os.path.exists(order_file):
                 return jsonify({"success": False, "message": "订单不存在"})
-            
+
             # 读取订单数据
             with open(order_file, "r", encoding="utf-8") as f:
                 order_data = json.load(f)
-            
+
             # ========== 验证订单所属权限 ==========
             # 只允许订单所有者或管理员查询订单
-            
+
             # 检查当前用户是否是订单所有者
             if order_data.get("username") != g.user:
                 # 不是所有者，检查是否是管理员
                 if not auth_system.check_permission(g.user, "manage_users"):
                     # 既不是所有者也不是管理员，返回权限不足
                     return jsonify({"success": False, "message": "无权查询此订单"}), 403
-            
+
             # ========== 查询最新支付状态 ==========
-            
+
             # 如果订单状态是待支付，调用易支付API查询最新状态
             if order_data.get("status") == "pending":
                 # 创建彩虹易支付客户端
                 yipay_client = RainbowYiPayClient()
-                
+
                 # 调用查询接口
                 query_result = yipay_client.query_order(order_id)
-                
+
                 # 如果查询成功且订单已支付
                 if query_result["success"] and query_result.get("status") == "TRADE_SUCCESS":
                     # 更新订单状态为已支付
                     order_data["status"] = ORDER_STATUS_PAID
                     order_data["paid_at"] = time.time()
-                    order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                    
+                    order_data["paid_time"] = time.strftime(
+                        "%Y-%m-%d %H:%M:%S")
+
                     # 保存更新后的订单数据
                     with open(order_file, "w", encoding="utf-8") as f:
                         json.dump(order_data, f, indent=2, ensure_ascii=False)
-                    
+
                     # ========== 写入支付操作日志（状态更新） ==========
-                    
+
                     # 记录订单状态从pending变为paid的操作
                     _write_payment_log(
                         user_id=order_data.get("username", g.user),  # 订单所有者
@@ -30825,12 +31250,12 @@ def start_web_server(args_param):
                             "message": "订单状态更新为已支付"
                         }
                     )
-                    
+
                     # 记录日志
                     logging.info(f"[支付订单] 查询更新 - 订单: {order_id}, 状态: 已支付")
-            
+
             # ========== 写入支付操作日志（查询操作） ==========
-            
+
             # 记录每次查询操作，用于审计
             _write_payment_log(
                 user_id=g.user,                      # 查询者
@@ -30849,7 +31274,7 @@ def start_web_server(args_param):
                     "message": "查询成功"
                 }
             )
-            
+
             # 返回订单信息
             return jsonify({
                 "success": True,
@@ -30857,7 +31282,7 @@ def start_web_server(args_param):
                 "status": order_data.get("status"),
                 "order": order_data
             })
-        
+
         except Exception as e:
             logging.error(f"[支付订单] 查询订单异常: {str(e)}")
             logging.error(traceback.format_exc())
@@ -30868,21 +31293,21 @@ def start_web_server(args_param):
     def payment_create_order_for_overdue():
         """
         创建欠费补缴支付订单接口
-        
+
         请求方法：POST
         权限要求：需要登录（通过@login_required装饰器验证）
         路由路径：/api/payment/create_order_for_overdue
-        
+
         功能说明：
         此接口用于用户补缴学校账号的欠费次数。当用户的available_runs不足时，
         系统会为学校账号记录overdue_count（欠费次数）。用户可以通过此接口
         一次性支付所有欠费账号的费用，支付成功后会增加available_runs并清零overdue_count。
-        
+
         请求参数（JSON格式）：
             - overdue_accounts (list): 欠费账号列表，每个元素包含：
                 - school_username (str): 学校账号用户名
                 - overdue_count (int): 该账号的欠费次数
-                
+
         示例请求体：
         {
             "overdue_accounts": [
@@ -30890,7 +31315,7 @@ def start_web_server(args_param):
                 {"school_username": "2021002", "overdue_count": 5}
             ]
         }
-        
+
         返回数据（JSON格式）：
             成功时：
             {
@@ -30901,13 +31326,13 @@ def start_web_server(args_param):
                 "total_count": 8,                            // 总欠费次数
                 "total_amount": "8.00"                       // 总金额
             }
-            
+
             失败时：
             {
                 "success": false,
                 "message": "错误信息描述"
             }
-        
+
         业务逻辑：
         1. 验证用户登录状态（由@login_required自动完成）
         2. 验证请求参数（欠费账号列表不能为空）
@@ -30919,13 +31344,13 @@ def start_web_server(args_param):
         8. 调用RainbowYiPayClient创建支付订单
         9. 在订单数据中保存欠费账号信息（用于支付成功后更新）
         10. 返回支付URL供前端跳转
-        
+
         安全机制：
         - 必须登录才能创建订单（防止未授权访问）
         - 验证欠费账号是否属于当前用户（防止恶意扣费）
         - 订单数据包含auth_username和overdue_accounts（用于支付回调验证）
         - 使用随机数生成唯一订单号（防止订单号碰撞）
-        
+
         注意事项：
         - 订单创建后会保存到本地文件（payment_orders目录）
         - 订单号格式：YYYYMMDD + 15位随机数字（总长度23位）
@@ -30933,40 +31358,41 @@ def start_web_server(args_param):
         """
         try:
             # ========== 步骤1：获取并验证请求参数 ==========
-            
+
             # 从请求体中解析JSON数据
             # request.get_json() 返回解析后的Python字典，如果解析失败返回None
             # 使用 or {} 确保即使解析失败也返回空字典，避免后续代码出错
             data = request.get_json() or {}
-            
+
             # 提取欠费账号列表
             # .get() 方法如果键不存在返回空列表 []
             overdue_accounts = data.get("overdue_accounts", [])
-            
+
             # 验证欠费账号列表是否为空
             # 如果列表为空或不是列表类型，返回错误
             if not overdue_accounts or not isinstance(overdue_accounts, list):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "欠费账号列表不能为空"
                 })
-            
+
             # 获取当前登录用户的用户名
             # g.user 是由 @login_required 装饰器在请求上下文中设置的
             # 包含当前登录用户的完整信息
             auth_username = g.user.get("auth_username", "")
-            
+
             # ========== 步骤2：验证欠费账号是否属于当前用户 ==========
-            
+
             # 调用 auth_system.get_school_accounts() 获取当前用户的所有学校账号
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
-            user_school_accounts = auth_system.get_school_accounts(auth_username)
-            
+            user_school_accounts = auth_system.get_school_accounts(
+                auth_username)
+
             # 验证每个欠费账号是否属于当前用户
             for account in overdue_accounts:
                 # 提取学校账号用户名
                 school_username = account.get("school_username", "")
-                
+
                 # 检查该学校账号是否在用户的账号列表中
                 if school_username not in user_school_accounts:
                     # 如果账号不属于当前用户，返回错误（防止恶意请求）
@@ -30974,17 +31400,17 @@ def start_web_server(args_param):
                         "success": False,
                         "message": f"学校账号 {school_username} 不属于您"
                     })
-            
+
             # ========== 步骤3：计算总欠费次数 ==========
-            
+
             # 累加所有账号的欠费次数
             # 使用sum()函数和生成器表达式计算总和
             # .get("overdue_count", 0) 确保如果字段不存在返回0
             total_overdue_count = sum(
-                account.get("overdue_count", 0) 
+                account.get("overdue_count", 0)
                 for account in overdue_accounts
             )
-            
+
             # 验证总欠费次数是否大于0
             # 如果总次数为0或负数，说明没有欠费，不需要支付
             if total_overdue_count <= 0:
@@ -30992,111 +31418,117 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "欠费次数必须大于0"
                 })
-            
+
             # ========== 步骤4：使用LoMeiGenerator生成商品名 ==========
-            
+
             # 创建商品名生成器实例
             generator = LoMeiGenerator()
-            
+
             # 调用generate()方法生成商品名
             # 传入总欠费次数，生成类似"五串麻辣鸭脖配上三根秘制烤肠"的趣味描述
             product_name = generator.generate(total_overdue_count)
-            
+
             # 验证生成的商品名是否为None（异常情况）
             # generate()方法在输入非法时会返回None
             if product_name is None:
                 # 如果生成失败，使用简单的兜底商品名
                 product_name = f"{total_overdue_count}份现捞小吃"
-            
+
             # 记录日志：生成的商品名（用于调试）
-            logging.info(f"[欠费支付] 生成商品名: {product_name} (次数: {total_overdue_count})")
-            
+            logging.info(
+                f"[欠费支付] 生成商品名: {product_name} (次数: {total_overdue_count})")
+
             # ========== 步骤5：从配置读取单次费用，计算总金额 ==========
-            
+
             # 读取配置文件
             config = _read_config_ini()
-            
+
             # 验证配置文件是否读取成功
             if config is None:
                 return jsonify({
                     "success": False,
                     "message": "读取配置文件失败，请联系管理员"
                 })
-            
+
             # 从配置文件的 [User_Run_Cost] 节读取 single_run_cost（单次费用）
             # fallback="1.0" 指定默认值为1.0元
-            single_run_cost_str = config.get("User_Run_Cost", "single_run_cost", fallback="1.0")
-            
+            single_run_cost_str = config.get(
+                "User_Run_Cost", "single_run_cost", fallback="1.0")
+
             # 将字符串转换为浮点数
             try:
                 # 使用float()转换，并保留2位小数（避免浮点数精度问题）
                 single_run_cost = round(float(single_run_cost_str), 2)
             except ValueError:
                 # 如果转换失败（配置值不是有效数字），记录错误并返回
-                logging.error(f"[欠费支付] single_run_cost配置值无效: {single_run_cost_str}")
+                logging.error(
+                    f"[欠费支付] single_run_cost配置值无效: {single_run_cost_str}")
                 return jsonify({
                     "success": False,
                     "message": "系统配置错误，请联系管理员"
                 })
-            
+
             # 计算总金额：总欠费次数 × 单次费用
             # round(..., 2) 保留2位小数
             total_amount = round(total_overdue_count * single_run_cost, 2)
-            
+
             # 验证总金额是否合理（必须大于0）
             if total_amount <= 0:
                 return jsonify({
                     "success": False,
                     "message": "支付金额必须大于0"
                 })
-            
+
             # ========== 步骤6：生成唯一订单号 ==========
-            
+
             # 订单号格式：YYYYMMDD + 15位随机数字
             # 例如：20241201 + 170077851273757 = 20241201170077851273757（总长度23位）
-            
+
             # 生成15位随机数字字符串
             # random.randint(0, 9) 生成0-9之间的随机整数
             # 使用列表推导式生成15个随机数字，然后用join()连接成字符串
-            random_part = ''.join([str(random.randint(0, 9)) for _ in range(15)])
-            
+            random_part = ''.join([str(random.randint(0, 9))
+                                  for _ in range(15)])
+
             # 获取当前日期，格式化为8位字符串（YYYYMMDD）
             # datetime.datetime.now() 获取当前时间
             # .strftime('%Y%m%d') 格式化为"年月日"格式，例如："20241201"
             date_part = datetime.datetime.now().strftime('%Y%m%d')
-            
+
             # 拼接订单号：日期 + 随机数
             out_trade_no = date_part + random_part
-            
+
             # ========== 步骤7：判断设备类型（根据User-Agent） ==========
-            
+
             # 获取请求头中的User-Agent字符串
             # request.user_agent 是Flask提供的UserAgent对象
             # .string 属性返回原始的User-Agent字符串
             ua_string = request.user_agent.string or ""
-            
+
             # 将User-Agent转换为小写，方便后续判断
             ua_lower = ua_string.lower()
-            
+
             # 根据User-Agent关键词判断设备类型
             # 移动设备通常包含 "mobile"、"android"、"iphone" 等关键词
             if "mobile" in ua_lower or "android" in ua_lower or "iphone" in ua_lower:
                 device = "mobile"  # 移动设备
             else:
                 device = "pc"      # PC设备
-            
+
             # ========== 步骤8：获取客户端IP地址 ==========
-            
+
             # request.environ.get("REMOTE_ADDR") or request.remote_addr 获取客户端IP地址
             # 在反向代理环境下，可能需要从X-Forwarded-For等请求头获取真实IP
-            clientip = request.environ.get("REMOTE_ADDR") or request.remote_addr or "unknown"
-            
+            clientip = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr or "unknown"
+
             # ========== 步骤9：读取彩虹易支付配置 ==========
-            
+
             # 从配置文件读取app_host（应用访问域名）
             # app_host是本应用的公网访问地址，用于构造回调URL
-            app_host = config.get("Rainbow_YiPay", "app_host", fallback="").strip()
-            
+            app_host = config.get(
+                "Rainbow_YiPay", "app_host", fallback="").strip()
+
             # 验证app_host是否配置
             if not app_host:
                 logging.error("[欠费支付] 配置缺少 app_host")
@@ -31104,22 +31536,22 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "支付配置不完整，请联系管理员"
                 })
-            
+
             # 移除app_host末尾的斜杠（避免URL拼接出现双斜杠）
             app_host = app_host.rstrip('/')
-            
+
             # 构造异步通知URL（支付成功后彩虹易支付会POST请求到这个URL）
             notify_url = f"{app_host}/api/payment/yipay_notify"
-            
+
             # 构造同步返回URL（用户支付完成后浏览器跳转的地址）
             # 这里使用前端主页作为返回地址（可根据需求修改）
             return_url = f"{app_host}/"
-            
+
             # ========== 步骤10：创建彩虹易支付订单 ==========
-            
+
             # 创建RainbowYiPayClient实例
             yipay_client = RainbowYiPayClient()
-            
+
             # 调用create_order()方法创建支付订单
             # 参数说明：
             #   - out_trade_no: 商户订单号（唯一标识）
@@ -31134,7 +31566,7 @@ def start_web_server(args_param):
                 pay_type="alipay",  # 默认使用支付宝（可扩展为支持用户选择）
                 return_url=return_url
             )
-            
+
             # 检查订单创建是否成功
             if not result.get("success"):
                 # 如果失败，返回错误信息
@@ -31143,9 +31575,9 @@ def start_web_server(args_param):
                     "success": False,
                     "message": result.get("message", "创建支付订单失败")
                 })
-            
+
             # ========== 步骤11：保存订单信息到本地文件 ==========
-            
+
             # 构造订单数据字典
             order_data = {
                 "order_id": out_trade_no,              # 订单号
@@ -31162,34 +31594,35 @@ def start_web_server(args_param):
                 "notify_url": notify_url,              # 异步通知URL
                 "return_url": return_url               # 同步返回URL
             }
-            
+
             # 确保payment_orders目录存在
             # PAYMENT_ORDERS_DIR是全局常量，指向存储订单的目录
             if not os.path.exists(PAYMENT_ORDERS_DIR):
                 # 如果目录不存在，创建它
                 # exist_ok=True 表示如果目录已存在也不报错
                 os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-            
+
             # 构造订单文件路径：payment_orders/{订单号}.json
-            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
-            
+            order_file = os.path.join(
+                PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+
             # 将订单数据写入JSON文件
             with open(order_file, "w", encoding="utf-8") as f:
                 # json.dump() 将Python对象序列化为JSON格式并写入文件
                 # indent=2: 格式化输出，每层缩进2个空格
                 # ensure_ascii=False: 保存中文字符，不转义为\uXXXX
                 json.dump(order_data, f, indent=2, ensure_ascii=False)
-            
+
             # ========== 步骤12：记录操作日志 ==========
-            
+
             logging.info(
                 f"[欠费支付] 创建订单成功 - 用户: {auth_username}, "
                 f"订单号: {out_trade_no}, 总次数: {total_overdue_count}, "
                 f"总金额: {total_amount}元"
             )
-            
+
             # ========== 步骤13：写入支付操作日志（用于审计） ==========
-            
+
             _write_payment_log(
                 user_id=auth_username,
                 order_id=out_trade_no,
@@ -31203,9 +31636,9 @@ def start_web_server(args_param):
                     "clientip": clientip
                 }
             )
-            
+
             # ========== 步骤14：返回成功响应 ==========
-            
+
             return jsonify({
                 "success": True,
                 "message": "订单创建成功",
@@ -31214,32 +31647,31 @@ def start_web_server(args_param):
                 "total_count": total_overdue_count,    # 总欠费次数
                 "total_amount": str(total_amount)      # 总金额（字符串格式）
             })
-        
+
         except Exception as e:
             # 捕获所有未预期的异常
             # 记录完整的堆栈信息，便于调试
             logging.error(f"[欠费支付] 创建订单异常: {str(e)}")
             logging.error(traceback.format_exc())
-            
+
             # 返回500错误和友好的错误信息
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": f"创建订单失败: {str(e)}"
             }), 500
-
 
     # @app.route("/api/payment/return", methods=["GET"])
     # def payment_return():
     #     """
     #     支付返回页面（同步通知）
-        
+
     #     请求方法：GET
     #     权限要求：无（公开页面）
-        
+
     #     功能说明：
     #     用户在支付页面完成支付后，浏览器会跳转到这个URL。
     #     这个页面用于显示支付结果，提供友好的用户体验。
-        
+
     #     ========== 重要的安全说明 ==========
     #     1. **这个页面仅用于向用户展示支付结果**
     #     2. **不要依赖这个页面更新订单状态**（因为用户可以刷新页面）
@@ -31247,39 +31679,39 @@ def start_web_server(args_param):
     #     4. **这个页面只是"查询并显示"订单状态，不执行任何业务逻辑**
     #     5. 用户可能不会访问这个页面（例如直接关闭浏览器）
     #     6. 恶意用户可能会伪造访问，所以必须验证签名
-        
+
     #     为什么不能用return页面更新订单状态？
     #     - 用户可以刷新页面（导致重复处理）
     #     - 恶意用户可以伪造请求
     #     - 用户可能不访问这个页面（直接关闭支付窗口）
     #     - 网络问题可能导致页面无法加载
-        
+
     #     请求参数（查询字符串）：
     #     彩虹易支付会在URL中附加参数，例如：
     #         - out_trade_no: 商户订单号
     #         - trade_no: 易支付订单号
     #         - trade_status: 支付状态
     #         - sign: 签名（用于验证请求的真实性）
-        
+
     #     返回：HTML页面（支付结果展示页面）
     #     """
     #     try:
     #         # ========== 获取URL查询参数 ==========
     #         # request.args 获取GET请求的查询字符串参数
     #         params = request.args.to_dict()
-            
+
     #         # 提取关键参数
     #         out_trade_no = params.get("out_trade_no", "")
     #         trade_status = params.get("trade_status", "")
-            
+
     #         ip_for_pay=request.environ.get("REMOTE_ADDR") or request.remote_addr
-            
+
     #         # 记录return页面访问日志
     #         logging.info(
     #             f"[支付返回] 用户访问支付返回页面 - 订单: {out_trade_no}, "
     #             f"IP: {ip_for_pay}, 状态: {trade_status}"
     #         )
-            
+
     #         # ========== 安全检查：验证签名 ==========
     #         # 防止恶意用户伪造支付成功页面
     #         # 即使这个页面不执行业务逻辑，我们也要验证签名
@@ -31355,15 +31787,15 @@ def start_web_server(args_param):
     #             </body>
     #             </html>
     #             """, 400
-            
+
     #         # ========== 仅查询订单状态，不执行业务逻辑 ==========
     #         # 构造订单文件路径
     #         order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
-            
+
     #         # 初始化订单数据（用于日志记录）
     #         order_data = None
     #         order_exists = False
-            
+
     #         # 检查订单是否存在并读取
     #         if os.path.exists(order_file):
     #             order_exists = True
@@ -31373,7 +31805,7 @@ def start_web_server(args_param):
     #                     order_data = json.load(f)
     #             except Exception as e:
     #                 logging.error(f"[支付返回] 读取订单文件失败 - 订单: {out_trade_no}, 错误: {str(e)}")
-            
+
     #         # ========== 写入访问日志（用于安全审计）==========
     #         # 记录每次return页面的访问，便于监控和排查问题
     #         if order_data:
@@ -31396,10 +31828,10 @@ def start_web_server(args_param):
     #                     "message": "用户访问支付返回页面（仅展示，不执行业务逻辑）"
     #                 }
     #             )
-            
+
     #         # ========== 构造HTML支付结果页面 ==========
     #         # 根据订单状态和trade_status显示不同的页面
-            
+
     #         # 情况1：订单存在且已支付（正常情况）
     #         if order_exists and order_data and order_data.get("status") == "paid":
     #             html = f"""
@@ -31556,11 +31988,11 @@ def start_web_server(args_param):
     #                     // 从localStorage读取刷新次数
     #                     var refreshCount = parseInt(localStorage.getItem('payment_refresh_count_{out_trade_no}') || '0');
     #                     var maxRefreshes = 5; // 最多刷新5次（约25秒）
-                        
+
     #                     if (refreshCount < maxRefreshes) {{
     #                         // 更新刷新次数
     #                         localStorage.setItem('payment_refresh_count_{out_trade_no}', refreshCount + 1);
-                            
+
     #                         // 显示倒计时
     #                         var countdown = 5;
     #                         var statusText = document.getElementById('status-text');
@@ -31573,7 +32005,7 @@ def start_web_server(args_param):
     #                                 clearInterval(timer);
     #                             }}
     #                         }}, 1000);
-                            
+
     #                         // 5秒后刷新页面
     #                         setTimeout(function() {{
     #                             window.location.reload();
@@ -31656,10 +32088,10 @@ def start_web_server(args_param):
     #             </body>
     #             </html>
     #             """
-            
+
     #         # 返回HTML页面
     #         return html
-        
+
     #     except Exception as e:
     #         # 捕获所有异常，记录日志
     #         logging.error(f"[支付返回] 处理返回页面异常: {str(e)}")
@@ -31672,10 +32104,10 @@ def start_web_server(args_param):
     def payment_list_orders():
         """
         查询订单列表接口
-        
+
         请求方法：GET
         权限要求：需要登录
-        
+
         查询参数（URL参数）：
             - status (str, 可选): 订单状态过滤
                 - "pending": 待支付
@@ -31683,7 +32115,7 @@ def start_web_server(args_param):
                 - "closed": 已关闭
             - page (int, 可选): 页码，默认1
             - per_page (int, 可选): 每页数量，默认20
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - message (str): 提示信息
@@ -31691,7 +32123,7 @@ def start_web_server(args_param):
             - total (int): 总订单数
             - page (int): 当前页码
             - per_page (int): 每页数量
-        
+
         功能说明：
         1. 普通用户只能查询自己的订单
         2. 管理员可以查询所有用户的订单
@@ -31704,34 +32136,34 @@ def start_web_server(args_param):
             status_filter = request.args.get("status", "").strip()  # 状态过滤
             page = int(request.args.get("page", "1"))              # 页码
             per_page = int(request.args.get("per_page", "20"))     # 每页数量
-            
+
             # 验证参数
             if page < 1:
                 page = 1
             if per_page < 1 or per_page > 100:
                 per_page = 20
-            
+
             # 检查是否是管理员
             is_admin = auth_system.check_permission(g.user, "manage_users")
-            
+
             # ========== 读取所有订单文件 ==========
-            
+
             orders = []
-            
+
             # 遍历订单目录中的所有JSON文件
             for filename in os.listdir(PAYMENT_ORDERS_DIR):
                 # 只处理.json文件
                 if not filename.endswith(".json"):
                     continue
-                
+
                 # 构造文件完整路径
                 file_path = os.path.join(PAYMENT_ORDERS_DIR, filename)
-                
+
                 try:
                     # 读取订单数据
                     with open(file_path, "r", encoding="utf-8") as f:
                         order_data = json.load(f)
-                    
+
                     # ========== 权限过滤 ==========
                     # 普通用户只能看到自己的订单
                     # 管理员可以看到所有订单
@@ -31740,32 +32172,33 @@ def start_web_server(args_param):
                         if order_data.get("username") != g.user:
                             # 不是当前用户的订单，跳过
                             continue
-                    
+
                     # ========== 状态过滤 ==========
                     # 如果指定了状态过滤，只返回匹配的订单
                     if status_filter:
                         if order_data.get("status") != status_filter:
                             # 状态不匹配，跳过
                             continue
-                    
+
                     # 添加到订单列表
                     orders.append(order_data)
-                
+
                 except (json.JSONDecodeError, IOError) as e:
                     # 文件读取或解析失败，记录日志并跳过
-                    logging.warning(f"[订单列表] 读取订单文件失败: {filename}, 错误: {str(e)}")
+                    logging.warning(
+                        f"[订单列表] 读取订单文件失败: {filename}, 错误: {str(e)}")
                     continue
-            
+
             # ========== 排序 ==========
             # 按创建时间倒序排列（最新的在前面）
             orders.sort(key=lambda x: x.get("created_at", 0), reverse=True)
-            
+
             # ========== 分页 ==========
             total = len(orders)  # 总订单数
             start = (page - 1) * per_page  # 起始索引
             end = start + per_page  # 结束索引
             orders_page = orders[start:end]  # 当前页的订单
-            
+
             # 返回订单列表
             return jsonify({
                 "success": True,
@@ -31775,7 +32208,7 @@ def start_web_server(args_param):
                 "page": page,
                 "per_page": per_page,
             })
-        
+
         except Exception as e:
             logging.error(f"[订单列表] 查询订单列表异常: {str(e)}")
             logging.error(traceback.format_exc())
@@ -31790,18 +32223,18 @@ def start_web_server(args_param):
     def payment_verify_host():
         """
         验证app_host是否为本服务器的安全接口
-        
+
         请求方法：POST
         权限要求：需要登录（仅管理员应使用）
-        
+
         请求参数（JSON格式）：
             - app_host (str): 需要验证的应用域名（例如："https://example.com"）
-        
+
         返回数据（JSON格式）：
             - success (bool): 验证是否通过
             - message (str): 验证结果信息
             - verified (bool): 是否验证通过
-        
+
         功能说明：
         这个接口使用随机验证码机制来验证传入的app_host是否确实是本服务器。
         验证流程：
@@ -31809,12 +32242,12 @@ def start_web_server(args_param):
         2. 向 {app_host}/api/payment/verify_challenge 发送POST请求，携带验证码
         3. 检查响应中返回的验证码是否与发送的一致
         4. 如果一致，说明app_host指向的就是本服务器
-        
+
         安全意义：
         - 防止攻击者配置错误的app_host导致支付回调被劫持
         - 确保支付异步通知URL指向正确的服务器
         - 使用随机验证码，每次验证都不同，防止重放攻击
-        
+
         使用场景：
         - 管理员在配置彩虹易支付时，验证app_host配置是否正确
         - 前端动态传入app_host前，先进行验证
@@ -31822,25 +32255,25 @@ def start_web_server(args_param):
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
         global requests
-        
+
         try:
             # 从请求体中获取JSON数据
             data = request.get_json() or {}
-            
+
             # 提取需要验证的app_host参数
             # strip() 去除首尾空白字符
             app_host = data.get("app_host", "").strip()
-            
+
             # ========== 参数验证 ==========
-            
+
             # 验证app_host是否为空
             if not app_host:
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "app_host参数不能为空",
                     "verified": False
                 })
-            
+
             # 验证app_host格式：必须以http://或https://开头
             # 这确保了URL的基本格式正确
             if not (app_host.startswith("http://") or app_host.startswith("https://")):
@@ -31849,14 +32282,14 @@ def start_web_server(args_param):
                     "message": "app_host格式不正确，必须以http://或https://开头",
                     "verified": False
                 })
-            
+
             # 移除app_host末尾的斜杠（如果存在）
             # 这样可以统一URL格式，避免出现双斜杠的情况
             # 例如：https://example.com/ -> https://example.com
             app_host = app_host.rstrip('/')
-            
+
             # ========== 生成随机验证码 ==========
-            
+
             # 生成一个2048位的随机字符串作为验证码（challenge）
             # 使用大小写字母和数字的组合，确保极高的安全性和随机性
             # string.ascii_letters 包含所有大小写字母（a-z, A-Z，共52个字符）
@@ -31866,19 +32299,22 @@ def start_web_server(args_param):
             # random.choices() 从给定字符集中随机选择k个字符
             # k=2048 表示生成2048位验证码，提供极高的安全强度
             # ''.join() 将字符列表拼接成字符串
-            challenge = ''.join(random.choices(string.ascii_letters + string.digits, k=2048))
-            
+            challenge = ''.join(random.choices(
+                string.ascii_letters + string.digits, k=2048))
+
             # 记录日志：开始验证app_host
             # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
-            challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(challenge) > 64 else challenge
-            logging.info(f"[支付验证] 开始验证app_host: {app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
-            
+            challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(
+                challenge) > 64 else challenge
+            logging.info(
+                f"[支付验证] 开始验证app_host: {app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
+
             # ========== 发送验证请求 ==========
-            
+
             # 构造验证接口的完整URL
             # 格式：{app_host}/api/payment/verify_challenge
             verify_url = f"{app_host}/api/payment/verify_challenge"
-            
+
             try:
                 # 向verify_challenge接口发送POST请求
                 # json参数：以JSON格式发送验证码
@@ -31889,17 +32325,17 @@ def start_web_server(args_param):
                     json={"challenge": challenge},
                     timeout=5
                 )
-                
+
                 # 检查HTTP响应状态码
                 # 200表示请求成功
                 if response.status_code == 200:
                     # 尝试解析响应JSON
                     try:
                         result = response.json()
-                        
+
                         # 从响应中提取返回的验证码
                         returned_challenge = result.get("challenge", "")
-                        
+
                         # 对比发送的验证码和返回的验证码
                         # 如果完全一致，说明确实是本服务器
                         if returned_challenge == challenge:
@@ -31920,7 +32356,7 @@ def start_web_server(args_param):
                                 "message": "验证失败：返回的验证码不匹配",
                                 "verified": False
                             })
-                    
+
                     except json.JSONDecodeError:
                         # 响应不是有效的JSON格式
                         logging.warning(f"[支付验证] 响应不是有效的JSON格式")
@@ -31929,7 +32365,7 @@ def start_web_server(args_param):
                             "message": "验证失败：响应格式不正确",
                             "verified": False
                         })
-                
+
                 else:
                     # HTTP状态码不是200
                     logging.warning(
@@ -31940,7 +32376,7 @@ def start_web_server(args_param):
                         "message": f"验证失败：HTTP状态码 {response.status_code}",
                         "verified": False
                     })
-            
+
             except requests.exceptions.Timeout:
                 # 请求超时
                 logging.warning(f"[支付验证] 请求超时 - {verify_url}")
@@ -31949,7 +32385,7 @@ def start_web_server(args_param):
                     "message": "验证失败：请求超时（5秒）",
                     "verified": False
                 })
-            
+
             except requests.exceptions.ConnectionError:
                 # 连接错误（网络不通或域名无法解析）
                 logging.warning(f"[支付验证] 连接失败 - {verify_url}")
@@ -31958,7 +32394,7 @@ def start_web_server(args_param):
                     "message": "验证失败：无法连接到目标服务器",
                     "verified": False
                 })
-            
+
             except Exception as e:
                 # 其他异常
                 logging.error(f"[支付验证] 验证过程异常: {str(e)}")
@@ -31967,7 +32403,7 @@ def start_web_server(args_param):
                     "message": f"验证失败：{str(e)}",
                     "verified": False
                 })
-        
+
         except Exception as e:
             # 捕获最外层的所有异常
             logging.error(f"[支付验证] verify_host接口异常: {str(e)}")
@@ -31978,19 +32414,17 @@ def start_web_server(args_param):
                 "verified": False
             }), 500
 
-
-
     @app.route("/api/payment/verify_challenge", methods=["POST"])
     def payment_verify_challenge():
         """
         验证挑战响应接口（用于配合verify_host验证）
-        
+
         本接口的作用：
         1. 接收客户端发送的 challenge（验证码）
         2. 验证请求来源IP是否为内网或服务器自己的公网IP
         3. 如果验证通过，将 challenge 存储到全局变量中
         4. 返回验证成功的响应（不包含challenge，由全局变量存储）
-        
+
         新的验证机制：
         - 不再在响应中返回 challenge
         - 而是存储到全局变量 payment_verify_challenge_get 中
@@ -32001,17 +32435,19 @@ def start_web_server(args_param):
             # 使用 request.get_json() 解析请求体中的 JSON 数据
             # 如果解析失败或请求体为空，则返回空字典
             data = request.get_json() or {}
-            
+
             # 提取验证码参数
             # 使用.get()方法安全地获取，如果不存在返回空字符串
             # 这样可以避免 KeyError 异常
             challenge = data.get("challenge", "")
-            
+
             # 记录日志：收到验证请求
             # 记录请求来源IP，用于安全审计
-            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
-            logging.info(f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码长度: {len(challenge)}位")
-            
+            client_ip = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
+            logging.info(
+                f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码长度: {len(challenge)}位")
+
             # 验证请求来源IP是否被允许
             # 使用新的 IPVerifier.is_allowed_ip() 函数，支持 IPv4/IPv6 和公网IP验证
             if not IPVerifier().is_allowed_ip(client_ip):
@@ -32022,26 +32458,26 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "仅允许内网IP或服务器本机IP访问此接口",
                 }), 403
-            
+
             # IP验证通过，将接收到的 challenge 存储到全局变量
             # 声明使用全局变量 payment_verify_challenge_get
             global payment_verify_challenge_get
-            
+
             # 将 challenge 赋值给全局变量
             # 这个值将在 create_order 方法中被读取用于验证
             payment_verify_challenge_get = challenge
-            
+
             # 记录日志：成功存储验证码
             # 只记录验证码的长度，不记录完整内容（太长）
             logging.info(f"[支付验证] 验证码已存储到全局变量，长度: {len(challenge)}位")
-            
+
             # 返回验证成功响应
             # 注意：新的机制中不再返回 challenge
             # 只返回 success: True，表示验证码已成功接收和存储
             return jsonify({
                 "success": True
             })
-        
+
         except Exception as e:
             # 捕获所有异常
             # 即使出现异常，也返回错误信息而不是让请求失败
@@ -32062,35 +32498,35 @@ def start_web_server(args_param):
     def admin_payment_config():
         """
         获取或更新支付配置接口（管理员专用）
-        
+
         请求方法：GET（获取配置）、PUT（更新配置）
         权限要求：modify_config权限
-        
+
         GET请求 - 获取当前支付配置：
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - config (dict): 当前支付配置
                 - enabled_payment_methods (list): 启用的支付方式列表
                 - all_payment_methods (list): 所有支持的支付方式
-        
+
         PUT请求 - 更新支付配置：
         请求参数（JSON格式）：
             - enabled_payment_methods (list): 要启用的支付方式列表
                 - 例如：["alipay", "wxpay"] 或 ["alipay", "wxpay", "bank"]
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - message (str): 操作结果信息
-        
+
         功能说明：
         这个接口允许管理员动态配置启用哪些支付方式，无需重启服务器。
         配置会立即生效，影响后续创建的所有订单。
-        
+
         使用场景：
         - 管理员在后台管理面板配置支付方式
         - 根据运营策略动态调整支持的支付方式
         - 临时禁用某些支付方式进行维护
-        
+
         安全措施：
         - 需要modify_config权限
         - 验证支付方式的有效性
@@ -32102,7 +32538,7 @@ def start_web_server(args_param):
             # 支付配置影响系统的收款功能，需要谨慎管理
             if not auth_system.check_permission(g.user, "modify_config"):
                 return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
-            
+
             # 定义所有支持的支付方式及其中文名称
             # 这是系统支持的完整支付方式列表
             all_methods = {
@@ -32110,32 +32546,32 @@ def start_web_server(args_param):
                 "wxpay": "微信支付",
                 "bank": "网银支付"
             }
-            
+
             if request.method == "GET":
                 # ========== 处理GET请求：获取当前配置 ==========
-                
+
                 # 读取配置文件
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
-                
+
                 # 获取当前启用的支付方式
                 enabled_methods_str = config.get(
                     "Rainbow_YiPay",
                     "enabled_payment_methods",
                     fallback="alipay,wxpay"
                 ).strip()
-                
+
                 # 解析为列表
                 enabled_methods = [
-                    method.strip() 
-                    for method in enabled_methods_str.split(",") 
+                    method.strip()
+                    for method in enabled_methods_str.split(",")
                     if method.strip()
                 ]
-                
+
                 # 如果解析为空，使用默认值
                 if not enabled_methods:
                     enabled_methods = ["alipay", "wxpay"]
-                
+
                 # 构造返回数据
                 # 包含当前启用的支付方式和所有可用的支付方式
                 return jsonify({
@@ -32148,78 +32584,80 @@ def start_web_server(args_param):
                         ]
                     }
                 })
-            
+
             elif request.method == "PUT":
                 # ========== 处理PUT请求：更新配置 ==========
-                
+
                 # 获取请求数据
                 data = request.get_json() or {}
-                
+
                 # 提取要启用的支付方式列表
                 new_methods = data.get("enabled_payment_methods", [])
-                
+
                 # 验证参数
                 if not isinstance(new_methods, list):
                     return jsonify({
                         "success": False,
                         "message": "enabled_payment_methods必须是数组"
                     }), 400
-                
+
                 # 验证是否至少启用一种支付方式
                 if not new_methods:
                     return jsonify({
                         "success": False,
                         "message": "至少需要启用一种支付方式"
                     }), 400
-                
+
                 # === 改造：验证每个支付方式是否在 payment_methods_config 中定义 ===
-                
+
                 # 读取当前配置（用于后续保存 enabled_payment_methods）
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
-                
+
                 # 从 payment_methods.json 文件获取所有已定义的支付方式
                 # 调用 _read_payment_methods_config() 函数，该函数会自动处理异常情况
                 methods_config = _read_payment_methods_config()
                 # 获取所有已定义的支付方式代码（字典的键）
                 available_methods = set(methods_config.keys())
-                
+
                 # 验证每个支付方式是否已定义
-                invalid_methods = [m for m in new_methods if m not in available_methods]
+                invalid_methods = [
+                    m for m in new_methods if m not in available_methods]
                 if invalid_methods:
                     return jsonify({
                         "success": False,
                         "message": f"以下支付方式未定义，请先在支付方式管理中添加：{', '.join(invalid_methods)}"
                     }), 400
-                
+
                 # 获取旧的配置（用于日志记录）
                 old_methods_str = config.get(
                     "Rainbow_YiPay",
                     "enabled_payment_methods",
                     fallback="alipay,wxpay"
                 )
-                
+
                 # 更新配置
                 # 将列表转换为逗号分隔的字符串
                 new_methods_str = ",".join(new_methods)
-                
+
                 # 确保配置节存在
                 if not config.has_section("Rainbow_YiPay"):
                     config.add_section("Rainbow_YiPay")
-                
+
                 # 设置新的配置值
-                config.set("Rainbow_YiPay", "enabled_payment_methods", new_methods_str)
-                
+                config.set("Rainbow_YiPay",
+                           "enabled_payment_methods", new_methods_str)
+
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持注释
                 _write_config_with_comments(config, "config.ini")
-                
+
                 # 记录信息日志：配置已更新
                 logging.info(
                     f"[支付配置] 管理员更新支付方式配置 - "
                     f"操作者: {g.user}, 旧配置: {old_methods_str}, 新配置: {new_methods_str}"
                 )
-                
+
                 # 构造中文名称列表用于返回消息
                 # 从 payment_methods_config 中获取名称
                 method_names = []
@@ -32231,13 +32669,13 @@ def start_web_server(args_param):
                     else:
                         method_names.append(m)
                 method_names_str = "、".join(method_names)
-                
+
                 # 返回成功响应
                 return jsonify({
                     "success": True,
                     "message": f"支付方式配置已更新：{method_names_str}"
                 })
-        
+
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[支付配置] 管理支付配置接口异常: {str(e)}")
@@ -32252,10 +32690,10 @@ def start_web_server(args_param):
     def add_payment_method():
         """
         添加新的支付方式接口（管理员专用）
-        
+
         请求方法：POST
         权限要求：modify_config权限
-        
+
         请求参数（JSON格式）：
             - code (str): 支付方式代码（必填），例如：alipay, wxpay
             - name (str): 显示名称（必填），例如：支付宝支付
@@ -32265,11 +32703,11 @@ def start_web_server(args_param):
             - description (str): 描述信息（可选）
             - borderColor (str): 边框颜色CSS类（可选），例如：hover:border-sky-500
             - textColor (str): 文字颜色CSS类（可选），例如：text-sky-600
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - message (str): 操作结果信息
-        
+
         功能说明：
         - 将新的支付方式添加到 payment_methods_config（JSON配置）
         - 支付方式代码必须唯一，不能与现有支付方式重复
@@ -32283,10 +32721,10 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "权限不足，需要修改配置权限（modify_config）"
                 }), 403
-            
+
             # === 获取并验证请求数据 ===
             data = request.get_json() or {}
-            
+
             # 验证必填字段：支付方式代码
             code = data.get("code", "").strip()
             if not code:
@@ -32294,7 +32732,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "支付方式代码不能为空"
                 }), 400
-            
+
             # 验证代码格式：只允许字母、数字和下划线
             import re
             if not re.match(r'^[a-zA-Z0-9_]+$', code):
@@ -32302,7 +32740,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "支付方式代码只能包含字母、数字和下划线"
                 }), 400
-            
+
             # 验证必填字段：显示名称
             name = data.get("name", "").strip()
             if not name:
@@ -32310,7 +32748,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "显示名称不能为空"
                 }), 400
-            
+
             # 验证必填字段：Logo类型
             icon = data.get("icon", "").strip()
             if icon not in ["svg", "image"]:
@@ -32318,33 +32756,34 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "Logo类型必须是 svg 或 image"
                 }), 400
-            
+
             # 验证Logo内容
             svg = data.get("svg", "").strip()
             image = data.get("image", "").strip()
-            
+
             if icon == "svg" and not svg:
                 return jsonify({
                     "success": False,
                     "message": "选择SVG类型时，SVG代码不能为空"
                 }), 400
-            
+
             if icon == "image" and not image:
                 return jsonify({
                     "success": False,
                     "message": "选择图片类型时，图片URL不能为空"
                 }), 400
-            
+
             # 获取可选字段
             description = data.get("description", "").strip()
-            border_color = data.get("borderColor", "hover:border-sky-500").strip()
+            border_color = data.get(
+                "borderColor", "hover:border-sky-500").strip()
             text_color = data.get("textColor", "text-sky-600").strip()
-            
+
             # === 读取当前配置 ===
             # 从 payment_methods.json 文件读取现有的支付方式配置
             # _read_payment_methods_config() 会自动处理文件不存在、格式错误等情况
             methods_config = _read_payment_methods_config()
-            
+
             # === 检查支付方式代码是否已存在 ===
             # 遍历已有的支付方式字典，检查新代码是否与现有代码冲突
             if code in methods_config:
@@ -32353,7 +32792,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"支付方式代码 '{code}' 已存在，请使用其他代码或编辑现有支付方式"
                 }), 400
-            
+
             # === 构建新支付方式配置 ===
             # 创建一个字典，包含新支付方式的所有配置信息
             new_method = {
@@ -32365,28 +32804,28 @@ def start_web_server(args_param):
                 "borderColor": border_color,  # 边框颜色CSS类
                 "textColor": text_color  # 文字颜色CSS类
             }
-            
+
             # 将新支付方式添加到配置字典中
             # 使用支付方式代码作为键，配置信息作为值
             methods_config[code] = new_method
-            
+
             # === 保存配置 ===
             # 调用 _write_payment_methods_config() 函数将更新后的配置写入 JSON 文件
             # 此函数会自动处理文件写入、格式化等操作
             _write_payment_methods_config(methods_config)
-            
+
             # === 记录日志 ===
             logging.info(
                 f"[支付方式管理] 管理员添加新支付方式 - "
                 f"操作者: {g.user}, 代码: {code}, 名称: {name}"
             )
-            
+
             # 返回成功响应
             return jsonify({
                 "success": True,
                 "message": f"支付方式 '{name}' 已成功添加"
             })
-        
+
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[支付方式管理] 添加支付方式失败: {str(e)}")
@@ -32401,13 +32840,13 @@ def start_web_server(args_param):
     def manage_payment_method(code):
         """
         更新或删除支付方式接口（管理员专用）
-        
+
         请求方法：PUT（更新）、DELETE（删除）
         权限要求：modify_config权限
-        
+
         URL参数：
             - code (str): 支付方式代码
-        
+
         PUT请求参数（JSON格式）：
             - name (str): 显示名称（必填）
             - icon (str): Logo类型（必填），可选值：svg, image
@@ -32416,7 +32855,7 @@ def start_web_server(args_param):
             - description (str): 描述信息（可选）
             - borderColor (str): 边框颜色CSS类（可选）
             - textColor (str): 文字颜色CSS类（可选）
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - message (str): 操作结果信息
@@ -32428,12 +32867,12 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "权限不足，需要修改配置权限（modify_config）"
                 }), 403
-            
+
             # === 读取当前配置 ===
             # 从 payment_methods.json 文件读取现有的支付方式配置
             # _read_payment_methods_config() 会自动处理文件不存在、格式错误等情况
             methods_config = _read_payment_methods_config()
-            
+
             # === 检查支付方式是否存在 ===
             # 检查要操作的支付方式代码是否在配置字典中
             if code not in methods_config:
@@ -32442,13 +32881,13 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"支付方式 '{code}' 不存在"
                 }), 404
-            
+
             if request.method == "PUT":
                 # ========== 处理PUT请求：更新支付方式 ==========
-                
+
                 # 获取并验证请求数据
                 data = request.get_json() or {}
-                
+
                 # 验证必填字段：显示名称
                 name = data.get("name", "").strip()
                 if not name:
@@ -32456,7 +32895,7 @@ def start_web_server(args_param):
                         "success": False,
                         "message": "显示名称不能为空"
                     }), 400
-                
+
                 # 验证必填字段：Logo类型
                 icon = data.get("icon", "").strip()
                 if icon not in ["svg", "image"]:
@@ -32464,28 +32903,29 @@ def start_web_server(args_param):
                         "success": False,
                         "message": "Logo类型必须是 svg 或 image"
                     }), 400
-                
+
                 # 验证Logo内容
                 svg = data.get("svg", "").strip()
                 image = data.get("image", "").strip()
-                
+
                 if icon == "svg" and not svg:
                     return jsonify({
                         "success": False,
                         "message": "选择SVG类型时，SVG代码不能为空"
                     }), 400
-                
+
                 if icon == "image" and not image:
                     return jsonify({
                         "success": False,
                         "message": "选择图片类型时，图片URL不能为空"
                     }), 400
-                
+
                 # 获取可选字段
                 description = data.get("description", "").strip()
-                border_color = data.get("borderColor", "hover:border-sky-500").strip()
+                border_color = data.get(
+                    "borderColor", "hover:border-sky-500").strip()
                 text_color = data.get("textColor", "text-sky-600").strip()
-                
+
                 # 更新支付方式配置
                 # 使用提供的新值更新指定支付方式的所有配置项
                 methods_config[code] = {
@@ -32497,43 +32937,43 @@ def start_web_server(args_param):
                     "borderColor": border_color,  # 更新边框颜色
                     "textColor": text_color  # 更新文字颜色
                 }
-                
+
                 # 保存配置到 JSON 文件
                 # 调用 _write_payment_methods_config() 函数写入文件
                 _write_payment_methods_config(methods_config)
-                
+
                 # 记录日志
                 logging.info(
                     f"[支付方式管理] 管理员更新支付方式 - "
                     f"操作者: {g.user}, 代码: {code}, 名称: {name}"
                 )
-                
+
                 return jsonify({
                     "success": True,
                     "message": f"支付方式 '{name}' 已成功更新"
                 })
-            
+
             elif request.method == "DELETE":
                 # ========== 处理DELETE请求：删除支付方式 ==========
-                
+
                 # 获取支付方式名称（用于日志和返回消息）
                 # 如果配置中有name字段则使用，否则使用代码作为名称
                 method_name = methods_config[code].get("name", code)
-                
+
                 # 从配置字典中删除该支付方式
                 # 使用 del 关键字删除指定键值对
                 del methods_config[code]
-                
+
                 # 保存更新后的配置到 JSON 文件
                 # 调用 _write_payment_methods_config() 函数写入文件
                 _write_payment_methods_config(methods_config)
-                
+
                 # 同时从 enabled_payment_methods 中移除该支付方式
                 # 避免启用列表中包含已删除的支付方式
                 # 这需要读取和修改 config.ini 文件
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
-                
+
                 # 读取当前启用的支付方式列表
                 enabled_methods_str = config.get(
                     "Rainbow_YiPay",
@@ -32544,7 +32984,7 @@ def start_web_server(args_param):
                 enabled_methods = [
                     m.strip() for m in enabled_methods_str.split(",") if m.strip()
                 ]
-                
+
                 # 如果启用列表中包含该支付方式，移除它
                 if code in enabled_methods:
                     enabled_methods.remove(code)  # 从列表中删除
@@ -32553,21 +32993,22 @@ def start_web_server(args_param):
                     if not config.has_section("Rainbow_YiPay"):
                         config.add_section("Rainbow_YiPay")
                     # 更新配置项
-                    config.set("Rainbow_YiPay", "enabled_payment_methods", new_enabled_str)
+                    config.set("Rainbow_YiPay",
+                               "enabled_payment_methods", new_enabled_str)
                     # 保存配置文件（保持注释）
                     _write_config_with_comments(config, "config.ini")
-                
+
                 # 记录日志
                 logging.info(
                     f"[支付方式管理] 管理员删除支付方式 - "
                     f"操作者: {g.user}, 代码: {code}, 名称: {method_name}"
                 )
-                
+
                 return jsonify({
                     "success": True,
                     "message": f"支付方式 '{method_name}' 已成功删除"
                 })
-        
+
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[支付方式管理] 管理支付方式失败: {str(e)}")
@@ -32582,10 +33023,10 @@ def start_web_server(args_param):
     def admin_pricing_config():
         """
         获取或更新价格配置接口（管理员专用）
-        
+
         请求方法：GET（获取配置）、PUT（更新配置）
         权限要求：modify_config权限
-        
+
         GET请求 - 获取当前价格配置：
         返回数据（JSON格式）：
             - success (bool): 是否成功
@@ -32593,26 +33034,26 @@ def start_web_server(args_param):
                 - require_payment (bool): 是否需要付费
                 - per_run_cost (float): 单次跑步费用（元）
                 - default_available_runs (int): 新用户默认免费次数
-        
+
         PUT请求 - 更新价格配置：
         请求参数（JSON格式）：
             - require_payment (bool): 是否需要付费
             - per_run_cost (float): 单次跑步费用（元）
             - default_available_runs (int): 新用户默认免费次数
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - message (str): 操作结果信息
-        
+
         功能说明：
         这个接口允许管理员动态配置系统的价格策略，包括是否启用付费模式、单次费用和新用户免费次数。
         配置会立即生效，影响后续创建的所有用户和订单。
-        
+
         使用场景：
         - 管理员在后台管理面板配置价格策略
         - 根据运营策略调整费用标准
         - 控制新用户的免费试用次数
-        
+
         安全措施：
         - 需要modify_config权限
         - 验证输入参数的有效性
@@ -32624,18 +33065,18 @@ def start_web_server(args_param):
             # 价格配置影响系统的收费模式和用户权益，需要谨慎管理
             if not auth_system.check_permission(g.user, "modify_config"):
                 return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
-            
+
             if request.method == "GET":
                 # ========== 处理GET请求：获取当前配置 ==========
-                
+
                 # 读取配置文件
                 # 使用 configparser 从 config.ini 文件读取配置项
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
-                
+
                 # 从 Payment_Settings 节读取价格相关配置
                 # 使用 fallback 参数提供默认值，确保即使配置文件缺失也能正常工作
-                
+
                 # 读取是否需要付费的配置（布尔值）
                 # getboolean() 方法会自动将字符串 "true"/"false" 转换为 Python 的 bool 类型
                 require_payment = config.getboolean(
@@ -32643,7 +33084,7 @@ def start_web_server(args_param):
                     "require_payment",
                     fallback=True  # 默认值：需要付费
                 )
-                
+
                 # 读取单次跑步费用的配置（浮点数）
                 # getfloat() 方法会自动将字符串转换为 Python 的 float 类型
                 per_run_cost = config.getfloat(
@@ -32651,7 +33092,7 @@ def start_web_server(args_param):
                     "single_run_cost",  # 注意：配置文件中的键名是 single_run_cost
                     fallback=1.0  # 默认值：1.0元/次
                 )
-                
+
                 # 读取新用户默认免费次数的配置（整数）
                 # getint() 方法会自动将字符串转换为 Python 的 int 类型
                 default_available_runs = config.getint(
@@ -32659,10 +33100,10 @@ def start_web_server(args_param):
                     "default_available_runs",
                     fallback=10  # 默认值：10次
                 )
-                
+
                 # ========== [修复] 读取UI显示配置字段 ==========
                 # 这4个配置项之前在GET响应中缺失，导致前端无法正确加载配置
-                
+
                 # 从 Profile_Display 节读取"是否在个人资料页显示剩余次数"配置（布尔值）
                 # 用于控制用户个人资料页面是否显示剩余跑步次数
                 show_available_runs = config.getboolean(
@@ -32670,7 +33111,7 @@ def start_web_server(args_param):
                     "show_available_runs",
                     fallback=True  # 默认值：显示
                 )
-                
+
                 # 从 Profile_Display 节读取"剩余次数显示格式"配置（字符串）
                 # {available_runs} 是占位符，会被替换为实际的剩余次数
                 available_runs_format = config.get(
@@ -32678,7 +33119,7 @@ def start_web_server(args_param):
                     "available_runs_format",
                     fallback="剩余免费次数：{available_runs} 次"  # 默认格式模板
                 )
-                
+
                 # 从 Registration_Display 节读取"是否在注册页显示免费次数提示"配置（布尔值）
                 # 用于控制用户注册页面是否显示免费次数提示信息
                 show_available_runs_on_register = config.getboolean(
@@ -32686,7 +33127,7 @@ def start_web_server(args_param):
                     "show_available_runs_on_register",
                     fallback=True  # 默认值：显示
                 )
-                
+
                 # 从 Registration_Display 节读取"注册页提示文本"配置（字符串）
                 # {available_runs} 是占位符，会被替换为实际的免费次数
                 register_available_runs_hint = config.get(
@@ -32694,7 +33135,7 @@ def start_web_server(args_param):
                     "register_available_runs_hint",
                     fallback="注册即可得 {available_runs} 次校园跑"  # 默认提示文本
                 )
-                
+
                 # 构造返回数据
                 # 将读取到的配置以 JSON 格式返回给前端
                 # [修复] 添加了4个UI显示配置字段，确保前端能正确加载所有配置
@@ -32713,78 +33154,85 @@ def start_web_server(args_param):
                         "register_available_runs_hint": register_available_runs_hint  # 注册页提示文本模板
                     }
                 })
-            
+
             elif request.method == "PUT":
                 # ========== 处理PUT请求：更新配置 ==========
-                
+
                 # 获取请求数据
                 # 从前端传来的 JSON 数据中提取配置参数
                 data = request.get_json() or {}
-                
+
                 # 提取新的配置值
                 # 使用 .get() 方法获取参数，如果参数不存在则使用当前配置值作为默认值
-                
+
                 # 读取当前配置作为默认值
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
-                
+
                 # 获取新的 require_payment 值（布尔类型）
                 new_require_payment = data.get(
                     "require_payment",
-                    config.getboolean("Payment_Settings", "require_payment", fallback=True)
+                    config.getboolean("Payment_Settings",
+                                      "require_payment", fallback=True)
                 )
-                
+
                 # 获取新的 per_run_cost 值（浮点类型）
                 new_per_run_cost = data.get(
                     "per_run_cost",
-                    config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
+                    config.getfloat("Payment_Settings",
+                                    "single_run_cost", fallback=1.0)
                 )
-                
+
                 # 获取新的 default_available_runs 值（整数类型）
                 new_default_available_runs = data.get(
                     "default_available_runs",
-                    config.getint("Payment_Settings", "default_available_runs", fallback=10)
+                    config.getint("Payment_Settings",
+                                  "default_available_runs", fallback=10)
                 )
-                
+
                 # ========== [新增] 获取UI显示配置的值 ==========
-                
+
                 # 获取新的 show_available_runs 值（布尔类型）
                 # 控制是否在个人资料页面显示剩余次数
                 new_show_available_runs = data.get(
                     "show_available_runs",
-                    config.getboolean("Profile_Display", "show_available_runs", fallback=True)
+                    config.getboolean("Profile_Display",
+                                      "show_available_runs", fallback=True)
                 )
-                
+
                 # 获取新的 available_runs_format 值（字符串类型）
                 # 剩余次数的显示格式模板
                 new_available_runs_format = data.get(
                     "available_runs_format",
-                    config.get("Profile_Display", "available_runs_format", fallback="剩余免费次数：{available_runs} 次")
+                    config.get("Profile_Display", "available_runs_format",
+                               fallback="剩余免费次数：{available_runs} 次")
                 )
-                
+
                 # 获取新的 show_available_runs_on_register 值（布尔类型）
                 # 控制是否在注册页面显示免费次数提示
                 new_show_available_runs_on_register = data.get(
                     "show_available_runs_on_register",
-                    config.getboolean("Registration_Display", "show_available_runs_on_register", fallback=True)
+                    config.getboolean(
+                        "Registration_Display", "show_available_runs_on_register", fallback=True)
                 )
-                
+
                 # 获取新的 register_available_runs_hint 值（字符串类型）
                 # 注册页面的免费次数提示文本模板
                 new_register_available_runs_hint = data.get(
                     "register_available_runs_hint",
-                    config.get("Registration_Display", "register_available_runs_hint", fallback="注册即可得 {available_runs} 次校园跑")
+                    config.get("Registration_Display", "register_available_runs_hint",
+                               fallback="注册即可得 {available_runs} 次校园跑")
                 )
-                
+
                 # ========== 验证参数的有效性 ==========
-                
+
                 # 验证 require_payment 是否为布尔类型
                 if not isinstance(new_require_payment, bool):
                     return jsonify({
                         "success": False,
                         "message": "require_payment 必须是布尔值（true/false）"
                     }), 400
-                
+
                 # 验证 per_run_cost 是否为数字类型
                 # 检查是否为 int 或 float 类型
                 if not isinstance(new_per_run_cost, (int, float)):
@@ -32792,7 +33240,7 @@ def start_web_server(args_param):
                         "success": False,
                         "message": "per_run_cost 必须是数字"
                     }), 400
-                
+
                 # 验证 per_run_cost 是否为非负数
                 # 费用不能为负数，但可以为 0（表示免费）
                 if new_per_run_cost < 0:
@@ -32800,14 +33248,14 @@ def start_web_server(args_param):
                         "success": False,
                         "message": "per_run_cost 不能为负数"
                     }), 400
-                
+
                 # 验证 default_available_runs 是否为整数类型
                 if not isinstance(new_default_available_runs, int):
                     return jsonify({
                         "success": False,
                         "message": "default_available_runs 必须是整数"
                     }), 400
-                
+
                 # 验证 default_available_runs 是否为非负数
                 # 免费次数不能为负数，但可以为 0（表示新用户无免费次数）
                 if new_default_available_runs < 0:
@@ -32815,103 +33263,117 @@ def start_web_server(args_param):
                         "success": False,
                         "message": "default_available_runs 不能为负数"
                     }), 400
-                
+
                 # ========== [新增] 验证UI显示配置字段的有效性 ==========
-                
+
                 # 验证 show_available_runs 是否为布尔类型
                 if not isinstance(new_show_available_runs, bool):
                     return jsonify({
                         "success": False,
                         "message": "show_available_runs 必须是布尔值（true/false）"
                     }), 400
-                
+
                 # 验证 available_runs_format 是否为字符串类型
                 if not isinstance(new_available_runs_format, str):
                     return jsonify({
                         "success": False,
                         "message": "available_runs_format 必须是字符串"
                     }), 400
-                
+
                 # 验证 available_runs_format 不能为空
                 if not new_available_runs_format.strip():
                     return jsonify({
                         "success": False,
                         "message": "available_runs_format 不能为空"
                     }), 400
-                
+
                 # 验证 show_available_runs_on_register 是否为布尔类型
                 if not isinstance(new_show_available_runs_on_register, bool):
                     return jsonify({
                         "success": False,
                         "message": "show_available_runs_on_register 必须是布尔值（true/false）"
                     }), 400
-                
+
                 # 验证 register_available_runs_hint 是否为字符串类型
                 if not isinstance(new_register_available_runs_hint, str):
                     return jsonify({
                         "success": False,
                         "message": "register_available_runs_hint 必须是字符串"
                     }), 400
-                
+
                 # 验证 register_available_runs_hint 不能为空
                 if not new_register_available_runs_hint.strip():
                     return jsonify({
                         "success": False,
                         "message": "register_available_runs_hint 不能为空"
                     }), 400
-                
+
                 # ========== 保存旧配置用于日志记录 ==========
-                old_require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
-                old_per_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
-                old_default_available_runs = config.getint("Payment_Settings", "default_available_runs", fallback=10)
-                
+                old_require_payment = config.getboolean(
+                    "Payment_Settings", "require_payment", fallback=True)
+                old_per_run_cost = config.getfloat(
+                    "Payment_Settings", "single_run_cost", fallback=1.0)
+                old_default_available_runs = config.getint(
+                    "Payment_Settings", "default_available_runs", fallback=10)
+
                 # [新增] 保存UI显示配置的旧值，用于日志记录
-                old_show_available_runs = config.getboolean("Profile_Display", "show_available_runs", fallback=True)
-                old_available_runs_format = config.get("Profile_Display", "available_runs_format", fallback="剩余免费次数：{available_runs} 次")
-                old_show_available_runs_on_register = config.getboolean("Registration_Display", "show_available_runs_on_register", fallback=True)
-                old_register_available_runs_hint = config.get("Registration_Display", "register_available_runs_hint", fallback="注册即可得 {available_runs} 次校园跑")
-                
+                old_show_available_runs = config.getboolean(
+                    "Profile_Display", "show_available_runs", fallback=True)
+                old_available_runs_format = config.get(
+                    "Profile_Display", "available_runs_format", fallback="剩余免费次数：{available_runs} 次")
+                old_show_available_runs_on_register = config.getboolean(
+                    "Registration_Display", "show_available_runs_on_register", fallback=True)
+                old_register_available_runs_hint = config.get(
+                    "Registration_Display", "register_available_runs_hint", fallback="注册即可得 {available_runs} 次校园跑")
+
                 # ========== 更新配置 ==========
-                
+
                 # 确保 Payment_Settings 配置节存在
                 # 如果配置节不存在，则创建它
                 if not config.has_section("Payment_Settings"):
                     config.add_section("Payment_Settings")
-                
+
                 # 设置新的配置值
                 # 注意：configparser 保存时会将所有值转换为字符串
                 # 布尔值转换为 "true"/"false"，数字转换为字符串形式
-                config.set("Payment_Settings", "require_payment", str(new_require_payment).lower())
-                config.set("Payment_Settings", "single_run_cost", str(new_per_run_cost))
-                config.set("Payment_Settings", "default_available_runs", str(new_default_available_runs))
-                
+                config.set("Payment_Settings", "require_payment",
+                           str(new_require_payment).lower())
+                config.set("Payment_Settings", "single_run_cost",
+                           str(new_per_run_cost))
+                config.set("Payment_Settings", "default_available_runs",
+                           str(new_default_available_runs))
+
                 # ========== [新增] 更新UI显示配置 ==========
-                
+
                 # 确保 Profile_Display 配置节存在
                 if not config.has_section("Profile_Display"):
                     config.add_section("Profile_Display")
-                
+
                 # 设置个人资料页显示配置
                 # show_available_runs: 是否显示剩余次数
-                config.set("Profile_Display", "show_available_runs", str(new_show_available_runs).lower())
+                config.set("Profile_Display", "show_available_runs",
+                           str(new_show_available_runs).lower())
                 # available_runs_format: 剩余次数的显示格式模板
-                config.set("Profile_Display", "available_runs_format", new_available_runs_format)
-                
+                config.set("Profile_Display", "available_runs_format",
+                           new_available_runs_format)
+
                 # 确保 Registration_Display 配置节存在
                 if not config.has_section("Registration_Display"):
                     config.add_section("Registration_Display")
-                
+
                 # 设置注册页面显示配置
                 # show_available_runs_on_register: 是否在注册页显示提示
-                config.set("Registration_Display", "show_available_runs_on_register", str(new_show_available_runs_on_register).lower())
+                config.set("Registration_Display", "show_available_runs_on_register", str(
+                    new_show_available_runs_on_register).lower())
                 # register_available_runs_hint: 注册页提示文本模板
-                config.set("Registration_Display", "register_available_runs_hint", new_register_available_runs_hint)
-                
+                config.set("Registration_Display", "register_available_runs_hint",
+                           new_register_available_runs_hint)
+
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
                 # 这样可以避免覆盖配置文件时丢失注释信息
                 _write_config_with_comments(config, "config.ini")
-                
+
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
                 logging.info(
@@ -32925,13 +33387,13 @@ def start_web_server(args_param):
                     f"show_available_runs_on_register: {old_show_available_runs_on_register} -> {new_show_available_runs_on_register}, "
                     f"register_available_runs_hint: '{old_register_available_runs_hint}' -> '{new_register_available_runs_hint}'"
                 )
-                
+
                 # ========== 返回成功响应 ==========
                 return jsonify({
                     "success": True,
                     "message": "价格配置已成功更新"
                 })
-        
+
         except Exception as e:
             # 捕获所有异常
             # 记录错误日志，包括详细的堆栈跟踪信息
@@ -32948,10 +33410,10 @@ def start_web_server(args_param):
     def admin_yipay_config():
         """
         获取或更新易支付配置接口（管理员专用）
-        
+
         请求方法：GET（获取配置）、PUT（更新配置）
         权限要求：modify_config权限（必须）+ 超级管理员或管理员用户组
-        
+
         GET请求 - 获取当前易支付配置：
         返回数据（JSON格式）：
             - success (bool): 是否成功
@@ -32961,7 +33423,7 @@ def start_web_server(args_param):
                 - key (str): 商户密钥（完整显示，不脱敏）
                 - enabled_payment_methods (str): 启用的支付方式
                 - payment_method (str): 支付接口类型
-        
+
         PUT请求 - 更新易支付配置：
         请求参数（JSON格式）：
             - host (str): 易支付接口域名
@@ -32969,20 +33431,20 @@ def start_web_server(args_param):
             - key (str): 商户密钥
             - enabled_payment_methods (str): 启用的支付方式
             - payment_method (str): 支付接口类型
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - message (str): 操作结果信息
-        
+
         功能说明：
         这个接口允许管理员动态配置易支付平台的接入参数，无需重启服务器。
         配置会立即生效，影响后续创建的所有订单。
-        
+
         使用场景：
         - 管理员在后台管理面板配置易支付参数
         - 更换易支付平台或商户账号
         - 调整支付接口类型和启用的支付方式
-        
+
         安全措施（已强化）：
         - 需要modify_config权限（第一层权限检查）
         - 必须是管理员（admin）或超级管理员（super_admin）用户组（第二层权限检查）
@@ -32996,7 +33458,8 @@ def start_web_server(args_param):
             # 检查用户是否具有 modify_config 权限
             # modify_config 权限允许修改系统配置，包括易支付配置
             # 易支付配置包含敏感信息（商户密钥），需要严格的权限控制
-            ip_for_pay=request.environ.get("REMOTE_ADDR") or request.remote_addr
+            ip_for_pay = request.environ.get(
+                "REMOTE_ADDR") or request.remote_addr
             if not auth_system.check_permission(g.user, "modify_config"):
                 # 记录权限不足的访问尝试
                 logging.warning(
@@ -33004,7 +33467,7 @@ def start_web_server(args_param):
                     f"IP: {ip_for_pay}, 方法: {request.method}"
                 )
                 return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
-            
+
             # ========== 第二层权限检查：用户组验证（强化安全性）==========
             # 即使用户具有 modify_config 权限，也必须是管理员或超级管理员用户组
             # 这样可以防止普通用户通过自定义权限配置访问敏感的易支付配置
@@ -33013,9 +33476,9 @@ def start_web_server(args_param):
             if not user_data:
                 logging.error(f"[易支付配置-权限拒绝] 无法获取用户 {g.user} 的数据")
                 return jsonify({"success": False, "message": "用户数据异常"}), 500
-            
+
             user_group = user_data.get("group", "user")
-            
+
             # 只允许 admin（管理员）和 super_admin（超级管理员）访问
             # 这是第二层安全防护，确保只有管理员组成员才能操作易支付配置
             if user_group not in ["admin", "super_admin"]:
@@ -33027,38 +33490,38 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "权限不足，只有管理员和超级管理员才能管理易支付配置"
                 }), 403
-            
+
             # 记录合法的访问（用于审计）
             logging.info(
                 f"[易支付配置-访问] 管理员 {g.user}（用户组：{user_group}）正在访问易支付配置接口 - "
                 f"IP: {ip_for_pay}, 方法: {request.method}"
             )
-            
+
             if request.method == "GET":
                 # ========== 处理GET请求：获取当前配置 ==========
-                
+
                 # 读取配置文件
                 # 使用 configparser 从 config.ini 文件读取配置项
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
-                
+
                 # 从 Rainbow_YiPay 节读取易支付相关配置
                 # 使用 fallback 参数提供默认值，确保即使配置文件缺失也能正常工作
-                
+
                 # 读取易支付接口域名
                 host = config.get(
                     "Rainbow_YiPay",
                     "host",
                     fallback=""  # 默认值：空字符串
                 )
-                
+
                 # 读取商户ID（PID）
                 pid = config.get(
                     "Rainbow_YiPay",
                     "pid",
                     fallback=""
                 )
-                
+
                 # 读取商户密钥（KEY）
                 # 注意：密钥是敏感信息，但由于已进行双重权限验证（modify_config权限 + 管理员用户组）
                 # 因此直接返回完整密钥，便于管理员进行配置管理
@@ -33068,7 +33531,7 @@ def start_web_server(args_param):
                     "key",
                     fallback=""
                 )
-                
+
                 # 读取启用的支付方式
                 # 这是一个逗号分隔的字符串，例如 "alipay,wxpay"
                 enabled_payment_methods = config.get(
@@ -33076,16 +33539,15 @@ def start_web_server(args_param):
                     "enabled_payment_methods",
                     fallback="alipay,wxpay"  # 默认值：启用支付宝和微信支付
                 )
-                
+
                 # 读取支付接口类型
                 # 可选值：web、jump、jsapi、app、scan、applet
                 payment_method = "jump"
-                
 
                 product_id = config.get(
                     "Rainbow_YiPay", "product_id", fallback="1001"
                 )
-                
+
                 # 构造返回数据
                 # 将读取到的配置以 JSON 格式返回给前端
                 # 注意：返回完整的商户密钥（已通过双重权限验证，安全可控）
@@ -33100,96 +33562,100 @@ def start_web_server(args_param):
                         "product_id": product_id  # [新增] 返回商品ID
                     }
                 })
-            
+
             elif request.method == "PUT":
                 # ========== 处理PUT请求：更新配置 ==========
-                
+
                 # 获取请求数据
                 # 从前端传来的 JSON 数据中提取配置参数
                 data = request.get_json() or {}
-                
+
                 # 读取当前配置作为默认值
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
-                
+
                 # 提取新的配置值
                 # 使用 .get() 方法获取参数，如果参数不存在则使用当前配置值作为默认值
-                
+
                 # 获取新的 host 值
                 new_host = data.get(
                     "host",
                     config.get("Rainbow_YiPay", "host", fallback="")
                 ).strip()  # 去除首尾空格
-                
+
                 # 获取新的 pid 值
                 new_pid = data.get(
                     "pid",
                     config.get("Rainbow_YiPay", "pid", fallback="")
                 ).strip()
-                
+
                 # 获取新的 key 值
                 # 由于不再对密钥进行脱敏处理，前端传来的密钥就是完整的密钥
                 new_key = data.get(
                     "key",
                     config.get("Rainbow_YiPay", "key", fallback="")
                 ).strip()
-                
+
                 # 获取新的 enabled_payment_methods 值
                 new_enabled_payment_methods = data.get(
                     "enabled_payment_methods",
-                    config.get("Rainbow_YiPay", "enabled_payment_methods", fallback="alipay,wxpay")
+                    config.get(
+                        "Rainbow_YiPay", "enabled_payment_methods", fallback="alipay,wxpay")
                 ).strip()
-                
+
                 # 获取新的 payment_method 值
                 new_payment_method = data.get(
                     "payment_method",
-                    config.get("Rainbow_YiPay", "payment_method", fallback="jump")
+                    config.get("Rainbow_YiPay",
+                               "payment_method", fallback="jump")
                 ).strip()
 
                 # [新增] 获取新的 product_id 值
                 new_product_id = data.get(
-                    "product_id", config.get("Rainbow_YiPay", "product_id", fallback="1001")
+                    "product_id", config.get(
+                        "Rainbow_YiPay", "product_id", fallback="1001")
                 ).strip()
-                
+
                 # ========== 验证参数的有效性 ==========
-                
+
                 # 验证 host 不能为空
                 if not new_host:
                     return jsonify({
                         "success": False,
                         "message": "易支付接口域名不能为空"
                     }), 400
-                
+
                 # 验证 host 必须以 http:// 或 https:// 开头
                 if not new_host.startswith(("http://", "https://")):
                     return jsonify({
                         "success": False,
                         "message": "易支付接口域名必须以 http:// 或 https:// 开头"
                     }), 400
-                
+
                 # 验证 pid 不能为空
                 if not new_pid:
                     return jsonify({
                         "success": False,
                         "message": "商户ID不能为空"
                     }), 400
-                
+
                 # 验证 key 不能为空
                 if not new_key:
                     return jsonify({
                         "success": False,
                         "message": "商户密钥不能为空"
                     }), 400
-                
+
                 # 验证 payment_method 的有效性
                 # 只允许特定的支付接口类型
-                valid_payment_methods = ["web", "jump", "jsapi", "app", "scan", "applet"]
+                valid_payment_methods = ["web", "jump",
+                                         "jsapi", "app", "scan", "applet"]
                 if new_payment_method not in valid_payment_methods:
                     return jsonify({
                         "success": False,
                         "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
                     }), 400
-                
+
                 # ========== 保存旧配置用于日志记录 ==========
                 # 【重要】在执行 config.set() 之前保存所有旧值
                 # 这样才能正确比较新旧值，记录准确的变更日志
@@ -33198,29 +33664,34 @@ def start_web_server(args_param):
                 # 【任务1修复】保存旧的密钥值，用于后续判断密钥是否被修改
                 # 必须在 config.set("Rainbow_YiPay", "key", new_key) 之前获取
                 old_key = config.get("Rainbow_YiPay", "key", fallback="")
-                old_enabled_payment_methods = config.get("Rainbow_YiPay", "enabled_payment_methods", fallback="")
-                old_payment_method = config.get("Rainbow_YiPay", "payment_method", fallback="")
-                
+                old_enabled_payment_methods = config.get(
+                    "Rainbow_YiPay", "enabled_payment_methods", fallback="")
+                old_payment_method = config.get(
+                    "Rainbow_YiPay", "payment_method", fallback="")
+
                 # ========== 更新配置 ==========
-                
+
                 # 确保 Rainbow_YiPay 配置节存在
                 # 如果配置节不存在，则创建它
                 if not config.has_section("Rainbow_YiPay"):
                     config.add_section("Rainbow_YiPay")
-                
+
                 # 设置新的配置值
                 config.set("Rainbow_YiPay", "host", new_host)
                 config.set("Rainbow_YiPay", "pid", new_pid)
                 config.set("Rainbow_YiPay", "key", new_key)
-                config.set("Rainbow_YiPay", "enabled_payment_methods", new_enabled_payment_methods)
-                config.set("Rainbow_YiPay", "payment_method", new_payment_method)
-                config.set("Rainbow_YiPay", "product_id", new_product_id) # [新增] 保存商品ID
-                
+                config.set("Rainbow_YiPay", "enabled_payment_methods",
+                           new_enabled_payment_methods)
+                config.set("Rainbow_YiPay", "payment_method",
+                           new_payment_method)
+                config.set("Rainbow_YiPay", "product_id",
+                           new_product_id)  # [新增] 保存商品ID
+
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
                 # 这样可以避免覆盖配置文件时丢失注释信息
                 _write_config_with_comments(config, "config.ini")
-                
+
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
                 # 注意：不记录完整的密钥，只记录是否修改了密钥
@@ -33237,13 +33708,13 @@ def start_web_server(args_param):
                     f"enabled_payment_methods: {old_enabled_payment_methods} -> {new_enabled_payment_methods}, "
                     f"payment_method: {old_payment_method} -> {new_payment_method}"
                 )
-                
+
                 # ========== 返回成功响应 ==========
                 return jsonify({
                     "success": True,
                     "message": "易支付配置已成功更新"
                 })
-        
+
         except Exception as e:
             # 捕获所有异常
             # 记录错误日志，包括详细的堆栈跟踪信息
@@ -33260,22 +33731,22 @@ def start_web_server(args_param):
     def user_payment_logs():
         """
         获取当前用户的支付日志列表接口
-        
+
         功能说明：
         用户查看自己的支付操作日志，自动根据登录状态识别用户身份。
         - 如果是注册用户，使用username作为user_id
         - 如果是游客会话，使用session UUID作为user_id
-        
+
         请求方法：GET
         权限要求：登录用户（login_required装饰器）
-        
+
         权限说明（任务5新增）：
         1. 如果用户是管理员（admin/super_admin）：可以访问，返回自己的日志
            （管理员查看所有用户日志请使用 /api/admin/payment_logs 接口）
         2. 如果用户不是管理员：
            - 如果 require_payment = true（启用付费）：可以访问，只返回自己的日志
            - 如果 require_payment = false（免费模式）：拒绝访问（返回403错误）
-        
+
         查询参数（URL参数）：
             - action (str, 可选): 按操作类型筛选
                 - "create_order": 创建订单
@@ -33286,7 +33757,7 @@ def start_web_server(args_param):
             - end_date (str, 可选): 结束日期（格式：YYYY-MM-DD）
             - page (int, 可选): 页码，默认1
             - per_page (int, 可选): 每页数量，默认20（最大100）
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - logs (list): 日志列表（按时间倒序）
@@ -33298,11 +33769,11 @@ def start_web_server(args_param):
             - total (int): 符合条件的总日志数
             - page (int): 当前页码
             - per_page (int): 每页数量
-        
+
         功能说明：
         用户可以查看自己的支付操作日志，支持按操作类型、日期范围筛选和分页。
         日志按时间倒序排列，最新的日志在最前面。
-        
+
         使用场景：
         - 查看自己的订单历史
         - 追踪支付状态
@@ -33310,30 +33781,30 @@ def start_web_server(args_param):
         """
         try:
             # ========== 步骤1：获取当前用户信息并检查管理员权限 ==========
-            
+
             # 获取当前登录用户的用户名
             # g.user 由 @login_required 装饰器设置，保证此时用户已经登录
             current_user = g.user
-            
+
             # 初始化管理员标志为 False（默认假设用户不是管理员）
             is_admin = False
-            
+
             # 如果当前用户存在（已登录），检查其是否具有管理员权限
             if current_user:
                 # 调用 auth_manager 的 get_user_group() 方法获取用户所属的权限组
                 # 返回值可能是："guest"（游客）、"user"（普通用户）、"admin"（管理员）、"super_admin"（超级管理员）
                 user_group = auth_system.get_user_group(current_user)
-                
+
                 # 判断用户是否属于管理员组
                 # 只有 "admin" 或 "super_admin" 才被认为是管理员
                 is_admin = user_group in ["admin", "super_admin"]
-                
+
                 # [调试日志] 记录用户权限检查结果，便于追踪权限问题
                 logging.info(
                     f"[用户支付日志] 权限检查 - 用户: {current_user}, "
                     f"组别: {user_group}, 是否管理员: {is_admin}"
                 )
-            
+
             # ========== 步骤2：权限控制检查（任务5核心逻辑） ==========
             # 如果用户不是管理员，需要额外检查系统是否启用了付费功能
             # 只有在启用付费功能时，普通用户才被允许查看自己的支付日志
@@ -33343,8 +33814,9 @@ def start_web_server(args_param):
                 # fallback=True 表示如果配置项不存在，默认值为 True（需要付费）
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
-                require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
-                
+                require_payment = config.getboolean(
+                    "Payment_Settings", "require_payment", fallback=True)
+
                 # 如果系统未启用付费功能（免费模式），拒绝普通用户访问
                 # 原因：免费模式下，普通用户无需关注支付日志，只有管理员才需要查看历史记录
                 if not require_payment:
@@ -33353,14 +33825,14 @@ def start_web_server(args_param):
                         f"[用户支付日志] 访问被拒绝 - 用户 {current_user} 不是管理员且系统未启用付费功能 "
                         f"(require_payment={require_payment})"
                     )
-                    
+
                     # 返回 HTTP 403 Forbidden 错误，表示权限不足
                     # 这是一个标准的权限拒绝响应码
                     return jsonify({
                         "success": False,
                         "message": "当前系统未启用付费功能，普通用户无法访问支付日志"
                     }), 403
-                
+
                 # [调试日志] 记录权限检查通过（普通用户在付费模式下）
                 logging.info(
                     f"[用户支付日志] 权限检查通过 - 用户 {current_user} 为普通用户，"
@@ -33371,10 +33843,10 @@ def start_web_server(args_param):
                 logging.info(
                     f"[用户支付日志] 权限检查通过 - 用户 {current_user} 为管理员，无条件允许访问"
                 )
-            
+
             # ========== 步骤3：确定当前用户的用户ID ==========
             # 权限检查通过后，继续处理支付日志查询逻辑
-            
+
             # 确定用户ID
             # 如果g.user不为None，说明是注册用户，使用username
             # 否则，使用session中的UUID（游客会话）
@@ -33389,16 +33861,16 @@ def start_web_server(args_param):
                         "success": False,
                         "message": "无法识别用户身份，请重新登录"
                     }), 401
-            
+
             # ========== 步骤4：获取查询参数 ==========
-            
+
             # 操作类型筛选（可选）
             action_filter = request.args.get("action", "").strip()
-            
+
             # 日期范围筛选（可选）
             start_date_str = request.args.get("start_date", "").strip()
             end_date_str = request.args.get("end_date", "").strip()
-            
+
             # 分页参数
             try:
                 page = int(request.args.get("page", "1"))
@@ -33406,17 +33878,17 @@ def start_web_server(args_param):
             except ValueError:
                 page = 1
                 per_page = 20
-            
+
             # 验证分页参数
             if page < 1:
                 page = 1
             if per_page < 1 or per_page > 100:
                 per_page = 20
-            
+
             # 解析日期范围
             start_timestamp = None
             end_timestamp = None
-            
+
             if start_date_str:
                 try:
                     # 将日期字符串转换为时间戳
@@ -33427,7 +33899,7 @@ def start_web_server(args_param):
                 except ValueError:
                     # 日期格式不正确，忽略此筛选条件
                     app.logger.warning(f"[用户支付日志] 日期格式不正确: {start_date_str}")
-            
+
             if end_date_str:
                 try:
                     # 将日期字符串转换为时间戳
@@ -33438,14 +33910,14 @@ def start_web_server(args_param):
                     end_timestamp = end_dt.timestamp() + 86400 - 1
                 except ValueError:
                     app.logger.warning(f"[用户支付日志] 日期格式不正确: {end_date_str}")
-            
+
             # ========== 步骤5：读取当前用户的支付日志文件 ==========
-            
+
             logs = []
-            
+
             # 构建日志目录路径（所有日志统一在根目录）
             log_dir = PAYMENT_LOGS_DIR
-            
+
             # 检查日志目录是否存在
             if os.path.exists(log_dir) and os.path.isdir(log_dir):
                 # 遍历日志目录下的所有JSON文件
@@ -33453,71 +33925,72 @@ def start_web_server(args_param):
                     # 只处理JSON文件
                     if not filename.endswith('.json'):
                         continue
-                    
+
                     # 新的日志文件命名格式：{timestamp}_{user_id}_{order_id}.json
                     # 我们需要检查文件名中是否包含当前用户的user_id
                     # 解析文件名格式：yyyymmdd_HHMMSS_user_id_order_id.json
                     parts = filename.rsplit('_', 2)  # 从右往左分割，最多分割2次
                     # parts可能是：['20231201_120530_admin', 'ORDER123', '.json']
                     # 或者：['20231201_120530', 'guestid', 'ORDER123.json']
-                    
+
                     # 为了兼容性，我们直接读取文件并检查user_id字段
                     file_path = os.path.join(log_dir, filename)
-                    
+
                     try:
                         # 读取日志文件
                         with open(file_path, 'r', encoding='utf-8') as f:
                             log_entry = json.load(f)
-                        
+
                         # 检查日志的user_id是否匹配当前用户
                         log_user_id = log_entry.get('user_id', '')
                         if log_user_id != user_id:
                             # 不是当前用户的日志，跳过
                             continue
-                        
+
                         # ========== 应用筛选条件 ==========
-                        
+
                         # 筛选条件1：操作类型
                         if action_filter and log_entry.get('action') != action_filter:
                             continue
-                        
+
                         # 筛选条件2：开始日期
                         if start_timestamp is not None:
                             log_timestamp = log_entry.get('timestamp', 0)
                             if log_timestamp < start_timestamp:
                                 continue
-                        
+
                         # 筛选条件3：结束日期
                         if end_timestamp is not None:
                             log_timestamp = log_entry.get('timestamp', 0)
                             if log_timestamp > end_timestamp:
                                 continue
-                        
+
                         # 通过筛选，添加到结果列表
                         logs.append(log_entry)
-                        
+
                     except Exception as e:
                         # 读取或解析单个文件失败，记录警告但继续处理其他文件
-                        app.logger.warning(f"[用户支付日志] 读取文件失败: {file_path}, 错误: {str(e)}")
+                        app.logger.warning(
+                            f"[用户支付日志] 读取文件失败: {file_path}, 错误: {str(e)}")
                         continue
-            
+
             # ========== 步骤6：排序和分页 ==========
-            
+
             # 按时间戳倒序排序（最新的在前面）
             logs.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
-            
+
             # 计算总数
             total = len(logs)
-            
+
             # 计算分页
             start_index = (page - 1) * per_page
             end_index = start_index + per_page
-            
+
             # 获取当前页的数据
             page_logs = logs[start_index:end_index]
-            
+
             # ========== 步骤7：返回结果 ==========
-            
+
             return jsonify({
                 "success": True,
                 "logs": page_logs,
@@ -33526,7 +33999,7 @@ def start_web_server(args_param):
                 "per_page": per_page,
                 "user_id": user_id  # 返回用户ID，便于前端确认
             })
-        
+
         except Exception as e:
             # 处理异常
             app.logger.error(f"[用户支付日志] 处理失败: {str(e)}", exc_info=True)
@@ -33540,10 +34013,10 @@ def start_web_server(args_param):
     def admin_payment_logs():
         """
         获取支付日志列表接口（管理员专用）
-        
+
         请求方法：GET
         权限要求：审计日志查看权限（view_audit_logs）
-        
+
         查询参数（URL参数）：
             - user_id (str, 可选): 按用户ID筛选（支持模糊匹配）
             - action (str, 可选): 按操作类型筛选
@@ -33555,7 +34028,7 @@ def start_web_server(args_param):
             - end_date (str, 可选): 结束日期（格式：YYYY-MM-DD）
             - page (int, 可选): 页码，默认1
             - per_page (int, 可选): 每页数量，默认20（最大100）
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - logs (list): 日志列表（按时间倒序）
@@ -33569,11 +34042,11 @@ def start_web_server(args_param):
             - page (int): 当前页码
             - per_page (int): 每页数量
             - users (list): 所有有支付记录的用户列表（用于筛选）
-        
+
         功能说明：
         管理员可以查看所有用户的支付操作日志，支持多维度筛选和分页。
         日志按时间倒序排列，最新的日志在最前面。
-        
+
         使用场景：
         - 审计：查看所有支付操作记录
         - 调试：分析支付问题的完整流程
@@ -33586,22 +34059,22 @@ def start_web_server(args_param):
             # 支付日志包含用户的交易信息，是重要的审计数据
             if not auth_system.check_permission(g.user, "view_audit_logs"):
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
                 }), 403
-            
+
             # ========== 获取查询参数 ==========
-            
+
             # 用户ID筛选（可选）
             user_filter = request.args.get("user_id", "").strip()
-            
+
             # 操作类型筛选（可选）
             action_filter = request.args.get("action", "").strip()
-            
+
             # 日期范围筛选（可选）
             start_date_str = request.args.get("start_date", "").strip()
             end_date_str = request.args.get("end_date", "").strip()
-            
+
             # 分页参数
             try:
                 page = int(request.args.get("page", "1"))
@@ -33609,17 +34082,17 @@ def start_web_server(args_param):
             except ValueError:
                 page = 1
                 per_page = 20
-            
+
             # 验证分页参数
             if page < 1:
                 page = 1
             if per_page < 1 or per_page > 100:
                 per_page = 20
-            
+
             # 解析日期范围
             start_timestamp = None
             end_timestamp = None
-            
+
             if start_date_str:
                 try:
                     # 将日期字符串转换为时间戳
@@ -33630,7 +34103,7 @@ def start_web_server(args_param):
                 except ValueError:
                     # 日期格式不正确，忽略此筛选条件
                     logging.warning(f"[支付日志] 日期格式不正确: {start_date_str}")
-            
+
             if end_date_str:
                 try:
                     # 将日期字符串转换为时间戳
@@ -33641,12 +34114,12 @@ def start_web_server(args_param):
                     end_timestamp = end_dt.timestamp() + 86400 - 1
                 except ValueError:
                     logging.warning(f"[支付日志] 日期格式不正确: {end_date_str}")
-            
+
             # ========== 读取所有支付日志文件 ==========
-            
+
             logs = []
             users_set = set()  # 用于收集所有有支付记录的用户
-            
+
             # 检查支付日志目录是否存在
             if not os.path.exists(PAYMENT_LOGS_DIR):
                 # 目录不存在，返回空列表
@@ -33658,72 +34131,72 @@ def start_web_server(args_param):
                     "per_page": per_page,
                     "users": []
                 })
-            
+
             # 遍历所有日志文件（新结构：所有日志平铺在根目录）
             for log_filename in os.listdir(PAYMENT_LOGS_DIR):
                 # 只处理.json文件
                 if not log_filename.endswith(".json"):
                     continue
-                
+
                 # 构造日志文件完整路径
                 log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
-                
+
                 # 跳过非文件项（例如子目录）
                 if not os.path.isfile(log_filepath):
                     continue
-                
+
                 try:
                     # 读取日志文件
                     with open(log_filepath, "r", encoding="utf-8") as f:
                         log_data = json.load(f)
-                    
+
                     # 提取用户ID并添加到用户集合
                     user_id = log_data.get("user_id", "")
                     if user_id:
                         users_set.add(user_id)
-                    
+
                     # ========== 应用筛选条件 ==========
-                    
+
                     # 用户ID筛选（如果设置了用户筛选）
                     if user_filter and user_filter not in user_id:
                         # 不匹配，跳过此日志
                         continue
-                    
+
                     # 操作类型筛选
                     if action_filter and log_data.get("action") != action_filter:
                         continue
-                    
+
                     # 日期范围筛选
                     log_timestamp = log_data.get("timestamp", 0)
                     if start_timestamp and log_timestamp < start_timestamp:
                         continue
                     if end_timestamp and log_timestamp > end_timestamp:
                         continue
-                    
+
                     # 添加到日志列表
                     logs.append(log_data)
-                
+
                 except (json.JSONDecodeError, IOError) as e:
                     # 文件读取或解析失败，记录警告并跳过
                     logging.warning(
                         f"[支付日志] 读取日志文件失败: {log_filepath}, 错误: {str(e)}"
                     )
                     continue
-            
+
             # ========== 排序和分页 ==========
-            
+
             # 按时间戳倒序排列（最新的在前面）
             logs.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
-            
+
             # 分页
             total = len(logs)
             start = (page - 1) * per_page
             end = start + per_page
             logs_page = logs[start:end]
-            
+
             # 转换用户集合为排序列表
             users_list = sorted(list(users_set))
-            
+
             # 返回结果
             return jsonify({
                 "success": True,
@@ -33733,7 +34206,7 @@ def start_web_server(args_param):
                 "per_page": per_page,
                 "users": users_list  # 用于前端筛选下拉框
             })
-        
+
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[支付日志] 获取支付日志列表异常: {str(e)}")
@@ -33748,17 +34221,17 @@ def start_web_server(args_param):
     def admin_payment_notify_stats():
         """
         获取支付通知统计信息接口（管理员专用）
-        
+
         请求方法：GET
         权限要求：需要日志查看权限（view_logs）
-        
+
         功能说明：
         这个接口用于监控支付通知系统的运行状况，统计重复通知的情况。
         可以帮助管理员发现：
         - 哪些订单收到了重复通知
         - 重复通知的频率
         - 是否存在异常的重复通知模式
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - stats (dict): 统计信息
@@ -33773,7 +34246,7 @@ def start_web_server(args_param):
                     - username (str): 订单所有者
                     - amount (str): 订单金额
                     - status (str): 订单状态
-        
+
         使用场景：
         - 监控：实时监控支付系统的通知重试情况
         - 告警：发现异常的重复通知模式（例如某订单被通知了上百次）
@@ -33782,7 +34255,7 @@ def start_web_server(args_param):
         """
         # 获取当前登录用户（由@login_required装饰器设置到g.user）
         auth_username = g.user
-        
+
         # 检查细粒度权限：日志查看权限
         # view_logs 权限允许管理员查看系统日志和统计信息
         # 支付通知统计属于系统运行状态的监控数据，使用view_logs权限
@@ -33792,10 +34265,10 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "权限不足，需要日志查看权限（view_logs）"
             }), 403
-        
+
         try:
             # ========== 初始化统计数据结构 ==========
-            
+
             stats = {
                 "total_orders": 0,              # 总订单数
                 "paid_orders": 0,               # 已支付订单数
@@ -33803,9 +34276,9 @@ def start_web_server(args_param):
                 "max_repeat_count": 0,          # 单个订单的最大通知次数
                 "orders_with_repeats": []       # 有重复通知的订单详情列表
             }
-            
+
             # ========== 遍历所有订单文件，收集统计信息 ==========
-            
+
             # 检查订单目录是否存在
             if not os.path.exists(PAYMENT_ORDERS_DIR):
                 # 订单目录不存在，返回空统计
@@ -33814,75 +34287,84 @@ def start_web_server(args_param):
                     "stats": stats,
                     "message": "订单目录不存在，统计为空"
                 })
-            
+
             # 遍历订单目录中的所有JSON文件
             for filename in os.listdir(PAYMENT_ORDERS_DIR):
                 # 只处理JSON文件
                 if not filename.endswith(".json"):
                     continue
-                
+
                 # 构造完整的文件路径
                 filepath = os.path.join(PAYMENT_ORDERS_DIR, filename)
-                
+
                 try:
                     # 读取订单数据
                     with open(filepath, "r", encoding="utf-8") as f:
                         order_data = json.load(f)
-                    
+
                     # 统计总订单数
                     stats["total_orders"] += 1
-                    
+
                     # 统计已支付订单数（包括已支付、已部分退款、已全额退款）
                     if order_data.get("status") in (ORDER_STATUS_PAID, ORDER_STATUS_REFUNDED_PARTIAL, ORDER_STATUS_REFUNDED_FULL):
                         stats["paid_orders"] += 1
-                    
+
                     # 获取通知计数（notify_count字段）
                     # 注意：对于旧订单（在添加计数功能之前创建的），notify_count字段不存在
                     # 我们将其默认为0，这样它们不会被计入重复通知统计
                     # 这是合理的，因为我们无法得知旧订单收到过多少次通知
                     # 只有在添加此功能之后创建的订单才会有准确的统计数据
                     notify_count = order_data.get("notify_count", 0)
-                    
+
                     # 如果收到过通知（notify_count > 0）
                     if notify_count > 0:
                         # 更新最大通知次数
-                        stats["max_repeat_count"] = max(stats["max_repeat_count"], notify_count)
-                        
+                        stats["max_repeat_count"] = max(
+                            stats["max_repeat_count"], notify_count)
+
                         # 如果通知次数大于1，说明有重复通知
                         if notify_count > 1:
                             # 累加重复通知次数（不包括首次通知）
                             stats["repeat_notifies"] += (notify_count - 1)
-                            
+
                             # 将这个订单添加到重复通知列表
                             stats["orders_with_repeats"].append({
                                 "order_id": order_data.get("order_id", filename.replace(".json", "")),
                                 "notify_count": notify_count,                           # 通知总次数
-                                "last_notify_time": order_data.get("last_notify_time", "未知"),  # 最后通知时间
-                                "last_notify_at": order_data.get("last_notify_at", 0),  # 最后通知时间戳
-                                "first_notify_time": order_data.get("paid_time", "未知"),  # 首次通知时间
-                                "username": order_data.get("username", "未知"),         # 订单所有者
-                                "amount": order_data.get("amount", "0"),                # 订单金额
-                                "status": order_data.get("status", "unknown"),          # 订单状态
-                                "product_name": order_data.get("product_name", "未知")  # 商品名称
+                                # 最后通知时间
+                                "last_notify_time": order_data.get("last_notify_time", "未知"),
+                                # 最后通知时间戳
+                                "last_notify_at": order_data.get("last_notify_at", 0),
+                                # 首次通知时间
+                                "first_notify_time": order_data.get("paid_time", "未知"),
+                                # 订单所有者
+                                "username": order_data.get("username", "未知"),
+                                # 订单金额
+                                "amount": order_data.get("amount", "0"),
+                                # 订单状态
+                                "status": order_data.get("status", "unknown"),
+                                # 商品名称
+                                "product_name": order_data.get("product_name", "未知")
                             })
-                
+
                 except Exception as e:
                     # 读取单个订单文件失败，记录日志但继续处理其他订单
                     logging.error(f"[通知统计] 读取订单文件失败: {filename}, 错误: {str(e)}")
                     continue
-            
+
             # ========== 对重复通知列表排序 ==========
             # 按通知次数降序排列，通知次数最多的订单排在最前面
-            stats["orders_with_repeats"].sort(key=lambda x: x["notify_count"], reverse=True)
-            
+            stats["orders_with_repeats"].sort(
+                key=lambda x: x["notify_count"], reverse=True)
+
             # ========== 返回统计结果 ==========
-            
+
             return jsonify({
                 "success": True,
                 "stats": stats,
                 "message": "统计完成"
             })
-        
+
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[通知统计] 获取统计信息失败: {str(e)}")
@@ -33895,7 +34377,7 @@ def start_web_server(args_param):
     # ==============================================================================
     # 新增：管理员查询单个订单接口（从易支付平台同步）
     # ==============================================================================
-    
+
     @app.route("/api/admin/payment/query_order", methods=["POST"])
     @login_required
     @admin_required
@@ -33905,14 +34387,14 @@ def start_web_server(args_param):
         """
         try:
             # ========== 第1步：获取并验证请求参数 ==========
-            
+
             # 从请求体中获取JSON数据
             data = request.get_json() or {}
-            
+
             # 提取订单标识参数
             order_id = str(data.get("order_id", "")).strip()       # 商户订单号
             trade_no = str(data.get("trade_no", "")).strip()       # 平台订单号
-            
+
             # 验证必须提供至少一个订单标识
             if not order_id and not trade_no:
                 logging.warning("[管理员查询订单] 参数错误：必须提供 order_id 或 trade_no")
@@ -33920,25 +34402,26 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "参数错误：必须提供订单号"
                 }), 400
-            
+
             # 记录日志：收到查询请求
             logging.info(
                 f"[管理员查询订单] 管理员 {g.user} 查询订单 - "
                 f"order_id: {order_id or 'N/A'}, trade_no: {trade_no or 'N/A'}"
             )
-            
+
             # ========== 第2步：尝试从本地文件读取订单 ==========
-            
+
             order_data = None
             source = None
-            
+
             # 如果提供了商户订单号，先尝试从本地读取
             if order_id:
                 # 构造订单文件路径
                 # 本地订单文件以商户订单号命名，存储在 PAYMENT_ORDERS_DIR 目录下
                 # 文件格式：{order_id}.json（例如：ORDER20231201123456.json）
-                order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
-                
+                order_file = os.path.join(
+                    PAYMENT_ORDERS_DIR, f"{order_id}.json")
+
                 # 检查订单文件是否存在
                 if os.path.exists(order_file):
                     try:
@@ -33951,14 +34434,14 @@ def start_web_server(args_param):
                         # - 扩展信息（自定义参数、平台数据等）
                         with open(order_file, "r", encoding="utf-8") as f:
                             order_data = json.load(f)
-                        
+
                         source = "local"  # 数据来源：本地文件
                         logging.info(
                             f"[管理员查询订单] 从本地文件读取成功 - "
                             f"订单号: {order_id}, "
                             f"包含字段数: {len(order_data)}"
                         )
-                    
+
                     except Exception as e:
                         # 读取失败，记录警告但继续尝试从平台查询
                         # 这种情况可能是文件损坏或格式错误
@@ -33966,15 +34449,14 @@ def start_web_server(args_param):
                             f"[管理员查询订单] 本地文件读取失败: {str(e)} - "
                             f"将尝试从平台查询"
                         )
-            
+
             # ========== 第3步：如果本地没有，从易支付平台查询 ==========
-            
-            
-            
+
             logging.info("[管理员查询订单] 本地未找到订单，尝试从易支付平台查询")
 
             # 调用内部函数查询易支付平台
-            query_result = _query_yipay_order(order_id=order_id, trade_no=trade_no)
+            query_result = _query_yipay_order(
+                order_id=order_id, trade_no=trade_no)
 
             # 检查查询是否成功
             if query_result.get("success"):
@@ -34074,7 +34556,8 @@ def start_web_server(args_param):
                 # 3. 如果退款金额 >= 订单金额，则为全额退款
                 # 4. 如果退款金额 < 订单金额，则为部分退款
 
-                platform_status = local_order_data["platform_data"].get("status", 0)
+                platform_status = local_order_data["platform_data"].get(
+                    "status", 0)
                 logging.info(
                     f"[管理员查询订单] 订单退款状态检查 - "
                     f"单号: {out_trade_no}, "
@@ -34122,7 +34605,8 @@ def start_web_server(args_param):
                 # - 同步标记和时间戳
 
                 # 保存到本地文件
-                order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+                order_file = os.path.join(
+                    PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
 
                 # 确保订单目录存在
                 os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
@@ -34133,7 +34617,8 @@ def start_web_server(args_param):
                     # indent=2使JSON格式化，便于人工查看
                     # ensure_ascii=False保留中文字符不转义
                     with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(local_order_data, f, indent=2, ensure_ascii=False)
+                        json.dump(local_order_data, f,
+                                  indent=2, ensure_ascii=False)
 
                     logging.info(
                         f"[管理员查询订单] 平台订单已保存到本地 - "
@@ -34183,26 +34668,22 @@ def start_web_server(args_param):
                     "message": f"订单不存在或查询失败：{error_msg}"
                 }), 404
 
-            
-            
-            
-            
             # ========== 第5步：返回订单数据 ==========
-            
+
             # 返回完整的订单数据
             # 注意：
             # 1. order_data包含订单的所有字段，不会主动过滤任何信息
             # 2. 本地订单和平台订单的字段可能有差异，但都会返回完整数据
             # 3. 平台订单会额外包含platform_data字段，存储平台返回的原始数据
             # 4. source字段标识数据来源：local（本地文件）或 platform（平台查询）
-            
+
             return jsonify({
                 "success": True,
                 "order": order_data,              # 完整的订单数据（包含所有可用字段）
                 "source": source,                 # 数据来源标识
                 "message": "查询成功"
             })
-        
+
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[管理员查询订单] 处理失败: {str(e)}")
@@ -34218,18 +34699,18 @@ def start_web_server(args_param):
     def admin_get_order_detail():
         """
         管理员获取单个订单详情接口（仅从本地读取）
-        
+
         功能说明:
             管理员专用接口，用于快速获取本地订单详情。
             与 query_order 不同，此接口仅读取本地文件，不会查询支付平台。
-            
+
         请求参数（JSON）:
             - order_id (str, 必需): 商户订单号（out_trade_no）
-        
+
         返回结果（JSON）:
             成功: {"success": True, "order": {...}}
             失败: {"success": False, "message": "错误信息"}
-        
+
         权限要求:
             - 登录用户（@login_required）
             - 管理员权限（@admin_required）
@@ -34238,43 +34719,44 @@ def start_web_server(args_param):
             # 获取并验证请求参数
             data = request.get_json() or {}
             order_id = str(data.get("order_id", "")).strip()
-            
+
             if not order_id:
                 logging.warning("[管理员获取订单详情] 参数错误：未提供 order_id")
                 return jsonify({
                     "success": False,
                     "message": "参数错误：必须提供订单号"
                 }), 400
-            
-            logging.info(f"[管理员获取订单详情] 管理员 {g.user} 查询订单 - order_id: {order_id}")
-            
+
+            logging.info(
+                f"[管理员获取订单详情] 管理员 {g.user} 查询订单 - order_id: {order_id}")
+
             # 从本地文件读取订单
             order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
-            
+
             if not os.path.exists(order_file):
                 logging.warning(f"[管理员获取订单详情] 订单文件不存在: {order_id}")
                 return jsonify({
                     "success": False,
                     "message": "订单不存在"
                 }), 404
-            
+
             try:
                 with open(order_file, "r", encoding="utf-8") as f:
                     order_data = json.load(f)
-                
+
                 logging.info(f"[管理员获取订单详情] 成功读取订单 - 订单号: {order_id}")
                 return jsonify({
                     "success": True,
                     "order": order_data
                 })
-            
+
             except Exception as e:
                 logging.error(f"[管理员获取订单详情] 读取订单文件失败: {str(e)}")
                 return jsonify({
                     "success": False,
                     "message": f"读取订单文件失败: {str(e)}"
                 }), 500
-                
+
         except Exception as e:
             logging.error(f"[管理员获取订单详情] 处理请求时发生错误: {str(e)}")
             return jsonify({
@@ -34285,7 +34767,7 @@ def start_web_server(args_param):
     def _convert_yipay_status(status_code):
         """
         转换易支付状态码到本地订单状态常量（内部辅助函数）
-        
+
         参数:
             status_code (int): 易支付状态码
                 - 0: 未支付
@@ -34293,7 +34775,7 @@ def start_web_server(args_param):
                 - 2: 已退款
                 - 3: 已冻结
                 - 4: 预授权
-        
+
         返回:
             str: 本地订单状态常量
         """
@@ -34305,28 +34787,28 @@ def start_web_server(args_param):
             3: ORDER_STATUS_FROZEN,           # 已冻结 -> frozen
             4: ORDER_STATUS_PREAUTH,          # 预授权 -> preauth
         }
-        
+
         # 转换状态码，如果找不到则返回 pending
         return status_map.get(int(status_code), ORDER_STATUS_PENDING)
 
     # ==============================================================================
     # 新增：管理员批量拉取订单接口（从易支付平台同步）
     # ==============================================================================
-    
+
     @app.route("/api/admin/payment/local_orders", methods=["GET"])
     @login_required
     @admin_required
     def admin_get_local_payment_orders():
         """
         获取本地支付订单列表接口（不查询平台）
-        
+
         功能说明:
             管理员专用接口，用于获取本地已保存的所有支付订单。
             仅读取本地 payment_orders 目录下的订单文件，不查询平台。
             适用于订单列表展示和筛选功能。
-        
+
         请求方式: GET
-        
+
         返回结果（JSON）:
             成功: {
                 "success": True,
@@ -34347,7 +34829,7 @@ def start_web_server(args_param):
                 "total": 100  # 订单总数
             }
             失败: {"success": False, "message": "错误信息"}
-        
+
         权限要求:
             - 登录用户（@login_required）
             - 管理员权限（@admin_required）
@@ -34355,9 +34837,9 @@ def start_web_server(args_param):
         try:
             # 记录日志：收到获取本地订单请求
             logging.info(f"[获取本地订单] 管理员 {g.user} 请求获取本地订单列表")
-            
+
             # ========== 第1步：读取本地订单目录 ==========
-            
+
             # 确保订单目录存在
             if not os.path.exists(PAYMENT_ORDERS_DIR):
                 # 订单目录不存在，返回空列表
@@ -34367,25 +34849,27 @@ def start_web_server(args_param):
                     "orders": [],
                     "total": 0
                 })
-            
+
             # 获取订单目录下的所有JSON文件
-            order_files = [f for f in os.listdir(PAYMENT_ORDERS_DIR) if f.endswith('.json')]
-            
+            order_files = [f for f in os.listdir(
+                PAYMENT_ORDERS_DIR) if f.endswith('.json')]
+
             logging.info(f"[获取本地订单] 找到 {len(order_files)} 个订单文件")
-            
+
             # ========== 第2步：读取所有订单文件 ==========
-            
+
             orders = []
-            
+
             for order_file in order_files:
                 try:
                     # 构造订单文件完整路径
-                    order_file_path = os.path.join(PAYMENT_ORDERS_DIR, order_file)
-                    
+                    order_file_path = os.path.join(
+                        PAYMENT_ORDERS_DIR, order_file)
+
                     # 读取订单数据
                     with open(order_file_path, 'r', encoding='utf-8') as f:
                         order_data = json.load(f)
-                    
+
                     # 提取关键字段
                     order_summary = {
                         "order_id": order_data.get("order_id", ""),
@@ -34398,24 +34882,25 @@ def start_web_server(args_param):
                         "created_at": order_data.get("created_at", ""),
                         "paid_time": order_data.get("paid_time", "")
                     }
-                    
+
                     orders.append(order_summary)
-                    
+
                 except Exception as e:
                     # 单个订单文件读取失败，记录警告但继续处理其他订单
-                    logging.warning(f"[获取本地订单] 读取订单文件失败: {order_file}, 错误: {str(e)}")
+                    logging.warning(
+                        f"[获取本地订单] 读取订单文件失败: {order_file}, 错误: {str(e)}")
                     continue
-            
+
             # ========== 第3步：返回订单列表 ==========
-            
+
             logging.info(f"[获取本地订单] 成功读取 {len(orders)} 个订单")
-            
+
             return jsonify({
                 "success": True,
                 "orders": orders,
                 "total": len(orders)
             })
-        
+
         except Exception as e:
             # 处理异常
             logging.error(f"[获取本地订单] 处理失败: {str(e)}", exc_info=True)
@@ -34430,18 +34915,18 @@ def start_web_server(args_param):
     def admin_fetch_payment_orders():
         """
         管理员批量拉取订单列表接口（从易支付平台同步）
-        
+
         功能说明:
             管理员专用接口，用于从易支付平台批量拉取订单并同步到本地。
             应用场景：
             1. 定期同步平台订单
             2. 订单数据丢失后的恢复
             3. 订单对账和数据校验
-        
+
         请求参数（JSON）:
             - offset (int, 可选): 查询偏移量，从0开始（默认0）
             - limit (int, 可选): 每页条数，最大50（默认50）
-        
+
         返回结果（JSON）:
             成功: {
                 "success": True,
@@ -34451,21 +34936,21 @@ def start_web_server(args_param):
                 "orders": [...]             # 订单列表（简要信息）
             }
             失败: {"success": False, "message": "错误信息"}
-        
+
         权限要求:
             - 登录用户（@login_required）
             - 管理员权限（@admin_required）
         """
         try:
             # ========== 第1步：获取并验证请求参数 ==========
-            
+
             # 从请求体中获取JSON数据
             data = request.get_json() or {}
-            
+
             # 提取分页参数
             offset = data.get("offset", 0)
             limit = data.get("limit", 50)
-            
+
             # 参数类型转换和验证
             try:
                 offset = int(offset)
@@ -34473,23 +34958,23 @@ def start_web_server(args_param):
             except (ValueError, TypeError):
                 offset = 0
                 limit = 50
-            
+
             # 参数范围验证
             if offset < 0:
                 offset = 0
             if limit < 1 or limit > 50:
                 limit = 50
-            
+
             # 记录日志：收到拉取请求
             logging.info(
                 f"[管理员拉取订单] 管理员 {g.user} 发起订单拉取 - "
                 f"offset: {offset}, limit: {limit}"
             )
-            
+
             # ========== 第2步：调用易支付平台获取订单列表 ==========
-            
+
             fetch_result = _fetch_yipay_orders(offset=offset, limit=limit)
-            
+
             # 检查查询是否成功
             if not fetch_result.get("success"):
                 error_msg = fetch_result.get("message", "拉取失败")
@@ -34498,62 +34983,75 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"从平台拉取订单失败：{error_msg}"
                 }), 500
-            
+
             # 获取订单列表
             platform_orders = fetch_result.get("data", [])
-            
+
             logging.info(f"[管理员拉取订单] 从平台获取到 {len(platform_orders)} 个订单")
-            
+
             # ========== 第3步：遍历订单列表，保存到本地 ==========
-            
+
             # 统计变量
             saved_count = 0      # 成功保存的订单数
             failed_count = 0     # 保存失败的订单数
-            order_summaries = [] # 订单简要信息列表（用于返回给前端）
-            
+            order_summaries = []  # 订单简要信息列表（用于返回给前端）
+
             # 确保订单目录存在
             os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-            
+
             # 遍历每个订单
             for platform_order in platform_orders:
                 try:
                     # 提取商户订单号
                     out_trade_no = platform_order.get("out_trade_no", "")
-                    
+
                     if not out_trade_no:
                         logging.warning("[管理员拉取订单] 跳过：订单数据缺少 out_trade_no")
                         failed_count += 1
                         continue
-                    
+
                     # 构造本地订单数据结构
                     # 转换易支付平台的字段到我们的订单格式
                     local_order_data = {
                         "order_id": out_trade_no,                                    # 商户订单号
-                        "trade_no": platform_order.get("trade_no", ""),              # 平台订单号
-                        "amount": platform_order.get("money", "0"),                  # 订单金额
-                        "product_name": platform_order.get("name", "未知"),       # 商品名称
+                        # 平台订单号
+                        "trade_no": platform_order.get("trade_no", ""),
+                        # 订单金额
+                        "amount": platform_order.get("money", "0"),
+                        # 商品名称
+                        "product_name": platform_order.get("name", "未知"),
                         "username": "未知",                                       # 用户名（平台数据中可能没有）
-                        "created_at": platform_order.get("addtime", ""),            # 创建时间
-                        "paid_time": platform_order.get("endtime", ""),             # 支付时间
-                        "param": platform_order.get("param", ""),                    # 业务扩展参数
-                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识
-                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP
-                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号
-                        "pay_type": platform_order.get("type", ""),                  # 支付方式
-                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额
+                        # 创建时间
+                        "created_at": platform_order.get("addtime", ""),
+                        # 支付时间
+                        "paid_time": platform_order.get("endtime", ""),
+                        # 业务扩展参数
+                        "param": platform_order.get("param", ""),
+                        # 支付用户标识
+                        "buyer": platform_order.get("buyer", ""),
+                        # 支付用户IP
+                        "clientip": platform_order.get("clientip", ""),
+                        # 接口订单号
+                        "api_trade_no": platform_order.get("api_trade_no", ""),
+                        # 支付方式
+                        "pay_type": platform_order.get("type", ""),
+                        # 已退款金额
+                        "refundmoney": platform_order.get("refundmoney", "0"),
                         # 转换支付状态
                         "status": _convert_yipay_status(platform_order.get("status", 0)),
                         "synced_from_platform": True,                                 # 标记：从平台同步
                         "synced_at": time.time(),                                     # 同步时间戳
-                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读）
+                        # 同步时间（可读）
+                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "platform_data": platform_order                               # 保存完整的平台数据
                     }
-                    
+
                     # 修复退款状态判断逻辑
                     # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
                     platform_status = platform_order.get("status", 0)
                     if platform_status == 2 or platform_status == '2':
-                        refundmoney = float(platform_order.get("refundmoney", "0"))
+                        refundmoney = float(
+                            platform_order.get("refundmoney", "0"))
                         order_amount = float(platform_order.get("money", "0"))
                         # 使用 >= 比较，而不是 ==
                         # 当退款金额 >= 订单金额时，才是全额退款
@@ -34561,17 +35059,18 @@ def start_web_server(args_param):
                             local_order_data["status"] = ORDER_STATUS_REFUNDED_FULL
                         else:
                             local_order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
-                    
+
                     # 检查本地是否已存在该订单
-                    order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+                    order_file = os.path.join(
+                        PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
                     is_update = os.path.exists(order_file)
-                    
+
                     # 如果本地已存在，读取现有数据并合并
                     if is_update:
                         try:
                             with open(order_file, "r", encoding="utf-8") as f:
                                 existing_order = json.load(f)
-                            
+
                             # 保留本地的一些字段（例如：username、notify_count等）
                             if "username" in existing_order and existing_order["username"] != "未知":
                                 local_order_data["username"] = existing_order["username"]
@@ -34581,22 +35080,25 @@ def start_web_server(args_param):
                                 local_order_data["refund_count"] = existing_order["refund_count"]
                             if "refund_records" in existing_order:
                                 local_order_data["refund_records"] = existing_order["refund_records"]
-                            
+
                             # 更新同步标记
                             local_order_data["updated_from_platform"] = True
                             local_order_data["last_synced_at"] = time.time()
-                            local_order_data["last_synced_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                        
+                            local_order_data["last_synced_time"] = time.strftime(
+                                "%Y-%m-%d %H:%M:%S")
+
                         except Exception as e:
-                            logging.warning(f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, 错误: {str(e)}")
-                    
+                            logging.warning(
+                                f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, 错误: {str(e)}")
+
                     # 保存订单到本地文件
                     with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(local_order_data, f, indent=2, ensure_ascii=False)
-                    
+                        json.dump(local_order_data, f,
+                                  indent=2, ensure_ascii=False)
+
                     # 统计成功
                     saved_count += 1
-                    
+
                     # 添加到订单摘要列表
                     order_summaries.append({
                         "order_id": out_trade_no,
@@ -34605,17 +35107,18 @@ def start_web_server(args_param):
                         "status": local_order_data.get("status", ""),
                         "action": "更新" if is_update else "新增"
                     })
-                    
-                    logging.debug(f"[管理员拉取订单] 订单已保存: {out_trade_no} ({'更新' if is_update else '新增'})")
-                
+
+                    logging.debug(
+                        f"[管理员拉取订单] 订单已保存: {out_trade_no} ({'更新' if is_update else '新增'})")
+
                 except Exception as e:
                     # 保存单个订单失败，记录错误但继续处理其他订单
                     failed_count += 1
                     logging.error(f"[管理员拉取订单] 保存订单失败: {str(e)}")
                     continue
-            
+
             # ========== 第4步：记录同步日志 ==========
-            
+
             _write_payment_log(
                 user_id=g.user,
                 order_id="batch_fetch",
@@ -34629,15 +35132,15 @@ def start_web_server(args_param):
                     "success": True
                 }
             )
-            
+
             # 记录汇总日志
             logging.info(
                 f"[管理员拉取订单] 同步完成 - "
                 f"拉取: {len(platform_orders)}, 保存: {saved_count}, 失败: {failed_count}"
             )
-            
+
             # ========== 第5步：返回同步结果 ==========
-            
+
             return jsonify({
                 "success": True,
                 "fetched": len(platform_orders),      # 拉取的订单数
@@ -34646,7 +35149,7 @@ def start_web_server(args_param):
                 "orders": order_summaries,            # 订单简要信息列表
                 "message": f"成功同步 {saved_count} 个订单"
             })
-        
+
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[管理员拉取订单] 处理失败: {str(e)}")
@@ -34673,10 +35176,12 @@ def start_web_server(args_param):
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
             # 读取 require_payment 配置项，默认值为 true（需要付费）
-            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+            require_payment = config.getboolean(
+                "Payment_Settings", "require_payment", fallback=True)
             # 读取 single_run_cost 配置项，默认值为 1.0元
-            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
-            
+            single_run_cost = config.getfloat(
+                "Payment_Settings", "single_run_cost", fallback=1.0)
+
             # 判断是否为免费模式
             # 满足以下任一条件时，系统运行在免费模式下：
             # 1. require_payment 为 false（明确配置为免费模式）
@@ -34689,20 +35194,21 @@ def start_web_server(args_param):
                     "message": "当前系统运行在免费模式，所有用户均可无限次使用",
                     "overdue_accounts": []
                 })
-            
+
             # ========== 步骤2：检查学校账号欠费情况 ==========
             # 从请求体中获取参数
             data = request.get_json() or {}
             # 可选参数：要检查的特定学校账号用户名
             school_username = data.get("school_username")
-            
+
             # 获取当前认证用户名（通过 login_required 装饰器注入到 g.user）
             auth_username = g.user
-            
+
             # 获取该认证用户的所有学校账号配置
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
-            school_accounts = g.api_instance._load_user_school_accounts(auth_username)
-            
+            school_accounts = g.api_instance._load_user_school_accounts(
+                auth_username)
+
             # 如果没有学校账号，直接返回无欠费
             if not school_accounts:
                 return jsonify({
@@ -34710,23 +35216,23 @@ def start_web_server(args_param):
                     "has_overdue": False,
                     "overdue_accounts": []
                 })
-            
+
             # 存储欠费账号的列表
             overdue_accounts = []
-            
+
             # 遍历所有学校账号，检查欠费情况
             for acc_username, account_info in school_accounts.items():
                 # 如果指定了 school_username，只检查该账号
                 if school_username and acc_username != school_username:
                     continue
-                
+
                 # 兼容旧格式：如果 account_info 是字符串（密码），跳过
                 if isinstance(account_info, str):
                     continue
-                
+
                 # 获取欠费次数，默认为 0
                 overdue_count = account_info.get("overdue_count", 0)
-                
+
                 # 如果欠费次数大于 0，记录该账号
                 if overdue_count > 0:
                     # 尝试从备份文件中读取账号的真实姓名
@@ -34734,9 +35240,11 @@ def start_web_server(args_param):
                     name = None
                     try:
                         # 构造备份文件路径
-                        backup_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, acc_username)
-                        backup_file = os.path.join(backup_dir, f"{acc_username}_backup.json")
-                        
+                        backup_dir = os.path.join(
+                            SCHOOL_ACCOUNTS_DIR, acc_username)
+                        backup_file = os.path.join(
+                            backup_dir, f"{acc_username}_backup.json")
+
                         # 如果备份文件存在，读取姓名
                         if os.path.exists(backup_file):
                             with open(backup_file, "r", encoding="utf-8") as f:
@@ -34749,21 +35257,21 @@ def start_web_server(args_param):
                         logging.warning(
                             f"[欠费检查] 读取账号 {acc_username} 的备份文件失败: {e}"
                         )
-                    
+
                     # 将欠费账号信息添加到列表
                     overdue_accounts.append({
                         "username": acc_username,
                         "overdue_count": overdue_count,
                         "name": name or acc_username  # 如果没有姓名，使用用户名
                     })
-            
+
             # 返回检查结果
             return jsonify({
                 "success": True,
                 "has_overdue": len(overdue_accounts) > 0,  # 是否存在欠费
                 "overdue_accounts": overdue_accounts
             })
-        
+
         except Exception as e:
             # 捕获所有异常，记录日志并返回错误
             logging.error(f"[欠费检查] 检查欠费状态失败: {e}", exc_info=True)
@@ -34772,103 +35280,50 @@ def start_web_server(args_param):
                 "message": f"检查欠费状态失败：{str(e)}"
             }), 500
 
-    @app.route("/api/clear_overdue", methods=["POST"])
+
+    @app.route("/api/school_account/stats", methods=["POST"])
     @login_required
-    def clear_overdue():
+    def get_school_account_stats():
         """
-        清零学校账号的欠费记录（占位功能）
-        
-        功能说明：
-        - 将指定学校账号的 overdue_count 字段设置为 0
-        - 这是一个占位功能，实际应用中应该先验证支付后再清零
-        - 在真实环境中，此接口应该：
-          1. 验证用户的支付凭证
-          2. 调用支付平台API确认支付成功
-          3. 记录支付日志
-          4. 清零欠费计数
-        
-        请求参数（JSON）：
-        - school_username: 必需，学校账号用户名
-        
-        返回格式（JSON）：
-        - 成功：{"success": true, "message": "欠费已清零"}
-        - 失败：{"success": false, "message": "错误信息"}
-        
-        注意事项：
-        - 当前为占位实现，直接清零不进行任何支付验证
-        - TODO: 集成实际的支付验证流程
+        获取指定学校账号的统计信息（欠费信息）
+        读取 school_accounts/{school_account}.ini 的 [stats] 节
         """
         try:
-            # 从请求体中获取参数
+            # 获取请求参数
             data = request.get_json() or {}
-            # 必需参数：要清零的学校账号用户名
-            school_username = data.get("school_username")
-            
-            # 参数校验
+            school_username = data.get("school_username", "").strip()
+
             if not school_username:
-                return jsonify({
-                    "success": False,
-                    "message": "缺少必需参数：school_username"
-                }), 400
-            
-            # 获取当前认证用户名
+                return jsonify({"success": False, "message": "缺少 school_username 参数"}), 400
+
+            # 获取当前登录用户
             auth_username = g.user
-            
-            # 加载该认证用户的所有学校账号配置
+
+            # 验证该学校账号是否属于当前用户
+            # 使用 g.api_instance._load_user_school_accounts 加载用户的所有学校账号
             school_accounts = g.api_instance._load_user_school_accounts(auth_username)
-            
-            # 检查指定的学校账号是否存在
-            if school_username not in school_accounts:
-                return jsonify({
-                    "success": False,
-                    "message": f"学校账号 {school_username} 不存在"
-                }), 404
-            
-            # 获取账号信息
-            account_info = school_accounts[school_username]
-            
-            # 兼容旧格式：如果 account_info 是字符串（密码），转换为新格式
-            if isinstance(account_info, str):
-                account_info = {
-                    "password": account_info,
-                    "ua": None,
-                    "overdue_count": 0
-                }
-                school_accounts[school_username] = account_info
-            
-            # 记录清零前的欠费次数（用于日志）
-            old_overdue_count = account_info.get("overdue_count", 0)
-            
-            # 清零欠费计数
-            account_info["overdue_count"] = 0
-            
-            # 保存更新后的学校账号配置
-            g.api_instance._save_user_school_accounts(auth_username, school_accounts)
-            
-            # 记录日志
-            logging.info(
-                f"[欠费清零] 用户 {auth_username} 的学校账号 {school_username} "
-                f"欠费已清零（清零前：{old_overdue_count} 次）"
-            )
-            
-            # 返回成功响应
+
+            if school_username not in school_accounts and auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
+                return jsonify({"success": False, "message": "账号不存在或不属于当前用户"}), 404
+
+            # 读取统计信息 (使用现有的辅助函数读取ini中的stats节)
+            # 返回格式: {"overdue_count": int, "completed_count": int}
+            stats = g.api_instance._load_school_account_stats_from_ini(school_username)
+
             return jsonify({
                 "success": True,
-                "message": "欠费已清零"
+                "data": stats
             })
-        
+
         except Exception as e:
-            # 捕获所有异常，记录日志并返回错误
-            logging.error(f"[欠费清零] 清零欠费失败: {e}", exc_info=True)
-            return jsonify({
-                "success": False,
-                "message": f"清零欠费失败：{str(e)}"
-            }), 500
+            logging.error(f"[获取统计] 获取账号统计信息失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取失败: {str(e)}"}), 500
+
 
     # ==============================================================================
     # 付费配置获取接口
     # ==============================================================================
-    
+
     # ==============================================================================
     # [新增] 商品名称生成测试API
     # 路由: /api/admin/generate_product_name
@@ -34876,27 +35331,27 @@ def start_web_server(args_param):
     # 权限: 管理员
     # 功能: 根据商品数量生成趣味商品名称
     # ==============================================================================
-    
+
     @app.route("/api/admin/generate_product_name", methods=["POST"])
     @login_required
     @admin_required
     def generate_product_name():
         """
         商品名称生成API
-        
+
         功能说明：
         - 根据商品数量调用product_name_generator生成趣味商品名称
         - 用于测试商品名生成器的功能
         - 也用于支付测试面板的自动生成商品名功能
-        
+
         请求方法：POST
         权限要求：需要登录且为管理员（admin或super_admin）
-        
+
         请求参数（JSON格式）：
         {
             "quantity": 5  // 商品数量（整数，1-9999）
         }
-        
+
         返回数据（JSON格式）：
         成功时：
         {
@@ -34904,13 +35359,13 @@ def start_web_server(args_param):
             "product_name": "五串麻辣鸭脖配上三根秘制烤肠",  // 生成的商品名称
             "byte_length": 51                                 // 字节长度（UTF-8编码）
         }
-        
+
         失败时：
         {
             "success": false,
             "message": "错误信息描述"
         }
-        
+
         使用场景：
         - 商品名测试面板：管理员测试生成器的输出
         - 测试支付功能：自动生成模式下创建支付订单
@@ -34918,31 +35373,31 @@ def start_web_server(args_param):
         """
         try:
             # ========== 步骤1：获取请求参数 ==========
-            
+
             # 从请求体中获取JSON数据
             # 如果请求体不是JSON格式，get_json()会返回None
             data = request.get_json()
-            
+
             # 防御性检查：验证data是否存在
             if not data:
                 return jsonify({
                     "success": False,
                     "message": "请求体不能为空"
                 }), 400
-            
+
             # 从data字典中获取quantity参数
             # 使用.get()方法提供默认值，避免KeyError
             quantity = data.get("quantity")
-            
+
             # 验证quantity是否提供
             if quantity is None:
                 return jsonify({
                     "success": False,
                     "message": "缺少必要参数：quantity（商品数量）"
                 }), 400
-            
+
             # ========== 步骤2：验证参数有效性 ==========
-            
+
             # 尝试将quantity转换为整数
             # 如果转换失败（非数字字符串），会抛出ValueError
             try:
@@ -34952,7 +35407,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "商品数量必须是整数"
                 }), 400
-            
+
             # 验证数量范围：必须在1到9999之间
             # 这个范围是product_name_generator所支持的范围
             if quantity < 1 or quantity > 9999:
@@ -34960,15 +35415,15 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "商品数量必须在1到9999之间"
                 }), 400
-            
+
             # ========== 步骤3：调用生成器生成商品名 ==========
-            
+
             # 调用generate()方法生成商品名
             # 传入商品数量，返回字符串或None（如果输入非法）
             # 注意：LoMeiGenerator已在文件顶部导入并可以直接使用
             generator = LoMeiGenerator()
             product_name = generator.generate(quantity)
-            
+
             # 验证生成是否成功
             # generate()在输入非法时会返回None
             if product_name is None:
@@ -34976,60 +35431,60 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "商品名生成器内部错误，无法生成有效的商品名称"
                 }), 500
-            
+
             # ========== 步骤4：计算字节长度 ==========
-            
+
             # 计算生成的商品名的UTF-8字节长度
             # 支付接口通常限制商品名最大127字节
             # encode('utf-8')将字符串转换为UTF-8编码的字节序列
             # len()计算字节序列的长度
             byte_length = len(product_name.encode('utf-8'))
-            
+
             # 记录日志：生成成功，输出商品名和字节长度
             logging.info(
                 f"[商品名生成] 生成成功 - 数量: {quantity}, "
                 f"商品名: {product_name}, 字节长度: {byte_length}"
             )
-            
+
             # ========== 步骤5：返回成功响应 ==========
-            
+
             return jsonify({
                 "success": True,
                 "product_name": product_name,      # 生成的商品名称
                 "byte_length": byte_length          # 字节长度
             })
-            
+
         except Exception as e:
             # ========== 异常处理 ==========
-            
+
             # 捕获所有未预期的异常，记录错误日志
             logging.error(f"[商品名生成] 发生异常: {str(e)}", exc_info=True)
-            
+
             # 返回500错误，告知前端服务器内部错误
             return jsonify({
                 "success": False,
                 "message": f"服务器内部错误: {str(e)}"
             }), 500
-    
+
     # ==============================================================================
-    
+
     @app.route("/api/config/pricing", methods=["GET"])
     @login_required
     def get_pricing_config():
         """
         获取付费相关配置
-        
+
         功能说明：
         - 返回系统的付费相关配置信息
         - 包括是否需要付费、单次跑步费用、界面显示配置等
         - 前端用于显示价格信息和管理付费相关功能
         - 普通用户可以读取配置，但只有管理员可以修改
-        
+
         请求方法：GET
         权限要求：需要登录（login_required装饰器）
-        
+
         查询参数：无
-        
+
         返回数据（JSON格式）：
         {
             "success": true,
@@ -35042,12 +35497,12 @@ def start_web_server(args_param):
                 "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑"  // 注册页提示文本
             }
         }
-        
+
         使用场景：
         - 前端初始化：加载配置以决定是否显示付费相关功能
         - 价格展示：在前端页面显示当前的收费标准
         - 管理后台：为管理员提供当前配置的查看和编辑界面
-        
+
         注意事项：
         - 如果配置文件中不存在某项配置，使用默认值
         - 配置修改需要调用其他接口（如 /api/admin/config/save）
@@ -35058,43 +35513,46 @@ def start_web_server(args_param):
             # 该函数会自动处理配置文件不存在的情况，返回默认配置
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
-            
+
             # ========== 步骤2：提取付费相关配置项 ==========
             # 使用 fallback 参数指定默认值，确保即使配置文件中缺少某项也能正常返回
-            
+
             # 是否需要付费（布尔值）
             # true: 启用付费模式，用户需要支付才能使用
             # false: 免费模式，所有用户可无限次使用
-            require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
-            
+            require_payment = config.getboolean(
+                "Payment_Settings", "require_payment", fallback=True)
+
             # 单次跑步任务费用（浮点数，单位：元）
             # 用于计算用户欠费金额 = 欠费次数 × single_run_cost
             # 设置为0或负数时，相当于关闭付费功能
-            single_run_cost = config.getfloat("Payment_Settings", "single_run_cost", fallback=1.0)
-            
+            single_run_cost = config.getfloat(
+                "Payment_Settings", "single_run_cost", fallback=1.0)
+
             # 是否在个人资料页面显示剩余免费次数（布尔值）
             # true: 显示 available_runs 字段
             # false: 不显示该字段
-            show_available_runs = config.getboolean("Profile_Display", "show_available_runs", fallback=True)
-            
+            show_available_runs = config.getboolean(
+                "Profile_Display", "show_available_runs", fallback=True)
+
             # 剩余免费次数的显示格式（字符串模板）
             # {available_runs} 会被替换为实际的剩余次数数值
             # 例如："剩余免费次数：5 次"
             available_runs_format = config.get(
-                "Profile_Display", 
-                "available_runs_format", 
+                "Profile_Display",
+                "available_runs_format",
                 fallback="剩余免费次数：{available_runs} 次"
             )
-            
+
             # 是否在注册页面显示免费次数提示（布尔值）
             # true: 在注册表单中显示初始免费次数的提示信息
             # false: 不显示提示信息
             show_available_runs_on_register = config.getboolean(
-                "Registration_Display", 
-                "show_available_runs_on_register", 
+                "Registration_Display",
+                "show_available_runs_on_register",
                 fallback=True
             )
-            
+
             # 注册页面的免费次数提示文本（字符串模板）
             # {available_runs} 会被替换为新用户注册时获得的初始免费次数
             # 例如："注册即可得 10 次校园跑"
@@ -35103,7 +35561,7 @@ def start_web_server(args_param):
                 "register_available_runs_hint",
                 fallback="注册即可得 {available_runs} 次校园跑"
             )
-            
+
             # ========== 步骤3：构造返回数据 ==========
             # 将所有配置项打包成一个字典，返回给前端
             return jsonify({
@@ -35117,13 +35575,13 @@ def start_web_server(args_param):
                     "register_available_runs_hint": register_available_runs_hint
                 }
             })
-        
+
         except Exception as e:
             # ========== 异常处理 ==========
             # 捕获所有可能的异常（如配置文件损坏、类型转换错误等）
             # 记录详细的错误日志，包含完整的异常堆栈信息
             logging.error(f"[配置读取] 获取付费配置失败: {e}", exc_info=True)
-            
+
             # 返回错误响应给前端
             # HTTP 状态码 500 表示服务器内部错误
             return jsonify({
@@ -35132,7 +35590,7 @@ def start_web_server(args_param):
             }), 500
 
     @app.route("/api/admin/overdue-accounts", methods=["GET"])
-    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
+    @login_required # 只需要登录即可，细粒度权限在函数内部检查
     def admin_get_overdue_accounts():
         """
         获取所有有欠费的学校账号列表（仅管理员可访问）
@@ -35140,7 +35598,6 @@ def start_web_server(args_param):
         try:
             # ========== 权限检查：确认当前用户具有用户管理权限 ==========
             current_user = g.user
-            
             # 细粒度权限检查：需要 'manage_users' 权限
             # manage_users 权限允许查看欠费账号列表
             # 欠费信息涉及用户的财务状况，需要严格的权限控制
@@ -35149,53 +35606,55 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "权限不足，需要用户管理权限（manage_users）"
                 }), 403
-            
+
             # ========== 初始化欠费账号列表 ==========
             # 用于存储所有找到的欠费账号信息
             overdue_accounts = []
-            
+
             # ========== 获取所有系统用户列表 ==========
             # 遍历所有用户，检查他们的学校账号是否有欠费
-            
             # 从权限配置中获取所有用户
             user_groups = auth_system.permissions.get("user_groups", {})
             all_usernames = set(user_groups.keys())
-            
             # 添加超级管理员账号（超级管理员可能不在 user_groups 中）
-            super_admin = auth_system.config.get("Admin", "super_admin", fallback="admin")
+            super_admin = auth_system.config.get(
+                "Admin", "super_admin", fallback="admin")
             all_usernames.add(super_admin)
-            
+
             # ========== 遍历所有用户，查找欠费账号 ==========
             for auth_username in all_usernames:
                 try:
                     # 读取该用户的所有学校账号配置
                     # 文件路径：school_accounts/{auth_username}.json
                     # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
-                    school_accounts = background_task_manager._load_user_school_accounts(auth_username)
-                    
+                    # [修正] 使用 g.api_instance 替代 background_task_manager
+                    # Api 类包含 _load_user_school_accounts 方法，可以正确处理 INI 文件中的统计数据
+                    school_accounts = g.api_instance._load_user_school_accounts(
+                        auth_username)
+
                     # 遍历该用户的所有学校账号
                     for school_username, account_info in school_accounts.items():
                         # 兼容旧格式：如果 account_info 是字符串（密码），跳过
                         if isinstance(account_info, str):
                             continue
-                        
+
                         # 获取欠费次数，默认为 0
                         overdue_count = account_info.get('overdue_count', 0)
-                        
+
                         # 只处理有欠费的账号（overdue_count > 0）
                         if overdue_count > 0:
                             # ========== 从备份文件中读取账号详细信息 ==========
                             # 备份文件路径：school_accounts/{school_username}_backup.json
+                            # [修正] 使用 g.api_instance.user_dir 替代 background_task_manager.user_dir
                             backup_file = os.path.join(
-                                background_task_manager.user_dir,
-                                f"{school_username}_backup.json"
+                                g.api_instance.user_dir, f"{school_username}_backup.json"
                             )
                             
                             # 初始化默认值
-                            name = "未知"  # 如果读取失败，显示"未知"
-                            student_id = school_username  # 默认使用学校用户名作为学号
-                            has_backup = False  # 标记是否存在备份文件
-                            
+                            name = "未知" # 如果读取失败，显示"未知"
+                            student_id = school_username # 默认使用学校用户名作为学号
+                            has_backup = False # 标记是否存在备份文件
+
                             # 尝试读取备份文件
                             if os.path.exists(backup_file):
                                 try:
@@ -35205,9 +35664,10 @@ def start_web_server(args_param):
                                     
                                     # 从 userInfo 字段中提取信息
                                     user_info = backup_data.get('userInfo', {})
-                                    name = user_info.get('name', '未知')  # 姓名
-                                    student_id = user_info.get('account', school_username)  # 学号
-                                    has_backup = True  # 标记备份文件存在
+                                    name = user_info.get('name', '未知') # 姓名
+                                    student_id = user_info.get(
+                                        'account', school_username) # 学号
+                                    has_backup = True # 标记备份文件存在
                                 except Exception as e:
                                     # 备份文件读取失败，使用默认值
                                     logging.warning(
@@ -35216,42 +35676,43 @@ def start_web_server(args_param):
                             
                             # ========== 将欠费账号信息添加到结果列表 ==========
                             overdue_accounts.append({
-                                "auth_username": auth_username,  # 认证系统用户名
-                                "school_username": school_username,  # 学校账号用户名
-                                "overdue_count": overdue_count,  # 欠费次数
-                                "name": name,  # 姓名
-                                "student_id": student_id,  # 学号
-                                "has_backup": has_backup  # 是否有备份文件
+                                "auth_username": auth_username, # 认证系统用户名
+                                "school_username": school_username, # 学校账号用户名
+                                "overdue_count": overdue_count, # 欠费次数
+                                "name": name, # 姓名
+                                "student_id": student_id, # 学号
+                                "has_backup": has_backup # 是否有备份文件
                             })
-                
+
                 except Exception as e:
                     # 某个用户的账号读取失败，记录警告并继续处理其他用户
                     logging.warning(
                         f"[欠费查询] 读取用户 {auth_username} 的学校账号失败: {e}"
                     )
                     continue
-            
+
             # ========== 按欠费次数从高到低排序 ==========
             # 欠费次数越多，排在越前面
-            overdue_accounts.sort(key=lambda x: x['overdue_count'], reverse=True)
-            
+            overdue_accounts.sort(
+                key=lambda x: x['overdue_count'], reverse=True)
+
             # ========== 返回结果 ==========
             return jsonify({
                 "success": True,
-                "accounts": overdue_accounts,  # 欠费账号列表
-                "total": len(overdue_accounts)  # 欠费账号总数
+                "accounts": overdue_accounts, # 欠费账号列表
+                "total": len(overdue_accounts) # 欠费账号总数
             })
-        
+
         except Exception as e:
             # ========== 异常处理 ==========
             # 记录详细的错误日志，包括堆栈信息
             logging.error(f"[欠费查询] 获取欠费账号失败: {e}", exc_info=True)
-            
             # 返回错误响应
             return jsonify({
                 "success": False,
                 "message": "获取欠费账号失败"
             }), 500
+
 
     # ==============================================================================
     # 配置读取API端点 - 用于前端获取显示配置
@@ -35261,36 +35722,36 @@ def start_web_server(args_param):
     def get_registration_display_config():
         """
         获取注册页面显示配置接口
-        
+
         请求方法：GET
         权限要求：无（公开接口，任何用户都可以访问）
         路由路径：/api/config/registration_display
-        
+
         功能说明：
         此接口返回注册页面中关于available_runs（初始免费次数）的显示配置。
         前端JavaScript会调用此接口获取配置，然后根据配置决定是否显示注册提示信息。
-        
+
         查询参数：无
-        
+
         返回数据（JSON格式）：
         {
             "show_available_runs_on_register": "true",  // 是否在注册页面显示提示
             "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑"  // 提示文本模板
         }
-        
+
         配置说明：
         - show_available_runs_on_register: 字符串类型的布尔值（"true"或"false"）
           * "true": 在注册页面显示免费次数提示
           * "false": 不显示提示
-        
+
         - register_available_runs_hint: 提示文本模板，包含占位符 {available_runs}
           * 占位符会被前端JavaScript替换为实际的初始免费次数
           * 示例："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
-        
+
         使用场景：
         - 页面加载时：前端调用此接口获取配置，决定是否显示注册提示
         - 配置更新后：管理员修改配置后，前端重新调用此接口刷新显示
-        
+
         注意事项：
         - 这是一个公开接口，不需要登录即可访问
         - 如果配置文件读取失败，返回默认值（显示提示）
@@ -35298,23 +35759,23 @@ def start_web_server(args_param):
         """
         try:
             # ========== 步骤1：读取配置文件 ==========
-            
+
             # 调用_read_config_ini()函数读取配置文件
             # 该函数返回一个ConfigParser对象，如果读取失败返回None
             config = _read_config_ini()
-            
+
             # 验证配置文件是否读取成功
             if config is None:
                 # 如果读取失败，记录错误日志
                 logging.error("[配置读取] 读取注册显示配置失败：配置文件不可用")
-                
+
                 # 返回500错误和错误信息
                 return jsonify({
                     'error': '读取配置文件失败'
                 }), 500
-            
+
             # ========== 步骤2：从配置文件读取注册显示相关配置 ==========
-            
+
             # 读取 show_available_runs_on_register 配置项
             # 参数说明：
             #   - 第一个参数：节名称（Section）
@@ -35325,7 +35786,7 @@ def start_web_server(args_param):
                 'show_available_runs_on_register',       # 配置项名
                 fallback='true'                          # 默认值：显示提示
             )
-            
+
             # 读取 register_available_runs_hint 配置项
             # 这是提示文本的模板，包含 {available_runs} 占位符
             register_available_runs_hint = config.get(
@@ -35333,22 +35794,22 @@ def start_web_server(args_param):
                 'register_available_runs_hint',          # 配置项名
                 fallback='注册即可得 {available_runs} 次校园跑'  # 默认提示文本
             )
-            
+
             # ========== 步骤3：返回配置数据 ==========
-            
+
             # 将配置数据封装为JSON格式返回给前端
             return jsonify({
                 'show_available_runs_on_register': show_available_runs_on_register,
                 'register_available_runs_hint': register_available_runs_hint
             })
-        
+
         except Exception as e:
             # ========== 异常处理 ==========
-            
+
             # 捕获所有未预期的异常
             # 记录详细的错误日志，包含完整的堆栈信息
             logging.error(f"[配置读取] 读取注册显示配置失败: {e}", exc_info=True)
-            
+
             # 返回500错误和友好的错误信息
             return jsonify({
                 'error': str(e)
@@ -35358,36 +35819,36 @@ def start_web_server(args_param):
     def get_profile_display_config():
         """
         获取个人资料显示配置接口
-        
+
         请求方法：GET
         权限要求：无（公开接口，但通常在登录后调用）
         路由路径：/api/config/profile_display
-        
+
         功能说明：
         此接口返回个人资料页面中关于available_runs（剩余免费次数）的显示配置。
         前端JavaScript会调用此接口获取配置，然后根据配置决定是否显示剩余次数。
-        
+
         查询参数：无
-        
+
         返回数据（JSON格式）：
         {
             "show_available_runs": "true",                          // 是否显示剩余次数
             "available_runs_format": "剩余免费次数：{available_runs} 次"  // 显示格式模板
         }
-        
+
         配置说明：
         - show_available_runs: 字符串类型的布尔值（"true"或"false"）
           * "true": 在个人资料页面显示剩余次数
           * "false": 不显示剩余次数
-        
+
         - available_runs_format: 显示格式模板，包含占位符 {available_runs}
           * 占位符会被前端JavaScript替换为用户实际的剩余次数
           * 示例："剩余免费次数：{available_runs} 次" -> "剩余免费次数：5 次"
-        
+
         使用场景：
         - 个人资料加载：用户打开个人资料页面时调用此接口
         - 次数更新后：用户完成任务或次数变更后，重新调用此接口刷新显示
-        
+
         注意事项：
         - 虽然这是公开接口，但通常在用户登录后才调用
         - 如果配置文件读取失败，返回默认值（显示剩余次数）
@@ -35395,23 +35856,23 @@ def start_web_server(args_param):
         """
         try:
             # ========== 步骤1：读取配置文件 ==========
-            
+
             # 调用_read_config_ini()函数读取配置文件
             # 该函数返回一个ConfigParser对象，如果读取失败返回None
             config = _read_config_ini()
-            
+
             # 验证配置文件是否读取成功
             if config is None:
                 # 如果读取失败，记录错误日志
                 logging.error("[配置读取] 读取个人资料显示配置失败：配置文件不可用")
-                
+
                 # 返回500错误和错误信息
                 return jsonify({
                     'error': '读取配置文件失败'
                 }), 500
-            
+
             # ========== 步骤2：从配置文件读取个人资料显示相关配置 ==========
-            
+
             # 读取 show_available_runs 配置项
             # 参数说明：
             #   - 第一个参数：节名称（Section）
@@ -35422,7 +35883,7 @@ def start_web_server(args_param):
                 'show_available_runs',                   # 配置项名
                 fallback='true'                          # 默认值：显示剩余次数
             )
-            
+
             # 读取 available_runs_format 配置项
             # 这是显示格式的模板，包含 {available_runs} 占位符
             available_runs_format = config.get(
@@ -35430,22 +35891,22 @@ def start_web_server(args_param):
                 'available_runs_format',                 # 配置项名
                 fallback='剩余免费次数：{available_runs} 次'  # 默认显示格式
             )
-            
+
             # ========== 步骤3：返回配置数据 ==========
-            
+
             # 将配置数据封装为JSON格式返回给前端
             return jsonify({
                 'show_available_runs': show_available_runs,
                 'available_runs_format': available_runs_format
             })
-        
+
         except Exception as e:
             # ========== 异常处理 ==========
-            
+
             # 捕获所有未预期的异常
             # 记录详细的错误日志，包含完整的堆栈信息
             logging.error(f"[配置读取] 读取个人资料显示配置失败: {e}", exc_info=True)
-            
+
             # 返回500错误和友好的错误信息
             return jsonify({
                 'error': str(e)
@@ -35527,7 +35988,8 @@ def start_web_server(args_param):
             logging.warning(f"[健康检查] 获取CDN缓存状态失败: {e}")
         # ========== 计算响应延迟 ==========
         request_end_time = time.time()
-        response_time_ms = round((request_end_time - request_start_time) * 1000, 2)
+        response_time_ms = round(
+            (request_end_time - request_start_time) * 1000, 2)
         # ========== 返回健康检查信息 ==========
         return jsonify(
             {
@@ -35591,7 +36053,8 @@ def start_web_server(args_param):
                 f"[SocketIO] 已向会话 {session_id[:8]}... 推送 'verification_codes_updated' 事件"
             )
         except Exception as e:
-            logging.error(f"[SocketIO] 推送 'verification_codes_updated' 失败: {e}")
+            logging.error(
+                f"[SocketIO] 推送 'verification_codes_updated' 失败: {e}")
 
     def cleanup_sessions():
         """定期清理超过24小时无活动的会话，并强制执行内存会话数量限制"""
@@ -35607,7 +36070,8 @@ def start_web_server(args_param):
                             last_activity = session_activity.get(session_id, 0)
                             if current_time - last_activity > 86400:
                                 expired_sessions.append(session_id)
-                    remaining_sessions = len(web_sessions) - len(expired_sessions)
+                    remaining_sessions = len(
+                        web_sessions) - len(expired_sessions)
                     if remaining_sessions > MAX_MEMORY_SESSIONS:
                         with session_activity_lock:
                             active_sessions = [
@@ -35733,7 +36197,8 @@ def start_web_server(args_param):
                             task_state["error"] = "程序意外重启导致任务中断。"
                             task_state["last_update"] = time.time()
                             with open(filepath, "w", encoding="utf-8") as f:
-                                json.dump(task_state, f, indent=2, ensure_ascii=False)
+                                json.dump(task_state, f, indent=2,
+                                          ensure_ascii=False)
                             interrupted_task_files += 1
                             logging.debug(
                                 f"已将持久化的后台任务 {filename} 状态修正为 stopped。"
@@ -35802,14 +36267,17 @@ def start_web_server(args_param):
             try:
                 import ssl as ssl_module
 
-                ssl_context = ssl_module.SSLContext(ssl_module.PROTOCOL_TLS_SERVER)
+                ssl_context = ssl_module.SSLContext(
+                    ssl_module.PROTOCOL_TLS_SERVER)
                 cert_path = ssl_config["ssl_cert_path"]
                 key_path = ssl_config["ssl_key_path"]
 
                 if not os.path.isabs(cert_path):
-                    cert_path = os.path.join(os.path.dirname(__file__), cert_path)
+                    cert_path = os.path.join(
+                        os.path.dirname(__file__), cert_path)
                 if not os.path.isabs(key_path):
-                    key_path = os.path.join(os.path.dirname(__file__), key_path)
+                    key_path = os.path.join(
+                        os.path.dirname(__file__), key_path)
                 ssl_context.load_cert_chain(cert_path, key_path)
                 ssl_context.options |= ssl_module.OP_NO_SSLv2
                 ssl_context.options |= ssl_module.OP_NO_SSLv3
@@ -35854,7 +36322,7 @@ def start_web_server(args_param):
         3. 如果启用了https_only模式且检测到HTTP请求，重定向到HTTPS
 
         这个函数在每个请求处理之前自动执行。
-        
+
         注意：X-Forwarded-For的值已由nginx智能设置：
         - 如果CDN传来自定义头（如X-RealIP-Form），nginx会使用它作为X-Forwarded-For
         - 否则nginx使用标准的$proxy_add_x_forwarded_for
@@ -35866,17 +36334,18 @@ def start_web_server(args_param):
         if forwarded_for:
             # 获取第一个部分
             first_part = forwarded_for.split(",")[0]
-            
+
             # 使用正则查找第一个合法的IPv4地址
-            match = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', first_part)
-            
+            match = re.search(
+                r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', first_part)
+
             if match:
                 real_ip = match.group(0)
                 request.environ["REMOTE_ADDR"] = real_ip
                 logging.info(f"真实客户端IP已设置为: {real_ip}")
             else:
                 logging.warning(f"无法从Header解析出有效IP: {first_part}")
-        
+
         # 处理HTTPS重定向逻辑
         forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
         if ssl_config.get("https_only", False) and ssl_config.get("ssl_enabled", False):
@@ -35977,7 +36446,8 @@ def start_web_server(args_param):
                                 client, addr = self.sock.accept()
                                 try:
                                     client.settimeout(1.0)
-                                    first_byte = client.recv(1, socket.MSG_PEEK)
+                                    first_byte = client.recv(
+                                        1, socket.MSG_PEEK)
                                     client.settimeout(None)
 
                                     if len(first_byte) == 0:
@@ -36007,7 +36477,8 @@ def start_web_server(args_param):
                                                 "Please wait, redirecting to HTTPS...</body></html>"
                                             )
                                             try:
-                                                client.sendall(response.encode("utf-8"))
+                                                client.sendall(
+                                                    response.encode("utf-8"))
                                             except Exception:
                                                 pass
                                             finally:
@@ -36024,7 +36495,8 @@ def start_web_server(args_param):
                                     continue
 
                             except Exception as e:
-                                logging.error(f"DualProtocolSocket accept error: {e}")
+                                logging.error(
+                                    f"DualProtocolSocket accept error: {e}")
                                 time.sleep(
                                     0.1
                                 )  # [修正] 添加延时，防止错误死循环导致CPU占用100%和服务器卡死
@@ -36041,7 +36513,8 @@ def start_web_server(args_param):
                 except KeyboardInterrupt:
                     raise
                 except Exception as runtime_e:
-                    logging.error(f"HTTPS 服务器运行时错误: {runtime_e}", exc_info=True)
+                    logging.error(
+                        f"HTTPS 服务器运行时错误: {runtime_e}", exc_info=True)
                     try:
                         server_socket.close()
                     except:
@@ -36221,7 +36694,8 @@ def main():
                 f"默认端口 {args.port} 不可用或已被占用，尝试自动查找可用端口..."
             )
             found_port = None
-            alternative_ports = [8080, 8000, 3000, 5001, 8888, 9000, 5005, 5050]
+            alternative_ports = [8080, 8000, 3000,
+                                 5001, 8888, 9000, 5005, 5050]
             for port in alternative_ports:
                 logging.info(f"尝试端口 {port}...")
                 if check_port_available(args.host, port):

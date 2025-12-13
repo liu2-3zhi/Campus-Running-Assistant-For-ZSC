@@ -1870,6 +1870,7 @@ body.mobile-mode #session-picker-modal {
 }
 
 #admin-payment-logs-panel_modal,
+#admin-overdue-panel_modal,
 #admin-payment-settings-panel_modal {
   margin-top: 0px;
 }
@@ -59930,32 +59931,6 @@ async function checkOverdueBeforeStart(schoolUsername = null) {
 
 /**
  * 显示欠费提示弹窗
- * 
- * 功能说明：
- * - 使用 SweetAlert2 (Swal) 显示美观的欠费提示弹窗
- * - 列出所有欠费账号的姓名和欠费次数
- * - 提供"立即缴费"和"取消"两个按钮
- * - 如果用户点击"立即缴费"，调用占位缴费函数
- * 
- * @param {Array} overdueAccounts - 欠费账号列表，格式：
- *   [
- *     {username: '20210001', name: '张三', overdue_count: 3},
- *     ...
- *   ]
- * @returns {Promise<void>}
- * 
- * UI效果：
- * ┌─────────────────────────────┐
- * │   ⚠️ 账号欠费提醒           │
- * ├─────────────────────────────┤
- * │ 以下账号存在欠费，需要缴费  │
- * │ 后才能继续使用：            │
- * │                              │
- * │ • 张三: 3次欠费             │
- * │ • 李四: 1次欠费             │
- * │                              │
- * │ [立即缴费(占位)]  [取消]   │
- * └─────────────────────────────┘
  */
 async function showOverduePaymentModal(overdueAccounts) {
     // 将欠费账号列表转换为HTML格式
@@ -59992,21 +59967,6 @@ async function showOverduePaymentModal(overdueAccounts) {
 
 /**
  * 占位缴费函数：清零欠费记录
- * 
- * 功能说明：
- * - 这是一个占位实现，实际应用中应该集成真实的支付流程
- * - 遍历所有欠费账号，调用后端接口清零欠费记录
- * - 显示加载动画和成功提示
- * 
- * TODO（实际应用中应实现）：
- * 1. 跳转到支付页面或显示支付二维码
- * 2. 等待支付完成通知
- * 3. 验证支付凭证
- * 4. 记录支付日志
- * 5. 清零欠费记录
- * 
- * @param {Array} overdueAccounts - 欠费账号列表
- * @returns {Promise<void>}
  */
 async function clearOverduePlaceholder(overdueAccounts) {
     // 显示加载动画弹窗
@@ -60150,7 +60110,7 @@ async function loadOverdueAccounts() {
                                 </p>
                             </div>
                             <!-- 右侧：操作按钮 -->
-                            <button onclick="viewBackupInfo('${account.school_username}')" 
+                            <button onclick="View_details_of_users_with_outstanding_payments('${account.school_username}')" 
                                     class="btn btn-sm btn-primary"
                                     ${!account.has_backup ? 'disabled' : ''}>
                                 查看详情
@@ -60176,67 +60136,187 @@ async function loadOverdueAccounts() {
 }
 
 /**
- * 查看备份信息详情（显示完整的账号备份数据）
- * 
- * 功能说明：
- * - 读取指定学校账号的 {username}_backup.json 文件
- * - 以可读的格式展示备份文件中的所有信息
- * - 使用 SweetAlert2 弹窗显示
- * 
- * 备份文件包含的信息：
- * - userInfo: 用户基本信息（姓名、学号、学院等）
- * - course: 课程列表和选课信息
- * - unpaid: 未缴费课程列表
- * - 其他系统保存的数据
- * 
- * 当前状态：占位实现
- * - 此功能需要后端API支持：GET /api/admin/backup-info?username={school_username}
- * - 建议返回格式化的JSON数据供前端展示
- * 
- * @param {string} school_username - 学校账号用户名
- * @returns {Promise<void>}
+ * 查看账号备份详情（美化版）
+ * 解析后端返回的 JSON 数据并友好展示
  */
-async function viewBackupInfo(school_username) {
-    // ========== 显示加载动画 ==========
-    // 使用 SweetAlert2 显示加载提示
+async function View_details_of_users_with_outstanding_payments(school_username) {
+    // 显示加载动画
     Swal.fire({
-        title: '账号详细信息',
-        text: '加载中...',
-        showConfirmButton: false,  // 不显示确认按钮
-        willOpen: () => Swal.showLoading()  // 显示加载动画
+        title: '正在获取数据',
+        text: '请稍候...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
     });
-    
-    // ========== 占位实现提示 ==========
-    // TODO: 后续版本实现完整功能
-    // 实现步骤：
-    // 1. 添加后端API：/api/admin/backup-info
-    // 2. 读取 school_accounts/{school_username}_backup.json
-    // 3. 返回格式化的JSON数据
-    // 4. 前端解析并美化显示所有字段
-    
-    // 模拟延迟（实际应该是API调用）
-    setTimeout(() => {
-        // 关闭加载动画，显示功能说明
-        Swal.fire({
-            title: '查看详情',
-            html: `
-                <div class="text-left">
-                    <p class="mb-3">账号 <strong>${school_username}</strong> 的详细信息查看功能正在开发中。</p>
-                    <p class="text-sm text-slate-600 mb-2">此功能将显示：</p>
-                    <ul class="text-sm text-slate-600 list-disc pl-5">
-                        <li>用户基本信息（姓名、学号、学院等）</li>
-                        <li>课程列表和选课信息</li>
-                        <li>未缴费课程明细</li>
-                        <li>其他备份数据</li>
-                    </ul>
-                    <p class="text-xs text-slate-500 mt-3">💡 需要添加后端API支持</p>
-                </div>
-            `,
-            icon: 'info',
-            confirmButtonText: '我知道了'
+
+    try {
+        const response = await fetch(`/api/admin/backup-info?school_username=${encodeURIComponent(school_username)}`, {
+            method: 'GET',
+            headers: {
+                'X-Session-ID': sessionUUID
+            }
         });
-    }, 500);
+        const result = await response.json();
+
+        if (result.success) {
+            let data = result.data;
+            // 如果data是字符串，尝试解析
+            if (typeof data === 'string') {
+                try {
+                    data = JSON.parse(data);
+                } catch (e) {
+                    console.error("JSON解析失败", e);
+                }
+            }
+
+            // [新增] 获取实时欠费/统计信息，以 API 为准
+            try {
+                const statsResponse = await fetch('/api/school_account/stats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-ID': sessionUUID
+                    },
+                    body: JSON.stringify({ school_username: school_username })
+                });
+                const statsResult = await statsResponse.json();
+                if (statsResult.success && statsResult.data) {
+                    // 覆盖备份数据中的统计信息 (欠费次数和完成次数)
+                    // 如果API返回的数据中存在这些字段，则优先使用API的数据
+                    if (statsResult.data.overdue_count !== undefined) {
+                        data.overdue_count = statsResult.data.overdue_count;
+                    }
+                    if (statsResult.data.completed_count !== undefined) {
+                        data.completed_count = statsResult.data.completed_count;
+                    }
+                    console.log(`[View_details_of_users_with_outstanding_payments] 已更新 ${school_username} 的实时统计: 欠费=${data.overdue_count}, 完成=${data.completed_count}`);
+                }
+            } catch (e) {
+                console.warn("[View_details_of_users_with_outstanding_payments] 获取实时统计失败，将显示备份中的旧数据:", e);
+            }
+
+            // 格式化数据的辅助函数
+            const formatTime = (ts) => {
+                if (!ts) return '未知';
+                // 如果是时间戳（数字），假定为秒
+                if (typeof ts === 'number') return new Date(ts * 1000).toLocaleString();
+                return ts; // 如果已经是字符串
+            };
+            const safeStr = (str) => (str === null || str === undefined || str === '') ? '-' : str;
+
+            // 提取关键数据对象
+            const backupTime = formatTime(data.backup_timestamp);
+            const dept = data.deptInfo || {};
+            const user = data.userInfo || {};
+
+            // 构建HTML内容
+            const htmlContent = `
+                <div class="text-left space-y-3 font-sans text-sm max-h-[65vh] overflow-y-auto px-1 pr-2">
+                    
+                    <div class="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-sm">
+                        <div class="flex flex-col">
+                            <span class="text-xs text-slate-500 mb-1">备份时间</span>
+                            <span class="font-bold text-slate-700 text-xs">${backupTime}</span>
+                        </div>
+                        <div class="flex gap-4 border-l border-slate-200 pl-4">
+                            <div class="text-center">
+                                <div class="text-xs text-slate-500 mb-1">欠费</div>
+                                <div class="font-bold ${data.overdue_count > 0 ? 'text-red-600' : 'text-slate-400'} text-lg leading-none">${data.overdue_count}</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-xs text-slate-500 mb-1">完成</div>
+                                <div class="font-bold text-emerald-600 text-lg leading-none">${data.completed_count}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                        <div class="bg-gradient-to-r from-blue-50 to-white px-3 py-2 border-b border-blue-100 flex items-center gap-2">
+                            <div class="p-1 bg-blue-100 rounded text-blue-600">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                            </div>
+                            <span class="font-bold text-blue-800 text-xs">学校信息</span>
+                        </div>
+                        <div class="p-3 grid grid-cols-2 gap-y-3 gap-x-2 text-slate-700 bg-white">
+                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">姓名</span><span class="font-medium">${safeStr(dept.name)}</span></div>
+                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学号</span><span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">${safeStr(dept.studentNum || dept.account)}</span></div>
+                            <div class="col-span-2 border-t border-dashed border-slate-100 pt-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学校</span><span class="font-medium">${safeStr(dept.schoolName)}</span></div>
+                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">性别</span>${safeStr(dept.sexValue)}</div>
+                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">身份</span>${safeStr(dept.typeValue)}</div>
+                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">最近登录 (APP)</span><span class="text-xs text-slate-600">${safeStr(dept.logintime)}</span></div>
+                        </div>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                        <div class="bg-gradient-to-r from-purple-50 to-white px-3 py-2 border-b border-purple-100 flex items-center gap-2">
+                            <div class="p-1 bg-purple-100 rounded text-purple-600">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                            </div>
+                            <span class="font-bold text-purple-800 text-xs">账号详情</span>
+                        </div>
+                        <div class="p-3 grid grid-cols-2 gap-y-3 gap-x-2 text-slate-700 bg-white">
+                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">状态</span>${user.status === 1 ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">正常</span>' : '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">异常</span>'}</div>
+                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">注册时间</span><span class="text-xs text-slate-600">${safeStr(user.createtime)}</span></div>
+                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">首次登录</span><span class="text-xs text-slate-600">${safeStr(user.firstlogin)}</span></div>
+                            <div class="col-span-2 pt-1">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">账号密码</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="font-mono bg-slate-100 border border-slate-200 px-2 py-1 rounded text-slate-600 select-all">${safeStr(user.text_password)}</span>
+                                    <span class="text-[10px] text-slate-400">(明文)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <button onclick="const el = this.nextElementSibling; el.classList.toggle('hidden'); this.querySelector('svg').style.transform = el.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';" 
+                                class="w-full text-left px-3 py-2 bg-slate-50 text-xs text-slate-500 flex justify-between items-center hover:bg-slate-100 transition cursor-pointer">
+                            <span>原始 JSON 数据</span>
+                            <svg class="w-3 h-3 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div class="hidden bg-slate-800 p-0">
+                            <pre class="text-[10px] text-green-400 font-mono whitespace-pre-wrap break-all p-3 max-h-40 overflow-auto">${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            Swal.fire({
+                title: `${dept.name || school_username}`,
+                html: htmlContent,
+                width: '480px',
+                showConfirmButton: true,
+                confirmButtonText: '关闭',
+                confirmButtonColor: '#3b82f6',
+                customClass: {
+                    popup: 'rounded-2xl',
+                    title: 'text-lg font-bold text-slate-800 pt-4 pb-0',
+                    htmlContainer: '!px-4 !pb-4 !pt-2 !overflow-visible !m-0 w-full'
+                }
+            });
+
+        } else {
+            Swal.fire({
+                icon: 'info',
+                title: '未找到备份',
+                text: result.message || '该账号暂无备份数据',
+                confirmButtonText: '确定',
+                confirmButtonColor: '#64748b'
+            });
+        }
+    } catch (error) {
+        console.error('获取备份失败:', error);
+        Swal.fire({
+            icon: 'error',
+            title: '获取失败',
+            text: '网络请求出错或数据解析失败',
+            confirmButtonText: '确定'
+        });
+    }
 }
+
+
 
 // ============================================================================
 // 欠费账号查询功能 - 结束
