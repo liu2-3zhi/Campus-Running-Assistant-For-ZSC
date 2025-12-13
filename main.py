@@ -12889,54 +12889,220 @@ class Api:
             )
 
     def _multi_auto_attendance_worker(self):
-        """(多账号) 后台自动刷新和签到所有账号的线程"""
+        """
+        (多账号) 后台自动刷新和签到所有账号的线程
+        
+        功能说明：
+        为每个启用自动签到的账号创建独立的子线程，实现并发签到处理
+        
+        优化点：
+        1. 每个account使用独立的子线程，避免相互阻塞
+        2. 添加线程管理机制，防止重复创建线程
+        3. 统一处理account ID的数据类型（int和str）
+        """
+        # 用于跟踪每个账号的子线程
+        # 键：account ID（字符串格式）
+        # 值：线程对象
+        account_threads = {}
+        
+        # 用于标记哪些线程应该停止
+        # 键：account ID（字符串格式）
+        # 值：threading.Event对象
+        account_stop_events = {}
+        
+        # 主循环：定期检查账号状态并管理子线程
         while not self.stop_multi_auto_refresh.wait(timeout=1.0):
             try:
+                # === 第1步：检查全局条件 ===
+                
+                # 检查是否满足多账号模式的基本条件
+                # 1. 必须是多账号模式
+                # 2. 全局开启了自动签到功能
+                # 3. 至少有一个账号
                 if (
                     not self.is_multi_account_mode
                     or not self.global_params.get("auto_attendance_enabled", False)
                     or not self.accounts
                 ):
+                    # 条件不满足，等待5秒后重新检查
                     time.sleep(5)
                     continue
 
-                refresh_interval_s = self.global_params.get("auto_attendance_refresh_s")
+                # === 第2步：获取刷新间隔配置 ===
+                
+                # 从全局参数中获取自动签到的刷新间隔（秒）
+                refresh_interval_s = self.global_params.get("auto_attendance_refresh_s", 30)
 
-                self.log(f"(多账号) 自动签到: 等待 {refresh_interval_s} 秒...")
-                if self.stop_multi_auto_refresh.wait(timeout=refresh_interval_s):
-                    break
-
-                if not self.is_multi_account_mode or not self.global_params.get(
-                    "auto_attendance_enabled", False
-                ):
-                    continue
-
-                self.log("(多账号) 正在为所有账号执行后台签到检查...")
-
+                # === 第3步：遍历所有账号，为每个账号创建/管理线程 ===
+                
+                # 获取当前所有账号的列表（创建副本，避免迭代时被修改）
                 accounts_to_check = list(self.accounts.values())
-
+                
                 for acc in accounts_to_check:
+                    # 检查是否收到停止信号
                     if self.stop_multi_auto_refresh.is_set():
                         break
-                    if acc.params.get("auto_attendance_enabled", False):
-                        if acc.user_data.id:
-                            self._check_and_trigger_auto_attendance(acc)
-                            self._multi_fetch_attendance_stats(acc)
-                            self._update_account_status_js(acc, summary=acc.summary)
-                            time.sleep(random.uniform(1.0, 3.0))
-                        else:
-
-                            acc.log("(后台) 尚未登录，跳过自动签到检查。")
+                    
+                    # === 第4步：检查账号是否启用自动签到 ===
+                    
+                    # 只处理启用了自动签到的账号
+                    if not acc.params.get("auto_attendance_enabled", False):
+                        continue
+                    
+                    # === 第5步：统一处理account ID的数据类型 ===
+                    
+                    # account ID可能是int(1)或str("1")，统一转为字符串
+                    # 这样可以避免类型不一致导致的查找失败
+                    account_id_str = str(acc.user_data.id) if acc.user_data.id else None
+                    
+                    # 如果账号ID无效，跳过此账号
+                    if not account_id_str:
+                        acc.log("(后台) 账号ID无效，跳过自动签到")
+                        continue
+                    
+                    # === 第6步：检查该账号的线程是否已存在且运行中 ===
+                    
+                    # 从线程字典中查找该账号的线程
+                    existing_thread = account_threads.get(account_id_str)
+                    
+                    # 判断是否需要创建新线程：
+                    # 1. 线程不存在
+                    # 2. 线程存在但已停止运行
+                    if existing_thread is None or not existing_thread.is_alive():
+                        # === 第7步：为此账号创建新的停止事件 ===
+                        
+                        # 创建一个Event对象，用于控制子线程的停止
+                        stop_event = threading.Event()
+                        account_stop_events[account_id_str] = stop_event
+                        
+                        # === 第8步：创建并启动新的子线程 ===
+                        
+                        # 定义子线程的工作函数
+                        def account_worker(account, stop_event, refresh_interval):
+                            """
+                            单个账号的自动签到工作线程
+                            
+                            参数：
+                            - account: AccountSession对象
+                            - stop_event: threading.Event，用于停止线程
+                            - refresh_interval: 刷新间隔（秒）
+                            """
+                            # 获取账号ID（字符串格式）
+                            acc_id = str(account.user_data.id) if account.user_data.id else "unknown"
+                            
+                            # 记录线程启动日志
+                            logging.info(f"[自动签到] 账号 {acc_id} 的独立签到线程已启动")
+                            
+                            # 子线程主循环
+                            while not stop_event.wait(timeout=refresh_interval):
+                                try:
+                                    # 再次检查账号是否启用自动签到
+                                    # （配置可能在运行时被修改）
+                                    if not account.params.get("auto_attendance_enabled", False):
+                                        logging.info(f"[自动签到] 账号 {acc_id} 已禁用自动签到，线程退出")
+                                        break
+                                    
+                                    # 检查账号是否已登录
+                                    if not account.user_data.id:
+                                        account.log("(后台) 尚未登录，跳过自动签到检查")
+                                        continue
+                                    
+                                    # === 执行自动签到检查 ===
+                                    
+                                    account.log(f"(后台) 开始自动签到检查...")
+                                    
+                                    # 调用签到触发函数
+                                    self._check_and_trigger_auto_attendance(account)
+                                    
+                                    # 刷新统计数据
+                                    self._multi_fetch_attendance_stats(account)
+                                    
+                                    # 更新账号状态到前端
+                                    self._update_account_status_js(account, summary=account.summary)
+                                    
+                                    # 添加随机延迟，避免过于频繁的请求
+                                    time.sleep(random.uniform(1.0, 3.0))
+                                    
+                                except Exception as e:
+                                    # 捕获子线程中的异常，避免线程崩溃
+                                    logging.error(f"[自动签到] 账号 {acc_id} 签到线程出错: {e}", exc_info=True)
+                                    account.log(f"(后台) 签到出错: {str(e)}")
+                                    # 出错后等待一段时间再重试
+                                    time.sleep(60)
+                            
+                            # 线程退出时的清理工作
+                            logging.info(f"[自动签到] 账号 {acc_id} 的签到线程已停止")
+                        
+                        # 创建新线程
+                        # daemon=True: 守护线程，主程序退出时自动结束
+                        new_thread = threading.Thread(
+                            target=account_worker,
+                            args=(acc, stop_event, refresh_interval_s),
+                            daemon=True,
+                            name=f"AutoAttendance-Account-{account_id_str}"  # 给线程命名，便于调试
+                        )
+                        
+                        # 启动新线程
+                        new_thread.start()
+                        
+                        # 将线程对象保存到字典中
+                        account_threads[account_id_str] = new_thread
+                        
+                        # 记录日志
+                        logging.info(
+                            f"[自动签到] 为账号 {account_id_str} 创建了新的独立签到线程"
+                        )
+                        acc.log(f"(后台) 已启动独立的自动签到线程")
                     else:
-
-                        acc.log("(后台) 自动签到未在此账号上启用，跳过。")
+                        # 线程已存在且正在运行，无需重复创建
+                        # 这是正常情况，不需要特别处理
+                        pass
+                
+                # === 第9步：清理已停止的线程 ===
+                
+                # 遍历线程字典，移除已停止的线程
+                # 使用list()创建键的副本，避免在迭代时修改字典
+                for acc_id in list(account_threads.keys()):
+                    thread = account_threads[acc_id]
+                    # 如果线程已停止
+                    if not thread.is_alive():
+                        # 从字典中移除
+                        del account_threads[acc_id]
+                        # 同时移除对应的停止事件
+                        if acc_id in account_stop_events:
+                            del account_stop_events[acc_id]
+                        logging.info(f"[自动签到] 清理账号 {acc_id} 的已停止线程")
+                
+                # === 第10步：主线程休眠 ===
+                
+                # 等待一段时间后再次检查
+                # 使用较短的间隔（10秒）来及时发现新账号或配置变化
+                time.sleep(10)
 
             except Exception as e:
-                self.log(f"(多账号) 自动签到线程出错: {e}")
-                logging.error(f"Multi-auto-attendance worker error: {e}", exc_info=True)
+                # === 错误处理 ===
+                
+                # 捕获主循环中的所有异常
+                self.log(f"(多账号) 自动签到管理线程出错: {e}")
+                logging.error(f"Multi-auto-attendance manager error: {e}", exc_info=True)
+                # 出错后等待一段时间再继续
                 time.sleep(60)
-
-        logging.info("Multi-auto-attendance worker stopped.")
+        
+        # === 清理工作：主线程退出时停止所有子线程 ===
+        
+        logging.info("[自动签到] 正在停止所有账号的签到线程...")
+        
+        # 触发所有停止事件
+        for stop_event in account_stop_events.values():
+            stop_event.set()
+        
+        # 等待所有子线程结束（最多等待10秒）
+        for acc_id, thread in account_threads.items():
+            thread.join(timeout=10)
+            if thread.is_alive():
+                logging.warning(f"[自动签到] 账号 {acc_id} 的线程未能及时停止")
+        
+        logging.info("[自动签到] 多账号自动签到管理线程已停止")
 
     def _normalize_status_flag(self, v) -> int:
         """将后端返回的各种 isExecute 表达式规范为 0 或 1"""
@@ -33153,17 +33319,48 @@ def start_web_server(args_param):
                     with open(order_file_path, 'r', encoding='utf-8') as f:
                         order_data = json.load(f)
                     
-                    # 提取关键字段
+                    # 提取完整订单字段（确保返回15+字段）
+                    # 为了兼容列表展示，我们返回订单的所有关键字段
+                    # 包括：基本信息、支付信息、同步信息、平台数据等
                     order_summary = {
-                        "order_id": order_data.get("order_id", ""),
-                        "trade_no": order_data.get("trade_no", ""),
-                        "api_trade_no": order_data.get("api_trade_no", ""),
-                        "username": order_data.get("username", "unknown"),
-                        "amount": order_data.get("amount", "0"),
-                        "pay_type": order_data.get("pay_type", "unknown"),
-                        "status": order_data.get("status", "unknown"),
-                        "created_at": order_data.get("created_at", ""),
-                        "paid_time": order_data.get("paid_time", "")
+                        # === 基本订单信息 ===
+                        "order_id": order_data.get("order_id", ""),              # 系统订单号（商户订单号）
+                        "trade_no": order_data.get("trade_no", ""),              # 平台订单号
+                        "api_trade_no": order_data.get("api_trade_no", ""),      # 接口订单号
+                        
+                        # === 用户和商品信息 ===
+                        "username": order_data.get("username", "unknown"),       # 用户名
+                        "buyer": order_data.get("buyer", ""),                    # 支付用户标识（买家ID）
+                        "product_name": order_data.get("product_name", ""),      # 商品名称
+                        
+                        # === 金额信息 ===
+                        "amount": order_data.get("amount", "0"),                 # 订单金额
+                        "refundmoney": order_data.get("refundmoney", "0"),       # 已退款金额
+                        
+                        # === 支付信息 ===
+                        "pay_type": order_data.get("pay_type", "unknown"),       # 支付方式
+                        "status": order_data.get("status", "unknown"),           # 订单状态
+                        
+                        # === 时间信息 ===
+                        "created_at": order_data.get("created_at", ""),          # 订单创建时间
+                        "paid_time": order_data.get("paid_time", ""),            # 支付完成时间
+                        
+                        # === 业务参数 ===
+                        "param": order_data.get("param", ""),                    # 业务扩展参数
+                        "notify_url": order_data.get("notify_url", ""),          # 异步通知地址
+                        "return_url": order_data.get("return_url", ""),          # 同步跳转地址
+                        
+                        # === 客户端信息 ===
+                        "clientip": order_data.get("clientip", ""),              # 支付用户IP
+                        
+                        # === 同步信息 ===
+                        "synced_from_platform": order_data.get("synced_from_platform", False),  # 是否从平台同步过
+                        "synced_at": order_data.get("synced_at", ""),            # 同步时间戳
+                        "synced_time": order_data.get("synced_time", ""),        # 同步时间（可读格式）
+                        
+                        # === 平台原始数据 ===
+                        # 保留完整的平台数据，以便前端需要时可以查看原始信息
+                        "platform_data": order_data.get("platform_data", {})     # 支付平台返回的完整数据
                     }
                     
                     orders.append(order_summary)
@@ -33189,6 +33386,136 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"获取本地订单列表失败: {str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment/order_detail/<order_id>", methods=["GET"])
+    @login_required
+    @admin_required
+    def admin_get_order_detail(order_id):
+        """
+        获取单个订单详细信息接口（仅读取本地）
+        
+        功能说明:
+            管理员专用接口，用于获取指定订单的完整详细信息。
+            仅从本地订单文件读取，不查询支付平台。
+            返回订单的所有字段，包括平台数据、同步信息等。
+            
+        请求方式: GET
+        
+        URL参数:
+            - order_id (str): 系统订单号（商户订单号）
+            
+        返回结果（JSON）:
+            成功: {
+                "success": True,
+                "order": {
+                    "order_id": "ORDER123",              # 系统订单号（商户订单号）
+                    "trade_no": "20231210...",           # 平台订单号
+                    "api_trade_no": "wx123...",          # 接口订单号（支付接口返回的订单号）
+                    "username": "user1",                 # 用户名
+                    "amount": "10.00",                   # 订单金额
+                    "pay_type": "alipay",                # 支付方式：alipay/wxpay/qq/unionpay
+                    "status": "paid",                    # 订单状态
+                    "buyer_id": "2088xxx",               # 支付用户标识（买家ID）
+                    "product_name": "商品名称",          # 商品名称
+                    "notify_url": "http://...",          # 异步通知地址
+                    "return_url": "http://...",          # 同步跳转地址
+                    "created_at": "2023-12-10 10:00:00", # 订单创建时间
+                    "paid_time": "2023-12-10 10:05:00",  # 支付完成时间
+                    "refunded_amount": "0.00",           # 已退款金额
+                    "platform_data": {...},              # 支付平台原始数据
+                    "synced_from_platform": True,        # 是否从平台同步过
+                    "synced_at": "2023-12-10 11:00:00"   # 最后同步时间
+                    # ... 其他所有字段
+                }
+            }
+            失败: {"success": False, "message": "错误信息"}
+        
+        权限要求:
+            - 登录用户（@login_required）
+            - 管理员权限（@admin_required）
+        """
+        try:
+            # === 第1步：验证参数 ===
+            
+            # 清理订单号参数（去除首尾空格）
+            order_id = order_id.strip()
+            
+            # 验证订单号不能为空
+            if not order_id:
+                logging.warning("[获取订单详情] 参数错误：订单号为空")
+                return jsonify({
+                    "success": False,
+                    "message": "参数错误：订单号不能为空"
+                }), 400
+            
+            # 记录日志：收到获取订单详情请求
+            logging.info(f"[获取订单详情] 管理员 {g.user} 请求获取订单详情 - order_id: {order_id}")
+            
+            # === 第2步：构造订单文件路径 ===
+            
+            # 订单文件存储路径：payment_orders/<order_id>.json
+            order_file_path = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            
+            # 记录日志：显示订单文件路径
+            logging.debug(f"[获取订单详情] 订单文件路径: {order_file_path}")
+            
+            # === 第3步：检查订单文件是否存在 ===
+            
+            # 使用 os.path.exists() 检查文件是否存在
+            if not os.path.exists(order_file_path):
+                # 订单文件不存在，返回404错误
+                logging.warning(f"[获取订单详情] 订单文件不存在: {order_id}")
+                return jsonify({
+                    "success": False,
+                    "message": f"订单不存在：{order_id}"
+                }), 404
+            
+            # === 第4步：读取订单文件 ===
+            
+            # 使用 with 语句确保文件正确关闭
+            # 'r' 模式：只读模式
+            # encoding='utf-8'：使用UTF-8编码读取，支持中文
+            with open(order_file_path, 'r', encoding='utf-8') as f:
+                # 使用 json.load() 将JSON文件内容解析为Python字典
+                order_data = json.load(f)
+            
+            # 记录日志：成功读取订单数据
+            logging.info(f"[获取订单详情] 成功读取订单: {order_id}")
+            
+            # === 第5步：返回完整订单数据 ===
+            
+            # 返回订单的所有字段，不做任何过滤
+            # 这样前端可以获取到订单的完整信息，包括：
+            # - 基本信息（订单号、金额、状态等）
+            # - 平台数据（platform_data）
+            # - 同步信息（synced_from_platform、synced_at等）
+            # - 退款信息（refunded_amount等）
+            # - 其他所有字段
+            return jsonify({
+                "success": True,
+                "order": order_data  # 返回完整的订单对象
+            })
+        
+        except json.JSONDecodeError as e:
+            # === 错误处理：JSON解析失败 ===
+            
+            # 订单文件内容不是有效的JSON格式
+            logging.error(f"[获取订单详情] JSON解析失败: {order_id}, 错误: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": f"订单数据格式错误：{str(e)}"
+            }), 500
+        
+        except Exception as e:
+            # === 错误处理：其他异常 ===
+            
+            # 捕获所有其他异常（如文件读取错误、权限问题等）
+            # exc_info=True：记录完整的异常堆栈信息，便于调试
+            logging.error(f"[获取订单详情] 处理失败: {order_id}, 错误: {str(e)}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"获取订单详情失败：{str(e)}"
             }), 500
 
     @app.route("/api/admin/payment/fetch_orders", methods=["POST"])
