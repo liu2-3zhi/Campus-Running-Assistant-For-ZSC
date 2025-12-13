@@ -12339,10 +12339,6 @@ body.mobile-mode #session-picker-modal {
 
           <!-- 操作结果提示区域：显示成功或错误消息 -->
           <!-- 默认隐藏，由JavaScript根据操作结果动态显示 -->
-          <div id="admin-yipay-config-result_modal" class="hidden">
-            <!-- 成功/错误提示 -->
-            <!-- 此内容将由JavaScript动态更新 -->
-          </div>
         </div>
       
 
@@ -18249,7 +18245,7 @@ body.mobile-mode #session-picker-modal {
 
           if (tab === 'yipay') {
             // 调用 loadYiPayConfig() 函数加载易支付配置
-            loadAdminYiPayConfig()
+            loadAdminYiPayConfig(show_Modal=false)
             console.log(`[PC端支付设置] 已触发易支付配置加载`);
           }
           
@@ -20830,7 +20826,7 @@ body.mobile-mode #session-picker-modal {
      *   }
      * }
      */
-    async function loadAdminYiPayConfig() {
+    async function loadAdminYiPayConfig(show_Modal=true) {
       // 在控制台输出日志，记录函数调用
       console.log('[PC端易支付配置] 开始加载易支付配置...');
       
@@ -20958,22 +20954,24 @@ body.mobile-mode #session-picker-modal {
                   // 发现有未定义的支付方式，显示警告
                   console.warn('[PC端易支付配置] 发现未定义的支付方式：', undefinedMethods);
                   
-                  // 在结果区域显示警告提示
-                  const resultDiv = document.getElementById('admin-yipay-config-result_modal');
-                  if (resultDiv) {
-                    resultDiv.innerHTML = `
-                      <div class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                        <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                        </svg>
-                        ⚠ 警告：以下支付方式未在"支付方式配置"中定义：<strong>${undefinedMethods.join(', ')}</strong><br>
-                        请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。
-                      </div>
-                    `;
-                    resultDiv.classList.remove('hidden');
-                    // 警告提示保持显示，不自动隐藏，让管理员注意到问题
-                  }
+
+                  showModalAlert('存在未定义的支付方式，请检查配置。以下支付方式未在"支付方式配置"中定义： ' + undefinedMethods.join(', '), '警告');
+                  // // 在结果区域显示警告提示
+                  // const resultDiv = document.getElementById('admin-yipay-config-result_modal');
+                  // if (resultDiv) {
+                  //   resultDiv.innerHTML = `
+                  //     <div class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  //       <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  //         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  //           d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  //       </svg>
+                  //       ⚠ 警告：以下支付方式未在"支付方式配置"中定义：<strong>${undefinedMethods.join(', ')}</strong><br>
+                  //       请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。
+                  //     </div>
+                  //   `;
+                  //   resultDiv.classList.remove('hidden');
+                  //   // 警告提示保持显示，不自动隐藏，让管理员注意到问题
+                  // }
                 } else {
                   // 所有启用的支付方式都已定义，验证通过
                   console.log('[PC端易支付配置] 所有启用的支付方式都已定义，验证通过');
@@ -20989,34 +20987,37 @@ body.mobile-mode #session-picker-modal {
         
         // === 第7步：显示成功提示（如果没有警告） ===
         // 只有在没有显示警告的情况下，才显示成功提示
-        
-        const resultDiv = document.getElementById('admin-yipay-config-result_modal');
-        if (resultDiv) {
-          // 检查resultDiv中是否已经有警告提示
-          // 如果有警告（包含text-amber-700类），则不显示成功提示
-          const hasWarning = resultDiv.innerHTML.includes('text-amber-700');
-          
-          if (!hasWarning) {
-            // 没有警告，显示成功提示
-            // 使用textContent防止XSS攻击，但这里需要HTML结构，所以使用innerHTML
-            // 由于这是管理员功能且数据来自服务器，风险可控
-            resultDiv.innerHTML = `
-              <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
-                <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                ✓ 配置已加载
-              </div>
-            `;
-            resultDiv.classList.remove('hidden');
-            
-            // 3秒后自动隐藏成功提示
-            setTimeout(() => {
-              resultDiv.classList.add('hidden');
-            }, 3000);
-          }
+        if (show_Modal){
+          showModalAlert('✓ 配置已加载', '成功');
         }
+
+        // const resultDiv = document.getElementById('admin-yipay-config-result_modal');
+        // if (resultDiv) {
+          // // 检查resultDiv中是否已经有警告提示
+          // // 如果有警告（包含text-amber-700类），则不显示成功提示
+          // const hasWarning = resultDiv.innerHTML.includes('text-amber-700');
+          
+          // if (!hasWarning) {
+          //   // 没有警告，显示成功提示
+          //   // 使用textContent防止XSS攻击，但这里需要HTML结构，所以使用innerHTML
+          //   // 由于这是管理员功能且数据来自服务器，风险可控
+          //   resultDiv.innerHTML = `
+          //     <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+          //       <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          //         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          //           d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          //       </svg>
+          //       ✓ 配置已加载
+          //     </div>
+          //   `;
+          //   resultDiv.classList.remove('hidden');
+            
+          //   // 3秒后自动隐藏成功提示
+          //   setTimeout(() => {
+          //     resultDiv.classList.add('hidden');
+          //   }, 3000);
+          // }
+        // }
         
         console.log('[PC端易支付配置] 配置已成功填充到表单');
         
