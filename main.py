@@ -31454,6 +31454,26 @@ def start_web_server(args_param):
             # .get() 方法如果键不存在返回空列表 []
             overdue_accounts = data.get("overdue_accounts", [])
 
+            # ========== 提取并验证支付方式（pay_type） ==========
+
+            # 提取支付方式参数
+            # 用户可以选择：alipay（支付宝）、wxpay（微信）、qqpay（QQ钱包）等
+            # 如果前端未传递此参数，默认使用支付宝
+            pay_type = data.get("pay_type", "alipay")
+
+            # 验证支付方式是否合法
+            # 从配置文件动态获取支持的支付方式列表（与前端保持一致）
+            methods_config = _read_payment_methods_config()
+            allowed_pay_types = list(methods_config.keys()) if methods_config else ["alipay"]
+            
+            if pay_type not in allowed_pay_types:
+                # 如果传入的支付方式不在允许列表中，记录警告并使用默认值
+                logging.warning(f"[欠费支付] 收到非法的支付方式: {pay_type}，使用默认值 alipay")
+                pay_type = "alipay"
+
+            # 记录用户选择的支付方式（用于调试和统计）
+            logging.info(f"[欠费支付] 用户选择的支付方式: {pay_type}")
+
             # 验证欠费账号列表是否为空
             # 如果列表为空或不是列表类型，返回错误
             if not overdue_accounts or not isinstance(overdue_accounts, list):
@@ -31643,13 +31663,13 @@ def start_web_server(args_param):
             #   - out_trade_no: 商户订单号（唯一标识）
             #   - name: 商品名称（显示在支付页面）
             #   - money: 支付金额（单位：元）
-            #   - pay_type: 支付方式（默认支付宝）
+            #   - pay_type: 支付方式（用户选择的支付方式：alipay/wxpay/qqpay等）
             #   - return_url: 同步返回URL
             result = yipay_client.create_order(
                 out_trade_no=out_trade_no,
                 name=product_name,
                 money=str(total_amount),
-                pay_type="alipay",  # 默认使用支付宝（可扩展为支持用户选择）
+                pay_type=pay_type,  # 使用用户选择的支付方式
                 return_url=return_url
             )
 
@@ -31672,7 +31692,7 @@ def start_web_server(args_param):
                 "amount": str(total_amount),           # 支付金额（字符串格式）
                 "total_count": total_overdue_count,    # 总欠费次数
                 "overdue_accounts": overdue_accounts,  # 欠费账号列表（关键！用于支付回调时清零overdue_count）
-                "pay_type": "alipay",                  # 支付方式
+                "pay_type": pay_type,                  # 支付方式（已验证，如果用户传入非法值已重置为默认值）
                 "device": device,                      # 设备类型（mobile/pc）
                 "clientip": clientip,                  # 客户端IP
                 "status": ORDER_STATUS_PENDING,        # 订单状态（pending: 待支付）
@@ -31719,7 +31739,8 @@ def start_web_server(args_param):
                     "overdue_accounts": overdue_accounts,
                     "product_name": product_name,
                     "device": device,
-                    "clientip": clientip
+                    "clientip": clientip,
+                    "pay_type": pay_type  # 记录用户选择的支付方式
                 }
             )
 
