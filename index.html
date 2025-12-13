@@ -11437,23 +11437,6 @@ body.mobile-mode #session-picker-modal {
             </svg>
             商品名测试
           </button>
-          
-          <!-- ========================================
-               [新增] Tab 7: 支付日志（管理员专用）
-               功能：查看所有用户的支付系统操作日志
-               权限：仅管理员可见
-               说明：用于监控和审计整个支付系统的操作记录
-               ======================================== -->
-          <button id="admin-payment-settings-tab-logs_modal" 
-            class="px-4 py-2.5 text-sm font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
-            onclick="switchAdminPaymentSettingsTab('logs')">
-            <!-- 日志图标：文档列表 -->
-            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-            支付日志
-          </button>
         </div>
 
         <!-- ========================================
@@ -12471,143 +12454,6 @@ body.mobile-mode #session-picker-modal {
           <div id="batch-test-list_modal" class="space-y-2 max-h-96 overflow-y-auto">
             <!-- 批量测试结果将动态插入到这里 -->
           </div>
-        </div>
-      </div>
-      
-      <!-- ========================================
-           Tab 7 内容区域：支付日志（管理员专用）
-           ========================================
-           功能：查看所有用户的支付系统操作日志
-           权限：仅管理员可访问
-           说明：此功能用于监控和审计整个支付系统的操作记录，
-                 包括所有用户的订单创建、查询、支付、退款等操作
-           API端点：/api/payment_logs（管理员模式）
-           ======================================== -->
-      <div id="admin-payment-settings-content-logs_modal" class="hidden space-y-4">
-        <!-- 功能说明提示框 -->
-        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <p class="text-sm text-amber-800">
-            <!-- 警告图标 -->
-            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-            </svg>
-            <strong>管理员专用功能：</strong>此面板显示所有用户的支付系统操作日志，用于系统监控和问题排查
-          </p>
-        </div>
-        
-        <!-- 刷新按钮区域 -->
-        <div class="flex justify-between items-center">
-          <h4 class="text-lg font-semibold text-slate-800">支付日志列表</h4>
-          <!-- 刷新按钮：点击后重新加载日志 -->
-          <button id="admin-payment-settings-refresh-logs_modal" 
-            class="px-4 py-2 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 transition-colors flex items-center gap-2"
-            onclick="loadAdminPaymentLogs()">
-            <!-- 刷新图标 -->
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            刷新日志
-          </button>
-        </div>
-
-        <!-- 筛选条件区域 -->
-        <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-          <!-- 筛选区域标题 -->
-          <h5 class="font-semibold text-slate-700 mb-3 flex items-center">
-            <!-- 筛选图标 -->
-            <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
-            </svg>
-            筛选条件
-          </h5>
-
-          <!-- 操作类型筛选下拉框 -->
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">操作类型（可选）</label>
-            <!-- 使用与原支付日志面板相同的元素ID，确保JavaScript逻辑兼容 -->
-            <select id="admin-payment-logs-action-type_modal" 
-              class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
-              <!-- 选项：全部、创建订单、查询订单等 -->
-              <option value="">全部操作</option>
-              <option value="create_order">创建订单</option>
-              <option value="query_order">查询订单</option>
-              <option value="payment_success">支付成功</option>
-              <option value="payment_failed">支付失败</option>
-              <option value="refund">退款</option>
-            </select>
-          </div>
-
-          <!-- 日期范围筛选 -->
-          <div class="grid grid-cols-2 gap-3">
-            <!-- 开始日期 -->
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">开始日期</label>
-              <input type="date" 
-                id="admin-payment-logs-start-date_modal" 
-                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-            </div>
-            
-            <!-- 结束日期 -->
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">结束日期</label>
-              <input type="date" 
-                id="admin-payment-logs-end-date_modal" 
-                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-            </div>
-          </div>
-
-          <!-- 应用筛选按钮 -->
-          <button onclick="loadAdminPaymentLogs()" 
-            class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 transition-colors">
-            <!-- 搜索图标 -->
-            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-            </svg>
-            应用筛选
-          </button>
-        </div>
-
-        <!-- 日志列表容器 -->
-        <!-- 使用与原支付日志面板相同的元素ID，确保JavaScript逻辑兼容 -->
-        <div id="admin-payment-logs-list_modal" class="space-y-3">
-          <!-- 日志条目将通过 JavaScript 动态加载并插入到这里 -->
-          <!-- 每个日志条目包括：操作类型、订单号、时间、状态等信息 -->
-        </div>
-
-        <!-- 分页控制按钮 -->
-        <div class="flex justify-between items-center pt-4 border-t border-slate-200">
-          <!-- 上一页按钮 -->
-          <button id="admin-payment-logs-prev-page_modal" 
-            class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            onclick="loadAdminPaymentLogs(Math.max(1, (window.adminPaymentLogsCurrentPage || 1) - 1))"
-            disabled>
-            <!-- 左箭头图标 -->
-            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-            </svg>
-            上一页
-          </button>
-
-          <!-- 页码显示 -->
-          <span id="admin-payment-logs-page-info_modal" class="text-sm text-slate-600">
-            第 1 页
-          </span>
-
-          <!-- 下一页按钮 -->
-          <button id="admin-payment-logs-next-page_modal" 
-            class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            onclick="loadAdminPaymentLogs((window.adminPaymentLogsCurrentPage || 1) + 1)"
-            disabled>
-            下一页
-            <!-- 右箭头图标 -->
-            <svg class="w-4 h-4 inline ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
-          </button>
         </div>
       </div>
       </div>
@@ -18362,8 +18208,7 @@ body.mobile-mode #session-picker-modal {
       // 这样可以统一管理所有标签页，便于维护
       // 如果将来需要添加新的Tab，只需在这里添加名称即可
       // 新增 'yipay' - 易支付配置标签页
-      // 新增 'logs' - 支付日志标签页（管理员专用）
-      const tabs = ['config', 'query', 'refund', 'test', 'yipay', 'product-test', 'logs'];
+      const tabs = ['config', 'query', 'refund', 'test', 'yipay',"product-test"];
       
       // 遍历所有标签页，执行显示/隐藏操作
       // forEach循环：对数组中的每个元素执行一次指定函数
@@ -19392,21 +19237,12 @@ body.mobile-mode #session-picker-modal {
             <!-- 卡片顶部：订单号和状态 -->
             <div class="flex justify-between items-start mb-3">
               <!-- 订单号区域 -->
-              <!-- 使用 word-break 确保长订单号能够完整显示 -->
-              <!-- min-w-0 确保flex容器中的子元素可以正常收缩 -->
-              <!-- mr-2 在订单号和状态标签之间保留间距 -->
               <div class="flex-1 min-w-0 mr-2">
                 <div class="text-xs text-slate-500 mb-1">订单号</div>
-                <!-- 系统订单号：使用 break-all 强制在任意字符处换行 -->
-                <!-- 这确保即使是很长的订单号也不会溢出容器 -->
-                <!-- title属性提供鼠标悬停时的完整显示 -->
-                <div class="text-sm font-semibold text-slate-800 break-all" title="${orderId}">${orderId}</div>
-                <!-- 平台订单号：同样使用 break-all 确保完整显示 -->
-                <!-- mt-0.5 在两个订单号之间添加小间距 -->
-                <div class="text-xs text-slate-600 break-all mt-0.5" title="${tradeNo}">${tradeNo}</div>
+                <div class="text-sm font-semibold text-slate-800 truncate" title="${orderId}">${orderId}</div>
+                <div class="text-xs text-slate-600 truncate mt-0.5" title="${tradeNo}">${tradeNo}</div>
               </div>
               <!-- 状态标签 -->
-              <!-- flex-shrink-0 确保状态标签不会被压缩 -->
               <div class="flex-shrink-0">
                 ${statusHtml}
               </div>
@@ -19834,20 +19670,6 @@ body.mobile-mode #session-picker-modal {
       if (modalOverlay) {
         modalOverlay.classList.remove('hidden');
       }
-      
-      // === 第3步：自动刷新订单详情 ===
-      // 在显示弹窗后，立即从服务器获取最新的订单数据
-      // 这确保用户看到的总是最新的订单状态
-      // 注意：这是一个异步操作，不会阻塞UI显示
-      // 原理：
-      // 1. 先用传入的order对象快速填充弹窗（第1步），让用户立即看到内容
-      // 2. 然后异步调用API获取最新数据（第3步），如果数据有更新则刷新显示
-      // 3. 这种方式兼顾了响应速度和数据准确性
-      setTimeout(() => {
-        // 使用setTimeout延迟执行，确保DOM元素已经完全渲染
-        // 延迟时间设为100毫秒，既不影响用户体验，又能确保DOM就绪
-        refreshOrderDetailLocal();
-      }, 100);
     }
 
     /**
@@ -19903,84 +19725,63 @@ body.mobile-mode #session-picker-modal {
           return;
         }
         
-        // 获取订单号（商户订单号）
         const orderId = currentOrder.order_id;
         console.log('[订单详情] 正在刷新订单：', orderId);
         
-        // === 第2步：调用新API获取完整订单详情 ===
+        // === 第2步：从本地API获取最新订单数据 ===
         
-        // 调用新的订单详情API：GET /api/admin/payment/order_detail/<order_id>
-        // 这个API专门用于获取单个订单的完整信息
-        // 相比于从列表API中查找，这个API：
-        // 1. 直接定位到特定订单文件，效率更高
-        // 2. 返回订单的所有字段，包括platform_data、同步信息等
-        // 3. 语义更清晰，专用于订单详情场景
-        const response = await fetch(`/api/admin/payment/order_detail/${orderId}`, {
-          method: 'GET',  // 使用GET方法，订单号通过URL路径传递
+        // 调用本地订单列表API
+        // 该API只读取本地文件，不查询支付平台
+        const response = await fetch('/api/admin/payment/local_orders', {
+          method: 'GET',
           headers: {
-            'Content-Type': 'application/json',  // 设置内容类型
-            'X-Session-ID': sessionUUID  // 传递会话ID用于身份验证
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID
           }
         });
         
-        // 解析JSON响应体
-        // await response.json() 异步解析响应为JavaScript对象
+        // 解析响应
         const result = await response.json();
         
-        // === 第3步：检查API响应状态 ===
-        
-        // 检查HTTP状态码和业务状态
-        // response.ok 检查HTTP状态码是否为2xx（200-299）
-        // result.success 检查业务逻辑是否成功
+        // 检查响应是否成功
         if (!response.ok || !result.success) {
-          // 获取失败，从响应中提取错误消息
+          // 获取失败，显示错误消息
           const errorMessage = result.message || '获取订单数据失败';
           console.error('[订单详情] 本地刷新失败：', errorMessage);
-          
-          // 向用户显示错误提示
           showModalAlert(`本地刷新失败：${errorMessage}`, '错误');
           return;
         }
         
-        // === 第4步：提取订单数据 ===
+        // === 第3步：从订单列表中找到当前订单 ===
         
-        // 从响应中获取完整的订单对象
-        // 新API返回的order字段包含订单的所有信息
-        const updatedOrder = result.order;
+        // 从返回的订单列表中查找当前订单
+        const orders = result.orders || [];
+        const updatedOrder = orders.find(o => o.order_id === orderId);
         
-        // 防御性检查：确保订单对象存在
         if (!updatedOrder) {
-          console.error('[订单详情] API返回的订单对象为空');
-          showModalAlert('订单数据异常：返回的订单对象为空', '错误');
+          // 如果没找到订单，显示提示
+          console.warn('[订单详情] 本地未找到该订单');
+          showModalAlert('本地未找到该订单，可能已被删除', '警告');
           return;
         }
         
-        // === 第5步：更新显示内容 ===
+        // === 第4步：更新显示内容 ===
         
         // 调用showOrderDetailModal函数重新显示订单详情
-        // 这会用最新的数据刷新弹窗中的所有字段，包括：
-        // - 基本信息（订单号、金额、状态等）
-        // - 平台数据（platform_data中的原始信息）
-        // - 同步信息（是否从平台同步、同步时间等）
-        // - 退款信息（已退款金额等）
+        // 这会用最新的数据刷新弹窗中的所有字段
         showOrderDetailModal(updatedOrder);
         
         // 输出成功日志
-        console.log('[订单详情] 本地刷新成功，已获取完整订单数据');
+        console.log('[订单详情] 本地刷新成功');
         
-        // 显示成功提示（短暂显示，给用户反馈）
+        // 显示成功提示（短暂显示）
         showModalAlert('本地刷新成功', '成功');
         
       } catch (error) {
         // === 错误处理 ===
         
-        // 捕获所有可能的错误：
-        // - 网络错误（如无法连接到服务器）
-        // - JSON解析错误（如响应体不是有效的JSON）
-        // - 其他JavaScript运行时错误
+        // 捕获所有可能的错误：网络错误、JSON解析错误等
         console.error('[订单详情] 本地刷新时发生错误：', error);
-        
-        // 向用户显示友好的错误信息
         showModalAlert(`本地刷新失败：${error.message || '未知错误'}`, '错误');
       }
     }
