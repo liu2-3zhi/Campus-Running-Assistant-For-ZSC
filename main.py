@@ -28964,6 +28964,104 @@ def start_web_server(args_param):
                     "message": "该订单已退款，每个订单只能退款一次"
                 })
             
+            # ========== 新增：第5.6步：从支付平台在线查询最新状态，避免重复退款 ==========
+            
+            logging.info(f"[退款请求] 正在从支付平台查询订单最新状态 - 订单号: {trade_no}")
+            
+            # 调用易支付查询接口获取订单最新状态
+            # 这样可以确保订单状态与平台一致，防止重复退款
+            platform_query_result = _query_yipay_order(order_id=trade_no, trade_no=order_data.get("trade_no", ""))
+            
+            if platform_query_result.get("success"):
+                # 成功获取平台订单信息
+                platform_order = platform_query_result.get("data", {})
+                platform_status = platform_order.get("status", -1)
+                
+                logging.info(
+                    f"[退款请求] 平台订单状态 - "
+                    f"订单号: {trade_no}, "
+                    f"平台状态码: {platform_status}"
+                )
+                
+                # 平台状态码：0-未支付, 1-已支付, 2-已退款, 3-已冻结, 4-预授权
+                # 如果平台显示已退款(status=2)，则不允许再次退款
+                if platform_status == 2:
+                    logging.error(
+                        f"[退款请求] 平台订单已退款，禁止重复退款 - "
+                        f"订单号: {trade_no}"
+                    )
+                    
+                    # 同步更新本地订单状态
+                    if order_data.get("status") not in (ORDER_STATUS_REFUNDED_FULL, ORDER_STATUS_REFUNDED_PARTIAL):
+                        # 本地状态与平台不一致，更新本地状态
+                        refundmoney = platform_order.get("refundmoney", "0")
+                        order_amount_str = str(order_data.get("amount", "0"))
+                        
+                        # 判断是全额退款还是部分退款
+                        if refundmoney == order_amount_str:
+                            order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+                        else:
+                            order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
+                        
+                        # 保存更新后的订单
+                        with open(order_file, "w", encoding="utf-8") as f:
+                            json.dump(order_data, f, indent=2, ensure_ascii=False)
+                        
+                        logging.info(f"[退款请求] 已同步本地订单状态 - 订单号: {trade_no}")
+                    
+                    return jsonify({
+                        "success": False,
+                        "message": "该订单在支付平台已退款，无法重复退款"
+                    })
+                
+                # 如果平台状态不是"已支付"(1)，也不允许退款
+                if platform_status != 1:
+                    logging.error(
+                        f"[退款请求] 平台订单状态不允许退款 - "
+                        f"订单号: {trade_no}, "
+                        f"平台状态: {platform_status}"
+                    )
+                    
+                    status_names = {
+                        0: "未支付",
+                        1: "已支付",
+                        2: "已退款",
+                        3: "已冻结",
+                        4: "预授权"
+                    }
+                    
+                    status_name = status_names.get(platform_status, f"未知状态({platform_status})")
+                    
+                    return jsonify({
+                        "success": False,
+                        "message": f"平台订单状态不允许退款，当前状态：{status_name}"
+                    })
+                
+                # 更新本地订单的平台数据（可选，用于记录查询时间）
+                order_data["last_platform_check"] = {
+                    "timestamp": time.time(),
+                    "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "status": platform_status,
+                    "action": "refund_pre_check"
+                }
+                
+                logging.info(f"[退款请求] 平台订单状态验证通过，允许退款 - 订单号: {trade_no}")
+            else:
+                # 从平台查询失败
+                error_msg = platform_query_result.get("message", "查询失败")
+                logging.warning(
+                    f"[退款请求] 无法从平台查询订单状态 - "
+                    f"订单号: {trade_no}, "
+                    f"错误: {error_msg}"
+                )
+                
+                # 查询失败时，给予管理员选择：是否继续退款
+                # 为了安全起见，建议不允许退款
+                return jsonify({
+                    "success": False,
+                    "message": f"无法从支付平台验证订单状态，为避免重复退款，请稍后重试。错误信息：{error_msg}"
+                })
+            
             # ========== 第6步：验证退款金额不超过可退金额 ==========
             
             # 获取订单金额
@@ -32893,6 +32991,117 @@ def start_web_server(args_param):
     # 新增：管理员批量拉取订单接口（从易支付平台同步）
     # ==============================================================================
     
+    @app.route("/api/admin/payment/local_orders", methods=["GET"])
+    @login_required
+    @admin_required
+    def admin_get_local_payment_orders():
+        """
+        获取本地支付订单列表接口（不查询平台）
+        
+        功能说明:
+            管理员专用接口，用于获取本地已保存的所有支付订单。
+            仅读取本地 payment_orders 目录下的订单文件，不查询平台。
+            适用于订单列表展示和筛选功能。
+        
+        请求方式: GET
+        
+        返回结果（JSON）:
+            成功: {
+                "success": True,
+                "orders": [
+                    {
+                        "order_id": "ORDER123",      # 系统订单号
+                        "trade_no": "20231210...",   # 平台订单号
+                        "api_trade_no": "wx123...",  # 接口订单号
+                        "username": "user1",         # 用户名
+                        "amount": "10.00",           # 金额
+                        "pay_type": "alipay",        # 支付方式
+                        "status": "paid",            # 订单状态
+                        "created_at": "2023-12-10 10:00:00",  # 创建时间
+                        "paid_time": "2023-12-10 10:05:00"    # 支付时间
+                    },
+                    ...
+                ],
+                "total": 100  # 订单总数
+            }
+            失败: {"success": False, "message": "错误信息"}
+        
+        权限要求:
+            - 登录用户（@login_required）
+            - 管理员权限（@admin_required）
+        """
+        try:
+            # 记录日志：收到获取本地订单请求
+            logging.info(f"[获取本地订单] 管理员 {g.user} 请求获取本地订单列表")
+            
+            # ========== 第1步：读取本地订单目录 ==========
+            
+            # 确保订单目录存在
+            if not os.path.exists(PAYMENT_ORDERS_DIR):
+                # 订单目录不存在，返回空列表
+                logging.warning(f"[获取本地订单] 订单目录不存在: {PAYMENT_ORDERS_DIR}")
+                return jsonify({
+                    "success": True,
+                    "orders": [],
+                    "total": 0
+                })
+            
+            # 获取订单目录下的所有JSON文件
+            order_files = [f for f in os.listdir(PAYMENT_ORDERS_DIR) if f.endswith('.json')]
+            
+            logging.info(f"[获取本地订单] 找到 {len(order_files)} 个订单文件")
+            
+            # ========== 第2步：读取所有订单文件 ==========
+            
+            orders = []
+            
+            for order_file in order_files:
+                try:
+                    # 构造订单文件完整路径
+                    order_file_path = os.path.join(PAYMENT_ORDERS_DIR, order_file)
+                    
+                    # 读取订单数据
+                    with open(order_file_path, 'r', encoding='utf-8') as f:
+                        order_data = json.load(f)
+                    
+                    # 提取关键字段
+                    order_summary = {
+                        "order_id": order_data.get("order_id", ""),
+                        "trade_no": order_data.get("trade_no", ""),
+                        "api_trade_no": order_data.get("api_trade_no", ""),
+                        "username": order_data.get("username", "unknown"),
+                        "amount": order_data.get("amount", "0"),
+                        "pay_type": order_data.get("pay_type", "unknown"),
+                        "status": order_data.get("status", "unknown"),
+                        "created_at": order_data.get("created_at", ""),
+                        "paid_time": order_data.get("paid_time", "")
+                    }
+                    
+                    orders.append(order_summary)
+                    
+                except Exception as e:
+                    # 单个订单文件读取失败，记录警告但继续处理其他订单
+                    logging.warning(f"[获取本地订单] 读取订单文件失败: {order_file}, 错误: {str(e)}")
+                    continue
+            
+            # ========== 第3步：返回订单列表 ==========
+            
+            logging.info(f"[获取本地订单] 成功读取 {len(orders)} 个订单")
+            
+            return jsonify({
+                "success": True,
+                "orders": orders,
+                "total": len(orders)
+            })
+        
+        except Exception as e:
+            # 处理异常
+            logging.error(f"[获取本地订单] 处理失败: {str(e)}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"获取本地订单列表失败: {str(e)}"
+            }), 500
+
     @app.route("/api/admin/payment/fetch_orders", methods=["POST"])
     @login_required
     @admin_required
