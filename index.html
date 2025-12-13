@@ -11380,98 +11380,262 @@ body.mobile-mode #session-picker-modal {
         <!-- ========================================
              Tab 2 内容区域：订单查询
              ========================================
-             功能：管理员可以通过订单号查询订单详情
-             包含：订单号输入框、查询按钮、订单详情显示区
-             API端点：/api/payment/query
+             功能：管理员可以查询和管理所有支付订单
+             包含：订单列表、筛选功能、手动查询、平台拉取、订单详情
+             API端点：/api/admin/payment/query_order, /api/admin/payment/fetch_orders
              ======================================== -->
         <div id="admin-payment-settings-content-query_modal" class="hidden space-y-4">
-          <!-- 查询说明文本 -->
-          <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
-            💡 提示：输入完整的订单号（trade_no）进行查询，系统将显示订单的详细信息
-          </p>
+          <!-- 筛选条件区域 -->
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+            <!-- 第一行：状态和支付方式筛选 -->
+            <div class="grid grid-cols-2 gap-3">
+              <!-- 订单状态筛选下拉框 -->
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">订单状态</label>
+                <!-- 下拉选择框：用于筛选不同状态的订单 -->
+                <select id="admin-filter-status_modal" 
+                  onchange="filterPaymentOrders()"
+                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                  <!-- 提供所有可能的订单状态选项 -->
+                  <option value="">全部状态</option>
+                  <option value="pending">已创建待支付</option>
+                  <option value="paid">已支付</option>
+                  <option value="refunded_partial">已部分退款</option>
+                  <option value="refunded_full">已全额退款</option>
+                  <option value="frozen">已冻结</option>
+                  <option value="preauth">预授权</option>
+                  <option value="timeout">支付超时</option>
+                  <option value="failed">创建失败</option>
+                </select>
+              </div>
 
-          <!-- 订单号输入表单 -->
-          <div class="space-y-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
-            <!-- 订单号输入框 -->
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">
-                订单号（trade_no）
-                <span class="text-red-500">*</span>
-              </label>
-              <!-- 输入框：支持粘贴长订单号，有焦点高亮效果 -->
-              <input type="text" id="admin-query-order-trade-no_modal" 
-                placeholder="例如：20231210123456789012" 
-                class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" />
+              <!-- 支付方式筛选下拉框 -->
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">支付方式</label>
+                <!-- 下拉选择框：用于筛选不同支付方式的订单 -->
+                <select id="admin-filter-paytype_modal" 
+                  onchange="filterPaymentOrders()"
+                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                  <!-- 提供所有支持的支付方式选项 -->
+                  <option value="">全部支付方式</option>
+                  <option value="alipay">支付宝</option>
+                  <option value="wxpay">微信支付</option>
+                </select>
+              </div>
             </div>
 
-            <!-- 查询按钮 -->
-            <button id="admin-query-order-btn_modal" 
-              class="w-full py-3 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md"
-              onclick="queryAdminPaymentOrder()">
-              <!-- 搜索图标 -->
-              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-              </svg>
-              查询订单
-            </button>
-          </div>
+            <!-- 第二行：用户名和订单号搜索 -->
+            <div class="grid grid-cols-2 gap-3">
+              <!-- 用户名搜索输入框 -->
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">用户名</label>
+                <!-- 文本输入框：用于按用户名搜索订单 -->
+                <input type="text" id="admin-filter-username_modal" 
+                  placeholder="搜索用户名"
+                  oninput="filterPaymentOrders()"
+                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+              </div>
 
-          <!-- 订单详情显示区域：初始隐藏，查询成功后显示 -->
-          <div id="admin-order-detail-container_modal" class="hidden space-y-3 bg-white border border-slate-200 rounded-lg p-4">
-            <h5 class="font-semibold text-base text-slate-700 border-b border-slate-200 pb-2">
-              <!-- 文档图标 -->
-              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-              </svg>
-              订单详情
-            </h5>
-            
-            <!-- 订单信息列表：使用键值对布局，桌面端使用网格布局 -->
-            <div class="grid grid-cols-2 gap-3 text-sm">
-              <!-- 订单号 -->
-              <div class="col-span-2 flex justify-between py-2 border-b border-slate-100">
-                <span class="text-slate-500 font-medium">订单号：</span>
-                <span id="admin-order-detail-trade-no_modal" class="text-slate-700 font-semibold break-all">-</span>
+              <!-- 订单号搜索输入框 -->
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">订单号</label>
+                <!-- 文本输入框：支持系统订单号和平台订单号搜索 -->
+                <input type="text" id="admin-filter-orderno_modal" 
+                  placeholder="系统订单号或平台订单号"
+                  oninput="filterPaymentOrders()"
+                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
               </div>
-              <!-- 订单状态：使用彩色标签显示 -->
-              <div class="flex justify-between py-2 border-b border-slate-100">
-                <span class="text-slate-500 font-medium">状态：</span>
-                <span id="admin-order-detail-status_modal" class="px-2 py-0.5 rounded-full text-xs font-semibold">-</span>
-              </div>
-              <!-- 支付金额：强调显示 -->
-              <div class="flex justify-between py-2 border-b border-slate-100">
-                <span class="text-slate-500 font-medium">金额：</span>
-                <span id="admin-order-detail-amount_modal" class="text-red-600 font-bold">-</span>
-              </div>
-              <!-- 支付方式 -->
-              <div class="flex justify-between py-2 border-b border-slate-100">
-                <span class="text-slate-500 font-medium">支付方式：</span>
-                <span id="admin-order-detail-method_modal" class="text-slate-700">-</span>
-              </div>
-              <!-- 创建时间 -->
-              <div class="flex justify-between py-2 border-b border-slate-100">
-                <span class="text-slate-500 font-medium">创建时间：</span>
-                <span id="admin-order-detail-create-time_modal" class="text-slate-700">-</span>
-              </div>
-              <!-- 支付时间 -->
-              <div class="col-span-2 flex justify-between py-2 border-b border-slate-100">
-                <span class="text-slate-500 font-medium">支付时间：</span>
-                <span id="admin-order-detail-pay-time_modal" class="text-slate-700">-</span>
-              </div>
-              <!-- 商品名称/备注 -->
-              <div class="col-span-2 flex justify-between py-2">
-                <span class="text-slate-500 font-medium">商品/备注：</span>
-                <span id="admin-order-detail-product_modal" class="text-slate-700 break-all">-</span>
-              </div>
+            </div>
+
+            <!-- 第三行：手动查询和平台拉取按钮 -->
+            <div class="flex gap-3">
+              <!-- 手动查询订单号输入框：用于从平台查询指定订单 -->
+              <input type="text" id="admin-manual-query-order-no_modal" 
+                placeholder="输入订单号手动查询（支持商户订单号或平台订单号）"
+                class="flex-1 px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+              
+              <!-- 手动查询按钮：调用新的API查询单个订单 -->
+              <button onclick="queryOrderManually()" 
+                class="px-6 py-2.5 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 transition-colors whitespace-nowrap">
+                <!-- 搜索图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                查询
+              </button>
+
+              <!-- 从平台拉取订单按钮：批量同步平台订单到本地 -->
+              <button onclick="fetchOrdersFromPlatform()" 
+                class="px-6 py-2.5 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors whitespace-nowrap">
+                <!-- 下载图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                从平台拉取
+              </button>
             </div>
           </div>
 
-          <!-- 查询结果提示区域：用于显示错误或提示消息 -->
-          <div id="admin-query-order-result_modal" class="hidden">
-            <!-- 错误提示：红色背景 -->
-            <!-- 此内容将由JavaScript动态更新 -->
+          <!-- 订单列表表格区域 -->
+          <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <!-- 表格标题栏 -->
+            <div class="bg-slate-100 px-4 py-3 border-b border-slate-200">
+              <h5 class="font-semibold text-sm text-slate-700">
+                <!-- 列表图标 -->
+                <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                订单列表
+                <!-- 订单总数显示 -->
+                <span id="admin-orders-count_modal" class="text-sky-600 ml-2">(加载中...)</span>
+              </h5>
+            </div>
+
+            <!-- 表格容器：使用overflow-x-auto实现横向滚动 -->
+            <div class="overflow-x-auto">
+              <!-- 订单列表表格 -->
+              <table class="w-full text-sm">
+                <!-- 表头：定义各列标题 -->
+                <thead class="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-700">系统订单号</th>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-700">平台订单号</th>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-700">接口订单号</th>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-700">用户名</th>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-700">金额</th>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-700">支付方式</th>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-700">状态</th>
+                    <th class="px-4 py-3 text-center font-semibold text-slate-700">操作</th>
+                  </tr>
+                </thead>
+                <!-- 表体：动态加载订单数据 -->
+                <tbody id="admin-orders-table-body_modal" class="divide-y divide-slate-100">
+                  <!-- 初始加载提示行 -->
+                  <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-slate-500">
+                      <!-- 加载动画图标 -->
+                      <svg class="animate-spin h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      正在加载订单数据...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 订单详情弹窗：点击查看详情按钮时显示 -->
+          <div id="admin-order-detail-modal_overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick="closeOrderDetailModal(event)">
+            <!-- 弹窗内容容器：防止点击内容区域时关闭弹窗 -->
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+              <!-- 弹窗标题栏 -->
+              <div class="bg-slate-100 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                <h4 class="font-bold text-lg text-slate-800">
+                  <!-- 文档图标 -->
+                  <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  订单详情
+                </h4>
+                <!-- 关闭按钮 -->
+                <button onclick="closeOrderDetailModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+
+              <!-- 弹窗内容区域：显示订单的完整信息 -->
+              <div class="p-6 space-y-4">
+                <!-- 订单信息网格：使用两列布局展示详细信息 -->
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                  <!-- 系统订单号 -->
+                  <div class="col-span-2">
+                    <span class="text-slate-500 font-medium">系统订单号：</span>
+                    <span id="admin-detail-order-id_modal" class="text-slate-800 font-semibold break-all ml-2">-</span>
+                  </div>
+                  <!-- 平台订单号 -->
+                  <div class="col-span-2">
+                    <span class="text-slate-500 font-medium">平台订单号：</span>
+                    <span id="admin-detail-trade-no_modal" class="text-slate-800 font-semibold break-all ml-2">-</span>
+                  </div>
+                  <!-- 接口订单号 -->
+                  <div class="col-span-2">
+                    <span class="text-slate-500 font-medium">接口订单号：</span>
+                    <span id="admin-detail-api-trade-no_modal" class="text-slate-700 break-all ml-2">-</span>
+                  </div>
+                  <!-- 订单状态 -->
+                  <div>
+                    <span class="text-slate-500 font-medium">订单状态：</span>
+                    <span id="admin-detail-status_modal" class="ml-2">-</span>
+                  </div>
+                  <!-- 支付金额 -->
+                  <div>
+                    <span class="text-slate-500 font-medium">支付金额：</span>
+                    <span id="admin-detail-amount_modal" class="text-red-600 font-bold ml-2">-</span>
+                  </div>
+                  <!-- 支付方式 -->
+                  <div>
+                    <span class="text-slate-500 font-medium">支付方式：</span>
+                    <span id="admin-detail-pay-type_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 用户名 -->
+                  <div>
+                    <span class="text-slate-500 font-medium">用户名：</span>
+                    <span id="admin-detail-username_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 支付用户标识 -->
+                  <div class="col-span-2">
+                    <span class="text-slate-500 font-medium">支付用户标识：</span>
+                    <span id="admin-detail-buyer_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 商品名称 -->
+                  <div class="col-span-2">
+                    <span class="text-slate-500 font-medium">商品名称：</span>
+                    <span id="admin-detail-product-name_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 创建时间 -->
+                  <div>
+                    <span class="text-slate-500 font-medium">创建时间：</span>
+                    <span id="admin-detail-created-at_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 支付时间 -->
+                  <div>
+                    <span class="text-slate-500 font-medium">支付时间：</span>
+                    <span id="admin-detail-paid-time_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 客户端IP -->
+                  <div>
+                    <span class="text-slate-500 font-medium">客户端IP：</span>
+                    <span id="admin-detail-clientip_modal" class="text-slate-700 ml-2">-</span>
+                  </div>
+                  <!-- 已退款金额 -->
+                  <div>
+                    <span class="text-slate-500 font-medium">已退款金额：</span>
+                    <span id="admin-detail-refundmoney_modal" class="text-orange-600 font-semibold ml-2">-</span>
+                  </div>
+                  <!-- 业务扩展参数 -->
+                  <div class="col-span-2">
+                    <span class="text-slate-500 font-medium">业务参数：</span>
+                    <span id="admin-detail-param_modal" class="text-slate-700 ml-2 break-all">-</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 弹窗底部按钮区域 -->
+              <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end">
+                <button onclick="closeOrderDetailModal()" 
+                  class="px-6 py-2 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 transition-colors">
+                  关闭
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -11485,7 +11649,7 @@ body.mobile-mode #session-picker-modal {
         <div id="admin-payment-settings-content-refund_modal" class="hidden space-y-4">
           <!-- 退款说明文本：重要警告 -->
           <p class="text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3">
-            ⚠️ 警告：退款操作不可撤销，请仔细核对订单信息后再提交。退款金额不能超过原订单金额。
+            ⚠️ 警告：退款操作不可撤销，每个订单只能退款一次。请仔细核对订单信息后再提交，退款金额不能超过原订单金额。
           </p>
 
           <!-- 退款表单 -->
@@ -18053,6 +18217,15 @@ body.mobile-mode #session-picker-modal {
             console.log(`[PC端支付设置] 已触发支付方式配置加载`);
           }
 
+          // 步骤5：当切换到订单查询Tab时，加载订单列表
+          // 确保每次打开订单查询Tab时，订单列表都是最新的
+          if (tab === 'query') {
+            // 调用 loadAllPaymentOrders() 函数加载所有本地订单
+            // 此函数会从服务器获取订单列表并显示在表格中
+            loadAllPaymentOrders();
+            console.log(`[PC端支付设置] 已触发订单列表加载`);
+          }
+
           if (tab === 'yipay') {
             // 调用 loadYiPayConfig() 函数加载易支付配置
             loadAdminYiPayConfig()
@@ -18609,6 +18782,18 @@ body.mobile-mode #session-picker-modal {
               statusText = '已全部退款';
               statusClass = 'bg-gray-100 text-gray-700';
               break;
+            case 'frozen':
+              statusText = '已冻结';
+              statusClass = 'bg-purple-100 text-purple-700';
+              break;
+            case 'preauth':
+              statusText = '预授权';
+              statusClass = 'bg-indigo-100 text-indigo-700';
+              break;
+            case 'timeout':
+              statusText = '支付超时';
+              statusClass = 'bg-gray-100 text-gray-700';
+              break;
             default:
               statusText = order.status || '-';
               statusClass = 'bg-slate-100 text-slate-700';
@@ -18709,6 +18894,715 @@ body.mobile-mode #session-picker-modal {
           }, 5000);
         }
       }
+    }
+
+    // ==========================================
+    // Tab 2 扩展功能：订单列表、筛选和管理
+    // ==========================================
+    // 【功能说明】
+    // 实现订单管理的扩展功能，包括：
+    // 1. 加载和显示所有本地订单列表
+    // 2. 订单筛选（按状态、支付方式、用户名、订单号）
+    // 3. 手动查询单个订单（支持从平台同步）
+    // 4. 从平台批量拉取订单
+    // 5. 显示订单详细信息
+    // 
+    // 【API说明】
+    // - POST /api/admin/payment/query_order: 查询单个订单（优先本地，无则从平台查询）
+    // - POST /api/admin/payment/fetch_orders: 从平台批量拉取订单列表
+    // ==========================================
+
+    // 全局变量：存储所有订单数据和筛选后的订单数据
+    let allPaymentOrders = [];        // 存储从后端加载的所有订单数据
+    let filteredPaymentOrders = [];   // 存储经过筛选后的订单数据
+
+    /**
+     * 加载所有本地支付订单
+     * 
+     * 功能说明：
+     * 页面加载时自动调用，从后端获取所有本地订单数据并显示在表格中
+     * 
+     * API端点：
+     * - 使用现有的订单文件读取逻辑（通过后端提供的订单列表）
+     * - 或者调用 /api/admin/payment/fetch_orders 获取本地订单
+     * 
+     * 实现步骤：
+     * 1. 读取本地订单目录中的所有订单文件
+     * 2. 解析订单数据并存储到 allPaymentOrders 数组
+     * 3. 调用 filterPaymentOrders() 显示订单列表
+     */
+    async function loadAllPaymentOrders() {
+      // 输出日志：标记开始加载订单列表
+      console.log('[订单列表] 开始加载所有本地订单...');
+
+      try {
+        // === 第1步：发起HTTP POST请求获取订单列表 ===
+        // 使用 fetch_orders API，但参数设置为获取本地已有的订单
+        // 注意：这里我们需要一个专门的API来获取本地订单列表
+        // 如果后端没有提供，我们可以使用 fetch_orders 并只显示已保存的订单
+        
+        const response = await fetch('/api/admin/payment/fetch_orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID,  // 会话ID用于身份验证
+          },
+          body: JSON.stringify({
+            offset: 0,      // 从第0条开始
+            limit: 50       // 获取50条订单
+          })
+        });
+
+        // === 第2步：检查HTTP响应状态 ===
+        if (!response.ok) {
+          throw new Error(`加载订单失败：HTTP状态码 ${response.status}`);
+        }
+
+        // === 第3步：解析响应数据 ===
+        const result = await response.json();
+        console.log('[订单列表] API响应：', result);
+
+        // === 第4步：检查业务状态 ===
+        if (!result.success) {
+          throw new Error(result.message || '加载订单失败');
+        }
+
+        // === 第5步：提取订单数据并存储到全局变量 ===
+        // 后端返回的订单列表在 result.orders 中
+        allPaymentOrders = result.orders || [];
+        
+        console.log(`[订单列表] 成功加载 ${allPaymentOrders.length} 个订单`);
+
+        // === 第6步：显示订单列表 ===
+        // 调用筛选函数来显示订单（初始状态下不筛选，显示全部）
+        filterPaymentOrders();
+
+      } catch (error) {
+        // === 错误处理 ===
+        console.error('[订单列表] 加载订单时发生错误：', error);
+
+        // 在表格中显示错误提示
+        const tableBody = document.getElementById('admin-orders-table-body_modal');
+        if (tableBody) {
+          tableBody.innerHTML = `
+            <tr>
+              <td colspan="8" class="px-4 py-8 text-center text-red-600">
+                <svg class="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                加载订单失败，请稍后重试
+              </td>
+            </tr>
+          `;
+        }
+
+        // 更新订单计数显示
+        const countElem = document.getElementById('admin-orders-count_modal');
+        if (countElem) {
+          countElem.textContent = '(加载失败)';
+        }
+      }
+    }
+
+    /**
+     * 筛选支付订单列表
+     * 
+     * 功能说明：
+     * 根据用户选择的筛选条件，过滤订单数据并更新表格显示
+     * 
+     * 筛选条件：
+     * 1. 订单状态（status）
+     * 2. 支付方式（pay_type）
+     * 3. 用户名（username）
+     * 4. 订单号（order_id 或 trade_no）
+     * 
+     * 实现步骤：
+     * 1. 获取所有筛选条件的值
+     * 2. 遍历 allPaymentOrders，筛选符合条件的订单
+     * 3. 将筛选结果存储到 filteredPaymentOrders
+     * 4. 更新表格显示
+     */
+    function filterPaymentOrders() {
+      // 输出日志：标记开始筛选订单
+      console.log('[订单筛选] 开始筛选订单...');
+
+      // === 第1步：获取所有筛选条件的值 ===
+      
+      // 获取状态筛选下拉框的值
+      const statusFilter = document.getElementById('admin-filter-status_modal')?.value.trim() || '';
+      // 获取支付方式筛选下拉框的值
+      const payTypeFilter = document.getElementById('admin-filter-paytype_modal')?.value.trim() || '';
+      // 获取用户名搜索输入框的值（转换为小写，便于不区分大小写匹配）
+      const usernameFilter = document.getElementById('admin-filter-username_modal')?.value.trim().toLowerCase() || '';
+      // 获取订单号搜索输入框的值（转换为小写，便于不区分大小写匹配）
+      const orderNoFilter = document.getElementById('admin-filter-orderno_modal')?.value.trim().toLowerCase() || '';
+
+      console.log('[订单筛选] 筛选条件：', {
+        status: statusFilter || '全部',
+        payType: payTypeFilter || '全部',
+        username: usernameFilter || '全部',
+        orderNo: orderNoFilter || '全部'
+      });
+
+      // === 第2步：筛选订单数据 ===
+      
+      // 使用 Array.filter() 方法筛选订单
+      filteredPaymentOrders = allPaymentOrders.filter(order => {
+        // 2.1 检查订单状态筛选条件
+        // 如果设置了状态筛选，则订单状态必须匹配
+        if (statusFilter && order.status !== statusFilter) {
+          return false;
+        }
+
+        // 2.2 检查支付方式筛选条件
+        // 如果设置了支付方式筛选，则支付方式必须匹配
+        if (payTypeFilter && order.pay_type !== payTypeFilter) {
+          return false;
+        }
+
+        // 2.3 检查用户名筛选条件
+        // 如果设置了用户名筛选，则用户名必须包含搜索关键词（不区分大小写）
+        if (usernameFilter) {
+          const username = (order.username || '').toLowerCase();
+          if (!username.includes(usernameFilter)) {
+            return false;
+          }
+        }
+
+        // 2.4 检查订单号筛选条件
+        // 如果设置了订单号筛选，则系统订单号或平台订单号必须包含搜索关键词
+        if (orderNoFilter) {
+          const orderId = (order.order_id || '').toLowerCase();
+          const tradeNo = (order.trade_no || '').toLowerCase();
+          const apiTradeNo = (order.api_trade_no || '').toLowerCase();
+          
+          // 订单号可以匹配系统订单号、平台订单号或接口订单号中的任意一个
+          if (!orderId.includes(orderNoFilter) && 
+              !tradeNo.includes(orderNoFilter) && 
+              !apiTradeNo.includes(orderNoFilter)) {
+            return false;
+          }
+        }
+
+        // 所有筛选条件都通过，保留该订单
+        return true;
+      });
+
+      console.log(`[订单筛选] 筛选结果：${filteredPaymentOrders.length} / ${allPaymentOrders.length} 个订单`);
+
+      // === 第3步：更新表格显示 ===
+      renderPaymentOrdersTable();
+    }
+
+    /**
+     * 渲染支付订单表格
+     * 
+     * 功能说明：
+     * 将 filteredPaymentOrders 中的订单数据渲染到表格中
+     * 
+     * 表格列：
+     * 1. 系统订单号（order_id）
+     * 2. 平台订单号（trade_no）
+     * 3. 接口订单号（api_trade_no）
+     * 4. 用户名（username）
+     * 5. 金额（amount）
+     * 6. 支付方式（pay_type）
+     * 7. 状态（status）
+     * 8. 操作（查看详情按钮）
+     */
+    function renderPaymentOrdersTable() {
+      // 输出日志：标记开始渲染表格
+      console.log('[订单表格] 开始渲染订单表格...');
+
+      // === 第1步：获取表格元素 ===
+      const tableBody = document.getElementById('admin-orders-table-body_modal');
+      const countElem = document.getElementById('admin-orders-count_modal');
+
+      // 防御性检查：确保表格元素存在
+      if (!tableBody) {
+        console.error('[订单表格] 错误：找不到表格元素');
+        return;
+      }
+
+      // === 第2步：更新订单计数显示 ===
+      if (countElem) {
+        countElem.textContent = `(共 ${filteredPaymentOrders.length} 条)`;
+      }
+
+      // === 第3步：检查是否有订单数据 ===
+      if (filteredPaymentOrders.length === 0) {
+        // 如果没有订单，显示空状态提示
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="8" class="px-4 py-8 text-center text-slate-500">
+              <svg class="w-12 h-12 inline mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+              </svg>
+              <div>暂无订单数据</div>
+              <div class="text-xs mt-1">请尝试调整筛选条件或点击"从平台拉取"按钮同步订单</div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // === 第4步：生成表格行HTML ===
+      
+      // 使用 Array.map() 将每个订单对象转换为表格行HTML
+      const tableRows = filteredPaymentOrders.map(order => {
+        // 4.1 清理和格式化订单数据（使用 escapeHtml 防止XSS攻击）
+        const orderId = escapeHtml(order.order_id || '-');
+        const tradeNo = escapeHtml(order.trade_no || '-');
+        const apiTradeNo = escapeHtml(order.api_trade_no || '-');
+        const username = escapeHtml(order.username || '-');
+        const amount = order.amount ? `¥${parseFloat(order.amount).toFixed(2)}` : '-';
+        
+        // 4.2 格式化支付方式显示
+        let payTypeText = '-';
+        switch (order.pay_type) {
+          case 'alipay':
+            payTypeText = '支付宝';
+            break;
+          case 'wxpay':
+            payTypeText = '微信支付';
+            break;
+          case 'qq':
+            payTypeText = 'QQ钱包';
+            break;
+          case 'unionpay':
+            payTypeText = '云闪付';
+            break;
+          default:
+            payTypeText = escapeHtml(order.pay_type || '-');
+        }
+
+        // 4.3 格式化状态显示（使用彩色标签）
+        let statusHtml = '';
+        switch (order.status) {
+          case 'failed':
+            statusHtml = '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-semibold">创建失败</span>';
+            break;
+          case 'pending':
+            statusHtml = '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-semibold">待支付</span>';
+            break;
+          case 'paid':
+            statusHtml = '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-semibold">已支付</span>';
+            break;
+          case 'refunded_partial':
+            statusHtml = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">部分退款</span>';
+            break;
+          case 'refunded_full':
+            statusHtml = '<span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold">全额退款</span>';
+            break;
+          case 'frozen':
+            statusHtml = '<span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-semibold">已冻结</span>';
+            break;
+          case 'preauth':
+            statusHtml = '<span class="px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-xs font-semibold">预授权</span>';
+            break;
+          case 'timeout':
+            statusHtml = '<span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold">支付超时</span>';
+            break;
+          default:
+            statusHtml = `<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded text-xs font-semibold">${escapeHtml(order.status || '-')}</span>`;
+        }
+
+        // 4.4 生成表格行HTML
+        // 注意：订单数据存储在 data-order 属性中（JSON格式），供详情弹窗使用
+        return `
+          <tr class="hover:bg-slate-50 transition-colors">
+            <td class="px-4 py-3 text-slate-700">${orderId}</td>
+            <td class="px-4 py-3 text-slate-700">${tradeNo}</td>
+            <td class="px-4 py-3 text-slate-700 text-xs">${apiTradeNo}</td>
+            <td class="px-4 py-3 text-slate-700">${username}</td>
+            <td class="px-4 py-3 text-red-600 font-semibold">${amount}</td>
+            <td class="px-4 py-3 text-slate-700">${payTypeText}</td>
+            <td class="px-4 py-3">${statusHtml}</td>
+            <td class="px-4 py-3 text-center">
+              <button onclick='showOrderDetailModal(${JSON.stringify(order)})' 
+                class="px-3 py-1 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition-colors">
+                查看详情
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');  // 将所有表格行拼接成一个字符串
+
+      // === 第5步：更新表格内容 ===
+      tableBody.innerHTML = tableRows;
+
+      console.log('[订单表格] 表格渲染完成');
+    }
+
+    /**
+     * 手动查询单个订单
+     * 
+     * 功能说明：
+     * 用户输入订单号后，调用新的 /api/admin/payment/query_order API
+     * 如果本地没有该订单，后端会从平台查询并保存
+     * 查询成功后，刷新订单列表
+     * 
+     * API端点：POST /api/admin/payment/query_order
+     * 
+     * 请求参数：
+     * {
+     *   order_id: "ORDER123"    // 商户订单号，或者
+     *   trade_no: "TN123"       // 平台订单号
+     * }
+     * 
+     * 预期返回：
+     * {
+     *   success: true,
+     *   order: {...},           // 订单详情
+     *   source: "local"/"platform"  // 数据来源
+     * }
+     */
+    async function queryOrderManually() {
+      // 输出日志：标记开始手动查询订单
+      console.log('[手动查询] 开始查询订单...');
+
+      // === 第1步：获取订单号输入框的值 ===
+      const orderNoInput = document.getElementById('admin-manual-query-order-no_modal');
+      
+      // 防御性检查：确保输入框元素存在
+      if (!orderNoInput) {
+        console.error('[手动查询] 错误：找不到订单号输入框');
+        showModalAlert('页面元素异常，请刷新页面后重试。');
+        return;
+      }
+
+      // 获取用户输入的订单号，去除首尾空格
+      const orderNo = orderNoInput.value.trim();
+
+      // === 第2步：验证订单号是否为空 ===
+      if (!orderNo) {
+        showModalAlert('请输入订单号', '提示');
+        return;
+      }
+
+      console.log('[手动查询] 查询订单号：', orderNo);
+
+      try {
+        // === 第3步：发起HTTP POST请求查询订单 ===
+        
+        const response = await fetch('/api/admin/payment/query_order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID,  // 会话ID用于身份验证
+          },
+          body: JSON.stringify({
+            order_id: orderNo   // 发送订单号（可以是商户订单号或平台订单号）
+          })
+        });
+
+        // === 第4步：检查HTTP响应状态 ===
+        if (!response.ok) {
+          throw new Error(`查询失败：HTTP状态码 ${response.status}`);
+        }
+
+        // === 第5步：解析响应数据 ===
+        const result = await response.json();
+        console.log('[手动查询] API响应：', result);
+
+        // === 第6步：检查业务状态 ===
+        if (!result.success) {
+          showModalAlert(result.message || '查询订单失败', '查询失败');
+          return;
+        }
+
+        // === 第7步：查询成功，显示提示信息 ===
+        const source = result.source === 'platform' ? '从平台查询并已保存到本地' : '从本地查询';
+        showModalAlert(`订单查询成功（${source}）`, '成功');
+
+        // === 第8步：清空输入框 ===
+        orderNoInput.value = '';
+
+        // === 第9步：刷新订单列表 ===
+        // 重新加载订单列表以显示新查询的订单
+        await loadAllPaymentOrders();
+
+      } catch (error) {
+        // === 错误处理 ===
+        console.error('[手动查询] 查询订单时发生错误：', error);
+        showModalAlert('查询订单失败，请稍后重试', '错误');
+      }
+    }
+
+    /**
+     * 从平台批量拉取订单
+     * 
+     * 功能说明：
+     * 调用 /api/admin/payment/fetch_orders API，从易支付平台批量拉取订单
+     * 显示拉取进度和结果，拉取完成后自动刷新订单列表
+     * 
+     * API端点：POST /api/admin/payment/fetch_orders
+     * 
+     * 请求参数：
+     * {
+     *   offset: 0,    // 查询偏移量
+     *   limit: 50     // 每页条数
+     * }
+     * 
+     * 预期返回：
+     * {
+     *   success: true,
+     *   fetched: 10,   // 成功拉取的订单数
+     *   saved: 8,      // 成功保存到本地的订单数
+     *   failed: 2,     // 保存失败的订单数
+     *   orders: [...]  // 订单列表（简要信息）
+     * }
+     */
+    async function fetchOrdersFromPlatform() {
+      // 输出日志：标记开始拉取订单
+      console.log('[拉取订单] 开始从平台拉取订单...');
+
+      // === 第1步：显示加载提示 ===
+      // 使用自定义的模态框提示用户正在拉取订单
+      showModalAlert('正在从平台拉取订单，请稍候...', '提示');
+
+      try {
+        // === 第2步：发起HTTP POST请求拉取订单 ===
+        
+        const response = await fetch('/api/admin/payment/fetch_orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID,  // 会话ID用于身份验证
+          },
+          body: JSON.stringify({
+            offset: 0,     // 从第0条开始
+            limit: 50      // 拉取50条订单
+          })
+        });
+
+        // === 第3步：检查HTTP响应状态 ===
+        if (!response.ok) {
+          throw new Error(`拉取失败：HTTP状态码 ${response.status}`);
+        }
+
+        // === 第4步：解析响应数据 ===
+        const result = await response.json();
+        console.log('[拉取订单] API响应：', result);
+
+        // === 第5步：检查业务状态 ===
+        if (!result.success) {
+          showModalAlert(result.message || '从平台拉取订单失败', '拉取失败');
+          return;
+        }
+
+        // === 第6步：显示拉取结果 ===
+        const fetched = result.fetched || 0;
+        const saved = result.saved || 0;
+        const failed = result.failed || 0;
+
+        // 构建结果消息
+        let message = `成功从平台拉取 ${fetched} 条订单`;
+        if (saved > 0) {
+          message += `，已保存 ${saved} 条到本地`;
+        }
+        if (failed > 0) {
+          message += `，${failed} 条保存失败`;
+        }
+
+        showModalAlert(message, '拉取成功');
+
+        // === 第7步：刷新订单列表 ===
+        // 重新加载订单列表以显示新拉取的订单
+        await loadAllPaymentOrders();
+
+      } catch (error) {
+        // === 错误处理 ===
+        console.error('[拉取订单] 拉取订单时发生错误：', error);
+        showModalAlert('从平台拉取订单失败，请稍后重试', '错误');
+      }
+    }
+
+    /**
+     * 显示订单详情弹窗
+     * 
+     * 功能说明：
+     * 当用户点击订单列表中的"查看详情"按钮时，显示订单的完整信息
+     * 
+     * 参数：
+     * @param {Object} order - 订单对象，包含订单的所有字段
+     * 
+     * 显示字段：
+     * - 系统订单号、平台订单号、接口订单号
+     * - 订单状态、支付金额、支付方式
+     * - 用户名、支付用户标识、商品名称
+     * - 创建时间、支付时间、客户端IP
+     * - 已退款金额、业务扩展参数
+     */
+    function showOrderDetailModal(order) {
+      // 输出日志：标记显示订单详情
+      console.log('[订单详情] 显示订单详情：', order);
+
+      // === 第1步：填充订单详情数据到弹窗 ===
+
+      // 1.1 系统订单号
+      const orderIdElem = document.getElementById('admin-detail-order-id_modal');
+      if (orderIdElem) {
+        orderIdElem.textContent = order.order_id || '-';
+      }
+
+      // 1.2 平台订单号
+      const tradeNoElem = document.getElementById('admin-detail-trade-no_modal');
+      if (tradeNoElem) {
+        tradeNoElem.textContent = order.trade_no || '-';
+      }
+
+      // 1.3 接口订单号
+      const apiTradeNoElem = document.getElementById('admin-detail-api-trade-no_modal');
+      if (apiTradeNoElem) {
+        apiTradeNoElem.textContent = order.api_trade_no || '-';
+      }
+
+      // 1.4 订单状态（使用彩色标签）
+      const statusElem = document.getElementById('admin-detail-status_modal');
+      if (statusElem) {
+        let statusHtml = '';
+        switch (order.status) {
+          case 'failed':
+            statusHtml = '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-semibold">创建失败</span>';
+            break;
+          case 'pending':
+            statusHtml = '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-semibold">已创建待支付</span>';
+            break;
+          case 'paid':
+            statusHtml = '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-semibold">已支付</span>';
+            break;
+          case 'refunded_partial':
+            statusHtml = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">已部分退款</span>';
+            break;
+          case 'refunded_full':
+            statusHtml = '<span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold">已全额退款</span>';
+            break;
+          case 'frozen':
+            statusHtml = '<span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-semibold">已冻结</span>';
+            break;
+          case 'preauth':
+            statusHtml = '<span class="px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-xs font-semibold">预授权</span>';
+            break;
+          case 'timeout':
+            statusHtml = '<span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold">支付超时</span>';
+            break;
+          default:
+            statusHtml = `<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded text-xs font-semibold">${escapeHtml(order.status || '-')}</span>`;
+        }
+        statusElem.innerHTML = statusHtml;
+      }
+
+      // 1.5 支付金额
+      const amountElem = document.getElementById('admin-detail-amount_modal');
+      if (amountElem) {
+        amountElem.textContent = order.amount ? `¥${parseFloat(order.amount).toFixed(2)}` : '-';
+      }
+
+      // 1.6 支付方式
+      const payTypeElem = document.getElementById('admin-detail-pay-type_modal');
+      if (payTypeElem) {
+        let payTypeText = '-';
+        switch (order.pay_type) {
+          case 'alipay':
+            payTypeText = '支付宝';
+            break;
+          case 'wxpay':
+            payTypeText = '微信支付';
+            break;
+          case 'qq':
+            payTypeText = 'QQ钱包';
+            break;
+          case 'unionpay':
+            payTypeText = '云闪付';
+            break;
+          default:
+            payTypeText = order.pay_type || '-';
+        }
+        payTypeElem.textContent = payTypeText;
+      }
+
+      // 1.7 用户名
+      const usernameElem = document.getElementById('admin-detail-username_modal');
+      if (usernameElem) {
+        usernameElem.textContent = order.username || '-';
+      }
+
+      // 1.8 支付用户标识
+      const buyerElem = document.getElementById('admin-detail-buyer_modal');
+      if (buyerElem) {
+        buyerElem.textContent = order.buyer || '-';
+      }
+
+      // 1.9 商品名称
+      const productNameElem = document.getElementById('admin-detail-product-name_modal');
+      if (productNameElem) {
+        productNameElem.textContent = order.product_name || '-';
+      }
+
+      // 1.10 创建时间
+      const createdAtElem = document.getElementById('admin-detail-created-at_modal');
+      if (createdAtElem) {
+        createdAtElem.textContent = order.created_at || '-';
+      }
+
+      // 1.11 支付时间
+      const paidTimeElem = document.getElementById('admin-detail-paid-time_modal');
+      if (paidTimeElem) {
+        paidTimeElem.textContent = order.paid_time || '-';
+      }
+
+      // 1.12 客户端IP
+      const clientIpElem = document.getElementById('admin-detail-clientip_modal');
+      if (clientIpElem) {
+        clientIpElem.textContent = order.clientip || '-';
+      }
+
+      // 1.13 已退款金额
+      const refundMoneyElem = document.getElementById('admin-detail-refundmoney_modal');
+      if (refundMoneyElem) {
+        const refundMoney = parseFloat(order.refundmoney || 0);
+        refundMoneyElem.textContent = refundMoney > 0 ? `¥${refundMoney.toFixed(2)}` : '¥0.00';
+      }
+
+      // 1.14 业务扩展参数
+      const paramElem = document.getElementById('admin-detail-param_modal');
+      if (paramElem) {
+        paramElem.textContent = order.param || '-';
+      }
+
+      // === 第2步：显示弹窗 ===
+      const modalOverlay = document.getElementById('admin-order-detail-modal_overlay');
+      if (modalOverlay) {
+        modalOverlay.classList.remove('hidden');
+      }
+    }
+
+    /**
+     * 关闭订单详情弹窗
+     * 
+     * 功能说明：
+     * 隐藏订单详情弹窗
+     * 
+     * 参数：
+     * @param {Event} event - 可选的事件对象，用于判断是否点击了遮罩层
+     */
+    function closeOrderDetailModal(event) {
+      // 如果传入了事件对象，检查是否点击的是遮罩层本身
+      // 如果点击的是弹窗内容区域，则不关闭
+      if (event && event.target.id !== 'admin-order-detail-modal_overlay') {
+        return;
+      }
+
+      // 隐藏弹窗
+      const modalOverlay = document.getElementById('admin-order-detail-modal_overlay');
+      if (modalOverlay) {
+        modalOverlay.classList.add('hidden');
+      }
+
+      console.log('[订单详情] 关闭订单详情弹窗');
     }
 
     // ==========================================

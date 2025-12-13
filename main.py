@@ -1740,6 +1740,14 @@ def _get_default_config():
         "enabled_payment_methods": "alipay,wxpay",
         # 注意：支付方式详细配置（payment_methods_config）已迁移到独立的 payment_methods.json 文件
         # 如需修改支付方式的名称、图标、描述等信息，请直接编辑 payment_methods.json 文件
+        # 支付超时时间（分钟）：订单创建后多长时间内未支付视为超时
+        # 格式：整数，单位为分钟
+        # 默认值：30（30分钟）
+        # 用途：用于标记超时未支付的订单，便于系统自动关闭或提醒用户
+        # 注意：
+        #   1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期
+        #   2. 建议设置为10-60分钟之间
+        "payment_timeout_minutes": "30",
     }
 
     # ============================================================
@@ -2239,6 +2247,15 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 默认值：1001（跑步助手服务）\n")
         f.write("# 用途：在支付记录中区分不同类型的商品或服务\n")
         f.write(f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
+        f.write("# 支付超时时间（分钟）\n")
+        f.write("# 订单创建后多长时间内未支付视为超时\n")
+        f.write("# 格式：整数，单位为分钟\n")
+        f.write("# 默认值：30（30分钟）\n")
+        f.write("# 用途：用于标记超时未支付的订单，便于系统自动关闭或提醒用户\n")
+        f.write("# 注意：\n")
+        f.write("# 1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期\n")
+        f.write("# 2. 建议设置为10-60分钟之间\n")
+        f.write(f"payment_timeout_minutes = {config_obj.get('Rainbow_YiPay', 'payment_timeout_minutes', fallback='30')}\n\n")
 
         # ============================================================
         # [Payment_Settings] 支付费用配置
@@ -24567,12 +24584,120 @@ def start_web_server(args_param):
             
             # 检查订单是否存在
             if not os.path.exists(order_file):
-                logging.error(f"[支付通知] 订单不存在 - 订单号: {out_trade_no}")
-                return "fail"
-            
-            # 读取订单数据
-            with open(order_file, "r", encoding="utf-8") as f:
-                order_data = json.load(f)
+                # ========== 订单不存在：记录日志并尝试从平台查询 ==========
+                
+                logging.warning(f"[支付通知] 本地订单不存在 - 订单号: {out_trade_no}")
+                
+                # 记录支付通知日志（即使订单不存在也要记录）
+                # 这对于排查问题和防止丢失通知非常重要
+                _write_payment_log(
+                    user_id="system",                           # 系统记录
+                    order_id=out_trade_no,                      # 商户订单号
+                    action="payment_notify_order_not_found",    # 操作类型：订单不存在
+                    log_data={
+                        # 通知参数
+                        "notify_params": params,                # 完整的通知参数
+                        "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,       # 通知来源IP
+                        "trade_no": trade_no,                   # 平台订单号
+                        "trade_status": trade_status,           # 支付状态
+                        "money": money,                         # 支付金额
+                        # 操作结果
+                        "success": False,
+                        "message": "本地订单不存在，尝试从平台查询"
+                    }
+                )
+                
+                # 尝试从易支付平台查询订单
+                logging.info(f"[支付通知] 尝试从易支付平台查询订单 - 订单号: {out_trade_no}")
+                
+                query_result = _query_yipay_order(order_id=out_trade_no, trade_no=trade_no)
+                
+                if query_result.get("success"):
+                    # ========== 平台查询成功：创建订单文件 ==========
+                    
+                    platform_order = query_result.get("data", {})
+                    
+                    logging.info(f"[支付通知] 从平台查询到订单信息 - 订单号: {out_trade_no}")
+                    
+                    # 构造本地订单数据结构
+                    order_data = {
+                        "order_id": out_trade_no,                                    # 商户订单号
+                        "trade_no": trade_no,                                        # 平台订单号
+                        "amount": platform_order.get("money", money),                # 订单金额
+                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称
+                        "username": "unknown",                                       # 用户名（无法从平台获取）
+                        "created_at": platform_order.get("addtime", ""),            # 创建时间
+                        "paid_time": platform_order.get("endtime", ""),             # 支付时间
+                        "param": platform_order.get("param", ""),                    # 业务扩展参数
+                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识
+                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP
+                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号
+                        "pay_type": platform_order.get("type", params.get("type", "")),  # 支付方式
+                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额
+                        # 转换支付状态
+                        "status": _convert_yipay_status(platform_order.get("status", 1)),
+                        "created_from_notify": True,                                  # 标记：从通知创建
+                        "notify_params": params,                                     # 保存通知参数
+                        "synced_from_platform": True,                                # 标记：从平台同步
+                        "synced_at": time.time(),                                    # 同步时间戳
+                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),          # 同步时间（可读）
+                        "platform_data": platform_order                              # 保存完整的平台数据
+                    }
+                    
+                    # 确保订单目录存在
+                    os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+                    
+                    # 保存订单文件
+                    try:
+                        with open(order_file, "w", encoding="utf-8") as f:
+                            json.dump(order_data, f, indent=2, ensure_ascii=False)
+                        
+                        logging.info(f"[支付通知] 订单文件已创建 - 订单号: {out_trade_no}")
+                        
+                        # 记录创建订单日志
+                        _write_payment_log(
+                            user_id="system",
+                            order_id=out_trade_no,
+                            action="create_order_from_notify",
+                            log_data={
+                                "source": "yipay_notify",
+                                "platform_data": platform_order,
+                                "notify_params": params,
+                                "success": True
+                            }
+                        )
+                    
+                    except Exception as e:
+                        logging.error(f"[支付通知] 创建订单文件失败: {str(e)}")
+                        # 即使保存失败，也继续处理通知（因为已经验证签名）
+                
+                else:
+                    # ========== 平台查询失败：无法补全订单 ==========
+                    
+                    error_msg = query_result.get("message", "查询失败")
+                    logging.error(f"[支付通知] 从平台查询订单失败: {error_msg}")
+                    
+                    # 记录查询失败日志
+                    _write_payment_log(
+                        user_id="system",
+                        order_id=out_trade_no,
+                        action="query_platform_order_failed",
+                        log_data={
+                            "error_message": error_msg,
+                            "notify_params": params,
+                            "success": False
+                        }
+                    )
+                    
+                    # 返回 fail，让易支付继续重试
+                    return "fail"
+                
+                # 如果到这里，说明order_data已经被填充（从平台查询并保存）
+                # 继续执行后续的金额验证和业务逻辑
+            else:
+                # 读取订单数据
+                with open(order_file, "r", encoding="utf-8") as f:
+                    order_data = json.load(f)
             
             # ========== 验证订单金额 ==========
             # 防止支付金额与订单金额不一致的情况
@@ -28133,6 +28258,9 @@ def start_web_server(args_param):
     ORDER_STATUS_PAID = "paid"                        # 已支付
     ORDER_STATUS_REFUNDED_PARTIAL = "refunded_partial"  # 已部分退款
     ORDER_STATUS_REFUNDED_FULL = "refunded_full"      # 已全额退款
+    ORDER_STATUS_FROZEN = "frozen"                    # 已冻结
+    ORDER_STATUS_PREAUTH = "preauth"                  # 预授权
+    ORDER_STATUS_TIMEOUT = "timeout"                  # 支付超时
     
     # 订单数据存储目录常量定义
     # 用于存储所有支付订单的JSON文件
@@ -28169,20 +28297,23 @@ def start_web_server(args_param):
         3. 统计：分析用户支付行为，优化支付流程
         4. 合规：满足财务和法律的审计要求
         
-        日志文件命名规则：
-        - 格式：{timestamp}_{order_id}.json
-        - 例如：20231201_120530_ORDER20231201120530123456.json
+        日志文件命名规则（重构后）：
+        - 格式：{timestamp}_{user_id}_{order_id}.json
+        - 例如：20231201_120530_admin_ORDER20231201120530123456.json
         - 时间戳使用年月日_时分秒格式，便于按时间排序
+        - user_id 包含在文件名中，便于快速识别用户
         
-        日志目录结构：
-        - logs/payment_logs/                    # 日志根目录
-        -     ├── user_zhang/                   # 注册用户zhang的日志目录
-        -     │   ├── 20231201_120530_ORDER123.json
-        -     │   └── 20231201_130000_ORDER456.json
-        -     ├── guest_abc123/                 # 游客(session UUID: abc123)的日志目录
-        -     │   └── 20231201_140000_ORDER789.json
-        -     └── user_admin/                   # 管理员admin的日志目录
-        -         └── 20231201_150000_ORDER999.json
+        日志目录结构（重构后）：
+        - logs/payment_logs/                          # 日志根目录，所有日志平铺存放
+        -     ├── 20231201_120530_admin_ORDER123.json      # 管理员的支付日志
+        -     ├── 20231201_130000_zhang_ORDER456.json      # 用户zhang的支付日志
+        -     ├── 20231201_140000_abc-123_ORDER789.json    # 游客(UUID: abc-123)的支付日志
+        -     └── 20231201_150000_admin_ORDER999.json      # 管理员的另一条日志
+        
+        重构说明：
+        - 移除了按用户分目录的结构，所有日志统一存放在 logs/payment_logs/ 目录下
+        - 文件名中包含 user_id，便于筛选和查询
+        - 简化了目录管理，提高了日志查询效率
         
         日志内容包括（但不限于）：
         - timestamp: 操作时间戳
@@ -28198,38 +28329,27 @@ def start_web_server(args_param):
         - 确保支付功能的可用性优先于日志记录
         """
         try:
-            # 规范化用户标识，用于创建目录
-            # 将用户ID转换为安全的文件系统路径名
-            # 例如：zhang -> user_zhang, abc-123-def -> guest_abc-123-def
-            # 注册用户添加"user_"前缀，游客添加"guest_"前缀
-            if user_id and not user_id.startswith("guest_") and not user_id.startswith("user_"):
-                # 判断是否为游客（通常游客ID包含连字符或为UUID格式）
-                # 简单的判断规则：如果包含连字符'-'，认为是游客session UUID
-                if "-" in user_id:
-                    safe_user_id = f"guest_{user_id}"
-                else:
-                    safe_user_id = f"user_{user_id}"
-            else:
-                # 已经有前缀了，直接使用
-                safe_user_id = user_id
-            
-            # 构造用户日志目录路径
-            # 格式：logs/payment_logs/{safe_user_id}/
-            user_log_dir = os.path.join(PAYMENT_LOGS_DIR, safe_user_id)
-            
-            # 确保用户日志目录存在
+            # 确保日志根目录存在
             # exist_ok=True 表示如果目录已存在不报错
-            os.makedirs(user_log_dir, exist_ok=True)
+            os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
+            
+            # 规范化用户标识，用于文件名
+            # 移除特殊字符，避免文件系统问题
+            # 例如：guest_abc-123-def -> guest_abc-123-def (保留连字符)
+            #      zhang -> zhang
+            #      admin -> admin
+            safe_user_id = user_id.replace("/", "-").replace("\\", "-") if user_id else "unknown"
             
             # 生成日志文件名
-            # 格式：{年月日}_{时分秒}_{订单号}.json
-            # 例如：20231201_120530_ORDER20231201120530123456.json
-            # 使用时间戳作为文件名的一部分，便于按时间查找和排序
+            # 格式：{年月日}_{时分秒}_{用户ID}_{订单号}.json
+            # 例如：20231201_120530_admin_ORDER20231201120530123456.json
+            # 使用时间戳作为文件名的第一部分，便于按时间查找和排序
             timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-            log_filename = f"{timestamp_str}_{order_id}.json"
+            log_filename = f"{timestamp_str}_{safe_user_id}_{order_id}.json"
             
             # 构造日志文件完整路径
-            log_filepath = os.path.join(user_log_dir, log_filename)
+            # 所有日志文件统一存放在 PAYMENT_LOGS_DIR 目录下，不再按用户分子目录
+            log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
             
             # 准备要写入的完整日志数据
             # 合并基础信息和传入的自定义数据
@@ -28262,6 +28382,415 @@ def start_web_server(args_param):
             # 只记录错误日志，不抛出异常
             logging.error(f"[支付日志] 写入失败 - 用户: {user_id}, 操作: {action}, 错误: {str(e)}")
             logging.error(traceback.format_exc())
+
+    def _query_yipay_order(order_id=None, trade_no=None):
+        """
+        查询易支付平台订单详情（内部函数）
+        
+        参数:
+            order_id (str, 可选): 商户订单号（out_trade_no）
+            trade_no (str, 可选): 平台订单号（trade_no）
+            注意：order_id 和 trade_no 必须至少提供一个
+        
+        返回值:
+            dict: 查询结果字典
+                - success (bool): 是否查询成功
+                - data (dict): 订单详情数据（仅在success=True时存在）
+                - message (str): 错误信息（仅在success=False时存在）
+        
+        功能说明:
+            这是一个内部工具函数，用于向易支付平台查询订单详情。
+            主要应用场景：
+            1. 订单文件丢失时，从平台补全订单信息
+            2. 验证本地订单状态与平台状态是否一致
+            3. 支付回调中订单不存在时，尝试从平台获取订单信息
+        
+        调用易支付查询接口:
+            - 接口路径: /api/pay/query
+            - 请求方式: POST
+            - 签名方式: RSA
+        
+        异常处理:
+            - 配置缺失：返回 success=False
+            - 网络错误：返回 success=False
+            - 平台返回错误：返回 success=False 并附带平台错误信息
+        """
+        try:
+            # ========== 第1步：参数验证 ==========
+            
+            # 验证必须提供至少一个订单标识
+            if not order_id and not trade_no:
+                logging.error("[易支付查询] 参数错误：必须提供 order_id 或 trade_no")
+                return {
+                    "success": False,
+                    "message": "参数错误：必须提供订单号"
+                }
+            
+            # ========== 第2步：读取配置 ==========
+            
+            # 读取易支付配置文件
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 从配置文件中获取易支付平台参数
+            yipay_host = config.get("Rainbow_YiPay", "host", fallback="").strip()  # 易支付平台域名
+            yipay_pid = config.get("Rainbow_YiPay", "pid", fallback="").strip()    # 商户ID
+            yipay_key = config.get("Rainbow_YiPay", "key", fallback="").strip()    # 商户私钥（用于签名）
+            
+            # 验证配置是否完整
+            if not yipay_host or not yipay_pid or not yipay_key:
+                logging.error("[易支付查询] 配置不完整：缺少 host、pid 或 key")
+                return {
+                    "success": False,
+                    "message": "易支付配置不完整"
+                }
+            
+            # ========== 第3步：构造查询请求参数 ==========
+            
+            # 准备查询接口的请求参数
+            # 按照易支付API文档要求构造参数字典
+            query_params = {
+                "pid": yipay_pid,                                    # 商户ID（必填）
+                "timestamp": str(int(time.time())),                  # 当前时间戳（10位整数，单位秒）
+                "sign_type": "RSA",                                  # 签名类型：RSA（必填）
+            }
+            
+            # 添加订单标识参数
+            # trade_no（平台订单号）和 out_trade_no（商户订单号）二选一
+            if trade_no:
+                # 优先使用平台订单号（如果提供）
+                query_params["trade_no"] = trade_no
+            elif order_id:
+                # 使用商户订单号
+                query_params["out_trade_no"] = order_id
+            
+            # 记录日志：准备查询订单
+            logging.info(f"[易支付查询] 准备查询订单 - 参数: {query_params}")
+            
+            # ========== 第4步：生成RSA签名 ==========
+            
+            # 创建RSA签名器
+            # 使用商户私钥对请求参数进行签名
+            signer = RsaSigner(private_key_str=yipay_key)
+            
+            # 生成签名并添加到参数字典中
+            # generate_sign() 方法会自动过滤、排序、拼接参数，然后用私钥签名
+            signed_params = signer.generate_sign(query_params)
+            
+            # 记录日志：输出签名后的参数
+            logging.debug(f"[易支付查询] 签名后的参数: {signed_params}")
+            
+            # ========== 第5步：调用易支付查询API ==========
+            
+            # 构造查询API的完整URL
+            # 易支付查询接口路径：/api/pay/query
+            query_api_url = f"{yipay_host}/api/pay/query"
+            
+            # 记录日志：准备发起HTTP请求
+            logging.info(f"[易支付查询] 正在调用查询API: {query_api_url}")
+            
+            # 发起POST请求到易支付查询接口
+            # 使用 requests.post() 发送HTTP POST请求
+            # data 参数传递表单数据（application/x-www-form-urlencoded格式）
+            # timeout 设置超时时间为15秒
+            response = requests.post(
+                query_api_url,
+                data=signed_params,
+                timeout=15
+            )
+            
+            # 记录日志：收到API响应
+            logging.info(f"[易支付查询] API响应状态码: {response.status_code}")
+            logging.debug(f"[易支付查询] API响应内容: {response.text}")
+            
+            # ========== 第6步：解析查询响应 ==========
+            
+            # 验证HTTP响应状态码
+            if response.status_code != 200:
+                logging.error(f"[易支付查询] API请求失败 - 状态码: {response.status_code}")
+                return {
+                    "success": False,
+                    "message": f"查询API请求失败，状态码：{response.status_code}"
+                }
+            
+            # 解析JSON响应
+            try:
+                # 将响应内容解析为JSON对象
+                query_result = response.json()
+            except Exception as e:
+                # JSON解析失败
+                logging.error(f"[易支付查询] API响应JSON解析失败: {str(e)}")
+                return {
+                    "success": False,
+                    "message": "查询API响应格式错误"
+                }
+            
+            # ========== 第7步：验证业务返回码 ==========
+            
+            # 检查业务层面的返回码
+            # code=0 表示查询成功
+            # code!=0 表示查询失败（例如：订单不存在、参数错误等）
+            result_code = query_result.get("code", -1)
+            result_msg = query_result.get("msg", "未知错误")
+            
+            if result_code == 0:
+                # ========== 查询成功：返回订单数据 ==========
+                
+                logging.info(
+                    f"[易支付查询] 查询成功 - "
+                    f"订单号: {query_result.get('out_trade_no', 'N/A')}, "
+                    f"平台订单号: {query_result.get('trade_no', 'N/A')}, "
+                    f"状态: {query_result.get('status', 'N/A')}"
+                )
+                
+                # 返回成功结果，包含完整的订单数据
+                return {
+                    "success": True,
+                    "data": query_result
+                }
+            else:
+                # ========== 查询失败：返回错误信息 ==========
+                
+                logging.warning(
+                    f"[易支付查询] 查询失败 - "
+                    f"错误码: {result_code}, "
+                    f"错误信息: {result_msg}"
+                )
+                
+                return {
+                    "success": False,
+                    "message": f"平台返回错误：{result_msg}"
+                }
+        
+        except requests.exceptions.Timeout:
+            # 请求超时
+            logging.error("[易支付查询] 请求超时")
+            return {
+                "success": False,
+                "message": "查询请求超时，请稍后重试"
+            }
+        
+        except requests.exceptions.RequestException as e:
+            # 网络错误
+            logging.error(f"[易支付查询] 网络错误: {str(e)}")
+            return {
+                "success": False,
+                "message": f"网络错误：{str(e)}"
+            }
+        
+        except Exception as e:
+            # 其他未预期的异常
+            logging.error(f"[易支付查询] 未知异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return {
+                "success": False,
+                "message": f"查询失败：{str(e)}"
+            }
+
+    def _fetch_yipay_orders(offset=0, limit=50):
+        """
+        批量获取易支付平台订单列表（内部函数）
+        
+        参数:
+            offset (int): 查询偏移量，从0开始（默认0）
+            limit (int): 每页条数，最大50（默认50）
+        
+        返回值:
+            dict: 查询结果字典
+                - success (bool): 是否查询成功
+                - data (list): 订单列表（仅在success=True时存在）
+                - message (str): 错误信息（仅在success=False时存在）
+        
+        功能说明:
+            这是一个内部工具函数，用于从易支付平台批量拉取订单列表。
+            主要应用场景：
+            1. 管理员主动同步平台订单到本地
+            2. 定时任务批量更新订单状态
+            3. 订单对账和数据补全
+        
+        调用易支付订单列表接口:
+            - 接口路径: /api/merchant/orders
+            - 请求方式: POST
+            - 签名方式: RSA
+            - 支持分页查询
+        
+        异常处理:
+            - 配置缺失：返回 success=False
+            - 网络错误：返回 success=False
+            - 平台返回错误：返回 success=False 并附带平台错误信息
+        """
+        try:
+            # ========== 第1步：参数验证 ==========
+            
+            # 验证offset参数（必须>=0）
+            if offset < 0:
+                offset = 0
+            
+            # 验证limit参数（范围：1-50）
+            if limit < 1:
+                limit = 1
+            elif limit > 50:
+                limit = 50
+            
+            # ========== 第2步：读取配置 ==========
+            
+            # 读取易支付配置文件
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 从配置文件中获取易支付平台参数
+            yipay_host = config.get("Rainbow_YiPay", "host", fallback="").strip()  # 易支付平台域名
+            yipay_pid = config.get("Rainbow_YiPay", "pid", fallback="").strip()    # 商户ID
+            yipay_key = config.get("Rainbow_YiPay", "key", fallback="").strip()    # 商户私钥（用于签名）
+            
+            # 验证配置是否完整
+            if not yipay_host or not yipay_pid or not yipay_key:
+                logging.error("[易支付订单列表] 配置不完整：缺少 host、pid 或 key")
+                return {
+                    "success": False,
+                    "message": "易支付配置不完整"
+                }
+            
+            # ========== 第3步：构造查询请求参数 ==========
+            
+            # 准备订单列表接口的请求参数
+            # 按照易支付API文档要求构造参数字典
+            list_params = {
+                "pid": yipay_pid,                                    # 商户ID（必填）
+                "offset": str(offset),                               # 查询偏移量（必填）
+                "limit": str(limit),                                 # 每页条数（必填）
+                "timestamp": str(int(time.time())),                  # 当前时间戳（10位整数，单位秒）
+                "sign_type": "RSA",                                  # 签名类型：RSA（必填）
+            }
+            
+            # 注意：根据需求，不传status参数，获取所有状态的订单
+            # 如果需要过滤特定状态，可以添加：
+            # list_params["status"] = "1"  # 1=已支付，0=未支付，2=已退款，3=已冻结，4=预授权
+            
+            # 记录日志：准备查询订单列表
+            logging.info(f"[易支付订单列表] 准备查询订单列表 - offset: {offset}, limit: {limit}")
+            
+            # ========== 第4步：生成RSA签名 ==========
+            
+            # 创建RSA签名器
+            # 使用商户私钥对请求参数进行签名
+            signer = RsaSigner(private_key_str=yipay_key)
+            
+            # 生成签名并添加到参数字典中
+            # generate_sign() 方法会自动过滤、排序、拼接参数，然后用私钥签名
+            signed_params = signer.generate_sign(list_params)
+            
+            # 记录日志：输出签名后的参数
+            logging.debug(f"[易支付订单列表] 签名后的参数: {signed_params}")
+            
+            # ========== 第5步：调用易支付订单列表API ==========
+            
+            # 构造订单列表API的完整URL
+            # 易支付订单列表接口路径：/api/merchant/orders
+            list_api_url = f"{yipay_host}/api/merchant/orders"
+            
+            # 记录日志：准备发起HTTP请求
+            logging.info(f"[易支付订单列表] 正在调用订单列表API: {list_api_url}")
+            
+            # 发起POST请求到易支付订单列表接口
+            # 使用 requests.post() 发送HTTP POST请求
+            # data 参数传递表单数据（application/x-www-form-urlencoded格式）
+            # timeout 设置超时时间为20秒（订单列表可能较大，需要更长超时时间）
+            response = requests.post(
+                list_api_url,
+                data=signed_params,
+                timeout=20
+            )
+            
+            # 记录日志：收到API响应
+            logging.info(f"[易支付订单列表] API响应状态码: {response.status_code}")
+            logging.debug(f"[易支付订单列表] API响应内容: {response.text[:500]}...")  # 只记录前500字符，避免日志过长
+            
+            # ========== 第6步：解析查询响应 ==========
+            
+            # 验证HTTP响应状态码
+            if response.status_code != 200:
+                logging.error(f"[易支付订单列表] API请求失败 - 状态码: {response.status_code}")
+                return {
+                    "success": False,
+                    "message": f"订单列表API请求失败，状态码：{response.status_code}"
+                }
+            
+            # 解析JSON响应
+            try:
+                # 将响应内容解析为JSON对象
+                list_result = response.json()
+            except Exception as e:
+                # JSON解析失败
+                logging.error(f"[易支付订单列表] API响应JSON解析失败: {str(e)}")
+                return {
+                    "success": False,
+                    "message": "订单列表API响应格式错误"
+                }
+            
+            # ========== 第7步：验证业务返回码 ==========
+            
+            # 检查业务层面的返回码
+            # code=0 表示查询成功
+            # code!=0 表示查询失败（例如：权限不足、参数错误等）
+            result_code = list_result.get("code", -1)
+            result_msg = list_result.get("msg", "未知错误")
+            
+            if result_code == 0:
+                # ========== 查询成功：返回订单列表 ==========
+                
+                # 提取订单列表数据
+                # data 字段是一个数组，包含多个订单对象
+                orders_data = list_result.get("data", [])
+                
+                logging.info(
+                    f"[易支付订单列表] 查询成功 - "
+                    f"返回 {len(orders_data)} 个订单"
+                )
+                
+                # 返回成功结果，包含订单列表
+                return {
+                    "success": True,
+                    "data": orders_data
+                }
+            else:
+                # ========== 查询失败：返回错误信息 ==========
+                
+                logging.warning(
+                    f"[易支付订单列表] 查询失败 - "
+                    f"错误码: {result_code}, "
+                    f"错误信息: {result_msg}"
+                )
+                
+                return {
+                    "success": False,
+                    "message": f"平台返回错误：{result_msg}"
+                }
+        
+        except requests.exceptions.Timeout:
+            # 请求超时
+            logging.error("[易支付订单列表] 请求超时")
+            return {
+                "success": False,
+                "message": "查询请求超时，请稍后重试"
+            }
+        
+        except requests.exceptions.RequestException as e:
+            # 网络错误
+            logging.error(f"[易支付订单列表] 网络错误: {str(e)}")
+            return {
+                "success": False,
+                "message": f"网络错误：{str(e)}"
+            }
+        
+        except Exception as e:
+            # 其他未预期的异常
+            logging.error(f"[易支付订单列表] 未知异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return {
+                "success": False,
+                "message": f"查询失败：{str(e)}"
+            }
 
     @app.route("/api/payment/methods_config", methods=["GET"])
     @login_required
@@ -28413,6 +28942,26 @@ def start_web_server(args_param):
                 return jsonify({
                     "success": False,
                     "message": f"订单状态不允许退款，当前状态：{order_status}"
+                })
+            
+            # ========== 新增：第5.5步：检查退款次数限制 ==========
+            
+            # 获取订单的退款次数
+            # refund_count 字段记录了该订单已经退款的次数
+            # 如果不存在该字段，说明从未退款，默认为 0
+            refund_count = order_data.get("refund_count", 0)
+            
+            # 验证退款次数：每个订单只能退款一次
+            # 这是业务规则，防止多次退款导致的财务混乱
+            if refund_count >= 1:
+                logging.error(
+                    f"[退款请求] 订单已达退款次数上限 - "
+                    f"订单号: {trade_no}, "
+                    f"退款次数: {refund_count}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "该订单已退款，每个订单只能退款一次"
                 })
             
             # ========== 第6步：验证退款金额不超过可退金额 ==========
@@ -28618,6 +29167,13 @@ def start_web_server(args_param):
                 else:
                     order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL   # 已部分退款
                     logging.info(f"[退款请求] 订单状态更新为：已部分退款")
+                
+                # ========== 新增：更新退款次数 ==========
+                # 将退款次数设置为 1，表示该订单已退款一次
+                # 根据业务规则，每个订单只能退款一次
+                # 这个字段在下次退款请求时会被检查
+                order_data["refund_count"] = 1
+                logging.info(f"[退款请求] 退款次数已更新为：1")
                 
                 # 保存更新后的订单数据到文件
                 # 使用 indent=2 格式化输出，便于人工查看
@@ -31668,34 +32224,37 @@ def start_web_server(args_param):
             
             logs = []
             
-            # 规范化用户ID为目录名
-            # 与_write_payment_log函数保持一致
-            if user_id and not user_id.startswith("guest_") and not user_id.startswith("user_"):
-                # 判断是否为游客（通常游客ID包含连字符或为UUID格式）
-                if "-" in user_id:
-                    safe_user_id = f"guest_{user_id}"
-                else:
-                    safe_user_id = f"user_{user_id}"
-            else:
-                safe_user_id = user_id
+            # 构建日志目录路径（所有日志统一在根目录）
+            log_dir = PAYMENT_LOGS_DIR
             
-            # 构建用户日志目录路径
-            log_dir = "logs/payment_logs"
-            user_log_dir = os.path.join(log_dir, safe_user_id)
-            
-            # 检查用户日志目录是否存在
-            if os.path.exists(user_log_dir) and os.path.isdir(user_log_dir):
-                # 遍历用户目录下的所有JSON文件
-                for filename in os.listdir(user_log_dir):
+            # 检查日志目录是否存在
+            if os.path.exists(log_dir) and os.path.isdir(log_dir):
+                # 遍历日志目录下的所有JSON文件
+                for filename in os.listdir(log_dir):
+                    # 只处理JSON文件
                     if not filename.endswith('.json'):
                         continue
                     
-                    file_path = os.path.join(user_log_dir, filename)
+                    # 新的日志文件命名格式：{timestamp}_{user_id}_{order_id}.json
+                    # 我们需要检查文件名中是否包含当前用户的user_id
+                    # 解析文件名格式：yyyymmdd_HHMMSS_user_id_order_id.json
+                    parts = filename.rsplit('_', 2)  # 从右往左分割，最多分割2次
+                    # parts可能是：['20231201_120530_admin', 'ORDER123', '.json']
+                    # 或者：['20231201_120530', 'guestid', 'ORDER123.json']
+                    
+                    # 为了兼容性，我们直接读取文件并检查user_id字段
+                    file_path = os.path.join(log_dir, filename)
                     
                     try:
                         # 读取日志文件
                         with open(file_path, 'r', encoding='utf-8') as f:
                             log_entry = json.load(f)
+                        
+                        # 检查日志的user_id是否匹配当前用户
+                        log_user_id = log_entry.get('user_id', '')
+                        if log_user_id != user_id:
+                            # 不是当前用户的日志，跳过
+                            continue
                         
                         # ========== 应用筛选条件 ==========
                         
@@ -31881,67 +32440,56 @@ def start_web_server(args_param):
                     "users": []
                 })
             
-            # 遍历所有用户目录
-            for user_dir_name in os.listdir(PAYMENT_LOGS_DIR):
-                # 构造用户日志目录的完整路径
-                user_dir_path = os.path.join(PAYMENT_LOGS_DIR, user_dir_name)
-                
-                # 跳过非目录项
-                if not os.path.isdir(user_dir_path):
+            # 遍历所有日志文件（新结构：所有日志平铺在根目录）
+            for log_filename in os.listdir(PAYMENT_LOGS_DIR):
+                # 只处理.json文件
+                if not log_filename.endswith(".json"):
                     continue
                 
-                # 提取用户ID（移除 user_ 或 guest_ 前缀）
-                if user_dir_name.startswith("user_"):
-                    user_id = user_dir_name[5:]  # 移除"user_"前缀
-                elif user_dir_name.startswith("guest_"):
-                    user_id = user_dir_name[6:]  # 移除"guest_"前缀
-                else:
-                    user_id = user_dir_name
+                # 构造日志文件完整路径
+                log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
                 
-                # 添加到用户集合
-                users_set.add(user_id)
-                
-                # 如果设置了用户筛选，检查是否匹配
-                if user_filter and user_filter not in user_id:
-                    # 不匹配，跳过此用户
+                # 跳过非文件项（例如子目录）
+                if not os.path.isfile(log_filepath):
                     continue
                 
-                # 遍历用户目录中的所有日志文件
-                for log_filename in os.listdir(user_dir_path):
-                    # 只处理.json文件
-                    if not log_filename.endswith(".json"):
+                try:
+                    # 读取日志文件
+                    with open(log_filepath, "r", encoding="utf-8") as f:
+                        log_data = json.load(f)
+                    
+                    # 提取用户ID并添加到用户集合
+                    user_id = log_data.get("user_id", "")
+                    if user_id:
+                        users_set.add(user_id)
+                    
+                    # ========== 应用筛选条件 ==========
+                    
+                    # 用户ID筛选（如果设置了用户筛选）
+                    if user_filter and user_filter not in user_id:
+                        # 不匹配，跳过此日志
                         continue
                     
-                    # 构造日志文件完整路径
-                    log_filepath = os.path.join(user_dir_path, log_filename)
-                    
-                    try:
-                        # 读取日志文件
-                        with open(log_filepath, "r", encoding="utf-8") as f:
-                            log_data = json.load(f)
-                        
-                        # ========== 应用筛选条件 ==========
-                        
-                        # 操作类型筛选
-                        if action_filter and log_data.get("action") != action_filter:
-                            continue
-                        
-                        # 日期范围筛选
-                        log_timestamp = log_data.get("timestamp", 0)
-                        if start_timestamp and log_timestamp < start_timestamp:
-                            continue
-                        if end_timestamp and log_timestamp > end_timestamp:
-                            continue
-                        
-                        # 添加到日志列表
-                        logs.append(log_data)
-                    
-                    except (json.JSONDecodeError, IOError) as e:
-                        # 文件读取或解析失败，记录警告并跳过
-                        logging.warning(
-                            f"[支付日志] 读取日志文件失败: {log_filepath}, 错误: {str(e)}"
-                        )
+                    # 操作类型筛选
+                    if action_filter and log_data.get("action") != action_filter:
                         continue
+                    
+                    # 日期范围筛选
+                    log_timestamp = log_data.get("timestamp", 0)
+                    if start_timestamp and log_timestamp < start_timestamp:
+                        continue
+                    if end_timestamp and log_timestamp > end_timestamp:
+                        continue
+                    
+                    # 添加到日志列表
+                    logs.append(log_data)
+                
+                except (json.JSONDecodeError, IOError) as e:
+                    # 文件读取或解析失败，记录警告并跳过
+                    logging.warning(
+                        f"[支付日志] 读取日志文件失败: {log_filepath}, 错误: {str(e)}"
+                    )
+                    continue
             
             # ========== 排序和分页 ==========
             
@@ -32123,6 +32671,445 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"获取统计信息失败: {str(e)}"
+            }), 500
+
+    # ==============================================================================
+    # 新增：管理员查询单个订单接口（从易支付平台同步）
+    # ==============================================================================
+    
+    @app.route("/api/admin/payment/query_order", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_query_payment_order():
+        """
+        管理员查询单个订单详情接口（支持从易支付平台同步）
+        
+        功能说明:
+            管理员专用接口，用于查询订单详情。
+            查询流程：
+            1. 首先尝试从本地订单文件读取
+            2. 如果本地不存在，则调用易支付平台查询API
+            3. 如果平台有数据，则保存到本地并返回
+        
+        请求参数（JSON）:
+            - order_id (str, 可选): 商户订单号（out_trade_no）
+            - trade_no (str, 可选): 平台订单号（trade_no）
+            注意：order_id 和 trade_no 必须至少提供一个
+        
+        返回结果（JSON）:
+            成功: {"success": True, "order": {...}, "source": "local"/"platform"}
+            失败: {"success": False, "message": "错误信息"}
+        
+        权限要求:
+            - 登录用户（@login_required）
+            - 管理员权限（@admin_required）
+        """
+        try:
+            # ========== 第1步：获取并验证请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            data = request.get_json() or {}
+            
+            # 提取订单标识参数
+            order_id = str(data.get("order_id", "")).strip()       # 商户订单号
+            trade_no = str(data.get("trade_no", "")).strip()       # 平台订单号
+            
+            # 验证必须提供至少一个订单标识
+            if not order_id and not trade_no:
+                logging.warning("[管理员查询订单] 参数错误：必须提供 order_id 或 trade_no")
+                return jsonify({
+                    "success": False,
+                    "message": "参数错误：必须提供订单号"
+                }), 400
+            
+            # 记录日志：收到查询请求
+            logging.info(
+                f"[管理员查询订单] 管理员 {g.user} 查询订单 - "
+                f"order_id: {order_id or 'N/A'}, trade_no: {trade_no or 'N/A'}"
+            )
+            
+            # ========== 第2步：尝试从本地文件读取订单 ==========
+            
+            order_data = None
+            source = None
+            
+            # 如果提供了商户订单号，先尝试从本地读取
+            if order_id:
+                # 构造订单文件路径
+                order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+                
+                # 检查订单文件是否存在
+                if os.path.exists(order_file):
+                    try:
+                        # 读取本地订单数据
+                        with open(order_file, "r", encoding="utf-8") as f:
+                            order_data = json.load(f)
+                        
+                        source = "local"  # 数据来源：本地
+                        logging.info(f"[管理员查询订单] 从本地文件读取成功 - 订单号: {order_id}")
+                    
+                    except Exception as e:
+                        # 读取失败，记录警告但继续尝试从平台查询
+                        logging.warning(f"[管理员查询订单] 本地文件读取失败: {str(e)}")
+            
+            # ========== 第3步：如果本地没有，从易支付平台查询 ==========
+            
+            if not order_data:
+                logging.info("[管理员查询订单] 本地未找到订单，尝试从易支付平台查询")
+                
+                # 调用内部函数查询易支付平台
+                query_result = _query_yipay_order(order_id=order_id, trade_no=trade_no)
+                
+                # 检查查询是否成功
+                if query_result.get("success"):
+                    # 从平台获取到订单数据
+                    platform_order = query_result.get("data", {})
+                    
+                    # 提取商户订单号（用于保存到本地）
+                    out_trade_no = platform_order.get("out_trade_no", "")
+                    
+                    if not out_trade_no:
+                        logging.error("[管理员查询订单] 平台返回的订单数据缺少 out_trade_no")
+                        return jsonify({
+                            "success": False,
+                            "message": "平台返回的订单数据格式异常"
+                        }), 500
+                    
+                    # ========== 第4步：将平台订单保存到本地 ==========
+                    
+                    # 构造本地订单数据结构
+                    # 转换易支付平台的字段到我们的订单格式
+                    local_order_data = {
+                        "order_id": out_trade_no,                                    # 商户订单号
+                        "trade_no": platform_order.get("trade_no", ""),              # 平台订单号
+                        "amount": platform_order.get("money", "0"),                  # 订单金额
+                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称
+                        "username": "unknown",                                       # 用户名（平台数据中可能没有）
+                        "created_at": platform_order.get("addtime", ""),            # 创建时间
+                        "paid_time": platform_order.get("endtime", ""),             # 支付时间
+                        "param": platform_order.get("param", ""),                    # 业务扩展参数
+                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识
+                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP
+                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号
+                        "pay_type": platform_order.get("type", ""),                  # 支付方式
+                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额
+                        # 转换支付状态
+                        # 易支付状态：0=未支付，1=已支付，2=已退款，3=已冻结，4=预授权
+                        "status": _convert_yipay_status(platform_order.get("status", 0)),
+                        "synced_from_platform": True,                                 # 标记：从平台同步
+                        "synced_at": time.time(),                                     # 同步时间戳
+                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读）
+                        "platform_data": platform_order                               # 保存完整的平台数据
+                    }
+                    
+                    # 保存到本地文件
+                    order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+                    
+                    # 确保订单目录存在
+                    os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+                    
+                    try:
+                        # 写入订单文件
+                        with open(order_file, "w", encoding="utf-8") as f:
+                            json.dump(local_order_data, f, indent=2, ensure_ascii=False)
+                        
+                        logging.info(f"[管理员查询订单] 平台订单已保存到本地 - 订单号: {out_trade_no}")
+                        
+                        # 记录同步日志
+                        _write_payment_log(
+                            user_id=g.user,
+                            order_id=out_trade_no,
+                            action="sync_order_from_platform",
+                            log_data={
+                                "source": "admin_query",
+                                "platform_data": platform_order,
+                                "success": True
+                            }
+                        )
+                    
+                    except Exception as e:
+                        # 保存失败，记录错误但仍然返回平台数据
+                        logging.error(f"[管理员查询订单] 保存订单到本地失败: {str(e)}")
+                    
+                    # 使用本地格式的订单数据
+                    order_data = local_order_data
+                    source = "platform"  # 数据来源：平台
+                
+                else:
+                    # 平台查询失败
+                    error_msg = query_result.get("message", "查询失败")
+                    logging.warning(f"[管理员查询订单] 平台查询失败: {error_msg}")
+                    return jsonify({
+                        "success": False,
+                        "message": f"订单不存在或查询失败：{error_msg}"
+                    }), 404
+            
+            # ========== 第5步：返回订单数据 ==========
+            
+            return jsonify({
+                "success": True,
+                "order": order_data,
+                "source": source,  # 数据来源：local（本地）或 platform（平台）
+                "message": "查询成功"
+            })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[管理员查询订单] 处理失败: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"查询失败：{str(e)}"
+            }), 500
+
+    def _convert_yipay_status(status_code):
+        """
+        转换易支付状态码到本地订单状态常量（内部辅助函数）
+        
+        参数:
+            status_code (int): 易支付状态码
+                - 0: 未支付
+                - 1: 已支付
+                - 2: 已退款
+                - 3: 已冻结
+                - 4: 预授权
+        
+        返回:
+            str: 本地订单状态常量
+        """
+        # 状态码映射表
+        status_map = {
+            0: ORDER_STATUS_PENDING,          # 未支付 -> pending
+            1: ORDER_STATUS_PAID,             # 已支付 -> paid
+            2: ORDER_STATUS_REFUNDED_FULL,    # 已退款 -> refunded_full
+            3: ORDER_STATUS_FROZEN,           # 已冻结 -> frozen
+            4: ORDER_STATUS_PREAUTH,          # 预授权 -> preauth
+        }
+        
+        # 转换状态码，如果找不到则返回 pending
+        return status_map.get(int(status_code), ORDER_STATUS_PENDING)
+
+    # ==============================================================================
+    # 新增：管理员批量拉取订单接口（从易支付平台同步）
+    # ==============================================================================
+    
+    @app.route("/api/admin/payment/fetch_orders", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_fetch_payment_orders():
+        """
+        管理员批量拉取订单列表接口（从易支付平台同步）
+        
+        功能说明:
+            管理员专用接口，用于从易支付平台批量拉取订单并同步到本地。
+            应用场景：
+            1. 定期同步平台订单
+            2. 订单数据丢失后的恢复
+            3. 订单对账和数据校验
+        
+        请求参数（JSON）:
+            - offset (int, 可选): 查询偏移量，从0开始（默认0）
+            - limit (int, 可选): 每页条数，最大50（默认50）
+        
+        返回结果（JSON）:
+            成功: {
+                "success": True,
+                "fetched": 10,              # 成功拉取的订单数
+                "saved": 8,                 # 成功保存到本地的订单数
+                "failed": 2,                # 保存失败的订单数
+                "orders": [...]             # 订单列表（简要信息）
+            }
+            失败: {"success": False, "message": "错误信息"}
+        
+        权限要求:
+            - 登录用户（@login_required）
+            - 管理员权限（@admin_required）
+        """
+        try:
+            # ========== 第1步：获取并验证请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            data = request.get_json() or {}
+            
+            # 提取分页参数
+            offset = data.get("offset", 0)
+            limit = data.get("limit", 50)
+            
+            # 参数类型转换和验证
+            try:
+                offset = int(offset)
+                limit = int(limit)
+            except (ValueError, TypeError):
+                offset = 0
+                limit = 50
+            
+            # 参数范围验证
+            if offset < 0:
+                offset = 0
+            if limit < 1 or limit > 50:
+                limit = 50
+            
+            # 记录日志：收到拉取请求
+            logging.info(
+                f"[管理员拉取订单] 管理员 {g.user} 发起订单拉取 - "
+                f"offset: {offset}, limit: {limit}"
+            )
+            
+            # ========== 第2步：调用易支付平台获取订单列表 ==========
+            
+            fetch_result = _fetch_yipay_orders(offset=offset, limit=limit)
+            
+            # 检查查询是否成功
+            if not fetch_result.get("success"):
+                error_msg = fetch_result.get("message", "拉取失败")
+                logging.error(f"[管理员拉取订单] 平台拉取失败: {error_msg}")
+                return jsonify({
+                    "success": False,
+                    "message": f"从平台拉取订单失败：{error_msg}"
+                }), 500
+            
+            # 获取订单列表
+            platform_orders = fetch_result.get("data", [])
+            
+            logging.info(f"[管理员拉取订单] 从平台获取到 {len(platform_orders)} 个订单")
+            
+            # ========== 第3步：遍历订单列表，保存到本地 ==========
+            
+            # 统计变量
+            saved_count = 0      # 成功保存的订单数
+            failed_count = 0     # 保存失败的订单数
+            order_summaries = [] # 订单简要信息列表（用于返回给前端）
+            
+            # 确保订单目录存在
+            os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+            
+            # 遍历每个订单
+            for platform_order in platform_orders:
+                try:
+                    # 提取商户订单号
+                    out_trade_no = platform_order.get("out_trade_no", "")
+                    
+                    if not out_trade_no:
+                        logging.warning("[管理员拉取订单] 跳过：订单数据缺少 out_trade_no")
+                        failed_count += 1
+                        continue
+                    
+                    # 构造本地订单数据结构
+                    # 转换易支付平台的字段到我们的订单格式
+                    local_order_data = {
+                        "order_id": out_trade_no,                                    # 商户订单号
+                        "trade_no": platform_order.get("trade_no", ""),              # 平台订单号
+                        "amount": platform_order.get("money", "0"),                  # 订单金额
+                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称
+                        "username": "unknown",                                       # 用户名（平台数据中可能没有）
+                        "created_at": platform_order.get("addtime", ""),            # 创建时间
+                        "paid_time": platform_order.get("endtime", ""),             # 支付时间
+                        "param": platform_order.get("param", ""),                    # 业务扩展参数
+                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识
+                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP
+                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号
+                        "pay_type": platform_order.get("type", ""),                  # 支付方式
+                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额
+                        # 转换支付状态
+                        "status": _convert_yipay_status(platform_order.get("status", 0)),
+                        "synced_from_platform": True,                                 # 标记：从平台同步
+                        "synced_at": time.time(),                                     # 同步时间戳
+                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读）
+                        "platform_data": platform_order                               # 保存完整的平台数据
+                    }
+                    
+                    # 检查本地是否已存在该订单
+                    order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+                    is_update = os.path.exists(order_file)
+                    
+                    # 如果本地已存在，读取现有数据并合并
+                    if is_update:
+                        try:
+                            with open(order_file, "r", encoding="utf-8") as f:
+                                existing_order = json.load(f)
+                            
+                            # 保留本地的一些字段（例如：username、notify_count等）
+                            if "username" in existing_order and existing_order["username"] != "unknown":
+                                local_order_data["username"] = existing_order["username"]
+                            if "notify_count" in existing_order:
+                                local_order_data["notify_count"] = existing_order["notify_count"]
+                            if "refund_count" in existing_order:
+                                local_order_data["refund_count"] = existing_order["refund_count"]
+                            if "refund_records" in existing_order:
+                                local_order_data["refund_records"] = existing_order["refund_records"]
+                            
+                            # 更新同步标记
+                            local_order_data["updated_from_platform"] = True
+                            local_order_data["last_synced_at"] = time.time()
+                            local_order_data["last_synced_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        except Exception as e:
+                            logging.warning(f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, 错误: {str(e)}")
+                    
+                    # 保存订单到本地文件
+                    with open(order_file, "w", encoding="utf-8") as f:
+                        json.dump(local_order_data, f, indent=2, ensure_ascii=False)
+                    
+                    # 统计成功
+                    saved_count += 1
+                    
+                    # 添加到订单摘要列表
+                    order_summaries.append({
+                        "order_id": out_trade_no,
+                        "trade_no": local_order_data.get("trade_no", ""),
+                        "amount": local_order_data.get("amount", "0"),
+                        "status": local_order_data.get("status", ""),
+                        "action": "更新" if is_update else "新增"
+                    })
+                    
+                    logging.debug(f"[管理员拉取订单] 订单已保存: {out_trade_no} ({'更新' if is_update else '新增'})")
+                
+                except Exception as e:
+                    # 保存单个订单失败，记录错误但继续处理其他订单
+                    failed_count += 1
+                    logging.error(f"[管理员拉取订单] 保存订单失败: {str(e)}")
+                    continue
+            
+            # ========== 第4步：记录同步日志 ==========
+            
+            _write_payment_log(
+                user_id=g.user,
+                order_id="batch_fetch",
+                action="fetch_orders_from_platform",
+                log_data={
+                    "offset": offset,
+                    "limit": limit,
+                    "fetched": len(platform_orders),
+                    "saved": saved_count,
+                    "failed": failed_count,
+                    "success": True
+                }
+            )
+            
+            # 记录汇总日志
+            logging.info(
+                f"[管理员拉取订单] 同步完成 - "
+                f"拉取: {len(platform_orders)}, 保存: {saved_count}, 失败: {failed_count}"
+            )
+            
+            # ========== 第5步：返回同步结果 ==========
+            
+            return jsonify({
+                "success": True,
+                "fetched": len(platform_orders),      # 拉取的订单数
+                "saved": saved_count,                 # 成功保存的订单数
+                "failed": failed_count,               # 保存失败的订单数
+                "orders": order_summaries,            # 订单简要信息列表
+                "message": f"成功同步 {saved_count} 个订单"
+            })
+        
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[管理员拉取订单] 处理失败: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"拉取失败：{str(e)}"
             }), 500
 
     # ==============================================================================
