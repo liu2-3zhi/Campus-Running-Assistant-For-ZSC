@@ -6492,13 +6492,33 @@ class Api:
         self.server_attendance_radius_m = 0.0
         self.last_radius_fetch_time = 0
 
+        # [已废弃] 旧的单账号刷新线程机制，保留以兼容旧代码
         self.auto_refresh_thread: threading.Thread | None = None
         self.stop_auto_refresh = threading.Event()
         self.stop_auto_refresh.set()
 
+        # [已废弃] 旧的多账号刷新线程机制，保留以兼容旧代码
         self.multi_auto_refresh_thread: threading.Thread | None = None
         self.stop_multi_auto_refresh = threading.Event()
         self.stop_multi_auto_refresh.set()
+
+        # [新增] 统一的账号刷新线程管理字典
+        # 键: 账号标识符（字符串格式，例如 "12345"），值: 线程对象
+        # 这个字典用于追踪每个账号的独立刷新线程，避免重复创建
+        self.account_refresh_threads: dict[str, threading.Thread] = {}
+        
+        # [新增] 线程锁，用于保护 account_refresh_threads 字典的并发访问
+        # 在多线程环境下，对字典的读写操作需要加锁以确保线程安全
+        self.threads_lock = threading.Lock()
+        
+        # [新增] 多账号监控线程的停止事件
+        # 用于优雅地停止多账号监控线程
+        self.stop_account_monitor = threading.Event()
+        self.stop_account_monitor.set()
+        
+        # [新增] 多账号监控线程对象
+        # 该线程负责定期检查所有账号，确保每个启用自动签到的账号都有刷新线程
+        self.account_monitor_thread: threading.Thread | None = None
 
         self.params = self.global_params.copy()
 
@@ -8086,18 +8106,28 @@ class Api:
                 logging.debug(
                     "Attempt to trigger front-end refreshTasks failed (non-fatal)."
                 )
+        
+        # [新版] 使用统一的线程管理机制启动账号刷新线程
+        # 不再使用旧的 auto_refresh_thread，而是使用 account_refresh_threads 字典
         try:
+            # 清除旧的停止标志（为了向后兼容）
             self.stop_auto_refresh.clear()
-            if (
-                self.auto_refresh_thread is None
-                or not self.auto_refresh_thread.is_alive()
-            ):
-                self.auto_refresh_thread = threading.Thread(
-                    target=self._auto_refresh_worker, daemon=True
-                )
-                self.auto_refresh_thread.start()
+            
+            # 检查是否已登录且有用户ID
+            if self.user_data and self.user_data.id:
+                # 规范化账号ID为字符串
+                account_id = str(self.user_data.id)
+                
+                # 确保该账号有刷新线程
+                # 这个函数会自动检查是否已有活跃线程，避免重复创建
+                self._ensure_account_refresh_thread(account_id)
+                
+                logging.info(f"[单账号登录] 已为账号 {account_id} 确保刷新线程")
+            else:
+                logging.warning("[单账号登录] 无法启动刷新线程：用户未登录或无ID")
         except Exception as e:
             self.log(f"启动自动刷新线程失败: {e}")
+            logging.error(f"[单账号登录] 启动刷新线程失败: {e}", exc_info=True)
 
         user_info_dict = self._get_full_user_info_dict()
         user_info_dict["server_attendance_radius_m"] = self.server_attendance_radius_m
@@ -8143,6 +8173,8 @@ class Api:
         logging.info("API调用: logout - 用户注销登出操作")
         self.log("已注销。")
         logging.info("用户已成功登出，正在清除会话和状态数据")
+        
+        # [旧版] 停止旧的自动刷新线程（为了向后兼容）
         try:
             self.stop_auto_refresh.set()
             if self.auto_refresh_thread and self.auto_refresh_thread.is_alive():
@@ -8150,6 +8182,29 @@ class Api:
             self.auto_refresh_thread = None
         except Exception as e:
             logging.warning(f"停止自动刷新线程失败: {e}")
+
+        # [新版] 停止当前账号的刷新线程
+        try:
+            # 如果已登录，获取当前账号ID
+            if self.user_data and self.user_data.id:
+                account_id = str(self.user_data.id)
+                
+                # 使用线程锁保护对字典的访问
+                with self.threads_lock:
+                    # 检查是否有该账号的刷新线程
+                    if account_id in self.account_refresh_threads:
+                        thread = self.account_refresh_threads[account_id]
+                        
+                        # 从字典中移除（线程会自动退出，因为检测到账号已注销）
+                        del self.account_refresh_threads[account_id]
+                        
+                        logging.info(f"[登出] 已停止账号 {account_id} 的刷新线程")
+                        
+                        # 可选：等待线程停止
+                        if thread.is_alive():
+                            thread.join(timeout=1.0)
+        except Exception as e:
+            logging.error(f"[登出] 停止账号刷新线程失败: {e}", exc_info=True)
 
         self.login_success = False
         self.user_info = None
@@ -9734,21 +9789,38 @@ class Api:
 
                 logging.debug(f"参数已更新: 参数名={key}, 新值={target_params[key]}")
 
+                # [新版] 当自动签到相关参数改变时，重启相关线程
                 if (
                     key in ("auto_attendance_enabled", "auto_attendance_refresh_s")
                     and not self.is_multi_account_mode
                 ):
-                    self.stop_auto_refresh.set()
-                    if self.auto_refresh_thread and self.auto_refresh_thread.is_alive():
-                        self.auto_refresh_thread.join(timeout=1.0)
-
-                    if self.params.get("auto_attendance_enabled", False):
-                        self.stop_auto_refresh.clear()
-                        self.auto_refresh_thread = threading.Thread(
-                            target=self._auto_refresh_worker, daemon=True
-                        )
-                        self.auto_refresh_thread.start()
-                        self.log("自动刷新设置已更新并重启。")
+                    # 单账号模式：重启当前账号的刷新线程
+                    try:
+                        # 如果已登录且有用户ID
+                        if self.user_data and self.user_data.id:
+                            account_id = str(self.user_data.id)
+                            
+                            # 如果禁用了自动签到，停止并移除线程
+                            if not self.params.get("auto_attendance_enabled", False):
+                                with self.threads_lock:
+                                    if account_id in self.account_refresh_threads:
+                                        # 线程会自动检测到参数变化并退出
+                                        # 这里只是从字典中移除记录
+                                        del self.account_refresh_threads[account_id]
+                                        self.log("自动签到已禁用，刷新线程将停止。")
+                                        logging.info(f"[参数更新] 已停止账号 {account_id} 的刷新线程")
+                            else:
+                                # 启用了自动签到，确保有刷新线程
+                                self._ensure_account_refresh_thread(account_id)
+                                self.log("自动签到设置已更新，刷新线程已启动/重启。")
+                                logging.info(f"[参数更新] 已确保账号 {account_id} 有刷新线程")
+                        else:
+                            logging.warning("[参数更新] 无法更新刷新线程：用户未登录")
+                    except Exception as e:
+                        logging.error(f"[参数更新] 更新刷新线程失败: {e}", exc_info=True)
+                
+                # [多账号模式] 当自动签到参数改变时，监控线程会自动处理
+                # 无需在这里额外操作，监控线程会在下一次检查时发现变化
 
                 return {"success": True}
             except (ValueError, TypeError) as e:
@@ -10045,18 +10117,45 @@ class Api:
             except Exception as e:
                 logging.error(f"Failed to emit accounts_updated on mode entry: {e}")
 
+        # [新版] 使用统一的多账号监控线程机制
+        # 不再使用旧的 multi_auto_refresh_thread，而是启动监控线程
         try:
+            # 清除停止标志（为了向后兼容旧代码）
             self.stop_multi_auto_refresh.clear()
+            
+            # 清除新的监控线程停止标志
+            self.stop_account_monitor.clear()
+            
+            # 检查是否已有监控线程在运行
             if (
-                self.multi_auto_refresh_thread is None
-                or not self.multi_auto_refresh_thread.is_alive()
+                self.account_monitor_thread is None
+                or not self.account_monitor_thread.is_alive()
             ):
-                self.multi_auto_refresh_thread = threading.Thread(
-                    target=self._multi_auto_attendance_worker, daemon=True
+                # 创建新的多账号监控线程
+                # 该线程会定期检查所有账号，为需要的账号创建独立的刷新线程
+                self.account_monitor_thread = threading.Thread(
+                    target=self._multi_account_monitor_worker,
+                    daemon=True,
+                    name="MultiAccountMonitor"
                 )
-                self.multi_auto_refresh_thread.start()
+                self.account_monitor_thread.start()
+                logging.info("[多账号模式] 已启动账号监控线程")
+            else:
+                logging.debug("[多账号模式] 监控线程已在运行")
+            
+            # 立即为所有已登录且启用自动签到的账号创建刷新线程
+            for username, acc in list(self.accounts.items()):
+                try:
+                    # 检查账号是否启用自动签到且已登录
+                    if acc.params.get("auto_attendance_enabled", False) and acc.user_data and acc.user_data.id:
+                        account_id = str(acc.user_data.id)
+                        self._ensure_account_refresh_thread(account_id)
+                        logging.info(f"[多账号模式] 已为账号 {username} (ID: {account_id}) 创建刷新线程")
+                except Exception as e:
+                    logging.error(f"[多账号模式] 为账号 {username} 创建刷新线程失败: {e}", exc_info=True)
         except Exception as e:
-            self.log(f"启动多账号自动刷新线程失败: {e}")
+            self.log(f"启动多账号监控线程失败: {e}")
+            logging.error(f"[多账号模式] 启动监控线程失败: {e}", exc_info=True)
 
         if session_id:
             try:
@@ -10094,6 +10193,7 @@ class Api:
                 pass
         self.path_gen_callbacks.clear()
 
+        # [旧版] 停止旧的多账号刷新线程（为了向后兼容）
         try:
             self.stop_multi_auto_refresh.set()
             if (
@@ -10104,6 +10204,49 @@ class Api:
             self.multi_auto_refresh_thread = None
         except Exception as e:
             logging.warning(f"停止多账号自动刷新线程失败: {e}")
+
+        # [新版] 停止新的多账号监控线程
+        try:
+            # 设置停止标志
+            self.stop_account_monitor.set()
+            
+            # 等待监控线程停止
+            if (
+                self.account_monitor_thread
+                and self.account_monitor_thread.is_alive()
+            ):
+                self.account_monitor_thread.join(timeout=2.0)
+                logging.info("[退出多账号模式] 监控线程已停止")
+            
+            self.account_monitor_thread = None
+        except Exception as e:
+            logging.warning(f"[退出多账号模式] 停止监控线程失败: {e}")
+
+        # [新版] 停止所有账号的刷新线程
+        try:
+            # 使用线程锁保护对字典的访问
+            with self.threads_lock:
+                # 获取所有线程的副本（避免在迭代时修改字典）
+                threads_to_stop = list(self.account_refresh_threads.items())
+            
+            # 停止每个线程
+            # 注意：由于线程是守护线程且使用 stop_event，它们会自动退出
+            # 这里主要是清理记录
+            for account_id, thread in threads_to_stop:
+                try:
+                    if thread.is_alive():
+                        logging.info(f"[退出多账号模式] 等待账号 {account_id} 的刷新线程停止")
+                        # 线程会在检测到模式切换后自动退出，这里只等待一小段时间
+                        thread.join(timeout=1.0)
+                except Exception as e:
+                    logging.warning(f"[退出多账号模式] 等待账号 {account_id} 线程失败: {e}")
+            
+            # 清空线程字典
+            with self.threads_lock:
+                self.account_refresh_threads.clear()
+                logging.info("[退出多账号模式] 已清空所有账号刷新线程")
+        except Exception as e:
+            logging.error(f"[退出多账号模式] 停止账号刷新线程失败: {e}", exc_info=True)
 
         self._init_state_variables()
         self._load_global_config()
@@ -10420,13 +10563,44 @@ class Api:
     def multi_remove_account(self, username):
         """移除一个账号"""
         if username in self.accounts:
+            acc = self.accounts[username]
+            
+            # 停止账号的工作线程
             if (
-                self.accounts[username].worker_thread
-                and self.accounts[username].worker_thread.is_alive()
+                acc.worker_thread
+                and acc.worker_thread.is_alive()
             ):
-                self.accounts[username].stop_event.set()
+                acc.stop_event.set()
+            
+            # [新版] 停止并清理该账号的刷新线程
+            try:
+                if acc.user_data and acc.user_data.id:
+                    account_id = str(acc.user_data.id)
+                    
+                    # 使用线程锁保护对字典的访问
+                    with self.threads_lock:
+                        # 如果该账号有刷新线程，从字典中移除
+                        if account_id in self.account_refresh_threads:
+                            thread = self.account_refresh_threads[account_id]
+                            del self.account_refresh_threads[account_id]
+                            
+                            logging.info(
+                                f"[移除账号] 已停止账号 {username} (ID: {account_id}) 的刷新线程"
+                            )
+                            
+                            # 可选：等待线程停止
+                            if thread.is_alive():
+                                thread.join(timeout=1.0)
+            except Exception as e:
+                logging.error(
+                    f"[移除账号] 清理账号 {username} 的刷新线程失败: {e}",
+                    exc_info=True
+                )
+            
+            # 从账号字典中删除
             del self.accounts[username]
             self.log(f"已移除账号: {username}")
+        
         self._update_multi_global_buttons()
         if hasattr(self, "_web_session_id") and self._web_session_id:
             save_session_state(self._web_session_id, self, force_save=True)
@@ -10574,6 +10748,24 @@ class Api:
                     )
 
             acc.log("状态刷新完成。")
+
+            # [新版] 登录成功后，如果启用了自动签到，确保有刷新线程
+            try:
+                if acc.user_data and acc.user_data.id:
+                    account_id = str(acc.user_data.id)
+                    
+                    # 检查是否启用了自动签到
+                    if acc.params.get("auto_attendance_enabled", False):
+                        # 确保该账号有刷新线程
+                        self._ensure_account_refresh_thread(account_id)
+                        logging.info(
+                            f"[多账号刷新] 账号 {acc.username} (ID: {account_id}) 已登录，已确保刷新线程"
+                        )
+            except Exception as e:
+                logging.error(
+                    f"[多账号刷新] 为账号 {acc.username} 创建刷新线程失败: {e}",
+                    exc_info=True
+                )
 
             if (
                 not preserve_now
@@ -10966,6 +11158,35 @@ class Api:
 
                 self._save_config(username, self.accounts[username].password)
                 self.log(f"已更新账号 [{username}] 的参数 {key}。")
+
+                # [新版] 当更新自动签到相关参数时，处理刷新线程
+                if key in ("auto_attendance_enabled", "auto_attendance_refresh_s"):
+                    try:
+                        # 检查账号是否已登录且有用户ID
+                        if acc.user_data and acc.user_data.id:
+                            account_id = str(acc.user_data.id)
+                            
+                            # 如果启用了自动签到，确保有刷新线程
+                            if acc.params.get("auto_attendance_enabled", False):
+                                self._ensure_account_refresh_thread(account_id)
+                                logging.info(
+                                    f"[多账号参数更新] 已为账号 {username} (ID: {account_id}) 确保刷新线程"
+                                )
+                            else:
+                                # 如果禁用了自动签到，线程会自动检测并退出
+                                # 这里只记录日志
+                                logging.info(
+                                    f"[多账号参数更新] 账号 {username} (ID: {account_id}) 已禁用自动签到"
+                                )
+                        else:
+                            logging.debug(
+                                f"[多账号参数更新] 账号 {username} 未登录，无需处理刷新线程"
+                            )
+                    except Exception as e:
+                        logging.error(
+                            f"[多账号参数更新] 处理账号 {username} 的刷新线程失败: {e}",
+                            exc_info=True
+                        )
 
                 if hasattr(self, "_web_session_id") and self._web_session_id:
                     save_session_state(self._web_session_id, self, force_save=True)
@@ -12724,6 +12945,333 @@ class Api:
             return {"success": True}
         else:
             return {"success": False, "message": resp.get("message", "标记已读失败")}
+
+    def _get_account_by_id(self, account_id: str):
+        """
+        根据账号ID获取账号对象
+        
+        此函数用于在单账号模式和多账号模式下统一获取账号对象。
+        它会规范化账号ID（转为字符串），然后在相应的模式下查找账号。
+        
+        参数:
+            account_id: 账号标识符，可以是数字或字符串，会被自动转换为字符串
+        
+        返回值:
+            Api 或 AccountSession 对象，如果找不到则返回 None
+        """
+        # 规范化账号ID：统一转换为字符串格式
+        # 这确保数字 1 和字符串 "1" 被视为同一个账号
+        account_id = str(account_id)
+        
+        # 单账号模式：检查当前用户
+        # 在单账号模式下，只有一个账号（self），检查其user_data.id是否匹配
+        if not self.is_multi_account_mode:
+            # 确保当前用户已登录（有 user_data 和 id）
+            if self.user_data and self.user_data.id:
+                # 比较账号ID（也转为字符串以确保类型一致）
+                if str(self.user_data.id) == account_id:
+                    # 返回 self，即 Api 对象本身
+                    return self
+            # 如果不匹配或未登录，返回 None
+            return None
+        
+        # 多账号模式：从 accounts 字典查找
+        # accounts 是一个字典，键是用户名（username），值是 AccountSession 对象
+        for username, acc in self.accounts.items():
+            # 检查该账号是否已登录（有 user_data 和 id）
+            if acc.user_data and acc.user_data.id:
+                # 比较账号ID（转为字符串）
+                if str(acc.user_data.id) == account_id:
+                    # 返回找到的 AccountSession 对象
+                    return acc
+        
+        # 如果在多账号模式下也没找到匹配的账号，返回 None
+        return None
+
+    def _ensure_account_refresh_thread(self, account_id):
+        """
+        确保指定账号有刷新线程在运行
+        
+        此函数会检查指定账号是否已有活跃的刷新线程。
+        如果没有或线程已停止，则创建新的线程。
+        这是线程去重机制的核心函数。
+        
+        参数:
+            account_id: 账号标识符（任意类型，会被转换为字符串）
+        """
+        # 规范化账号ID为字符串
+        account_id = str(account_id)
+        
+        # 使用线程锁保护对 account_refresh_threads 字典的访问
+        # 这确保在多线程环境下不会发生竞态条件
+        with self.threads_lock:
+            # 检查字典中是否已有该账号的线程记录
+            if account_id in self.account_refresh_threads:
+                # 获取线程对象
+                thread = self.account_refresh_threads[account_id]
+                # 检查线程是否仍在运行
+                if thread.is_alive():
+                    # 线程仍活跃，无需创建新线程，直接返回
+                    logging.debug(f"[线程管理] 账号 {account_id} 已有活跃线程，跳过创建")
+                    return
+                else:
+                    # 线程已停止，记录日志，稍后会创建新线程
+                    logging.info(f"[线程管理] 账号 {account_id} 的线程已停止，将创建新线程")
+            
+            # 创建新的后台刷新线程
+            # target: 线程要执行的函数
+            # args: 传递给目标函数的参数（账号ID）
+            # daemon: 设为 True，使其成为守护线程（主程序退出时自动结束）
+            # name: 线程名称，便于调试和日志追踪
+            thread = threading.Thread(
+                target=self._account_refresh_worker,
+                args=(account_id,),
+                daemon=True,
+                name=f"AccountRefresh-{account_id}"
+            )
+            
+            # 将新线程记录到字典中
+            self.account_refresh_threads[account_id] = thread
+            
+            # 启动线程
+            thread.start()
+            
+            # 记录日志，表明新线程已创建并启动
+            logging.info(f"[线程管理] 已为账号 {account_id} 创建并启动刷新线程")
+
+    def _account_refresh_worker(self, account_id: str):
+        """
+        单个账号的后台刷新和签到线程（新版统一实现）
+        
+        这是每个账号独立运行的后台线程函数。
+        它会定期执行以下操作：
+        1. 检查账号是否启用了自动签到
+        2. 如果启用，执行签到检查
+        3. 刷新通知
+        4. 等待指定时间后重复
+        
+        参数:
+            account_id: 账号标识符（字符串格式）
+        """
+        # 规范化账号ID为字符串（确保类型一致）
+        account_id = str(account_id)
+        
+        # 记录线程启动日志
+        logging.info(f"[账号刷新线程] 启动 - 账号ID: {account_id}")
+        
+        # 创建一个停止事件，用于优雅地停止线程
+        # 注意：这是线程本地的停止事件，与全局停止事件不同
+        stop_event = threading.Event()
+        
+        try:
+            # 主循环：持续运行直到收到停止信号
+            while not stop_event.is_set():
+                try:
+                    # === 第一步：获取账号对象 ===
+                    # 使用辅助函数根据账号ID获取对应的账号对象
+                    account = self._get_account_by_id(account_id)
+                    
+                    # 如果账号不存在（可能已被删除），退出线程
+                    if not account:
+                        logging.warning(f"[账号刷新线程] 账号不存在: {account_id}，线程退出")
+                        break
+                    
+                    # === 第二步：检查是否启用自动签到 ===
+                    # 从账号参数中获取自动签到开关状态
+                    is_auto_attendance_enabled = account.params.get("auto_attendance_enabled", False)
+                    
+                    if not is_auto_attendance_enabled:
+                        # 未启用自动签到，等待30秒后重新检查
+                        logging.debug(f"[账号刷新线程] 账号 {account_id} 未启用自动签到，等待...")
+                        # 使用 wait 而不是 sleep，以便能响应停止信号
+                        if stop_event.wait(timeout=30):
+                            # 如果收到停止信号，退出循环
+                            break
+                        # 继续下一次循环
+                        continue
+                    
+                    # === 第三步：检查是否已登录 ===
+                    # 确保账号已登录（有有效的 user_data.id）
+                    if not account.user_data or not account.user_data.id:
+                        logging.info(f"[账号刷新线程] 账号 {account_id} 未登录，等待...")
+                        # 等待30秒后重新检查
+                        if stop_event.wait(timeout=30):
+                            break
+                        continue
+                    
+                    # === 第四步：获取刷新间隔 ===
+                    # 从账号参数中获取刷新间隔（秒）
+                    refresh_interval_s = account.params.get("auto_attendance_refresh_s", 30)
+                    # 确保刷新间隔不小于15秒（防止过于频繁的请求）
+                    refresh_interval_s = max(15, refresh_interval_s)
+                    
+                    # === 第五步：执行自动签到检查 ===
+                    logging.info(f"[账号刷新线程] 账号 {account_id} 开始自动签到检查")
+                    
+                    # 调用签到检查函数
+                    # 这个函数会检查是否有需要签到的活动，并自动执行签到
+                    self._check_and_trigger_auto_attendance(account)
+                    
+                    # === 第六步：刷新通知 ===
+                    logging.info(f"[账号刷新线程] 账号 {account_id} 刷新通知")
+                    
+                    # 检查账号对象是否有 get_notifications 方法
+                    if hasattr(account, 'get_notifications'):
+                        # 调用获取通知方法（is_auto_refresh=True 表示是后台自动刷新）
+                        result = account.get_notifications(is_auto_refresh=True)
+                        
+                        # 如果成功获取通知，尝试通过 SocketIO 推送给前端
+                        if result.get("success"):
+                            # 获取会话ID（用于 SocketIO 推送）
+                            session_id = getattr(account, "_web_session_id", None)
+                            
+                            # 检查是否有 SocketIO 实例和会话ID
+                            if session_id and "socketio" in globals():
+                                try:
+                                    # 向特定会话推送通知更新事件
+                                    globals()["socketio"].emit(
+                                        "onNotificationsUpdated",
+                                        result,
+                                        room=session_id
+                                    )
+                                    logging.debug(
+                                        f"[账号刷新线程] 已向账号 {account_id} 的会话推送通知更新"
+                                    )
+                                except Exception as e:
+                                    # 推送失败，记录错误但不影响主流程
+                                    logging.error(
+                                        f"[账号刷新线程] 账号 {account_id} SocketIO推送通知失败: {e}",
+                                        exc_info=True
+                                    )
+                    
+                    # === 第七步：更新多账号统计信息 ===
+                    # 如果是多账号模式且账号是 AccountSession 类型
+                    if self.is_multi_account_mode and hasattr(account, 'summary'):
+                        try:
+                            # 获取该账号的考勤统计
+                            self._multi_fetch_attendance_stats(account)
+                            # 更新前端显示的账号状态
+                            self._update_account_status_js(account, summary=account.summary)
+                        except Exception as e:
+                            logging.error(
+                                f"[账号刷新线程] 账号 {account_id} 更新统计失败: {e}",
+                                exc_info=True
+                            )
+                    
+                    # === 第八步：等待下一次刷新 ===
+                    logging.info(
+                        f"[账号刷新线程] 账号 {account_id} 等待 {refresh_interval_s} 秒后再次刷新"
+                    )
+                    
+                    # 等待指定的刷新间隔
+                    # 使用 wait 而不是 sleep，以便能响应停止信号
+                    if stop_event.wait(timeout=refresh_interval_s):
+                        # 如果收到停止信号，退出循环
+                        break
+                
+                except Exception as e:
+                    # 捕获并记录执行过程中的任何异常
+                    logging.error(
+                        f"[账号刷新线程] 账号 {account_id} 执行出错: {e}",
+                        exc_info=True
+                    )
+                    # 发生错误后等待60秒再重试（避免错误循环）
+                    if stop_event.wait(timeout=60):
+                        break
+        
+        finally:
+            # === 清理阶段 ===
+            # 无论线程是正常退出还是异常退出，都会执行此清理代码
+            
+            # 使用线程锁保护对共享字典的访问
+            with self.threads_lock:
+                # 从线程管理字典中移除该线程的记录
+                if account_id in self.account_refresh_threads:
+                    del self.account_refresh_threads[account_id]
+                    logging.info(f"[账号刷新线程] 已从线程字典中移除账号 {account_id}")
+            
+            # 记录线程停止日志
+            logging.info(f"[账号刷新线程] 停止 - 账号ID: {account_id}")
+
+    def _multi_account_monitor_worker(self):
+        """
+        多账号模式监控线程（新版实现）
+        
+        这是一个守护线程，在多账号模式下持续运行。
+        它的职责是：
+        1. 定期遍历所有账号
+        2. 检查每个账号是否启用了自动签到
+        3. 确保每个启用自动签到的账号都有独立的刷新线程在运行
+        
+        这个监控线程不直接执行签到，而是确保每个账号都有自己的工作线程。
+        """
+        # 记录监控线程启动日志
+        logging.info("[多账号监控] 监控线程已启动")
+        
+        # 主循环：持续运行直到收到停止信号
+        # 使用 wait 而不是直接循环，可以更快地响应停止信号
+        while not self.stop_account_monitor.wait(timeout=1.0):
+            try:
+                # === 第一步：检查是否处于多账号模式 ===
+                if not self.is_multi_account_mode:
+                    # 如果不在多账号模式，等待5秒后重新检查
+                    # 这种情况可能发生在退出多账号模式后
+                    time.sleep(5)
+                    continue
+                
+                # === 第二步：检查是否有账号 ===
+                if not self.accounts:
+                    # 如果没有任何账号，等待5秒后重新检查
+                    time.sleep(5)
+                    continue
+                
+                # === 第三步：遍历所有账号 ===
+                # 使用 list() 创建副本，避免在迭代时字典被修改导致错误
+                for username, acc in list(self.accounts.items()):
+                    try:
+                        # 检查账号是否启用了自动签到
+                        is_auto_enabled = acc.params.get("auto_attendance_enabled", False)
+                        
+                        # 检查账号是否已登录（有有效的 user_data.id）
+                        has_user_id = acc.user_data and acc.user_data.id
+                        
+                        # 只有同时满足以下条件才需要刷新线程：
+                        # 1. 启用了自动签到
+                        # 2. 账号已登录
+                        if is_auto_enabled and has_user_id:
+                            # 规范化账号ID为字符串
+                            account_id = str(acc.user_data.id)
+                            
+                            # 确保该账号有刷新线程
+                            # 如果没有或线程已停止，会自动创建新线程
+                            self._ensure_account_refresh_thread(account_id)
+                            
+                            logging.debug(
+                                f"[多账号监控] 已检查账号 {username} (ID: {account_id})"
+                            )
+                    
+                    except Exception as e:
+                        # 处理单个账号时出错，记录日志但继续处理其他账号
+                        logging.error(
+                            f"[多账号监控] 处理账号 {username} 时出错: {e}",
+                            exc_info=True
+                        )
+                
+                # === 第四步：等待一段时间后再次检查 ===
+                # 每60秒检查一次所有账号的线程状态
+                # 使用 wait 而不是 sleep，以便能响应停止信号
+                if self.stop_account_monitor.wait(timeout=60):
+                    # 如果收到停止信号，退出循环
+                    break
+            
+            except Exception as e:
+                # 捕获并记录监控循环中的任何异常
+                logging.error(f"[多账号监控] 出错: {e}", exc_info=True)
+                # 发生错误后等待60秒再重试
+                time.sleep(60)
+        
+        # 记录监控线程停止日志
+        logging.info("[多账号监控] 监控线程已停止")
 
     def _auto_refresh_worker(self):
         """(单账号) 后台自动刷新通知和签到的线程 (已修复)"""
