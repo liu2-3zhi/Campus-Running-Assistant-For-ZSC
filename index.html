@@ -6124,88 +6124,86 @@ body.mobile-mode #session-picker-modal {
             <div id="payment-settings-content-config" class="space-y-3">
               <!-- 配置说明文本 -->
               <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                💡 提示：启用相应的支付方式后，用户可在支付页面选择使用
+                💡 提示：启用相应的支付方式后，用户可在支付页面选择使用。可以通过"添加支付方式"按钮新增其他支付方式。更改后请点击"保存配置"按钮。
               </p>
 
-              <!-- 支付方式开关列表容器 -->
-              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                
-                <!-- 支付宝开关 -->
-                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
-                  <!-- 支付方式图标和名称 -->
-                  <div class="flex items-center gap-2">
-                    <!-- 支付宝图标：使用蓝色圆形背景 -->
-                    <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs">
-                      支
-                    </div>
-                    <span class="text-sm font-medium text-slate-700">支付宝</span>
-                  </div>
-                  <!-- 开关控件：使用checkbox实现，默认选中状态 -->
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="payment-method-alipay" class="sr-only peer" checked>
-                    <!-- 开关滑块：选中时显示蓝色，未选中时显示灰色 -->
-                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                  </label>
-                </div>
+              <!-- ========================================
+                   [修改] 添加支付方式按钮（移动端）
+                   功能：点击后打开添加支付方式的模态框
+                   样式：移动端适配，使用较小的按钮和间距
+                   ======================================== -->
+              <button onclick="openAddPaymentMethodModal()" 
+                class="w-full py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-sm font-semibold hover:from-blue-600 hover:to-blue-700 active:from-blue-700 active:to-blue-800 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2">
+                <!-- 添加图标：加号 -->
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                添加支付方式
+              </button>
 
-                <!-- 微信支付开关 -->
-                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
-                  <div class="flex items-center gap-2">
-                    <!-- 微信支付图标：使用绿色圆形背景 -->
-                    <div class="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-xs">
-                      微
-                    </div>
-                    <span class="text-sm font-medium text-slate-700">微信支付</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="payment-method-wechat" class="sr-only peer" checked>
-                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                  </label>
-                </div>
-
-                <!-- QQ钱包开关 -->
-                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
-                  <div class="flex items-center gap-2">
-                    <!-- QQ钱包图标：使用黄色圆形背景 -->
-                    <div class="w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center text-white font-bold text-xs">
-                      Q
-                    </div>
-                    <span class="text-sm font-medium text-slate-700">QQ钱包</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="payment-method-qq" class="sr-only peer">
-                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                  </label>
-                </div>
-
-                <!-- 云闪付开关 -->
-                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
-                  <div class="flex items-center gap-2">
-                    <!-- 云闪付图标：使用红色圆形背景 -->
-                    <div class="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-xs">
-                      云
-                    </div>
-                    <span class="text-sm font-medium text-slate-700">云闪付</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="payment-method-unionpay" class="sr-only peer">
-                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                  </label>
+              <!-- ========================================
+                   [修改] 支付方式列表容器（移动端）
+                   功能：动态显示所有已配置的支付方式
+                   实现：通过JavaScript的loadPaymentMethodsConfig()函数动态填充
+                   容器ID：payment-methods-list（移动端，不带_modal后缀）
+                   样式：单列布局，适配移动端小屏幕
+                   包含：支付方式名称、Logo、开关、编辑和删除按钮
+                   ======================================== -->
+              <div id="payment-methods-list" class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <!-- 支付方式将通过 loadPaymentMethodsConfig(false,true) 函数动态加载到这里 -->
+                <!-- JavaScript会在页面加载时自动调用该函数 -->
+                <!-- 每个支付方式的结构：
+                     <div class="payment-method-item">
+                       <logo> <name> <switch> <edit-btn> <delete-btn>
+                     </div>
+                -->
+                <!-- 加载占位符：在支付方式加载完成前显示 -->
+                <div class="text-center py-4 text-slate-500 text-sm">
+                  正在加载支付方式配置...
                 </div>
               </div>
 
-              <!-- 保存按钮：提交配置更改 -->
-              <button id="save-payment-methods-btn" 
-                class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
-                保存配置
-              </button>
+              <!-- ========================================
+                   操作按钮组（移动端）
+                   功能：包含刷新配置和保存配置两个按钮
+                   布局：使用grid布局，两列并排显示
+                   样式：移动端适配
+                   ======================================== -->
+              <div class="grid grid-cols-2 gap-2">
+                <!-- 刷新配置按钮：从服务器重新加载当前的支付方式配置 -->
+                <!-- 点击后调用 loadPaymentMethodsConfig() 函数 -->
+                <!-- 使用灰色主题，表示这是一个辅助/次要操作 -->
+                <button onclick="loadPaymentMethodsConfig()" 
+                  class="py-2 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md"
+                  title="点击从服务器重新加载支付方式配置">
+                  <!-- 刷新图标：循环箭头 -->
+                  <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                  刷新配置
+                </button>
+
+                <!-- 保存配置按钮：将表单中的配置保存到服务器 -->
+                <!-- 点击后调用 savePaymentMethodsConfig() 函数 -->
+                <!-- 使用蓝色主题，表示这是一个主要/积极操作 -->
+                <button id="admin-save-payment-methods-btn" 
+                  class="py-2 bg-sky-500 text-white rounded-lg text-sm font-semibold hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm hover:shadow-md"
+                  title="点击保存当前的支付方式配置"
+                  onclick="savePaymentMethodsConfig()">
+                  <!-- 保存图标：对勾 -->
+                  <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M5 13l4 4L19 7"/>
+                  </svg>
+                  保存配置
+                </button>
+              </div>
 
               <!-- 操作结果提示区域：用于显示成功或错误消息 -->
-              <div id="payment-config-result" class="hidden">
-                <!-- 成功提示：绿色背景 -->
-                <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
-                  ✓ 配置已保存
-                </div>
+              <!-- hidden类会让元素默认隐藏，成功或失败时通过JavaScript移除hidden类来显示提示 -->
+              <div id="admin-payment-config-result" class="hidden">
+                <!-- 成功或错误提示的HTML将由JavaScript动态更新 -->
               </div>
             </div>
 
@@ -6484,8 +6482,10 @@ body.mobile-mode #session-picker-modal {
                     <span class="text-red-500">*</span>
                   </label>
                   <!-- 下拉选择框：提供多种支付接口类型供测试 -->
+                  <!-- onchange事件：当选择改变时，自动显示/隐藏auth_code和jsapi参数输入框 -->
                   <select id="test-payment-type" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                    onchange="toggleAuthCodeFieldMobile()">
                     <!-- 选项1：跳转支付 -->
                     <option value="jump">跳转支付 (jump)</option>
                     <!-- 选项2：HTML支付 -->
@@ -6517,6 +6517,76 @@ body.mobile-mode #session-picker-modal {
                     • <strong>wxplugin</strong> - 返回要拉起的微信小程序插件参数<br>
                     • <strong>wxapp</strong> - 返回要拉起的微信小程序和路径
                   </p>
+                </div>
+
+                <!-- ========================================
+                     [新增] 付款码输入框容器（扫码支付专用）
+                     功能：为扫码支付提供auth_code参数的输入
+                     显示时机：只在选择"扫码支付(scan)"接口类型时显示
+                     默认状态：隐藏（使用hidden类）
+                     样式：移动端适配，使用较小的字体和间距
+                     ======================================== -->
+                <div id="test-auth-code-container" class="hidden">
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    付款码（auth_code）
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 文本输入框：用于输入18位付款码 -->
+                  <!-- 付款码是用户扫码支付时生成的授权码 -->
+                  <input type="text" 
+                    id="test-auth-code" 
+                    placeholder="请输入18位付款码" 
+                    maxlength="18" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 提示文字：说明付款码的用途和格式 -->
+                  <p class="text-xs text-slate-500 mt-1">
+                    扫码支付需要用户出示的付款条码或二维码的授权码（通常为18位数字）
+                  </p>
+                </div>
+
+                <!-- ========================================
+                     [新增] JSAPI支付参数输入框容器
+                     功能：为JSAPI支付提供sub_openid和sub_appid参数的输入
+                     显示时机：只在选择"JSAPI支付(jsapi)"接口类型时显示
+                     默认状态：隐藏（使用hidden类）
+                     样式：移动端适配，使用较小的字体和间距
+                     ======================================== -->
+                <div id="test-jsapi-params-container" class="hidden space-y-2">
+                  <!-- sub_openid 输入框 -->
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      用户Openid（sub_openid）
+                      <span class="text-red-500">*</span>
+                    </label>
+                    <!-- 文本输入框：用于输入用户的Openid -->
+                    <!-- Openid是微信/支付宝等平台中用户的唯一标识符 -->
+                    <input type="text" 
+                      id="test-sub-openid" 
+                      placeholder="请输入用户Openid" 
+                      class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                    <!-- 提示文字：说明Openid的用途 -->
+                    <p class="text-xs text-slate-500 mt-1">
+                      JSAPI支付需要用户在公众号或小程序中的唯一标识符
+                    </p>
+                  </div>
+                  
+                  <!-- sub_appid 输入框 -->
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      公众号AppId（sub_appid）
+                      <span class="text-red-500">*</span>
+                    </label>
+                    <!-- 文本输入框：用于输入公众号或小程序的AppId -->
+                    <!-- AppId是应用在平台中的唯一标识符 -->
+                    <input type="text" 
+                      id="test-sub-appid" 
+                      placeholder="请输入公众号AppId（如wx...）" 
+                      class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                    <!-- 提示文字：说明AppId的用途 -->
+                    <p class="text-xs text-slate-500 mt-1">
+                      JSAPI支付需要公众号或小程序的应用标识符
+                    </p>
+                  </div>
                 </div>
 
                 <!-- 生成测试订单按钮 -->
@@ -15517,10 +15587,16 @@ body.mobile-mode #session-picker-modal {
           enabledMethods = Object.keys(methods);
         }
         
-        console.log('[支付配置] 最终配置：', { methods, enabledMethods });
-        
         // === 第4步：动态渲染支付方式列表 ===
-        const listContainer = document.getElementById('payment-methods-list_modal');
+        // 尝试获取支付方式列表容器，先尝试PC端（带_modal后缀），再尝试移动端（不带后缀）
+        let listContainer = document.getElementById('payment-methods-list_modal');
+        let isModalVersion = true; // 标记是否为PC端modal版本
+        if (!listContainer) {
+          // 如果PC端容器不存在，尝试获取移动端容器
+          listContainer = document.getElementById('payment-methods-list');
+          isModalVersion = false; // 标记为移动端版本
+        }
+        
         if (!listContainer) {
           console.error('[支付配置] 找不到支付方式列表容器');
           if (!DOMContentLoaded_Event){
@@ -15528,6 +15604,9 @@ body.mobile-mode #session-picker-modal {
           }
           return;
         }
+        
+        // 根据版本决定checkbox ID的后缀
+        const idSuffix = isModalVersion ? '_modal' : '';
         
         // 清空现有内容
         listContainer.innerHTML = '';
@@ -15631,7 +15710,7 @@ body.mobile-mode #session-picker-modal {
               <div class="flex items-center gap-2 ml-3">
                 <!-- 启用/禁用开关 -->
                 <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
-                  <input type="checkbox" id="payment-method-${safeCode}_modal" class="sr-only peer" ${isEnabled ? 'checked' : ''}>
+                  <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${isEnabled ? 'checked' : ''}>
                   <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
                 </label>
                 
@@ -15816,22 +15895,45 @@ body.mobile-mode #session-picker-modal {
       // 输出日志，标记保存操作开始
       console.log('[支付配置] 开始保存支付方式配置...');
       
-      // 获取结果显示区域的DOM元素
-      // 这个元素用于向用户显示操作成功或失败的消息
-      const resultDiv = document.getElementById('admin-payment-config-result_modal');
+      // === 第0步：确定当前是PC端还是移动端 ===
+      // 尝试获取PC端结果显示区域
+      let resultDiv = document.getElementById('admin-payment-config-result_modal');
+      let isModalVersion = true; // 标记是否为PC端modal版本
+      if (!resultDiv) {
+        // 如果PC端元素不存在，尝试获取移动端元素
+        resultDiv = document.getElementById('admin-payment-config-result');
+        isModalVersion = false; // 标记为移动端版本
+      }
+      
+      // 根据版本决定checkbox ID的后缀
+      const idSuffix = isModalVersion ? '_modal' : '';
       
       try {
         // === 第1步：获取所有支付方式的checkbox并收集启用状态 ===
         
         // 获取支付方式列表容器
-        const listContainer = document.getElementById('payment-methods-list_modal');
+        // 先尝试PC端容器，再尝试移动端容器
+        let listContainer = document.getElementById('payment-methods-list_modal');
+        if (!listContainer) {
+          listContainer = document.getElementById('payment-methods-list');
+        }
+        
         if (!listContainer) {
           throw new Error('找不到支付方式列表容器');
         }
         
-        // 查找所有以 payment-method- 开头且以 _modal 结尾的checkbox
-        // 使用querySelectorAll选择所有匹配的checkbox元素
-        const checkboxes = listContainer.querySelectorAll('input[type="checkbox"][id^="payment-method-"][id$="_modal"]');
+        // 查找所有以 payment-method- 开头的checkbox
+        // 根据版本决定是否需要检查 _modal 后缀
+        let checkboxes;
+        if (isModalVersion) {
+          // PC端：查找以 _modal 结尾的checkbox
+          checkboxes = listContainer.querySelectorAll('input[type="checkbox"][id^="payment-method-"][id$="_modal"]');
+        } else {
+          // 移动端：查找所有以 payment-method- 开头的checkbox，但不以 _modal 结尾
+          // 使用更通用的选择器，然后在遍历时过滤
+          checkboxes = Array.from(listContainer.querySelectorAll('input[type="checkbox"][id^="payment-method-"]'))
+            .filter(cb => !cb.id.endsWith('_modal'));
+        }
         
         // 创建一个数组来存储启用的支付方式代码
         const enabledMethods = [];
@@ -15840,8 +15942,9 @@ body.mobile-mode #session-picker-modal {
         checkboxes.forEach(checkbox => {
           if (checkbox.checked) {
             // 从checkbox的ID中提取支付方式代码
-            // ID格式：payment-method-{code}_modal
+            // ID格式：payment-method-{code} 或 payment-method-{code}_modal
             // 例如：payment-method-alipay_modal -> alipay
+            //       payment-method-alipay -> alipay
             const code = checkbox.id.replace('payment-method-', '').replace('_modal', '');
             enabledMethods.push(code);
           }
@@ -17228,6 +17331,115 @@ body.mobile-mode #session-picker-modal {
     }
     
     /**
+     * [新增] 切换付款码和JSAPI参数输入框显示状态（移动端测试支付）
+     * 
+     * 功能说明：
+     * 根据用户选择的支付接口类型，动态显示或隐藏对应的参数输入框
+     * - 当选择"扫码支付(scan)"时：显示auth_code输入框，隐藏jsapi参数
+     * - 当选择"JSAPI支付(jsapi)"时：显示sub_openid和sub_appid输入框，隐藏auth_code
+     * - 当选择其他类型时：隐藏所有额外参数输入框
+     * 
+     * 实现逻辑：
+     * 1. 获取支付接口类型下拉框的选中值
+     * 2. 根据选中值添加或移除hidden类来控制显示/隐藏
+     * 3. 切换时清空不相关的输入框内容
+     * 
+     * 调用时机：
+     * - 支付接口类型下拉框的onchange事件触发时
+     * 
+     * 元素ID说明：
+     * - test-payment-type: 支付接口类型下拉框（移动端，不带_modal后缀）
+     * - test-auth-code-container: 付款码输入框容器
+     * - test-jsapi-params-container: JSAPI参数输入框容器
+     * - test-auth-code: 付款码输入框
+     * - test-sub-openid: 用户Openid输入框
+     * - test-sub-appid: 公众号AppId输入框
+     */
+    function toggleAuthCodeFieldMobile() {
+      // 在控制台输出日志，记录函数调用
+      console.log('[移动端测试支付] 切换支付类型参数输入框显示状态...');
+      
+      // === 第1步：获取DOM元素 ===
+      
+      // 获取支付接口类型下拉框元素
+      const typeSelect = document.getElementById('test-payment-type');
+      // 获取付款码输入框的容器元素（扫码支付专用）
+      const authCodeContainer = document.getElementById('test-auth-code-container');
+      // 获取JSAPI支付参数容器元素
+      const jsapiParamsContainer = document.getElementById('test-jsapi-params-container');
+      
+      // === 第2步：防御性检查 ===
+      // 确保DOM元素存在，避免null引用错误
+      if (!typeSelect || !authCodeContainer) {
+        console.warn('[移动端测试支付] 警告：找不到必需的DOM元素');
+        return; // 如果元素不存在，直接返回，不执行后续操作
+      }
+      
+      // === 第3步：获取当前选中的接口类型 ===
+      const selectedType = typeSelect.value;
+      console.log('[移动端测试支付] 当前选中的接口类型：', selectedType);
+      
+      // === 第4步：根据接口类型决定显示哪些参数输入框 ===
+      
+      // 4.1 判断是否为扫码支付类型
+      if (selectedType === 'scan') {
+        // 如果是扫码支付，则显示付款码输入框
+        // 移除hidden类，使容器可见
+        authCodeContainer.classList.remove('hidden');
+        console.log('[移动端测试支付] 付款码输入框已显示');
+        
+        // 同时隐藏JSAPI参数容器（互斥关系）
+        if (jsapiParamsContainer) {
+          jsapiParamsContainer.classList.add('hidden');
+          // 清空JSAPI参数输入框的值，避免误提交
+          const subOpenidInput = document.getElementById('test-sub-openid');
+          const subAppidInput = document.getElementById('test-sub-appid');
+          if (subOpenidInput) subOpenidInput.value = '';
+          if (subAppidInput) subAppidInput.value = '';
+        }
+      } 
+      // 4.2 判断是否为JSAPI支付类型
+      else if (selectedType === 'jsapi') {
+        // 如果是JSAPI支付，则显示JSAPI参数容器
+        if (jsapiParamsContainer) {
+          jsapiParamsContainer.classList.remove('hidden');
+          console.log('[移动端测试支付] JSAPI参数输入框已显示');
+        }
+        
+        // 同时隐藏付款码输入框（互斥关系）
+        authCodeContainer.classList.add('hidden');
+        // 清空付款码输入框的值，避免误提交
+        const authCodeInput = document.getElementById('test-auth-code');
+        if (authCodeInput) {
+          authCodeInput.value = ''; // 清空输入框
+        }
+      } 
+      // 4.3 其他支付类型（web、jump、html、qrcode、urlscheme、app、applet、wxplugin、wxapp等）
+      else {
+        // 隐藏付款码输入框
+        authCodeContainer.classList.add('hidden');
+        
+        // 清空付款码输入框的值，避免用户误以为需要输入
+        const authCodeInput = document.getElementById('test-auth-code');
+        if (authCodeInput) {
+          authCodeInput.value = ''; // 清空输入框
+        }
+        
+        // 隐藏JSAPI参数容器
+        if (jsapiParamsContainer) {
+          jsapiParamsContainer.classList.add('hidden');
+          // 清空JSAPI参数输入框的值
+          const subOpenidInput = document.getElementById('test-sub-openid');
+          const subAppidInput = document.getElementById('test-sub-appid');
+          if (subOpenidInput) subOpenidInput.value = '';
+          if (subAppidInput) subAppidInput.value = '';
+        }
+        
+        console.log('[移动端测试支付] 所有额外参数输入框已隐藏');
+      }
+    }
+    
+    /**
      * [新增] 测试商品名称生成器（移动端）- 单次测试
      * 
      * 功能说明：
@@ -17598,6 +17810,90 @@ body.mobile-mode #session-picker-modal {
       }
       
       console.log('[测试支付] 接口类型：', paymentType);
+      
+      // 3.10 [新增] 获取付款码（仅扫码支付需要）
+      // 声明变量用于存储付款码，默认为空字符串
+      let auth_code = '';
+      // 如果选择的是扫码支付（scan类型），则需要验证并获取付款码
+      if (paymentType === 'scan') {
+        // 获取付款码输入框元素
+        const authCodeInput = document.getElementById('test-auth-code');
+        // 如果输入框存在，则获取并清理其值（去除首尾空格）
+        auth_code = authCodeInput ? authCodeInput.value.trim() : '';
+        
+        // 验证付款码是否为空
+        if (!auth_code) {
+          console.log('[移动端测试支付] 验证失败：扫码支付需要提供付款码');
+          showModalAlert('扫码支付需要提供付款码（auth_code）');
+          // 聚焦到付款码输入框，引导用户输入
+          if (authCodeInput) authCodeInput.focus();
+          return; // 中断函数执行
+        }
+        
+        // 验证付款码长度（通常为18位数字）
+        if (auth_code.length !== 18) {
+          console.log('[移动端测试支付] 验证失败：付款码长度不正确，当前长度：', auth_code.length);
+          showModalAlert('付款码长度不正确，通常为18位数字');
+          if (authCodeInput) authCodeInput.focus();
+          return; // 中断函数执行
+        }
+        
+        console.log('[移动端测试支付] 付款码已提供（已隐藏显示）');
+      }
+      
+      // 3.11 [新增] 获取JSAPI支付参数（仅JSAPI支付需要）
+      // 声明变量用于存储JSAPI支付所需的参数，默认为空字符串
+      let subOpenid = '';
+      let subAppid = '';
+      // 如果选择的是JSAPI支付（jsapi类型），则需要验证并获取sub_openid和sub_appid
+      if (paymentType === 'jsapi') {
+        // 获取sub_openid输入框元素
+        const subOpenidInput = document.getElementById('test-sub-openid');
+        // 获取sub_appid输入框元素
+        const subAppidInput = document.getElementById('test-sub-appid');
+        
+        // 获取并清理sub_openid的值（去除首尾空格）
+        subOpenid = subOpenidInput ? subOpenidInput.value.trim() : '';
+        // 获取并清理sub_appid的值（去除首尾空格）
+        subAppid = subAppidInput ? subAppidInput.value.trim() : '';
+        
+        // 验证sub_openid是否为空
+        if (!subOpenid) {
+          console.log('[移动端测试支付] 验证失败：JSAPI支付需要提供用户Openid');
+          showModalAlert('JSAPI支付需要提供用户Openid（sub_openid）');
+          // 聚焦到sub_openid输入框，引导用户输入
+          if (subOpenidInput) subOpenidInput.focus();
+          return; // 中断函数执行
+        }
+        
+        // 验证sub_appid是否为空
+        if (!subAppid) {
+          console.log('[移动端测试支付] 验证失败：JSAPI支付需要提供公众号AppId');
+          showModalAlert('JSAPI支付需要提供公众号AppId（sub_appid）');
+          // 聚焦到sub_appid输入框，引导用户输入
+          if (subAppidInput) subAppidInput.focus();
+          return; // 中断函数执行
+        }
+        
+        // 可选：验证sub_openid的格式（通常以字母o开头，长度约28个字符）
+        // 这是一个简单的格式验证，实际的openid格式可能会有所不同
+        if (subOpenid.length < 10) {
+          console.log('[移动端测试支付] 警告：用户Openid格式可能不正确，长度过短');
+          showModalAlert('用户Openid格式可能不正确，长度过短');
+          if (subOpenidInput) subOpenidInput.focus();
+          return; // 中断函数执行
+        }
+        
+        // 可选：验证sub_appid的格式（通常以wx开头，长度约18个字符）
+        if (!subAppid.startsWith('wx') || subAppid.length < 10) {
+          console.log('[移动端测试支付] 警告：公众号AppId格式可能不正确');
+          showModalAlert('公众号AppId格式可能不正确（应以wx开头）');
+          if (subAppidInput) subAppidInput.focus();
+          return; // 中断函数执行
+        }
+        
+        console.log('[移动端测试支付] JSAPI参数已提供：sub_openid和sub_appid（已隐藏显示）');
+      }
       
       // ========== 第4步：生成订单号 ==========
       
@@ -57927,47 +58223,31 @@ async function createPaymentOrder() {
     
     // 步骤4：参数验证 - 检查金额是否为空
     if (!amount) {
-        // 使用Swal.fire显示友好的错误提示
-        Swal.fire({
-            icon: 'warning',
-            title: '提示',
-            text: '请输入支付金额',
-            confirmButtonText: '确定'
-        });
+        // 使用showModalAlert显示友好的错误提示
+        // showModalAlert是移动端兼容的弹窗函数，避免使用Swal.fire
+        showModalAlert('请输入支付金额', '提示');
         return; // 验证失败，终止函数执行
     }
     
     // 步骤5：参数验证 - 检查金额是否小于最低限额
     // parseFloat将字符串转换为浮点数，便于数值比较
     if (parseFloat(amount) < 0.01) {
-        Swal.fire({
-            icon: 'warning',
-            title: '提示',
-            text: '支付金额不能低于0.01元',
-            confirmButtonText: '确定'
-        });
+        // 使用showModalAlert显示最低金额限制的提示
+        showModalAlert('支付金额不能低于0.01元', '提示');
         return;
     }
     
     // 步骤6：参数验证 - 检查是否选择了支付方式
     if (!payType) {
-        Swal.fire({
-            icon: 'warning',
-            title: '提示',
-            text: '请选择支付方式',
-            confirmButtonText: '确定'
-        });
+        // 使用showModalAlert提示用户选择支付方式
+        showModalAlert('请选择支付方式', '提示');
         return;
     }
     
     // 步骤7：参数验证 - 检查商品名称是否为空
     if (!productName) {
-        Swal.fire({
-            icon: 'warning',
-            title: '提示',
-            text: '请输入商品描述',
-            confirmButtonText: '确定'
-        });
+        // 使用showModalAlert提示用户输入商品描述
+        showModalAlert('请输入商品描述', '提示');
         return;
     }
     
@@ -57996,12 +58276,8 @@ async function createPaymentOrder() {
         // 步骤10：检查验证结果
         if (!verifyResult.success) {
             // 域名验证失败，显示错误提示
-            Swal.fire({
-                icon: 'error',
-                title: '验证失败',
-                text: verifyResult.message || '当前域名未授权，无法创建订单',
-                confirmButtonText: '确定'
-            });
+            // 使用showModalAlert显示域名验证失败的错误信息
+            showModalAlert(verifyResult.message || '当前域名未授权，无法创建订单', '验证失败');
             console.error('[支付] app_host验证失败:', verifyResult.message);
             return;
         }
@@ -58033,12 +58309,8 @@ async function createPaymentOrder() {
         // 步骤12：检查订单创建结果
         if (!createResult.success) {
             // 订单创建失败，显示错误提示
-            Swal.fire({
-                icon: 'error',
-                title: '创建订单失败',
-                text: createResult.message || '创建订单时出错，请稍后重试',
-                confirmButtonText: '确定'
-            });
+            // 使用showModalAlert显示创建失败的错误信息
+            showModalAlert(createResult.message || '创建订单时出错，请稍后重试', '创建订单失败');
             console.error('[支付] 创建订单失败:', createResult.message);
             return;
         }
@@ -58058,13 +58330,8 @@ async function createPaymentOrder() {
         window.open(payUrl, '_blank');
         
         // 步骤16：显示支付提示
-        Swal.fire({
-            icon: 'success',
-            title: '订单已创建',
-            text: '请在新打开的页面完成支付，支付完成后会自动刷新订单状态',
-            confirmButtonText: '确定',
-            timer: 3000 // 3秒后自动关闭
-        });
+        // 使用showModalAlert提示用户订单已创建，请在新页面完成支付
+        showModalAlert('请在新打开的页面完成支付，支付完成后会自动刷新订单状态', '订单已创建');
         
         // 步骤17：启动订单状态轮询
         // 每3秒查询一次订单状态，最多查询20次（1分钟）
@@ -58075,12 +58342,8 @@ async function createPaymentOrder() {
         console.error('[支付] 创建订单时出错:', error);
         
         // 显示错误提示
-        Swal.fire({
-            icon: 'error',
-            title: '错误',
-            text: '网络错误，请检查网络连接后重试',
-            confirmButtonText: '确定'
-        });
+        // 使用showModalAlert显示网络错误信息
+        showModalAlert('网络错误，请检查网络连接后重试', '错误');
     }
 }
 
@@ -60042,13 +60305,9 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
     // 如果没有启用任何支付方式，无法创建支付订单
     // 此时需要提示用户联系管理员配置支付方式
     if (enabledPaymentMethods.length === 0) {
-        // 使用 SweetAlert2 显示友好的错误提示框
-        await Swal.fire({
-            title: '无可用支付方式',  // 提示标题
-            text: '管理员尚未配置支付方式，请联系管理员',  // 详细说明
-            icon: 'error',  // 错误图标（红色感叹号）
-            confirmButtonText: '确定'  // 确认按钮文本
-        });
+        // 使用 showModalAlert 显示友好的错误提示
+        // showModalAlert是移动端兼容的弹窗函数
+        showModalAlert('管理员尚未配置支付方式，请联系管理员', '无可用支付方式');
         
         // 退出函数，不继续执行后续代码
         return;
@@ -60228,12 +60487,8 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
     } catch (error) {
         // 捕获创建订单过程中的所有错误
         console.error('创建订单失败:', error);
-        await Swal.fire({
-            title: '创建订单失败',
-            text: error.message || '网络错误或服务器异常',
-            icon: 'error',
-            confirmButtonText: '确定'
-        });
+        // 使用showModalAlert显示错误信息
+        showModalAlert(error.message || '网络错误或服务器异常', '创建订单失败');
     }
 }
 
