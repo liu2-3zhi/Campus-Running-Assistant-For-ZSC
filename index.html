@@ -51506,7 +51506,6 @@ function switchMobileAdminTab(tabId, prefix) {
       提醒: "reminders",          // 定时提醒标签
       HTTPS: "ssl",               // HTTPS设置标签
       支付配置: "payment-config", // 支付配置标签映射（旧版，已弃用）
-      支付日志: "payment-logs",   // [修复] 支付日志标签映射（旧版名称，保留兼容性）
       支付历史: "payment-logs",   // [新增] 支付历史标签映射（新版标准名称）
       支付设置: "payment-settings", // [新增] 支付设置标签映射
       价格设置: "pricing",        // [新增] 价格设置标签映射
@@ -60741,14 +60740,14 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
             const dept = data.deptInfo || {};
             const user = data.userInfo || {};
 
-            // ========== 检查当前用户是否为管理员 ==========
-            // 从sessionStorage中获取用户组信息
-            // 用户组存储在sessionStorage.user_group中，登录时由后端设置
-            const userGroup = sessionStorage.getItem('user_group') || '';
+            // // ========== 检查当前用户是否为管理员 ==========
+            // // 从sessionStorage中获取用户组信息
+            // // 用户组存储在sessionStorage.user_group中，登录时由后端设置
+            // const userGroup = sessionStorage.getItem('user_group') || '';
             
-            // 判断是否为管理员：只有admin或super_admin才能看到"结清"按钮
-            // 这是前端的安全检查，后端API还会再次验证权限
-            const isAdmin = (userGroup === 'admin' || userGroup === 'super_admin');
+            // // 判断是否为管理员：只有admin或super_admin才能看到"结清"按钮
+            // // 这是前端的安全检查，后端API还会再次验证权限
+            // const isAdmin = (userGroup === 'admin' || userGroup === 'super_admin');
 
             // 构建HTML内容
             const htmlContent = `
@@ -60769,7 +60768,7 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
                                 <div class="font-bold text-emerald-600 text-lg leading-none">${data.completed_count}</div>
                             </div>
                         </div>
-                        ${isAdmin && data.overdue_count > 0 ? `
+                        ${data.overdue_count > 0 ? `
                             <button onclick="adminClearOverdue('${school_username}', '${escapeHtml(user.username || '')}')" 
                                 class="ml-3 px-3 py-1.5 bg-emerald-500 text-white text-xs font-semibold rounded-lg hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm hover:shadow-md"
                                 title="管理员：清除此账号的欠费">
@@ -60970,7 +60969,6 @@ async function adminClearOverdue(school_username, auth_username) {
             
             // 将参数转换为JSON字符串发送
             body: JSON.stringify({
-                auth_username: auth_username,           // 目标用户名
                 school_username: school_username,       // 学校账号用户名
                 new_overdue_count: newOverdueCount      // 新的欠费次数
             })
