@@ -72,6 +72,7 @@ RUN touch /app/reminders.json
 RUN touch /app/permissions.json
 RUN touch /app/messages.json
 RUN touch /app/config.ini
+RUN touch /app/payment_methods.json
 
 
 # 在构建阶段就转换换行符
