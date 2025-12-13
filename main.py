@@ -6492,13 +6492,33 @@ class Api:
         self.server_attendance_radius_m = 0.0
         self.last_radius_fetch_time = 0
 
+        # [已废弃] 旧的单账号刷新线程机制，保留以兼容旧代码
         self.auto_refresh_thread: threading.Thread | None = None
         self.stop_auto_refresh = threading.Event()
         self.stop_auto_refresh.set()
 
+        # [已废弃] 旧的多账号刷新线程机制，保留以兼容旧代码
         self.multi_auto_refresh_thread: threading.Thread | None = None
         self.stop_multi_auto_refresh = threading.Event()
         self.stop_multi_auto_refresh.set()
+
+        # [新增] 统一的账号刷新线程管理字典
+        # 键: 账号标识符（字符串格式，例如 "12345"），值: 线程对象
+        # 这个字典用于追踪每个账号的独立刷新线程，避免重复创建
+        self.account_refresh_threads: dict[str, threading.Thread] = {}
+        
+        # [新增] 线程锁，用于保护 account_refresh_threads 字典的并发访问
+        # 在多线程环境下，对字典的读写操作需要加锁以确保线程安全
+        self.threads_lock = threading.Lock()
+        
+        # [新增] 多账号监控线程的停止事件
+        # 用于优雅地停止多账号监控线程
+        self.stop_account_monitor = threading.Event()
+        self.stop_account_monitor.set()
+        
+        # [新增] 多账号监控线程对象
+        # 该线程负责定期检查所有账号，确保每个启用自动签到的账号都有刷新线程
+        self.account_monitor_thread: threading.Thread | None = None
 
         self.params = self.global_params.copy()
 
@@ -8086,18 +8106,28 @@ class Api:
                 logging.debug(
                     "Attempt to trigger front-end refreshTasks failed (non-fatal)."
                 )
+        
+        # [新版] 使用统一的线程管理机制启动账号刷新线程
+        # 不再使用旧的 auto_refresh_thread，而是使用 account_refresh_threads 字典
         try:
+            # 清除旧的停止标志（为了向后兼容）
             self.stop_auto_refresh.clear()
-            if (
-                self.auto_refresh_thread is None
-                or not self.auto_refresh_thread.is_alive()
-            ):
-                self.auto_refresh_thread = threading.Thread(
-                    target=self._auto_refresh_worker, daemon=True
-                )
-                self.auto_refresh_thread.start()
+            
+            # 检查是否已登录且有用户ID
+            if self.user_data and self.user_data.id:
+                # 规范化账号ID为字符串
+                account_id = str(self.user_data.id)
+                
+                # 确保该账号有刷新线程
+                # 这个函数会自动检查是否已有活跃线程，避免重复创建
+                self._ensure_account_refresh_thread(account_id)
+                
+                logging.info(f"[单账号登录] 已为账号 {account_id} 确保刷新线程")
+            else:
+                logging.warning("[单账号登录] 无法启动刷新线程：用户未登录或无ID")
         except Exception as e:
             self.log(f"启动自动刷新线程失败: {e}")
+            logging.error(f"[单账号登录] 启动刷新线程失败: {e}", exc_info=True)
 
         user_info_dict = self._get_full_user_info_dict()
         user_info_dict["server_attendance_radius_m"] = self.server_attendance_radius_m
@@ -8143,6 +8173,8 @@ class Api:
         logging.info("API调用: logout - 用户注销登出操作")
         self.log("已注销。")
         logging.info("用户已成功登出，正在清除会话和状态数据")
+        
+        # [旧版] 停止旧的自动刷新线程（为了向后兼容）
         try:
             self.stop_auto_refresh.set()
             if self.auto_refresh_thread and self.auto_refresh_thread.is_alive():
@@ -8150,6 +8182,29 @@ class Api:
             self.auto_refresh_thread = None
         except Exception as e:
             logging.warning(f"停止自动刷新线程失败: {e}")
+
+        # [新版] 停止当前账号的刷新线程
+        try:
+            # 如果已登录，获取当前账号ID
+            if self.user_data and self.user_data.id:
+                account_id = str(self.user_data.id)
+                
+                # 使用线程锁保护对字典的访问
+                with self.threads_lock:
+                    # 检查是否有该账号的刷新线程
+                    if account_id in self.account_refresh_threads:
+                        thread = self.account_refresh_threads[account_id]
+                        
+                        # 从字典中移除（线程会自动退出，因为检测到账号已注销）
+                        del self.account_refresh_threads[account_id]
+                        
+                        logging.info(f"[登出] 已停止账号 {account_id} 的刷新线程")
+                        
+                        # 可选：等待线程停止
+                        if thread.is_alive():
+                            thread.join(timeout=1.0)
+        except Exception as e:
+            logging.error(f"[登出] 停止账号刷新线程失败: {e}", exc_info=True)
 
         self.login_success = False
         self.user_info = None
@@ -9734,21 +9789,38 @@ class Api:
 
                 logging.debug(f"参数已更新: 参数名={key}, 新值={target_params[key]}")
 
+                # [新版] 当自动签到相关参数改变时，重启相关线程
                 if (
                     key in ("auto_attendance_enabled", "auto_attendance_refresh_s")
                     and not self.is_multi_account_mode
                 ):
-                    self.stop_auto_refresh.set()
-                    if self.auto_refresh_thread and self.auto_refresh_thread.is_alive():
-                        self.auto_refresh_thread.join(timeout=1.0)
-
-                    if self.params.get("auto_attendance_enabled", False):
-                        self.stop_auto_refresh.clear()
-                        self.auto_refresh_thread = threading.Thread(
-                            target=self._auto_refresh_worker, daemon=True
-                        )
-                        self.auto_refresh_thread.start()
-                        self.log("自动刷新设置已更新并重启。")
+                    # 单账号模式：重启当前账号的刷新线程
+                    try:
+                        # 如果已登录且有用户ID
+                        if self.user_data and self.user_data.id:
+                            account_id = str(self.user_data.id)
+                            
+                            # 如果禁用了自动签到，停止并移除线程
+                            if not self.params.get("auto_attendance_enabled", False):
+                                with self.threads_lock:
+                                    if account_id in self.account_refresh_threads:
+                                        # 线程会自动检测到参数变化并退出
+                                        # 这里只是从字典中移除记录
+                                        del self.account_refresh_threads[account_id]
+                                        self.log("自动签到已禁用，刷新线程将停止。")
+                                        logging.info(f"[参数更新] 已停止账号 {account_id} 的刷新线程")
+                            else:
+                                # 启用了自动签到，确保有刷新线程
+                                self._ensure_account_refresh_thread(account_id)
+                                self.log("自动签到设置已更新，刷新线程已启动/重启。")
+                                logging.info(f"[参数更新] 已确保账号 {account_id} 有刷新线程")
+                        else:
+                            logging.warning("[参数更新] 无法更新刷新线程：用户未登录")
+                    except Exception as e:
+                        logging.error(f"[参数更新] 更新刷新线程失败: {e}", exc_info=True)
+                
+                # [多账号模式] 当自动签到参数改变时，监控线程会自动处理
+                # 无需在这里额外操作，监控线程会在下一次检查时发现变化
 
                 return {"success": True}
             except (ValueError, TypeError) as e:
@@ -10045,18 +10117,45 @@ class Api:
             except Exception as e:
                 logging.error(f"Failed to emit accounts_updated on mode entry: {e}")
 
+        # [新版] 使用统一的多账号监控线程机制
+        # 不再使用旧的 multi_auto_refresh_thread，而是启动监控线程
         try:
+            # 清除停止标志（为了向后兼容旧代码）
             self.stop_multi_auto_refresh.clear()
+            
+            # 清除新的监控线程停止标志
+            self.stop_account_monitor.clear()
+            
+            # 检查是否已有监控线程在运行
             if (
-                self.multi_auto_refresh_thread is None
-                or not self.multi_auto_refresh_thread.is_alive()
+                self.account_monitor_thread is None
+                or not self.account_monitor_thread.is_alive()
             ):
-                self.multi_auto_refresh_thread = threading.Thread(
-                    target=self._multi_auto_attendance_worker, daemon=True
+                # 创建新的多账号监控线程
+                # 该线程会定期检查所有账号，为需要的账号创建独立的刷新线程
+                self.account_monitor_thread = threading.Thread(
+                    target=self._multi_account_monitor_worker,
+                    daemon=True,
+                    name="MultiAccountMonitor"
                 )
-                self.multi_auto_refresh_thread.start()
+                self.account_monitor_thread.start()
+                logging.info("[多账号模式] 已启动账号监控线程")
+            else:
+                logging.debug("[多账号模式] 监控线程已在运行")
+            
+            # 立即为所有已登录且启用自动签到的账号创建刷新线程
+            for username, acc in list(self.accounts.items()):
+                try:
+                    # 检查账号是否启用自动签到且已登录
+                    if acc.params.get("auto_attendance_enabled", False) and acc.user_data and acc.user_data.id:
+                        account_id = str(acc.user_data.id)
+                        self._ensure_account_refresh_thread(account_id)
+                        logging.info(f"[多账号模式] 已为账号 {username} (ID: {account_id}) 创建刷新线程")
+                except Exception as e:
+                    logging.error(f"[多账号模式] 为账号 {username} 创建刷新线程失败: {e}", exc_info=True)
         except Exception as e:
-            self.log(f"启动多账号自动刷新线程失败: {e}")
+            self.log(f"启动多账号监控线程失败: {e}")
+            logging.error(f"[多账号模式] 启动监控线程失败: {e}", exc_info=True)
 
         if session_id:
             try:
@@ -10094,6 +10193,7 @@ class Api:
                 pass
         self.path_gen_callbacks.clear()
 
+        # [旧版] 停止旧的多账号刷新线程（为了向后兼容）
         try:
             self.stop_multi_auto_refresh.set()
             if (
@@ -10104,6 +10204,49 @@ class Api:
             self.multi_auto_refresh_thread = None
         except Exception as e:
             logging.warning(f"停止多账号自动刷新线程失败: {e}")
+
+        # [新版] 停止新的多账号监控线程
+        try:
+            # 设置停止标志
+            self.stop_account_monitor.set()
+            
+            # 等待监控线程停止
+            if (
+                self.account_monitor_thread
+                and self.account_monitor_thread.is_alive()
+            ):
+                self.account_monitor_thread.join(timeout=2.0)
+                logging.info("[退出多账号模式] 监控线程已停止")
+            
+            self.account_monitor_thread = None
+        except Exception as e:
+            logging.warning(f"[退出多账号模式] 停止监控线程失败: {e}")
+
+        # [新版] 停止所有账号的刷新线程
+        try:
+            # 使用线程锁保护对字典的访问
+            with self.threads_lock:
+                # 获取所有线程的副本（避免在迭代时修改字典）
+                threads_to_stop = list(self.account_refresh_threads.items())
+            
+            # 停止每个线程
+            # 注意：由于线程是守护线程且使用 stop_event，它们会自动退出
+            # 这里主要是清理记录
+            for account_id, thread in threads_to_stop:
+                try:
+                    if thread.is_alive():
+                        logging.info(f"[退出多账号模式] 等待账号 {account_id} 的刷新线程停止")
+                        # 线程会在检测到模式切换后自动退出，这里只等待一小段时间
+                        thread.join(timeout=1.0)
+                except Exception as e:
+                    logging.warning(f"[退出多账号模式] 等待账号 {account_id} 线程失败: {e}")
+            
+            # 清空线程字典
+            with self.threads_lock:
+                self.account_refresh_threads.clear()
+                logging.info("[退出多账号模式] 已清空所有账号刷新线程")
+        except Exception as e:
+            logging.error(f"[退出多账号模式] 停止账号刷新线程失败: {e}", exc_info=True)
 
         self._init_state_variables()
         self._load_global_config()
@@ -10420,13 +10563,44 @@ class Api:
     def multi_remove_account(self, username):
         """移除一个账号"""
         if username in self.accounts:
+            acc = self.accounts[username]
+            
+            # 停止账号的工作线程
             if (
-                self.accounts[username].worker_thread
-                and self.accounts[username].worker_thread.is_alive()
+                acc.worker_thread
+                and acc.worker_thread.is_alive()
             ):
-                self.accounts[username].stop_event.set()
+                acc.stop_event.set()
+            
+            # [新版] 停止并清理该账号的刷新线程
+            try:
+                if acc.user_data and acc.user_data.id:
+                    account_id = str(acc.user_data.id)
+                    
+                    # 使用线程锁保护对字典的访问
+                    with self.threads_lock:
+                        # 如果该账号有刷新线程，从字典中移除
+                        if account_id in self.account_refresh_threads:
+                            thread = self.account_refresh_threads[account_id]
+                            del self.account_refresh_threads[account_id]
+                            
+                            logging.info(
+                                f"[移除账号] 已停止账号 {username} (ID: {account_id}) 的刷新线程"
+                            )
+                            
+                            # 可选：等待线程停止
+                            if thread.is_alive():
+                                thread.join(timeout=1.0)
+            except Exception as e:
+                logging.error(
+                    f"[移除账号] 清理账号 {username} 的刷新线程失败: {e}",
+                    exc_info=True
+                )
+            
+            # 从账号字典中删除
             del self.accounts[username]
             self.log(f"已移除账号: {username}")
+        
         self._update_multi_global_buttons()
         if hasattr(self, "_web_session_id") and self._web_session_id:
             save_session_state(self._web_session_id, self, force_save=True)
@@ -10574,6 +10748,24 @@ class Api:
                     )
 
             acc.log("状态刷新完成。")
+
+            # [新版] 登录成功后，如果启用了自动签到，确保有刷新线程
+            try:
+                if acc.user_data and acc.user_data.id:
+                    account_id = str(acc.user_data.id)
+                    
+                    # 检查是否启用了自动签到
+                    if acc.params.get("auto_attendance_enabled", False):
+                        # 确保该账号有刷新线程
+                        self._ensure_account_refresh_thread(account_id)
+                        logging.info(
+                            f"[多账号刷新] 账号 {acc.username} (ID: {account_id}) 已登录，已确保刷新线程"
+                        )
+            except Exception as e:
+                logging.error(
+                    f"[多账号刷新] 为账号 {acc.username} 创建刷新线程失败: {e}",
+                    exc_info=True
+                )
 
             if (
                 not preserve_now
@@ -10966,6 +11158,35 @@ class Api:
 
                 self._save_config(username, self.accounts[username].password)
                 self.log(f"已更新账号 [{username}] 的参数 {key}。")
+
+                # [新版] 当更新自动签到相关参数时，处理刷新线程
+                if key in ("auto_attendance_enabled", "auto_attendance_refresh_s"):
+                    try:
+                        # 检查账号是否已登录且有用户ID
+                        if acc.user_data and acc.user_data.id:
+                            account_id = str(acc.user_data.id)
+                            
+                            # 如果启用了自动签到，确保有刷新线程
+                            if acc.params.get("auto_attendance_enabled", False):
+                                self._ensure_account_refresh_thread(account_id)
+                                logging.info(
+                                    f"[多账号参数更新] 已为账号 {username} (ID: {account_id}) 确保刷新线程"
+                                )
+                            else:
+                                # 如果禁用了自动签到，线程会自动检测并退出
+                                # 这里只记录日志
+                                logging.info(
+                                    f"[多账号参数更新] 账号 {username} (ID: {account_id}) 已禁用自动签到"
+                                )
+                        else:
+                            logging.debug(
+                                f"[多账号参数更新] 账号 {username} 未登录，无需处理刷新线程"
+                            )
+                    except Exception as e:
+                        logging.error(
+                            f"[多账号参数更新] 处理账号 {username} 的刷新线程失败: {e}",
+                            exc_info=True
+                        )
 
                 if hasattr(self, "_web_session_id") and self._web_session_id:
                     save_session_state(self._web_session_id, self, force_save=True)
@@ -12724,6 +12945,333 @@ class Api:
             return {"success": True}
         else:
             return {"success": False, "message": resp.get("message", "标记已读失败")}
+
+    def _get_account_by_id(self, account_id: str):
+        """
+        根据账号ID获取账号对象
+        
+        此函数用于在单账号模式和多账号模式下统一获取账号对象。
+        它会规范化账号ID（转为字符串），然后在相应的模式下查找账号。
+        
+        参数:
+            account_id: 账号标识符，可以是数字或字符串，会被自动转换为字符串
+        
+        返回值:
+            Api 或 AccountSession 对象，如果找不到则返回 None
+        """
+        # 规范化账号ID：统一转换为字符串格式
+        # 这确保数字 1 和字符串 "1" 被视为同一个账号
+        account_id = str(account_id)
+        
+        # 单账号模式：检查当前用户
+        # 在单账号模式下，只有一个账号（self），检查其user_data.id是否匹配
+        if not self.is_multi_account_mode:
+            # 确保当前用户已登录（有 user_data 和 id）
+            if self.user_data and self.user_data.id:
+                # 比较账号ID（也转为字符串以确保类型一致）
+                if str(self.user_data.id) == account_id:
+                    # 返回 self，即 Api 对象本身
+                    return self
+            # 如果不匹配或未登录，返回 None
+            return None
+        
+        # 多账号模式：从 accounts 字典查找
+        # accounts 是一个字典，键是用户名（username），值是 AccountSession 对象
+        for username, acc in self.accounts.items():
+            # 检查该账号是否已登录（有 user_data 和 id）
+            if acc.user_data and acc.user_data.id:
+                # 比较账号ID（转为字符串）
+                if str(acc.user_data.id) == account_id:
+                    # 返回找到的 AccountSession 对象
+                    return acc
+        
+        # 如果在多账号模式下也没找到匹配的账号，返回 None
+        return None
+
+    def _ensure_account_refresh_thread(self, account_id):
+        """
+        确保指定账号有刷新线程在运行
+        
+        此函数会检查指定账号是否已有活跃的刷新线程。
+        如果没有或线程已停止，则创建新的线程。
+        这是线程去重机制的核心函数。
+        
+        参数:
+            account_id: 账号标识符（任意类型，会被转换为字符串）
+        """
+        # 规范化账号ID为字符串
+        account_id = str(account_id)
+        
+        # 使用线程锁保护对 account_refresh_threads 字典的访问
+        # 这确保在多线程环境下不会发生竞态条件
+        with self.threads_lock:
+            # 检查字典中是否已有该账号的线程记录
+            if account_id in self.account_refresh_threads:
+                # 获取线程对象
+                thread = self.account_refresh_threads[account_id]
+                # 检查线程是否仍在运行
+                if thread.is_alive():
+                    # 线程仍活跃，无需创建新线程，直接返回
+                    logging.debug(f"[线程管理] 账号 {account_id} 已有活跃线程，跳过创建")
+                    return
+                else:
+                    # 线程已停止，记录日志，稍后会创建新线程
+                    logging.info(f"[线程管理] 账号 {account_id} 的线程已停止，将创建新线程")
+            
+            # 创建新的后台刷新线程
+            # target: 线程要执行的函数
+            # args: 传递给目标函数的参数（账号ID）
+            # daemon: 设为 True，使其成为守护线程（主程序退出时自动结束）
+            # name: 线程名称，便于调试和日志追踪
+            thread = threading.Thread(
+                target=self._account_refresh_worker,
+                args=(account_id,),
+                daemon=True,
+                name=f"AccountRefresh-{account_id}"
+            )
+            
+            # 将新线程记录到字典中
+            self.account_refresh_threads[account_id] = thread
+            
+            # 启动线程
+            thread.start()
+            
+            # 记录日志，表明新线程已创建并启动
+            logging.info(f"[线程管理] 已为账号 {account_id} 创建并启动刷新线程")
+
+    def _account_refresh_worker(self, account_id: str):
+        """
+        单个账号的后台刷新和签到线程（新版统一实现）
+        
+        这是每个账号独立运行的后台线程函数。
+        它会定期执行以下操作：
+        1. 检查账号是否启用了自动签到
+        2. 如果启用，执行签到检查
+        3. 刷新通知
+        4. 等待指定时间后重复
+        
+        参数:
+            account_id: 账号标识符（字符串格式）
+        """
+        # 规范化账号ID为字符串（确保类型一致）
+        account_id = str(account_id)
+        
+        # 记录线程启动日志
+        logging.info(f"[账号刷新线程] 启动 - 账号ID: {account_id}")
+        
+        # 创建一个停止事件，用于优雅地停止线程
+        # 注意：这是线程本地的停止事件，与全局停止事件不同
+        stop_event = threading.Event()
+        
+        try:
+            # 主循环：持续运行直到收到停止信号
+            while not stop_event.is_set():
+                try:
+                    # === 第一步：获取账号对象 ===
+                    # 使用辅助函数根据账号ID获取对应的账号对象
+                    account = self._get_account_by_id(account_id)
+                    
+                    # 如果账号不存在（可能已被删除），退出线程
+                    if not account:
+                        logging.warning(f"[账号刷新线程] 账号不存在: {account_id}，线程退出")
+                        break
+                    
+                    # === 第二步：检查是否启用自动签到 ===
+                    # 从账号参数中获取自动签到开关状态
+                    is_auto_attendance_enabled = account.params.get("auto_attendance_enabled", False)
+                    
+                    if not is_auto_attendance_enabled:
+                        # 未启用自动签到，等待30秒后重新检查
+                        logging.debug(f"[账号刷新线程] 账号 {account_id} 未启用自动签到，等待...")
+                        # 使用 wait 而不是 sleep，以便能响应停止信号
+                        if stop_event.wait(timeout=30):
+                            # 如果收到停止信号，退出循环
+                            break
+                        # 继续下一次循环
+                        continue
+                    
+                    # === 第三步：检查是否已登录 ===
+                    # 确保账号已登录（有有效的 user_data.id）
+                    if not account.user_data or not account.user_data.id:
+                        logging.info(f"[账号刷新线程] 账号 {account_id} 未登录，等待...")
+                        # 等待30秒后重新检查
+                        if stop_event.wait(timeout=30):
+                            break
+                        continue
+                    
+                    # === 第四步：获取刷新间隔 ===
+                    # 从账号参数中获取刷新间隔（秒）
+                    refresh_interval_s = account.params.get("auto_attendance_refresh_s", 30)
+                    # 确保刷新间隔不小于15秒（防止过于频繁的请求）
+                    refresh_interval_s = max(15, refresh_interval_s)
+                    
+                    # === 第五步：执行自动签到检查 ===
+                    logging.info(f"[账号刷新线程] 账号 {account_id} 开始自动签到检查")
+                    
+                    # 调用签到检查函数
+                    # 这个函数会检查是否有需要签到的活动，并自动执行签到
+                    self._check_and_trigger_auto_attendance(account)
+                    
+                    # === 第六步：刷新通知 ===
+                    logging.info(f"[账号刷新线程] 账号 {account_id} 刷新通知")
+                    
+                    # 检查账号对象是否有 get_notifications 方法
+                    if hasattr(account, 'get_notifications'):
+                        # 调用获取通知方法（is_auto_refresh=True 表示是后台自动刷新）
+                        result = account.get_notifications(is_auto_refresh=True)
+                        
+                        # 如果成功获取通知，尝试通过 SocketIO 推送给前端
+                        if result.get("success"):
+                            # 获取会话ID（用于 SocketIO 推送）
+                            session_id = getattr(account, "_web_session_id", None)
+                            
+                            # 检查是否有 SocketIO 实例和会话ID
+                            if session_id and "socketio" in globals():
+                                try:
+                                    # 向特定会话推送通知更新事件
+                                    globals()["socketio"].emit(
+                                        "onNotificationsUpdated",
+                                        result,
+                                        room=session_id
+                                    )
+                                    logging.debug(
+                                        f"[账号刷新线程] 已向账号 {account_id} 的会话推送通知更新"
+                                    )
+                                except Exception as e:
+                                    # 推送失败，记录错误但不影响主流程
+                                    logging.error(
+                                        f"[账号刷新线程] 账号 {account_id} SocketIO推送通知失败: {e}",
+                                        exc_info=True
+                                    )
+                    
+                    # === 第七步：更新多账号统计信息 ===
+                    # 如果是多账号模式且账号是 AccountSession 类型
+                    if self.is_multi_account_mode and hasattr(account, 'summary'):
+                        try:
+                            # 获取该账号的考勤统计
+                            self._multi_fetch_attendance_stats(account)
+                            # 更新前端显示的账号状态
+                            self._update_account_status_js(account, summary=account.summary)
+                        except Exception as e:
+                            logging.error(
+                                f"[账号刷新线程] 账号 {account_id} 更新统计失败: {e}",
+                                exc_info=True
+                            )
+                    
+                    # === 第八步：等待下一次刷新 ===
+                    logging.info(
+                        f"[账号刷新线程] 账号 {account_id} 等待 {refresh_interval_s} 秒后再次刷新"
+                    )
+                    
+                    # 等待指定的刷新间隔
+                    # 使用 wait 而不是 sleep，以便能响应停止信号
+                    if stop_event.wait(timeout=refresh_interval_s):
+                        # 如果收到停止信号，退出循环
+                        break
+                
+                except Exception as e:
+                    # 捕获并记录执行过程中的任何异常
+                    logging.error(
+                        f"[账号刷新线程] 账号 {account_id} 执行出错: {e}",
+                        exc_info=True
+                    )
+                    # 发生错误后等待60秒再重试（避免错误循环）
+                    if stop_event.wait(timeout=60):
+                        break
+        
+        finally:
+            # === 清理阶段 ===
+            # 无论线程是正常退出还是异常退出，都会执行此清理代码
+            
+            # 使用线程锁保护对共享字典的访问
+            with self.threads_lock:
+                # 从线程管理字典中移除该线程的记录
+                if account_id in self.account_refresh_threads:
+                    del self.account_refresh_threads[account_id]
+                    logging.info(f"[账号刷新线程] 已从线程字典中移除账号 {account_id}")
+            
+            # 记录线程停止日志
+            logging.info(f"[账号刷新线程] 停止 - 账号ID: {account_id}")
+
+    def _multi_account_monitor_worker(self):
+        """
+        多账号模式监控线程（新版实现）
+        
+        这是一个守护线程，在多账号模式下持续运行。
+        它的职责是：
+        1. 定期遍历所有账号
+        2. 检查每个账号是否启用了自动签到
+        3. 确保每个启用自动签到的账号都有独立的刷新线程在运行
+        
+        这个监控线程不直接执行签到，而是确保每个账号都有自己的工作线程。
+        """
+        # 记录监控线程启动日志
+        logging.info("[多账号监控] 监控线程已启动")
+        
+        # 主循环：持续运行直到收到停止信号
+        # 使用 wait 而不是直接循环，可以更快地响应停止信号
+        while not self.stop_account_monitor.wait(timeout=1.0):
+            try:
+                # === 第一步：检查是否处于多账号模式 ===
+                if not self.is_multi_account_mode:
+                    # 如果不在多账号模式，等待5秒后重新检查
+                    # 这种情况可能发生在退出多账号模式后
+                    time.sleep(5)
+                    continue
+                
+                # === 第二步：检查是否有账号 ===
+                if not self.accounts:
+                    # 如果没有任何账号，等待5秒后重新检查
+                    time.sleep(5)
+                    continue
+                
+                # === 第三步：遍历所有账号 ===
+                # 使用 list() 创建副本，避免在迭代时字典被修改导致错误
+                for username, acc in list(self.accounts.items()):
+                    try:
+                        # 检查账号是否启用了自动签到
+                        is_auto_enabled = acc.params.get("auto_attendance_enabled", False)
+                        
+                        # 检查账号是否已登录（有有效的 user_data.id）
+                        has_user_id = acc.user_data and acc.user_data.id
+                        
+                        # 只有同时满足以下条件才需要刷新线程：
+                        # 1. 启用了自动签到
+                        # 2. 账号已登录
+                        if is_auto_enabled and has_user_id:
+                            # 规范化账号ID为字符串
+                            account_id = str(acc.user_data.id)
+                            
+                            # 确保该账号有刷新线程
+                            # 如果没有或线程已停止，会自动创建新线程
+                            self._ensure_account_refresh_thread(account_id)
+                            
+                            logging.debug(
+                                f"[多账号监控] 已检查账号 {username} (ID: {account_id})"
+                            )
+                    
+                    except Exception as e:
+                        # 处理单个账号时出错，记录日志但继续处理其他账号
+                        logging.error(
+                            f"[多账号监控] 处理账号 {username} 时出错: {e}",
+                            exc_info=True
+                        )
+                
+                # === 第四步：等待一段时间后再次检查 ===
+                # 每60秒检查一次所有账号的线程状态
+                # 使用 wait 而不是 sleep，以便能响应停止信号
+                if self.stop_account_monitor.wait(timeout=60):
+                    # 如果收到停止信号，退出循环
+                    break
+            
+            except Exception as e:
+                # 捕获并记录监控循环中的任何异常
+                logging.error(f"[多账号监控] 出错: {e}", exc_info=True)
+                # 发生错误后等待60秒再重试
+                time.sleep(60)
+        
+        # 记录监控线程停止日志
+        logging.info("[多账号监控] 监控线程已停止")
 
     def _auto_refresh_worker(self):
         """(单账号) 后台自动刷新通知和签到的线程 (已修复)"""
@@ -32286,6 +32834,13 @@ def start_web_server(args_param):
         请求方法：GET
         权限要求：登录用户（login_required装饰器）
         
+        权限说明（任务5新增）：
+        1. 如果用户是管理员（admin/super_admin）：可以访问，返回自己的日志
+           （管理员查看所有用户日志请使用 /api/admin/payment_logs 接口）
+        2. 如果用户不是管理员：
+           - 如果 require_payment = true（启用付费）：可以访问，只返回自己的日志
+           - 如果 require_payment = false（免费模式）：拒绝访问（返回403错误）
+        
         查询参数（URL参数）：
             - action (str, 可选): 按操作类型筛选
                 - "create_order": 创建订单
@@ -32319,10 +32874,70 @@ def start_web_server(args_param):
         - 查询支付问题
         """
         try:
-            # ========== 获取当前用户ID ==========
+            # ========== 步骤1：获取当前用户信息并检查管理员权限 ==========
             
-            # 获取当前登录用户
+            # 获取当前登录用户的用户名
+            # g.user 由 @login_required 装饰器设置，保证此时用户已经登录
             current_user = g.user
+            
+            # 初始化管理员标志为 False（默认假设用户不是管理员）
+            is_admin = False
+            
+            # 如果当前用户存在（已登录），检查其是否具有管理员权限
+            if current_user:
+                # 调用 auth_manager 的 get_user_group() 方法获取用户所属的权限组
+                # 返回值可能是："guest"（游客）、"user"（普通用户）、"admin"（管理员）、"super_admin"（超级管理员）
+                user_group = auth_manager.get_user_group(current_user)
+                
+                # 判断用户是否属于管理员组
+                # 只有 "admin" 或 "super_admin" 才被认为是管理员
+                is_admin = user_group in ["admin", "super_admin"]
+                
+                # [调试日志] 记录用户权限检查结果，便于追踪权限问题
+                logging.info(
+                    f"[用户支付日志] 权限检查 - 用户: {current_user}, "
+                    f"组别: {user_group}, 是否管理员: {is_admin}"
+                )
+            
+            # ========== 步骤2：权限控制检查（任务5核心逻辑） ==========
+            # 如果用户不是管理员，需要额外检查系统是否启用了付费功能
+            # 只有在启用付费功能时，普通用户才被允许查看自己的支付日志
+            if not is_admin:
+                # 读取配置文件中的 require_payment 配置项
+                # getboolean() 方法会自动将字符串 "true"/"false" 转换为 Python 的 bool 类型
+                # fallback=True 表示如果配置项不存在，默认值为 True（需要付费）
+                config = _get_config()
+                require_payment = config.getboolean("Payment_Settings", "require_payment", fallback=True)
+                
+                # 如果系统未启用付费功能（免费模式），拒绝普通用户访问
+                # 原因：免费模式下，普通用户无需关注支付日志，只有管理员才需要查看历史记录
+                if not require_payment:
+                    # [安全日志] 记录访问被拒绝的情况，用于安全审计
+                    logging.warning(
+                        f"[用户支付日志] 访问被拒绝 - 用户 {current_user} 不是管理员且系统未启用付费功能 "
+                        f"(require_payment={require_payment})"
+                    )
+                    
+                    # 返回 HTTP 403 Forbidden 错误，表示权限不足
+                    # 这是一个标准的权限拒绝响应码
+                    return jsonify({
+                        "success": False,
+                        "message": "当前系统未启用付费功能，普通用户无法访问支付日志"
+                    }), 403
+                
+                # [调试日志] 记录权限检查通过（普通用户在付费模式下）
+                logging.info(
+                    f"[用户支付日志] 权限检查通过 - 用户 {current_user} 为普通用户，"
+                    f"系统已启用付费功能 (require_payment={require_payment})"
+                )
+            else:
+                # [调试日志] 记录管理员访问（管理员无需检查 require_payment 配置）
+                logging.info(
+                    f"[用户支付日志] 权限检查通过 - 用户 {current_user} 为管理员，无条件允许访问"
+                )
+            
+            # ========== 步骤3：确定当前用户的用户ID ==========
+            # 权限检查通过后，继续处理支付日志查询逻辑
             
             # 确定用户ID
             # 如果g.user不为None，说明是注册用户，使用username
@@ -32339,7 +32954,7 @@ def start_web_server(args_param):
                         "message": "无法识别用户身份，请重新登录"
                     }), 401
             
-            # ========== 获取查询参数 ==========
+            # ========== 步骤4：获取查询参数 ==========
             
             # 操作类型筛选（可选）
             action_filter = request.args.get("action", "").strip()
@@ -32388,7 +33003,7 @@ def start_web_server(args_param):
                 except ValueError:
                     app.logger.warning(f"[用户支付日志] 日期格式不正确: {end_date_str}")
             
-            # ========== 读取当前用户的支付日志文件 ==========
+            # ========== 步骤5：读取当前用户的支付日志文件 ==========
             
             logs = []
             
@@ -32450,7 +33065,7 @@ def start_web_server(args_param):
                         app.logger.warning(f"[用户支付日志] 读取文件失败: {file_path}, 错误: {str(e)}")
                         continue
             
-            # ========== 排序和分页 ==========
+            # ========== 步骤6：排序和分页 ==========
             
             # 按时间戳倒序排序（最新的在前面）
             logs.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
@@ -32465,7 +33080,7 @@ def start_web_server(args_param):
             # 获取当前页的数据
             page_logs = logs[start_index:end_index]
             
-            # ========== 返回结果 ==========
+            # ========== 步骤7：返回结果 ==========
             
             return jsonify({
                 "success": True,
@@ -32865,12 +33480,69 @@ def start_web_server(args_param):
             注意：order_id 和 trade_no 必须至少提供一个
         
         返回结果（JSON）:
-            成功: {"success": True, "order": {...}, "source": "local"/"platform"}
-            失败: {"success": False, "message": "错误信息"}
+            成功时返回: {
+                "success": True,
+                "order": {
+                    // ========== 基础订单信息 ==========
+                    "order_id": "订单号（商户订单号/系统生成的订单号）",
+                    "trade_no": "平台订单号（易支付平台生成）",
+                    "api_trade_no": "接口订单号（第三方支付接口的订单号）",
+                    "status": "订单状态（pending/paid/refunded_partial/refunded_full/cancelled）",
+                    "amount": "订单金额（单位：元）",
+                    "refundmoney": "已退款金额（单位：元）",
+                    "pay_type": "支付方式（alipay/wxpay等）",
+                    "username": "下单用户名",
+                    "buyer": "买家标识（支付账号信息）",
+                    "clientip": "客户端IP地址",
+                    "product_name": "商品名称",
+                    
+                    // ========== 时间信息 ==========
+                    "created_at": "创建时间（Unix时间戳或时间字符串）",
+                    "created_time": "创建时间（可读格式）",
+                    "paid_time": "支付完成时间",
+                    "synced_time": "同步时间（从平台同步的时间）",
+                    "synced_at": "同步时间戳",
+                    
+                    // ========== 扩展信息 ==========
+                    "param": "业务扩展参数（创建订单时传入的自定义参数）",
+                    "synced_from_platform": "是否从平台同步（true/false）",
+                    "platform_data": "完整的平台原始数据（包含所有平台返回的字段）",
+                    
+                    // ========== 支付相关信息（本地创建的订单） ==========
+                    "pay_url": "支付跳转URL",
+                    "payment_method": "支付接口类型（web/jump/jsapi/scan等）",
+                    "payment_type": "实际支付类型（qrcode/jump等）",
+                    "pay_info": "支付参数（二维码URL或jsapi参数）",
+                    "order_data": "完整的订单数据（API返回的原始数据）",
+                    
+                    // ========== 设备和环境信息（本地创建的订单） ==========
+                    "client_ip": "客户端IP地址",
+                    "user_agent": "用户浏览器信息",
+                    "device": "设备类型（mobile/pc）",
+                    
+                    // ========== 其他标记信息 ==========
+                    "created_from_notify": "是否从支付回调创建（true/false）",
+                    "notify_params": "支付回调参数（仅从回调创建的订单有此字段）"
+                },
+                "source": "数据来源（local=本地文件, platform=平台查询）",
+                "message": "查询成功"
+            }
+            
+            失败时返回: {
+                "success": False,
+                "message": "错误信息"
+            }
         
         权限要求:
             - 登录用户（@login_required）
             - 管理员权限（@admin_required）
+        
+        注意事项:
+            1. 返回的字段会根据订单来源不同而有所差异：
+               - 本地创建的订单：包含完整的支付参数、设备信息等
+               - 平台同步的订单：包含平台提供的所有字段和platform_data
+            2. 所有订单都会尽可能返回完整的信息，不会主动过滤任何字段
+            3. platform_data字段保存了平台返回的完整原始数据，可用于调试和追溯
         """
         try:
             # ========== 第1步：获取并验证请求参数 ==========
@@ -32904,21 +33576,37 @@ def start_web_server(args_param):
             # 如果提供了商户订单号，先尝试从本地读取
             if order_id:
                 # 构造订单文件路径
+                # 本地订单文件以商户订单号命名，存储在 PAYMENT_ORDERS_DIR 目录下
+                # 文件格式：{order_id}.json（例如：ORDER20231201123456.json）
                 order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
                 
                 # 检查订单文件是否存在
                 if os.path.exists(order_file):
                     try:
                         # 读取本地订单数据
+                        # 本地文件包含完整的订单信息，包括：
+                        # - 基础订单信息（订单号、金额、商品名等）
+                        # - 支付相关信息（支付URL、支付方式等）
+                        # - 时间信息（创建时间、支付时间等）
+                        # - 用户信息（用户名、IP、设备等）
+                        # - 扩展信息（自定义参数、平台数据等）
                         with open(order_file, "r", encoding="utf-8") as f:
                             order_data = json.load(f)
                         
-                        source = "local"  # 数据来源：本地
-                        logging.info(f"[管理员查询订单] 从本地文件读取成功 - 订单号: {order_id}")
+                        source = "local"  # 数据来源：本地文件
+                        logging.info(
+                            f"[管理员查询订单] 从本地文件读取成功 - "
+                            f"订单号: {order_id}, "
+                            f"包含字段数: {len(order_data)}"
+                        )
                     
                     except Exception as e:
                         # 读取失败，记录警告但继续尝试从平台查询
-                        logging.warning(f"[管理员查询订单] 本地文件读取失败: {str(e)}")
+                        # 这种情况可能是文件损坏或格式错误
+                        logging.warning(
+                            f"[管理员查询订单] 本地文件读取失败: {str(e)} - "
+                            f"将尝试从平台查询"
+                        )
             
             # ========== 第3步：如果本地没有，从易支付平台查询 ==========
             
@@ -32947,47 +33635,111 @@ def start_web_server(args_param):
                     
                     # 构造本地订单数据结构
                     # 转换易支付平台的字段到我们的订单格式
+                    # 这里会保存尽可能多的订单信息，确保数据完整性
                     local_order_data = {
-                        "order_id": out_trade_no,                                    # 商户订单号
-                        "trade_no": platform_order.get("trade_no", ""),              # 平台订单号
-                        "amount": platform_order.get("money", "0"),                  # 订单金额
-                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称
-                        "username": "unknown",                                       # 用户名（平台数据中可能没有）
-                        "created_at": platform_order.get("addtime", ""),            # 创建时间
-                        "paid_time": platform_order.get("endtime", ""),             # 支付时间
-                        "param": platform_order.get("param", ""),                    # 业务扩展参数
-                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识
-                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP
-                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号
-                        "pay_type": platform_order.get("type", ""),                  # 支付方式
-                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额
-                        # 转换支付状态
-                        # 易支付状态：0=未支付，1=已支付，2=已退款，3=已冻结，4=预授权
+                        # ---------- 基础订单信息 ----------
+                        "order_id": out_trade_no,                                    # 商户订单号（系统订单号/out_trade_no）
+                        "trade_no": platform_order.get("trade_no", ""),              # 平台订单号（易支付平台生成的唯一订单号）
+                        "amount": platform_order.get("money", "0"),                  # 订单金额（单位：元，字符串格式）
+                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称（订单描述）
+                        "username": "unknown",                                       # 用户名（平台数据中通常没有此字段，默认为unknown）
+                        
+                        # ---------- 时间信息 ----------
+                        "created_at": platform_order.get("addtime", ""),            # 创建时间（订单创建时的时间戳或时间字符串）
+                        "paid_time": platform_order.get("endtime", ""),             # 支付时间（订单支付完成的时间）
+                        "synced_at": time.time(),                                     # 同步时间戳（从平台同步到本地的Unix时间戳）
+                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读格式：YYYY-MM-DD HH:MM:SS）
+                        
+                        # ---------- 扩展业务信息 ----------
+                        "param": platform_order.get("param", ""),                    # 业务扩展参数（创建订单时传入的自定义参数，可用于业务逻辑）
+                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识（买家的支付账号信息，如支付宝账号/微信openid）
+                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP（发起支付时的客户端IP地址）
+                        
+                        # ---------- 支付渠道信息 ----------
+                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号（第三方支付接口如支付宝/微信返回的订单号）
+                        "pay_type": platform_order.get("type", ""),                  # 支付方式（alipay=支付宝, wxpay=微信支付等）
+                        
+                        # ---------- 退款信息 ----------
+                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额（单位：元，累计退款的金额）
+                        
+                        # ---------- 订单状态 ----------
+                        # 转换支付状态：将易支付平台的状态码转换为系统内部状态
+                        # 易支付状态码说明：
+                        #   0 = 未支付（订单已创建但未完成支付）
+                        #   1 = 已支付（订单支付成功）
+                        #   2 = 已退款（订单已发起退款，可能是部分或全额）
+                        #   3 = 已冻结（订单被冻结，无法操作）
+                        #   4 = 预授权（预授权订单，资金已冻结但未扣款）
                         "status": _convert_yipay_status(platform_order.get("status", 0)),
-                        "synced_from_platform": True,                                 # 标记：从平台同步
-                        "synced_at": time.time(),                                     # 同步时间戳
-                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读）
-                        "platform_data": platform_order                               # 保存完整的平台数据
+                        
+                        # ---------- 元数据标记 ----------
+                        "synced_from_platform": True,                                 # 标记：此订单数据是从平台同步而来（而非本地创建）
+                        
+                        # ---------- 完整平台数据 ----------
+                        # 保存平台返回的完整原始数据，用于：
+                        # 1. 调试和问题排查
+                        # 2. 获取平台特有的字段
+                        # 3. 数据追溯和审计
+                        "platform_data": platform_order                               # 平台返回的完整订单对象（包含所有字段）
                     }
                     logging.info(f"[管理员查询订单] 平台订单数据转换完成 - 单号: {local_order_data['order_id']}，数据：{local_order_data}")
-                    # 修复退款状态判断逻辑
-                    # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
+                    
+                    # ========== 修复退款状态判断逻辑 ==========
+                    # 
+                    # 问题说明：
+                    # 易支付平台的status=2表示"已退款"，但没有区分部分退款和全额退款
+                    # 需要根据实际退款金额来判断是部分退款还是全额退款
+                    #
+                    # 判断逻辑：
+                    # 1. 如果平台状态是2（已退款）
+                    # 2. 比较退款金额(refundmoney)和订单金额(money)
+                    # 3. 如果退款金额 >= 订单金额，则为全额退款
+                    # 4. 如果退款金额 < 订单金额，则为部分退款
                     
                     platform_status = local_order_data["platform_data"].get("status", 0)
-                    logging.info(f"[管理员查询订单] 订单退款状态检查 - 单号: {out_trade_no}, 平台状态: {platform_status}")
+                    logging.info(
+                        f"[管理员查询订单] 订单退款状态检查 - "
+                        f"单号: {out_trade_no}, "
+                        f"平台状态: {platform_status}"
+                    )
 
                     if platform_status == 2 or platform_status == '2':
+                        # 平台返回的是退款状态，需要进一步判断退款类型
+                        
+                        # 获取退款金额和订单金额（转换为浮点数进行计算）
                         refundmoney = float(local_order_data["platform_data"].get("refundmoney", "0"))
                         order_amount = float(local_order_data["platform_data"].get("money", "0"))
-                        logging.info(f"[管理员查询订单] 订单退款状态处理 - 单号: {out_trade_no}, 订单金额: {order_amount}, 退款金额: {refundmoney}")
-                        # 使用 >= 比较，而不是 ==
-                        # 当退款金额 >= 订单金额时，才是全额退款
+                        
+                        logging.info(
+                            f"[管理员查询订单] 订单退款状态处理 - "
+                            f"单号: {out_trade_no}, "
+                            f"订单金额: {order_amount}, "
+                            f"退款金额: {refundmoney}"
+                        )
+                        
+                        # 判断退款类型
+                        # 使用 >= 比较（而不是 ==），因为某些情况下退款金额可能略大于订单金额（如退款手续费）
+                        # 当退款金额 >= 订单金额时，视为全额退款
                         if refundmoney >= order_amount:
+                            # 全额退款：退款金额等于或大于订单金额
                             local_order_data["status"] = ORDER_STATUS_REFUNDED_FULL
                             logging.info(f"[管理员查询订单] 订单全额退款 - 单号: {out_trade_no}")
                         else:
+                            # 部分退款：退款金额小于订单金额
                             local_order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
                             logging.info(f"[管理员查询订单] 订单部分退款 - 单号: {out_trade_no}")
+                    
+                    # ========== 保存平台订单到本地文件 ==========
+                    # 
+                    # 目的：
+                    # 1. 将从平台查询到的订单数据持久化到本地
+                    # 2. 下次查询时可以直接从本地读取，提高查询速度
+                    # 3. 即使平台服务不可用，仍可查询历史订单
+                    #
+                    # 保存的数据：
+                    # - 完整的订单信息（包含所有字段）
+                    # - 平台返回的原始数据（platform_data字段）
+                    # - 同步标记和时间戳
                     
                     # 保存到本地文件
                     order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
@@ -32997,10 +33749,17 @@ def start_web_server(args_param):
                     
                     try:
                         # 写入订单文件
+                        # 使用UTF-8编码保存中文内容
+                        # indent=2使JSON格式化，便于人工查看
+                        # ensure_ascii=False保留中文字符不转义
                         with open(order_file, "w", encoding="utf-8") as f:
                             json.dump(local_order_data, f, indent=2, ensure_ascii=False)
                         
-                        logging.info(f"[管理员查询订单] 平台订单已保存到本地 - 订单号: {out_trade_no}")
+                        logging.info(
+                            f"[管理员查询订单] 平台订单已保存到本地 - "
+                            f"订单号: {out_trade_no}, "
+                            f"文件路径: {order_file}"
+                        )
                         
                         # 记录同步日志
                         _write_payment_log(
@@ -33016,11 +33775,21 @@ def start_web_server(args_param):
                     
                     except Exception as e:
                         # 保存失败，记录错误但仍然返回平台数据
-                        logging.error(f"[管理员查询订单] 保存订单到本地失败: {str(e)}")
+                        # 注意：即使保存失败，也不影响返回订单信息给调用方
+                        logging.error(
+                            f"[管理员查询订单] 保存订单到本地失败: {str(e)} - "
+                            f"订单号: {out_trade_no}"
+                        )
                     
-                    # 使用本地格式的订单数据
+                    # ========== 使用转换后的本地订单数据 ==========
+                    # 
+                    # 将平台数据转换为本地格式后，统一使用local_order_data返回
+                    # 这样可以确保：
+                    # 1. 返回的数据结构统一（无论是本地查询还是平台查询）
+                    # 2. 包含所有必要的字段（基础信息、时间、扩展参数、平台原始数据等）
+                    # 3. 字段命名符合系统规范
                     order_data = local_order_data
-                    source = "platform"  # 数据来源：平台
+                    source = "platform"  # 数据来源：平台查询
                 
                 else:
                     # 平台查询失败
@@ -33033,10 +33802,17 @@ def start_web_server(args_param):
             
             # ========== 第5步：返回订单数据 ==========
             
+            # 返回完整的订单数据
+            # 注意：
+            # 1. order_data包含订单的所有字段，不会主动过滤任何信息
+            # 2. 本地订单和平台订单的字段可能有差异，但都会返回完整数据
+            # 3. 平台订单会额外包含platform_data字段，存储平台返回的原始数据
+            # 4. source字段标识数据来源：local（本地文件）或 platform（平台查询）
+            
             return jsonify({
                 "success": True,
-                "order": order_data,
-                "source": source,  # 数据来源：local（本地）或 platform（平台）
+                "order": order_data,              # 完整的订单数据（包含所有可用字段）
+                "source": source,                 # 数据来源标识
                 "message": "查询成功"
             })
         
@@ -33047,6 +33823,76 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"查询失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment/order_detail", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_get_order_detail():
+        """
+        管理员获取单个订单详情接口（仅从本地读取）
+        
+        功能说明:
+            管理员专用接口，用于快速获取本地订单详情。
+            与 query_order 不同，此接口仅读取本地文件，不会查询支付平台。
+            
+        请求参数（JSON）:
+            - order_id (str, 必需): 商户订单号（out_trade_no）
+        
+        返回结果（JSON）:
+            成功: {"success": True, "order": {...}}
+            失败: {"success": False, "message": "错误信息"}
+        
+        权限要求:
+            - 登录用户（@login_required）
+            - 管理员权限（@admin_required）
+        """
+        try:
+            # 获取并验证请求参数
+            data = request.get_json() or {}
+            order_id = str(data.get("order_id", "")).strip()
+            
+            if not order_id:
+                logging.warning("[管理员获取订单详情] 参数错误：未提供 order_id")
+                return jsonify({
+                    "success": False,
+                    "message": "参数错误：必须提供订单号"
+                }), 400
+            
+            logging.info(f"[管理员获取订单详情] 管理员 {g.user} 查询订单 - order_id: {order_id}")
+            
+            # 从本地文件读取订单
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            
+            if not os.path.exists(order_file):
+                logging.warning(f"[管理员获取订单详情] 订单文件不存在: {order_id}")
+                return jsonify({
+                    "success": False,
+                    "message": "订单不存在"
+                }), 404
+            
+            try:
+                with open(order_file, "r", encoding="utf-8") as f:
+                    order_data = json.load(f)
+                
+                logging.info(f"[管理员获取订单详情] 成功读取订单 - 订单号: {order_id}")
+                return jsonify({
+                    "success": True,
+                    "order": order_data
+                })
+            
+            except Exception as e:
+                logging.error(f"[管理员获取订单详情] 读取订单文件失败: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "message": f"读取订单文件失败: {str(e)}"
+                }), 500
+                
+        except Exception as e:
+            logging.error(f"[管理员获取订单详情] 处理请求时发生错误: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": f"服务器错误: {str(e)}"
             }), 500
 
     def _convert_yipay_status(status_code):

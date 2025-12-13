@@ -19249,8 +19249,11 @@ body.mobile-mode #session-picker-modal {
               <!-- 订单号区域 -->
               <div class="flex-1 min-w-0 mr-2">
                 <div class="text-xs text-slate-500 mb-1">订单号</div>
-                <div class="text-sm font-semibold text-slate-800 truncate" title="${orderId}">${orderId}</div>
-                <div class="text-xs text-slate-600 truncate mt-0.5" title="${tradeNo}">${tradeNo}</div>
+                <!-- 系统订单号：使用 break-all 确保长订单号完整显示，允许在任意字符处换行 -->
+                <!-- 原本使用 truncate 会截断超长文本并显示省略号，导致订单号无法完整查看 -->
+                <div class="text-sm font-semibold text-slate-800 break-all" title="${orderId}">${orderId}</div>
+                <!-- 平台订单号：同样使用 break-all 确保完整显示 -->
+                <div class="text-xs text-slate-600 break-all mt-0.5" title="${tradeNo}">${tradeNo}</div>
               </div>
               <!-- 状态标签 -->
               <div class="flex-shrink-0">
@@ -19680,6 +19683,29 @@ body.mobile-mode #session-picker-modal {
       if (modalOverlay) {
         modalOverlay.classList.remove('hidden');
       }
+
+      // === 第3步：自动刷新订单信息 ===
+      // 为什么要在弹窗打开时自动刷新？
+      // 1. 确保显示的订单信息是最新的：订单状态可能在后台发生了变化（例如从"待支付"变为"已支付"）
+      // 2. 同步最新的平台数据：如果订单有平台同步记录，可以获取最新的支付时间、退款等信息
+      // 3. 提升用户体验：用户每次打开详情，都能看到最准确的订单状态和金额
+      //
+      // 实现方式：
+      // - 使用 setTimeout 延迟100毫秒执行刷新操作
+      // - 延迟的原因：确保弹窗的DOM完全渲染后再进行数据更新，避免视觉闪烁
+      // - refreshOrderDetailLocal() 会从本地API重新拉取订单数据并更新弹窗内容
+      setTimeout(() => {
+        // 检查 window.currentOrderDetail 是否已设置
+        // 这个检查是防御性编程，确保有订单信息才执行刷新
+        if (window.currentOrderDetail && window.currentOrderDetail.order_id) {
+          // 调用本地刷新函数，更新订单详情
+          // 该函数会异步获取最新数据并更新弹窗显示
+          refreshOrderDetailLocal();
+          
+          // 输出日志：记录自动刷新操作
+          console.log('[订单详情] 弹窗打开，自动刷新订单信息（订单号：' + window.currentOrderDetail.order_id + '）');
+        }
+      }, 100); // 100毫秒的延迟，既保证DOM渲染完成，又不会让用户感觉到明显的等待
     }
 
     /**
@@ -19740,14 +19766,17 @@ body.mobile-mode #session-picker-modal {
         
         // === 第2步：从本地API获取最新订单数据 ===
         
-        // 调用本地订单列表API
-        // 该API只读取本地文件，不查询支付平台
-        const response = await fetch('/api/admin/payment/local_orders', {
-          method: 'GET',
+        // 调用订单详情API（仅读取本地文件）
+        // 该API专门用于获取单个订单的详情，不查询支付平台
+        const response = await fetch('/api/admin/payment/order_detail', {
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-Session-ID': sessionUUID
-          }
+          },
+          body: JSON.stringify({
+            order_id: orderId
+          })
         });
         
         // 解析响应
@@ -19762,11 +19791,10 @@ body.mobile-mode #session-picker-modal {
           return;
         }
         
-        // === 第3步：从订单列表中找到当前订单 ===
+        // === 第3步：获取返回的订单数据 ===
         
-        // 从返回的订单列表中查找当前订单
-        const orders = result.orders || [];
-        const updatedOrder = orders.find(o => o.order_id === orderId);
+        // 从API响应中提取订单数据
+        const updatedOrder = result.order;
         
         if (!updatedOrder) {
           // 如果没找到订单，显示提示
