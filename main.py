@@ -31809,7 +31809,28 @@ def start_web_server(args_param):
                 return_url=return_url
             )
 
+            # ========== 步骤10.1：验证返回值类型 ==========
+            
+            # 检查返回值的类型，防止出现 'str' object has no attribute 'get' 错误
+            # 正常情况下，yipay_client.create_order() 应该返回字典类型
+            # 但在某些错误情况下（如网络异常、配置错误），可能返回字符串类型的错误信息
+            if not isinstance(result, dict):
+                # 如果返回值不是字典类型，说明发生了异常
+                # 记录详细的错误日志，包含返回值的类型和内容，便于调试
+                logging.error(
+                    f"[欠费支付] create_order 返回值类型错误: "
+                    f"期望dict, 实际{type(result).__name__}, 值: {result}"
+                )
+                
+                # 返回友好的错误信息给前端
+                # 将返回值转换为字符串，方便用户查看具体错误
+                return jsonify({
+                    "success": False,
+                    "message": f"创建支付订单失败: {str(result)}"
+                })
+
             # 检查订单创建是否成功
+            # 此时已确保 result 是字典类型，可以安全调用 .get() 方法
             if not result.get("success"):
                 # 如果失败，返回错误信息
                 logging.error(f"[欠费支付] 创建支付订单失败: {result.get('message')}")
