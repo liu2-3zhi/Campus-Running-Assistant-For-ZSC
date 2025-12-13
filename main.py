@@ -35639,13 +35639,61 @@ def start_web_server(args_param):
             
             # ========== 步骤2：基本参数验证 ==========
             
-            # 验证用户名和学校账号不能为空
-            # 这是最基本的安全检查，防止误操作或恶意请求
-            if not auth_username or not school_username:
+            # 验证学校账号不能为空（这是必须的）
+            if not school_username:
                 return jsonify({
                     "success": False,
-                    "message": "用户名和学校账号不能为空"
+                    "message": "学校账号不能为空"
                 }), 400
+            
+            # 如果auth_username为空，尝试自动查找
+            # 这种情况通常发生在管理员只知道school_username的情况下
+            if not auth_username:
+                logging.info(
+                    f"[管理员操作] auth_username为空，正在尝试通过school_username查找: {school_username}"
+                )
+                
+                # 遍历所有用户，查找拥有该学校账号的用户
+                found_auth_username = None
+                
+                try:
+                    # 获取所有系统用户列表
+                    # auth_system.users_file 包含所有注册用户的信息
+                    users_data = auth_system._load_users()
+                    
+                    # 遍历每个用户
+                    for username in users_data.keys():
+                        # 跳过游客用户
+                        if username == "guest":
+                            continue
+                        
+                        # 加载该用户的学校账号列表
+                        user_school_accounts = auth_system._load_user_school_accounts(username)
+                        
+                        # 检查该用户是否拥有指定的学校账号
+                        if school_username in user_school_accounts:
+                            found_auth_username = username
+                            logging.info(
+                                f"[管理员操作] 找到学校账号 {school_username} 的所属用户: {username}"
+                            )
+                            break
+                    
+                    # 如果找到了，使用找到的用户名
+                    if found_auth_username:
+                        auth_username = found_auth_username
+                    else:
+                        # 如果没找到，返回错误
+                        return jsonify({
+                            "success": False,
+                            "message": f"未找到学校账号 {school_username} 的所属用户"
+                        }), 404
+                        
+                except Exception as e:
+                    logging.error(f"[管理员操作] 查找学校账号所属用户时出错: {str(e)}")
+                    return jsonify({
+                        "success": False,
+                        "message": f"查找学校账号所属用户失败: {str(e)}"
+                    }), 500
             
             # ========== 步骤3：验证欠费次数参数 ==========
             
