@@ -31122,11 +31122,11 @@ def start_web_server(args_param):
                 "clientip": clientip,
             }
 
-            if auth_code is not None:
+            if auth_code is not None and auth_code != "":
                 yipay_client_data["auth_code"] = auth_code
-            if sub_openid is not None:
+            if sub_openid is not None and sub_openid != "":
                 yipay_client_data["sub_openid"] = sub_openid
-            if sub_appid is not None:
+            if sub_appid is not None and sub_appid != "":
                 yipay_client_data["sub_appid"] = sub_appid
 
             logging.debug(
@@ -31621,13 +31621,13 @@ def start_web_server(args_param):
             # 获取当前登录用户的用户名
             # g.user 是由 @login_required 装饰器在请求上下文中设置的
             # 包含当前登录用户的完整信息
-            auth_username = g.user.get("auth_username", "")
+            auth_username = g.user
 
             # ========== 步骤2：验证欠费账号是否属于当前用户 ==========
 
             # 调用 auth_system.get_school_accounts() 获取当前用户的所有学校账号
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
-            user_school_accounts = auth_system.get_school_accounts(
+            user_school_accounts = g.api_instance._load_user_school_accounts(
                 auth_username)
 
             # 验证每个欠费账号是否属于当前用户
@@ -31712,15 +31712,15 @@ def start_web_server(args_param):
 
             # 计算总金额：总欠费次数 × 单次费用
             # round(..., 2) 保留2位小数
-            total_amount = round(total_overdue_count * single_run_cost, 2)
+            amount_old = round(total_overdue_count * single_run_cost, 2)
 
             # 验证总金额是否合理（必须大于0）
-            if total_amount <= 0:
+            if amount_old <= 0:
                 return jsonify({
                     "success": False,
                     "message": "支付金额必须大于0"
                 })
-
+            amount = f"{amount_old:.2f}"  # 格式化为字符串，保留2位小数
             # ========== 步骤6：生成唯一订单号 ==========
 
             # 订单号格式：YYYYMMDD + 15位随机数字
@@ -31738,24 +31738,15 @@ def start_web_server(args_param):
             date_part = datetime.datetime.now().strftime('%Y%m%d')
 
             # 拼接订单号：日期 + 随机数
-            out_trade_no = date_part + random_part
+            out_trade_no = f"ORDER{time.strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"
 
             # ========== 步骤7：判断设备类型（根据User-Agent） ==========
 
-            # 获取请求头中的User-Agent字符串
-            # request.user_agent 是Flask提供的UserAgent对象
-            # .string 属性返回原始的User-Agent字符串
-            ua_string = request.user_agent.string or ""
-
-            # 将User-Agent转换为小写，方便后续判断
-            ua_lower = ua_string.lower()
-
-            # 根据User-Agent关键词判断设备类型
-            # 移动设备通常包含 "mobile"、"android"、"iphone" 等关键词
-            if "mobile" in ua_lower or "android" in ua_lower or "iphone" in ua_lower:
-                device = "mobile"  # 移动设备
-            else:
-                device = "pc"      # PC设备
+            device = data.get("device", "").strip()
+            
+            payment_type= data.get("payment_type", "web").strip()
+            
+            payment_method=pay_type
 
             # ========== 步骤8：获取客户端IP地址 ==========
 
@@ -31768,8 +31759,7 @@ def start_web_server(args_param):
 
             # 从配置文件读取app_host（应用访问域名）
             # app_host是本应用的公网访问地址，用于构造回调URL
-            app_host = config.get(
-                "Rainbow_YiPay", "app_host", fallback="").strip()
+            app_host = data.get("app_host", "").strip()
 
             # 验证app_host是否配置
             if not app_host:
@@ -31787,7 +31777,13 @@ def start_web_server(args_param):
 
             # 构造同步返回URL（用户支付完成后浏览器跳转的地址）
             # 这里使用前端主页作为返回地址（可根据需求修改）
-            return_url = f"{app_host}/"
+            return_url = data.get("return_url", "").strip()
+            
+            sub_openid=data.get("sub_openid","").strip()
+            
+            sub_appid=data.get("sub_appid","").strip()
+            
+            auth_code=data.get("auth_code","").strip()
 
             # ========== 步骤10：创建彩虹易支付订单 ==========
 
@@ -31801,13 +31797,30 @@ def start_web_server(args_param):
             #   - money: 支付金额（单位：元）
             #   - pay_type: 支付方式（用户选择的支付方式：alipay/wxpay/qqpay等）
             #   - return_url: 同步返回URL
-            result = yipay_client.create_order(
-                out_trade_no=out_trade_no,
-                name=product_name,
-                money=str(total_amount),
-                pay_type=pay_type,  # 使用用户选择的支付方式
-                return_url=return_url
-            )
+            
+            data_need_to_pay = {
+                "out_trade_no": out_trade_no,
+                "name": product_name,
+                "money": amount,
+                "pay_type": pay_type,
+                "return_url": return_url,
+                "client_app_host": app_host,
+                "device_get": device,
+                "payment_type": payment_type,
+                "clientip": clientip,
+            }
+
+            if auth_code is not None and auth_code != "":
+                data_need_to_pay["auth_code"] = auth_code
+            if sub_openid is not None and sub_openid != "":
+                data_need_to_pay["sub_openid"] = sub_openid
+            if sub_appid is not None and sub_appid != "":
+                data_need_to_pay["sub_appid"] = sub_appid
+            
+            
+            
+            
+            result = yipay_client.create_order(**data_need_to_pay)
 
             # ========== 步骤10.1：验证返回值类型 ==========
             
@@ -31844,18 +31857,23 @@ def start_web_server(args_param):
             # 构造订单数据字典
             order_data = {
                 "order_id": out_trade_no,              # 订单号
-                "auth_username": auth_username,        # 用户名（关键！用于支付回调时更新用户数据）
+                "username": auth_username,        # 用户名（关键！用于支付回调时更新用户数据）
+                "amount": amount,           # 支付金额（字符串格式）
                 "product_name": product_name,          # 商品名称
-                "amount": str(total_amount),           # 支付金额（字符串格式）
                 "total_count": total_overdue_count,    # 总欠费次数
                 "overdue_accounts": overdue_accounts,  # 欠费账号列表（关键！用于支付回调时清零overdue_count）
                 "pay_type": pay_type,                  # 支付方式（已验证，如果用户传入非法值已重置为默认值）
-                "device": device,                      # 设备类型（mobile/pc）
-                "clientip": clientip,                  # 客户端IP
                 "status": ORDER_STATUS_PENDING,        # 订单状态（pending: 待支付）
-                "created_at": time.time(),             # 创建时间（时间戳）
-                "notify_url": notify_url,              # 异步通知URL
-                "return_url": return_url               # 同步返回URL
+                "pay_url": result.get("pay_url", ""),        # 支付跳转URL
+                "trade_no": result.get("trade_no", ""),      # 平台订单号
+                "payment_type": result.get("pay_type", ""),
+                "pay_info": result.get("pay_info", ""),
+                "order_data": result.get("order_data", {}),
+                "created_at": time.time(),           # 创建时间（Unix时间戳）
+                "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                "user_agent": request.headers.get("User-Agent", ""),
+                "device": device,  # 设备类型
             }
 
             # 确保payment_orders目录存在
@@ -31881,7 +31899,7 @@ def start_web_server(args_param):
             logging.info(
                 f"[欠费支付] 创建订单成功 - 用户: {auth_username}, "
                 f"订单号: {out_trade_no}, 总次数: {total_overdue_count}, "
-                f"总金额: {total_amount}元"
+                f"总金额: {amount}元"
             )
 
             # ========== 步骤13：写入支付操作日志（用于审计） ==========
@@ -31892,12 +31910,20 @@ def start_web_server(args_param):
                 action="create_overdue_order",  # 操作类型：创建欠费订单
                 log_data={
                     "total_count": total_overdue_count,
-                    "total_amount": total_amount,
-                    "overdue_accounts": overdue_accounts,
-                    "product_name": product_name,
-                    "device": device,
-                    "clientip": clientip,
-                    "pay_type": pay_type  # 记录用户选择的支付方式
+                    "total_amount": amount,
+                    "amount": amount,                      # 支付金额
+                        "product_name": product_name,          # 商品名称
+                        "pay_type": pay_type,                  # 支付方式
+                        "pay_url": result["pay_url"],          # 支付跳转URL
+                        "return_url": return_url,              # 同步返回URL
+                        # 请求信息
+                        # 客户端IP
+                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                        # 浏览器UA
+                        "user_agent": request.headers.get("User-Agent", ""),
+                        # 操作结果
+                        "success": True,                       # 操作是否成功
+                        "message": "订单创建成功"              # 操作消息
                 }
             )
 
@@ -31909,7 +31935,7 @@ def start_web_server(args_param):
                 "pay_url": result.get("pay_url"),      # 支付跳转URL
                 "order_id": out_trade_no,              # 订单号
                 "total_count": total_overdue_count,    # 总欠费次数
-                "total_amount": str(total_amount)      # 总金额（字符串格式）
+                "total_amount": amount,      # 总金额（字符串格式）
             })
 
         except Exception as e:
@@ -35821,175 +35847,73 @@ def start_web_server(args_param):
             
             # 如果auth_username为空，尝试自动查找
             # 这种情况通常发生在管理员只知道school_username的情况下
-            if not auth_username:
-                logging.info(
-                    f"[管理员操作] auth_username为空，正在尝试通过school_username查找: {school_username}"
-                )
-                
-                # 遍历所有用户，查找拥有该学校账号的用户
-                found_auth_username = None
-                
-                try:
-                    # ========== 获取所有系统用户列表 ==========
-                    # 由于 _load_users 方法不存在，我们需要直接遍历 system_accounts 目录
-                    # system_accounts 目录存储了所有用户的信息，每个用户对应一个JSON文件
-                    
-                    # 获取 system_accounts 目录路径
-                    # SYSTEM_ACCOUNTS_DIR 是全局常量，定义了系统账号存储目录
-                    system_accounts_dir = SYSTEM_ACCOUNTS_DIR
-                    
-                    # 检查目录是否存在
-                    # 如果目录不存在，说明系统配置有问题，需要返回错误
-                    if not os.path.exists(system_accounts_dir):
-                        logging.error(
-                            f"[管理员操作] system_accounts 目录不存在: {system_accounts_dir}"
-                        )
-                        return jsonify({
-                            "success": False,
-                            "message": "系统用户目录不存在，请联系管理员"
-                        }), 500
-                    
-                    # ========== 遍历所有用户文件（*.json） ==========
-                    # os.listdir() 返回目录下所有文件和子目录的名称列表
-                    for filename in os.listdir(system_accounts_dir):
-                        # 过滤非JSON文件
-                        # 只处理以 .json 结尾的文件，跳过其他文件（如临时文件、备份文件等）
-                        if not filename.endswith('.json'):
-                            continue
-                        
-                        # 从文件名提取用户名
-                        # 文件名格式为 "用户名.json"，例如 "admin.json"
-                        # 使用切片 [:-5] 移除后缀 ".json"（5个字符）
-                        username = filename[:-5]
-                        
-                        # 跳过游客用户
-                        # 游客账号是临时账号，不需要处理
-                        if username == "guest":
-                            continue
-                        
-                        # ========== 加载该用户的学校账号列表 ==========
-                        # _load_user_school_accounts 是 AuthSystem 类的方法
-                        # 它返回该用户拥有的所有学校账号的字典
-                        # 字典格式：{school_username: {"password": "xxx", "ua": "xxx", ...}, ...}
-                        user_school_accounts = auth_system._load_user_school_accounts(username)
-                        
-                        # ========== 检查该用户是否拥有指定的学校账号 ==========
-                        # 使用 in 操作符检查 school_username 是否在字典的键中
-                        if school_username in user_school_accounts:
-                            # 找到了！记录找到的用户名
-                            found_auth_username = username
-                            logging.info(
-                                f"[管理员操作] 找到学校账号 {school_username} 的所属用户: {username}"
-                            )
-                            # 找到后立即退出循环，不需要继续遍历
-                            break
-                    
-                    # ========== 处理查找结果 ==========
-                    
-                    # 如果找到了所属用户，使用找到的用户名
-                    if found_auth_username:
-                        auth_username = found_auth_username
-                        logging.info(
-                            f"[管理员操作] 自动查找成功，将使用用户 {auth_username} 的数据"
-                        )
-                    else:
-                        # 如果没找到，说明该学校账号不属于任何系统用户
-                        # 这可能是因为：
-                        # 1. 学校账号不存在
-                        # 2. 学校账号已被删除
-                        # 3. 输入的学校账号名称有误
-                        logging.warning(
-                            f"[管理员操作] 未找到学校账号 {school_username} 的所属用户"
-                        )
-                        return jsonify({
-                            "success": False,
-                            "message": f"未找到学校账号 {school_username} 的所属用户"
-                        }), 404
-                        
-                except Exception as e:
-                    # 捕获所有异常，记录详细的错误信息
-                    # 使用 traceback 模块记录完整的堆栈跟踪，便于调试
-                    logging.error(
-                        f"[管理员操作] 查找学校账号所属用户时出错: {str(e)}"
-                    )
-                    logging.error(traceback.format_exc())
-                    
-                    # 返回友好的错误信息给前端
-                    return jsonify({
-                        "success": False,
-                        "message": f"查找学校账号所属用户失败: {str(e)}"
-                    }), 500
-            
+
+        
+        
             # ========== 步骤3：验证欠费次数参数 ==========
-            
-            # 尝试将new_overdue_count转换为整数
-            # 这里需要捕获两种异常：
-            # - ValueError: 当输入的是非数字字符串时（如"abc"）
-            # - TypeError: 当输入的是None或其他不可转换类型时
             try:
                 new_overdue_count = int(new_overdue_count)
-                
                 # 验证欠费次数不能为负数
-                # 欠费次数是非负整数，负数没有业务意义
                 if new_overdue_count < 0:
-                    return jsonify({
-                        "success": False,
-                        "message": "欠费次数不能为负数"
-                    }), 400
-                    
+                    return jsonify({ "success": False, "message": "欠费次数不能为负数" }), 400
             except (ValueError, TypeError):
                 # 如果转换失败，返回400错误
-                return jsonify({
-                    "success": False,
-                    "message": "欠费次数必须是整数"
-                }), 400
-            
-            # ========== 步骤4：记录管理员操作日志（操作前） ==========
-            
-            # 从Flask的g对象中获取当前登录的管理员用户名
-            # g对象是Flask提供的请求上下文对象，用于存储请求期间的数据
-            # 在login_required装饰器中，会将当前用户信息存储到g.user中
-            admin_username = g.user.get("auth_username", "unknown")
-            
-            # 记录INFO级别日志，包含管理员和目标信息
-            # 这对于安全审计和问题追溯非常重要
-            logging.info(
-                f"[管理员操作] {admin_username} 正在修改欠费次数 - "
-                f"目标用户: {auth_username}, 学校账号: {school_username}, "
-                f"新欠费次数: {new_overdue_count}"
-            )
-            
-            # ========== 步骤5：调用业务逻辑更新欠费次数 ==========
-            
-            # 调用auth_system（认证系统）的方法来更新欠费次数
-            # auth_system是全局的认证管理对象，负责用户和学校账号管理
-            # update_school_account_overdue_count方法会：
-            # 1. 验证用户和学校账号是否存在
-            # 2. 使用线程锁确保并发安全
-            # 3. 更新欠费次数到数据文件中
-            # 4. 返回包含success和message的字典
-            result = auth_system.update_school_account_overdue_count(
-                auth_username,         # 目标用户名
-                school_username,       # 学校账号用户名
-                new_overdue_count      # 新的欠费次数
-            )
-            
-            # ========== 步骤6：记录操作结果日志 ==========
-            
-            # 如果操作成功，记录成功日志
-            if result.get("success"):
-                # 记录详细的成功信息，便于审计
+                return jsonify({ "success": False, "message": "欠费次数必须是整数" }), 400
+
+            # ========== 步骤4：直接修改INI文件 (不查找用户) ==========
+            try:
+                # 构造INI文件路径 (全局变量 SCHOOL_ACCOUNTS_DIR 指向 school_accounts 目录)
+                ini_file = os.path.join(SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
+                
+                # 检查文件是否存在
+                if not os.path.exists(ini_file):
+                    return jsonify({
+                        "success": False, 
+                        "message": f"学校账号配置文件不存在: {school_username}"
+                    }), 404
+
+                # 读取配置文件
+                config = configparser.RawConfigParser()
+                config.optionxform = str
+                config.read(ini_file, encoding='utf-8')
+                
+                # 确保 [stats] 节存在
+                if not config.has_section('stats'):
+                    config.add_section('stats')
+                
+                # 更新欠费次数
+                config.set('stats', 'overdue_count', str(new_overdue_count))
+                
+                # 保存文件
+                with open(ini_file, 'w', encoding='utf-8') as f:
+                    config.write(f)
+                    
+                # 获取当前登录管理员（用于日志）
+                admin_username = g.user if hasattr(g, 'user') else "unknown"
+                # 兼容处理 g.user 可能是字典的情况
+                if isinstance(admin_username, dict):
+                    admin_username = admin_username.get("auth_username", "unknown")
+                
                 logging.info(
-                    f"[管理员操作] 欠费次数修改成功 - "
-                    f"管理员: {admin_username}, 目标用户: {auth_username}, "
+                    f"[管理员操作] {admin_username} 已直接修改INI文件 - "
                     f"学校账号: {school_username}, 新欠费次数: {new_overdue_count}"
                 )
-            
-            # ========== 步骤7：返回操作结果给前端 ==========
-            
-            # 直接返回auth_system方法的结果
-            # result已经包含了success和message字段
-            return jsonify(result)
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"已将学校账号 {school_username} 的欠费次数更新为 {new_overdue_count}"
+                })
+
+            except Exception as e:
+                logging.error(f"[管理员操作] 修改INI文件失败: {str(e)}", exc_info=True)
+                return jsonify({
+                    "success": False,
+                    "message": f"操作失败: {str(e)}"
+                }), 500
+        
+        
+        
+        
             
         except Exception as e:
             # ========== 异常处理 ==========

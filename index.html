@@ -17,6 +17,13 @@
   <link href="/api/cdn/google-fonts" rel="stylesheet"
     onerror="this.href='https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&amp;family=Noto+Sans+SC:wght@400;600;700&amp;display=swap'" />
 
+
+
+
+
+
+
+    
   <!-- 高德地图 loader.js - 使用本地缓存 -->
   <script src="/api/cdn/amap-loader" onerror="this.src='https://webapi.amap.com/loader.js'"></script>
   <!-- 使用本地缓存的CDN文件，后端每小时自动从CDN更新 -->
@@ -5957,8 +5964,1068 @@ body.mobile-mode #session-picker-modal {
               <div class="text-center py-10 text-slate-500">加载中...</div>
             </div>
           </div>
+          
 
           <!-- ========================================
+               支付日志面板 (payment-logs)
+               用户可以在此查看自己的支付相关操作日志
+               支持按操作类型、日期范围筛选
+               支持分页浏览
+               默认隐藏，通过switchMobileAdminTab切换显示
+               
+               重构说明（2024）：
+               - 修改为"当前账号视角"：普通用户只能看自己的日志
+               - 移除了用户ID筛选（因为只查询当前用户）
+               - API调用：/api/payment_logs（自动识别当前用户身份）
+               ======================================== -->
+          <div id="mobile-multi-admin-payment-logs-panel" class="hidden space-y-3">
+            <!-- 面板头部：包含标题和刷新按钮 -->
+            <div class="flex justify-between items-center">
+              <!-- 面板标题 -->
+              <h4 class="font-semibold text-sm">支付日志</h4>
+              <!-- 刷新按钮：重新加载支付日志 -->
+              <button id="mobile-multi-admin-refresh-payment-logs" class="btn btn-ghost !py-1 !px-2 text-xs">
+                刷新
+              </button>
+            </div>
+
+            <!-- 筛选条件区域 -->
+            <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <!-- 操作类型筛选 -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">操作类型（可选）</label>
+                <select id="payment-logs-action-type" 
+                  class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                  <option value="">全部操作</option>
+                  <option value="create_order">创建订单</option>
+                  <option value="query_order">查询订单</option>
+                  <option value="payment_success">支付成功</option>
+                  <option value="payment_fail">支付失败</option>
+                  <option value="config_update">配置更新</option>
+                </select>
+              </div>
+
+              <!-- 日期范围筛选 -->
+              <div class="grid grid-cols-2 gap-2">
+                <!-- 开始日期 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">开始日期</label>
+                  <input type="date" id="payment-logs-start-date" 
+                    class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+                <!-- 结束日期 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">结束日期</label>
+                  <input type="date" id="payment-logs-end-date" 
+                    class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+              </div>
+
+              <!-- 查询按钮 -->
+              <button id="search-payment-logs-btn" 
+                class="w-full py-2 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 active:bg-sky-700 transition">
+                查询日志
+              </button>
+            </div>
+
+            <!-- 支付日志列表容器 -->
+            <div id="mobile-multi-admin-payment-logs-list" class="space-y-2 max-h-96 overflow-y-auto">
+              <!-- 加载占位提示 -->
+              <p class="text-slate-400 text-center py-10 text-xs">
+                加载中...
+              </p>
+            </div>
+
+            <!-- 分页控制区域 -->
+            <div id="payment-logs-pagination" class="flex justify-between items-center pt-3 border-t border-slate-200">
+              <!-- 上一页按钮 -->
+              <button id="payment-logs-prev-btn" class="btn btn-ghost !py-1 !px-2 text-xs" disabled>
+                上一页
+              </button>
+              <!-- 页码显示 -->
+              <span id="payment-logs-page-info" class="text-xs text-slate-600">第 1 页</span>
+              <!-- 下一页按钮 -->
+              <button id="payment-logs-next-btn" class="btn btn-ghost !py-1 !px-2 text-xs">
+                下一页
+              </button>
+            </div>
+          </div>
+
+          <!-- ========================================
+               支付设置面板 (payment-settings)
+               管理员可以在此配置支付方式、查询订单、处理退款、测试支付
+               默认隐藏，通过switchMobileAdminTab切换显示
+               ======================================== -->
+          <div id="mobile-multi-admin-payment-settings-panel" class="hidden space-y-3">
+            <!-- 面板头部：包含标题 -->
+            <div class="flex justify-between items-center">
+              <!-- 面板标题 -->
+              <h4 class="font-semibold text-sm">支付设置</h4>
+            </div>
+
+            <!-- 标签页导航：分为4个功能模块 -->
+            <!-- 使用水平滚动布局，支持触摸滑动，隐藏滚动条以保持界面美观 -->
+            <div class="flex border-b-2 border-slate-200 overflow-x-auto gap-1 pb-0" 
+              style="scrollbar-width: none; -webkit-overflow-scrolling: touch">
+              
+              <!-- Tab 1: 支付方式配置 -->
+              <!-- 默认激活状态，显示蓝色底色和加粗字体 -->
+              <button id="payment-settings-tab-config" 
+                class="px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-t-lg transition-colors bg-sky-50 text-sky-600 border-b-2 border-sky-600" 
+                onclick="switchPaymentSettingsTab('config')">
+                支付方式
+              </button>
+              
+              <!-- Tab 2: 订单查询 -->
+              <!-- 未激活状态，灰色文字，悬停时有交互效果 -->
+              <button id="payment-settings-tab-query" 
+                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+                onclick="switchPaymentSettingsTab('query')">
+                订单查询
+              </button>
+              
+              <!-- Tab 3: 退款功能 -->
+              <button id="payment-settings-tab-refund" 
+                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+                onclick="switchPaymentSettingsTab('refund')">
+                退款处理
+              </button>
+              
+              <!-- Tab 4: 测试支付 -->
+              <button id="payment-settings-tab-test" 
+                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+                onclick="switchPaymentSettingsTab('test')">
+                测试支付
+              </button>
+              
+              <!-- Tab 5: 易支付配置 -->
+              <!-- 移动端的易支付配置Tab，样式与其他Tab保持一致 -->
+              <button id="payment-settings-tab-yipay" 
+                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+                onclick="switchPaymentSettingsTab('yipay')">
+                易支付配置
+              </button>
+              
+              <!-- ========================================
+                   [新增] Tab 6: 商品名测试（移动端）
+                   功能：测试商品名称生成器，验证生成结果
+                   ======================================== -->
+              <button id="payment-settings-tab-product-test" 
+                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
+                onclick="switchPaymentSettingsTab('product-test')">
+                商品名测试
+              </button>
+            </div>
+
+            <!-- ========================================
+                 Tab 1 内容区域：支付方式配置
+                 管理员可以启用/禁用各种支付方式
+                 ======================================== -->
+            <div id="payment-settings-content-config" class="space-y-3">
+              <!-- 配置说明文本 -->
+              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                💡 提示：启用相应的支付方式后，用户可在支付页面选择使用
+              </p>
+
+              <!-- 支付方式开关列表容器 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                
+                <!-- 支付宝开关 -->
+                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
+                  <!-- 支付方式图标和名称 -->
+                  <div class="flex items-center gap-2">
+                    <!-- 支付宝图标：使用蓝色圆形背景 -->
+                    <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs">
+                      支
+                    </div>
+                    <span class="text-sm font-medium text-slate-700">支付宝</span>
+                  </div>
+                  <!-- 开关控件：使用checkbox实现，默认选中状态 -->
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="payment-method-alipay" class="sr-only peer" checked>
+                    <!-- 开关滑块：选中时显示蓝色，未选中时显示灰色 -->
+                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+                  </label>
+                </div>
+
+                <!-- 微信支付开关 -->
+                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
+                  <div class="flex items-center gap-2">
+                    <!-- 微信支付图标：使用绿色圆形背景 -->
+                    <div class="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-xs">
+                      微
+                    </div>
+                    <span class="text-sm font-medium text-slate-700">微信支付</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="payment-method-wechat" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+                  </label>
+                </div>
+
+                <!-- QQ钱包开关 -->
+                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
+                  <div class="flex items-center gap-2">
+                    <!-- QQ钱包图标：使用黄色圆形背景 -->
+                    <div class="w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center text-white font-bold text-xs">
+                      Q
+                    </div>
+                    <span class="text-sm font-medium text-slate-700">QQ钱包</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="payment-method-qq" class="sr-only peer">
+                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+                  </label>
+                </div>
+
+                <!-- 云闪付开关 -->
+                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
+                  <div class="flex items-center gap-2">
+                    <!-- 云闪付图标：使用红色圆形背景 -->
+                    <div class="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-xs">
+                      云
+                    </div>
+                    <span class="text-sm font-medium text-slate-700">云闪付</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="payment-method-unionpay" class="sr-only peer">
+                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 保存按钮：提交配置更改 -->
+              <button id="save-payment-methods-btn" 
+                class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
+                保存配置
+              </button>
+
+              <!-- 操作结果提示区域：用于显示成功或错误消息 -->
+              <div id="payment-config-result" class="hidden">
+                <!-- 成功提示：绿色背景 -->
+                <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+                  ✓ 配置已保存
+                </div>
+              </div>
+            </div>
+
+            <!-- ========================================
+                 Tab 2 内容区域：订单查询
+                 管理员可以通过订单号查询订单详情
+                 ======================================== -->
+            <div id="payment-settings-content-query" class="hidden space-y-3">
+              <!-- 查询说明文本 -->
+              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                💡 提示：输入完整的订单号进行查询
+              </p>
+
+              <!-- 订单号输入表单 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <!-- 订单号输入框 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">订单号（trade_no）</label>
+                  <!-- 输入框：支持粘贴长订单号，有焦点高亮效果 -->
+                  <input type="text" id="query-order-trade-no" 
+                    placeholder="例如：20231210123456789012" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+
+                <!-- 查询按钮 -->
+                <button id="query-order-btn" 
+                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
+                  查询订单
+                </button>
+              </div>
+
+              <!-- 订单详情显示区域：初始隐藏，查询成功后显示 -->
+              <div id="order-detail-container" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
+                <h5 class="font-semibold text-sm text-slate-700 border-b border-slate-200 pb-2">订单详情</h5>
+                
+                <!-- 订单信息列表：使用键值对布局 -->
+                <div class="space-y-1.5 text-xs">
+                  <!-- 订单号 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">订单号：</span>
+                    <span id="order-detail-trade-no" class="text-slate-700 font-medium">-</span>
+                  </div>
+                  <!-- 订单状态：使用彩色标签显示 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">状态：</span>
+                    <span id="order-detail-status" class="px-2 py-0.5 rounded-full text-xs font-medium">-</span>
+                  </div>
+                  <!-- 支付金额：强调显示 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">金额：</span>
+                    <span id="order-detail-amount" class="text-red-600 font-bold">-</span>
+                  </div>
+                  <!-- 支付方式 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">支付方式：</span>
+                    <span id="order-detail-method" class="text-slate-700">-</span>
+                  </div>
+                  <!-- 创建时间 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">创建时间：</span>
+                    <span id="order-detail-create-time" class="text-slate-700">-</span>
+                  </div>
+                  <!-- 支付时间 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">支付时间：</span>
+                    <span id="order-detail-pay-time" class="text-slate-700">-</span>
+                  </div>
+                  <!-- 商品名称 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">商品：</span>
+                    <span id="order-detail-product" class="text-slate-700">-</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 查询结果提示区域：用于显示错误或提示消息 -->
+              <div id="query-order-result" class="hidden">
+                <!-- 错误提示：红色背景 -->
+                <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+                  ✗ 查询失败，请检查订单号
+                </div>
+              </div>
+            </div>
+
+            <!-- ========================================
+                 Tab 3 内容区域：退款处理
+                 管理员可以为已支付订单发起退款
+                 ======================================== -->
+            <div id="payment-settings-content-refund" class="hidden space-y-3">
+              <!-- 退款说明文本：重要警告 -->
+              <p class="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-2">
+                ⚠️ 警告：退款操作不可撤销，请谨慎操作
+              </p>
+
+              <!-- 退款表单 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <!-- 订单号输入框 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">订单号（trade_no）<span class="text-red-500">*</span></label>
+                  <input type="text" id="refund-order-trade-no" 
+                    placeholder="要退款的订单号" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+
+                <!-- 退款金额输入框 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">退款金额（元）<span class="text-red-500">*</span></label>
+                  <!-- 数字输入框：限制为正数，保留两位小数 -->
+                  <input type="number" id="refund-amount" 
+                    placeholder="0.00" 
+                    min="0.01" 
+                    step="0.01" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+
+                <!-- 退款单号输入框（可选） -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">退款单号（可选）</label>
+                  <!-- 如不填写，系统将自动生成 -->
+                  <input type="text" id="refund-no" 
+                    placeholder="不填则自动生成" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+
+                <!-- 退款原因输入框（可选） -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">退款原因（可选）</label>
+                  <!-- 多行文本框，用于记录退款原因 -->
+                  <textarea id="refund-reason" 
+                    rows="2" 
+                    placeholder="例如：用户申请退款" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none resize-none"></textarea>
+                </div>
+
+                <!-- 退款按钮：使用橙色警告色 -->
+                <button id="process-refund-btn" 
+                  class="w-full py-2.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 active:bg-orange-700 transition-colors shadow-sm">
+                  确认退款
+                </button>
+              </div>
+
+              <!-- 退款结果显示区域 -->
+              <div id="refund-result-container" class="hidden">
+                <!-- 成功提示：绿色背景 -->
+                <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2 space-y-1">
+                  <p class="font-semibold">✓ 退款成功</p>
+                  <p>退款单号：<span id="refund-result-no" class="font-medium">-</span></p>
+                  <p>退款金额：<span id="refund-result-amount" class="font-medium">-</span></p>
+                </div>
+              </div>
+
+              <!-- 退款错误提示区域 -->
+              <div id="refund-error-result" class="hidden">
+                <!-- 错误提示：红色背景 -->
+                <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+                  ✗ <span id="refund-error-message">退款失败</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ========================================
+                 Tab 4 内容区域：测试支付
+                 管理员可以生成测试订单进行支付测试
+                 ======================================== -->
+            <div id="payment-settings-content-test" class="hidden space-y-3">
+              <!-- 测试说明文本 -->
+              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                💡 提示：此功能用于测试支付流程，可生成小额测试订单
+              </p>
+
+              <!-- 测试订单表单 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <!-- 测试金额输入框 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">测试金额（元）<span class="text-red-500">*</span></label>
+                  <!-- 建议使用小额测试，如0.01元 -->
+                  <input type="number" id="test-payment-amount" 
+                    placeholder="0.50" 
+                    min="0.5" 
+                    step="0.01" 
+                    value="0.5" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                </div>
+
+                <!-- ========================================
+                     [新增] 商品名称配置区域（移动端测试支付）
+                     功能：允许管理员选择手动输入或自动生成商品名称
+                     包含：单选按钮、手动输入框、数量输入框（用于生成）
+                     默认：手动输入模式
+                     样式：使用更小的字体和间距，适配移动端
+                     ======================================== -->
+                <div>
+                  <!-- 字段标题 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商品名称<span class="text-red-500">*</span>
+                  </label>
+                  
+                  <!-- 输入方式选择：单选按钮组 -->
+                  <!-- 使用flex布局横向排列两个选项 -->
+                  <div class="flex gap-3 mb-2">
+                    <!-- 选项1：手动输入（默认选中）-->
+                    <label class="flex items-center cursor-pointer">
+                      <!-- 单选按钮：name属性相同，确保只能选中一个 -->
+                      <input type="radio" 
+                        name="product-name-input-method" 
+                        value="manual" 
+                        checked 
+                        onchange="toggleProductNameInputMethod()" 
+                        class="w-3.5 h-3.5 text-sky-600 focus:ring-2 focus:ring-sky-500 border-slate-300" />
+                      <!-- 选项标签文字 -->
+                      <span class="ml-1.5 text-xs text-slate-700">手动输入</span>
+                    </label>
+                    
+                    <!-- 选项2：自动生成 -->
+                    <label class="flex items-center cursor-pointer">
+                      <input type="radio" 
+                        name="product-name-input-method" 
+                        value="auto" 
+                        onchange="toggleProductNameInputMethod()" 
+                        class="w-3.5 h-3.5 text-sky-600 focus:ring-2 focus:ring-sky-500 border-slate-300" />
+                      <span class="ml-1.5 text-xs text-slate-700">自动生成</span>
+                    </label>
+                  </div>
+                  
+                  <!-- 手动输入模式：文本输入框 -->
+                  <!-- 默认显示，当选择"自动生成"时隐藏 -->
+                  <div id="manual-product-name-container" class="space-y-1">
+                    <!-- 商品名称文本输入框 -->
+                    <input type="text" 
+                      id="test-payment-product" 
+                      placeholder="请输入商品名称" 
+                      value="测试商品" 
+                      class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                    <!-- 提示文字：移动端使用更小的字体 -->
+                    <p class="text-xs text-slate-500">
+                      手动输入，最大127字节
+                    </p>
+                  </div>
+                  
+                  <!-- 自动生成模式：数量输入框 -->
+                  <!-- 默认隐藏，当选择"自动生成"时显示 -->
+                  <div id="auto-product-name-container" class="hidden space-y-1">
+                    <!-- 商品数量输入框 -->
+                    <!-- 用于传递给product_name_generator生成趣味商品名 -->
+                    <input type="number" 
+                      id="test-payment-quantity" 
+                      placeholder="商品数量" 
+                      value="1" 
+                      min="1" 
+                      max="9999" 
+                      class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                    <!-- 提示文字：说明数量将用于生成器 -->
+                    <p class="text-xs text-slate-500">
+                      输入数量（1-9999），自动生成趣味名称
+                    </p>
+                  </div>
+                </div>
+
+                <!-- 支付方式选择 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">支付方式<span class="text-red-500">*</span></label>
+                  <!-- 下拉选择框：包含所有支持的支付方式 -->
+                  <select id="test-payment-method" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <option value="alipay">支付宝</option>
+                    <option value="wxpay">微信支付</option>
+                    <option value="qqpay">QQ钱包</option>
+                    <option value="unionpay">云闪付</option>
+                  </select>
+                </div>
+
+                <!-- [新增] 支付接口类型选择 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    接口类型
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 下拉选择框：提供多种支付接口类型供测试 -->
+                  <select id="test-payment-type" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <!-- 选项1：跳转支付 -->
+                    <option value="jump">跳转支付 (jump)</option>
+                    <!-- 选项2：HTML支付 -->
+                    <option value="html">HTML支付 (html)</option>
+                    <!-- 选项3：二维码支付 -->
+                    <option value="qrcode">二维码支付 (qrcode)</option>
+                    <!-- 选项4：小程序跳转 -->
+                    <option value="urlscheme">小程序跳转 (urlscheme)</option>
+                    <!-- 选项5：JSAPI支付 -->
+                    <option value="jsapi">JSAPI支付 (jsapi)</option>
+                    <!-- 选项6：APP支付 -->
+                    <option value="app">APP支付 (app)</option>
+                    <!-- 选项7：扫码支付 -->
+                    <option value="scan">扫码支付 (scan)</option>
+                    <!-- 选项8：小程序插件支付 -->
+                    <option value="wxplugin">小程序插件支付 (wxplugin)</option>
+                    <!-- 选项9：小程序支付 -->
+                    <option value="wxapp">小程序支付 (wxapp)</option>
+                  </select>
+                  <p class="text-xs text-slate-500 mt-1">
+                    💡 API返回的发起支付类型（pay_type）：<br>
+                    • <strong>jump</strong> - 返回支付跳转url<br>
+                    • <strong>html</strong> - 返回html代码，用于支付跳转<br>
+                    • <strong>qrcode</strong> - 返回支付二维码<br>
+                    • <strong>urlscheme</strong> - 返回微信/支付宝小程序跳转url scheme<br>
+                    • <strong>jsapi</strong> - 返回用于发起JSAPI支付的参数<br>
+                    • <strong>app</strong> - 返回用于发起APP支付的参数<br>
+                    • <strong>scan</strong> - 付款码支付成功,返回支付订单信息<br>
+                    • <strong>wxplugin</strong> - 返回要拉起的微信小程序插件参数<br>
+                    • <strong>wxapp</strong> - 返回要拉起的微信小程序和路径
+                  </p>
+                </div>
+
+                <!-- 生成测试订单按钮 -->
+                <button id="create-test-order-btn" 
+                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
+                  生成测试订单
+                </button>
+              </div>
+
+              <!-- 测试订单结果显示区域 -->
+              <div id="test-order-result-container" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
+                <h5 class="font-semibold text-sm text-slate-700 border-b border-slate-200 pb-2">测试订单已生成</h5>
+                
+                <!-- 订单信息 -->
+                <div class="space-y-1.5 text-xs">
+                  <!-- 订单号：可复制 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">订单号：</span>
+                    <span id="test-order-trade-no" class="text-slate-700 font-medium">-</span>
+                  </div>
+                  <!-- 支付金额 -->
+                  <div class="flex justify-between py-1">
+                    <span class="text-slate-500">金额：</span>
+                    <span id="test-order-amount" class="text-red-600 font-bold">-</span>
+                  </div>
+                  <!-- 支付链接：可点击跳转 -->
+                  <div class="py-1">
+                    <span class="text-slate-500 block mb-1">支付链接：</span>
+                    <a id="test-order-pay-url" href="#" target="_blank" 
+                      class="text-sky-600 underline break-all text-xs">-</a>
+                  </div>
+                </div>
+
+                <!-- 打开支付页面按钮 -->
+                <button id="open-test-pay-url-btn" 
+                  class="w-full py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 active:bg-green-700 transition-colors">
+                  打开支付页面
+                </button>
+              </div>
+
+              <!-- 测试订单错误提示 -->
+              <div id="test-order-error-result" class="hidden">
+                <!-- 错误提示：红色背景 -->
+                <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+                  ✗ <span id="test-order-error-message">生成测试订单失败</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ========================================
+                 Tab 5 内容区域：易支付配置（移动端）
+                 ========================================
+                 功能：管理员配置易支付接口参数
+                 包含：host、pid、key、启用的支付方式、接口类型
+                 API端点：/api/admin/yipay_config
+                 权限要求：modify_config权限 + admin或super_admin用户组
+                 ======================================== -->
+            <div id="payment-settings-content-yipay" class="hidden space-y-3">
+              <!-- 配置说明文本 -->
+              <!-- 使用蓝色背景的提示框，告知管理员此功能的作用 -->
+              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                💡 提示：配置易支付接口参数后，系统将使用该接口处理支付请求
+              </p>
+
+              <!-- 易支付配置表单 -->
+              <!-- 使用浅灰色背景的容器，包含所有配置字段 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                
+                <!-- 字段1：易支付接口域名 (host) -->
+                <div>
+                  <!-- 字段标签：使用粗体文字，标注必填项（红色星号）-->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    易支付接口域名
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 文本输入框：用于输入易支付平台的API域名 -->
+                  <input type="text" 
+                    id="yipay-host" 
+                    placeholder="https://pay.example.com" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段提示：帮助文字，说明此字段的用途 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    易支付平台的API接口地址
+                  </p>
+                </div>
+
+                <!-- 字段2：商户ID (pid) -->
+                <div>
+                  <!-- 字段标签：商户ID是易支付平台分配的唯一标识符 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商户ID (PID)
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 文本输入框：用于输入商户ID -->
+                  <input type="text" 
+                    id="yipay-pid" 
+                    placeholder="请输入商户ID" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段提示：说明商户ID的来源 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    由易支付平台分配的商户标识
+                  </p>
+                </div>
+
+                <!-- 字段3：商户密钥 (key) -->
+                <div>
+                  <!-- 字段标签：商户密钥用于签名验证，是敏感信息 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商户密钥 (KEY)
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 密码输入框：使用password类型保护密钥在屏幕上的显示 -->
+                  <input type="password" 
+                    id="yipay-key" 
+                    placeholder="请输入商户密钥" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段提示：强调密钥的重要性 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    用于签名验证，请妥善保管
+                  </p>
+                </div>
+
+                <!-- 字段4：启用的支付方式 (enabled_payment_methods) -->
+                <div>
+                  <!-- 字段标签：指定启用哪些支付方式 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    启用的支付方式
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 文本输入框：输入逗号分隔的支付方式代码 -->
+                  <input type="text" 
+                    id="yipay-enabled-methods" 
+                    placeholder="alipay,wxpay,qqpay" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 字段提示：说明输入格式 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    多个支付方式用逗号分隔
+                  </p>
+                </div>
+
+                <!-- 字段5：支付接口类型 (payment_method) -->
+                <div>
+                  <!-- 字段标签：指定使用哪种支付接口类型 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    支付接口类型
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 下拉选择框：从预定义的接口类型中选择 -->
+                  <select id="yipay-payment-method" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <!-- 选项1：跳转支付（jump） - 默认选项 -->
+                    <option value="jump">跳转支付 (jump)</option>
+                    <!-- 选项2：网页支付（web） -->
+                    <option value="web">网页支付 (web)</option>
+                    <!-- 选项3：JSAPI支付（jsapi） -->
+                    <option value="jsapi">JSAPI支付 (jsapi)</option>
+                    <!-- 选项4：APP支付（app） -->
+                    <option value="app">APP支付 (app)</option>
+                    <!-- 选项5：扫码支付（scan） -->
+                    <option value="scan">扫码支付 (scan)</option>
+                    <!-- 选项6：小程序支付（applet） -->
+                    <option value="applet">小程序支付 (applet)</option>
+                  </select>
+                  <!-- 字段提示：说明不同接口类型的使用场景 -->
+                  <p class="mt-1 text-xs text-slate-500">
+                    常用：跳转支付（适用于大多数场景）
+                  </p>
+                </div>
+              </div>
+
+              <!-- 操作按钮组 -->
+              <!-- 使用网格布局，将"刷新"和"保存"按钮并排显示 -->
+              <div class="grid grid-cols-2 gap-2">
+                
+                <!-- 刷新配置按钮：从服务器重新加载当前的配置 -->
+                <button onclick="loadMobileYiPayConfig()" 
+                  class="py-2.5 bg-slate-500 text-white rounded-lg text-sm font-medium hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm">
+                  刷新配置
+                </button>
+
+                <!-- 保存配置按钮：将表单中的配置保存到服务器 -->
+                <button onclick="saveMobileYiPayConfig()" 
+                  class="py-2.5 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm">
+                  保存配置
+                </button>
+              </div>
+
+              <!-- 操作结果提示区域：显示成功或错误消息 -->
+              <!-- 默认隐藏，由JavaScript根据操作结果动态显示 -->
+              <div id="yipay-config-result" class="hidden">
+                <!-- 成功/错误提示 -->
+                <!-- 此内容将由JavaScript动态更新 -->
+              </div>
+            </div>
+            
+            <!-- ========================================
+                 [新增] Tab 6 内容区域：商品名测试面板（移动端）
+                 功能：测试商品名称生成器，验证生成结果
+                 API端点：/api/admin/generate_product_name
+                 ======================================== -->
+            <div id="payment-settings-content-product-test" class="hidden space-y-3">
+              <!-- 测试说明文本 -->
+              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                💡 提示：此功能用于测试商品名称生成器，验证生成的商品名是否符合预期
+              </p>
+
+              <!-- 单次测试表单区域 -->
+              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <!-- 区域标题 -->
+                <h5 class="font-semibold text-xs text-slate-700 border-b border-slate-300 pb-2">
+                  单次测试
+                </h5>
+                
+                <!-- 数量输入框 -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    商品数量
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <!-- 商品数量输入框（整数，1-9999）-->
+                  <input type="number" 
+                    id="product-test-quantity" 
+                    placeholder="请输入商品数量" 
+                    value="5" 
+                    min="1" 
+                    max="9999" 
+                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
+                  <!-- 提示文字 -->
+                  <p class="text-xs text-slate-500 mt-1">
+                    输入商品数量（1-9999），系统将根据此数量生成趣味商品名称
+                  </p>
+                </div>
+
+                <!-- 生成按钮 -->
+                <button id="generate-product-name-btn" 
+                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm"
+                  onclick="testGenerateProductName()">
+                  <!-- 生成图标 -->
+                  <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                  生成商品名
+                </button>
+
+                <!-- 结果显示区域 -->
+                <div id="product-test-result" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
+                  <h6 class="font-semibold text-xs text-slate-700 border-b border-slate-200 pb-1">
+                    生成结果：
+                  </h6>
+                  <!-- 商品名称显示 -->
+                  <div class="bg-slate-50 p-2 rounded-md">
+                    <p class="text-xs text-slate-500 mb-1">商品名称：</p>
+                    <p id="product-test-name" class="text-sm font-medium text-slate-800 break-all"></p>
+                  </div>
+                  <!-- 字节长度显示 -->
+                  <div class="bg-slate-50 p-2 rounded-md">
+                    <p class="text-xs text-slate-500 mb-1">字节长度：</p>
+                    <p id="product-test-length" class="text-sm font-medium text-slate-800"></p>
+                    <p class="text-xs text-slate-400 mt-1">（支付接口限制最大127字节）</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 批量测试按钮 -->
+              <button id="batch-test-product-names-btn" 
+                class="w-full py-2.5 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm hidden"
+                onclick="batchTestProductNames()">
+                <!-- 批量图标 -->
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                批量测试（生成10个示例）
+              </button>
+
+              <!-- 批量测试结果显示区域 -->
+              <div id="batch-test-results" class="hidden space-y-2">
+                <h5 class="font-semibold text-xs text-slate-700 border-b border-slate-200 pb-2">
+                  批量测试结果：
+                </h5>
+                <!-- 结果列表容器 -->
+                <div id="batch-test-list" class="space-y-2 max-h-96 overflow-y-auto">
+                  <!-- 批量测试结果将动态插入到这里 -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+        <!-- ========================================
+             价格设置面板 (mobile-multi-admin-pricing-panel)
+             用途：管理员配置价格策略
+             权限：需要modify_config权限
+             功能：配置是否需要付费、单次费用、新用户免费次数
+             API端点：/api/admin/pricing_config
+             默认隐藏，通过switchMobileAdminTab切换显示
+             ======================================== -->
+        <div id="mobile-multi-admin-pricing-panel" class="hidden space-y-3">
+          <!-- 面板头部：包含标题和刷新按钮 -->
+          <div class="flex justify-between items-center">
+            <!-- 面板标题 -->
+            <h4 class="font-semibold text-sm">价格设置</h4>
+            <!-- 刷新按钮：重新加载价格配置 -->
+            <button id="mobile-multi-admin-refresh-pricing" 
+              class="btn btn-ghost !py-1 !px-2 text-xs"
+              onclick="loadMobilePricingConfig()">
+              <!-- 刷新图标 -->
+              <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              刷新
+            </button>
+          </div>
+
+          <!-- 面板说明 -->
+          <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+            💡 配置系统的价格策略，包括是否启用付费模式、单次跑步费用和新用户的默认免费次数
+          </p>
+
+          <!-- 价格配置内容区域 -->
+          <div id="mobile-multi-admin-pricing-content" class="space-y-3">
+            <!-- 配置项1: 是否需要付费 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <!-- 配置项标题 -->
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    <!-- 开关图标 -->
+                    <svg class="w-3.5 h-3.5 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                    是否需要付费
+                  </label>
+                  <!-- 配置项说明 -->
+                  <p class="text-xs text-slate-500">
+                    开启后用户需要支付才能使用
+                  </p>
+                </div>
+                <!-- 开关按钮 -->
+                <label class="relative inline-flex items-center cursor-pointer ml-3">
+                  <!-- 隐藏的复选框，实际控制开关状态 -->
+                  <input type="checkbox" id="mobile-pricing-require-payment" class="sr-only peer">
+                  <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
+                  <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- 配置项2: 单次跑步费用 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+              <!-- 配置项标题 -->
+              <label class="block text-xs font-semibold text-slate-700">
+                <!-- 金钱图标 -->
+                <svg class="w-3.5 h-3.5 inline mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                单次跑步费用（元）
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500">
+                用于计算欠费金额，设置为0表示免费
+              </p>
+              <!-- 数字输入框 -->
+              <input type="number" id="mobile-pricing-per-run-cost"
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                placeholder="例如：1.0"
+                min="0"
+                step="0.01"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400">
+                支持小数，最多两位（如1.50）
+              </p>
+            </div>
+
+            <!-- 配置项3: 新用户默认免费次数 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+              <!-- 配置项标题 -->
+              <label class="block text-xs font-semibold text-slate-700">
+                <!-- 礼物图标 -->
+                <svg class="w-3.5 h-3.5 inline mr-1 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
+                </svg>
+                新用户默认免费次数
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500">
+                新用户注册时自动获得的免费次数
+              </p>
+              <!-- 数字输入框 -->
+              <input type="number" id="mobile-pricing-default-runs"
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                placeholder="例如：10"
+                min="0"
+                step="1"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400">
+                必须是非负整数（如0、10、100）
+              </p>
+            </div>
+
+            <!-- ==================== [新增] UI显示配置（移动端） ==================== -->
+            
+            <!-- 配置项4: 是否在个人资料页显示剩余次数 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <!-- 配置项标题 -->
+                  <label class="block text-sm font-semibold text-slate-700 mb-1">
+                    个人资料页显示剩余次数
+                  </label>
+                  <!-- 配置项说明 -->
+                  <p class="text-xs text-slate-500">
+                    开启后，用户在个人资料页面可以看到自己的剩余跑步次数
+                  </p>
+                </div>
+                <!-- 开关按钮 -->
+                <label class="relative inline-flex items-center cursor-pointer ml-2">
+                  <input type="checkbox" id="mobile-pricing-show-available-runs" class="sr-only peer">
+                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- 配置项5: 剩余次数显示格式 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+              <!-- 配置项标题 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-1">
+                剩余次数显示格式
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500">
+                使用 {available_runs} 作为占位符
+              </p>
+              <!-- 文本输入框 -->
+              <input type="text" id="mobile-pricing-available-runs-format"
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                placeholder="例如：剩余免费次数：{available_runs} 次"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400">
+                示例：剩余免费次数：{available_runs} 次
+              </p>
+            </div>
+
+            <!-- 配置项6: 是否在注册页显示免费次数提示 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <!-- 配置项标题 -->
+                  <label class="block text-sm font-semibold text-slate-700 mb-1">
+                    注册页显示免费次数提示
+                  </label>
+                  <!-- 配置项说明 -->
+                  <p class="text-xs text-slate-500">
+                    开启后，用户在注册页面可以看到注册即可获得的免费次数提示
+                  </p>
+                </div>
+                <!-- 开关按钮 -->
+                <label class="relative inline-flex items-center cursor-pointer ml-2">
+                  <input type="checkbox" id="mobile-pricing-show-register-hint" class="sr-only peer">
+                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- 配置项7: 注册页提示文本 -->
+            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
+              <!-- 配置项标题 -->
+              <label class="block text-sm font-semibold text-slate-700 mb-1">
+                注册页提示文本
+              </label>
+              <!-- 配置项说明 -->
+              <p class="text-xs text-slate-500">
+                使用 {available_runs} 作为占位符
+              </p>
+              <!-- 文本输入框 -->
+              <input type="text" id="mobile-pricing-register-hint-text"
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                placeholder="例如：注册即可得 {available_runs} 次校园跑"
+                required>
+              <!-- 输入提示 -->
+              <p class="text-xs text-slate-400">
+                示例：注册即可得 {available_runs} 次校园跑
+              </p>
+            </div>
+
+            <!-- 保存按钮 -->
+            <button onclick="saveMobilePricingConfig()" 
+              class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
+              <!-- 保存图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M5 13l4 4L19 7"/>
+              </svg>
+              保存配置
+            </button>
+          </div>
+        </div>
+
+
+
+
           <!-- ========================================
                  移动端密码恢复面板（仅超级管理员可见）
                  提供账号密码恢复功能的移动端界面
@@ -6024,6 +7091,11 @@ body.mobile-mode #session-picker-modal {
               </div>
             </div>
           </div>
+
+
+          
+
+
         </div>
       </div>
 
@@ -7008,1413 +8080,7 @@ body.mobile-mode #session-picker-modal {
       </div>
     </div>
 
-    <div id="mobile-multi-admin-panel-modal" class="fixed inset-0 hidden mobile-modal z-50"
-      onclick="toggleMobileMultiAdminPanel(false)">
-      <div class="absolute inset-0 bg-black/40"></div>
-      <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto"
-        onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
-          <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
-        </div>
 
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
-          <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
-            </path>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z">
-            </path>
-          </svg>
-          <h3 class="text-xl font-bold text-sky-600 text-center">
-            多账号管理面板
-          </h3>
-        </div>
-
-        <div id="mobile-multi-admin-tabs-nav-panel"
-          class="flex border-b-2 border-slate-200 overflow-x-auto gap-1 pb-0 -mx-2 px-2"
-          style="scrollbar-width: none; -webkit-overflow-scrolling: touch"></div>
-
-        <div id="mobile-multi-admin-panel-content" class="text-sm space-y-2 max-h-[60vh] overflow-y-auto min-h-[300px]">
-          <div id="mobile-multi-admin-users-panel" class="space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">用户列表</h4>
-              <div class="flex gap-2">
-                <button id="mobile-multi-admin-create-user" class="btn btn-primary !py-1 !px-2 text-xs">
-                  新增
-                </button>
-                <button id="mobile-multi-admin-refresh-users" class="btn btn-ghost !py-1 !px-2 text-xs">
-                  刷新
-                </button>
-              </div>
-            </div>
-            <div id="mobile-multi-admin-users-list" class="space-y-2">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-groups-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">权限组列表</h4>
-              <div class="flex gap-2">
-                <button id="mobile-multi-admin-create-group" class="btn btn-primary !py-1 !px-2 text-xs"
-                  onclick="showMobileCreateGroupModal()">
-                  新增
-                </button>
-                <button id="mobile-multi-admin-refresh-groups" class="btn btn-ghost !py-1 !px-2 text-xs"
-                  onclick="switchMobileAdminTab('groups', 'mobile-multi-admin-panel')">
-                  刷新
-                </button>
-              </div>
-            </div>
-            <div id="mobile-multi-admin-groups-list" class="space-y-2">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-logs-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">系统日志</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('logs', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <div class="bg-slate-900 text-green-400 rounded-lg p-3 font-mono text-xs overflow-auto max-h-[45vh]">
-              <pre id="mobile-multi-admin-logs-content" class="whitespace-pre-wrap">
-加载中...</pre>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-health-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">系统状态</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('health', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <div id="mobile-multi-admin-health-content" class="space-y-3">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-profile-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">个人信息</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('profile', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <div id="mobile-multi-admin-profile-content" class="space-y-3 text-slate-800">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-sessions-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">会话列表</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('sessions', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <div id="mobile-multi-admin-sessions-list" class="space-y-2">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-messages-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">留言板</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('messages', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <!-- 留言列表容器 -->
-            <!-- 美化后的移动端留言列表：添加背景色、圆角、边框、阴影等视觉效果 -->
-            <!-- 使用 max-h-[50vh] 限制最大高度为视口的50%，确保不会占用过多屏幕空间 -->
-            <!-- scroll-smooth 提供平滑滚动体验，提升用户交互感受 -->
-            <div id="mobile-multi-admin-messages-list"
-              class="space-y-2 max-h-[50vh] overflow-y-auto bg-slate-50 rounded-lg p-3 border border-slate-200 shadow-sm scroll-smooth">
-              <!-- 加载占位提示 -->
-              <!-- 使用 animate-pulse 添加脉冲动画效果，让加载状态更生动 -->
-              <!-- 添加 flex 布局使加载图标和文字居中对齐 -->
-              <div class="flex flex-col items-center justify-center py-10 space-y-2">
-                <!-- 加载动画图标：使用 SVG 旋转动画 -->
-                <svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none"
-                  viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                  </path>
-                </svg>
-                <!-- 加载文字提示 -->
-                <p class="text-slate-400 text-center text-xs animate-pulse">
-                  加载中...
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-ipban-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">IP封禁</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('ipban', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <h5 class="font-semibold text-slate-700 text-xs mb-2">
-                现有规则
-              </h5>
-              <div id="mobile-multi-ip-ban-list" class="space-y-2">
-                <p class="text-slate-400 text-center py-6 text-xs">
-                  加载中...
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-sms-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">短信配置</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('sms', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <div id="mobile-multi-admin-sms-content" class="space-y-3">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-            
-            <!-- 移动端SMS回复记录按钮 -->
-            <!-- 新增功能：查看用户通过短信回复的内容（移动端专用） -->
-            <!-- 点击后弹出modal显示所有回复记录 -->
-            <div class="border-t border-slate-200 pt-3">
-              <button onclick="openSMSReplyLogsModal()" 
-                class="w-full btn btn-ghost !py-2 text-sm border-2 border-purple-300 hover:border-purple-400 hover:bg-purple-50 transition-all">
-                💬 查看回复记录
-              </button>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-config-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">系统配置</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('config', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <div id="mobile-multi-admin-config-content" class="space-y-3">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-captcha-panel" class="hidden space-y-3">
-            <div id="mobile-captcha-settings-view">
-              <div class="flex justify-between items-center">
-                <h4 class="font-semibold text-sm">验证码设置</h4>
-                <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="mobileLoadCaptchaSettings()">
-                  刷新
-                </button>
-              </div>
-              <div id="mobile-multi-admin-captcha-list" class="space-y-2">
-                <p class="text-slate-400 text-center py-10 text-xs">
-                  加载中...
-                </p>
-              </div>
-            </div>
-
-            <div id="mobile-captcha-history-view" class="hidden space-y-3">
-              <div class="flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                  <button onclick="toggleMobileCaptchaView('settings')"
-                    class="p-1 rounded hover:bg-slate-100 text-slate-500">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-                    </svg>
-                  </button>
-                  <h4 class="font-semibold text-sm">历史记录</h4>
-                </div>
-                <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="mobileLoadCaptchaHistory()">
-                  刷新
-                </button>
-              </div>
-
-              <div class="flex gap-2">
-                <input type="date" id="mobile-captcha-date" class="input-field text-xs flex-1 !py-1" />
-                <select id="mobile-captcha-status" class="select-field text-xs flex-1 !py-1">
-                  <option value="">全部状态</option>
-                  <option value="verified_success">成功</option>
-                  <option value="verified_failed">失败</option>
-                  <option value="test_generated">测试</option>
-                </select>
-              </div>
-
-              <div id="mobile-captcha-history-list" class="space-y-2 max-h-[50vh] overflow-y-auto">
-                <p class="text-slate-400 text-center py-10 text-xs">
-                  加载中...
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div id="mobile-multi-admin-reminders-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">定时提醒</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('reminders', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <!-- 定时提醒列表容器 -->
-            <!-- 美化后的移动端定时提醒列表：添加背景色、圆角、边框、阴影等视觉效果 -->
-            <!-- 使用 max-h-[50vh] 限制最大高度为视口的50%，确保不会占用过多屏幕空间 -->
-            <!-- scroll-smooth 提供平滑滚动体验，提升用户交互感受 -->
-            <div id="mobile-multi-admin-reminders-content"
-              class="space-y-2 max-h-[50vh] overflow-y-auto bg-slate-50 rounded-lg p-3 border border-slate-200 shadow-sm scroll-smooth">
-              <!-- 加载占位提示 -->
-              <!-- 使用 animate-pulse 添加脉冲动画效果，让加载状态更生动 -->
-              <!-- 添加 flex 布局使加载图标和文字居中对齐 -->
-              <div class="flex flex-col items-center justify-center py-10 space-y-2">
-                <!-- 加载动画图标：使用 SVG 旋转动画 -->
-                <svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none"
-                  viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                  </path>
-                </svg>
-                <!-- 加载文字提示 -->
-                <p class="text-slate-400 text-center text-xs animate-pulse">
-                  加载中...
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- ========================================
-               HTTPS设置面板 (ssl)
-               管理员可以在此配置HTTPS证书和设置
-               默认隐藏，通过switchMobileAdminTab切换显示
-               ======================================== -->
-          <div id="mobile-multi-admin-ssl-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">HTTPS设置</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs"
-                onclick="switchMobileAdminTab('ssl', 'mobile-multi-admin-panel')">
-                刷新
-              </button>
-            </div>
-            <div id="mobile-multi-admin-ssl-content" class="space-y-3">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-          </div>
-
-          <!-- ========================================
-               【已删除】支付配置面板 (payment-config)
-               
-               删除原因：
-               - 支付功能重构任务的第一部分
-               - 旧的支付配置面板UI和交互逻辑需要重新设计
-               - 此面板原本用于启用/禁用支付方式（支付宝、微信、网银）
-               
-               删除时间：2025-12-10
-               
-               注意事项：
-               - 相关的JavaScript函数（如loadPaymentConfig等）可能需要后续清理
-               - 调用此面板的switchMobileAdminTab函数可能需要调整
-               - 支付日志面板（mobile-multi-admin-payment-logs-panel）已保留
-               
-               后续任务：
-               - 设计新的支付配置面板UI
-               - 重构支付配置相关的前后端逻辑
-               ======================================== -->
-
-          <!-- ========================================
-               支付日志面板 (payment-logs)
-               用户可以在此查看自己的支付相关操作日志
-               支持按操作类型、日期范围筛选
-               支持分页浏览
-               默认隐藏，通过switchMobileAdminTab切换显示
-               
-               重构说明（2024）：
-               - 修改为"当前账号视角"：普通用户只能看自己的日志
-               - 移除了用户ID筛选（因为只查询当前用户）
-               - API调用：/api/payment_logs（自动识别当前用户身份）
-               ======================================== -->
-          <div id="mobile-multi-admin-payment-logs-panel" class="hidden space-y-3">
-            <!-- 面板头部：包含标题和刷新按钮 -->
-            <div class="flex justify-between items-center">
-              <!-- 面板标题 -->
-              <h4 class="font-semibold text-sm">支付日志</h4>
-              <!-- 刷新按钮：重新加载支付日志 -->
-              <button id="mobile-multi-admin-refresh-payment-logs" class="btn btn-ghost !py-1 !px-2 text-xs">
-                刷新
-              </button>
-            </div>
-
-            <!-- 筛选条件区域 -->
-            <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <!-- 操作类型筛选 -->
-              <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1">操作类型（可选）</label>
-                <select id="payment-logs-action-type" 
-                  class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
-                  <option value="">全部操作</option>
-                  <option value="create_order">创建订单</option>
-                  <option value="query_order">查询订单</option>
-                  <option value="payment_success">支付成功</option>
-                  <option value="payment_fail">支付失败</option>
-                  <option value="config_update">配置更新</option>
-                </select>
-              </div>
-
-              <!-- 日期范围筛选 -->
-              <div class="grid grid-cols-2 gap-2">
-                <!-- 开始日期 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">开始日期</label>
-                  <input type="date" id="payment-logs-start-date" 
-                    class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                </div>
-                <!-- 结束日期 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">结束日期</label>
-                  <input type="date" id="payment-logs-end-date" 
-                    class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                </div>
-              </div>
-
-              <!-- 查询按钮 -->
-              <button id="search-payment-logs-btn" 
-                class="w-full py-2 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 active:bg-sky-700 transition">
-                查询日志
-              </button>
-            </div>
-
-            <!-- 支付日志列表容器 -->
-            <div id="mobile-multi-admin-payment-logs-list" class="space-y-2 max-h-96 overflow-y-auto">
-              <!-- 加载占位提示 -->
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-
-            <!-- 分页控制区域 -->
-            <div id="payment-logs-pagination" class="flex justify-between items-center pt-3 border-t border-slate-200">
-              <!-- 上一页按钮 -->
-              <button id="payment-logs-prev-btn" class="btn btn-ghost !py-1 !px-2 text-xs" disabled>
-                上一页
-              </button>
-              <!-- 页码显示 -->
-              <span id="payment-logs-page-info" class="text-xs text-slate-600">第 1 页</span>
-              <!-- 下一页按钮 -->
-              <button id="payment-logs-next-btn" class="btn btn-ghost !py-1 !px-2 text-xs">
-                下一页
-              </button>
-            </div>
-          </div>
-
-          <!-- ========================================
-               支付设置面板 (payment-settings)
-               管理员可以在此配置支付方式、查询订单、处理退款、测试支付
-               默认隐藏，通过switchMobileAdminTab切换显示
-               ======================================== -->
-          <div id="mobile-multi-admin-payment-settings-panel" class="hidden space-y-3">
-            <!-- 面板头部：包含标题 -->
-            <div class="flex justify-between items-center">
-              <!-- 面板标题 -->
-              <h4 class="font-semibold text-sm">支付设置</h4>
-            </div>
-
-            <!-- 标签页导航：分为4个功能模块 -->
-            <!-- 使用水平滚动布局，支持触摸滑动，隐藏滚动条以保持界面美观 -->
-            <div class="flex border-b-2 border-slate-200 overflow-x-auto gap-1 pb-0" 
-              style="scrollbar-width: none; -webkit-overflow-scrolling: touch">
-              
-              <!-- Tab 1: 支付方式配置 -->
-              <!-- 默认激活状态，显示蓝色底色和加粗字体 -->
-              <button id="payment-settings-tab-config" 
-                class="px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-t-lg transition-colors bg-sky-50 text-sky-600 border-b-2 border-sky-600" 
-                onclick="switchPaymentSettingsTab('config')">
-                支付方式
-              </button>
-              
-              <!-- Tab 2: 订单查询 -->
-              <!-- 未激活状态，灰色文字，悬停时有交互效果 -->
-              <button id="payment-settings-tab-query" 
-                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
-                onclick="switchPaymentSettingsTab('query')">
-                订单查询
-              </button>
-              
-              <!-- Tab 3: 退款功能 -->
-              <button id="payment-settings-tab-refund" 
-                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
-                onclick="switchPaymentSettingsTab('refund')">
-                退款处理
-              </button>
-              
-              <!-- Tab 4: 测试支付 -->
-              <button id="payment-settings-tab-test" 
-                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
-                onclick="switchPaymentSettingsTab('test')">
-                测试支付
-              </button>
-              
-              <!-- Tab 5: 易支付配置 -->
-              <!-- 移动端的易支付配置Tab，样式与其他Tab保持一致 -->
-              <button id="payment-settings-tab-yipay" 
-                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
-                onclick="switchPaymentSettingsTab('yipay')">
-                易支付配置
-              </button>
-              
-              <!-- ========================================
-                   [新增] Tab 6: 商品名测试（移动端）
-                   功能：测试商品名称生成器，验证生成结果
-                   ======================================== -->
-              <button id="payment-settings-tab-product-test" 
-                class="px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap rounded-t-lg hover:bg-slate-50 transition-colors" 
-                onclick="switchPaymentSettingsTab('product-test')">
-                商品名测试
-              </button>
-            </div>
-
-            <!-- ========================================
-                 Tab 1 内容区域：支付方式配置
-                 管理员可以启用/禁用各种支付方式
-                 ======================================== -->
-            <div id="payment-settings-content-config" class="space-y-3">
-              <!-- 配置说明文本 -->
-              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                💡 提示：启用相应的支付方式后，用户可在支付页面选择使用
-              </p>
-
-              <!-- 支付方式开关列表容器 -->
-              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                
-                <!-- 支付宝开关 -->
-                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
-                  <!-- 支付方式图标和名称 -->
-                  <div class="flex items-center gap-2">
-                    <!-- 支付宝图标：使用蓝色圆形背景 -->
-                    <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs">
-                      支
-                    </div>
-                    <span class="text-sm font-medium text-slate-700">支付宝</span>
-                  </div>
-                  <!-- 开关控件：使用checkbox实现，默认选中状态 -->
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="payment-method-alipay" class="sr-only peer" checked>
-                    <!-- 开关滑块：选中时显示蓝色，未选中时显示灰色 -->
-                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                  </label>
-                </div>
-
-                <!-- 微信支付开关 -->
-                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
-                  <div class="flex items-center gap-2">
-                    <!-- 微信支付图标：使用绿色圆形背景 -->
-                    <div class="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-xs">
-                      微
-                    </div>
-                    <span class="text-sm font-medium text-slate-700">微信支付</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="payment-method-wechat" class="sr-only peer" checked>
-                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                  </label>
-                </div>
-
-                <!-- QQ钱包开关 -->
-                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
-                  <div class="flex items-center gap-2">
-                    <!-- QQ钱包图标：使用黄色圆形背景 -->
-                    <div class="w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center text-white font-bold text-xs">
-                      Q
-                    </div>
-                    <span class="text-sm font-medium text-slate-700">QQ钱包</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="payment-method-qq" class="sr-only peer">
-                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                  </label>
-                </div>
-
-                <!-- 云闪付开关 -->
-                <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200">
-                  <div class="flex items-center gap-2">
-                    <!-- 云闪付图标：使用红色圆形背景 -->
-                    <div class="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-xs">
-                      云
-                    </div>
-                    <span class="text-sm font-medium text-slate-700">云闪付</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="payment-method-unionpay" class="sr-only peer">
-                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                  </label>
-                </div>
-              </div>
-
-              <!-- 保存按钮：提交配置更改 -->
-              <button id="save-payment-methods-btn" 
-                class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
-                保存配置
-              </button>
-
-              <!-- 操作结果提示区域：用于显示成功或错误消息 -->
-              <div id="payment-config-result" class="hidden">
-                <!-- 成功提示：绿色背景 -->
-                <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
-                  ✓ 配置已保存
-                </div>
-              </div>
-            </div>
-
-            <!-- ========================================
-                 Tab 2 内容区域：订单查询
-                 管理员可以通过订单号查询订单详情
-                 ======================================== -->
-            <div id="payment-settings-content-query" class="hidden space-y-3">
-              <!-- 查询说明文本 -->
-              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                💡 提示：输入完整的订单号进行查询
-              </p>
-
-              <!-- 订单号输入表单 -->
-              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <!-- 订单号输入框 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">订单号（trade_no）</label>
-                  <!-- 输入框：支持粘贴长订单号，有焦点高亮效果 -->
-                  <input type="text" id="query-order-trade-no" 
-                    placeholder="例如：20231210123456789012" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                </div>
-
-                <!-- 查询按钮 -->
-                <button id="query-order-btn" 
-                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
-                  查询订单
-                </button>
-              </div>
-
-              <!-- 订单详情显示区域：初始隐藏，查询成功后显示 -->
-              <div id="order-detail-container" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
-                <h5 class="font-semibold text-sm text-slate-700 border-b border-slate-200 pb-2">订单详情</h5>
-                
-                <!-- 订单信息列表：使用键值对布局 -->
-                <div class="space-y-1.5 text-xs">
-                  <!-- 订单号 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">订单号：</span>
-                    <span id="order-detail-trade-no" class="text-slate-700 font-medium">-</span>
-                  </div>
-                  <!-- 订单状态：使用彩色标签显示 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">状态：</span>
-                    <span id="order-detail-status" class="px-2 py-0.5 rounded-full text-xs font-medium">-</span>
-                  </div>
-                  <!-- 支付金额：强调显示 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">金额：</span>
-                    <span id="order-detail-amount" class="text-red-600 font-bold">-</span>
-                  </div>
-                  <!-- 支付方式 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">支付方式：</span>
-                    <span id="order-detail-method" class="text-slate-700">-</span>
-                  </div>
-                  <!-- 创建时间 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">创建时间：</span>
-                    <span id="order-detail-create-time" class="text-slate-700">-</span>
-                  </div>
-                  <!-- 支付时间 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">支付时间：</span>
-                    <span id="order-detail-pay-time" class="text-slate-700">-</span>
-                  </div>
-                  <!-- 商品名称 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">商品：</span>
-                    <span id="order-detail-product" class="text-slate-700">-</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 查询结果提示区域：用于显示错误或提示消息 -->
-              <div id="query-order-result" class="hidden">
-                <!-- 错误提示：红色背景 -->
-                <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
-                  ✗ 查询失败，请检查订单号
-                </div>
-              </div>
-            </div>
-
-            <!-- ========================================
-                 Tab 3 内容区域：退款处理
-                 管理员可以为已支付订单发起退款
-                 ======================================== -->
-            <div id="payment-settings-content-refund" class="hidden space-y-3">
-              <!-- 退款说明文本：重要警告 -->
-              <p class="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-2">
-                ⚠️ 警告：退款操作不可撤销，请谨慎操作
-              </p>
-
-              <!-- 退款表单 -->
-              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <!-- 订单号输入框 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">订单号（trade_no）<span class="text-red-500">*</span></label>
-                  <input type="text" id="refund-order-trade-no" 
-                    placeholder="要退款的订单号" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                </div>
-
-                <!-- 退款金额输入框 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">退款金额（元）<span class="text-red-500">*</span></label>
-                  <!-- 数字输入框：限制为正数，保留两位小数 -->
-                  <input type="number" id="refund-amount" 
-                    placeholder="0.00" 
-                    min="0.01" 
-                    step="0.01" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                </div>
-
-                <!-- 退款单号输入框（可选） -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">退款单号（可选）</label>
-                  <!-- 如不填写，系统将自动生成 -->
-                  <input type="text" id="refund-no" 
-                    placeholder="不填则自动生成" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                </div>
-
-                <!-- 退款原因输入框（可选） -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">退款原因（可选）</label>
-                  <!-- 多行文本框，用于记录退款原因 -->
-                  <textarea id="refund-reason" 
-                    rows="2" 
-                    placeholder="例如：用户申请退款" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none resize-none"></textarea>
-                </div>
-
-                <!-- 退款按钮：使用橙色警告色 -->
-                <button id="process-refund-btn" 
-                  class="w-full py-2.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 active:bg-orange-700 transition-colors shadow-sm">
-                  确认退款
-                </button>
-              </div>
-
-              <!-- 退款结果显示区域 -->
-              <div id="refund-result-container" class="hidden">
-                <!-- 成功提示：绿色背景 -->
-                <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2 space-y-1">
-                  <p class="font-semibold">✓ 退款成功</p>
-                  <p>退款单号：<span id="refund-result-no" class="font-medium">-</span></p>
-                  <p>退款金额：<span id="refund-result-amount" class="font-medium">-</span></p>
-                </div>
-              </div>
-
-              <!-- 退款错误提示区域 -->
-              <div id="refund-error-result" class="hidden">
-                <!-- 错误提示：红色背景 -->
-                <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
-                  ✗ <span id="refund-error-message">退款失败</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- ========================================
-                 Tab 4 内容区域：测试支付
-                 管理员可以生成测试订单进行支付测试
-                 ======================================== -->
-            <div id="payment-settings-content-test" class="hidden space-y-3">
-              <!-- 测试说明文本 -->
-              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                💡 提示：此功能用于测试支付流程，可生成小额测试订单
-              </p>
-
-              <!-- 测试订单表单 -->
-              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <!-- 测试金额输入框 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">测试金额（元）<span class="text-red-500">*</span></label>
-                  <!-- 建议使用小额测试，如0.01元 -->
-                  <input type="number" id="test-payment-amount" 
-                    placeholder="0.01" 
-                    min="0.01" 
-                    step="0.01" 
-                    value="0.01" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                </div>
-
-                <!-- ========================================
-                     [新增] 商品名称配置区域（移动端测试支付）
-                     功能：允许管理员选择手动输入或自动生成商品名称
-                     包含：单选按钮、手动输入框、数量输入框（用于生成）
-                     默认：手动输入模式
-                     样式：使用更小的字体和间距，适配移动端
-                     ======================================== -->
-                <div>
-                  <!-- 字段标题 -->
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    商品名称<span class="text-red-500">*</span>
-                  </label>
-                  
-                  <!-- 输入方式选择：单选按钮组 -->
-                  <!-- 使用flex布局横向排列两个选项 -->
-                  <div class="flex gap-3 mb-2">
-                    <!-- 选项1：手动输入（默认选中）-->
-                    <label class="flex items-center cursor-pointer">
-                      <!-- 单选按钮：name属性相同，确保只能选中一个 -->
-                      <input type="radio" 
-                        name="product-name-input-method" 
-                        value="manual" 
-                        checked 
-                        onchange="toggleProductNameInputMethod()" 
-                        class="w-3.5 h-3.5 text-sky-600 focus:ring-2 focus:ring-sky-500 border-slate-300" />
-                      <!-- 选项标签文字 -->
-                      <span class="ml-1.5 text-xs text-slate-700">手动输入</span>
-                    </label>
-                    
-                    <!-- 选项2：自动生成 -->
-                    <label class="flex items-center cursor-pointer">
-                      <input type="radio" 
-                        name="product-name-input-method" 
-                        value="auto" 
-                        onchange="toggleProductNameInputMethod()" 
-                        class="w-3.5 h-3.5 text-sky-600 focus:ring-2 focus:ring-sky-500 border-slate-300" />
-                      <span class="ml-1.5 text-xs text-slate-700">自动生成</span>
-                    </label>
-                  </div>
-                  
-                  <!-- 手动输入模式：文本输入框 -->
-                  <!-- 默认显示，当选择"自动生成"时隐藏 -->
-                  <div id="manual-product-name-container" class="space-y-1">
-                    <!-- 商品名称文本输入框 -->
-                    <input type="text" 
-                      id="test-payment-product" 
-                      placeholder="请输入商品名称" 
-                      value="测试商品" 
-                      class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                    <!-- 提示文字：移动端使用更小的字体 -->
-                    <p class="text-xs text-slate-500">
-                      手动输入，最大127字节
-                    </p>
-                  </div>
-                  
-                  <!-- 自动生成模式：数量输入框 -->
-                  <!-- 默认隐藏，当选择"自动生成"时显示 -->
-                  <div id="auto-product-name-container" class="hidden space-y-1">
-                    <!-- 商品数量输入框 -->
-                    <!-- 用于传递给product_name_generator生成趣味商品名 -->
-                    <input type="number" 
-                      id="test-payment-quantity" 
-                      placeholder="商品数量" 
-                      value="1" 
-                      min="1" 
-                      max="9999" 
-                      class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                    <!-- 提示文字：说明数量将用于生成器 -->
-                    <p class="text-xs text-slate-500">
-                      输入数量（1-9999），自动生成趣味名称
-                    </p>
-                  </div>
-                </div>
-
-                <!-- 支付方式选择 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">支付方式<span class="text-red-500">*</span></label>
-                  <!-- 下拉选择框：包含所有支持的支付方式 -->
-                  <select id="test-payment-method" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
-                    <option value="alipay">支付宝</option>
-                    <option value="wxpay">微信支付</option>
-                    <option value="qqpay">QQ钱包</option>
-                    <option value="unionpay">云闪付</option>
-                  </select>
-                </div>
-
-                <!-- [新增] 支付接口类型选择 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    接口类型
-                    <span class="text-red-500">*</span>
-                  </label>
-                  <!-- 下拉选择框：提供多种支付接口类型供测试 -->
-                  <select id="test-payment-type" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
-                    <!-- 选项1：跳转支付 -->
-                    <option value="jump">跳转支付 (jump)</option>
-                    <!-- 选项2：HTML支付 -->
-                    <option value="html">HTML支付 (html)</option>
-                    <!-- 选项3：二维码支付 -->
-                    <option value="qrcode">二维码支付 (qrcode)</option>
-                    <!-- 选项4：小程序跳转 -->
-                    <option value="urlscheme">小程序跳转 (urlscheme)</option>
-                    <!-- 选项5：JSAPI支付 -->
-                    <option value="jsapi">JSAPI支付 (jsapi)</option>
-                    <!-- 选项6：APP支付 -->
-                    <option value="app">APP支付 (app)</option>
-                    <!-- 选项7：扫码支付 -->
-                    <option value="scan">扫码支付 (scan)</option>
-                    <!-- 选项8：小程序插件支付 -->
-                    <option value="wxplugin">小程序插件支付 (wxplugin)</option>
-                    <!-- 选项9：小程序支付 -->
-                    <option value="wxapp">小程序支付 (wxapp)</option>
-                  </select>
-                  <p class="text-xs text-slate-500 mt-1">
-                    💡 API返回的发起支付类型（pay_type）：<br>
-                    • <strong>jump</strong> - 返回支付跳转url<br>
-                    • <strong>html</strong> - 返回html代码，用于支付跳转<br>
-                    • <strong>qrcode</strong> - 返回支付二维码<br>
-                    • <strong>urlscheme</strong> - 返回微信/支付宝小程序跳转url scheme<br>
-                    • <strong>jsapi</strong> - 返回用于发起JSAPI支付的参数<br>
-                    • <strong>app</strong> - 返回用于发起APP支付的参数<br>
-                    • <strong>scan</strong> - 付款码支付成功,返回支付订单信息<br>
-                    • <strong>wxplugin</strong> - 返回要拉起的微信小程序插件参数<br>
-                    • <strong>wxapp</strong> - 返回要拉起的微信小程序和路径
-                  </p>
-                </div>
-
-                <!-- 生成测试订单按钮 -->
-                <button id="create-test-order-btn" 
-                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
-                  生成测试订单
-                </button>
-              </div>
-
-              <!-- 测试订单结果显示区域 -->
-              <div id="test-order-result-container" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
-                <h5 class="font-semibold text-sm text-slate-700 border-b border-slate-200 pb-2">测试订单已生成</h5>
-                
-                <!-- 订单信息 -->
-                <div class="space-y-1.5 text-xs">
-                  <!-- 订单号：可复制 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">订单号：</span>
-                    <span id="test-order-trade-no" class="text-slate-700 font-medium">-</span>
-                  </div>
-                  <!-- 支付金额 -->
-                  <div class="flex justify-between py-1">
-                    <span class="text-slate-500">金额：</span>
-                    <span id="test-order-amount" class="text-red-600 font-bold">-</span>
-                  </div>
-                  <!-- 支付链接：可点击跳转 -->
-                  <div class="py-1">
-                    <span class="text-slate-500 block mb-1">支付链接：</span>
-                    <a id="test-order-pay-url" href="#" target="_blank" 
-                      class="text-sky-600 underline break-all text-xs">-</a>
-                  </div>
-                </div>
-
-                <!-- 打开支付页面按钮 -->
-                <button id="open-test-pay-url-btn" 
-                  class="w-full py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 active:bg-green-700 transition-colors">
-                  打开支付页面
-                </button>
-              </div>
-
-              <!-- 测试订单错误提示 -->
-              <div id="test-order-error-result" class="hidden">
-                <!-- 错误提示：红色背景 -->
-                <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
-                  ✗ <span id="test-order-error-message">生成测试订单失败</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- ========================================
-                 Tab 5 内容区域：易支付配置（移动端）
-                 ========================================
-                 功能：管理员配置易支付接口参数
-                 包含：host、pid、key、启用的支付方式、接口类型
-                 API端点：/api/admin/yipay_config
-                 权限要求：modify_config权限 + admin或super_admin用户组
-                 ======================================== -->
-            <div id="payment-settings-content-yipay" class="hidden space-y-3">
-              <!-- 配置说明文本 -->
-              <!-- 使用蓝色背景的提示框，告知管理员此功能的作用 -->
-              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                💡 提示：配置易支付接口参数后，系统将使用该接口处理支付请求
-              </p>
-
-              <!-- 易支付配置表单 -->
-              <!-- 使用浅灰色背景的容器，包含所有配置字段 -->
-              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                
-                <!-- 字段1：易支付接口域名 (host) -->
-                <div>
-                  <!-- 字段标签：使用粗体文字，标注必填项（红色星号）-->
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    易支付接口域名
-                    <span class="text-red-500">*</span>
-                  </label>
-                  <!-- 文本输入框：用于输入易支付平台的API域名 -->
-                  <input type="text" 
-                    id="yipay-host" 
-                    placeholder="https://pay.example.com" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                  <!-- 字段提示：帮助文字，说明此字段的用途 -->
-                  <p class="mt-1 text-xs text-slate-500">
-                    易支付平台的API接口地址
-                  </p>
-                </div>
-
-                <!-- 字段2：商户ID (pid) -->
-                <div>
-                  <!-- 字段标签：商户ID是易支付平台分配的唯一标识符 -->
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    商户ID (PID)
-                    <span class="text-red-500">*</span>
-                  </label>
-                  <!-- 文本输入框：用于输入商户ID -->
-                  <input type="text" 
-                    id="yipay-pid" 
-                    placeholder="请输入商户ID" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                  <!-- 字段提示：说明商户ID的来源 -->
-                  <p class="mt-1 text-xs text-slate-500">
-                    由易支付平台分配的商户标识
-                  </p>
-                </div>
-
-                <!-- 字段3：商户密钥 (key) -->
-                <div>
-                  <!-- 字段标签：商户密钥用于签名验证，是敏感信息 -->
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    商户密钥 (KEY)
-                    <span class="text-red-500">*</span>
-                  </label>
-                  <!-- 密码输入框：使用password类型保护密钥在屏幕上的显示 -->
-                  <input type="password" 
-                    id="yipay-key" 
-                    placeholder="请输入商户密钥" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                  <!-- 字段提示：强调密钥的重要性 -->
-                  <p class="mt-1 text-xs text-slate-500">
-                    用于签名验证，请妥善保管
-                  </p>
-                </div>
-
-                <!-- 字段4：启用的支付方式 (enabled_payment_methods) -->
-                <div>
-                  <!-- 字段标签：指定启用哪些支付方式 -->
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    启用的支付方式
-                    <span class="text-red-500">*</span>
-                  </label>
-                  <!-- 文本输入框：输入逗号分隔的支付方式代码 -->
-                  <input type="text" 
-                    id="yipay-enabled-methods" 
-                    placeholder="alipay,wxpay,qqpay" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                  <!-- 字段提示：说明输入格式 -->
-                  <p class="mt-1 text-xs text-slate-500">
-                    多个支付方式用逗号分隔
-                  </p>
-                </div>
-
-                <!-- 字段5：支付接口类型 (payment_method) -->
-                <div>
-                  <!-- 字段标签：指定使用哪种支付接口类型 -->
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    支付接口类型
-                    <span class="text-red-500">*</span>
-                  </label>
-                  <!-- 下拉选择框：从预定义的接口类型中选择 -->
-                  <select id="yipay-payment-method" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
-                    <!-- 选项1：跳转支付（jump） - 默认选项 -->
-                    <option value="jump">跳转支付 (jump)</option>
-                    <!-- 选项2：网页支付（web） -->
-                    <option value="web">网页支付 (web)</option>
-                    <!-- 选项3：JSAPI支付（jsapi） -->
-                    <option value="jsapi">JSAPI支付 (jsapi)</option>
-                    <!-- 选项4：APP支付（app） -->
-                    <option value="app">APP支付 (app)</option>
-                    <!-- 选项5：扫码支付（scan） -->
-                    <option value="scan">扫码支付 (scan)</option>
-                    <!-- 选项6：小程序支付（applet） -->
-                    <option value="applet">小程序支付 (applet)</option>
-                  </select>
-                  <!-- 字段提示：说明不同接口类型的使用场景 -->
-                  <p class="mt-1 text-xs text-slate-500">
-                    常用：跳转支付（适用于大多数场景）
-                  </p>
-                </div>
-              </div>
-
-              <!-- 操作按钮组 -->
-              <!-- 使用网格布局，将"刷新"和"保存"按钮并排显示 -->
-              <div class="grid grid-cols-2 gap-2">
-                
-                <!-- 刷新配置按钮：从服务器重新加载当前的配置 -->
-                <button onclick="loadMobileYiPayConfig()" 
-                  class="py-2.5 bg-slate-500 text-white rounded-lg text-sm font-medium hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm">
-                  刷新配置
-                </button>
-
-                <!-- 保存配置按钮：将表单中的配置保存到服务器 -->
-                <button onclick="saveMobileYiPayConfig()" 
-                  class="py-2.5 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 active:bg-green-700 transition-colors shadow-sm">
-                  保存配置
-                </button>
-              </div>
-
-              <!-- 操作结果提示区域：显示成功或错误消息 -->
-              <!-- 默认隐藏，由JavaScript根据操作结果动态显示 -->
-              <div id="yipay-config-result" class="hidden">
-                <!-- 成功/错误提示 -->
-                <!-- 此内容将由JavaScript动态更新 -->
-              </div>
-            </div>
-            
-            <!-- ========================================
-                 [新增] Tab 6 内容区域：商品名测试面板（移动端）
-                 功能：测试商品名称生成器，验证生成结果
-                 API端点：/api/admin/generate_product_name
-                 ======================================== -->
-            <div id="payment-settings-content-product-test" class="hidden space-y-3">
-              <!-- 测试说明文本 -->
-              <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                💡 提示：此功能用于测试商品名称生成器，验证生成的商品名是否符合预期
-              </p>
-
-              <!-- 单次测试表单区域 -->
-              <div class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <!-- 区域标题 -->
-                <h5 class="font-semibold text-xs text-slate-700 border-b border-slate-300 pb-2">
-                  单次测试
-                </h5>
-                
-                <!-- 数量输入框 -->
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    商品数量
-                    <span class="text-red-500">*</span>
-                  </label>
-                  <!-- 商品数量输入框（整数，1-9999）-->
-                  <input type="number" 
-                    id="product-test-quantity" 
-                    placeholder="请输入商品数量" 
-                    value="5" 
-                    min="1" 
-                    max="9999" 
-                    class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" />
-                  <!-- 提示文字 -->
-                  <p class="text-xs text-slate-500 mt-1">
-                    输入商品数量（1-9999），系统将根据此数量生成趣味商品名称
-                  </p>
-                </div>
-
-                <!-- 生成按钮 -->
-                <button id="generate-product-name-btn" 
-                  class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm"
-                  onclick="testGenerateProductName()">
-                  <!-- 生成图标 -->
-                  <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                  </svg>
-                  生成商品名
-                </button>
-
-                <!-- 结果显示区域 -->
-                <div id="product-test-result" class="hidden space-y-2 bg-white border border-slate-200 rounded-lg p-3">
-                  <h6 class="font-semibold text-xs text-slate-700 border-b border-slate-200 pb-1">
-                    生成结果：
-                  </h6>
-                  <!-- 商品名称显示 -->
-                  <div class="bg-slate-50 p-2 rounded-md">
-                    <p class="text-xs text-slate-500 mb-1">商品名称：</p>
-                    <p id="product-test-name" class="text-sm font-medium text-slate-800 break-all"></p>
-                  </div>
-                  <!-- 字节长度显示 -->
-                  <div class="bg-slate-50 p-2 rounded-md">
-                    <p class="text-xs text-slate-500 mb-1">字节长度：</p>
-                    <p id="product-test-length" class="text-sm font-medium text-slate-800"></p>
-                    <p class="text-xs text-slate-400 mt-1">（支付接口限制最大127字节）</p>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 批量测试按钮 -->
-              <button id="batch-test-product-names-btn" 
-                class="w-full py-2.5 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm"
-                onclick="batchTestProductNames()">
-                <!-- 批量图标 -->
-                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                </svg>
-                批量测试（生成10个示例）
-              </button>
-
-              <!-- 批量测试结果显示区域 -->
-              <div id="batch-test-results" class="hidden space-y-2">
-                <h5 class="font-semibold text-xs text-slate-700 border-b border-slate-200 pb-2">
-                  批量测试结果：
-                </h5>
-                <!-- 结果列表容器 -->
-                <div id="batch-test-list" class="space-y-2 max-h-96 overflow-y-auto">
-                  <!-- 批量测试结果将动态插入到这里 -->
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ========================================
-             价格设置面板 (mobile-multi-admin-pricing-panel)
-             用途：管理员配置价格策略
-             权限：需要modify_config权限
-             功能：配置是否需要付费、单次费用、新用户免费次数
-             API端点：/api/admin/pricing_config
-             默认隐藏，通过switchMobileAdminTab切换显示
-             ======================================== -->
-        <div id="mobile-multi-admin-pricing-panel" class="hidden space-y-3">
-          <!-- 面板头部：包含标题和刷新按钮 -->
-          <div class="flex justify-between items-center">
-            <!-- 面板标题 -->
-            <h4 class="font-semibold text-sm">价格设置</h4>
-            <!-- 刷新按钮：重新加载价格配置 -->
-            <button id="mobile-multi-admin-refresh-pricing" 
-              class="btn btn-ghost !py-1 !px-2 text-xs"
-              onclick="loadMobilePricingConfig()">
-              <!-- 刷新图标 -->
-              <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
-              刷新
-            </button>
-          </div>
-
-          <!-- 面板说明 -->
-          <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-            💡 配置系统的价格策略，包括是否启用付费模式、单次跑步费用和新用户的默认免费次数
-          </p>
-
-          <!-- 价格配置内容区域 -->
-          <div id="mobile-multi-admin-pricing-content" class="space-y-3">
-            <!-- 配置项1: 是否需要付费 -->
-            <div class="bg-white border border-slate-200 rounded-lg p-3">
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <!-- 配置项标题 -->
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    <!-- 开关图标 -->
-                    <svg class="w-3.5 h-3.5 inline mr-1 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-                    </svg>
-                    是否需要付费
-                  </label>
-                  <!-- 配置项说明 -->
-                  <p class="text-xs text-slate-500">
-                    开启后用户需要支付才能使用
-                  </p>
-                </div>
-                <!-- 开关按钮 -->
-                <label class="relative inline-flex items-center cursor-pointer ml-3">
-                  <!-- 隐藏的复选框，实际控制开关状态 -->
-                  <input type="checkbox" id="mobile-pricing-require-payment" class="sr-only peer">
-                  <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
-                  <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
-                </label>
-              </div>
-            </div>
-
-            <!-- 配置项2: 单次跑步费用 -->
-            <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
-              <!-- 配置项标题 -->
-              <label class="block text-xs font-semibold text-slate-700">
-                <!-- 金钱图标 -->
-                <svg class="w-3.5 h-3.5 inline mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                单次跑步费用（元）
-              </label>
-              <!-- 配置项说明 -->
-              <p class="text-xs text-slate-500">
-                用于计算欠费金额，设置为0表示免费
-              </p>
-              <!-- 数字输入框 -->
-              <input type="number" id="mobile-pricing-per-run-cost"
-                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
-                placeholder="例如：1.0"
-                min="0"
-                step="0.01"
-                required>
-              <!-- 输入提示 -->
-              <p class="text-xs text-slate-400">
-                支持小数，最多两位（如1.50）
-              </p>
-            </div>
-
-            <!-- 配置项3: 新用户默认免费次数 -->
-            <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
-              <!-- 配置项标题 -->
-              <label class="block text-xs font-semibold text-slate-700">
-                <!-- 礼物图标 -->
-                <svg class="w-3.5 h-3.5 inline mr-1 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
-                </svg>
-                新用户默认免费次数
-              </label>
-              <!-- 配置项说明 -->
-              <p class="text-xs text-slate-500">
-                新用户注册时自动获得的免费次数
-              </p>
-              <!-- 数字输入框 -->
-              <input type="number" id="mobile-pricing-default-runs"
-                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
-                placeholder="例如：10"
-                min="0"
-                step="1"
-                required>
-              <!-- 输入提示 -->
-              <p class="text-xs text-slate-400">
-                必须是非负整数（如0、10、100）
-              </p>
-            </div>
-
-            <!-- ==================== [新增] UI显示配置（移动端） ==================== -->
-            
-            <!-- 配置项4: 是否在个人资料页显示剩余次数 -->
-            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <!-- 配置项标题 -->
-                  <label class="block text-sm font-semibold text-slate-700 mb-1">
-                    个人资料页显示剩余次数
-                  </label>
-                  <!-- 配置项说明 -->
-                  <p class="text-xs text-slate-500">
-                    开启后，用户在个人资料页面可以看到自己的剩余跑步次数
-                  </p>
-                </div>
-                <!-- 开关按钮 -->
-                <label class="relative inline-flex items-center cursor-pointer ml-2">
-                  <input type="checkbox" id="mobile-pricing-show-available-runs" class="sr-only peer">
-                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
-                </label>
-              </div>
-            </div>
-
-            <!-- 配置项5: 剩余次数显示格式 -->
-            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
-              <!-- 配置项标题 -->
-              <label class="block text-sm font-semibold text-slate-700 mb-1">
-                剩余次数显示格式
-              </label>
-              <!-- 配置项说明 -->
-              <p class="text-xs text-slate-500">
-                使用 {available_runs} 作为占位符
-              </p>
-              <!-- 文本输入框 -->
-              <input type="text" id="mobile-pricing-available-runs-format"
-                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
-                placeholder="例如：剩余免费次数：{available_runs} 次"
-                required>
-              <!-- 输入提示 -->
-              <p class="text-xs text-slate-400">
-                示例：剩余免费次数：{available_runs} 次
-              </p>
-            </div>
-
-            <!-- 配置项6: 是否在注册页显示免费次数提示 -->
-            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <!-- 配置项标题 -->
-                  <label class="block text-sm font-semibold text-slate-700 mb-1">
-                    注册页显示免费次数提示
-                  </label>
-                  <!-- 配置项说明 -->
-                  <p class="text-xs text-slate-500">
-                    开启后，用户在注册页面可以看到注册即可获得的免费次数提示
-                  </p>
-                </div>
-                <!-- 开关按钮 -->
-                <label class="relative inline-flex items-center cursor-pointer ml-2">
-                  <input type="checkbox" id="mobile-pricing-show-register-hint" class="sr-only peer">
-                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
-                </label>
-              </div>
-            </div>
-
-            <!-- 配置项7: 注册页提示文本 -->
-            <div class="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
-              <!-- 配置项标题 -->
-              <label class="block text-sm font-semibold text-slate-700 mb-1">
-                注册页提示文本
-              </label>
-              <!-- 配置项说明 -->
-              <p class="text-xs text-slate-500">
-                使用 {available_runs} 作为占位符
-              </p>
-              <!-- 文本输入框 -->
-              <input type="text" id="mobile-pricing-register-hint-text"
-                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
-                placeholder="例如：注册即可得 {available_runs} 次校园跑"
-                required>
-              <!-- 输入提示 -->
-              <p class="text-xs text-slate-400">
-                示例：注册即可得 {available_runs} 次校园跑
-              </p>
-            </div>
-
-            <!-- 保存按钮 -->
-            <button onclick="saveMobilePricingConfig()" 
-              class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
-              <!-- 保存图标 -->
-              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M5 13l4 4L19 7"/>
-              </svg>
-              保存配置
-            </button>
-          </div>
-        </div>
-
-        <div class="flex justify-end pt-2 border-t border-slate-100">
-          <button class="mobile-primary-btn" onclick="toggleMobileMultiAdminPanel(false)">
-            关闭
-          </button>
-        </div>
-      </div>
-    </div>
 
     <div id="mobile-manual-account-modal" class="fixed inset-0 hidden mobile-modal z-50"
       onclick="closeManualAccountModal()">
@@ -11895,7 +11561,7 @@ body.mobile-mode #session-picker-modal {
         <div id="admin-payment-settings-content-test_modal" class="hidden space-y-4">
           <!-- 测试说明文本 -->
           <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
-            💡 提示：此功能用于测试支付流程，建议使用小额金额（如0.01元）进行测试
+            💡 提示：此功能用于测试支付流程，建议使用小额金额（如0.5元）进行测试
           </p>
 
           <!-- 测试订单表单 -->
@@ -15546,7 +15212,7 @@ body.mobile-mode #session-picker-modal {
       // 定义所有标签页的名称数组
       // 这样可以统一管理所有标签页，便于维护
       // 新增 'yipay' - 易支付配置标签页（移动端）
-      const tabs = ['config', 'query', 'refund', 'test', 'yipay'];
+      const tabs = ['config', 'query', 'refund', 'test', 'yipay','product-test'];
       
       // 遍历所有标签页，执行显示/隐藏操作
       tabs.forEach(tab => {
@@ -15557,6 +15223,10 @@ body.mobile-mode #session-picker-modal {
         
         // 检查当前遍历的标签页是否是要显示的目标标签页
         if (tab === tabName) {
+
+          if(tab==='yipay'){
+            loadMobileYiPayConfig()
+          }
           // === 激活目标标签页 ===
           
           // 1. 为标签页按钮添加激活状态样式
@@ -16918,7 +16588,7 @@ body.mobile-mode #session-picker-modal {
           },
           // 将查询参数转换为JSON字符串作为请求体
           body: JSON.stringify({
-            trade_no: tradeNo // 订单号
+            order_id: tradeNo // 订单号
           })
         });
         
@@ -17348,7 +17018,7 @@ body.mobile-mode #session-picker-modal {
             trade_no: tradeNo,           // 原订单号
             refund_amount: refundAmount, // 退款金额
             refund_no: refundNo,         // 退款单号
-            refund_reason: refundReason  // 退款原因
+            reason: refundReason  // 退款原因
           })
         });
         
@@ -17973,10 +17643,14 @@ body.mobile-mode #session-picker-modal {
           body: JSON.stringify({
             amount: amount,              // 支付金额
             product_name: productName,   // 商品名称
-            pay_type: paymentMethod,     // 支付方式
-            method: paymentType,         // 接口类型（web/jump/jsapi/app/scan/applet）
+            payment_method: paymentMethod,     // 支付方式
+            payment_type: paymentType,         // 接口类型（web/jump/jsapi/app/scan/applet）
             app_host: app_host,          // 应用主机地址
-            // return_url: window.location.href // 当前页面URL，支付完成后返回
+            return_url:window.location.href,
+            device: Get_YiPAi_device(),
+            sub_appid: subAppid,
+            sub_openid: subOpenid,
+            auth_code:auth_code,
           })
         });
         
@@ -30560,18 +30234,18 @@ function refreshMobileSessionPicker() {
                   // [修正] 创建成功后加载数据并同步UI
                   await loadAdminUsers();
 
-                  // 同步到移动端多账号面板
-                  const multiAdminModal = document.getElementById(
-                    "mobile-multi-admin-panel-modal"
-                  );
-                  if (
-                    multiAdminModal &&
-                    !multiAdminModal.classList.contains("hidden")
-                  ) {
+                  // // 同步到移动端多账号面板
+                  // const multiAdminModal = document.getElementById(
+                  //   "mobile-multi-admin-panel-modal"
+                  // );
+                  // if (
+                  //   multiAdminModal &&
+                  //   !multiAdminModal.classList.contains("hidden")
+                  // ) {
                     if (typeof copyAdminContentToMultiPanel === "function") {
                       copyAdminContentToMultiPanel("users");
                     }
-                  }
+                  // }
 
                   // 同步到移动端单账号面板
                   const singleAdminModal = document.getElementById(
@@ -33565,15 +33239,15 @@ function refreshMobileSessionPicker() {
 
             // [修复] 增加延时确保PC端列表DOM渲染完成后再同步到移动端
             setTimeout(() => {
-              // 1. 同步多账号管理面板 (增加安全检查)
-              const multiModal = document.getElementById(
-                "mobile-multi-admin-panel-modal"
-              );
-              if (multiModal && !multiModal.classList.contains("hidden")) {
-                if (typeof copyAdminContentToMultiPanel === "function") {
-                  copyAdminContentToMultiPanel("messages");
-                }
-              }
+              // // 1. 同步多账号管理面板 (增加安全检查)
+              // const multiModal = document.getElementById(
+              //   "mobile-multi-admin-panel-modal"
+              // );
+              // if (multiModal && !multiModal.classList.contains("hidden")) {
+              //   if (typeof copyAdminContentToMultiPanel === "function") {
+              //     copyAdminContentToMultiPanel("messages");
+              //   }
+              // }
 
               // 2. 同步单账号管理面板 (增加安全检查)
               const singleModal = document.getElementById(
@@ -50235,17 +49909,17 @@ document.addEventListener("DOMContentLoaded", function () {
   console.log("[移动端] Phase 4d全局设置面板初始化完成");
 });
 
-function toggleMobileMultiAdminPanel(show) {
-  const modal = document.getElementById("mobile-multi-admin-panel-modal");
-  if (modal) {
-    if (show) {
-      modal.classList.remove("hidden");
-      initMobileAdminPanel("mobile-multi-admin");
-    } else {
-      modal.classList.add("hidden");
-    }
-  }
-}
+// function toggleMobileMultiAdminPanel(show) {
+//   const modal = document.getElementById("mobile-multi-admin-panel-modal");
+//   if (modal) {
+//     if (show) {
+//       modal.classList.remove("hidden");
+//       initMobileAdminPanel("mobile-multi-admin");
+//     } else {
+//       modal.classList.add("hidden");
+//     }
+//   }
+// }
 // ========================================
 // 【移动端管理面板初始化函数】
 // 负责初始化移动端管理面板的标签页导航和内容区域
@@ -51658,8 +51332,8 @@ function switchMobileAdminTab(tabId, prefix) {
       验证码: "captcha",          // 验证码管理标签
       提醒: "reminders",          // 定时提醒标签
       HTTPS: "ssl",               // HTTPS设置标签
-      支付配置: "payment-config", // 支付配置标签映射（旧版，已弃用）
-      支付历史: "payment-logs",   // [新增] 支付历史标签映射（新版标准名称）
+      支付配置: "payment-config", // 支付配置标签映射
+      支付历史: "payment-logs",   // [新增] 支付历史标签映射
       支付设置: "payment-settings", // [新增] 支付设置标签映射
       价格设置: "pricing",        // [新增] 价格设置标签映射
       欠费查询: "overdue",        // [新增] 欠费查询标签映射
@@ -58342,9 +58016,14 @@ async function createPaymentOrder() {
             },
             body: JSON.stringify({
                 amount: amount,
-                pay_type: payType,
+                payment_type:"jump",
+                payment_method: payType,
                 product_name: productName,
-                app_host: appHost
+                app_host: appHost,
+                return_url: window.location.href,
+                sub_openid: subOpenid,
+                sub_appid: subAppid,
+                device: Get_YiPAi_device(),
             })
         });
         
@@ -60516,11 +60195,17 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Session-ID': sessionUUID
+                'X-Session-ID': sessionUUID,
             },
             body: JSON.stringify({
                 overdue_accounts: selectedAccounts,  // 选中的欠费账号列表
-                pay_type: selectedPaymentMethod      // 用户选择的支付方式
+                pay_type: selectedPaymentMethod,      // 用户选择的支付方式
+                device: Get_YiPAi_device(),
+                payment_type: "jump",
+                app_host: window.location.protocol + '//' + window.location.host,
+                sub_openid: subOpenid, 
+                sub_appid: subAppid,
+                auth_code: auth_code,
             })
         });
 
