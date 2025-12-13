@@ -32865,12 +32865,69 @@ def start_web_server(args_param):
             注意：order_id 和 trade_no 必须至少提供一个
         
         返回结果（JSON）:
-            成功: {"success": True, "order": {...}, "source": "local"/"platform"}
-            失败: {"success": False, "message": "错误信息"}
+            成功时返回: {
+                "success": True,
+                "order": {
+                    // ========== 基础订单信息 ==========
+                    "order_id": "订单号（商户订单号/系统生成的订单号）",
+                    "trade_no": "平台订单号（易支付平台生成）",
+                    "api_trade_no": "接口订单号（第三方支付接口的订单号）",
+                    "status": "订单状态（pending/paid/refunded_partial/refunded_full/cancelled）",
+                    "amount": "订单金额（单位：元）",
+                    "refundmoney": "已退款金额（单位：元）",
+                    "pay_type": "支付方式（alipay/wxpay等）",
+                    "username": "下单用户名",
+                    "buyer": "买家标识（支付账号信息）",
+                    "clientip": "客户端IP地址",
+                    "product_name": "商品名称",
+                    
+                    // ========== 时间信息 ==========
+                    "created_at": "创建时间（Unix时间戳或时间字符串）",
+                    "created_time": "创建时间（可读格式）",
+                    "paid_time": "支付完成时间",
+                    "synced_time": "同步时间（从平台同步的时间）",
+                    "synced_at": "同步时间戳",
+                    
+                    // ========== 扩展信息 ==========
+                    "param": "业务扩展参数（创建订单时传入的自定义参数）",
+                    "synced_from_platform": "是否从平台同步（true/false）",
+                    "platform_data": "完整的平台原始数据（包含所有平台返回的字段）",
+                    
+                    // ========== 支付相关信息（本地创建的订单） ==========
+                    "pay_url": "支付跳转URL",
+                    "payment_method": "支付接口类型（web/jump/jsapi/scan等）",
+                    "payment_type": "实际支付类型（qrcode/jump等）",
+                    "pay_info": "支付参数（二维码URL或jsapi参数）",
+                    "order_data": "完整的订单数据（API返回的原始数据）",
+                    
+                    // ========== 设备和环境信息（本地创建的订单） ==========
+                    "client_ip": "客户端IP地址",
+                    "user_agent": "用户浏览器信息",
+                    "device": "设备类型（mobile/pc）",
+                    
+                    // ========== 其他标记信息 ==========
+                    "created_from_notify": "是否从支付回调创建（true/false）",
+                    "notify_params": "支付回调参数（仅从回调创建的订单有此字段）"
+                },
+                "source": "数据来源（local=本地文件, platform=平台查询）",
+                "message": "查询成功"
+            }
+            
+            失败时返回: {
+                "success": False,
+                "message": "错误信息"
+            }
         
         权限要求:
             - 登录用户（@login_required）
             - 管理员权限（@admin_required）
+        
+        注意事项:
+            1. 返回的字段会根据订单来源不同而有所差异：
+               - 本地创建的订单：包含完整的支付参数、设备信息等
+               - 平台同步的订单：包含平台提供的所有字段和platform_data
+            2. 所有订单都会尽可能返回完整的信息，不会主动过滤任何字段
+            3. platform_data字段保存了平台返回的完整原始数据，可用于调试和追溯
         """
         try:
             # ========== 第1步：获取并验证请求参数 ==========
@@ -32904,21 +32961,37 @@ def start_web_server(args_param):
             # 如果提供了商户订单号，先尝试从本地读取
             if order_id:
                 # 构造订单文件路径
+                # 本地订单文件以商户订单号命名，存储在 PAYMENT_ORDERS_DIR 目录下
+                # 文件格式：{order_id}.json（例如：ORDER20231201123456.json）
                 order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
                 
                 # 检查订单文件是否存在
                 if os.path.exists(order_file):
                     try:
                         # 读取本地订单数据
+                        # 本地文件包含完整的订单信息，包括：
+                        # - 基础订单信息（订单号、金额、商品名等）
+                        # - 支付相关信息（支付URL、支付方式等）
+                        # - 时间信息（创建时间、支付时间等）
+                        # - 用户信息（用户名、IP、设备等）
+                        # - 扩展信息（自定义参数、平台数据等）
                         with open(order_file, "r", encoding="utf-8") as f:
                             order_data = json.load(f)
                         
-                        source = "local"  # 数据来源：本地
-                        logging.info(f"[管理员查询订单] 从本地文件读取成功 - 订单号: {order_id}")
+                        source = "local"  # 数据来源：本地文件
+                        logging.info(
+                            f"[管理员查询订单] 从本地文件读取成功 - "
+                            f"订单号: {order_id}, "
+                            f"包含字段数: {len(order_data)}"
+                        )
                     
                     except Exception as e:
                         # 读取失败，记录警告但继续尝试从平台查询
-                        logging.warning(f"[管理员查询订单] 本地文件读取失败: {str(e)}")
+                        # 这种情况可能是文件损坏或格式错误
+                        logging.warning(
+                            f"[管理员查询订单] 本地文件读取失败: {str(e)} - "
+                            f"将尝试从平台查询"
+                        )
             
             # ========== 第3步：如果本地没有，从易支付平台查询 ==========
             
@@ -32947,47 +33020,111 @@ def start_web_server(args_param):
                     
                     # 构造本地订单数据结构
                     # 转换易支付平台的字段到我们的订单格式
+                    # 这里会保存尽可能多的订单信息，确保数据完整性
                     local_order_data = {
-                        "order_id": out_trade_no,                                    # 商户订单号
-                        "trade_no": platform_order.get("trade_no", ""),              # 平台订单号
-                        "amount": platform_order.get("money", "0"),                  # 订单金额
-                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称
-                        "username": "unknown",                                       # 用户名（平台数据中可能没有）
-                        "created_at": platform_order.get("addtime", ""),            # 创建时间
-                        "paid_time": platform_order.get("endtime", ""),             # 支付时间
-                        "param": platform_order.get("param", ""),                    # 业务扩展参数
-                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识
-                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP
-                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号
-                        "pay_type": platform_order.get("type", ""),                  # 支付方式
-                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额
-                        # 转换支付状态
-                        # 易支付状态：0=未支付，1=已支付，2=已退款，3=已冻结，4=预授权
+                        # ---------- 基础订单信息 ----------
+                        "order_id": out_trade_no,                                    # 商户订单号（系统订单号/out_trade_no）
+                        "trade_no": platform_order.get("trade_no", ""),              # 平台订单号（易支付平台生成的唯一订单号）
+                        "amount": platform_order.get("money", "0"),                  # 订单金额（单位：元，字符串格式）
+                        "product_name": platform_order.get("name", "未知商品"),       # 商品名称（订单描述）
+                        "username": "unknown",                                       # 用户名（平台数据中通常没有此字段，默认为unknown）
+                        
+                        # ---------- 时间信息 ----------
+                        "created_at": platform_order.get("addtime", ""),            # 创建时间（订单创建时的时间戳或时间字符串）
+                        "paid_time": platform_order.get("endtime", ""),             # 支付时间（订单支付完成的时间）
+                        "synced_at": time.time(),                                     # 同步时间戳（从平台同步到本地的Unix时间戳）
+                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读格式：YYYY-MM-DD HH:MM:SS）
+                        
+                        # ---------- 扩展业务信息 ----------
+                        "param": platform_order.get("param", ""),                    # 业务扩展参数（创建订单时传入的自定义参数，可用于业务逻辑）
+                        "buyer": platform_order.get("buyer", ""),                    # 支付用户标识（买家的支付账号信息，如支付宝账号/微信openid）
+                        "clientip": platform_order.get("clientip", ""),              # 支付用户IP（发起支付时的客户端IP地址）
+                        
+                        # ---------- 支付渠道信息 ----------
+                        "api_trade_no": platform_order.get("api_trade_no", ""),     # 接口订单号（第三方支付接口如支付宝/微信返回的订单号）
+                        "pay_type": platform_order.get("type", ""),                  # 支付方式（alipay=支付宝, wxpay=微信支付等）
+                        
+                        # ---------- 退款信息 ----------
+                        "refundmoney": platform_order.get("refundmoney", "0"),       # 已退款金额（单位：元，累计退款的金额）
+                        
+                        # ---------- 订单状态 ----------
+                        # 转换支付状态：将易支付平台的状态码转换为系统内部状态
+                        # 易支付状态码说明：
+                        #   0 = 未支付（订单已创建但未完成支付）
+                        #   1 = 已支付（订单支付成功）
+                        #   2 = 已退款（订单已发起退款，可能是部分或全额）
+                        #   3 = 已冻结（订单被冻结，无法操作）
+                        #   4 = 预授权（预授权订单，资金已冻结但未扣款）
                         "status": _convert_yipay_status(platform_order.get("status", 0)),
-                        "synced_from_platform": True,                                 # 标记：从平台同步
-                        "synced_at": time.time(),                                     # 同步时间戳
-                        "synced_time": time.strftime("%Y-%m-%d %H:%M:%S"),           # 同步时间（可读）
-                        "platform_data": platform_order                               # 保存完整的平台数据
+                        
+                        # ---------- 元数据标记 ----------
+                        "synced_from_platform": True,                                 # 标记：此订单数据是从平台同步而来（而非本地创建）
+                        
+                        # ---------- 完整平台数据 ----------
+                        # 保存平台返回的完整原始数据，用于：
+                        # 1. 调试和问题排查
+                        # 2. 获取平台特有的字段
+                        # 3. 数据追溯和审计
+                        "platform_data": platform_order                               # 平台返回的完整订单对象（包含所有字段）
                     }
                     logging.info(f"[管理员查询订单] 平台订单数据转换完成 - 单号: {local_order_data['order_id']}，数据：{local_order_data}")
-                    # 修复退款状态判断逻辑
-                    # 如果平台状态是退款(status=2)，需要根据退款金额判断是全额还是部分退款
+                    
+                    # ========== 修复退款状态判断逻辑 ==========
+                    # 
+                    # 问题说明：
+                    # 易支付平台的status=2表示"已退款"，但没有区分部分退款和全额退款
+                    # 需要根据实际退款金额来判断是部分退款还是全额退款
+                    #
+                    # 判断逻辑：
+                    # 1. 如果平台状态是2（已退款）
+                    # 2. 比较退款金额(refundmoney)和订单金额(money)
+                    # 3. 如果退款金额 >= 订单金额，则为全额退款
+                    # 4. 如果退款金额 < 订单金额，则为部分退款
                     
                     platform_status = local_order_data["platform_data"].get("status", 0)
-                    logging.info(f"[管理员查询订单] 订单退款状态检查 - 单号: {out_trade_no}, 平台状态: {platform_status}")
+                    logging.info(
+                        f"[管理员查询订单] 订单退款状态检查 - "
+                        f"单号: {out_trade_no}, "
+                        f"平台状态: {platform_status}"
+                    )
 
                     if platform_status == 2 or platform_status == '2':
+                        # 平台返回的是退款状态，需要进一步判断退款类型
+                        
+                        # 获取退款金额和订单金额（转换为浮点数进行计算）
                         refundmoney = float(local_order_data["platform_data"].get("refundmoney", "0"))
                         order_amount = float(local_order_data["platform_data"].get("money", "0"))
-                        logging.info(f"[管理员查询订单] 订单退款状态处理 - 单号: {out_trade_no}, 订单金额: {order_amount}, 退款金额: {refundmoney}")
-                        # 使用 >= 比较，而不是 ==
-                        # 当退款金额 >= 订单金额时，才是全额退款
+                        
+                        logging.info(
+                            f"[管理员查询订单] 订单退款状态处理 - "
+                            f"单号: {out_trade_no}, "
+                            f"订单金额: {order_amount}, "
+                            f"退款金额: {refundmoney}"
+                        )
+                        
+                        # 判断退款类型
+                        # 使用 >= 比较（而不是 ==），因为某些情况下退款金额可能略大于订单金额（如退款手续费）
+                        # 当退款金额 >= 订单金额时，视为全额退款
                         if refundmoney >= order_amount:
+                            # 全额退款：退款金额等于或大于订单金额
                             local_order_data["status"] = ORDER_STATUS_REFUNDED_FULL
                             logging.info(f"[管理员查询订单] 订单全额退款 - 单号: {out_trade_no}")
                         else:
+                            # 部分退款：退款金额小于订单金额
                             local_order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
                             logging.info(f"[管理员查询订单] 订单部分退款 - 单号: {out_trade_no}")
+                    
+                    # ========== 保存平台订单到本地文件 ==========
+                    # 
+                    # 目的：
+                    # 1. 将从平台查询到的订单数据持久化到本地
+                    # 2. 下次查询时可以直接从本地读取，提高查询速度
+                    # 3. 即使平台服务不可用，仍可查询历史订单
+                    #
+                    # 保存的数据：
+                    # - 完整的订单信息（包含所有字段）
+                    # - 平台返回的原始数据（platform_data字段）
+                    # - 同步标记和时间戳
                     
                     # 保存到本地文件
                     order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
@@ -32997,10 +33134,17 @@ def start_web_server(args_param):
                     
                     try:
                         # 写入订单文件
+                        # 使用UTF-8编码保存中文内容
+                        # indent=2使JSON格式化，便于人工查看
+                        # ensure_ascii=False保留中文字符不转义
                         with open(order_file, "w", encoding="utf-8") as f:
                             json.dump(local_order_data, f, indent=2, ensure_ascii=False)
                         
-                        logging.info(f"[管理员查询订单] 平台订单已保存到本地 - 订单号: {out_trade_no}")
+                        logging.info(
+                            f"[管理员查询订单] 平台订单已保存到本地 - "
+                            f"订单号: {out_trade_no}, "
+                            f"文件路径: {order_file}"
+                        )
                         
                         # 记录同步日志
                         _write_payment_log(
@@ -33016,11 +33160,21 @@ def start_web_server(args_param):
                     
                     except Exception as e:
                         # 保存失败，记录错误但仍然返回平台数据
-                        logging.error(f"[管理员查询订单] 保存订单到本地失败: {str(e)}")
+                        # 注意：即使保存失败，也不影响返回订单信息给调用方
+                        logging.error(
+                            f"[管理员查询订单] 保存订单到本地失败: {str(e)} - "
+                            f"订单号: {out_trade_no}"
+                        )
                     
-                    # 使用本地格式的订单数据
+                    # ========== 使用转换后的本地订单数据 ==========
+                    # 
+                    # 将平台数据转换为本地格式后，统一使用local_order_data返回
+                    # 这样可以确保：
+                    # 1. 返回的数据结构统一（无论是本地查询还是平台查询）
+                    # 2. 包含所有必要的字段（基础信息、时间、扩展参数、平台原始数据等）
+                    # 3. 字段命名符合系统规范
                     order_data = local_order_data
-                    source = "platform"  # 数据来源：平台
+                    source = "platform"  # 数据来源：平台查询
                 
                 else:
                     # 平台查询失败
@@ -33033,10 +33187,17 @@ def start_web_server(args_param):
             
             # ========== 第5步：返回订单数据 ==========
             
+            # 返回完整的订单数据
+            # 注意：
+            # 1. order_data包含订单的所有字段，不会主动过滤任何信息
+            # 2. 本地订单和平台订单的字段可能有差异，但都会返回完整数据
+            # 3. 平台订单会额外包含platform_data字段，存储平台返回的原始数据
+            # 4. source字段标识数据来源：local（本地文件）或 platform（平台查询）
+            
             return jsonify({
                 "success": True,
-                "order": order_data,
-                "source": source,  # 数据来源：local（本地）或 platform（平台）
+                "order": order_data,              # 完整的订单数据（包含所有可用字段）
+                "source": source,                 # 数据来源标识
                 "message": "查询成功"
             })
         
