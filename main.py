@@ -30333,27 +30333,87 @@ def start_web_server(args_param):
     def payment_methods_config():
         """
         获取支付方式配置接口
+        
+        功能说明：
+        此接口返回支付方式的完整配置信息和当前启用的支付方式列表。
+        
+        返回数据格式：
+        {
+            "success": true,
+            "methods": {
+                "alipay": {"name": "支付宝", "svg": "...", ...},
+                "wxpay": {"name": "微信支付", "svg": "...", ...},
+                ...
+            },
+            "enabled_methods": ["alipay", "wxpay", ...]
+        }
         """
         try:
-            # 调用 _read_payment_methods_config() 函数从 JSON 文件读取配置
-            # 此函数会自动处理文件不存在、格式错误等异常情况，并返回默认配置
+            # ========== 第1步：读取支付方式的完整配置信息 ==========
+            # 调用 _read_payment_methods_config() 函数从 payment_methods.json 文件读取配置
+            # 此函数返回所有支付方式的详细配置（名称、SVG图标、颜色等）
+            # 如果文件不存在或读取失败，函数会自动返回默认配置
             methods_config = _read_payment_methods_config()
 
             # 记录日志，便于调试和监控
-            # 输出当前读取到的支付方式数量
+            # 输出当前读取到的支付方式总数
             logging.info(f"[支付方式配置] 成功读取配置，共 {len(methods_config)} 个支付方式")
 
-            # 返回成功响应，包含所有支付方式的配置信息
-            # 前端可以直接使用这个字典，无需再次解析
+            # ========== 第2步：从 config.ini 读取启用的支付方式列表 ==========
+            # 启用状态存储在 config.ini 文件的 [Rainbow_YiPay] 节中
+            # 配置格式为逗号分隔的字符串，例如："alipay,wxpay"
+            
+            # 创建配置解析器对象
+            config = configparser.ConfigParser()
+            
+            # 读取配置文件
+            # encoding="utf-8" 确保正确读取中文内容
+            config.read("config.ini", encoding="utf-8")
+            
+            # 获取启用的支付方式配置
+            # fallback 参数指定默认值："alipay,wxpay"（当配置项不存在时使用）
+            enabled_methods_str = config.get(
+                "Rainbow_YiPay",
+                "enabled_payment_methods",
+                fallback="alipay,wxpay"
+            ).strip()
+            
+            # 将逗号分隔的字符串转换为列表
+            # 使用列表推导式处理字符串：
+            # 1. split(",") 按逗号分割
+            # 2. method.strip() 去除空格
+            # 3. if method.strip() 过滤空字符串
+            enabled_methods = [
+                method.strip() 
+                for method in enabled_methods_str.split(",") 
+                if method.strip()
+            ]
+            
+            # 如果解析结果为空，使用默认列表
+            if not enabled_methods:
+                enabled_methods = ["alipay", "wxpay"]
+                logging.warning(
+                    f"[支付方式配置] config.ini中未配置启用的支付方式，使用默认值: {enabled_methods}"
+                )
+            
+            # 记录当前启用的支付方式
+            logging.info(f"[支付方式配置] 当前启用的支付方式: {enabled_methods}")
+
+            # ========== 第3步：返回完整的配置信息 ==========
+            # 返回成功响应，包含完整配置和启用列表
+            # 前端可以根据需要使用这两个字段
             return jsonify({
                 "success": True,  # 标识请求成功
-                "methods": methods_config  # 支付方式配置字典
+                "methods": methods_config,  # 所有支付方式的完整配置信息
+                "enabled_methods": enabled_methods  # 当前启用的支付方式列表
             })
+            
         except Exception as e:
-            # 捕获所有可能的异常（虽然 _read_payment_methods_config 已经处理了大部分异常）
+            # 捕获所有可能的异常
             # 记录错误日志，包含完整的异常堆栈，便于排查问题
             logging.error(f"[支付方式配置] 读取配置失败: {str(e)}")
             logging.error(traceback.format_exc())
+            
             # 返回错误响应，HTTP状态码 500 表示服务器内部错误
             return jsonify({
                 "success": False,  # 标识请求失败
@@ -31461,17 +31521,93 @@ def start_web_server(args_param):
             # 如果前端未传递此参数，默认使用支付宝
             pay_type = data.get("pay_type", "alipay")
 
-            # 验证支付方式是否合法
-            # 从配置文件动态获取支持的支付方式列表（与前端保持一致）
-            methods_config = _read_payment_methods_config()
-            allowed_pay_types = list(methods_config.keys()) if methods_config else ["alipay"]
-            
-            if pay_type not in allowed_pay_types:
-                # 如果传入的支付方式不在允许列表中，记录警告并使用默认值
-                logging.warning(f"[欠费支付] 收到非法的支付方式: {pay_type}，使用默认值 alipay")
-                pay_type = "alipay"
+            # ========== 从配置文件读取启用的支付方式列表 ==========
+            # 启用的支付方式列表存储在 config.ini 文件的 [Rainbow_YiPay] 节中
+            # 配置格式为逗号分隔的字符串，例如："alipay,wxpay,bank"
+            try:
+                # 创建配置解析器对象
+                # ConfigParser 是 Python 标准库中用于读取 INI 格式配置文件的类
+                config = configparser.ConfigParser()
+                
+                # 读取配置文件
+                # encoding="utf-8" 确保正确读取中文内容
+                config.read("config.ini", encoding="utf-8")
+                
+                # 获取启用的支付方式配置
+                # config.get() 方法从指定节（Rainbow_YiPay）获取指定键（enabled_payment_methods）的值
+                # fallback 参数指定默认值："alipay,wxpay"（当配置项不存在时使用）
+                enabled_methods_str = config.get(
+                    "Rainbow_YiPay",
+                    "enabled_payment_methods",
+                    fallback="alipay,wxpay"
+                ).strip()
+                
+                # 将逗号分隔的字符串转换为列表
+                # 使用列表推导式（List Comprehension）处理字符串：
+                # 1. split(",") 按逗号分割字符串
+                # 2. method.strip() 去除每个元素的前后空格
+                # 3. if method.strip() 过滤掉空字符串
+                # 例如："alipay, wxpay, " -> ["alipay", "wxpay"]
+                enabled_methods = [
+                    method.strip() 
+                    for method in enabled_methods_str.split(",") 
+                    if method.strip()
+                ]
+                
+                # 记录读取到的启用支付方式
+                # 这有助于调试和审计
+                logging.info(
+                    f"[欠费支付] 从config.ini读取到 {len(enabled_methods)} 个启用的支付方式: {enabled_methods}"
+                )
+                
+                # 如果配置为空或解析失败，使用默认的支付方式列表
+                # 这是一个回退机制，确保系统始终有可用的支付方式
+                if not enabled_methods:
+                    enabled_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
+                    logging.warning(
+                        f"[欠费支付] config.ini中没有配置启用的支付方式，使用默认列表: {enabled_methods}"
+                    )
+                
+                # ========== 验证用户选择的支付方式是否在启用列表中 ==========
+                # 使用 in 操作符检查 pay_type 是否在 enabled_methods 列表中
+                if pay_type not in enabled_methods:
+                    # 用户选择的支付方式未启用，记录警告日志
+                    # 这可能是因为：
+                    # 1. 前端缓存了旧的支付方式列表
+                    # 2. 用户篡改了请求数据
+                    # 3. 管理员刚刚禁用了该支付方式
+                    logging.warning(
+                        f"[欠费支付] 收到未启用的支付方式: {pay_type}，"
+                        f"已启用的支付方式: {enabled_methods}，将使用第一个启用的支付方式"
+                    )
+                    
+                    # 自动切换到启用列表中的第一个支付方式
+                    # 这是一个友好的回退机制，避免直接返回错误
+                    # 如果启用列表为空（理论上不可能，因为上面有回退逻辑），则使用 "alipay"
+                    pay_type = enabled_methods[0] if enabled_methods else "alipay"
+                    
+                    # 记录最终使用的支付方式
+                    logging.info(
+                        f"[欠费支付] 已自动切换到支付方式: {pay_type}"
+                    )
+                    
+            except Exception as e:
+                # 捕获所有异常（文件读取错误、配置解析错误等）
+                # 这确保即使配置文件有问题，系统也能继续运行
+                logging.error(f"[欠费支付] 读取config.ini配置失败: {str(e)}")
+                logging.error(traceback.format_exc())
+                
+                # 出错时使用默认的支付方式验证逻辑
+                # 使用硬编码的默认支付方式列表作为最后的回退方案
+                default_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
+                if pay_type not in default_methods:
+                    logging.warning(
+                        f"[欠费支付] 支付方式 {pay_type} 不在默认列表中，强制使用 alipay"
+                    )
+                    pay_type = "alipay"
 
-            # 记录用户选择的支付方式（用于调试和统计）
+            # 记录用户最终使用的支付方式（用于调试和统计）
+            # 这条日志会出现在每次支付订单创建时
             logging.info(f"[欠费支付] 用户选择的支付方式: {pay_type}")
 
             # 验证欠费账号列表是否为空
@@ -32658,10 +32794,13 @@ def start_web_server(args_param):
                 # ========== 处理GET请求：获取当前配置 ==========
 
                 # 读取配置文件
+                # ConfigParser 用于读取 INI 格式的配置文件
                 config = configparser.ConfigParser()
                 config.read("config.ini", encoding="utf-8")
 
                 # 获取当前启用的支付方式
+                # 从 [Rainbow_YiPay] 节读取 enabled_payment_methods 配置项
+                # 格式为逗号分隔的字符串，如 "alipay,wxpay"
                 enabled_methods_str = config.get(
                     "Rainbow_YiPay",
                     "enabled_payment_methods",
@@ -32669,6 +32808,7 @@ def start_web_server(args_param):
                 ).strip()
 
                 # 解析为列表
+                # 使用列表推导式将逗号分隔的字符串转换为列表
                 enabled_methods = [
                     method.strip()
                     for method in enabled_methods_str.split(",")
@@ -32679,8 +32819,19 @@ def start_web_server(args_param):
                 if not enabled_methods:
                     enabled_methods = ["alipay", "wxpay"]
 
+                # ========== 读取支付方式的完整配置信息 ==========
+                # 调用 _read_payment_methods_config() 从 payment_methods.json 读取
+                # 该文件包含所有支付方式的详细配置（名称、SVG图标、颜色等）
+                payment_methods = _read_payment_methods_config()
+                
+                # 记录日志
+                logging.info(
+                    f"[管理员配置] 读取支付方式配置 - 启用: {enabled_methods}, "
+                    f"总数: {len(payment_methods)}"
+                )
+
                 # 构造返回数据
-                # 包含当前启用的支付方式和所有可用的支付方式
+                # 包含当前启用的支付方式、所有支付方式列表和完整配置
                 return jsonify({
                     "success": True,
                     "config": {
@@ -32689,7 +32840,8 @@ def start_web_server(args_param):
                             {"code": code, "name": name}
                             for code, name in all_methods.items()
                         ]
-                    }
+                    },
+                    "payment_methods": payment_methods  # 添加完整的支付方式配置
                 })
 
             elif request.method == "PUT":
@@ -35657,39 +35809,91 @@ def start_web_server(args_param):
                 found_auth_username = None
                 
                 try:
-                    # 获取所有系统用户列表
-                    # auth_system.users_file 包含所有注册用户的信息
-                    users_data = auth_system._load_users()
+                    # ========== 获取所有系统用户列表 ==========
+                    # 由于 _load_users 方法不存在，我们需要直接遍历 system_accounts 目录
+                    # system_accounts 目录存储了所有用户的信息，每个用户对应一个JSON文件
                     
-                    # 遍历每个用户
-                    for username in users_data.keys():
+                    # 获取 system_accounts 目录路径
+                    # SYSTEM_ACCOUNTS_DIR 是全局常量，定义了系统账号存储目录
+                    system_accounts_dir = SYSTEM_ACCOUNTS_DIR
+                    
+                    # 检查目录是否存在
+                    # 如果目录不存在，说明系统配置有问题，需要返回错误
+                    if not os.path.exists(system_accounts_dir):
+                        logging.error(
+                            f"[管理员操作] system_accounts 目录不存在: {system_accounts_dir}"
+                        )
+                        return jsonify({
+                            "success": False,
+                            "message": "系统用户目录不存在，请联系管理员"
+                        }), 500
+                    
+                    # ========== 遍历所有用户文件（*.json） ==========
+                    # os.listdir() 返回目录下所有文件和子目录的名称列表
+                    for filename in os.listdir(system_accounts_dir):
+                        # 过滤非JSON文件
+                        # 只处理以 .json 结尾的文件，跳过其他文件（如临时文件、备份文件等）
+                        if not filename.endswith('.json'):
+                            continue
+                        
+                        # 从文件名提取用户名
+                        # 文件名格式为 "用户名.json"，例如 "admin.json"
+                        # 使用切片 [:-5] 移除后缀 ".json"（5个字符）
+                        username = filename[:-5]
+                        
                         # 跳过游客用户
+                        # 游客账号是临时账号，不需要处理
                         if username == "guest":
                             continue
                         
-                        # 加载该用户的学校账号列表
+                        # ========== 加载该用户的学校账号列表 ==========
+                        # _load_user_school_accounts 是 AuthSystem 类的方法
+                        # 它返回该用户拥有的所有学校账号的字典
+                        # 字典格式：{school_username: {"password": "xxx", "ua": "xxx", ...}, ...}
                         user_school_accounts = auth_system._load_user_school_accounts(username)
                         
-                        # 检查该用户是否拥有指定的学校账号
+                        # ========== 检查该用户是否拥有指定的学校账号 ==========
+                        # 使用 in 操作符检查 school_username 是否在字典的键中
                         if school_username in user_school_accounts:
+                            # 找到了！记录找到的用户名
                             found_auth_username = username
                             logging.info(
                                 f"[管理员操作] 找到学校账号 {school_username} 的所属用户: {username}"
                             )
+                            # 找到后立即退出循环，不需要继续遍历
                             break
                     
-                    # 如果找到了，使用找到的用户名
+                    # ========== 处理查找结果 ==========
+                    
+                    # 如果找到了所属用户，使用找到的用户名
                     if found_auth_username:
                         auth_username = found_auth_username
+                        logging.info(
+                            f"[管理员操作] 自动查找成功，将使用用户 {auth_username} 的数据"
+                        )
                     else:
-                        # 如果没找到，返回错误
+                        # 如果没找到，说明该学校账号不属于任何系统用户
+                        # 这可能是因为：
+                        # 1. 学校账号不存在
+                        # 2. 学校账号已被删除
+                        # 3. 输入的学校账号名称有误
+                        logging.warning(
+                            f"[管理员操作] 未找到学校账号 {school_username} 的所属用户"
+                        )
                         return jsonify({
                             "success": False,
                             "message": f"未找到学校账号 {school_username} 的所属用户"
                         }), 404
                         
                 except Exception as e:
-                    logging.error(f"[管理员操作] 查找学校账号所属用户时出错: {str(e)}")
+                    # 捕获所有异常，记录详细的错误信息
+                    # 使用 traceback 模块记录完整的堆栈跟踪，便于调试
+                    logging.error(
+                        f"[管理员操作] 查找学校账号所属用户时出错: {str(e)}"
+                    )
+                    logging.error(traceback.format_exc())
+                    
+                    # 返回友好的错误信息给前端
                     return jsonify({
                         "success": False,
                         "message": f"查找学校账号所属用户失败: {str(e)}"

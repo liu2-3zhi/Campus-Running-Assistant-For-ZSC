@@ -60116,65 +60116,127 @@ async function showOverduePaymentModal(overdueAccounts) {
  * @param {Number} singleRunCost - 单次费用（从后端配置获取）
  */
 async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
-    // ========== 第一步：获取启用的支付方式 ==========
+    // ========== 第一步：获取启用的支付方式和完整配置 ==========
     
+    // 声明两个变量用于存储支付方式数据
+    // enabledPaymentMethods: 存储已启用的支付方式代码列表，如 ["alipay", "wxpay"]
+    // paymentMethodsFullConfig: 存储完整的支付方式配置对象，包含SVG、名称、颜色等详细信息
     let enabledPaymentMethods = [];
+    let paymentMethodsFullConfig = {};
+
     try {
-        // 调用后端API获取支付方式配置
-        // 后端返回的是一个字典，键是支付方式代码（alipay/wxpay等），值是详细配置
-        const response = await fetch('/api/payment/methods_config', {
-            method: 'GET',
+        // ========== 第一步A：获取启用的支付方式列表 ==========
+        // 调用 /api/payment/methods_config 接口获取当前启用的支付方式列表
+        // 该接口返回已启用的支付方式的代码数组
+        const methodsResponse = await fetch('/api/payment/methods_config', {
+            method: 'GET',  // 使用 GET 方法获取数据
             headers: {
-                'X-Session-ID': sessionUUID  // 携带会话ID进行身份验证
+                'Content-Type': 'application/json',  // 设置请求头，声明期望返回JSON格式
+                'X-Session-ID': sessionUUID  // 携带会话ID进行身份验证，防止未登录访问
             }
         });
         
-        const result = await response.json();
+        // 解析响应体为JSON对象
+        const methodsResult = await methodsResponse.json();
         
-        // 如果API调用成功且返回了支付方式配置
-        if (result.success && result.methods) {
-            // 从配置字典中提取所有的支付方式代码（键名）
-            // Object.keys() 返回对象的所有键组成的数组
-            enabledPaymentMethods = Object.keys(result.methods);
+        // 检查API调用是否成功，并且返回了支付方式配置
+        // result.success 表示服务端处理成功
+        // result.enabled_methods 是启用的支付方式代码数组
+        if (methodsResult.success && methodsResult.enabled_methods) {
+            // 将启用的支付方式列表赋值给变量
+            // 例如：["alipay", "wxpay", "qqpay"]
+            enabledPaymentMethods = methodsResult.enabled_methods;
+            
+            // 输出日志，便于调试
+            console.log('[欠费支付] 成功获取启用的支付方式列表:', enabledPaymentMethods);
         }
+        
+        // ========== 第一步B：获取完整的支付方式配置（包含SVG、名称等） ==========
+        // 调用 /api/admin/payment/config 接口获取支付方式的完整配置
+        // 该接口返回每个支付方式的详细信息：SVG图标、中文名称、品牌颜色等
+        const configResponse = await fetch('/api/admin/payment/config', {
+            method: 'GET',  // 使用 GET 方法获取数据
+            headers: {
+                'Content-Type': 'application/json',  // 设置请求头
+                'X-Session-ID': sessionUUID  // 携带会话ID
+            }
+        });
+        
+        // 解析响应体为JSON对象
+        const configResult = await configResponse.json();
+        
+        // 检查API调用是否成功，并且返回了支付方式配置对象
+        // configResult.payment_methods 是一个对象，键是支付方式代码，值是配置详情
+        // 例如：{ "alipay": { "name": "支付宝", "svg": "<svg>...</svg>", ... }, ... }
+        if (configResult.success && configResult.payment_methods) {
+            // 将完整配置对象赋值给变量
+            paymentMethodsFullConfig = configResult.payment_methods;
+            
+            // 输出日志，便于调试
+            console.log('[欠费支付] 成功获取支付方式完整配置:', Object.keys(paymentMethodsFullConfig));
+        }
+        
     } catch (e) {
-        // 如果获取支付方式配置失败，记录错误
-        console.error('获取支付方式配置失败:', e);
+        // 如果任何API调用失败，捕获异常并记录错误
+        // 这可能是网络错误、服务器错误或解析JSON失败
+        console.error('[欠费支付] 获取支付方式配置失败:', e);
+        
+        // 可以选择在这里显示一个更友好的错误提示
+        // 但为了不中断流程，我们继续执行，让后续的检查来处理
     }
 
-    // 如果没有启用任何支付方式，显示错误提示并退出
+    // ========== 验证：检查是否有可用的支付方式 ==========
+    // 如果没有启用任何支付方式，无法创建支付订单
+    // 此时需要提示用户联系管理员配置支付方式
     if (enabledPaymentMethods.length === 0) {
+        // 使用 SweetAlert2 显示友好的错误提示框
         await Swal.fire({
-            title: '无可用支付方式',
-            text: '管理员尚未配置支付方式，请联系管理员',
-            icon: 'error',
-            confirmButtonText: '确定'
+            title: '无可用支付方式',  // 提示标题
+            text: '管理员尚未配置支付方式，请联系管理员',  // 详细说明
+            icon: 'error',  // 错误图标（红色感叹号）
+            confirmButtonText: '确定'  // 确认按钮文本
         });
-        return;  // 退出函数
+        
+        // 退出函数，不继续执行后续代码
+        return;
     }
 
     // ========== 第二步：显示支付方式选择对话框 ==========
-    
-    // 支付方式的详细配置（图标、名称、品牌色）
-    // 这些配置用于美化支付方式选择界面
-    const paymentMethodsConfig = {
-        'alipay': { name: '支付宝支付', icon: '💰', color: '#1677ff' },
-        'wxpay': { name: '微信支付', icon: '💬', color: '#07c160' },
-        'qqpay': { name: 'QQ钱包', icon: '🐧', color: '#12b7f5' },
-        'bank': { name: '网银支付', icon: '🏦', color: '#f5222d' },
-        'unionpay': { name: '云闪付', icon: '💳', color: '#e6172d' }
-    };
 
-    // 生成支付方式选项HTML
-    // 为每个启用的支付方式创建一个可点击的卡片
+    // ========== 生成支付方式选项HTML ==========
+    // 遍历每个启用的支付方式，为其创建一个可点击的卡片
+    // 使用 .map() 方法将支付方式代码数组转换为HTML字符串数组
     const paymentMethodsHtml = enabledPaymentMethods.map(method => {
-        // 获取该支付方式的配置，如果不存在使用默认配置
-        const config = paymentMethodsConfig[method] || { name: method, icon: '💳', color: '#3b82f6' };
+        // ========== 从完整配置中获取该支付方式的详细信息 ==========
+        // paymentMethodsFullConfig 是从后端获取的完整配置对象
+        // 包含：name（中文名称）、svg（SVG图标代码）、textColor（文字颜色）等
+        const config = paymentMethodsFullConfig[method] || {};
         
+        // 提取支付方式名称
+        // 如果配置中没有 name 字段，则使用支付方式代码作为默认值
+        // 例如：config.name = "支付宝支付"，否则使用 "alipay"
+        const name = config.name || method;
+        
+        // 提取SVG图标代码
+        // 如果配置中没有 svg 字段，则使用默认的通用支付图标
+        // 默认图标是一个信用卡的SVG矢量图
+        const svg = config.svg || '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>';
+        
+        // 提取文字颜色类
+        // Tailwind CSS 颜色类，用于设置图标和文字的颜色
+        // 例如：'text-blue-600' 表示蓝色（支付宝）
+        const textColor = config.textColor || 'text-blue-600';
+        
+        // 提取边框颜色类（悬停时使用）
+        // 例如：'hover:border-blue-500' 表示鼠标悬停时边框变为蓝色
+        const borderColor = config.borderColor || 'hover:border-blue-500';
+        
+        // ========== 生成HTML字符串 ==========
+        // 返回一个包含支付方式卡片的HTML代码
         return `
-            <div class="payment-method-option" 
-                 data-method="${method}"
-                 onclick="selectPaymentMethod('${method}')"
+            <div class="payment-method-option ${borderColor}" 
+                 data-method="${escapeHtml(method)}"
+                 onclick="selectPaymentMethod('${escapeHtml(method)}')"
                  style="
                      padding: 15px 20px;
                      margin: 10px 0;
@@ -60186,21 +60248,23 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
                      align-items: center;
                      background: white;
                  "
-                 onmouseover="this.style.borderColor='${config.color}'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';"
-                 onmouseout="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none';">
-                <span style="font-size: 32px; margin-right: 15px;">${config.icon}</span>
+                 onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';"
+                 onmouseout="this.style.boxShadow='none';">
+                <div class="${textColor}" style="margin-right: 15px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+                    ${svg}
+                </div>
                 <div style="flex: 1;">
                     <div style="font-weight: 600; font-size: 16px; color: #1e293b;">
-                        ${config.name}
+                        ${escapeHtml(name)}
                     </div>
                 </div>
                 <input type="radio" 
                        name="payment-method" 
-                       value="${method}"
+                       value="${escapeHtml(method)}"
                        style="width: 20px; height: 20px; cursor: pointer;">
             </div>
         `;
-    }).join('');
+    }).join('');  // 使用 .join('') 将数组中的所有HTML字符串连接成一个完整的字符串
 
     // 计算总金额：所有选中账号的欠费次数 × 单次费用
     const totalAmount = selectedAccounts.reduce((sum, acc) => 
