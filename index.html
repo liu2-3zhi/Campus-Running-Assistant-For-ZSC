@@ -11062,10 +11062,12 @@ body.mobile-mode #session-picker-modal {
               <option value="query_order">查询订单</option>
               <!-- 支付成功：订单支付成功的记录 -->
               <option value="payment_success">支付成功</option>
-              <!-- 支付失败：订单支付失败的记录 -->
-              <option value="payment_fail">支付失败</option>
-              <!-- 配置更新：支付配置更新的记录 -->
+              <!-- 创建失败：创建订单失败的记录 -->
               <option value="create_order_failed">创建失败</option>
+              <!-- 支付通知：支付平台回调通知的记录 -->
+              <option value="payment_notify">支付通知</option>
+              <!-- 退款操作：订单退款的记录 -->
+              <option value="refund">退款操作</option>
             </select>
           </div>
 
@@ -11716,6 +11718,11 @@ body.mobile-mode #session-picker-modal {
               <p class="text-xs text-slate-500 mt-1">
                 扫码支付需要用户出示的付款条码或二维码的授权码（通常为18位数字）
               </p>
+            </div>
+
+            <!-- 二维码显示容器 -->
+            <div id="admin-test-qrcode-display_modal" class="hidden mt-4 p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
+              <!-- 二维码将动态插入到这里 -->
             </div>
 
             <!-- ========================================
@@ -18548,6 +18555,18 @@ body.mobile-mode #session-picker-modal {
         
         // === 第6步：检查业务状态 ===
         
+        // 如果API返回失败状态，使用showModalAlert显示错误消息
+        if (result.success === false) {
+          // 隐藏订单详情容器
+          if (detailContainer) {
+            detailContainer.classList.add('hidden');
+          }
+          
+          // 使用showModalAlert显示错误
+          showModalAlert(result.message || '查询订单失败', '查询失败');
+          return;
+        }
+        
         if (!result.success || !result.order) {
           throw new Error(result.message || '未找到订单');
         }
@@ -18570,20 +18589,24 @@ body.mobile-mode #session-picker-modal {
           let statusClass = '';
           
           switch (order.status) {
+            case 'failed':
+              statusText = '创建失败';
+              statusClass = 'bg-red-100 text-red-700';
+              break;
             case 'pending':
-              statusText = '待支付';
+              statusText = '已创建待支付';
               statusClass = 'bg-yellow-100 text-yellow-700';
               break;
             case 'paid':
               statusText = '已支付';
               statusClass = 'bg-green-100 text-green-700';
               break;
-            case 'failed':
-              statusText = '支付失败';
-              statusClass = 'bg-red-100 text-red-700';
+            case 'refunded_partial':
+              statusText = '已部分退款';
+              statusClass = 'bg-blue-100 text-blue-700';
               break;
-            case 'refunded':
-              statusText = '已退款';
+            case 'refunded_full':
+              statusText = '已全部退款';
               statusClass = 'bg-gray-100 text-gray-700';
               break;
             default:
@@ -18785,7 +18808,6 @@ body.mobile-mode #session-picker-modal {
       const refundNoInput = document.getElementById('admin-refund-no_modal');
       const reasonInput = document.getElementById('admin-refund-reason_modal');
       const successDiv = document.getElementById('admin-refund-result-container_modal');
-      const errorDiv = document.getElementById('admin-refund-error-result_modal');
       
       // === 第2步：获取并验证输入 ===
       
@@ -18881,11 +18903,6 @@ body.mobile-mode #session-picker-modal {
           successDiv.classList.remove('hidden');
         }
         
-        // 隐藏错误提示（如果有）
-        if (errorDiv) {
-          errorDiv.classList.add('hidden');
-        }
-        
         // 清空表单
         if (tradeNoInput) tradeNoInput.value = '';
         if (amountInput) amountInput.value = '';
@@ -18911,21 +18928,8 @@ body.mobile-mode #session-picker-modal {
           successDiv.classList.add('hidden');
         }
         
-        // 显示错误提示
-        if (errorDiv) {
-          const errorMsgElem = document.getElementById('admin-refund-error-message_modal');
-          if (errorMsgElem) {
-            errorMsgElem.textContent = error.message || '未知错误';
-          }
-          errorDiv.classList.remove('hidden');
-          
-          // 5秒后自动隐藏错误提示
-          setTimeout(() => {
-            errorDiv.classList.add('hidden');
-          }, 5000);
-        } else {
-          showModalAlert(`退款失败：${error.message || '未知错误'}`);
-        }
+        // 使用showModalAlert显示错误
+        showModalAlert(error.message || '退款失败', '退款失败');
       }
     }
 
@@ -19647,6 +19651,51 @@ body.mobile-mode #session-picker-modal {
           } else if (payType === 'qrcode') {
             // 二维码支付：显示二维码链接
             payUrlInput.value = `二维码: ${payInfo}`;
+            
+            // [新增] 生成二维码显示
+            // 获取二维码容器（假设在admin-test-auth-code-container_modal中添加一个二维码显示区域）
+            const qrcodeContainer = document.getElementById('admin-test-qrcode-display_modal');
+            if (qrcodeContainer && typeof QRCode !== 'undefined') {
+              // 清空之前的二维码
+              qrcodeContainer.innerHTML = '';
+              
+              try {
+                // 创建canvas元素用于显示二维码
+                const canvas = document.createElement('canvas');
+                canvas.id = 'test-payment-qrcode-canvas';
+                qrcodeContainer.appendChild(canvas);
+                
+                // 使用QRCode.toCanvas生成二维码
+                QRCode.toCanvas(
+                  canvas,
+                  payInfo,
+                  {
+                    width: 200,
+                    margin: 2,
+                    color: {
+                      dark: '#000000',
+                      light: '#ffffff'
+                    }
+                  },
+                  function (error) {
+                    if (error) {
+                      console.error('[PC端测试支付] 二维码生成失败：', error);
+                      qrcodeContainer.innerHTML = '<p class="text-red-500 text-sm">二维码生成失败</p>';
+                    } else {
+                      console.log('[PC端测试支付] 二维码生成成功');
+                      // 显示二维码容器
+                      qrcodeContainer.classList.remove('hidden');
+                    }
+                  }
+                );
+              } catch (error) {
+                console.error('[PC端测试支付] 二维码生成出错：', error);
+                qrcodeContainer.innerHTML = '<p class="text-red-500 text-sm">二维码生成出错</p>';
+              }
+            } else if (qrcodeContainer) {
+              // QRCode库未加载
+              qrcodeContainer.innerHTML = '<p class="text-yellow-600 text-sm">QRCode库未加载</p>';
+            }
           } else if (payType === 'urlscheme') {
             // URL Scheme：显示微信/支付宝小程序跳转链接
             payUrlInput.value = `小程序跳转: ${payInfo}`;
@@ -20289,24 +20338,8 @@ body.mobile-mode #session-picker-modal {
         
         // === 第7步：显示成功提示 ===
         
-        const resultDiv = document.getElementById('admin-yipay-config-result_modal');
-        if (resultDiv) {
-          resultDiv.innerHTML = `
-            <div class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
-              <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              ✓ 配置保存成功
-            </div>
-          `;
-          resultDiv.classList.remove('hidden');
-          
-          // 3秒后自动隐藏成功提示
-          setTimeout(() => {
-            resultDiv.classList.add('hidden');
-          }, 3000);
-        }
+        // 使用showModalAlert显示保存成功提示
+        showModalAlert('易支付配置已成功保存', '保存成功');
         
         console.log('[PC端易支付配置] 配置保存成功');
         
@@ -36587,8 +36620,15 @@ function refreshMobileSessionPicker() {
           rv._bound = true;
         }
       }
+
+
+
+
+
+
+      
       function initMap(AMap) {
-        Remove_watermark_from_Gaode_Map();
+
         if (map) {
           const container = map.getContainer();
           if (container && container.id === "map-container") {
@@ -40046,46 +40086,10 @@ function refreshMobileSessionPicker() {
         }
       }
 
-      function Remove_watermark_from_Gaode_Map() 
-        {
-          // 保存原始的 fillText 方法
-          var originalFillText = CanvasRenderingContext2D.prototype.fillText;
 
-          // 重写 fillText 方法
-          CanvasRenderingContext2D.prototype.fillText = function(text, x, y, maxWidth) {
-              // 1. 检查颜色是否为红色 (源码中定义为 rgba(255, 0, 0, 1))
-              var isRed = this.fillStyle === 'rgba(255, 0, 0, 1)' || 
-                          this.fillStyle === '#ff0000' || 
-                          this.fillStyle === 'red';
 
-              // 2. 定义水印文字的字符集
-              var watermarkText = "未获得高德地图商用授权";
 
-              // 3. 如果颜色是红色，且文字内容属于水印的一部分，则不执行绘制
-              if (isRed && (typeof text === 'string') && 
-                  (watermarkText.indexOf(text) !== -1 || text.indexOf(watermarkText) !== -1)) {
-                  // 此时直接返回，即“屏蔽”该次绘制
-                  return;
-              }
 
-              // 4. 其他情况正常绘制
-              return originalFillText.apply(this, arguments);
-          };
-          
-          // 可选：同样拦截 strokeText 以防万一（虽然源码主要用 fillText）
-          var originalStrokeText = CanvasRenderingContext2D.prototype.strokeText;
-          CanvasRenderingContext2D.prototype.strokeText = function(text, x, y, maxWidth) {
-              var isRed = this.strokeStyle === 'rgba(255, 0, 0, 1)' || 
-                          this.strokeStyle === '#ff0000' || 
-                          this.strokeStyle === 'red';
-              var watermarkText = "未获得高德地图商用授权";
-              if (isRed && (typeof text === 'string') && 
-                  (watermarkText.indexOf(text) !== -1 || text.indexOf(watermarkText) !== -1)) {
-                  return;
-              }
-              return originalStrokeText.apply(this, arguments);
-          };
-        }
 
       function drawOnMap_signature() {
 
