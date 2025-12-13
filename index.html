@@ -40126,18 +40126,39 @@ function refreshMobileSessionPicker() {
         }
       }
       async function multi_startAll() {
+        // ========== 步骤1：检查账号数量 ==========
+        // 从页面上显示的账号计数元素获取账号总数
         const count = parseInt($("multi-account-count").textContent || "0", 10);
         if (!count || count <= 0) {
+          // 如果账号列表为空，提示用户并退出
           showModalAlert("账号列表为空，无法开始。请先添加账号。");
-
           return;
         }
         
-        // ========== 添加欠费检查 ==========
-        // 在开始所有账号前，检查所有学校账号是否有欠费
-        const canStart = await checkOverdueBeforeStart();
+        // ========== 步骤2：获取已添加的账号列表 ==========
+        // 调用loadInitialData()获取当前所有已添加的账号数据
+        // 使用try-catch确保即使获取失败也能继续执行（容错处理）
+        let addedUsernames = [];
+        try {
+          const initialData = await loadInitialData();
+          if (initialData && initialData.accounts && Array.isArray(initialData.accounts)) {
+            // 从accounts数组中提取所有账号的username字段
+            // 这些是当前已添加到多账号管理的所有账号
+            addedUsernames = initialData.accounts
+              .map(acc => acc.username)
+              .filter(Boolean);  // 过滤掉空值
+          }
+        } catch (error) {
+          // 如果获取账号列表失败，记录错误但不阻止继续执行
+          console.error('[multi_startAll] 获取账号列表失败:', error);
+        }
+        
+        // ========== 步骤3：欠费检查（只检查已添加的账号）==========
+        // 【重要】这里传入已添加的账号列表，只检查这些账号的欠费情况
+        // 如果addedUsernames为空数组，checkOverdueBeforeStart会检查所有账号（回退到原有行为）
+        const canStart = await checkOverdueBeforeStart(addedUsernames.length > 0 ? addedUsernames : null);
         if (!canStart) {
-          // 欠费检查未通过，直接返回不启动任务
+          // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
           return;
         }
         // ========== 欠费检查结束 ==========
@@ -40692,17 +40713,23 @@ function refreshMobileSessionPicker() {
       }
 
       async function multi_startSelected() {
+        // ========== 步骤1：获取选中的账号列表 ==========
+        // 通过复选框获取用户选择要启动的账号
         const usernames = multi_getSelectedUsernames();
+        
+        // ========== 步骤2：验证是否选择了账号 ==========
         if (usernames.length === 0) {
+          // 如果没有选中任何账号，提示用户并退出
           showModalAlert("请至少选择一个账号再执行\"开始选中\"。");
           return;
         }
         
-        // ========== 添加欠费检查 ==========
-        // 在开始选中的账号前，检查所有学校账号是否有欠费
-        const canStart = await checkOverdueBeforeStart();
+        // ========== 步骤3：欠费检查（只检查选中的账号）==========
+        // 【重要】这里传入选中的账号列表，只检查这些账号的欠费情况
+        // 不再检查用户的所有账号，避免误报未选中账号的欠费
+        const canStart = await checkOverdueBeforeStart(usernames);
         if (!canStart) {
-          // 欠费检查未通过，直接返回不启动任务
+          // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
           return;
         }
         // ========== 欠费检查结束 ==========
@@ -45062,10 +45089,25 @@ function mobileAddTask() {
 }
 async function mobileStartTask() {
   try {
+    // ========== 检查是否选择了任务 ==========
+    // selectedTaskIndex 是全局变量，表示当前选中的任务索引
+    // -1 表示未选择任何任务
     if (selectedTaskIndex < 0 || selectedTaskIndex === -1) {
       showModalAlert("请先选择一个任务再开始执行", "未选择任务");
       return;
     }
+    
+    // ========== 添加欠费检查 ==========
+    // 在启动任务前，检查当前用户的所有学校账号是否有欠费
+    // checkOverdueBeforeStart() 会调用后端API，如果有欠费会显示缴费弹窗
+    const canStart = await checkOverdueBeforeStart();
+    if (!canStart) {
+      // 用户有欠费且未完成缴费，阻止任务启动
+      return;
+    }
+    // ========== 欠费检查结束 ==========
+    
+    // ========== 检查后端是否已有任务在运行 ==========
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
@@ -45442,21 +45484,41 @@ function mobileToggleSelectAllAccounts() {
 }
 async function mobileStartSelectedAccounts() {
   try {
+    // ========== 步骤1：获取选中的账号复选框 ==========
+    // 在移动端多账号列表中查找所有被勾选的账号复选框
     const selected = document.querySelectorAll(
       '#mobile-multi-account-list input[type="checkbox"]:checked'
     );
+    
+    // ========== 步骤2：验证是否选择了账号 ==========
     if (selected.length === 0) {
+      // 如果没有选中任何账号，提示用户并退出
       showModalAlert("请先选择要启动的账号", "错误");
       return;
-// ========== 添加欠费检查 ==========
-    // 在开始选中的账号前，检查所有学校账号是否有欠费
-    const canStart = await checkOverdueBeforeStart();
+    }
+    
+    // ========== 步骤3：提取选中账号的用户名列表 ==========
+    // 从每个复选框的父元素中获取data-username属性
+    const selectedUsernames = Array.from(selected)
+      .map(checkbox => {
+        // 向上查找包含data-username属性的父元素
+        const accountElement = checkbox.closest('[data-username]');
+        // 返回用户名，如果找不到则返回null
+        return accountElement ? accountElement.dataset.username : null;
+      })
+      .filter(Boolean);  // 过滤掉null和undefined值
+    
+    // ========== 步骤4：欠费检查（只检查选中的账号）==========
+    // 【重要】传入选中的账号列表，只检查这些账号的欠费情况
+    // 避免显示未选中账号的欠费信息
+    const canStart = await checkOverdueBeforeStart(selectedUsernames);
     if (!canStart) {
-      // 欠费检查未通过，直接返回不启动任务
+      // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
       return;
     }
     // ========== 欠费检查结束 ==========
-    }
+    
+    // ========== 步骤5：执行启动操作 ==========
     await multi_startSelected();
     showModalAlert(`正在启动 ${selected.length} 个账号`, "成功");
   } catch (error) {
@@ -45500,22 +45562,48 @@ async function mobileRefreshMultiAccounts() {
 }
 async function mobileStartAllAccounts() {
   try {
+    // ========== 步骤1：获取账号总数 ==========
+    // 从页面元素中读取账号计数
     const count = parseInt(
       $("multi-account-count")?.textContent || "0",
       10
     );
+    
+    // ========== 步骤2：验证账号列表是否为空 ==========
     if (!count || count <= 0) {
       showModalAlert("账号列表为空，无法启动", "错误");
       return;
-// ========== 添加欠费检查 ==========
-    // 在开始所有账号前，检查所有学校账号是否有欠费
-    const canStart = await checkOverdueBeforeStart();
+    }
+    
+    // ========== 步骤3：获取已添加的账号列表 ==========
+    // 调用loadInitialData()获取当前所有已添加的账号数据
+    // 使用try-catch确保即使获取失败也能继续执行（容错处理）
+    let addedUsernames = [];
+    try {
+      const initialData = await loadInitialData();
+      if (initialData && initialData.accounts && Array.isArray(initialData.accounts)) {
+        // 从accounts数组中提取所有账号的username字段
+        // 这些是当前已添加到多账号管理的所有账号
+        addedUsernames = initialData.accounts
+          .map(acc => acc.username)
+          .filter(Boolean);  // 过滤掉空值
+      }
+    } catch (error) {
+      // 如果获取账号列表失败，记录错误但不阻止继续执行
+      console.error('[mobileStartAllAccounts] 获取账号列表失败:', error);
+    }
+    
+    // ========== 步骤4：欠费检查（只检查已添加的账号）==========
+    // 【重要】传入已添加的账号列表，只检查这些账号的欠费情况
+    // 如果addedUsernames为空数组，则传null检查所有账号（回退到原有行为）
+    const canStart = await checkOverdueBeforeStart(addedUsernames.length > 0 ? addedUsernames : null);
     if (!canStart) {
-      // 欠费检查未通过，直接返回不启动任务
+      // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
       return;
     }
     // ========== 欠费检查结束 ==========
-    }
+    
+    // ========== 步骤5：读取启动配置 ==========
     const randomDelayCheck = document.getElementById(
       "mobile-multi-random-delay-check"
     );
@@ -45529,6 +45617,7 @@ async function mobileStartAllAccounts() {
       ? onlyIncompleteCheck.checked
       : true;
 
+    // ========== 步骤6：调用后端API启动所有账号 ==========
     showModalAlert(`正在启动全部 ${count} 个账号...`, "提示");
     const result = await callPythonAPI(
       "multi_start_all_accounts",
@@ -45537,6 +45626,8 @@ async function mobileStartAllAccounts() {
       use_delay,
       run_only_incomplete
     );
+    
+    // ========== 步骤7：处理返回结果 ==========
     if (!result || !result.success) {
       showModalAlert(result?.message || "启动全部账号失败", "错误");
       return;
@@ -59930,25 +60021,45 @@ document.addEventListener('DOMContentLoaded', function() {
  * - 如果存在欠费，显示欠费弹窗并返回 false 阻止任务启动
  * - 如果没有欠费或检查失败（容错），返回 true 允许任务继续
  * 
- * @param {string|null} schoolUsername - 可选，学校账号用户名。如果为 null，检查所有账号
+ * @param {string|string[]|null} schoolUsernameOrList - 可选参数，支持以下三种类型：
+ *   - null：检查当前用户的所有账号
+ *   - string：检查单个指定的学校账号（例如："20210001"）
+ *   - string[]：检查多个指定的学校账号（例如：["20210001", "20210002"]）
+ * 
  * @returns {Promise<boolean>} - true 表示可以继续启动任务，false 表示被欠费阻止
  * 
  * 调用示例：
- * const canStart = await checkOverdueBeforeStart('20210001');
- * if (!canStart) {
- *     return; // 有欠费，不启动任务
- * }
- * // 继续启动任务...
+ * // 示例1：检查所有账号
+ * const canStart1 = await checkOverdueBeforeStart();
+ * 
+ * // 示例2：检查单个账号
+ * const canStart2 = await checkOverdueBeforeStart('20210001');
+ * 
+ * // 示例3：检查选中的多个账号
+ * const selectedUsernames = ['20210001', '20210002', '20210003'];
+ * const canStart3 = await checkOverdueBeforeStart(selectedUsernames);
  */
-async function checkOverdueBeforeStart(schoolUsername = null) {
+async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
     try {
-        // 构造请求体：如果提供了 schoolUsername，只检查该账号
+        // ========== 步骤1：构造请求体 ==========
+        // 根据传入参数的不同类型，构造不同的请求体
         const requestBody = {};
-        if (schoolUsername) {
-            requestBody.school_username = schoolUsername;
-        }
         
-        // 调用后端检查欠费接口
+        // 情况1：传入了字符串（单个学校账号）
+        if (typeof schoolUsernameOrList === 'string') {
+            // 只检查这一个指定的学校账号
+            requestBody.school_username = schoolUsernameOrList;
+        } 
+        // 情况2：传入了数组（多个学校账号列表）
+        else if (Array.isArray(schoolUsernameOrList) && schoolUsernameOrList.length > 0) {
+            // 检查这个账号列表中的所有账号
+            // 后端API期望接收的参数名为 school_usernames（复数形式）
+            requestBody.school_usernames = schoolUsernameOrList;
+        }
+        // 情况3：传入了 null 或空数组
+        // requestBody 保持为空对象 {}，后端将检查当前用户的所有账号
+        
+        // ========== 步骤2：调用后端检查欠费接口 ==========
         // 使用 fetch 而不是 callPythonAPI，因为需要更精细的错误处理
         const response = await fetch('/api/check_overdue', {
             method: 'POST',
@@ -59960,10 +60071,10 @@ async function checkOverdueBeforeStart(schoolUsername = null) {
             body: JSON.stringify(requestBody)
         });
         
-        // 解析响应数据
+        // ========== 步骤3：解析响应数据 ==========
         const result = await response.json();
         
-        // 检查接口调用是否成功
+        // ========== 步骤4：检查接口调用是否成功 ==========
         if (!result.success) {
             // 接口返回失败，显示错误信息
             showModalAlert(result.message, '错误');
@@ -59971,6 +60082,7 @@ async function checkOverdueBeforeStart(schoolUsername = null) {
             return true;
         }
         
+        // ========== 步骤5：处理欠费情况 ==========
         // 如果存在欠费账号
         if (result.has_overdue) {
             // 显示欠费弹窗，等待用户处理
@@ -59979,7 +60091,7 @@ async function checkOverdueBeforeStart(schoolUsername = null) {
             return false;
         }
         
-        // 没有欠费，允许任务继续
+        // ========== 步骤6：没有欠费，允许任务继续 ==========
         return true;
         
     } catch (error) {
@@ -60754,7 +60866,7 @@ async function loadOverdueAccounts() {
                                 <!-- 账号姓名和欠费标签 -->
                                 <div class="flex items-center gap-2">
                                     <!-- 姓名（加粗显示） -->
-                                    <h4 class="font-bold text-slate-800">${account.name}</h4>
+                                    <h4 class="font-bold text-slate-800">${escapeHtml(account.name)}</h4>
                                     <!-- 欠费次数标签（红色背景） -->
                                     <span class="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
                                         欠费 ${account.overdue_count} 次
@@ -60762,15 +60874,25 @@ async function loadOverdueAccounts() {
                                 </div>
                                 <!-- 详细信息：学号和认证账号 -->
                                 <p class="text-sm text-slate-600 mt-1">
-                                    学号：${account.student_id} | 认证账号：${account.auth_username}
+                                    学号：${escapeHtml(account.student_id)} | 认证账号：${escapeHtml(account.auth_username)}
                                 </p>
                             </div>
-                            <!-- 右侧：操作按钮 -->
-                            <button onclick="View_details_of_users_with_outstanding_payments('${account.school_username}')" 
-                                    class="btn btn-sm btn-primary"
-                                    ${!account.has_backup ? 'disabled' : ''}>
-                                查看详情
-                            </button>
+                            <!-- 右侧：操作按钮组 -->
+                            <div class="flex gap-2">
+                                <!-- 查看详情按钮：只有在有备份数据时才启用 -->
+                                <button onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(account.school_username)}')" 
+                                        class="btn btn-sm btn-primary"
+                                        ${!account.has_backup ? 'disabled' : ''}>
+                                    查看详情
+                                </button>
+                                <!-- 结清按钮：无论是否有备份数据都可以使用 -->
+                                <!-- 使用 escapeHtml() 防止XSS攻击 -->
+                                <!-- auth_username传空字符串，让后端自动查找该学校账号所属的用户 -->
+                                <button onclick="adminClearOverdue('${escapeHtml(account.school_username)}', '')" 
+                                        class="px-3 py-1.5 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition-colors">
+                                    结清
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -61047,35 +61169,59 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
             // // 这是前端的安全检查，后端API还会再次验证权限
             // const isAdmin = (userGroup === 'admin' || userGroup === 'super_admin');
 
-            // 构建HTML内容
+            // 构建HTML内容 - 使用现代化的渐变背景和卡片设计
             const htmlContent = `
-                <div class="text-left space-y-3 font-sans text-sm max-h-[65vh] overflow-y-auto px-1 pr-2">
+                <div class="text-left space-y-4 font-sans text-sm max-h-[65vh] overflow-y-auto px-1 pr-2">
                     
-                    <div class="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-sm">
-                        <div class="flex flex-col">
-                            <span class="text-xs text-slate-500 mb-1">备份时间</span>
-                            <span class="font-bold text-slate-700 text-xs">${backupTime}</span>
-                        </div>
-                        <div class="flex gap-4 border-l border-slate-200 pl-4">
-                            <div class="text-center">
-                                <div class="text-xs text-slate-500 mb-1">欠费</div>
-                                <div class="font-bold ${data.overdue_count > 0 ? 'text-red-600' : 'text-slate-400'} text-lg leading-none">${data.overdue_count}</div>
+                    <!-- 统计卡片 - 使用渐变背景和阴影效果 -->
+                    <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-lg border border-blue-100">
+                        <div class="flex justify-between items-center">
+                            <!-- 备份时间信息 -->
+                            <div class="flex flex-col">
+                                <span class="text-xs text-indigo-600 font-medium mb-1">
+                                    📅 备份时间
+                                </span>
+                                <span class="font-bold text-slate-800 text-xs">${backupTime}</span>
                             </div>
-                            <div class="text-center">
-                                <div class="text-xs text-slate-500 mb-1">完成</div>
-                                <div class="font-bold text-emerald-600 text-lg leading-none">${data.completed_count}</div>
+                            
+                            <!-- 统计数据区域 -->
+                            <div class="flex gap-6 items-center">
+                                <!-- 欠费统计 -->
+                                <div class="text-center">
+                                    <div class="text-3xl font-bold ${data.overdue_count > 0 ? 'text-red-500' : 'text-green-500'} mb-1">
+                                        ${data.overdue_count}
+                                    </div>
+                                    <div class="text-xs text-slate-600 font-medium">欠费次数</div>
+                                </div>
+                                
+                                <!-- 分隔线 -->
+                                <div class="h-12 w-px bg-slate-300"></div>
+                                
+                                <!-- 完成统计 -->
+                                <div class="text-center">
+                                    <div class="text-3xl font-bold text-blue-500 mb-1">
+                                        ${data.completed_count}
+                                    </div>
+                                    <div class="text-xs text-slate-600 font-medium">已完成</div>
+                                </div>
                             </div>
+                            
+                            <!-- 结清按钮 - 只在有欠费时显示 -->
+                            ${data.overdue_count > 0 ? `
+                                <button onclick="adminClearOverdue('${escapeHtml(school_username)}', '${escapeHtml(user.username || '')}')" 
+                                    class="ml-3 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-xs font-bold rounded-lg hover:from-emerald-600 hover:to-green-600 active:from-emerald-700 active:to-green-700 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                    title="管理员：清除此账号的欠费">
+                                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    结清欠费
+                                </button>
+                            ` : `
+                                <div class="ml-3 px-4 py-2 bg-green-100 text-green-700 text-xs font-bold rounded-lg">
+                                    ✓ 无欠费
+                                </div>
+                            `}
                         </div>
-                        ${data.overdue_count > 0 ? `
-                            <button onclick="adminClearOverdue('${school_username}', '${escapeHtml(user.username || '')}')" 
-                                class="ml-3 px-3 py-1.5 bg-emerald-500 text-white text-xs font-semibold rounded-lg hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm hover:shadow-md"
-                                title="管理员：清除此账号的欠费">
-                                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                                结清
-                            </button>
-                        ` : ''}
                     </div>
 
                     <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
