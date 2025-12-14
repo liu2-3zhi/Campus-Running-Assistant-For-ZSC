@@ -60696,15 +60696,62 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
  * @param {String} paymentMethod - 支付方式（alipay/wxpay/qqpay等）
  */
 async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentMethod,pay_type) {
-    // 支付方式显示名称映射
-    // 将后端的支付方式代码转换为用户友好的显示名称
-    const paymentMethodNames = {
-        'alipay': '支付宝',
-        'wxpay': '微信',
-        'qqpay': 'QQ钱包',
-        'bank': '网银',
-        'unionpay': '云闪付'
-    };
+    // ========== 动态获取支付方式名称映射 ==========
+    // 初始化支付方式名称映射对象，用于将后端的支付方式代码（如'alipay'）转换为用户友好的显示名称（如'支付宝'）
+    let paymentMethodNames = {};
+    
+    try {
+        // 向后端API发起GET请求，获取支付方式配置信息
+        // 该接口返回所有可用的支付方式及其对应的显示名称
+        const methodsResponse = await fetch('/api/payment/methods_config', {
+            method: 'GET',  // 使用GET方法获取数据
+            headers: {
+                'Content-Type': 'application/json',  // 指定请求内容类型为JSON
+                'X-Session-ID': sessionUUID  // 携带会话ID用于身份验证，确保请求合法性
+            }
+        });
+        
+        // 检查HTTP响应状态是否成功（状态码200-299）
+        if (methodsResponse.ok) {
+            // 将响应体解析为JSON对象
+            const methodsData = await methodsResponse.json();
+            
+            // 验证返回数据的有效性：
+            // 1. success字段为true表示接口调用成功
+            // 2. methods字段存在且不为空，包含支付方式数组
+            if (methodsData.success && methodsData.methods) {
+                // 遍历methods数组，构建支付方式代码到显示名称的映射对象
+                // 每个method对象包含code（代码）和name（显示名称）两个字段
+                methodsData.methods.forEach(method => {
+                    // 将支付方式代码作为key，显示名称作为value存入映射对象
+                    // 例如：{ 'alipay': '支付宝', 'wxpay': '微信支付' }
+                    paymentMethodNames[method.code] = method.name;
+                });
+            }
+        }
+    } catch (error) {
+        // 捕获网络请求过程中可能出现的各种错误（网络异常、解析失败等）
+        // 记录错误信息到控制台，便于调试和问题追踪
+        console.error('获取支付方式配置失败:', error);
+        // 注意：此处不抛出异常，而是继续执行，让程序使用fallback机制
+    }
+    
+    // ========== Fallback机制：使用默认映射 ==========
+    // 如果动态获取失败（网络错误、接口异常、返回数据为空等情况），
+    // 则使用预定义的默认支付方式映射，确保程序能够正常运行
+    if (Object.keys(paymentMethodNames).length === 0) {
+        // 定义默认的支付方式映射，包含常见的支付方式
+        paymentMethodNames = {
+            'alipay': '支付宝',      // 支付宝支付
+            'wxpay': '微信',         // 微信支付
+            'qqpay': 'QQ钱包',       // QQ钱包支付
+            'bank': '网银',          // 网上银行支付
+            'unionpay': '云闪付'     // 中国银联云闪付
+        };
+    }
+    
+    // 根据传入的支付方式代码，从映射对象中获取对应的显示名称
+    // 如果找不到对应的映射（例如新增的支付方式尚未配置），则直接使用原始代码作为显示名称
     const methodName = paymentMethodNames[paymentMethod] || paymentMethod;
 
     // 轮询控制变量
