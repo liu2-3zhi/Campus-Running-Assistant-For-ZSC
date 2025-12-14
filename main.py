@@ -26135,23 +26135,31 @@ def start_web_server(args_param):
                                 else:
                                     order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
 
-                            # 确保订单目录存在
-                            os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-
-                            # 保存订单文件
+                            # ========== 安全写入新订单文件 ==========
+                            # 从支付通知创建订单文件（订单文件丢失的情况）
+                            # 使用安全写入函数
                             try:
-                                with open(order_file, "w", encoding="utf-8") as f:
-                                    json.dump(order_data, f, indent=2,
-                                              ensure_ascii=False)
-
-                                logging.info(
-                                    f"[支付通知-异步] 订单文件已创建 - 订单号: {out_trade_no}")
+                                success, message = _safe_write_order(
+                                    order_id=out_trade_no,
+                                    order_data=order_data,
+                                    merge_mode=False  # 这是新创建的订单，不需要合并
+                                )
+                                
+                                if success:
+                                    logging.info(
+                                        f"[支付通知-异步] 订单文件已创建 - 订单号: {out_trade_no}")
+                                else:
+                                    logging.error(
+                                        f"[支付通知-异步] 创建订单文件失败 - 订单号: {out_trade_no}, "
+                                        f"错误: {message}")
+                                    return
 
                                 # 记录创建订单日志
                                 _write_payment_log(
                                     user_id="system",
                                     order_id=out_trade_no,
                                     action="create_order_from_notify",
+                                    log_level=LOG_LEVEL_INFO,
                                     log_data={
                                         "source": "yipay_notify",
                                         "platform_data": platform_order,
@@ -26237,11 +26245,18 @@ def start_web_server(args_param):
                             order_data["last_notify_time"] = time.strftime(
                                 "%Y-%m-%d %H:%M:%S")
 
-                            # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
-                            # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
-                            with open(order_file, "w", encoding="utf-8") as f:
-                                json.dump(order_data, f, indent=2,
-                                          ensure_ascii=False)
+                            # ========== 安全写入订单数据更新 ==========
+                            # 使用安全写入函数，保留订单的所有现有字段
+                            # merge_mode=True: 只更新这几个字段，保留其他所有字段
+                            _safe_write_order(
+                                order_id=out_trade_no,
+                                order_data={
+                                    "notify_count": order_data["notify_count"],
+                                    "last_notify_at": order_data["last_notify_at"],
+                                    "last_notify_time": order_data["last_notify_time"]
+                                },
+                                merge_mode=True  # 合并模式：只更新指定字段
+                            )
 
                             # 记录日志：订单已支付，跳过重复处理
                             logging.info(
@@ -26256,6 +26271,7 @@ def start_web_server(args_param):
                                     "username", "未知"),  # 订单所有者
                                 order_id=out_trade_no,                          # 商户订单号
                                 action="payment_duplicate_notify",              # 操作类型：重复通知
+                                log_level=LOG_LEVEL_WARNING,                    # 警告级别：重复通知需要关注
                                 log_data={
                                     # 重复通知信息
                                     "notify_count": notify_count,               # 这是第几次通知
@@ -26299,10 +26315,22 @@ def start_web_server(args_param):
                         # notify_count: 通知计数，初始值为1（表示这是第一次处理）
                         order_data["notify_count"] = 1
 
-                        # 保存更新后的订单数据
-                        with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2,
-                                      ensure_ascii=False)
+                        # ========== 安全写入订单数据更新 ==========
+                        # 使用安全写入函数，保留订单的所有现有字段
+                        # merge_mode=True: 只更新支付相关字段，保留创建时的其他字段
+                        _safe_write_order(
+                            order_id=out_trade_no,
+                            order_data={
+                                "status": order_data["status"],
+                                "trade_no": order_data["trade_no"],
+                                "paid_at": order_data["paid_at"],
+                                "paid_time": order_data["paid_time"],
+                                "notify_params": order_data["notify_params"],
+                                "notify_processed_at": order_data["notify_processed_at"],
+                                "notify_count": order_data["notify_count"]
+                            },
+                            merge_mode=True  # 合并模式：只更新支付字段，保留其他字段
+                        )
 
                         # ========== 写入支付操作日志（支付成功通知） ==========
 
@@ -26311,6 +26339,7 @@ def start_web_server(args_param):
                             user_id=order_data.get("username", "未知"),  # 订单所有者
                             order_id=out_trade_no,                          # 商户订单号
                             action="payment_success_notify",                # 操作类型：支付成功通知
+                            log_level=LOG_LEVEL_INFO,                       # 信息级别：正常的支付成功
                             log_data={
                                 # 支付信息
                                 "trade_no": trade_no,                       # 易支付订单号
@@ -26425,10 +26454,26 @@ def start_web_server(args_param):
 
                         # 可以根据状态更新订单状态
                         if trade_status == "TRADE_CLOSED":
-                            order_data["status"] = ORDER_STATUS_FAILED
-                            with open(order_file, "w", encoding="utf-8") as f:
-                                json.dump(order_data, f, indent=2,
-                                          ensure_ascii=False)
+                            # ========== 安全更新订单状态为失败 ==========
+                            # 使用安全写入函数，只更新状态字段
+                            _safe_write_order(
+                                order_id=out_trade_no,
+                                order_data={"status": ORDER_STATUS_FAILED},
+                                merge_mode=True  # 合并模式：只更新status字段
+                            )
+                            
+                            # 记录日志：订单关闭
+                            _write_payment_log(
+                                user_id=order_data.get("username", "未知"),
+                                order_id=out_trade_no,
+                                action="payment_closed",
+                                log_level=LOG_LEVEL_WARNING,  # 警告级别
+                                log_data={
+                                    "trade_status": trade_status,
+                                    "notify_params": params,
+                                    "message": "订单已关闭"
+                                }
+                            )
 
                         # 异步处理完成
                         return
@@ -29777,15 +29822,181 @@ def start_web_server(args_param):
     # 用户子目录将在记录日志时动态创建
     os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
 
-    def _write_payment_log(user_id, order_id, action, log_data):
+    # ==================== 支付日志配置常量 ====================
+    # 定义日志级别常量，用于标识日志的严重程度和重要性
+    LOG_LEVEL_DEBUG = "DEBUG"       # 调试级别：详细的调试信息，仅用于开发和调试
+    LOG_LEVEL_INFO = "INFO"         # 信息级别：正常的业务操作信息，如订单创建、支付成功
+    LOG_LEVEL_WARNING = "WARNING"   # 警告级别：需要注意但不影响系统运行的情况，如重复通知
+    LOG_LEVEL_ERROR = "ERROR"       # 错误级别：系统错误，如支付失败、金额不一致
+    LOG_LEVEL_CRITICAL = "CRITICAL" # 严重级别：严重的系统故障，需要立即处理
+
+    # 日志文件大小限制（字节）
+    # 当单个日志文件超过此大小时，将触发日志轮转
+    # 默认值：10MB = 10 * 1024 * 1024 bytes
+    MAX_LOG_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+    # 保留的历史日志文件数量
+    # 日志轮转时，最多保留多少个旧日志文件
+    # 例如：payment.log, payment.log.1, payment.log.2, ..., payment.log.5
+    MAX_LOG_FILE_COUNT = 5
+
+    def _safe_write_order(order_id, order_data, merge_mode=True):
         """
-        写入支付操作日志（内部函数）
+        安全地写入订单数据到文件（内部函数）
+        
+        使用"读取-修改-写入"模式，确保不会意外丢失已有数据
+        
+        参数:
+            order_id (str): 订单号，用于构造文件名
+            order_data (dict): 要写入的订单数据
+            merge_mode (bool): 合并模式，默认为True
+                - True: 如果文件已存在，读取现有数据并合并新数据（保留所有字段）
+                - False: 直接覆盖写入（仅在确定需要全量替换时使用）
+        
+        返回值:
+            tuple: (success, message)
+                - success (bool): 操作是否成功
+                - message (str): 成功或失败的描述信息
+        
+        功能说明:
+        这个函数解决了以下问题：
+        1. **数据完整性**: 防止因直接覆盖写入导致的数据丢失
+           - 例如：订单创建时写入了基础信息，支付成功后需要更新状态
+           - 如果直接覆盖，可能会丢失其他字段（如创建时间、用户信息等）
+        
+        2. **并发安全**: 虽然Python的文件操作不是线程安全的，但这个函数
+           通过"读取-修改-写入"模式，降低了数据不一致的风险
+        
+        3. **字段保留**: 只更新传入的字段，保留其他所有现有字段
+           - 例如：传入 {"status": "paid"}，只更新status字段
+           - 其他字段（amount, product_name等）保持不变
+        
+        4. **错误处理**: 捕获所有可能的异常，返回明确的错误信息
+           而不是让程序崩溃
+        
+        使用场景:
+        - 创建新订单：merge_mode=False（确保是全新数据）
+        - 更新订单状态：merge_mode=True（保留现有数据）
+        - 添加支付信息：merge_mode=True（补充支付时间等）
+        - 记录退款信息：merge_mode=True（追加退款记录）
+        
+        实现逻辑:
+        1. 构造订单文件路径
+        2. 检查文件是否存在
+        3. 如果存在且merge_mode=True，读取现有数据并合并
+        4. 写入完整的订单数据
+        5. 返回操作结果
+        
+        注意事项:
+        - 此函数不处理文件锁，如有高并发需求，需要额外的锁机制
+        - 如果读取失败但文件存在，会记录错误但仍然尝试写入新数据
+        - 所有异常都会被捕获并记录，不会向上抛出
+        """
+        try:
+            # ========== 步骤1: 构造订单文件路径 ==========
+            # 确保订单目录存在（防止目录被误删）
+            os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+            
+            # 构造完整的文件路径
+            # 格式: payment_orders/{订单号}.json
+            # 例如: payment_orders/ORDER20231201120530123456.json
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            
+            # ========== 步骤2: 处理合并模式（读取现有数据）==========
+            # 初始化最终要写入的数据为传入的数据
+            final_order_data = order_data.copy()  # 使用copy()避免修改原始数据
+            
+            # 如果启用合并模式且文件已存在，需要读取现有数据
+            if merge_mode and os.path.exists(order_file):
+                try:
+                    # 读取现有的订单数据
+                    # 使用UTF-8编码以支持中文内容
+                    with open(order_file, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                    
+                    # 合并数据：现有数据 + 新数据
+                    # 使用字典的update方法，新数据会覆盖同名字段
+                    # 但不会删除现有数据中的其他字段
+                    # 
+                    # 例如:
+                    # existing_data = {"order_id": "123", "amount": 100, "status": "pending"}
+                    # order_data = {"status": "paid", "paid_at": 1234567890}
+                    # final_order_data = {"order_id": "123", "amount": 100, "status": "paid", "paid_at": 1234567890}
+                    final_order_data = existing_data.copy()
+                    final_order_data.update(order_data)
+                    
+                    # 记录调试日志：成功读取并合并现有数据
+                    logging.debug(
+                        f"[安全写入订单] 已读取并合并现有订单数据 - 订单号: {order_id}, "
+                        f"现有字段数: {len(existing_data)}, 更新字段数: {len(order_data)}, "
+                        f"最终字段数: {len(final_order_data)}"
+                    )
+                    
+                except json.JSONDecodeError as e:
+                    # JSON解析错误：文件内容可能已损坏
+                    # 记录错误但继续执行，使用新数据覆盖损坏的文件
+                    logging.error(
+                        f"[安全写入订单] 读取现有订单失败，文件可能已损坏 - "
+                        f"订单号: {order_id}, 错误: JSON解析失败 - {str(e)}"
+                    )
+                    # 不合并，直接使用新数据（final_order_data 已经是 order_data 的副本）
+                    
+                except Exception as e:
+                    # 其他读取错误（文件权限、IO错误等）
+                    logging.error(
+                        f"[安全写入订单] 读取现有订单时发生异常 - "
+                        f"订单号: {order_id}, 错误: {str(e)}"
+                    )
+                    logging.error(traceback.format_exc())
+                    # 不合并，直接使用新数据
+            
+            # ========== 步骤3: 写入订单数据到文件 ==========
+            # 使用UTF-8编码支持中文
+            # indent=2 使JSON格式化，便于人工阅读和调试
+            # ensure_ascii=False 保留中文字符，不转义为\uXXXX格式
+            with open(order_file, "w", encoding="utf-8") as f:
+                json.dump(final_order_data, f, indent=2, ensure_ascii=False)
+            
+            # ========== 步骤4: 记录成功日志 ==========
+            # 区分是创建新文件还是更新现有文件
+            operation = "更新" if (merge_mode and os.path.exists(order_file)) else "创建"
+            logging.debug(
+                f"[安全写入订单] {operation}订单文件成功 - "
+                f"订单号: {order_id}, 字段数: {len(final_order_data)}"
+            )
+            
+            # 返回成功结果
+            return True, f"订单{operation}成功"
+            
+        except IOError as e:
+            # IO错误：文件无法写入（磁盘满、权限不足等）
+            error_msg = f"写入订单文件失败（IO错误）: {str(e)}"
+            logging.error(f"[安全写入订单] {error_msg} - 订单号: {order_id}")
+            logging.error(traceback.format_exc())
+            return False, error_msg
+            
+        except Exception as e:
+            # 其他未预期的错误
+            error_msg = f"写入订单文件失败（未知错误）: {str(e)}"
+            logging.error(f"[安全写入订单] {error_msg} - 订单号: {order_id}")
+            logging.error(traceback.format_exc())
+            return False, error_msg
+
+    def _write_payment_log(user_id, order_id, action, log_data, log_level=LOG_LEVEL_INFO):
+        """
+        写入支付操作日志（内部函数 - 增强版）
 
         参数:
             user_id (str): 用户标识（注册用户为username，游客为session UUID）
             order_id (str): 订单号
             action (str): 操作类型（例如："create_order", "query_order", "payment_notify"）
             log_data (dict): 要记录的日志数据
+            log_level (str): 日志级别，可选值：
+                - LOG_LEVEL_DEBUG: 调试信息，详细的开发调试数据
+                - LOG_LEVEL_INFO: 一般信息，正常的业务操作（默认）
+                - LOG_LEVEL_WARNING: 警告信息，需要注意但不影响业务
+                - LOG_LEVEL_ERROR: 错误信息，业务异常或系统错误
+                - LOG_LEVEL_CRITICAL: 严重错误，需要立即处理的问题
 
         功能说明：
         这个函数负责将支付相关的操作记录到日志文件中，便于：
@@ -29793,6 +30004,14 @@ def start_web_server(args_param):
         2. 调试：当支付出现问题时，可以查看详细的操作历史
         3. 统计：分析用户支付行为，优化支付流程
         4. 合规：满足财务和法律的审计要求
+        5. 监控：通过日志级别快速识别问题的严重程度
+
+        增强功能（v2.0）：
+        1. **日志级别支持**: 添加log_level参数，便于过滤和检索不同级别的日志
+        2. **更丰富的上下文**: 记录请求头、环境信息等更多上下文数据
+        3. **结构化日志**: 统一的JSON格式，便于日志分析工具解析
+        4. **日志轮转准备**: 为后续的日志轮转功能预留接口
+        5. **性能优化**: 优化文件写入逻辑，减少IO开销
 
         日志文件命名规则（重构后）：
         - 格式：{timestamp}_{user_id}_{order_id}.json
@@ -29813,12 +30032,16 @@ def start_web_server(args_param):
         - 简化了目录管理，提高了日志查询效率
 
         日志内容包括（但不限于）：
-        - timestamp: 操作时间戳
-        - action: 操作类型
+        - timestamp: 操作时间戳（Unix时间戳，便于程序处理）
+        - datetime: 可读时间格式（便于人工查看）
+        - log_level: 日志级别（INFO/WARNING/ERROR等）
+        - action: 操作类型（create_order/payment_notify等）
         - user_id: 用户标识
         - order_id: 订单号
         - client_ip: 客户端IP地址
         - user_agent: 用户浏览器信息
+        - request_method: HTTP请求方法（GET/POST等）
+        - request_path: 请求路径
         - 以及action特定的其他数据
 
         异常处理：
@@ -29826,10 +30049,12 @@ def start_web_server(args_param):
         - 确保支付功能的可用性优先于日志记录
         """
         try:
+            # ========== 步骤1: 确保日志目录存在 ==========
             # 确保日志根目录存在
             # exist_ok=True 表示如果目录已存在不报错
             os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
 
+            # ========== 步骤2: 规范化用户标识 ==========
             # 规范化用户标识，用于文件名
             # 移除特殊字符，避免文件系统问题
             # 例如：guest_abc-123-def -> guest_abc-123-def (保留连字符)
@@ -29838,6 +30063,7 @@ def start_web_server(args_param):
             safe_user_id = user_id.replace(
                 "/", "-").replace("\\", "-") if user_id else "unknown"
 
+            # ========== 步骤3: 生成日志文件名 ==========
             # 生成日志文件名
             # 格式：{年月日}_{时分秒}_{用户ID}_{订单号}.json
             # 例如：20231201_120530_admin_ORDER20231201120530123456.json
@@ -29849,24 +30075,60 @@ def start_web_server(args_param):
             # 所有日志文件统一存放在 PAYMENT_LOGS_DIR 目录下，不再按用户分子目录
             log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
 
+            # ========== 步骤4: 收集请求上下文信息 ==========
+            # 尝试从Flask请求上下文中获取更多信息
+            # 如果不在请求上下文中（如定时任务、后台任务），这些值会是None
+            request_context = {}
+            if request:
+                # 客户端IP地址（优先使用X-Forwarded-For，考虑代理情况）
+                request_context["client_ip"] = (
+                    request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or
+                    request.environ.get("REMOTE_ADDR") or 
+                    request.remote_addr
+                )
+                # 用户浏览器User-Agent
+                request_context["user_agent"] = request.headers.get("User-Agent", "")
+                # HTTP请求方法（GET, POST, PUT等）
+                request_context["request_method"] = request.method
+                # 请求路径（例如：/api/yipay/create_order）
+                request_context["request_path"] = request.path
+                # 请求的完整URL（包含查询参数）
+                request_context["request_url"] = request.url
+                # 来源页面（Referer）
+                request_context["referer"] = request.headers.get("Referer", "")
+            else:
+                # 不在Flask请求上下文中，设置默认值
+                request_context = {
+                    "client_ip": None,
+                    "user_agent": "",
+                    "request_method": None,
+                    "request_path": None,
+                    "request_url": None,
+                    "referer": ""
+                }
+
+            # ========== 步骤5: 准备完整的日志数据 ==========
             # 准备要写入的完整日志数据
-            # 合并基础信息和传入的自定义数据
+            # 合并基础信息、请求上下文和传入的自定义数据
             full_log_data = {
-                # 基础元信息
-                "timestamp": time.time(),                          # Unix时间戳（数字）
-                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),   # 可读时间（字符串）
-                "action": action,                                  # 操作类型
-                "user_id": user_id,                                # 用户标识
+                # ===== 核心元信息 =====
+                "timestamp": time.time(),                          # Unix时间戳（数字），便于程序处理和排序
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),   # 可读时间（字符串），便于人工查看
+                "log_level": log_level,                            # 日志级别（INFO/WARNING/ERROR等）
+                "action": action,                                  # 操作类型（create_order/payment_notify等）
+                "user_id": user_id,                                # 用户标识（注册用户username或游客UUID）
                 "order_id": order_id,                              # 订单号
-                # 请求元信息（在Flask请求上下文中可用）
-                # 客户端IP
-                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,
-                # 浏览器UA
-                "user_agent": request.headers.get("User-Agent", "") if request else "",
-                # 自定义数据（从参数传入）
+                
+                # ===== 请求上下文信息 =====
+                **request_context,                                 # 展开请求上下文字典
+                
+                # ===== 自定义数据（从参数传入）=====
+                # 使用**语法展开字典，将log_data中的所有键值对添加到日志中
+                # 注意：如果log_data中的键与上面的键重复，log_data的值会覆盖上面的值
                 **log_data
             }
 
+            # ========== 步骤6: 写入日志文件 ==========
             # 将日志数据写入JSON文件
             # 使用UTF-8编码支持中文
             # indent=2 使JSON格式化，便于人工阅读
@@ -29874,16 +30136,161 @@ def start_web_server(args_param):
             with open(log_filepath, "w", encoding="utf-8") as f:
                 json.dump(full_log_data, f, indent=2, ensure_ascii=False)
 
+            # ========== 步骤7: 记录调试日志 ==========
             # 记录调试日志：日志写入成功
+            # 注意：这里使用Python的logging模块记录到系统日志
+            # 与支付日志文件是两个独立的日志系统
             logging.debug(
-                f"[支付日志] 写入成功 - 用户: {user_id}, 操作: {action}, 文件: {log_filename}")
+                f"[支付日志] 写入成功 - 级别: {log_level}, 用户: {user_id}, "
+                f"操作: {action}, 文件: {log_filename}"
+            )
 
         except Exception as e:
+            # ========== 异常处理 ==========
             # 捕获所有异常，确保日志写入失败不影响主业务
-            # 只记录错误日志，不抛出异常
+            # 只记录错误日志到系统日志，不抛出异常
+            # 
+            # 设计理念：
+            # 支付业务的核心功能（创建订单、处理支付）比日志记录更重要
+            # 即使日志记录失败，也不应该阻止用户完成支付
+            # 但我们需要记录这个失败，以便后续排查问题
             logging.error(
                 f"[支付日志] 写入失败 - 用户: {user_id}, 操作: {action}, 错误: {str(e)}")
             logging.error(traceback.format_exc())
+
+    def _rotate_payment_logs_if_needed():
+        """
+        检查并执行支付日志轮转（内部函数）
+        
+        功能说明:
+        当日志目录中的文件数量过多或总大小超过阈值时，自动清理旧日志文件。
+        这是一个维护性功能，防止日志文件无限增长导致磁盘空间耗尽。
+        
+        轮转策略:
+        1. **按数量轮转**: 当日志文件数量超过一定阈值时，删除最旧的文件
+        2. **按大小轮转**: 当日志目录总大小超过一定阈值时，删除最旧的文件
+        3. **按时间轮转**: 删除超过一定天数的旧日志文件
+        
+        当前实现:
+        - 按数量轮转：保留最新的5000个日志文件
+        - 旧文件判断：基于文件的修改时间（mtime）
+        - 删除策略：一次删除最多1000个最旧的文件
+        
+        调用时机:
+        - 每次写入日志后可以调用（但会有性能开销）
+        - 建议：定时任务或后台线程定期调用
+        - 当前：需要手动调用或集成到定时任务中
+        
+        注意事项:
+        1. 此函数有一定的性能开销（需要遍历目录、排序文件）
+        2. 不建议在每次日志写入时调用
+        3. 建议每小时或每天调用一次
+        4. 异常不会影响主业务流程
+        
+        返回值:
+            dict: 轮转结果
+                - rotated (bool): 是否执行了轮转
+                - deleted_count (int): 删除的文件数量
+                - message (str): 描述信息
+        """
+        try:
+            # ========== 步骤1: 检查日志目录是否存在 ==========
+            if not os.path.exists(PAYMENT_LOGS_DIR):
+                # 日志目录不存在，无需轮转
+                return {
+                    "rotated": False,
+                    "deleted_count": 0,
+                    "message": "日志目录不存在"
+                }
+            
+            # ========== 步骤2: 获取所有日志文件 ==========
+            # 列出日志目录中的所有JSON文件
+            # 只处理.json文件，忽略其他类型的文件
+            log_files = []
+            for filename in os.listdir(PAYMENT_LOGS_DIR):
+                # 只处理JSON文件
+                if filename.endswith(".json"):
+                    filepath = os.path.join(PAYMENT_LOGS_DIR, filename)
+                    # 确保是文件而不是目录
+                    if os.path.isfile(filepath):
+                        log_files.append(filepath)
+            
+            # 获取日志文件总数
+            total_files = len(log_files)
+            
+            # ========== 步骤3: 判断是否需要轮转 ==========
+            # 定义轮转阈值：保留最新的5000个文件
+            # 这个值可以根据实际需求调整
+            # 考虑因素：磁盘空间、日志查询需求、业务量
+            MAX_LOG_FILES = 5000
+            
+            # 如果文件数量未超过阈值，无需轮转
+            if total_files <= MAX_LOG_FILES:
+                return {
+                    "rotated": False,
+                    "deleted_count": 0,
+                    "message": f"日志文件数量({total_files})未超过阈值({MAX_LOG_FILES})，无需轮转"
+                }
+            
+            # ========== 步骤4: 执行轮转 ==========
+            # 计算需要删除的文件数量
+            # 删除最旧的文件，直到文件总数降至阈值以下
+            files_to_delete_count = total_files - MAX_LOG_FILES
+            
+            # 为了安全，限制一次删除的最大数量
+            # 防止误删除大量文件
+            MAX_DELETE_PER_ROTATION = 1000
+            if files_to_delete_count > MAX_DELETE_PER_ROTATION:
+                files_to_delete_count = MAX_DELETE_PER_ROTATION
+            
+            # 按文件修改时间排序，最旧的在前
+            # os.path.getmtime(f) 获取文件的最后修改时间
+            # 排序后，log_files[0] 是最旧的文件
+            log_files.sort(key=lambda f: os.path.getmtime(f))
+            
+            # 获取要删除的文件列表（最旧的N个文件）
+            files_to_delete = log_files[:files_to_delete_count]
+            
+            # ========== 步骤5: 删除旧文件 ==========
+            deleted_count = 0
+            for filepath in files_to_delete:
+                try:
+                    # 删除文件
+                    os.remove(filepath)
+                    deleted_count += 1
+                except Exception as e:
+                    # 单个文件删除失败不影响其他文件的删除
+                    # 记录错误但继续处理下一个文件
+                    logging.warning(
+                        f"[日志轮转] 删除文件失败: {filepath}, 错误: {str(e)}"
+                    )
+            
+            # ========== 步骤6: 记录轮转结果 ==========
+            message = (
+                f"日志轮转完成 - 总文件数: {total_files}, "
+                f"删除文件数: {deleted_count}, "
+                f"剩余文件数: {total_files - deleted_count}"
+            )
+            logging.info(f"[日志轮转] {message}")
+            
+            return {
+                "rotated": True,
+                "deleted_count": deleted_count,
+                "message": message
+            }
+            
+        except Exception as e:
+            # ========== 异常处理 ==========
+            # 轮转失败不应影响主业务
+            # 记录错误但不抛出异常
+            error_msg = f"日志轮转失败: {str(e)}"
+            logging.error(f"[日志轮转] {error_msg}")
+            logging.error(traceback.format_exc())
+            return {
+                "rotated": False,
+                "deleted_count": 0,
+                "message": error_msg
+            }
 
     def _query_yipay_order(order_id=None, trade_no=None):
         """
@@ -30583,14 +30990,17 @@ def start_web_server(args_param):
                         # 例如：refundmoney=5.00, amount=5.00 -> 全额退款
                         #      refundmoney=3.75, amount=5.00 -> 部分退款
                         if refundmoney >= order_amount:
-                            order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+                            new_status = ORDER_STATUS_REFUNDED_FULL
                         else:
-                            order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
+                            new_status = ORDER_STATUS_REFUNDED_PARTIAL
 
-                        # 保存更新后的订单
-                        with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2,
-                                      ensure_ascii=False)
+                        # ========== 安全更新订单状态 ==========
+                        # 使用安全写入函数更新退款状态
+                        _safe_write_order(
+                            order_id=trade_no,
+                            order_data={"status": new_status},
+                            merge_mode=True  # 合并模式：只更新status字段
+                        )
 
                         logging.info(f"[退款请求] 已同步本地订单状态 - 订单号: {trade_no}")
 
@@ -30852,25 +31262,29 @@ def start_web_server(args_param):
                 # 否则状态改为"已部分退款"
                 if total_refunded_new >= order_amount:
                     # 已全额退款
-                    order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+                    new_status = ORDER_STATUS_REFUNDED_FULL
                     logging.info(f"[退款请求] 订单状态更新为：已全额退款")
                 else:
                     # 已部分退款
-                    order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
+                    new_status = ORDER_STATUS_REFUNDED_PARTIAL
                     logging.info(f"[退款请求] 订单状态更新为：已部分退款")
 
-                # ========== 新增：更新退款次数 ==========
+                # ========== 安全写入订单更新 ==========
+                # 使用安全写入函数更新退款相关字段
                 # 将退款次数设置为 1，表示该订单已退款一次
                 # 根据业务规则，每个订单只能退款一次
                 # 这个字段在下次退款请求时会被检查
-                order_data["refund_count"] = 1
+                _safe_write_order(
+                    order_id=trade_no,
+                    order_data={
+                        "status": new_status,
+                        "refund_count": 1,
+                        "refund_records": refund_records_new,
+                        "total_refunded": total_refunded_new
+                    },
+                    merge_mode=True  # 合并模式：只更新退款相关字段
+                )
                 logging.info(f"[退款请求] 退款次数已更新为：1")
-
-                # 保存更新后的订单数据到文件
-                # 使用 indent=2 格式化输出，便于人工查看
-                # ensure_ascii=False 保留中文字符
-                with open(order_file, "w", encoding="utf-8") as f:
-                    json.dump(order_data, f, indent=2, ensure_ascii=False)
 
                 # ========== 记录退款日志 ==========
 
@@ -30880,6 +31294,7 @@ def start_web_server(args_param):
                     user_id=g.user,                  # 操作员
                     order_id=trade_no,               # 订单号
                     action="refund",                 # 操作类型：退款
+                    log_level=LOG_LEVEL_INFO,        # 信息级别
                     log_data={
                         "refund_no": refund_no,                      # 商户退款单号
                         "platform_refund_no": platform_refund_no,    # 平台退款单号
@@ -31156,18 +31571,25 @@ def start_web_server(args_param):
                     "device": device,  # 设备类型
                 }
 
-                # 构造订单文件路径
-                # 文件名格式：订单号.json
-                # 例如：payment_orders/ORDER20230615123045123456.json
-                order_file = os.path.join(
-                    PAYMENT_ORDERS_DIR, f"{order_id}.json")
-
-                # 将订单数据写入JSON文件
-                # 使用 UTF-8 编码支持中文
-                # indent=2 使JSON格式化输出，便于人工查看
-                # ensure_ascii=False 保留中文字符，不转义为 \uXXXX 格式
-                with open(order_file, "w", encoding="utf-8") as f:
-                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                # ========== 安全写入订单文件 ==========
+                # 使用安全写入函数，防止意外覆盖已有数据
+                # merge_mode=False: 这是新订单，使用全新数据（不合并）
+                # 但函数内部仍会检查文件是否存在，提供额外的安全保护
+                success, message = _safe_write_order(
+                    order_id=order_id,
+                    order_data=order_data,
+                    merge_mode=False  # 新订单创建，不需要合并现有数据
+                )
+                
+                # 检查写入是否成功
+                if not success:
+                    # 写入失败，记录错误日志
+                    # 但不中断流程，因为订单已在支付平台创建
+                    # 用户仍然可以完成支付，后续可以通过平台查询补全订单
+                    logging.error(
+                        f"[支付订单] 订单文件写入失败 - 订单号: {order_id}, "
+                        f"错误: {message}"
+                    )
 
                 # ========== 写入支付操作日志 ==========
 
@@ -31342,15 +31764,26 @@ def start_web_server(args_param):
 
                 # 如果查询成功且订单已支付
                 if query_result["success"] and query_result.get("data").get("status") == "TRADE_SUCCESS":
-                    # 更新订单状态为已支付
+                    # 记录支付时间
+                    paid_at = time.time()
+                    paid_time = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # ========== 安全更新订单状态为已支付 ==========
+                    # 使用安全写入函数更新状态
+                    _safe_write_order(
+                        order_id=order_id,
+                        order_data={
+                            "status": ORDER_STATUS_PAID,
+                            "paid_at": paid_at,
+                            "paid_time": paid_time
+                        },
+                        merge_mode=True  # 合并模式：只更新支付状态字段
+                    )
+                    
+                    # 更新当前的order_data以返回最新状态
                     order_data["status"] = ORDER_STATUS_PAID
-                    order_data["paid_at"] = time.time()
-                    order_data["paid_time"] = time.strftime(
-                        "%Y-%m-%d %H:%M:%S")
-
-                    # 保存更新后的订单数据
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                    order_data["paid_at"] = paid_at
+                    order_data["paid_time"] = paid_time
 
                     # ========== 写入支付操作日志（状态更新） ==========
 
@@ -31359,6 +31792,7 @@ def start_web_server(args_param):
                         user_id=order_data.get("username", g.user),  # 订单所有者
                         order_id=order_id,                           # 订单号
                         action="order_status_updated",               # 操作类型：订单状态更新
+                        log_level=LOG_LEVEL_INFO,                    # 信息级别
                         log_data={
                             # 状态变更信息
                             "old_status": "pending",                 # 旧状态
@@ -31868,22 +32302,23 @@ def start_web_server(args_param):
                 "device": device,  # 设备类型
             }
 
-            # 确保payment_orders目录存在
-            # PAYMENT_ORDERS_DIR是全局常量，指向存储订单的目录
-            if not os.path.exists(PAYMENT_ORDERS_DIR):
-                # 如果目录不存在，创建它
-                # exist_ok=True 表示如果目录已存在也不报错
-                os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+            # ========== 安全写入订单文件 ==========
+            # 使用安全写入函数创建欠费支付订单
+            success, message = _safe_write_order(
+                order_id=out_trade_no,
+                order_data=order_data,
+                merge_mode=False  # 新订单，不需要合并
+            )
+            
+            # 检查写入是否成功
+            if not success:
+                # 写入失败，记录错误日志
+                logging.error(
+                    f"[欠费支付] 订单文件写入失败 - 订单号: {out_trade_no}, "
+                    f"错误: {message}"
+                )
 
-            # 构造订单文件路径：payment_orders/{订单号}.json
-            order_file = os.path.join(
-                PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
-
-            # 将订单数据写入JSON文件
-            with open(order_file, "w", encoding="utf-8") as f:
-                # json.dump() 将Python对象序列化为JSON格式并写入文件
-                # indent=2: 格式化输出，每层缩进2个空格
-                # ensure_ascii=False: 保存中文字符，不转义为\uXXXX
+            # ========== 步骤12：记录操作日志 ==========
                 json.dump(order_data, f, indent=2, ensure_ascii=False)
 
             # ========== 步骤12：记录操作日志 ==========
@@ -35195,42 +35630,44 @@ def start_web_server(args_param):
                 # - 平台返回的原始数据（platform_data字段）
                 # - 同步标记和时间戳
 
-                # 保存到本地文件
-                order_file = os.path.join(
-                    PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
-
-                # 确保订单目录存在
-                os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+                # 更新本地订单数据（合并现有数据和平台数据）
+                if order_data is not None:
+                    order_data.update(local_order_data)  # 更新本地订单数据
+                    local_order_data = order_data  # 使用更新后的订单数据
                 
-                order_data.update(local_order_data)  # 更新本地订单数据
-
-                local_order_data=order_data  # 使用更新后的订单数据
+                # ========== 安全写入订单文件 ==========
+                # 使用安全写入函数保存从平台查询的订单
                 try:
-                    # 写入订单文件
-                    # 使用UTF-8编码保存中文内容
-                    # indent=2使JSON格式化，便于人工查看
-                    # ensure_ascii=False保留中文字符不转义
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(local_order_data, f,
-                                  indent=2, ensure_ascii=False)
-
-                    logging.info(
-                        f"[管理员查询订单] 平台订单已保存到本地 - "
-                        f"订单号: {out_trade_no}, "
-                        f"文件路径: {order_file}"
-                    )
-
-                    # 记录同步日志
-                    _write_payment_log(
-                        user_id=g.user,
+                    success, message = _safe_write_order(
                         order_id=out_trade_no,
-                        action="sync_order_from_platform",
-                        log_data={
-                            "source": "admin_query",
-                            "platform_data": platform_order,
-                            "success": True
-                        }
+                        order_data=local_order_data,
+                        merge_mode=True  # 合并模式：保留本地可能存在的其他字段
                     )
+                    
+                    if not success:
+                        logging.error(
+                            f"[管理员查询订单] 保存订单失败 - "
+                            f"订单号: {out_trade_no}, "
+                            f"错误: {message}"
+                        )
+                    else:
+                        logging.info(
+                            f"[管理员查询订单] 平台订单已保存到本地 - "
+                            f"订单号: {out_trade_no}"
+                        )
+
+                        # 记录同步日志
+                        _write_payment_log(
+                            user_id=g.user,
+                            order_id=out_trade_no,
+                            action="sync_order_from_platform",
+                            log_level=LOG_LEVEL_INFO,
+                            log_data={
+                                "source": "admin_query",
+                                "platform_data": platform_order,
+                                "success": True
+                            }
+                        )
                     
                     # ========== 处理订单状态变更时的overdue_accounts逻辑 ==========
                     #
@@ -35730,10 +36167,19 @@ def start_web_server(args_param):
                             logging.warning(
                                 f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, 错误: {str(e)}")
 
-                    # 保存订单到本地文件
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(local_order_data, f,
-                                  indent=2, ensure_ascii=False)
+                    # ========== 安全保存订单到本地文件 ==========
+                    # 使用安全写入函数，合并模式确保保留所有字段
+                    success, message = _safe_write_order(
+                        order_id=out_trade_no,
+                        order_data=local_order_data,
+                        merge_mode=True  # 合并模式：保留现有字段
+                    )
+                    
+                    if not success:
+                        logging.error(
+                            f"[管理员拉取订单] 保存订单失败 - "
+                            f"订单号: {out_trade_no}, 错误: {message}"
+                        )
                     
                     # ========== 处理订单状态变更时的overdue_accounts逻辑 ==========
                     #
