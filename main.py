@@ -36831,6 +36831,198 @@ def start_web_server(args_param):
             }), 500
 
     # ==============================================================================
+    # 去水印控制API - 用于控制是否允许用户使用地图去水印功能
+    # ==============================================================================
+    
+    @app.route('/api/watermark/permission', methods=['GET'])
+    def get_watermark_permission():
+        """
+        获取地图去水印权限接口
+        
+        请求方法：GET
+        权限要求：无（公开接口，但根据session返回不同结果）
+        路由路径：/api/watermark/permission
+        
+        请求头：
+        - X-Session-ID: 会话ID（可选，可以为null、undefined、NULL等无效值）
+        
+        功能说明：
+        此接口用于控制用户是否可以使用高德地图去水印功能。
+        - 如果没有有效的session，返回默认值（从config.ini读取）
+        - 如果有有效session，根据用户的个性化配置返回（从watermark_permissions.json读取）
+        - 管理员可以在管理面板中设置每个用户的去水印权限
+        
+        返回数据（JSON格式）：
+        {
+            "allowed": true/false  // 是否允许去水印
+        }
+        
+        配置说明：
+        - config.ini [Watermark] default_permission: 默认权限（true/false）
+        - watermark_permissions.json: 用户个性化配置
+          {
+              "username1": true,
+              "username2": false,
+              ...
+          }
+        
+        使用场景：
+        - 前端JavaScript在加载地图时调用此接口
+        - 根据返回值决定是否加载去水印脚本
+        """
+        try:
+            # ========== 步骤1：获取并验证Session ID ==========
+            
+            session_id = request.headers.get('X-Session-ID', '').strip()
+            
+            # 检查session_id是否为无效值
+            invalid_values = ['', 'null', 'undefined', 'NULL', 'UNDEFINED', 'None', 'NONE']
+            if session_id in invalid_values or not session_id:
+                # 无效的session，返回默认值
+                logging.debug("[去水印权限] 无效的Session ID，返回默认权限")
+                
+                # 从config.ini读取默认权限
+                config = _read_config_ini()
+                if config is None:
+                    # 配置文件读取失败，默认允许（保持向后兼容）
+                    return jsonify({"allowed": True})
+                
+                default_permission = config.getboolean(
+                    'Watermark',
+                    'default_permission',
+                    fallback=True  # 默认允许去水印
+                )
+                
+                return jsonify({"allowed": default_permission})
+            
+            # ========== 步骤2：验证Session是否存在且有效 ==========
+            
+            if session_id not in web_sessions:
+                # Session不存在，返回默认值
+                logging.debug(f"[去水印权限] Session不存在: {session_id}，返回默认权限")
+                
+                config = _read_config_ini()
+                if config is None:
+                    return jsonify({"allowed": True})
+                
+                default_permission = config.getboolean(
+                    'Watermark',
+                    'default_permission',
+                    fallback=True
+                )
+                
+                return jsonify({"allowed": default_permission})
+            
+            # 获取session对应的用户名
+            session_data = web_sessions[session_id]
+            username = session_data.get('username', '')
+            
+            if not username:
+                # Session中没有用户名，返回默认值
+                logging.debug(f"[去水印权限] Session无用户名: {session_id}，返回默认权限")
+                
+                config = _read_config_ini()
+                if config is None:
+                    return jsonify({"allowed": True})
+                
+                default_permission = config.getboolean(
+                    'Watermark',
+                    'default_permission',
+                    fallback=True
+                )
+                
+                return jsonify({"allowed": default_permission})
+            
+            # ========== 步骤3：读取用户个性化配置 ==========
+            
+            watermark_permissions_file = 'watermark_permissions.json'
+            
+            # 检查配置文件是否存在
+            if not os.path.exists(watermark_permissions_file):
+                # 配置文件不存在，创建示例文件
+                logging.info("[去水印权限] 配置文件不存在，创建示例文件")
+                
+                example_config = {
+                    "_comment": "此文件用于配置用户的地图去水印权限",
+                    "_usage": "设置用户名为键，true/false为值。例如: \"admin\": true 表示允许admin用户去水印",
+                    "_default": "如果用户不在此列表中，使用config.ini中的default_permission配置",
+                    "example_user": True,
+                    "blocked_user": False
+                }
+                
+                try:
+                    with open(watermark_permissions_file, 'w', encoding='utf-8') as f:
+                        json.dump(example_config, f, indent=2, ensure_ascii=False)
+                    logging.info(f"[去水印权限] 已创建示例配置文件: {watermark_permissions_file}")
+                except Exception as e:
+                    logging.error(f"[去水印权限] 创建示例配置文件失败: {e}")
+            
+            # 读取配置文件
+            try:
+                with open(watermark_permissions_file, 'r', encoding='utf-8') as f:
+                    permissions = json.load(f)
+            except json.JSONDecodeError as e:
+                # JSON解析失败，覆写为示例配置
+                logging.error(f"[去水印权限] 配置文件格式错误，覆写为示例配置: {e}")
+                
+                example_config = {
+                    "_comment": "此文件用于配置用户的地图去水印权限",
+                    "_usage": "设置用户名为键，true/false为值",
+                    "_error": f"原文件解析失败: {str(e)}",
+                    "example_user": True
+                }
+                
+                with open(watermark_permissions_file, 'w', encoding='utf-8') as f:
+                    json.dump(example_config, f, indent=2, ensure_ascii=False)
+                
+                permissions = example_config
+            except Exception as e:
+                logging.error(f"[去水印权限] 读取配置文件失败: {e}")
+                # 读取失败，返回默认值
+                config = _read_config_ini()
+                if config is None:
+                    return jsonify({"allowed": True})
+                
+                default_permission = config.getboolean(
+                    'Watermark',
+                    'default_permission',
+                    fallback=True
+                )
+                
+                return jsonify({"allowed": default_permission})
+            
+            # ========== 步骤4：检查用户是否有个性化配置 ==========
+            
+            if username in permissions:
+                # 用户有个性化配置
+                user_permission = permissions[username]
+                logging.debug(f"[去水印权限] 用户 {username} 的个性化权限: {user_permission}")
+                return jsonify({"allowed": bool(user_permission)})
+            
+            # ========== 步骤5：用户没有个性化配置，返回默认值 ==========
+            
+            config = _read_config_ini()
+            if config is None:
+                return jsonify({"allowed": True})
+            
+            default_permission = config.getboolean(
+                'Watermark',
+                'default_permission',
+                fallback=True
+            )
+            
+            logging.debug(f"[去水印权限] 用户 {username} 使用默认权限: {default_permission}")
+            return jsonify({"allowed": default_permission})
+        
+        except Exception as e:
+            # ========== 异常处理 ==========
+            
+            logging.error(f"[去水印权限] 处理请求时发生异常: {e}", exc_info=True)
+            
+            # 发生异常时，默认允许（保持向后兼容）
+            return jsonify({"allowed": True})
+
+    # ==============================================================================
     # 健康检查和监控接口
     # ==============================================================================
 
