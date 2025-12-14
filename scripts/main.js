@@ -47375,7 +47375,7 @@ async function loadOverdueAccounts() {
                                 <!-- 结清按钮：无论是否有备份数据都可以使用 -->
                                 <!-- 使用 escapeHtml() 防止XSS攻击 -->
                                 <!-- auth_username传空字符串，让后端自动查找该学校账号所属的用户 -->
-                                <button onclick="adminClearOverdue(school_username=${escapeHtml(account.school_username)},is_detail_view=false,auth_username='')" 
+                                <button onclick="adminClearOverdue(school_username=${escapeHtml(account.school_username)},auth_username='',is_detail_view=false)" 
                                         class="px-3 py-1.5 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition-colors">
                                     结算
                                 </button>
@@ -47833,7 +47833,7 @@ async function adminClearOverdue(school_username, auth_username='', is_detail_vi
             // 这里显示学校账号、所属用户信息，以及输入框
             html: `
                 <p class="text-sm text-slate-600 mb-3">学校账号：<span class="font-semibold">${escapeHtml(school_username)}</span></p>
-                <p class="text-sm text-slate-600 mb-3">所属用户：<span class="font-semibold">${escapeHtml(auth_username)}</span></p>
+                <!-- <p class="text-sm text-slate-600 mb-3">所属用户：<span class="font-semibold">${escapeHtml(auth_username)}</span></p> -->
                 <input id="new-overdue-count" type="number" min="0" value="0" 
                     class="swal2-input" placeholder="输入新的欠费次数（0表示清零）">
             `,
