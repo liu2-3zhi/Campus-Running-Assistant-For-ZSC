@@ -34415,6 +34415,23 @@ async function loadSystemConfig() {
       "启用后，留言将通过百度云文本审核服务检测后才能发布"
     );
     
+    // ==================== 验证码配置 ====================
+    // 添加验证码相关配置项
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">🔐 验证码配置</h5>';
+    
+    // 验证码噪点级别配置项
+    // 控制验证码图片中的噪点密度，影响可读性和安全性的平衡
+    // 类型：number（数字输入框）
+    // 范围：0.0 到 1.0
+    // 默认值：0.08（适中噪点）
+    html += createInput(
+      "Captcha",
+      "noise_level",
+      "验证码噪点级别",
+      "number",
+      "控制验证码的噪点密度，范围 0.0-1.0，默认 0.08（推荐值）"
+    );
    
     
     formContainer.innerHTML = html;
