@@ -47978,3 +47978,88 @@ async function adminClearOverdue(school_username, auth_username='', is_detail_vi
 // ============================================================================
 // 欠费账号查询功能 - 结束
 // ============================================================================
+
+// ============================================================================
+// 自动填充退款金额功能
+// ============================================================================
+/**
+ * 当输入订单号后，自动查询订单信息并计算75%金额自动填入退款金额框
+ * 功能位置：PC端退款面板
+ * 触发时机：订单号输入框失去焦点或输入完成后
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    // 获取订单号输入框
+    const tradeNoInput = document.getElementById('admin-refund-order-trade-no_modal');
+    // 获取退款金额输入框
+    const amountInput = document.getElementById('admin-refund-amount_modal');
+    
+    if (!tradeNoInput || !amountInput) {
+        console.warn('[自动填单] 未找到退款表单元素');
+        return;
+    }
+    
+    /**
+     * 查询订单并自动填充退款金额
+     */
+    async function autoFillRefundAmount() {
+        const orderId = tradeNoInput.value.trim();
+        
+        // 如果订单号为空，清空金额输入框
+        if (!orderId) {
+            amountInput.value = '';
+            return;
+        }
+        
+        try {
+            console.log('[自动填单] 正在查询订单:', orderId);
+            
+            // 调用后端API查询订单详情
+            const response = await fetch(`/api/payment/order/query?order_id=${encodeURIComponent(orderId)}`, {
+                method: 'GET',
+                headers: {
+                    'X-Session-ID': sessionUUID
+                }
+            });
+            
+            if (!response.ok) {
+                console.error('[自动填单] 查询订单失败:', response.status);
+                return;
+            }
+            
+            const result = await response.json();
+            
+            if (result.success && result.order) {
+                // 获取订单金额
+                const orderAmount = parseFloat(result.order.amount || result.order.total_amount || 0);
+                
+                if (orderAmount > 0) {
+                    // 计算75%的金额
+                    const refundAmount = (orderAmount * 0.75).toFixed(2);
+                    
+                    // 自动填入退款金额输入框
+                    amountInput.value = refundAmount;
+                    
+                    console.log(`[自动填单] 已自动填入退款金额: ${refundAmount} 元 (订单总额: ${orderAmount} 元)`);
+                    
+                    // 可选：显示一个轻提示
+                    // showModalAlert(`已自动填入退款金额: ¥${refundAmount} (订单总额的75%)`, '提示');
+                } else {
+                    console.warn('[自动填单] 订单金额无效:', orderAmount);
+                }
+            } else {
+                console.warn('[自动填单] 查询订单失败:', result.message);
+            }
+        } catch (error) {
+            console.error('[自动填单] 查询订单异常:', error);
+        }
+    }
+    
+    // 监听订单号输入框的blur事件（失去焦点时触发）
+    tradeNoInput.addEventListener('blur', autoFillRefundAmount);
+    
+    // 可选：也可以监听input事件，实现输入时实时查询
+    // 但这可能导致频繁的API调用，建议使用防抖
+    // tradeNoInput.addEventListener('input', debounce(autoFillRefundAmount, 500));
+    
+    console.log('[自动填单] 退款金额自动填充功能已初始化');
+});
