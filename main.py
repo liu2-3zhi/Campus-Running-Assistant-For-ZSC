@@ -33772,6 +33772,30 @@ def start_web_server(args_param):
                     "Rainbow_YiPay", "product_id", fallback="1001"
                 )
 
+                # [新增] 读取app_host（应用域名地址）
+                # app_host用于自动设置回调地址的域名前缀
+                app_host = config.get(
+                    "Rainbow_YiPay",
+                    "app_host",
+                    fallback=""  # 默认值：空字符串
+                )
+
+                # [新增] 读取pubc_key（平台公钥）
+                # pubc_key是彩虹易支付平台的RSA公钥，用于验证支付回调通知
+                pubc_key = config.get(
+                    "Rainbow_YiPay",
+                    "pubc_key",
+                    fallback=""  # 默认值：空字符串
+                )
+
+                # [新增] 读取payment_timeout_minutes（支付超时时间）
+                # 单位：秒，表示订单创建后多长时间内未支付视为超时
+                payment_timeout_minutes = config.get(
+                    "Rainbow_YiPay",
+                    "payment_timeout_minutes",
+                    fallback="30"  # 默认值：30秒
+                )
+
                 # 构造返回数据
                 # 将读取到的配置以 JSON 格式返回给前端
                 # 注意：返回完整的商户密钥（已通过双重权限验证，安全可控）
@@ -33781,9 +33805,12 @@ def start_web_server(args_param):
                         "host": host,
                         "pid": pid,
                         "key": key,  # 完整的商户密钥（不脱敏）
+                        "product_id": product_id,  # [新增] 返回商品ID
+                        "app_host": app_host,  # [新增] 返回应用域名地址
+                        "pubc_key": pubc_key,  # [新增] 返回平台公钥
+                        "payment_timeout_minutes": payment_timeout_minutes,  # [新增] 返回支付超时时间
                         "enabled_payment_methods": enabled_payment_methods,
-                        "payment_method": payment_method,
-                        "product_id": product_id  # [新增] 返回商品ID
+                        "payment_method": payment_method
                     }
                 })
 
@@ -33840,6 +33867,30 @@ def start_web_server(args_param):
                         "Rainbow_YiPay", "product_id", fallback="1001")
                 ).strip()
 
+                # [新增] 获取新的 app_host 值（应用域名地址）
+                # app_host用于自动设置回调地址的域名前缀
+                # 从请求数据中获取，如果不存在则使用当前配置值，默认为空字符串
+                new_app_host = data.get(
+                    "app_host",
+                    config.get("Rainbow_YiPay", "app_host", fallback="")
+                ).strip()
+
+                # [新增] 获取新的 pubc_key 值（平台公钥）
+                # pubc_key是彩虹易支付平台的RSA公钥，用于验证支付回调通知
+                # 从请求数据中获取，如果不存在则使用当前配置值，默认为空字符串
+                new_pubc_key = data.get(
+                    "pubc_key",
+                    config.get("Rainbow_YiPay", "pubc_key", fallback="")
+                ).strip()
+
+                # [新增] 获取新的 payment_timeout_minutes 值（支付超时时间）
+                # 单位：秒，表示订单创建后多长时间内未支付视为超时
+                # 从请求数据中获取，如果不存在则使用当前配置值，默认为30秒
+                new_payment_timeout_minutes = data.get(
+                    "payment_timeout_minutes",
+                    config.get("Rainbow_YiPay", "payment_timeout_minutes", fallback="30")
+                ).strip()
+
                 # ========== 验证参数的有效性 ==========
 
                 # 验证 host 不能为空
@@ -33880,6 +33931,32 @@ def start_web_server(args_param):
                         "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
                     }), 400
 
+                # [新增] 验证 pubc_key 不能为空（必填项）
+                # pubc_key是平台公钥，用于验证支付回调通知，必须提供
+                if not new_pubc_key:
+                    return jsonify({
+                        "success": False,
+                        "message": "平台公钥不能为空"
+                    }), 400
+
+                # [新增] 验证 payment_timeout_minutes 的有效性
+                # 必须是数字类型且在合理范围内（10-3600秒）
+                try:
+                    # 尝试将字符串转换为整数
+                    timeout_value = int(new_payment_timeout_minutes)
+                    # 检查数字范围：10秒到3600秒（1小时）
+                    if timeout_value < 10 or timeout_value > 3600:
+                        return jsonify({
+                            "success": False,
+                            "message": "支付超时时间必须在10-3600秒之间"
+                        }), 400
+                except ValueError:
+                    # 如果无法转换为整数，说明不是有效的数字
+                    return jsonify({
+                        "success": False,
+                        "message": "支付超时时间必须是有效的数字"
+                    }), 400
+
                 # ========== 保存旧配置用于日志记录 ==========
                 # 【重要】在执行 config.set() 之前保存所有旧值
                 # 这样才能正确比较新旧值，记录准确的变更日志
@@ -33892,6 +33969,18 @@ def start_web_server(args_param):
                     "Rainbow_YiPay", "enabled_payment_methods", fallback="")
                 old_payment_method = config.get(
                     "Rainbow_YiPay", "payment_method", fallback="")
+                # [新增] 保存旧的product_id值
+                old_product_id = config.get(
+                    "Rainbow_YiPay", "product_id", fallback="")
+                # [新增] 保存旧的app_host值（应用域名地址）
+                old_app_host = config.get(
+                    "Rainbow_YiPay", "app_host", fallback="")
+                # [新增] 保存旧的pubc_key值（平台公钥）
+                old_pubc_key = config.get(
+                    "Rainbow_YiPay", "pubc_key", fallback="")
+                # [新增] 保存旧的payment_timeout_minutes值（支付超时时间）
+                old_payment_timeout_minutes = config.get(
+                    "Rainbow_YiPay", "payment_timeout_minutes", fallback="")
 
                 # ========== 更新配置 ==========
 
@@ -33910,6 +33999,13 @@ def start_web_server(args_param):
                            new_payment_method)
                 config.set("Rainbow_YiPay", "product_id",
                            new_product_id)  # [新增] 保存商品ID
+                # [新增] 设置app_host（应用域名地址）
+                config.set("Rainbow_YiPay", "app_host", new_app_host)
+                # [新增] 设置pubc_key（平台公钥）
+                config.set("Rainbow_YiPay", "pubc_key", new_pubc_key)
+                # [新增] 设置payment_timeout_minutes（支付超时时间）
+                config.set("Rainbow_YiPay", "payment_timeout_minutes",
+                           new_payment_timeout_minutes)
 
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
@@ -33918,17 +34014,23 @@ def start_web_server(args_param):
 
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
-                # 注意：不记录完整的密钥，只记录是否修改了密钥
+                # 注意：不记录完整的密钥和公钥，只记录是否修改了它们
                 # 【任务1修复】使用 old_key 与 new_key 比较，而不是从已更新的config中读取
                 # 因为在此之前已经执行了 config.set("Rainbow_YiPay", "key", new_key)
                 # 所以必须使用预先保存的 old_key 变量进行比较
                 key_changed = (new_key != old_key)
+                # [新增] 判断pubc_key是否被修改
+                pubc_key_changed = (new_pubc_key != old_pubc_key)
                 logging.info(
                     f"[易支付配置] 管理员更新易支付配置 - "
                     f"操作者: {g.user}, "
                     f"host: {old_host} -> {new_host}, "
                     f"pid: {old_pid} -> {new_pid}, "
                     f"key: {'已修改' if key_changed else '未修改'}, "
+                    f"product_id: {old_product_id} -> {new_product_id}, "
+                    f"app_host: {old_app_host} -> {new_app_host}, "
+                    f"pubc_key: {'已修改' if pubc_key_changed else '未修改'}, "
+                    f"payment_timeout_minutes: {old_payment_timeout_minutes} -> {new_payment_timeout_minutes}, "
                     f"enabled_payment_methods: {old_enabled_payment_methods} -> {new_enabled_payment_methods}, "
                     f"payment_method: {old_payment_method} -> {new_payment_method}"
                 )
