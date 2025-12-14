@@ -60764,6 +60764,7 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
         title: '请完成支付',
         html: `
             <div style="text-align: center;">
+                <!-- ========== 订单号显示区域 ========== -->
                 <div style="margin-bottom: 20px;">
                     <div style="color: #64748b; font-size: 14px; margin-bottom: 5px;">订单号</div>
                     <div style="
@@ -60779,6 +60780,7 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
                     </div>
                 </div>
                 
+                <!-- ========== 支付金额显示区域 ========== -->
                 <div style="
                     padding: 15px;
                     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -60789,25 +60791,59 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
                     <div style="color: white; font-size: 28px; font-weight: bold; margin-top: 5px;">¥${totalAmount}</div>
                 </div>
 
-                <div style="margin-bottom: 20px;">
-                    <a href="${escapeHtml(payUrl)}" 
-                       target="_blank" 
-                       style="
-                           display: inline-block;
-                           padding: 12px 40px;
-                           background: #3b82f6;
-                           color: white;
-                           text-decoration: none;
-                           border-radius: 8px;
-                           font-weight: 600;
-                           transition: all 0.2s;
-                       "
-                       onmouseover="this.style.background='#2563eb'"
-                       onmouseout="this.style.background='#3b82f6'">
-                        🔗 打开支付页面
-                    </a>
+                <!-- ========== 支付链接显示区域（文本格式，可复制）========== -->
+                <!-- 该区域显示完整的支付链接，用户可以直接复制 -->
+                <div style="margin-bottom: 15px; padding: 10px; background: #f8fafc; border-radius: 6px;">
+                    <div style="color: #64748b; font-size: 12px; margin-bottom: 5px;">支付链接</div>
+                    <div style="
+                        font-family: monospace;
+                        font-size: 11px;
+                        color: #475569;
+                        word-break: break-all;
+                        max-height: 60px;
+                        overflow-y: auto;
+                    ">
+                        ${escapeHtml(payUrl)}
+                    </div>
                 </div>
 
+                <!-- ========== 根据pay_type条件显示：二维码容器（仅qrcode类型）========== -->
+                <!-- 当支付类型为'qrcode'时，显示此容器用于展示二维码 -->
+                <!-- 二维码将在didOpen回调中通过QRCode库动态生成 -->
+                ${pay_type === 'qrcode' ? `
+                    <div id="payment-qrcode-container" style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px;">
+                        <div style="color: #64748b; font-size: 13px; margin-bottom: 10px;">请扫描二维码支付</div>
+                        <canvas id="payment-qrcode-canvas" style="display: block; margin: 0 auto;"></canvas>
+                    </div>
+                ` : ''}
+
+                <!-- ========== 根据pay_type条件显示：跳转按钮（非qrcode类型）========== -->
+                <!-- 当支付类型不是'qrcode'时（如jump、html、app等），显示此跳转按钮 -->
+                <!-- 点击按钮将在新标签页中打开支付链接 -->
+                ${pay_type !== 'qrcode' ? `
+                    <div style="margin-bottom: 20px;">
+                        <a href="${escapeHtml(payUrl)}" 
+                           target="_blank" 
+                           style="
+                               display: inline-block;
+                               padding: 12px 40px;
+                               background: #3b82f6;
+                               color: white;
+                               text-decoration: none;
+                               border-radius: 8px;
+                               font-weight: 600;
+                               transition: all 0.2s;
+                           "
+                           onmouseover="this.style.background='#2563eb'"
+                           onmouseout="this.style.background='#3b82f6'">
+                            🔗 打开支付页面
+                        </a>
+                    </div>
+                ` : ''}
+
+                <!-- ========== 支付状态指示器 ========== -->
+                <!-- 显示当前支付状态，包含动画效果和提示文字 -->
+                <!-- 该状态会在轮询过程中动态更新（成功、失败、超时等） -->
                 <div id="payment-status-indicator" style="
                     padding: 15px;
                     background: #fef3c7;
@@ -60834,6 +60870,7 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
                 </div>
             </div>
 
+            <!-- ========== CSS动画定义 ========== -->
             <style>
                 @keyframes spin {
                     to { transform: rotate(360deg); }
@@ -60848,7 +60885,52 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
         allowOutsideClick: false,
         allowEscapeKey: false,
         width: '550px',
-        didOpen: () => {
+        didOpen: async () => {
+            // ========== 二维码生成逻辑（仅qrcode类型）==========
+            // 如果支付类型是'qrcode'（二维码支付），则在弹窗打开后生成二维码
+            if (pay_type === 'qrcode') {
+                try {
+                    // 等待Swal弹窗完全显示，确保DOM元素已经渲染完成
+                    // 这里延迟100毫秒，确保canvas元素已经插入到页面中
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // 获取用于显示二维码的canvas元素
+                    const canvas = document.getElementById('payment-qrcode-canvas');
+                    
+                    // 检查canvas元素是否存在，以及QRCode库是否已加载
+                    // QRCode库通过CDN引入，需要确保在使用前已经加载完成
+                    if (canvas && typeof QRCode !== 'undefined') {
+                        // 使用QRCode库的toCanvas方法生成二维码
+                        // 参数说明：
+                        // - canvas: 用于渲染二维码的canvas元素
+                        // - payUrl: 要编码到二维码中的支付链接
+                        // - options: 二维码生成选项
+                        await QRCode.toCanvas(canvas, payUrl, {
+                            width: 200,        // 二维码宽度（像素）
+                            height: 200,       // 二维码高度（像素）
+                            margin: 2,         // 二维码边距（单位：模块数）
+                            color: {
+                                dark: '#000000',    // 二维码深色部分（前景色）
+                                light: '#ffffff'    // 二维码浅色部分（背景色）
+                            }
+                        });
+                        // 二维码生成成功，记录日志
+                        console.log('[支付二维码] 二维码生成成功');
+                    } else {
+                        // 如果canvas元素不存在或QRCode库未加载，记录警告
+                        // 这种情况可能是因为：
+                        // 1. HTML模板中的条件判断错误，canvas元素未生成
+                        // 2. QRCode库的CDN加载失败
+                        console.warn('[支付二维码] 无法生成二维码：canvas元素不存在或QRCode库未加载');
+                    }
+                } catch (error) {
+                    // 捕获二维码生成过程中的任何错误
+                    // 例如：QRCode库方法调用异常、URL格式不正确等
+                    // 注意：此处仅记录错误，不中断程序执行，确保支付流程不受影响
+                    console.error('[支付二维码] 生成二维码失败:', error);
+                }
+            }
+            
             // ========== 开始轮询支付状态 ==========
             
             // 使用setInterval
