@@ -5447,6 +5447,7 @@ class AuthSystem:
             "last_used_school_account": user_data.get(
                 "last_used_school_account", ""
             ),  # 新增字段
+            "available_runs": user_data.get("available_runs", 0),  # 新增字段：可用运行次数
         }
 
     def update_user_last_school_account(self, auth_username, school_username):
@@ -26289,11 +26290,16 @@ def start_web_server(args_param):
                                                     current_overdue_count = int(
                                                         account_config.get("stats", "overdue_count", fallback="0"))
 
+                                                # 从订单的overdue_accounts中获取该账号的overdue_count
+                                                # 这个值表示该账号在此订单中的欠费次数
+                                                # 支付成功后，需要减去这个值，而不是固定减1
+                                                account_overdue_count = account.get("overdue_count", 0)
+
                                                 # 计算新的overdue_count值
                                                 # 使用max(0, ...)确保结果不会小于0
-                                                # 这里减1是因为订单支付成功，该账号的一次欠费已被处理
+                                                # 减去的值是订单中该账号对应的overdue_count，而不是固定减1
                                                 new_overdue_count = max(
-                                                    0, current_overdue_count - 1)
+                                                    0, current_overdue_count - account_overdue_count)
 
                                                 # 确保[stats]节存在
                                                 # 如果INI文件中没有[stats]节，则创建它
@@ -26311,10 +26317,10 @@ def start_web_server(args_param):
                                                     account_config.write(f)
 
                                                 # 记录日志：更新成功
-                                                # 日志中包含账号名、原值和新值，便于追踪和调试
+                                                # 日志中包含账号名、原值、减少值和新值，便于追踪和调试
                                                 logging.info(
                                                     f"[订单overdue处理] 账号 {school_username} 的overdue_count: "
-                                                    f"{current_overdue_count} -> {new_overdue_count}"
+                                                    f"{current_overdue_count} - {account_overdue_count} = {new_overdue_count}"
                                                 )
 
                                             except Exception as e:
@@ -34332,6 +34338,11 @@ def start_web_server(args_param):
                             if log_timestamp > end_timestamp:
                                 continue
 
+                        # 添加log_id字段到日志数据
+                        # log_id是日志文件名（不含.json后缀），用于后续查询日志详情
+                        # 例如：20231201_120530_admin_ORDER20231201120530123456
+                        log_entry["log_id"] = filename[:-5]  # 去掉.json后缀（5个字符）
+                        
                         # 通过筛选，添加到结果列表
                         logs.append(log_entry)
 
@@ -34540,6 +34551,11 @@ def start_web_server(args_param):
                     if end_timestamp and log_timestamp > end_timestamp:
                         continue
 
+                    # 添加log_id字段到日志数据
+                    # log_id是日志文件名（不含.json后缀），用于后续查询日志详情
+                    # 例如：20231201_120530_admin_ORDER20231201120530123456
+                    log_data["log_id"] = log_filename[:-5]  # 去掉.json后缀（5个字符）
+                    
                     # 添加到日志列表
                     logs.append(log_data)
 
@@ -34581,6 +34597,170 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"获取日志失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment/log_detail", methods=["POST"])
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
+    def admin_get_payment_log_detail():
+        """
+        获取支付日志详情接口（管理员专用）
+        
+        功能说明：
+        根据日志ID（即日志文件名）读取并返回完整的日志详细信息。
+        用于支持前端点击"查看详情"按钮后显示日志的完整内容。
+        
+        请求方法：POST
+        权限要求：审计日志查看权限（view_audit_logs）
+        
+        请求体（JSON格式）：
+            {
+                "log_id": "20231201_120530_admin_ORDER20231201120530123456"  # 日志ID（文件名，不含.json后缀）
+            }
+        
+        返回数据（JSON格式）：
+            {
+                "success": true,
+                "log_detail": {
+                    "timestamp": 1701417930.123,            # Unix时间戳
+                    "datetime": "2023-12-01 12:05:30",     # 可读时间格式
+                    "action": "create_order",              # 操作类型
+                    "user_id": "admin",                    # 用户标识
+                    "order_id": "ORDER20231201120530123456", # 订单号
+                    "client_ip": "192.168.1.100",          # 客户端IP地址
+                    "user_agent": "Mozilla/5.0...",        # 浏览器User Agent
+                    "amount": 10.00,                       # 金额（如果有）
+                    "status": "success",                   # 状态（如果有）
+                    # ... 其他日志中包含的字段
+                }
+            }
+        
+        使用场景：
+        - 查看日志的完整详细信息，包括所有字段
+        - 调试支付问题时查看完整的请求和响应数据
+        - 审计时查看操作的详细过程
+        """
+        try:
+            # ========== 步骤1：权限检查 ==========
+            
+            # 细粒度权限检查：需要 'view_audit_logs' 权限
+            # 查看日志详情与查看日志列表需要相同的权限
+            if not auth_system.check_permission(g.user, "view_audit_logs"):
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
+                }), 403
+            
+            # ========== 步骤2：获取并验证请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            # 使用 request.get_json() 自动解析JSON格式的请求体
+            data = request.get_json() or {}
+            
+            # 提取日志ID参数
+            # 日志ID即日志文件名（不含.json后缀）
+            # 格式示例：20231201_120530_admin_ORDER20231201120530123456
+            log_id = data.get("log_id", "").strip()
+            
+            # 验证日志ID是否为空
+            if not log_id:
+                # 日志ID为空，返回400错误（参数错误）
+                return jsonify({
+                    "success": False,
+                    "message": "日志ID不能为空"
+                }), 400
+            
+            # ========== 步骤3：构造日志文件路径 ==========
+            
+            # 构造日志文件的完整路径
+            # 日志文件存储在 PAYMENT_LOGS_DIR 目录下
+            # 文件名格式：{log_id}.json
+            log_filepath = os.path.join(PAYMENT_LOGS_DIR, f"{log_id}.json")
+            
+            # 安全性检查：防止路径遍历攻击
+            # 例如：log_id = "../../../etc/passwd" 这样的恶意输入
+            # 确保构造的路径必须在 PAYMENT_LOGS_DIR 目录内
+            real_log_dir = os.path.realpath(PAYMENT_LOGS_DIR)
+            real_log_path = os.path.realpath(log_filepath)
+            
+            # 检查real_log_path是否以real_log_dir开头
+            # 如果不是，说明有路径遍历企图，拒绝访问
+            if not real_log_path.startswith(real_log_dir):
+                logging.warning(
+                    f"[支付日志详情] 检测到路径遍历企图 - 用户: {g.user}, "
+                    f"log_id: {log_id}, real_path: {real_log_path}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "无效的日志ID"
+                }), 400
+            
+            # ========== 步骤4：检查日志文件是否存在 ==========
+            
+            # 检查日志文件是否真实存在
+            if not os.path.exists(log_filepath):
+                # 文件不存在，可能是：
+                # 1. 日志ID输入错误
+                # 2. 日志文件已被删除
+                # 3. 日志还未生成
+                logging.warning(
+                    f"[支付日志详情] 日志文件不存在 - 用户: {g.user}, "
+                    f"log_id: {log_id}, filepath: {log_filepath}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "日志文件不存在，可能已被删除"
+                }), 404
+            
+            # ========== 步骤5：读取日志文件内容 ==========
+            
+            try:
+                # 打开并读取日志JSON文件
+                # 使用UTF-8编码确保中文内容正确显示
+                with open(log_filepath, "r", encoding="utf-8") as f:
+                    log_detail = json.load(f)
+                
+                # 记录操作日志（用于审计）
+                # 记录谁在什么时候查看了哪条日志
+                logging.info(
+                    f"[支付日志详情] 管理员查看日志详情 - "
+                    f"用户: {g.user}, log_id: {log_id}"
+                )
+                
+                # 返回成功响应，包含完整的日志详情
+                return jsonify({
+                    "success": True,
+                    "log_detail": log_detail
+                })
+                
+            except json.JSONDecodeError as e:
+                # JSON解析失败，可能是文件损坏
+                logging.error(
+                    f"[支付日志详情] JSON解析失败 - "
+                    f"log_id: {log_id}, 错误: {str(e)}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "日志文件格式错误，无法解析"
+                }), 500
+            except Exception as e:
+                # 读取文件时的其他异常
+                logging.error(
+                    f"[支付日志详情] 读取日志文件失败 - "
+                    f"log_id: {log_id}, 错误: {str(e)}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": f"读取日志文件失败：{str(e)}"
+                }), 500
+        
+        except Exception as e:
+            # 捕获所有未预期的异常
+            # 记录详细的错误日志（包含堆栈跟踪）
+            logging.error(f"[支付日志详情] 获取日志详情异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"获取日志详情失败：{str(e)}"
             }), 500
 
     @app.route("/api/admin/payment/notify_stats", methods=["GET"])
@@ -35075,9 +35255,14 @@ def start_web_server(args_param):
                                             current_overdue_count = int(
                                                 account_config.get("stats", "overdue_count", fallback="0"))
                                         
+                                        # 从订单的overdue_accounts中获取该账号的overdue_count
+                                        # 这个值表示该账号在此订单中的欠费次数
+                                        # 支付成功后，需要减去这个值，而不是固定减1
+                                        account_overdue_count = account.get("overdue_count", 0)
+                                        
                                         # 计算新的overdue_count值
-                                        # 减1操作，但确保不会小于0
-                                        new_overdue_count = max(0, current_overdue_count - 1)
+                                        # 减去订单中该账号对应的overdue_count，但确保不会小于0
+                                        new_overdue_count = max(0, current_overdue_count - account_overdue_count)
                                         
                                         # 确保[stats]节存在
                                         if not account_config.has_section("stats"):
@@ -35094,7 +35279,7 @@ def start_web_server(args_param):
                                         # 记录日志：更新成功
                                         logging.info(
                                             f"[订单overdue处理] 账号 {school_username} 的overdue_count: "
-                                            f"{current_overdue_count} -> {new_overdue_count}"
+                                            f"{current_overdue_count} - {account_overdue_count} = {new_overdue_count}"
                                         )
                                         
                                     except Exception as e:
@@ -35631,9 +35816,14 @@ def start_web_server(args_param):
                                             current_overdue_count = int(
                                                 account_config.get("stats", "overdue_count", fallback="0"))
                                         
+                                        # 从订单的overdue_accounts中获取该账号的overdue_count
+                                        # 这个值表示该账号在此订单中的欠费次数
+                                        # 支付成功后，需要减去这个值，而不是固定减1
+                                        account_overdue_count = account.get("overdue_count", 0)
+                                        
                                         # 计算新的overdue_count值
-                                        # 减1操作，但确保不会小于0
-                                        new_overdue_count = max(0, current_overdue_count - 1)
+                                        # 减去订单中该账号对应的overdue_count，但确保不会小于0
+                                        new_overdue_count = max(0, current_overdue_count - account_overdue_count)
                                         
                                         # 确保[stats]节存在
                                         if not account_config.has_section("stats"):
@@ -35650,7 +35840,7 @@ def start_web_server(args_param):
                                         # 记录日志：更新成功
                                         logging.info(
                                             f"[订单overdue处理] 账号 {school_username} 的overdue_count: "
-                                            f"{current_overdue_count} -> {new_overdue_count}"
+                                            f"{current_overdue_count} - {account_overdue_count} = {new_overdue_count}"
                                         )
                                         
                                     except Exception as e:

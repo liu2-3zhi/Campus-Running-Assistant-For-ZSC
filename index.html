@@ -11188,6 +11188,140 @@ body.mobile-mode #session-picker-modal {
       </div>
 
       <!-- ========================================
+           支付日志详情模态框 (admin-payment-log-detail-modal)
+           ========================================
+           【功能说明】
+           显示单条支付日志的完整详细信息
+           用户点击日志列表中的"查看详情"按钮时弹出此模态框
+           
+           【显示内容】
+           - 日志基本信息：时间、操作类型、用户ID、订单号
+           - 请求信息：客户端IP、User Agent
+           - 操作数据：JSON格式显示所有字段
+           
+           【使用方式】
+           通过JavaScript函数showPaymentLogDetail(logId)调用
+           ======================================== -->
+      <div id="admin-payment-log-detail-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <!-- 模态框容器：白色背景，圆角，阴影 -->
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          
+          <!-- ========== 模态框头部 ========== -->
+          <div class="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-slate-50">
+            <!-- 标题 -->
+            <h3 class="text-xl font-bold text-slate-800 flex items-center">
+              <!-- 文档图标 -->
+              <svg class="w-6 h-6 inline mr-2 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              支付日志详情
+            </h3>
+            <!-- 关闭按钮 -->
+            <button onclick="closePaymentLogDetailModal()" 
+              class="text-slate-400 hover:text-slate-600 transition-colors">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          
+          <!-- ========== 模态框主体内容 ========== -->
+          <div class="flex-1 overflow-y-auto px-6 py-4">
+            <!-- 加载状态显示区域 -->
+            <div id="log-detail-loading" class="hidden flex flex-col items-center justify-center py-12">
+              <!-- 旋转的加载图标 -->
+              <svg class="animate-spin h-10 w-10 text-sky-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p class="text-slate-400 text-center text-sm">正在加载日志详情...</p>
+            </div>
+            
+            <!-- 错误提示显示区域 -->
+            <div id="log-detail-error" class="hidden bg-red-50 border border-red-200 rounded-lg p-4">
+              <h5 class="font-semibold text-base text-red-700 flex items-center mb-2">
+                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                加载失败
+              </h5>
+              <p id="log-detail-error-message" class="text-sm text-red-800">未知错误</p>
+            </div>
+            
+            <!-- 日志详情内容显示区域 -->
+            <div id="log-detail-content" class="hidden space-y-4">
+              <!-- 基本信息卡片 -->
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <h4 class="text-lg font-semibold text-slate-800 mb-3 flex items-center">
+                  <svg class="w-5 h-5 inline mr-2 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  基本信息
+                </h4>
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                  <!-- 操作时间 -->
+                  <div>
+                    <span class="text-slate-600">操作时间：</span>
+                    <span id="log-detail-datetime" class="font-medium text-slate-800">-</span>
+                  </div>
+                  <!-- 操作类型 -->
+                  <div>
+                    <span class="text-slate-600">操作类型：</span>
+                    <span id="log-detail-action" class="font-medium text-slate-800">-</span>
+                  </div>
+                  <!-- 用户ID -->
+                  <div>
+                    <span class="text-slate-600">用户ID：</span>
+                    <span id="log-detail-user-id" class="font-medium text-slate-800">-</span>
+                  </div>
+                  <!-- 订单号 -->
+                  <div>
+                    <span class="text-slate-600">订单号：</span>
+                    <span id="log-detail-order-id" class="font-medium text-slate-800">-</span>
+                  </div>
+                  <!-- 客户端IP -->
+                  <div>
+                    <span class="text-slate-600">客户端IP：</span>
+                    <span id="log-detail-client-ip" class="font-medium text-slate-800">-</span>
+                  </div>
+                  <!-- 金额（如果有） -->
+                  <div>
+                    <span class="text-slate-600">金额：</span>
+                    <span id="log-detail-amount" class="font-medium text-green-600">-</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 完整数据卡片 -->
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <h4 class="text-lg font-semibold text-slate-800 mb-3 flex items-center">
+                  <svg class="w-5 h-5 inline mr-2 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                  </svg>
+                  完整日志数据
+                </h4>
+                <!-- 使用pre标签显示格式化的JSON数据 -->
+                <pre id="log-detail-json" class="bg-white border border-slate-300 rounded p-3 text-xs overflow-x-auto text-slate-700 font-mono">-</pre>
+              </div>
+            </div>
+          </div>
+          
+          <!-- ========== 模态框底部 ========== -->
+          <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+            <button onclick="closePaymentLogDetailModal()" 
+              class="px-4 py-2 bg-slate-500 text-white rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors">
+              关闭
+            </button>
+          </div>
+          
+        </div>
+      </div>
+
+      <!-- ========================================
            PC端支付设置面板 (admin-payment-settings-panel_modal)
            ========================================
            【功能说明】
@@ -14961,6 +15095,7 @@ body.mobile-mode #session-picker-modal {
               // 1. 操作类型标签和时间
               // 2. 订单号
               // 3. 金额和状态信息
+              // 4. 查看详情按钮
               // 
               // 注意事项：
               // - 使用模板字符串 ` ` 插入变量值
@@ -14985,10 +15120,22 @@ body.mobile-mode #session-picker-modal {
                   </div>
                   
                   <!-- 详细信息区域：显示金额和状态 -->
-                  <div class="space-y-1">
+                  <div class="space-y-1 mb-3">
                     ${amountHTML}
                     ${statusHTML}
                   </div>
+                  
+                  <!-- 查看详情按钮 -->
+                  <button onclick="showPaymentLogDetail('${log.log_id || ''}')" 
+                    class="w-full py-2 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    查看详情
+                  </button>
                 </div>
               `;
             }).join(''); // 将所有卡片HTML连接成一个字符串
@@ -15187,6 +15334,175 @@ body.mobile-mode #session-picker-modal {
       // 加载下一页数据
       // 调用loadAdminPaymentLogs函数，传入下一页的页码
       loadAdminPaymentLogs(nextPage);
+    }
+
+    /**
+     * 显示支付日志详情模态框
+     * 
+     * 功能说明：
+     * 1. 根据日志ID从后端API获取完整的日志详细信息
+     * 2. 在模态框中展示日志的所有字段
+     * 3. 提供JSON格式的完整数据查看
+     * 
+     * 参数：
+     * @param {string} logId - 日志ID（日志文件名，不含.json后缀）
+     *                         格式示例：20231201_120530_admin_ORDER20231201120530123456
+     * 
+     * 调用时机：
+     * - 用户点击日志卡片中的"查看详情"按钮时
+     * 
+     * 实现步骤：
+     * 1. 验证logId参数
+     * 2. 显示模态框和加载状态
+     * 3. 调用后端API获取日志详情
+     * 4. 解析响应并填充模态框内容
+     * 5. 处理错误情况
+     */
+    async function showPaymentLogDetail(logId) {
+      // ========== 步骤1：验证参数 ==========
+      
+      // 检查logId是否有效
+      // 如果为空或未定义，显示错误提示并返回
+      if (!logId) {
+        console.error('[支付日志详情] 日志ID为空');
+        showModalAlert('日志ID无效');
+        return;
+      }
+      
+      console.log(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
+      
+      // ========== 步骤2：显示模态框和加载状态 ==========
+      
+      // 获取模态框和各个显示区域的DOM元素
+      const modal = document.getElementById('admin-payment-log-detail-modal');
+      const loadingDiv = document.getElementById('log-detail-loading');
+      const errorDiv = document.getElementById('log-detail-error');
+      const contentDiv = document.getElementById('log-detail-content');
+      
+      // 防御性检查：确保所有必需的DOM元素都存在
+      if (!modal || !loadingDiv || !errorDiv || !contentDiv) {
+        console.error('[支付日志详情] 找不到必需的DOM元素');
+        return;
+      }
+      
+      // 显示模态框
+      modal.classList.remove('hidden');
+      
+      // 显示加载状态，隐藏其他内容
+      loadingDiv.classList.remove('hidden');
+      errorDiv.classList.add('hidden');
+      contentDiv.classList.add('hidden');
+      
+      // ========== 步骤3：调用后端API获取日志详情 ==========
+      
+      try {
+        // 发送POST请求到后端API
+        // 请求体包含log_id参数
+        const response = await fetch('/api/admin/payment/log_detail', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionUUID  // 附加会话ID用于身份验证
+          },
+          body: JSON.stringify({
+            log_id: logId  // 传递日志ID
+          })
+        });
+        
+        // 检查HTTP响应状态码
+        // 如果不是2xx范围，抛出错误
+        if (!response.ok) {
+          throw new Error(`HTTP错误: ${response.status}`);
+        }
+        
+        // 解析响应体为JSON对象
+        const result = await response.json();
+        
+        // 检查业务逻辑是否成功
+        // success字段为false表示业务处理失败（如权限不足、日志不存在等）
+        if (!result.success) {
+          throw new Error(result.message || '获取日志详情失败');
+        }
+        
+        // ========== 步骤4：填充模态框内容 ==========
+        
+        // 提取日志详情数据
+        const logDetail = result.log_detail || {};
+        
+        // 填充基本信息字段
+        // 使用 || 运算符提供默认值，防止字段不存在时显示undefined
+        document.getElementById('log-detail-datetime').textContent = logDetail.datetime || '-';
+        document.getElementById('log-detail-action').textContent = logDetail.action || '-';
+        document.getElementById('log-detail-user-id').textContent = logDetail.user_id || '-';
+        document.getElementById('log-detail-order-id').textContent = logDetail.order_id || '-';
+        document.getElementById('log-detail-client-ip').textContent = logDetail.client_ip || '-';
+        
+        // 填充金额字段（如果存在）
+        // 金额使用特殊格式化：¥符号 + 保留2位小数
+        const amountElem = document.getElementById('log-detail-amount');
+        if (logDetail.amount) {
+          amountElem.textContent = `¥${parseFloat(logDetail.amount).toFixed(2)}`;
+        } else {
+          amountElem.textContent = '-';
+        }
+        
+        // 填充完整JSON数据
+        // 使用JSON.stringify格式化，indent=2使其易读
+        const jsonElem = document.getElementById('log-detail-json');
+        jsonElem.textContent = JSON.stringify(logDetail, null, 2);
+        
+        // 隐藏加载状态，显示内容
+        loadingDiv.classList.add('hidden');
+        contentDiv.classList.remove('hidden');
+        
+        console.log('[支付日志详情] 日志详情加载成功');
+        
+      } catch (error) {
+        // ========== 步骤5：错误处理 ==========
+        
+        // 在控制台输出详细错误信息，便于调试
+        console.error('[支付日志详情] 获取日志详情失败:', error);
+        
+        // 在模态框中显示错误信息
+        const errorMessageElem = document.getElementById('log-detail-error-message');
+        if (errorMessageElem) {
+          errorMessageElem.textContent = error.message || '未知错误';
+        }
+        
+        // 隐藏加载状态，显示错误信息
+        loadingDiv.classList.add('hidden');
+        errorDiv.classList.remove('hidden');
+      }
+    }
+
+    /**
+     * 关闭支付日志详情模态框
+     * 
+     * 功能说明：
+     * 关闭日志详情模态框，清空显示内容
+     * 
+     * 调用时机：
+     * - 用户点击模态框的关闭按钮时
+     * - 用户点击模态框底部的"关闭"按钮时
+     * 
+     * 实现步骤：
+     * 1. 隐藏模态框
+     * 2. 重置所有显示区域的状态
+     */
+    function closePaymentLogDetailModal() {
+      // 获取模态框元素
+      const modal = document.getElementById('admin-payment-log-detail-modal');
+      
+      // 防御性检查：确保模态框元素存在
+      if (!modal) {
+        console.error('[支付日志详情] 找不到模态框元素');
+        return;
+      }
+      
+      // 隐藏模态框
+      modal.classList.add('hidden');
+      
+      console.log('[支付日志详情] 模态框已关闭');
     }
 
     // ==========================================
