@@ -5194,9 +5194,6 @@ class AuthSystem:
             if available_runs == -1:
                 # 当设置为-1时，表示无限制使用
                 msg = f"已设置为无限次数模式：用户 {auth_username} 可以无限次执行任务"
-            elif available_runs == 0:
-                # 当设置为0时，表示用户已无可用次数
-                msg = f"已设置可用次数为0：用户 {auth_username} 暂时无法执行新任务"
             else:
                 # 正数表示具体的剩余次数
                 msg = f"已成功设置用户 {auth_username} 的可用次数为：{available_runs} 次"

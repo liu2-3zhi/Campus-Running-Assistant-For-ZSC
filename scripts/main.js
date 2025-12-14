@@ -47202,7 +47202,8 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
                                 });
                                 
                                 // 刷新页面，重新加载用户数据
-                                window.location.reload();
+                                // window.location.reload();
+                                
                             }, 1000);
                         }
                         // 支付失败（订单状态为 failed 或 closed）
