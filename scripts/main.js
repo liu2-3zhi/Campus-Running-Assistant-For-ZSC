@@ -7911,13 +7911,6 @@ async function loadAdminYiPayConfig(show_Modal=true) {
       methodsInput.value = config.enabled_payment_methods || '';
     }
     
-    // 5.5 填充payment_method字段（支付接口类型）
-    const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
-    if (typeSelect) {
-      // 设置下拉框的选中值
-      typeSelect.value = config.payment_method || 'jump';
-    }
-    
     // === 第6步：验证启用的支付方式是否在 payment_methods_config 中定义 ===
     // 这一步是为了确保数据的一致性和完整性
     
@@ -8100,7 +8093,6 @@ const productIdInput = document.getElementById('admin-yipay-product-id_modal');
   // [新增] 获取payment_timeout_minutes输入框（支付超时时间）
   const timeoutInput = document.getElementById('admin-yipay-timeout_modal');
   const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
-  const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
   
   // === 第2步：获取并验证输入值 ===
   
@@ -8187,14 +8179,7 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
 }
 
 
-  // 2.5 获取支付接口类型（必填）
-  const paymentMethod = typeSelect ? typeSelect.value : 'jump';
-  if (!paymentMethod) {
-    showModalAlert('请选择支付接口类型');
-    if (typeSelect) typeSelect.focus();
-    return;
-  }
-  
+
   // 在控制台输出要提交的配置数据
   console.log('[PC端易支付配置] 准备提交的配置：', {
     host,
@@ -8204,8 +8189,7 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
     app_host: appHost,
     pubc_key: '***隐藏***', // 在日志中隐藏公钥，保护敏感信息
     payment_timeout_minutes: paymentTimeoutMinutes,
-    enabled_payment_methods: enabledMethods,
-    payment_method: paymentMethod
+    enabled_payment_methods: enabledMethods
   });
   
   // === 第2.6步：验证启用的支付方式是否在 payment_methods_config 中定义 ===
@@ -8300,8 +8284,7 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
         app_host: appHost,  // [新增] 发送app_host（应用域名地址）
         pubc_key: pubcKey,  // [新增] 发送pubc_key（平台公钥）
         payment_timeout_minutes: paymentTimeoutMinutes,  // [新增] 发送payment_timeout_minutes（支付超时时间）
-        enabled_payment_methods: enabledMethods,
-        payment_method: paymentMethod
+        enabled_payment_methods: enabledMethods
       })
     });
     
@@ -8439,12 +8422,6 @@ async function loadMobileYiPayConfig() {
       methodsInput.value = config.enabled_payment_methods || '';
     }
     
-    // 填充payment_method字段
-    const typeSelect = document.getElementById('yipay-payment-method');
-    if (typeSelect) {
-      typeSelect.value = config.payment_method || 'jump';
-    }
-    
     // === 显示成功提示 ===
     const resultDiv = document.getElementById('yipay-config-result');
     if (resultDiv) {
@@ -8503,7 +8480,6 @@ async function saveMobileYiPayConfig() {
   const pidInput = document.getElementById('yipay-pid');
   const keyInput = document.getElementById('yipay-key');
   const methodsInput = document.getElementById('yipay-enabled-methods');
-  const typeSelect = document.getElementById('yipay-payment-method');
   
   // === 获取并验证输入值 ===
   
@@ -8529,14 +8505,12 @@ async function saveMobileYiPayConfig() {
   }
   
   const enabledMethods = methodsInput ? methodsInput.value.trim() : '';
-  const paymentMethod = typeSelect ? typeSelect.value : 'jump';
   
   console.log('[移动端易支付配置] 准备提交的配置：', {
     host,
     pid,
     key: '***隐藏***',
-    enabled_payment_methods: enabledMethods,
-    payment_method: paymentMethod
+    enabled_payment_methods: enabledMethods
   });
   
   try {
@@ -8551,8 +8525,7 @@ async function saveMobileYiPayConfig() {
         host: host,
         pid: pid,
         key: key,
-        enabled_payment_methods: enabledMethods,
-        payment_method: paymentMethod
+        enabled_payment_methods: enabledMethods
       })
     });
     
@@ -37863,29 +37836,98 @@ async function submitMobileMultiMessage() {
   }
 }
 
+/**
+ * 删除移动端多账号留言板中的指定留言
+ * 
+ * @功能说明
+ * 此函数用于在移动端多账号留言板中删除用户选定的留言
+ * 删除前会弹出拟态框进行二次确认，防止误操作
+ * 
+ * @参数说明
+ * @param {string} msgId - 要删除的留言ID，用于唯一标识一条留言记录
+ * 
+ * @实现流程
+ * 1. 显示拟态框确认对话框，询问用户是否确认删除
+ * 2. 如果用户点击"取消"，则直接返回，不执行删除操作
+ * 3. 如果用户点击"确认"，则向后端API发送DELETE请求
+ * 4. 根据API返回结果显示成功或失败提示
+ * 5. 删除成功后自动刷新留言列表
+ * 
+ * @API端点
+ * POST /api/messages/delete
+ * 
+ * @错误处理
+ * - 网络错误：捕获异常并显示错误提示
+ * - 业务错误：根据后端返回的错误信息显示相应提示
+ * 
+ * @改进说明
+ * [2024修改] 将原生confirm对话框替换为jsShowConfirm拟态框
+ * 优点：
+ * 1. 提供更好的用户体验，样式与整体UI风格一致
+ * 2. 支持更丰富的自定义选项（标题、消息、按钮文本等）
+ * 3. 在移动端显示效果更友好
+ * 4. 不会被浏览器的弹窗拦截器拦截
+ */
 async function deleteMobileMultiMessage(msgId) {
-  if (!confirm("确定要删除这条留言吗？")) return;
-
+  // === 第1步：显示二次确认对话框 ===
+  // 使用jsShowConfirm函数显示拟态框确认对话框
+  // jsShowConfirm是一个异步函数，返回Promise<boolean>
+  // 参数1：对话框标题
+  // 参数2：对话框消息内容
+  const confirmed = await jsShowConfirm(
+    "确认删除", 
+    "确定要删除这条留言吗？删除后将无法恢复。"
+  );
+  
+  // 如果用户点击"取消"按钮，confirmed为false
+  // 此时直接返回，不执行后续的删除操作
+  if (!confirmed) {
+    console.log("[移动端留言板] 用户取消删除操作");
+    return;
+  }
+  
+  // === 第2步：执行删除操作 ===
+  // 用户已确认删除，开始向后端API发送删除请求
   try {
+    // 发起HTTP POST请求到删除接口
+    // 注意：虽然是删除操作，但API使用POST方法而非DELETE方法
     const response = await fetch("/api/messages/delete", {
-      method: "POST",
+      method: "POST", // HTTP方法：POST
       headers: {
+        // 设置请求头，告知服务器请求体是JSON格式
         "Content-Type": "application/json",
+        // 添加会话ID用于身份验证和权限检查
         "X-Session-ID": sessionUUID,
       },
+      // 将留言ID封装为JSON对象并发送
       body: JSON.stringify({ message_id: msgId }),
     });
 
+    // === 第3步：解析API响应 ===
+    // 将响应体解析为JSON对象
     const result = await response.json();
 
+    // === 第4步：根据删除结果显示提示信息 ===
     if (result.success) {
+      // 删除成功：显示成功提示
       showModalAlert("删除成功", "成功");
+      
+      // 重新加载留言列表，刷新界面显示
+      // 这样用户可以立即看到删除后的留言列表
       loadMobileMultiMessages();
     } else {
+      // 删除失败：显示后端返回的错误信息
+      // 如果后端没有返回message字段，则使用默认提示
       showModalAlert(result.message || "删除失败", "错误");
     }
   } catch (e) {
+    // === 第5步：异常处理 ===
+    // 捕获并处理可能发生的错误（如网络错误、解析错误等）
+    
+    // 在控制台输出详细的错误信息，便于开发调试
     console.error("[移动端留言板] 删除失败:", e);
+    
+    // 向用户显示友好的错误提示
     showModalAlert("删除失败: " + e.message, "错误");
   }
 }
