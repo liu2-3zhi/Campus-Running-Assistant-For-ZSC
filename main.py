@@ -1492,6 +1492,123 @@ LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
 
 
+def _validate_noise_level(noise_level):
+    """
+    验证噪点级别是否有效。
+    
+    噪点级别用于控制验证码图片中的噪点密度，必须是 0.0 到 1.0 之间的浮点数。
+    - 0.0: 无噪点（验证码最清晰，但也最容易被机器识别）
+    - 0.08: 默认适中噪点（推荐值，平衡可读性和安全性）
+    - 1.0: 最大噪点（验证码最难识别，可能影响用户体验）
+    
+    参数:
+        noise_level: 待验证的噪点级别值（可以是字符串、数字或其他类型）
+    
+    返回:
+        tuple: (is_valid: bool, error_message: str or None)
+            - is_valid: True 表示验证通过，False 表示验证失败
+            - error_message: 当验证失败时包含错误描述，验证通过时为 None
+    
+    示例:
+        >>> _validate_noise_level(0.5)
+        (True, None)
+        
+        >>> _validate_noise_level(1.5)
+        (False, "noise_level 必须在 0.0 到 1.0 之间")
+        
+        >>> _validate_noise_level("abc")
+        (False, "noise_level 必须是有效的数字")
+    """
+    try:
+        # 尝试将输入转换为浮点数
+        # 这会处理字符串、整数等可转换的类型
+        noise_val = float(noise_level)
+        
+        # 验证转换后的值是否在有效范围内
+        # 使用 <= 和 >= 是因为边界值 0.0 和 1.0 是有效的
+        if 0.0 <= noise_val <= 1.0:
+            # 验证通过，返回 True 和 None（无错误信息）
+            return True, None
+        else:
+            # 值超出范围，返回 False 和相应的错误信息
+            return False, "noise_level 必须在 0.0 到 1.0 之间"
+    except (ValueError, TypeError):
+        # 捕获两种可能的异常：
+        # - ValueError: 当字符串无法转换为浮点数时（如 "abc"）
+        # - TypeError: 当输入类型完全无法转换时（如 None 或复杂对象）
+        return False, "noise_level 必须是有效的数字"
+
+
+def _sanitize_filename(filename):
+    """
+    消毒文件名，移除或替换危险字符，防止路径遍历攻击和文件系统错误。
+    
+    该函数会将所有可能导致安全问题或文件系统错误的字符替换为下划线，
+    确保生成的文件名可以安全地用于文件系统操作。
+    
+    参数:
+        filename (str): 原始文件名（可能包含危险字符）
+    
+    返回:
+        str: 安全的文件名（所有危险字符已被替换）
+            如果输入为空或只包含空白字符，返回 "unknown"
+    
+    危险字符列表:
+        - / 和 \: 路径分隔符，可能导致路径遍历攻击
+        - < > : | ? *: Windows 系统不允许的文件名字符
+        - ": 引号字符，可能导致命令注入
+        - \0: 空字节，可能导致字符串截断
+    
+    示例:
+        >>> _sanitize_filename("user/admin")
+        "user_admin"
+        
+        >>> _sanitize_filename("test<file>.txt")
+        "test_file_.txt"
+        
+        >>> _sanitize_filename("")
+        "unknown"
+        
+        >>> _sanitize_filename(None)
+        "unknown"
+    """
+    # 首先检查输入是否为空或 None
+    # 这是一个防御性编程策略，确保函数不会在空输入时崩溃
+    if not filename:
+        return "unknown"
+    
+    # 定义所有需要替换的危险字符
+    # 这个列表包含了可能导致安全问题或文件系统错误的所有字符
+    dangerous_chars = [
+        '/',   # Unix/Linux 路径分隔符
+        '\\',  # Windows 路径分隔符（注意：需要转义）
+        '<',   # Windows 不允许的字符，可能用于重定向
+        '>',   # Windows 不允许的字符，可能用于重定向
+        ':',   # Windows 驱动器分隔符和文件流标识符
+        '"',   # 引号，可能导致命令注入
+        '|',   # 管道字符，可能用于命令注入
+        '?',   # Windows 通配符
+        '*',   # Windows 通配符
+        '\0',  # 空字节，可能导致字符串截断攻击
+    ]
+    
+    # 从原始文件名开始，逐个替换危险字符
+    safe_name = filename
+    for char in dangerous_chars:
+        # 将每个危险字符替换为下划线
+        # 使用下划线而不是直接删除，可以保持文件名的可读性
+        safe_name = safe_name.replace(char, '_')
+    
+    # 最后检查：确保处理后的文件名不为空且不只包含空白字符
+    # strip() 会移除前后的空白字符，isspace() 检查是否只有空白
+    if not safe_name or safe_name.isspace():
+        # 如果结果为空或只有空白，返回默认值
+        return "unknown"
+    
+    # 返回经过消毒的安全文件名
+    return safe_name
+
+
 def _create_directories():
     """
     创建程序运行所需的目录结构，目录路径从 config.ini 配置文件读取。
@@ -21886,9 +22003,53 @@ def start_web_server(args_param):
             # 定义功能特性配置文件的路径
             feature_flags_file = "feature_flags.json"
             
+            # 定义 JSON 配置文件的最大允许大小（单位：字节）
+            # 1MB = 1 * 1024 * 1024 = 1048576 字节
+            # 这个限制是为了防止：
+            # 1. 恶意用户上传超大文件导致内存溢出（DoS攻击）
+            # 2. 配置文件被意外损坏导致文件异常膨胀
+            # 3. 确保文件读取操作在合理时间内完成
+            # 对于一个 JSON 配置文件，1MB 已经足够大（可以存储数千个用户配置）
+            MAX_FEATURE_FLAGS_SIZE = 1 * 1024 * 1024  # 1MB
+            
             # 检查 feature_flags.json 文件是否存在
             # 如果文件存在，尝试读取用户的个性化配置
             if os.path.exists(feature_flags_file):
+                # ========== 步骤3.1：验证文件大小 ==========
+                # 在读取文件内容之前，先检查文件大小
+                # 使用 os.path.getsize() 获取文件大小（以字节为单位）
+                try:
+                    file_size = os.path.getsize(feature_flags_file)
+                except OSError as e:
+                    # 如果无法获取文件大小（例如权限问题、文件被删除等）
+                    # 记录错误并返回安全的默认值
+                    logging.error(
+                        f"[去水印功能] 无法获取 feature_flags.json 文件大小: {e}"
+                    )
+                    return jsonify({
+                        "success": False,
+                        "watermark_enabled": False,
+                        "message": "无法读取配置文件"
+                    }), 500
+                
+                # 验证文件大小是否超过限制
+                if file_size > MAX_FEATURE_FLAGS_SIZE:
+                    # 文件过大，可能是恶意攻击或文件损坏
+                    # 记录错误日志，包含实际文件大小，便于调试
+                    logging.error(
+                        f"[去水印功能] feature_flags.json 文件过大: {file_size} bytes "
+                        f"(最大允许: {MAX_FEATURE_FLAGS_SIZE} bytes)"
+                    )
+                    # 返回错误响应，使用 HTTP 500 状态码表示服务器错误
+                    # 不启用去水印功能（watermark_enabled=False），确保安全
+                    return jsonify({
+                        "success": False,
+                        "watermark_enabled": False,
+                        "message": "配置文件过大"
+                    }), 500
+                
+                # ========== 步骤3.2：读取和解析 JSON 文件 ==========
+                # 文件大小验证通过，可以安全读取文件内容
                 try:
                     # 以只读模式打开文件，使用 UTF-8 编码以支持中文注释
                     with open(feature_flags_file, "r", encoding="utf-8") as f:
@@ -23943,9 +24104,10 @@ def start_web_server(args_param):
                         "Captcha",  # 配置节
                         "noise_level",  # 配置键
                         type_func=float,  # 类型转换函数，将字符串转为浮点数
-                        fallback=default_config.getfloat(
-                            "Captcha", "noise_level", fallback=0.08
-                        ),
+                        # 直接使用数值 0.08 作为 fallback
+                        # 避免当 default_config 没有 Captcha section 时抛出异常
+                        # 0.08 是一个经过测试的平衡值，既能防止机器识别又不影响用户体验
+                        fallback=0.08,
                     ),
                 },
                 # ==================== Captcha 配置加载结束 ====================
@@ -24151,21 +24313,23 @@ def start_web_server(args_param):
                 
                 # 处理噪点级别配置
                 # 噪点级别应该是 0.0 到 1.0 之间的浮点数
+                # 使用提取的辅助函数 _validate_noise_level 进行验证
                 if "noise_level" in captcha_data:
-                    try:
-                        noise_level = float(captcha_data["noise_level"])
-                        # 验证范围
-                        if 0.0 <= noise_level <= 1.0:
-                            config.set("Captcha", "noise_level", str(noise_level))
-                        else:
-                            return jsonify({
-                                "success": False,
-                                "message": "noise_level 必须在 0.0 到 1.0 之间"
-                            }), 400
-                    except (ValueError, TypeError):
+                    # 调用 _validate_noise_level 辅助函数进行验证
+                    # 该函数返回一个元组：(is_valid: bool, error_message: str or None)
+                    is_valid, error_message = _validate_noise_level(captcha_data["noise_level"])
+                    
+                    # 检查验证结果
+                    if is_valid:
+                        # 验证通过，将值保存到配置中
+                        # 注意：配置文件中存储的是字符串，所以需要转换
+                        config.set("Captcha", "noise_level", str(float(captcha_data["noise_level"])))
+                    else:
+                        # 验证失败，返回错误信息
+                        # 使用 HTTP 400 状态码表示客户端请求错误（无效的参数）
                         return jsonify({
                             "success": False,
-                            "message": "noise_level 必须是有效的数字"
+                            "message": error_message
                         }), 400
 
             _write_config_with_comments(config, CONFIG_FILE)
@@ -30314,12 +30478,17 @@ def start_web_server(args_param):
             os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
 
             # 规范化用户标识，用于文件名
-            # 移除特殊字符，避免文件系统问题
-            # 例如：guest_abc-123-def -> guest_abc-123-def (保留连字符)
-            #      zhang -> zhang
-            #      admin -> admin
-            safe_user_id = user_id.replace(
-                "/", "-").replace("\\", "-") if user_id else "unknown"
+            # 使用 _sanitize_filename 辅助函数移除或替换危险字符
+            # 这可以防止：
+            # 1. 路径遍历攻击（例如 "../../../etc/passwd"）
+            # 2. 文件系统错误（例如 Windows 不允许的字符）
+            # 3. 命令注入（例如包含特殊字符的文件名）
+            #
+            # 示例转换：
+            #   "guest/admin" -> "guest_admin"
+            #   "user<test>" -> "user_test_"
+            #   "" -> "unknown"
+            safe_user_id = _sanitize_filename(user_id)
 
             # 生成日志文件名
             # 格式：{年月日}_{时分秒}_{用户ID}_{订单号}.json
