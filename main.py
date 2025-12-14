@@ -1731,7 +1731,7 @@ def _get_default_config():
         #   - applet: 小程序支付（微信/支付宝小程序）
         # 默认值：jump（跳转支付，适用于大多数场景）
         # 注意：不同接口类型可能需要额外的参数，请参考易支付平台文档
-        "payment_method": "jump",
+        "payment_method": "web",
         # 启用的支付方式：管理员可配置的支付方式列表
         # 格式：使用逗号分隔的支付方式代码字符串
         # 支持的支付方式：
@@ -3756,7 +3756,7 @@ class RainbowYiPayClient:
         logging.info(f"[彩虹易支付] 客户端初始化成功 - 商户ID: {self.pid}")
 
     def create_order(self, out_trade_no, name, money, pay_type="alipay",
-                     return_url=None, client_app_host=None, payment_type="jump",
+                     return_url=None, client_app_host=None, payment_type="web",
                      device_get=None, auth_code=None, sub_openid=None, sub_appid=None,
                      clientip=None):
         """
@@ -4014,115 +4014,6 @@ class RainbowYiPayClient:
             logging.error(f"[彩虹易支付] 创建订单异常: {str(e)}")
             logging.error(traceback.format_exc())
             return {"success": False, "message": f"创建订单时发生错误: {str(e)}"}
-
-    def query_order(self, out_trade_no):
-        """
-        查询订单状态
-
-        参数:
-            out_trade_no (str): 商户订单号（创建订单时使用的订单号）
-
-        返回:
-            dict: 包含以下字段的字典
-                - success (bool): 请求是否成功
-                - message (str): 错误信息或成功提示
-                - status (str): 订单状态（成功时返回）
-                    - "TRADE_SUCCESS": 支付成功
-                    - "WAIT_BUYER_PAY": 等待支付
-                    - "TRADE_CLOSED": 交易关闭
-                - data (dict): 完整的订单信息（成功时返回）
-
-        功能说明：
-        主动查询订单的支付状态，可用于：
-        1. 补充异步通知机制（防止通知丢失）
-        2. 用户在支付页面查询支付结果
-        3. 管理后台查看订单状态
-
-        使用示例：
-            client = RainbowYiPayClient()
-            result = client.query_order("ORDER20230101001")
-            if result["success"]:
-                if result["status"] == "TRADE_SUCCESS":
-                    print("支付成功！")
-                elif result["status"] == "WAIT_BUYER_PAY":
-                    print("等待支付...")
-            else:
-                print(f"查询失败: {result['message']}")
-
-        注意事项：
-        - 查询接口有频率限制，不要频繁调用
-        - 订单状态最终以异步通知为准
-        """
-        # 声明使用全局 requests 变量
-        # requests 已在 check_and_import_dependencies() 中导入
-        global requests
-
-        # 检查配置是否完整
-        if not self.host or not self.pid or not self.key:
-            logging.error("[彩虹易支付] 配置不完整，无法查询订单")
-            return {"success": False, "message": "彩虹易支付配置不完整"}
-
-        # 构造查询参数
-        params = {
-            "act": "order",                 # 操作类型：订单查询
-            "pid": self.pid,                # 商户ID
-            "key": self.key,                # 商户密钥
-            "out_trade_no": out_trade_no,   # 商户订单号
-        }
-
-        # 构造API请求URL
-        # 彩虹易支付的查询接口路径为 /api.php
-        api_url = f"{self.host}/api.php"
-
-        # 记录日志
-        logging.info(f"[彩虹易支付] 查询订单状态 - 订单号: {out_trade_no}")
-
-        try:
-            # 发送GET请求查询订单
-            response = requests.get(api_url, params=params, timeout=10)
-
-            # 检查HTTP状态码
-            if response.status_code == 200:
-                # 解析响应JSON
-                result = response.json()
-
-                # 检查API返回的状态码
-                if result.get("code") == 1:
-                    # 查询成功
-                    order_status = result.get(
-                        "status") or result.get("trade_status")
-                    logging.info(f"[彩虹易支付] 订单状态: {order_status}")
-
-                    return {
-                        "success": True,
-                        "message": "查询成功",
-                        "status": order_status,
-                        "data": result,
-                    }
-                else:
-                    # 查询失败
-                    error_msg = result.get("msg") or result.get(
-                        "message") or "未知错误"
-                    logging.error(f"[彩虹易支付] 查询订单失败 - {error_msg}")
-                    return {"success": False, "message": error_msg}
-            else:
-                # HTTP请求失败
-                logging.error(
-                    f"[彩虹易支付] HTTP请求失败 - 状态码: {response.status_code}"
-                )
-                return {
-                    "success": False,
-                    "message": f"查询接口请求失败 (HTTP {response.status_code})",
-                }
-
-        except requests.exceptions.Timeout:
-            logging.error("[彩虹易支付] 查询请求超时")
-            return {"success": False, "message": "查询请求超时"}
-
-        except Exception as e:
-            logging.error(f"[彩虹易支付] 查询订单异常: {str(e)}")
-            logging.error(traceback.format_exc())
-            return {"success": False, "message": f"查询订单时发生错误: {str(e)}"}
 
 
 # ==============================================================================
@@ -19537,7 +19428,7 @@ def start_web_server(args_param):
         # manage_permissions 权限允许查看用户的权限配置
         if not auth_system.check_permission(auth_username, "manage_permissions"):
             return jsonify({"success": False, "message": "权限不足，需要权限管理权限（manage_permissions）"}), 403
-
+        
         data = request.get_json() or {}
         target_username = data.get("username", "")
 
@@ -19599,6 +19490,10 @@ def start_web_server(args_param):
         target_username = data.get("username", "")
         added_permissions = data.get("added_permissions", {})
         removed_permissions = data.get("removed_permissions", {})
+
+        if auth_system.get_user_group(g.user) != "super_admin":
+            if auth_system.get_user_group(target_username) == "admin":
+                return jsonify({"success": False, "message": "管理员只能为普通用户设置自定义权限，无法修改管理员用户的权限"})
 
         if added_permissions or removed_permissions:
             try:
@@ -30620,9 +30515,10 @@ def start_web_server(args_param):
                         "success": False,
                         "message": "该订单在支付平台已退款，无法重复退款"
                     })
-
+                
+                platform_status = str(platform_status)
                 # 如果平台状态不是"已支付"(1)，也不允许退款
-                if platform_status != 1:
+                if platform_status != "1":
                     logging.error(
                         f"[退款请求] 平台订单状态不允许退款 - "
                         f"订单号: {trade_no}, "
@@ -31358,10 +31254,11 @@ def start_web_server(args_param):
                 yipay_client = RainbowYiPayClient()
 
                 # 调用查询接口
-                query_result = yipay_client.query_order(order_id)
+                query_result = _query_yipay_order(order_id)
+                
 
                 # 如果查询成功且订单已支付
-                if query_result["success"] and query_result.get("status") == "TRADE_SUCCESS":
+                if query_result["success"] and query_result.get("data").get("status") == "TRADE_SUCCESS":
                     # 更新订单状态为已支付
                     order_data["status"] = ORDER_STATUS_PAID
                     order_data["paid_at"] = time.time()
@@ -31726,17 +31623,6 @@ def start_web_server(args_param):
             # 订单号格式：YYYYMMDD + 15位随机数字
             # 例如：20241201 + 170077851273757 = 20241201170077851273757（总长度23位）
 
-            # 生成15位随机数字字符串
-            # random.randint(0, 9) 生成0-9之间的随机整数
-            # 使用列表推导式生成15个随机数字，然后用join()连接成字符串
-            random_part = ''.join([str(random.randint(0, 9))
-                                  for _ in range(15)])
-
-            # 获取当前日期，格式化为8位字符串（YYYYMMDD）
-            # datetime.datetime.now() 获取当前时间
-            # .strftime('%Y%m%d') 格式化为"年月日"格式，例如："20241201"
-            date_part = datetime.datetime.now().strftime('%Y%m%d')
-
             # 拼接订单号：日期 + 随机数
             out_trade_no = f"ORDER{time.strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"
 
@@ -31842,18 +31728,41 @@ def start_web_server(args_param):
                     "message": f"创建支付订单失败: {str(result)}"
                 })
 
+
             # 检查订单创建是否成功
             # 此时已确保 result 是字典类型，可以安全调用 .get() 方法
             if not result.get("success"):
                 # 如果失败，返回错误信息
                 logging.error(f"[欠费支付] 创建支付订单失败: {result.get('message')}")
+                _write_payment_log(
+                    user_id=g.user,                # 用户标识
+                    order_id=out_trade_no,             # 订单号（虽然创建失败，但订单号已生成）
+                    action="create_order_failed",  # 操作类型：创建订单失败
+                    log_data={
+                        # 订单请求信息
+                        "amount": amount,                      # 请求的支付金额
+                        "product_name": product_name,          # 请求的商品名称
+                        "pay_type": pay_type,                  # 请求的支付方式
+                        "return_url": return_url,              # 请求的返回URL
+                        # 请求信息
+                        # 客户端IP
+                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                        # 浏览器UA
+                        "user_agent": request.headers.get("User-Agent", ""),
+                        # 失败信息
+                        "success": False,                      # 操作失败
+                        "message": result["message"],          # 失败原因
+                        "error": result.get("error", "")       # 详细错误信息（如果有）
+                    }
+                )
                 return jsonify({
                     "success": False,
                     "message": result.get("message", "创建支付订单失败")
                 })
 
             # ========== 步骤11：保存订单信息到本地文件 ==========
-
+            pay_type=result.get("pay_type",pay_type)
+            
             # 构造订单数据字典
             order_data = {
                 "order_id": out_trade_no,              # 订单号
@@ -31936,6 +31845,7 @@ def start_web_server(args_param):
                 "order_id": out_trade_no,              # 订单号
                 "total_count": total_overdue_count,    # 总欠费次数
                 "total_amount": amount,      # 总金额（字符串格式）
+                "pay_type":pay_type
             })
 
         except Exception as e:
@@ -33848,7 +33758,7 @@ def start_web_server(args_param):
 
                 # 读取支付接口类型
                 # 可选值：web、jump、jsapi、app、scan、applet
-                payment_method = "jump"
+                payment_method = "web"
 
                 product_id = config.get(
                     "Rainbow_YiPay", "product_id", fallback="1001"
@@ -33913,7 +33823,7 @@ def start_web_server(args_param):
                 new_payment_method = data.get(
                     "payment_method",
                     config.get("Rainbow_YiPay",
-                               "payment_method", fallback="jump")
+                               "payment_method", fallback="web")
                 ).strip()
 
                 # [新增] 获取新的 product_id 值
@@ -34795,7 +34705,6 @@ def start_web_server(args_param):
                     # 商品名称（订单描述）
                     "product_name": platform_order.get("name", "未知商品"),
                     # 用户名（平台数据中通常没有此字段，默认为unknown）
-                    "username": order_data.get("username", "未知"),
 
                     # ---------- 时间信息 ----------
                     # 创建时间（订单创建时的时间戳或时间字符串）
@@ -34847,6 +34756,12 @@ def start_web_server(args_param):
                     # 平台返回的完整订单对象（包含所有字段）
                     "platform_data": platform_order
                 }
+                
+                if order_data is None:
+                    local_order_data["username"] = "未知"
+                else:
+                    local_order_data["username"] = order_data.get("username", "未知")
+                
                 logging.info(
                     f"[管理员查询订单] 平台订单数据转换完成 - 单号: {local_order_data['order_id']}，数据：{local_order_data}")
 
@@ -35501,14 +35416,59 @@ def start_web_server(args_param):
                     "overdue_accounts": []
                 })
 
+            
             # ========== 步骤2：检查学校账号欠费情况 ==========
             # 从请求体中获取参数
             data = request.get_json() or {}
-            # 可选参数：要检查的特定学校账号用户名
-            school_username = data.get("school_username")
+            logging.info(f"[欠费检查] 请求数据: {data}")
 
+            # 可选参数：要检查的特定学校账号用户名（支持字符串或数组）
+            school_username_input_before1 = data.get("school_username")
+            school_username_input_before2 = data.get("school_usernames")
+            if school_username_input_before1 is not None and len(school_username_input_before1) > 0 and school_username_input_before1 != "" and school_username_input_before1 != [] and school_username_input_before1 != {} and school_username_input_before1 != 'null' and school_username_input_before1 != 'None' and school_username_input_before1 != 'undefined' and school_username_input_before1 != 'NULL':
+                school_username_input = school_username_input_before1
+            elif school_username_input_before2 is not None and len(school_username_input_before2) > 0 and school_username_input_before2 != "" and school_username_input_before2 != [] and school_username_input_before2 != {} and school_username_input_before2 != 'null' and school_username_input_before2 != 'None' and school_username_input_before2 != 'undefined' and school_username_input_before2 != 'NULL':
+                school_username_input = school_username_input_before2
+            else:
+                school_username_input = None
+                
+            
+            # school_username_input = data.get("school_username")
+            logging.info(f"[欠费检查] 用户 {g.user} 请求检查欠费状态，特定账号: {school_username_input}")
+
+
+            if school_username_input is not None:
+                if auth_system.get_user_group(g.user) not in ['admin', 'super_admin']:
+                    return jsonify({
+                        "success": False,
+                        "message": "缺少传入参数 school_username。"
+                    }), 403
+
+                
+            # 处理筛选逻辑：将输入统一转换为集合，支持单查或多查
+            target_usernames = set()
+            if school_username_input:
+                if isinstance(school_username_input, list):
+                    # 如果是数组，将所有元素转为字符串并加入集合
+                    target_usernames = {str(u).strip() for u in school_username_input if u}
+                else:
+                    # 如果是字符串（或数字），转为字符串并加入集合
+                    s_name = str(school_username_input).strip()
+                    if s_name:
+                        target_usernames.add(s_name)
+                        
             # 获取当前认证用户名（通过 login_required 装饰器注入到 g.user）
             auth_username = g.user
+
+            if auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
+                user_school_accounts = g.api_instance._load_user_school_accounts(g.user)
+                missing_school_acount = [u for u in school_username_input if u not in user_school_accounts]
+                if missing_school_acount:
+                    return jsonify({
+                        "success": False,
+                        "message": f"以下学校账号不存在或不属于当前用户：{', '.join(missing_school_acount)}"
+                    }), 404
+
 
             # 获取该认证用户的所有学校账号配置
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
@@ -35528,11 +35488,13 @@ def start_web_server(args_param):
 
             # 遍历所有学校账号，检查欠费情况
             for acc_username, account_info in school_accounts.items():
-                # 如果指定了 school_username，只检查该账号
-                if school_username and acc_username != school_username:
+                # 如果指定了目标账号（集合非空），且当前账号不在集合中，则跳过
+                if target_usernames and acc_username not in target_usernames:
                     continue
 
                 # 兼容旧格式：如果 account_info 是字符串（密码），跳过
+            
+            
                 if isinstance(account_info, str):
                     continue
 
@@ -35828,10 +35790,11 @@ def start_web_server(args_param):
             
             # 从请求数据中提取参数，并去除首尾空白字符
             # auth_username: 目标用户的用户名（认证系统中的用户）
-            auth_username = data.get("auth_username", "").strip()
+            
+            auth_username = str(data.get("auth_username", "")).strip()
             
             # school_username: 要操作的学校账号用户名
-            school_username = data.get("school_username", "").strip()
+            school_username = str(data.get("school_username", "")).strip()
             
             # new_overdue_count: 新的欠费次数，默认为0（清零）
             new_overdue_count = data.get("new_overdue_count", 0)
@@ -35897,6 +35860,17 @@ def start_web_server(args_param):
                 logging.info(
                     f"[管理员操作] {admin_username} 已直接修改INI文件 - "
                     f"学校账号: {school_username}, 新欠费次数: {new_overdue_count}"
+                )
+                
+                _write_payment_log(
+                    user_id=admin_username,
+                    order_id="",
+                    action="admin_clear_overdue",
+                    log_data={
+                        "target_user": auth_username,
+                        "school_username": school_username,
+                        "new_overdue_count": new_overdue_count
+                    }
                 )
                 
                 return jsonify({
@@ -36178,6 +36152,45 @@ def start_web_server(args_param):
                 "message": "获取欠费账号失败"
             }), 500
 
+
+
+
+
+    @app.route("/api/config/get_user_run_cost", methods=["GET"])
+    @login_required
+    def get_user_run_cost():
+        """
+        获取用户单次运行费用配置
+        用于前端计算欠费补缴金额
+        适配前端API调用: /api/config/get_user_run_cost
+        """
+        try:
+            # 读取配置文件
+            config = configparser.ConfigParser()
+            config.read("config.ini", encoding="utf-8")
+            
+            # 从 Payment_Settings 节读取 single_run_cost
+            # 默认值为 1.0 元
+            single_run_cost = config.getfloat(
+                "Payment_Settings", "single_run_cost", fallback=1.0
+            )
+            
+            # 记录调试日志
+            logging.debug(f"[配置读取] 前端获取单次运行费用: {single_run_cost}")
+            
+            # 返回成功响应
+            return jsonify({
+                "success": True,
+                "single_run_cost": single_run_cost
+            })
+            
+        except Exception as e:
+            # 异常处理
+            logging.error(f"[配置读取] 获取单次运行费用失败: {e}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"获取配置失败: {str(e)}"
+            }), 500
 
     # ==============================================================================
     # 配置读取API端点 - 用于前端获取显示配置

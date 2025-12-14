@@ -11824,10 +11824,7 @@ body.mobile-mode #session-picker-modal {
               </p>
             </div>
 
-            <!-- 二维码显示容器 -->
-            <div id="admin-test-qrcode-display_modal" class="hidden mt-4 p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
-              <!-- 二维码将动态插入到这里 -->
-            </div>
+
 
             <!-- ========================================
                  [新增] JSAPI支付参数输入框容器
@@ -12014,7 +12011,7 @@ body.mobile-mode #session-picker-modal {
             </div>
             
             <!-- 支付信息卡片 -->
-            <div class="bg-white rounded-lg p-4 space-y-2 shadow-sm">
+            <div class="bg-white rounded-lg p-4 space-y-2 shadow-sm" id="admin-test-pay-info-card_modal_modal">
               <h6 class="font-semibold text-sm text-slate-700 mb-2">💳 支付信息 (pay_info)</h6>
               
               <!-- 支付信息显示框 -->
@@ -12027,6 +12024,10 @@ body.mobile-mode #session-picker-modal {
               <p id="admin-test-pay-info-desc_modal" class="text-xs text-slate-500 italic">
                 根据不同的支付类型，这里显示相应的支付参数
               </p>
+              <!-- 二维码显示容器 -->
+            <div id="admin-test-qrcode-display_modal" class="hidden mt-4 p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
+              <!-- 二维码将动态插入到这里 -->
+            </div>
             </div>
 
             <!-- 操作按钮组 -->
@@ -13420,7 +13421,7 @@ body.mobile-mode #session-picker-modal {
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-2">权限调整</label>
           <div id="manage-user-permissions-list"
-            class="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto border border-slate-200 rounded-lg p-3"></div>
+            class="grid grid-cols-2 gap-2 max-h-[45vh] overflow-y-auto border border-slate-200 rounded-lg p-3"></div>
         </div>
       </div>
 
@@ -21364,6 +21365,11 @@ body.mobile-mode #session-picker-modal {
           const enabledMethodsArray = enabledMethods.split(',').map(m => m.trim()).filter(m => m);
           
           console.log('[PC端易支付配置] 验证启用的支付方式：', enabledMethodsArray);
+
+          if (sessionUUID === undefined || sessionUUID === null || sessionUUID === '') {
+            console.error('[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式');
+            sessionUUID=getUUIDFromURL();
+          }
           
           // 6.2 获取所有已定义的支付方式（从 payment_methods_config）
           try {
@@ -21373,7 +21379,7 @@ body.mobile-mode #session-picker-modal {
               headers: {
                 'Content-Type': 'application/json',
                 // 添加Session ID请求头（如果存在）
-                ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+                "X-Session-ID": sessionUUID,
               }
             });
             
@@ -21605,6 +21611,11 @@ body.mobile-mode #session-picker-modal {
         const enabledMethodsArray = enabledMethods.split(',').map(m => m.trim()).filter(m => m);
         
         console.log('[PC端易支付配置] 验证启用的支付方式：', enabledMethodsArray);
+
+        if (sessionUUID === undefined || sessionUUID === null || sessionUUID === '') {
+            console.error('[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式');
+            sessionUUID=getUUIDFromURL();
+          }
         
         try {
           // 发起请求获取支付方式配置
@@ -21613,7 +21624,7 @@ body.mobile-mode #session-picker-modal {
             headers: {
               'Content-Type': 'application/json',
               // 添加Session ID请求头（如果存在）
-              ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+              "X-Session-ID": sessionUUID,
             }
           });
           
@@ -22077,6 +22088,11 @@ body.mobile-mode #session-picker-modal {
         
         // ========== 步骤1：调用API获取配置 ==========
         
+        if (sessionUUID === undefined || sessionUUID === null || sessionUUID === '') {
+            console.error('[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式');
+            sessionUUID=getUUIDFromURL();
+          }
+
         // 使用fetch()发送GET请求到配置读取接口
         // fetch()返回一个Promise对象，需要用await等待响应
         const response = await fetch('/api/config/registration_display', {
@@ -22084,7 +22100,7 @@ body.mobile-mode #session-picker-modal {
           headers: {
             'Content-Type': 'application/json',
             // 添加Session ID请求头（如果存在）
-            ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+            "X-Session-ID": sessionUUID,
           }
         });
         
@@ -22257,13 +22273,18 @@ body.mobile-mode #session-picker-modal {
         
         // ========== 步骤2：调用API获取显示配置 ==========
         
+        if (sessionUUID === undefined || sessionUUID === null || sessionUUID === '') {
+            console.error('[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式');
+            sessionUUID=getUUIDFromURL();
+          }
+
         // 使用fetch()发送GET请求到配置读取接口
         const response = await fetch('/api/config/profile_display',{
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
             // 添加Session ID请求头（如果存在）
-            ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+            "X-Session-ID": sessionUUID,
           }
         });
         
@@ -22931,12 +22952,17 @@ body.mobile-mode #session-picker-modal {
         // 记录请求日志
         console.log('[价格配置] 正在保存价格配置（移动端）:', requestData);
 
+        if (sessionUUID === undefined || sessionUUID === null || sessionUUID === '') {
+            console.error('[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式');
+            sessionUUID=getUUIDFromURL();
+          }
+
         // 发送PUT请求保存配置
         const response = await fetch('/api/admin/pricing_config', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            ...(window.sessionId ? { 'X-Session-ID': window.sessionId } : {})
+            "X-Session-ID": sessionUUID,
           },
           credentials: 'include',
           body: JSON.stringify(requestData)
@@ -48036,76 +48062,7 @@ async function loadSystemConfig() {
       "启用后，留言将通过百度云文本审核服务检测后才能发布"
     );
     
-    // ==================== [新增] 个人信息显示配置 ====================
-    // 添加个人信息中剩余次数显示的相关配置项
-    // 功能：控制是否在个人资料页面中显示用户的剩余跑步次数（available_runs）
-    // 用途：管理员可以根据需要决定是否向用户展示剩余次数信息，以及自定义显示格式
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">👤 个人信息显示设置</h5>';
-    
-    // 添加说明文字，引导管理员了解此配置的用途
-    html +=
-      '<p class="text-xs text-slate-500 mb-3">控制在用户个人资料中是否显示剩余跑步次数及其显示格式</p>';
-    
-    // 是否显示剩余次数的开关
-    // 类型：boolean（布尔值选择器，显示"启用"或"禁用"）
-    // 启用后，用户在个人资料页面可以看到自己的剩余跑步次数
-    html += createInput(
-      "UI",
-      "show_available_runs",
-      "显示剩余次数",
-      "boolean",
-      "是否在个人信息中显示用户的剩余跑步次数（available_runs）"
-    );
-    
-    // 剩余次数的显示格式配置项
-    // 类型：text（文本输入框）
-    // 管理员可以自定义显示的文字标签，例如："剩余次数"、"可用次数"、"余额"等
-    // 这个格式文本将用作前端显示的标签
-    html += createInput(
-      "UI",
-      "available_runs_format",
-      "剩余次数显示格式",
-      "text",
-      "在个人信息中显示剩余次数时使用的文字标签，例如：\"剩余次数\"、\"可用次数\"等"
-    );
-    
-    // ==================== [新增] 注册页面显示设置 ====================
-    // 区域标题：注册页面显示设置
-    // 用途：管理员可以控制注册页面是否显示提示信息，以及提示的具体内容
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">📝 注册页面显示设置</h5>';
-    
-    // 添加说明文字，引导管理员了解此配置的用途
-    html +=
-      '<p class="text-xs text-slate-500 mb-3">控制在用户注册页面是否显示提示信息（如"注册即可得XX次"），以及提示的具体内容</p>';
-    
-    // 是否显示注册提示的开关
-    // 类型：boolean（布尔值选择器，显示"启用"或"禁用"）
-    // 启用后，用户在注册页面可以看到注册即可获得的免费次数提示
-    // 配置键：Registration_Display.show_available_runs_on_register
-    html += createInput(
-      "Registration_Display",
-      "show_available_runs_on_register",
-      "显示注册提示",
-      "boolean",
-      "是否在注册页面显示\"注册即可得XX次\"的提示信息"
-    );
-    
-    // 注册提示的文本内容配置项
-    // 类型：text（文本输入框）
-    // 管理员可以自定义提示的文字内容，包含占位符 {available_runs}
-    // 占位符将被实际的免费次数替换
-    // 例如："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
-    // 配置键：Registration_Display.register_available_runs_hint
-    html += createInput(
-      "Registration_Display",
-      "register_available_runs_hint",
-      "注册提示文本",
-      "text",
-      "注册页面提示的文本内容，使用 {available_runs} 作为占位符，例如：\"注册即可得 {available_runs} 次校园跑\""
-    );
-    // ==================== 配置项添加完成 ====================
+   
     
     formContainer.innerHTML = html;
   } catch (e) {
@@ -60083,6 +60040,7 @@ document.addEventListener('DOMContentLoaded', function() {
  * const canStart3 = await checkOverdueBeforeStart(selectedUsernames);
  */
 async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
+    console.log('检查欠费状态，参数:', schoolUsernameOrList);
     try {
         // ========== 步骤1：构造请求体 ==========
         // 根据传入参数的不同类型，构造不同的请求体
@@ -60104,6 +60062,7 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
         
         // ========== 步骤2：调用后端检查欠费接口 ==========
         // 使用 fetch 而不是 callPythonAPI，因为需要更精细的错误处理
+        console.log('调用 /api/check_overdue 接口，参数:', requestBody);
         const response = await fetch('/api/check_overdue', {
             method: 'POST',
             headers: {
@@ -60548,7 +60507,9 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
             Swal.showLoading();  // 显示加载动画
         }
     });
-
+    subOpenid=""
+    subAppid=""
+    auth_code=""
     try {
         // 调用后端API创建支付订单
         const createOrderResponse = await fetch('/api/payment/create_order_for_overdue', {
@@ -60561,7 +60522,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
                 overdue_accounts: selectedAccounts,  // 选中的欠费账号列表
                 pay_type: selectedPaymentMethod,      // 用户选择的支付方式
                 device: Get_YiPAi_device(),
-                payment_type: "jump",
+                payment_type: "web",
                 app_host: window.location.protocol + '//' + window.location.host,
                 sub_openid: subOpenid, 
                 sub_appid: subAppid,
@@ -60580,15 +60541,18 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
         const orderId = orderResult.order_id;      // 订单号
         const payUrl = orderResult.pay_url;        // 支付跳转URL
         const totalCount = orderResult.total_count;  // 总欠费次数
+        const pay_type = orderResult.pay_type
 
         // ========== 第四步：显示支付页面并开始轮询 ==========
         
-        await showPaymentPageWithPolling(orderId, payUrl, totalAmount, selectedPaymentMethod);
+        await showPaymentPageWithPolling(orderId, payUrl, totalAmount, selectedPaymentMethod,pay_type);
 
     } catch (error) {
         // 捕获创建订单过程中的所有错误
         console.error('创建订单失败:', error);
         // 使用showModalAlert显示错误信息
+        Swal.close();
+
         showModalAlert(error.message || '网络错误或服务器异常', '创建订单失败');
     }
 }
@@ -60601,7 +60565,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
  * @param {String} totalAmount - 总金额（字符串格式，例如："15.00"）
  * @param {String} paymentMethod - 支付方式（alipay/wxpay/qqpay等）
  */
-async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentMethod) {
+async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentMethod,pay_type) {
     // 支付方式显示名称映射
     // 将后端的支付方式代码转换为用户友好的显示名称
     const paymentMethodNames = {
@@ -60688,7 +60652,7 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
                         <span>正在等待支付...</span>
                     </div>
                     <div style="margin-top: 8px; font-size: 12px; color: #78350f;">
-                        系统正在实时检测支付状态（每0.5秒）
+                        系统正在实时检测支付状态
                     </div>
                 </div>
             </div>
@@ -60710,7 +60674,7 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
         didOpen: () => {
             // ========== 开始轮询支付状态 ==========
             
-            // 使用setInterval每0.5秒执行一次查询
+            // 使用setInterval
             pollingInterval = setInterval(async () => {
                 pollingCount++;  // 增加轮询计数
                 
@@ -60772,7 +60736,7 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
                     // 可能是网络波动导致的暂时性错误
                     console.error('查询订单状态失败:', error);
                 }
-            }, 500);  // 每0.5秒（500毫秒）查询一次
+            }, 2000);  // 每2秒（2000毫秒）查询一次
         },
         willClose: () => {
             // 弹窗关闭时停止轮询（无论是用户主动关闭还是支付完成自动关闭）
@@ -60913,9 +60877,9 @@ async function loadOverdueAccounts() {
                                         欠费 ${account.overdue_count} 次
                                     </span>
                                 </div>
-                                <!-- 详细信息：学号和认证账号 -->
+                                <!-- 详细信息：学号 -->
                                 <p class="text-sm text-slate-600 mt-1">
-                                    学号：${escapeHtml(account.student_id)} | 认证账号：${escapeHtml(account.auth_username)}
+                                    学号：${escapeHtml(account.student_id)} | 所属账号：${escapeHtml(account.auth_username)}
                                 </p>
                             </div>
                             <!-- 右侧：操作按钮组 -->
@@ -60929,7 +60893,7 @@ async function loadOverdueAccounts() {
                                 <!-- 结清按钮：无论是否有备份数据都可以使用 -->
                                 <!-- 使用 escapeHtml() 防止XSS攻击 -->
                                 <!-- auth_username传空字符串，让后端自动查找该学校账号所属的用户 -->
-                                <button onclick="adminClearOverdue('${escapeHtml(account.school_username)}', '')" 
+                                <button onclick="adminClearOverdue(school_username=${escapeHtml(account.school_username)},is_detail_view=false,auth_username='')" 
                                         class="px-3 py-1.5 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition-colors">
                                     结清
                                 </button>
@@ -61374,7 +61338,7 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
  * - 系统误判导致欠费错误，管理员纠正数据
  * - 特殊情况需要调整欠费次数
  */
-async function adminClearOverdue(school_username, auth_username) {
+async function adminClearOverdue(school_username, auth_username='', is_detail_view=true) {
     try {
         // ========== 步骤1：显示输入对话框 ==========
         
@@ -61475,10 +61439,13 @@ async function adminClearOverdue(school_username, auth_username) {
                 confirmButtonText: '确定'
             });
             
+            loadOverdueAccounts()
+
             // 刷新当前显示的详情页面，让用户看到最新数据
             // 调用View_details_of_users_with_outstanding_payments函数重新加载数据
+            if(is_detail_view){
             await View_details_of_users_with_outstanding_payments(school_username);
-            
+            }
         } else {
             // ===== 操作失败 =====
             
