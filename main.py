@@ -26284,8 +26284,30 @@ def start_web_server(args_param):
 
                             # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
                             # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
+                            # 
+                            # ========== 使用读取-更新-写入模式，避免丢失其他字段 ==========
+                            # 先读取现有订单数据，确保不会覆盖其他重要字段
+                            # 例如：overdue_accounts、refund_info等可能在其他地方添加的字段
+                            try:
+                                with open(order_file, "r", encoding="utf-8") as f:
+                                    existing_order = json.load(f)
+                            except (FileNotFoundError, json.JSONDecodeError) as e:
+                                # 如果文件不存在或JSON解析失败，使用当前的order_data作为基础
+                                # 这种情况理论上不应该发生，因为前面已经读取过订单文件
+                                logging.warning(
+                                    f"[支付通知-异步] 读取现有订单失败，使用当前数据: {str(e)}")
+                                existing_order = order_data.copy()
+                            
+                            # 只更新重复通知相关的字段，保留其他所有字段
+                            existing_order.update({
+                                "notify_count": notify_count,           # 更新通知计数
+                                "last_notify_at": order_data["last_notify_at"],  # 更新最后通知时间戳
+                                "last_notify_time": order_data["last_notify_time"]  # 更新最后通知时间（可读）
+                            })
+                            
+                            # 写回文件，使用格式化输出
                             with open(order_file, "w", encoding="utf-8") as f:
-                                json.dump(order_data, f, indent=2,
+                                json.dump(existing_order, f, indent=2,
                                           ensure_ascii=False)
 
                             # 记录日志：订单已支付，跳过重复处理
@@ -26345,8 +26367,34 @@ def start_web_server(args_param):
                         order_data["notify_count"] = 1
 
                         # 保存更新后的订单数据
+                        # 
+                        # ========== 使用读取-更新-写入模式，避免丢失其他字段 ==========
+                        # 先读取现有订单数据，确保不会覆盖其他重要字段
+                        # 例如：overdue_accounts、refund_info等可能在创建订单后添加的字段
+                        try:
+                            with open(order_file, "r", encoding="utf-8") as f:
+                                existing_order = json.load(f)
+                        except (FileNotFoundError, json.JSONDecodeError) as e:
+                            # 如果文件不存在或JSON解析失败，使用当前的order_data作为基础
+                            # 这种情况理论上不应该发生，因为前面已经读取过订单文件
+                            logging.warning(
+                                f"[支付通知-异步] 读取现有订单失败，使用当前数据: {str(e)}")
+                            existing_order = order_data.copy()
+                        
+                        # 更新支付相关的字段，保留其他所有字段
+                        existing_order.update({
+                            "status": ORDER_STATUS_PAID,                      # 订单状态更新为已支付
+                            "trade_no": trade_no,                             # 保存易支付订单号
+                            "paid_at": order_data["paid_at"],                 # 支付时间（时间戳）
+                            "paid_time": order_data["paid_time"],             # 支付时间（可读）
+                            "notify_params": params,                          # 保存完整的回调参数（用于调试）
+                            "notify_processed_at": order_data["notify_processed_at"],  # 首次处理通知的时间戳
+                            "notify_count": 1                                 # 通知计数，初始值为1
+                        })
+                        
+                        # 写回文件，使用格式化输出
                         with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2,
+                            json.dump(existing_order, f, indent=2,
                                       ensure_ascii=False)
 
                         # ========== 写入支付操作日志（支付成功通知） ==========
@@ -26470,9 +26518,23 @@ def start_web_server(args_param):
 
                         # 可以根据状态更新订单状态
                         if trade_status == "TRADE_CLOSED":
-                            order_data["status"] = ORDER_STATUS_FAILED
+                            # ========== 使用读取-更新-写入模式，避免丢失其他字段 ==========
+                            # 先读取现有订单数据，确保不会覆盖其他重要字段
+                            try:
+                                with open(order_file, "r", encoding="utf-8") as f:
+                                    existing_order = json.load(f)
+                            except (FileNotFoundError, json.JSONDecodeError) as e:
+                                # 如果文件不存在或JSON解析失败，使用当前的order_data作为基础
+                                logging.warning(
+                                    f"[支付通知-异步] 读取现有订单失败，使用当前数据: {str(e)}")
+                                existing_order = order_data.copy()
+                            
+                            # 只更新订单状态字段，保留其他所有字段
+                            existing_order["status"] = ORDER_STATUS_FAILED
+                            
+                            # 写回文件，使用格式化输出
                             with open(order_file, "w", encoding="utf-8") as f:
-                                json.dump(order_data, f, indent=2,
+                                json.dump(existing_order, f, indent=2,
                                           ensure_ascii=False)
 
                         # 异步处理完成
@@ -30633,8 +30695,25 @@ def start_web_server(args_param):
                             order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
 
                         # 保存更新后的订单
+                        # 
+                        # ========== 使用读取-更新-写入模式，避免丢失其他字段 ==========
+                        # 先读取现有订单数据，确保不会覆盖其他重要字段
+                        # 例如：overdue_accounts、notify_params等字段
+                        try:
+                            with open(order_file, "r", encoding="utf-8") as f:
+                                existing_order = json.load(f)
+                        except (FileNotFoundError, json.JSONDecodeError) as e:
+                            # 如果文件不存在或JSON解析失败，使用当前的order_data作为基础
+                            logging.warning(
+                                f"[退款请求] 读取现有订单失败，使用当前数据: {str(e)}")
+                            existing_order = order_data.copy()
+                        
+                        # 只更新退款状态字段，保留其他所有字段
+                        existing_order["status"] = order_data["status"]
+                        
+                        # 写回文件，使用格式化输出
                         with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2,
+                            json.dump(existing_order, f, indent=2,
                                       ensure_ascii=False)
 
                         logging.info(f"[退款请求] 已同步本地订单状态 - 订单号: {trade_no}")
@@ -30914,8 +30993,29 @@ def start_web_server(args_param):
                 # 保存更新后的订单数据到文件
                 # 使用 indent=2 格式化输出，便于人工查看
                 # ensure_ascii=False 保留中文字符
+                # 
+                # ========== 使用读取-更新-写入模式，避免丢失其他字段 ==========
+                # 先读取现有订单数据，确保不会覆盖其他重要字段
+                # 例如：overdue_accounts、notify_params等在支付时添加的字段
+                try:
+                    with open(order_file, "r", encoding="utf-8") as f:
+                        existing_order = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError) as e:
+                    # 如果文件不存在或JSON解析失败，使用当前的order_data作为基础
+                    logging.warning(
+                        f"[退款请求] 读取现有订单失败，使用当前数据: {str(e)}")
+                    existing_order = order_data.copy()
+                
+                # 更新退款相关的字段，保留其他所有字段
+                existing_order.update({
+                    "status": order_data["status"],                    # 更新订单状态（已全额退款/已部分退款）
+                    "refund_count": 1,                                 # 退款次数设置为1
+                    "refund_records": order_data["refund_records"]     # 更新退款记录数组
+                })
+                
+                # 写回文件，使用格式化输出
                 with open(order_file, "w", encoding="utf-8") as f:
-                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                    json.dump(existing_order, f, indent=2, ensure_ascii=False)
 
                 # ========== 记录退款日志 ==========
 
@@ -31394,8 +31494,30 @@ def start_web_server(args_param):
                         "%Y-%m-%d %H:%M:%S")
 
                     # 保存更新后的订单数据
+                    # 
+                    # ========== 使用读取-更新-写入模式，避免丢失其他字段 ==========
+                    # 先读取现有订单数据，确保不会覆盖其他重要字段
+                    # 例如：overdue_accounts、refund_info等可能在创建订单后添加的字段
+                    try:
+                        with open(order_file, "r", encoding="utf-8") as f:
+                            existing_order = json.load(f)
+                    except (FileNotFoundError, json.JSONDecodeError) as e:
+                        # 如果文件不存在或JSON解析失败，使用当前的order_data作为基础
+                        # 这种情况理论上不应该发生，因为前面已经读取过订单文件
+                        logging.warning(
+                            f"[查询订单] 读取现有订单失败，使用当前数据: {str(e)}")
+                        existing_order = order_data.copy()
+                    
+                    # 只更新支付状态相关的字段，保留其他所有字段
+                    existing_order.update({
+                        "status": ORDER_STATUS_PAID,                      # 订单状态更新为已支付
+                        "paid_at": order_data["paid_at"],                 # 支付时间（时间戳）
+                        "paid_time": order_data["paid_time"]              # 支付时间（可读）
+                    })
+                    
+                    # 写回文件，使用格式化输出
                     with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                        json.dump(existing_order, f, indent=2, ensure_ascii=False)
 
                     # ========== 写入支付操作日志（状态更新） ==========
 
@@ -35247,9 +35369,28 @@ def start_web_server(args_param):
                 # 确保订单目录存在
                 os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
                 
-                order_data.update(local_order_data)  # 更新本地订单数据
-
-                local_order_data=order_data  # 使用更新后的订单数据
+                # ========== 使用读取-更新-写入模式，避免丢失其他字段 ==========
+                # 先读取现有订单数据（如果存在），确保保留本地字段
+                # 例如：overdue_accounts等可能在订单创建时添加的字段不应被平台数据覆盖
+                try:
+                    with open(order_file, "r", encoding="utf-8") as f:
+                        existing_order = json.load(f)
+                    # 将平台数据更新到现有订单中，但保留现有的重要字段
+                    # 使用local_order_data更新existing_order，platform数据优先
+                    existing_order.update(local_order_data)
+                    # 但是保留关键的本地字段（如果存在）
+                    if order_data and "overdue_accounts" in order_data:
+                        existing_order["overdue_accounts"] = order_data["overdue_accounts"]
+                    local_order_data = existing_order
+                except (FileNotFoundError, json.JSONDecodeError) as e:
+                    # 如果文件不存在或解析失败，说明是新订单或损坏的订单
+                    # 使用从平台获取的数据作为基础
+                    if order_data:
+                        # 如果之前读取到了order_data，先基于它，再合并平台数据
+                        order_data.update(local_order_data)
+                        local_order_data = order_data
+                    # 否则直接使用local_order_data（纯平台数据）
+                
                 try:
                     # 写入订单文件
                     # 使用UTF-8编码保存中文内容
