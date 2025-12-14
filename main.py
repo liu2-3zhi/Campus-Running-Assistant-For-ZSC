@@ -9367,6 +9367,68 @@ class Api:
                     run_data.status = 1
                     log_func("任务已确认完成。")
                     logging.info(f"任务已成功完成: 任务名称={run_data.run_name}")
+                    
+                    
+                    # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
+                    # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
+                    # 这里处理单账号模式下的后台任务完成情况
+                    try:
+                        # 从 api_instance 获取认证用户名和学校账号用户名
+                        auth_username = getattr(
+                            self, "auth_username", None)
+                        school_username = getattr(
+                            self.user_data, "username", None)
+
+                        # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
+                        if auth_username and auth_username != "guest" and school_username:
+                            logging.debug(
+                                f"[单账号后台任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
+                                f"学校账号={school_username}, 任务={run_data.run_name}"
+                            )
+
+                            # 调用 api_instance 的辅助函数处理可用次数扣减或欠费次数增加
+                            self._deduct_available_runs_or_increment_overdue(
+                                auth_username, school_username
+                            )
+
+                            # ========== 增加已完成任务计数器 ==========
+                            # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
+                            # 这个计数器用于统计每个学校账号总共完成了多少个任务
+                            # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
+                            try:
+                                logging.debug(
+                                    f"[单账号后台任务] 开始增加任务计数：认证用户={auth_username}, "
+                                    f"学校账号={school_username}, 任务={run_data.run_name}"
+                                )
+
+                                # 调用 api_instance 的辅助函数增加已完成任务计数
+                                self._increment_completed_count(
+                                    auth_username, school_username)
+
+                            except Exception as e_count:
+                                # 捕获计数更新异常，记录日志但不影响主流程
+                                logging.error(
+                                    f"[单账号后台任务] 更新任务计数时发生异常: {e_count}",
+                                    exc_info=True
+                                )
+                            # ========== 结束：任务计数处理 ==========
+                        else:
+                            logging.debug(
+                                f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username}, "
+                                f"学校账号={school_username}（游客或未设置）"
+                            )
+                    except Exception as e:
+                        # 捕获异常，避免影响主流程
+                        logging.error(
+                            f"[单账号后台任务] 处理次数扣减时发生异常: {e}",
+                            exc_info=True
+                        )
+                    
+                    
+                    
+                    
+                    
+                    
                     session_id = getattr(self, "_web_session_id", None)
                     if socketio and session_id and task_index != -1:
                         try:
@@ -15868,63 +15930,13 @@ class BackgroundTaskManager:
                     self.save_task_state(session_id, task_state)
 
                 logging.info(
-                    f"任务 {i+1}/{len(task_indices)} 已完成，会话ID前缀: {session_id[:8]}"
+                    f"任务 {i+1}/{len(task_indices)} 已完成，会话ID: {session_id}"
                 )
 
-                # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
-                # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
-                # 这里处理单账号模式下的后台任务完成情况
-                try:
-                    # 从 api_instance 获取认证用户名和学校账号用户名
-                    auth_username = getattr(
-                        api_instance, "auth_username", None)
-                    school_username = getattr(
-                        api_instance.user_data, "username", None)
 
-                    # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
-                    if auth_username and auth_username != "guest" and school_username:
-                        logging.debug(
-                            f"[单账号后台任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
-                            f"学校账号={school_username}, 任务={run_data.run_name}"
-                        )
 
-                        # 调用 api_instance 的辅助函数处理可用次数扣减或欠费次数增加
-                        api_instance._deduct_available_runs_or_increment_overdue(
-                            auth_username, school_username
-                        )
 
-                        # ========== 增加已完成任务计数器 ==========
-                        # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
-                        # 这个计数器用于统计每个学校账号总共完成了多少个任务
-                        # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
-                        try:
-                            logging.debug(
-                                f"[单账号后台任务] 开始增加任务计数：认证用户={auth_username}, "
-                                f"学校账号={school_username}, 任务={run_data.run_name}"
-                            )
-
-                            # 调用 api_instance 的辅助函数增加已完成任务计数
-                            api_instance._increment_completed_count(
-                                auth_username, school_username)
-
-                        except Exception as e_count:
-                            # 捕获计数更新异常，记录日志但不影响主流程
-                            logging.error(
-                                f"[单账号后台任务] 更新任务计数时发生异常: {e_count}",
-                                exc_info=True
-                            )
-                        # ========== 结束：任务计数处理 ==========
-                    else:
-                        logging.debug(
-                            f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username}, "
-                            f"学校账号={school_username}（游客或未设置）"
-                        )
-                except Exception as e:
-                    # 捕获异常，避免影响主流程
-                    logging.error(
-                        f"[单账号后台任务] 处理次数扣减时发生异常: {e}",
-                        exc_info=True
-                    )
+                
                 # ========== 结束：次数扣减处理 ==========
             if tasks_executed > 0:
                 with self.lock:
@@ -15932,7 +15944,7 @@ class BackgroundTaskManager:
                     task_state["last_update"] = time.time()
                     self.save_task_state(session_id, task_state)
 
-                logging.info(f"所有后台任务已完成，会话ID前缀: {session_id[:8]}")
+                logging.info(f"所有后台任务已完成，会话ID: {session_id}")
             else:
                 with self.lock:
                     if task_state.get("status") != "error":
@@ -16918,6 +16930,8 @@ class ChromeBrowserPool:
                 logging.info("Playwright 工作线程已正常退出")
         else:
             logging.info("Playwright 工作线程已结束")
+
+
 
 
 def _cleanup_playwright():
@@ -18069,6 +18083,141 @@ def start_web_server(args_param):
     # 字体文件缓存存储（用于Google Fonts的TTF文件）
     font_cache_storage = {}
     font_cache_lock = threading.Lock()
+    
+    
+    def _process_overdue_payment_async(overdue_accounts: list, auth_username: str, out_trade_no: str):
+        logging.info(f"[overdue_count处理] 欠费账号列表: {overdue_accounts}")
+        # 提取总欠费次数（订单创建时已计算好）
+        total_count = 0
+        for account in overdue_accounts:
+            account_overdue_count = account.get("overdue_count", 0)
+            total_count += account_overdue_count
+
+        # 验证必要字段是否存在
+        if overdue_accounts and total_count > 0:
+            try:
+
+                # 遍历所有欠费账号
+
+                for account in overdue_accounts:
+                    # 提取学校账号用户名
+                    school_username = account.get(
+                        "school_username", "")
+
+                    # 验证学校账号用户名是否有效
+                    if not school_username:
+                        # 如果用户名为空，跳过该账号
+                        continue
+
+                    # 构造学校账号INI文件路径
+                    # INI文件存储在SCHOOL_ACCOUNTS_DIR目录下，以{school_username}.ini命名
+                    account_ini_path = os.path.join(
+                        SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
+
+                    # 检查INI文件是否存在
+                    if os.path.exists(account_ini_path):
+                        try:
+                            # 读取INI文件
+                            # ConfigParser是Python标准库，用于读写INI格式的配置文件
+                            account_config = configparser.ConfigParser(
+                                strict=False)
+                            account_config.read(
+                                account_ini_path, encoding="utf-8")
+
+                            # 读取当前的overdue_count值
+                            # 从[stats]节中读取overdue_count字段
+                            # 如果字段不存在，默认值为0
+                            current_overdue_count = 0
+                            if account_config.has_option("stats", "overdue_count"):
+                                current_overdue_count = int(
+                                    account_config.get("stats", "overdue_count", fallback="0"))
+
+                            # 从订单的overdue_accounts中获取该账号的overdue_count
+                            # 这个值表示该账号在此订单中的欠费次数
+                            # 支付成功后，需要减去这个值，而不是固定减1
+                            account_overdue_count = account.get(
+                                "overdue_count", 0)
+
+                            # 计算新的overdue_count值
+                            # 使用max(0, ...)确保结果不会小于0
+                            # 减去的值是订单中该账号对应的overdue_count，而不是固定减1
+                            new_overdue_count = max(
+                                0, current_overdue_count - account_overdue_count)
+
+                            # 确保[stats]节存在
+                            # 如果INI文件中没有[stats]节，则创建它
+                            if not account_config.has_section("stats"):
+                                account_config.add_section("stats")
+
+                            # 设置新的overdue_count值
+                            # 将计算好的新值写入配置对象
+                            account_config.set(
+                                "stats", "overdue_count", str(new_overdue_count))
+
+                            # 将配置写回文件
+                            # 这一步将内存中的配置对象持久化到磁盘
+                            with open(account_ini_path, "w", encoding="utf-8") as f:
+                                account_config.write(f)
+
+                            # 记录日志：更新成功
+                            # 日志中包含账号名、原值、减少值和新值，便于追踪和调试
+                            logging.info(
+                                f"[订单overdue处理] 账号 {school_username} 的overdue_count: "
+                                f"{current_overdue_count} - {account_overdue_count} = {new_overdue_count}"
+                            )
+
+                        except Exception as e:
+                            # 捕获处理单个账号时的异常
+                            # 即使某个账号处理失败，也不影响其他账号的处理
+                            logging.error(
+                                f"[订单overdue处理] 处理账号 {school_username} 失败: {str(e)}"
+                            )
+                    else:
+                        # INI文件不存在
+                        # 这可能是因为账号已被删除，或者数据迁移时文件丢失
+                        logging.warning(
+                            f"[订单overdue处理] 账号文件不存在: {account_ini_path}"
+                        )
+
+                # ========== 步骤3：记录欠费支付成功日志 ==========
+
+
+                # 记录总结日志
+                logging.info(
+                    f"[欠费支付-异步] 欠费补缴处理完成 - 学校账号: {overdue_accounts}, "
+                    f"总欠费次数: {total_count}, 用户: {auth_username}, 订单: {out_trade_no}"
+                )
+
+            except Exception as e:
+                # 捕获欠费处理过程中的异常
+                # 即使处理失败，也不影响异步线程的执行
+                # 但需要记录详细的错误日志，便于人工介入处理
+                logging.error(
+                    f"[欠费支付-异步] 处理欠费补缴异常 - 用户: {auth_username}, "
+                    f"订单: {out_trade_no}, 错误: {str(e)}"
+                )
+                logging.error(traceback.format_exc())
+
+                # 记录错误日志到支付操作日志
+                _write_payment_log(
+                    user_id=auth_username,
+                    order_id=out_trade_no,
+                    action="overdue_payment_error",
+                    log_data={
+                        "error": str(e),
+                        "traceback": traceback.format_exc(),
+                        "overdue_accounts": overdue_accounts
+                    }
+                )
+        else:
+            # 订单数据不完整（异常情况）
+            logging.warning(
+                f"[overdue_count处理] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
+                f"auth_username: {auth_username}, total_count: {total_count}"
+            )
+
+        logging.info(f"[overdue_count处理] 订单处理完成 - 订单号: {out_trade_no}")
+
 
     def parse_google_fonts_css(css_content):
         """
@@ -26195,149 +26344,28 @@ def start_web_server(args_param):
 
                         # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
                         # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
-                        if "overdue_accounts" in order_data and "auth_username" in order_data:
+                        logging.info(f"[支付通知-异步] 检查订单是否包含欠费账号信息 - 订单号: {out_trade_no} ，订单数据: {order_data}")
+                        if "overdue_accounts" in order_data :
+                            
                             # 这是一个欠费补缴订单，需要：
                             # 1. 增加用户的available_runs
                             # 2. 清零所有欠费账号的overdue_count
 
                             # 提取订单中保存的用户名
-                            auth_username = order_data.get("auth_username", "")
+                            auth_username = order_data.get("auth_username", "未知")
 
                             # 提取欠费账号列表
                             # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
                             overdue_accounts = order_data.get(
                                 "overdue_accounts", [])
-
-                            # 提取总欠费次数（订单创建时已计算好）
-                            total_count = order_data.get("total_count", 0)
-
-                            # 验证必要字段是否存在
-                            if auth_username and overdue_accounts and total_count > 0:
+                            total_count=order_data.get("total_overdue_count", 0)
+                            logging.info(f"[支付通知-异步] 欠费账号列表: {overdue_accounts}")
+                            if auth_username and overdue_accounts:
                                 try:
-                                    # ========== 步骤1：增加用户的available_runs ==========
-
-                                    # 获取用户数据文件路径
-                                    user_file = auth_system.get_user_file_path(
-                                        auth_username)
-
-                                    # 检查用户文件是否存在
-                                    if os.path.exists(user_file):
-                                        # 使用线程锁确保文件操作的原子性（防止并发修改）
-                                        with auth_system.lock:
-                                            # 读取用户数据
-                                            with open(user_file, "r", encoding="utf-8") as f:
-                                                user_data = json.load(f)
-
-                                            # 获取当前的available_runs值
-                                            # 如果字段不存在，默认为0
-                                            current_runs = user_data.get(
-                                                "available_runs", 0)
-
-                                            # 增加available_runs：当前值 + 总欠费次数
-                                            # 例如：当前剩余5次，补缴了8次欠费，更新后为13次
-                                            new_runs = current_runs + total_count
-                                            user_data["available_runs"] = new_runs
-
-                                            # 将更新后的用户数据写回文件
-                                            with open(user_file, "w", encoding="utf-8") as f:
-                                                json.dump(
-                                                    user_data, f, indent=2, ensure_ascii=False)
-
-                                            # 记录日志：available_runs更新成功
-                                            logging.info(
-                                                f"[欠费支付-异步] available_runs更新成功 - 用户: {auth_username}, "
-                                                f"原值: {current_runs}, 增加: {total_count}, 新值: {new_runs}"
-                                            )
-                                    else:
-                                        # 用户文件不存在（异常情况）
-                                        logging.error(
-                                            f"[欠费支付-异步] 用户文件不存在，无法更新available_runs - 用户: {auth_username}"
-                                        )
-
-                                    # ========== 步骤2：减少所有欠费账号的overdue_count ==========
-
-                                    # 遍历所有欠费账号
-                                    # 每个账号的overdue_count将减1（确保不小于0）
-                                    for account in overdue_accounts:
-                                        # 提取学校账号用户名
-                                        school_username = account.get(
-                                            "school_username", "")
-
-                                        # 验证学校账号用户名是否有效
-                                        if not school_username:
-                                            # 如果用户名为空，跳过该账号
-                                            continue
-
-                                        # 构造学校账号INI文件路径
-                                        # INI文件存储在SCHOOL_ACCOUNTS_DIR目录下，以{school_username}.ini命名
-                                        account_ini_path = os.path.join(
-                                            SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
-
-                                        # 检查INI文件是否存在
-                                        if os.path.exists(account_ini_path):
-                                            try:
-                                                # 读取INI文件
-                                                # ConfigParser是Python标准库，用于读写INI格式的配置文件
-                                                account_config = configparser.ConfigParser()
-                                                account_config.read(
-                                                    account_ini_path, encoding="utf-8")
-
-                                                # 读取当前的overdue_count值
-                                                # 从[stats]节中读取overdue_count字段
-                                                # 如果字段不存在，默认值为0
-                                                current_overdue_count = 0
-                                                if account_config.has_option("stats", "overdue_count"):
-                                                    current_overdue_count = int(
-                                                        account_config.get("stats", "overdue_count", fallback="0"))
-
-                                                # 从订单的overdue_accounts中获取该账号的overdue_count
-                                                # 这个值表示该账号在此订单中的欠费次数
-                                                # 支付成功后，需要减去这个值，而不是固定减1
-                                                account_overdue_count = account.get("overdue_count", 0)
-
-                                                # 计算新的overdue_count值
-                                                # 使用max(0, ...)确保结果不会小于0
-                                                # 减去的值是订单中该账号对应的overdue_count，而不是固定减1
-                                                new_overdue_count = max(
-                                                    0, current_overdue_count - account_overdue_count)
-
-                                                # 确保[stats]节存在
-                                                # 如果INI文件中没有[stats]节，则创建它
-                                                if not account_config.has_section("stats"):
-                                                    account_config.add_section("stats")
-
-                                                # 设置新的overdue_count值
-                                                # 将计算好的新值写入配置对象
-                                                account_config.set(
-                                                    "stats", "overdue_count", str(new_overdue_count))
-
-                                                # 将配置写回文件
-                                                # 这一步将内存中的配置对象持久化到磁盘
-                                                with open(account_ini_path, "w", encoding="utf-8") as f:
-                                                    account_config.write(f)
-
-                                                # 记录日志：更新成功
-                                                # 日志中包含账号名、原值、减少值和新值，便于追踪和调试
-                                                logging.info(
-                                                    f"[订单overdue处理] 账号 {school_username} 的overdue_count: "
-                                                    f"{current_overdue_count} - {account_overdue_count} = {new_overdue_count}"
-                                                )
-
-                                            except Exception as e:
-                                                # 捕获处理单个账号时的异常
-                                                # 即使某个账号处理失败，也不影响其他账号的处理
-                                                logging.error(
-                                                    f"[订单overdue处理] 处理账号 {school_username} 失败: {str(e)}"
-                                                )
-                                        else:
-                                            # INI文件不存在
-                                            # 这可能是因为账号已被删除，或者数据迁移时文件丢失
-                                            logging.warning(
-                                                f"[订单overdue处理] 账号文件不存在: {account_ini_path}"
-                                            )
-
+                                    _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
                                     # ========== 步骤3：记录欠费支付成功日志 ==========
-
+                                
+                                    
                                     _write_payment_log(
                                         user_id=auth_username,
                                         order_id=out_trade_no,
@@ -26349,14 +26377,13 @@ def start_web_server(args_param):
                                             "overdue_cleared": True,
                                             "trade_no": trade_no,
                                             "paid_amount": paid_amount
-                                        }
-                                    )
+                                            }
+                                        )
 
                                     # 记录总结日志
                                     logging.info(
-                                        f"[欠费支付-异步] 欠费补缴处理完成 - 用户: {auth_username}, "
-                                        f"已增加available_runs: {total_count} 次, "
-                                        f"已清零 {len(overdue_accounts)} 个学校账号的欠费"
+                                        f"[欠费支付-异步] 欠费补缴处理完成 - 学校账号: {overdue_accounts}, "
+                                        f"总欠费次数: {total_count}, 用户: {auth_username}, 订单: {out_trade_no}"
                                     )
 
                                 except Exception as e:
@@ -34999,7 +35026,7 @@ def start_web_server(args_param):
 
             # ========== 第3步：如果本地没有，从易支付平台查询 ==========
 
-            logging.info("[管理员查询订单] 本地未找到订单，尝试从易支付平台查询")
+            logging.info("[管理员查询订单] 从易支付平台查询")
 
             # 调用内部函数查询易支付平台
             query_result = _query_yipay_order(
@@ -35173,7 +35200,10 @@ def start_web_server(args_param):
 
                 # 确保订单目录存在
                 os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+                
+                order_data.update(local_order_data)  # 更新本地订单数据
 
+                local_order_data=order_data  # 使用更新后的订单数据
                 try:
                     # 写入订单文件
                     # 使用UTF-8编码保存中文内容
@@ -35209,6 +35239,13 @@ def start_web_server(args_param):
                     # 获取新订单状态（从平台获取的状态）
                     new_status = local_order_data.get("status", "")
                     
+                    logging.info(
+                        f"[管理员从平台查询订单] 订单状态检查 - "
+                        f"单号: {out_trade_no}, "
+                        f"旧状态: {old_status}, "
+                        f"新状态: {new_status}"
+                    )
+                    
                     # 判断是否状态改变：
                     # 1. 旧状态为pending或None（订单不存在）
                     # 2. 新状态为paid
@@ -35225,73 +35262,8 @@ def start_web_server(args_param):
                                 f"[订单状态变更] 订单 {out_trade_no} 状态从 {old_status} 变为 {new_status}，"
                                 f"开始处理overdue_accounts"
                             )
-                            
-                            # 遍历每个欠费账号
-                            for account in overdue_accounts:
-                                # 提取学校账号用户名
-                                school_username = account.get("school_username", "")
-                                
-                                # 验证学校账号用户名是否有效
-                                if not school_username:
-                                    continue
-                                
-                                # 构造学校账号INI文件路径
-                                # INI文件存储在SCHOOL_ACCOUNTS_DIR目录下
-                                account_ini_path = os.path.join(
-                                    SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
-                                
-                                # 检查INI文件是否存在
-                                if os.path.exists(account_ini_path):
-                                    try:
-                                        # 读取INI文件
-                                        # 使用ConfigParser读取INI格式的配置文件
-                                        account_config = configparser.ConfigParser()
-                                        account_config.read(account_ini_path, encoding="utf-8")
-                                        
-                                        # 读取当前的overdue_count值
-                                        # 从[stats]节中读取overdue_count字段，默认为0
-                                        current_overdue_count = 0
-                                        if account_config.has_option("stats", "overdue_count"):
-                                            current_overdue_count = int(
-                                                account_config.get("stats", "overdue_count", fallback="0"))
-                                        
-                                        # 从订单的overdue_accounts中获取该账号的overdue_count
-                                        # 这个值表示该账号在此订单中的欠费次数
-                                        # 支付成功后，需要减去这个值，而不是固定减1
-                                        account_overdue_count = account.get("overdue_count", 0)
-                                        
-                                        # 计算新的overdue_count值
-                                        # 减去订单中该账号对应的overdue_count，但确保不会小于0
-                                        new_overdue_count = max(0, current_overdue_count - account_overdue_count)
-                                        
-                                        # 确保[stats]节存在
-                                        if not account_config.has_section("stats"):
-                                            account_config.add_section("stats")
-                                        
-                                        # 设置新的overdue_count值
-                                        account_config.set(
-                                            "stats", "overdue_count", str(new_overdue_count))
-                                        
-                                        # 将配置写回文件
-                                        with open(account_ini_path, "w", encoding="utf-8") as f:
-                                            account_config.write(f)
-                                        
-                                        # 记录日志：更新成功
-                                        logging.info(
-                                            f"[订单overdue处理] 账号 {school_username} 的overdue_count: "
-                                            f"{current_overdue_count} - {account_overdue_count} = {new_overdue_count}"
-                                        )
-                                        
-                                    except Exception as e:
-                                        # 捕获处理单个账号时的异常
-                                        logging.error(
-                                            f"[订单overdue处理] 处理账号 {school_username} 失败: {str(e)}"
-                                        )
-                                else:
-                                    # INI文件不存在
-                                    logging.warning(
-                                        f"[订单overdue处理] 账号文件不存在: {account_ini_path}"
-                                    )
+                            auth_username=local_order_data["username"]
+                            _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
 
                 except Exception as e:
                     # 保存失败，记录错误但仍然返回平台数据
@@ -35786,73 +35758,9 @@ def start_web_server(args_param):
                                 f"[订单状态变更] 订单 {out_trade_no} 状态从 {old_status} 变为 {new_status}，"
                                 f"开始处理overdue_accounts"
                             )
+                            auth_username=local_order_data["username"]
                             
-                            # 遍历每个欠费账号
-                            for account in overdue_accounts:
-                                # 提取学校账号用户名
-                                school_username = account.get("school_username", "")
-                                
-                                # 验证学校账号用户名是否有效
-                                if not school_username:
-                                    continue
-                                
-                                # 构造学校账号INI文件路径
-                                # INI文件存储在SCHOOL_ACCOUNTS_DIR目录下
-                                account_ini_path = os.path.join(
-                                    SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
-                                
-                                # 检查INI文件是否存在
-                                if os.path.exists(account_ini_path):
-                                    try:
-                                        # 读取INI文件
-                                        # 使用ConfigParser读取INI格式的配置文件
-                                        account_config = configparser.ConfigParser()
-                                        account_config.read(account_ini_path, encoding="utf-8")
-                                        
-                                        # 读取当前的overdue_count值
-                                        # 从[stats]节中读取overdue_count字段，默认为0
-                                        current_overdue_count = 0
-                                        if account_config.has_option("stats", "overdue_count"):
-                                            current_overdue_count = int(
-                                                account_config.get("stats", "overdue_count", fallback="0"))
-                                        
-                                        # 从订单的overdue_accounts中获取该账号的overdue_count
-                                        # 这个值表示该账号在此订单中的欠费次数
-                                        # 支付成功后，需要减去这个值，而不是固定减1
-                                        account_overdue_count = account.get("overdue_count", 0)
-                                        
-                                        # 计算新的overdue_count值
-                                        # 减去订单中该账号对应的overdue_count，但确保不会小于0
-                                        new_overdue_count = max(0, current_overdue_count - account_overdue_count)
-                                        
-                                        # 确保[stats]节存在
-                                        if not account_config.has_section("stats"):
-                                            account_config.add_section("stats")
-                                        
-                                        # 设置新的overdue_count值
-                                        account_config.set(
-                                            "stats", "overdue_count", str(new_overdue_count))
-                                        
-                                        # 将配置写回文件
-                                        with open(account_ini_path, "w", encoding="utf-8") as f:
-                                            account_config.write(f)
-                                        
-                                        # 记录日志：更新成功
-                                        logging.info(
-                                            f"[订单overdue处理] 账号 {school_username} 的overdue_count: "
-                                            f"{current_overdue_count} - {account_overdue_count} = {new_overdue_count}"
-                                        )
-                                        
-                                    except Exception as e:
-                                        # 捕获处理单个账号时的异常
-                                        logging.error(
-                                            f"[订单overdue处理] 处理账号 {school_username} 失败: {str(e)}"
-                                        )
-                                else:
-                                    # INI文件不存在
-                                    logging.warning(
-                                        f"[订单overdue处理] 账号文件不存在: {account_ini_path}"
-                                    )
+                            _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
 
                     # 统计成功
                     saved_count += 1
