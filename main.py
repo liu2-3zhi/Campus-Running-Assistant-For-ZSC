@@ -15336,7 +15336,7 @@ class BackgroundTaskManager:
             
             self.user_info = getattr(api_instance, "user_info", {})
             school_username = self.user_info.get("student_id")
-            logging.debug(f"[欠费检查] 检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费")
+            logging.debug(f"cls户 {auth_username} 的学校账号 {school_username} 是否存在欠费")
             
             # 检查每个账号是否存在欠费
             overdue_accounts_list = []
@@ -23968,25 +23968,26 @@ def start_web_server(args_param):
 
             # 从配置文件的 [Beian] 部分读取备案信息
             # 使用 fallback 参数提供默认值，确保即使配置项不存在也不会抛出异常
-
+            logging.info("读取备案配置信息...")
             # 读取 ICP 备案号（例如："京ICP备12345678号"）
             # 如果配置文件中不存在该项，则默认返回空字符串
             icp_number = config.get("Beian", "icp_number", fallback="")
-
+            logging.info(f"ICP 备案号: {icp_number}")
             # 读取是否显示 ICP 备案号的布尔值
             # getboolean() 方法会将 "true"/"false"、"yes"/"no"、"1"/"0" 等字符串转换为布尔值
             # 如果配置项不存在，默认为 False（不显示）
             show_icp = config.getboolean("Beian", "show_icp", fallback=False)
+            logging.info(f"是否显示 ICP 备案号: {show_icp}")
 
             # 读取公安备案号（例如："京公网安备 11010802012345号"）
             # 如果配置文件中不存在该项，则默认返回空字符串
             police_number = config.get("Beian", "police_number", fallback="")
-
+            logging.info(f"公安备案号: {police_number}")
             # 读取是否显示公安备案号的布尔值
             # 如果配置项不存在，默认为 False（不显示）
             show_police = config.getboolean(
                 "Beian", "show_police", fallback=False)
-
+            logging.info(f"是否显示公安备案号: {show_police}")
             # 将读取到的配置信息组装成一个字典对象
             # 这个字典将作为 API 响应的数据部分返回给前端
             beian_config = {
@@ -35868,41 +35869,38 @@ def start_web_server(args_param):
             logging.info(f"[欠费检查] 请求数据: {data}")
 
             # 可选参数：要检查的特定学校账号用户名（支持字符串或数组）
+            logging.info(f"[欠费检查] 得到的请求数据: {data}")
             school_username_input_before1 = data.get("school_username")
             school_username_input_before2 = data.get("school_usernames")
-            if school_username_input_before1 is not None and len(school_username_input_before1) > 0 and school_username_input_before1 != "" and school_username_input_before1 != [] and school_username_input_before1 != {} and school_username_input_before1 != 'null' and school_username_input_before1 != 'None' and school_username_input_before1 != 'undefined' and school_username_input_before1 != 'NULL':
-                school_username_input = school_username_input_before1
-            elif school_username_input_before2 is not None and len(school_username_input_before2) > 0 and school_username_input_before2 != "" and school_username_input_before2 != [] and school_username_input_before2 != {} and school_username_input_before2 != 'null' and school_username_input_before2 != 'None' and school_username_input_before2 != 'undefined' and school_username_input_before2 != 'NULL':
-                school_username_input = school_username_input_before2
-            else:
-                school_username_input = None
-                
-            
-            # school_username_input = data.get("school_username")
-            logging.info(f"[欠费检查] 用户 {g.user} 请求检查欠费状态，特定账号: {school_username_input}")
+            logging.info(f"[欠费检查] 得到的 school_username 参数: {school_username_input_before1}")
+            logging.info(f"[欠费检查] 得到的 school_usernames 参数: {school_username_input_before2}")
 
+            # 统一处理输入，确保最终是列表
+            def normalize_input(input_val):
+                if input_val is None:
+                    return []
+                if isinstance(input_val, list):
+                    return [str(u).strip() for u in input_val if u and str(u).strip()]
+                if isinstance(input_val, str):
+                    input_str = input_val.strip()
+                    if input_str in ['null', 'None', 'undefined', 'NULL', '']:
+                        return []
+                    # 尝试按逗号分隔，支持 "a,b,c" 格式
+                    return [s.strip() for s in input_str.split(',') if s.strip()]
+                # 其他类型（如数字）直接转为字符串
+                return [str(input_val).strip()]
 
-            if school_username_input is not None:
-                if auth_system.get_user_group(g.user) not in ['admin', 'super_admin']:
-                    return jsonify({
-                        "success": False,
-                        "message": "缺少传入参数 school_username。"
-                    }), 403
+            # 获取输入
+            school_username_input = None
+            if school_username_input_before1:
+                school_username_input = normalize_input(school_username_input_before1)
+            elif school_username_input_before2:
+                school_username_input = normalize_input(school_username_input_before2)
 
-                
-            # 处理筛选逻辑：将输入统一转换为集合，支持单查或多查
-            target_usernames = set()
-            if school_username_input:
-                if isinstance(school_username_input, list):
-                    # 如果是数组，将所有元素转为字符串并加入集合
-                    target_usernames = {str(u).strip() for u in school_username_input if u}
-                else:
-                    # 如果是字符串（或数字），转为字符串并加入集合
-                    s_name = str(school_username_input).strip()
-                    if s_name:
-                        target_usernames.add(s_name)
-                        
-            # 获取当前认证用户名（通过 login_required 装饰器注入到 g.user）
+            # 处理筛选逻辑：将输入统一转换为集合
+            target_usernames = set(school_username_input)
+
+            # 获取当前认证用户名
             auth_username = g.user
 
             if auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
