@@ -15265,25 +15265,29 @@ class BackgroundTaskManager:
         # 获取当前用户的认证用户名
         auth_username = getattr(api_instance, 'auth_username', None)
 
+
+
         # 如果能获取到用户名，进行欠费检查
         if auth_username:
             # 加载该用户的所有学校账号
-            accounts = api_instance._load_user_school_accounts(auth_username)
-
+            
+            self.user_info = getattr(api_instance, "user_info", {})
+            school_username = self.user_info.get("student_id")
+            logging.debug(f"[欠费检查] 检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费")
+            
             # 检查每个账号是否存在欠费
             overdue_accounts_list = []
-            for school_username in accounts.keys():
-                # 从 INI 文件读取统计数据
-                stats = api_instance._load_school_account_stats_from_ini(
-                    school_username)
-                overdue_count = stats.get("overdue_count", 0)
+            
+            # 从 INI 文件读取统计数据
+            stats = api_instance._load_school_account_stats_from_ini(school_username)
+            overdue_count = stats.get("overdue_count", 0)
 
-                # 如果存在欠费，记录到列表中
-                if overdue_count > 0:
-                    overdue_accounts_list.append({
-                        "school_username": school_username,
-                        "overdue_count": overdue_count
-                    })
+            # 如果存在欠费，记录到列表中
+            if overdue_count > 0:
+                overdue_accounts_list.append({
+                    "school_username": school_username,
+                    "overdue_count": overdue_count
+                })
 
             # 如果发现任何账号有欠费，拒绝启动任务
             if overdue_accounts_list:
@@ -15296,6 +15300,10 @@ class BackgroundTaskManager:
                     "error_code": "OVERDUE_PAYMENT",
                     "overdue_accounts": overdue_accounts_list
                 }
+
+
+
+
 
         # 步骤2：启动任务（没有欠费问题）
         with self.lock:

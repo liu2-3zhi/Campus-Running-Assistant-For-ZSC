@@ -42120,7 +42120,7 @@ function refreshMobileSessionPicker() {
           // ========== 添加欠费检查 ==========
           // 在开始任务前，检查当前学校账号是否有欠费
           // 如果有欠费，会显示弹窗并返回 false，阻止任务启动
-          const canStart = await checkOverdueBeforeStart();
+          const canStart = await checkOverdueBeforeStart(String(currentUserData.student_id));
           if (!canStart) {
             // 欠费检查未通过，直接返回不启动任务
             return;
