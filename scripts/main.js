@@ -723,6 +723,22 @@ document.addEventListener('DOMContentLoaded', function() {
   // 因为支付日志面板默认是隐藏的
   // 只有当用户切换到该面板时才需要加载
   // 可以在面板显示时调用 loadPaymentLogs() 来加载数据
+  
+  // ========== 绑定退款订单号输入框事件 ==========
+  // 当用户输入订单号后，自动查询订单并填充75%的退款金额
+  const refundTradeNoInput = document.getElementById('admin-refund-order-trade-no_modal');
+  if (refundTradeNoInput) {
+    // 失去焦点时触发
+    refundTradeNoInput.addEventListener('blur', autoFillRefundAmount);
+    // 按下回车键时触发
+    refundTradeNoInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        autoFillRefundAmount();
+      }
+    });
+    console.log('[退款功能] 已绑定订单号输入框事件监听器');
+  }
 });
 
 // --- Next Script Block ---
@@ -6403,6 +6419,107 @@ function generateAdminRefundOrderNo() {
     refundNoInput.value = refundNo;
   } else {
     console.error('[PC端退款] 错误：找不到退款单号输入框');
+  }
+}
+
+/**
+ * 自动填充退款金额（订单金额的75%）
+ * 
+ * 功能说明：
+ * 当用户输入订单号后，自动查询订单信息
+ * 并将订单金额的75%填充到退款金额输入框
+ * 
+ * 调用时机：
+ * - 订单号输入框失去焦点（blur事件）或按下回车键时
+ * 
+ * API端点：POST /api/admin/payment/order_detail
+ * 
+ * 请求体格式：
+ * {
+ *   order_id: "20231210123456789012"  // 订单号
+ * }
+ * 
+ * 预期返回格式：
+ * {
+ *   success: true,
+ *   order: {
+ *     out_trade_no: "订单号",
+ *     amount: 100.00,  // 订单金额
+ *     status: "paid",
+ *     ...
+ *   }
+ * }
+ */
+async function autoFillRefundAmount() {
+  // 获取订单号输入框
+  const tradeNoInput = document.getElementById('admin-refund-order-trade-no_modal');
+  if (!tradeNoInput) {
+    return;
+  }
+  
+  // 获取订单号并验证
+  const tradeNo = tradeNoInput.value.trim();
+  if (!tradeNo) {
+    console.log('[自动填充退款金额] 订单号为空，跳过');
+    return;
+  }
+  
+  // 基本格式验证：订单号应该是23位数字（YYYYMMDD + 15位随机数字）
+  if (!/^\d{23}$/.test(tradeNo)) {
+    console.log('[自动填充退款金额] 订单号格式不正确，跳过');
+    return;
+  }
+  
+  console.log('[自动填充退款金额] 开始查询订单:', tradeNo);
+  
+  try {
+    // 调用后端API查询订单详情
+    const response = await fetch('/api/admin/payment/order_detail', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID,
+      },
+      body: JSON.stringify({
+        order_id: tradeNo
+      })
+    });
+    
+    // 检查响应状态
+    if (!response.ok) {
+      console.error('[自动填充退款金额] API请求失败，HTTP状态码:', response.status);
+      return;
+    }
+    
+    // 解析响应数据
+    const result = await response.json();
+    
+    if (!result.success) {
+      console.warn('[自动填充退款金额] 查询订单失败:', result.message);
+      return;
+    }
+    
+    // 获取订单金额
+    const order = result.order;
+    if (!order || typeof order.amount !== 'number') {
+      console.warn('[自动填充退款金额] 订单数据异常，缺少金额字段');
+      return;
+    }
+    
+    // 计算75%的退款金额
+    const refundAmount = (order.amount * 0.75).toFixed(2);
+    
+    // 填充到退款金额输入框
+    const amountInput = document.getElementById('admin-refund-amount_modal');
+    if (amountInput) {
+      amountInput.value = refundAmount;
+      console.log('[自动填充退款金额] 成功：原金额=' + order.amount + '，退款金额（75%）=' + refundAmount);
+    } else {
+      console.error('[自动填充退款金额] 找不到退款金额输入框');
+    }
+    
+  } catch (error) {
+    console.error('[自动填充退款金额] 查询订单时发生错误:', error);
   }
 }
 
@@ -37611,8 +37728,11 @@ async function submitMobileMultiMessage() {
   }
 }
 
+// 删除移动端留言（使用拟态框进行二次确认）
 async function deleteMobileMultiMessage(msgId) {
-  if (!confirm("确定要删除这条留言吗？")) return;
+  // 使用拟态框进行二次确认，替代原生的confirm对话框
+  const confirmed = await jsShowConfirm("删除留言", "确定要删除这条留言吗？此操作不可恢复。");
+  if (!confirmed) return;
 
   try {
     const response = await fetch("/api/messages/delete", {
