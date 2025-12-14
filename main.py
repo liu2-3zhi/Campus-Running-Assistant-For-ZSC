@@ -1750,13 +1750,13 @@ def _get_default_config():
         "enabled_payment_methods": "alipay,wxpay",
         # 注意：支付方式详细配置（payment_methods_config）已迁移到独立的 payment_methods.json 文件
         # 如需修改支付方式的名称、图标、描述等信息，请直接编辑 payment_methods.json 文件
-        # 支付超时时间（分钟）：订单创建后多长时间内未支付视为超时
-        # 格式：整数，单位为分钟
-        # 默认值：30（30分钟）
+        # 支付超时时间（秒）：订单创建后多长时间内未支付视为超时
+        # 格式：整数，单位为秒
+        # 默认值：30（30秒）
         # 用途：用于标记超时未支付的订单，便于系统自动关闭或提醒用户
         # 注意：
         #   1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期
-        #   2. 建议设置为10-60分钟之间
+        #   2. 建议设置为10-60秒之间
         "payment_timeout_minutes": "30",
     }
 
@@ -2276,14 +2276,14 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 用途：在支付记录中区分不同类型的商品或服务\n")
         f.write(
             f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
-        f.write("# 支付超时时间（分钟）\n")
+        f.write("# 支付超时时间（秒）\n")
         f.write("# 订单创建后多长时间内未支付视为超时\n")
-        f.write("# 格式：整数，单位为分钟\n")
-        f.write("# 默认值：30（30分钟）\n")
+        f.write("# 格式：整数，单位为秒\n")
+        f.write("# 默认值：30（30秒）\n")
         f.write("# 用途：用于标记超时未支付的订单，便于系统自动关闭或提醒用户\n")
         f.write("# 注意：\n")
         f.write("# 1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期\n")
-        f.write("# 2. 建议设置为10-60分钟之间\n")
+        f.write("# 2. 建议设置为10-60秒之间\n")
         f.write(
             f"payment_timeout_minutes = {config_obj.get('Rainbow_YiPay', 'payment_timeout_minutes', fallback='30')}\n\n")
 
