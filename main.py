@@ -29764,6 +29764,87 @@ def start_web_server(args_param):
     # 如果目录不存在，则创建它（exist_ok=True 表示目录已存在时不报错）
     os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
 
+    def _update_order_file(order_file_path, new_order_data):
+        """
+        更新订单文件（使用更新模式而不是覆盖模式）
+        
+        功能说明：
+        此函数用于更新订单文件，采用"读取-合并-写入"的方式，避免丢失数据。
+        如果文件已存在，会先读取现有数据，然后合并新数据，最后写回。
+        如果文件不存在，则直接创建新文件。
+        
+        参数:
+            order_file_path (str): 订单文件的完整路径
+            new_order_data (dict): 要更新的订单数据（新数据会覆盖旧数据的同名字段）
+        
+        更新策略：
+        1. 如果订单文件不存在：直接创建新文件，写入new_order_data
+        2. 如果订单文件存在：
+           a. 读取现有订单数据
+           b. 将new_order_data的字段合并到现有数据中（相同字段会被覆盖）
+           c. 保留现有数据中new_order_data没有的字段
+           d. 写回合并后的完整数据
+        
+        优点：
+        - 避免数据丢失：保留了订单的历史字段
+        - 支持部分更新：只需要提供要更新的字段即可
+        - 原子性：使用临时文件+重命名保证写入的原子性
+        
+        示例：
+        现有订单: {"order_id": "123", "status": "pending", "amount": 100}
+        新数据: {"status": "paid", "paid_at": 1234567890}
+        结果: {"order_id": "123", "status": "paid", "amount": 100, "paid_at": 1234567890}
+        """
+        try:
+            # 步骤1：尝试读取现有订单数据
+            existing_data = {}
+            if os.path.exists(order_file_path):
+                try:
+                    with open(order_file_path, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                    logging.debug(f"[订单更新] 读取到现有订单数据: {order_file_path}")
+                except json.JSONDecodeError as e:
+                    # JSON解析失败，说明文件损坏，记录警告后使用新数据覆盖
+                    logging.warning(
+                        f"[订单更新] 订单文件损坏，将覆盖: {order_file_path}, 错误: {e}"
+                    )
+                    existing_data = {}
+                except Exception as e:
+                    # 其他读取错误
+                    logging.error(
+                        f"[订单更新] 读取订单文件失败: {order_file_path}, 错误: {e}"
+                    )
+                    existing_data = {}
+            
+            # 步骤2：合并数据（新数据覆盖旧数据的同名字段）
+            merged_data = existing_data.copy()
+            merged_data.update(new_order_data)
+            
+            # 步骤3：写入文件（使用临时文件+重命名保证原子性）
+            temp_file = order_file_path + ".tmp"
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(merged_data, f, indent=2, ensure_ascii=False)
+            
+            # 原子性重命名（在大多数操作系统上，rename是原子操作）
+            os.replace(temp_file, order_file_path)
+            
+            logging.debug(f"[订单更新] 订单文件更新成功: {order_file_path}")
+            return True
+            
+        except Exception as e:
+            logging.error(
+                f"[订单更新] 更新订单文件失败: {order_file_path}, 错误: {e}",
+                exc_info=True
+            )
+            # 清理可能残留的临时文件
+            temp_file = order_file_path + ".tmp"
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+            return False
+
     # 支付日志存储目录常量定义
     # 用于按用户分目录存储每次支付操作的详细日志
     # 日志文件结构：logs/payment_logs/{user_id}/{timestamp}_{order_id}.json
