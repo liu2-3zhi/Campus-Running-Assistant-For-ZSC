@@ -23551,6 +23551,28 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== 内容审核配置加载结束 ====================
+
+                # ==================== Captcha 验证码配置加载 ====================
+                # 功能说明：从 config.ini 文件中读取验证码相关的配置信息
+                # 用途：控制验证码的噪点级别等参数
+                "Captcha": {
+                    # 验证码噪点级别
+                    # 类型：浮点数（0.0-1.0）
+                    # 用途：控制验证码图片中的噪点密度
+                    # - 0.0: 无噪点（验证码最清晰，但也最容易被机器识别）
+                    # - 0.08: 默认适中噪点（推荐值，平衡可读性和安全性）
+                    # - 1.0: 最大噪点（验证码最难识别，可能影响用户体验）
+                    "noise_level": _get_config_value(
+                        config,  # 配置对象
+                        "Captcha",  # 配置节
+                        "noise_level",  # 配置键
+                        type_func=float,  # 类型转换函数，将字符串转为浮点数
+                        fallback=default_config.getfloat(
+                            "Captcha", "noise_level", fallback=0.08
+                        ),
+                    ),
+                },
+                # ==================== Captcha 配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -23743,6 +23765,32 @@ def start_web_server(args_param):
                 if "enable_message_review" in review_data:
                     config.set("Content_Review", "enable_message_review",
                                str(review_data["enable_message_review"]).lower())
+
+            # [新增] 处理验证码配置
+            # 控制验证码的噪点级别等参数
+            if "Captcha" in data:
+                # 确保 Captcha 配置节存在
+                ensure_section(config, "Captcha")
+                captcha_data = data["Captcha"]
+                
+                # 处理噪点级别配置
+                # 噪点级别应该是 0.0 到 1.0 之间的浮点数
+                if "noise_level" in captcha_data:
+                    try:
+                        noise_level = float(captcha_data["noise_level"])
+                        # 验证范围
+                        if 0.0 <= noise_level <= 1.0:
+                            config.set("Captcha", "noise_level", str(noise_level))
+                        else:
+                            return jsonify({
+                                "success": False,
+                                "message": "noise_level 必须在 0.0 到 1.0 之间"
+                            }), 400
+                    except (ValueError, TypeError):
+                        return jsonify({
+                            "success": False,
+                            "message": "noise_level 必须是有效的数字"
+                        }), 400
 
             _write_config_with_comments(config, CONFIG_FILE)
             # 使用统一函数获取客户端真实IP（任务2）
