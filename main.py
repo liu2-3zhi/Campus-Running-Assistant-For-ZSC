@@ -1750,13 +1750,13 @@ def _get_default_config():
         "enabled_payment_methods": "alipay,wxpay",
         # 注意：支付方式详细配置（payment_methods_config）已迁移到独立的 payment_methods.json 文件
         # 如需修改支付方式的名称、图标、描述等信息，请直接编辑 payment_methods.json 文件
-        # 支付超时时间（分钟）：订单创建后多长时间内未支付视为超时
-        # 格式：整数，单位为分钟
-        # 默认值：30（30分钟）
+        # 支付超时时间（秒）：订单创建后多长时间内未支付视为超时
+        # 格式：整数，单位为秒
+        # 默认值：30（30秒）
         # 用途：用于标记超时未支付的订单，便于系统自动关闭或提醒用户
         # 注意：
         #   1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期
-        #   2. 建议设置为10-60分钟之间
+        #   2. 建议设置为10-60秒之间
         "payment_timeout_minutes": "30",
     }
 
@@ -2276,14 +2276,14 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 用途：在支付记录中区分不同类型的商品或服务\n")
         f.write(
             f"product_id = {config_obj.get('Rainbow_YiPay', 'product_id', fallback='1001')}\n")
-        f.write("# 支付超时时间（分钟）\n")
+        f.write("# 支付超时时间（秒）\n")
         f.write("# 订单创建后多长时间内未支付视为超时\n")
-        f.write("# 格式：整数，单位为分钟\n")
-        f.write("# 默认值：30（30分钟）\n")
+        f.write("# 格式：整数，单位为秒\n")
+        f.write("# 默认值：30（30秒）\n")
         f.write("# 用途：用于标记超时未支付的订单，便于系统自动关闭或提醒用户\n")
         f.write("# 注意：\n")
         f.write("# 1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期\n")
-        f.write("# 2. 建议设置为10-60分钟之间\n")
+        f.write("# 2. 建议设置为10-60秒之间\n")
         f.write(
             f"payment_timeout_minutes = {config_obj.get('Rainbow_YiPay', 'payment_timeout_minutes', fallback='30')}\n\n")
 
@@ -5447,6 +5447,7 @@ class AuthSystem:
             "last_used_school_account": user_data.get(
                 "last_used_school_account", ""
             ),  # 新增字段
+            "available_runs": user_data.get("available_runs", 0),  # 新增字段：可用运行次数
         }
 
     def update_user_last_school_account(self, auth_username, school_username):
@@ -9366,6 +9367,68 @@ class Api:
                     run_data.status = 1
                     log_func("任务已确认完成。")
                     logging.info(f"任务已成功完成: 任务名称={run_data.run_name}")
+                    
+                    
+                    # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
+                    # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
+                    # 这里处理单账号模式下的后台任务完成情况
+                    try:
+                        # 从 api_instance 获取认证用户名和学校账号用户名
+                        auth_username = getattr(
+                            self, "auth_username", None)
+                        school_username = getattr(
+                            self.user_data, "username", None)
+
+                        # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
+                        if auth_username and auth_username != "guest" and school_username:
+                            logging.debug(
+                                f"[单账号后台任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
+                                f"学校账号={school_username}, 任务={run_data.run_name}"
+                            )
+
+                            # 调用 api_instance 的辅助函数处理可用次数扣减或欠费次数增加
+                            self._deduct_available_runs_or_increment_overdue(
+                                auth_username, school_username
+                            )
+
+                            # ========== 增加已完成任务计数器 ==========
+                            # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
+                            # 这个计数器用于统计每个学校账号总共完成了多少个任务
+                            # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
+                            try:
+                                logging.debug(
+                                    f"[单账号后台任务] 开始增加任务计数：认证用户={auth_username}, "
+                                    f"学校账号={school_username}, 任务={run_data.run_name}"
+                                )
+
+                                # 调用 api_instance 的辅助函数增加已完成任务计数
+                                self._increment_completed_count(
+                                    auth_username, school_username)
+
+                            except Exception as e_count:
+                                # 捕获计数更新异常，记录日志但不影响主流程
+                                logging.error(
+                                    f"[单账号后台任务] 更新任务计数时发生异常: {e_count}",
+                                    exc_info=True
+                                )
+                            # ========== 结束：任务计数处理 ==========
+                        else:
+                            logging.debug(
+                                f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username}, "
+                                f"学校账号={school_username}（游客或未设置）"
+                            )
+                    except Exception as e:
+                        # 捕获异常，避免影响主流程
+                        logging.error(
+                            f"[单账号后台任务] 处理次数扣减时发生异常: {e}",
+                            exc_info=True
+                        )
+                    
+                    
+                    
+                    
+                    
+                    
                     session_id = getattr(self, "_web_session_id", None)
                     if socketio and session_id and task_index != -1:
                         try:
@@ -15867,63 +15930,13 @@ class BackgroundTaskManager:
                     self.save_task_state(session_id, task_state)
 
                 logging.info(
-                    f"任务 {i+1}/{len(task_indices)} 已完成，会话ID前缀: {session_id[:8]}"
+                    f"任务 {i+1}/{len(task_indices)} 已完成，会话ID: {session_id}"
                 )
 
-                # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
-                # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
-                # 这里处理单账号模式下的后台任务完成情况
-                try:
-                    # 从 api_instance 获取认证用户名和学校账号用户名
-                    auth_username = getattr(
-                        api_instance, "auth_username", None)
-                    school_username = getattr(
-                        api_instance.user_data, "username", None)
 
-                    # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
-                    if auth_username and auth_username != "guest" and school_username:
-                        logging.debug(
-                            f"[单账号后台任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
-                            f"学校账号={school_username}, 任务={run_data.run_name}"
-                        )
 
-                        # 调用 api_instance 的辅助函数处理可用次数扣减或欠费次数增加
-                        api_instance._deduct_available_runs_or_increment_overdue(
-                            auth_username, school_username
-                        )
 
-                        # ========== 增加已完成任务计数器 ==========
-                        # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
-                        # 这个计数器用于统计每个学校账号总共完成了多少个任务
-                        # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
-                        try:
-                            logging.debug(
-                                f"[单账号后台任务] 开始增加任务计数：认证用户={auth_username}, "
-                                f"学校账号={school_username}, 任务={run_data.run_name}"
-                            )
-
-                            # 调用 api_instance 的辅助函数增加已完成任务计数
-                            api_instance._increment_completed_count(
-                                auth_username, school_username)
-
-                        except Exception as e_count:
-                            # 捕获计数更新异常，记录日志但不影响主流程
-                            logging.error(
-                                f"[单账号后台任务] 更新任务计数时发生异常: {e_count}",
-                                exc_info=True
-                            )
-                        # ========== 结束：任务计数处理 ==========
-                    else:
-                        logging.debug(
-                            f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username}, "
-                            f"学校账号={school_username}（游客或未设置）"
-                        )
-                except Exception as e:
-                    # 捕获异常，避免影响主流程
-                    logging.error(
-                        f"[单账号后台任务] 处理次数扣减时发生异常: {e}",
-                        exc_info=True
-                    )
+                
                 # ========== 结束：次数扣减处理 ==========
             if tasks_executed > 0:
                 with self.lock:
@@ -15931,7 +15944,7 @@ class BackgroundTaskManager:
                     task_state["last_update"] = time.time()
                     self.save_task_state(session_id, task_state)
 
-                logging.info(f"所有后台任务已完成，会话ID前缀: {session_id[:8]}")
+                logging.info(f"所有后台任务已完成，会话ID: {session_id}")
             else:
                 with self.lock:
                     if task_state.get("status") != "error":
@@ -16917,6 +16930,8 @@ class ChromeBrowserPool:
                 logging.info("Playwright 工作线程已正常退出")
         else:
             logging.info("Playwright 工作线程已结束")
+
+
 
 
 def _cleanup_playwright():
@@ -18068,6 +18083,141 @@ def start_web_server(args_param):
     # 字体文件缓存存储（用于Google Fonts的TTF文件）
     font_cache_storage = {}
     font_cache_lock = threading.Lock()
+    
+    
+    def _process_overdue_payment_async(overdue_accounts: list, auth_username: str, out_trade_no: str):
+        logging.info(f"[overdue_count处理] 欠费账号列表: {overdue_accounts}")
+        # 提取总欠费次数（订单创建时已计算好）
+        total_count = 0
+        for account in overdue_accounts:
+            account_overdue_count = account.get("overdue_count", 0)
+            total_count += account_overdue_count
+
+        # 验证必要字段是否存在
+        if overdue_accounts and total_count > 0:
+            try:
+
+                # 遍历所有欠费账号
+
+                for account in overdue_accounts:
+                    # 提取学校账号用户名
+                    school_username = account.get(
+                        "school_username", "")
+
+                    # 验证学校账号用户名是否有效
+                    if not school_username:
+                        # 如果用户名为空，跳过该账号
+                        continue
+
+                    # 构造学校账号INI文件路径
+                    # INI文件存储在SCHOOL_ACCOUNTS_DIR目录下，以{school_username}.ini命名
+                    account_ini_path = os.path.join(
+                        SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
+
+                    # 检查INI文件是否存在
+                    if os.path.exists(account_ini_path):
+                        try:
+                            # 读取INI文件
+                            # ConfigParser是Python标准库，用于读写INI格式的配置文件
+                            account_config = configparser.ConfigParser(
+                                strict=False)
+                            account_config.read(
+                                account_ini_path, encoding="utf-8")
+
+                            # 读取当前的overdue_count值
+                            # 从[stats]节中读取overdue_count字段
+                            # 如果字段不存在，默认值为0
+                            current_overdue_count = 0
+                            if account_config.has_option("stats", "overdue_count"):
+                                current_overdue_count = int(
+                                    account_config.get("stats", "overdue_count", fallback="0"))
+
+                            # 从订单的overdue_accounts中获取该账号的overdue_count
+                            # 这个值表示该账号在此订单中的欠费次数
+                            # 支付成功后，需要减去这个值，而不是固定减1
+                            account_overdue_count = account.get(
+                                "overdue_count", 0)
+
+                            # 计算新的overdue_count值
+                            # 使用max(0, ...)确保结果不会小于0
+                            # 减去的值是订单中该账号对应的overdue_count，而不是固定减1
+                            new_overdue_count = max(
+                                0, current_overdue_count - account_overdue_count)
+
+                            # 确保[stats]节存在
+                            # 如果INI文件中没有[stats]节，则创建它
+                            if not account_config.has_section("stats"):
+                                account_config.add_section("stats")
+
+                            # 设置新的overdue_count值
+                            # 将计算好的新值写入配置对象
+                            account_config.set(
+                                "stats", "overdue_count", str(new_overdue_count))
+
+                            # 将配置写回文件
+                            # 这一步将内存中的配置对象持久化到磁盘
+                            with open(account_ini_path, "w", encoding="utf-8") as f:
+                                account_config.write(f)
+
+                            # 记录日志：更新成功
+                            # 日志中包含账号名、原值、减少值和新值，便于追踪和调试
+                            logging.info(
+                                f"[订单overdue处理] 账号 {school_username} 的overdue_count: "
+                                f"{current_overdue_count} - {account_overdue_count} = {new_overdue_count}"
+                            )
+
+                        except Exception as e:
+                            # 捕获处理单个账号时的异常
+                            # 即使某个账号处理失败，也不影响其他账号的处理
+                            logging.error(
+                                f"[订单overdue处理] 处理账号 {school_username} 失败: {str(e)}"
+                            )
+                    else:
+                        # INI文件不存在
+                        # 这可能是因为账号已被删除，或者数据迁移时文件丢失
+                        logging.warning(
+                            f"[订单overdue处理] 账号文件不存在: {account_ini_path}"
+                        )
+
+                # ========== 步骤3：记录欠费支付成功日志 ==========
+
+
+                # 记录总结日志
+                logging.info(
+                    f"[欠费支付-异步] 欠费补缴处理完成 - 学校账号: {overdue_accounts}, "
+                    f"总欠费次数: {total_count}, 用户: {auth_username}, 订单: {out_trade_no}"
+                )
+
+            except Exception as e:
+                # 捕获欠费处理过程中的异常
+                # 即使处理失败，也不影响异步线程的执行
+                # 但需要记录详细的错误日志，便于人工介入处理
+                logging.error(
+                    f"[欠费支付-异步] 处理欠费补缴异常 - 用户: {auth_username}, "
+                    f"订单: {out_trade_no}, 错误: {str(e)}"
+                )
+                logging.error(traceback.format_exc())
+
+                # 记录错误日志到支付操作日志
+                _write_payment_log(
+                    user_id=auth_username,
+                    order_id=out_trade_no,
+                    action="overdue_payment_error",
+                    log_data={
+                        "error": str(e),
+                        "traceback": traceback.format_exc(),
+                        "overdue_accounts": overdue_accounts
+                    }
+                )
+        else:
+            # 订单数据不完整（异常情况）
+            logging.warning(
+                f"[overdue_count处理] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
+                f"auth_username: {auth_username}, total_count: {total_count}"
+            )
+
+        logging.info(f"[overdue_count处理] 订单处理完成 - 订单号: {out_trade_no}")
+
 
     def parse_google_fonts_css(css_content):
         """
@@ -26194,103 +26344,28 @@ def start_web_server(args_param):
 
                         # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
                         # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
-                        if "overdue_accounts" in order_data and "auth_username" in order_data:
+                        logging.info(f"[支付通知-异步] 检查订单是否包含欠费账号信息 - 订单号: {out_trade_no} ，订单数据: {order_data}")
+                        if "overdue_accounts" in order_data :
+                            
                             # 这是一个欠费补缴订单，需要：
                             # 1. 增加用户的available_runs
                             # 2. 清零所有欠费账号的overdue_count
 
                             # 提取订单中保存的用户名
-                            auth_username = order_data.get("auth_username", "")
+                            auth_username = order_data.get("auth_username", "未知")
 
                             # 提取欠费账号列表
                             # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
                             overdue_accounts = order_data.get(
                                 "overdue_accounts", [])
-
-                            # 提取总欠费次数（订单创建时已计算好）
-                            total_count = order_data.get("total_count", 0)
-
-                            # 验证必要字段是否存在
-                            if auth_username and overdue_accounts and total_count > 0:
+                            total_count=order_data.get("total_overdue_count", 0)
+                            logging.info(f"[支付通知-异步] 欠费账号列表: {overdue_accounts}")
+                            if auth_username and overdue_accounts:
                                 try:
-                                    # ========== 步骤1：增加用户的available_runs ==========
-
-                                    # 获取用户数据文件路径
-                                    user_file = auth_system.get_user_file_path(
-                                        auth_username)
-
-                                    # 检查用户文件是否存在
-                                    if os.path.exists(user_file):
-                                        # 使用线程锁确保文件操作的原子性（防止并发修改）
-                                        with auth_system.lock:
-                                            # 读取用户数据
-                                            with open(user_file, "r", encoding="utf-8") as f:
-                                                user_data = json.load(f)
-
-                                            # 获取当前的available_runs值
-                                            # 如果字段不存在，默认为0
-                                            current_runs = user_data.get(
-                                                "available_runs", 0)
-
-                                            # 增加available_runs：当前值 + 总欠费次数
-                                            # 例如：当前剩余5次，补缴了8次欠费，更新后为13次
-                                            new_runs = current_runs + total_count
-                                            user_data["available_runs"] = new_runs
-
-                                            # 将更新后的用户数据写回文件
-                                            with open(user_file, "w", encoding="utf-8") as f:
-                                                json.dump(
-                                                    user_data, f, indent=2, ensure_ascii=False)
-
-                                            # 记录日志：available_runs更新成功
-                                            logging.info(
-                                                f"[欠费支付-异步] available_runs更新成功 - 用户: {auth_username}, "
-                                                f"原值: {current_runs}, 增加: {total_count}, 新值: {new_runs}"
-                                            )
-                                    else:
-                                        # 用户文件不存在（异常情况）
-                                        logging.error(
-                                            f"[欠费支付-异步] 用户文件不存在，无法更新available_runs - 用户: {auth_username}"
-                                        )
-
-                                    # ========== 步骤2：清零所有欠费账号的overdue_count ==========
-
-                                    # 遍历所有欠费账号
-                                    for account in overdue_accounts:
-                                        # 提取学校账号用户名
-                                        school_username = account.get(
-                                            "school_username", "")
-
-                                        # 验证学校账号用户名是否有效
-                                        if not school_username:
-                                            # 如果用户名为空，跳过该账号
-                                            continue
-
-                                        # 调用auth_system的update_school_account_overdue_count方法
-                                        # 该方法用于更新学校账号的overdue_count字段
-                                        # 第三个参数传入0，表示将欠费次数清零
-                                        result = auth_system.update_school_account_overdue_count(
-                                            auth_username,      # 用户名
-                                            school_username,    # 学校账号用户名
-                                            0                   # 新的overdue_count值（清零）
-                                        )
-
-                                        # 检查更新是否成功
-                                        if result.get("success"):
-                                            # 更新成功，记录日志
-                                            logging.info(
-                                                f"[欠费支付-异步] 清零欠费成功 - 用户: {auth_username}, "
-                                                f"学校账号: {school_username}"
-                                            )
-                                        else:
-                                            # 更新失败，记录错误日志（但不影响后续处理）
-                                            logging.error(
-                                                f"[欠费支付-异步] 清零欠费失败 - 用户: {auth_username}, "
-                                                f"学校账号: {school_username}, 错误: {result.get('message')}"
-                                            )
-
+                                    _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
                                     # ========== 步骤3：记录欠费支付成功日志 ==========
-
+                                
+                                    
                                     _write_payment_log(
                                         user_id=auth_username,
                                         order_id=out_trade_no,
@@ -26302,14 +26377,13 @@ def start_web_server(args_param):
                                             "overdue_cleared": True,
                                             "trade_no": trade_no,
                                             "paid_amount": paid_amount
-                                        }
-                                    )
+                                            }
+                                        )
 
                                     # 记录总结日志
                                     logging.info(
-                                        f"[欠费支付-异步] 欠费补缴处理完成 - 用户: {auth_username}, "
-                                        f"已增加available_runs: {total_count} 次, "
-                                        f"已清零 {len(overdue_accounts)} 个学校账号的欠费"
+                                        f"[欠费支付-异步] 欠费补缴处理完成 - 学校账号: {overdue_accounts}, "
+                                        f"总欠费次数: {total_count}, 用户: {auth_username}, 订单: {out_trade_no}"
                                     )
 
                                 except Exception as e:
@@ -33772,6 +33846,30 @@ def start_web_server(args_param):
                     "Rainbow_YiPay", "product_id", fallback="1001"
                 )
 
+                # [新增] 读取app_host（应用域名地址）
+                # app_host用于自动设置回调地址的域名前缀
+                app_host = config.get(
+                    "Rainbow_YiPay",
+                    "app_host",
+                    fallback=""  # 默认值：空字符串
+                )
+
+                # [新增] 读取pubc_key（平台公钥）
+                # pubc_key是彩虹易支付平台的RSA公钥，用于验证支付回调通知
+                pubc_key = config.get(
+                    "Rainbow_YiPay",
+                    "pubc_key",
+                    fallback=""  # 默认值：空字符串
+                )
+
+                # [新增] 读取payment_timeout_minutes（支付超时时间）
+                # 单位：秒，表示订单创建后多长时间内未支付视为超时
+                payment_timeout_minutes = config.get(
+                    "Rainbow_YiPay",
+                    "payment_timeout_minutes",
+                    fallback="30"  # 默认值：30秒
+                )
+
                 # 构造返回数据
                 # 将读取到的配置以 JSON 格式返回给前端
                 # 注意：返回完整的商户密钥（已通过双重权限验证，安全可控）
@@ -33781,9 +33879,12 @@ def start_web_server(args_param):
                         "host": host,
                         "pid": pid,
                         "key": key,  # 完整的商户密钥（不脱敏）
+                        "product_id": product_id,  # [新增] 返回商品ID
+                        "app_host": app_host,  # [新增] 返回应用域名地址
+                        "pubc_key": pubc_key,  # [新增] 返回平台公钥
+                        "payment_timeout_minutes": payment_timeout_minutes,  # [新增] 返回支付超时时间
                         "enabled_payment_methods": enabled_payment_methods,
-                        "payment_method": payment_method,
-                        "product_id": product_id  # [新增] 返回商品ID
+                        "payment_method": payment_method
                     }
                 })
 
@@ -33840,6 +33941,30 @@ def start_web_server(args_param):
                         "Rainbow_YiPay", "product_id", fallback="1001")
                 ).strip()
 
+                # [新增] 获取新的 app_host 值（应用域名地址）
+                # app_host用于自动设置回调地址的域名前缀
+                # 从请求数据中获取，如果不存在则使用当前配置值，默认为空字符串
+                new_app_host = data.get(
+                    "app_host",
+                    config.get("Rainbow_YiPay", "app_host", fallback="")
+                ).strip()
+
+                # [新增] 获取新的 pubc_key 值（平台公钥）
+                # pubc_key是彩虹易支付平台的RSA公钥，用于验证支付回调通知
+                # 从请求数据中获取，如果不存在则使用当前配置值，默认为空字符串
+                new_pubc_key = data.get(
+                    "pubc_key",
+                    config.get("Rainbow_YiPay", "pubc_key", fallback="")
+                ).strip()
+
+                # [新增] 获取新的 payment_timeout_minutes 值（支付超时时间）
+                # 单位：秒，表示订单创建后多长时间内未支付视为超时
+                # 从请求数据中获取，如果不存在则使用当前配置值，默认为30秒
+                new_payment_timeout_minutes = data.get(
+                    "payment_timeout_minutes",
+                    config.get("Rainbow_YiPay", "payment_timeout_minutes", fallback="30")
+                ).strip()
+
                 # ========== 验证参数的有效性 ==========
 
                 # 验证 host 不能为空
@@ -33880,6 +34005,32 @@ def start_web_server(args_param):
                         "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
                     }), 400
 
+                # [新增] 验证 pubc_key 不能为空（必填项）
+                # pubc_key是平台公钥，用于验证支付回调通知，必须提供
+                if not new_pubc_key:
+                    return jsonify({
+                        "success": False,
+                        "message": "平台公钥不能为空"
+                    }), 400
+
+                # [新增] 验证 payment_timeout_minutes 的有效性
+                # 必须是数字类型且在合理范围内（10-3600秒）
+                try:
+                    # 尝试将字符串转换为整数
+                    timeout_value = int(new_payment_timeout_minutes)
+                    # 检查数字范围：10秒到3600秒（1小时）
+                    if timeout_value < 10 or timeout_value > 3600:
+                        return jsonify({
+                            "success": False,
+                            "message": "支付超时时间必须在10-3600秒之间"
+                        }), 400
+                except ValueError:
+                    # 如果无法转换为整数，说明不是有效的数字
+                    return jsonify({
+                        "success": False,
+                        "message": "支付超时时间必须是有效的数字"
+                    }), 400
+
                 # ========== 保存旧配置用于日志记录 ==========
                 # 【重要】在执行 config.set() 之前保存所有旧值
                 # 这样才能正确比较新旧值，记录准确的变更日志
@@ -33892,6 +34043,18 @@ def start_web_server(args_param):
                     "Rainbow_YiPay", "enabled_payment_methods", fallback="")
                 old_payment_method = config.get(
                     "Rainbow_YiPay", "payment_method", fallback="")
+                # [新增] 保存旧的product_id值
+                old_product_id = config.get(
+                    "Rainbow_YiPay", "product_id", fallback="")
+                # [新增] 保存旧的app_host值（应用域名地址）
+                old_app_host = config.get(
+                    "Rainbow_YiPay", "app_host", fallback="")
+                # [新增] 保存旧的pubc_key值（平台公钥）
+                old_pubc_key = config.get(
+                    "Rainbow_YiPay", "pubc_key", fallback="")
+                # [新增] 保存旧的payment_timeout_minutes值（支付超时时间）
+                old_payment_timeout_minutes = config.get(
+                    "Rainbow_YiPay", "payment_timeout_minutes", fallback="")
 
                 # ========== 更新配置 ==========
 
@@ -33910,6 +34073,13 @@ def start_web_server(args_param):
                            new_payment_method)
                 config.set("Rainbow_YiPay", "product_id",
                            new_product_id)  # [新增] 保存商品ID
+                # [新增] 设置app_host（应用域名地址）
+                config.set("Rainbow_YiPay", "app_host", new_app_host)
+                # [新增] 设置pubc_key（平台公钥）
+                config.set("Rainbow_YiPay", "pubc_key", new_pubc_key)
+                # [新增] 设置payment_timeout_minutes（支付超时时间）
+                config.set("Rainbow_YiPay", "payment_timeout_minutes",
+                           new_payment_timeout_minutes)
 
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
@@ -33918,17 +34088,23 @@ def start_web_server(args_param):
 
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
-                # 注意：不记录完整的密钥，只记录是否修改了密钥
+                # 注意：不记录完整的密钥和公钥，只记录是否修改了它们
                 # 【任务1修复】使用 old_key 与 new_key 比较，而不是从已更新的config中读取
                 # 因为在此之前已经执行了 config.set("Rainbow_YiPay", "key", new_key)
                 # 所以必须使用预先保存的 old_key 变量进行比较
                 key_changed = (new_key != old_key)
+                # [新增] 判断pubc_key是否被修改
+                pubc_key_changed = (new_pubc_key != old_pubc_key)
                 logging.info(
                     f"[易支付配置] 管理员更新易支付配置 - "
                     f"操作者: {g.user}, "
                     f"host: {old_host} -> {new_host}, "
                     f"pid: {old_pid} -> {new_pid}, "
                     f"key: {'已修改' if key_changed else '未修改'}, "
+                    f"product_id: {old_product_id} -> {new_product_id}, "
+                    f"app_host: {old_app_host} -> {new_app_host}, "
+                    f"pubc_key: {'已修改' if pubc_key_changed else '未修改'}, "
+                    f"payment_timeout_minutes: {old_payment_timeout_minutes} -> {new_payment_timeout_minutes}, "
                     f"enabled_payment_methods: {old_enabled_payment_methods} -> {new_enabled_payment_methods}, "
                     f"payment_method: {old_payment_method} -> {new_payment_method}"
                 )
@@ -34189,6 +34365,11 @@ def start_web_server(args_param):
                             if log_timestamp > end_timestamp:
                                 continue
 
+                        # 添加log_id字段到日志数据
+                        # log_id是日志文件名（不含.json后缀），用于后续查询日志详情
+                        # 例如：20231201_120530_admin_ORDER20231201120530123456
+                        log_entry["log_id"] = filename[:-5]  # 去掉.json后缀（5个字符）
+                        
                         # 通过筛选，添加到结果列表
                         logs.append(log_entry)
 
@@ -34397,6 +34578,11 @@ def start_web_server(args_param):
                     if end_timestamp and log_timestamp > end_timestamp:
                         continue
 
+                    # 添加log_id字段到日志数据
+                    # log_id是日志文件名（不含.json后缀），用于后续查询日志详情
+                    # 例如：20231201_120530_admin_ORDER20231201120530123456
+                    log_data["log_id"] = log_filename[:-5]  # 去掉.json后缀（5个字符）
+                    
                     # 添加到日志列表
                     logs.append(log_data)
 
@@ -34438,6 +34624,170 @@ def start_web_server(args_param):
             return jsonify({
                 "success": False,
                 "message": f"获取日志失败：{str(e)}"
+            }), 500
+
+    @app.route("/api/admin/payment/log_detail", methods=["POST"])
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
+    def admin_get_payment_log_detail():
+        """
+        获取支付日志详情接口（管理员专用）
+        
+        功能说明：
+        根据日志ID（即日志文件名）读取并返回完整的日志详细信息。
+        用于支持前端点击"查看详情"按钮后显示日志的完整内容。
+        
+        请求方法：POST
+        权限要求：审计日志查看权限（view_audit_logs）
+        
+        请求体（JSON格式）：
+            {
+                "log_id": "20231201_120530_admin_ORDER20231201120530123456"  # 日志ID（文件名，不含.json后缀）
+            }
+        
+        返回数据（JSON格式）：
+            {
+                "success": true,
+                "log_detail": {
+                    "timestamp": 1701417930.123,            # Unix时间戳
+                    "datetime": "2023-12-01 12:05:30",     # 可读时间格式
+                    "action": "create_order",              # 操作类型
+                    "user_id": "admin",                    # 用户标识
+                    "order_id": "ORDER20231201120530123456", # 订单号
+                    "client_ip": "192.168.1.100",          # 客户端IP地址
+                    "user_agent": "Mozilla/5.0...",        # 浏览器User Agent
+                    "amount": 10.00,                       # 金额（如果有）
+                    "status": "success",                   # 状态（如果有）
+                    # ... 其他日志中包含的字段
+                }
+            }
+        
+        使用场景：
+        - 查看日志的完整详细信息，包括所有字段
+        - 调试支付问题时查看完整的请求和响应数据
+        - 审计时查看操作的详细过程
+        """
+        try:
+            # ========== 步骤1：权限检查 ==========
+            
+            # 细粒度权限检查：需要 'view_audit_logs' 权限
+            # 查看日志详情与查看日志列表需要相同的权限
+            if not auth_system.check_permission(g.user, "view_audit_logs"):
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
+                }), 403
+            
+            # ========== 步骤2：获取并验证请求参数 ==========
+            
+            # 从请求体中获取JSON数据
+            # 使用 request.get_json() 自动解析JSON格式的请求体
+            data = request.get_json() or {}
+            
+            # 提取日志ID参数
+            # 日志ID即日志文件名（不含.json后缀）
+            # 格式示例：20231201_120530_admin_ORDER20231201120530123456
+            log_id = data.get("log_id", "").strip()
+            
+            # 验证日志ID是否为空
+            if not log_id:
+                # 日志ID为空，返回400错误（参数错误）
+                return jsonify({
+                    "success": False,
+                    "message": "日志ID不能为空"
+                }), 400
+            
+            # ========== 步骤3：构造日志文件路径 ==========
+            
+            # 构造日志文件的完整路径
+            # 日志文件存储在 PAYMENT_LOGS_DIR 目录下
+            # 文件名格式：{log_id}.json
+            log_filepath = os.path.join(PAYMENT_LOGS_DIR, f"{log_id}.json")
+            
+            # 安全性检查：防止路径遍历攻击
+            # 例如：log_id = "../../../etc/passwd" 这样的恶意输入
+            # 确保构造的路径必须在 PAYMENT_LOGS_DIR 目录内
+            real_log_dir = os.path.realpath(PAYMENT_LOGS_DIR)
+            real_log_path = os.path.realpath(log_filepath)
+            
+            # 检查real_log_path是否以real_log_dir开头
+            # 如果不是，说明有路径遍历企图，拒绝访问
+            if not real_log_path.startswith(real_log_dir):
+                logging.warning(
+                    f"[支付日志详情] 检测到路径遍历企图 - 用户: {g.user}, "
+                    f"log_id: {log_id}, real_path: {real_log_path}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "无效的日志ID"
+                }), 400
+            
+            # ========== 步骤4：检查日志文件是否存在 ==========
+            
+            # 检查日志文件是否真实存在
+            if not os.path.exists(log_filepath):
+                # 文件不存在，可能是：
+                # 1. 日志ID输入错误
+                # 2. 日志文件已被删除
+                # 3. 日志还未生成
+                logging.warning(
+                    f"[支付日志详情] 日志文件不存在 - 用户: {g.user}, "
+                    f"log_id: {log_id}, filepath: {log_filepath}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "日志文件不存在，可能已被删除"
+                }), 404
+            
+            # ========== 步骤5：读取日志文件内容 ==========
+            
+            try:
+                # 打开并读取日志JSON文件
+                # 使用UTF-8编码确保中文内容正确显示
+                with open(log_filepath, "r", encoding="utf-8") as f:
+                    log_detail = json.load(f)
+                
+                # 记录操作日志（用于审计）
+                # 记录谁在什么时候查看了哪条日志
+                logging.info(
+                    f"[支付日志详情] 管理员查看日志详情 - "
+                    f"用户: {g.user}, log_id: {log_id}"
+                )
+                
+                # 返回成功响应，包含完整的日志详情
+                return jsonify({
+                    "success": True,
+                    "log_detail": log_detail
+                })
+                
+            except json.JSONDecodeError as e:
+                # JSON解析失败，可能是文件损坏
+                logging.error(
+                    f"[支付日志详情] JSON解析失败 - "
+                    f"log_id: {log_id}, 错误: {str(e)}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "日志文件格式错误，无法解析"
+                }), 500
+            except Exception as e:
+                # 读取文件时的其他异常
+                logging.error(
+                    f"[支付日志详情] 读取日志文件失败 - "
+                    f"log_id: {log_id}, 错误: {str(e)}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": f"读取日志文件失败：{str(e)}"
+                }), 500
+        
+        except Exception as e:
+            # 捕获所有未预期的异常
+            # 记录详细的错误日志（包含堆栈跟踪）
+            logging.error(f"[支付日志详情] 获取日志详情异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": f"获取日志详情失败：{str(e)}"
             }), 500
 
     @app.route("/api/admin/payment/notify_stats", methods=["GET"])
@@ -34676,7 +35026,7 @@ def start_web_server(args_param):
 
             # ========== 第3步：如果本地没有，从易支付平台查询 ==========
 
-            logging.info("[管理员查询订单] 本地未找到订单，尝试从易支付平台查询")
+            logging.info("[管理员查询订单] 从易支付平台查询")
 
             # 调用内部函数查询易支付平台
             query_result = _query_yipay_order(
@@ -34821,6 +35171,17 @@ def start_web_server(args_param):
                         local_order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
                         logging.info(f"[管理员查询订单] 订单部分退款 - 单号: {out_trade_no}")
 
+                # ========== 检查订单状态变更（为overdue处理做准备）==========
+                #
+                # 目的：在保存新订单之前，记录旧订单的状态
+                # 如果订单状态从pending变为paid，且包含overdue_accounts，需要处理欠费减少
+                
+                # 记录旧订单状态（如果本地已有订单）
+                old_status = None
+                if order_data is not None:
+                    # 本地已有订单数据，记录其状态
+                    old_status = order_data.get("status")
+                
                 # ========== 保存平台订单到本地文件 ==========
                 #
                 # 目的：
@@ -34839,7 +35200,10 @@ def start_web_server(args_param):
 
                 # 确保订单目录存在
                 os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+                
+                order_data.update(local_order_data)  # 更新本地订单数据
 
+                local_order_data=order_data  # 使用更新后的订单数据
                 try:
                     # 写入订单文件
                     # 使用UTF-8编码保存中文内容
@@ -34866,6 +35230,40 @@ def start_web_server(args_param):
                             "success": True
                         }
                     )
+                    
+                    # ========== 处理订单状态变更时的overdue_accounts逻辑 ==========
+                    #
+                    # 检查订单状态是否从pending变为paid
+                    # 如果是，且订单包含overdue_accounts字段，则需要减少对应账号的overdue_count
+                    
+                    # 获取新订单状态（从平台获取的状态）
+                    new_status = local_order_data.get("status", "")
+                    
+                    logging.info(
+                        f"[管理员从平台查询订单] 订单状态检查 - "
+                        f"单号: {out_trade_no}, "
+                        f"旧状态: {old_status}, "
+                        f"新状态: {new_status}"
+                    )
+                    
+                    # 判断是否状态改变：
+                    # 1. 旧状态为pending或None（订单不存在）
+                    # 2. 新状态为paid
+                    is_status_changed = (old_status in [ORDER_STATUS_PENDING, None]) and (new_status == ORDER_STATUS_PAID)
+                    
+                    # 如果状态改变，且订单包含overdue_accounts字段
+                    if is_status_changed and "overdue_accounts" in local_order_data:
+                        # 提取欠费账号列表
+                        overdue_accounts = local_order_data.get("overdue_accounts", [])
+                        
+                        # 验证overdue_accounts是否为有效的列表
+                        if overdue_accounts and isinstance(overdue_accounts, list):
+                            logging.info(
+                                f"[订单状态变更] 订单 {out_trade_no} 状态从 {old_status} 变为 {new_status}，"
+                                f"开始处理overdue_accounts"
+                            )
+                            auth_username=local_order_data["username"]
+                            _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
 
                 except Exception as e:
                     # 保存失败，记录错误但仍然返回平台数据
@@ -35293,12 +35691,18 @@ def start_web_server(args_param):
                     order_file = os.path.join(
                         PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
                     is_update = os.path.exists(order_file)
+                    
+                    # 记录旧订单状态（用于后续检查状态变更）
+                    old_status = None
 
                     # 如果本地已存在，读取现有数据并合并
                     if is_update:
                         try:
                             with open(order_file, "r", encoding="utf-8") as f:
                                 existing_order = json.load(f)
+                            
+                            # 记录旧订单的状态
+                            old_status = existing_order.get("status")
 
                             # 保留本地的一些字段（例如：username、notify_count等）
                             if "username" in existing_order and existing_order["username"] != "未知":
@@ -35309,6 +35713,11 @@ def start_web_server(args_param):
                                 local_order_data["refund_count"] = existing_order["refund_count"]
                             if "refund_records" in existing_order:
                                 local_order_data["refund_records"] = existing_order["refund_records"]
+                            
+                            # 保留overdue_accounts字段（如果存在）
+                            # 这个字段包含欠费账号列表，对于后续处理很重要
+                            if "overdue_accounts" in existing_order:
+                                local_order_data["overdue_accounts"] = existing_order["overdue_accounts"]
 
                             # 更新同步标记
                             local_order_data["updated_from_platform"] = True
@@ -35324,6 +35733,34 @@ def start_web_server(args_param):
                     with open(order_file, "w", encoding="utf-8") as f:
                         json.dump(local_order_data, f,
                                   indent=2, ensure_ascii=False)
+                    
+                    # ========== 处理订单状态变更时的overdue_accounts逻辑 ==========
+                    #
+                    # 检查订单状态是否从pending变为paid
+                    # 如果是，且订单包含overdue_accounts字段，则需要减少对应账号的overdue_count
+                    
+                    # 获取新订单状态（从平台获取的状态）
+                    new_status = local_order_data.get("status", "")
+                    
+                    # 判断是否状态改变：
+                    # 1. 旧状态为pending或None（订单不存在）
+                    # 2. 新状态为paid
+                    is_status_changed = (old_status in [ORDER_STATUS_PENDING, None]) and (new_status == ORDER_STATUS_PAID)
+                    
+                    # 如果状态改变，且订单包含overdue_accounts字段
+                    if is_status_changed and "overdue_accounts" in local_order_data:
+                        # 提取欠费账号列表
+                        overdue_accounts = local_order_data.get("overdue_accounts", [])
+                        
+                        # 验证overdue_accounts是否为有效的列表
+                        if overdue_accounts and isinstance(overdue_accounts, list):
+                            logging.info(
+                                f"[订单状态变更] 订单 {out_trade_no} 状态从 {old_status} 变为 {new_status}，"
+                                f"开始处理overdue_accounts"
+                            )
+                            auth_username=local_order_data["username"]
+                            
+                            _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
 
                     # 统计成功
                     saved_count += 1
