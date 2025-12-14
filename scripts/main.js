@@ -6520,52 +6520,304 @@ async function submitAdminPaymentRefund() {
       throw new Error(result.message || '退款失败');
     }
     
-    // === 第7步：显示成功提示 ===
+    // === 第7步：显示成功提示（使用新的拟态框modal） ===
     
-    if (successDiv) {
-      // 更新退款单号
-      const refundNoElem = document.getElementById('admin-refund-result-no_modal');
-      if (refundNoElem) {
-        refundNoElem.textContent = result.refund_no || refundNo;
-      }
-      
-      // 更新退款金额
-      const refundAmountElem = document.getElementById('admin-refund-result-amount_modal');
-      if (refundAmountElem) {
-        refundAmountElem.textContent = `¥${parseFloat(result.refund_amount || amount).toFixed(2)}`;
-      }
-      
-      // 显示成功容器
-      successDiv.classList.remove('hidden');
+    // 获取新的拟态框modal元素
+    // 这个modal是独立的弹窗，可以提供更强的视觉提醒效果
+    const successModal = document.getElementById('admin-refund-success-modal');
+    
+    // 更新拟态框中的退款单号显示
+    // 使用新的ID：admin-refund-success-result-no
+    const refundNoElem = document.getElementById('admin-refund-success-result-no');
+    if (refundNoElem) {
+      // 使用textContent防止XSS攻击，安全地设置文本内容
+      refundNoElem.textContent = result.refund_no || refundNo;
     }
     
-    // 清空表单
+    // 更新拟态框中的退款金额显示
+    // 使用新的ID：admin-refund-success-result-amount
+    const refundAmountElem = document.getElementById('admin-refund-success-result-amount');
+    if (refundAmountElem) {
+      // 格式化金额为两位小数，并添加人民币符号
+      refundAmountElem.textContent = `¥${parseFloat(result.refund_amount || amount).toFixed(2)}`;
+    }
+    
+    // 显示拟态框modal
+    // 使用flex布局使modal居中显示
+    if (successModal) {
+      successModal.style.display = 'flex';
+    }
+    
+    // 清空表单输入框，为下次操作做准备
+    // 这样用户不需要手动清除上次的输入内容
     if (tradeNoInput) tradeNoInput.value = '';
     if (amountInput) amountInput.value = '';
     if (refundNoInput) refundNoInput.value = '';
     if (reasonInput) reasonInput.value = '';
     
-    console.log('[PC端退款] 退款成功');
+    console.log('[PC端退款] 退款成功，已显示拟态框');
     
-    // 5秒后自动隐藏成功提示
-    setTimeout(() => {
-      if (successDiv) {
-        successDiv.classList.add('hidden');
-      }
-    }, 5000);
+    // 注意：不再自动隐藏，用户需要点击关闭按钮或"我知道了"按钮
+    // 这样可以确保用户看到并确认退款信息
     
   } catch (error) {
     // === 错误处理 ===
     
     console.error('[PC端退款] 退款时发生错误：', error);
     
-    // 隐藏成功提示（如果有）
-    if (successDiv) {
-      successDiv.classList.add('hidden');
+    // 使用showModalAlert显示错误信息
+    // 这个函数会弹出一个错误提示框，用户友好
+    showModalAlert(error.message || '退款失败', '退款失败');
+  }
+}
+
+// ==========================================
+// 退款成功拟态框的关闭功能
+// ==========================================
+/**
+ * 关闭退款成功拟态框
+ * 
+ * 功能说明：
+ * 隐藏退款成功提示拟态框，用户可以通过点击关闭按钮或"我知道了"按钮调用此函数
+ * 
+ * 调用时机：
+ * - 用户点击拟态框右上角的关闭按钮
+ * - 用户点击"我知道了"确认按钮
+ * - 用户点击拟态框外部区域（如果实现了这个功能）
+ * 
+ * 实现逻辑：
+ * 将modal的display样式设置为'none'，使其从页面中隐藏
+ */
+function closeAdminRefundSuccessModal() {
+  // 打印日志，便于调试和跟踪
+  console.log('[PC端退款] 关闭退款成功拟态框');
+  
+  // 获取退款成功拟态框的DOM元素
+  const successModal = document.getElementById('admin-refund-success-modal');
+  
+  // 如果元素存在，则隐藏它
+  if (successModal) {
+    // 将display设置为'none'，完全隐藏modal
+    successModal.style.display = 'none';
+  } else {
+    // 如果找不到元素，打印错误日志
+    console.error('[PC端退款] 错误：找不到退款成功拟态框元素');
+  }
+}
+
+// ==========================================
+// 订单号输入自动获取金额并填充75%功能
+// ==========================================
+/**
+ * 验证订单号格式
+ * 
+ * 功能说明：
+ * 检查订单号是否符合预期的格式要求
+ * 订单号通常是一个长度在10-50字符之间的字符串，由字母和数字组成
+ * 
+ * 参数：
+ * @param {string} tradeNo - 要验证的订单号
+ * 
+ * 返回值：
+ * @returns {boolean} - 如果订单号格式有效返回true，否则返回false
+ * 
+ * 验证规则：
+ * 1. 订单号不能为空
+ * 2. 订单号长度应在10-50字符之间
+ * 3. 订单号只能包含字母、数字、下划线和连字符
+ */
+function validateTradeNo(tradeNo) {
+  // 检查订单号是否为空或只包含空白字符
+  if (!tradeNo || tradeNo.trim() === '') {
+    console.log('[订单号验证] 订单号为空');
+    return false;
+  }
+  
+  // 检查订单号长度是否在有效范围内
+  // 大多数支付平台的订单号长度在10-50字符之间
+  if (tradeNo.length < 10 || tradeNo.length > 50) {
+    console.log('[订单号验证] 订单号长度无效：', tradeNo.length);
+    return false;
+  }
+  
+  // 使用正则表达式检查订单号格式
+  // 只允许字母（大小写）、数字、下划线和连字符
+  const tradeNoPattern = /^[a-zA-Z0-9_-]+$/;
+  if (!tradeNoPattern.test(tradeNo)) {
+    console.log('[订单号验证] 订单号包含非法字符');
+    return false;
+  }
+  
+  // 所有验证通过
+  console.log('[订单号验证] 订单号格式有效');
+  return true;
+}
+
+/**
+ * 自动获取订单金额并填充75%到退款金额输入框
+ * 
+ * 功能说明：
+ * 当用户在订单号输入框中输入完订单号并离开输入框（blur事件）时，
+ * 自动调用后端API查询订单信息，获取订单金额，并将金额的75%填入退款金额输入框
+ * 
+ * 实现步骤：
+ * 1. 获取订单号输入框的值
+ * 2. 验证订单号格式
+ * 3. 显示加载状态
+ * 4. 调用后端API /api/payment/query 查询订单信息
+ * 5. 解析返回的订单数据，提取金额字段
+ * 6. 计算金额的75%
+ * 7. 将计算结果填入退款金额输入框
+ * 8. 处理各种错误情况（网络错误、订单不存在、权限错误等）
+ * 
+ * 参数：无（从DOM元素中读取订单号）
+ * 返回值：无（直接更新DOM元素）
+ * 
+ * 调用时机：
+ * - 用户在订单号输入框中输入完成后，焦点离开输入框时（blur事件）
+ */
+async function autoFillRefundAmount() {
+  // 打印日志，便于调试
+  console.log('[自动填充] 开始处理订单号输入...');
+  
+  // === 第1步：获取DOM元素 ===
+  
+  // 获取订单号输入框元素
+  const tradeNoInput = document.getElementById('admin-refund-order-trade-no_modal');
+  // 获取退款金额输入框元素
+  const amountInput = document.getElementById('admin-refund-amount_modal');
+  
+  // 如果找不到必要的DOM元素，打印错误并返回
+  if (!tradeNoInput || !amountInput) {
+    console.error('[自动填充] 错误：找不到必要的DOM元素');
+    return;
+  }
+  
+  // === 第2步：获取并验证订单号 ===
+  
+  // 获取输入框中的订单号，并去除首尾空白
+  const tradeNo = tradeNoInput.value.trim();
+  
+  // 如果订单号为空，清空金额输入框并返回
+  // 这样当用户清空订单号时，金额也会被清空
+  if (!tradeNo) {
+    console.log('[自动填充] 订单号为空，跳过查询');
+    // 清空金额输入框
+    amountInput.value = '';
+    return;
+  }
+  
+  // 验证订单号格式
+  // 如果格式不正确，显示提示并返回
+  if (!validateTradeNo(tradeNo)) {
+    console.log('[自动填充] 订单号格式无效，跳过查询');
+    // 可选：显示友好的提示信息
+    // showModalAlert('订单号格式不正确，请检查后重试', '提示');
+    return;
+  }
+  
+  // === 第3步：显示加载状态 ===
+  
+  // 在金额输入框中显示"查询中..."提示，给用户反馈
+  // 保存原始的placeholder，以便后续恢复
+  const originalPlaceholder = amountInput.placeholder;
+  amountInput.placeholder = '正在查询订单金额...';
+  // 禁用金额输入框，防止用户在查询期间修改
+  amountInput.disabled = true;
+  
+  try {
+    // === 第4步：调用后端API查询订单信息 ===
+    
+    console.log('[自动填充] 查询订单：', tradeNo);
+    
+    // 发送POST请求到后端API
+    // 使用fetch API进行异步HTTP请求
+    const response = await fetch('/api/payment/query', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID,  // 附加会话ID用于身份验证
+      },
+      body: JSON.stringify({
+        order_id: tradeNo  // 订单号作为查询参数
+      })
+    });
+    
+    // === 第5步：检查HTTP响应状态 ===
+    
+    // 如果HTTP响应状态不是2xx，抛出错误
+    if (!response.ok) {
+      throw new Error(`查询失败：HTTP状态码 ${response.status}`);
     }
     
-    // 使用showModalAlert显示错误
-    showModalAlert(error.message || '退款失败', '退款失败');
+    // === 第6步：解析JSON响应数据 ===
+    
+    const result = await response.json();
+    
+    console.log('[自动填充] API响应：', result);
+    
+    // === 第7步：检查业务逻辑状态 ===
+    
+    // 检查API返回的success字段
+    if (!result.success) {
+      // 业务逻辑失败，显示错误消息
+      throw new Error(result.message || '查询订单失败');
+    }
+    
+    // === 第8步：提取订单金额 ===
+    
+    // 从返回的order对象中提取amount字段
+    const orderAmount = result.order?.amount;
+    
+    // 如果金额不存在或无效，抛出错误
+    if (!orderAmount || isNaN(parseFloat(orderAmount))) {
+      throw new Error('订单金额无效');
+    }
+    
+    // 将金额转换为浮点数
+    const amount = parseFloat(orderAmount);
+    
+    console.log('[自动填充] 订单金额：', amount);
+    
+    // === 第9步：计算75%并填充 ===
+    
+    // 计算金额的75%
+    // 使用toFixed(2)保留两位小数，然后再转换为浮点数去除尾随的零
+    const refundAmount = parseFloat((amount * 0.75).toFixed(2));
+    
+    console.log('[自动填充] 退款金额（75%）：', refundAmount);
+    
+    // 将计算结果填入退款金额输入框
+    amountInput.value = refundAmount;
+    
+    // 可选：显示成功提示
+    // 使用轻量级的提示，不打断用户操作
+    console.log('[自动填充] 成功：已自动填充退款金额为原金额的75%');
+    
+  } catch (error) {
+    // === 错误处理 ===
+    
+    console.error('[自动填充] 查询订单时发生错误：', error);
+    
+    // 清空金额输入框
+    amountInput.value = '';
+    
+    // 显示错误提示
+    // 使用友好的错误消息，帮助用户理解问题
+    showModalAlert(
+      error.message || '查询订单失败，请检查订单号是否正确',
+      '查询失败'
+    );
+    
+  } finally {
+    // === 清理操作（无论成功还是失败都会执行） ===
+    
+    // 恢复原始的placeholder
+    amountInput.placeholder = originalPlaceholder;
+    // 重新启用金额输入框，允许用户手动修改
+    amountInput.disabled = false;
+    
+    console.log('[自动填充] 处理完成');
   }
 }
 
@@ -47959,4 +48211,119 @@ async function adminClearOverdue(school_username, auth_username='', is_detail_vi
 
 // ============================================================================
 // 欠费账号查询功能 - 结束
+// ============================================================================
+// ============================================================================
+// 退款成功拟态框和订单号自动填充功能 - 事件监听器初始化
+// ============================================================================
+/**
+ * 初始化退款相关的事件监听器
+ * 
+ * 功能说明：
+ * 1. 为退款成功拟态框的关闭按钮添加点击事件监听
+ * 2. 为退款成功拟态框的"我知道了"按钮添加点击事件监听
+ * 3. 为订单号输入框添加blur事件监听，实现自动填充退款金额功能
+ * 
+ * 调用时机：
+ * - 页面加载完成后（DOMContentLoaded事件）自动执行
+ * 
+ * 实现说明：
+ * - 使用DOMContentLoaded确保DOM元素已经加载完成
+ * - 使用addEventListener绑定事件，符合现代JavaScript最佳实践
+ * - 对每个元素进行存在性检查，避免因元素不存在导致的错误
+ */
+document.addEventListener('DOMContentLoaded', function() {
+  // 打印日志，便于调试和跟踪初始化过程
+  console.log('[退款功能] 开始初始化事件监听器...');
+  
+  // ========== 1. 退款成功拟态框 - 关闭按钮事件监听 ==========
+  
+  // 获取关闭按钮元素（右上角的X按钮）
+  const refundSuccessCloseBtn = document.getElementById('admin-refund-success-close-btn');
+  
+  // 检查元素是否存在
+  if (refundSuccessCloseBtn) {
+    // 添加点击事件监听器
+    // 当用户点击关闭按钮时，调用closeAdminRefundSuccessModal函数关闭拟态框
+    refundSuccessCloseBtn.addEventListener('click', function() {
+      console.log('[退款功能] 用户点击了关闭按钮');
+      closeAdminRefundSuccessModal();
+    });
+    console.log('[退款功能] 已绑定关闭按钮事件');
+  } else {
+    // 如果找不到元素，打印警告日志
+    // 这可能是因为页面结构变化或元素ID不匹配
+    console.warn('[退款功能] 警告：找不到退款成功关闭按钮元素 (admin-refund-success-close-btn)');
+  }
+  
+  // ========== 2. 退款成功拟态框 - "我知道了"按钮事件监听 ==========
+  
+  // 获取"我知道了"确认按钮元素
+  const refundSuccessConfirmBtn = document.getElementById('admin-refund-success-confirm-btn');
+  
+  // 检查元素是否存在
+  if (refundSuccessConfirmBtn) {
+    // 添加点击事件监听器
+    // 当用户点击"我知道了"按钮时，同样关闭拟态框
+    refundSuccessConfirmBtn.addEventListener('click', function() {
+      console.log('[退款功能] 用户点击了"我知道了"按钮');
+      closeAdminRefundSuccessModal();
+    });
+    console.log('[退款功能] 已绑定"我知道了"按钮事件');
+  } else {
+    // 如果找不到元素，打印警告日志
+    console.warn('[退款功能] 警告：找不到"我知道了"按钮元素 (admin-refund-success-confirm-btn)');
+  }
+  
+  // ========== 3. 订单号输入框 - blur事件监听（自动填充金额功能） ==========
+  
+  // 获取订单号输入框元素
+  const tradeNoInput = document.getElementById('admin-refund-order-trade-no_modal');
+  
+  // 检查元素是否存在
+  if (tradeNoInput) {
+    // 添加blur事件监听器
+    // blur事件在用户离开输入框（失去焦点）时触发
+    // 这是实现"输入完成后自动查询"的最佳时机
+    tradeNoInput.addEventListener('blur', function() {
+      console.log('[退款功能] 订单号输入框失去焦点，准备自动填充金额');
+      // 调用自动填充函数
+      // 该函数会验证订单号格式，查询订单信息，并填充75%的金额
+      autoFillRefundAmount();
+    });
+    console.log('[退款功能] 已绑定订单号输入框blur事件');
+  } else {
+    // 如果找不到元素，打印警告日志
+    console.warn('[退款功能] 警告：找不到订单号输入框元素 (admin-refund-order-trade-no_modal)');
+  }
+  
+  // ========== 4. 退款成功拟态框 - 点击背景关闭功能（可选） ==========
+  
+  // 获取拟态框元素本身
+  const refundSuccessModal = document.getElementById('admin-refund-success-modal');
+  
+  // 检查元素是否存在
+  if (refundSuccessModal) {
+    // 添加点击事件监听器到modal本身
+    // 当用户点击modal背景（灰色半透明区域）时关闭modal
+    refundSuccessModal.addEventListener('click', function(event) {
+      // 检查点击的目标是否是modal背景本身
+      // 如果用户点击的是modal内容区域，event.target不等于refundSuccessModal
+      // 这样可以避免点击内容区域时误关闭modal
+      if (event.target === refundSuccessModal) {
+        console.log('[退款功能] 用户点击了modal背景，关闭拟态框');
+        closeAdminRefundSuccessModal();
+      }
+    });
+    console.log('[退款功能] 已绑定modal背景点击关闭事件');
+  } else {
+    // 如果找不到元素，打印警告日志
+    console.warn('[退款功能] 警告：找不到退款成功拟态框元素 (admin-refund-success-modal)');
+  }
+  
+  // 打印完成日志
+  console.log('[退款功能] 事件监听器初始化完成');
+});
+
+// ============================================================================
+// 退款成功拟态框和订单号自动填充功能 - 结束
 // ============================================================================
