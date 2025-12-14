@@ -6637,24 +6637,29 @@ async function submitAdminPaymentRefund() {
       throw new Error(result.message || '退款失败');
     }
     
-    // === 第7步：显示成功提示 ===
+    // === 第7步：显示成功提示（使用拟态框弹窗） ===
     
-    if (successDiv) {
-      // 更新退款单号
-      const refundNoElem = document.getElementById('admin-refund-result-no_modal');
-      if (refundNoElem) {
-        refundNoElem.textContent = result.refund_no || refundNo;
-      }
-      
-      // 更新退款金额
-      const refundAmountElem = document.getElementById('admin-refund-result-amount_modal');
-      if (refundAmountElem) {
-        refundAmountElem.textContent = `¥${parseFloat(result.refund_amount || amount).toFixed(2)}`;
-      }
-      
-      // 显示成功容器
-      successDiv.classList.remove('hidden');
-    }
+    // 构建退款成功的消息内容
+    const successMessage = `
+      <div class="space-y-3">
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between items-center py-2 border-b border-green-100">
+            <span class="text-slate-600 font-medium">退款单号：</span>
+            <span class="text-slate-900 font-semibold break-all">${result.refund_no || refundNo}</span>
+          </div>
+          <div class="flex justify-between items-center py-2">
+            <span class="text-slate-600 font-medium">退款金额：</span>
+            <span class="text-red-600 font-bold">¥${parseFloat(result.refund_amount || amount).toFixed(2)}</span>
+          </div>
+        </div>
+        <p class="text-xs text-green-600 bg-green-50 rounded p-2">
+          💡 提示：退款将在1-3个工作日内到账，请耐心等待
+        </p>
+      </div>
+    `;
+    
+    // 使用拟态框显示成功消息
+    showModalAlert(successMessage, '退款申请已提交');
     
     // 清空表单
     if (tradeNoInput) tradeNoInput.value = '';
@@ -6664,25 +6669,23 @@ async function submitAdminPaymentRefund() {
     
     console.log('[PC端退款] 退款成功');
     
-    // 5秒后自动隐藏成功提示
-    setTimeout(() => {
-      if (successDiv) {
-        successDiv.classList.add('hidden');
-      }
-    }, 5000);
-    
   } catch (error) {
-    // === 错误处理 ===
+    // === 错误处理（使用拟态框弹窗） ===
     
     console.error('[PC端退款] 退款时发生错误：', error);
     
-    // 隐藏成功提示（如果有）
-    if (successDiv) {
-      successDiv.classList.add('hidden');
-    }
+    // 构建错误提示消息
+    const errorMessage = `
+      <div class="space-y-2">
+        <p class="text-sm text-red-800">${error.message || '退款失败'}</p>
+        <p class="text-xs text-red-600 bg-red-50 rounded p-2">
+          💡 建议：请检查订单号是否正确，退款金额是否超过原订单金额，或稍后重试
+        </p>
+      </div>
+    `;
     
-    // 使用showModalAlert显示错误
-    showModalAlert(error.message || '退款失败', '退款失败');
+    // 使用拟态框显示错误消息
+    showModalAlert(errorMessage, '退款失败');
   }
 }
 
