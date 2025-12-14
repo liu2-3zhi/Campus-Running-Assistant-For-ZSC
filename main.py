@@ -1460,6 +1460,13 @@ def auto_init_system():
         print("[系统初始化] 创建权限配置文件...")
         _create_permissions_json()
 
+        logging.info("步骤3.5: 创建功能特性配置文件...")
+        print("[系统初始化] 创建功能特性配置文件...")
+        # 调用 _create_feature_flags_json() 函数，初始化功能特性标志配置文件
+        # 此文件用于管理用户级别的功能开关（如去水印功能）
+        # 如果文件已存在则跳过创建，避免覆盖管理员的配置
+        _create_feature_flags_json()
+
         logging.info("步骤4: 创建默认管理员账号...")
         print("[系统初始化] 创建默认管理员账号...")
         _create_default_admin()
@@ -1837,6 +1844,25 @@ def _get_default_config():
         # 默认值："注册即可得 {available_runs} 次校园跑"
         # 注意：此提示文本通常显示在注册按钮附近或表单顶部，用于吸引用户注册
         "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑",
+    }
+
+    # ============================================================
+    # [Watermark] 去水印功能配置节
+    # ============================================================
+    # 此配置节用于控制去水印功能的全局默认行为
+    # 去水印功能允许用户在跑步记录中移除或添加水印标识
+    config["Watermark"] = {
+        # 默认是否启用去水印功能（true/false）
+        # true：默认启用去水印，用户的跑步记录将不包含水印
+        # false：默认禁用去水印，用户的跑步记录将包含水印标识（默认值）
+        # 默认值：false（禁用）
+        # 
+        # 注意事项：
+        # 1. 此配置项作为全局默认值，当用户在 feature_flags.json 中没有个性化配置时生效
+        # 2. 可以通过 feature_flags.json 为每个用户单独配置去水印功能
+        # 3. 优先级：feature_flags.json（用户配置） > config.ini（全局默认配置）
+        # 4. API路由 /api/feature/watermark 会根据此优先级返回用户的去水印状态
+        "default_enabled": "false",
     }
 
     return config
@@ -3340,6 +3366,108 @@ def _create_permissions_json(force=False):
     with open("permissions.json", "w", encoding="utf-8") as f:
         json.dump(permissions, f, indent=2, ensure_ascii=False)
     print("[权限配置] permissions.json 文件创建完成")
+
+
+def _create_feature_flags_json():
+    """
+    创建 feature_flags.json 功能特性配置文件。
+    
+    此函数负责初始化功能特性标志配置文件，用于管理用户级别的功能开关。
+    功能特性标志允许管理员为不同的用户启用或禁用特定功能，实现精细化的功能控制。
+    
+    文件说明：
+    - 文件名：feature_flags.json
+    - 格式：JSON格式，包含各个功能的用户级配置
+    - 位置：与 main.py 同级目录
+    
+    功能说明：
+    - 如果文件已存在，则跳过创建，避免覆盖现有配置
+    - 如果文件不存在，则创建包含示例结构的新文件
+    
+    当前支持的功能特性：
+    1. watermark (去水印功能)：
+       - 控制用户是否可以在跑步记录中去除水印标识
+       - true：启用去水印功能
+       - false：禁用去水印功能（默认）
+    
+    配置优先级：
+    1. 优先级1：feature_flags.json 中的用户个性化配置
+    2. 优先级2：config.ini 中的全局默认配置
+    
+    示例用法（管理员配置）：
+    在 feature_flags.json 中添加：
+    {
+        "watermark": {
+            "admin": true,     # admin 用户启用去水印
+            "user1": false,    # user1 用户禁用去水印
+            "user2": true      # user2 用户启用去水印
+        }
+    }
+    """
+    # 定义功能特性配置文件的路径
+    # 使用常量名称 "feature_flags.json"，与项目中的其他配置文件（如 config.ini、permissions.json）保持一致
+    feature_flags_file = "feature_flags.json"
+    
+    # 检查文件是否已经存在
+    # 如果文件已存在，说明配置文件已经被初始化或被管理员手动创建
+    # 此时应该跳过创建，避免覆盖现有的用户配置数据
+    if os.path.exists(feature_flags_file):
+        # 在控制台输出提示信息，告知系统跳过了文件创建
+        print(f"[功能特性配置] {feature_flags_file} 已存在，跳过创建")
+        # 在日志系统中记录此事件，便于后续审计和问题排查
+        logging.info(f"[系统初始化] {feature_flags_file} 文件已存在，保留现有配置")
+        # 提前返回，不执行后续的文件创建操作
+        return
+    
+    # 如果文件不存在，开始创建新的配置文件
+    print(f"[功能特性配置] 创建新的 {feature_flags_file} 文件...")
+    # 在日志中记录文件创建事件，包含详细的创建信息
+    logging.info(f"[系统初始化] 正在创建 {feature_flags_file} 文件（功能特性标志配置）")
+    
+    # 定义功能特性配置文件的默认结构
+    # 这是一个包含示例和说明的初始模板，方便管理员理解和使用
+    feature_flags = {
+        # watermark 功能配置：控制去水印功能的用户级开关
+        "watermark": {
+            # _comment 字段：提供功能说明，帮助管理员理解此配置项的作用
+            # 注意：以下划线开头的字段（如 _comment、_default_note）仅用于说明，不会被程序逻辑使用
+            "_comment": "配置去水印功能。true表示启用，false表示禁用。可为每个用户单独配置。",
+            
+            # _default_note 字段：说明默认行为，告知管理员未配置用户的处理方式
+            "_default_note": "如果用户未在此列表中，则使用config.ini中的默认配置",
+            
+            # 示例配置（已注释，仅供参考）：
+            # "admin": true,   # 为 admin 用户启用去水印功能
+            # "user1": false,  # 为 user1 用户禁用去水印功能
+            # "user2": true    # 为 user2 用户启用去水印功能
+        }
+        
+        # 扩展说明：未来可以在此文件中添加更多功能特性配置
+        # 例如：
+        # "dark_mode": {
+        #     "_comment": "配置深色模式。true表示启用，false表示禁用。",
+        #     "user1": true
+        # }
+    }
+    
+    # 将配置数据写入 JSON 文件
+    # 使用 with 语句确保文件在写入完成后自动关闭，防止资源泄漏
+    with open(feature_flags_file, "w", encoding="utf-8") as f:
+        # 使用 json.dump 将 Python 字典序列化为 JSON 格式并写入文件
+        # 参数说明：
+        # - feature_flags: 要写入的数据（Python字典）
+        # - f: 文件对象
+        # - indent=2: 使用2个空格进行缩进，使 JSON 文件更易读
+        # - ensure_ascii=False: 允许使用非 ASCII 字符（如中文注释），避免被转义为 \uXXXX 格式
+        json.dump(feature_flags, f, indent=2, ensure_ascii=False)
+    
+    # 在控制台输出成功创建的提示信息
+    print(f"[功能特性配置] {feature_flags_file} 文件创建完成")
+    # 在日志系统中记录成功创建的事件
+    logging.info(
+        f"[系统初始化] {feature_flags_file} 文件创建成功 --> "
+        f"文件包含功能特性配置模板，管理员可根据需要为用户配置功能开关"
+    )
 
 
 def _create_default_admin():
@@ -21661,13 +21789,261 @@ def start_web_server(args_param):
             # 记录完整的错误堆栈信息（exc_info=True），便于调试
             logging.error(f"[API] 检查管理员状态失败: {e}", exc_info=True)
 
-            # 返回500错误，表示服务器内部错误
+            # 返回500错误,表示服务器内部错误
             # 将错误信息返回给前端，便于定位问题
             return (
                 jsonify(
                     {
                         "success": False,
                         "message": f"检查管理员状态失败: {str(e)}"
+                    }
+                ),
+                500,
+            )
+
+    @app.route("/api/feature/watermark", methods=["GET"])
+    @login_required
+    def api_feature_watermark():
+        """
+        获取当前用户的去水印功能状态（GET请求）
+        
+        API路径：/api/feature/watermark
+        HTTP方法：GET
+        权限要求：需要有效的Session（通过 @login_required 装饰器验证）
+        
+        功能说明：
+        此API用于查询当前登录用户是否启用了去水印功能。
+        去水印功能允许用户在跑步记录中移除水印标识。
+        
+        判断逻辑（按优先级从高到低）：
+        1. 优先级1：用户个性化配置（feature_flags.json）
+           - 检查 feature_flags.json 文件中是否有该用户的配置
+           - 如果存在，则直接使用该配置值（true/false）
+           
+        2. 优先级2：全局默认配置（config.ini）
+           - 如果用户在 feature_flags.json 中没有配置
+           - 则从 config.ini 的 [Watermark] 节读取 default_enabled 值
+           - 如果配置文件不存在该节或键，默认返回 false
+        
+        请求头要求：
+        - X-Session-ID: 用户的会话ID（必需，由 @login_required 装饰器验证）
+        
+        返回格式：
+        成功响应（HTTP 200）：
+        {
+            "success": true,
+            "watermark_enabled": true/false  # 是否启用去水印功能
+        }
+        
+        错误响应：
+        - HTTP 401：未登录或会话无效（由 @login_required 装饰器自动返回）
+        - HTTP 500：服务器内部错误
+        {
+            "success": false,
+            "watermark_enabled": false,
+            "message": "错误信息"
+        }
+        
+        使用示例：
+        前端代码：
+        ```javascript
+        fetch('/api/feature/watermark', {
+            method: 'GET',
+            headers: {
+                'X-Session-ID': sessionId
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.watermark_enabled) {
+                // 启用去水印功能
+            }
+        });
+        ```
+        """
+        try:
+            # ========== 步骤1：获取当前登录用户的用户名 ==========
+            # 从Flask的全局对象g中获取当前登录的用户名
+            # g.user 由 @login_required 装饰器自动设置
+            # 这确保了此API只能由已登录用户调用，不会出现用户名为None的情况
+            current_username = g.user
+            
+            # 记录调试日志，便于追踪API调用
+            logging.info(
+                f"[API] 用户 {current_username} 请求查询去水印功能状态"
+            )
+            
+            # ========== 步骤2：初始化默认值 ==========
+            # 初始化一个变量，用于存储最终的去水印功能状态
+            # 默认值为 False（禁用去水印），这是最保守的设置
+            watermark_enabled = False
+            
+            # 初始化一个标志，用于追踪配置是否来自用户个性化配置
+            # 这个标志用于日志记录，帮助管理员了解配置的来源
+            found_in_feature_flags = False
+            
+            # ========== 步骤3：优先级1 - 读取用户个性化配置（feature_flags.json） ==========
+            # 定义功能特性配置文件的路径
+            feature_flags_file = "feature_flags.json"
+            
+            # 检查 feature_flags.json 文件是否存在
+            # 如果文件存在，尝试读取用户的个性化配置
+            if os.path.exists(feature_flags_file):
+                try:
+                    # 以只读模式打开文件，使用 UTF-8 编码以支持中文注释
+                    with open(feature_flags_file, "r", encoding="utf-8") as f:
+                        # 使用 json.load 将 JSON 文件内容解析为 Python 字典
+                        feature_flags = json.load(f)
+                    
+                    # 检查 JSON 数据中是否存在 "watermark" 键
+                    # 这个键包含了所有用户的去水印功能配置
+                    if "watermark" in feature_flags:
+                        # 获取 watermark 配置对象（一个字典）
+                        watermark_config = feature_flags["watermark"]
+                        
+                        # 检查当前用户是否在配置中
+                        # 使用用户名作为键来查找该用户的去水印配置
+                        if current_username in watermark_config:
+                            # 找到了用户的个性化配置，提取配置值
+                            # 配置值应该是布尔型（true 或 false）
+                            watermark_enabled = watermark_config[current_username]
+                            
+                            # 设置标志，表示配置来自 feature_flags.json
+                            found_in_feature_flags = True
+                            
+                            # 记录日志：成功从 feature_flags.json 获取用户配置
+                            logging.info(
+                                f"[API] 用户 {current_username} 在 feature_flags.json 中找到个性化配置: "
+                                f"watermark_enabled={watermark_enabled}"
+                            )
+                        else:
+                            # 用户不在 feature_flags.json 配置中
+                            # 记录日志，说明需要使用全局默认配置
+                            logging.info(
+                                f"[API] 用户 {current_username} 未在 feature_flags.json 中配置，"
+                                f"将使用 config.ini 中的默认配置"
+                            )
+                    else:
+                        # feature_flags.json 文件存在，但没有 watermark 配置节
+                        # 这通常是文件格式错误或被手动修改导致的
+                        logging.warning(
+                            f"[API] feature_flags.json 文件存在，但缺少 'watermark' 配置节，"
+                            f"将使用 config.ini 中的默认配置"
+                        )
+                        
+                except json.JSONDecodeError as e:
+                    # JSON 文件格式错误，无法解析
+                    # 记录错误日志，包含详细的错误信息
+                    logging.error(
+                        f"[API] 解析 feature_flags.json 失败（JSON格式错误）: {e}，"
+                        f"将使用 config.ini 中的默认配置"
+                    )
+                    
+                except Exception as e:
+                    # 读取文件时发生其他未预期的错误
+                    # 记录完整的错误堆栈信息，便于调试
+                    logging.error(
+                        f"[API] 读取 feature_flags.json 失败: {e}，"
+                        f"将使用 config.ini 中的默认配置",
+                        exc_info=True
+                    )
+            else:
+                # feature_flags.json 文件不存在
+                # 这通常是首次启动或文件被删除的情况
+                logging.info(
+                    f"[API] feature_flags.json 文件不存在，"
+                    f"将使用 config.ini 中的默认配置"
+                )
+            
+            # ========== 步骤4：优先级2 - 读取全局默认配置（config.ini） ==========
+            # 如果没有在 feature_flags.json 中找到用户配置，则使用全局默认配置
+            if not found_in_feature_flags:
+                try:
+                    # 创建一个 ConfigParser 对象，用于读取 INI 格式的配置文件
+                    config = configparser.ConfigParser()
+                    
+                    # 定义配置文件的路径（与 main.py 同级目录）
+                    config_file = "config.ini"
+                    
+                    # 检查 config.ini 文件是否存在
+                    if os.path.exists(config_file):
+                        # 读取配置文件，使用 UTF-8 编码
+                        config.read(config_file, encoding="utf-8")
+                        
+                        # 检查配置文件中是否存在 [Watermark] 节
+                        if config.has_section("Watermark"):
+                            # 从 [Watermark] 节读取 default_enabled 配置项
+                            # 使用 getboolean 方法将字符串（"true"/"false"）转换为布尔值
+                            # 如果配置项不存在，fallback 参数指定默认返回 False
+                            watermark_enabled = config.getboolean(
+                                "Watermark", 
+                                "default_enabled", 
+                                fallback=False
+                            )
+                            
+                            # 记录日志：成功从 config.ini 获取全局默认配置
+                            logging.info(
+                                f"[API] 从 config.ini 读取全局默认配置: "
+                                f"watermark_enabled={watermark_enabled}"
+                            )
+                        else:
+                            # config.ini 文件存在，但没有 [Watermark] 配置节
+                            # 这通常是旧版本的配置文件或配置节被删除的情况
+                            logging.warning(
+                                f"[API] config.ini 文件缺少 [Watermark] 配置节，"
+                                f"使用默认值 False"
+                            )
+                            # watermark_enabled 保持为 False（在步骤2中已初始化）
+                    else:
+                        # config.ini 文件不存在
+                        # 这是一个异常情况，因为 config.ini 应该在系统初始化时创建
+                        logging.warning(
+                            f"[API] config.ini 文件不存在，使用默认值 False"
+                        )
+                        # watermark_enabled 保持为 False（在步骤2中已初始化）
+                        
+                except Exception as e:
+                    # 读取 config.ini 文件时发生错误
+                    # 记录完整的错误堆栈信息，便于调试
+                    logging.error(
+                        f"[API] 读取 config.ini 失败: {e}，使用默认值 False",
+                        exc_info=True
+                    )
+                    # watermark_enabled 保持为 False（在步骤2中已初始化）
+            
+            # ========== 步骤5：返回结果 ==========
+            # 记录最终的配置结果，便于审计和问题排查
+            logging.info(
+                f"[API] 用户 {current_username} 的去水印功能状态: "
+                f"watermark_enabled={watermark_enabled}"
+            )
+            
+            # 构建 JSON 响应并返回
+            # success: True 表示请求成功处理
+            # watermark_enabled: 布尔值，表示是否启用去水印功能
+            return jsonify(
+                {
+                    "success": True,
+                    "watermark_enabled": watermark_enabled
+                }
+            )
+            
+        except Exception as e:
+            # ========== 异常处理：捕获所有未预期的错误 ==========
+            # 记录完整的错误堆栈信息（exc_info=True），便于调试
+            logging.error(
+                f"[API] 获取去水印功能状态失败: {e}", 
+                exc_info=True
+            )
+            
+            # 返回500错误，表示服务器内部错误
+            # 同时返回 watermark_enabled: false，确保在出错时采用保守策略（禁用去水印）
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "watermark_enabled": False,
+                        "message": f"获取去水印功能状态失败: {str(e)}"
                     }
                 ),
                 500,
