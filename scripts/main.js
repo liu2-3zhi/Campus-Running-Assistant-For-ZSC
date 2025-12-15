@@ -9946,6 +9946,325 @@ async function saveWatermarkControlConfig() {
 }
 
 /**
+ * 打开添加水印控制用户的模态框
+ * 
+ * 功能说明：
+ * 显示一个模态框，列出所有尚未添加到水印控制配置的用户，
+ * 允许管理员选择用户添加到配置列表中。
+ * 
+ * 数据来源：
+ * 从 /api/amap/watermark_control/config 获取所有用户列表和当前配置，
+ * 然后筛选出未在配置中的用户。
+ * 
+ * 操作流程：
+ * 1. 获取当前配置（已有的用户列表）
+ * 2. 获取所有系统用户
+ * 3. 筛选出未配置的用户
+ * 4. 显示可添加的用户列表
+ * 5. 管理员点击"添加"按钮后，将用户添加到配置中（默认允许去水印）
+ */
+async function openAddWatermarkUserModal() {
+  try {
+    // [步骤1] 显示模态框
+    // 获取模态框元素
+    const modal = document.getElementById('add-watermark-user-modal');
+    if (!modal) {
+      // 如果模态框不存在，记录错误并退出
+      console.error('[水印控制] 无法找到添加用户模态框元素');
+      return;
+    }
+    
+    // 移除hidden类，使模态框可见
+    modal.classList.remove('hidden');
+    
+    // [步骤2] 显示加载状态
+    console.log('[水印控制] 正在加载可添加的用户列表...');
+    
+    // 获取用户列表容器元素
+    const listContainer = document.getElementById('available-watermark-users-list');
+    if (!listContainer) {
+      console.error('[水印控制] 无法找到用户列表容器元素');
+      return;
+    }
+    
+    // 显示"加载中..."提示
+    listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">加载中...</p>';
+    
+    // [步骤3] 发送HTTP请求获取配置和用户列表
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID  // 传递会话ID用于身份验证
+      }
+    });
+    
+    // [步骤4] 解析响应数据
+    const data = await response.json();
+    
+    // 检查请求是否成功
+    if (!data.success) {
+      throw new Error(data.message || '获取用户列表失败');
+    }
+    
+    // [步骤5] 提取数据
+    // 获取当前已配置的用户列表
+    const configuredUsers = data.config.users || {};
+    
+    // 获取所有系统用户列表
+    const allUsers = data.all_users || [];
+    
+    // [步骤6] 筛选出未配置的用户
+    // 只显示那些尚未在水印控制配置中的用户
+    const availableUsers = allUsers.filter(username => !(username in configuredUsers));
+    
+    // [步骤7] 生成用户列表HTML
+    if (availableUsers.length === 0) {
+      // 如果没有可添加的用户，显示提示信息
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">所有用户都已添加到配置中</p>';
+    } else {
+      // 清空容器，准备添加用户项
+      listContainer.innerHTML = '';
+      
+      // 为每个可添加的用户创建一个列表项
+      availableUsers.forEach(username => {
+        // 创建用户项容器
+        const userItem = document.createElement('div');
+        // 添加CSS类：白色背景、圆角、边框、flex布局
+        userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors';
+        // 为搜索功能添加data属性
+        userItem.setAttribute('data-username', username.toLowerCase());
+        
+        // 构建HTML内容：用户名 + 添加按钮
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-sm font-medium text-slate-700">${username}</span>
+          </div>
+          <button onclick="addWatermarkUser('${username}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
+            <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            添加
+          </button>
+        `;
+        
+        // 将用户项添加到列表容器中
+        listContainer.appendChild(userItem);
+      });
+    }
+    
+    // [步骤8] 记录成功日志
+    console.log(`[水印控制] 可添加用户列表加载完成，共 ${availableUsers.length} 个用户`);
+    
+  } catch (error) {
+    // [错误处理] 捕获所有可能的错误
+    console.error('[水印控制] 加载可添加用户列表失败:', error);
+    
+    // 显示错误提示
+    showModalAlert('加载用户列表失败：' + error.message);
+    
+    // 在列表容器中显示错误信息
+    const listContainer = document.getElementById('available-watermark-users-list');
+    if (listContainer) {
+      listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-sm">加载失败：${error.message}</p>`;
+    }
+  }
+}
+
+/**
+ * 关闭添加水印控制用户的模态框
+ * 
+ * 功能说明：
+ * 隐藏添加用户的模态框，并清空搜索框的内容。
+ */
+function closeAddWatermarkUserModal() {
+  // [步骤1] 获取模态框元素
+  const modal = document.getElementById('add-watermark-user-modal');
+  if (!modal) {
+    return;
+  }
+  
+  // [步骤2] 添加hidden类，隐藏模态框
+  modal.classList.add('hidden');
+  
+  // [步骤3] 清空搜索框内容
+  const searchInput = document.getElementById('watermark-user-search');
+  if (searchInput) {
+    searchInput.value = '';
+  }
+  
+  // [步骤4] 记录日志
+  console.log('[水印控制] 已关闭添加用户模态框');
+}
+
+/**
+ * 添加用户到水印控制配置
+ * 
+ * 功能说明：
+ * 将指定的用户添加到水印控制配置中，默认权限为"允许去水印"（true）。
+ * 添加完成后，关闭模态框并重新加载配置，以在主面板中显示新添加的用户。
+ * 
+ * 参数:
+ * @param {string} username - 要添加的用户名
+ * 
+ * 操作流程：
+ * 1. 获取当前配置
+ * 2. 将新用户添加到配置中（设为true）
+ * 3. 保存配置到服务器
+ * 4. 关闭模态框
+ * 5. 重新加载主面板配置
+ */
+async function addWatermarkUser(username) {
+  try {
+    // [步骤1] 参数验证
+    if (!username) {
+      throw new Error('用户名不能为空');
+    }
+    
+    // [步骤2] 记录操作日志
+    console.log(`[水印控制] 正在添加用户 "${username}" 到配置...`);
+    
+    // [步骤3] 获取当前配置
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      }
+    });
+    
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.message || '获取当前配置失败');
+    }
+    
+    // [步骤4] 构建新的配置
+    // 获取当前的用户配置
+    const currentUsers = data.config.users || {};
+    
+    // 添加新用户，默认权限为true（允许去水印）
+    currentUsers[username] = true;
+    
+    // 构建完整的配置对象
+    const newConfig = {
+      default: data.config.default,  // 保持默认值不变
+      users: currentUsers  // 使用更新后的用户配置
+    };
+    
+    // [步骤5] 保存新配置到服务器
+    const saveResponse = await fetch('/api/amap/watermark_control/config', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      },
+      body: JSON.stringify(newConfig)
+    });
+    
+    const saveData = await saveResponse.json();
+    if (!saveData.success) {
+      throw new Error(saveData.message || '保存配置失败');
+    }
+    
+    // [步骤6] 关闭模态框
+    closeAddWatermarkUserModal();
+    
+    // [步骤7] 重新加载主面板配置，以显示新添加的用户
+    await loadWatermarkControlConfig();
+    
+    // [步骤8] 显示成功提示
+    showModalAlert(`用户 "${username}" 已成功添加到水印控制配置！`);
+    
+    // [步骤9] 记录成功日志
+    console.log(`[水印控制] 用户 "${username}" 添加成功`);
+    
+  } catch (error) {
+    // [错误处理] 捕获所有可能的错误
+    console.error(`[水印控制] 添加用户 "${username}" 失败:`, error);
+    
+    // 显示错误提示
+    showModalAlert(`添加用户失败：${error.message}`);
+  }
+}
+
+/**
+ * 搜索过滤可添加的用户
+ * 
+ * 功能说明：
+ * 根据搜索框中输入的关键词，过滤用户列表，只显示匹配的用户。
+ * 匹配规则：用户名包含关键词（不区分大小写）。
+ * 
+ * 操作流程：
+ * 1. 获取搜索框中的关键词
+ * 2. 转换为小写（不区分大小写）
+ * 3. 遍历所有用户项
+ * 4. 检查用户名是否包含关键词
+ * 5. 显示或隐藏用户项
+ */
+function filterWatermarkUsers() {
+  // [步骤1] 获取搜索框元素和关键词
+  const searchInput = document.getElementById('watermark-user-search');
+  if (!searchInput) {
+    return;
+  }
+  
+  // 获取搜索关键词，并转换为小写
+  const keyword = searchInput.value.toLowerCase().trim();
+  
+  // [步骤2] 获取所有用户项元素
+  const listContainer = document.getElementById('available-watermark-users-list');
+  if (!listContainer) {
+    return;
+  }
+  
+  // 获取所有包含data-username属性的用户项
+  const userItems = listContainer.querySelectorAll('[data-username]');
+  
+  // [步骤3] 遍历所有用户项，显示或隐藏
+  let visibleCount = 0;  // 统计可见的用户数量
+  
+  userItems.forEach(item => {
+    // 获取用户名（已经是小写）
+    const username = item.getAttribute('data-username');
+    
+    // 检查用户名是否包含关键词
+    if (!keyword || username.includes(keyword)) {
+      // 包含关键词或搜索框为空，显示此用户项
+      item.style.display = '';
+      visibleCount++;
+    } else {
+      // 不包含关键词，隐藏此用户项
+      item.style.display = 'none';
+    }
+  });
+  
+  // [步骤4] 如果没有匹配的用户，显示提示信息
+  // 检查是否有"无结果"提示元素
+  let noResultsMsg = listContainer.querySelector('.no-results-message');
+  
+  if (visibleCount === 0 && userItems.length > 0) {
+    // 没有匹配的用户，显示提示
+    if (!noResultsMsg) {
+      // 如果提示元素不存在，创建它
+      noResultsMsg = document.createElement('p');
+      noResultsMsg.className = 'no-results-message text-slate-400 text-center py-10 text-sm';
+      noResultsMsg.textContent = `未找到匹配 "${keyword}" 的用户`;
+      listContainer.appendChild(noResultsMsg);
+    } else {
+      // 如果提示元素已存在，更新文本
+      noResultsMsg.textContent = `未找到匹配 "${keyword}" 的用户`;
+      noResultsMsg.style.display = '';
+    }
+  } else if (noResultsMsg) {
+    // 有匹配的用户，隐藏提示
+    noResultsMsg.style.display = 'none';
+  }
+  
+  // [步骤5] 记录调试日志
+  console.log(`[水印控制] 搜索关键词: "${keyword}", 匹配用户数: ${visibleCount}`);
+}
+
+/**
  * 加载水印控制配置（移动端）
  * 
  * 功能说明：
@@ -15584,6 +15903,8 @@ function refreshMobileSessionPicker() {
         const paymentSettingsTab = $("admin-tab-payment-settings_modal");
         // [新增] 获取价格设置标签元素
         const pricingTab = $("admin-tab-pricing_modal");
+        // [新增] 获取水印控制标签元素
+        const watermarkControlTab = $("admin-tab-watermark-control_modal");
 
         const usersPanel = $("admin-users-panel_modal");
         const groupsPanel = $("admin-groups-panel_modal");
@@ -15609,6 +15930,8 @@ function refreshMobileSessionPicker() {
         const paymentSettingsPanel = $("admin-payment-settings-panel_modal");
         // [新增] 获取价格设置面板元素
         const pricingPanel = $("admin-pricing-panel_modal");
+        // [新增] 获取水印控制面板元素
+        const watermarkControlPanel = $("admin-watermark-control-panel_modal");
 
         if (!sessionsTab || !sessionsPanel) {
           logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
@@ -15634,6 +15957,7 @@ function refreshMobileSessionPicker() {
           paymentLogsTab, // [新增] 添加支付日志 Tab
           paymentSettingsTab, // [新增] 添加支付设置 Tab
           pricingTab,    // [新增] 添加价格设置 Tab
+          watermarkControlTab, // [新增] 添加水印控制 Tab
         ]
           .filter((t) => t)
           .forEach((t) => {
@@ -15660,7 +15984,8 @@ function refreshMobileSessionPicker() {
           overduePanel,   // [新增] 添加欠费查询 Panel
           paymentLogsPanel, // [新增] 添加支付日志 Panel
           paymentSettingsPanel, // [新增] 添加支付设置 Panel
-          pricingPanel    // [新增] 添加价格设置 Panel
+          pricingPanel,   // [新增] 添加价格设置 Panel
+          watermarkControlPanel // [新增] 添加水印控制 Panel
         ]
           .filter((p) => p)
           .forEach((p) => {
@@ -16057,6 +16382,51 @@ function refreshMobileSessionPicker() {
               pricingPanel: !!pricingPanel,   // 面板元素是否存在
               missingElement: !pricingTab ? "admin-tab-pricing_modal" : 
                               !pricingPanel ? "admin-pricing-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "watermark-control") {
+          // [标签切换] 处理水印控制标签的切换逻辑
+          // 当用户点击"水印控制"标签时，需要显示高德地图去水印控制界面
+          console.log("[标签切换] 正在切换到水印控制标签...");
+          
+          // [获取元素] 获取水印控制标签和面板的DOM元素
+          const watermarkControlTab = $("admin-tab-watermark-control_modal");
+          const watermarkControlPanel = $("admin-watermark-control-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (watermarkControlTab && watermarkControlPanel) {
+            // [激活标签] 为水印控制标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            watermarkControlTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            watermarkControlTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使水印控制面板可见
+            watermarkControlPanel.classList.remove("hidden");
+            
+            // [加载数据] 调用loadWatermarkControlConfig函数加载水印控制配置
+            // 该函数会从后端获取水印控制配置，包括：
+            // - 系统默认值（是否允许去水印）
+            // - 各个用户的个性化配置（用户级别的权限控制）
+            console.log("[数据加载] 开始加载水印控制配置...");
+            loadWatermarkControlConfig();
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了水印控制面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            
+            console.log("[标签切换] 水印控制面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到水印控制标签，元素缺失:", {
+              watermarkControlTab: !!watermarkControlTab,       // 标签元素是否存在
+              watermarkControlPanel: !!watermarkControlPanel,   // 面板元素是否存在
+              missingElement: !watermarkControlTab ? "admin-tab-watermark-control_modal" : 
+                              !watermarkControlPanel ? "admin-watermark-control-panel_modal" : "未知"
             });
           }
         } else {
@@ -34830,7 +35200,31 @@ async function loadSystemConfig() {
       type = "text",
       help = ""
     ) => {
-      const value = config[section]?.[key];
+      // [修复问题28] 获取原始配置值
+      const rawValue = config[section]?.[key];
+      
+      // [修复问题28] 标准化布尔值
+      // 如果类型是boolean，将各种可能的值（字符串"true"/"false"、布尔值、数字等）统一转换为布尔类型
+      let value = rawValue;
+      if (type === "boolean") {
+        // 如果已经是布尔类型，直接使用
+        if (typeof rawValue === "boolean") {
+          value = rawValue;
+        }
+        // 如果是字符串"true"（不区分大小写），转换为true
+        else if (typeof rawValue === "string") {
+          value = rawValue.toLowerCase().trim() === "true";
+        }
+        // 如果是数字1，转换为true；数字0转换为false
+        else if (typeof rawValue === "number") {
+          value = rawValue === 1;
+        }
+        // 其他情况，使用false作为默认值
+        else {
+          value = false;
+        }
+      }
+      
       let inputHtml = "";
       if (type === "boolean") {
         inputHtml = `

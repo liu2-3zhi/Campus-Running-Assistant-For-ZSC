@@ -3417,6 +3417,68 @@ def _get_watermark_removal_default():
         return True
 
 
+def _normalize_watermark_default_value(value):
+    """
+    标准化水印控制的默认值，将各种类型的值统一转换为布尔类型
+    
+    参数:
+        value: 任意类型的值，可能来自JSON配置文件
+        
+    返回值:
+        bool: 转换后的布尔值
+        
+    说明:
+        此函数用于处理配置文件中default字段的各种可能情况：
+        - 如果是布尔值，直接返回
+        - 如果是字符串"true"（不区分大小写），返回True
+        - 如果是字符串"false"（不区分大小写），返回False
+        - 如果是数字1，返回True
+        - 如果是数字0，返回False
+        - 如果是None或其他无效值，返回None（调用方需要进一步处理）
+        
+    用途:
+        - 兼容手动编辑配置文件时可能产生的格式错误
+        - 确保即使配置值类型不正确，也能尝试转换而不是直接失败
+    """
+    # [类型检查] 如果已经是布尔类型，直接返回
+    if isinstance(value, bool):
+        return value
+    
+    # [字符串转换] 如果是字符串类型，尝试转换为布尔值
+    if isinstance(value, str):
+        # 将字符串转换为小写，方便比较
+        value_lower = value.lower().strip()
+        
+        # 检查是否为"true"（表示允许去水印）
+        if value_lower == "true":
+            return True
+        
+        # 检查是否为"false"（表示不允许去水印）
+        elif value_lower == "false":
+            return False
+        
+        # 字符串既不是"true"也不是"false"，无法转换
+        # 返回None，让调用方决定如何处理
+        else:
+            return None
+    
+    # [数字转换] 如果是数字类型（int或float），尝试转换为布尔值
+    if isinstance(value, (int, float)):
+        # 1表示True（允许去水印）
+        if value == 1:
+            return True
+        # 0表示False（不允许去水印）
+        elif value == 0:
+            return False
+        # 其他数字无法转换，返回None
+        else:
+            return None
+    
+    # [其他类型] 对于None或其他无法识别的类型，返回None
+    # 调用方应该检查返回值是否为None，并使用备用方案（如从config.ini读取）
+    return None
+
+
 def _create_permissions_json(force=False):
     """创建默认的permissions.json权限配置文件"""
     # 增加 force 参数判断，如果为 True 则跳过存在性检查，直接覆盖（即清空重建）
@@ -4358,6 +4420,46 @@ class AuthSystem:
             print(f"\n[配置文件错误] 读取 config.ini 文件时发生意外错误: {e}")
             print(f"  请检查文件是否存在、是否有读取权限以及格式是否基本正确。")
             sys.exit(1)
+
+    def reload_config(self):
+        """
+        重新加载配置文件
+        
+        功能说明：
+        当配置文件被修改后，调用此方法重新加载配置，确保内存中的配置与文件一致。
+        这样可以避免使用缓存的旧配置值。
+        
+        使用场景：
+        - 管理员通过管理面板修改了 config.ini 文件
+        - 外部脚本修改了配置文件
+        - 需要立即应用新配置而不重启服务器
+        
+        线程安全：
+        使用锁来确保在多线程环境下安全地重新加载配置
+        
+        返回值：
+        无返回值。重新加载后，self.config 会指向新的配置对象
+        """
+        # [步骤1] 获取锁，确保线程安全
+        # 避免在重新加载配置时，其他线程正在读取配置，导致数据不一致
+        with self.lock:
+            try:
+                # [步骤2] 记录日志
+                logging.info("[配置重载] 开始重新加载 config.ini 配置文件...")
+                
+                # [步骤3] 调用 _load_config 方法重新加载配置
+                # 这会创建一个新的 ConfigParser 对象并读取最新的文件内容
+                self.config = self._load_config()
+                
+                # [步骤4] 记录成功日志
+                logging.info("[配置重载] 配置文件重新加载完成，当前配置节: {}".format(list(self.config.sections())))
+                
+            except Exception as e:
+                # [错误处理] 如果重新加载失败，记录错误日志
+                # 保持旧的配置对象不变，确保系统仍能使用之前的配置运行
+                logging.error(f"[配置重载] 重新加载配置文件失败: {str(e)}", exc_info=True)
+                # 不抛出异常，让系统继续运行
+                # 旧配置仍然有效，虽然不是最新的，但总比崩溃好
 
     def find_user_by_phone(self, phone):
         """
@@ -24216,6 +24318,24 @@ def start_web_server(args_param):
                                str(review_data["enable_message_review"]).lower())
 
             _write_config_with_comments(config, CONFIG_FILE)
+            
+            # [修复问题29] 重新加载配置，清除内存缓存
+            # 在保存配置文件后，立即重新加载 auth_system 的配置
+            # 这样确保后续读取配置时使用的是最新的值，而不是旧的缓存值
+            # 
+            # 问题背景：
+            # auth_system.config 在初始化时加载一次，之后一直使用缓存
+            # 当管理员修改配置后，register_user 等函数读取的仍是旧值
+            # 例如：修改 default_available_runs 从 10 改为 20，
+            # 但新注册的用户仍然得到 10 次免费次数
+            # 
+            # 解决方案：
+            # 在保存配置后立即调用 reload_config()，重新读取文件
+            # 这样 self.config 就会包含最新的配置值
+            logging.info("[配置保存] 正在重新加载配置以清除缓存...")
+            auth_system.reload_config()
+            logging.info("[配置保存] 配置已重新加载，内存缓存已更新")
+            
             # 使用统一函数获取客户端真实IP（任务2）
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
@@ -28960,12 +29080,16 @@ def start_web_server(args_param):
             
             # 步骤5: 用户没有个性化设置，使用默认值
             # 首先尝试从JSON配置文件中读取default字段
-            default_allowed = config.get("default")
+            default_allowed_raw = config.get("default")
             
-            # 如果JSON中没有default字段或值不是布尔类型，则从config.ini读取
+            # [修复] 使用标准化函数尝试将default值转换为布尔类型
+            # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
+            default_allowed = _normalize_watermark_default_value(default_allowed_raw)
+            
+            # 如果标准化后的值仍然不是布尔类型（即转换失败），则从config.ini读取
             if not isinstance(default_allowed, bool):
                 logging.warning(
-                    f"[水印控制] JSON配置中未找到有效的default字段，从config.ini读取默认值"
+                    f"[水印控制] JSON配置中default字段无效（值: {default_allowed_raw}），从config.ini读取默认值"
                 )
                 default_allowed = _get_watermark_removal_default()
             
@@ -29016,12 +29140,16 @@ def start_web_server(args_param):
             
             # 步骤2: 读取默认值
             # 首先尝试从JSON配置文件的default字段读取
-            default_value = config.get("default")
+            default_value_raw = config.get("default")
             
-            # 如果JSON中没有default字段或值不是布尔类型，则从config.ini读取
+            # [修复] 使用标准化函数尝试将default值转换为布尔类型
+            # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
+            default_value = _normalize_watermark_default_value(default_value_raw)
+            
+            # 如果标准化后的值仍然不是布尔类型（即转换失败），则从config.ini读取
             if not isinstance(default_value, bool):
                 logging.warning(
-                    f"[水印控制] JSON配置中未找到有效的default字段，从config.ini读取默认值"
+                    f"[水印控制] JSON配置中default字段无效（值: {default_value_raw}），从config.ini读取默认值"
                 )
                 default_value = _get_watermark_removal_default()
             
