@@ -6941,6 +6941,20 @@ class Api:
                 if k_en in ["AuthorizationCookie", "UA"]:
                     cfg_en.set("System", k_en, v)
 
+        # ========== 任务20修复：保留 [stats] 节 ==========
+        # 问题：normalize_chinese_config_to_english 在规范化时只保留 Config 和 System 节
+        # 导致 [stats] 节（包含 overdue_count 和 completed_count）在规范化过程中丢失
+        # 解决：检查原配置中是否有 [stats] 节，如果有则复制到新配置中
+        if cfg_cn.has_section("stats"):
+            # 添加 [stats] 节到新配置
+            cfg_en.add_section("stats")
+            # 复制所有 stats 节中的配置项
+            for key, value in cfg_cn.items("stats"):
+                cfg_en.set("stats", key, value)
+            logging.debug(
+                f"[任务20修复] normalize_chinese_config_to_english 保留了 [stats] 节 - 文件: {path}"
+            )
+
         try:
             backup_path = f"{path}.bak"
             with open(backup_path, "wb") as bf:
