@@ -48418,43 +48418,116 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
                         </div>
                     </div>
 
+                    <!-- ========== 任务10：合并学校信息和账号详情为统一表单格式 ========== -->
+                    <!-- 原设计：学校信息和账号详情分为两个独立卡片 -->
+                    <!-- 新设计：合并为一个统一的表单卡片，所有信息在同一个表单中展示 -->
+                    <!-- 优点：减少视觉分隔，提高信息的整体性和可读性 -->
                     <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
-                        <div class="bg-gradient-to-r from-blue-50 to-white px-3 py-2 border-b border-blue-100 flex items-center gap-2">
-                            <div class="p-1 bg-blue-100 rounded text-blue-600">
-                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                        <!-- 表单标题栏 - 使用渐变背景和图标 -->
+                        <div class="bg-gradient-to-r from-blue-50 via-purple-50 to-white px-3 py-2 border-b border-blue-100 flex items-center gap-2">
+                            <!-- 图标容器：使用带背景的圆角方块 -->
+                            <div class="p-1 bg-gradient-to-br from-blue-100 to-purple-100 rounded text-blue-600">
+                                <!-- SVG图标：用户信息图标 -->
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
                             </div>
-                            <span class="font-bold text-blue-800 text-xs">学校信息</span>
+                            <!-- 标题文本 -->
+                            <span class="font-bold text-blue-800 text-xs">账号详细信息</span>
                         </div>
+                        
+                        <!-- 表单内容区域 - 使用Grid布局自动调整列数 -->
+                        <!-- grid-cols-2: 默认2列布局 -->
+                        <!-- gap-y-3: 行间距3单位 -->
+                        <!-- gap-x-2: 列间距2单位 -->
                         <div class="p-3 grid grid-cols-2 gap-y-3 gap-x-2 text-slate-700 bg-white">
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">姓名</span><span class="font-medium">${safeStr(dept.name)}</span></div>
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学号</span><span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">${safeStr(dept.studentNum || dept.account)}</span></div>
-                            <div class="col-span-2 border-t border-dashed border-slate-100 pt-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学校</span><span class="font-medium">${safeStr(dept.schoolName)}</span></div>
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">性别</span>${safeStr(dept.sexValue)}</div>
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">身份</span>${safeStr(dept.typeValue)}</div>
-                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">最近登录 (APP)</span><span class="text-xs text-slate-600">${safeStr(dept.logintime)}</span></div>
-                        </div>
-                    </div>
-
-                    <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
-                        <div class="bg-gradient-to-r from-purple-50 to-white px-3 py-2 border-b border-purple-100 flex items-center gap-2">
-                            <div class="p-1 bg-purple-100 rounded text-purple-600">
-                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                            
+                            <!-- ========== 基本信息部分 ========== -->
+                            
+                            <!-- 姓名字段 -->
+                            <div>
+                                <!-- 字段标签：小写字母、灰色、上边距 -->
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">姓名</span>
+                                <!-- 字段值：中等字重，使用safeStr确保安全显示 -->
+                                <span class="font-medium">${safeStr(dept.name)}</span>
                             </div>
-                            <span class="font-bold text-purple-800 text-xs">账号详情</span>
-                        </div>
-                        <div class="p-3 grid grid-cols-2 gap-y-3 gap-x-2 text-slate-700 bg-white">
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">状态</span>${user.status === 1 ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">正常</span>' : '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">异常</span>'}</div>
-                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">注册时间</span><span class="text-xs text-slate-600">${safeStr(user.createtime)}</span></div>
-                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">首次登录</span><span class="text-xs text-slate-600">${safeStr(user.firstlogin)}</span></div>
-                            <div class="col-span-2 pt-1">
+                            
+                            <!-- 学号字段 -->
+                            <div>
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学号</span>
+                                <!-- 学号使用等宽字体，背景高亮显示 -->
+                                <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">${safeStr(dept.studentNum || dept.account)}</span>
+                            </div>
+                            
+                            <!-- 学校字段 - 占据整行 -->
+                            <!-- col-span-2: 跨越2列 -->
+                            <!-- border-t: 上边框分隔线 -->
+                            <div class="col-span-2 border-t border-dashed border-slate-100 pt-2">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学校</span>
+                                <span class="font-medium">${safeStr(dept.schoolName)}</span>
+                            </div>
+                            
+                            <!-- 性别字段 -->
+                            <div>
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">性别</span>
+                                <span>${safeStr(dept.sexValue)}</span>
+                            </div>
+                            
+                            <!-- 身份字段 -->
+                            <div>
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">身份</span>
+                                <span>${safeStr(dept.typeValue)}</span>
+                            </div>
+                            
+                            <!-- ========== 账号状态部分（合并原"账号详情"卡片的内容）========== -->
+                            
+                            <!-- 账号状态字段 - 使用彩色标签显示 -->
+                            <div>
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">状态</span>
+                                <!-- 根据status值显示不同颜色的标签 -->
+                                <!-- status === 1: 绿色"正常"标签 -->
+                                <!-- status !== 1: 红色"异常"标签 -->
+                                ${user.status === 1 ? 
+                                    '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">正常</span>' : 
+                                    '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">异常</span>'
+                                }
+                            </div>
+                            
+                            <!-- 占位div，保持2列布局的对称性 -->
+                            <div></div>
+                            
+                            <!-- 注册时间字段 - 占据整行 -->
+                            <div class="col-span-2">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">注册时间</span>
+                                <span class="text-xs text-slate-600">${safeStr(user.createtime)}</span>
+                            </div>
+                            
+                            <!-- 首次登录字段 - 占据整行 -->
+                            <div class="col-span-2">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">首次登录</span>
+                                <span class="text-xs text-slate-600">${safeStr(user.firstlogin)}</span>
+                            </div>
+                            
+                            <!-- 最近登录字段 - 占据整行 -->
+                            <div class="col-span-2">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">最近登录 (APP)</span>
+                                <span class="text-xs text-slate-600">${safeStr(dept.logintime)}</span>
+                            </div>
+                            
+                            <!-- 账号密码字段 - 占据整行，使用边框分隔 -->
+                            <div class="col-span-2 pt-1 border-t border-dashed border-slate-100">
                                 <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">账号密码</span>
+                                <!-- 密码显示区域：使用flex布局，包含密码文本和"明文"标签 -->
                                 <div class="flex items-center gap-2">
+                                    <!-- 密码文本：使用等宽字体，可全选，背景和边框高亮 -->
                                     <span class="font-mono bg-slate-100 border border-slate-200 px-2 py-1 rounded text-slate-600 select-all">${safeStr(user.text_password)}</span>
+                                    <!-- "明文"标签：提示用户这是明文密码 -->
                                     <span class="text-[10px] text-slate-400">(明文)</span>
                                 </div>
                             </div>
                         </div>
                     </div>
+                    <!-- ========== 任务10修改完成 ========== -->
 
                     <div class="border border-slate-200 rounded-lg overflow-hidden">
                         <button onclick="const el = this.nextElementSibling; el.classList.toggle('hidden'); this.querySelector('svg').style.transform = el.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';" 

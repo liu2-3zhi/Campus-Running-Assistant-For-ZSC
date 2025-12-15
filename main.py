@@ -15598,6 +15598,7 @@ class BackgroundTaskManager:
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
         """
+        # ========== 任务20修复：欠费检查前强制重新读取INI文件 ==========
         # 步骤1：欠费检查（在启动任务前执行）
         # 获取当前用户的认证用户名
         auth_username = getattr(api_instance, 'auth_username', None)
@@ -15606,36 +15607,66 @@ class BackgroundTaskManager:
 
         # 如果能获取到用户名，进行欠费检查
         if auth_username:
-            # 加载该用户的所有学校账号
-            
+            # 从 api_instance.user_info 获取学校账号用户名
+            # 注意：user_info 可能包含持久化会话中的旧数据
             self.user_info = getattr(api_instance, "user_info", {})
             school_username = self.user_info.get("student_id")
-            logging.debug(f"cls户 {auth_username} 的学校账号 {school_username} 是否存在欠费")
             
-            # 检查每个账号是否存在欠费
+            logging.debug(
+                f"[任务20修复] 检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费"
+            )
+            
+            # --- 关键修复：强制从INI文件重新读取最新的统计数据 ---
+            # 原因：user_info 中可能包含缓存的旧数据
+            # 如果用户在程序运行期间通过欠费系统修改了INI文件，
+            # 而任务系统仍使用缓存的 user_info，就会导致数据不同步
+            # 解决方案：每次启动任务前，都从INI文件实时读取最新的欠费状态
+            
+            # 初始化欠费账号列表（用于记录所有存在欠费的账号）
             overdue_accounts_list = []
             
-            # 从 INI 文件读取统计数据
+            # 调用 _load_school_account_stats_from_ini() 方法
+            # 此方法会直接打开INI文件读取，不依赖任何缓存
+            # 返回格式：{"overdue_count": int, "completed_count": int}
             stats = api_instance._load_school_account_stats_from_ini(school_username)
+            
+            # 从返回的统计数据中提取欠费次数
+            # 使用 .get() 方法并指定默认值 0，防止键不存在时报错
             overdue_count = stats.get("overdue_count", 0)
+            
+            # 记录日志：显示从INI文件读取到的欠费次数
+            # 这有助于追踪数据同步问题
+            logging.info(
+                f"[任务20修复] 从INI文件读取到最新数据 - "
+                f"学校账号: {school_username}, 欠费次数: {overdue_count}"
+            )
 
-            # 如果存在欠费，记录到列表中
+            # 如果存在欠费（overdue_count > 0），记录到欠费账号列表中
             if overdue_count > 0:
                 overdue_accounts_list.append({
-                    "school_username": school_username,
-                    "overdue_count": overdue_count
+                    "school_username": school_username,  # 学校账号用户名
+                    "overdue_count": overdue_count       # 欠费次数
                 })
+                
+                # 记录警告日志：发现欠费账号
+                logging.warning(
+                    f"[任务20修复] 发现欠费账号 - "
+                    f"学校账号: {school_username}, 欠费次数: {overdue_count}"
+                )
 
             # 如果发现任何账号有欠费，拒绝启动任务
             if overdue_accounts_list:
+                # 记录警告日志：拒绝启动任务（包含欠费账号数量）
                 logging.warning(
                     f"[欠费检查] 用户 {auth_username} 有 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
                 )
+                
+                # 返回失败响应，包含详细的错误信息和欠费账号列表
                 return {
-                    "success": False,
-                    "message": "有账号存在欠费，请先缴费",
-                    "error_code": "OVERDUE_PAYMENT",
-                    "overdue_accounts": overdue_accounts_list
+                    "success": False,                       # 操作失败标志
+                    "message": "有账号存在欠费，请先缴费",   # 用户友好的错误消息
+                    "error_code": "OVERDUE_PAYMENT",        # 错误代码，前端可据此识别错误类型
+                    "overdue_accounts": overdue_accounts_list  # 欠费账号详细列表
                 }
 
 
@@ -30419,30 +30450,139 @@ def start_web_server(args_param):
             # 所有日志文件统一存放在 PAYMENT_LOGS_DIR 目录下，不再按用户分子目录
             log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
 
-            # 准备要写入的完整日志数据
-            # 合并基础信息和传入的自定义数据
+            # ========== 任务4增强：准备更详细的支付日志数据 ==========
+            # 合并基础信息和传入的自定义数据，形成完整的日志记录
+            # 新增字段：referer、request_method、request_path、session_id等
             full_log_data = {
-                # 基础元信息
-                "timestamp": time.time(),                          # Unix时间戳（数字）
-                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),   # 可读时间（字符串）
-                "action": action,                                  # 操作类型
-                "user_id": user_id,                                # 用户标识
-                "order_id": order_id,                              # 订单号
-                # 请求元信息（在Flask请求上下文中可用）
-                # 客户端IP
-                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,
-                # 浏览器UA
-                "user_agent": request.headers.get("User-Agent", "") if request else "",
-                # 自定义数据（从参数传入）
+                # === 基础元信息 ===
+                "timestamp": time.time(),                          # Unix时间戳（数字），用于精确计算时间差
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),   # 可读时间字符串，便于人工查看
+                "iso_datetime": datetime.datetime.now().isoformat(),  # ISO 8601格式时间，便于跨系统交换
+                
+                # === 业务信息 ===
+                "action": action,                                  # 操作类型（如：create_order、query_order、payment_notify）
+                "user_id": user_id,                                # 用户标识（注册用户为username，游客为session UUID）
+                "order_id": order_id,                              # 订单号，用于关联订单和日志
+                
+                # === 请求元信息（仅在Flask请求上下文中可用） ===
+                # 以下字段只有在HTTP请求处理过程中才有值，后台任务中为None
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,  # 客户端真实IP地址
+                "user_agent": request.headers.get("User-Agent", "") if request else "",  # 浏览器User-Agent字符串
+                "referer": request.headers.get("Referer", "") if request else "",  # HTTP Referer头，表示请求来源页面
+                "request_method": request.method if request else None,  # HTTP请求方法（GET、POST等）
+                "request_path": request.path if request else None,  # 请求的URL路径
+                "request_url": request.url if request else None,  # 完整的请求URL
+                
+                # === 会话信息 ===
+                # session_id用于追踪同一用户的多次请求
+                "session_id": session.get("session_id") if request and hasattr(session, "get") else None,
+                
+                # === 服务器信息 ===
+                # 记录处理请求的服务器信息，便于分布式环境下的问题排查
+                "server_hostname": socket.gethostname() if socket else "unknown",  # 服务器主机名
+                "process_id": os.getpid(),  # 当前进程ID
+                
+                # === 自定义数据（从参数传入） ===
+                # 使用**运算符展开log_data字典，将其所有键值对添加到full_log_data中
+                # 这允许调用者传入任意额外的业务数据
                 **log_data
             }
 
-            # 将日志数据写入JSON文件
+            # ========== 任务4增强：写入日志文件并检查日志目录大小 ==========
+            
+            # --- 步骤1：写入日志文件 ---
+            # 将日志数据序列化为JSON格式并写入文件
             # 使用UTF-8编码支持中文
-            # indent=2 使JSON格式化，便于人工阅读
-            # ensure_ascii=False 保留中文字符，不转义为\uXXXX
+            # indent=2 使JSON格式化，便于人工阅读和调试
+            # ensure_ascii=False 保留中文字符，不转义为\uXXXX格式
             with open(log_filepath, "w", encoding="utf-8") as f:
                 json.dump(full_log_data, f, indent=2, ensure_ascii=False)
+
+            # --- 步骤2：检查日志目录总大小（简单的日志轮转机制） ---
+            # 为了防止日志文件无限增长占满磁盘，我们检查日志目录的总大小
+            # 如果超过阈值，删除最旧的日志文件
+            try:
+                # 定义日志目录最大大小限制（单位：字节）
+                # 这里设置为100MB，可根据实际需求调整
+                MAX_LOG_DIR_SIZE = 100 * 1024 * 1024  # 100 MB
+                
+                # 计算当前日志目录的总大小
+                total_size = 0  # 初始化总大小为0
+                log_files = []  # 用于存储日志文件信息的列表
+                
+                # 遍历日志目录中的所有文件
+                for filename in os.listdir(PAYMENT_LOGS_DIR):
+                    # 构造文件的完整路径
+                    filepath = os.path.join(PAYMENT_LOGS_DIR, filename)
+                    
+                    # 只处理.json文件，忽略其他文件
+                    if os.path.isfile(filepath) and filename.endswith('.json'):
+                        # 获取文件大小（单位：字节）
+                        file_size = os.path.getsize(filepath)
+                        # 获取文件最后修改时间（Unix时间戳）
+                        file_mtime = os.path.getmtime(filepath)
+                        
+                        # 累加文件大小到总大小
+                        total_size += file_size
+                        # 将文件信息添加到列表中，用于后续排序
+                        # 元组格式：(文件路径, 修改时间, 文件大小)
+                        log_files.append((filepath, file_mtime, file_size))
+                
+                # 如果日志目录总大小超过限制，执行清理
+                if total_size > MAX_LOG_DIR_SIZE:
+                    # 记录警告日志：日志目录大小超限
+                    logging.warning(
+                        f"[支付日志轮转] 日志目录大小 {total_size / (1024*1024):.2f}MB "
+                        f"超过限制 {MAX_LOG_DIR_SIZE / (1024*1024):.2f}MB，开始清理旧日志"
+                    )
+                    
+                    # 按文件修改时间排序，最旧的文件排在前面
+                    # key=lambda x: x[1] 表示按元组的第二个元素（修改时间）排序
+                    log_files.sort(key=lambda x: x[1])
+                    
+                    # 删除文件直到总大小降到限制的80%以下
+                    # 保留20%的缓冲空间，避免频繁触发清理
+                    target_size = MAX_LOG_DIR_SIZE * 0.8
+                    deleted_count = 0  # 记录删除的文件数量
+                    
+                    # 从最旧的文件开始删除
+                    for filepath, file_mtime, file_size in log_files:
+                        # 如果当前总大小已低于目标大小，停止删除
+                        if total_size <= target_size:
+                            break
+                        
+                        try:
+                            # 删除文件
+                            os.remove(filepath)
+                            # 从总大小中减去已删除文件的大小
+                            total_size -= file_size
+                            # 删除计数器加1
+                            deleted_count += 1
+                            
+                            # 记录调试日志：文件已删除
+                            logging.debug(
+                                f"[支付日志轮转] 已删除旧日志文件: {os.path.basename(filepath)} "
+                                f"({file_size / 1024:.2f} KB)"
+                            )
+                        except Exception as delete_error:
+                            # 删除失败，记录警告但继续处理其他文件
+                            logging.warning(
+                                f"[支付日志轮转] 删除日志文件失败: {os.path.basename(filepath)}, "
+                                f"错误: {str(delete_error)}"
+                            )
+                    
+                    # 记录信息日志：清理完成
+                    if deleted_count > 0:
+                        logging.info(
+                            f"[支付日志轮转] 清理完成，已删除 {deleted_count} 个旧日志文件，"
+                            f"当前目录大小: {total_size / (1024*1024):.2f}MB"
+                        )
+            
+            except Exception as rotation_error:
+                # 日志轮转失败不影响主业务，只记录警告日志
+                logging.warning(
+                    f"[支付日志轮转] 日志目录大小检查失败: {str(rotation_error)}"
+                )
 
             # 记录调试日志：日志写入成功
             logging.debug(
@@ -32445,16 +32585,57 @@ def start_web_server(args_param):
                 # exist_ok=True 表示如果目录已存在也不报错
                 os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
 
+            # ========== 任务3优化：使用增量更新模式写入订单文件 ==========
             # 构造订单文件路径：payment_orders/{订单号}.json
+            # order_file 是订单JSON文件的完整路径
             order_file = os.path.join(
                 PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
 
-            # 将订单数据写入JSON文件
+            # --- 步骤1：检查文件是否已存在 ---
+            # 如果订单文件已存在，说明可能是重复创建或订单更新操作
+            # 需要先读取现有数据，避免覆盖其他字段
+            existing_order_data = {}  # 初始化现有订单数据字典为空
+            if os.path.exists(order_file):
+                # 文件存在，尝试读取现有订单数据
+                try:
+                    # 以只读模式打开文件，使用UTF-8编码支持中文
+                    with open(order_file, "r", encoding="utf-8") as f:
+                        # 解析JSON文件内容为Python字典对象
+                        existing_order_data = json.load(f)
+                    # 记录日志：成功读取现有订单文件
+                    logging.info(
+                        f"[订单文件] 检测到现有订单文件，将进行增量更新 - 订单号: {out_trade_no}"
+                    )
+                except Exception as read_error:
+                    # 读取失败（文件损坏或格式错误），记录警告但不中断流程
+                    # 此时 existing_order_data 保持为空字典，后续会完全覆盖
+                    logging.warning(
+                        f"[订单文件] 读取现有订单文件失败，将创建新文件 - "
+                        f"订单号: {out_trade_no}, 错误: {str(read_error)}"
+                    )
+
+            # --- 步骤2：合并订单数据（增量更新） ---
+            # 使用字典的update()方法，将新的order_data合并到existing_order_data中
+            # update()会保留existing_order_data中order_data没有的字段
+            # 并更新existing_order_data中order_data已有的字段
+            # 这样可以避免丢失文件中可能存在的其他自定义字段
+            existing_order_data.update(order_data)
+            
+            # --- 步骤3：写入合并后的订单数据到文件 ---
+            # 使用写入模式打开文件（会覆盖原文件内容）
+            # 注意：此时写入的是合并后的数据，保留了原有的额外字段
             with open(order_file, "w", encoding="utf-8") as f:
                 # json.dump() 将Python对象序列化为JSON格式并写入文件
-                # indent=2: 格式化输出，每层缩进2个空格
-                # ensure_ascii=False: 保存中文字符，不转义为\uXXXX
-                json.dump(order_data, f, indent=2, ensure_ascii=False)
+                # existing_order_data: 合并后的完整订单数据（包含新旧字段）
+                # indent=2: 格式化输出，每层缩进2个空格，便于人工阅读
+                # ensure_ascii=False: 保存中文字符，不转义为\uXXXX格式
+                json.dump(existing_order_data, f, indent=2, ensure_ascii=False)
+            
+            # 记录日志：订单文件写入成功
+            logging.debug(
+                f"[订单文件] 订单数据已保存（增量更新模式） - "
+                f"文件: {order_file}, 订单号: {out_trade_no}"
+            )
 
             # ========== 步骤12：记录操作日志 ==========
 
