@@ -6941,6 +6941,20 @@ class Api:
                 if k_en in ["AuthorizationCookie", "UA"]:
                     cfg_en.set("System", k_en, v)
 
+        # ========== 任务20修复：保留 [stats] 节 ==========
+        # 问题：normalize_chinese_config_to_english 在规范化时只保留 Config 和 System 节
+        # 导致 [stats] 节（包含 overdue_count 和 completed_count）在规范化过程中丢失
+        # 解决：检查原配置中是否有 [stats] 节，如果有则复制到新配置中
+        if cfg_cn.has_section("stats"):
+            # 添加 [stats] 节到新配置
+            cfg_en.add_section("stats")
+            # 复制所有 stats 节中的配置项
+            for key, value in cfg_cn.items("stats"):
+                cfg_en.set("stats", key, value)
+            logging.debug(
+                f"[任务20修复] normalize_chinese_config_to_english 保留了 [stats] 节 - 文件: {path}"
+            )
+
         try:
             backup_path = f"{path}.bak"
             with open(backup_path, "wb") as bf:
@@ -7269,8 +7283,30 @@ class Api:
                 )
                 return
 
-        accounts[school_username] = {
-            "password": password, "ua": ua if ua else ""}
+        # ========== 任务20修复：更新密码时保留统计数据 ==========
+        # 问题：直接赋值 accounts[school_username] = {...} 会丢失 overdue_count 和 completed_count
+        # 解决：先获取现有数据，更新密码和UA，保留统计数据
+        if school_username in accounts:
+            # 账号已存在，更新密码和UA，保留其他字段
+            accounts[school_username]["password"] = password
+            accounts[school_username]["ua"] = ua if ua else ""
+            logging.debug(
+                f"[任务20修复] 更新 {school_username} 密码和UA，保留统计数据: "
+                f"overdue_count={accounts[school_username].get('overdue_count', 'N/A')}, "
+                f"completed_count={accounts[school_username].get('completed_count', 'N/A')}"
+            )
+        else:
+            # 账号不存在，创建新条目（统计数据默认为0）
+            accounts[school_username] = {
+                "password": password,
+                "ua": ua if ua else "",
+                "overdue_count": 0,
+                "completed_count": 0
+            }
+            logging.debug(
+                f"[任务20修复] 创建新账号 {school_username}，统计数据初始化为0"
+            )
+        
         self._save_user_school_accounts(auth_username, accounts)
         logging.info(
             f"已更新用户 {auth_username} 的 school_account {school_username} 的密码和UA"
@@ -7683,10 +7719,59 @@ class Api:
         if os.path.exists(user_ini_path):
             try:
                 cfg_to_save.read(user_ini_path, encoding="utf-8")
+                # ========== 任务20调试：记录读取到的所有节 ==========
+                logging.debug(
+                    f" _save_config读取INI文件 - "
+                    f"用户: {username}, 包含的节: {cfg_to_save.sections()}"
+                )
+                # 如果存在stats节，记录其内容
+                if cfg_to_save.has_section('stats'):
+                    stats_items = dict(cfg_to_save.items('stats'))
+                    logging.debug(
+                        f" _save_config读取到 [stats] 节 - "
+                        f"用户: {username}, 内容: {stats_items}"
+                    )
             except Exception as e:
                 logging.warning(
                     f"读取旧配置文件 {user_ini_path} 失败: {e}, 将创建新的。"
                 )
+        
+        # ========== 任务20修复：保留 [stats] 节，避免覆盖欠费数据 ==========
+        # 问题背景：
+        # 1. 欠费系统通过 _save_school_account_stats_to_ini() 修改了 [stats] 节
+        # 2. 任务系统调用 _save_config() 保存密码或其他配置时，会覆盖整个文件
+        # 3. 导致 [stats] 节的数据丢失，欠费数据被还原
+        #
+        # 解决方案：
+        # 在读取现有配置后，检查是否存在 [stats] 节
+        # 如果存在，保存其内容到临时变量
+        # 在写入文件前，将保存的内容恢复到配置对象中
+        #
+        # 这样可以确保 [stats] 节的 overdue_count 和 completed_count 不被覆盖
+        
+        # --- 步骤1：备份 [stats] 节的数据 ---
+        # 初始化备份字典，用于存储 [stats] 节的所有配置项
+        stats_section_backup = {}
+        
+        # 检查配置对象中是否存在 [stats] 节
+        if cfg_to_save.has_section('stats'):
+            # [stats] 节存在，遍历并保存其所有配置项
+            for option in cfg_to_save.options('stats'):
+                # 将每个配置项的名称和值保存到备份字典中
+                stats_section_backup[option] = cfg_to_save.get('stats', option)
+            
+            # 记录调试日志：已检测到并备份 [stats] 节
+            # 这有助于排查问题，确认备份操作是否执行
+            logging.debug(
+                f"[任务20修复] 检测到现有 [stats] 节，已备份 - "
+                f"用户: {username}, 备份数据: {stats_section_backup}"
+            )
+        else:
+            # [stats] 节不存在，记录调试日志
+            # 这是正常情况，说明该用户的INI文件中还没有欠费统计数据
+            logging.debug(
+                f"[任务20修复] 用户配置中不存在 [stats] 节 - 用户: {username}"
+            )
 
         if not cfg_to_save.has_section("Config"):
             cfg_to_save.add_section("Config")
@@ -7734,8 +7819,62 @@ class Api:
         for k, v in params_to_save.items():
             if k in self.global_params and k != "amap_js_key":
                 cfg_to_save.set("Config", k, str(v))
+        
+        # ========== 任务20修复：恢复 [stats] 节 ==========
+        # 在写入文件之前，将之前备份的 [stats] 节数据恢复到配置对象中
+        # 这样可以确保 [stats] 节的数据不会在保存配置时丢失
+        
+        # --- 步骤2：恢复 [stats] 节的数据 ---
+        # 检查备份字典是否包含数据（非空）
+        if stats_section_backup:
+            # 备份字典非空，说明之前存在 [stats] 节，需要恢复
+            
+            # 首先检查配置对象中是否已经有 [stats] 节
+            # 如果没有，则创建一个新的 [stats] 节
+            if not cfg_to_save.has_section('stats'):
+                cfg_to_save.add_section('stats')
+                logging.debug(
+                    f"[任务20修复] 重新创建 [stats] 节 - 用户: {username}"
+                )
+            
+            # 遍历备份字典，将所有配置项恢复到 [stats] 节中
+            for option, value in stats_section_backup.items():
+                cfg_to_save.set('stats', option, value)
+            
+            # 记录调试日志：已成功恢复 [stats] 节
+            # 这是关键的验证步骤，确保数据恢复成功
+            logging.debug(
+                f"[任务20修复] 已恢复 [stats] 节到配置文件 - "
+                f"用户: {username}, 恢复的配置项数量: {len(stats_section_backup)}"
+            )
+            
+            # 记录信息日志：用于监控和审计
+            # 让管理员知道 [stats] 节被正确保留了
+            logging.info(
+                f"[任务20修复] 成功保留 [stats] 节数据 - "
+                f"用户: {username}, overdue_count: {stats_section_backup.get('overdue_count', 'N/A')}, "
+                f"completed_count: {stats_section_backup.get('completed_count', 'N/A')}"
+            )
 
         try:
+            # ========== 任务20调试：记录即将写入的所有节 ==========
+            logging.debug(
+                f" _save_config即将写入INI文件 - "
+                f"用户: {username}, 包含的节: {cfg_to_save.sections()}"
+            )
+            # 如果存在stats节，记录其内容
+            if cfg_to_save.has_section('stats'):
+                stats_items = dict(cfg_to_save.items('stats'))
+                logging.debug(
+                    f" _save_config即将写入 [stats] 节 - "
+                    f"用户: {username}, 内容: {stats_items}"
+                )
+            else:
+                logging.warning(
+                    f" _save_config即将写入但没有 [stats] 节 - "
+                    f"用户: {username}"
+                )
+            
             with open(user_ini_path, "w", encoding="utf-8") as f:
                 cfg_to_save.write(f)
             logging.debug(
@@ -32058,9 +32197,37 @@ def start_web_server(args_param):
                     order_data["paid_time"] = time.strftime(
                         "%Y-%m-%d %H:%M:%S")
 
-                    # 保存更新后的订单数据
+                    # ========== 任务3优化：使用增量更新模式保存订单 ==========
+                    # 原因：避免覆盖订单文件中可能存在的其他字段
+                    # 例如：退款信息、管理员备注等
+                    
+                    # 步骤1：读取现有订单数据（如果文件存在）
+                    existing_order_data = {}
+                    if os.path.exists(order_file):
+                        try:
+                            with open(order_file, "r", encoding="utf-8") as f:
+                                existing_order_data = json.load(f)
+                            logging.debug(
+                                f"[订单查询] 读取现有订单文件成功 - 订单号: {order_id}"
+                            )
+                        except Exception as read_error:
+                            logging.warning(
+                                f"[订单查询] 读取现有订单文件失败，将创建新文件 - "
+                                f"订单号: {order_id}, 错误: {str(read_error)}"
+                            )
+                    
+                    # 步骤2：合并订单数据（增量更新）
+                    # 将新数据合并到现有数据中，保留现有数据中新数据没有的字段
+                    existing_order_data.update(order_data)
+                    
+                    # 步骤3：保存更新后的订单数据
                     with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(order_data, f, indent=2, ensure_ascii=False)
+                        json.dump(existing_order_data, f, indent=2, ensure_ascii=False)
+                    
+                    logging.debug(
+                        f"[订单查询] 订单状态已更新（增量更新模式） - "
+                        f"订单号: {order_id}, 状态: pending -> paid"
+                    )
 
                     # ========== 写入支付操作日志（状态更新） ==========
 
@@ -33247,6 +33414,190 @@ def start_web_server(args_param):
             logging.error(f"[订单列表] 查询订单列表异常: {str(e)}")
             logging.error(traceback.format_exc())
             return jsonify({"success": False, "message": f"查询失败: {str(e)}"}), 500
+
+    # ==============================================================================
+    # 任务1新增：通过订单号直接查询订单接口（无需遍历所有订单，性能更优）
+    # ==============================================================================
+    
+    @app.route("/api/payment/order_by_tradeno", methods=["GET"])
+    @login_required
+    def payment_get_order_by_tradeno():
+        """
+        通过订单号直接查询单个订单接口（任务1新增）
+        
+        请求方法：GET
+        权限要求：需要登录
+        
+        查询参数（URL参数）：
+            - trade_no (str, 必需): 商户订单号
+        
+        返回数据（JSON格式）：
+            - success (bool): 是否成功
+            - message (str): 提示信息
+            - order (dict): 订单详细数据（仅在success=true时存在）
+        
+        功能说明：
+        1. 普通用户只能查询自己的订单，否则返回权限错误
+        2. 管理员可以查询所有用户的订单
+        3. 直接通过文件路径读取订单，无需遍历所有订单文件
+        4. 相比 /api/payment/orders 接口，性能更优，适用于按订单号精确查询的场景
+        
+        使用场景：
+        - 前端通过订单号快速获取订单金额等信息
+        - 退款时验证订单是否存在
+        - 订单详情页直接加载订单数据
+        """
+        try:
+            # ========== 步骤1：获取并验证请求参数 ==========
+            
+            # 从URL查询参数中获取订单号（trade_no）
+            # strip() 去除首尾空格，避免用户误输入空格导致查询失败
+            trade_no = request.args.get("trade_no", "").strip()
+            
+            # 验证订单号是否为空
+            # 如果为空，返回400错误（Bad Request - 客户端请求参数错误）
+            if not trade_no:
+                return jsonify({
+                    "success": False,
+                    "message": "订单号不能为空"
+                }), 400
+            
+            # ========== 步骤2：构造订单文件路径 ==========
+            
+            # 使用 os.path.join() 安全地拼接路径，避免路径注入攻击
+            # PAYMENT_ORDERS_DIR: 订单存储目录（全局常量）
+            # 订单文件命名规则：{订单号}.json
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{trade_no}.json")
+            
+            # 记录调试日志：开始查询订单
+            logging.debug(
+                f"[订单查询] 通过订单号查询订单 - "
+                f"用户: {g.user}, 订单号: {trade_no}, 文件路径: {order_file}"
+            )
+            
+            # ========== 步骤3：检查订单文件是否存在 ==========
+            
+            # 使用 os.path.exists() 检查文件是否存在
+            # 如果文件不存在，说明订单号无效或订单已被删除
+            if not os.path.exists(order_file):
+                # 返回404错误（Not Found - 资源不存在）
+                # 这里不使用500错误，因为这是正常的业务逻辑（订单不存在）
+                logging.warning(
+                    f"[订单查询] 订单文件不存在 - "
+                    f"用户: {g.user}, 订单号: {trade_no}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": f"订单不存在：{trade_no}"
+                }), 404
+            
+            # ========== 步骤4：读取订单文件 ==========
+            
+            try:
+                # 以只读模式打开订单文件
+                # encoding="utf-8": 指定UTF-8编码，确保正确读取中文内容
+                with open(order_file, "r", encoding="utf-8") as f:
+                    # json.load() 将JSON格式的文件内容解析为Python字典对象
+                    order_data = json.load(f)
+                    
+            except json.JSONDecodeError as json_err:
+                # JSON解析失败（文件内容格式错误或损坏）
+                # 这通常是由于文件写入不完整或手动编辑错误导致
+                logging.error(
+                    f"[订单查询] 订单文件格式错误 - "
+                    f"订单号: {trade_no}, 错误: {str(json_err)}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "订单文件格式错误，请联系管理员"
+                }), 500
+                
+            except IOError as io_err:
+                # 文件读取失败（磁盘IO错误、权限不足等）
+                logging.error(
+                    f"[订单查询] 读取订单文件失败 - "
+                    f"订单号: {trade_no}, 错误: {str(io_err)}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "读取订单失败，请稍后重试"
+                }), 500
+            
+            # ========== 步骤5：权限检查（重要安全控制） ==========
+            
+            # 检查当前用户是否为管理员
+            # check_permission() 会验证用户是否有"manage_users"权限
+            is_admin = auth_system.check_permission(g.user, "manage_users")
+            
+            # 从订单数据中获取订单所属用户名
+            # get() 方法安全地获取字段值，如果字段不存在则返回None
+            order_username = order_data.get("username")
+            
+            # 权限验证逻辑：
+            # - 如果不是管理员（is_admin=False）
+            # - 并且订单不属于当前用户（order_username != g.user）
+            # - 则拒绝访问，返回403错误（Forbidden - 禁止访问）
+            if not is_admin and order_username != g.user:
+                # 记录安全日志：用户尝试访问不属于自己的订单
+                logging.warning(
+                    f"[订单查询] 权限拒绝 - "
+                    f"用户 {g.user} 尝试查询其他用户的订单: {trade_no} "
+                    f"(订单所属用户: {order_username})"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "无权限访问该订单"
+                }), 403
+            
+            # ========== 步骤6：返回订单数据 ==========
+            
+            # 任务4增强：记录订单查询操作日志
+            # 记录成功的订单查询，用于审计和安全监控
+            _write_payment_log(
+                user_id=g.user,                     # 查询用户
+                order_id=trade_no,                  # 订单号
+                action="query_order_by_tradeno",   # 操作类型：通过订单号查询订单（任务1新增接口）
+                log_data={
+                    "query_method": "direct",       # 查询方式：直接查询（区别于列表查询）
+                    "order_status": order_data.get("status"),  # 订单状态
+                    "order_amount": order_data.get("amount"),  # 订单金额
+                    "is_admin": is_admin,           # 是否管理员查询
+                    "result": "success"             # 查询结果：成功
+                }
+            )
+            
+            # 记录成功日志
+            logging.info(
+                f"[订单查询] 查询订单成功 - "
+                f"用户: {g.user}, 订单号: {trade_no}, "
+                f"订单状态: {order_data.get('status')}"
+            )
+            
+            # 返回成功响应（HTTP 200 OK）
+            # order字段包含完整的订单数据
+            return jsonify({
+                "success": True,
+                "message": "查询成功",
+                "order": order_data
+            })
+        
+        except Exception as e:
+            # ========== 捕获所有未预期的异常 ==========
+            
+            # 记录详细的错误日志，包含完整的堆栈跟踪
+            # 这有助于快速定位和修复问题
+            logging.error(
+                f"[订单查询] 查询订单异常 - "
+                f"用户: {g.user}, 订单号: {trade_no}, 错误: {str(e)}"
+            )
+            logging.error(traceback.format_exc())
+            
+            # 返回500错误（Internal Server Error - 服务器内部错误）
+            # 不向客户端暴露详细的错误信息，避免安全风险
+            return jsonify({
+                "success": False,
+                "message": f"查询失败: {str(e)}"
+            }), 500
 
     # ==============================================================================
     # 支付验证接口 - 用于验证app_host的安全性
