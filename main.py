@@ -7283,8 +7283,30 @@ class Api:
                 )
                 return
 
-        accounts[school_username] = {
-            "password": password, "ua": ua if ua else ""}
+        # ========== 任务20修复：更新密码时保留统计数据 ==========
+        # 问题：直接赋值 accounts[school_username] = {...} 会丢失 overdue_count 和 completed_count
+        # 解决：先获取现有数据，更新密码和UA，保留统计数据
+        if school_username in accounts:
+            # 账号已存在，更新密码和UA，保留其他字段
+            accounts[school_username]["password"] = password
+            accounts[school_username]["ua"] = ua if ua else ""
+            logging.debug(
+                f"[任务20修复] 更新 {school_username} 密码和UA，保留统计数据: "
+                f"overdue_count={accounts[school_username].get('overdue_count', 'N/A')}, "
+                f"completed_count={accounts[school_username].get('completed_count', 'N/A')}"
+            )
+        else:
+            # 账号不存在，创建新条目（统计数据默认为0）
+            accounts[school_username] = {
+                "password": password,
+                "ua": ua if ua else "",
+                "overdue_count": 0,
+                "completed_count": 0
+            }
+            logging.debug(
+                f"[任务20修复] 创建新账号 {school_username}，统计数据初始化为0"
+            )
+        
         self._save_user_school_accounts(auth_username, accounts)
         logging.info(
             f"已更新用户 {auth_username} 的 school_account {school_username} 的密码和UA"
