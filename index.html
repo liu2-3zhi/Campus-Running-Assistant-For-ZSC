@@ -618,7 +618,8 @@
             请输入您的验证器应用中的6位验证码
           </p>
         </div>
-        <div id="auth-reg-sms-wrapper">
+        <!-- 修复ID冲突：重命名为 auth-2fa-code-wrapper，因为这是2FA验证码容器，不是SMS短信验证码 -->
+        <div id="auth-2fa-code-wrapper">
           <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
           <input type="text" id="auth-2fa-code" class="input-field mt-1" placeholder="输入6位验证码" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code">
         </div>
@@ -1962,7 +1963,8 @@
               刷新
             </button>
 
-            <button id="mobile-mark-all-read-modal-btn" class="flex-1 py-3 px-4 bg-gradient-to-r from-slate-500 to-slate-600 text-white rounded-xl text-sm font-bold hover:from-slate-600 hover:to-slate-700 transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg" onclick="mobileMarkAllAsRead()">
+            <!-- 修复ID冲突：重命名为 mobile-mark-all-read-panel-btn，因为这是通知面板内部的按钮（区别于模态框中的按钮） -->
+            <button id="mobile-mark-all-read-panel-btn" class="flex-1 py-3 px-4 bg-gradient-to-r from-slate-500 to-slate-600 text-white rounded-xl text-sm font-bold hover:from-slate-600 hover:to-slate-700 transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg" onclick="mobileMarkAllAsRead()">
               一键已读
             </button>
 
@@ -2529,7 +2531,8 @@
             <h3 class="text-xl font-bold text-sky-700">用户详情</h3>
           </div>
 
-          <div id="mobile-user-details-content" class="space-y-4 flex-1 overflow-y-auto min-h-0 pr-1">
+          <!-- 修复ID冲突：重命名为 mobile-user-details-content-panel，因为这是资料面板内部的内容区域（区别于模态框中的内容区域） -->
+          <div id="mobile-user-details-content-panel" class="space-y-4 flex-1 overflow-y-auto min-h-0 pr-1">
             <div id="mobile-user-details-empty" class="text-center py-10">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 mx-auto text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
@@ -4662,6 +4665,83 @@
               保存配置
             </button>
           </div>
+        </div>
+
+        <!-- ========================================
+             水印控制面板 (mobile-multi-admin-watermark-control-panel)
+             用途：管理员配置用户的高德地图去水印权限
+             权限：需要modify_config权限
+             功能：为每个用户配置是否允许去除高德地图水印
+             API端点：GET/PUT /api/amap/watermark_control/config
+             默认隐藏，通过switchMobileAdminTab切换显示
+             ======================================== -->
+        <div id="mobile-multi-admin-watermark-control-panel" class="hidden space-y-3">
+          <!-- 面板头部：包含标题和刷新按钮 -->
+          <div class="flex justify-between items-center">
+            <!-- 面板标题 -->
+            <h4 class="font-semibold text-sm">水印控制</h4>
+            <!-- 刷新按钮：重新加载水印控制配置 -->
+            <button id="mobile-multi-admin-refresh-watermark" class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadMobileWatermarkControlConfig()">
+              <!-- 刷新图标 -->
+              <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              刷新
+            </button>
+          </div>
+
+          <!-- 面板说明 -->
+          <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+            💡 配置用户是否可以使用高德地图去水印功能。未配置的用户使用系统默认值。
+          </p>
+
+          <!-- 默认值显示区域 -->
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <!-- 信息图标 -->
+                <svg class="w-3.5 h-3.5 text-amber-600 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="text-xs font-medium text-amber-800">系统默认：</span>
+              </div>
+              <span id="mobile-watermark-default-value" class="text-xs font-bold text-amber-900">加载中...</span>
+            </div>
+            <p class="text-xs text-amber-700 mt-1 ml-5">
+              未配置的用户使用此默认值
+            </p>
+          </div>
+
+          <!-- 用户权限配置区域 -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <h5 class="text-xs font-semibold text-slate-700">
+                <!-- 用户列表图标 -->
+                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                </svg>
+                用户权限配置
+              </h5>
+              <span id="mobile-watermark-user-count" class="text-xs text-slate-500">共 0 个用户</span>
+            </div>
+
+            <!-- 用户权限列表容器：动态生成每个用户的权限开关 -->
+            <div id="mobile-watermark-users-list" class="space-y-2 max-h-96 overflow-y-auto">
+              <!-- 加载提示：初始显示，加载完成后由JS替换为用户列表 -->
+              <p class="text-slate-400 text-center py-10 text-xs">
+                加载中...
+              </p>
+            </div>
+          </div>
+
+          <!-- 保存按钮 -->
+          <button onclick="saveMobileWatermarkControlConfig()" class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
+            <!-- 保存图标 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            保存配置
+          </button>
         </div>
 
 
@@ -6812,6 +6892,23 @@
           </svg>
           价格设置
         </button>
+
+        <!-- ========================================
+             水印控制标签（PC端管理员面板）
+             ID: admin-tab-watermark-control_modal
+             用途：切换到高德地图去水印控制管理面板
+             功能：管理员配置用户的去水印权限
+             权限：仅管理员（admin）和超级管理员（super_admin）可见
+             位置：管理员面板标签栏，位于价格设置之后
+             API端点：/api/amap/watermark_control/config（配置管理）
+             ======================================== -->
+        <button id="admin-tab-watermark-control_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" style="display: none" onclick="switchAdminTab('watermark-control')">
+          <!-- 水印图标：表示图层/水印控制 -->
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+          水印控制
+        </button>
       </div>
 
       <div class="overflow-x-hidden flex-grow min-h-0">
@@ -8695,39 +8792,96 @@
             </button>
           </div>
 
-          <!-- 退款结果显示区域：成功时显示 -->
+          <!-- 退款结果显示区域：成功时显示（拟态风格设计） -->
           <!-- 包含退款单号和退款金额的详细信息 -->
-          <div id="admin-refund-result-container_modal" class="hidden space-y-3 bg-green-50 border border-green-200 rounded-lg p-4">
-            <!-- 成功标题 -->
-            <h5 class="font-semibold text-base text-green-700 flex items-center">
-              <!-- 成功图标：打勾标志 -->
-              <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-              退款申请已提交
-            </h5>
+          <!-- 拟态风格特点：柔和阴影、渐变背景、圆角边框，增强视觉提醒效果 -->
+          <div id="admin-refund-result-container_modal" class="hidden space-y-4 rounded-2xl p-6 transition-all duration-300"
+               style="background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 100%);
+                      box-shadow: 8px 8px 16px rgba(34, 197, 94, 0.15), 
+                                  -8px -8px 16px rgba(255, 255, 255, 0.9),
+                                  inset 2px 2px 4px rgba(34, 197, 94, 0.1);
+                      border: 1px solid rgba(34, 197, 94, 0.2);">
             
-            <!-- 退款详细信息显示 -->
-            <div class="space-y-2 text-sm">
-              <!-- 退款单号行 -->
-              <div class="flex justify-between items-center py-2 border-b border-green-100">
-                <span class="text-green-700 font-medium">退款单号：</span>
-                <!-- 退款单号显示元素：由JavaScript动态更新 -->
-                <span id="admin-refund-result-no_modal" class="text-green-900 font-semibold break-all">-</span>
+            <!-- 成功标题区域 - 增强视觉效果 -->
+            <div class="flex items-center justify-center space-x-3 pb-3 border-b-2 border-green-200/50">
+              <!-- 成功图标：打勾标志 - 添加动画效果和拟态阴影 -->
+              <div class="w-12 h-12 rounded-full flex items-center justify-center"
+                   style="background: linear-gradient(145deg, #22c55e, #16a34a);
+                          box-shadow: 4px 4px 8px rgba(34, 197, 94, 0.3), 
+                                      -2px -2px 6px rgba(255, 255, 255, 0.5);">
+                <svg class="w-7 h-7 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </div>
+              <!-- 标题文字 - 使用渐变色增强视觉冲击力 -->
+              <h5 class="font-bold text-xl" style="background: linear-gradient(135deg, #16a34a, #22c55e);
+                                                    -webkit-background-clip: text;
+                                                    -webkit-text-fill-color: transparent;
+                                                    background-clip: text;">
+                ✓ 退款申请已提交
+              </h5>
+            </div>
+            
+            <!-- 退款详细信息显示区域 - 拟态内嵌效果 -->
+            <div class="space-y-3 rounded-xl p-4"
+                 style="background: linear-gradient(145deg, #dcfce7, #f0fdf4);
+                        box-shadow: inset 3px 3px 6px rgba(34, 197, 94, 0.15),
+                                    inset -3px -3px 6px rgba(255, 255, 255, 0.8);">
+              
+              <!-- 退款单号行 - 增强可读性 -->
+              <div class="flex justify-between items-center py-3 px-2 rounded-lg transition-all hover:bg-white/30">
+                <span class="text-green-800 font-semibold text-sm flex items-center">
+                  <!-- 添加图标增强识别度 -->
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+                  </svg>
+                  退款单号
+                </span>
+                <!-- 退款单号显示元素：由JavaScript动态更新 - 使用等宽字体便于识别 -->
+                <span id="admin-refund-result-no_modal" 
+                      class="text-green-900 font-bold break-all text-sm tracking-wide"
+                      style="font-family: 'Courier New', monospace;">-</span>
               </div>
               
-              <!-- 退款金额行 -->
-              <div class="flex justify-between items-center py-2">
-                <span class="text-green-700 font-medium">退款金额：</span>
-                <!-- 退款金额显示元素：由JavaScript动态更新，使用红色突出显示金额 -->
-                <span id="admin-refund-result-amount_modal" class="text-red-600 font-bold">-</span>
+              <!-- 分隔线 - 拟态风格 -->
+              <div class="h-px" style="background: linear-gradient(90deg, 
+                                                      transparent, 
+                                                      rgba(34, 197, 94, 0.3), 
+                                                      transparent);"></div>
+              
+              <!-- 退款金额行 - 重点突出显示 -->
+              <div class="flex justify-between items-center py-3 px-2 rounded-lg transition-all hover:bg-white/30">
+                <span class="text-green-800 font-semibold text-sm flex items-center">
+                  <!-- 添加金额图标 -->
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  退款金额
+                </span>
+                <!-- 退款金额显示元素：由JavaScript动态更新，使用醒目的红色和放大字体突出显示 -->
+                <span id="admin-refund-result-amount_modal" 
+                      class="font-extrabold text-lg"
+                      style="color: #dc2626; 
+                             text-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);">-</span>
               </div>
             </div>
             
-            <!-- 后续操作提示 -->
-            <p class="text-xs text-green-600 bg-green-100 rounded p-2 mt-2">
-              💡 提示：退款将在1-3个工作日内到账，请耐心等待
-            </p>
+            <!-- 后续操作提示 - 拟态提示框 -->
+            <div class="rounded-xl p-3 flex items-start space-x-2"
+                 style="background: linear-gradient(145deg, #f0fdf4, #dcfce7);
+                        box-shadow: 4px 4px 8px rgba(34, 197, 94, 0.1),
+                                    -4px -4px 8px rgba(255, 255, 255, 0.6);">
+              <!-- 提示图标 -->
+              <svg class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+              </svg>
+              <!-- 提示文字 -->
+              <p class="text-xs text-green-700 leading-relaxed font-medium">
+                <span class="font-bold">💡 温馨提示：</span>退款将在 <span class="font-bold text-green-800">1-3个工作日</span> 内到账，请耐心等待。如有疑问，请联系客服。
+              </p>
+            </div>
           </div>
 
           <!-- 退款错误提示区域：失败时显示 -->
@@ -9594,6 +9748,106 @@
           </button>
         </div>
       </div>
+
+      <!-- ========================================
+           PC端水印控制面板 (admin-watermark-control-panel_modal)
+           用途：管理员配置用户的高德地图去水印权限
+           权限：需要modify_config权限
+           功能：为每个用户配置是否允许去除高德地图水印
+           API端点：GET/PUT /api/amap/watermark_control/config
+           
+           面板结构：
+           - 顶部：面板标题和描述
+           - 中间：用户权限列表（用户名+开关）
+           - 底部：保存按钮
+           
+           配置说明：
+           1. 默认值从 config.ini 的 [Map] watermark_removal_default 读取
+           2. 个性化设置存储在 amap_watermark_control.json
+           3. 未配置的用户使用默认值
+           ======================================== -->
+      <div id="admin-watermark-control-panel_modal" class="hidden overflow-y-auto">
+        <!-- 面板顶部：标题和描述 -->
+        <div class="bg-gradient-to-r from-blue-50 to-cyan-50 p-4 rounded-lg border border-blue-200">
+          <h3 class="text-lg font-bold text-blue-700 mb-2">
+            <!-- 水印图标：表示图层/水印管理 -->
+            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            高德地图去水印控制
+          </h3>
+          <!-- 面板描述文本 -->
+          <p class="text-sm text-slate-600">
+            配置用户是否可以使用高德地图去水印功能。未配置的用户使用系统默认值。
+          </p>
+        </div>
+
+        <!-- 默认值显示区域 -->
+        <div class="bg-amber-50 p-3 rounded-lg border border-amber-200 mb-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <!-- 信息图标 -->
+              <svg class="w-4 h-4 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span class="text-sm font-medium text-amber-800">系统默认值：</span>
+            </div>
+            <span id="watermark-default-value_modal" class="text-sm font-bold text-amber-900">加载中...</span>
+          </div>
+          <p class="text-xs text-amber-700 mt-1 ml-6">
+            未在下方列表中配置的用户将使用此默认值（在 config.ini 的 [Map] 节中配置）
+          </p>
+        </div>
+
+        <!-- 用户权限列表区域 -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-sm font-semibold text-slate-700">
+              <!-- 用户列表图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+              </svg>
+              用户权限配置
+            </h4>
+            <span id="watermark-user-count_modal" class="text-xs text-slate-500">共 0 个用户</span>
+          </div>
+          
+          <!-- 用户权限列表容器：动态生成每个用户的权限开关 -->
+          <!-- 最大高度限制，超出部分滚动显示 -->
+          <div id="watermark-users-list_modal" class="space-y-2 max-h-[50vh] overflow-y-auto -mr-2 pr-2">
+            <!-- 加载提示：初始显示，加载完成后由JS替换为用户列表 -->
+            <p class="text-slate-400 text-center py-10">加载中...</p>
+          </div>
+        </div>
+
+        <!-- ========================================
+             操作按钮组
+             ========================================
+             功能：包含刷新配置和保存配置两个按钮
+             布局：使用grid布局，两列并排显示
+             ======================================== -->
+        <div class="grid grid-cols-2 gap-3 pt-4">
+          <!-- 刷新配置按钮：从服务器重新加载当前的水印控制配置 -->
+          <!-- 点击后调用 loadWatermarkControlConfig() 函数 -->
+          <button onclick="loadWatermarkControlConfig()" class="py-3 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md" title="点击从服务器重新加载水印控制配置">
+            <!-- 刷新图标：循环箭头 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            刷新配置
+          </button>
+
+          <!-- 保存配置按钮：将表单中的水印控制配置保存到服务器 -->
+          <!-- 点击后调用 saveWatermarkControlConfig() 函数 -->
+          <button onclick="saveWatermarkControlConfig()" class="py-3 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md" title="点击保存当前的水印控制配置">
+            <!-- 保存图标：对勾 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            保存配置
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -10412,7 +10666,8 @@
     </div>
   </div>
 
-  <div id="edit-school-account-modal" class="fixed inset-0 flex items-center justify-center hidden z-[1055]">
+  <!-- 修复ID冲突：重命名为 edit-school-account-modal-simple，这是简洁样式的编辑模态框（区别于现代化样式） -->
+  <div id="edit-school-account-modal-simple" class="fixed inset-0 flex items-center justify-center hidden z-[1055]">
     <div class="absolute inset-0 bg-black/60" onclick="closeEditSchoolAccountModal()"></div>
 
     <div class="panel rounded-2xl p-6 w-96 space-y-4 relative">

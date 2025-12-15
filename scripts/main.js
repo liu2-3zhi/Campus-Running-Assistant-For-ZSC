@@ -506,6 +506,7 @@ function loadPaymentLogs(page) {
           }
 
           // 返回单条日志的HTML卡片
+          // 包含：操作类型标签、时间、订单号、金额、状态、查看详情按钮
           return `
             <div class="bg-white border border-slate-200 rounded-lg p-3 hover:border-sky-300 transition">
               <!-- 头部：操作类型标签 + 时间 -->
@@ -522,10 +523,25 @@ function loadPaymentLogs(page) {
               </div>
               
               <!-- 详细信息：金额和状态 -->
-              <div class="space-y-1">
+              <div class="space-y-1 mb-3">
                 ${amountHTML}
                 ${statusHTML}
               </div>
+              
+              <!-- 查看详情按钮 -->
+              <!-- 点击后调用 showPaymentLogDetail 函数显示完整的日志详情 -->
+              <!-- 按钮设计为全宽，适合移动端触摸操作（min-height: 44px） -->
+              <button onclick="showPaymentLogDetail('${log.log_id || ''}')" 
+                class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors min-h-[44px] flex items-center justify-center gap-1">
+                <!-- 眼睛图标：表示"查看"操作 -->
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                查看详情
+              </button>
             </div>
           `;
         }).join(''); // 将所有卡片HTML连接成一个字符串
@@ -5423,25 +5439,41 @@ async function loadAllPaymentOrders() {
     // === 错误处理 ===
     console.error('[订单列表] 加载订单时发生错误：', error);
 
-    // 在容器中显示错误提示
-    const cardsContainer = document.getElementById('admin-orders-table-body_modal');
-    if (cardsContainer) {
-      cardsContainer.innerHTML = `
-        <div class="col-span-full text-center py-12 text-red-600">
-          <svg class="w-12 h-12 inline mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          <div class="text-base font-medium">加载订单失败</div>
-          <div class="text-sm text-slate-500 mt-1">请稍后重试或联系管理员</div>
-        </div>
-      `;
+    // 【修复】同时在桌面端和移动端容器中显示错误提示
+    // 生成错误提示HTML
+    const errorHTML = `
+      <div class="col-span-full text-center py-12 text-red-600">
+        <svg class="w-12 h-12 inline mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div class="text-base font-medium">加载订单失败</div>
+        <div class="text-sm text-slate-500 mt-1">请稍后重试或联系管理员</div>
+      </div>
+    `;
+    
+    // 尝试在桌面端容器中显示错误
+    const cardsContainerDesktop = document.getElementById('admin-orders-table-body_modal');
+    if (cardsContainerDesktop) {
+      cardsContainerDesktop.innerHTML = errorHTML;
+    }
+    
+    // 尝试在移动端容器中显示错误
+    const cardsContainerMobile = document.getElementById('admin-orders-table-body');
+    if (cardsContainerMobile) {
+      cardsContainerMobile.innerHTML = errorHTML;
     }
 
-    // 更新订单计数显示
-    const countElem = document.getElementById('admin-orders-count_modal');
-    if (countElem) {
-      countElem.textContent = '(加载失败)';
+    // 更新订单计数显示（桌面端）
+    const countElemDesktop = document.getElementById('admin-orders-count_modal');
+    if (countElemDesktop) {
+      countElemDesktop.textContent = '(加载失败)';
+    }
+    
+    // 更新订单计数显示（移动端）
+    const countElemMobile = document.getElementById('admin-orders-count');
+    if (countElemMobile) {
+      countElemMobile.textContent = '(加载失败)';
     }
   }
 }
@@ -5469,15 +5501,29 @@ function filterPaymentOrders() {
   console.log('[订单筛选] 开始筛选订单...');
 
   // === 第1步：获取所有筛选条件的值 ===
+  // 【修复】同时支持桌面端(_modal)和移动端(无后缀)的筛选条件输入框
+  // 策略：优先读取桌面端元素，如果不存在则尝试读取移动端元素
   
   // 获取状态筛选下拉框的值
-  const statusFilter = document.getElementById('admin-filter-status_modal')?.value.trim() || '';
+  // 先尝试桌面端，再尝试移动端
+  const statusFilterDesktop = document.getElementById('admin-filter-status_modal');
+  const statusFilterMobile = document.getElementById('admin-filter-status');
+  const statusFilter = (statusFilterDesktop || statusFilterMobile)?.value.trim() || '';
+  
   // 获取支付方式筛选下拉框的值
-  const payTypeFilter = document.getElementById('admin-filter-paytype_modal')?.value.trim() || '';
+  const payTypeFilterDesktop = document.getElementById('admin-filter-paytype_modal');
+  const payTypeFilterMobile = document.getElementById('admin-filter-paytype');
+  const payTypeFilter = (payTypeFilterDesktop || payTypeFilterMobile)?.value.trim() || '';
+  
   // 获取用户名搜索输入框的值（转换为小写，便于不区分大小写匹配）
-  const usernameFilter = document.getElementById('admin-filter-username_modal')?.value.trim().toLowerCase() || '';
+  const usernameFilterDesktop = document.getElementById('admin-filter-username_modal');
+  const usernameFilterMobile = document.getElementById('admin-filter-username');
+  const usernameFilter = ((usernameFilterDesktop || usernameFilterMobile)?.value.trim() || '').toLowerCase();
+  
   // 获取订单号搜索输入框的值（转换为小写，便于不区分大小写匹配）
-  const orderNoFilter = document.getElementById('admin-filter-orderno_modal')?.value.trim().toLowerCase() || '';
+  const orderNoFilterDesktop = document.getElementById('admin-filter-orderno_modal');
+  const orderNoFilterMobile = document.getElementById('admin-filter-orderno');
+  const orderNoFilter = ((orderNoFilterDesktop || orderNoFilterMobile)?.value.trim() || '').toLowerCase();
 
   console.log('[订单筛选] 筛选条件：', {
     status: statusFilter || '全部',
@@ -5554,28 +5600,44 @@ function filterPaymentOrders() {
  * 8. 查看详情按钮
  */
 function renderPaymentOrdersTable() {
-  // 输出日志：标记开始渲染卡片
+  // 输出日志：标记开始渲染订单卡片
   console.log('[订单卡片] 开始渲染订单卡片...');
 
-  // === 第1步：获取容器元素 ===
-  const cardsContainer = document.getElementById('admin-orders-table-body_modal');
-  const countElem = document.getElementById('admin-orders-count_modal');
+  // === 第1步：获取容器元素（同时获取桌面端和移动端容器）===
+  // 【修复】同时支持桌面端(_modal后缀)和移动端(无后缀)的订单表格容器
+  const cardsContainerDesktop = document.getElementById('admin-orders-table-body_modal');
+  const cardsContainerMobile = document.getElementById('admin-orders-table-body');
+  
+  // 获取订单计数显示元素（同时获取桌面端和移动端）
+  const countElemDesktop = document.getElementById('admin-orders-count_modal');
+  const countElemMobile = document.getElementById('admin-orders-count');
 
-  // 防御性检查：确保容器元素存在
-  if (!cardsContainer) {
-    console.error('[订单卡片] 错误：找不到容器元素');
+  // 防御性检查：至少要有一个容器元素存在才能继续
+  // 如果两个容器都不存在，则记录错误并返回
+  if (!cardsContainerDesktop && !cardsContainerMobile) {
+    console.error('[订单卡片] 错误：找不到任何容器元素（桌面端和移动端都不存在）');
     return;
   }
 
-  // === 第2步：更新订单计数显示 ===
-  if (countElem) {
-    countElem.textContent = `(共 ${filteredPaymentOrders.length} 条)`;
+  // === 第2步：更新订单计数显示（同时更新桌面端和移动端）===
+  // 生成计数文本，显示过滤后的订单数量
+  const countText = `(共 ${filteredPaymentOrders.length} 条)`;
+  
+  // 如果桌面端计数元素存在，更新它
+  if (countElemDesktop) {
+    countElemDesktop.textContent = countText;
+  }
+  
+  // 如果移动端计数元素存在，更新它
+  if (countElemMobile) {
+    countElemMobile.textContent = countText;
   }
 
   // === 第3步：检查是否有订单数据 ===
   if (filteredPaymentOrders.length === 0) {
     // 如果没有订单，显示空状态提示
-    cardsContainer.innerHTML = `
+    // 生成空状态HTML，显示友好的提示信息
+    const emptyStateHTML = `
       <div class="col-span-full text-center py-12 text-slate-500">
         <!-- 空状态图标 -->
         <svg class="w-16 h-16 inline mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5586,6 +5648,15 @@ function renderPaymentOrdersTable() {
         <div class="text-xs mt-2">请尝试调整筛选条件或点击"从平台拉取"按钮同步订单</div>
       </div>
     `;
+    
+    // 【修复】同时设置桌面端和移动端容器的内容
+    if (cardsContainerDesktop) {
+      cardsContainerDesktop.innerHTML = emptyStateHTML;
+    }
+    if (cardsContainerMobile) {
+      cardsContainerMobile.innerHTML = emptyStateHTML;
+    }
+    
     return;
   }
 
@@ -5724,10 +5795,18 @@ function renderPaymentOrdersTable() {
     `;
   }).join('');  // 将所有卡片拼接成一个字符串
 
-  // === 第5步：更新容器内容 ===
-  cardsContainer.innerHTML = orderCards;
+  // === 第5步：更新容器内容（同时更新桌面端和移动端）===
+  // 【修复】同时设置桌面端和移动端容器的内容
+  if (cardsContainerDesktop) {
+    cardsContainerDesktop.innerHTML = orderCards;
+    console.log('[订单卡片] 桌面端卡片渲染完成');
+  }
+  if (cardsContainerMobile) {
+    cardsContainerMobile.innerHTML = orderCards;
+    console.log('[订单卡片] 移动端卡片渲染完成');
+  }
 
-  console.log('[订单卡片] 卡片渲染完成');
+  console.log('[订单卡片] 所有卡片渲染完成');
 }
 
 /**
@@ -5757,12 +5836,15 @@ async function queryOrderManually() {
   // 输出日志：标记开始手动查询订单
   console.log('[手动查询] 开始查询订单...');
 
-  // === 第1步：获取订单号输入框的值 ===
-  const orderNoInput = document.getElementById('admin-manual-query-order-no_modal');
+  // === 第1步：获取订单号输入框的值（同时支持桌面端和移动端）===
+  // 【修复】优先获取桌面端输入框，如果不存在则获取移动端输入框
+  const orderNoInputDesktop = document.getElementById('admin-manual-query-order-no_modal');
+  const orderNoInputMobile = document.getElementById('admin-manual-query-order-no');
+  const orderNoInput = orderNoInputDesktop || orderNoInputMobile;
   
-  // 防御性检查：确保输入框元素存在
+  // 防御性检查：确保至少有一个输入框元素存在
   if (!orderNoInput) {
-    console.error('[手动查询] 错误：找不到订单号输入框');
+    console.error('[手动查询] 错误：找不到订单号输入框（桌面端和移动端都不存在）');
     showModalAlert('页面元素异常，请刷新页面后重试。');
     return;
   }
@@ -5811,8 +5893,14 @@ async function queryOrderManually() {
     const source = result.source === 'platform' ? '从平台查询并已保存到本地' : '从本地查询';
     showModalAlert(`订单查询成功（${source}）`, '成功');
 
-    // === 第8步：清空输入框 ===
-    orderNoInput.value = '';
+    // === 第8步：清空输入框（同时清空桌面端和移动端）===
+    // 【修复】同时清空桌面端和移动端的输入框
+    if (orderNoInputDesktop) {
+      orderNoInputDesktop.value = '';
+    }
+    if (orderNoInputMobile) {
+      orderNoInputMobile.value = '';
+    }
 
     // === 第9步：刷新订单列表 ===
     // 重新加载订单列表以显示新查询的订单
@@ -9518,6 +9606,417 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
 //         console.error('[支付方式配置] 加载异常:', error);
 //     }
 // }
+
+// ========================================
+// 页面加载完成后的初始化逻辑
+// ========================================
+
+// ============================================================
+// 高德地图去水印控制配置管理函数（PC端和移动端）
+// 用于管理用户的高德地图去水印权限
+// ============================================================
+
+/**
+ * 加载水印控制配置（PC端）
+ * 
+ * 功能说明：
+ * 从服务器获取高德地图去水印控制配置，包括：
+ * 1. 系统默认值（从 config.ini 读取）
+ * 2. 所有用户的个性化设置（从 amap_watermark_control.json 读取）
+ * 3. 系统中所有用户的列表
+ * 
+ * 然后将这些数据填充到PC端管理面板的表单中。
+ * 
+ * API端点：GET /api/amap/watermark_control/config
+ * 权限要求：管理员权限
+ * 
+ * 表单元素：
+ * - watermark-default-value_modal：显示系统默认值
+ * - watermark-user-count_modal：显示用户总数
+ * - watermark-users-list_modal：用户权限列表容器
+ */
+async function loadWatermarkControlConfig() {
+  try {
+    // ========== 步骤1: 显示加载状态 ==========
+    // 记录日志，便于调试
+    console.log('[水印控制] 正在加载水印控制配置（PC端）...');
+    
+    // 更新用户列表容器，显示"加载中..."提示
+    const listContainer = document.getElementById('watermark-users-list_modal');
+    if (listContainer) {
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10">加载中...</p>';
+    }
+
+    // ========== 步骤2: 发送HTTP请求获取配置 ==========
+    // 使用fetch API发送GET请求到服务器
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',  // HTTP方法：GET（获取数据）
+      headers: {
+        'Content-Type': 'application/json',  // 告诉服务器我们期望JSON格式的响应
+        'X-Session-ID': sessionUUID  // 传递会话ID，用于身份验证
+      }
+    });
+
+    // ========== 步骤3: 解析响应数据 ==========
+    // 将响应体解析为JSON对象
+    const data = await response.json();
+    
+    // ========== 步骤4: 检查响应状态 ==========
+    // 如果请求失败（success=false），抛出错误
+    if (!data.success) {
+      throw new Error(data.message || '获取水印控制配置失败');
+    }
+
+    // ========== 步骤5: 提取配置数据 ==========
+    // 从响应中提取各项配置数据
+    const config = data.config;  // 配置对象，包含default和users
+    const defaultValue = config.default;  // 系统默认值（true/false）
+    const usersConfig = config.users;  // 用户个性化配置字典
+    const allUsers = data.all_users;  // 系统中所有用户的列表
+
+    // ========== 步骤6: 更新默认值显示 ==========
+    // 找到显示默认值的元素
+    const defaultValueElement = document.getElementById('watermark-default-value_modal');
+    if (defaultValueElement) {
+      // 根据布尔值显示"允许"或"禁止"
+      defaultValueElement.textContent = defaultValue ? '允许去水印' : '禁止去水印';
+      
+      // 根据值的不同设置不同的样式（颜色）
+      if (defaultValue) {
+        // 允许：绿色
+        defaultValueElement.className = 'text-sm font-bold text-green-600';
+      } else {
+        // 禁止：红色
+        defaultValueElement.className = 'text-sm font-bold text-red-600';
+      }
+    }
+
+    // ========== 步骤7: 更新用户数量显示 ==========
+    const userCountElement = document.getElementById('watermark-user-count_modal');
+    if (userCountElement) {
+      userCountElement.textContent = `共 ${allUsers.length} 个用户`;
+    }
+
+    // ========== 步骤8: 生成用户权限列表 ==========
+    if (listContainer && allUsers.length > 0) {
+      // 清空加载提示
+      listContainer.innerHTML = '';
+      
+      // 为每个用户创建一个权限控制项
+      allUsers.forEach(username => {
+        // 获取该用户的配置值
+        // 如果用户在配置中有明确设置，使用该设置；否则使用默认值
+        const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
+        
+        // 创建用户权限控制项的HTML
+        // 包含：用户名 + 开关按钮
+        const userItem = document.createElement('div');
+        userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between';
+        
+        // 构建HTML内容
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-sm font-medium text-slate-700">${username}</span>
+            <p class="text-xs text-slate-500 mt-0.5">
+              ${(username in usersConfig) ? '已自定义' : '使用默认值'}
+            </p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-4">
+            <input 
+              type="checkbox" 
+              id="watermark-user-${username}_modal" 
+              class="sr-only peer watermark-user-checkbox" 
+              data-username="${username}"
+              ${userValue ? 'checked' : ''}
+            >
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        `;
+        
+        // 将用户项添加到列表容器中
+        listContainer.appendChild(userItem);
+      });
+    } else if (listContainer && allUsers.length === 0) {
+      // 如果没有用户，显示空状态提示
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10">暂无用户</p>';
+    }
+
+    // ========== 步骤9: 记录成功日志 ==========
+    console.log('[水印控制] 配置加载成功（PC端）');
+
+  } catch (error) {
+    // ========== 错误处理 ==========
+    // 捕获所有可能的错误（网络错误、解析错误、服务器错误等）
+    console.error('[水印控制] 加载配置失败（PC端）:', error);
+    
+    // 显示错误提示
+    showModalAlert('加载水印控制配置失败：' + error.message);
+    
+    // 更新UI显示错误状态
+    const listContainer = document.getElementById('watermark-users-list_modal');
+    if (listContainer) {
+      listContainer.innerHTML = '<p class="text-red-500 text-center py-10">加载失败：' + error.message + '</p>';
+    }
+  }
+}
+
+/**
+ * 保存水印控制配置（PC端）
+ * 
+ * 功能说明：
+ * 收集PC端管理面板中所有用户的权限设置，并发送到服务器保存。
+ * 
+ * 数据收集：
+ * 遍历所有标记为 watermark-user-checkbox 的复选框，
+ * 读取每个复选框的 data-username 属性和 checked 状态，
+ * 构建用户配置字典。
+ * 
+ * API端点：PUT /api/amap/watermark_control/config
+ * 权限要求：管理员权限 + modify_config 权限
+ * 
+ * 请求体格式：
+ * {
+ *   "users": {
+ *     "username1": true,
+ *     "username2": false,
+ *     ...
+ *   }
+ * }
+ */
+async function saveWatermarkControlConfig() {
+  try {
+    // ========== 步骤1: 收集用户配置数据 ==========
+    console.log('[水印控制] 正在收集用户配置数据（PC端）...');
+    
+    // 创建一个空对象，用于存储所有用户的配置
+    const usersConfig = {};
+    
+    // 查找所有的用户权限复选框
+    const checkboxes = document.querySelectorAll('.watermark-user-checkbox');
+    
+    // 遍历每个复选框，提取用户名和配置值
+    checkboxes.forEach(checkbox => {
+      // 从 data-username 属性获取用户名
+      const username = checkbox.getAttribute('data-username');
+      
+      // 从 checked 属性获取配置值（true=允许，false=禁止）
+      const allowed = checkbox.checked;
+      
+      // 将用户配置添加到字典中
+      usersConfig[username] = allowed;
+    });
+
+    // ========== 步骤2: 构建请求体 ==========
+    const requestBody = {
+      users: usersConfig
+    };
+    
+    // 记录要发送的数据（便于调试）
+    console.log('[水印控制] 准备保存配置（PC端）:', requestBody);
+
+    // ========== 步骤3: 发送HTTP请求保存配置 ==========
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'PUT',  // HTTP方法：PUT（更新数据）
+      headers: {
+        'Content-Type': 'application/json',  // 告诉服务器我们发送的是JSON数据
+        'X-Session-ID': sessionUUID  // 传递会话ID，用于身份验证
+      },
+      body: JSON.stringify(requestBody)  // 将请求体转换为JSON字符串
+    });
+
+    // ========== 步骤4: 解析响应数据 ==========
+    const data = await response.json();
+    
+    // ========== 步骤5: 检查响应状态 ==========
+    if (!data.success) {
+      throw new Error(data.message || '保存水印控制配置失败');
+    }
+
+    // ========== 步骤6: 显示成功提示 ==========
+    showModalAlert('水印控制配置已成功保存！');
+
+    // ========== 步骤7: 记录成功日志 ==========
+    console.log('[水印控制] 配置保存成功（PC端）');
+
+  } catch (error) {
+    // ========== 错误处理 ==========
+    console.error('[水印控制] 保存配置失败（PC端）:', error);
+    showModalAlert('保存水印控制配置失败：' + error.message);
+  }
+}
+
+/**
+ * 加载水印控制配置（移动端）
+ * 
+ * 功能说明：
+ * 与PC端的 loadWatermarkControlConfig() 功能相同，但操作移动端的表单元素。
+ * 
+ * 表单元素：
+ * - mobile-watermark-default-value：显示系统默认值
+ * - mobile-watermark-user-count：显示用户总数
+ * - mobile-watermark-users-list：用户权限列表容器
+ */
+async function loadMobileWatermarkControlConfig() {
+  try {
+    // ========== 步骤1: 显示加载状态 ==========
+    console.log('[水印控制] 正在加载水印控制配置（移动端）...');
+    
+    const listContainer = document.getElementById('mobile-watermark-users-list');
+    if (listContainer) {
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
+    }
+
+    // ========== 步骤2: 发送HTTP请求获取配置 ==========
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      }
+    });
+
+    // ========== 步骤3: 解析响应数据 ==========
+    const data = await response.json();
+    
+    // ========== 步骤4: 检查响应状态 ==========
+    if (!data.success) {
+      throw new Error(data.message || '获取水印控制配置失败');
+    }
+
+    // ========== 步骤5: 提取配置数据 ==========
+    const config = data.config;
+    const defaultValue = config.default;
+    const usersConfig = config.users;
+    const allUsers = data.all_users;
+
+    // ========== 步骤6: 更新默认值显示（移动端样式）==========
+    const defaultValueElement = document.getElementById('mobile-watermark-default-value');
+    if (defaultValueElement) {
+      defaultValueElement.textContent = defaultValue ? '允许去水印' : '禁止去水印';
+      
+      if (defaultValue) {
+        defaultValueElement.className = 'text-xs font-bold text-green-600';
+      } else {
+        defaultValueElement.className = 'text-xs font-bold text-red-600';
+      }
+    }
+
+    // ========== 步骤7: 更新用户数量显示 ==========
+    const userCountElement = document.getElementById('mobile-watermark-user-count');
+    if (userCountElement) {
+      userCountElement.textContent = `共 ${allUsers.length} 个用户`;
+    }
+
+    // ========== 步骤8: 生成用户权限列表（移动端样式）==========
+    if (listContainer && allUsers.length > 0) {
+      listContainer.innerHTML = '';
+      
+      allUsers.forEach(username => {
+        const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
+        
+        const userItem = document.createElement('div');
+        userItem.className = 'bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between';
+        
+        // 移动端使用更紧凑的布局
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-xs font-medium text-slate-700">${username}</span>
+            <p class="text-xs text-slate-500 mt-0.5">
+              ${(username in usersConfig) ? '已自定义' : '使用默认值'}
+            </p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-3">
+            <input 
+              type="checkbox" 
+              id="mobile-watermark-user-${username}" 
+              class="sr-only peer mobile-watermark-user-checkbox" 
+              data-username="${username}"
+              ${userValue ? 'checked' : ''}
+            >
+            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        `;
+        
+        listContainer.appendChild(userItem);
+      });
+    } else if (listContainer && allUsers.length === 0) {
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">暂无用户</p>';
+    }
+
+    // ========== 步骤9: 记录成功日志 ==========
+    console.log('[水印控制] 配置加载成功（移动端）');
+
+  } catch (error) {
+    // ========== 错误处理 ==========
+    console.error('[水印控制] 加载配置失败（移动端）:', error);
+    alert('加载水印控制配置失败：' + error.message);
+    
+    const listContainer = document.getElementById('mobile-watermark-users-list');
+    if (listContainer) {
+      listContainer.innerHTML = '<p class="text-red-500 text-center py-10 text-xs">加载失败：' + error.message + '</p>';
+    }
+  }
+}
+
+/**
+ * 保存水印控制配置（移动端）
+ * 
+ * 功能说明：
+ * 与PC端的 saveWatermarkControlConfig() 功能相同，但操作移动端的表单元素。
+ */
+async function saveMobileWatermarkControlConfig() {
+  try {
+    // ========== 步骤1: 收集用户配置数据 ==========
+    console.log('[水印控制] 正在收集用户配置数据（移动端）...');
+    
+    const usersConfig = {};
+    
+    // 查找移动端的所有用户权限复选框
+    const checkboxes = document.querySelectorAll('.mobile-watermark-user-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+      const username = checkbox.getAttribute('data-username');
+      const allowed = checkbox.checked;
+      usersConfig[username] = allowed;
+    });
+
+    // ========== 步骤2: 构建请求体 ==========
+    const requestBody = {
+      users: usersConfig
+    };
+    
+    console.log('[水印控制] 准备保存配置（移动端）:', requestBody);
+
+    // ========== 步骤3: 发送HTTP请求保存配置 ==========
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    // ========== 步骤4: 解析响应数据 ==========
+    const data = await response.json();
+    
+    // ========== 步骤5: 检查响应状态 ==========
+    if (!data.success) {
+      throw new Error(data.message || '保存水印控制配置失败');
+    }
+
+    // ========== 步骤6: 显示成功提示（移动端使用alert）==========
+    alert('水印控制配置已成功保存！');
+
+    // ========== 步骤7: 记录成功日志 ==========
+    console.log('[水印控制] 配置保存成功（移动端）');
+
+  } catch (error) {
+    // ========== 错误处理 ==========
+    console.error('[水印控制] 保存配置失败（移动端）:', error);
+    alert('保存水印控制配置失败：' + error.message);
+  }
+}
 
 // ========================================
 // 页面加载完成后的初始化逻辑
@@ -16961,51 +17460,87 @@ function refreshMobileSessionPicker() {
 
           const confirmBtn = $("newUserConfirm");
           confirmBtn.onclick = async () => {
+            // ========== 步骤1：获取用户输入 ==========
             const inputUsername = $("newUsername").value.trim();
             const inputPassword = $("newPassword").value;
             const inputPhone = $("newUserPhone").value.trim();
             const inputNickname = $("newUserNickname").value.trim();
             const inputSmsCode = $("newUserSmsCode").value.trim();
 
+            // ========== 步骤2：输入验证 ==========
+            
+            // 验证账号和密码是否为空
             if (!inputUsername || !inputPassword) {
               showModalAlert("账号和密码均不能为空");
               return;
             }
+            
+            // 验证密码长度（至少6个字符）
             if (!inputPassword || inputPassword.length < 6) {
               showModalAlert("密码长度至少为6个字符", "错误");
               return;
             }
-            // 如果填了手机号，验证格式
+            
+            // 如果填写了手机号，验证格式（中国大陆手机号：1开头的11位数字）
             if (inputPhone && !/^1[3-9]\d{9}$/.test(inputPhone)) {
               showModalAlert("请输入正确的手机号格式", "错误");
               return;
             }
+            
+            // ========== 步骤3：设置用户组 ==========
+            // 新创建的用户默认属于 "user" 用户组
             const group = "user";
+            
+            // ========== 步骤4：显示加载状态 ==========
             setButtonLoading("newUserConfirm", true, "创建中...");
 
             try {
-              // 管理员创建用户时验证码为可选项，如填写将进行校验
+              // ========== 步骤5：调用后端API创建用户 ==========
+              
+              // 管理员创建用户API：/auth/admin/create_user
+              // 
+              // available_runs（可用次数）处理说明：
+              // - 此API请求中**不需要**传递 available_runs 参数
+              // - 后端会自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取默认值
+              // - 这确保了通过 PC端管理员界面（admin-create-user_modal）创建的用户
+              //   与其他方式（移动端、自助注册）创建的用户使用统一的默认 available_runs
+              // - 如需修改某个用户的 available_runs，请在用户创建后通过用户管理功能进行修改
+              // 
+              // 请求参数说明：
+              // - username: 用户名（必填）
+              // - password: 密码（必填）
+              // - group: 用户组（此处固定为 "user"）
+              // - phone: 手机号（可选，如填写则会绑定到用户）
+              // - nickname: 昵称（可选，如不填则使用用户名作为昵称）
+              // - sms_code: 短信验证码（可选，如填写则会进行校验）
               const response = await fetch("/auth/admin/create_user", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  "X-Session-ID": sessionUUID,
+                  "X-Session-ID": sessionUUID, // 使用会话UUID进行身份验证
                 },
                 body: JSON.stringify({
                   username: inputUsername,
                   password: inputPassword,
                   group: group,
-                  phone: inputPhone || "",
-                  nickname: inputNickname || "",
+                  phone: inputPhone || "", // 空字符串表示未填写
+                  nickname: inputNickname || "", // 空字符串表示未填写
                   sms_code: inputSmsCode || "", // 验证码可选，如非空则校验
                 }),
               });
 
+              // ========== 步骤6：解析API响应 ==========
               const result = await response.json();
 
+              // ========== 步骤7：处理创建结果 ==========
               if (result.success) {
+                // ===== 创建成功 =====
                 showModalAlert("用户创建成功！");
+                
+                // 关闭创建用户模态框
                 closeNewUserModal();
+                
+                // 刷新用户列表，显示新创建的用户
                 if (typeof loadAdminUsers === "function") {
                   // [修正] 创建成功后加载数据并同步UI
                   await loadAdminUsers();
@@ -17037,12 +17572,17 @@ function refreshMobileSessionPicker() {
                   }
                 }
               } else {
+                // ===== 创建失败 =====
                 showModalAlert(`创建失败: ${result.message || "未知错误"}`);
               }
             } catch (e) {
+              // ========== 异常处理 ==========
+              // 捕获网络错误、解析错误等异常
               showModalAlert(`创建时发生错误: ${e.message}`);
               logMessage_Error("创建用户时发生错误:", e);
             } finally {
+              // ========== 步骤8：恢复按钮状态 ==========
+              // 无论成功或失败，都要恢复按钮的正常状态
               setButtonLoading("newUserConfirm", false, "确认");
             }
           };
@@ -18398,6 +18938,7 @@ function refreshMobileSessionPicker() {
                     schoolUsername
                   )}</div>
                   <!-- 操作按钮组 -->
+                  <!-- 包含三个按钮：编辑、删除、查看详情 -->
                   <div class="flex gap-2">
                     <!-- 编辑按钮：打开编辑模态框 -->
                     <!-- 使用data属性存储JSON数据，点击时解析并调用函数 -->
@@ -18417,6 +18958,15 @@ function refreshMobileSessionPicker() {
                       onclick="(function(btn) { deleteSchoolAccount(btn.getAttribute('data-auth-username'), btn.getAttribute('data-school-username')); })(this)"
                       title="删除此账户">
                       删除
+                    </button>
+                    <!-- 查看详情按钮：显示该学校账号的备份详情和欠费信息 -->
+                    <!-- 直接调用 View_details_of_users_with_outstanding_payments 函数 -->
+                    <!-- 该函数会显示一个包含详细信息的弹窗（学号、姓名、欠费次数等） -->
+                    <button 
+                      class="btn btn-sm !py-1 !px-3 !text-xs bg-sky-500 text-white hover:bg-sky-600 border-sky-500" 
+                      onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(schoolUsername)}')"
+                      title="查看此账户的详细信息">
+                      查看详情
                     </button>
                   </div>
                 </div>
@@ -18596,7 +19146,16 @@ function refreshMobileSessionPicker() {
         }
       }
       function closeEditSchoolAccountModal() {
+        // 关闭现代化样式的模态框（主要使用的版本）
         hideModal("edit-school-account-modal");
+        
+        // 同时关闭简洁样式的模态框（备用版本），以防它被打开
+        // 修复ID冲突后的ID引用更新
+        const simpleModal = $("edit-school-account-modal-simple");
+        if (simpleModal) {
+          simpleModal.classList.add("hidden");
+          simpleModal.classList.remove("flex");
+        }
       }
       async function submitEditSchoolAccount() {
         const authUsername = $("edit-auth-username").textContent;
@@ -26221,22 +26780,27 @@ function refreshMobileSessionPicker() {
           "mobile-new-user-confirm-btn"
         );
 
+        // ========== 输入验证 ==========
+        
+        // 验证账号和密码是否为空
         if (!username || !password) {
           showModalAlert("账号和密码为必填项", "错误");
           return;
         }
+        
+        // 验证密码长度（至少6个字符）
         if (password.length < 6) {
           showModalAlert("密码长度至少为6个字符", "错误");
           return;
         }
 
-        // 如果填了手机号，验证格式
+        // 如果填写了手机号，验证格式（中国大陆手机号：1开头的11位数字）
         if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
           showModalAlert("请输入正确的手机号格式", "错误");
           return;
         }
 
-        // 禁用按钮防止重复提交
+        // ========== 禁用按钮，防止重复提交 ==========
         if (confirmBtn) {
           confirmBtn.disabled = true;
           confirmBtn.innerHTML =
@@ -26244,13 +26808,30 @@ function refreshMobileSessionPicker() {
         }
 
         try {
-          // 复用后端的 create_user 接口
-          // 管理员创建用户时验证码为可选项，如填写将进行校验
+          // ========== 调用后端API创建用户 ==========
+          
+          // 移动端管理员创建用户API：/auth/admin/create_user
+          // 
+          // available_runs（可用次数）处理说明：
+          // - 此API请求中**不需要**传递 available_runs 参数
+          // - 后端会自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取默认值
+          // - 这确保了通过 移动端管理员界面（mobile-new-user-confirm-btn）创建的用户
+          //   与其他方式（PC端、自助注册）创建的用户使用统一的默认 available_runs
+          // - 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
+          // - 如需修改某个用户的 available_runs，请在用户创建后通过用户管理功能进行修改
+          // 
+          // 请求参数说明：
+          // - username: 用户名（必填）
+          // - password: 密码（必填）
+          // - group: 用户组（此处固定为 "user"）
+          // - nickname: 昵称（可选，如不填则使用用户名作为昵称）
+          // - phone: 手机号（可选，如填写则会绑定到用户）
+          // - sms_code: 短信验证码（可选，如填写则会进行校验）
           const response = await fetch("/auth/admin/create_user", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Session-ID": sessionUUID,
+              "X-Session-ID": sessionUUID, // 使用会话UUID进行身份验证
             },
             body: JSON.stringify({
               username: username,
@@ -26263,15 +26844,19 @@ function refreshMobileSessionPicker() {
             }),
           });
 
+          // ========== 解析API响应 ==========
           const result = await response.json();
 
+          // ========== 处理创建结果 ==========
           if (result.success) {
+            // ===== 创建成功 =====
             showModalAlert("用户创建成功！", "成功");
             closeMobileCreateUserModal();
 
-            // 刷新列表
+            // 刷新用户列表，显示新创建的用户
             if (typeof loadAdminUsers === "function") {
               await loadAdminUsers();
+              
               // 尝试同步到移动端面板
               if (typeof copyAdminContentToMultiPanel === "function") {
                 copyAdminContentToMultiPanel("users");
@@ -26281,12 +26866,17 @@ function refreshMobileSessionPicker() {
               }
             }
           } else {
+            // ===== 创建失败 =====
             showModalAlert(`创建失败: ${result.message || "未知错误"}`, "错误");
           }
         } catch (e) {
+          // ========== 异常处理 ==========
+          // 捕获网络错误、解析错误等异常
           console.error("创建用户失败:", e);
           showModalAlert(`请求出错: ${e.message}`, "错误");
         } finally {
+          // ========== 恢复按钮状态 ==========
+          // 无论成功或失败，都要恢复按钮的正常状态
           if (confirmBtn) {
             confirmBtn.disabled = false;
             confirmBtn.innerHTML = "立即创建";
@@ -37611,30 +38201,172 @@ async function submitMobileMultiMessage() {
   }
 }
 
+/**
+ * 删除移动端多人留言板的单条留言
+ * 功能说明：
+ * 1. 使用拟态风格的二次确认对话框，提升用户体验
+ * 2. 确认后调用后端API删除留言
+ * 3. 删除成功后刷新留言列表
+ * 
+ * @param {string} msgId - 要删除的留言ID
+ * 
+ * 调用时机：
+ * - 用户点击移动端留言板中的"删除"按钮时
+ * 
+ * 实现细节：
+ * - 使用SweetAlert2库创建拟态风格的确认对话框
+ * - 对话框包含警告图标、清晰的提示文字和两个操作按钮
+ * - 只有用户点击"确认删除"按钮后才执行删除操作
+ * - 提供详细的成功/失败提示
+ */
 async function deleteMobileMultiMessage(msgId) {
-  if (!confirm("确定要删除这条留言吗？")) return;
-
+  // ========== 步骤1：显示拟态风格的二次确认对话框 ==========
+  
+  // 使用SweetAlert2创建美观的确认对话框
+  // 应用拟态风格设计：柔和阴影、渐变背景、圆角边框
+  const confirmResult = await Swal.fire({
+    // 对话框标题：使用醒目的警告文字
+    title: '⚠️ 删除确认',
+    
+    // 对话框内容：清晰说明删除操作的影响
+    html: `
+      <div style="text-align: left; padding: 10px;">
+        <p style="font-size: 16px; color: #475569; margin-bottom: 12px;">
+          您确定要删除这条留言吗？
+        </p>
+        <div style="
+          background: linear-gradient(145deg, #fef2f2, #fee2e2);
+          border-left: 4px solid #dc2626;
+          padding: 12px;
+          border-radius: 8px;
+          margin-top: 10px;
+        ">
+          <p style="font-size: 14px; color: #991b1b; margin: 0;">
+            <strong>⚠️ 注意：</strong>此操作不可恢复，删除后无法找回该留言的内容。
+          </p>
+        </div>
+      </div>
+    `,
+    
+    // 对话框图标：使用警告图标
+    icon: 'warning',
+    
+    // 显示两个按钮：取消和确认
+    showCancelButton: true,
+    
+    // 确认按钮文字和样式
+    confirmButtonText: '<strong>🗑️ 确认删除</strong>',
+    confirmButtonColor: '#dc2626', // 红色，表示危险操作
+    
+    // 取消按钮文字和样式
+    cancelButtonText: '<strong>✖️ 取消</strong>',
+    cancelButtonColor: '#64748b', // 灰色，表示安全操作
+    
+    // 自定义CSS类，应用拟态风格
+    customClass: {
+      popup: 'swal2-neumorphism-popup', // 对话框容器
+      title: 'swal2-neumorphism-title', // 标题
+      confirmButton: 'swal2-neumorphism-confirm', // 确认按钮
+      cancelButton: 'swal2-neumorphism-cancel' // 取消按钮
+    },
+    
+    // 反向按钮顺序（取消在左，确认在右，符合用户习惯）
+    reverseButtons: true,
+    
+    // 聚焦到取消按钮（防止用户误点确认）
+    focusCancel: true,
+    
+    // 点击背景不关闭对话框（强制用户做出选择）
+    allowOutsideClick: false,
+    
+    // 按Esc键不关闭对话框（强制用户做出选择）
+    allowEscapeKey: false
+  });
+  
+  // ========== 步骤2：检查用户的选择 ==========
+  
+  // 如果用户点击了取消按钮或关闭了对话框，直接返回，不执行删除操作
+  if (!confirmResult.isConfirmed) {
+    console.log('[移动端留言板] 用户取消删除操作');
+    return;
+  }
+  
+  // ========== 步骤3：用户确认删除，执行删除操作 ==========
+  
+  console.log('[移动端留言板] 用户确认删除留言，留言ID:', msgId);
+  
   try {
+    // 调用后端API删除留言
     const response = await fetch("/api/messages/delete", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
+        "X-Session-ID": sessionUUID, // 使用全局会话UUID进行身份验证
       },
-      body: JSON.stringify({ message_id: msgId }),
+      body: JSON.stringify({ message_id: msgId }), // 传递留言ID
     });
 
+    // 解析API响应
     const result = await response.json();
 
+    // ========== 步骤4：处理API响应 ==========
+    
     if (result.success) {
-      showModalAlert("删除成功", "成功");
+      // 删除成功
+      console.log('[移动端留言板] 删除成功');
+      
+      // 显示成功提示（使用拟态风格）
+      await Swal.fire({
+        title: '删除成功',
+        text: '该留言已被永久删除',
+        icon: 'success',
+        confirmButtonText: '确定',
+        confirmButtonColor: '#22c55e', // 绿色，表示成功
+        timer: 2000, // 2秒后自动关闭
+        timerProgressBar: true, // 显示进度条
+        customClass: {
+          popup: 'swal2-neumorphism-popup',
+          confirmButton: 'swal2-neumorphism-confirm'
+        }
+      });
+      
+      // 刷新留言列表，显示最新数据
       loadMobileMultiMessages();
     } else {
-      showModalAlert(result.message || "删除失败", "错误");
+      // 删除失败
+      console.error('[移动端留言板] 删除失败:', result.message);
+      
+      // 显示失败提示
+      await Swal.fire({
+        title: '删除失败',
+        text: result.message || '未知错误，请稍后重试',
+        icon: 'error',
+        confirmButtonText: '确定',
+        confirmButtonColor: '#dc2626', // 红色，表示错误
+        customClass: {
+          popup: 'swal2-neumorphism-popup',
+          confirmButton: 'swal2-neumorphism-confirm'
+        }
+      });
     }
   } catch (e) {
+    // ========== 异常处理 ==========
+    
+    // 捕获网络错误、解析错误等异常
     console.error("[移动端留言板] 删除失败:", e);
-    showModalAlert("删除失败: " + e.message, "错误");
+    
+    // 显示友好的错误提示
+    await Swal.fire({
+      title: '删除失败',
+      text: '网络错误或服务器异常: ' + e.message,
+      icon: 'error',
+      confirmButtonText: '确定',
+      confirmButtonColor: '#dc2626',
+      customClass: {
+        popup: 'swal2-neumorphism-popup',
+        confirmButton: 'swal2-neumorphism-confirm'
+      }
+    });
   }
 }
 
@@ -40312,6 +41044,57 @@ async function showMobileUserSchoolAccounts(username) {
                   )}</div>`
                 : '<div class="text-xs text-slate-400 italic text-center py-2">无UA信息</div>'
             }
+          </div>
+          
+          <!-- ========== 操作按钮组 ========== -->
+          <!-- 包含三个按钮：编辑、删除、查看详情 -->
+          <!-- 使用flex布局，确保按钮在移动端有足够的触摸区域（min-height: 44px） -->
+          <!-- 参考PC端 manage-school-accounts-modal 的实现方式 -->
+          <div class="flex flex-col gap-2 pt-3 border-t border-slate-100">
+            <!-- 编辑按钮：打开编辑模态框，允许修改密码和UA -->
+            <!-- 使用data属性存储JSON数据，避免onclick中的转义问题 -->
+            <button 
+              class="w-full py-2.5 px-4 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              data-account='${escapeHtml(JSON.stringify({authUsername: username, schoolUsername: schoolUsername, password: password, ua: ua}))}'
+              onclick="(function(btn) { const data = JSON.parse(btn.getAttribute('data-account')); editSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); })(this)"
+              title="编辑此账户的密码和UA">
+              <!-- 编辑图标 -->
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+              </svg>
+              编辑账户
+            </button>
+            
+            <!-- 查看详情按钮：显示该学校账号的备份详情和欠费信息 -->
+            <!-- 调用 View_details_of_users_with_outstanding_payments 函数 -->
+            <!-- 该函数会显示一个包含详细信息的弹窗（学号、姓名、欠费次数等） -->
+            <button 
+              class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(schoolUsername)}')"
+              title="查看此账户的详细信息（备份数据、欠费次数等）">
+              <!-- 眼睛图标 -->
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+              查看详情
+            </button>
+            
+            <!-- 删除按钮：确认后删除账户 -->
+            <!-- 使用红色背景，表示危险操作 -->
+            <!-- 删除操作会触发二次确认对话框 -->
+            <button 
+              class="w-full py-2.5 px-4 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 active:bg-red-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              data-auth-username='${escapeHtml(username)}'
+              data-school-username='${escapeHtml(schoolUsername)}'
+              onclick="(function(btn) { deleteSchoolAccount(btn.getAttribute('data-auth-username'), btn.getAttribute('data-school-username')); })(this)"
+              title="删除此账户（不可恢复）">
+              <!-- 垃圾桶图标 -->
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+              </svg>
+              删除账户
+            </button>
           </div>
         </div>
       `;
@@ -47712,43 +48495,116 @@ async function View_details_of_users_with_outstanding_payments(school_username) 
                         </div>
                     </div>
 
+                    <!-- ========== 任务10：合并学校信息和账号详情为统一表单格式 ========== -->
+                    <!-- 原设计：学校信息和账号详情分为两个独立卡片 -->
+                    <!-- 新设计：合并为一个统一的表单卡片，所有信息在同一个表单中展示 -->
+                    <!-- 优点：减少视觉分隔，提高信息的整体性和可读性 -->
                     <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
-                        <div class="bg-gradient-to-r from-blue-50 to-white px-3 py-2 border-b border-blue-100 flex items-center gap-2">
-                            <div class="p-1 bg-blue-100 rounded text-blue-600">
-                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                        <!-- 表单标题栏 - 使用渐变背景和图标 -->
+                        <div class="bg-gradient-to-r from-blue-50 via-purple-50 to-white px-3 py-2 border-b border-blue-100 flex items-center gap-2">
+                            <!-- 图标容器：使用带背景的圆角方块 -->
+                            <div class="p-1 bg-gradient-to-br from-blue-100 to-purple-100 rounded text-blue-600">
+                                <!-- SVG图标：用户信息图标 -->
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
                             </div>
-                            <span class="font-bold text-blue-800 text-xs">学校信息</span>
+                            <!-- 标题文本 -->
+                            <span class="font-bold text-blue-800 text-xs">账号详细信息</span>
                         </div>
+                        
+                        <!-- 表单内容区域 - 使用Grid布局自动调整列数 -->
+                        <!-- grid-cols-2: 默认2列布局 -->
+                        <!-- gap-y-3: 行间距3单位 -->
+                        <!-- gap-x-2: 列间距2单位 -->
                         <div class="p-3 grid grid-cols-2 gap-y-3 gap-x-2 text-slate-700 bg-white">
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">姓名</span><span class="font-medium">${safeStr(dept.name)}</span></div>
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学号</span><span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">${safeStr(dept.studentNum || dept.account)}</span></div>
-                            <div class="col-span-2 border-t border-dashed border-slate-100 pt-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学校</span><span class="font-medium">${safeStr(dept.schoolName)}</span></div>
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">性别</span>${safeStr(dept.sexValue)}</div>
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">身份</span>${safeStr(dept.typeValue)}</div>
-                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">最近登录 (APP)</span><span class="text-xs text-slate-600">${safeStr(dept.logintime)}</span></div>
-                        </div>
-                    </div>
-
-                    <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
-                        <div class="bg-gradient-to-r from-purple-50 to-white px-3 py-2 border-b border-purple-100 flex items-center gap-2">
-                            <div class="p-1 bg-purple-100 rounded text-purple-600">
-                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                            
+                            <!-- ========== 基本信息部分 ========== -->
+                            
+                            <!-- 姓名字段 -->
+                            <div>
+                                <!-- 字段标签：小写字母、灰色、上边距 -->
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">姓名</span>
+                                <!-- 字段值：中等字重，使用safeStr确保安全显示 -->
+                                <span class="font-medium">${safeStr(dept.name)}</span>
                             </div>
-                            <span class="font-bold text-purple-800 text-xs">账号详情</span>
-                        </div>
-                        <div class="p-3 grid grid-cols-2 gap-y-3 gap-x-2 text-slate-700 bg-white">
-                            <div><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">状态</span>${user.status === 1 ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">正常</span>' : '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">异常</span>'}</div>
-                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">注册时间</span><span class="text-xs text-slate-600">${safeStr(user.createtime)}</span></div>
-                            <div class="col-span-2"><span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">首次登录</span><span class="text-xs text-slate-600">${safeStr(user.firstlogin)}</span></div>
-                            <div class="col-span-2 pt-1">
+                            
+                            <!-- 学号字段 -->
+                            <div>
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学号</span>
+                                <!-- 学号使用等宽字体，背景高亮显示 -->
+                                <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">${safeStr(dept.studentNum || dept.account)}</span>
+                            </div>
+                            
+                            <!-- 学校字段 - 占据整行 -->
+                            <!-- col-span-2: 跨越2列 -->
+                            <!-- border-t: 上边框分隔线 -->
+                            <div class="col-span-2 border-t border-dashed border-slate-100 pt-2">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学校</span>
+                                <span class="font-medium">${safeStr(dept.schoolName)}</span>
+                            </div>
+                            
+                            <!-- 性别字段 -->
+                            <div>
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">性别</span>
+                                <span>${safeStr(dept.sexValue)}</span>
+                            </div>
+                            
+                            <!-- 身份字段 -->
+                            <div>
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">身份</span>
+                                <span>${safeStr(dept.typeValue)}</span>
+                            </div>
+                            
+                            <!-- ========== 账号状态部分（合并原"账号详情"卡片的内容）========== -->
+                            
+                            <!-- 账号状态字段 - 使用彩色标签显示 -->
+                            <div>
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">状态</span>
+                                <!-- 根据status值显示不同颜色的标签 -->
+                                <!-- status === 1: 绿色"正常"标签 -->
+                                <!-- status !== 1: 红色"异常"标签 -->
+                                ${user.status === 1 ? 
+                                    '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">正常</span>' : 
+                                    '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">异常</span>'
+                                }
+                            </div>
+                            
+                            <!-- 占位div，保持2列布局的对称性 -->
+                            <div></div>
+                            
+                            <!-- 注册时间字段 - 占据整行 -->
+                            <div class="col-span-2">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">注册时间</span>
+                                <span class="text-xs text-slate-600">${safeStr(user.createtime)}</span>
+                            </div>
+                            
+                            <!-- 首次登录字段 - 占据整行 -->
+                            <div class="col-span-2">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">首次登录</span>
+                                <span class="text-xs text-slate-600">${safeStr(user.firstlogin)}</span>
+                            </div>
+                            
+                            <!-- 最近登录字段 - 占据整行 -->
+                            <div class="col-span-2">
+                                <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">最近登录 (APP)</span>
+                                <span class="text-xs text-slate-600">${safeStr(dept.logintime)}</span>
+                            </div>
+                            
+                            <!-- 账号密码字段 - 占据整行，使用边框分隔 -->
+                            <div class="col-span-2 pt-1 border-t border-dashed border-slate-100">
                                 <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">账号密码</span>
+                                <!-- 密码显示区域：使用flex布局，包含密码文本和"明文"标签 -->
                                 <div class="flex items-center gap-2">
+                                    <!-- 密码文本：使用等宽字体，可全选，背景和边框高亮 -->
                                     <span class="font-mono bg-slate-100 border border-slate-200 px-2 py-1 rounded text-slate-600 select-all">${safeStr(user.text_password)}</span>
+                                    <!-- "明文"标签：提示用户这是明文密码 -->
                                     <span class="text-[10px] text-slate-400">(明文)</span>
                                 </div>
                             </div>
                         </div>
                     </div>
+                    <!-- ========== 任务10修改完成 ========== -->
 
                     <div class="border border-slate-200 rounded-lg overflow-hidden">
                         <button onclick="const el = this.nextElementSibling; el.classList.toggle('hidden'); this.querySelector('svg').style.transform = el.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';" 
@@ -47960,4 +48816,265 @@ async function adminClearOverdue(school_username, auth_username='', is_detail_vi
 
 // ============================================================================
 // 欠费账号查询功能 - 结束
+
+// ============================================================================
+// 订单号自动获取金额并填充退款金额功能 - 开始
+// ============================================================================
+
+/**
+ * 初始化订单号输入框的自动填充功能
+ * 功能说明：
+ * 1. 为订单号输入框添加input事件监听
+ * 2. 当用户输入完订单号后，自动获取订单金额
+ * 3. 计算金额的75%并填充到退款金额输入框
+ * 
+ * 调用时机：
+ * - 页面加载完成后自动初始化
+ * 
+ * 实现细节：
+ * - 监听订单号输入框的input事件
+ * - 进行订单号格式校验（长度、字符等）
+ * - 调用后端API获取订单信息
+ * - 计算75%金额并自动填充
+ * - 提供友好的错误提示
+ */
+function initOrderNumberAutoFill() {
+  // 获取订单号输入框DOM元素
+  const tradeNoInput = document.getElementById('admin-refund-order-trade-no_modal');
+  
+  // 如果输入框不存在，记录错误并退出
+  if (!tradeNoInput) {
+    console.error('[订单号自动填充] 未找到订单号输入框元素');
+    return;
+  }
+  
+  // 为订单号输入框添加input事件监听
+  // 使用防抖（debounce）技术，避免频繁触发API请求
+  let debounceTimer = null; // 防抖计时器
+  
+  tradeNoInput.addEventListener('input', function(event) {
+    // 清除之前的防抖计时器
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    
+    // 获取用户输入的订单号（去除首尾空格）
+    const tradeNo = event.target.value.trim();
+    
+    // 如果订单号为空，清空退款金额输入框并退出
+    if (!tradeNo) {
+      const amountInput = document.getElementById('admin-refund-amount_modal');
+      if (amountInput) {
+        amountInput.value = '';
+      }
+      return;
+    }
+    
+    // 设置防抖计时器：用户停止输入500毫秒后才触发查询
+    // 这样可以避免用户输入过程中频繁调用API，提升性能和用户体验
+    debounceTimer = setTimeout(async () => {
+      // 调用订单号校验和金额获取函数
+      await fetchOrderAmountAndFill(tradeNo);
+    }, 500); // 500毫秒的防抖延迟
+  });
+  
+  console.log('[订单号自动填充] 初始化完成');
+}
+
+/**
+ * 根据订单号获取订单金额并填充75%到退款金额输入框
+ * 功能说明：
+ * 1. 校验订单号格式（长度、字符等）
+ * 2. 调用后端API查询订单信息
+ * 3. 获取订单金额
+ * 4. 计算金额的75%
+ * 5. 自动填充到退款金额输入框
+ * 6. 提供详细的错误提示
+ * 
+ * @param {string} tradeNo - 订单号
+ * 
+ * @returns {Promise<void>} 无返回值的Promise
+ * 
+ * API端点：/api/payment/orders
+ * 请求方法：GET
+ * 查询参数：page=1&per_page=1000&status=all（获取所有订单）
+ * 
+ * 返回数据格式：
+ * {
+ *   success: boolean,
+ *   orders: [
+ *     {
+ *       order_trade_no: string,  // 订单号
+ *       amount: number,          // 订单金额
+ *       status: string,          // 订单状态
+ *       ...
+ *     }
+ *   ],
+ *   total: number,
+ *   page: number,
+ *   per_page: number
+ * }
+ */
+async function fetchOrderAmountAndFill(tradeNo) {
+  console.log('[订单号自动填充] 开始处理订单号:', tradeNo);
+  
+  // ========== 步骤1：订单号格式校验 ==========
+  
+  // 校验订单号长度（通常订单号长度在10-50个字符之间）
+  if (tradeNo.length < 10) {
+    console.warn('[订单号自动填充] 订单号长度过短，跳过查询');
+    return; // 不显示错误提示，因为用户可能还在输入
+  }
+  
+  if (tradeNo.length > 100) {
+    console.warn('[订单号自动填充] 订单号长度过长');
+    showModalAlert('订单号长度不能超过100个字符', '格式错误');
+    return;
+  }
+  
+  // 校验订单号字符（只允许字母、数字、下划线、连字符）
+  // 这是一个基本的格式校验，具体格式取决于支付平台的规范
+  const validPattern = /^[A-Za-z0-9_-]+$/;
+  if (!validPattern.test(tradeNo)) {
+    console.warn('[订单号自动填充] 订单号包含非法字符');
+    showModalAlert('订单号只能包含字母、数字、下划线和连字符', '格式错误');
+    return;
+  }
+  
+  // ========== 步骤2：调用后端API查询订单信息 ==========
+  
+  try {
+    // 构建API请求URL
+    // 使用大的per_page值（1000）来确保能查询到所有订单
+    // 实际应用中，可以考虑添加订单号搜索接口以提升性能
+    const url = `/api/payment/orders?page=1&per_page=1000&status=all`;
+    
+    console.log('[订单号自动填充] 调用API查询订单:', url);
+    
+    // 发起GET请求
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID  // 使用全局会话UUID进行身份验证
+      }
+    });
+    
+    // 检查HTTP响应状态
+    if (!response.ok) {
+      throw new Error(`HTTP错误: ${response.status}`);
+    }
+    
+    // 解析JSON响应
+    const result = await response.json();
+    
+    // 检查API调用是否成功
+    if (!result.success) {
+      throw new Error(result.message || '获取订单列表失败');
+    }
+    
+    // ========== 步骤3：在订单列表中查找匹配的订单 ==========
+    
+    // 从返回结果中获取订单列表
+    const orders = result.orders || [];
+    
+    console.log('[订单号自动填充] 查询到订单数量:', orders.length);
+    
+    // 在订单列表中查找与输入订单号匹配的订单
+    // 使用find方法进行精确匹配（区分大小写）
+    const matchedOrder = orders.find(order => order.order_trade_no === tradeNo);
+    
+    // 如果未找到匹配的订单
+    if (!matchedOrder) {
+      console.warn('[订单号自动填充] 未找到匹配的订单:', tradeNo);
+      showModalAlert('未找到该订单号对应的订单记录', '订单不存在');
+      
+      // 清空退款金额输入框
+      const amountInput = document.getElementById('admin-refund-amount_modal');
+      if (amountInput) {
+        amountInput.value = '';
+      }
+      
+      return;
+    }
+    
+    // ========== 步骤4：获取订单金额并校验 ==========
+    
+    console.log('[订单号自动填充] 找到匹配订单:', matchedOrder);
+    
+    // 从订单对象中获取金额字段
+    const orderAmount = parseFloat(matchedOrder.amount);
+    
+    // 校验金额是否有效（必须是正数）
+    if (isNaN(orderAmount) || orderAmount <= 0) {
+      console.error('[订单号自动填充] 订单金额无效:', matchedOrder.amount);
+      showModalAlert('该订单的金额数据无效，无法计算退款金额', '数据错误');
+      return;
+    }
+    
+    // ========== 步骤5：计算退款金额（75%） ==========
+    
+    // 计算退款金额：原金额 × 0.75
+    const refundAmount = orderAmount * 0.75;
+    
+    // 保留2位小数，符合货币金额的标准格式
+    const refundAmountFormatted = refundAmount.toFixed(2);
+    
+    console.log('[订单号自动填充] 计算退款金额:', {
+      原订单金额: orderAmount,
+      退款金额_75Percent: refundAmountFormatted
+    });
+    
+    // ========== 步骤6：填充退款金额到输入框 ==========
+    
+    // 获取退款金额输入框DOM元素
+    const amountInput = document.getElementById('admin-refund-amount_modal');
+    
+    if (!amountInput) {
+      console.error('[订单号自动填充] 未找到退款金额输入框元素');
+      return;
+    }
+    
+    // 自动填充计算好的退款金额
+    amountInput.value = refundAmountFormatted;
+    
+    // 触发input事件，以便其他依赖此输入框的逻辑能够响应
+    // 例如，可能有实时验证或计算的功能需要知道金额已更新
+    amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    // 在控制台输出成功日志
+    console.log('[订单号自动填充] 成功填充退款金额:', refundAmountFormatted);
+    
+    // 可选：显示成功提示（可根据需要开启）
+    // showModalAlert(`已自动填充退款金额：¥${refundAmountFormatted}（原金额的75%）`, '成功');
+    
+  } catch (error) {
+    // ========== 异常处理 ==========
+    
+    // 捕获所有可能的错误（网络错误、解析错误、API错误等）
+    console.error('[订单号自动填充] 获取订单信息失败:', error);
+    
+    // 显示友好的错误提示
+    showModalAlert(`获取订单信息失败: ${error.message}`, '错误');
+    
+    // 清空退款金额输入框
+    const amountInput = document.getElementById('admin-refund-amount_modal');
+    if (amountInput) {
+      amountInput.value = '';
+    }
+  }
+}
+
+// 在页面加载完成后初始化订单号自动填充功能
+// 使用DOMContentLoaded事件确保DOM元素已经加载
+document.addEventListener('DOMContentLoaded', function() {
+  // 延迟执行，确保其他初始化代码已经完成
+  setTimeout(() => {
+    initOrderNumberAutoFill();
+  }, 100); // 延迟100毫秒执行
+});
+
+// ============================================================================
+// 订单号自动获取金额并填充退款金额功能 - 结束
+// ============================================================================
 // ============================================================================

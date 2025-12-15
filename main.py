@@ -1456,6 +1456,12 @@ def auto_init_system():
         # 此函数会检查 payment_methods.json 是否已存在，避免重复迁移
         _migrate_payment_methods_to_json()
 
+        logging.info("步骤2.6: 初始化高德地图去水印控制配置...")
+        print("[系统初始化] 初始化高德地图去水印控制配置...")
+        # 调用初始化函数，确保 amap_watermark_control.json 配置文件存在
+        # 如果文件不存在，会创建默认配置文件
+        _initialize_amap_watermark_config()
+
         logging.info("步骤3: 创建权限配置文件...")
         print("[系统初始化] 创建权限配置文件...")
         _create_permissions_json()
@@ -3158,6 +3164,253 @@ def _migrate_payment_methods_to_json():
             pass
 
 
+# ============================================================
+# 高德地图去水印控制配置管理函数
+# 用于管理用户的高德地图去水印权限
+# ============================================================
+
+
+def _get_default_amap_watermark_config():
+    """
+    获取高德地图去水印控制的默认配置
+    
+    返回值:
+        dict: 默认的水印控制配置字典
+        
+    说明:
+        此函数返回一个包含默认配置的字典结构。
+        默认配置包括：
+        - _comment: 配置文件说明，帮助用户理解文件用途
+        - _description: 详细描述配置的作用
+        - users: 用户级别的个性化配置字典，默认为空
+        
+    配置结构:
+        {
+            "_comment": "配置说明",
+            "_description": "详细描述",
+            "users": {
+                "username": true/false  # 用户名: 是否允许去水印
+            }
+        }
+    """
+    # 返回默认配置结构
+    # 使用有序字典确保注释字段显示在最前面，便于阅读
+    return {
+        "_comment": "高德地图去水印个性化控制配置",
+        "_description": "为每个用户配置是否允许去除高德地图水印，未配置的用户使用默认值",
+        "users": {}  # 初始为空字典，后续可按需添加用户配置
+    }
+
+
+def _read_amap_watermark_config():
+    """
+    读取高德地图去水印控制配置文件
+    
+    返回值:
+        dict: 水印控制配置字典，如果文件不存在或读取失败，则返回默认配置
+        
+    说明:
+        此函数负责从 amap_watermark_control.json 文件中读取去水印控制配置。
+        - 如果文件存在且格式正确，返回文件中的配置
+        - 如果文件不存在，返回默认配置（不会自动创建文件）
+        - 如果读取过程中发生错误（如JSON格式错误），记录错误日志并返回默认配置
+        
+    异常处理:
+        所有异常都会被捕获，确保函数始终返回一个有效的配置字典
+        即使配置文件损坏，也不会影响系统的正常运行
+    """
+    # 定义配置文件路径为当前目录下的 amap_watermark_control.json
+    config_file = "amap_watermark_control.json"
+    
+    try:
+        # 检查配置文件是否存在
+        if os.path.exists(config_file):
+            # 文件存在，尝试打开并读取
+            # 使用 utf-8 编码确保中文内容正确读取
+            with open(config_file, 'r', encoding='utf-8') as f:
+                # 使用 json.load 解析JSON文件内容
+                # 返回解析后的字典对象
+                config = json.load(f)
+                
+                # 验证配置文件的基本结构是否正确
+                # 确保 "users" 字段存在且为字典类型
+                if not isinstance(config.get("users"), dict):
+                    # 如果结构不正确，记录警告并返回默认配置
+                    logging.warning(f"[水印控制] 配置文件结构不正确，使用默认配置")
+                    return _get_default_amap_watermark_config()
+                
+                # 配置文件格式正确，返回读取的配置
+                return config
+        else:
+            # 文件不存在，返回默认配置
+            # 这是正常情况（首次运行或文件被删除）
+            return _get_default_amap_watermark_config()
+    except json.JSONDecodeError as e:
+        # JSON 格式错误，记录详细错误信息
+        logging.error(f"[水印控制] 配置文件JSON格式错误: {str(e)}")
+        # 返回默认配置，确保系统可以正常运行
+        return _get_default_amap_watermark_config()
+    except Exception as e:
+        # 捕获所有其他可能的异常（文件读取错误等）
+        logging.error(f"[水印控制] 读取配置文件失败: {str(e)}")
+        # 返回默认配置，确保系统可以正常运行
+        return _get_default_amap_watermark_config()
+
+
+def _write_amap_watermark_config(config):
+    """
+    写入高德地图去水印控制配置文件
+    
+    参数:
+        config (dict): 水印控制配置字典，将被写入到JSON文件
+        
+    说明:
+        此函数负责将水印控制配置写入到 amap_watermark_control.json 文件。
+        - 使用 utf-8 编码确保中文内容正确保存
+        - 使用 ensure_ascii=False 保持中文字符不被转义
+        - 使用 indent=2 格式化JSON输出，便于人工编辑
+        
+    写入前验证:
+        在写入前会验证配置结构的有效性，确保 "users" 字段存在且为字典类型
+        
+    异常处理:
+        如果写入失败，会记录错误日志并重新抛出异常，由调用方处理
+    """
+    # 定义配置文件路径为当前目录下的 amap_watermark_control.json
+    config_file = "amap_watermark_control.json"
+    
+    try:
+        # 验证配置数据的有效性
+        # 确保 config 是字典类型且包含 "users" 字段
+        if not isinstance(config, dict) or "users" not in config:
+            # 配置数据无效，记录错误并抛出异常
+            error_msg = "配置数据格式无效，必须包含 'users' 字段"
+            logging.error(f"[水印控制] {error_msg}")
+            raise ValueError(error_msg)
+        
+        # 确保 "users" 字段是字典类型
+        if not isinstance(config["users"], dict):
+            error_msg = "'users' 字段必须是字典类型"
+            logging.error(f"[水印控制] {error_msg}")
+            raise ValueError(error_msg)
+        
+        # 打开文件进行写入，如果文件不存在则创建
+        # 使用 utf-8 编码确保中文内容正确保存
+        with open(config_file, 'w', encoding='utf-8') as f:
+            # 使用 json.dump 将字典对象序列化为JSON并写入文件
+            # ensure_ascii=False: 保持中文字符不被转义为 \uXXXX 格式
+            # indent=2: 使用2个空格缩进，使JSON格式更易读
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        # 写入成功，记录信息日志
+        logging.info(f"[水印控制] 配置已保存到 {config_file}")
+    except Exception as e:
+        # 捕获所有可能的异常（权限错误、磁盘空间不足等）
+        # 记录错误日志，便于排查问题
+        logging.error(f"[水印控制] 写入配置文件失败: {str(e)}")
+        # 重新抛出异常，让调用方知道写入失败
+        # 这样调用方可以决定如何处理（如回滚操作、向用户显示错误等）
+        raise
+
+
+def _initialize_amap_watermark_config():
+    """
+    初始化高德地图去水印控制配置文件
+    
+    说明:
+        此函数在应用启动时调用，用于确保配置文件存在且格式正确。
+        - 如果配置文件不存在，创建默认配置文件
+        - 如果配置文件存在但格式错误，记录警告但不覆盖（避免丢失数据）
+        - 创建文件时会添加详细的注释，方便用户理解和修改
+        
+    执行逻辑:
+        1. 检查配置文件是否存在
+        2. 如果不存在，读取当前配置（会返回默认配置）
+        3. 将配置写入文件（创建新文件）
+        4. 如果文件已存在，只验证格式，不进行修改
+        
+    异常处理:
+        所有异常都会被捕获，确保即使初始化失败也不影响应用启动
+    """
+    # 定义配置文件路径
+    config_file = "amap_watermark_control.json"
+    
+    try:
+        # 检查配置文件是否存在
+        if not os.path.exists(config_file):
+            # 配置文件不存在，需要创建默认配置文件
+            logging.info(f"[水印控制] 配置文件不存在，正在创建默认配置...")
+            
+            # 获取默认配置
+            default_config = _get_default_amap_watermark_config()
+            
+            # 将默认配置写入文件
+            _write_amap_watermark_config(default_config)
+            
+            # 创建成功，记录信息日志
+            logging.info(f"[水印控制] 默认配置文件已创建")
+        else:
+            # 配置文件已存在，验证其格式是否正确
+            # 尝试读取配置文件
+            config = _read_amap_watermark_config()
+            
+            # 如果读取成功（返回的不是默认配置），说明文件格式正确
+            # 注意：这里我们简单地验证 "users" 字段是否存在
+            if "users" in config:
+                logging.info(f"[水印控制] 配置文件已存在且格式正确")
+            else:
+                # 文件存在但格式可能有问题，记录警告
+                logging.warning(f"[水印控制] 配置文件格式可能有问题，请检查")
+    except Exception as e:
+        # 捕获所有异常，确保初始化失败不影响应用启动
+        logging.error(f"[水印控制] 初始化配置文件失败: {str(e)}")
+        # 不抛出异常，允许应用继续启动
+
+
+def _get_watermark_removal_default():
+    """
+    从 config.ini 读取高德地图去水印的默认值
+    
+    返回值:
+        bool: 默认的去水印设置，True 表示允许，False 表示禁止
+        
+    说明:
+        此函数从 config.ini 文件的 [Map] 节读取 watermark_removal_default 配置项。
+        - 如果配置项存在且值为 "true"（不区分大小写），返回 True
+        - 如果配置项存在且值为 "false"（不区分大小写），返回 False
+        - 如果配置项不存在或读取失败，返回默认值 True（允许去水印）
+        
+    配置格式:
+        [Map]
+        watermark_removal_default = true
+        
+    异常处理:
+        所有异常都会被捕获，返回默认值 True，确保系统可以正常运行
+    """
+    try:
+        # 创建 ConfigParser 对象用于读取 INI 文件
+        config = configparser.ConfigParser()
+        
+        # 读取 config.ini 文件，使用 utf-8 编码
+        config.read("config.ini", encoding="utf-8")
+        
+        # 检查 [Map] 节是否存在
+        if config.has_section("Map"):
+            # [Map] 节存在，尝试读取 watermark_removal_default 配置项
+            # getboolean 方法会自动将 "true"/"false" 字符串转换为布尔值
+            # fallback 参数指定当配置项不存在时的默认值
+            return config.getboolean("Map", "watermark_removal_default", fallback=True)
+        else:
+            # [Map] 节不存在，返回默认值 True
+            logging.warning(f"[水印控制] config.ini 中未找到 [Map] 节，使用默认值 True")
+            return True
+    except Exception as e:
+        # 捕获所有可能的异常（文件不存在、读取错误、格式错误等）
+        logging.error(f"[水印控制] 读取默认配置失败: {str(e)}，使用默认值 True")
+        # 返回默认值 True，确保系统可以正常运行
+        return True
+
+
 def _create_permissions_json(force=False):
     """创建默认的permissions.json权限配置文件"""
     # 增加 force 参数判断，如果为 True 则跳过存在性检查，直接覆盖（即清空重建）
@@ -4580,10 +4833,34 @@ class AuthSystem:
                 "theme": "light",
                 "phone": phone,
                 "nickname": nickname or auth_username,
-                # 可用执行次数字段：记录用户还可以执行多少次任务
-                # 从配置文件读取默认值（Payment_Settings.default_available_runs）
-                # 默认值为10次，管理员可在config.ini中修改
-                # 特殊值：-1表示无限次数，0表示无免费次数
+                # ========== 可用执行次数（available_runs）字段初始化 ==========
+                # 
+                # 功能说明：
+                # 记录用户还可以执行多少次任务（例如：校园跑、任务等）
+                # 
+                # 数据来源：
+                # 从配置文件 config.ini 的 [Payment_Settings] 节读取 default_available_runs 参数
+                # 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
+                # 
+                # 默认值：
+                # 如果配置文件中未设置该参数，则使用 fallback 值 10（次）
+                # 
+                # 特殊值说明：
+                # - -1: 表示无限次数（VIP用户或特殊权限用户）
+                # - 0: 表示无免费次数（必须付费才能使用）
+                # - 正整数: 表示具体的可用次数
+                # 
+                # 管理员配置：
+                # 管理员可以在 config.ini 文件中修改 default_available_runs 的值
+                # 修改后，所有新注册的用户都将获得新的默认值
+                # 注意：已注册用户的 available_runs 不会自动更新
+                # 
+                # 一致性保证：
+                # 此实现确保通过以下方式创建的用户都使用相同的默认值：
+                # 1. PC端管理员创建用户（admin-create-user_modal + newUserConfirm）
+                # 2. 移动端管理员创建用户（mobile-new-user-confirm-btn）
+                # 3. 普通用户自助注册（/auth/register）
+                # 所有创建用户的代码路径都调用此 register_user 函数，因此 available_runs 一致
                 "available_runs": self.config.getint(
                     "Payment_Settings", "default_available_runs", fallback=10
                 ),
@@ -15321,6 +15598,7 @@ class BackgroundTaskManager:
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
         """
+        # ========== 任务20修复：欠费检查前强制重新读取INI文件 ==========
         # 步骤1：欠费检查（在启动任务前执行）
         # 获取当前用户的认证用户名
         auth_username = getattr(api_instance, 'auth_username', None)
@@ -15329,36 +15607,66 @@ class BackgroundTaskManager:
 
         # 如果能获取到用户名，进行欠费检查
         if auth_username:
-            # 加载该用户的所有学校账号
-            
+            # 从 api_instance.user_info 获取学校账号用户名
+            # 注意：user_info 可能包含持久化会话中的旧数据
             self.user_info = getattr(api_instance, "user_info", {})
             school_username = self.user_info.get("student_id")
-            logging.debug(f"cls户 {auth_username} 的学校账号 {school_username} 是否存在欠费")
             
-            # 检查每个账号是否存在欠费
+            logging.debug(
+                f"[任务20修复] 检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费"
+            )
+            
+            # --- 关键修复：强制从INI文件重新读取最新的统计数据 ---
+            # 原因：user_info 中可能包含缓存的旧数据
+            # 如果用户在程序运行期间通过欠费系统修改了INI文件，
+            # 而任务系统仍使用缓存的 user_info，就会导致数据不同步
+            # 解决方案：每次启动任务前，都从INI文件实时读取最新的欠费状态
+            
+            # 初始化欠费账号列表（用于记录所有存在欠费的账号）
             overdue_accounts_list = []
             
-            # 从 INI 文件读取统计数据
+            # 调用 _load_school_account_stats_from_ini() 方法
+            # 此方法会直接打开INI文件读取，不依赖任何缓存
+            # 返回格式：{"overdue_count": int, "completed_count": int}
             stats = api_instance._load_school_account_stats_from_ini(school_username)
+            
+            # 从返回的统计数据中提取欠费次数
+            # 使用 .get() 方法并指定默认值 0，防止键不存在时报错
             overdue_count = stats.get("overdue_count", 0)
+            
+            # 记录日志：显示从INI文件读取到的欠费次数
+            # 这有助于追踪数据同步问题
+            logging.info(
+                f"[任务20修复] 从INI文件读取到最新数据 - "
+                f"学校账号: {school_username}, 欠费次数: {overdue_count}"
+            )
 
-            # 如果存在欠费，记录到列表中
+            # 如果存在欠费（overdue_count > 0），记录到欠费账号列表中
             if overdue_count > 0:
                 overdue_accounts_list.append({
-                    "school_username": school_username,
-                    "overdue_count": overdue_count
+                    "school_username": school_username,  # 学校账号用户名
+                    "overdue_count": overdue_count       # 欠费次数
                 })
+                
+                # 记录警告日志：发现欠费账号
+                logging.warning(
+                    f"[任务20修复] 发现欠费账号 - "
+                    f"学校账号: {school_username}, 欠费次数: {overdue_count}"
+                )
 
             # 如果发现任何账号有欠费，拒绝启动任务
             if overdue_accounts_list:
+                # 记录警告日志：拒绝启动任务（包含欠费账号数量）
                 logging.warning(
                     f"[欠费检查] 用户 {auth_username} 有 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
                 )
+                
+                # 返回失败响应，包含详细的错误信息和欠费账号列表
                 return {
-                    "success": False,
-                    "message": "有账号存在欠费，请先缴费",
-                    "error_code": "OVERDUE_PAYMENT",
-                    "overdue_accounts": overdue_accounts_list
+                    "success": False,                       # 操作失败标志
+                    "message": "有账号存在欠费，请先缴费",   # 用户友好的错误消息
+                    "error_code": "OVERDUE_PAYMENT",        # 错误代码，前端可据此识别错误类型
+                    "overdue_accounts": overdue_accounts_list  # 欠费账号详细列表
                 }
 
 
@@ -18759,6 +19067,18 @@ def start_web_server(args_param):
     def auth_register():
         """
         用户注册API端点（已升级支持手机号、昵称、头像）。
+        
+        功能说明：
+        - 允许新用户自助注册账号
+        - 支持手机号绑定、昵称设置、头像上传
+        - 支持短信验证码验证（可选，取决于配置）
+        - 支持图形验证码防止机器注册
+        
+        available_runs（可用次数）处理：
+        - 新注册用户的 available_runs 将自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+        - 这确保了所有注册方式（自助注册、管理员创建）都使用统一的默认值
+        - 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
+        - 如需修改默认值，请编辑 config.ini 文件并重启服务
         """
         try:
             # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
@@ -20048,6 +20368,12 @@ def start_web_server(args_param):
         - phone: 手机号（可选）
         - nickname: 昵称（可选）
         - sms_code: 短信验证码（可选，如非空则进行校验）
+        
+        available_runs（可用次数）处理：
+        - 本API不需要在请求参数中指定 available_runs
+        - 新用户的 available_runs 将自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+        - 这确保了所有创建用户的方式（PC端、移动端、自助注册）都使用统一的默认值
+        - 如需修改某个用户的 available_runs，请在用户创建后通过用户管理功能进行修改
         """
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
@@ -28404,6 +28730,284 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"验证失败: {str(e)}"})
 
     # ============================================================
+    # 高德地图去水印控制API
+    # 用于控制用户是否可以使用高德地图去水印功能
+    # ============================================================
+    
+    @app.route("/api/amap/watermark_control", methods=["GET"])
+    def get_watermark_control():
+        """
+        检查当前用户是否允许使用去水印功能
+        
+        此端点用于前端在加载去水印脚本前检查权限。
+        不需要 @login_required 装饰器，因为需要处理无效session的情况。
+        
+        请求头:
+            X-Session-ID: 用户的会话ID（可以为空、null、NULL等无效值）
+            
+        返回值:
+            JSON对象: {"allowed": true/false}
+            - allowed=true: 允许去水印
+            - allowed=false: 不允许去水印
+            
+        权限逻辑:
+            1. 如果 session 无效或用户未登录，返回 {"allowed": false}
+            2. 如果用户已登录，检查个性化配置（amap_watermark_control.json）
+            3. 如果用户在配置中有明确设置，使用该设置
+            4. 如果用户未在配置中设置，使用默认值（从 config.ini 读取）
+        """
+        # 从请求头获取 session ID
+        session_id = request.headers.get("X-Session-ID", "")
+        
+        # 初始化变量，用于存储用户信息
+        api_instance = None
+        is_authenticated = False
+        auth_username = None
+        
+        # 步骤1: 验证 session ID 是否有效
+        # 检查 session_id 是否为空或为常见的无效值（null、NULL、undefined等）
+        if session_id and session_id.lower() not in ["null", "undefined", "none", ""]:
+            # session_id 看起来是有效的，尝试从会话字典中获取
+            with web_sessions_lock:
+                if session_id in web_sessions:
+                    # 会话存在，获取 API 实例
+                    api_instance = web_sessions[session_id]
+                    # 获取认证状态
+                    is_authenticated = getattr(api_instance, "is_authenticated", False)
+                    # 获取用户名
+                    auth_username = getattr(api_instance, "auth_username", None)
+        
+        # 步骤2: 如果 session 无效或用户未登录，直接返回不允许
+        if not is_authenticated or not api_instance or not auth_username:
+            # 记录调试日志，便于排查问题
+            logging.debug(
+                f"[水印控制] Session无效或未登录，拒绝去水印 - Session ID: {session_id[:8] if session_id else 'None'}..."
+            )
+            # 返回不允许的响应
+            return jsonify({"allowed": False})
+        
+        # 步骤3: 用户已登录，检查权限配置
+        try:
+            # 读取去水印控制配置
+            config = _read_amap_watermark_config()
+            
+            # 获取用户级别的配置字典
+            users_config = config.get("users", {})
+            
+            # 步骤4: 检查用户是否有个性化设置
+            if auth_username in users_config:
+                # 用户有个性化设置，使用该设置
+                user_allowed = users_config[auth_username]
+                
+                # 确保值是布尔类型（防止配置文件被手动修改为其他类型）
+                if isinstance(user_allowed, bool):
+                    # 记录日志
+                    logging.debug(
+                        f"[水印控制] 用户 {auth_username} 使用个性化设置: {user_allowed}"
+                    )
+                    # 返回用户的个性化设置
+                    return jsonify({"allowed": user_allowed})
+                else:
+                    # 配置值类型不正确，记录警告并使用默认值
+                    logging.warning(
+                        f"[水印控制] 用户 {auth_username} 的配置值类型不正确: {type(user_allowed)}，使用默认值"
+                    )
+            
+            # 步骤5: 用户没有个性化设置，使用默认值
+            # 从 config.ini 读取默认值
+            default_allowed = _get_watermark_removal_default()
+            
+            # 记录日志
+            logging.debug(
+                f"[水印控制] 用户 {auth_username} 使用默认设置: {default_allowed}"
+            )
+            
+            # 返回默认设置
+            return jsonify({"allowed": default_allowed})
+            
+        except Exception as e:
+            # 捕获所有异常，确保即使出错也返回一个有效的响应
+            logging.error(f"[水印控制] 检查权限时发生错误: {str(e)}")
+            
+            # 出错时采用保守策略，不允许去水印
+            # 这样可以避免因配置错误导致的安全问题
+            return jsonify({"allowed": False})
+    
+    @app.route("/api/amap/watermark_control/config", methods=["GET"])
+    @admin_required  # 需要管理员权限
+    def get_watermark_control_config():
+        """
+        获取所有用户的去水印控制配置（管理员专用）
+        
+        此端点用于管理面板显示和编辑所有用户的去水印权限。
+        需要管理员权限才能访问。
+        
+        返回值:
+            JSON对象: 
+            {
+                "success": true,
+                "config": {
+                    "default": true/false,  # 默认值（从 config.ini 读取）
+                    "users": {              # 用户个性化配置
+                        "username": true/false
+                    }
+                },
+                "all_users": ["user1", "user2", ...]  # 系统中所有用户的列表
+            }
+            
+        权限要求:
+            需要管理员权限（admin 或 super_admin 组）
+        """
+        try:
+            # 步骤1: 读取去水印控制配置
+            config = _read_amap_watermark_config()
+            
+            # 步骤2: 读取默认值（从 config.ini）
+            default_value = _get_watermark_removal_default()
+            
+            # 步骤3: 获取所有用户列表
+            # 从认证系统获取所有用户（排除游客）
+            all_users = []
+            try:
+                # 调用认证系统的方法获取用户列表
+                # 这里假设有一个方法可以获取所有用户，如果没有，需要从账号文件读取
+                users_data = auth_system.list_users()
+                # 提取用户名列表
+                all_users = [user["username"] for user in users_data if not user.get("is_guest", False)]
+            except Exception as e:
+                # 如果获取用户列表失败，记录错误
+                logging.error(f"[水印控制] 获取用户列表失败: {str(e)}")
+                # 用户列表为空，但不影响配置的读取
+                all_users = []
+            
+            # 步骤4: 构建返回数据
+            response_data = {
+                "success": True,
+                "config": {
+                    "default": default_value,
+                    "users": config.get("users", {})
+                },
+                "all_users": all_users
+            }
+            
+            # 记录日志
+            logging.info(f"[水印控制] 管理员 {g.user} 获取配置，共 {len(all_users)} 个用户")
+            
+            # 返回响应
+            return jsonify(response_data)
+            
+        except Exception as e:
+            # 捕获所有异常
+            logging.error(f"[水印控制] 获取配置失败: {str(e)}")
+            # 返回错误响应
+            return jsonify({
+                "success": False,
+                "message": f"获取配置失败: {str(e)}"
+            }), 500
+    
+    @app.route("/api/amap/watermark_control/config", methods=["PUT"])
+    @admin_required  # 需要管理员权限
+    def update_watermark_control_config():
+        """
+        更新用户的去水印控制配置（管理员专用）
+        
+        此端点用于管理面板保存用户的去水印权限设置。
+        需要管理员权限和 modify_config 权限才能访问。
+        
+        请求体:
+            JSON对象:
+            {
+                "users": {
+                    "username": true/false
+                }
+            }
+            
+        返回值:
+            JSON对象: {"success": true/false, "message": "..."}
+            
+        权限要求:
+            1. 需要管理员权限（admin 或 super_admin 组）
+            2. 需要 modify_config 权限
+        """
+        try:
+            # 步骤1: 检查细粒度权限
+            # 获取当前用户名（由 @admin_required 装饰器设置）
+            auth_username = g.user
+            
+            # 检查是否有 modify_config 权限
+            if not auth_system.check_permission(auth_username, "modify_config"):
+                # 记录权限不足的日志
+                logging.warning(
+                    f"[水印控制] 用户 {auth_username} 尝试更新配置但权限不足"
+                )
+                # 返回权限不足的响应
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要 modify_config 权限"
+                }), 403
+            
+            # 步骤2: 获取请求数据
+            data = request.get_json() or {}
+            new_users_config = data.get("users", {})
+            
+            # 步骤3: 验证请求数据的格式
+            if not isinstance(new_users_config, dict):
+                # 数据格式不正确
+                return jsonify({
+                    "success": False,
+                    "message": "请求数据格式错误，'users' 必须是字典类型"
+                }), 400
+            
+            # 验证每个用户的配置值都是布尔类型
+            for username, allowed in new_users_config.items():
+                if not isinstance(allowed, bool):
+                    # 配置值类型不正确
+                    return jsonify({
+                        "success": False,
+                        "message": f"用户 {username} 的配置值必须是布尔类型"
+                    }), 400
+            
+            # 步骤4: 读取当前配置
+            current_config = _read_amap_watermark_config()
+            
+            # 步骤5: 更新用户配置
+            # 保留配置文件中的注释字段
+            updated_config = {
+                "_comment": current_config.get("_comment", "高德地图去水印个性化控制配置"),
+                "_description": current_config.get("_description", "为每个用户配置是否允许去除高德地图水印"),
+                "users": new_users_config  # 使用新的用户配置
+            }
+            
+            # 步骤6: 保存更新后的配置
+            _write_amap_watermark_config(updated_config)
+            
+            # 步骤7: 记录操作日志
+            logging.info(
+                f"[水印控制] 管理员 {auth_username} 更新配置，共 {len(new_users_config)} 个用户"
+            )
+            
+            # 步骤8: 返回成功响应
+            return jsonify({
+                "success": True,
+                "message": "配置已更新"
+            })
+            
+        except ValueError as e:
+            # 数据验证错误
+            logging.error(f"[水印控制] 数据验证失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": f"数据验证失败: {str(e)}"
+            }), 400
+        except Exception as e:
+            # 其他错误
+            logging.error(f"[水印控制] 更新配置失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": f"更新配置失败: {str(e)}"
+            }), 500
+
+    # ============================================================
     # 定时提醒功能API
     # 用于管理定时提醒，在特定时间段弹出提示
     # ============================================================
@@ -29846,30 +30450,139 @@ def start_web_server(args_param):
             # 所有日志文件统一存放在 PAYMENT_LOGS_DIR 目录下，不再按用户分子目录
             log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
 
-            # 准备要写入的完整日志数据
-            # 合并基础信息和传入的自定义数据
+            # ========== 任务4增强：准备更详细的支付日志数据 ==========
+            # 合并基础信息和传入的自定义数据，形成完整的日志记录
+            # 新增字段：referer、request_method、request_path、session_id等
             full_log_data = {
-                # 基础元信息
-                "timestamp": time.time(),                          # Unix时间戳（数字）
-                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),   # 可读时间（字符串）
-                "action": action,                                  # 操作类型
-                "user_id": user_id,                                # 用户标识
-                "order_id": order_id,                              # 订单号
-                # 请求元信息（在Flask请求上下文中可用）
-                # 客户端IP
-                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,
-                # 浏览器UA
-                "user_agent": request.headers.get("User-Agent", "") if request else "",
-                # 自定义数据（从参数传入）
+                # === 基础元信息 ===
+                "timestamp": time.time(),                          # Unix时间戳（数字），用于精确计算时间差
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),   # 可读时间字符串，便于人工查看
+                "iso_datetime": datetime.datetime.now().isoformat(),  # ISO 8601格式时间，便于跨系统交换
+                
+                # === 业务信息 ===
+                "action": action,                                  # 操作类型（如：create_order、query_order、payment_notify）
+                "user_id": user_id,                                # 用户标识（注册用户为username，游客为session UUID）
+                "order_id": order_id,                              # 订单号，用于关联订单和日志
+                
+                # === 请求元信息（仅在Flask请求上下文中可用） ===
+                # 以下字段只有在HTTP请求处理过程中才有值，后台任务中为None
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,  # 客户端真实IP地址
+                "user_agent": request.headers.get("User-Agent", "") if request else "",  # 浏览器User-Agent字符串
+                "referer": request.headers.get("Referer", "") if request else "",  # HTTP Referer头，表示请求来源页面
+                "request_method": request.method if request else None,  # HTTP请求方法（GET、POST等）
+                "request_path": request.path if request else None,  # 请求的URL路径
+                "request_url": request.url if request else None,  # 完整的请求URL
+                
+                # === 会话信息 ===
+                # session_id用于追踪同一用户的多次请求
+                "session_id": session.get("session_id") if request and hasattr(session, "get") else None,
+                
+                # === 服务器信息 ===
+                # 记录处理请求的服务器信息，便于分布式环境下的问题排查
+                "server_hostname": socket.gethostname() if socket else "unknown",  # 服务器主机名
+                "process_id": os.getpid(),  # 当前进程ID
+                
+                # === 自定义数据（从参数传入） ===
+                # 使用**运算符展开log_data字典，将其所有键值对添加到full_log_data中
+                # 这允许调用者传入任意额外的业务数据
                 **log_data
             }
 
-            # 将日志数据写入JSON文件
+            # ========== 任务4增强：写入日志文件并检查日志目录大小 ==========
+            
+            # --- 步骤1：写入日志文件 ---
+            # 将日志数据序列化为JSON格式并写入文件
             # 使用UTF-8编码支持中文
-            # indent=2 使JSON格式化，便于人工阅读
-            # ensure_ascii=False 保留中文字符，不转义为\uXXXX
+            # indent=2 使JSON格式化，便于人工阅读和调试
+            # ensure_ascii=False 保留中文字符，不转义为\uXXXX格式
             with open(log_filepath, "w", encoding="utf-8") as f:
                 json.dump(full_log_data, f, indent=2, ensure_ascii=False)
+
+            # --- 步骤2：检查日志目录总大小（简单的日志轮转机制） ---
+            # 为了防止日志文件无限增长占满磁盘，我们检查日志目录的总大小
+            # 如果超过阈值，删除最旧的日志文件
+            try:
+                # 定义日志目录最大大小限制（单位：字节）
+                # 这里设置为100MB，可根据实际需求调整
+                MAX_LOG_DIR_SIZE = 100 * 1024 * 1024  # 100 MB
+                
+                # 计算当前日志目录的总大小
+                total_size = 0  # 初始化总大小为0
+                log_files = []  # 用于存储日志文件信息的列表
+                
+                # 遍历日志目录中的所有文件
+                for filename in os.listdir(PAYMENT_LOGS_DIR):
+                    # 构造文件的完整路径
+                    filepath = os.path.join(PAYMENT_LOGS_DIR, filename)
+                    
+                    # 只处理.json文件，忽略其他文件
+                    if os.path.isfile(filepath) and filename.endswith('.json'):
+                        # 获取文件大小（单位：字节）
+                        file_size = os.path.getsize(filepath)
+                        # 获取文件最后修改时间（Unix时间戳）
+                        file_mtime = os.path.getmtime(filepath)
+                        
+                        # 累加文件大小到总大小
+                        total_size += file_size
+                        # 将文件信息添加到列表中，用于后续排序
+                        # 元组格式：(文件路径, 修改时间, 文件大小)
+                        log_files.append((filepath, file_mtime, file_size))
+                
+                # 如果日志目录总大小超过限制，执行清理
+                if total_size > MAX_LOG_DIR_SIZE:
+                    # 记录警告日志：日志目录大小超限
+                    logging.warning(
+                        f"[支付日志轮转] 日志目录大小 {total_size / (1024*1024):.2f}MB "
+                        f"超过限制 {MAX_LOG_DIR_SIZE / (1024*1024):.2f}MB，开始清理旧日志"
+                    )
+                    
+                    # 按文件修改时间排序，最旧的文件排在前面
+                    # key=lambda x: x[1] 表示按元组的第二个元素（修改时间）排序
+                    log_files.sort(key=lambda x: x[1])
+                    
+                    # 删除文件直到总大小降到限制的80%以下
+                    # 保留20%的缓冲空间，避免频繁触发清理
+                    target_size = MAX_LOG_DIR_SIZE * 0.8
+                    deleted_count = 0  # 记录删除的文件数量
+                    
+                    # 从最旧的文件开始删除
+                    for filepath, file_mtime, file_size in log_files:
+                        # 如果当前总大小已低于目标大小，停止删除
+                        if total_size <= target_size:
+                            break
+                        
+                        try:
+                            # 删除文件
+                            os.remove(filepath)
+                            # 从总大小中减去已删除文件的大小
+                            total_size -= file_size
+                            # 删除计数器加1
+                            deleted_count += 1
+                            
+                            # 记录调试日志：文件已删除
+                            logging.debug(
+                                f"[支付日志轮转] 已删除旧日志文件: {os.path.basename(filepath)} "
+                                f"({file_size / 1024:.2f} KB)"
+                            )
+                        except Exception as delete_error:
+                            # 删除失败，记录警告但继续处理其他文件
+                            logging.warning(
+                                f"[支付日志轮转] 删除日志文件失败: {os.path.basename(filepath)}, "
+                                f"错误: {str(delete_error)}"
+                            )
+                    
+                    # 记录信息日志：清理完成
+                    if deleted_count > 0:
+                        logging.info(
+                            f"[支付日志轮转] 清理完成，已删除 {deleted_count} 个旧日志文件，"
+                            f"当前目录大小: {total_size / (1024*1024):.2f}MB"
+                        )
+            
+            except Exception as rotation_error:
+                # 日志轮转失败不影响主业务，只记录警告日志
+                logging.warning(
+                    f"[支付日志轮转] 日志目录大小检查失败: {str(rotation_error)}"
+                )
 
             # 记录调试日志：日志写入成功
             logging.debug(
@@ -31872,16 +32585,57 @@ def start_web_server(args_param):
                 # exist_ok=True 表示如果目录已存在也不报错
                 os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
 
+            # ========== 任务3优化：使用增量更新模式写入订单文件 ==========
             # 构造订单文件路径：payment_orders/{订单号}.json
+            # order_file 是订单JSON文件的完整路径
             order_file = os.path.join(
                 PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
 
-            # 将订单数据写入JSON文件
+            # --- 步骤1：检查文件是否已存在 ---
+            # 如果订单文件已存在，说明可能是重复创建或订单更新操作
+            # 需要先读取现有数据，避免覆盖其他字段
+            existing_order_data = {}  # 初始化现有订单数据字典为空
+            if os.path.exists(order_file):
+                # 文件存在，尝试读取现有订单数据
+                try:
+                    # 以只读模式打开文件，使用UTF-8编码支持中文
+                    with open(order_file, "r", encoding="utf-8") as f:
+                        # 解析JSON文件内容为Python字典对象
+                        existing_order_data = json.load(f)
+                    # 记录日志：成功读取现有订单文件
+                    logging.info(
+                        f"[订单文件] 检测到现有订单文件，将进行增量更新 - 订单号: {out_trade_no}"
+                    )
+                except Exception as read_error:
+                    # 读取失败（文件损坏或格式错误），记录警告但不中断流程
+                    # 此时 existing_order_data 保持为空字典，后续会完全覆盖
+                    logging.warning(
+                        f"[订单文件] 读取现有订单文件失败，将创建新文件 - "
+                        f"订单号: {out_trade_no}, 错误: {str(read_error)}"
+                    )
+
+            # --- 步骤2：合并订单数据（增量更新） ---
+            # 使用字典的update()方法，将新的order_data合并到existing_order_data中
+            # update()会保留existing_order_data中order_data没有的字段
+            # 并更新existing_order_data中order_data已有的字段
+            # 这样可以避免丢失文件中可能存在的其他自定义字段
+            existing_order_data.update(order_data)
+            
+            # --- 步骤3：写入合并后的订单数据到文件 ---
+            # 使用写入模式打开文件（会覆盖原文件内容）
+            # 注意：此时写入的是合并后的数据，保留了原有的额外字段
             with open(order_file, "w", encoding="utf-8") as f:
                 # json.dump() 将Python对象序列化为JSON格式并写入文件
-                # indent=2: 格式化输出，每层缩进2个空格
-                # ensure_ascii=False: 保存中文字符，不转义为\uXXXX
-                json.dump(order_data, f, indent=2, ensure_ascii=False)
+                # existing_order_data: 合并后的完整订单数据（包含新旧字段）
+                # indent=2: 格式化输出，每层缩进2个空格，便于人工阅读
+                # ensure_ascii=False: 保存中文字符，不转义为\uXXXX格式
+                json.dump(existing_order_data, f, indent=2, ensure_ascii=False)
+            
+            # 记录日志：订单文件写入成功
+            logging.debug(
+                f"[订单文件] 订单数据已保存（增量更新模式） - "
+                f"文件: {order_file}, 订单号: {out_trade_no}"
+            )
 
             # ========== 步骤12：记录操作日志 ==========
 
