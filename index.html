@@ -7638,7 +7638,12 @@
 
         <div id="admin-captcha-panel_modal" class="hidden space-y-4">
           <div class="flex justify-between items-center">
+            <!-- 面板标题：显示验证码生成设置的主标题 -->
             <h4 class="font-semibold text-lg">⚙️ 验证码生成设置</h4>
+            <!-- 刷新按钮：点击后重新加载验证码配置，调用loadCaptchaSettings()函数从服务器获取最新的验证码参数设置 -->
+            <button id="admin-refresh-captcha-btn" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 text-sm font-medium transition-colors duration-200 border border-slate-300" onclick="loadCaptchaSettings()">
+              🔄 刷新配置
+            </button>
           </div>
 
           <div class="bg-sky-50 border border-sky-200 rounded-lg p-4 mb-4" style="display: none">
