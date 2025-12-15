@@ -29173,8 +29173,15 @@ def start_web_server(args_param):
                 # 调用认证系统的方法获取用户列表
                 # 这里假设有一个方法可以获取所有用户，如果没有，需要从账号文件读取
                 users_data = auth_system.list_users()
-                # 提取用户名列表
-                all_users = [user["username"] for user in users_data if not user.get("is_guest", False)]
+                # 【修复】提取用户名列表 - 使用正确的字段名"auth_username"而不是"username"
+                # list_users()方法返回的用户对象使用"auth_username"字段（参见第5324行）
+                # 原代码使用"username"会导致KeyError，致使all_users列表为空
+                # 同时过滤掉is_guest为True的用户和被封禁的用户
+                all_users = [
+                    user["auth_username"] 
+                    for user in users_data 
+                    if not user.get("is_guest", False) and not user.get("banned", False)
+                ]
             except Exception as e:
                 # 如果获取用户列表失败，记录错误
                 logging.error(f"[水印控制] 获取用户列表失败: {str(e)}")

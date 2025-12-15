@@ -1755,8 +1755,18 @@ function switchPaymentSettingsTab(tabName) {
     // 检查当前遍历的标签页是否是要显示的目标标签页
     if (tab === tabName) {
 
+      // 【修复】根据不同的标签页执行相应的初始化函数
       if(tab==='yipay'){
+        // 切换到易支付配置标签页时，加载易支付配置
         loadMobileYiPayConfig()
+      } else if(tab==='query'){
+        // 【新增】切换到订单查询标签页时，自动加载本地订单列表
+        // 这样用户打开标签页就能立即看到订单数据，无需手动点击"加载本地"按钮
+        // 使用setTimeout异步执行，避免阻塞标签页切换动画
+        setTimeout(() => {
+          console.log('[订单查询] 自动加载本地订单列表...');
+          loadAllPaymentOrders();
+        }, 100);
       }
       // === 激活目标标签页 ===
       
@@ -10016,7 +10026,10 @@ async function openAddWatermarkUserModal() {
     const configuredUsers = data.config.users || {};
     
     // 获取所有系统用户列表
+    // 【调试日志】记录API返回的用户数据，便于排查用户列表加载问题
     const allUsers = data.all_users || [];
+    console.log(`[水印控制] API返回的系统用户列表:`, allUsers);
+    console.log(`[水印控制] 已配置的用户:`, Object.keys(configuredUsers));
     
     // [步骤6] 筛选出未配置的用户
     // 只显示那些尚未在水印控制配置中的用户
@@ -10104,6 +10117,136 @@ function closeAddWatermarkUserModal() {
   
   // [步骤4] 记录日志
   console.log('[水印控制] 已关闭添加用户模态框');
+}
+
+/**
+ * 刷新水印用户列表
+ * 
+ * 功能说明：
+ * 重新加载可添加的用户列表，用于在添加用户后更新列表，
+ * 或者手动刷新以获取最新的用户数据。
+ * 
+ * 调用场景：
+ * 1. 用户点击刷新按钮时
+ * 2. 成功添加用户后自动调用
+ * 
+ * 实现细节：
+ * - 显示"加载中..."提示
+ * - 重新调用openAddWatermarkUserModal的核心逻辑
+ * - 不关闭模态框，保持用户体验流畅
+ * 
+ * @returns {Promise<void>} 无返回值
+ */
+async function refreshWatermarkUserList() {
+  try {
+    // [步骤1] 显示加载状态
+    console.log('[水印控制] 正在刷新用户列表...');
+    
+    // 获取用户列表容器元素
+    const listContainer = document.getElementById('available-watermark-users-list');
+    if (!listContainer) {
+      console.error('[水印控制] 无法找到用户列表容器元素');
+      return;
+    }
+    
+    // 显示"加载中..."提示
+    listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">刷新中...</p>';
+    
+    // [步骤2] 发送HTTP请求获取配置和用户列表
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID  // 传递会话ID用于身份验证
+      }
+    });
+    
+    // [步骤3] 解析响应数据
+    const data = await response.json();
+    
+    // 检查请求是否成功
+    if (!data.success) {
+      throw new Error(data.message || '刷新用户列表失败');
+    }
+    
+    // [步骤4] 提取数据
+    // 获取当前已配置的用户列表
+    const configuredUsers = data.config.users || {};
+    
+    // 获取所有系统用户列表
+    // 【调试日志】记录API返回的用户数据
+    const allUsers = data.all_users || [];
+    console.log(`[水印控制] 刷新后的系统用户列表:`, allUsers);
+    console.log(`[水印控制] 刷新后的已配置用户:`, Object.keys(configuredUsers));
+    
+    // [步骤5] 筛选出未配置的用户
+    const availableUsers = allUsers.filter(username => !(username in configuredUsers));
+    
+    // [步骤6] 生成用户列表HTML
+    if (availableUsers.length === 0) {
+      // 如果没有可添加的用户，显示提示信息
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">所有用户都已添加到配置中</p>';
+    } else {
+      // 清空容器，准备添加用户项
+      listContainer.innerHTML = '';
+      
+      // 为每个可添加的用户创建一个列表项
+      availableUsers.forEach(username => {
+        // 创建用户项容器
+        const userItem = document.createElement('div');
+        // 添加CSS类：白色背景、圆角、边框、flex布局
+        userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors';
+        // 为搜索功能添加data属性
+        userItem.setAttribute('data-username', username.toLowerCase());
+        
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        const safeUsername = escapeHtml(username);
+        
+        // 构建HTML内容：用户名 + 添加按钮
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
+          </div>
+          <button onclick="addWatermarkUser('${safeUsername}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
+            <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            添加
+          </button>
+        `;
+        
+        // 将用户项添加到列表容器中
+        listContainer.appendChild(userItem);
+      });
+    }
+    
+    // [步骤7] 记录成功日志
+    console.log(`[水印控制] 用户列表刷新完成，共 ${availableUsers.length} 个可添加用户`);
+    
+    // [步骤8] 显示成功提示（可选，避免过多打扰）
+    // 使用简短的Toast提示，而不是弹窗
+    Swal.fire({
+      icon: 'success',
+      title: '刷新成功',
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 1500
+    });
+    
+  } catch (error) {
+    // [错误处理] 捕获所有可能的错误
+    console.error('[水印控制] 刷新用户列表失败:', error);
+    
+    // 显示错误提示
+    showModalAlert('刷新用户列表失败：' + error.message);
+    
+    // 在列表容器中显示错误信息
+    const listContainer = document.getElementById('available-watermark-users-list');
+    if (listContainer) {
+      listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-sm">刷新失败：${error.message}</p>`;
+    }
+  }
 }
 
 /**
@@ -36196,16 +36339,24 @@ async function loadCaptchaSettings() {
       const settings = result.config;
       
       // 步骤6：填充PC端的验证码长度输入框
-      // 使用 || 运算符提供默认值，如果settings.length不存在则使用4
-      $("captcha-length").value = settings.length || 4;
+      // 【修复】使用 !== undefined 判断，正确区分"值为0"和"未设置"
+      // 原代码：settings.length || 4 会将0误判为falsy值
+      // 新代码：只有在undefined时才使用默认值4
+      $("captcha-length").value = settings.length !== undefined ? settings.length : 4;
       
       // 步骤7：填充PC端的细分倍数输入框
+      // 【修复】使用 !== undefined 判断，正确区分"值为0"和"未设置"
       // 默认值为2，这是一个适中的缩放比例
-      $("captcha-scale-factor").value = settings.scale_factor || 2;
+      // 原代码：settings.scale_factor || 2 可能将0误判为falsy值（虽然scale_factor不太可能为0）
+      $("captcha-scale-factor").value = settings.scale_factor !== undefined ? settings.scale_factor : 2;
       
       // 步骤8：填充PC端的噪点比例输入框
+      // 【修复】使用 !== undefined 判断，正确区分"值为0.0"和"未设置"
+      // ⚠️ 关键修复：当noise_level为0.0时，原代码 settings.noise_level || 0.08 会错误地返回0.08
+      // 因为JavaScript中0.0是falsy值，|| 运算符会跳过它并使用默认值
+      // 新代码：只有在noise_level === undefined时才使用默认值0.08，允许用户设置0.0
       // 默认值为0.08（8%），这是一个适中的噪点密度
-      $("captcha-noise-level").value = settings.noise_level || 0.08;
+      $("captcha-noise-level").value = settings.noise_level !== undefined ? settings.noise_level : 0.08;
       
       // 步骤9：记录成功加载的日志，包含实际加载的配置值
       console.log("[验证码设置] 成功从 /api/captcha/config 加载配置:", settings);
@@ -45041,17 +45192,25 @@ function mobileUpdateCaptchaForm(settings) {
   );
 
   // 步骤4：填充验证码长度输入框
+  // 【修复】使用 !== undefined 判断，正确区分"值为0"和"未设置"
+  // 原代码：settings.length || 4 会将0误判为falsy值
+  // 新代码：只有在undefined时才使用默认值4
   // 使用if检查确保元素存在，避免在元素不存在时产生错误
-  // settings.length || 4 提供默认值，如果settings.length为空则使用4
-  if (lengthInput) lengthInput.value = settings.length || 4;
+  if (lengthInput) lengthInput.value = settings.length !== undefined ? settings.length : 4;
   
   // 步骤5：填充细分倍数输入框
+  // 【修复】使用 !== undefined 判断，正确区分"值为0"和"未设置"
+  // 原代码：settings.scale_factor || 2 可能将0误判为falsy值（虽然scale_factor不太可能为0）
   // 如果scaleInput存在，则将其value属性设置为settings.scale_factor或默认值2
-  if (scaleInput) scaleInput.value = settings.scale_factor || 2;
+  if (scaleInput) scaleInput.value = settings.scale_factor !== undefined ? settings.scale_factor : 2;
   
   // 步骤6：填充噪点比例输入框
+  // 【修复】使用 !== undefined 判断，正确区分"值为0.0"和"未设置"
+  // ⚠️ 关键修复：当noise_level为0.0时，原代码 settings.noise_level || 0.08 会错误地返回0.08
+  // 因为JavaScript中0.0是falsy值，|| 运算符会跳过它并使用默认值
+  // 新代码：只有在noise_level === undefined时才使用默认值0.08，允许用户设置0.0
   // 如果noiseInput存在，则将其value属性设置为settings.noise_level或默认值0.08
-  if (noiseInput) noiseInput.value = settings.noise_level || 0.08;
+  if (noiseInput) noiseInput.value = settings.noise_level !== undefined ? settings.noise_level : 0.08;
 }
 
 /**
