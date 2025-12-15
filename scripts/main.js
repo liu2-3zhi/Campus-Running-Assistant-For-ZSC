@@ -743,7 +743,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const nextBtn = document.getElementById('payment-logs-next-btn');
   if (nextBtn) {
     nextBtn.addEventListener('click', function() {
-      console.log('[支付日志] 用户点击下一页按钮');
+      // console.log('[支付日志] 用户点击下一页按钮');
+      logMessage('[支付日志] 用户点击下一页按钮');
       loadPaymentLogsNextPage();
     });
   }
@@ -847,7 +848,8 @@ function loadAdminPaymentLogs(page) {
   if (!listContainer) {
     // 防御性检查：如果找不到容器元素，输出错误信息并返回
     // 这通常意味着HTML结构有问题或ID命名错误
-    console.error('[PC端支付日志] 未找到日志列表容器元素');
+    // console.error('[PC端支付日志] 未找到日志列表容器元素');
+    logMessage('[PC端支付日志] 未找到日志列表容器元素');
     return;
   }
 
@@ -926,7 +928,7 @@ function loadAdminPaymentLogs(page) {
   const url = `/api/payment_logs?${params.toString()}`;
 
   // 在控制台输出请求信息，方便开发调试
-  console.log(`[PC端支付日志] 正在加载第${page}页，筛选条件:`, {
+  logMessage(`[PC端支付日志] 正在加载第${page}页，筛选条件:`, {
     actionType: actionType || '全部',
     startDate: startDate || '无限制',
     endDate: endDate || '无限制'
@@ -47999,7 +48001,7 @@ async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, paymentM
                                 });
                                 
                                 // 刷新页面，重新加载用户数据
-                                window.location.reload();
+                                // window.location.reload();
                             }, 1000);
                         }
                         // 支付失败（订单状态为 failed 或 closed）
