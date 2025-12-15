@@ -10741,6 +10741,183 @@
     </div>
   </div>
 
+  <!-- ==================== 移动端学校账户管理模态框 ==================== -->
+  <!-- 这是专为移动设备优化的学校账户管理界面 -->
+  <!-- 功能与PC端manage-school-accounts-modal保持一致，但采用移动端友好的设计 -->
+  <!-- 特点：触控友好、紧凑布局、底部弹出式设计 -->
+  <div id="mobile-user-school-accounts-modal" class="fixed inset-0 hidden mobile-modal z-[1055]" onclick="closeMobileUserSchoolAccountsModal()">
+    <!-- 半透明黑色背景遮罩层 -->
+    <!-- bg-black/40: 40%透明度的黑色背景，用于聚焦内容区域 -->
+    <!-- 点击背景会触发父元素的onclick事件，关闭模态框 -->
+    <div class="absolute inset-0 bg-black/40"></div>
+    
+    <!-- 模态框主内容区域 -->
+    <!-- mobile-modal-content: 移动端模态框内容的通用样式类 -->
+    <!-- bg-white: 白色背景，提供清晰的内容展示区域 -->
+    <!-- rounded-t-3xl: 顶部大圆角（3xl=24px），符合现代移动端UI设计趋势 -->
+    <!-- p-6: 内边距为1.5rem（24px），提供舒适的视觉空间 -->
+    <!-- space-y-4: 子元素之间垂直间距为1rem（16px） -->
+    <!-- max-h-[85vh]: 最大高度为视口高度的85%，确保在小屏幕上不会溢出 -->
+    <!-- overflow-y-auto: 内容超出时显示垂直滚动条 -->
+    <!-- onclick="event.stopPropagation()": 阻止事件冒泡，点击内容区域不会触发关闭 -->
+    <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+      
+      <!-- 顶部拖动指示器 -->
+      <!-- 这是移动端模态框的标准设计元素，暗示用户可以向下滑动关闭 -->
+      <div class="flex justify-center mb-2">
+        <!-- w-12: 宽度为3rem（48px） -->
+        <!-- h-1.5: 高度为0.375rem（6px） -->
+        <!-- bg-slate-300: 灰色背景，低调但可见 -->
+        <!-- rounded-full: 完全圆角，形成胶囊形状 -->
+        <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+      </div>
+      
+      <!-- 标题区域 -->
+      <!-- flex items-center justify-center: 使用flex布局，内容水平垂直居中 -->
+      <!-- gap-2: 子元素之间间距为0.5rem（8px） -->
+      <!-- pb-3: 底部内边距为0.75rem（12px） -->
+      <!-- border-b border-slate-200: 底部边框，使用浅灰色分隔标题和内容 -->
+      <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <!-- text-lg: 字体大小为1.125rem（18px），移动端适中的标题大小 -->
+        <!-- font-bold: 字体加粗，突出标题的重要性 -->
+        <!-- text-sky-600: 天蓝色文字，与整体配色方案保持一致 -->
+        <!-- text-center: 文字居中对齐 -->
+        <h3 class="text-lg font-bold text-sky-600 text-center">
+          管理学校账户:
+          <!-- 动态显示当前管理的用户名 -->
+          <!-- 该span的内容会通过JavaScript动态填充 -->
+          <!-- text-slate-700: 深灰色文字，与主标题颜色略有区别以示层次 -->
+          <span id="mobile-school-accounts-username" class="text-slate-700"></span>
+        </h3>
+      </div>
+      
+      <!-- 账户信息卡片 -->
+      <!-- 显示账户统计信息和操作按钮 -->
+      <!-- bg-blue-50: 浅蓝色背景，与整体主题色呼应 -->
+      <!-- border border-blue-200: 蓝色边框，增强视觉层次 -->
+      <!-- rounded-lg: 中等圆角（0.5rem=8px） -->
+      <!-- p-3: 内边距为0.75rem（12px），移动端紧凑布局 -->
+      <!-- mb-3: 底部外边距为0.75rem（12px） -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+        <!-- flex flex-col space-y-3: 使用垂直flex布局，子元素之间间距为0.75rem -->
+        <!-- 移动端采用垂直布局，避免水平空间不足 -->
+        <div class="flex flex-col space-y-3">
+          
+          <!-- 账户统计信息区域 -->
+          <div>
+            <!-- 账户总数显示 -->
+            <!-- text-sm: 字体大小为0.875rem（14px），移动端可读性良好 -->
+            <!-- text-blue-700: 深蓝色文字，与背景颜色协调 -->
+            <p class="text-sm text-blue-700">
+              <strong>账户总数:</strong>
+              <!-- 动态显示账户数量 -->
+              <!-- font-mono: 等宽字体，数字显示更整齐美观 -->
+              <span id="mobile-school-accounts-count" class="font-mono">0</span>
+            </p>
+            
+            <!-- 提示信息 -->
+            <!-- text-xs: 字体大小为0.75rem（12px），次要信息使用较小字体 -->
+            <!-- text-slate-600: 中灰色文字，视觉权重低于主要信息 -->
+            <!-- mt-1: 顶部外边距为0.25rem（4px） -->
+            <p class="text-xs text-slate-600 mt-1">
+              💡 您可以查看、编辑或删除此用户的学校账户信息
+            </p>
+          </div>
+          
+          <!-- 操作按钮组 -->
+          <!-- 移动端采用横向排列，充分利用屏幕宽度 -->
+          <!-- flex items-center gap-2: flex布局，垂直居中，按钮之间间距为0.5rem -->
+          <div class="flex items-center gap-2">
+            
+            <!-- 刷新按钮 -->
+            <!-- 触发mobileRefreshSchoolAccounts()函数重新加载账户列表 -->
+            <!-- flex-1: 按钮均分可用空间，确保按钮宽度一致 -->
+            <!-- py-2: 上下内边距为0.5rem（8px） -->
+            <!-- px-3: 左右内边距为0.75rem（12px） -->
+            <!-- bg-sky-500: 天蓝色背景，主要操作按钮的标准颜色 -->
+            <!-- text-white: 白色文字，与背景形成强对比 -->
+            <!-- rounded-lg: 中等圆角 -->
+            <!-- text-xs: 小字体，移动端紧凑设计 -->
+            <!-- font-medium: 中等字重，保持可读性 -->
+            <!-- hover:bg-sky-600: 鼠标悬停时背景颜色加深，提供视觉反馈 -->
+            <!-- transition: 平滑过渡动画效果 -->
+            <!-- flex items-center justify-center gap-1.5: 内部使用flex布局，图标和文字居中，间距为6px -->
+            <!-- min-h-[44px]: 最小高度44px，符合触控友好设计标准（iOS人机界面指南推荐） -->
+            <button onclick="mobileRefreshSchoolAccounts()" class="flex-1 py-2 px-3 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition flex items-center justify-center gap-1.5 min-h-[44px]">
+              <!-- SVG刷新图标 -->
+              <!-- w-4 h-4: 图标尺寸为16x16px，移动端适中大小 -->
+              <!-- fill="none": 不填充路径内部 -->
+              <!-- viewBox="0 0 24 24": 定义SVG的坐标系统 -->
+              <!-- stroke="currentColor": 使用当前文字颜色作为描边颜色 -->
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <!-- 绘制刷新图标的路径：顺时针循环箭头 -->
+                <!-- stroke-linecap="round": 线条端点为圆角 -->
+                <!-- stroke-linejoin="round": 线条连接处为圆角 -->
+                <!-- stroke-width="2": 线条宽度为2px -->
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              <!-- 按钮文字标签 -->
+              刷新
+            </button>
+            
+            <!-- 新增账号按钮 -->
+            <!-- 触发mobileAddNewSchoolAccount()函数打开新增账号表单 -->
+            <!-- 样式与刷新按钮保持一致，确保界面统一 -->
+            <button onclick="mobileAddNewSchoolAccount()" class="flex-1 py-2 px-3 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition flex items-center justify-center gap-1.5 min-h-[44px]">
+              <!-- SVG加号图标 -->
+              <!-- 表示添加新项目的通用符号 -->
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <!-- 绘制加号图标的路径：垂直线和水平线的交叉 -->
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+              </svg>
+              <!-- 按钮文字标签 -->
+              新增账号
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 学校账户列表容器 -->
+      <!-- 这个div通过JavaScript动态填充账户卡片 -->
+      <!-- 每个账户卡片会包含编辑、删除、查看详情等按钮 -->
+      <!-- space-y-2: 账户卡片之间的垂直间距为0.5rem（8px），移动端紧凑布局 -->
+      <!-- max-h-[50vh]: 最大高度为视口高度的50%，避免列表过长 -->
+      <!-- overflow-y-auto: 列表超出时显示垂直滚动条 -->
+      <!-- pr-2: 右侧内边距为0.5rem（8px），为滚动条留出空间 -->
+      <div id="mobile-school-accounts-list" class="space-y-2 max-h-[50vh] overflow-y-auto pr-2">
+        <!-- 初始加载状态提示 -->
+        <!-- 该段落会在JavaScript加载数据后被替换 -->
+        <!-- text-slate-400: 浅灰色文字，表示次要或临时信息 -->
+        <!-- text-center: 文字居中对齐 -->
+        <!-- text-xs: 小字体 -->
+        <!-- py-8: 上下内边距为2rem（32px），提供充足的垂直空间 -->
+        <p class="text-slate-400 text-center text-xs py-8">正在加载账户列表...</p>
+      </div>
+      
+      <!-- 底部操作按钮区域 -->
+      <!-- flex justify-end: 使用flex布局，按钮靠右对齐 -->
+      <!-- pt-3: 顶部内边距为0.75rem（12px） -->
+      <!-- border-t border-slate-200: 顶部边框，分隔内容和操作区域 -->
+      <div class="flex justify-end pt-3 border-t border-slate-200">
+        <!-- 关闭按钮 -->
+        <!-- 触发closeMobileUserSchoolAccountsModal()函数关闭模态框 -->
+        <!-- py-2 px-4: 内边距，符合移动端触控标准 -->
+        <!-- bg-slate-100: 浅灰色背景，次要按钮的标准样式 -->
+        <!-- text-slate-600: 深灰色文字 -->
+        <!-- rounded-lg: 中等圆角 -->
+        <!-- text-sm: 字体大小为0.875rem（14px） -->
+        <!-- font-medium: 中等字重 -->
+        <!-- hover:bg-slate-200: 鼠标悬停时背景颜色加深 -->
+        <!-- transition: 平滑过渡动画 -->
+        <!-- min-h-[44px]: 最小高度44px，触控友好设计 -->
+        <button onclick="closeMobileUserSchoolAccountsModal()" class="py-2 px-4 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition min-h-[44px]">
+          关闭
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- ==================== 移动端学校账户管理模态框 END ==================== -->
+
   <!-- 修复ID冲突：重命名为 edit-school-account-modal-simple，这是简洁样式的编辑模态框（区别于现代化样式） -->
   <div id="edit-school-account-modal-simple" class="fixed inset-0 flex items-center justify-center hidden z-[1055]">
     <div class="absolute inset-0 bg-black/60" onclick="closeEditSchoolAccountModal()"></div>
