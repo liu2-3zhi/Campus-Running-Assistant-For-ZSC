@@ -6546,7 +6546,8 @@ async function submitAdminPaymentRefund() {
   const amountInput = document.getElementById('admin-refund-amount_modal');
   const refundNoInput = document.getElementById('admin-refund-no_modal');
   const reasonInput = document.getElementById('admin-refund-reason_modal');
-  const successDiv = document.getElementById('admin-refund-result-container_modal');
+  // 任务2修改：移除对 successDiv 的引用，改用Swal.fire显示退款结果
+  // const successDiv = document.getElementById('admin-refund-result-container_modal');
   
   // === 第2步：获取并验证输入 ===
   
@@ -6624,49 +6625,49 @@ async function submitAdminPaymentRefund() {
     }
     
     // === 第7步：显示成功提示 ===
+    // 任务2修改：使用Swal.fire替代模态框显示退款结果
+    // 优势：更现代化的UI，更好的用户体验，无需手动管理DOM元素
     
-    if (successDiv) {
-      // 更新退款单号
-      const refundNoElem = document.getElementById('admin-refund-result-no_modal');
-      if (refundNoElem) {
-        refundNoElem.textContent = result.refund_no || refundNo;
-      }
-      
-      // 更新退款金额
-      const refundAmountElem = document.getElementById('admin-refund-result-amount_modal');
-      if (refundAmountElem) {
-        refundAmountElem.textContent = `¥${parseFloat(result.refund_amount || amount).toFixed(2)}`;
-      }
-      
-      // 显示成功容器
-      successDiv.classList.remove('hidden');
-    }
+    // 构建退款成功的详细信息HTML
+    // 使用HTML格式可以更灵活地展示多行信息和格式化内容
+    const successMessageHtml = `
+      <div style="text-align: left; padding: 10px;">
+        <p style="margin: 8px 0;"><strong>退款单号：</strong>${result.refund_no || refundNo}</p>
+        <p style="margin: 8px 0;"><strong>退款金额：</strong>¥${parseFloat(result.refund_amount || amount).toFixed(2)}</p>
+        <p style="margin: 8px 0;"><strong>原订单号：</strong>${tradeNo}</p>
+        ${reason ? `<p style="margin: 8px 0;"><strong>退款原因：</strong>${reason}</p>` : ''}
+      </div>
+    `;
+    
+    // 使用Swal.fire显示成功弹窗
+    // Swal（SweetAlert2）提供了更美观、交互性更好的弹窗组件
+    Swal.fire({
+      icon: 'success',                      // 图标类型：成功（绿色对勾）
+      title: '退款成功',                     // 弹窗标题
+      html: successMessageHtml,              // 弹窗内容（支持HTML格式）
+      confirmButtonText: '确定',             // 确认按钮文本
+      allowOutsideClick: false               // 禁止点击外部区域关闭弹窗，用户必须点击"确定"
+    });
     
     // 清空表单
+    // 退款成功后，清空所有输入框，为下一次退款操作做准备
     if (tradeNoInput) tradeNoInput.value = '';
     if (amountInput) amountInput.value = '';
     if (refundNoInput) refundNoInput.value = '';
     if (reasonInput) reasonInput.value = '';
     
-    console.log('[PC端退款] 退款成功');
+    console.log('[PC端退款] 退款成功，已显示Swal弹窗');
     
-    // 5秒后自动隐藏成功提示
-    setTimeout(() => {
-      if (successDiv) {
-        successDiv.classList.add('hidden');
-      }
-    }, 5000);
+    // 注意：任务2已移除对 successDiv 的操作
+    // 原有的5秒自动隐藏逻辑已删除，改用Swal弹窗（用户手动点击"确定"关闭）
     
   } catch (error) {
     // === 错误处理 ===
     
     console.error('[PC端退款] 退款时发生错误：', error);
     
-    // 隐藏成功提示（如果有）
-    if (successDiv) {
-      successDiv.classList.add('hidden');
-    }
-    
+    // 任务2修改：错误提示继续使用showModalAlert（保持原有行为）
+    // 只有成功时才使用Swal.fire，失败时使用原有的错误提示方式
     // 使用showModalAlert显示错误
     showModalAlert(error.message || '退款失败', '退款失败');
   }
@@ -48957,14 +48958,16 @@ async function fetchOrderAmountAndFill(tradeNo) {
   }
   
   // ========== 步骤2：调用后端API查询订单信息 ==========
+  // 任务1优化：使用新的通过订单号直接查询API，无需遍历所有订单
+  // 优势：性能更优，减少网络传输数据量，提升响应速度
   
   try {
     // 构建API请求URL
-    // 使用大的per_page值（1000）来确保能查询到所有订单
-    // 实际应用中，可以考虑添加订单号搜索接口以提升性能
-    const url = `/api/payment/orders?page=1&per_page=1000&status=all`;
+    // 任务1新增的接口：/api/payment/order_by_tradeno
+    // 直接通过订单号查询单个订单，避免查询所有订单后再遍历查找
+    const url = `/api/payment/order_by_tradeno?trade_no=${encodeURIComponent(tradeNo)}`;
     
-    console.log('[订单号自动填充] 调用API查询订单:', url);
+    console.log('[订单号自动填充] 调用新API直接查询订单:', url);
     
     // 发起GET请求
     const response = await fetch(url, {
@@ -48975,47 +48978,60 @@ async function fetchOrderAmountAndFill(tradeNo) {
       }
     });
     
-    // 检查HTTP响应状态
-    if (!response.ok) {
-      throw new Error(`HTTP错误: ${response.status}`);
-    }
+    // ========== 步骤3：处理HTTP响应状态码 ==========
     
-    // 解析JSON响应
+    // 解析JSON响应（无论成功还是失败都需要解析）
     const result = await response.json();
+    
+    // 处理不同的HTTP状态码
+    if (!response.ok) {
+      // HTTP状态码不是2xx，说明请求失败
+      
+      if (response.status === 404) {
+        // 404：订单不存在
+        console.warn('[订单号自动填充] 订单不存在:', tradeNo);
+        showModalAlert(result.message || '未找到该订单号对应的订单记录', '订单不存在');
+        
+        // 清空退款金额输入框
+        const amountInput = document.getElementById('admin-refund-amount_modal');
+        if (amountInput) {
+          amountInput.value = '';
+        }
+        return;
+        
+      } else if (response.status === 403) {
+        // 403：无权限访问该订单（普通用户尝试查询其他用户的订单）
+        console.warn('[订单号自动填充] 无权限访问订单:', tradeNo);
+        showModalAlert(result.message || '无权限访问该订单', '权限不足');
+        return;
+        
+      } else {
+        // 其他错误（400参数错误、500服务器错误等）
+        throw new Error(result.message || `HTTP错误: ${response.status}`);
+      }
+    }
     
     // 检查API调用是否成功
     if (!result.success) {
-      throw new Error(result.message || '获取订单列表失败');
+      throw new Error(result.message || '获取订单信息失败');
     }
     
-    // ========== 步骤3：在订单列表中查找匹配的订单 ==========
+    // ========== 步骤4：获取订单数据 ==========
     
-    // 从返回结果中获取订单列表
-    const orders = result.orders || [];
+    // 从返回结果中直接获取订单对象
+    // 新API直接返回单个订单，无需在数组中查找
+    const matchedOrder = result.order;
     
-    console.log('[订单号自动填充] 查询到订单数量:', orders.length);
-    
-    // 在订单列表中查找与输入订单号匹配的订单
-    // 使用find方法进行精确匹配（区分大小写）
-    const matchedOrder = orders.find(order => order.order_trade_no === tradeNo);
-    
-    // 如果未找到匹配的订单
+    // 双重校验：确保订单对象存在
     if (!matchedOrder) {
-      console.warn('[订单号自动填充] 未找到匹配的订单:', tradeNo);
-      showModalAlert('未找到该订单号对应的订单记录', '订单不存在');
-      
-      // 清空退款金额输入框
-      const amountInput = document.getElementById('admin-refund-amount_modal');
-      if (amountInput) {
-        amountInput.value = '';
-      }
-      
+      console.error('[订单号自动填充] API返回成功但订单数据为空');
+      showModalAlert('订单数据异常，请联系管理员', '数据错误');
       return;
     }
     
-    // ========== 步骤4：获取订单金额并校验 ==========
+    console.log('[订单号自动填充] 成功获取订单数据:', matchedOrder);
     
-    console.log('[订单号自动填充] 找到匹配订单:', matchedOrder);
+    // ========== 步骤5：获取订单金额并校验 ==========
     
     // 从订单对象中获取金额字段
     const orderAmount = parseFloat(matchedOrder.amount);
