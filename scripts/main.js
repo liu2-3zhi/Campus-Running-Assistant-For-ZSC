@@ -1720,7 +1720,7 @@ document.addEventListener('DOMContentLoaded', function loadBeianInfo() {
       // 因为备案信息加载失败不是致命错误，不应影响页面的核心功能
       // 用户仍然可以正常使用网站，只是看不到备案信息
       // console.warn("加载备案信息失败:", error);
-      logMessage_Warn("加载备案信息失败: " + error);
+      logMessage_Warning("加载备案信息失败: " + error);
       
       // 即使加载失败，footer容器仍然可见（作为空白区域）
       // 链接元素保持默认的隐藏状态
@@ -1899,7 +1899,7 @@ function sanitizeSVG(svgString) {
     if (parserError) {
       // 解析失败：记录错误日志并返回空字符串
       // console.warn('[安全警告] SVG解析失败，内容可能格式不正确');
-      logMessage_Warn('[安全警告] SVG解析失败，内容可能格式不正确');
+      logMessage_Warning('[安全警告] SVG解析失败，内容可能格式不正确');
       return '';
     }
     
@@ -2035,7 +2035,7 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
         logMessage_Info('[支付配置] 成功获取启用状态响应：', configData);
       } else {
         // console.warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：', configData.message || '未知错误');
-        logMessage_Warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'));
+        logMessage_Warning('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'));
         if (!DOMContentLoaded_Event){
         showModalAlert('获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'),"警告");
       }
@@ -2051,7 +2051,7 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
     } catch (configError) {
       // 获取启用状态失败，默认显示所有支付方式为启用
       // console.warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：', configError);
-      logMessage_Warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：' + configError);
+      logMessage_Warning('[支付配置] 获取启用状态时出错，默认显示所有支付方式：' + configError);
       if (!DOMContentLoaded_Event){
       showModalAlert('获取启用状态时出错，默认显示所有支付方式：' + configError,"警告");
       }
@@ -2339,14 +2339,14 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
         emptyOption.disabled = true; // 禁用该选项，不可选择
         testPaymentMethodSelect.appendChild(emptyOption);
         // console.warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
-        logMessage_Warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
+        logMessage_Warning('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
       }
       
       console.log('[支付配置] 测试支付方式下拉框更新完成');
     } else {
       // 如果找不到测试支付方式下拉框元素，输出警告日志
       // console.warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
-      logMessage_Warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
+      logMessage_Warning('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
     }
     
   } catch (error) {
@@ -2533,9 +2533,9 @@ async function savePaymentMethodsConfig() {
       // 如果找不到易支付输入框元素，在控制台输出警告
       // 使用 ✗ 符号标记失败操作，并提供详细的调试信息
       // console.warn('[支付配置] ✗ 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
-      logMessage_Warn('[支付配置] 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
+      logMessage_Warning('[支付配置] 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
       // console.warn('[支付配置] 请检查HTML中是否存在此元素');
-      logMessage_Warn('[支付配置] 请检查HTML中是否存在此元素');
+      logMessage_Warning('[支付配置] 请检查HTML中是否存在此元素');
     }
     
     // === 第7步：重新加载配置以确保数据同步 ===
@@ -2983,7 +2983,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
     // console.warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
-    logMessage_Warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
+    logMessage_Warning('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
   }
   
   // === 页面加载时自动加载支付方式配置 ===
@@ -3019,7 +3019,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
     // console.warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
-    logMessage_Warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
+    logMessage_Warning('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
   }
   
   // ========== Tab 4: 绑定"创建测试订单"按钮的点击事件 ==========
@@ -3047,7 +3047,7 @@ document.addEventListener('DOMContentLoaded', function() {
   } else {
     // 如果按钮不存在，输出警告日志
     // console.warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
-    logMessage_Warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
+    logMessage_Warning('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
   }
   
   // ========== Tab 4: 绑定"打开支付链接"按钮的点击事件 ==========
@@ -3075,7 +3075,7 @@ document.addEventListener('DOMContentLoaded', function() {
   } else {
     // 如果按钮不存在，输出警告日志
     // console.warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
-    logMessage_Warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
+    logMessage_Warning('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
   }
   
   // 输出完成日志
@@ -29341,7 +29341,7 @@ function refreshMobileSessionPicker() {
                 "km > 50km），请重新录制"
             );
             discardBlackDraftPolyline();
-            logMessage_Warn(
+            logMessage_Warning(
               `路径录制失败：距离${(draftTotalDist / 1000).toFixed(
                 2
               )}km超过50km限制`
