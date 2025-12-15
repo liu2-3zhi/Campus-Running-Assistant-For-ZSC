@@ -4664,6 +4664,83 @@
           </div>
         </div>
 
+        <!-- ========================================
+             水印控制面板 (mobile-multi-admin-watermark-control-panel)
+             用途：管理员配置用户的高德地图去水印权限
+             权限：需要modify_config权限
+             功能：为每个用户配置是否允许去除高德地图水印
+             API端点：GET/PUT /api/amap/watermark_control/config
+             默认隐藏，通过switchMobileAdminTab切换显示
+             ======================================== -->
+        <div id="mobile-multi-admin-watermark-control-panel" class="hidden space-y-3">
+          <!-- 面板头部：包含标题和刷新按钮 -->
+          <div class="flex justify-between items-center">
+            <!-- 面板标题 -->
+            <h4 class="font-semibold text-sm">水印控制</h4>
+            <!-- 刷新按钮：重新加载水印控制配置 -->
+            <button id="mobile-multi-admin-refresh-watermark" class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadMobileWatermarkControlConfig()">
+              <!-- 刷新图标 -->
+              <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              刷新
+            </button>
+          </div>
+
+          <!-- 面板说明 -->
+          <p class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+            💡 配置用户是否可以使用高德地图去水印功能。未配置的用户使用系统默认值。
+          </p>
+
+          <!-- 默认值显示区域 -->
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <!-- 信息图标 -->
+                <svg class="w-3.5 h-3.5 text-amber-600 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="text-xs font-medium text-amber-800">系统默认：</span>
+              </div>
+              <span id="mobile-watermark-default-value" class="text-xs font-bold text-amber-900">加载中...</span>
+            </div>
+            <p class="text-xs text-amber-700 mt-1 ml-5">
+              未配置的用户使用此默认值
+            </p>
+          </div>
+
+          <!-- 用户权限配置区域 -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <h5 class="text-xs font-semibold text-slate-700">
+                <!-- 用户列表图标 -->
+                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                </svg>
+                用户权限配置
+              </h5>
+              <span id="mobile-watermark-user-count" class="text-xs text-slate-500">共 0 个用户</span>
+            </div>
+
+            <!-- 用户权限列表容器：动态生成每个用户的权限开关 -->
+            <div id="mobile-watermark-users-list" class="space-y-2 max-h-96 overflow-y-auto">
+              <!-- 加载提示：初始显示，加载完成后由JS替换为用户列表 -->
+              <p class="text-slate-400 text-center py-10 text-xs">
+                加载中...
+              </p>
+            </div>
+          </div>
+
+          <!-- 保存按钮 -->
+          <button onclick="saveMobileWatermarkControlConfig()" class="w-full py-2.5 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm">
+            <!-- 保存图标 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            保存配置
+          </button>
+        </div>
+
 
 
 
@@ -6811,6 +6888,23 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
           价格设置
+        </button>
+
+        <!-- ========================================
+             水印控制标签（PC端管理员面板）
+             ID: admin-tab-watermark-control_modal
+             用途：切换到高德地图去水印控制管理面板
+             功能：管理员配置用户的去水印权限
+             权限：仅管理员（admin）和超级管理员（super_admin）可见
+             位置：管理员面板标签栏，位于价格设置之后
+             API端点：/api/amap/watermark_control/config（配置管理）
+             ======================================== -->
+        <button id="admin-tab-watermark-control_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" style="display: none" onclick="switchAdminTab('watermark-control')">
+          <!-- 水印图标：表示图层/水印控制 -->
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+          水印控制
         </button>
       </div>
 
@@ -9590,6 +9684,106 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
             </svg>
             <!-- 按钮文本：向用户说明此按钮的功能 -->
+            保存配置
+          </button>
+        </div>
+      </div>
+
+      <!-- ========================================
+           PC端水印控制面板 (admin-watermark-control-panel_modal)
+           用途：管理员配置用户的高德地图去水印权限
+           权限：需要modify_config权限
+           功能：为每个用户配置是否允许去除高德地图水印
+           API端点：GET/PUT /api/amap/watermark_control/config
+           
+           面板结构：
+           - 顶部：面板标题和描述
+           - 中间：用户权限列表（用户名+开关）
+           - 底部：保存按钮
+           
+           配置说明：
+           1. 默认值从 config.ini 的 [Map] watermark_removal_default 读取
+           2. 个性化设置存储在 amap_watermark_control.json
+           3. 未配置的用户使用默认值
+           ======================================== -->
+      <div id="admin-watermark-control-panel_modal" class="hidden overflow-y-auto">
+        <!-- 面板顶部：标题和描述 -->
+        <div class="bg-gradient-to-r from-blue-50 to-cyan-50 p-4 rounded-lg border border-blue-200">
+          <h3 class="text-lg font-bold text-blue-700 mb-2">
+            <!-- 水印图标：表示图层/水印管理 -->
+            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            高德地图去水印控制
+          </h3>
+          <!-- 面板描述文本 -->
+          <p class="text-sm text-slate-600">
+            配置用户是否可以使用高德地图去水印功能。未配置的用户使用系统默认值。
+          </p>
+        </div>
+
+        <!-- 默认值显示区域 -->
+        <div class="bg-amber-50 p-3 rounded-lg border border-amber-200 mb-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <!-- 信息图标 -->
+              <svg class="w-4 h-4 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span class="text-sm font-medium text-amber-800">系统默认值：</span>
+            </div>
+            <span id="watermark-default-value_modal" class="text-sm font-bold text-amber-900">加载中...</span>
+          </div>
+          <p class="text-xs text-amber-700 mt-1 ml-6">
+            未在下方列表中配置的用户将使用此默认值（在 config.ini 的 [Map] 节中配置）
+          </p>
+        </div>
+
+        <!-- 用户权限列表区域 -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-sm font-semibold text-slate-700">
+              <!-- 用户列表图标 -->
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+              </svg>
+              用户权限配置
+            </h4>
+            <span id="watermark-user-count_modal" class="text-xs text-slate-500">共 0 个用户</span>
+          </div>
+          
+          <!-- 用户权限列表容器：动态生成每个用户的权限开关 -->
+          <!-- 最大高度限制，超出部分滚动显示 -->
+          <div id="watermark-users-list_modal" class="space-y-2 max-h-[50vh] overflow-y-auto -mr-2 pr-2">
+            <!-- 加载提示：初始显示，加载完成后由JS替换为用户列表 -->
+            <p class="text-slate-400 text-center py-10">加载中...</p>
+          </div>
+        </div>
+
+        <!-- ========================================
+             操作按钮组
+             ========================================
+             功能：包含刷新配置和保存配置两个按钮
+             布局：使用grid布局，两列并排显示
+             ======================================== -->
+        <div class="grid grid-cols-2 gap-3 pt-4">
+          <!-- 刷新配置按钮：从服务器重新加载当前的水印控制配置 -->
+          <!-- 点击后调用 loadWatermarkControlConfig() 函数 -->
+          <button onclick="loadWatermarkControlConfig()" class="py-3 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md" title="点击从服务器重新加载水印控制配置">
+            <!-- 刷新图标：循环箭头 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            刷新配置
+          </button>
+
+          <!-- 保存配置按钮：将表单中的水印控制配置保存到服务器 -->
+          <!-- 点击后调用 saveWatermarkControlConfig() 函数 -->
+          <button onclick="saveWatermarkControlConfig()" class="py-3 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md" title="点击保存当前的水印控制配置">
+            <!-- 保存图标：对勾 -->
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
             保存配置
           </button>
         </div>

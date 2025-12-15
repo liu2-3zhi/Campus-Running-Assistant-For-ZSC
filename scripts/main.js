@@ -9595,6 +9595,417 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
 // 页面加载完成后的初始化逻辑
 // ========================================
 
+// ============================================================
+// 高德地图去水印控制配置管理函数（PC端和移动端）
+// 用于管理用户的高德地图去水印权限
+// ============================================================
+
+/**
+ * 加载水印控制配置（PC端）
+ * 
+ * 功能说明：
+ * 从服务器获取高德地图去水印控制配置，包括：
+ * 1. 系统默认值（从 config.ini 读取）
+ * 2. 所有用户的个性化设置（从 amap_watermark_control.json 读取）
+ * 3. 系统中所有用户的列表
+ * 
+ * 然后将这些数据填充到PC端管理面板的表单中。
+ * 
+ * API端点：GET /api/amap/watermark_control/config
+ * 权限要求：管理员权限
+ * 
+ * 表单元素：
+ * - watermark-default-value_modal：显示系统默认值
+ * - watermark-user-count_modal：显示用户总数
+ * - watermark-users-list_modal：用户权限列表容器
+ */
+async function loadWatermarkControlConfig() {
+  try {
+    // ========== 步骤1: 显示加载状态 ==========
+    // 记录日志，便于调试
+    console.log('[水印控制] 正在加载水印控制配置（PC端）...');
+    
+    // 更新用户列表容器，显示"加载中..."提示
+    const listContainer = document.getElementById('watermark-users-list_modal');
+    if (listContainer) {
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10">加载中...</p>';
+    }
+
+    // ========== 步骤2: 发送HTTP请求获取配置 ==========
+    // 使用fetch API发送GET请求到服务器
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',  // HTTP方法：GET（获取数据）
+      headers: {
+        'Content-Type': 'application/json',  // 告诉服务器我们期望JSON格式的响应
+        'X-Session-ID': sessionUUID  // 传递会话ID，用于身份验证
+      }
+    });
+
+    // ========== 步骤3: 解析响应数据 ==========
+    // 将响应体解析为JSON对象
+    const data = await response.json();
+    
+    // ========== 步骤4: 检查响应状态 ==========
+    // 如果请求失败（success=false），抛出错误
+    if (!data.success) {
+      throw new Error(data.message || '获取水印控制配置失败');
+    }
+
+    // ========== 步骤5: 提取配置数据 ==========
+    // 从响应中提取各项配置数据
+    const config = data.config;  // 配置对象，包含default和users
+    const defaultValue = config.default;  // 系统默认值（true/false）
+    const usersConfig = config.users;  // 用户个性化配置字典
+    const allUsers = data.all_users;  // 系统中所有用户的列表
+
+    // ========== 步骤6: 更新默认值显示 ==========
+    // 找到显示默认值的元素
+    const defaultValueElement = document.getElementById('watermark-default-value_modal');
+    if (defaultValueElement) {
+      // 根据布尔值显示"允许"或"禁止"
+      defaultValueElement.textContent = defaultValue ? '允许去水印' : '禁止去水印';
+      
+      // 根据值的不同设置不同的样式（颜色）
+      if (defaultValue) {
+        // 允许：绿色
+        defaultValueElement.className = 'text-sm font-bold text-green-600';
+      } else {
+        // 禁止：红色
+        defaultValueElement.className = 'text-sm font-bold text-red-600';
+      }
+    }
+
+    // ========== 步骤7: 更新用户数量显示 ==========
+    const userCountElement = document.getElementById('watermark-user-count_modal');
+    if (userCountElement) {
+      userCountElement.textContent = `共 ${allUsers.length} 个用户`;
+    }
+
+    // ========== 步骤8: 生成用户权限列表 ==========
+    if (listContainer && allUsers.length > 0) {
+      // 清空加载提示
+      listContainer.innerHTML = '';
+      
+      // 为每个用户创建一个权限控制项
+      allUsers.forEach(username => {
+        // 获取该用户的配置值
+        // 如果用户在配置中有明确设置，使用该设置；否则使用默认值
+        const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
+        
+        // 创建用户权限控制项的HTML
+        // 包含：用户名 + 开关按钮
+        const userItem = document.createElement('div');
+        userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between';
+        
+        // 构建HTML内容
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-sm font-medium text-slate-700">${username}</span>
+            <p class="text-xs text-slate-500 mt-0.5">
+              ${(username in usersConfig) ? '已自定义' : '使用默认值'}
+            </p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-4">
+            <input 
+              type="checkbox" 
+              id="watermark-user-${username}_modal" 
+              class="sr-only peer watermark-user-checkbox" 
+              data-username="${username}"
+              ${userValue ? 'checked' : ''}
+            >
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        `;
+        
+        // 将用户项添加到列表容器中
+        listContainer.appendChild(userItem);
+      });
+    } else if (listContainer && allUsers.length === 0) {
+      // 如果没有用户，显示空状态提示
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10">暂无用户</p>';
+    }
+
+    // ========== 步骤9: 记录成功日志 ==========
+    console.log('[水印控制] 配置加载成功（PC端）');
+
+  } catch (error) {
+    // ========== 错误处理 ==========
+    // 捕获所有可能的错误（网络错误、解析错误、服务器错误等）
+    console.error('[水印控制] 加载配置失败（PC端）:', error);
+    
+    // 显示错误提示
+    showModalAlert('加载水印控制配置失败：' + error.message);
+    
+    // 更新UI显示错误状态
+    const listContainer = document.getElementById('watermark-users-list_modal');
+    if (listContainer) {
+      listContainer.innerHTML = '<p class="text-red-500 text-center py-10">加载失败：' + error.message + '</p>';
+    }
+  }
+}
+
+/**
+ * 保存水印控制配置（PC端）
+ * 
+ * 功能说明：
+ * 收集PC端管理面板中所有用户的权限设置，并发送到服务器保存。
+ * 
+ * 数据收集：
+ * 遍历所有标记为 watermark-user-checkbox 的复选框，
+ * 读取每个复选框的 data-username 属性和 checked 状态，
+ * 构建用户配置字典。
+ * 
+ * API端点：PUT /api/amap/watermark_control/config
+ * 权限要求：管理员权限 + modify_config 权限
+ * 
+ * 请求体格式：
+ * {
+ *   "users": {
+ *     "username1": true,
+ *     "username2": false,
+ *     ...
+ *   }
+ * }
+ */
+async function saveWatermarkControlConfig() {
+  try {
+    // ========== 步骤1: 收集用户配置数据 ==========
+    console.log('[水印控制] 正在收集用户配置数据（PC端）...');
+    
+    // 创建一个空对象，用于存储所有用户的配置
+    const usersConfig = {};
+    
+    // 查找所有的用户权限复选框
+    const checkboxes = document.querySelectorAll('.watermark-user-checkbox');
+    
+    // 遍历每个复选框，提取用户名和配置值
+    checkboxes.forEach(checkbox => {
+      // 从 data-username 属性获取用户名
+      const username = checkbox.getAttribute('data-username');
+      
+      // 从 checked 属性获取配置值（true=允许，false=禁止）
+      const allowed = checkbox.checked;
+      
+      // 将用户配置添加到字典中
+      usersConfig[username] = allowed;
+    });
+
+    // ========== 步骤2: 构建请求体 ==========
+    const requestBody = {
+      users: usersConfig
+    };
+    
+    // 记录要发送的数据（便于调试）
+    console.log('[水印控制] 准备保存配置（PC端）:', requestBody);
+
+    // ========== 步骤3: 发送HTTP请求保存配置 ==========
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'PUT',  // HTTP方法：PUT（更新数据）
+      headers: {
+        'Content-Type': 'application/json',  // 告诉服务器我们发送的是JSON数据
+        'X-Session-ID': sessionUUID  // 传递会话ID，用于身份验证
+      },
+      body: JSON.stringify(requestBody)  // 将请求体转换为JSON字符串
+    });
+
+    // ========== 步骤4: 解析响应数据 ==========
+    const data = await response.json();
+    
+    // ========== 步骤5: 检查响应状态 ==========
+    if (!data.success) {
+      throw new Error(data.message || '保存水印控制配置失败');
+    }
+
+    // ========== 步骤6: 显示成功提示 ==========
+    showModalAlert('水印控制配置已成功保存！');
+
+    // ========== 步骤7: 记录成功日志 ==========
+    console.log('[水印控制] 配置保存成功（PC端）');
+
+  } catch (error) {
+    // ========== 错误处理 ==========
+    console.error('[水印控制] 保存配置失败（PC端）:', error);
+    showModalAlert('保存水印控制配置失败：' + error.message);
+  }
+}
+
+/**
+ * 加载水印控制配置（移动端）
+ * 
+ * 功能说明：
+ * 与PC端的 loadWatermarkControlConfig() 功能相同，但操作移动端的表单元素。
+ * 
+ * 表单元素：
+ * - mobile-watermark-default-value：显示系统默认值
+ * - mobile-watermark-user-count：显示用户总数
+ * - mobile-watermark-users-list：用户权限列表容器
+ */
+async function loadMobileWatermarkControlConfig() {
+  try {
+    // ========== 步骤1: 显示加载状态 ==========
+    console.log('[水印控制] 正在加载水印控制配置（移动端）...');
+    
+    const listContainer = document.getElementById('mobile-watermark-users-list');
+    if (listContainer) {
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
+    }
+
+    // ========== 步骤2: 发送HTTP请求获取配置 ==========
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      }
+    });
+
+    // ========== 步骤3: 解析响应数据 ==========
+    const data = await response.json();
+    
+    // ========== 步骤4: 检查响应状态 ==========
+    if (!data.success) {
+      throw new Error(data.message || '获取水印控制配置失败');
+    }
+
+    // ========== 步骤5: 提取配置数据 ==========
+    const config = data.config;
+    const defaultValue = config.default;
+    const usersConfig = config.users;
+    const allUsers = data.all_users;
+
+    // ========== 步骤6: 更新默认值显示（移动端样式）==========
+    const defaultValueElement = document.getElementById('mobile-watermark-default-value');
+    if (defaultValueElement) {
+      defaultValueElement.textContent = defaultValue ? '允许去水印' : '禁止去水印';
+      
+      if (defaultValue) {
+        defaultValueElement.className = 'text-xs font-bold text-green-600';
+      } else {
+        defaultValueElement.className = 'text-xs font-bold text-red-600';
+      }
+    }
+
+    // ========== 步骤7: 更新用户数量显示 ==========
+    const userCountElement = document.getElementById('mobile-watermark-user-count');
+    if (userCountElement) {
+      userCountElement.textContent = `共 ${allUsers.length} 个用户`;
+    }
+
+    // ========== 步骤8: 生成用户权限列表（移动端样式）==========
+    if (listContainer && allUsers.length > 0) {
+      listContainer.innerHTML = '';
+      
+      allUsers.forEach(username => {
+        const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
+        
+        const userItem = document.createElement('div');
+        userItem.className = 'bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between';
+        
+        // 移动端使用更紧凑的布局
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-xs font-medium text-slate-700">${username}</span>
+            <p class="text-xs text-slate-500 mt-0.5">
+              ${(username in usersConfig) ? '已自定义' : '使用默认值'}
+            </p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-3">
+            <input 
+              type="checkbox" 
+              id="mobile-watermark-user-${username}" 
+              class="sr-only peer mobile-watermark-user-checkbox" 
+              data-username="${username}"
+              ${userValue ? 'checked' : ''}
+            >
+            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        `;
+        
+        listContainer.appendChild(userItem);
+      });
+    } else if (listContainer && allUsers.length === 0) {
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">暂无用户</p>';
+    }
+
+    // ========== 步骤9: 记录成功日志 ==========
+    console.log('[水印控制] 配置加载成功（移动端）');
+
+  } catch (error) {
+    // ========== 错误处理 ==========
+    console.error('[水印控制] 加载配置失败（移动端）:', error);
+    alert('加载水印控制配置失败：' + error.message);
+    
+    const listContainer = document.getElementById('mobile-watermark-users-list');
+    if (listContainer) {
+      listContainer.innerHTML = '<p class="text-red-500 text-center py-10 text-xs">加载失败：' + error.message + '</p>';
+    }
+  }
+}
+
+/**
+ * 保存水印控制配置（移动端）
+ * 
+ * 功能说明：
+ * 与PC端的 saveWatermarkControlConfig() 功能相同，但操作移动端的表单元素。
+ */
+async function saveMobileWatermarkControlConfig() {
+  try {
+    // ========== 步骤1: 收集用户配置数据 ==========
+    console.log('[水印控制] 正在收集用户配置数据（移动端）...');
+    
+    const usersConfig = {};
+    
+    // 查找移动端的所有用户权限复选框
+    const checkboxes = document.querySelectorAll('.mobile-watermark-user-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+      const username = checkbox.getAttribute('data-username');
+      const allowed = checkbox.checked;
+      usersConfig[username] = allowed;
+    });
+
+    // ========== 步骤2: 构建请求体 ==========
+    const requestBody = {
+      users: usersConfig
+    };
+    
+    console.log('[水印控制] 准备保存配置（移动端）:', requestBody);
+
+    // ========== 步骤3: 发送HTTP请求保存配置 ==========
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    // ========== 步骤4: 解析响应数据 ==========
+    const data = await response.json();
+    
+    // ========== 步骤5: 检查响应状态 ==========
+    if (!data.success) {
+      throw new Error(data.message || '保存水印控制配置失败');
+    }
+
+    // ========== 步骤6: 显示成功提示（移动端使用alert）==========
+    alert('水印控制配置已成功保存！');
+
+    // ========== 步骤7: 记录成功日志 ==========
+    console.log('[水印控制] 配置保存成功（移动端）');
+
+  } catch (error) {
+    // ========== 错误处理 ==========
+    console.error('[水印控制] 保存配置失败（移动端）:', error);
+    alert('保存水印控制配置失败：' + error.message);
+  }
+}
+
+// ========================================
+// 页面加载完成后的初始化逻辑
+// ========================================
+
 /**
  * DOMContentLoaded事件监听器
  * 
