@@ -928,7 +928,7 @@ function loadAdminPaymentLogs(page) {
   const url = `/api/payment_logs?${params.toString()}`;
 
   // 在控制台输出请求信息，方便开发调试
-  logMessage(`[PC端支付日志] 正在加载第${page}页，筛选条件:`, {
+  logMessage_Info(`[PC端支付日志] 正在加载第${page}页，筛选条件:`, {
     actionType: actionType || '全部',
     startDate: startDate || '无限制',
     endDate: endDate || '无限制'
