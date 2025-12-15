@@ -17444,51 +17444,87 @@ function refreshMobileSessionPicker() {
 
           const confirmBtn = $("newUserConfirm");
           confirmBtn.onclick = async () => {
+            // ========== 步骤1：获取用户输入 ==========
             const inputUsername = $("newUsername").value.trim();
             const inputPassword = $("newPassword").value;
             const inputPhone = $("newUserPhone").value.trim();
             const inputNickname = $("newUserNickname").value.trim();
             const inputSmsCode = $("newUserSmsCode").value.trim();
 
+            // ========== 步骤2：输入验证 ==========
+            
+            // 验证账号和密码是否为空
             if (!inputUsername || !inputPassword) {
               showModalAlert("账号和密码均不能为空");
               return;
             }
+            
+            // 验证密码长度（至少6个字符）
             if (!inputPassword || inputPassword.length < 6) {
               showModalAlert("密码长度至少为6个字符", "错误");
               return;
             }
-            // 如果填了手机号，验证格式
+            
+            // 如果填写了手机号，验证格式（中国大陆手机号：1开头的11位数字）
             if (inputPhone && !/^1[3-9]\d{9}$/.test(inputPhone)) {
               showModalAlert("请输入正确的手机号格式", "错误");
               return;
             }
+            
+            // ========== 步骤3：设置用户组 ==========
+            // 新创建的用户默认属于 "user" 用户组
             const group = "user";
+            
+            // ========== 步骤4：显示加载状态 ==========
             setButtonLoading("newUserConfirm", true, "创建中...");
 
             try {
-              // 管理员创建用户时验证码为可选项，如填写将进行校验
+              // ========== 步骤5：调用后端API创建用户 ==========
+              
+              // 管理员创建用户API：/auth/admin/create_user
+              // 
+              // available_runs（可用次数）处理说明：
+              // - 此API请求中**不需要**传递 available_runs 参数
+              // - 后端会自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取默认值
+              // - 这确保了通过 PC端管理员界面（admin-create-user_modal）创建的用户
+              //   与其他方式（移动端、自助注册）创建的用户使用统一的默认 available_runs
+              // - 如需修改某个用户的 available_runs，请在用户创建后通过用户管理功能进行修改
+              // 
+              // 请求参数说明：
+              // - username: 用户名（必填）
+              // - password: 密码（必填）
+              // - group: 用户组（此处固定为 "user"）
+              // - phone: 手机号（可选，如填写则会绑定到用户）
+              // - nickname: 昵称（可选，如不填则使用用户名作为昵称）
+              // - sms_code: 短信验证码（可选，如填写则会进行校验）
               const response = await fetch("/auth/admin/create_user", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  "X-Session-ID": sessionUUID,
+                  "X-Session-ID": sessionUUID, // 使用会话UUID进行身份验证
                 },
                 body: JSON.stringify({
                   username: inputUsername,
                   password: inputPassword,
                   group: group,
-                  phone: inputPhone || "",
-                  nickname: inputNickname || "",
+                  phone: inputPhone || "", // 空字符串表示未填写
+                  nickname: inputNickname || "", // 空字符串表示未填写
                   sms_code: inputSmsCode || "", // 验证码可选，如非空则校验
                 }),
               });
 
+              // ========== 步骤6：解析API响应 ==========
               const result = await response.json();
 
+              // ========== 步骤7：处理创建结果 ==========
               if (result.success) {
+                // ===== 创建成功 =====
                 showModalAlert("用户创建成功！");
+                
+                // 关闭创建用户模态框
                 closeNewUserModal();
+                
+                // 刷新用户列表，显示新创建的用户
                 if (typeof loadAdminUsers === "function") {
                   // [修正] 创建成功后加载数据并同步UI
                   await loadAdminUsers();
@@ -17520,12 +17556,17 @@ function refreshMobileSessionPicker() {
                   }
                 }
               } else {
+                // ===== 创建失败 =====
                 showModalAlert(`创建失败: ${result.message || "未知错误"}`);
               }
             } catch (e) {
+              // ========== 异常处理 ==========
+              // 捕获网络错误、解析错误等异常
               showModalAlert(`创建时发生错误: ${e.message}`);
               logMessage_Error("创建用户时发生错误:", e);
             } finally {
+              // ========== 步骤8：恢复按钮状态 ==========
+              // 无论成功或失败，都要恢复按钮的正常状态
               setButtonLoading("newUserConfirm", false, "确认");
             }
           };
@@ -26713,22 +26754,27 @@ function refreshMobileSessionPicker() {
           "mobile-new-user-confirm-btn"
         );
 
+        // ========== 输入验证 ==========
+        
+        // 验证账号和密码是否为空
         if (!username || !password) {
           showModalAlert("账号和密码为必填项", "错误");
           return;
         }
+        
+        // 验证密码长度（至少6个字符）
         if (password.length < 6) {
           showModalAlert("密码长度至少为6个字符", "错误");
           return;
         }
 
-        // 如果填了手机号，验证格式
+        // 如果填写了手机号，验证格式（中国大陆手机号：1开头的11位数字）
         if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
           showModalAlert("请输入正确的手机号格式", "错误");
           return;
         }
 
-        // 禁用按钮防止重复提交
+        // ========== 禁用按钮，防止重复提交 ==========
         if (confirmBtn) {
           confirmBtn.disabled = true;
           confirmBtn.innerHTML =
@@ -26736,13 +26782,30 @@ function refreshMobileSessionPicker() {
         }
 
         try {
-          // 复用后端的 create_user 接口
-          // 管理员创建用户时验证码为可选项，如填写将进行校验
+          // ========== 调用后端API创建用户 ==========
+          
+          // 移动端管理员创建用户API：/auth/admin/create_user
+          // 
+          // available_runs（可用次数）处理说明：
+          // - 此API请求中**不需要**传递 available_runs 参数
+          // - 后端会自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取默认值
+          // - 这确保了通过 移动端管理员界面（mobile-new-user-confirm-btn）创建的用户
+          //   与其他方式（PC端、自助注册）创建的用户使用统一的默认 available_runs
+          // - 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
+          // - 如需修改某个用户的 available_runs，请在用户创建后通过用户管理功能进行修改
+          // 
+          // 请求参数说明：
+          // - username: 用户名（必填）
+          // - password: 密码（必填）
+          // - group: 用户组（此处固定为 "user"）
+          // - nickname: 昵称（可选，如不填则使用用户名作为昵称）
+          // - phone: 手机号（可选，如填写则会绑定到用户）
+          // - sms_code: 短信验证码（可选，如填写则会进行校验）
           const response = await fetch("/auth/admin/create_user", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Session-ID": sessionUUID,
+              "X-Session-ID": sessionUUID, // 使用会话UUID进行身份验证
             },
             body: JSON.stringify({
               username: username,
@@ -26755,15 +26818,19 @@ function refreshMobileSessionPicker() {
             }),
           });
 
+          // ========== 解析API响应 ==========
           const result = await response.json();
 
+          // ========== 处理创建结果 ==========
           if (result.success) {
+            // ===== 创建成功 =====
             showModalAlert("用户创建成功！", "成功");
             closeMobileCreateUserModal();
 
-            // 刷新列表
+            // 刷新用户列表，显示新创建的用户
             if (typeof loadAdminUsers === "function") {
               await loadAdminUsers();
+              
               // 尝试同步到移动端面板
               if (typeof copyAdminContentToMultiPanel === "function") {
                 copyAdminContentToMultiPanel("users");
@@ -26773,12 +26840,17 @@ function refreshMobileSessionPicker() {
               }
             }
           } else {
+            // ===== 创建失败 =====
             showModalAlert(`创建失败: ${result.message || "未知错误"}`, "错误");
           }
         } catch (e) {
+          // ========== 异常处理 ==========
+          // 捕获网络错误、解析错误等异常
           console.error("创建用户失败:", e);
           showModalAlert(`请求出错: ${e.message}`, "错误");
         } finally {
+          // ========== 恢复按钮状态 ==========
+          // 无论成功或失败，都要恢复按钮的正常状态
           if (confirmBtn) {
             confirmBtn.disabled = false;
             confirmBtn.innerHTML = "立即创建";
@@ -38103,30 +38175,172 @@ async function submitMobileMultiMessage() {
   }
 }
 
+/**
+ * 删除移动端多人留言板的单条留言
+ * 功能说明：
+ * 1. 使用拟态风格的二次确认对话框，提升用户体验
+ * 2. 确认后调用后端API删除留言
+ * 3. 删除成功后刷新留言列表
+ * 
+ * @param {string} msgId - 要删除的留言ID
+ * 
+ * 调用时机：
+ * - 用户点击移动端留言板中的"删除"按钮时
+ * 
+ * 实现细节：
+ * - 使用SweetAlert2库创建拟态风格的确认对话框
+ * - 对话框包含警告图标、清晰的提示文字和两个操作按钮
+ * - 只有用户点击"确认删除"按钮后才执行删除操作
+ * - 提供详细的成功/失败提示
+ */
 async function deleteMobileMultiMessage(msgId) {
-  if (!confirm("确定要删除这条留言吗？")) return;
-
+  // ========== 步骤1：显示拟态风格的二次确认对话框 ==========
+  
+  // 使用SweetAlert2创建美观的确认对话框
+  // 应用拟态风格设计：柔和阴影、渐变背景、圆角边框
+  const confirmResult = await Swal.fire({
+    // 对话框标题：使用醒目的警告文字
+    title: '⚠️ 删除确认',
+    
+    // 对话框内容：清晰说明删除操作的影响
+    html: `
+      <div style="text-align: left; padding: 10px;">
+        <p style="font-size: 16px; color: #475569; margin-bottom: 12px;">
+          您确定要删除这条留言吗？
+        </p>
+        <div style="
+          background: linear-gradient(145deg, #fef2f2, #fee2e2);
+          border-left: 4px solid #dc2626;
+          padding: 12px;
+          border-radius: 8px;
+          margin-top: 10px;
+        ">
+          <p style="font-size: 14px; color: #991b1b; margin: 0;">
+            <strong>⚠️ 注意：</strong>此操作不可恢复，删除后无法找回该留言的内容。
+          </p>
+        </div>
+      </div>
+    `,
+    
+    // 对话框图标：使用警告图标
+    icon: 'warning',
+    
+    // 显示两个按钮：取消和确认
+    showCancelButton: true,
+    
+    // 确认按钮文字和样式
+    confirmButtonText: '<strong>🗑️ 确认删除</strong>',
+    confirmButtonColor: '#dc2626', // 红色，表示危险操作
+    
+    // 取消按钮文字和样式
+    cancelButtonText: '<strong>✖️ 取消</strong>',
+    cancelButtonColor: '#64748b', // 灰色，表示安全操作
+    
+    // 自定义CSS类，应用拟态风格
+    customClass: {
+      popup: 'swal2-neumorphism-popup', // 对话框容器
+      title: 'swal2-neumorphism-title', // 标题
+      confirmButton: 'swal2-neumorphism-confirm', // 确认按钮
+      cancelButton: 'swal2-neumorphism-cancel' // 取消按钮
+    },
+    
+    // 反向按钮顺序（取消在左，确认在右，符合用户习惯）
+    reverseButtons: true,
+    
+    // 聚焦到取消按钮（防止用户误点确认）
+    focusCancel: true,
+    
+    // 点击背景不关闭对话框（强制用户做出选择）
+    allowOutsideClick: false,
+    
+    // 按Esc键不关闭对话框（强制用户做出选择）
+    allowEscapeKey: false
+  });
+  
+  // ========== 步骤2：检查用户的选择 ==========
+  
+  // 如果用户点击了取消按钮或关闭了对话框，直接返回，不执行删除操作
+  if (!confirmResult.isConfirmed) {
+    console.log('[移动端留言板] 用户取消删除操作');
+    return;
+  }
+  
+  // ========== 步骤3：用户确认删除，执行删除操作 ==========
+  
+  console.log('[移动端留言板] 用户确认删除留言，留言ID:', msgId);
+  
   try {
+    // 调用后端API删除留言
     const response = await fetch("/api/messages/delete", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
+        "X-Session-ID": sessionUUID, // 使用全局会话UUID进行身份验证
       },
-      body: JSON.stringify({ message_id: msgId }),
+      body: JSON.stringify({ message_id: msgId }), // 传递留言ID
     });
 
+    // 解析API响应
     const result = await response.json();
 
+    // ========== 步骤4：处理API响应 ==========
+    
     if (result.success) {
-      showModalAlert("删除成功", "成功");
+      // 删除成功
+      console.log('[移动端留言板] 删除成功');
+      
+      // 显示成功提示（使用拟态风格）
+      await Swal.fire({
+        title: '删除成功',
+        text: '该留言已被永久删除',
+        icon: 'success',
+        confirmButtonText: '确定',
+        confirmButtonColor: '#22c55e', // 绿色，表示成功
+        timer: 2000, // 2秒后自动关闭
+        timerProgressBar: true, // 显示进度条
+        customClass: {
+          popup: 'swal2-neumorphism-popup',
+          confirmButton: 'swal2-neumorphism-confirm'
+        }
+      });
+      
+      // 刷新留言列表，显示最新数据
       loadMobileMultiMessages();
     } else {
-      showModalAlert(result.message || "删除失败", "错误");
+      // 删除失败
+      console.error('[移动端留言板] 删除失败:', result.message);
+      
+      // 显示失败提示
+      await Swal.fire({
+        title: '删除失败',
+        text: result.message || '未知错误，请稍后重试',
+        icon: 'error',
+        confirmButtonText: '确定',
+        confirmButtonColor: '#dc2626', // 红色，表示错误
+        customClass: {
+          popup: 'swal2-neumorphism-popup',
+          confirmButton: 'swal2-neumorphism-confirm'
+        }
+      });
     }
   } catch (e) {
+    // ========== 异常处理 ==========
+    
+    // 捕获网络错误、解析错误等异常
     console.error("[移动端留言板] 删除失败:", e);
-    showModalAlert("删除失败: " + e.message, "错误");
+    
+    // 显示友好的错误提示
+    await Swal.fire({
+      title: '删除失败',
+      text: '网络错误或服务器异常: ' + e.message,
+      icon: 'error',
+      confirmButtonText: '确定',
+      confirmButtonColor: '#dc2626',
+      customClass: {
+        popup: 'swal2-neumorphism-popup',
+        confirmButton: 'swal2-neumorphism-confirm'
+      }
+    });
   }
 }
 
@@ -48452,4 +48666,265 @@ async function adminClearOverdue(school_username, auth_username='', is_detail_vi
 
 // ============================================================================
 // 欠费账号查询功能 - 结束
+
+// ============================================================================
+// 订单号自动获取金额并填充退款金额功能 - 开始
+// ============================================================================
+
+/**
+ * 初始化订单号输入框的自动填充功能
+ * 功能说明：
+ * 1. 为订单号输入框添加input事件监听
+ * 2. 当用户输入完订单号后，自动获取订单金额
+ * 3. 计算金额的75%并填充到退款金额输入框
+ * 
+ * 调用时机：
+ * - 页面加载完成后自动初始化
+ * 
+ * 实现细节：
+ * - 监听订单号输入框的input事件
+ * - 进行订单号格式校验（长度、字符等）
+ * - 调用后端API获取订单信息
+ * - 计算75%金额并自动填充
+ * - 提供友好的错误提示
+ */
+function initOrderNumberAutoFill() {
+  // 获取订单号输入框DOM元素
+  const tradeNoInput = document.getElementById('admin-refund-order-trade-no_modal');
+  
+  // 如果输入框不存在，记录错误并退出
+  if (!tradeNoInput) {
+    console.error('[订单号自动填充] 未找到订单号输入框元素');
+    return;
+  }
+  
+  // 为订单号输入框添加input事件监听
+  // 使用防抖（debounce）技术，避免频繁触发API请求
+  let debounceTimer = null; // 防抖计时器
+  
+  tradeNoInput.addEventListener('input', function(event) {
+    // 清除之前的防抖计时器
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    
+    // 获取用户输入的订单号（去除首尾空格）
+    const tradeNo = event.target.value.trim();
+    
+    // 如果订单号为空，清空退款金额输入框并退出
+    if (!tradeNo) {
+      const amountInput = document.getElementById('admin-refund-amount_modal');
+      if (amountInput) {
+        amountInput.value = '';
+      }
+      return;
+    }
+    
+    // 设置防抖计时器：用户停止输入500毫秒后才触发查询
+    // 这样可以避免用户输入过程中频繁调用API，提升性能和用户体验
+    debounceTimer = setTimeout(async () => {
+      // 调用订单号校验和金额获取函数
+      await fetchOrderAmountAndFill(tradeNo);
+    }, 500); // 500毫秒的防抖延迟
+  });
+  
+  console.log('[订单号自动填充] 初始化完成');
+}
+
+/**
+ * 根据订单号获取订单金额并填充75%到退款金额输入框
+ * 功能说明：
+ * 1. 校验订单号格式（长度、字符等）
+ * 2. 调用后端API查询订单信息
+ * 3. 获取订单金额
+ * 4. 计算金额的75%
+ * 5. 自动填充到退款金额输入框
+ * 6. 提供详细的错误提示
+ * 
+ * @param {string} tradeNo - 订单号
+ * 
+ * @returns {Promise<void>} 无返回值的Promise
+ * 
+ * API端点：/api/payment/orders
+ * 请求方法：GET
+ * 查询参数：page=1&per_page=1000&status=all（获取所有订单）
+ * 
+ * 返回数据格式：
+ * {
+ *   success: boolean,
+ *   orders: [
+ *     {
+ *       order_trade_no: string,  // 订单号
+ *       amount: number,          // 订单金额
+ *       status: string,          // 订单状态
+ *       ...
+ *     }
+ *   ],
+ *   total: number,
+ *   page: number,
+ *   per_page: number
+ * }
+ */
+async function fetchOrderAmountAndFill(tradeNo) {
+  console.log('[订单号自动填充] 开始处理订单号:', tradeNo);
+  
+  // ========== 步骤1：订单号格式校验 ==========
+  
+  // 校验订单号长度（通常订单号长度在10-50个字符之间）
+  if (tradeNo.length < 10) {
+    console.warn('[订单号自动填充] 订单号长度过短，跳过查询');
+    return; // 不显示错误提示，因为用户可能还在输入
+  }
+  
+  if (tradeNo.length > 100) {
+    console.warn('[订单号自动填充] 订单号长度过长');
+    showModalAlert('订单号长度不能超过100个字符', '格式错误');
+    return;
+  }
+  
+  // 校验订单号字符（只允许字母、数字、下划线、连字符）
+  // 这是一个基本的格式校验，具体格式取决于支付平台的规范
+  const validPattern = /^[A-Za-z0-9_-]+$/;
+  if (!validPattern.test(tradeNo)) {
+    console.warn('[订单号自动填充] 订单号包含非法字符');
+    showModalAlert('订单号只能包含字母、数字、下划线和连字符', '格式错误');
+    return;
+  }
+  
+  // ========== 步骤2：调用后端API查询订单信息 ==========
+  
+  try {
+    // 构建API请求URL
+    // 使用大的per_page值（1000）来确保能查询到所有订单
+    // 实际应用中，可以考虑添加订单号搜索接口以提升性能
+    const url = `/api/payment/orders?page=1&per_page=1000&status=all`;
+    
+    console.log('[订单号自动填充] 调用API查询订单:', url);
+    
+    // 发起GET请求
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID  // 使用全局会话UUID进行身份验证
+      }
+    });
+    
+    // 检查HTTP响应状态
+    if (!response.ok) {
+      throw new Error(`HTTP错误: ${response.status}`);
+    }
+    
+    // 解析JSON响应
+    const result = await response.json();
+    
+    // 检查API调用是否成功
+    if (!result.success) {
+      throw new Error(result.message || '获取订单列表失败');
+    }
+    
+    // ========== 步骤3：在订单列表中查找匹配的订单 ==========
+    
+    // 从返回结果中获取订单列表
+    const orders = result.orders || [];
+    
+    console.log('[订单号自动填充] 查询到订单数量:', orders.length);
+    
+    // 在订单列表中查找与输入订单号匹配的订单
+    // 使用find方法进行精确匹配（区分大小写）
+    const matchedOrder = orders.find(order => order.order_trade_no === tradeNo);
+    
+    // 如果未找到匹配的订单
+    if (!matchedOrder) {
+      console.warn('[订单号自动填充] 未找到匹配的订单:', tradeNo);
+      showModalAlert('未找到该订单号对应的订单记录', '订单不存在');
+      
+      // 清空退款金额输入框
+      const amountInput = document.getElementById('admin-refund-amount_modal');
+      if (amountInput) {
+        amountInput.value = '';
+      }
+      
+      return;
+    }
+    
+    // ========== 步骤4：获取订单金额并校验 ==========
+    
+    console.log('[订单号自动填充] 找到匹配订单:', matchedOrder);
+    
+    // 从订单对象中获取金额字段
+    const orderAmount = parseFloat(matchedOrder.amount);
+    
+    // 校验金额是否有效（必须是正数）
+    if (isNaN(orderAmount) || orderAmount <= 0) {
+      console.error('[订单号自动填充] 订单金额无效:', matchedOrder.amount);
+      showModalAlert('该订单的金额数据无效，无法计算退款金额', '数据错误');
+      return;
+    }
+    
+    // ========== 步骤5：计算退款金额（75%） ==========
+    
+    // 计算退款金额：原金额 × 0.75
+    const refundAmount = orderAmount * 0.75;
+    
+    // 保留2位小数，符合货币金额的标准格式
+    const refundAmountFormatted = refundAmount.toFixed(2);
+    
+    console.log('[订单号自动填充] 计算退款金额:', {
+      原订单金额: orderAmount,
+      退款金额_75Percent: refundAmountFormatted
+    });
+    
+    // ========== 步骤6：填充退款金额到输入框 ==========
+    
+    // 获取退款金额输入框DOM元素
+    const amountInput = document.getElementById('admin-refund-amount_modal');
+    
+    if (!amountInput) {
+      console.error('[订单号自动填充] 未找到退款金额输入框元素');
+      return;
+    }
+    
+    // 自动填充计算好的退款金额
+    amountInput.value = refundAmountFormatted;
+    
+    // 触发input事件，以便其他依赖此输入框的逻辑能够响应
+    // 例如，可能有实时验证或计算的功能需要知道金额已更新
+    amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    // 在控制台输出成功日志
+    console.log('[订单号自动填充] 成功填充退款金额:', refundAmountFormatted);
+    
+    // 可选：显示成功提示（可根据需要开启）
+    // showModalAlert(`已自动填充退款金额：¥${refundAmountFormatted}（原金额的75%）`, '成功');
+    
+  } catch (error) {
+    // ========== 异常处理 ==========
+    
+    // 捕获所有可能的错误（网络错误、解析错误、API错误等）
+    console.error('[订单号自动填充] 获取订单信息失败:', error);
+    
+    // 显示友好的错误提示
+    showModalAlert(`获取订单信息失败: ${error.message}`, '错误');
+    
+    // 清空退款金额输入框
+    const amountInput = document.getElementById('admin-refund-amount_modal');
+    if (amountInput) {
+      amountInput.value = '';
+    }
+  }
+}
+
+// 在页面加载完成后初始化订单号自动填充功能
+// 使用DOMContentLoaded事件确保DOM元素已经加载
+document.addEventListener('DOMContentLoaded', function() {
+  // 延迟执行，确保其他初始化代码已经完成
+  setTimeout(() => {
+    initOrderNumberAutoFill();
+  }, 100); // 延迟100毫秒执行
+});
+
+// ============================================================================
+// 订单号自动获取金额并填充退款金额功能 - 结束
+// ============================================================================
 // ============================================================================

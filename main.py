@@ -4833,10 +4833,34 @@ class AuthSystem:
                 "theme": "light",
                 "phone": phone,
                 "nickname": nickname or auth_username,
-                # 可用执行次数字段：记录用户还可以执行多少次任务
-                # 从配置文件读取默认值（Payment_Settings.default_available_runs）
-                # 默认值为10次，管理员可在config.ini中修改
-                # 特殊值：-1表示无限次数，0表示无免费次数
+                # ========== 可用执行次数（available_runs）字段初始化 ==========
+                # 
+                # 功能说明：
+                # 记录用户还可以执行多少次任务（例如：校园跑、任务等）
+                # 
+                # 数据来源：
+                # 从配置文件 config.ini 的 [Payment_Settings] 节读取 default_available_runs 参数
+                # 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
+                # 
+                # 默认值：
+                # 如果配置文件中未设置该参数，则使用 fallback 值 10（次）
+                # 
+                # 特殊值说明：
+                # - -1: 表示无限次数（VIP用户或特殊权限用户）
+                # - 0: 表示无免费次数（必须付费才能使用）
+                # - 正整数: 表示具体的可用次数
+                # 
+                # 管理员配置：
+                # 管理员可以在 config.ini 文件中修改 default_available_runs 的值
+                # 修改后，所有新注册的用户都将获得新的默认值
+                # 注意：已注册用户的 available_runs 不会自动更新
+                # 
+                # 一致性保证：
+                # 此实现确保通过以下方式创建的用户都使用相同的默认值：
+                # 1. PC端管理员创建用户（admin-create-user_modal + newUserConfirm）
+                # 2. 移动端管理员创建用户（mobile-new-user-confirm-btn）
+                # 3. 普通用户自助注册（/auth/register）
+                # 所有创建用户的代码路径都调用此 register_user 函数，因此 available_runs 一致
                 "available_runs": self.config.getint(
                     "Payment_Settings", "default_available_runs", fallback=10
                 ),
@@ -19012,6 +19036,18 @@ def start_web_server(args_param):
     def auth_register():
         """
         用户注册API端点（已升级支持手机号、昵称、头像）。
+        
+        功能说明：
+        - 允许新用户自助注册账号
+        - 支持手机号绑定、昵称设置、头像上传
+        - 支持短信验证码验证（可选，取决于配置）
+        - 支持图形验证码防止机器注册
+        
+        available_runs（可用次数）处理：
+        - 新注册用户的 available_runs 将自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+        - 这确保了所有注册方式（自助注册、管理员创建）都使用统一的默认值
+        - 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
+        - 如需修改默认值，请编辑 config.ini 文件并重启服务
         """
         try:
             # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
@@ -20301,6 +20337,12 @@ def start_web_server(args_param):
         - phone: 手机号（可选）
         - nickname: 昵称（可选）
         - sms_code: 短信验证码（可选，如非空则进行校验）
+        
+        available_runs（可用次数）处理：
+        - 本API不需要在请求参数中指定 available_runs
+        - 新用户的 available_runs 将自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+        - 这确保了所有创建用户的方式（PC端、移动端、自助注册）都使用统一的默认值
+        - 如需修改某个用户的 available_runs，请在用户创建后通过用户管理功能进行修改
         """
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
