@@ -5423,25 +5423,41 @@ async function loadAllPaymentOrders() {
     // === 错误处理 ===
     console.error('[订单列表] 加载订单时发生错误：', error);
 
-    // 在容器中显示错误提示
-    const cardsContainer = document.getElementById('admin-orders-table-body_modal');
-    if (cardsContainer) {
-      cardsContainer.innerHTML = `
-        <div class="col-span-full text-center py-12 text-red-600">
-          <svg class="w-12 h-12 inline mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          <div class="text-base font-medium">加载订单失败</div>
-          <div class="text-sm text-slate-500 mt-1">请稍后重试或联系管理员</div>
-        </div>
-      `;
+    // 【修复】同时在桌面端和移动端容器中显示错误提示
+    // 生成错误提示HTML
+    const errorHTML = `
+      <div class="col-span-full text-center py-12 text-red-600">
+        <svg class="w-12 h-12 inline mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div class="text-base font-medium">加载订单失败</div>
+        <div class="text-sm text-slate-500 mt-1">请稍后重试或联系管理员</div>
+      </div>
+    `;
+    
+    // 尝试在桌面端容器中显示错误
+    const cardsContainerDesktop = document.getElementById('admin-orders-table-body_modal');
+    if (cardsContainerDesktop) {
+      cardsContainerDesktop.innerHTML = errorHTML;
+    }
+    
+    // 尝试在移动端容器中显示错误
+    const cardsContainerMobile = document.getElementById('admin-orders-table-body');
+    if (cardsContainerMobile) {
+      cardsContainerMobile.innerHTML = errorHTML;
     }
 
-    // 更新订单计数显示
-    const countElem = document.getElementById('admin-orders-count_modal');
-    if (countElem) {
-      countElem.textContent = '(加载失败)';
+    // 更新订单计数显示（桌面端）
+    const countElemDesktop = document.getElementById('admin-orders-count_modal');
+    if (countElemDesktop) {
+      countElemDesktop.textContent = '(加载失败)';
+    }
+    
+    // 更新订单计数显示（移动端）
+    const countElemMobile = document.getElementById('admin-orders-count');
+    if (countElemMobile) {
+      countElemMobile.textContent = '(加载失败)';
     }
   }
 }
@@ -5469,15 +5485,29 @@ function filterPaymentOrders() {
   console.log('[订单筛选] 开始筛选订单...');
 
   // === 第1步：获取所有筛选条件的值 ===
+  // 【修复】同时支持桌面端(_modal)和移动端(无后缀)的筛选条件输入框
+  // 策略：优先读取桌面端元素，如果不存在则尝试读取移动端元素
   
   // 获取状态筛选下拉框的值
-  const statusFilter = document.getElementById('admin-filter-status_modal')?.value.trim() || '';
+  // 先尝试桌面端，再尝试移动端
+  const statusFilterDesktop = document.getElementById('admin-filter-status_modal');
+  const statusFilterMobile = document.getElementById('admin-filter-status');
+  const statusFilter = (statusFilterDesktop || statusFilterMobile)?.value.trim() || '';
+  
   // 获取支付方式筛选下拉框的值
-  const payTypeFilter = document.getElementById('admin-filter-paytype_modal')?.value.trim() || '';
+  const payTypeFilterDesktop = document.getElementById('admin-filter-paytype_modal');
+  const payTypeFilterMobile = document.getElementById('admin-filter-paytype');
+  const payTypeFilter = (payTypeFilterDesktop || payTypeFilterMobile)?.value.trim() || '';
+  
   // 获取用户名搜索输入框的值（转换为小写，便于不区分大小写匹配）
-  const usernameFilter = document.getElementById('admin-filter-username_modal')?.value.trim().toLowerCase() || '';
+  const usernameFilterDesktop = document.getElementById('admin-filter-username_modal');
+  const usernameFilterMobile = document.getElementById('admin-filter-username');
+  const usernameFilter = ((usernameFilterDesktop || usernameFilterMobile)?.value.trim() || '').toLowerCase();
+  
   // 获取订单号搜索输入框的值（转换为小写，便于不区分大小写匹配）
-  const orderNoFilter = document.getElementById('admin-filter-orderno_modal')?.value.trim().toLowerCase() || '';
+  const orderNoFilterDesktop = document.getElementById('admin-filter-orderno_modal');
+  const orderNoFilterMobile = document.getElementById('admin-filter-orderno');
+  const orderNoFilter = ((orderNoFilterDesktop || orderNoFilterMobile)?.value.trim() || '').toLowerCase();
 
   console.log('[订单筛选] 筛选条件：', {
     status: statusFilter || '全部',
@@ -5554,28 +5584,44 @@ function filterPaymentOrders() {
  * 8. 查看详情按钮
  */
 function renderPaymentOrdersTable() {
-  // 输出日志：标记开始渲染卡片
+  // 输出日志：标记开始渲染订单卡片
   console.log('[订单卡片] 开始渲染订单卡片...');
 
-  // === 第1步：获取容器元素 ===
-  const cardsContainer = document.getElementById('admin-orders-table-body_modal');
-  const countElem = document.getElementById('admin-orders-count_modal');
+  // === 第1步：获取容器元素（同时获取桌面端和移动端容器）===
+  // 【修复】同时支持桌面端(_modal后缀)和移动端(无后缀)的订单表格容器
+  const cardsContainerDesktop = document.getElementById('admin-orders-table-body_modal');
+  const cardsContainerMobile = document.getElementById('admin-orders-table-body');
+  
+  // 获取订单计数显示元素（同时获取桌面端和移动端）
+  const countElemDesktop = document.getElementById('admin-orders-count_modal');
+  const countElemMobile = document.getElementById('admin-orders-count');
 
-  // 防御性检查：确保容器元素存在
-  if (!cardsContainer) {
-    console.error('[订单卡片] 错误：找不到容器元素');
+  // 防御性检查：至少要有一个容器元素存在才能继续
+  // 如果两个容器都不存在，则记录错误并返回
+  if (!cardsContainerDesktop && !cardsContainerMobile) {
+    console.error('[订单卡片] 错误：找不到任何容器元素（桌面端和移动端都不存在）');
     return;
   }
 
-  // === 第2步：更新订单计数显示 ===
-  if (countElem) {
-    countElem.textContent = `(共 ${filteredPaymentOrders.length} 条)`;
+  // === 第2步：更新订单计数显示（同时更新桌面端和移动端）===
+  // 生成计数文本，显示过滤后的订单数量
+  const countText = `(共 ${filteredPaymentOrders.length} 条)`;
+  
+  // 如果桌面端计数元素存在，更新它
+  if (countElemDesktop) {
+    countElemDesktop.textContent = countText;
+  }
+  
+  // 如果移动端计数元素存在，更新它
+  if (countElemMobile) {
+    countElemMobile.textContent = countText;
   }
 
   // === 第3步：检查是否有订单数据 ===
   if (filteredPaymentOrders.length === 0) {
     // 如果没有订单，显示空状态提示
-    cardsContainer.innerHTML = `
+    // 生成空状态HTML，显示友好的提示信息
+    const emptyStateHTML = `
       <div class="col-span-full text-center py-12 text-slate-500">
         <!-- 空状态图标 -->
         <svg class="w-16 h-16 inline mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5586,6 +5632,15 @@ function renderPaymentOrdersTable() {
         <div class="text-xs mt-2">请尝试调整筛选条件或点击"从平台拉取"按钮同步订单</div>
       </div>
     `;
+    
+    // 【修复】同时设置桌面端和移动端容器的内容
+    if (cardsContainerDesktop) {
+      cardsContainerDesktop.innerHTML = emptyStateHTML;
+    }
+    if (cardsContainerMobile) {
+      cardsContainerMobile.innerHTML = emptyStateHTML;
+    }
+    
     return;
   }
 
@@ -5724,10 +5779,18 @@ function renderPaymentOrdersTable() {
     `;
   }).join('');  // 将所有卡片拼接成一个字符串
 
-  // === 第5步：更新容器内容 ===
-  cardsContainer.innerHTML = orderCards;
+  // === 第5步：更新容器内容（同时更新桌面端和移动端）===
+  // 【修复】同时设置桌面端和移动端容器的内容
+  if (cardsContainerDesktop) {
+    cardsContainerDesktop.innerHTML = orderCards;
+    console.log('[订单卡片] 桌面端卡片渲染完成');
+  }
+  if (cardsContainerMobile) {
+    cardsContainerMobile.innerHTML = orderCards;
+    console.log('[订单卡片] 移动端卡片渲染完成');
+  }
 
-  console.log('[订单卡片] 卡片渲染完成');
+  console.log('[订单卡片] 所有卡片渲染完成');
 }
 
 /**
@@ -5757,12 +5820,15 @@ async function queryOrderManually() {
   // 输出日志：标记开始手动查询订单
   console.log('[手动查询] 开始查询订单...');
 
-  // === 第1步：获取订单号输入框的值 ===
-  const orderNoInput = document.getElementById('admin-manual-query-order-no_modal');
+  // === 第1步：获取订单号输入框的值（同时支持桌面端和移动端）===
+  // 【修复】优先获取桌面端输入框，如果不存在则获取移动端输入框
+  const orderNoInputDesktop = document.getElementById('admin-manual-query-order-no_modal');
+  const orderNoInputMobile = document.getElementById('admin-manual-query-order-no');
+  const orderNoInput = orderNoInputDesktop || orderNoInputMobile;
   
-  // 防御性检查：确保输入框元素存在
+  // 防御性检查：确保至少有一个输入框元素存在
   if (!orderNoInput) {
-    console.error('[手动查询] 错误：找不到订单号输入框');
+    console.error('[手动查询] 错误：找不到订单号输入框（桌面端和移动端都不存在）');
     showModalAlert('页面元素异常，请刷新页面后重试。');
     return;
   }
@@ -5811,8 +5877,14 @@ async function queryOrderManually() {
     const source = result.source === 'platform' ? '从平台查询并已保存到本地' : '从本地查询';
     showModalAlert(`订单查询成功（${source}）`, '成功');
 
-    // === 第8步：清空输入框 ===
-    orderNoInput.value = '';
+    // === 第8步：清空输入框（同时清空桌面端和移动端）===
+    // 【修复】同时清空桌面端和移动端的输入框
+    if (orderNoInputDesktop) {
+      orderNoInputDesktop.value = '';
+    }
+    if (orderNoInputMobile) {
+      orderNoInputMobile.value = '';
+    }
 
     // === 第9步：刷新订单列表 ===
     // 重新加载订单列表以显示新查询的订单
