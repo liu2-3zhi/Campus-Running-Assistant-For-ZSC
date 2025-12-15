@@ -36134,31 +36134,113 @@ async function loadSystemConfig() {
     formContainer.innerHTML = `<p class="text-red-500 text-center py-10">加载配置时发生错误: ${e.message}</p>`;
   }
 }
+/**
+ * 加载验证码配置参数（PC端）
+ * 从后端 /api/captcha/config API 获取验证码配置参数并填充到表单中
+ * 
+ * 功能说明：
+ * - 调用 /api/captcha/config API 获取最新的验证码配置
+ * - 将获取到的配置值填充到PC端的三个输入框中
+ * - 提供友好的错误提示和日志记录
+ * 
+ * 涉及的表单字段：
+ * - captcha-length: 验证码字符长度（3-6）
+ * - captcha-scale-factor: 图像缩放因子（2-4）
+ * - captcha-noise-level: 噪声级别（0.0-0.3）
+ * 
+ * @returns {Promise<void>} 无返回值
+ */
 async function loadCaptchaSettings() {
   try {
-    console.log("[验证码设置] 开始加载验证码配置参数...");
-    if (window.initialData && window.initialData.captcha_settings) {
-      const settings = window.initialData.captcha_settings;
+    // 步骤1：记录开始加载的日志，便于调试和追踪
+    console.log("[验证码设置] 开始从 /api/captcha/config 加载验证码配置参数...");
+    
+    // 步骤2：调用后端API获取验证码配置
+    // 使用fetch进行HTTP GET请求
+    const response = await fetch("/api/captcha/config", {
+      method: "GET",  // 使用GET方法获取数据
+      headers: {
+        // 发送Session ID用于身份验证，确保只有已登录的管理员可以访问
+        "X-Session-ID": sessionUUID,
+        // 指定期望的响应内容类型为JSON
+        "Content-Type": "application/json"
+      },
+      // 包含cookie凭证，确保会话状态正确传递
+      credentials: "include"
+    });
+    
+    // 步骤3：解析响应的JSON数据
+    // await确保等待JSON解析完成
+    const result = await response.json();
+    
+    // 步骤4：检查API调用是否成功
+    // result.success 表示后端是否成功返回了配置数据
+    // result.config 包含实际的配置参数对象
+    if (result && result.success && result.config) {
+      // 步骤5：从返回的config对象中提取配置参数
+      const settings = result.config;
+      
+      // 步骤6：填充PC端的验证码长度输入框
+      // 使用 || 运算符提供默认值，如果settings.length不存在则使用4
       $("captcha-length").value = settings.length || 4;
+      
+      // 步骤7：填充PC端的细分倍数输入框
+      // 默认值为2，这是一个适中的缩放比例
       $("captcha-scale-factor").value = settings.scale_factor || 2;
+      
+      // 步骤8：填充PC端的噪点比例输入框
+      // 默认值为0.08（8%），这是一个适中的噪点密度
       $("captcha-noise-level").value = settings.noise_level || 0.08;
-      console.log("[验证码设置] 已从缓存加载配置:", settings);
+      
+      // 步骤9：记录成功加载的日志，包含实际加载的配置值
+      console.log("[验证码设置] 成功从 /api/captcha/config 加载配置:", settings);
+      
+      // 步骤10：显示成功提示（可选，避免过多打扰用户）
+      // 使用Swal.fire显示简短的成功提示，2秒后自动关闭
+      Swal.fire({
+        icon: "success",            // 成功图标（绿色对号）
+        title: "加载成功",          // 标题
+        text: "验证码配置已加载",   // 提示文本
+        timer: 1500,                // 1.5秒后自动关闭
+        showConfirmButton: false    // 不显示确认按钮，自动关闭
+      });
     } else {
-      // 从后端获取验证码配置，同时更新其他初始数据
-      const response = await loadInitialData();
-      if (response && response.captcha_settings) {
-        const settings = response.captcha_settings;
-        $("captcha-length").value = settings.length || 4;
-        $("captcha-scale-factor").value = settings.scale_factor || 2;
-        $("captcha-noise-level").value = settings.noise_level || 0.08;
-
-        console.log("[验证码设置] 已从API加载配置:", settings);
-      } else {
-        console.warn("[验证码设置] 未能获取配置，使用默认值");
-      }
+      // 步骤11：处理API返回成功但没有配置数据的情况
+      // 这通常表示配置文件不存在或格式错误
+      console.warn("[验证码设置] API返回成功但未包含配置数据，使用默认值");
+      
+      // 步骤12：使用默认值填充表单
+      $("captcha-length").value = 4;         // 默认长度4个字符
+      $("captcha-scale-factor").value = 2;   // 默认缩放因子2倍
+      $("captcha-noise-level").value = 0.08; // 默认噪点比例8%
+      
+      // 步骤13：显示警告提示，告知用户正在使用默认值
+      Swal.fire({
+        icon: "warning",                     // 警告图标（黄色感叹号）
+        title: "使用默认配置",               // 标题
+        text: "未找到配置文件，已加载默认值", // 提示文本
+        timer: 2000,                         // 2秒后自动关闭
+        showConfirmButton: false             // 不显示确认按钮
+      });
     }
   } catch (error) {
-    console.error("[验证码设置] 加载配置失败:", error);
+    // 步骤14：捕获并处理所有可能的异常（网络错误、解析错误等）
+    // 记录详细的错误日志，包含错误对象的完整信息
+    console.error("[验证码设置] 从 /api/captcha/config 加载配置失败:", error);
+    
+    // 步骤15：在发生错误时，仍然提供默认值，确保用户可以继续使用
+    $("captcha-length").value = 4;         // 默认长度
+    $("captcha-scale-factor").value = 2;   // 默认缩放因子
+    $("captcha-noise-level").value = 0.08; // 默认噪点比例
+    
+    // 步骤16：显示友好的错误提示给用户
+    // 使用Swal.fire显示错误对话框，用户需要点击确认才能关闭
+    Swal.fire({
+      icon: "error",                              // 错误图标（红色叉号）
+      title: "加载失败",                          // 标题
+      text: "无法加载验证码配置: " + error.message, // 错误信息，包含具体的错误原因
+      confirmButtonText: "确定"                    // 确认按钮文本
+    });
   }
 }
 async function saveCaptchaSettings() {
@@ -44818,49 +44900,142 @@ async function mobileCheckSMSBalance() {
  * 加载移动端验证码设置
  * 从缓存或API获取验证码配置参数
  */
+/**
+ * 加载验证码配置参数（移动端）
+ * 从后端 /api/captcha/config API 获取验证码配置参数并填充到移动端表单中
+ * 
+ * 功能说明：
+ * - 调用 /api/captcha/config API 获取最新的验证码配置
+ * - 将获取到的配置值填充到移动端的三个输入框中
+ * - 提供友好的错误提示和日志记录
+ * - 与PC端的loadCaptchaSettings()功能平行，但适配移动端UI
+ * 
+ * 涉及的表单字段：
+ * - mobile-captcha-length: 验证码字符长度（3-6）
+ * - mobile-captcha-scale-factor: 图像缩放因子（2-4）
+ * - mobile-captcha-noise-level: 噪声级别（0.0-0.3）
+ * 
+ * @returns {Promise<void>} 无返回值
+ */
 async function mobileLoadCaptchaSettings() {
   try {
-    console.log("[移动端验证码] 开始加载验证码配置...");
+    // 步骤1：记录开始加载的日志，便于调试和追踪
+    console.log("[移动端验证码] 开始从 /api/captcha/config 加载验证码配置...");
 
+    // 步骤2：调用后端API获取验证码配置
+    // 使用fetch进行HTTP GET请求
+    const response = await fetch("/api/captcha/config", {
+      method: "GET",  // 使用GET方法获取数据
+      headers: {
+        // 发送Session ID用于身份验证，确保只有已登录的管理员可以访问
+        "X-Session-ID": sessionUUID,
+        // 指定期望的响应内容类型为JSON
+        "Content-Type": "application/json"
+      },
+      // 包含cookie凭证，确保会话状态正确传递
+      credentials: "include"
+    });
 
-      // 从API获取配置，使用统一的初始化函数
-      const response = await loadInitialData();
-      if (response && response.captcha_settings) {
-        mobileUpdateCaptchaForm(response.captcha_settings);
-        console.log(
-          "[移动端验证码] 已从API加载配置:",
-          response.captcha_settings
-        );
-      } else {
-        console.warn("[移动端验证码] 未能获取配置，使用默认值");
-        mobileUpdateCaptchaForm({
-          length: 4,
-          scale_factor: 2,
-          noise_level: 0.08,
-        });
-      }
-    
+    // 步骤3：解析响应的JSON数据
+    // await确保等待JSON解析完成
+    const result = await response.json();
+
+    // 步骤4：检查API调用是否成功
+    // result.success 表示后端是否成功返回了配置数据
+    // result.config 包含实际的配置参数对象
+    if (result && result.success && result.config) {
+      // 步骤5：从返回的config对象中提取配置参数
+      const settings = result.config;
+      
+      // 步骤6：调用辅助函数更新移动端表单
+      // mobileUpdateCaptchaForm 会处理实际的DOM更新操作
+      mobileUpdateCaptchaForm(settings);
+      
+      // 步骤7：记录成功加载的日志，包含实际加载的配置值
+      console.log("[移动端验证码] 成功从 /api/captcha/config 加载配置:", settings);
+      
+      // 步骤8：显示成功提示（使用移动端专用的提示函数）
+      // showModalAlert是移动端使用的提示函数，比Swal更适合移动设备
+      showModalAlert("验证码配置已加载", "成功");
+    } else {
+      // 步骤9：处理API返回成功但没有配置数据的情况
+      // 这通常表示配置文件不存在或格式错误
+      console.warn("[移动端验证码] API返回成功但未包含配置数据，使用默认值");
+      
+      // 步骤10：使用默认配置对象更新表单
+      mobileUpdateCaptchaForm({
+        length: 4,          // 默认长度4个字符
+        scale_factor: 2,    // 默认缩放因子2倍
+        noise_level: 0.08   // 默认噪点比例8%
+      });
+      
+      // 步骤11：显示警告提示，告知用户正在使用默认值
+      showModalAlert("未找到配置文件，已加载默认值", "警告");
+    }
   } catch (error) {
-    console.error("[移动端验证码] 加载配置失败:", error);
-    showModalAlert("加载验证码配置失败", "错误");
+    // 步骤12：捕获并处理所有可能的异常（网络错误、解析错误等）
+    // 记录详细的错误日志，包含错误对象的完整信息
+    console.error("[移动端验证码] 从 /api/captcha/config 加载配置失败:", error);
+    
+    // 步骤13：在发生错误时，仍然提供默认值，确保用户可以继续使用
+    mobileUpdateCaptchaForm({
+      length: 4,          // 默认长度
+      scale_factor: 2,    // 默认缩放因子
+      noise_level: 0.08   // 默认噪点比例
+    });
+    
+    // 步骤14：显示友好的错误提示给用户
+    // 包含具体的错误原因，帮助用户理解问题所在
+    showModalAlert("加载验证码配置失败: " + error.message, "错误");
   }
 }
 
 /**
  * 更新移动端验证码表单
+ * 这是一个辅助函数，用于将验证码配置参数填充到移动端的表单输入框中
+ * 
+ * 功能说明：
+ * - 接收一个配置对象（包含length、scale_factor、noise_level）
+ * - 查找移动端的三个输入框元素
+ * - 将配置值填充到对应的输入框中
+ * - 如果输入框不存在，则跳过（安全性检查）
+ * 
+ * 设计模式：
+ * - 使用可选链操作符(?.)确保在元素不存在时不会抛出错误
+ * - 使用逻辑或(||)运算符提供默认值
+ * - 将UI更新逻辑与数据获取逻辑分离，提高代码可维护性
+ * 
  * @param {Object} settings - 验证码配置对象
+ * @param {number} settings.length - 验证码字符长度（3-6）
+ * @param {number} settings.scale_factor - 图像缩放因子（2-4）
+ * @param {number} settings.noise_level - 噪声级别（0.0-0.3）
  */
 function mobileUpdateCaptchaForm(settings) {
+  // 步骤1：获取移动端验证码长度输入框的DOM元素引用
+  // 使用document.getElementById根据元素ID获取元素
   const lengthInput = document.getElementById("mobile-captcha-length");
+  
+  // 步骤2：获取移动端细分倍数（缩放因子）输入框的DOM元素引用
   const scaleInput = document.getElementById(
     "mobile-captcha-scale-factor"
   );
+  
+  // 步骤3：获取移动端噪点比例（噪声级别）输入框的DOM元素引用
   const noiseInput = document.getElementById(
     "mobile-captcha-noise-level"
   );
 
+  // 步骤4：填充验证码长度输入框
+  // 使用if检查确保元素存在，避免在元素不存在时产生错误
+  // settings.length || 4 提供默认值，如果settings.length为空则使用4
   if (lengthInput) lengthInput.value = settings.length || 4;
+  
+  // 步骤5：填充细分倍数输入框
+  // 如果scaleInput存在，则将其value属性设置为settings.scale_factor或默认值2
   if (scaleInput) scaleInput.value = settings.scale_factor || 2;
+  
+  // 步骤6：填充噪点比例输入框
+  // 如果noiseInput存在，则将其value属性设置为settings.noise_level或默认值0.08
   if (noiseInput) noiseInput.value = settings.noise_level || 0.08;
 }
 
