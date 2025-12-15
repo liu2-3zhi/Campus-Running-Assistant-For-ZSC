@@ -3746,25 +3746,29 @@
               </button>
 
               <!-- ========================================
-                   [修改] 支付方式列表容器（移动端）
+                   [修复] 支付方式列表容器（移动端）
+                   ======================================== 
                    功能：动态显示所有已配置的支付方式
                    实现：通过JavaScript的loadPaymentMethodsConfig()函数动态填充
                    容器ID：payment-methods-list（移动端，不带_modal后缀）
-                   样式：单列布局，适配移动端小屏幕
-                   包含：支付方式名称、Logo、开关、编辑和删除按钮
+                   
+                   修复说明（任务14）：
+                   - 问题：移动端容器包含硬编码的占位符HTML，而PC端容器为空
+                   - 修复：移除硬编码占位符，让JavaScript函数统一控制渲染逻辑
+                   - 原理：JavaScript函数已内置占位符渲染逻辑（main.js第2090-2100行）
+                   - 效果：确保移动端和PC端的渲染行为完全一致，避免渲染冲突
+                   
+                   样式说明：
+                   - 移动端：单列布局（space-y-2），适配小屏幕
+                   - PC端：网格布局（grid grid-cols-1 md:grid-cols-2），提升空间利用率
+                   
+                   数据结构（由JavaScript动态生成）：
+                   每个支付方式包含：Logo、名称、描述、启用开关、编辑按钮、删除按钮
                    ======================================== -->
               <div id="payment-methods-list" class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
                 <!-- 支付方式将通过 loadPaymentMethodsConfig(false,true) 函数动态加载到这里 -->
                 <!-- JavaScript会在页面加载时自动调用该函数 -->
-                <!-- 每个支付方式的结构：
-                     <div class="payment-method-item">
-                       <logo> <name> <switch> <edit-btn> <delete-btn>
-                     </div>
-                -->
-                <!-- 加载占位符：在支付方式加载完成前显示 -->
-                <div class="text-center py-4 text-slate-500 text-sm">
-                  正在加载支付方式配置...
-                </div>
+                <!-- 无需手动添加任何内容，JavaScript会自动处理空状态和加载状态 -->
               </div>
 
               <!-- ========================================
@@ -8537,16 +8541,25 @@
             添加支付方式
           </button>
 
-          <!-- 支付方式列表容器 -->
-          <!-- 这个容器将通过JavaScript动态填充支付方式，每个支付方式包含：名称、Logo、开关、编辑和删除按钮 -->
-          <!-- 使用网格布局，在桌面端显示2列，提升空间利用率 -->
+          <!-- ========================================
+               支付方式列表容器（PC端/Modal版本）
+               ======================================== 
+               功能：动态显示所有已配置的支付方式
+               实现：通过JavaScript的loadPaymentMethodsConfig()函数动态填充
+               容器ID：payment-methods-list_modal（PC端，带_modal后缀）
+               
+               设计说明：
+               - 使用网格布局（grid grid-cols-1 md:grid-cols-2），桌面端显示2列
+               - 移动端版本使用单列布局，容器ID为 payment-methods-list（不带后缀）
+               - JavaScript函数会自动检测并适配两种版本
+               
+               数据结构（由JavaScript动态生成）：
+               每个支付方式包含：Logo、名称、描述、启用开关、编辑按钮、删除按钮
+               ======================================== -->
           <div id="payment-methods-list_modal" class="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg p-4">
             <!-- 支付方式将通过 loadPaymentMethodsConfig() 函数动态加载到这里 -->
-            <!-- 每个支付方式的结构：
-                 <div class="payment-method-item">
-                   <logo> <name> <switch> <edit-btn> <delete-btn>
-                 </div>
-            -->
+            <!-- JavaScript会在页面加载时自动调用该函数 -->
+            <!-- 无需手动添加任何内容，JavaScript会自动处理空状态和加载状态 -->
           </div>
 
           <!-- ========================================
