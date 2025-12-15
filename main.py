@@ -1409,6 +1409,21 @@ def setup_logging():
     error_file_handler.setFormatter(error_no_color_formatter)
 
     logger.addHandler(error_file_handler)
+
+    # [核心修复] 将所有日志处理器的锁替换为原生锁
+    # 解决 ChromeBrowserPool(原生线程) 调用 logging 时因持有 Eventlet 锁导致的崩溃
+    try:
+        from eventlet import patcher
+        # 获取未被 monkey_patch 的原生 threading 模块
+        native_threading = patcher.original("threading")
+        # 遍历所有已添加的 Handler (FileHandler, StreamHandler等)
+        for handler in logger.handlers:
+            # 强制替换为原生可重入锁
+            handler.lock = native_threading.RLock()
+    except Exception as e:
+        # 即使失败也不应阻止程序启动，只是可能会有潜在崩溃风险
+        print(f"[日志系统] 警告: 替换日志锁失败: {e}")
+
     global _log_buffer
     if _log_buffer:
         for level_str, msg in _log_buffer:
@@ -21419,14 +21434,17 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"解析school_account删除请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400
+
+        # [修正] 获取当前用户的权限组，定义 auth_group 变量
+        auth_group = auth_system.get_user_group(current_auth_username)
+
         is_admin = auth_group in ["admin", "super_admin"]
         if not is_admin and auth_username != current_auth_username:
             logging.warning(
                 f"用户 {current_auth_username} 试图删除 {auth_username} 的账户 {school_username}，权限不足"
             )
             return (
-                jsonify({"success": False, "message": "权限不足：只能删除自己的账户"}),
-                403,
+                jsonify({"success": False, "message": "权限不足：只能删除自己的账户"}), 403,
             )
         # ========== 4. 加载现有账户数据 ==========
         try:
@@ -28990,32 +29008,85 @@ def start_web_server(args_param):
         is_authenticated = False
         auth_username = None
         
-        # 步骤1: 验证 session ID 是否有效
-        # 检查 session_id 是否为空或为常见的无效值（null、NULL、undefined等）
-        if session_id and session_id.lower() not in ["null", "undefined", "none", ""]:
-            # session_id 看起来是有效的，尝试从会话字典中获取
-            with web_sessions_lock:
-                if session_id in web_sessions:
-                    # 会话存在，获取 API 实例
-                    api_instance = web_sessions[session_id]
-                    # 获取认证状态
-                    is_authenticated = getattr(api_instance, "is_authenticated", False)
-                    # 获取用户名
-                    auth_username = getattr(api_instance, "auth_username", None)
+        try:
+            # 读取去水印控制配置
+            config = _read_amap_watermark_config()
+            
+            # 步骤5: 用户没有个性化设置，使用默认值
+            # 首先尝试从JSON配置文件中读取default字段
+            default_allowed_raw = config.get("default")
+            
+            # [修复] 使用标准化函数尝试将default值转换为布尔类型
+            # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
+            default_allowed = _normalize_watermark_default_value(default_allowed_raw)
+            
+            logging.debug(f"[水印控制] 读取默认值: {default_allowed} (原始值: {default_allowed_raw})")
+            
+        except Exception as e:
+            logging.error(f"[水印控制] 读取配置时发生错误: {str(e)}")
+            default_allowed = False  # 出错时采用保守策略，不允许去水印
+            
+            
+            
+            
+        if session_id and session_id not in ["NULL", "null", "undefined", "none", ""]:
+            logging.debug(f"[水印控制] 收到请求，Session ID: {session_id}")
+        else:
+            logging.debug(f"[水印控制] 收到请求，Session ID 无效或缺失，返回默认值")
+            return jsonify({"allowed": default_allowed})
+            
+            
+        # # 步骤1: 验证 session ID 是否有效
+        # # 检查 session_id 是否为空或为常见的无效值（null、NULL、undefined等）
+        # if session_id and session_id.lower() not in ["null", "undefined", "none", ""]:
+        #     # session_id 看起来是有效的，尝试从会话字典中获取
+        #     with web_sessions_lock:
+        #         if session_id in web_sessions:
+        #             # 会话存在，获取 API 实例
+        #             api_instance = web_sessions[session_id]
+        #             # 获取认证状态
+        #             is_authenticated = getattr(api_instance, "is_authenticated", False)
+        #             # 获取用户名
+        #             auth_username = getattr(api_instance, "auth_username", None)
         
+        if session_id in web_sessions:
+            api_instance = web_sessions[session_id]
+        else:
+            # [修复] 内存中不存在，尝试从持久化文件加载
+            # 这解决了服务器重启后，前端持有旧SessionID导致权限检查失败的问题
+            state = load_session_state(session_id)
+            if state:
+                # 创建新实例并恢复状态
+                api_instance = Api(args)
+                api_instance._web_session_id = session_id
+                # 恢复会话创建时间
+                api_instance._session_created_at = state.get("created_at", time.time())
+                # 恢复数据
+                restore_session_to_api_instance(api_instance, state)
+                # 存入内存，避免重复加载
+                web_sessions[session_id] = api_instance
+                logging.info(f"[水印控制] 已自动恢复会话: {session_id[:8]}...")
+            else:
+                api_instance = None
+        
+        # 如果成功获取了实例 (无论是内存还是磁盘恢复)
+        if api_instance:
+            # 获取认证状态
+            is_authenticated = getattr(api_instance, "is_authenticated", False)
+            # 获取用户名
+            auth_username = getattr(api_instance, "auth_username", None)
+
         # 步骤2: 如果 session 无效或用户未登录，直接返回不允许
         if not is_authenticated or not api_instance or not auth_username:
             # 记录调试日志，便于排查问题
             logging.debug(
-                f"[水印控制] Session无效或未登录，拒绝去水印 - Session ID: {session_id[:8] if session_id else 'None'}..."
+                f"[水印控制] Session无效或未登录，返回默认值: {default_allowed} (用户: {auth_username})"
             )
             # 返回不允许的响应
-            return jsonify({"allowed": False})
+            return jsonify({"allowed": default_allowed})
         
         # 步骤3: 用户已登录，检查权限配置
         try:
-            # 读取去水印控制配置
-            config = _read_amap_watermark_config()
             
             # 获取用户级别的配置字典
             users_config = config.get("users", {})
@@ -29038,14 +29109,6 @@ def start_web_server(args_param):
                     logging.warning(
                         f"[水印控制] 用户 {auth_username} 的配置值类型不正确: {type(user_allowed)}，使用默认值"
                     )
-            
-            # 步骤5: 用户没有个性化设置，使用默认值
-            # 首先尝试从JSON配置文件中读取default字段
-            default_allowed_raw = config.get("default")
-            
-            # [修复] 使用标准化函数尝试将default值转换为布尔类型
-            # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
-            default_allowed = _normalize_watermark_default_value(default_allowed_raw)
             
             # 如果标准化后的值仍然不是布尔类型（即转换失败），则从config.ini读取
             if not isinstance(default_allowed, bool):

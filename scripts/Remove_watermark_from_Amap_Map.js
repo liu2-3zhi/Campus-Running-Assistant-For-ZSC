@@ -1,4 +1,27 @@
+function loadAmapScript() {
+  // 1. 创建 script 元素
+  var script = document.createElement("script");
+
+  // 2. 设置主要源地址
+  script.src = "/api/cdn/amap-loader";
+
+  // 3. 设置加载失败时的处理逻辑 (对应 onerror)
+  script.onerror = function () {
+    console.warn("CDN加载失败，切换至官方源...");
+    this.src = "https://webapi.amap.com/loader.js";
+    // 防止死循环，移除 onerror 事件
+    this.onerror = null;
+  };
+
+  // 4. 将 script 插入到 head (你提到的 "Heard")
+  document.head.appendChild(script);
+
+  // 记录日志，便于调试和跟踪
+  console.log("[水印控制] 高德地图脚本已加载");
+}
+
 document.addEventListener("DOMContentLoaded", function loadBeianInfo() {
+  console.log("[Interceptor] 高德地图去水印脚本启动 ");
   // ================= 配置区域 =================
   const CONFIG = {
     // 需要拦截的 URL 特征 (高德主库及相关插件)
@@ -110,4 +133,6 @@ document.addEventListener("DOMContentLoaded", function loadBeianInfo() {
   };
 
   console.log("[Interceptor] 高德地图去水印已激活 ");
+
+  loadAmapScript();
 });

@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head>
 
   <script src="/scripts/load_amap_watermark.js"></script>
-
+  <!-- <script src="/scripts/Remove_watermark_from_Amap_Map.js"></script> -->
   <script src="/api/frontend_config.js"></script>
   <!-- Socket.IO - 使用本地缓存，后端自动获取最新版本 -->
   <script src="/api/cdn/socketio" onerror="this.src='https://cdn.socket.io/4.8.1/socket.io.min.js'"></script>
@@ -25,7 +25,7 @@
 
     
   <!-- 高德地图 loader.js - 使用本地缓存 -->
-  <script src="/api/cdn/amap-loader" onerror="this.src='https://webapi.amap.com/loader.js'"></script>
+  <!-- <script src="/api/cdn/amap-loader" onerror="this.src='https://webapi.amap.com/loader.js'"></script> -->
   <!-- 使用本地缓存的CDN文件，后端每小时自动从CDN更新 -->
   <script src="/api/cdn/sweetalert2" onerror="this.src='https://cdn.jsdelivr.net/npm/sweetalert2@11'"></script>
   <script src="/api/cdn/qrcode" onerror="this.src='https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js'"></script>
@@ -3268,7 +3268,7 @@
               <!-- 面板标题 -->
               <h4 class="font-semibold text-sm">系统配置</h4>
               <!-- 刷新系统配置按钮 -->
-              <button id="mobile-multi-admin-refresh-config" class="btn btn-ghost !py-1 !px-2 text-xs">
+              <button id="mobile-multi-admin-refresh-config" class="btn btn-ghost !py-1 !px-2 text-xs" display="none">
                 刷新
               </button>
             </div>
@@ -9731,7 +9731,7 @@
            2. 个性化设置存储在 amap_watermark_control.json
            3. 未配置的用户使用默认值
            ======================================== -->
-      <div id="admin-watermark-control-panel_modal" class="hidden overflow-y-auto">
+      <div id="admin-watermark-control-panel_modal" class="hidden overflow-y-auto overflow-x-hidden">
         <!-- 面板顶部：标题和描述 -->
         <div class="bg-gradient-to-r from-blue-50 to-cyan-50 p-4 rounded-lg border border-blue-200">
           <h3 class="text-lg font-bold text-blue-700 mb-2">

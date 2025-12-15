@@ -16418,6 +16418,7 @@ function refreshMobileSessionPicker() {
             // [停止自动刷新] 停止健康状态面板的自动刷新
             // 因为已经切换到了水印控制面板，不再需要刷新健康状态
             stopHealthAutoRefresh();
+            loadWatermarkControlConfig();
             
             console.log("[标签切换] 水印控制面板切换完成");
           } else {
@@ -44195,12 +44196,7 @@ async function mobileLoadCaptchaSettings() {
   try {
     console.log("[移动端验证码] 开始加载验证码配置...");
 
-    // 优先从缓存读取
-    if (window.initialData && window.initialData.captcha_settings) {
-      const settings = window.initialData.captcha_settings;
-      mobileUpdateCaptchaForm(settings);
-      console.log("[移动端验证码] 已从缓存加载配置:", settings);
-    } else {
+
       // 从API获取配置，使用统一的初始化函数
       const response = await loadInitialData();
       if (response && response.captcha_settings) {
@@ -44217,7 +44213,7 @@ async function mobileLoadCaptchaSettings() {
           noise_level: 0.08,
         });
       }
-    }
+    
   } catch (error) {
     console.error("[移动端验证码] 加载配置失败:", error);
     showModalAlert("加载验证码配置失败", "错误");
@@ -49583,7 +49579,3 @@ document.addEventListener('DOMContentLoaded', function() {
   }, 100); // 延迟100毫秒执行
 });
 
-// ============================================================================
-// 订单号自动获取金额并填充退款金额功能 - 结束
-// ============================================================================
-// ============================================================================
