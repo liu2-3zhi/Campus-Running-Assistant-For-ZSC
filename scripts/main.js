@@ -19629,17 +19629,22 @@ function refreshMobileSessionPicker() {
         }
       }
       async function submitEditSchoolAccount() {
+        // 获取表单中的数据
+        // 注意：auth_username和school_username存储在span元素的textContent中
+        // password和ua存储在input/textarea元素的value中
         const authUsername = $("edit-auth-username").textContent;
         const schoolUsername = $("edit-school-username").textContent;
         const password = $("edit-school-password").value.trim();
         const ua = $("edit-school-ua").value.trim();
 
+        // 验证密码不能为空
         if (!password) {
           showModalAlert("密码不能为空", "错误");
           return;
         }
 
         try {
+          // 向服务器发送更新请求
           const response = await fetch("/api/admin/school_account/update", {
             method: "POST",
             headers: {
@@ -19653,31 +19658,55 @@ function refreshMobileSessionPicker() {
               ua: ua,
             }),
           });
+          
+          // 解析服务器响应
           const result = await response.json();
 
           if (result.success) {
+            // 更新成功，显示成功提示
             showModalAlert(result.message || "更新成功", "成功");
+            
+            // 关闭编辑模态框
             closeEditSchoolAccountModal();
-            await showUserSchoolAccounts(authUsername);
+            
+            // 判断当前是在PC端还是移动端模态框中
+            // 通过检查移动端模态框是否显示来判断
+            const mobileModal = $("mobile-user-school-accounts-modal");
+            const isMobileModalVisible = mobileModal && !mobileModal.classList.contains("hidden");
+            
+            if (isMobileModalVisible) {
+              // 如果是在移动端模态框中，刷新移动端列表
+              await showMobileUserSchoolAccounts(authUsername);
+            } else {
+              // 如果是在PC端模态框中，刷新PC端列表
+              await showUserSchoolAccounts(authUsername);
+            }
           } else {
+            // 更新失败，显示错误提示
             showModalAlert(result.message || "更新失败", "错误");
           }
         } catch (error) {
+          // 捕获网络错误或其他异常
           console.error("submitEditSchoolAccount error:", error);
           showModalAlert("更新失败: " + error.message, "错误");
         }
       }
 
       async function deleteSchoolAccount(authUsername, schoolUsername) {
+        // 显示确认对话框，防止误删除操作
+        // jsShowConfirm是异步函数，返回Promise<boolean>
         const confirmed = await jsShowConfirm(
           "确认删除",
           `确定要删除学校账户 <strong>${escapeHtml(
             schoolUsername
           )}</strong> 吗？此操作不可恢复。`
         );
+        
+        // 如果用户点击取消，则提前返回，不执行删除操作
         if (!confirmed) return;
 
         try {
+          // 向服务器发送DELETE请求
           const response = await fetch("/api/admin/school_account/delete", {
             method: "POST",
             headers: {
@@ -19689,18 +19718,615 @@ function refreshMobileSessionPicker() {
               school_username: schoolUsername,
             }),
           });
+          
+          // 解析服务器响应
           const result = await response.json();
+          
           if (result.success) {
+            // 删除成功，显示成功提示
             showModalAlert(result.message || "删除成功", "成功");
-            await showUserSchoolAccounts(authUsername);
+            
+            // 判断当前是在PC端还是移动端模态框中
+            // 通过检查移动端模态框是否显示来判断
+            const mobileModal = $("mobile-user-school-accounts-modal");
+            const isMobileModalVisible = mobileModal && !mobileModal.classList.contains("hidden");
+            
+            if (isMobileModalVisible) {
+              // 如果是在移动端模态框中，刷新移动端列表
+              await showMobileUserSchoolAccounts(authUsername);
+            } else {
+              // 如果是在PC端模态框中，刷新PC端列表
+              await showUserSchoolAccounts(authUsername);
+            }
           } else {
+            // 删除失败，显示错误提示
             showModalAlert(result.message || "删除失败", "错误");
           }
         } catch (error) {
+          // 捕获网络错误或其他异常
           console.error("deleteSchoolAccount error:", error);
           showModalAlert("删除失败: " + error.message, "错误");
         }
       }
+
+      // ==================== 移动端学校账户管理功能 ====================
+      // 以下函数专门用于移动端的学校账户管理模态框
+      // 功能与PC端保持一致，但适配了移动端的UI和交互方式
+      // ================================================================
+
+      /**
+       * 关闭移动端学校账户管理模态框
+       * 
+       * 功能说明：
+       * - 隐藏移动端的学校账户管理模态框（mobile-user-school-accounts-modal）
+       * - 通过调用hideModal工具函数实现模态框的隐藏动画和状态管理
+       * 
+       * 调用时机：
+       * - 用户点击模态框外的背景遮罩层
+       * - 用户点击模态框底部的"关闭"按钮
+       * 
+       * 注意事项：
+       * - 该函数不会关闭二级模态框（如edit-school-account-modal）
+       * - 如果二级模态框已打开，需要先关闭二级模态框
+       */
+      function closeMobileUserSchoolAccountsModal() {
+        // 调用hideModal工具函数，传入模态框的DOM元素ID
+        // hideModal会自动处理移除显示类、添加隐藏类、清理事件监听器等工作
+        hideModal("mobile-user-school-accounts-modal");
+        
+        // 输出日志，便于调试和追踪模态框的关闭操作
+        console.log("[移动端学校账户管理] 已关闭模态框");
+      }
+
+      /**
+       * 刷新移动端学校账户列表
+       * 
+       * 功能说明：
+       * - 重新从服务器加载当前用户的学校账户数据
+       * - 更新移动端模态框中的账户列表显示
+       * 
+       * 实现逻辑：
+       * - 获取当前正在查看的用户名（从mobile-school-accounts-username元素）
+       * - 调用showMobileUserSchoolAccounts函数重新加载数据
+       * 
+       * 用户体验：
+       * - 用户点击"刷新"按钮后，可以看到最新的账户数据
+       * - 如果在其他地方修改了账户信息，可以通过刷新来同步显示
+       * 
+       * 错误处理：
+       * - 如果无法获取用户名，会在控制台输出错误信息并提示用户
+       */
+      async function mobileRefreshSchoolAccounts() {
+        // 输出日志，标记刷新操作的开始
+        console.log("[移动端学校账户管理] 开始刷新账户列表...");
+        
+        // 尝试获取当前显示的用户名
+        // $("mobile-school-accounts-username")获取DOM元素
+        // ?.textContent 使用可选链操作符，如果元素不存在则返回undefined
+        // || "" 如果textContent为空或undefined，则使用空字符串作为默认值
+        const currentUsername = $("mobile-school-accounts-username")?.textContent || "";
+        
+        // 验证用户名是否有效
+        if (!currentUsername) {
+          // 如果用户名为空，输出错误日志
+          console.error("[移动端学校账户管理] 刷新失败：无法获取当前用户名");
+          
+          // 使用showModalAlert显示友好的错误提示
+          showModalAlert("刷新失败：无法确定当前用户", "错误");
+          
+          // 提前返回，不执行后续的刷新操作
+          return;
+        }
+        
+        // 调用showMobileUserSchoolAccounts函数重新加载账户数据
+        // 该函数会自动：
+        // 1. 从服务器获取最新数据
+        // 2. 更新账户列表的HTML
+        // 3. 更新账户统计信息
+        await showMobileUserSchoolAccounts(currentUsername);
+        
+        // 输出成功日志
+        console.log("[移动端学校账户管理] 账户列表刷新完成");
+      }
+
+      /**
+       * 移动端：打开新增学校账户表单
+       * 
+       * 功能说明：
+       * - 打开新增学校账户的表单模态框（edit-school-account-modal）
+       * - 复用PC端的编辑模态框，但将其用于新增账户
+       * - 预填充当前用户名，清空其他字段
+       * 
+       * 设计思路：
+       * - 移动端和PC端共用同一个编辑表单模态框（edit-school-account-modal）
+       * - 通过修改表单标题和字段内容，区分"新增"和"编辑"两种场景
+       * - 这样可以减少代码重复，保持UI一致性
+       * 
+       * 表单字段处理：
+       * - auth_username（认证用户名）：自动填充当前用户名，设为只读
+       * - school_username（学校账号用户名）：清空，允许用户输入
+       * - password（密码）：清空，允许用户输入
+       * - ua（User-Agent）：清空，允许用户输入或使用生成功能
+       * 
+       * 注意事项：
+       * - 新增操作不会关闭移动端的主模态框（mobile-user-school-accounts-modal）
+       * - 两个模态框会叠加显示（二级模态框在上层）
+       * - 提交或关闭二级模态框后，会自动刷新主模态框的数据
+       */
+      function mobileAddNewSchoolAccount() {
+        // 输出日志，标记新增账户操作的开始
+        console.log("[移动端学校账户管理] 打开新增账户表单...");
+        
+        // 获取当前正在管理的用户名
+        // 从移动端模态框的标题中提取用户名
+        // ?.textContent 使用可选链操作符避免null引用错误
+        // || "" 如果获取失败，使用空字符串作为后备值
+        const currentAuthUsername = $("mobile-school-accounts-username")?.textContent || "";
+        
+        // 验证用户名是否有效
+        if (!currentAuthUsername) {
+          // 如果无法获取用户名，输出错误日志
+          console.error("[移动端学校账户管理] 打开新增表单失败：无法获取当前用户名");
+          
+          // 显示友好的错误提示
+          showModalAlert("无法打开新增表单：用户名无效", "错误");
+          
+          // 提前返回，不执行后续操作
+          return;
+        }
+        
+        // ========== 填充表单字段 ==========
+        // 获取表单中的各个输入字段的DOM元素
+        const authUsernameField = $("edit-school-account-auth-username");
+        const schoolUsernameField = $("edit-school-account-school-username");
+        const passwordField = $("edit-school-account-password");
+        const uaField = $("edit-school-account-ua");
+        
+        // 填充"认证用户名"字段
+        if (authUsernameField) {
+          // 设置字段值为当前用户名
+          authUsernameField.value = currentAuthUsername;
+          
+          // 设置为只读，防止用户修改（新增账户不应该改变所属用户）
+          authUsernameField.readOnly = true;
+        }
+        
+        // 清空"学校账号用户名"字段
+        if (schoolUsernameField) {
+          // 清空字段内容，等待用户输入新的学校账号
+          schoolUsernameField.value = "";
+          
+          // 设置为可编辑状态（新增时必须输入学校账号）
+          schoolUsernameField.readOnly = false;
+        }
+        
+        // 清空"密码"字段
+        if (passwordField) {
+          // 清空密码，等待用户输入新密码
+          passwordField.value = "";
+        }
+        
+        // 清空"User-Agent"字段
+        if (uaField) {
+          // 清空UA字段，用户可以手动输入或使用"生成随机UA"按钮
+          uaField.value = "";
+        }
+        
+        // ========== 更新模态框标题 ==========
+        // 获取模态框标题元素
+        const modalTitle = $("edit-school-account-modal-title");
+        if (modalTitle) {
+          // 修改标题文字为"新增学校账户"，区别于"编辑学校账户"
+          modalTitle.textContent = "新增学校账户";
+        }
+        
+        // ========== 显示编辑表单模态框 ==========
+        // 调用showModal工具函数显示二级模态框
+        // 该模态框会叠加在移动端主模态框之上
+        showModal("edit-school-account-modal");
+        
+        // 输出成功日志
+        console.log("[移动端学校账户管理] 已打开新增学校账户表单");
+      }
+
+      /**
+       * 移动端：编辑学校账户
+       * 
+       * 功能说明：
+       * - 打开编辑学校账户的表单模态框（edit-school-account-modal）
+       * - 预填充现有账户的所有信息
+       * - 允许用户修改密码和User-Agent，但不允许修改学校账号用户名
+       * 
+       * 参数说明：
+       * @param {string} authUsername - 认证用户名（账户所属用户）
+       * @param {string} schoolUsername - 学校账号用户名（要编辑的账户标识）
+       * @param {string} password - 当前密码（预填充到表单中）
+       * @param {string} ua - 当前User-Agent（预填充到表单中，可能为空）
+       * 
+       * 设计思路：
+       * - 与mobileAddNewSchoolAccount复用同一个模态框
+       * - 通过预填充数据和设置只读属性来区分"编辑"场景
+       * - 学校账号用户名不可修改（因为它是账户的唯一标识）
+       * 
+       * 表单字段处理：
+       * - auth_username：预填充并设为只读
+       * - school_username：预填充并设为只读（编辑时不允许修改账号标识）
+       * - password：预填充现有密码，允许修改
+       * - ua：预填充现有UA（如果有），允许修改
+       * 
+       * 用户体验：
+       * - 用户可以直接看到当前账户的所有信息
+       * - 可以修改密码和UA，提交后更新到服务器
+       * - 编辑完成后自动刷新账户列表
+       */
+      function mobileEditSchoolAccount(authUsername, schoolUsername, password, ua) {
+        // 输出日志，标记编辑操作的开始，包含账户标识信息
+        console.log(`[移动端学校账户管理] 打开编辑表单：${authUsername} - ${schoolUsername}`);
+        
+        // ========== 填充表单字段 ==========
+        // 获取表单中的各个输入字段的DOM元素
+        const authUsernameField = $("edit-school-account-auth-username");
+        const schoolUsernameField = $("edit-school-account-school-username");
+        const passwordField = $("edit-school-account-password");
+        const uaField = $("edit-school-account-ua");
+        
+        // 填充"认证用户名"字段
+        if (authUsernameField) {
+          // 设置字段值为传入的认证用户名
+          authUsernameField.value = authUsername;
+          
+          // 设置为只读，防止用户修改所属用户
+          authUsernameField.readOnly = true;
+        }
+        
+        // 填充"学校账号用户名"字段
+        if (schoolUsernameField) {
+          // 设置字段值为传入的学校账号用户名
+          schoolUsernameField.value = schoolUsername;
+          
+          // 设置为只读，因为学校账号用户名是账户的唯一标识，不允许修改
+          // 如果需要修改学校账号用户名，应该删除旧账户并新增一个账户
+          schoolUsernameField.readOnly = true;
+        }
+        
+        // 填充"密码"字段
+        if (passwordField) {
+          // 设置字段值为传入的密码
+          // 用户可以看到当前密码，并根据需要进行修改
+          passwordField.value = password;
+        }
+        
+        // 填充"User-Agent"字段
+        if (uaField) {
+          // 设置字段值为传入的User-Agent
+          // 使用 || "" 确保即使ua为null或undefined，也设置为空字符串
+          // 这样可以避免在输入框中显示"undefined"或"null"文本
+          uaField.value = ua || "";
+        }
+        
+        // ========== 更新模态框标题 ==========
+        // 获取模态框标题元素
+        const modalTitle = $("edit-school-account-modal-title");
+        if (modalTitle) {
+          // 修改标题文字为"编辑学校账户"，区别于"新增学校账户"
+          modalTitle.textContent = "编辑学校账户";
+        }
+        
+        // ========== 显示编辑表单模态框 ==========
+        // 调用showModal工具函数显示二级模态框
+        // 该模态框会叠加在移动端主模态框之上
+        showModal("edit-school-account-modal");
+        
+        // 输出成功日志
+        console.log("[移动端学校账户管理] 已打开编辑学校账户表单");
+      }
+
+      /**
+       * 显示移动端学校账户管理模态框
+       * 
+       * 功能说明：
+       * - 从服务器加载指定用户的所有学校账户数据
+       * - 在移动端模态框中显示账户列表
+       * - 渲染每个账户的详细信息和操作按钮（编辑、删除、查看详情）
+       * 
+       * 参数说明：
+       * @param {string} username - 要查询学校账户的用户名
+       * 
+       * 功能流程：
+       * 1. 向服务器发送GET请求，获取用户的学校账户数据
+       * 2. 解析返回的JSON数据，验证是否成功
+       * 3. 更新模态框标题，显示用户名和账户总数
+       * 4. 遍历账户数据，为每个账户生成HTML卡片
+       * 5. 将生成的HTML插入到账户列表容器中
+       * 6. 显示移动端模态框
+       * 
+       * 账户卡片包含内容：
+       * - 学校账号用户名（醒目显示）
+       * - 密码（等宽字体，可选中复制）
+       * - User-Agent（如果存在，显示在可滚动的代码块中）
+       * - 操作按钮：编辑、删除、查看详情
+       * 
+       * 错误处理：
+       * - 网络请求失败：捕获异常并显示错误提示
+       * - 服务器返回错误：解析error message并显示
+       * - 没有账户数据：显示友好的空状态提示
+       * 
+       * 安全措施：
+       * - 使用escapeHtml函数转义所有用户输入，防止XSS攻击
+       * - 使用JSON.stringify和data属性安全传递复杂数据
+       * - 使用encodeURIComponent编码URL参数
+       */
+      async function showMobileUserSchoolAccounts(username) {
+        // 输出日志，标记数据加载的开始
+        console.log(`[移动端学校账户管理] 开始加载用户账户：${username}`);
+        
+        try {
+          // ========== 发送HTTP请求获取账户数据 ==========
+          // 构建API端点URL，使用encodeURIComponent编码用户名，避免特殊字符导致的问题
+          const apiUrl = `/auth/admin/get_user_school_accounts?username=${encodeURIComponent(username)}`;
+          
+          // 发送GET请求到服务器
+          const response = await fetch(apiUrl, {
+            headers: {
+              // 添加会话ID到请求头，用于服务器端的身份验证
+              // sessionUUID应该在用户登录时设置，存储在全局变量中
+              "X-Session-ID": sessionUUID,
+            },
+          });
+          
+          // 解析响应体为JSON对象
+          const result = await response.json();
+          
+          // ========== 验证API响应 ==========
+          // 检查result.success标志，判断服务器端操作是否成功
+          if (!result.success) {
+            // 如果失败，显示服务器返回的错误消息
+            // result.message包含服务器提供的错误描述
+            // 如果message不存在，使用默认文本"加载失败"
+            showModalAlert(result.message || "加载失败", "错误");
+            
+            // 输出错误日志，便于调试
+            console.error("[移动端学校账户管理] 加载失败：", result.message);
+            
+            // 提前返回，不执行后续的渲染操作
+            return;
+          }
+          
+          // ========== 解析账户数据 ==========
+          // result.accounts是一个对象，键为学校账号用户名，值为账户详情
+          // 使用 || {} 确保即使accounts不存在，也有一个空对象作为后备值
+          const accounts = result.accounts || {};
+          
+          // 计算账户总数
+          // Object.keys()返回对象的所有键组成的数组
+          // .length获取数组长度，即账户数量
+          const accountCount = Object.keys(accounts).length;
+          
+          // 输出日志，显示成功加载的账户数量
+          console.log(`[移动端学校账户管理] 成功加载 ${accountCount} 个账户`);
+          
+          // ========== 更新模态框标题和统计信息 ==========
+          // 更新标题中的用户名显示
+          // $()函数是getElementById的简写
+          const usernameEl = $("mobile-school-accounts-username");
+          if (usernameEl) {
+            // 使用textContent而非innerHTML，避免XSS攻击
+            usernameEl.textContent = username;
+          }
+          
+          // 更新账户总数显示
+          const countEl = $("mobile-school-accounts-count");
+          if (countEl) {
+            // 将账户数量转换为字符串并显示
+            countEl.textContent = accountCount.toString();
+          }
+          
+          // ========== 渲染账户列表 ==========
+          // 获取账户列表容器元素
+          const listContainer = $("mobile-school-accounts-list");
+          
+          // 验证容器元素是否存在
+          if (!listContainer) {
+            console.error("[移动端学校账户管理] 错误：找不到账户列表容器元素");
+            return;
+          }
+          
+          // 判断是否有账户数据
+          if (accountCount === 0) {
+            // ========== 空状态处理 ==========
+            // 如果没有账户，显示友好的空状态提示
+            listContainer.innerHTML = `
+              <p class="text-slate-400 text-center text-xs py-8">
+                该用户暂无学校账户
+              </p>
+            `;
+          } else {
+            // ========== 生成账户卡片HTML ==========
+            // 初始化HTML字符串
+            let html = "";
+            
+            // 遍历accounts对象的所有条目
+            // Object.entries()返回[key, value]对的数组
+            for (const [schoolUsername, accountData] of Object.entries(accounts)) {
+              // 解析账户数据
+              // accountData可能是字符串（仅包含密码）或对象（包含password和ua）
+              let password = "";
+              let ua = "";
+              
+              if (typeof accountData === "string") {
+                // 如果accountData是字符串，则它就是密码
+                password = accountData;
+              } else if (typeof accountData === "object" && accountData !== null) {
+                // 如果accountData是对象，则提取password和ua字段
+                password = accountData.password || "";
+                ua = accountData.ua || "";
+              }
+              
+              // 构建账户数据的JSON字符串，用于传递给onclick函数
+              // 将所有需要的数据打包成一个对象
+              const accountDataJson = JSON.stringify({
+                authUsername: username,
+                schoolUsername: schoolUsername,
+                password: password,
+                ua: ua,
+              });
+              
+              // 生成账户卡片的HTML
+              // 使用模板字符串拼接HTML，注意所有动态内容都要用escapeHtml转义
+              html += `
+                <!-- 账户卡片容器 -->
+                <!-- bg-slate-50: 浅灰色背景，区分不同的账户卡片 -->
+                <!-- p-3: 内边距0.75rem，移动端紧凑布局 -->
+                <!-- rounded-lg: 中等圆角 -->
+                <!-- border border-slate-200: 淡灰色边框 -->
+                <!-- space-y-2: 子元素之间垂直间距0.5rem -->
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+                  
+                  <!-- 学校账号用户名和操作按钮行 -->
+                  <!-- flex items-center justify-between: 左右两端对齐布局 -->
+                  <div class="flex items-center justify-between">
+                    
+                    <!-- 学校账号用户名 -->
+                    <!-- font-semibold: 字体半粗 -->
+                    <!-- text-slate-800: 深灰色文字 -->
+                    <!-- text-base: 字体大小1rem（16px） -->
+                    <div class="font-semibold text-slate-800 text-base">
+                      ${escapeHtml(schoolUsername)}
+                    </div>
+                    
+                    <!-- 操作按钮组 -->
+                    <!-- flex gap-1.5: 水平排列，按钮之间间距6px -->
+                    <div class="flex gap-1.5">
+                      
+                      <!-- 编辑按钮 -->
+                      <!-- 点击时调用mobileEditSchoolAccount函数 -->
+                      <!-- 使用data-account属性存储JSON数据 -->
+                      <!-- 点击时解析JSON并传递给函数 -->
+                      <!-- py-1.5 px-2.5: 紧凑的内边距，适合移动端 -->
+                      <!-- bg-sky-500: 天蓝色背景 -->
+                      <!-- text-white: 白色文字 -->
+                      <!-- rounded: 小圆角 -->
+                      <!-- text-xs: 小字体（12px） -->
+                      <!-- font-medium: 中等字重 -->
+                      <!-- hover:bg-sky-600: 鼠标悬停时背景颜色加深 -->
+                      <!-- transition: 平滑过渡动画 -->
+                      <!-- min-h-[44px]: 最小高度44px，符合触控友好设计 -->
+                      <button 
+                        class="py-1.5 px-2.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[44px]" 
+                        data-account='${escapeHtml(accountDataJson)}'
+                        onclick="(function(btn) { 
+                          const data = JSON.parse(btn.getAttribute('data-account')); 
+                          mobileEditSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); 
+                        })(this)"
+                        title="编辑此账户">
+                        编辑
+                      </button>
+                      
+                      <!-- 删除按钮 -->
+                      <!-- 点击时调用deleteSchoolAccount函数（PC端和移动端共用） -->
+                      <!-- 删除成功后会自动刷新列表 -->
+                      <!-- bg-red-500: 红色背景，表示危险操作 -->
+                      <!-- hover:bg-red-600: 鼠标悬停时颜色加深 -->
+                      <button 
+                        class="py-1.5 px-2.5 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition min-h-[44px]" 
+                        data-auth-username='${escapeHtml(username)}'
+                        data-school-username='${escapeHtml(schoolUsername)}'
+                        onclick="(function(btn) { 
+                          deleteSchoolAccount(
+                            btn.getAttribute('data-auth-username'), 
+                            btn.getAttribute('data-school-username')
+                          ); 
+                        })(this)"
+                        title="删除此账户">
+                        删除
+                      </button>
+                      
+                      <!-- 查看详情按钮 -->
+                      <!-- 调用View_details_of_users_with_outstanding_payments函数 -->
+                      <!-- 显示学号、姓名、欠费信息等详细数据 -->
+                      <!-- bg-emerald-500: 翡翠绿色背景 -->
+                      <!-- hover:bg-emerald-600: 鼠标悬停时颜色加深 -->
+                      <button 
+                        class="py-1.5 px-2.5 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[44px]" 
+                        onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(schoolUsername)}')"
+                        title="查看此账户的详细信息">
+                        详情
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <!-- 密码显示行 -->
+                  <!-- text-xs: 小字体（12px） -->
+                  <div class="text-xs">
+                    <!-- 标签文字 -->
+                    <!-- text-slate-500: 中灰色，次要信息 -->
+                    <span class="text-slate-500">密码:</span>
+                    
+                    <!-- 密码内容 -->
+                    <!-- font-mono: 等宽字体，适合显示密码 -->
+                    <!-- text-slate-700: 深灰色 -->
+                    <!-- ml-2: 左边距0.5rem（8px） -->
+                    <!-- select-all: 点击时自动全选内容，方便复制 -->
+                    <span class="font-mono text-slate-700 ml-2 select-all">
+                      ${escapeHtml(password)}
+                    </span>
+                  </div>
+                  
+                  ${
+                    // 条件渲染：只在UA存在时显示User-Agent区域
+                    ua
+                      ? `
+                  <!-- User-Agent显示区域 -->
+                  <div class="text-xs">
+                    <!-- 标签文字 -->
+                    <span class="text-slate-500">User-Agent:</span>
+                    
+                    <!-- UA内容容器 -->
+                    <!-- font-mono: 等宽字体，适合显示长字符串 -->
+                    <!-- text-xs: 小字体 -->
+                    <!-- text-slate-600: 中灰色 -->
+                    <!-- mt-1: 顶部外边距0.25rem（4px） -->
+                    <!-- p-2: 内边距0.5rem（8px） -->
+                    <!-- bg-white: 白色背景，与卡片背景区分 -->
+                    <!-- rounded: 小圆角 -->
+                    <!-- break-all: 允许在任意字符处换行，避免长字符串溢出 -->
+                    <!-- select-all: 点击时自动全选内容，方便复制 -->
+                    <div class="font-mono text-xs text-slate-600 mt-1 p-2 bg-white rounded break-all select-all">
+                      ${escapeHtml(ua)}
+                    </div>
+                  </div>
+                  `
+                      : "" // 如果ua不存在，返回空字符串，不渲染该区域
+                  }
+                </div>
+              `;
+            }
+            
+            // 将生成的HTML插入到列表容器中
+            listContainer.innerHTML = html;
+          }
+          
+          // ========== 显示移动端模态框 ==========
+          // 调用showModal工具函数显示模态框
+          // showModal会自动处理显示动画、事件绑定等工作
+          showModal("mobile-user-school-accounts-modal");
+          
+          // 输出成功日志
+          console.log("[移动端学校账户管理] 模态框已显示");
+          
+        } catch (error) {
+          // ========== 错误处理 ==========
+          // 捕获所有可能的异常（网络错误、解析错误等）
+          
+          // 输出详细的错误日志到控制台，便于开发调试
+          console.error("[移动端学校账户管理] 加载失败：", error);
+          
+          // 显示友好的错误提示给用户
+          // error.message包含错误的具体描述
+          showModalAlert("加载失败: " + error.message, "错误");
+        }
+      }
+      // ==================== 移动端学校账户管理功能 END ====================
 
       async function manageUserPermissions(username) {
         currentManageUsername = username;

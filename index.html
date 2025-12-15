@@ -10776,11 +10776,13 @@
   <!-- 这是专为移动设备优化的学校账户管理界面 -->
   <!-- 功能与PC端manage-school-accounts-modal保持一致，但采用移动端友好的设计 -->
   <!-- 特点：触控友好、紧凑布局、底部弹出式设计 -->
-  <div id="mobile-user-school-accounts-modal" class="fixed inset-0 hidden mobile-modal z-[1055]" onclick="closeMobileUserSchoolAccountsModal()">
+  <!-- 外层容器：fixed定位覆盖整个视口，hidden默认隐藏，z-[1055]确保在其他元素之上 -->
+  <!-- 注意：这里不添加onclick，避免点击任何地方都关闭模态框 -->
+  <div id="mobile-user-school-accounts-modal" class="fixed inset-0 hidden mobile-modal z-[1055]">
     <!-- 半透明黑色背景遮罩层 -->
     <!-- bg-black/40: 40%透明度的黑色背景，用于聚焦内容区域 -->
-    <!-- 点击背景会触发父元素的onclick事件，关闭模态框 -->
-    <div class="absolute inset-0 bg-black/40"></div>
+    <!-- onclick: 点击背景遮罩层时关闭模态框，实现点击空白处关闭的功能 -->
+    <div class="absolute inset-0 bg-black/40" onclick="closeMobileUserSchoolAccountsModal()"></div>
     
     <!-- 模态框主内容区域 -->
     <!-- mobile-modal-content: 移动端模态框内容的通用样式类 -->
