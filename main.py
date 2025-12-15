@@ -7697,6 +7697,18 @@ class Api:
         if os.path.exists(user_ini_path):
             try:
                 cfg_to_save.read(user_ini_path, encoding="utf-8")
+                # ========== 任务20调试：记录读取到的所有节 ==========
+                logging.debug(
+                    f"[任务20调试] _save_config读取INI文件 - "
+                    f"用户: {username}, 包含的节: {cfg_to_save.sections()}"
+                )
+                # 如果存在stats节，记录其内容
+                if cfg_to_save.has_section('stats'):
+                    stats_items = dict(cfg_to_save.items('stats'))
+                    logging.debug(
+                        f"[任务20调试] _save_config读取到 [stats] 节 - "
+                        f"用户: {username}, 内容: {stats_items}"
+                    )
             except Exception as e:
                 logging.warning(
                     f"读取旧配置文件 {user_ini_path} 失败: {e}, 将创建新的。"
@@ -7823,6 +7835,24 @@ class Api:
             )
 
         try:
+            # ========== 任务20调试：记录即将写入的所有节 ==========
+            logging.debug(
+                f"[任务20调试] _save_config即将写入INI文件 - "
+                f"用户: {username}, 包含的节: {cfg_to_save.sections()}"
+            )
+            # 如果存在stats节，记录其内容
+            if cfg_to_save.has_section('stats'):
+                stats_items = dict(cfg_to_save.items('stats'))
+                logging.debug(
+                    f"[任务20调试] _save_config即将写入 [stats] 节 - "
+                    f"用户: {username}, 内容: {stats_items}"
+                )
+            else:
+                logging.warning(
+                    f"[任务20调试] _save_config即将写入但没有 [stats] 节 - "
+                    f"用户: {username}"
+                )
+            
             with open(user_ini_path, "w", encoding="utf-8") as f:
                 cfg_to_save.write(f)
             logging.debug(
