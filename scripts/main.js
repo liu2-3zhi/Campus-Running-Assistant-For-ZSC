@@ -9800,6 +9800,10 @@ async function loadWatermarkControlConfig() {
         // 如果用户在配置中有明确设置，使用该设置；否则使用默认值
         const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
         
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+        const safeUsername = escapeHtml(username);
+        
         // 创建用户权限控制项的HTML
         // 包含：用户名 + 开关按钮
         const userItem = document.createElement('div');
@@ -9808,7 +9812,7 @@ async function loadWatermarkControlConfig() {
         // 构建HTML内容
         userItem.innerHTML = `
           <div class="flex-1">
-            <span class="text-sm font-medium text-slate-700">${username}</span>
+            <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
             <p class="text-xs text-slate-500 mt-0.5">
               ${(username in usersConfig) ? '已自定义' : '使用默认值'}
             </p>
@@ -9816,9 +9820,9 @@ async function loadWatermarkControlConfig() {
           <label class="relative inline-flex items-center cursor-pointer ml-4">
             <input 
               type="checkbox" 
-              id="watermark-user-${username}_modal" 
+              id="watermark-user-${safeUsername}_modal" 
               class="sr-only peer watermark-user-checkbox" 
-              data-username="${username}"
+              data-username="${safeUsername}"
               ${userValue ? 'checked' : ''}
             >
             <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
@@ -10032,15 +10036,20 @@ async function openAddWatermarkUserModal() {
         const userItem = document.createElement('div');
         // 添加CSS类：白色背景、圆角、边框、flex布局
         userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors';
-        // 为搜索功能添加data属性
+        // 为搜索功能添加data属性（存储原始用户名的小写形式用于搜索）
         userItem.setAttribute('data-username', username.toLowerCase());
         
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+        const safeUsername = escapeHtml(username);
+        
         // 构建HTML内容：用户名 + 添加按钮
+        // 注意：按钮的onclick中也使用转义后的用户名，确保JavaScript字符串安全
         userItem.innerHTML = `
           <div class="flex-1">
-            <span class="text-sm font-medium text-slate-700">${username}</span>
+            <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
           </div>
-          <button onclick="addWatermarkUser('${username}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
+          <button onclick="addWatermarkUser('${safeUsername}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
             <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -10173,7 +10182,9 @@ async function addWatermarkUser(username) {
     await loadWatermarkControlConfig();
     
     // [步骤8] 显示成功提示
-    showModalAlert(`用户 "${username}" 已成功添加到水印控制配置！`);
+    // [安全修复] 使用escapeHtml()转义用户名，防止在提示信息中出现XSS漏洞
+    const safeUsername = escapeHtml(username);
+    showModalAlert(`用户 "${safeUsername}" 已成功添加到水印控制配置！`);
     
     // [步骤9] 记录成功日志
     console.log(`[水印控制] 用户 "${username}" 添加成功`);
@@ -10333,13 +10344,17 @@ async function loadMobileWatermarkControlConfig() {
       allUsers.forEach(username => {
         const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
         
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+        const safeUsername = escapeHtml(username);
+        
         const userItem = document.createElement('div');
         userItem.className = 'bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between';
         
         // 移动端使用更紧凑的布局
         userItem.innerHTML = `
           <div class="flex-1">
-            <span class="text-xs font-medium text-slate-700">${username}</span>
+            <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
             <p class="text-xs text-slate-500 mt-0.5">
               ${(username in usersConfig) ? '已自定义' : '使用默认值'}
             </p>
@@ -10347,9 +10362,9 @@ async function loadMobileWatermarkControlConfig() {
           <label class="relative inline-flex items-center cursor-pointer ml-3">
             <input 
               type="checkbox" 
-              id="mobile-watermark-user-${username}" 
+              id="mobile-watermark-user-${safeUsername}" 
               class="sr-only peer mobile-watermark-user-checkbox" 
-              data-username="${username}"
+              data-username="${safeUsername}"
               ${userValue ? 'checked' : ''}
             >
             <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
