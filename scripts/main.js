@@ -38846,6 +38846,19 @@ async function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
       permission: "admin",  // 权限要求：管理员级别
     },
+    // ========================================
+    // [新增] 水印控制标签
+    // 移动端水印控制面板的标签，与PC端功能对应
+    // 功能：配置用户是否可以使用高德地图去水印功能
+    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    {
+      id: "watermark",  // 标签ID，用于标识和切换面板
+      label: "水印控制",  // 标签显示的文本
+      // 图层/文档图标：表示水印管理
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>',
+      permission: "admin",  // 权限要求：管理员级别
+    },
   ];
   // ========================================
   // 【标签权限过滤逻辑】
@@ -40148,6 +40161,7 @@ function switchMobileAdminTab(tabId, prefix) {
       欠费查询: "overdue",        // [新增] 欠费查询标签映射
       CDN: "cdn",                 // CDN缓存管理标签
       密码恢复: "bruteforce",     // 密码恢复标签
+      水印控制: "watermark",      // [新增] 水印控制标签映射
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -40302,6 +40316,7 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-cdn-panel", // CDN缓存管理面板
       "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
       "mobile-multi-admin-overdue-panel", // [新增] 欠费查询面板
+      "mobile-multi-admin-watermark-panel", // [新增] 水印控制面板
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -40459,6 +40474,17 @@ function switchMobileAdminTab(tabId, prefix) {
       case "pricing":
         // 加载价格配置数据并填充到表单
         loadMobilePricingConfig();
+        break;
+      // ========================================
+      // [新增] 水印控制面板加载逻辑
+      // 当管理员切换到"水印控制"标签时，调用loadMobileWatermarkControlConfig函数
+      // 该函数会从后端加载水印控制配置，包括：
+      // - 系统默认值（default）：未配置用户使用的默认权限
+      // - 用户个性化配置（users）：每个用户的自定义权限设置
+      // ========================================
+      case "watermark":
+        // 加载移动端水印控制配置数据并填充到表单
+        loadMobileWatermarkControlConfig();
         break;
     }
     // 处理完成后直接返回，不执行后续的通用处理逻辑

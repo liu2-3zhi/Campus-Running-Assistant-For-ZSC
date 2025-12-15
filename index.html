@@ -3587,6 +3587,138 @@
             </div>
           </div>
           
+          <!-- ========================================
+               移动端水印控制面板 (mobile-multi-admin-watermark-panel)
+               管理员可以在此配置用户是否可以使用高德地图去水印功能
+               功能包括：
+               - 查看系统默认值（所有未配置用户使用的默认权限）
+               - 查看和修改每个用户的去水印权限
+               - 添加新用户到水印控制列表
+               - 保存配置到服务器
+               默认隐藏，通过switchMobileAdminTab切换显示
+               ======================================== -->
+          <div id="mobile-multi-admin-watermark-panel" class="hidden space-y-3">
+            
+            <!-- ========================================
+                 面板顶部：标题和说明
+                 使用渐变背景和边框增强视觉效果
+                 ======================================== -->
+            <div class="bg-gradient-to-r from-blue-50 to-cyan-50 p-3 rounded-lg border border-blue-200">
+              <!-- 标题：包含水印图标和文字 -->
+              <h3 class="text-sm font-bold text-blue-700 mb-1.5 flex items-center">
+                <!-- 水印图标：表示图层/水印管理 -->
+                <svg class="w-4 h-4 inline mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                高德地图去水印控制
+              </h3>
+              <!-- 面板功能描述 -->
+              <p class="text-xs text-slate-600">
+                配置用户是否可以使用高德地图去水印功能。未配置的用户使用系统默认值。
+              </p>
+            </div>
+
+            <!-- ========================================
+                 系统默认值显示区域
+                 展示系统范围的默认权限设置
+                 使用黄色背景突出显示其重要性
+                 ======================================== -->
+            <div class="bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+              <!-- 标题行：包含信息图标和文字 -->
+              <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center">
+                  <!-- 信息图标：表示这是一个提示性信息 -->
+                  <svg class="w-3.5 h-3.5 text-amber-600 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <!-- 标签文字 -->
+                  <span class="text-xs font-medium text-amber-800">系统默认值：</span>
+                </div>
+                <!-- 默认值显示文本（动态更新）-->
+                <!-- 颜色根据权限状态变化：绿色=允许，红色=禁止 -->
+                <span id="mobile-watermark-default-value" class="text-xs font-bold text-green-600">
+                  加载中...
+                </span>
+              </div>
+              <!-- 补充说明：解释默认值的作用范围 -->
+              <p class="text-xs text-amber-700 ml-5">
+                未在下方列表中配置的用户将使用此默认值
+              </p>
+            </div>
+
+            <!-- ========================================
+                 用户权限列表区域
+                 显示所有用户及其去水印权限设置
+                 ======================================== -->
+            <div class="space-y-2">
+              <!-- 列表头部：标题和操作按钮 -->
+              <div class="flex items-center justify-between mb-2">
+                <!-- 左侧：列表标题和图标 -->
+                <h4 class="text-xs font-semibold text-slate-700 flex items-center">
+                  <!-- 用户列表图标 -->
+                  <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                  </svg>
+                  用户权限配置
+                </h4>
+                
+                <!-- 右侧：操作按钮组 -->
+                <div class="flex items-center space-x-1.5">
+                  <!-- 添加用户按钮：打开添加用户模态框 -->
+                  <!-- 使用触控友好的最小高度 min-h-[44px] -->
+                  <button onclick="openAddWatermarkUserModal()" class="px-2.5 py-1 bg-sky-500 text-white text-xs rounded-md hover:bg-sky-600 active:bg-sky-700 transition-colors shadow-sm min-h-[36px]" title="点击添加用户到水印控制列表">
+                    <!-- 添加图标：加号 -->
+                    <svg class="w-3 h-3 inline mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    添加
+                  </button>
+                  <!-- 用户数量显示 -->
+                  <span id="mobile-watermark-user-count" class="text-xs text-slate-500">
+                    共 0 个用户
+                  </span>
+                </div>
+              </div>
+              
+              <!-- 用户列表容器：显示所有用户的权限开关 -->
+              <!-- 限制最大高度，超出部分可滚动 -->
+              <!-- 移动端优化：使用更紧凑的间距 space-y-2 -->
+              <div id="mobile-watermark-users-list" class="space-y-2 max-h-[50vh] overflow-y-auto -mr-1 pr-1">
+                <!-- 初始加载提示（将由JavaScript替换为实际用户列表）-->
+                <p class="text-slate-400 text-center py-10 text-xs">
+                  加载中...
+                </p>
+              </div>
+            </div>
+
+            <!-- ========================================
+                 操作按钮组
+                 提供刷新和保存两个核心操作
+                 使用2列Grid布局，移动端触控友好设计
+                 ======================================== -->
+            <div class="grid grid-cols-2 gap-2.5 pt-3">
+              
+              <!-- 刷新配置按钮：从服务器重新加载当前配置 -->
+              <!-- 移动端优化：使用 min-h-[44px] 确保触控友好 -->
+              <button onclick="loadMobileWatermarkControlConfig()" class="py-2.5 bg-slate-500 text-white rounded-lg text-xs font-semibold hover:bg-slate-600 active:bg-slate-700 transition-colors shadow-sm hover:shadow-md min-h-[44px]" title="从服务器重新加载水印控制配置">
+                <!-- 刷新图标：循环箭头 -->
+                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                刷新配置
+              </button>
+
+              <!-- 保存配置按钮：将表单中的配置保存到服务器 -->
+              <!-- 移动端优化：使用 min-h-[44px] 确保触控友好 -->
+              <button onclick="saveMobileWatermarkControlConfig()" class="py-2.5 bg-sky-600 text-white rounded-lg text-xs font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md min-h-[44px]" title="保存当前的水印控制配置">
+                <!-- 保存图标：对勾 -->
+                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                保存配置
+              </button>
+            </div>
+          </div>
 
           <!-- ========================================
                支付日志面板 (payment-logs)
