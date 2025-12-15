@@ -8105,7 +8105,7 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
 
   // 2.5 支付接口类型使用默认值（jump）
   // 由于前端UI已移除该字段的输入框，使用固定默认值
-  const paymentMethod = 'jump';
+  // const paymentMethod = 'jump';
   
   // 在控制台输出要提交的配置数据
   console.log('[PC端易支付配置] 准备提交的配置：', {
@@ -8117,7 +8117,7 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
     pubc_key: '***隐藏***', // 在日志中隐藏公钥，保护敏感信息
     payment_timeout_minutes: paymentTimeoutMinutes,
     enabled_payment_methods: enabledMethods,
-    payment_method: paymentMethod
+    // payment_method: paymentMethod
   });
   
   // === 第2.6步：验证启用的支付方式是否在 payment_methods_config 中定义 ===
@@ -8213,7 +8213,7 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
         pubc_key: pubcKey,  // [新增] 发送pubc_key（平台公钥）
         payment_timeout_minutes: paymentTimeoutMinutes,  // [新增] 发送payment_timeout_minutes（支付超时时间）
         enabled_payment_methods: enabledMethods,
-        payment_method: paymentMethod
+        // payment_method: paymentMethod
       })
     });
     

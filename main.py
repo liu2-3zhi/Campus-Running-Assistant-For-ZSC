@@ -4941,34 +4941,6 @@ class AuthSystem:
                 "theme": "light",
                 "phone": phone,
                 "nickname": nickname or auth_username,
-                # ========== 可用执行次数（available_runs）字段初始化 ==========
-                # 
-                # 功能说明：
-                # 记录用户还可以执行多少次任务（例如：校园跑、任务等）
-                # 
-                # 数据来源：
-                # 从配置文件 config.ini 的 [Payment_Settings] 节读取 default_available_runs 参数
-                # 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
-                # 
-                # 默认值：
-                # 如果配置文件中未设置该参数，则使用 fallback 值 10（次）
-                # 
-                # 特殊值说明：
-                # - -1: 表示无限次数（VIP用户或特殊权限用户）
-                # - 0: 表示无免费次数（必须付费才能使用）
-                # - 正整数: 表示具体的可用次数
-                # 
-                # 管理员配置：
-                # 管理员可以在 config.ini 文件中修改 default_available_runs 的值
-                # 修改后，所有新注册的用户都将获得新的默认值
-                # 注意：已注册用户的 available_runs 不会自动更新
-                # 
-                # 一致性保证：
-                # 此实现确保通过以下方式创建的用户都使用相同的默认值：
-                # 1. PC端管理员创建用户（admin-create-user_modal + newUserConfirm）
-                # 2. 移动端管理员创建用户（mobile-new-user-confirm-btn）
-                # 3. 普通用户自助注册（/auth/register）
-                # 所有创建用户的代码路径都调用此 register_user 函数，因此 available_runs 一致
                 "available_runs": self.config.getint(
                     "Payment_Settings", "default_available_runs", fallback=10
                 ),
@@ -4984,7 +4956,7 @@ class AuthSystem:
             self._save_permissions()
 
             logging.info(
-                f"新用户注册: {auth_username} (组: {group}, 手机: {phone}, 昵称: {nickname})"
+                f"新用户注册: {auth_username} (组: {group}, 手机: {phone}, 昵称: {nickname}，头像: {avatar_url}），可用运行次数: {user_data['available_runs']}"
             )
             print(f"[用户注册] ✓ 用户注册成功: {auth_username} (组: {group})")
             return {"success": True, "message": "注册成功"}
@@ -23840,8 +23812,7 @@ def start_web_server(args_param):
                         config,
                         "Guest",
                         "allow_guest_login",
-                        type_func=config.getboolean,
-                        fallback=default_config.getboolean(
+                        fallback=default_config.get(
                             "Guest", "allow_guest_login", fallback=True
                         ),
                     )
@@ -23851,8 +23822,7 @@ def start_web_server(args_param):
                         config,
                         "System",
                         "session_expiry_days",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "System", "session_expiry_days", fallback=7
                         ),
                     ),
@@ -23884,8 +23854,7 @@ def start_web_server(args_param):
                         config,
                         "System",
                         "session_monitor_check_interval",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "System", "session_monitor_check_interval", fallback=60
                         ),
                     ),
@@ -23893,8 +23862,7 @@ def start_web_server(args_param):
                         config,
                         "System",
                         "session_inactivity_timeout",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "System", "session_inactivity_timeout", fallback=300
                         ),
                     ),
@@ -23904,8 +23872,7 @@ def start_web_server(args_param):
                         config,
                         "Logging",
                         "log_rotation_size_mb",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "Logging", "log_rotation_size_mb", fallback=10
                         ),
                     ),
@@ -23913,8 +23880,7 @@ def start_web_server(args_param):
                         config,
                         "Logging",
                         "archive_max_size_mb",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "Logging", "archive_max_size_mb", fallback=500
                         ),
                     ),
@@ -23948,8 +23914,7 @@ def start_web_server(args_param):
                         config,
                         "Security",
                         "brute_force_protection",
-                        type_func=config.getboolean,
-                        fallback=default_config.getboolean(
+                        fallback=default_config.get(
                             "Security", "brute_force_protection", fallback=True
                         ),
                     ),
@@ -23957,8 +23922,7 @@ def start_web_server(args_param):
                         config,
                         "Security",
                         "login_log_retention_days",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "Security", "login_log_retention_days", fallback=90
                         ),
                     ),
@@ -24019,7 +23983,6 @@ def start_web_server(args_param):
                         config,  # 配置对象
                         "Beian",  # 配置节
                         "show_icp",  # 配置键
-                        type_func=config.getboolean,  # 指定类型转换函数，将字符串转为布尔值
                         # fallback：先尝试从默认配置获取布尔值，如果没有则使用 False
                         fallback=default_config.getboolean(
                             "Beian", "show_icp", fallback=False
@@ -24045,7 +24008,6 @@ def start_web_server(args_param):
                         config,  # 配置对象
                         "Beian",  # 配置节
                         "show_police",  # 配置键
-                        type_func=config.getboolean,  # 类型转换函数，字符串 -> 布尔值
                         # fallback：先尝试从默认配置获取，如果没有则默认为 False（不显示）
                         fallback=default_config.getboolean(
                             "Beian", "show_police", fallback=False
@@ -24119,7 +24081,6 @@ def start_web_server(args_param):
                         config,  # 配置对象
                         "Content_Review",  # 配置节
                         "enable_message_review",  # 配置键
-                        type_func=config.getboolean,  # 类型转换函数，将字符串转为布尔值
                         fallback=False  # 默认为 False（关闭审核），避免未配置API密钥时出错
                     ),
                 },
@@ -35100,9 +35061,9 @@ def start_web_server(args_param):
                     fallback="alipay,wxpay"  # 默认值：启用支付宝和微信支付
                 )
 
-                # 读取支付接口类型
-                # 可选值：web、jump、jsapi、app、scan、applet
-                payment_method = "web"
+                # # 读取支付接口类型
+                # # 可选值：web、jump、jsapi、app、scan、applet
+                # payment_method = "web"
 
                 product_id = config.get(
                     "Rainbow_YiPay", "product_id", fallback="1001"
@@ -35146,7 +35107,7 @@ def start_web_server(args_param):
                         "pubc_key": pubc_key,  # [新增] 返回平台公钥
                         "payment_timeout_minutes": payment_timeout_minutes,  # [新增] 返回支付超时时间
                         "enabled_payment_methods": enabled_payment_methods,
-                        "payment_method": payment_method
+                        # "payment_method": payment_method
                     }
                 })
 
@@ -35190,12 +35151,12 @@ def start_web_server(args_param):
                         "Rainbow_YiPay", "enabled_payment_methods", fallback="alipay,wxpay")
                 ).strip()
 
-                # 获取新的 payment_method 值
-                new_payment_method = data.get(
-                    "payment_method",
-                    config.get("Rainbow_YiPay",
-                               "payment_method", fallback="web")
-                ).strip()
+                # # 获取新的 payment_method 值
+                # new_payment_method = data.get(
+                #     "payment_method",
+                #     config.get("Rainbow_YiPay",
+                #                "payment_method", fallback="web")
+                # ).strip()
 
                 # [新增] 获取新的 product_id 值
                 new_product_id = data.get(
@@ -35257,15 +35218,15 @@ def start_web_server(args_param):
                         "message": "商户密钥不能为空"
                     }), 400
 
-                # 验证 payment_method 的有效性
-                # 只允许特定的支付接口类型
-                valid_payment_methods = ["web", "jump",
-                                         "jsapi", "app", "scan", "applet"]
-                if new_payment_method not in valid_payment_methods:
-                    return jsonify({
-                        "success": False,
-                        "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
-                    }), 400
+                # # 验证 payment_method 的有效性
+                # # 只允许特定的支付接口类型
+                # valid_payment_methods = ["web", "jump",
+                #                          "jsapi", "app", "scan", "applet"]
+                # if new_payment_method not in valid_payment_methods:
+                #     return jsonify({
+                #         "success": False,
+                #         "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
+                #     }), 400
 
                 # [新增] 验证 pubc_key 不能为空（必填项）
                 # pubc_key是平台公钥，用于验证支付回调通知，必须提供
@@ -35303,8 +35264,8 @@ def start_web_server(args_param):
                 old_key = config.get("Rainbow_YiPay", "key", fallback="")
                 old_enabled_payment_methods = config.get(
                     "Rainbow_YiPay", "enabled_payment_methods", fallback="")
-                old_payment_method = config.get(
-                    "Rainbow_YiPay", "payment_method", fallback="")
+                # old_payment_method = config.get(
+                #     "Rainbow_YiPay", "payment_method", fallback="")
                 # [新增] 保存旧的product_id值
                 old_product_id = config.get(
                     "Rainbow_YiPay", "product_id", fallback="")
@@ -35331,8 +35292,8 @@ def start_web_server(args_param):
                 config.set("Rainbow_YiPay", "key", new_key)
                 config.set("Rainbow_YiPay", "enabled_payment_methods",
                            new_enabled_payment_methods)
-                config.set("Rainbow_YiPay", "payment_method",
-                           new_payment_method)
+                # config.set("Rainbow_YiPay", "payment_method",
+                #            new_payment_method)
                 config.set("Rainbow_YiPay", "product_id",
                            new_product_id)  # [新增] 保存商品ID
                 # [新增] 设置app_host（应用域名地址）
@@ -35368,7 +35329,7 @@ def start_web_server(args_param):
                     f"pubc_key: {'已修改' if pubc_key_changed else '未修改'}, "
                     f"payment_timeout_minutes: {old_payment_timeout_minutes} -> {new_payment_timeout_minutes}, "
                     f"enabled_payment_methods: {old_enabled_payment_methods} -> {new_enabled_payment_methods}, "
-                    f"payment_method: {old_payment_method} -> {new_payment_method}"
+                    # f"payment_method: {old_payment_method} -> {new_payment_method}"
                 )
 
                 # ========== 返回成功响应 ==========
