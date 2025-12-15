@@ -37629,7 +37629,33 @@ async function submitMobileMultiMessage() {
 }
 
 async function deleteMobileMultiMessage(msgId) {
-  if (!confirm("确定要删除这条留言吗？")) return;
+  // 使用拟态框（Glassmorphism）风格的确认对话框
+  // 替代原生的confirm，提供更好的视觉效果
+  const result = await Swal.fire({
+    title: '确认删除',
+    text: '确定要删除这条留言吗？此操作无法撤销。',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '确定删除',
+    cancelButtonText: '取消',
+    customClass: {
+      popup: 'glassmorphism-popup',
+      confirmButton: 'btn-danger',
+      cancelButton: 'btn-secondary'
+    },
+    backdrop: 'rgba(0,0,0,0.4)',
+    background: 'rgba(255, 255, 255, 0.9)',
+    // 添加拟态框样式
+    didOpen: (popup) => {
+      popup.style.backdropFilter = 'blur(10px)';
+      popup.style.webkitBackdropFilter = 'blur(10px)';
+      popup.style.boxShadow = '0 8px 32px 0 rgba(31, 38, 135, 0.15)';
+      popup.style.border = '1px solid rgba(255, 255, 255, 0.18)';
+    }
+  });
+  
+  // 如果用户取消，直接返回
+  if (!result.isConfirmed) return;
 
   try {
     const response = await fetch("/api/messages/delete", {
