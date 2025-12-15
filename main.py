@@ -3182,12 +3182,14 @@ def _get_default_amap_watermark_config():
         默认配置包括：
         - _comment: 配置文件说明，帮助用户理解文件用途
         - _description: 详细描述配置的作用
+        - default: 默认的水印显示设置（true表示允许去水印，false表示不允许）
         - users: 用户级别的个性化配置字典，默认为空
         
     配置结构:
         {
             "_comment": "配置说明",
             "_description": "详细描述",
+            "default": true/false,  # 默认水印显示设置
             "users": {
                 "username": true/false  # 用户名: 是否允许去水印
             }
@@ -3195,9 +3197,13 @@ def _get_default_amap_watermark_config():
     """
     # 返回默认配置结构
     # 使用有序字典确保注释字段显示在最前面，便于阅读
+    # 从config.ini读取初始默认值
+    initial_default = _get_watermark_removal_default()
+    
     return {
         "_comment": "高德地图去水印个性化控制配置",
         "_description": "为每个用户配置是否允许去除高德地图水印，未配置的用户使用默认值",
+        "default": initial_default,  # 默认水印显示设置
         "users": {}  # 初始为空字典，后续可按需添加用户配置
     }
 
@@ -28953,8 +28959,15 @@ def start_web_server(args_param):
                     )
             
             # 步骤5: 用户没有个性化设置，使用默认值
-            # 从 config.ini 读取默认值
-            default_allowed = _get_watermark_removal_default()
+            # 首先尝试从JSON配置文件中读取default字段
+            default_allowed = config.get("default")
+            
+            # 如果JSON中没有default字段或值不是布尔类型，则从config.ini读取
+            if not isinstance(default_allowed, bool):
+                logging.warning(
+                    f"[水印控制] JSON配置中未找到有效的default字段，从config.ini读取默认值"
+                )
+                default_allowed = _get_watermark_removal_default()
             
             # 记录日志
             logging.debug(
@@ -29001,8 +29014,16 @@ def start_web_server(args_param):
             # 步骤1: 读取去水印控制配置
             config = _read_amap_watermark_config()
             
-            # 步骤2: 读取默认值（从 config.ini）
-            default_value = _get_watermark_removal_default()
+            # 步骤2: 读取默认值
+            # 首先尝试从JSON配置文件的default字段读取
+            default_value = config.get("default")
+            
+            # 如果JSON中没有default字段或值不是布尔类型，则从config.ini读取
+            if not isinstance(default_value, bool):
+                logging.warning(
+                    f"[水印控制] JSON配置中未找到有效的default字段，从config.ini读取默认值"
+                )
+                default_value = _get_watermark_removal_default()
             
             # 步骤3: 获取所有用户列表
             # 从认证系统获取所有用户（排除游客）
@@ -29088,8 +29109,10 @@ def start_web_server(args_param):
             # 步骤2: 获取请求数据
             data = request.get_json() or {}
             new_users_config = data.get("users", {})
+            new_default_value = data.get("default")
             
             # 步骤3: 验证请求数据的格式
+            # 验证users字段
             if not isinstance(new_users_config, dict):
                 # 数据格式不正确
                 return jsonify({
@@ -29106,14 +29129,22 @@ def start_web_server(args_param):
                         "message": f"用户 {username} 的配置值必须是布尔类型"
                     }), 400
             
+            # 验证default字段（如果提供了的话）
+            if new_default_value is not None and not isinstance(new_default_value, bool):
+                return jsonify({
+                    "success": False,
+                    "message": "'default' 字段必须是布尔类型"
+                }), 400
+            
             # 步骤4: 读取当前配置
             current_config = _read_amap_watermark_config()
             
-            # 步骤5: 更新用户配置
+            # 步骤5: 更新配置
             # 保留配置文件中的注释字段
             updated_config = {
                 "_comment": current_config.get("_comment", "高德地图去水印个性化控制配置"),
                 "_description": current_config.get("_description", "为每个用户配置是否允许去除高德地图水印"),
+                "default": new_default_value if new_default_value is not None else current_config.get("default", True),  # 更新或保留默认值
                 "users": new_users_config  # 使用新的用户配置
             }
             

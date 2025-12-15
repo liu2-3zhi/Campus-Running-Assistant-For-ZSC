@@ -7836,13 +7836,6 @@ async function loadAdminYiPayConfig(show_Modal=true) {
       methodsInput.value = config.enabled_payment_methods || '';
     }
     
-    // 5.5 填充payment_method字段（支付接口类型）
-    const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
-    if (typeSelect) {
-      // 设置下拉框的选中值
-      typeSelect.value = config.payment_method || 'jump';
-    }
-    
     // === 第6步：验证启用的支付方式是否在 payment_methods_config 中定义 ===
     // 这一步是为了确保数据的一致性和完整性
     
@@ -8025,7 +8018,6 @@ const productIdInput = document.getElementById('admin-yipay-product-id_modal');
   // [新增] 获取payment_timeout_minutes输入框（支付超时时间）
   const timeoutInput = document.getElementById('admin-yipay-timeout_modal');
   const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
-  const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
   
   // === 第2步：获取并验证输入值 ===
   
@@ -8111,14 +8103,9 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
   return;
 }
 
-
-  // 2.5 获取支付接口类型（必填）
-  const paymentMethod = typeSelect ? typeSelect.value : 'jump';
-  if (!paymentMethod) {
-    showModalAlert('请选择支付接口类型');
-    if (typeSelect) typeSelect.focus();
-    return;
-  }
+  // 2.5 支付接口类型使用默认值（jump）
+  // 由于前端UI已移除该字段的输入框，使用固定默认值
+  const paymentMethod = 'jump';
   
   // 在控制台输出要提交的配置数据
   console.log('[PC端易支付配置] 准备提交的配置：', {
@@ -9720,10 +9707,32 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
  * 权限要求：管理员权限
  * 
  * 表单元素：
- * - watermark-default-value_modal：显示系统默认值
+ * - watermark-default-value_modal：系统默认值开关（checkbox）
+ * - watermark-default-label_modal：显示默认值标签（允许/禁止）
  * - watermark-user-count_modal：显示用户总数
  * - watermark-users-list_modal：用户权限列表容器
  */
+
+/**
+ * 更新默认水印显示标签
+ * 
+ * 功能：根据默认值开关的状态更新标签文本
+ * - 开关打开（checked=true）：显示"允许"
+ * - 开关关闭（checked=false）：显示"禁止"
+ */
+function updateWatermarkDefaultLabel() {
+  // 获取默认值开关元素（checkbox）
+  const defaultCheckbox = document.getElementById('watermark-default-value_modal');
+  // 获取默认值标签元素
+  const defaultLabel = document.getElementById('watermark-default-label_modal');
+  
+  // 如果两个元素都存在，则更新标签文本
+  if (defaultCheckbox && defaultLabel) {
+    // 根据checkbox的checked状态设置标签文本
+    defaultLabel.textContent = defaultCheckbox.checked ? '允许' : '禁止';
+  }
+}
+
 async function loadWatermarkControlConfig() {
   try {
     // ========== 步骤1: 显示加载状态 ==========
@@ -9763,22 +9772,16 @@ async function loadWatermarkControlConfig() {
     const usersConfig = config.users;  // 用户个性化配置字典
     const allUsers = data.all_users;  // 系统中所有用户的列表
 
-    // ========== 步骤6: 更新默认值显示 ==========
-    // 找到显示默认值的元素
-    const defaultValueElement = document.getElementById('watermark-default-value_modal');
-    if (defaultValueElement) {
-      // 根据布尔值显示"允许"或"禁止"
-      defaultValueElement.textContent = defaultValue ? '允许去水印' : '禁止去水印';
-      
-      // 根据值的不同设置不同的样式（颜色）
-      if (defaultValue) {
-        // 允许：绿色
-        defaultValueElement.className = 'text-sm font-bold text-green-600';
-      } else {
-        // 禁止：红色
-        defaultValueElement.className = 'text-sm font-bold text-red-600';
-      }
+    // ========== 步骤6: 更新默认值开关 ==========
+    // 找到默认值开关元素（checkbox）
+    const defaultCheckbox = document.getElementById('watermark-default-value_modal');
+    if (defaultCheckbox) {
+      // 设置开关状态（checked表示允许去水印）
+      defaultCheckbox.checked = defaultValue;
     }
+    
+    // 更新默认值标签显示
+    updateWatermarkDefaultLabel();
 
     // ========== 步骤7: 更新用户数量显示 ==========
     const userCountElement = document.getElementById('watermark-user-count_modal');
@@ -9853,18 +9856,20 @@ async function loadWatermarkControlConfig() {
  * 保存水印控制配置（PC端）
  * 
  * 功能说明：
- * 收集PC端管理面板中所有用户的权限设置，并发送到服务器保存。
+ * 收集PC端管理面板中的默认值设置和所有用户的权限设置，并发送到服务器保存。
  * 
  * 数据收集：
- * 遍历所有标记为 watermark-user-checkbox 的复选框，
- * 读取每个复选框的 data-username 属性和 checked 状态，
- * 构建用户配置字典。
+ * 1. 读取默认值开关（watermark-default-value_modal）的checked状态
+ * 2. 遍历所有标记为 watermark-user-checkbox 的复选框，
+ *    读取每个复选框的 data-username 属性和 checked 状态，
+ *    构建用户配置字典。
  * 
  * API端点：PUT /api/amap/watermark_control/config
  * 权限要求：管理员权限 + modify_config 权限
  * 
  * 请求体格式：
  * {
+ *   "default": true/false,  // 系统默认值
  *   "users": {
  *     "username1": true,
  *     "username2": false,
@@ -9874,9 +9879,14 @@ async function loadWatermarkControlConfig() {
  */
 async function saveWatermarkControlConfig() {
   try {
-    // ========== 步骤1: 收集用户配置数据 ==========
-    console.log('[水印控制] 正在收集用户配置数据（PC端）...');
+    // ========== 步骤1: 收集默认值配置 ==========
+    console.log('[水印控制] 正在收集配置数据（PC端）...');
     
+    // 获取默认值开关的状态
+    const defaultCheckbox = document.getElementById('watermark-default-value_modal');
+    const defaultValue = defaultCheckbox ? defaultCheckbox.checked : true;
+    
+    // ========== 步骤2: 收集用户配置数据 ==========
     // 创建一个空对象，用于存储所有用户的配置
     const usersConfig = {};
     
@@ -9895,15 +9905,16 @@ async function saveWatermarkControlConfig() {
       usersConfig[username] = allowed;
     });
 
-    // ========== 步骤2: 构建请求体 ==========
+    // ========== 步骤3: 构建请求体 ==========
     const requestBody = {
+      default: defaultValue,  // 添加默认值字段
       users: usersConfig
     };
     
     // 记录要发送的数据（便于调试）
     console.log('[水印控制] 准备保存配置（PC端）:', requestBody);
 
-    // ========== 步骤3: 发送HTTP请求保存配置 ==========
+    // ========== 步骤4: 发送HTTP请求保存配置 ==========
     const response = await fetch('/api/amap/watermark_control/config', {
       method: 'PUT',  // HTTP方法：PUT（更新数据）
       headers: {
@@ -9913,18 +9924,18 @@ async function saveWatermarkControlConfig() {
       body: JSON.stringify(requestBody)  // 将请求体转换为JSON字符串
     });
 
-    // ========== 步骤4: 解析响应数据 ==========
+    // ========== 步骤5: 解析响应数据 ==========
     const data = await response.json();
     
-    // ========== 步骤5: 检查响应状态 ==========
+    // ========== 步骤6: 检查响应状态 ==========
     if (!data.success) {
       throw new Error(data.message || '保存水印控制配置失败');
     }
 
-    // ========== 步骤6: 显示成功提示 ==========
+    // ========== 步骤7: 显示成功提示 ==========
     showModalAlert('水印控制配置已成功保存！');
 
-    // ========== 步骤7: 记录成功日志 ==========
+    // ========== 步骤8: 记录成功日志 ==========
     console.log('[水印控制] 配置保存成功（PC端）');
 
   } catch (error) {

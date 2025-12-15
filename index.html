@@ -6902,7 +6902,7 @@
              位置：管理员面板标签栏，位于价格设置之后
              API端点：/api/amap/watermark_control/config（配置管理）
              ======================================== -->
-        <button id="admin-tab-watermark-control_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" style="display: none" onclick="switchAdminTab('watermark-control')">
+        <button id="admin-tab-watermark-control_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" onclick="switchAdminTab('watermark-control')">
           <!-- 水印图标：表示图层/水印控制 -->
           <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -9354,41 +9354,6 @@
                 </div>
               </div>
             </div>
-
-            <!-- 字段5：支付接口类型 (payment_method) -->
-            <div>
-              <!-- 字段标签：指定使用哪种支付接口类型 -->
-              <label class="block text-sm font-semibold text-slate-700 mb-2">
-                支付接口类型
-                <span class="text-red-500">*</span>
-              </label>
-              <!-- 下拉选择框：从预定义的接口类型中选择 -->
-              <!-- 不同的接口类型对应不同的支付场景和用户体验 -->
-              <select id="admin-yipay-payment-method_modal" class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" display="none">
-                <!-- 选项1：跳转支付（jump） - 默认选项 -->
-                <!-- 用户在当前页面点击支付后，跳转到支付页面完成支付 -->
-                <option value="jump">跳转支付 (jump)</option>
-                <!-- 选项2：网页支付（web） -->
-                <!-- 在网页中直接显示支付界面 -->
-                <option value="web">网页支付 (web)</option>
-                <!-- 选项3：JSAPI支付（jsapi） -->
-                <!-- 用于微信公众号等场景，需要用户授权 -->
-                <option value="jsapi">JSAPI支付 (jsapi)</option>
-                <!-- 选项4：APP支付（app） -->
-                <!-- 用于移动APP内的支付场景 -->
-                <option value="app">APP支付 (app)</option>
-                <!-- 选项5：扫码支付（scan） -->
-                <!-- 生成二维码，用户扫码后完成支付 -->
-                <option value="scan">扫码支付 (scan)</option>
-                <!-- 选项6：小程序支付（applet） -->
-                <!-- 用于微信小程序等场景 -->
-                <option value="applet">小程序支付 (applet)</option>
-              </select>
-              <!-- 字段提示：说明不同接口类型的使用场景 -->
-              <p class="mt-1 text-xs text-slate-500">
-                根据您的使用场景选择合适的接口类型。常用：跳转支付（适用于大多数网页场景）
-              </p>
-            </div>
           </div>
 
           <!-- 操作按钮组 -->
@@ -9782,7 +9747,7 @@
           </p>
         </div>
 
-        <!-- 默认值显示区域 -->
+        <!-- 默认值配置区域 -->
         <div class="bg-amber-50 p-3 rounded-lg border border-amber-200 mb-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center">
@@ -9792,10 +9757,15 @@
               </svg>
               <span class="text-sm font-medium text-amber-800">系统默认值：</span>
             </div>
-            <span id="watermark-default-value_modal" class="text-sm font-bold text-amber-900">加载中...</span>
+            <!-- 默认水印显示开关 -->
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="watermark-default-value_modal" class="sr-only peer" onchange="updateWatermarkDefaultLabel()">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-400 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+              <span id="watermark-default-label_modal" class="ml-2 text-sm font-medium text-amber-900">禁止</span>
+            </label>
           </div>
           <p class="text-xs text-amber-700 mt-1 ml-6">
-            未在下方列表中配置的用户将使用此默认值（在 config.ini 的 [Map] 节中配置）
+            未在下方列表中配置的用户将使用此默认值
           </p>
         </div>
 
