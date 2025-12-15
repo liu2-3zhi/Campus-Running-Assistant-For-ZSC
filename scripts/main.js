@@ -29,7 +29,7 @@ function openSMSReplyLogsModal() {
   const modal = document.getElementById('sms-reply-logs-modal');
   if (!modal) {
     // console.error('[SMS回复记录] 未找到modal元素');
-    logMessage('[SMS回复记录] 无法打开回复记录面板，modal元素不存在', 'error');
+    logMessage_Error('[SMS回复记录] 无法打开回复记录面板，modal元素不存在', 'error');
     return;
   }
   
@@ -110,7 +110,7 @@ function loadSMSReplyLogs() {
   const listContainer = document.getElementById('sms-reply-logs-list');
   if (!listContainer) {
     // console.error('[SMS回复记录] 未找到列表容器元素');
-    logMessage('[SMS回复记录] 无法加载回复记录，列表容器元素不存在', 'error');
+    logMessage_Error('[SMS回复记录] 无法加载回复记录，列表容器元素不存在', 'error');
     return;
   }
   
@@ -225,12 +225,12 @@ function loadSMSReplyLogs() {
       
       // 在控制台输出加载成功信息
       // console.log(`[SMS回复记录] 成功加载${logs.length}条记录`);
-      logMessage(`[SMS回复记录] 成功加载${logs.length}条记录`, 'success');
+      logMessage_Info(`[SMS回复记录] 成功加载${logs.length}条记录`, 'success');
     })
     .catch(error => {
       // 错误处理：显示错误提示
       // console.error('[SMS回复记录] 加载失败:', error);
-      logMessage('[SMS回复记录] 加载失败: ' + 'error');
+      logMessage_Error('[SMS回复记录] 加载失败: ' + 'error');
       listContainer.innerHTML = `
         <div class="flex flex-col items-center justify-center py-12">
           <svg class="w-16 h-16 text-red-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +330,7 @@ function loadPaymentLogs(page) {
   if (!listContainer) {
     // 防御性检查：如果找不到容器元素，在控制台输出错误并返回
     // console.error('[支付日志] 未找到日志列表容器元素');
-    logMessage('[支付日志] 无法加载支付日志，列表容器元素不存在', 'error');
+    logMessage_Error('[支付日志] 无法加载支付日志，列表容器元素不存在', 'error');
     return;
   }
 
@@ -561,14 +561,14 @@ function loadPaymentLogs(page) {
 
       // 在控制台输出成功信息，方便调试
       // console.log(`[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
-      logMessage(`[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
+      logMessage_Info(`[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
     })
     .catch(error => {
       // ========== 错误处理 ==========
       
       // 在控制台输出详细错误信息
       // console.error('[支付日志] 加载失败:', error);
-      logMessage('[支付日志] 加载失败: ' + 'error');
+      logMessage_Error('[支付日志] 加载失败: ' + 'error');
       
       // 在列表容器中显示错误提示
       listContainer.innerHTML = `
@@ -613,7 +613,7 @@ function updatePaymentLogsPagination() {
   // 防御性检查：确保所有元素都存在
   if (!pageInfo || !prevBtn || !nextBtn) {
     // console.error('[支付日志] 分页控件元素未找到');
-    logMessage('[支付日志] 无法更新分页控件，元素不存在');
+    logMessage_Error('[支付日志] 无法更新分页控件，元素不存在');
     return;
   }
 
@@ -659,7 +659,7 @@ function loadPaymentLogsPrevPage() {
   // 检查是否已经是第一页
   if (paymentLogsState.currentPage <= 1) {
     // console.log('[支付日志] 已经是第一页');
-    logMessage('[支付日志] 已经是第一页，无法加载上一页');
+    logMessage_Info('[支付日志] 已经是第一页，无法加载上一页');
     return; // 如果已经是第一页，直接返回，不执行操作
   }
 
@@ -687,7 +687,7 @@ function loadPaymentLogsNextPage() {
   // 检查是否已经是最后一页
   if (paymentLogsState.currentPage >= paymentLogsState.totalPages) {
     // console.log('[支付日志] 已经是最后一页');
-    logMessage('[支付日志] 已经是最后一页，无法加载下一页');
+    logMessage_Info('[支付日志] 已经是最后一页，无法加载下一页');
     return; // 如果已经是最后一页，直接返回，不执行操作
   }
 
@@ -712,7 +712,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (refreshBtn) {
     refreshBtn.addEventListener('click', function() {
       // console.log('[支付日志] 用户点击刷新按钮');
-      logMessage('[支付日志] 用户点击刷新按钮');
+      logMessage_Info('[支付日志] 用户点击刷新按钮');
       loadPaymentLogs(); // 重新加载当前页
     });
   }
@@ -723,7 +723,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (searchBtn) {
     searchBtn.addEventListener('click', function() {
       // console.log('[支付日志] 用户点击查询按钮');
-      logMessage('[支付日志] 用户点击查询按钮');
+      logMessage_Info('[支付日志] 用户点击查询按钮');
       paymentLogsState.currentPage = 1; // 重置为第1页
       loadPaymentLogs(1); // 从第1页开始加载
     });
@@ -734,7 +734,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (prevBtn) {
     prevBtn.addEventListener('click', function() {
       // console.log('[支付日志] 用户点击上一页按钮');
-      logMessage('[支付日志] 用户点击上一页按钮');
+      logMessage_Info('[支付日志] 用户点击上一页按钮');
       loadPaymentLogsPrevPage();
     });
   }
@@ -744,7 +744,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (nextBtn) {
     nextBtn.addEventListener('click', function() {
       // console.log('[支付日志] 用户点击下一页按钮');
-      logMessage('[支付日志] 用户点击下一页按钮');
+      logMessage_Info('[支付日志] 用户点击下一页按钮');
       loadPaymentLogsNextPage();
     });
   }
@@ -849,7 +849,7 @@ function loadAdminPaymentLogs(page) {
     // 防御性检查：如果找不到容器元素，输出错误信息并返回
     // 这通常意味着HTML结构有问题或ID命名错误
     // console.error('[PC端支付日志] 未找到日志列表容器元素');
-    logMessage('[PC端支付日志] 未找到日志列表容器元素');
+    logMessage_Error('[PC端支付日志] 未找到日志列表容器元素');
     return;
   }
 
@@ -1146,14 +1146,16 @@ function loadAdminPaymentLogs(page) {
 
       // 在控制台输出成功信息，方便调试
       // 显示当前页码、本页记录数、总记录数
-      console.log(`[PC端支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
+      // console.log(`[PC端支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
+      logMessage_Info(`[PC端支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
     })
     .catch(error => {
       // ========== 错误处理 ==========
       
       // 在控制台输出详细错误信息，方便调试
       // 包括错误对象的完整信息
-      console.error('[PC端支付日志] 加载失败:', error);
+      // console.error('[PC端支付日志] 加载失败:', error);
+      logMessage_Error('[PC端支付日志] 加载失败: ' + error);
       
       // 在列表容器中显示错误提示
       // 包含错误图标、错误信息和重试按钮
@@ -1210,7 +1212,8 @@ function updateAdminPaymentLogsPagination() {
   // 防御性检查：确保所有分页控件元素都存在
   // 如果有任何一个元素找不到，输出错误并返回
   if (!pageInfo || !prevBtn || !nextBtn) {
-    console.error('[PC端支付日志] 分页控件元素未找到');
+    // console.error('[PC端支付日志] 分页控件元素未找到');
+    logMessage_Error('[PC端支付日志] 分页控件元素未找到');
     return;
   }
 
@@ -1277,7 +1280,8 @@ function loadAdminPaymentLogsPrev() {
   // 检查是否已经是第一页
   if (adminPaymentLogsState.currentPage <= 1) {
     // 已经是第一页，无法继续向前翻页
-    console.log('[PC端支付日志] 已经是第一页');
+    // console.log('[PC端支付日志] 已经是第一页');
+    logMessage_Info('[PC端支付日志] 已经是第一页');
     return; // 直接返回，不执行任何操作
   }
 
@@ -1312,7 +1316,8 @@ function loadAdminPaymentLogsNext() {
   // 检查是否已经是最后一页
   if (adminPaymentLogsState.currentPage >= adminPaymentLogsState.totalPages) {
     // 已经是最后一页，无法继续向后翻页
-    console.log('[PC端支付日志] 已经是最后一页');
+    // console.log('[PC端支付日志] 已经是最后一页');
+    logMessage_Info('[PC端支付日志] 已经是最后一页');
     return; // 直接返回，不执行任何操作
   }
 
@@ -1353,12 +1358,14 @@ async function showPaymentLogDetail(logId) {
   // 检查logId是否有效
   // 如果为空或未定义，显示错误提示并返回
   if (!logId) {
-    console.error('[支付日志详情] 日志ID为空');
+    // console.error('[支付日志详情] 日志ID为空');
+    logMessage_Error('[支付日志详情] 日志ID为空');
     showModalAlert('日志ID无效');
     return;
   }
   
-  console.log(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
+  // console.log(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
+  logMessage_Info(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
   
   // ========== 步骤2：显示模态框和加载状态 ==========
   
@@ -1370,7 +1377,8 @@ async function showPaymentLogDetail(logId) {
   
   // 防御性检查：确保所有必需的DOM元素都存在
   if (!modal || !loadingDiv || !errorDiv || !contentDiv) {
-    console.error('[支付日志详情] 找不到必需的DOM元素');
+    // console.error('[支付日志详情] 找不到必需的DOM元素');
+    logMessage_Error('[支付日志详情] 找不到必需的DOM元素');
     return;
   }
   
@@ -1444,13 +1452,15 @@ async function showPaymentLogDetail(logId) {
     loadingDiv.classList.add('hidden');
     contentDiv.classList.remove('hidden');
     
-    console.log('[支付日志详情] 日志详情加载成功');
+    // console.log('[支付日志详情] 日志详情加载成功');
+    logMessage_Info('[支付日志详情] 日志详情加载成功');
     
   } catch (error) {
     // ========== 步骤5：错误处理 ==========
     
     // 在控制台输出详细错误信息，便于调试
-    console.error('[支付日志详情] 获取日志详情失败:', error);
+    // console.error('[支付日志详情] 获取日志详情失败:', error);
+    logMessage_Error('[支付日志详情] 获取日志详情失败: ' + error);
     
     // 在模态框中显示错误信息
     const errorMessageElem = document.getElementById('log-detail-error-message');
@@ -1484,14 +1494,16 @@ function closePaymentLogDetailModal() {
   
   // 防御性检查：确保模态框元素存在
   if (!modal) {
-    console.error('[支付日志详情] 找不到模态框元素');
+    // console.error('[支付日志详情] 找不到模态框元素');
+    logMessage_Error('[支付日志详情] 找不到模态框元素');
     return;
   }
   
   // 隐藏模态框
   modal.classList.add('hidden');
   
-  console.log('[支付日志详情] 模态框已关闭');
+  // console.log('[支付日志详情] 模态框已关闭');
+  logMessage_Info('[支付日志详情] 模态框已关闭');
 }
 
 // ==========================================
@@ -1707,7 +1719,8 @@ document.addEventListener('DOMContentLoaded', function loadBeianInfo() {
       // 使用console.warn而不是console.error
       // 因为备案信息加载失败不是致命错误，不应影响页面的核心功能
       // 用户仍然可以正常使用网站，只是看不到备案信息
-      console.warn("加载备案信息失败:", error);
+      // console.warn("加载备案信息失败:", error);
+      logMessage_Warn("加载备案信息失败: " + error);
       
       // 即使加载失败，footer容器仍然可见（作为空白区域）
       // 链接元素保持默认的隐藏状态
@@ -1885,7 +1898,8 @@ function sanitizeSVG(svgString) {
     const parserError = doc.querySelector('parsererror');
     if (parserError) {
       // 解析失败：记录错误日志并返回空字符串
-      console.warn('[安全警告] SVG解析失败，内容可能格式不正确');
+      // console.warn('[安全警告] SVG解析失败，内容可能格式不正确');
+      logMessage_Warn('[安全警告] SVG解析失败，内容可能格式不正确');
       return '';
     }
     
@@ -1924,7 +1938,8 @@ function sanitizeSVG(svgString) {
     
   } catch (error) {
     // 捕获任何解析或处理过程中的异常
-    console.error('[安全警告] SVG清理过程中发生错误：', error);
+    // console.error('[安全警告] SVG清理过程中发生错误：', error);
+    logMessage_Error('[安全警告] SVG清理过程中发生错误：' + error);
     // 发生错误时返回空字符串，确保不会插入不安全的内容
     return '';
   }
@@ -1953,14 +1968,16 @@ function sanitizeSVG(svgString) {
  */
 async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_Event=false) {
   // 输出日志，便于调试和追踪函数执行
-  console.log('[支付配置] 开始加载支付方式配置...');
+  // console.log('[支付配置] 开始加载支付方式配置...');
+  logMessage_Info('[支付配置] 开始加载支付方式配置...');
   if(show_Modal_Alert){
     showModalAlert('正在加载支付方式配置，请稍候...',"提示");
   }
 
   // 检查会话ID是否存在，不存在则无法进行API调用
   if (!sessionUUID) {
-    console.error('[支付配置] 会话ID未定义，无法加载配置');
+    // console.error('[支付配置] 会话ID未定义，无法加载配置');
+    logMessage_Error('[支付配置] 会话ID未定义，无法加载配置');
     return;
   }
   
@@ -1979,9 +1996,11 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
     const methodsData = await methodsResponse.json();
 
     if(methodsData.success) {
-      console.log('[支付配置] 成功获取支付方式定义响应：', methodsData);
+      // console.log('[支付配置] 成功获取支付方式定义响应：', methodsData);
+      logMessage_Info('[支付配置] 成功获取支付方式定义响应：', methodsData);
     } else {
-      console.error('[支付配置] 获取支付方式定义失败：', methodsData.message || '未知错误');
+      // console.error('[支付配置] 获取支付方式定义失败：', methodsData.message || '未知错误');
+      logMessage_Error('[支付配置] 获取支付方式定义失败：' + (methodsData.message || '未知错误'));
       if (!DOMContentLoaded_Event){
       showModalAlert('获取支付方式定义失败：' + (methodsData.message || '未知错误'),"错误");
       }
@@ -1990,7 +2009,8 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
 
     const methods = methodsData.methods || {};
     
-    console.log('[支付配置] 成功获取支付方式定义：', methods);
+    // console.log('[支付配置] 成功获取支付方式定义：', methods);
+    logMessage_Info('[支付配置] 成功获取支付方式定义：', methods);
 
     PAYMENT_METHODS = methods;
     
@@ -2011,9 +2031,11 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
         enabledMethods = configData.config?.enabled_payment_methods || [];
 
       if (configData.success) {
-        console.log('[支付配置] 成功获取启用状态响应：', configData);
+        // console.log('[支付配置] 成功获取启用状态响应：', configData);
+        logMessage_Info('[支付配置] 成功获取启用状态响应：', configData);
       } else {
-        console.warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：', configData.message || '未知错误');
+        // console.warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：', configData.message || '未知错误');
+        logMessage_Warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'));
         if (!DOMContentLoaded_Event){
         showModalAlert('获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'),"警告");
       }
@@ -2028,7 +2050,8 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
       
     } catch (configError) {
       // 获取启用状态失败，默认显示所有支付方式为启用
-      console.warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：', configError);
+      // console.warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：', configError);
+      logMessage_Warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：' + configError);
       if (!DOMContentLoaded_Event){
       showModalAlert('获取启用状态时出错，默认显示所有支付方式：' + configError,"警告");
       }
@@ -2046,7 +2069,8 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
     }
     
     if (!listContainer) {
-      console.error('[支付配置] 找不到支付方式列表容器');
+      // console.error('[支付配置] 找不到支付方式列表容器');
+      logMessage_Error('[支付配置] 找不到支付方式列表容器');
       if (!DOMContentLoaded_Event){
       showModalAlert('找不到支付方式列表容器',"错误");
       }
@@ -2231,7 +2255,8 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
     });
     
     // 记录成功日志
-    console.log('[支付配置] 支付方式列表渲染完成');
+    // console.log('[支付配置] 支付方式列表渲染完成');
+    logMessage_Info('[支付配置] 支付方式列表渲染完成');
     if(show_Modal_Alert){
       showModalAlert('支付方式配置加载完成',"成功");
     }
@@ -2246,12 +2271,14 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
     
     // 第2步：防御性检查 - 确保下拉框元素存在
     if (testPaymentMethodSelect) {
-      console.log('[支付配置] 开始更新测试支付方式下拉框...');
+      // console.log('[支付配置] 开始更新测试支付方式下拉框...');
+      logMessage_Info('[支付配置] 开始更新测试支付方式下拉框...');
       
       // 第3步：保存当前选中的值（如果存在）
       // 目的：在更新选项后，如果之前选中的支付方式仍然可用，保持选中状态
       const currentSelectedValue = testPaymentMethodSelect.value;
-      console.log('[支付配置] 当前选中的支付方式：', currentSelectedValue || '无');
+      // console.log('[支付配置] 当前选中的支付方式：', currentSelectedValue || '无');
+      logMessage_Info('[支付配置] 当前选中的支付方式：' + (currentSelectedValue || '无'));
       
       // 第4步：清空现有的所有选项
       // 使用innerHTML = ''清空比循环删除选项更高效
@@ -2288,17 +2315,20 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
           }
           
           // 输出日志，记录添加的支付方式
-          console.log(`[支付配置] 添加测试支付选项：${code} - ${method.name || code}`);
+          // console.log(`[支付配置] 添加测试支付选项：${code} - ${method.name || code}`);
+          logMessage_Info('[支付配置] 添加测试支付选项：' + code + ' - ' + (method.name || code));
         }
       }
       
       // 第8步：恢复之前的选中状态（如果该支付方式仍然可用）
       if (previousValueStillExists && currentSelectedValue) {
         testPaymentMethodSelect.value = currentSelectedValue;
-        console.log('[支付配置] 已恢复之前选中的支付方式：', currentSelectedValue);
+        // console.log('[支付配置] 已恢复之前选中的支付方式：', currentSelectedValue);
+        logMessage_Info('[支付配置] 已恢复之前选中的支付方式：' + currentSelectedValue);
       } else if (optionAdded) {
         // 如果之前的选中值不可用，但至少有一个选项，则选中第一个
-        console.log('[支付配置] 之前选中的支付方式不可用，已自动选中第一个可用选项');
+        // console.log('[支付配置] 之前选中的支付方式不可用，已自动选中第一个可用选项');
+        logMessage_Info('[支付配置] 之前选中的支付方式不可用，已自动选中第一个可用选项');
       }
       
       // 第9步：如果没有任何已启用的支付方式，添加一个提示选项
@@ -2308,18 +2338,21 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
         emptyOption.textContent = '暂无可用的支付方式';
         emptyOption.disabled = true; // 禁用该选项，不可选择
         testPaymentMethodSelect.appendChild(emptyOption);
-        console.warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
+        // console.warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
+        logMessage_Warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
       }
       
       console.log('[支付配置] 测试支付方式下拉框更新完成');
     } else {
       // 如果找不到测试支付方式下拉框元素，输出警告日志
-      console.warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
+      // console.warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
+      logMessage_Warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
     }
     
   } catch (error) {
     // === 错误处理 ===
-    console.error('[支付配置] 加载支付方式配置时发生错误：', error);
+    // console.error('[支付配置] 加载支付方式配置时发生错误：', error);
+    logMessage_Error('[支付配置] 加载支付方式配置时发生错误：' + error);
     if (!DOMContentLoaded_Event){
     showModalAlert('无法加载支付方式配置，请刷新页面重试。如果问题持续，请联系管理员。');
     }
@@ -2341,7 +2374,8 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
  */
 async function savePaymentMethodsConfig() {
   // 输出日志，标记保存操作开始
-  console.log('[支付配置] 开始保存支付方式配置...');
+  // console.log('[支付配置] 开始保存支付方式配置...');
+  logMessage_Info('[支付配置] 开始保存支付方式配置...');
   
   // === 第0步：确定当前是PC端还是移动端 ===
   // 尝试获取PC端结果显示区域
@@ -2399,7 +2433,8 @@ async function savePaymentMethodsConfig() {
     });
     
     // 在控制台输出即将提交的配置，便于调试
-    console.log('[支付配置] 准备提交的启用支付方式：', enabledMethods);
+    // console.log('[支付配置] 准备提交的启用支付方式：', enabledMethods);
+    logMessage_Info('[支付配置] 准备提交的启用支付方式：', enabledMethods);
     
     // === 第2步：验证至少启用一种支付方式 ===
     if (enabledMethods.length === 0) {
@@ -2433,7 +2468,8 @@ async function savePaymentMethodsConfig() {
     const result = await response.json();
     
     // 输出成功日志
-    console.log('[支付配置] 支付方式配置保存成功：', result);
+    // console.log('[支付配置] 支付方式配置保存成功：', result);
+    logMessage_Success('[支付配置] 支付方式配置保存成功');
     
     // === 第6步：显示成功提示 ===
     
@@ -2485,15 +2521,21 @@ async function savePaymentMethodsConfig() {
       
       // 在控制台输出详细的日志，记录自动同步操作
       // 使用 ✓ 符号标记成功操作，便于快速识别
-      console.log('[支付配置] ✓ 已自动同步到易支付启用方式');
-      console.log('[支付配置] 同步的支付方式代码：', methodsString);
-      console.log('[支付配置] 同步的支付方式数量：', enabledMethods.length);
-      console.log('[支付配置] 输入框当前值：', yipayMethodsInput.value);
+      // console.log('[支付配置] ✓ 已自动同步到易支付启用方式');
+      logMessage_Info('[支付配置] 已自动同步到易支付启用方式');
+      // console.log('[支付配置] 同步的支付方式代码：', methodsString);
+      logMessage_Info('[支付配置] 同步的支付方式代码：' + methodsString);
+      // console.log('[支付配置] 同步的支付方式数量：', enabledMethods.length);
+      logMessage_Info('[支付配置] 同步的支付方式数量：' + enabledMethods.length);
+      // console.log('[支付配置] 输入框当前值：', yipayMethodsInput.value);
+      logMessage_Info('[支付配置] 输入框当前值：' + yipayMethodsInput.value);
     } else {
       // 如果找不到易支付输入框元素，在控制台输出警告
       // 使用 ✗ 符号标记失败操作，并提供详细的调试信息
-      console.warn('[支付配置] ✗ 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
-      console.warn('[支付配置] 请检查HTML中是否存在此元素');
+      // console.warn('[支付配置] ✗ 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
+      logMessage_Warn('[支付配置] 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
+      // console.warn('[支付配置] 请检查HTML中是否存在此元素');
+      logMessage_Warn('[支付配置] 请检查HTML中是否存在此元素');
     }
     
     // === 第7步：重新加载配置以确保数据同步 ===
@@ -2505,7 +2547,8 @@ async function savePaymentMethodsConfig() {
     // 捕获所有可能的错误：网络错误、服务器错误、JSON解析错误等
     
     // 在控制台输出详细的错误信息
-    console.error('[支付配置] 保存支付方式配置时发生错误：', error);
+    // console.error('[支付配置] 保存支付方式配置时发生错误：', error);
+    logMessage_Error('[支付配置] 保存支付方式配置时发生错误：' + error);
     
     // 向用户显示错误提示
     if (resultDiv) {
@@ -2534,12 +2577,14 @@ async function savePaymentMethodsConfig() {
  * 功能：清空表单，设置为添加模式，显示模态框
  */
 function openAddPaymentMethodModal() {
-  console.log('[支付配置] 打开添加支付方式模态框');
+  // console.log('[支付配置] 打开添加支付方式模态框');
+  logMessage_Info('[支付配置] 打开添加支付方式模态框');
   
   // 获取模态框元素
   const modal = document.getElementById('payment-method-modal');
   if (!modal) {
-    console.error('[支付配置] 找不到支付方式模态框');
+    // console.error('[支付配置] 找不到支付方式模态框');
+    logMessage_Error('[支付配置] 找不到支付方式模态框');
     return;
   }
   
@@ -2585,12 +2630,14 @@ function openAddPaymentMethodModal() {
  * @param {string} code - 支付方式代码
  */
 async function openEditPaymentMethodModal(code) {
-  console.log('[支付配置] 打开编辑支付方式模态框：', code);
+  // console.log('[支付配置] 打开编辑支付方式模态框：', code);
+  logMessage_Info('[支付配置] 打开编辑支付方式模态框：' + code);
   
   // 获取模态框元素
   const modal = document.getElementById('payment-method-modal');
   if (!modal) {
-    console.error('[支付配置] 找不到支付方式模态框');
+    // console.error('[支付配置] 找不到支付方式模态框');
+    logMessage_Error('[支付配置] 找不到支付方式模态框');
     return;
   }
   
@@ -2657,7 +2704,8 @@ async function openEditPaymentMethodModal(code) {
     modal.dataset.mode = 'edit';
     
   } catch (error) {
-    console.error('[支付配置] 加载支付方式配置失败：', error);
+    // console.error('[支付配置] 加载支付方式配置失败：', error);
+    logMessage_Error('[支付配置] 加载支付方式配置失败：' + error);
     showModalAlert('无法加载支付方式配置，请重试。');
   }
 }
@@ -2666,7 +2714,8 @@ async function openEditPaymentMethodModal(code) {
  * 关闭支付方式模态框
  */
 function closePaymentMethodModal() {
-  console.log('[支付配置] 关闭支付方式模态框');
+  // console.log('[支付配置] 关闭支付方式模态框');
+  logMessage_Info('[支付配置] 关闭支付方式模态框');
   
   // 获取模态框元素并隐藏
   const modal = document.getElementById('payment-method-modal');
@@ -2701,7 +2750,8 @@ function toggleLogoInput() {
  * 功能：验证表单，提交到服务器，刷新列表
  */
 async function savePaymentMethod() {
-  console.log('[支付配置] 开始保存支付方式...');
+  // console.log('[支付配置] 开始保存支付方式...');
+  logMessage_Info('[支付配置] 开始保存支付方式...');
   
   // 获取模态框和错误提示区域
   const modal = document.getElementById('payment-method-modal');
@@ -2763,7 +2813,8 @@ async function savePaymentMethod() {
       textColor
     };
     
-    console.log('[支付配置] 准备提交的数据：', { code, ...methodData });
+    // console.log('[支付配置] 准备提交的数据：', { code, ...methodData });
+    logMessage_Info('[支付配置] 准备提交的数据：', { code, ...methodData });
     
     // === 第3步：判断是添加还是编辑模式 ===
     const mode = modal.dataset.mode || 'add';
@@ -2800,7 +2851,8 @@ async function savePaymentMethod() {
     
     // === 第6步：解析响应 ===
     const result = await response.json();
-    console.log('[支付配置] 支付方式保存成功：', result);
+    // console.log('[支付配置] 支付方式保存成功：', result);
+    logMessage_Success('[支付配置] 支付方式保存成功');
     
     // === 第7步：关闭模态框并刷新列表 ===
     closePaymentMethodModal();
@@ -2813,7 +2865,8 @@ async function savePaymentMethod() {
     
   } catch (error) {
     // === 错误处理 ===
-    console.error('[支付配置] 保存支付方式失败：', error);
+    // console.error('[支付配置] 保存支付方式失败：', error);
+    logMessage_Error('[支付配置] 保存支付方式失败：' + error);
     
     // 在模态框中显示错误信息
     if (errorDiv) {
@@ -2839,13 +2892,15 @@ async function savePaymentMethod() {
  * @param {string} code - 支付方式代码
  */
 async function deletePaymentMethod(code) {
-  console.log('[支付配置] 请求删除支付方式：', code);
+  // console.log('[支付配置] 请求删除支付方式：', code);
+  logMessage_Info('[支付配置] 请求删除支付方式：' + code);
   
   // === 第1步：显示确认对话框 ===
   // 使用confirm函数让用户确认是否真的要删除
   // 这是一个破坏性操作，需要二次确认
   if (!confirm(`确定要删除支付方式 "${code}" 吗？删除后无法恢复。`)) {
-    console.log('[支付配置] 用户取消了删除操作');
+    // console.log('[支付配置] 用户取消了删除操作');
+    logMessage_Info('[支付配置] 用户取消了删除操作');
     return;
   }
   
@@ -2867,7 +2922,8 @@ async function deletePaymentMethod(code) {
     
     // === 第4步：解析响应 ===
     const result = await response.json();
-    console.log('[支付配置] 支付方式删除成功：', result);
+    // console.log('[支付配置] 支付方式删除成功：', result);
+    logMessage_Success('[支付配置] 支付方式删除成功');
     
     // === 第5步：显示成功提示并刷新列表 ===
     showModalAlert('支付方式已删除');
@@ -2877,7 +2933,8 @@ async function deletePaymentMethod(code) {
     
   } catch (error) {
     // === 错误处理 ===
-    console.error('[支付配置] 删除支付方式失败：', error);
+    // console.error('[支付配置] 删除支付方式失败：', error);
+    logMessage_Error('[支付配置] 删除支付方式失败：' + error);
     showModalAlert(`删除失败：${error.message || '未知错误'}。请重试。`);
   }
 }
@@ -2897,7 +2954,8 @@ async function deletePaymentMethod(code) {
  */
 document.addEventListener('DOMContentLoaded', function() {
   // 在控制台输出日志，标记支付设置面板初始化开始
-  console.log('[支付设置] 开始初始化支付设置面板...');
+  // console.log('[支付设置] 开始初始化支付设置面板...');
+  logMessage_Info('[支付设置] 开始初始化支付设置面板...');
   
   // === 绑定"保存配置"按钮的点击事件 ===
   
@@ -2910,7 +2968,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 当用户点击按钮时，会自动调用savePaymentMethodsConfig函数
     saveBtn.addEventListener('click', function() {
       // 输出日志，记录用户操作
-      console.log('[支付设置] 用户点击了保存配置按钮');
+      // console.log('[支付设置] 用户点击了保存配置按钮');
+      logMessage_Info('[支付设置] 用户点击了保存配置按钮');
       
       // 调用保存函数，提交配置到服务器
       // 这是一个async函数，会异步执行，不会阻塞页面
@@ -2918,11 +2977,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // 输出成功日志
-    console.log('[支付设置] 保存按钮事件监听器已绑定');
+    // console.log('[支付设置] 保存按钮事件监听器已绑定');
+    logMessage_Info('[支付设置] 保存按钮事件监听器已绑定');
   } else {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
-    console.warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
+    // console.warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
+    logMessage_Warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
   }
   
   // === 页面加载时自动加载支付方式配置 ===
@@ -2943,7 +3004,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 当用户点击按钮时，会自动调用processRefund函数
     refundBtn.addEventListener('click', function() {
       // 输出日志，记录用户操作
-      console.log('[退款功能] 用户点击了处理退款按钮');
+      // console.log('[退款功能] 用户点击了处理退款按钮');
+      logMessage_Info('[退款功能] 用户点击了处理退款按钮');
       
       // 调用退款函数，执行退款逻辑
       // 这是一个async函数，会异步执行，不会阻塞页面
@@ -2951,11 +3013,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // 输出成功日志
-    console.log('[退款功能] 处理退款按钮事件监听器已绑定');
+    // console.log('[退款功能] 处理退款按钮事件监听器已绑定');
+    logMessage_Info('[退款功能] 处理退款按钮事件监听器已绑定');
   } else {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
-    console.warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
+    // console.warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
+    logMessage_Warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
   }
   
   // ========== Tab 4: 绑定"创建测试订单"按钮的点击事件 ==========
@@ -2969,7 +3033,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 当用户点击按钮时，会自动调用createTestOrder函数
     createOrderBtn.addEventListener('click', function() {
       // 输出日志，记录用户操作
-      console.log('[测试支付] 用户点击了创建测试订单按钮');
+      // console.log('[测试支付] 用户点击了创建测试订单按钮');
+      logMessage_Info('[测试支付] 用户点击了创建测试订单按钮');
       
       // 调用创建订单函数，执行订单创建逻辑
       // 这是一个async函数，会异步执行，不会阻塞页面
@@ -2977,10 +3042,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // 输出成功日志
-    console.log('[测试支付] 创建测试订单按钮事件监听器已绑定');
+    // console.log('[测试支付] 创建测试订单按钮事件监听器已绑定');
+    logMessage_Info('[测试支付] 创建测试订单按钮事件监听器已绑定');
   } else {
     // 如果按钮不存在，输出警告日志
-    console.warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
+    // console.warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
+    logMessage_Warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
   }
   
   // ========== Tab 4: 绑定"打开支付链接"按钮的点击事件 ==========
@@ -2994,7 +3061,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 当用户点击按钮时，会自动调用openTestPayUrl函数
     openPayBtn.addEventListener('click', function() {
       // 输出日志，记录用户操作
-      console.log('[测试支付] 用户点击了打开支付链接按钮');
+      // console.log('[测试支付] 用户点击了打开支付链接按钮');
+      logMessage_Info('[测试支付] 用户点击了打开支付链接按钮');
       
       // 调用打开支付链接函数，在新标签页打开支付页面
       // 这是一个同步函数，会立即执行
@@ -3002,14 +3070,17 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // 输出成功日志
-    console.log('[测试支付] 打开支付链接按钮事件监听器已绑定');
+    // console.log('[测试支付] 打开支付链接按钮事件监听器已绑定');
+    logMessage_Info('[测试支付] 打开支付链接按钮事件监听器已绑定');
   } else {
     // 如果按钮不存在，输出警告日志
-    console.warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
+    // console.warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
+    logMessage_Warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
   }
   
   // 输出完成日志
-  console.log('[支付设置] 支付设置面板初始化完成（包括Tab 1-4所有功能）');
+  // console.log('[支付设置] 支付设置面板初始化完成（包括Tab 1-4所有功能）');
+  logMessage_Info('[支付设置] 支付设置面板初始化完成（包括Tab 1-4所有功能）');
 });
 
 // ==========================================
@@ -3061,7 +3132,8 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 async function queryOrder() {
   // 在控制台输出日志，标记查询操作开始
-  console.log('[订单查询] 开始查询订单...');
+  // console.log('[订单查询] 开始查询订单...');
+  logMessage_Info('[订单查询] 开始查询订单...');
   
   // ========== 第1步：获取并验证用户输入 ==========
   
@@ -3071,7 +3143,8 @@ async function queryOrder() {
   // 1.2 防御性检查：确保输入框元素存在
   if (!tradeNoInput) {
     // 如果找不到输入框元素，在控制台输出错误并提示用户
-    console.error('[订单查询] 错误：未找到订单号输入框（ID: query-order-trade-no）');
+    // console.error('[订单查询] 错误：未找到订单号输入框（ID: query-order-trade-no）');
+    logMessage_Error('[订单查询] 错误：未找到订单号输入框（ID: query-order-trade-no）');
     showModalAlert('页面元素异常，请刷新页面后重试。');
     return; // 终止函数执行
   }
