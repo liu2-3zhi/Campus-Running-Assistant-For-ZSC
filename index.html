@@ -3950,21 +3950,25 @@
                   </h5>
                 </div>
 
-                <!-- 卡片网格容器：使用响应式网格布局显示订单卡片 -->
-                <!-- 移动端：默认1列，可根据屏幕宽度自动调整 -->
+                <!-- ========================================
+                     卡片网格容器：订单列表显示区域（移动端）
+                     ========================================
+                     功能：动态渲染订单卡片，由JavaScript完全控制内容
+                     布局：响应式网格布局，移动端默认1列
+                     容器ID：admin-orders-table-body（与PC端的admin-orders-table-body_modal对应）
+                     
+                     重要说明：
+                     1. 此容器初始为空，不包含任何硬编码的占位符HTML
+                     2. 所有内容（加载提示、错误提示、订单卡片）完全由JavaScript动态生成
+                     3. JavaScript函数renderPaymentOrdersTable()会根据订单数据状态：
+                        - 无数据时：显示"暂无订单"提示
+                        - 有数据时：渲染订单卡片列表
+                        - 加载失败时：显示错误提示
+                     4. 修复原因：移除硬编码的加载提示，避免干扰JavaScript的innerHTML更新
+                        参考：任务14的修复方式，确保容器内容完全由JavaScript控制
+                     ======================================== -->
                 <div id="admin-orders-table-body" class="grid grid-cols-1 gap-2 p-2">
-                  <!-- 初始加载提示：在订单数据加载前显示 -->
-                  <div class="col-span-full text-center py-6 text-slate-500">
-                    <!-- 加载图标：旋转的spinner，提供视觉反馈 -->
-                    <svg class="w-6 h-6 inline animate-spin text-sky-500" fill="none" viewBox="0 0 24 24">
-                      <!-- 圆形背景：半透明灰色 -->
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                      <!-- 动态路径：旋转的部分，天蓝色 -->
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <!-- 加载文本提示 -->
-                    <div class="mt-2 text-xs">加载中...</div>
-                  </div>
+                  <!-- 容器内容由JavaScript动态渲染，请勿在此添加硬编码的HTML -->
                 </div>
               </div>
             </div>
@@ -8723,18 +8727,32 @@
               </h5>
             </div>
 
-            <!-- 卡片网格容器：使用响应式网格布局 -->
-            <!-- 小屏幕(默认): 1列，中等屏幕(md): 2列，大屏幕(lg): 3列 -->
+            <!-- ========================================
+                 卡片网格容器：订单列表显示区域（PC端桌面端）
+                 ========================================
+                 功能：动态渲染订单卡片，由JavaScript完全控制内容
+                 布局：响应式网格布局
+                      - 小屏幕(默认)：1列
+                      - 中等屏幕(md)：2列
+                      - 大屏幕(lg)：3列
+                 容器ID：admin-orders-table-body_modal（与移动端的admin-orders-table-body对应）
+                 
+                 重要说明：
+                 1. 此容器初始为空，不包含任何硬编码的占位符HTML
+                 2. 所有内容（加载提示、错误提示、订单卡片）完全由JavaScript动态生成
+                 3. JavaScript函数renderPaymentOrdersTable()会根据订单数据状态：
+                    - 无数据时：显示"暂无订单"提示
+                    - 有数据时：渲染订单卡片列表
+                    - 加载失败时：显示错误提示
+                 4. 修复原因：移除硬编码的加载提示，避免干扰JavaScript的innerHTML更新
+                    参考：任务14的修复方式，确保容器内容完全由JavaScript控制
+                 5. 与移动端容器的差异：
+                    - PC端使用响应式多列布局（md:grid-cols-2 lg:grid-cols-3）
+                    - 移动端使用单列布局（grid-cols-1）
+                    - 其他渲染逻辑完全相同
+                 ======================================== -->
             <div id="admin-orders-table-body_modal" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-              <!-- 初始加载提示 -->
-              <div class="col-span-full text-center py-8 text-slate-500">
-                <!-- 加载图标 -->
-                <svg class="w-8 h-8 inline animate-spin text-sky-500" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <div class="mt-2">加载中...</div>
-              </div>
+              <!-- 容器内容由JavaScript动态渲染，请勿在此添加硬编码的HTML -->
             </div>
           </div>
 
