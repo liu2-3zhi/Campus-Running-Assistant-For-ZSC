@@ -618,7 +618,8 @@
             请输入您的验证器应用中的6位验证码
           </p>
         </div>
-        <div id="auth-reg-sms-wrapper">
+        <!-- 修复ID冲突：重命名为 auth-2fa-code-wrapper，因为这是2FA验证码容器，不是SMS短信验证码 -->
+        <div id="auth-2fa-code-wrapper">
           <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
           <input type="text" id="auth-2fa-code" class="input-field mt-1" placeholder="输入6位验证码" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code">
         </div>
@@ -1962,7 +1963,8 @@
               刷新
             </button>
 
-            <button id="mobile-mark-all-read-modal-btn" class="flex-1 py-3 px-4 bg-gradient-to-r from-slate-500 to-slate-600 text-white rounded-xl text-sm font-bold hover:from-slate-600 hover:to-slate-700 transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg" onclick="mobileMarkAllAsRead()">
+            <!-- 修复ID冲突：重命名为 mobile-mark-all-read-panel-btn，因为这是通知面板内部的按钮（区别于模态框中的按钮） -->
+            <button id="mobile-mark-all-read-panel-btn" class="flex-1 py-3 px-4 bg-gradient-to-r from-slate-500 to-slate-600 text-white rounded-xl text-sm font-bold hover:from-slate-600 hover:to-slate-700 transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg" onclick="mobileMarkAllAsRead()">
               一键已读
             </button>
 
@@ -2529,7 +2531,8 @@
             <h3 class="text-xl font-bold text-sky-700">用户详情</h3>
           </div>
 
-          <div id="mobile-user-details-content" class="space-y-4 flex-1 overflow-y-auto min-h-0 pr-1">
+          <!-- 修复ID冲突：重命名为 mobile-user-details-content-panel，因为这是资料面板内部的内容区域（区别于模态框中的内容区域） -->
+          <div id="mobile-user-details-content-panel" class="space-y-4 flex-1 overflow-y-auto min-h-0 pr-1">
             <div id="mobile-user-details-empty" class="text-center py-10">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 mx-auto text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
@@ -10606,7 +10609,8 @@
     </div>
   </div>
 
-  <div id="edit-school-account-modal" class="fixed inset-0 flex items-center justify-center hidden z-[1055]">
+  <!-- 修复ID冲突：重命名为 edit-school-account-modal-simple，这是简洁样式的编辑模态框（区别于现代化样式） -->
+  <div id="edit-school-account-modal-simple" class="fixed inset-0 flex items-center justify-center hidden z-[1055]">
     <div class="absolute inset-0 bg-black/60" onclick="closeEditSchoolAccountModal()"></div>
 
     <div class="panel rounded-2xl p-6 w-96 space-y-4 relative">

@@ -19079,7 +19079,16 @@ function refreshMobileSessionPicker() {
         }
       }
       function closeEditSchoolAccountModal() {
+        // 关闭现代化样式的模态框（主要使用的版本）
         hideModal("edit-school-account-modal");
+        
+        // 同时关闭简洁样式的模态框（备用版本），以防它被打开
+        // 修复ID冲突后的ID引用更新
+        const simpleModal = $("edit-school-account-modal-simple");
+        if (simpleModal) {
+          simpleModal.classList.add("hidden");
+          simpleModal.classList.remove("flex");
+        }
       }
       async function submitEditSchoolAccount() {
         const authUsername = $("edit-auth-username").textContent;
