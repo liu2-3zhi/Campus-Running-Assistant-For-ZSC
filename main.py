@@ -29706,6 +29706,114 @@ def start_web_server(args_param):
     # 用于获取和验证图形验证码，增强系统安全性
     # ============================================================
 
+    @app.route("/api/captcha/config", methods=["GET"])
+    @admin_required
+    def get_captcha_config():
+        """
+        获取验证码配置参数接口
+        该接口用于管理员查询当前系统验证码的配置参数（长度、缩放因子、噪声级别）
+        
+        要求：
+        - 必须具有管理员权限（admin 或 super_admin）
+        - 使用GET方法访问
+        
+        返回值：
+        - success: bool - 操作是否成功
+        - config: dict - 包含验证码配置参数的字典
+            - length: int - 验证码字符长度（默认4）
+            - scale_factor: int - 图像缩放因子（默认2）
+            - noise_level: float - 噪声级别（默认0.08）
+        """
+        try:
+            # 记录调试信息：开始读取验证码配置
+            logging.debug("[验证码配置] 开始读取验证码配置参数")
+            
+            # 构建配置文件的完整路径
+            # os.path.dirname(__file__) 获取当前脚本所在目录
+            # os.path.join() 安全地拼接路径，避免不同操作系统路径分隔符问题
+            config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+            
+            # 定义默认配置参数
+            # 这些默认值确保即使配置文件不存在或读取失败，系统仍能正常工作
+            length = 4          # 验证码字符长度，默认4个字符
+            scale_factor = 2    # 图像缩放因子，默认放大2倍以提高可读性
+            noise_level = 0.08  # 噪声级别，默认0.08（8%），用于增加验证码的安全性
+            
+            # 检查配置文件是否存在
+            # 这是一个健壮性检查，避免在文件不存在时产生异常
+            if os.path.exists(config_file):
+                try:
+                    # 创建ConfigParser对象用于解析INI格式的配置文件
+                    cfg = configparser.ConfigParser()
+                    
+                    # 读取配置文件，指定UTF-8编码以支持中文等多字节字符
+                    cfg.read(config_file, encoding="utf-8")
+                    
+                    # 从[Captcha]节中读取length参数
+                    # int()转换为整数类型
+                    # fallback="4"表示如果该配置项不存在，则使用"4"作为默认值
+                    length = int(cfg.get("Captcha", "length", fallback="4"))
+                    
+                    # 从[Captcha]节中读取scale_factor参数
+                    # 缩放因子决定验证码图像的显示尺寸
+                    scale_factor = int(
+                        cfg.get("Captcha", "scale_factor", fallback="2"))
+                    
+                    # 从[Captcha]节中读取noise_level参数
+                    # float()转换为浮点数类型，因为噪声级别是一个小数值
+                    noise_level = float(
+                        cfg.get("Captcha", "noise_level", fallback="0.08")
+                    )
+                    
+                    # 记录成功读取的配置参数，方便调试和监控
+                    logging.debug(
+                        f"[验证码配置] 成功从config.ini读取参数: length={length}, scale_factor={scale_factor}, noise_level={noise_level}"
+                    )
+                except Exception as e:
+                    # 捕获配置文件读取过程中的任何异常（如格式错误、权限问题等）
+                    # 使用warning级别记录，因为这不是致命错误（将使用默认值）
+                    logging.warning(f"[验证码配置] 读取配置文件失败，使用默认值: {e}")
+            else:
+                # 如果配置文件不存在，记录信息级别日志
+                # 这是正常情况（如首次运行），使用默认值即可
+                logging.info(f"[验证码配置] 配置文件不存在，使用默认值: {config_file}")
+            
+            # 构建返回的配置字典
+            # 将所有配置参数组织成一个字典结构，便于JSON序列化
+            config_data = {
+                "length": length,            # 验证码长度
+                "scale_factor": scale_factor,  # 缩放因子
+                "noise_level": noise_level    # 噪声级别
+            }
+            
+            # 记录调试信息：准备返回配置数据
+            logging.debug(f"[验证码配置] 准备返回配置数据: {config_data}")
+            
+            # 返回成功响应
+            # jsonify()将Python字典转换为JSON格式的HTTP响应
+            # HTTP状态码200表示请求成功
+            return jsonify({
+                "success": True,      # 操作成功标志
+                "config": config_data  # 配置参数字典
+            }), 200
+            
+        except Exception as e:
+            # 捕获所有未预期的异常，确保API不会因异常而崩溃
+            # 记录错误级别日志，包含完整的异常堆栈信息（exc_info=True）
+            logging.error(f"[验证码配置] 获取配置时发生未知错误: {str(e)}", exc_info=True)
+            
+            # 即使发生错误，仍然返回默认配置值，确保客户端能获得有效数据
+            # HTTP状态码200表示请求本身成功（虽然使用了默认值）
+            return jsonify({
+                "success": True,  # 仍然标记为成功，因为返回了有效的默认配置
+                "config": {
+                    "length": 4,           # 默认长度
+                    "scale_factor": 2,     # 默认缩放因子
+                    "noise_level": 0.08    # 默认噪声级别
+                },
+                "message": "使用默认配置（配置读取失败）"  # 提示信息
+            }), 200
+
     @app.route("/api/captcha/get", methods=["GET"])
     def get_captcha():
         """
