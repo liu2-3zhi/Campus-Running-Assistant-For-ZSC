@@ -506,6 +506,7 @@ function loadPaymentLogs(page) {
           }
 
           // 返回单条日志的HTML卡片
+          // 包含：操作类型标签、时间、订单号、金额、状态、查看详情按钮
           return `
             <div class="bg-white border border-slate-200 rounded-lg p-3 hover:border-sky-300 transition">
               <!-- 头部：操作类型标签 + 时间 -->
@@ -522,10 +523,25 @@ function loadPaymentLogs(page) {
               </div>
               
               <!-- 详细信息：金额和状态 -->
-              <div class="space-y-1">
+              <div class="space-y-1 mb-3">
                 ${amountHTML}
                 ${statusHTML}
               </div>
+              
+              <!-- 查看详情按钮 -->
+              <!-- 点击后调用 showPaymentLogDetail 函数显示完整的日志详情 -->
+              <!-- 按钮设计为全宽，适合移动端触摸操作（min-height: 44px） -->
+              <button onclick="showPaymentLogDetail('${log.log_id || ''}')" 
+                class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors min-h-[44px] flex items-center justify-center gap-1">
+                <!-- 眼睛图标：表示"查看"操作 -->
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                查看详情
+              </button>
             </div>
           `;
         }).join(''); // 将所有卡片HTML连接成一个字符串
@@ -18922,6 +18938,7 @@ function refreshMobileSessionPicker() {
                     schoolUsername
                   )}</div>
                   <!-- 操作按钮组 -->
+                  <!-- 包含三个按钮：编辑、删除、查看详情 -->
                   <div class="flex gap-2">
                     <!-- 编辑按钮：打开编辑模态框 -->
                     <!-- 使用data属性存储JSON数据，点击时解析并调用函数 -->
@@ -18941,6 +18958,15 @@ function refreshMobileSessionPicker() {
                       onclick="(function(btn) { deleteSchoolAccount(btn.getAttribute('data-auth-username'), btn.getAttribute('data-school-username')); })(this)"
                       title="删除此账户">
                       删除
+                    </button>
+                    <!-- 查看详情按钮：显示该学校账号的备份详情和欠费信息 -->
+                    <!-- 直接调用 View_details_of_users_with_outstanding_payments 函数 -->
+                    <!-- 该函数会显示一个包含详细信息的弹窗（学号、姓名、欠费次数等） -->
+                    <button 
+                      class="btn btn-sm !py-1 !px-3 !text-xs bg-sky-500 text-white hover:bg-sky-600 border-sky-500" 
+                      onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(schoolUsername)}')"
+                      title="查看此账户的详细信息">
+                      查看详情
                     </button>
                   </div>
                 </div>
@@ -41018,6 +41044,57 @@ async function showMobileUserSchoolAccounts(username) {
                   )}</div>`
                 : '<div class="text-xs text-slate-400 italic text-center py-2">无UA信息</div>'
             }
+          </div>
+          
+          <!-- ========== 操作按钮组 ========== -->
+          <!-- 包含三个按钮：编辑、删除、查看详情 -->
+          <!-- 使用flex布局，确保按钮在移动端有足够的触摸区域（min-height: 44px） -->
+          <!-- 参考PC端 manage-school-accounts-modal 的实现方式 -->
+          <div class="flex flex-col gap-2 pt-3 border-t border-slate-100">
+            <!-- 编辑按钮：打开编辑模态框，允许修改密码和UA -->
+            <!-- 使用data属性存储JSON数据，避免onclick中的转义问题 -->
+            <button 
+              class="w-full py-2.5 px-4 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              data-account='${escapeHtml(JSON.stringify({authUsername: username, schoolUsername: schoolUsername, password: password, ua: ua}))}'
+              onclick="(function(btn) { const data = JSON.parse(btn.getAttribute('data-account')); editSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); })(this)"
+              title="编辑此账户的密码和UA">
+              <!-- 编辑图标 -->
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+              </svg>
+              编辑账户
+            </button>
+            
+            <!-- 查看详情按钮：显示该学校账号的备份详情和欠费信息 -->
+            <!-- 调用 View_details_of_users_with_outstanding_payments 函数 -->
+            <!-- 该函数会显示一个包含详细信息的弹窗（学号、姓名、欠费次数等） -->
+            <button 
+              class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(schoolUsername)}')"
+              title="查看此账户的详细信息（备份数据、欠费次数等）">
+              <!-- 眼睛图标 -->
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+              查看详情
+            </button>
+            
+            <!-- 删除按钮：确认后删除账户 -->
+            <!-- 使用红色背景，表示危险操作 -->
+            <!-- 删除操作会触发二次确认对话框 -->
+            <button 
+              class="w-full py-2.5 px-4 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 active:bg-red-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              data-auth-username='${escapeHtml(username)}'
+              data-school-username='${escapeHtml(schoolUsername)}'
+              onclick="(function(btn) { deleteSchoolAccount(btn.getAttribute('data-auth-username'), btn.getAttribute('data-school-username')); })(this)"
+              title="删除此账户（不可恢复）">
+              <!-- 垃圾桶图标 -->
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+              </svg>
+              删除账户
+            </button>
           </div>
         </div>
       `;
