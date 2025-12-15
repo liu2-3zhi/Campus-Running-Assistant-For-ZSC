@@ -10686,21 +10686,48 @@
 
       <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
         <div class="flex items-center justify-between">
+          <!-- 左侧：显示账户统计信息 -->
           <div>
+            <!-- 账户总数显示区域 -->
             <p class="text-sm text-blue-700">
               <strong>账户总数:</strong>
+              <!-- 使用 font-mono 字体显示数字，确保数字对齐美观 -->
               <span id="school-accounts-count" class="font-mono">0</span>
             </p>
+            <!-- 提示信息，引导用户了解可以进行的操作 -->
             <p class="text-xs text-slate-600 mt-1">
               💡 您可以查看、编辑或删除此用户的学校账户信息
             </p>
           </div>
-          <button onclick="addNewSchoolAccount()" class="btn btn-primary !py-2 !px-4 !text-sm flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-            </svg>
-            新增账户
-          </button>
+          
+          <!-- 右侧：操作按钮组 - 使用flex布局让按钮横向排列 -->
+          <div class="flex items-center gap-2">
+            <!-- 刷新按钮：重新加载学校账户列表 -->
+            <!-- 使用 btn-primary 样式保持与"新增账户"按钮一致的视觉风格 -->
+            <!-- !py-2 !px-4 控制按钮内边距，!text-sm 设置文字大小 -->
+            <!-- flex items-center gap-2 让图标和文字水平居中，且之间有间距 -->
+            <button onclick="refreshSchoolAccounts()" class="btn btn-primary !py-2 !px-4 !text-sm flex items-center gap-2">
+              <!-- SVG刷新图标：循环箭头，表示重新加载的含义 -->
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <!-- 绘制刷新图标的路径：一个顺时针旋转的箭头 -->
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              <!-- 按钮文字标签 -->
+              刷新
+            </button>
+            
+            <!-- 新增账户按钮：打开新增账户表单 -->
+            <!-- 样式与刷新按钮保持一致，确保界面统一美观 -->
+            <button onclick="addNewSchoolAccount()" class="btn btn-primary !py-2 !px-4 !text-sm flex items-center gap-2">
+              <!-- SVG加号图标：表示添加新项目 -->
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <!-- 绘制加号图标的路径：垂直线和水平线的交叉 -->
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+              </svg>
+              <!-- 按钮文字标签 -->
+              新增账户
+            </button>
+          </div>
         </div>
       </div>
 
