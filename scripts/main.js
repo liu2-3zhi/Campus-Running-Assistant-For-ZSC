@@ -928,7 +928,7 @@ function loadAdminPaymentLogs(page) {
   const url = `/api/payment_logs?${params.toString()}`;
 
   // 在控制台输出请求信息，方便开发调试
-  logMessage(`[PC端支付日志] 正在加载第${page}页，筛选条件:`, {
+  logMessage_Info(`[PC端支付日志] 正在加载第${page}页，筛选条件:`, {
     actionType: actionType || '全部',
     startDate: startDate || '无限制',
     endDate: endDate || '无限制'
@@ -1720,7 +1720,7 @@ document.addEventListener('DOMContentLoaded', function loadBeianInfo() {
       // 因为备案信息加载失败不是致命错误，不应影响页面的核心功能
       // 用户仍然可以正常使用网站，只是看不到备案信息
       // console.warn("加载备案信息失败:", error);
-      logMessage_Warn("加载备案信息失败: " + error);
+      logMessage_Warning("加载备案信息失败: " + error);
       
       // 即使加载失败，footer容器仍然可见（作为空白区域）
       // 链接元素保持默认的隐藏状态
@@ -1899,7 +1899,7 @@ function sanitizeSVG(svgString) {
     if (parserError) {
       // 解析失败：记录错误日志并返回空字符串
       // console.warn('[安全警告] SVG解析失败，内容可能格式不正确');
-      logMessage_Warn('[安全警告] SVG解析失败，内容可能格式不正确');
+      logMessage_Warning('[安全警告] SVG解析失败，内容可能格式不正确');
       return '';
     }
     
@@ -2035,7 +2035,7 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
         logMessage_Info('[支付配置] 成功获取启用状态响应：', configData);
       } else {
         // console.warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：', configData.message || '未知错误');
-        logMessage_Warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'));
+        logMessage_Warning('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'));
         if (!DOMContentLoaded_Event){
         showModalAlert('获取启用状态失败，默认显示所有支付方式为启用：' + (configData.message || '未知错误'),"警告");
       }
@@ -2051,7 +2051,7 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
     } catch (configError) {
       // 获取启用状态失败，默认显示所有支付方式为启用
       // console.warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：', configError);
-      logMessage_Warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：' + configError);
+      logMessage_Warning('[支付配置] 获取启用状态时出错，默认显示所有支付方式：' + configError);
       if (!DOMContentLoaded_Event){
       showModalAlert('获取启用状态时出错，默认显示所有支付方式：' + configError,"警告");
       }
@@ -2339,14 +2339,14 @@ async function loadPaymentMethodsConfig(show_Modal_Alert=true,DOMContentLoaded_E
         emptyOption.disabled = true; // 禁用该选项，不可选择
         testPaymentMethodSelect.appendChild(emptyOption);
         // console.warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
-        logMessage_Warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
+        logMessage_Warning('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
       }
       
       console.log('[支付配置] 测试支付方式下拉框更新完成');
     } else {
       // 如果找不到测试支付方式下拉框元素，输出警告日志
       // console.warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
-      logMessage_Warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
+      logMessage_Warning('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
     }
     
   } catch (error) {
@@ -2533,9 +2533,9 @@ async function savePaymentMethodsConfig() {
       // 如果找不到易支付输入框元素，在控制台输出警告
       // 使用 ✗ 符号标记失败操作，并提供详细的调试信息
       // console.warn('[支付配置] ✗ 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
-      logMessage_Warn('[支付配置] 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
+      logMessage_Warning('[支付配置] 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
       // console.warn('[支付配置] 请检查HTML中是否存在此元素');
-      logMessage_Warn('[支付配置] 请检查HTML中是否存在此元素');
+      logMessage_Warning('[支付配置] 请检查HTML中是否存在此元素');
     }
     
     // === 第7步：重新加载配置以确保数据同步 ===
@@ -2983,7 +2983,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
     // console.warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
-    logMessage_Warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
+    logMessage_Warning('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
   }
   
   // === 页面加载时自动加载支付方式配置 ===
@@ -3019,7 +3019,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
     // console.warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
-    logMessage_Warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
+    logMessage_Warning('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
   }
   
   // ========== Tab 4: 绑定"创建测试订单"按钮的点击事件 ==========
@@ -3047,7 +3047,7 @@ document.addEventListener('DOMContentLoaded', function() {
   } else {
     // 如果按钮不存在，输出警告日志
     // console.warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
-    logMessage_Warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
+    logMessage_Warning('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
   }
   
   // ========== Tab 4: 绑定"打开支付链接"按钮的点击事件 ==========
@@ -3075,7 +3075,7 @@ document.addEventListener('DOMContentLoaded', function() {
   } else {
     // 如果按钮不存在，输出警告日志
     // console.warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
-    logMessage_Warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
+    logMessage_Warning('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
   }
   
   // 输出完成日志
@@ -7836,13 +7836,6 @@ async function loadAdminYiPayConfig(show_Modal=true) {
       methodsInput.value = config.enabled_payment_methods || '';
     }
     
-    // 5.5 填充payment_method字段（支付接口类型）
-    const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
-    if (typeSelect) {
-      // 设置下拉框的选中值
-      typeSelect.value = config.payment_method || 'jump';
-    }
-    
     // === 第6步：验证启用的支付方式是否在 payment_methods_config 中定义 ===
     // 这一步是为了确保数据的一致性和完整性
     
@@ -8025,7 +8018,6 @@ const productIdInput = document.getElementById('admin-yipay-product-id_modal');
   // [新增] 获取payment_timeout_minutes输入框（支付超时时间）
   const timeoutInput = document.getElementById('admin-yipay-timeout_modal');
   const methodsInput = document.getElementById('admin-yipay-enabled-methods_modal');
-  const typeSelect = document.getElementById('admin-yipay-payment-method_modal');
   
   // === 第2步：获取并验证输入值 ===
   
@@ -8111,14 +8103,9 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
   return;
 }
 
-
-  // 2.5 获取支付接口类型（必填）
-  const paymentMethod = typeSelect ? typeSelect.value : 'jump';
-  if (!paymentMethod) {
-    showModalAlert('请选择支付接口类型');
-    if (typeSelect) typeSelect.focus();
-    return;
-  }
+  // 2.5 支付接口类型使用默认值（jump）
+  // 由于前端UI已移除该字段的输入框，使用固定默认值
+  // const paymentMethod = 'jump';
   
   // 在控制台输出要提交的配置数据
   console.log('[PC端易支付配置] 准备提交的配置：', {
@@ -8130,7 +8117,7 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
     pubc_key: '***隐藏***', // 在日志中隐藏公钥，保护敏感信息
     payment_timeout_minutes: paymentTimeoutMinutes,
     enabled_payment_methods: enabledMethods,
-    payment_method: paymentMethod
+    // payment_method: paymentMethod
   });
   
   // === 第2.6步：验证启用的支付方式是否在 payment_methods_config 中定义 ===
@@ -8226,7 +8213,7 @@ if (timeoutNum < 10 || timeoutNum > 3600) {
         pubc_key: pubcKey,  // [新增] 发送pubc_key（平台公钥）
         payment_timeout_minutes: paymentTimeoutMinutes,  // [新增] 发送payment_timeout_minutes（支付超时时间）
         enabled_payment_methods: enabledMethods,
-        payment_method: paymentMethod
+        // payment_method: paymentMethod
       })
     });
     
@@ -9720,10 +9707,32 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
  * 权限要求：管理员权限
  * 
  * 表单元素：
- * - watermark-default-value_modal：显示系统默认值
+ * - watermark-default-value_modal：系统默认值开关（checkbox）
+ * - watermark-default-label_modal：显示默认值标签（允许/禁止）
  * - watermark-user-count_modal：显示用户总数
  * - watermark-users-list_modal：用户权限列表容器
  */
+
+/**
+ * 更新默认水印显示标签
+ * 
+ * 功能：根据默认值开关的状态更新标签文本
+ * - 开关打开（checked=true）：显示"允许"
+ * - 开关关闭（checked=false）：显示"禁止"
+ */
+function updateWatermarkDefaultLabel() {
+  // 获取默认值开关元素（checkbox）
+  const defaultCheckbox = document.getElementById('watermark-default-value_modal');
+  // 获取默认值标签元素
+  const defaultLabel = document.getElementById('watermark-default-label_modal');
+  
+  // 如果两个元素都存在，则更新标签文本
+  if (defaultCheckbox && defaultLabel) {
+    // 根据checkbox的checked状态设置标签文本
+    defaultLabel.textContent = defaultCheckbox.checked ? '允许' : '禁止';
+  }
+}
+
 async function loadWatermarkControlConfig() {
   try {
     // ========== 步骤1: 显示加载状态 ==========
@@ -9763,22 +9772,16 @@ async function loadWatermarkControlConfig() {
     const usersConfig = config.users;  // 用户个性化配置字典
     const allUsers = data.all_users;  // 系统中所有用户的列表
 
-    // ========== 步骤6: 更新默认值显示 ==========
-    // 找到显示默认值的元素
-    const defaultValueElement = document.getElementById('watermark-default-value_modal');
-    if (defaultValueElement) {
-      // 根据布尔值显示"允许"或"禁止"
-      defaultValueElement.textContent = defaultValue ? '允许去水印' : '禁止去水印';
-      
-      // 根据值的不同设置不同的样式（颜色）
-      if (defaultValue) {
-        // 允许：绿色
-        defaultValueElement.className = 'text-sm font-bold text-green-600';
-      } else {
-        // 禁止：红色
-        defaultValueElement.className = 'text-sm font-bold text-red-600';
-      }
+    // ========== 步骤6: 更新默认值开关 ==========
+    // 找到默认值开关元素（checkbox）
+    const defaultCheckbox = document.getElementById('watermark-default-value_modal');
+    if (defaultCheckbox) {
+      // 设置开关状态（checked表示允许去水印）
+      defaultCheckbox.checked = defaultValue;
     }
+    
+    // 更新默认值标签显示
+    updateWatermarkDefaultLabel();
 
     // ========== 步骤7: 更新用户数量显示 ==========
     const userCountElement = document.getElementById('watermark-user-count_modal');
@@ -9853,18 +9856,20 @@ async function loadWatermarkControlConfig() {
  * 保存水印控制配置（PC端）
  * 
  * 功能说明：
- * 收集PC端管理面板中所有用户的权限设置，并发送到服务器保存。
+ * 收集PC端管理面板中的默认值设置和所有用户的权限设置，并发送到服务器保存。
  * 
  * 数据收集：
- * 遍历所有标记为 watermark-user-checkbox 的复选框，
- * 读取每个复选框的 data-username 属性和 checked 状态，
- * 构建用户配置字典。
+ * 1. 读取默认值开关（watermark-default-value_modal）的checked状态
+ * 2. 遍历所有标记为 watermark-user-checkbox 的复选框，
+ *    读取每个复选框的 data-username 属性和 checked 状态，
+ *    构建用户配置字典。
  * 
  * API端点：PUT /api/amap/watermark_control/config
  * 权限要求：管理员权限 + modify_config 权限
  * 
  * 请求体格式：
  * {
+ *   "default": true/false,  // 系统默认值
  *   "users": {
  *     "username1": true,
  *     "username2": false,
@@ -9874,9 +9879,14 @@ async function loadWatermarkControlConfig() {
  */
 async function saveWatermarkControlConfig() {
   try {
-    // ========== 步骤1: 收集用户配置数据 ==========
-    console.log('[水印控制] 正在收集用户配置数据（PC端）...');
+    // ========== 步骤1: 收集默认值配置 ==========
+    console.log('[水印控制] 正在收集配置数据（PC端）...');
     
+    // 获取默认值开关的状态
+    const defaultCheckbox = document.getElementById('watermark-default-value_modal');
+    const defaultValue = defaultCheckbox ? defaultCheckbox.checked : true;
+    
+    // ========== 步骤2: 收集用户配置数据 ==========
     // 创建一个空对象，用于存储所有用户的配置
     const usersConfig = {};
     
@@ -9895,15 +9905,16 @@ async function saveWatermarkControlConfig() {
       usersConfig[username] = allowed;
     });
 
-    // ========== 步骤2: 构建请求体 ==========
+    // ========== 步骤3: 构建请求体 ==========
     const requestBody = {
+      default: defaultValue,  // 添加默认值字段
       users: usersConfig
     };
     
     // 记录要发送的数据（便于调试）
     console.log('[水印控制] 准备保存配置（PC端）:', requestBody);
 
-    // ========== 步骤3: 发送HTTP请求保存配置 ==========
+    // ========== 步骤4: 发送HTTP请求保存配置 ==========
     const response = await fetch('/api/amap/watermark_control/config', {
       method: 'PUT',  // HTTP方法：PUT（更新数据）
       headers: {
@@ -9913,18 +9924,18 @@ async function saveWatermarkControlConfig() {
       body: JSON.stringify(requestBody)  // 将请求体转换为JSON字符串
     });
 
-    // ========== 步骤4: 解析响应数据 ==========
+    // ========== 步骤5: 解析响应数据 ==========
     const data = await response.json();
     
-    // ========== 步骤5: 检查响应状态 ==========
+    // ========== 步骤6: 检查响应状态 ==========
     if (!data.success) {
       throw new Error(data.message || '保存水印控制配置失败');
     }
 
-    // ========== 步骤6: 显示成功提示 ==========
+    // ========== 步骤7: 显示成功提示 ==========
     showModalAlert('水印控制配置已成功保存！');
 
-    // ========== 步骤7: 记录成功日志 ==========
+    // ========== 步骤8: 记录成功日志 ==========
     console.log('[水印控制] 配置保存成功（PC端）');
 
   } catch (error) {
@@ -9932,6 +9943,325 @@ async function saveWatermarkControlConfig() {
     console.error('[水印控制] 保存配置失败（PC端）:', error);
     showModalAlert('保存水印控制配置失败：' + error.message);
   }
+}
+
+/**
+ * 打开添加水印控制用户的模态框
+ * 
+ * 功能说明：
+ * 显示一个模态框，列出所有尚未添加到水印控制配置的用户，
+ * 允许管理员选择用户添加到配置列表中。
+ * 
+ * 数据来源：
+ * 从 /api/amap/watermark_control/config 获取所有用户列表和当前配置，
+ * 然后筛选出未在配置中的用户。
+ * 
+ * 操作流程：
+ * 1. 获取当前配置（已有的用户列表）
+ * 2. 获取所有系统用户
+ * 3. 筛选出未配置的用户
+ * 4. 显示可添加的用户列表
+ * 5. 管理员点击"添加"按钮后，将用户添加到配置中（默认允许去水印）
+ */
+async function openAddWatermarkUserModal() {
+  try {
+    // [步骤1] 显示模态框
+    // 获取模态框元素
+    const modal = document.getElementById('add-watermark-user-modal');
+    if (!modal) {
+      // 如果模态框不存在，记录错误并退出
+      console.error('[水印控制] 无法找到添加用户模态框元素');
+      return;
+    }
+    
+    // 移除hidden类，使模态框可见
+    modal.classList.remove('hidden');
+    
+    // [步骤2] 显示加载状态
+    console.log('[水印控制] 正在加载可添加的用户列表...');
+    
+    // 获取用户列表容器元素
+    const listContainer = document.getElementById('available-watermark-users-list');
+    if (!listContainer) {
+      console.error('[水印控制] 无法找到用户列表容器元素');
+      return;
+    }
+    
+    // 显示"加载中..."提示
+    listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">加载中...</p>';
+    
+    // [步骤3] 发送HTTP请求获取配置和用户列表
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID  // 传递会话ID用于身份验证
+      }
+    });
+    
+    // [步骤4] 解析响应数据
+    const data = await response.json();
+    
+    // 检查请求是否成功
+    if (!data.success) {
+      throw new Error(data.message || '获取用户列表失败');
+    }
+    
+    // [步骤5] 提取数据
+    // 获取当前已配置的用户列表
+    const configuredUsers = data.config.users || {};
+    
+    // 获取所有系统用户列表
+    const allUsers = data.all_users || [];
+    
+    // [步骤6] 筛选出未配置的用户
+    // 只显示那些尚未在水印控制配置中的用户
+    const availableUsers = allUsers.filter(username => !(username in configuredUsers));
+    
+    // [步骤7] 生成用户列表HTML
+    if (availableUsers.length === 0) {
+      // 如果没有可添加的用户，显示提示信息
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">所有用户都已添加到配置中</p>';
+    } else {
+      // 清空容器，准备添加用户项
+      listContainer.innerHTML = '';
+      
+      // 为每个可添加的用户创建一个列表项
+      availableUsers.forEach(username => {
+        // 创建用户项容器
+        const userItem = document.createElement('div');
+        // 添加CSS类：白色背景、圆角、边框、flex布局
+        userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors';
+        // 为搜索功能添加data属性
+        userItem.setAttribute('data-username', username.toLowerCase());
+        
+        // 构建HTML内容：用户名 + 添加按钮
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-sm font-medium text-slate-700">${username}</span>
+          </div>
+          <button onclick="addWatermarkUser('${username}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
+            <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            添加
+          </button>
+        `;
+        
+        // 将用户项添加到列表容器中
+        listContainer.appendChild(userItem);
+      });
+    }
+    
+    // [步骤8] 记录成功日志
+    console.log(`[水印控制] 可添加用户列表加载完成，共 ${availableUsers.length} 个用户`);
+    
+  } catch (error) {
+    // [错误处理] 捕获所有可能的错误
+    console.error('[水印控制] 加载可添加用户列表失败:', error);
+    
+    // 显示错误提示
+    showModalAlert('加载用户列表失败：' + error.message);
+    
+    // 在列表容器中显示错误信息
+    const listContainer = document.getElementById('available-watermark-users-list');
+    if (listContainer) {
+      listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-sm">加载失败：${error.message}</p>`;
+    }
+  }
+}
+
+/**
+ * 关闭添加水印控制用户的模态框
+ * 
+ * 功能说明：
+ * 隐藏添加用户的模态框，并清空搜索框的内容。
+ */
+function closeAddWatermarkUserModal() {
+  // [步骤1] 获取模态框元素
+  const modal = document.getElementById('add-watermark-user-modal');
+  if (!modal) {
+    return;
+  }
+  
+  // [步骤2] 添加hidden类，隐藏模态框
+  modal.classList.add('hidden');
+  
+  // [步骤3] 清空搜索框内容
+  const searchInput = document.getElementById('watermark-user-search');
+  if (searchInput) {
+    searchInput.value = '';
+  }
+  
+  // [步骤4] 记录日志
+  console.log('[水印控制] 已关闭添加用户模态框');
+}
+
+/**
+ * 添加用户到水印控制配置
+ * 
+ * 功能说明：
+ * 将指定的用户添加到水印控制配置中，默认权限为"允许去水印"（true）。
+ * 添加完成后，关闭模态框并重新加载配置，以在主面板中显示新添加的用户。
+ * 
+ * 参数:
+ * @param {string} username - 要添加的用户名
+ * 
+ * 操作流程：
+ * 1. 获取当前配置
+ * 2. 将新用户添加到配置中（设为true）
+ * 3. 保存配置到服务器
+ * 4. 关闭模态框
+ * 5. 重新加载主面板配置
+ */
+async function addWatermarkUser(username) {
+  try {
+    // [步骤1] 参数验证
+    if (!username) {
+      throw new Error('用户名不能为空');
+    }
+    
+    // [步骤2] 记录操作日志
+    console.log(`[水印控制] 正在添加用户 "${username}" 到配置...`);
+    
+    // [步骤3] 获取当前配置
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      }
+    });
+    
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.message || '获取当前配置失败');
+    }
+    
+    // [步骤4] 构建新的配置
+    // 获取当前的用户配置
+    const currentUsers = data.config.users || {};
+    
+    // 添加新用户，默认权限为true（允许去水印）
+    currentUsers[username] = true;
+    
+    // 构建完整的配置对象
+    const newConfig = {
+      default: data.config.default,  // 保持默认值不变
+      users: currentUsers  // 使用更新后的用户配置
+    };
+    
+    // [步骤5] 保存新配置到服务器
+    const saveResponse = await fetch('/api/amap/watermark_control/config', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      },
+      body: JSON.stringify(newConfig)
+    });
+    
+    const saveData = await saveResponse.json();
+    if (!saveData.success) {
+      throw new Error(saveData.message || '保存配置失败');
+    }
+    
+    // [步骤6] 关闭模态框
+    closeAddWatermarkUserModal();
+    
+    // [步骤7] 重新加载主面板配置，以显示新添加的用户
+    await loadWatermarkControlConfig();
+    
+    // [步骤8] 显示成功提示
+    showModalAlert(`用户 "${username}" 已成功添加到水印控制配置！`);
+    
+    // [步骤9] 记录成功日志
+    console.log(`[水印控制] 用户 "${username}" 添加成功`);
+    
+  } catch (error) {
+    // [错误处理] 捕获所有可能的错误
+    console.error(`[水印控制] 添加用户 "${username}" 失败:`, error);
+    
+    // 显示错误提示
+    showModalAlert(`添加用户失败：${error.message}`);
+  }
+}
+
+/**
+ * 搜索过滤可添加的用户
+ * 
+ * 功能说明：
+ * 根据搜索框中输入的关键词，过滤用户列表，只显示匹配的用户。
+ * 匹配规则：用户名包含关键词（不区分大小写）。
+ * 
+ * 操作流程：
+ * 1. 获取搜索框中的关键词
+ * 2. 转换为小写（不区分大小写）
+ * 3. 遍历所有用户项
+ * 4. 检查用户名是否包含关键词
+ * 5. 显示或隐藏用户项
+ */
+function filterWatermarkUsers() {
+  // [步骤1] 获取搜索框元素和关键词
+  const searchInput = document.getElementById('watermark-user-search');
+  if (!searchInput) {
+    return;
+  }
+  
+  // 获取搜索关键词，并转换为小写
+  const keyword = searchInput.value.toLowerCase().trim();
+  
+  // [步骤2] 获取所有用户项元素
+  const listContainer = document.getElementById('available-watermark-users-list');
+  if (!listContainer) {
+    return;
+  }
+  
+  // 获取所有包含data-username属性的用户项
+  const userItems = listContainer.querySelectorAll('[data-username]');
+  
+  // [步骤3] 遍历所有用户项，显示或隐藏
+  let visibleCount = 0;  // 统计可见的用户数量
+  
+  userItems.forEach(item => {
+    // 获取用户名（已经是小写）
+    const username = item.getAttribute('data-username');
+    
+    // 检查用户名是否包含关键词
+    if (!keyword || username.includes(keyword)) {
+      // 包含关键词或搜索框为空，显示此用户项
+      item.style.display = '';
+      visibleCount++;
+    } else {
+      // 不包含关键词，隐藏此用户项
+      item.style.display = 'none';
+    }
+  });
+  
+  // [步骤4] 如果没有匹配的用户，显示提示信息
+  // 检查是否有"无结果"提示元素
+  let noResultsMsg = listContainer.querySelector('.no-results-message');
+  
+  if (visibleCount === 0 && userItems.length > 0) {
+    // 没有匹配的用户，显示提示
+    if (!noResultsMsg) {
+      // 如果提示元素不存在，创建它
+      noResultsMsg = document.createElement('p');
+      noResultsMsg.className = 'no-results-message text-slate-400 text-center py-10 text-sm';
+      noResultsMsg.textContent = `未找到匹配 "${keyword}" 的用户`;
+      listContainer.appendChild(noResultsMsg);
+    } else {
+      // 如果提示元素已存在，更新文本
+      noResultsMsg.textContent = `未找到匹配 "${keyword}" 的用户`;
+      noResultsMsg.style.display = '';
+    }
+  } else if (noResultsMsg) {
+    // 有匹配的用户，隐藏提示
+    noResultsMsg.style.display = 'none';
+  }
+  
+  // [步骤5] 记录调试日志
+  console.log(`[水印控制] 搜索关键词: "${keyword}", 匹配用户数: ${visibleCount}`);
 }
 
 /**
@@ -15573,6 +15903,8 @@ function refreshMobileSessionPicker() {
         const paymentSettingsTab = $("admin-tab-payment-settings_modal");
         // [新增] 获取价格设置标签元素
         const pricingTab = $("admin-tab-pricing_modal");
+        // [新增] 获取水印控制标签元素
+        const watermarkControlTab = $("admin-tab-watermark-control_modal");
 
         const usersPanel = $("admin-users-panel_modal");
         const groupsPanel = $("admin-groups-panel_modal");
@@ -15598,6 +15930,8 @@ function refreshMobileSessionPicker() {
         const paymentSettingsPanel = $("admin-payment-settings-panel_modal");
         // [新增] 获取价格设置面板元素
         const pricingPanel = $("admin-pricing-panel_modal");
+        // [新增] 获取水印控制面板元素
+        const watermarkControlPanel = $("admin-watermark-control-panel_modal");
 
         if (!sessionsTab || !sessionsPanel) {
           logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
@@ -15623,6 +15957,7 @@ function refreshMobileSessionPicker() {
           paymentLogsTab, // [新增] 添加支付日志 Tab
           paymentSettingsTab, // [新增] 添加支付设置 Tab
           pricingTab,    // [新增] 添加价格设置 Tab
+          watermarkControlTab, // [新增] 添加水印控制 Tab
         ]
           .filter((t) => t)
           .forEach((t) => {
@@ -15649,7 +15984,8 @@ function refreshMobileSessionPicker() {
           overduePanel,   // [新增] 添加欠费查询 Panel
           paymentLogsPanel, // [新增] 添加支付日志 Panel
           paymentSettingsPanel, // [新增] 添加支付设置 Panel
-          pricingPanel    // [新增] 添加价格设置 Panel
+          pricingPanel,   // [新增] 添加价格设置 Panel
+          watermarkControlPanel // [新增] 添加水印控制 Panel
         ]
           .filter((p) => p)
           .forEach((p) => {
@@ -16046,6 +16382,52 @@ function refreshMobileSessionPicker() {
               pricingPanel: !!pricingPanel,   // 面板元素是否存在
               missingElement: !pricingTab ? "admin-tab-pricing_modal" : 
                               !pricingPanel ? "admin-pricing-panel_modal" : "未知"
+            });
+          }
+        } else if (tab === "watermark-control") {
+          // [标签切换] 处理水印控制标签的切换逻辑
+          // 当用户点击"水印控制"标签时，需要显示高德地图去水印控制界面
+          console.log("[标签切换] 正在切换到水印控制标签...");
+          
+          // [获取元素] 获取水印控制标签和面板的DOM元素
+          const watermarkControlTab = $("admin-tab-watermark-control_modal");
+          const watermarkControlPanel = $("admin-watermark-control-panel_modal");
+          
+          // [元素验证] 检查标签和面板元素是否存在
+          if (watermarkControlTab && watermarkControlPanel) {
+            // [激活标签] 为水印控制标签添加激活状态的CSS类
+            // text-sky-600: 设置文字颜色为天蓝色，表示当前标签被选中
+            // border-sky-600: 设置边框颜色为天蓝色，增强选中效果
+            watermarkControlTab.classList.add("text-sky-600", "border-sky-600");
+            
+            // [移除未激活样式] 移除未激活状态的CSS类
+            // text-slate-400: 移除灰色文字（未选中状态）
+            // border-transparent: 移除透明边框（未选中状态）
+            watermarkControlTab.classList.remove("text-slate-400", "border-transparent");
+            
+            // [显示面板] 移除hidden类，使水印控制面板可见
+            watermarkControlPanel.classList.remove("hidden");
+            
+            // [加载数据] 调用loadWatermarkControlConfig函数加载水印控制配置
+            // 该函数会从后端获取水印控制配置，包括：
+            // - 系统默认值（是否允许去水印）
+            // - 各个用户的个性化配置（用户级别的权限控制）
+            console.log("[数据加载] 开始加载水印控制配置...");
+            loadWatermarkControlConfig();
+            
+            // [停止自动刷新] 停止健康状态面板的自动刷新
+            // 因为已经切换到了水印控制面板，不再需要刷新健康状态
+            stopHealthAutoRefresh();
+            loadWatermarkControlConfig();
+            
+            console.log("[标签切换] 水印控制面板切换完成");
+          } else {
+            // [错误处理] 如果标签或面板元素不存在，记录错误信息
+            console.error("[标签切换错误] 无法切换到水印控制标签，元素缺失:", {
+              watermarkControlTab: !!watermarkControlTab,       // 标签元素是否存在
+              watermarkControlPanel: !!watermarkControlPanel,   // 面板元素是否存在
+              missingElement: !watermarkControlTab ? "admin-tab-watermark-control_modal" : 
+                              !watermarkControlPanel ? "admin-watermark-control-panel_modal" : "未知"
             });
           }
         } else {
@@ -28960,7 +29342,7 @@ function refreshMobileSessionPicker() {
                 "km > 50km），请重新录制"
             );
             discardBlackDraftPolyline();
-            logMessage_Warn(
+            logMessage_Warning(
               `路径录制失败：距离${(draftTotalDist / 1000).toFixed(
                 2
               )}km超过50km限制`
@@ -34819,7 +35201,31 @@ async function loadSystemConfig() {
       type = "text",
       help = ""
     ) => {
-      const value = config[section]?.[key];
+      // [修复问题28] 获取原始配置值
+      const rawValue = config[section]?.[key];
+      
+      // [修复问题28] 标准化布尔值
+      // 如果类型是boolean，将各种可能的值（字符串"true"/"false"、布尔值、数字等）统一转换为布尔类型
+      let value = rawValue;
+      if (type === "boolean") {
+        // 如果已经是布尔类型，直接使用
+        if (typeof rawValue === "boolean") {
+          value = rawValue;
+        }
+        // 如果是字符串"true"（不区分大小写），转换为true
+        else if (typeof rawValue === "string") {
+          value = rawValue.toLowerCase().trim() === "true";
+        }
+        // 如果是数字1，转换为true；数字0转换为false
+        else if (typeof rawValue === "number") {
+          value = rawValue === 1;
+        }
+        // 其他情况，使用false作为默认值
+        else {
+          value = false;
+        }
+      }
+      
       let inputHtml = "";
       if (type === "boolean") {
         inputHtml = `
@@ -43790,12 +44196,7 @@ async function mobileLoadCaptchaSettings() {
   try {
     console.log("[移动端验证码] 开始加载验证码配置...");
 
-    // 优先从缓存读取
-    if (window.initialData && window.initialData.captcha_settings) {
-      const settings = window.initialData.captcha_settings;
-      mobileUpdateCaptchaForm(settings);
-      console.log("[移动端验证码] 已从缓存加载配置:", settings);
-    } else {
+
       // 从API获取配置，使用统一的初始化函数
       const response = await loadInitialData();
       if (response && response.captcha_settings) {
@@ -43812,7 +44213,7 @@ async function mobileLoadCaptchaSettings() {
           noise_level: 0.08,
         });
       }
-    }
+    
   } catch (error) {
     console.error("[移动端验证码] 加载配置失败:", error);
     showModalAlert("加载验证码配置失败", "错误");
@@ -49178,7 +49579,3 @@ document.addEventListener('DOMContentLoaded', function() {
   }, 100); // 延迟100毫秒执行
 });
 
-// ============================================================================
-// 订单号自动获取金额并填充退款金额功能 - 结束
-// ============================================================================
-// ============================================================================

@@ -1409,6 +1409,21 @@ def setup_logging():
     error_file_handler.setFormatter(error_no_color_formatter)
 
     logger.addHandler(error_file_handler)
+
+    # [核心修复] 将所有日志处理器的锁替换为原生锁
+    # 解决 ChromeBrowserPool(原生线程) 调用 logging 时因持有 Eventlet 锁导致的崩溃
+    try:
+        from eventlet import patcher
+        # 获取未被 monkey_patch 的原生 threading 模块
+        native_threading = patcher.original("threading")
+        # 遍历所有已添加的 Handler (FileHandler, StreamHandler等)
+        for handler in logger.handlers:
+            # 强制替换为原生可重入锁
+            handler.lock = native_threading.RLock()
+    except Exception as e:
+        # 即使失败也不应阻止程序启动，只是可能会有潜在崩溃风险
+        print(f"[日志系统] 警告: 替换日志锁失败: {e}")
+
     global _log_buffer
     if _log_buffer:
         for level_str, msg in _log_buffer:
@@ -3182,12 +3197,14 @@ def _get_default_amap_watermark_config():
         默认配置包括：
         - _comment: 配置文件说明，帮助用户理解文件用途
         - _description: 详细描述配置的作用
+        - default: 默认的水印显示设置（true表示允许去水印，false表示不允许）
         - users: 用户级别的个性化配置字典，默认为空
         
     配置结构:
         {
             "_comment": "配置说明",
             "_description": "详细描述",
+            "default": true/false,  # 默认水印显示设置
             "users": {
                 "username": true/false  # 用户名: 是否允许去水印
             }
@@ -3195,9 +3212,13 @@ def _get_default_amap_watermark_config():
     """
     # 返回默认配置结构
     # 使用有序字典确保注释字段显示在最前面，便于阅读
+    # 从config.ini读取初始默认值
+    initial_default = _get_watermark_removal_default()
+    
     return {
         "_comment": "高德地图去水印个性化控制配置",
         "_description": "为每个用户配置是否允许去除高德地图水印，未配置的用户使用默认值",
+        "default": initial_default,  # 默认水印显示设置
         "users": {}  # 初始为空字典，后续可按需添加用户配置
     }
 
@@ -3409,6 +3430,68 @@ def _get_watermark_removal_default():
         logging.error(f"[水印控制] 读取默认配置失败: {str(e)}，使用默认值 True")
         # 返回默认值 True，确保系统可以正常运行
         return True
+
+
+def _normalize_watermark_default_value(value):
+    """
+    标准化水印控制的默认值，将各种类型的值统一转换为布尔类型
+    
+    参数:
+        value: 任意类型的值，可能来自JSON配置文件
+        
+    返回值:
+        bool: 转换后的布尔值
+        
+    说明:
+        此函数用于处理配置文件中default字段的各种可能情况：
+        - 如果是布尔值，直接返回
+        - 如果是字符串"true"（不区分大小写），返回True
+        - 如果是字符串"false"（不区分大小写），返回False
+        - 如果是数字1，返回True
+        - 如果是数字0，返回False
+        - 如果是None或其他无效值，返回None（调用方需要进一步处理）
+        
+    用途:
+        - 兼容手动编辑配置文件时可能产生的格式错误
+        - 确保即使配置值类型不正确，也能尝试转换而不是直接失败
+    """
+    # [类型检查] 如果已经是布尔类型，直接返回
+    if isinstance(value, bool):
+        return value
+    
+    # [字符串转换] 如果是字符串类型，尝试转换为布尔值
+    if isinstance(value, str):
+        # 将字符串转换为小写，方便比较
+        value_lower = value.lower().strip()
+        
+        # 检查是否为"true"（表示允许去水印）
+        if value_lower == "true":
+            return True
+        
+        # 检查是否为"false"（表示不允许去水印）
+        elif value_lower == "false":
+            return False
+        
+        # 字符串既不是"true"也不是"false"，无法转换
+        # 返回None，让调用方决定如何处理
+        else:
+            return None
+    
+    # [数字转换] 如果是数字类型（int或float），尝试转换为布尔值
+    if isinstance(value, (int, float)):
+        # 1表示True（允许去水印）
+        if value == 1:
+            return True
+        # 0表示False（不允许去水印）
+        elif value == 0:
+            return False
+        # 其他数字无法转换，返回None
+        else:
+            return None
+    
+    # [其他类型] 对于None或其他无法识别的类型，返回None
+    # 调用方应该检查返回值是否为None，并使用备用方案（如从config.ini读取）
+    return None
 
 
 def _create_permissions_json(force=False):
@@ -4353,6 +4436,46 @@ class AuthSystem:
             print(f"  请检查文件是否存在、是否有读取权限以及格式是否基本正确。")
             sys.exit(1)
 
+    def reload_config(self):
+        """
+        重新加载配置文件
+        
+        功能说明：
+        当配置文件被修改后，调用此方法重新加载配置，确保内存中的配置与文件一致。
+        这样可以避免使用缓存的旧配置值。
+        
+        使用场景：
+        - 管理员通过管理面板修改了 config.ini 文件
+        - 外部脚本修改了配置文件
+        - 需要立即应用新配置而不重启服务器
+        
+        线程安全：
+        使用锁来确保在多线程环境下安全地重新加载配置
+        
+        返回值：
+        无返回值。重新加载后，self.config 会指向新的配置对象
+        """
+        # [步骤1] 获取锁，确保线程安全
+        # 避免在重新加载配置时，其他线程正在读取配置，导致数据不一致
+        with self.lock:
+            try:
+                # [步骤2] 记录日志
+                logging.info("[配置重载] 开始重新加载 config.ini 配置文件...")
+                
+                # [步骤3] 调用 _load_config 方法重新加载配置
+                # 这会创建一个新的 ConfigParser 对象并读取最新的文件内容
+                self.config = self._load_config()
+                
+                # [步骤4] 记录成功日志
+                logging.info("[配置重载] 配置文件重新加载完成，当前配置节: {}".format(list(self.config.sections())))
+                
+            except Exception as e:
+                # [错误处理] 如果重新加载失败，记录错误日志
+                # 保持旧的配置对象不变，确保系统仍能使用之前的配置运行
+                logging.error(f"[配置重载] 重新加载配置文件失败: {str(e)}", exc_info=True)
+                # 不抛出异常，让系统继续运行
+                # 旧配置仍然有效，虽然不是最新的，但总比崩溃好
+
     def find_user_by_phone(self, phone):
         """
         遍历所有系统账号，查找绑定了特定手机号的用户。
@@ -4833,34 +4956,6 @@ class AuthSystem:
                 "theme": "light",
                 "phone": phone,
                 "nickname": nickname or auth_username,
-                # ========== 可用执行次数（available_runs）字段初始化 ==========
-                # 
-                # 功能说明：
-                # 记录用户还可以执行多少次任务（例如：校园跑、任务等）
-                # 
-                # 数据来源：
-                # 从配置文件 config.ini 的 [Payment_Settings] 节读取 default_available_runs 参数
-                # 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
-                # 
-                # 默认值：
-                # 如果配置文件中未设置该参数，则使用 fallback 值 10（次）
-                # 
-                # 特殊值说明：
-                # - -1: 表示无限次数（VIP用户或特殊权限用户）
-                # - 0: 表示无免费次数（必须付费才能使用）
-                # - 正整数: 表示具体的可用次数
-                # 
-                # 管理员配置：
-                # 管理员可以在 config.ini 文件中修改 default_available_runs 的值
-                # 修改后，所有新注册的用户都将获得新的默认值
-                # 注意：已注册用户的 available_runs 不会自动更新
-                # 
-                # 一致性保证：
-                # 此实现确保通过以下方式创建的用户都使用相同的默认值：
-                # 1. PC端管理员创建用户（admin-create-user_modal + newUserConfirm）
-                # 2. 移动端管理员创建用户（mobile-new-user-confirm-btn）
-                # 3. 普通用户自助注册（/auth/register）
-                # 所有创建用户的代码路径都调用此 register_user 函数，因此 available_runs 一致
                 "available_runs": self.config.getint(
                     "Payment_Settings", "default_available_runs", fallback=10
                 ),
@@ -4876,7 +4971,7 @@ class AuthSystem:
             self._save_permissions()
 
             logging.info(
-                f"新用户注册: {auth_username} (组: {group}, 手机: {phone}, 昵称: {nickname})"
+                f"新用户注册: {auth_username} (组: {group}, 手机: {phone}, 昵称: {nickname}，头像: {avatar_url}），可用运行次数: {user_data['available_runs']}"
             )
             print(f"[用户注册] ✓ 用户注册成功: {auth_username} (组: {group})")
             return {"success": True, "message": "注册成功"}
@@ -21339,14 +21434,17 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"解析school_account删除请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400
+
+        # [修正] 获取当前用户的权限组，定义 auth_group 变量
+        auth_group = auth_system.get_user_group(current_auth_username)
+
         is_admin = auth_group in ["admin", "super_admin"]
         if not is_admin and auth_username != current_auth_username:
             logging.warning(
                 f"用户 {current_auth_username} 试图删除 {auth_username} 的账户 {school_username}，权限不足"
             )
             return (
-                jsonify({"success": False, "message": "权限不足：只能删除自己的账户"}),
-                403,
+                jsonify({"success": False, "message": "权限不足：只能删除自己的账户"}), 403,
             )
         # ========== 4. 加载现有账户数据 ==========
         try:
@@ -23732,8 +23830,7 @@ def start_web_server(args_param):
                         config,
                         "Guest",
                         "allow_guest_login",
-                        type_func=config.getboolean,
-                        fallback=default_config.getboolean(
+                        fallback=default_config.get(
                             "Guest", "allow_guest_login", fallback=True
                         ),
                     )
@@ -23743,8 +23840,7 @@ def start_web_server(args_param):
                         config,
                         "System",
                         "session_expiry_days",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "System", "session_expiry_days", fallback=7
                         ),
                     ),
@@ -23776,8 +23872,7 @@ def start_web_server(args_param):
                         config,
                         "System",
                         "session_monitor_check_interval",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "System", "session_monitor_check_interval", fallback=60
                         ),
                     ),
@@ -23785,8 +23880,7 @@ def start_web_server(args_param):
                         config,
                         "System",
                         "session_inactivity_timeout",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "System", "session_inactivity_timeout", fallback=300
                         ),
                     ),
@@ -23796,8 +23890,7 @@ def start_web_server(args_param):
                         config,
                         "Logging",
                         "log_rotation_size_mb",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "Logging", "log_rotation_size_mb", fallback=10
                         ),
                     ),
@@ -23805,8 +23898,7 @@ def start_web_server(args_param):
                         config,
                         "Logging",
                         "archive_max_size_mb",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "Logging", "archive_max_size_mb", fallback=500
                         ),
                     ),
@@ -23840,8 +23932,7 @@ def start_web_server(args_param):
                         config,
                         "Security",
                         "brute_force_protection",
-                        type_func=config.getboolean,
-                        fallback=default_config.getboolean(
+                        fallback=default_config.get(
                             "Security", "brute_force_protection", fallback=True
                         ),
                     ),
@@ -23849,8 +23940,7 @@ def start_web_server(args_param):
                         config,
                         "Security",
                         "login_log_retention_days",
-                        type_func=config.getint,
-                        fallback=default_config.getint(
+                        fallback=default_config.get(
                             "Security", "login_log_retention_days", fallback=90
                         ),
                     ),
@@ -23911,7 +24001,6 @@ def start_web_server(args_param):
                         config,  # 配置对象
                         "Beian",  # 配置节
                         "show_icp",  # 配置键
-                        type_func=config.getboolean,  # 指定类型转换函数，将字符串转为布尔值
                         # fallback：先尝试从默认配置获取布尔值，如果没有则使用 False
                         fallback=default_config.getboolean(
                             "Beian", "show_icp", fallback=False
@@ -23937,7 +24026,6 @@ def start_web_server(args_param):
                         config,  # 配置对象
                         "Beian",  # 配置节
                         "show_police",  # 配置键
-                        type_func=config.getboolean,  # 类型转换函数，字符串 -> 布尔值
                         # fallback：先尝试从默认配置获取，如果没有则默认为 False（不显示）
                         fallback=default_config.getboolean(
                             "Beian", "show_police", fallback=False
@@ -24011,7 +24099,6 @@ def start_web_server(args_param):
                         config,  # 配置对象
                         "Content_Review",  # 配置节
                         "enable_message_review",  # 配置键
-                        type_func=config.getboolean,  # 类型转换函数，将字符串转为布尔值
                         fallback=False  # 默认为 False（关闭审核），避免未配置API密钥时出错
                     ),
                 },
@@ -24210,6 +24297,24 @@ def start_web_server(args_param):
                                str(review_data["enable_message_review"]).lower())
 
             _write_config_with_comments(config, CONFIG_FILE)
+            
+            # [修复问题29] 重新加载配置，清除内存缓存
+            # 在保存配置文件后，立即重新加载 auth_system 的配置
+            # 这样确保后续读取配置时使用的是最新的值，而不是旧的缓存值
+            # 
+            # 问题背景：
+            # auth_system.config 在初始化时加载一次，之后一直使用缓存
+            # 当管理员修改配置后，register_user 等函数读取的仍是旧值
+            # 例如：修改 default_available_runs 从 10 改为 20，
+            # 但新注册的用户仍然得到 10 次免费次数
+            # 
+            # 解决方案：
+            # 在保存配置后立即调用 reload_config()，重新读取文件
+            # 这样 self.config 就会包含最新的配置值
+            logging.info("[配置保存] 正在重新加载配置以清除缓存...")
+            auth_system.reload_config()
+            logging.info("[配置保存] 配置已重新加载，内存缓存已更新")
+            
             # 使用统一函数获取客户端真实IP（任务2）
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
@@ -28903,32 +29008,85 @@ def start_web_server(args_param):
         is_authenticated = False
         auth_username = None
         
-        # 步骤1: 验证 session ID 是否有效
-        # 检查 session_id 是否为空或为常见的无效值（null、NULL、undefined等）
-        if session_id and session_id.lower() not in ["null", "undefined", "none", ""]:
-            # session_id 看起来是有效的，尝试从会话字典中获取
-            with web_sessions_lock:
-                if session_id in web_sessions:
-                    # 会话存在，获取 API 实例
-                    api_instance = web_sessions[session_id]
-                    # 获取认证状态
-                    is_authenticated = getattr(api_instance, "is_authenticated", False)
-                    # 获取用户名
-                    auth_username = getattr(api_instance, "auth_username", None)
+        try:
+            # 读取去水印控制配置
+            config = _read_amap_watermark_config()
+            
+            # 步骤5: 用户没有个性化设置，使用默认值
+            # 首先尝试从JSON配置文件中读取default字段
+            default_allowed_raw = config.get("default")
+            
+            # [修复] 使用标准化函数尝试将default值转换为布尔类型
+            # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
+            default_allowed = _normalize_watermark_default_value(default_allowed_raw)
+            
+            logging.debug(f"[水印控制] 读取默认值: {default_allowed} (原始值: {default_allowed_raw})")
+            
+        except Exception as e:
+            logging.error(f"[水印控制] 读取配置时发生错误: {str(e)}")
+            default_allowed = False  # 出错时采用保守策略，不允许去水印
+            
+            
+            
+            
+        if session_id and session_id not in ["NULL", "null", "undefined", "none", ""]:
+            logging.debug(f"[水印控制] 收到请求，Session ID: {session_id}")
+        else:
+            logging.debug(f"[水印控制] 收到请求，Session ID 无效或缺失，返回默认值")
+            return jsonify({"allowed": default_allowed})
+            
+            
+        # # 步骤1: 验证 session ID 是否有效
+        # # 检查 session_id 是否为空或为常见的无效值（null、NULL、undefined等）
+        # if session_id and session_id.lower() not in ["null", "undefined", "none", ""]:
+        #     # session_id 看起来是有效的，尝试从会话字典中获取
+        #     with web_sessions_lock:
+        #         if session_id in web_sessions:
+        #             # 会话存在，获取 API 实例
+        #             api_instance = web_sessions[session_id]
+        #             # 获取认证状态
+        #             is_authenticated = getattr(api_instance, "is_authenticated", False)
+        #             # 获取用户名
+        #             auth_username = getattr(api_instance, "auth_username", None)
         
+        if session_id in web_sessions:
+            api_instance = web_sessions[session_id]
+        else:
+            # [修复] 内存中不存在，尝试从持久化文件加载
+            # 这解决了服务器重启后，前端持有旧SessionID导致权限检查失败的问题
+            state = load_session_state(session_id)
+            if state:
+                # 创建新实例并恢复状态
+                api_instance = Api(args)
+                api_instance._web_session_id = session_id
+                # 恢复会话创建时间
+                api_instance._session_created_at = state.get("created_at", time.time())
+                # 恢复数据
+                restore_session_to_api_instance(api_instance, state)
+                # 存入内存，避免重复加载
+                web_sessions[session_id] = api_instance
+                logging.info(f"[水印控制] 已自动恢复会话: {session_id[:8]}...")
+            else:
+                api_instance = None
+        
+        # 如果成功获取了实例 (无论是内存还是磁盘恢复)
+        if api_instance:
+            # 获取认证状态
+            is_authenticated = getattr(api_instance, "is_authenticated", False)
+            # 获取用户名
+            auth_username = getattr(api_instance, "auth_username", None)
+
         # 步骤2: 如果 session 无效或用户未登录，直接返回不允许
         if not is_authenticated or not api_instance or not auth_username:
             # 记录调试日志，便于排查问题
             logging.debug(
-                f"[水印控制] Session无效或未登录，拒绝去水印 - Session ID: {session_id[:8] if session_id else 'None'}..."
+                f"[水印控制] Session无效或未登录，返回默认值: {default_allowed} (用户: {auth_username})"
             )
             # 返回不允许的响应
-            return jsonify({"allowed": False})
+            return jsonify({"allowed": default_allowed})
         
         # 步骤3: 用户已登录，检查权限配置
         try:
-            # 读取去水印控制配置
-            config = _read_amap_watermark_config()
             
             # 获取用户级别的配置字典
             users_config = config.get("users", {})
@@ -28952,9 +29110,12 @@ def start_web_server(args_param):
                         f"[水印控制] 用户 {auth_username} 的配置值类型不正确: {type(user_allowed)}，使用默认值"
                     )
             
-            # 步骤5: 用户没有个性化设置，使用默认值
-            # 从 config.ini 读取默认值
-            default_allowed = _get_watermark_removal_default()
+            # 如果标准化后的值仍然不是布尔类型（即转换失败），则从config.ini读取
+            if not isinstance(default_allowed, bool):
+                logging.warning(
+                    f"[水印控制] JSON配置中default字段无效（值: {default_allowed_raw}），从config.ini读取默认值"
+                )
+                default_allowed = _get_watermark_removal_default()
             
             # 记录日志
             logging.debug(
@@ -29001,8 +29162,20 @@ def start_web_server(args_param):
             # 步骤1: 读取去水印控制配置
             config = _read_amap_watermark_config()
             
-            # 步骤2: 读取默认值（从 config.ini）
-            default_value = _get_watermark_removal_default()
+            # 步骤2: 读取默认值
+            # 首先尝试从JSON配置文件的default字段读取
+            default_value_raw = config.get("default")
+            
+            # [修复] 使用标准化函数尝试将default值转换为布尔类型
+            # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
+            default_value = _normalize_watermark_default_value(default_value_raw)
+            
+            # 如果标准化后的值仍然不是布尔类型（即转换失败），则从config.ini读取
+            if not isinstance(default_value, bool):
+                logging.warning(
+                    f"[水印控制] JSON配置中default字段无效（值: {default_value_raw}），从config.ini读取默认值"
+                )
+                default_value = _get_watermark_removal_default()
             
             # 步骤3: 获取所有用户列表
             # 从认证系统获取所有用户（排除游客）
@@ -29088,8 +29261,10 @@ def start_web_server(args_param):
             # 步骤2: 获取请求数据
             data = request.get_json() or {}
             new_users_config = data.get("users", {})
+            new_default_value = data.get("default")
             
             # 步骤3: 验证请求数据的格式
+            # 验证users字段
             if not isinstance(new_users_config, dict):
                 # 数据格式不正确
                 return jsonify({
@@ -29106,14 +29281,22 @@ def start_web_server(args_param):
                         "message": f"用户 {username} 的配置值必须是布尔类型"
                     }), 400
             
+            # 验证default字段（如果提供了的话）
+            if new_default_value is not None and not isinstance(new_default_value, bool):
+                return jsonify({
+                    "success": False,
+                    "message": "'default' 字段必须是布尔类型"
+                }), 400
+            
             # 步骤4: 读取当前配置
             current_config = _read_amap_watermark_config()
             
-            # 步骤5: 更新用户配置
+            # 步骤5: 更新配置
             # 保留配置文件中的注释字段
             updated_config = {
                 "_comment": current_config.get("_comment", "高德地图去水印个性化控制配置"),
                 "_description": current_config.get("_description", "为每个用户配置是否允许去除高德地图水印"),
+                "default": new_default_value if new_default_value is not None else current_config.get("default", True),  # 更新或保留默认值
                 "users": new_users_config  # 使用新的用户配置
             }
             
@@ -34941,9 +35124,9 @@ def start_web_server(args_param):
                     fallback="alipay,wxpay"  # 默认值：启用支付宝和微信支付
                 )
 
-                # 读取支付接口类型
-                # 可选值：web、jump、jsapi、app、scan、applet
-                payment_method = "web"
+                # # 读取支付接口类型
+                # # 可选值：web、jump、jsapi、app、scan、applet
+                # payment_method = "web"
 
                 product_id = config.get(
                     "Rainbow_YiPay", "product_id", fallback="1001"
@@ -34987,7 +35170,7 @@ def start_web_server(args_param):
                         "pubc_key": pubc_key,  # [新增] 返回平台公钥
                         "payment_timeout_minutes": payment_timeout_minutes,  # [新增] 返回支付超时时间
                         "enabled_payment_methods": enabled_payment_methods,
-                        "payment_method": payment_method
+                        # "payment_method": payment_method
                     }
                 })
 
@@ -35031,12 +35214,12 @@ def start_web_server(args_param):
                         "Rainbow_YiPay", "enabled_payment_methods", fallback="alipay,wxpay")
                 ).strip()
 
-                # 获取新的 payment_method 值
-                new_payment_method = data.get(
-                    "payment_method",
-                    config.get("Rainbow_YiPay",
-                               "payment_method", fallback="web")
-                ).strip()
+                # # 获取新的 payment_method 值
+                # new_payment_method = data.get(
+                #     "payment_method",
+                #     config.get("Rainbow_YiPay",
+                #                "payment_method", fallback="web")
+                # ).strip()
 
                 # [新增] 获取新的 product_id 值
                 new_product_id = data.get(
@@ -35098,15 +35281,15 @@ def start_web_server(args_param):
                         "message": "商户密钥不能为空"
                     }), 400
 
-                # 验证 payment_method 的有效性
-                # 只允许特定的支付接口类型
-                valid_payment_methods = ["web", "jump",
-                                         "jsapi", "app", "scan", "applet"]
-                if new_payment_method not in valid_payment_methods:
-                    return jsonify({
-                        "success": False,
-                        "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
-                    }), 400
+                # # 验证 payment_method 的有效性
+                # # 只允许特定的支付接口类型
+                # valid_payment_methods = ["web", "jump",
+                #                          "jsapi", "app", "scan", "applet"]
+                # if new_payment_method not in valid_payment_methods:
+                #     return jsonify({
+                #         "success": False,
+                #         "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
+                #     }), 400
 
                 # [新增] 验证 pubc_key 不能为空（必填项）
                 # pubc_key是平台公钥，用于验证支付回调通知，必须提供
@@ -35144,8 +35327,8 @@ def start_web_server(args_param):
                 old_key = config.get("Rainbow_YiPay", "key", fallback="")
                 old_enabled_payment_methods = config.get(
                     "Rainbow_YiPay", "enabled_payment_methods", fallback="")
-                old_payment_method = config.get(
-                    "Rainbow_YiPay", "payment_method", fallback="")
+                # old_payment_method = config.get(
+                #     "Rainbow_YiPay", "payment_method", fallback="")
                 # [新增] 保存旧的product_id值
                 old_product_id = config.get(
                     "Rainbow_YiPay", "product_id", fallback="")
@@ -35172,8 +35355,8 @@ def start_web_server(args_param):
                 config.set("Rainbow_YiPay", "key", new_key)
                 config.set("Rainbow_YiPay", "enabled_payment_methods",
                            new_enabled_payment_methods)
-                config.set("Rainbow_YiPay", "payment_method",
-                           new_payment_method)
+                # config.set("Rainbow_YiPay", "payment_method",
+                #            new_payment_method)
                 config.set("Rainbow_YiPay", "product_id",
                            new_product_id)  # [新增] 保存商品ID
                 # [新增] 设置app_host（应用域名地址）
@@ -35209,7 +35392,7 @@ def start_web_server(args_param):
                     f"pubc_key: {'已修改' if pubc_key_changed else '未修改'}, "
                     f"payment_timeout_minutes: {old_payment_timeout_minutes} -> {new_payment_timeout_minutes}, "
                     f"enabled_payment_methods: {old_enabled_payment_methods} -> {new_enabled_payment_methods}, "
-                    f"payment_method: {old_payment_method} -> {new_payment_method}"
+                    # f"payment_method: {old_payment_method} -> {new_payment_method}"
                 )
 
                 # ========== 返回成功响应 ==========

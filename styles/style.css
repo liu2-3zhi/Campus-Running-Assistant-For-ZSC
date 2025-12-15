@@ -1840,27 +1840,12 @@ body.mobile-mode #session-picker-modal {
 
 #admin-payment-logs-panel_modal,
 #admin-overdue-panel_modal,
+#admin-watermark-control-panel_modal,
 #admin-payment-settings-panel_modal {
   margin-top: 0px;
 }
 
-/* ============================================================================
-   拟态风格（Neumorphism）样式 - SweetAlert2对话框
-   ============================================================================
-   
-   设计理念：
-   1. 柔和的阴影效果，创造浮起或内嵌的视觉效果
-   2. 渐变背景，增强立体感
-   3. 圆角边框，提供现代化的视觉体验
-   4. 适当的内边距和间距，保持良好的可读性
-   
-   应用场景：
-   - 删除确认对话框
-   - 重要操作的二次确认
-   - 成功/失败提示
-   
-   注：这些样式通过customClass参数应用到SweetAlert2对话框
-*/
+
 
 /* 拟态风格对话框容器 */
 .swal2-neumorphism-popup {
@@ -2010,9 +1995,4 @@ body.mobile-mode #session-picker-modal {
   
   /* 轻微缩小 */
   transform: translateY(0) scale(0.98) !important;
-}
-
-/* ============================================================================
-   拟态风格样式 - 结束
-   ============================================================================ */
 }
