@@ -17053,7 +17053,7 @@ function switchAdminTab(tab) {
         dateInput.value = today;
       }
 
-      loadCaptchaSettings();
+      loadCaptchaSettings(ShowSwalFire=false);
 
       loadCaptchaHistory();
 
@@ -36499,7 +36499,7 @@ async function loadSystemConfig() {
  *
  * @returns {Promise<void>} 无返回值
  */
-async function loadCaptchaSettings() {
+async function loadCaptchaSettings(ShowSwalFire=true) {
   try {
     // 步骤1：记录开始加载的日志，便于调试和追踪
     console.log(
@@ -36562,13 +36562,14 @@ async function loadCaptchaSettings() {
 
       // 步骤10：显示成功提示（可选，避免过多打扰用户）
       // 使用Swal.fire显示简短的成功提示，2秒后自动关闭
+      if (ShowSwalFire){
       Swal.fire({
         icon: "success", // 成功图标（绿色对号）
         title: "加载成功", // 标题
         text: "验证码配置已加载", // 提示文本
         timer: 1500, // 1.5秒后自动关闭
         showConfirmButton: false, // 不显示确认按钮，自动关闭
-      });
+      });}
     } else {
       // 步骤11：处理API返回成功但没有配置数据的情况
       // 这通常表示配置文件不存在或格式错误
