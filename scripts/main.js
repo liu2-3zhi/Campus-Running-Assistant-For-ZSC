@@ -1824,10 +1824,50 @@ function switchPaymentSettingsTab(tabName) {
 
     // 检查当前遍历的标签页是否是要显示的目标标签页
     if (tab === tabName) {
+      // ========================================
       // 【修复】根据不同的标签页执行相应的初始化函数
-      if (tab === "yipay") {
+      // ========================================
+      // 这是一个关键的初始化逻辑，确保每个标签页在显示时都能加载对应的数据
+      // 移动端的实现与PC端保持一致，但使用不同的函数和容器ID
+      
+      if (tab === "config") {
+        // ========================================
+        // 【修复移动端支付方式列表无法加载的问题】
+        // ========================================
+        // 问题原因：
+        // - 移动端之前缺少此逻辑，导致切换到支付配置标签页时，payment-methods-list容器为空
+        // - PC端有相同逻辑（switchAdminPaymentSettingsTab函数第5060-5066行），工作正常
+        // 
+        // 修复方案：
+        // - 参考PC端实现，在切换到config标签页时自动调用loadPaymentMethodsConfig()
+        // - 使用show_Modal_Alert=false参数，避免显示弹窗提示（保持与PC端一致）
+        // 
+        // 函数说明：loadPaymentMethodsConfig(show_Modal_Alert, isMobile)
+        // - show_Modal_Alert: 是否显示弹窗提示，移动端和PC端都设置为false
+        // - isMobile: （可选）是否为移动端，函数内部会自动检测容器ID
+        // 
+        // 容器区别：
+        // - 移动端容器ID: payment-methods-list（第3900行）
+        // - PC端容器ID: payment-methods-list_modal（第8698行）
+        // 
+        // 调用时机：
+        // - 当用户点击"支付方式"标签页按钮时触发（index.html第3822行）
+        // - 通过onclick="switchPaymentSettingsTab('config')"调用此函数
+        // 
+        // 预期效果：
+        // - 移动端切换到支付配置标签页时，自动加载并显示所有已配置的支付方式
+        // - 每个支付方式显示：Logo、名称、描述、启用开关、编辑按钮、删除按钮
+        // - 如果没有配置任何支付方式，显示"暂无支付方式"的占位符提示
+        loadPaymentMethodsConfig((show_Modal_Alert = false));
+        
+        // 在控制台输出日志，方便调试和追踪
+        console.log("[移动端支付设置] 已触发支付方式配置加载");
+        
+      } else if (tab === "yipay") {
         // 切换到易支付配置标签页时，加载易支付配置
+        // 调用移动端专用的易支付配置加载函数
         loadMobileYiPayConfig();
+        
       } else if (tab === "query") {
         // 【新增】切换到订单查询标签页时，自动加载本地订单列表
         // 这样用户打开标签页就能立即看到订单数据，无需手动点击"加载本地"按钮
@@ -2166,11 +2206,14 @@ async function loadPaymentMethodsConfig(
     // 尝试获取支付方式列表容器，先尝试PC端（带_modal后缀），再尝试移动端（不带后缀）
     let listContainer = document.getElementById("payment-methods-list_modal");
     let isModalVersion = true; // 标记是否为PC端modal版本
-    if (!listContainer) {
-      // 如果PC端容器不存在，尝试获取移动端容器
-      listContainer = document.getElementById("payment-methods-list");
+    if (isMobileMode) {
+      // 尝试获取移动端容器
+      listContainer = document.getElementById("payment-methods-list-mobile");
       isModalVersion = false; // 标记为移动端版本
     }
+    logMessage_Info(
+      `[支付配置] 使用'${listContainer.id}'作为支付方式列表容器`
+    );
 
     if (!listContainer) {
       // console.error('[支付配置] 找不到支付方式列表容器');
@@ -2271,62 +2314,134 @@ async function loadPaymentMethodsConfig(
       // 3. 不使用内联onclick属性
       const safeCode = escapeHtml(code);
 
-      // 生成支付方式卡片HTML
-      // 包含：Logo、名称、启用开关、编辑按钮、删除按钮
-      const itemHTML = `
-        <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 ${safeBorderColor} transition-colors">
-          <!-- 左侧：Logo和名称 -->
-          <div class="flex items-center gap-3 flex-1 min-w-0">
-            <!-- Logo -->
-            ${logoHTML}
-            <!-- 名称和描述 -->
-            <div class="flex-1 min-w-0">
-              <span class="text-sm font-semibold text-slate-700 block truncate">${safeName}</span>
-              ${
-                safeDescription
-                  ? `<span class="text-xs text-slate-500 block truncate">${safeDescription}</span>`
-                  : ""
-              }
+      // === 【问题46修复】根据移动端/PC端生成不同的HTML结构 ===
+      // 原问题：移动端和PC端共用相同的HTML模板，导致移动端显示错位
+      // 修复方案：根据isModalVersion标志，为移动端和PC端生成专门优化的HTML结构
+      // - 移动端(isModalVersion=false)：单列布局、紧凑间距、小图标、小按钮、小字体
+      // - PC端(isModalVersion=true)：保持原有的标准尺寸和间距
+      
+      let itemHTML;
+      
+      // 判断是否为移动端版本
+      if (!isModalVersion) {
+        // === 移动端专用HTML（紧凑布局）===
+        // 特点：
+        // 1. 更小的内边距(p-2而非p-3)
+        // 2. 更小的图标尺寸(w-8 h-8而非w-10 h-10)
+        // 3. 更小的字体(text-xs而非text-sm)
+        // 4. 更小的开关尺寸(w-9 h-5而非w-11 h-6)
+        // 5. 更小的按钮尺寸(p-1而非p-1.5)
+        // 6. 更紧凑的间距(gap-2而非gap-3)
+        itemHTML = `
+          <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 ${safeBorderColor} transition-colors">
+            <!-- 左侧：Logo和名称 (移动端紧凑版) -->
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+              <!-- Logo - 移动端使用更小的尺寸 -->
+              ${logoHTML.replace(/w-10 h-10/g, "w-8 h-8")}
+              <!-- 名称和描述 - 移动端使用更小的字体 -->
+              <div class="flex-1 min-w-0">
+                <span class="text-xs font-semibold text-slate-700 block truncate">${safeName}</span>
+                ${
+                  safeDescription
+                    ? `<span class="text-xs text-slate-500 block truncate">${safeDescription}</span>`
+                    : ""
+                }
+              </div>
+            </div>
+            
+            <!-- 右侧：操作按钮组 (移动端紧凑版) -->
+            <div class="flex items-center gap-1.5 ml-2">
+              <!-- 启用/禁用开关 - 移动端使用更小的开关 -->
+              <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
+                <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
+          isEnabled ? "checked" : ""
+        }>
+                <!-- 移动端开关：w-9 h-5（比PC端的w-11 h-6小）-->
+                <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+              
+              <!-- 【安全修复3】编辑按钮 - 移动端紧凑版 -->
+              <button class="payment-edit-btn p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors" 
+                title="编辑" 
+                data-payment-code="${safeCode}">
+                <!-- 移动端图标：w-3.5 h-3.5（比PC端的w-4 h-4小）-->
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+              </button>
+              
+              <!-- 【安全修复4】删除按钮 - 移动端紧凑版 -->
+              <button class="payment-delete-btn p-1 text-red-600 hover:bg-red-50 rounded transition-colors" 
+                title="删除" 
+                data-payment-code="${safeCode}">
+                <!-- 移动端图标：w-3.5 h-3.5（比PC端的w-4 h-4小）-->
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+              </button>
             </div>
           </div>
-          
-          <!-- 右侧：操作按钮组 -->
-          <div class="flex items-center gap-2 ml-3">
-            <!-- 启用/禁用开关 -->
-            <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
-              <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
-        isEnabled ? "checked" : ""
-      }>
-              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-            </label>
+        `;
+      } else {
+        // === PC端标准HTML（原有布局）===
+        // 保持原有的标准尺寸和间距，确保PC端显示效果不变
+        itemHTML = `
+          <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 ${safeBorderColor} transition-colors">
+            <!-- 左侧：Logo和名称 -->
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+              <!-- Logo -->
+              ${logoHTML}
+              <!-- 名称和描述 -->
+              <div class="flex-1 min-w-0">
+                <span class="text-sm font-semibold text-slate-700 block truncate">${safeName}</span>
+                ${
+                  safeDescription
+                    ? `<span class="text-xs text-slate-500 block truncate">${safeDescription}</span>`
+                    : ""
+                }
+              </div>
+            </div>
             
-            <!-- 【安全修复3】编辑按钮 - 使用data属性存储code -->
-            <!-- 原问题：onclick="openEditPaymentMethodModal('${code}')" 中的code未转义 -->
-            <!-- 如果code包含单引号，会导致JavaScript语法错误或注入攻击 -->
-            <!-- 修复方案：使用data-payment-code属性存储code，稍后用addEventListener绑定 -->
-            <button class="payment-edit-btn p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" 
-              title="编辑" 
-              data-payment-code="${safeCode}">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-              </svg>
-            </button>
-            
-            <!-- 【安全修复4】删除按钮 - 使用data属性存储code -->
-            <!-- 原问题：onclick="deletePaymentMethod('${code}')" 中的code未转义 -->
-            <!-- 修复方案：同上，使用data属性 + addEventListener -->
-            <button class="payment-delete-btn p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" 
-              title="删除" 
-              data-payment-code="${safeCode}">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-              </svg>
-            </button>
+            <!-- 右侧：操作按钮组 -->
+            <div class="flex items-center gap-2 ml-3">
+              <!-- 启用/禁用开关 -->
+              <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
+                <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
+          isEnabled ? "checked" : ""
+        }>
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+              
+              <!-- 【安全修复3】编辑按钮 - 使用data属性存储code -->
+              <!-- 原问题：onclick="openEditPaymentMethodModal('${code}')" 中的code未转义 -->
+              <!-- 如果code包含单引号，会导致JavaScript语法错误或注入攻击 -->
+              <!-- 修复方案：使用data-payment-code属性存储code，稍后用addEventListener绑定 -->
+              <button class="payment-edit-btn p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" 
+                title="编辑" 
+                data-payment-code="${safeCode}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+              </button>
+              
+              <!-- 【安全修复4】删除按钮 - 使用data属性存储code -->
+              <!-- 原问题：onclick="deletePaymentMethod('${code}')" 中的code未转义 -->
+              <!-- 修复方案：同上，使用data属性 + addEventListener -->
+              <button class="payment-delete-btn p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" 
+                title="删除" 
+                data-payment-code="${safeCode}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+              </button>
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      }
 
       // 【性能优化】将生成的HTML片段添加到数组中，而不是立即插入DOM
       // 这样避免了每次循环都触发DOM重新解析和渲染
@@ -6207,9 +6322,31 @@ function renderPaymentOrdersTable() {
             ${createdAt}
           </div>
           <!-- 查看详情按钮 -->
-          <button onclick='showOrderDetailModal_form_botton(${JSON.stringify(
-            order
-          )})' 
+          <!--
+            【关键修复点】data-order属性的处理（移动端订单查看按钮）：
+            
+            问题原因：
+            - 原代码使用 onclick='showOrderDetailModal_form_botton(${JSON.stringify(order)})'
+            - JSON.stringify()生成的JSON字符串包含双引号，与HTML属性的引号冲突
+            - 特殊字符（如换行、引号）会破坏HTML解析，导致onclick事件失效
+            - 浏览器控制台可能显示语法错误或点击无响应
+            
+            修复方法：
+            - 使用 data-order 自定义属性存储订单对象的JSON字符串
+            - JSON.stringify()已经提供了正确的JSON编码
+            - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
+            - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
+            - 在onclick中使用内联函数：通过this.getAttribute('data-order')获取JSON字符串
+            - 使用JSON.parse()解析后传递给目标函数
+            
+            优势：
+            - 数据与事件处理逻辑分离，更清晰
+            - 避免JSON字符串直接嵌入JavaScript代码导致的解析问题
+            - 遵循Web标准的data-*属性最佳实践
+          -->
+          <button 
+            data-order='${JSON.stringify(order).replace(/'/g, "&apos;")}'
+            onclick="(function(btn) { const orderData = JSON.parse(btn.getAttribute('data-order')); showOrderDetailModal_form_botton(orderData); })(this)"
             class="px-3 py-1.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition-colors flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -10406,32 +10543,120 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
  * - 开关打开（checked=true）：显示"允许"
  * - 开关关闭（checked=false）：显示"禁止"
  */
+/**
+ * 更新水印默认值标签显示
+ * 
+ * 功能说明：
+ * 根据系统默认值开关的状态（checked/unchecked），更新标签文本显示为"允许"或"禁止"。
+ * 
+ * 支持平台：
+ * - PC端：使用ID "watermark-default-value_modal" 和 "watermark-default-label_modal"
+ * - 移动端：使用ID "watermark-default-value-mobile" 和 "watermark-default-label-mobile"
+ * 
+ * 【问题45修复】此函数现在同时支持PC端和移动端
+ * 原问题：只支持PC端
+ * 修复方案：检测移动端元素，如果存在则同步更新移动端标签
+ * 
+ * 调用时机：
+ * 1. 页面加载完成后，初次设置开关状态时
+ * 2. 用户手动切换开关时（通过onchange事件触发）
+ * 3. 从服务器加载配置后，根据服务器返回的默认值更新显示
+ * 
+ * 实现细节：
+ * 1. 查找PC端的默认值开关元素（checkbox）
+ * 2. 查找PC端的默认值标签元素
+ * 3. 如果两个元素都存在，根据checkbox的checked状态设置标签文本
+ * 4. 同样处理移动端的元素（新增）
+ */
 function updateWatermarkDefaultLabel() {
-  // 获取默认值开关元素（checkbox）
-  const defaultCheckbox = document.getElementById(
+  // ========== PC端标签更新 ==========
+  // 获取PC端默认值开关元素（checkbox）
+  const defaultCheckbox_PC = document.getElementById(
     "watermark-default-value_modal"
   );
-  // 获取默认值标签元素
-  const defaultLabel = document.getElementById("watermark-default-label_modal");
+  // 获取PC端默认值标签元素
+  const defaultLabel_PC = document.getElementById("watermark-default-label_modal");
 
-  // 如果两个元素都存在，则更新标签文本
-  if (defaultCheckbox && defaultLabel) {
+  // 如果PC端两个元素都存在，则更新标签文本
+  if (defaultCheckbox_PC && defaultLabel_PC) {
     // 根据checkbox的checked状态设置标签文本
-    defaultLabel.textContent = defaultCheckbox.checked ? "允许" : "禁止";
+    // checked=true 表示允许去水印，显示"允许"
+    // checked=false 表示禁止去水印，显示"禁止"
+    defaultLabel_PC.textContent = defaultCheckbox_PC.checked ? "允许" : "禁止";
+  }
+  
+  // ========== 【问题45修复】移动端标签更新 ==========
+  // 获取移动端默认值开关元素（checkbox）
+  // 使用-mobile后缀以区别于PC端的_modal后缀
+  const defaultCheckbox_Mobile = document.getElementById(
+    "watermark-default-value-mobile"
+  );
+  // 获取移动端默认值标签元素
+  const defaultLabel_Mobile = document.getElementById("watermark-default-label-mobile");
+
+  // 如果移动端两个元素都存在，则更新标签文本
+  if (defaultCheckbox_Mobile && defaultLabel_Mobile) {
+    // 根据checkbox的checked状态设置标签文本（与PC端逻辑相同）
+    defaultLabel_Mobile.textContent = defaultCheckbox_Mobile.checked ? "允许" : "禁止";
   }
 }
 
+/**
+ * 加载高德地图去水印控制配置
+ * 
+ * 功能说明：
+ * 从服务器获取水印控制配置，包括系统默认值和所有用户的个性化设置，
+ * 并更新UI显示（包括PC端和移动端）。
+ * 
+ * API端点：GET /api/amap/watermark_control/config
+ * 权限要求：管理员权限 + view_config 权限
+ * 
+ * 响应数据格式：
+ * {
+ *   "success": true,
+ *   "config": {
+ *     "default": true/false,  // 系统默认值
+ *     "users": {
+ *       "username1": true,
+ *       "username2": false,
+ *       ...
+ *     }
+ *   },
+ *   "all_users": ["username1", "username2", ...]  // 系统中所有用户
+ * }
+ * 
+ * UI更新内容：
+ * 1. 更新系统默认值开关状态（PC端和移动端）
+ * 2. 更新用户数量显示
+ * 3. 生成用户权限列表（只显示已自定义的用户）
+ * 
+ * 【问题45修复】此函数现在同时支持PC端和移动端
+ * 原问题：只支持PC端（_modal后缀的元素）
+ * 修复方案：检测移动端容器，如果存在则同步更新移动端UI
+ * 
+ * 错误处理：
+ * 1. 网络请求失败：显示错误提示
+ * 2. 响应解析失败：显示错误提示
+ * 3. 服务器返回失败：显示错误消息
+ */
 async function loadWatermarkControlConfig() {
   try {
     // ========== 步骤1: 显示加载状态 ==========
     // 记录日志，便于调试
-    console.log("[水印控制] 正在加载水印控制配置（PC端）...");
+    console.log("[水印控制] 正在加载水印控制配置...");
 
-    // 更新用户列表容器，显示"加载中..."提示
-    const listContainer = document.getElementById("watermark-users-list_modal");
-    if (listContainer) {
-      listContainer.innerHTML =
+    // 更新PC端用户列表容器，显示"加载中..."提示
+    const listContainer_PC = document.getElementById("watermark-users-list_modal");
+    if (listContainer_PC) {
+      listContainer_PC.innerHTML =
         '<p class="text-slate-400 text-center py-10">加载中...</p>';
+    }
+    
+    // 【问题45修复】更新移动端用户列表容器，显示"加载中..."提示
+    const listContainer_Mobile = document.getElementById("watermark-users-list-mobile");
+    if (listContainer_Mobile) {
+      listContainer_Mobile.innerHTML =
+        '<p class="text-slate-400 text-center py-6 text-xs">加载中...</p>';
     }
 
     // ========== 步骤2: 发送HTTP请求获取配置 ==========
@@ -10461,25 +10686,42 @@ async function loadWatermarkControlConfig() {
     const usersConfig = config.users; // 用户个性化配置字典
     const allUsers = data.all_users; // 系统中所有用户的列表
 
-    // ========== 步骤6: 更新默认值开关 ==========
-    // 找到默认值开关元素（checkbox）
-    const defaultCheckbox = document.getElementById(
+    // ========== 步骤6: 更新默认值开关（PC端和移动端）==========
+    // 找到PC端默认值开关元素（checkbox）
+    const defaultCheckbox_PC = document.getElementById(
       "watermark-default-value_modal"
     );
-    if (defaultCheckbox) {
-      // 设置开关状态（checked表示允许去水印）
-      defaultCheckbox.checked = defaultValue;
+    if (defaultCheckbox_PC) {
+      // 设置PC端开关状态（checked表示允许去水印）
+      defaultCheckbox_PC.checked = defaultValue;
+    }
+    
+    // 【问题45修复】找到移动端默认值开关元素（checkbox）
+    const defaultCheckbox_Mobile = document.getElementById(
+      "watermark-default-value-mobile"
+    );
+    if (defaultCheckbox_Mobile) {
+      // 设置移动端开关状态（checked表示允许去水印）
+      defaultCheckbox_Mobile.checked = defaultValue;
     }
 
-    // 更新默认值标签显示
+    // 更新默认值标签显示（PC端和移动端都会更新）
     updateWatermarkDefaultLabel();
 
-    // ========== 步骤7: 更新用户数量显示 ==========
-    const userCountElement = document.getElementById(
+    // ========== 步骤7: 更新用户数量显示（PC端和移动端）==========
+    const userCountElement_PC = document.getElementById(
       "watermark-user-count_modal"
     );
-    if (userCountElement) {
-      userCountElement.textContent = `共 ${allUsers.length} 个用户`;
+    if (userCountElement_PC) {
+      userCountElement_PC.textContent = `共 ${allUsers.length} 个用户`;
+    }
+    
+    // 【问题45修复】更新移动端用户数量显示
+    const userCountElement_Mobile = document.getElementById(
+      "watermark-user-count-mobile"
+    );
+    if (userCountElement_Mobile) {
+      userCountElement_Mobile.textContent = `共 ${allUsers.length} 个用户`;
     }
 
     // ========== 步骤8: 生成用户权限列表 ==========
@@ -10682,17 +10924,65 @@ async function saveWatermarkControlConfig() {
  */
 async function deleteWatermarkUser(username) {
   try {
-    // ========== 步骤1: 确认删除操作 ==========
-    // 使用confirm对话框让用户确认，防止误操作
-    const confirmed = confirm(
-      `确定要删除用户"${username}"的自定义配置吗？\n\n删除后该用户将使用系统默认值。`
-    );
-    if (!confirmed) {
-      // 用户取消操作
+    // ========== 步骤1: 使用SweetAlert2进行二次确认 ==========
+    // 为什么使用Swal.fire而不是原生confirm:
+    // 1. 提供更美观、现代化的用户界面，提升用户体验
+    // 2. 支持自定义样式（按钮颜色、图标等），使界面更符合设计规范
+    // 3. 更好的可读性，文本显示更清晰，避免原生对话框的简陋外观
+    // 4. 与项目中其他使用Swal.fire的地方保持一致的交互风格
+    const result = await Swal.fire({
+      // title: 对话框标题，使用疑问句让用户明确当前操作的性质
+      title: '确认删除用户配置？',
+      
+      // html: 对话框的主要内容，使用HTML格式以支持更丰富的文本展示
+      // 使用<strong>标签突出显示用户名，让用户清楚知道要删除的是哪个用户
+      // 使用<br><br>进行段落分隔，提高可读性
+      html: `您即将删除用户 <strong>"${username}"</strong> 的自定义水印配置。<br><br>删除后该用户将使用系统默认值。<br><br>此操作不可撤销，请谨慎操作。`,
+      
+      // icon: 显示警告图标，提示用户这是一个需要谨慎处理的操作
+      // 'warning' 图标会显示为黄色感叹号，符合删除操作的警告性质
+      icon: 'warning',
+      
+      // showCancelButton: 显示取消按钮，给用户提供退出的机会，防止误操作
+      showCancelButton: true,
+      
+      // confirmButtonColor: 确认按钮使用红色（#ef4444 是Tailwind的red-500）
+      // 红色表示这是一个危险操作，提醒用户三思而后行
+      confirmButtonColor: '#ef4444',
+      
+      // cancelButtonColor: 取消按钮使用蓝色（#3085d6 是SweetAlert2的默认蓝色）
+      // 蓝色表示安全的、非破坏性的操作
+      cancelButtonColor: '#3085d6',
+      
+      // confirmButtonText: 确认按钮的文字，使用明确的动作描述
+      // "确定删除"比简单的"确定"更能让用户明白点击后的后果
+      confirmButtonText: '确定删除',
+      
+      // cancelButtonText: 取消按钮的文字，使用简洁的中文表达
+      cancelButtonText: '取消',
+      
+      // focusCancel: 默认聚焦到取消按钮，而不是确认按钮
+      // 这是一个重要的安全设计：防止用户不小心按回车键就执行了删除操作
+      // 用户必须主动移动焦点或点击才能确认删除
+      focusCancel: true,
+      
+      // reverseButtons: 反转按钮顺序，让取消按钮显示在左边，确认按钮在右边
+      // 这符合常见的UI设计习惯（危险操作按钮通常在右侧）
+      reverseButtons: true
+    });
+
+    // 处理用户的选择结果
+    // result.isConfirmed: 如果用户点击了"确定删除"按钮，此属性为true
+    // result.isDismissed: 如果用户点击了"取消"按钮或点击对话框外部关闭，此属性为true
+    if (!result.isConfirmed) {
+      // 用户取消了删除操作（点击取消、按ESC键或点击对话框外部）
+      // 记录日志后直接返回，不执行后续的删除逻辑
       console.log(`[水印控制] 用户取消删除"${username}"的配置`);
-      return;
+      return; // 提前返回，终止函数执行
     }
 
+    // 如果代码执行到这里，说明用户已经确认要删除
+    // 记录日志，标记删除操作的开始
     console.log(`[水印控制] 正在删除用户"${username}"的自定义配置...`);
 
     // ========== 步骤2: 获取当前配置 ==========
@@ -10776,20 +11066,36 @@ async function deleteWatermarkUser(username) {
  * 3. 筛选出未配置的用户
  * 4. 显示可添加的用户列表
  * 5. 管理员点击"添加"按钮后，将用户添加到配置中（默认允许去水印）
+ *
+ * 【移动端兼容性说明】
+ * 该函数已针对移动端进行优化，支持触摸事件和点击事件。
+ * 如果在移动端遇到点击无响应的问题，请：
+ * 1. 确保已切换到"水印控制"标签页（面板才会显示）
+ * 2. 打开浏览器控制台查看是否有错误日志
+ * 3. 尝试在控制台手动执行: openAddWatermarkUserModal()
+ * 4. 检查网络连接是否正常（需要从服务器加载用户列表）
  */
 async function openAddWatermarkUserModal() {
+  // 【调试日志】记录函数调用，便于排查按钮点击是否生效
+  console.log("[水印控制] openAddWatermarkUserModal() 函数被调用");
+  
   try {
     // [步骤1] 显示模态框
     // 获取模态框元素
     const modal = document.getElementById("add-watermark-user-modal");
     if (!modal) {
-      // 如果模态框不存在，记录错误并退出
-      console.error("[水印控制] 无法找到添加用户模态框元素");
+      // 如果模态框不存在，记录错误并通过弹窗提示用户
+      const errorMsg = "无法找到添加用户模态框元素，请刷新页面后重试";
+      console.error("[水印控制] " + errorMsg);
+      // 使用模态框提示用户，让错误更明显
+      showModalAlert(errorMsg, "错误");
       return;
     }
 
     // 移除hidden类，使模态框可见
     modal.classList.remove("hidden");
+    // 【调试日志】确认模态框已成功打开
+    console.log("[水印控制] 模态框已打开，开始加载用户列表...");
 
     // [步骤2] 显示加载状态
     console.log("[水印控制] 正在加载可添加的用户列表...");
@@ -10799,7 +11105,13 @@ async function openAddWatermarkUserModal() {
       "available-watermark-users-list"
     );
     if (!listContainer) {
-      console.error("[水印控制] 无法找到用户列表容器元素");
+      // 如果列表容器不存在，记录错误并通过弹窗提示用户
+      const errorMsg = "无法找到用户列表容器元素，页面可能未正确加载";
+      console.error("[水印控制] " + errorMsg);
+      // 关闭模态框，因为无法显示内容
+      modal.classList.add("hidden");
+      // 使用模态框提示用户
+      showModalAlert(errorMsg, "错误");
       return;
     }
 
@@ -10884,14 +11196,18 @@ async function openAddWatermarkUserModal() {
 
     // [步骤8] 记录成功日志
     console.log(
-      `[水印控制] 可添加用户列表加载完成，共 ${availableUsers.length} 个用户`
+      `[水印控制] ✓ 可添加用户列表加载完成，共 ${availableUsers.length} 个用户可添加`
     );
+    console.log("[水印控制] ✓ 模态框已成功打开并显示用户列表");
   } catch (error) {
     // [错误处理] 捕获所有可能的错误
     console.error("[水印控制] 加载可添加用户列表失败:", error);
 
-    // 显示错误提示
-    showModalAlert("加载用户列表失败：" + error.message);
+    // 显示友好的错误提示，包含详细的错误信息
+    showModalAlert(
+      "加载用户列表失败：" + error.message + "\n\n请检查网络连接或刷新页面重试。",
+      "加载失败"
+    );
 
     // 在列表容器中显示错误信息
     const listContainer = document.getElementById(
@@ -10927,6 +11243,100 @@ function closeAddWatermarkUserModal() {
 
   // [步骤4] 记录日志
   console.log("[水印控制] 已关闭添加用户模态框");
+}
+
+/**
+ * 【诊断工具】检查添加水印用户模态框的状态
+ * 
+ * 功能说明：
+ * 这是一个诊断函数，用于排查"添加用户"按钮点击无效的问题。
+ * 该函数会检查所有相关DOM元素是否存在，并输出详细的诊断信息。
+ * 
+ * 使用方法：
+ * 在浏览器控制台中执行: diagnoseAddWatermarkUserModal()
+ * 
+ * 诊断项目：
+ * 1. 检查模态框元素是否存在
+ * 2. 检查用户列表容器是否存在
+ * 3. 检查移动端面板是否可见
+ * 4. 检查PC端面板是否可见
+ * 5. 检查函数是否可访问
+ * 6. 尝试手动触发模态框打开
+ * 
+ * @returns {Object} 诊断结果对象，包含各项检查的状态
+ */
+function diagnoseAddWatermarkUserModal() {
+  console.log("========================================");
+  console.log("【水印控制诊断工具】开始诊断...");
+  console.log("========================================");
+  
+  // 诊断结果对象
+  const diagnosis = {
+    timestamp: new Date().toISOString(),
+    checks: {}
+  };
+  
+  // 检查1: 模态框元素
+  const modal = document.getElementById("add-watermark-user-modal");
+  diagnosis.checks.modalExists = !!modal;
+  console.log(`✓ 检查1: 模态框元素 (add-watermark-user-modal)`, 
+    modal ? "✓ 存在" : "✗ 不存在");
+  if (modal) {
+    diagnosis.checks.modalVisible = !modal.classList.contains("hidden");
+    console.log(`  - 当前状态:`, modal.classList.contains("hidden") ? "隐藏" : "可见");
+  }
+  
+  // 检查2: 用户列表容器
+  const listContainer = document.getElementById("available-watermark-users-list");
+  diagnosis.checks.listContainerExists = !!listContainer;
+  console.log(`✓ 检查2: 用户列表容器 (available-watermark-users-list)`, 
+    listContainer ? "✓ 存在" : "✗ 不存在");
+  
+  // 检查3: 移动端面板
+  const mobilePanel = document.getElementById("mobile-multi-admin-watermark-panel");
+  diagnosis.checks.mobilePanelExists = !!mobilePanel;
+  console.log(`✓ 检查3: 移动端面板 (mobile-multi-admin-watermark-panel)`, 
+    mobilePanel ? "✓ 存在" : "✗ 不存在");
+  if (mobilePanel) {
+    diagnosis.checks.mobilePanelVisible = !mobilePanel.classList.contains("hidden");
+    console.log(`  - 当前状态:`, 
+      mobilePanel.classList.contains("hidden") ? "隐藏 (这是正常的，需要切换到水印控制标签)" : "可见");
+  }
+  
+  // 检查4: PC端按钮（通过搜索包含onclick属性的按钮）
+  const buttons = document.querySelectorAll('button[onclick*="openAddWatermarkUserModal"]');
+  diagnosis.checks.buttonsCount = buttons.length;
+  console.log(`✓ 检查4: 找到 ${buttons.length} 个"添加用户"按钮`);
+  buttons.forEach((btn, index) => {
+    console.log(`  - 按钮 ${index + 1}:`, 
+      btn.offsetParent === null ? "不可见（父元素隐藏）" : "可见");
+  });
+  
+  // 检查5: 函数可访问性
+  diagnosis.checks.functionAccessible = typeof openAddWatermarkUserModal === "function";
+  console.log(`✓ 检查5: openAddWatermarkUserModal 函数`, 
+    diagnosis.checks.functionAccessible ? "✓ 可访问" : "✗ 不可访问");
+  
+  // 检查6: Session UUID（API调用需要）
+  diagnosis.checks.sessionUUID = typeof sessionUUID !== "undefined";
+  console.log(`✓ 检查6: sessionUUID`, 
+    diagnosis.checks.sessionUUID ? `✓ 已定义 (${sessionUUID ? "有值" : "为空"})` : "✗ 未定义");
+  
+  // 总结
+  console.log("========================================");
+  const allChecksPass = Object.values(diagnosis.checks).every(v => v === true || typeof v === "number");
+  if (allChecksPass) {
+    console.log("✓ 所有检查通过！");
+    console.log("💡 提示: 如果按钮仍然无效，请确保：");
+    console.log("   1. 已切换到水印控制标签页");
+    console.log("   2. 尝试手动执行: openAddWatermarkUserModal()");
+  } else {
+    console.log("✗ 发现问题，请查看上方详细信息");
+  }
+  console.log("========================================");
+  
+  // 返回诊断结果
+  return diagnosis;
 }
 
 /**
@@ -11302,8 +11712,21 @@ async function loadMobileWatermarkControlConfig() {
     const usersConfig = config.users;
     const allUsers = data.all_users;
 
-    // ========== 步骤6: 更新默认值显示（移动端样式）==========
-    // 更新查看面板的默认值显示
+    // ========== 步骤6: 更新默认值开关（移动端）==========
+    // 【问题45修复】找到移动端默认值开关元素（checkbox）
+    const defaultCheckbox_Mobile = document.getElementById(
+      "watermark-default-value-mobile"
+    );
+    if (defaultCheckbox_Mobile) {
+      // 设置移动端开关状态（checked表示允许去水印）
+      defaultCheckbox_Mobile.checked = defaultValue;
+    }
+
+    // 更新默认值标签显示（会同时更新PC端和移动端）
+    updateWatermarkDefaultLabel();
+    
+    // 【兼容性】同时保留旧的只读显示更新（如果存在）
+    // 更新查看面板的默认值显示（旧版，可能在其他地方使用）
     const defaultValueElement = document.getElementById(
       "mobile-watermark-default-value"
     );
@@ -11319,7 +11742,7 @@ async function loadMobileWatermarkControlConfig() {
       }
     }
 
-    // 更新配置面板的默认值显示
+    // 更新配置面板的默认值显示（旧版，可能在其他地方使用）
     const defaultValueElementCtrl = document.getElementById(
       "mobile-watermark-default-value-ctrl"
     );
@@ -11473,12 +11896,23 @@ async function loadMobileWatermarkControlConfig() {
  *
  * 功能说明：
  * 与PC端的 saveWatermarkControlConfig() 功能相同，但操作移动端的表单元素。
+ * 
+ * 【问题45修复】现在包含默认值的收集和保存
+ * 原问题：移动端只保存用户配置，不保存默认值
+ * 修复方案：参考PC端实现，同时收集默认值和用户配置
  */
 async function saveMobileWatermarkControlConfig() {
   try {
-    // ========== 步骤1: 收集用户配置数据 ==========
-    console.log("[水印控制] 正在收集用户配置数据（移动端）...");
+    // ========== 步骤1: 收集默认值配置 ==========
+    console.log("[水印控制] 正在收集配置数据（移动端）...");
 
+    // 【问题45修复】获取移动端默认值开关的状态
+    const defaultCheckbox = document.getElementById(
+      "watermark-default-value-mobile"
+    );
+    const defaultValue = defaultCheckbox ? defaultCheckbox.checked : true;
+
+    // ========== 步骤2: 收集用户配置数据 ==========
     const usersConfig = {};
 
     // 查找移动端的所有用户权限复选框
@@ -11492,8 +11926,10 @@ async function saveMobileWatermarkControlConfig() {
       usersConfig[username] = allowed;
     });
 
-    // ========== 步骤2: 构建请求体 ==========
+    // ========== 步骤3: 构建请求体 ==========
+    // 【问题45修复】添加默认值字段，与PC端保持一致
     const requestBody = {
+      default: defaultValue, // 添加默认值字段
       users: usersConfig,
     };
 
@@ -13431,28 +13867,19 @@ function updateMobileNavVisibility(show, mode = "single") {
 }
 
 function showMobileMessage(message, type = "info") {
-  const errorDiv = document.getElementById("mobile-auth-error");
-  const successDiv = document.getElementById("mobile-auth-success");
+  // const errorDiv = document.getElementById("mobile-auth-error");
+  // const successDiv = document.getElementById("mobile-auth-success");
 
   if (type === "clear") {
-    if (errorDiv) errorDiv.classList.add("hidden");
-    if (successDiv) successDiv.classList.add("hidden");
+    const modal = $("alert-modal");
+    modal.classList.add("hidden");
     return;
   }
 
-  if (errorDiv) errorDiv.classList.add("hidden");
-  if (successDiv) successDiv.classList.add("hidden");
-
   if (type === "error") {
-    if (errorDiv) {
-      errorDiv.textContent = message;
-      errorDiv.classList.remove("hidden");
-    }
+    showModalAlert(message, "错误");
   } else if (type === "success") {
-    if (successDiv) {
-      successDiv.textContent = message;
-      successDiv.classList.remove("hidden");
-    }
+    showModalAlert(message, "成功");
   } else {
     showModalAlert(message, "提示");
   }
@@ -14051,24 +14478,24 @@ async function callPythonAPI(method, ...args) {
       } else {
         logMessage_Info(`[安全提示] ${errorMsg}`);
 
-        if (isMobileMode) {
-          showMobileMessage(errorMsg || "需要重新登录", "error");
+        // if (isMobileMode) {
+        //   showMobileMessage(errorMsg || "需要重新登录", "error");
 
-          const mobileMainApp = document.getElementById("mobile-main-app");
-          const mobileMultiApp = document.getElementById(
-            "mobile-multi-account-app"
-          );
-          const mobileLoginContainer = document.getElementById(
-            "mobile-login-container"
-          );
+        //   const mobileMainApp = document.getElementById("mobile-main-app");
+        //   const mobileMultiApp = document.getElementById(
+        //     "mobile-multi-account-app"
+        //   );
+        //   const mobileLoginContainer = document.getElementById(
+        //     "mobile-login-container"
+        //   );
 
-          if (mobileMainApp) mobileMainApp.classList.add("hidden");
-          if (mobileMultiApp) mobileMultiApp.classList.add("hidden");
-          if (mobileLoginContainer)
-            mobileLoginContainer.classList.remove("hidden");
+        //   if (mobileMainApp) mobileMainApp.classList.add("hidden");
+        //   if (mobileMultiApp) mobileMultiApp.classList.add("hidden");
+        //   if (mobileLoginContainer)
+        //     mobileLoginContainer.classList.remove("hidden");
 
-          logMessage_Info("[移动端] 已切换到登录页面（因need_login）");
-        } else {
+        //   logMessage_Info("[移动端] 已切换到登录页面（因need_login）");
+        // } else {
           Swal.fire({
             icon: "warning",
             title: "需要重新登录",
@@ -14078,7 +14505,7 @@ async function callPythonAPI(method, ...args) {
           }).then(() => {
             window.location.href = "/";
           });
-        }
+        // }
       }
 
       if (refreshUserListInterval) {
@@ -20330,9 +20757,16 @@ async function showUserSchoolAccounts(username) {
                   <div class="flex gap-2">
                     <!-- 编辑按钮：打开编辑模态框 -->
                     <!-- 使用data属性存储JSON数据，点击时解析并调用函数 -->
+                    <!-- 
+                      【关键修复点】data-account属性的处理（PC版）：
+                      - accountDataJson 已通过 JSON.stringify() 生成，格式正确
+                      - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
+                      - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
+                      - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
+                    -->
                     <button 
                       class="btn btn-sm btn-primary !py-1 !px-3 !text-xs" 
-                      data-account='${escapeHtml(accountDataJson)}'
+                      data-account='${accountDataJson.replace(/'/g, "&apos;")}'
                       onclick="(function(btn) { const data = JSON.parse(btn.getAttribute('data-account')); editSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); })(this)"
                       title="编辑此账户">
                       编辑
@@ -20679,7 +21113,7 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
  *
  * 功能说明：
  * - 隐藏移动端的学校账户管理模态框（mobile-user-school-accounts-modal）
- * - 通过调用hideModal工具函数实现模态框的隐藏动画和状态管理
+ * - 使用CSS过渡动画实现平滑的关闭效果
  *
  * 调用时机：
  * - 用户点击模态框外的背景遮罩层
@@ -20688,14 +21122,48 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
  * 注意事项：
  * - 该函数不会关闭二级模态框（如edit-school-account-modal）
  * - 如果二级模态框已打开，需要先关闭二级模态框
+ *
+ * 修复说明（2024）：
+ * - 问题原因：由于showMobileUserSchoolAccounts()函数存在两个定义，第二个定义（动态创建模态框）
+ *   会覆盖第一个定义。第二个定义使用的是"show"类来控制显示，而不是"flex"类。
+ * - 原实现使用hideModal()函数，该函数移除"flex"类并添加"hidden"类，但实际模态框使用的是"show"类，
+ *   导致hideModal()无法正确隐藏模态框。
+ * - 修复方法：改为直接操作DOM，移除"show"类并添加"hidden"类，与实际使用的类名模式保持一致。
+ * - 参考了closeMobileUserSchoolAccounts()函数的实现（line 42556），该函数正确处理了"show"类。
  */
 function closeMobileUserSchoolAccountsModal() {
-  // 调用hideModal工具函数，传入模态框的DOM元素ID
-  // hideModal会自动处理移除显示类、添加隐藏类、清理事件监听器等工作
-  hideModal("mobile-user-school-accounts-modal");
-
-  // 输出日志，便于调试和追踪模态框的关闭操作
-  console.log("[移动端学校账户管理] 已关闭模态框");
+  // 步骤1：通过DOM API获取模态框元素
+  // 使用document.getElementById而不是$()工具函数，确保在任何情况下都能获取到元素
+  const modal = document.getElementById("mobile-user-school-accounts-modal");
+  
+  // 步骤2：检查模态框元素是否存在
+  // 如果元素不存在（例如尚未创建或已被删除），直接返回，避免后续操作出错
+  if (!modal) {
+    console.warn("[移动端学校账户管理] 模态框元素未找到，无法关闭");
+    return;
+  }
+  
+  // 步骤3：移除"show"类，触发CSS过渡动画
+  // "show"类用于控制模态框的显示状态（通过CSS的opacity和transform属性）
+  // 移除该类会触发淡出和下滑动画，提供更好的用户体验
+  modal.classList.remove("show");
+  
+  // 步骤4：延迟添加"hidden"类，等待CSS过渡动画完成
+  // 延迟时间300ms与CSS transition的持续时间保持一致
+  // 这样可以确保用户看到完整的关闭动画，然后才将模态框从文档流中移除
+  // 使用setTimeout是一种常见的处理CSS动画的模式
+  setTimeout(() => {
+    // 添加"hidden"类，将模态框的display属性设置为none
+    // 这会将模态框从文档流中完全移除，释放页面空间
+    modal.classList.add("hidden");
+    
+    // 输出日志，便于调试和追踪模态框的关闭操作
+    // 日志在动画完成后输出，表示模态框已完全关闭
+    console.log("[移动端学校账户管理] 模态框已关闭（动画完成）");
+  }, 300); // 300ms延迟，与CSS过渡动画时长匹配
+  
+  // 立即输出日志，表示关闭操作已开始
+  console.log("[移动端学校账户管理] 开始关闭模态框（触发动画）");
 }
 
 /**
@@ -21123,23 +21591,10 @@ async function showMobileUserSchoolAccounts(username) {
                     <!-- 操作按钮组 -->
                     <!-- flex gap-1.5: 水平排列，按钮之间间距6px -->
                     <div class="flex gap-1.5">
-                      
-                      <!-- 编辑按钮 -->
-                      <!-- 点击时调用mobileEditSchoolAccount函数 -->
-                      <!-- 使用data-account属性存储JSON数据 -->
-                      <!-- 点击时解析JSON并传递给函数 -->
-                      <!-- py-1.5 px-2.5: 紧凑的内边距，适合移动端 -->
-                      <!-- bg-sky-500: 天蓝色背景 -->
-                      <!-- text-white: 白色文字 -->
-                      <!-- rounded: 小圆角 -->
-                      <!-- text-xs: 小字体（12px） -->
-                      <!-- font-medium: 中等字重 -->
-                      <!-- hover:bg-sky-600: 鼠标悬停时背景颜色加深 -->
-                      <!-- transition: 平滑过渡动画 -->
-                      <!-- min-h-[44px]: 最小高度44px，符合触控友好设计 -->
+                    
                       <button 
-                        class="py-1.5 px-2.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[44px]" 
-                        data-account='${escapeHtml(accountDataJson)}'
+                        class="py-1 px-2 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[36px]" 
+                        data-account='${accountDataJson.replace(/'/g, "&apos;")}'
                         onclick="(function(btn) { 
                           const data = JSON.parse(btn.getAttribute('data-account')); 
                           mobileEditSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); 
@@ -21153,8 +21608,9 @@ async function showMobileUserSchoolAccounts(username) {
                       <!-- 删除成功后会自动刷新列表 -->
                       <!-- bg-red-500: 红色背景，表示危险操作 -->
                       <!-- hover:bg-red-600: 鼠标悬停时颜色加深 -->
+                      <!-- 【尺寸优化】与编辑按钮保持一致：min-h-[36px] + py-1 px-2 -->
                       <button 
-                        class="py-1.5 px-2.5 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition min-h-[44px]" 
+                        class="py-1 px-2 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition min-h-[36px]" 
                         data-auth-username='${escapeHtml(username)}'
                         data-school-username='${escapeHtml(schoolUsername)}'
                         onclick="(function(btn) { 
@@ -21172,8 +21628,9 @@ async function showMobileUserSchoolAccounts(username) {
                       <!-- 显示学号、姓名、欠费信息等详细数据 -->
                       <!-- bg-emerald-500: 翡翠绿色背景 -->
                       <!-- hover:bg-emerald-600: 鼠标悬停时颜色加深 -->
+                      <!-- 【尺寸优化】与编辑按钮保持一致：min-h-[36px] + py-1 px-2 -->
                       <button 
-                        class="py-1.5 px-2.5 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[44px]" 
+                        class="py-1 px-2 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[36px]" 
                         onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
                           schoolUsername
                         )}')"
@@ -42463,23 +42920,14 @@ async function showMobileUserSchoolAccounts(username) {
             }
           </div>
           
-          <!-- ========== 操作按钮组 ========== -->
-          <!-- 包含三个按钮：编辑、删除、查看详情 -->
-          <!-- 使用flex布局，确保按钮在移动端有足够的触摸区域（min-height: 44px） -->
-          <!-- 参考PC端 manage-school-accounts-modal 的实现方式 -->
-          <div class="flex flex-col gap-2 pt-3 border-t border-slate-100">
-            <!-- 编辑按钮：打开编辑模态框，允许修改密码和UA -->
-            <!-- 使用data属性存储JSON数据，避免onclick中的转义问题 -->
             <button 
-              class="w-full py-2.5 px-4 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
-              data-account='${escapeHtml(
-                JSON.stringify({
-                  authUsername: username,
-                  schoolUsername: schoolUsername,
-                  password: password,
-                  ua: ua,
-                })
-              )}'
+              class="w-full py-2.5 px-4 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition-colors max-h-[36px] flex items-center justify-center gap-2"
+              data-account='${JSON.stringify({
+                authUsername: username,
+                schoolUsername: schoolUsername,
+                password: password,
+                ua: ua,
+              }).replace(/'/g, "&apos;")}'
               onclick="(function(btn) { const data = JSON.parse(btn.getAttribute('data-account')); editSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); })(this)"
               title="编辑此账户的密码和UA">
               <!-- 编辑图标 -->
@@ -42493,7 +42941,7 @@ async function showMobileUserSchoolAccounts(username) {
             <!-- 调用 View_details_of_users_with_outstanding_payments 函数 -->
             <!-- 该函数会显示一个包含详细信息的弹窗（学号、姓名、欠费次数等） -->
             <button 
-              class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors max-h-[36px] flex items-center justify-center gap-2"
               onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
                 schoolUsername
               )}')"
@@ -42510,7 +42958,7 @@ async function showMobileUserSchoolAccounts(username) {
             <!-- 使用红色背景，表示危险操作 -->
             <!-- 删除操作会触发二次确认对话框 -->
             <button 
-              class="w-full py-2.5 px-4 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 active:bg-red-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              class="w-full py-2.5 px-4 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 active:bg-red-700 transition-colors max-h-[36px] flex items-center justify-center gap-2"
               data-auth-username='${escapeHtml(username)}'
               data-school-username='${escapeHtml(schoolUsername)}'
               onclick="(function(btn) { deleteSchoolAccount(btn.getAttribute('data-auth-username'), btn.getAttribute('data-school-username')); })(this)"
