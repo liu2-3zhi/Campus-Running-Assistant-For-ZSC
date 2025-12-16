@@ -2206,11 +2206,14 @@ async function loadPaymentMethodsConfig(
     // 尝试获取支付方式列表容器，先尝试PC端（带_modal后缀），再尝试移动端（不带后缀）
     let listContainer = document.getElementById("payment-methods-list_modal");
     let isModalVersion = true; // 标记是否为PC端modal版本
-    if (!listContainer) {
-      // 如果PC端容器不存在，尝试获取移动端容器
-      listContainer = document.getElementById("payment-methods-list");
+    if (isMobileMode) {
+      // 尝试获取移动端容器
+      listContainer = document.getElementById("payment-methods-list-mobile");
       isModalVersion = false; // 标记为移动端版本
     }
+    logMessage_Info(
+      `[支付配置] 使用'${listContainer.id}'作为支付方式列表容器`
+    );
 
     if (!listContainer) {
       // console.error('[支付配置] 找不到支付方式列表容器');
@@ -13661,28 +13664,19 @@ function updateMobileNavVisibility(show, mode = "single") {
 }
 
 function showMobileMessage(message, type = "info") {
-  const errorDiv = document.getElementById("mobile-auth-error");
-  const successDiv = document.getElementById("mobile-auth-success");
+  // const errorDiv = document.getElementById("mobile-auth-error");
+  // const successDiv = document.getElementById("mobile-auth-success");
 
   if (type === "clear") {
-    if (errorDiv) errorDiv.classList.add("hidden");
-    if (successDiv) successDiv.classList.add("hidden");
+    const modal = $("alert-modal");
+    modal.classList.add("hidden");
     return;
   }
 
-  if (errorDiv) errorDiv.classList.add("hidden");
-  if (successDiv) successDiv.classList.add("hidden");
-
   if (type === "error") {
-    if (errorDiv) {
-      errorDiv.textContent = message;
-      errorDiv.classList.remove("hidden");
-    }
+    showModalAlert(message, "错误");
   } else if (type === "success") {
-    if (successDiv) {
-      successDiv.textContent = message;
-      successDiv.classList.remove("hidden");
-    }
+    showModalAlert(message, "成功");
   } else {
     showModalAlert(message, "提示");
   }
@@ -14281,24 +14275,24 @@ async function callPythonAPI(method, ...args) {
       } else {
         logMessage_Info(`[安全提示] ${errorMsg}`);
 
-        if (isMobileMode) {
-          showMobileMessage(errorMsg || "需要重新登录", "error");
+        // if (isMobileMode) {
+        //   showMobileMessage(errorMsg || "需要重新登录", "error");
 
-          const mobileMainApp = document.getElementById("mobile-main-app");
-          const mobileMultiApp = document.getElementById(
-            "mobile-multi-account-app"
-          );
-          const mobileLoginContainer = document.getElementById(
-            "mobile-login-container"
-          );
+        //   const mobileMainApp = document.getElementById("mobile-main-app");
+        //   const mobileMultiApp = document.getElementById(
+        //     "mobile-multi-account-app"
+        //   );
+        //   const mobileLoginContainer = document.getElementById(
+        //     "mobile-login-container"
+        //   );
 
-          if (mobileMainApp) mobileMainApp.classList.add("hidden");
-          if (mobileMultiApp) mobileMultiApp.classList.add("hidden");
-          if (mobileLoginContainer)
-            mobileLoginContainer.classList.remove("hidden");
+        //   if (mobileMainApp) mobileMainApp.classList.add("hidden");
+        //   if (mobileMultiApp) mobileMultiApp.classList.add("hidden");
+        //   if (mobileLoginContainer)
+        //     mobileLoginContainer.classList.remove("hidden");
 
-          logMessage_Info("[移动端] 已切换到登录页面（因need_login）");
-        } else {
+        //   logMessage_Info("[移动端] 已切换到登录页面（因need_login）");
+        // } else {
           Swal.fire({
             icon: "warning",
             title: "需要重新登录",
@@ -14308,7 +14302,7 @@ async function callPythonAPI(method, ...args) {
           }).then(() => {
             window.location.href = "/";
           });
-        }
+        // }
       }
 
       if (refreshUserListInterval) {
@@ -21394,33 +21388,7 @@ async function showMobileUserSchoolAccounts(username) {
                     <!-- 操作按钮组 -->
                     <!-- flex gap-1.5: 水平排列，按钮之间间距6px -->
                     <div class="flex gap-1.5">
-                      
-                      <!-- 编辑按钮 -->
-                      <!-- 点击时调用mobileEditSchoolAccount函数 -->
-                      <!-- 使用data-account属性存储JSON数据 -->
-                      <!-- 点击时解析JSON并传递给函数 -->
-                      <!-- py-1.5 px-2.5: 紧凑的内边距，适合移动端 -->
-                      <!-- bg-sky-500: 天蓝色背景 -->
-                      <!-- text-white: 白色文字 -->
-                      <!-- rounded: 小圆角 -->
-                      <!-- text-xs: 小字体（12px） -->
-                      <!-- font-medium: 中等字重 -->
-                      <!-- hover:bg-sky-600: 鼠标悬停时背景颜色加深 -->
-                      <!-- transition: 平滑过渡动画 -->
-                      <!-- 
-                        【尺寸优化】按钮尺寸调整说明：
-                        - 原尺寸 min-h-[44px] + py-1.5 px-2.5 在移动端显得过大
-                        - 调整为 min-h-[36px] + py-1 px-2，使按钮更紧凑
-                        - 36px 的最小高度仍然保持了良好的触控友好性（iOS建议最小触控目标为32-44px）
-                        - 减少内边距（py-1=4px, px-2=8px）使视觉更轻量，同时不影响可点击性
-                      -->
-                      <!-- 
-                        【关键修复点】data-account属性的处理：
-                        - accountDataJson 已通过 JSON.stringify() 生成，格式正确
-                        - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
-                        - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
-                        - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
-                      -->
+                    
                       <button 
                         class="py-1 px-2 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[36px]" 
                         data-account='${accountDataJson.replace(/'/g, "&apos;")}'
@@ -42749,22 +42717,8 @@ async function showMobileUserSchoolAccounts(username) {
             }
           </div>
           
-          <!-- ========== 操作按钮组 ========== -->
-          <!-- 包含三个按钮：编辑、删除、查看详情 -->
-          <!-- 使用flex布局，确保按钮在移动端有足够的触摸区域（min-height: 44px） -->
-          <!-- 参考PC端 manage-school-accounts-modal 的实现方式 -->
-          <div class="flex flex-col gap-2 pt-3 border-t border-slate-100">
-            <!-- 编辑按钮：打开编辑模态框，允许修改密码和UA -->
-            <!-- 使用data属性存储JSON数据，避免onclick中的转义问题 -->
-            <!-- 
-              【关键修复点】data-account属性的处理（移动端PC版本）：
-              - JSON.stringify() 已经正确处理了JSON格式
-              - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
-              - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
-              - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
-            -->
             <button 
-              class="w-full py-2.5 px-4 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              class="w-full py-2.5 px-4 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition-colors max-h-[36px] flex items-center justify-center gap-2"
               data-account='${JSON.stringify({
                 authUsername: username,
                 schoolUsername: schoolUsername,
@@ -42784,7 +42738,7 @@ async function showMobileUserSchoolAccounts(username) {
             <!-- 调用 View_details_of_users_with_outstanding_payments 函数 -->
             <!-- 该函数会显示一个包含详细信息的弹窗（学号、姓名、欠费次数等） -->
             <button 
-              class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors max-h-[36px] flex items-center justify-center gap-2"
               onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
                 schoolUsername
               )}')"
@@ -42801,7 +42755,7 @@ async function showMobileUserSchoolAccounts(username) {
             <!-- 使用红色背景，表示危险操作 -->
             <!-- 删除操作会触发二次确认对话框 -->
             <button 
-              class="w-full py-2.5 px-4 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 active:bg-red-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              class="w-full py-2.5 px-4 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 active:bg-red-700 transition-colors max-h-[36px] flex items-center justify-center gap-2"
               data-auth-username='${escapeHtml(username)}'
               data-school-username='${escapeHtml(schoolUsername)}'
               onclick="(function(btn) { deleteSchoolAccount(btn.getAttribute('data-auth-username'), btn.getAttribute('data-school-username')); })(this)"

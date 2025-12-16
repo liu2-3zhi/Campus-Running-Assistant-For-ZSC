@@ -250,7 +250,7 @@
     </div>
   </div>
 
-  <div id="edit-school-account-modal" class="fixed inset-0 hidden z-[1055] flex items-center justify-center p-4" style="background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px)">
+  <div id="edit-school-account-modal" class="fixed inset-0 hidden z-[20001] flex items-center justify-center p-4" style="background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px)">
     <div class="bg-gradient-to-br from-slate-50 to-white rounded-3xl shadow-2xl max-w-[560px] w-full transform transition-all" style="
           box-shadow: 12px 12px 24px rgba(0, 0, 0, 0.1),
             -12px -12px 24px rgba(255, 255, 255, 0.9);
@@ -3877,27 +3877,8 @@
                 添加支付方式
               </button>
 
-              <!-- ========================================
-                   [修复] 支付方式列表容器（移动端）
-                   ======================================== 
-                   功能：动态显示所有已配置的支付方式
-                   实现：通过JavaScript的loadPaymentMethodsConfig()函数动态填充
-                   容器ID：payment-methods-list（移动端，不带_modal后缀）
-                   
-                   修复说明（任务14）：
-                   - 问题：移动端容器包含硬编码的占位符HTML，而PC端容器为空
-                   - 修复：移除硬编码占位符，让JavaScript函数统一控制渲染逻辑
-                   - 原理：JavaScript函数已内置占位符渲染逻辑（main.js第2090-2100行）
-                   - 效果：确保移动端和PC端的渲染行为完全一致，避免渲染冲突
-                   
-                   样式说明：
-                   - 移动端：单列布局（space-y-2），适配小屏幕
-                   - PC端：网格布局（grid grid-cols-1 md:grid-cols-2），提升空间利用率
-                   
-                   数据结构（由JavaScript动态生成）：
-                   每个支付方式包含：Logo、名称、描述、启用开关、编辑按钮、删除按钮
-                   ======================================== -->
-              <div id="payment-methods-list" class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+              
+              <div id="payment-methods-list-mobile" class="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
                 <!-- 支付方式将通过 loadPaymentMethodsConfig(false,true) 函数动态加载到这里 -->
                 <!-- JavaScript会在页面加载时自动调用该函数 -->
                 <!-- 无需手动添加任何内容，JavaScript会自动处理空状态和加载状态 -->
@@ -6373,7 +6354,7 @@
          权限：需要modify_config权限
          功能：配置支付方式的代码、名称、Logo、描述、样式等
          ======================================== -->
-      <div id="payment-method-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[51] flex items-center justify-center p-4">
+      <div id="payment-method-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[20001] flex items-center justify-center p-4">
         <!-- 模态框主体 -->
         <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
           <!-- 模态框头部 -->
@@ -6540,7 +6521,7 @@
       </div>
 
       <!-- 订单详情弹窗：点击查看详情按钮时显示 -->
-          <div id="admin-order-detail-modal_overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[51]" onclick="closeOrderDetailModal(event)">
+          <div id="admin-order-detail-modal_overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[20001]" onclick="closeOrderDetailModal(event)">
             <!-- 弹窗内容容器：防止点击内容区域时关闭弹窗 -->
             <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
               <!-- 弹窗标题栏 -->
