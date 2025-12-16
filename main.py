@@ -21971,6 +21971,10 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"解析school_account保存请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400
+        
+        # [修正] 获取当前用户的权限组，定义 auth_group 变量
+        auth_group = auth_system.get_user_group(current_auth_username)
+        
         is_admin = auth_group in ["admin", "super_admin"]
         if not is_admin and auth_username != current_auth_username:
             logging.warning(
@@ -22208,6 +22212,10 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"解析school_account更新请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400
+        
+        # [修正] 获取当前用户的权限组，定义 auth_group 变量
+        auth_group = auth_system.get_user_group(current_auth_username)
+        
         is_admin = auth_group in ["admin", "super_admin"]
         if not is_admin and auth_username != current_auth_username:
             logging.warning(
