@@ -1501,6 +1501,10 @@ SESSION_STORAGE_DIR = "sessions"
 TOKENS_STORAGE_DIR = "tokens"
 CONFIG_FILE = "config.ini"
 PERMISSIONS_FILE = "permissions.json"
+# [任务47新增] 自动签到配置文件
+# 用于集中管理所有启用自动签到的学校账号配置
+# 替代之前分散在各个INI文件中的auto_attendance_enabled参数
+AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config.json"
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -22553,6 +22557,21 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "会话ID缺失"})
         if target_session_id == session_id:
             return jsonify({"success": False, "message": "不能删除当前会话"})
+        
+        # [任务47新增] 在删除会话前，检查并移除关联的自动签到配置
+        # 查找所有使用该会话UUID的自动签到账号
+        auto_attendance_accounts = _get_auto_attendance_by_session(target_session_id)
+        if auto_attendance_accounts:
+            logging.info(
+                f"[会话删除] 会话 {target_session_id} 关联了 {len(auto_attendance_accounts)} 个自动签到账号，将一并移除"
+            )
+            # 逐个禁用自动签到
+            for school_username in auto_attendance_accounts:
+                _disable_auto_attendance(school_username)
+                logging.info(
+                    f"[会话删除] 已禁用账号 {school_username} 的自动签到（会话已删除）"
+                )
+        
         auth_system.unlink_session_from_user(auth_username, target_session_id)
         session_file = get_session_file_path(target_session_id)
         if os.path.exists(session_file):
@@ -30773,6 +30792,237 @@ def start_web_server(args_param):
     # 确保支付日志根目录存在
     # 用户子目录将在记录日志时动态创建
     os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
+
+    # ========================================================================
+    # [任务47] 自动签到配置管理函数
+    # ========================================================================
+    # 功能说明：
+    # 这些函数用于管理自动签到配置，将配置从分散的INI文件迁移到集中的JSON文件
+    # JSON文件路径：auto_attendance_config.json
+    # 数据结构：{
+    #   "enabled_accounts": {
+    #     "school_username": {
+    #       "session_uuid": "uuid-string",
+    #       "enabled_at": "2024-01-01T00:00:00Z",
+    #       "auth_username": "owner_username"
+    #     }
+    #   }
+    # }
+    # ========================================================================
+
+    def _load_auto_attendance_config():
+        """
+        加载自动签到配置文件
+        
+        返回:
+            dict: 配置字典，如果文件不存在或解析失败则返回空配置
+            
+        配置结构:
+            {
+                "enabled_accounts": {
+                    "school_username": {
+                        "session_uuid": "uuid-string",
+                        "enabled_at": "ISO8601时间戳",
+                        "auth_username": "所有者用户名"
+                    }
+                }
+            }
+        """
+        try:
+            # 检查配置文件是否存在
+            if os.path.exists(AUTO_ATTENDANCE_CONFIG_FILE):
+                with open(AUTO_ATTENDANCE_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    # 确保配置结构完整
+                    if "enabled_accounts" not in config:
+                        config["enabled_accounts"] = {}
+                    logging.info(
+                        f"[自动签到配置] 已加载配置，共 {len(config['enabled_accounts'])} 个启用账号"
+                    )
+                    return config
+            else:
+                # 文件不存在，返回空配置
+                logging.info("[自动签到配置] 配置文件不存在，使用空配置")
+                return {"enabled_accounts": {}}
+        except json.JSONDecodeError as e:
+            # JSON解析失败
+            logging.error(f"[自动签到配置] 配置文件解析失败: {e}")
+            return {"enabled_accounts": {}}
+        except Exception as e:
+            # 其他异常
+            logging.error(f"[自动签到配置] 加载配置失败: {e}")
+            return {"enabled_accounts": {}}
+
+    def _save_auto_attendance_config(config):
+        """
+        保存自动签到配置到文件
+        
+        参数:
+            config (dict): 要保存的配置字典
+            
+        返回:
+            bool: 保存是否成功
+        """
+        try:
+            # 确保配置结构完整
+            if "enabled_accounts" not in config:
+                config["enabled_accounts"] = {}
+            
+            # 写入文件，使用缩进格式化以便人工阅读
+            with open(AUTO_ATTENDANCE_CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            
+            logging.info(
+                f"[自动签到配置] 配置已保存，共 {len(config['enabled_accounts'])} 个启用账号"
+            )
+            return True
+        except Exception as e:
+            logging.error(f"[自动签到配置] 保存配置失败: {e}")
+            return False
+
+    def _enable_auto_attendance(school_username, session_uuid, auth_username):
+        """
+        启用指定学校账号的自动签到功能
+        
+        参数:
+            school_username (str): 学校账号用户名
+            session_uuid (str): 关联的会话UUID
+            auth_username (str): 账号所有者的认证用户名
+            
+        返回:
+            bool: 操作是否成功
+        """
+        try:
+            # 加载当前配置
+            config = _load_auto_attendance_config()
+            
+            # 添加或更新账号配置
+            config["enabled_accounts"][school_username] = {
+                "session_uuid": session_uuid,
+                "enabled_at": datetime.datetime.utcnow().isoformat() + "Z",
+                "auth_username": auth_username
+            }
+            
+            # 保存配置
+            if _save_auto_attendance_config(config):
+                logging.info(
+                    f"[自动签到配置] 已启用自动签到 - "
+                    f"学校账号: {school_username}, "
+                    f"所有者: {auth_username}, "
+                    f"会话: {session_uuid}"
+                )
+                return True
+            return False
+        except Exception as e:
+            logging.error(
+                f"[自动签到配置] 启用失败 - "
+                f"学校账号: {school_username}, 错误: {e}"
+            )
+            return False
+
+    def _disable_auto_attendance(school_username):
+        """
+        禁用指定学校账号的自动签到功能
+        
+        参数:
+            school_username (str): 学校账号用户名
+            
+        返回:
+            bool: 操作是否成功
+        """
+        try:
+            # 加载当前配置
+            config = _load_auto_attendance_config()
+            
+            # 检查账号是否存在
+            if school_username in config["enabled_accounts"]:
+                # 移除账号配置
+                del config["enabled_accounts"][school_username]
+                
+                # 保存配置
+                if _save_auto_attendance_config(config):
+                    logging.info(
+                        f"[自动签到配置] 已禁用自动签到 - 学校账号: {school_username}"
+                    )
+                    return True
+                return False
+            else:
+                # 账号本来就不存在，视为成功
+                logging.info(
+                    f"[自动签到配置] 账号未启用自动签到 - 学校账号: {school_username}"
+                )
+                return True
+        except Exception as e:
+            logging.error(
+                f"[自动签到配置] 禁用失败 - "
+                f"学校账号: {school_username}, 错误: {e}"
+            )
+            return False
+
+    def _is_auto_attendance_enabled(school_username):
+        """
+        检查指定学校账号是否启用了自动签到
+        
+        参数:
+            school_username (str): 学校账号用户名
+            
+        返回:
+            bool: 是否启用自动签到
+        """
+        try:
+            config = _load_auto_attendance_config()
+            return school_username in config["enabled_accounts"]
+        except Exception as e:
+            logging.error(
+                f"[自动签到配置] 检查失败 - "
+                f"学校账号: {school_username}, 错误: {e}"
+            )
+            return False
+
+    def _get_auto_attendance_session(school_username):
+        """
+        获取指定学校账号关联的会话UUID
+        
+        参数:
+            school_username (str): 学校账号用户名
+            
+        返回:
+            str: 会话UUID，如果未启用或不存在则返回None
+        """
+        try:
+            config = _load_auto_attendance_config()
+            if school_username in config["enabled_accounts"]:
+                return config["enabled_accounts"][school_username].get("session_uuid")
+            return None
+        except Exception as e:
+            logging.error(
+                f"[自动签到配置] 获取会话失败 - "
+                f"学校账号: {school_username}, 错误: {e}"
+            )
+            return None
+
+    def _get_auto_attendance_by_session(session_uuid):
+        """
+        根据会话UUID获取所有关联的自动签到账号
+        
+        参数:
+            session_uuid (str): 会话UUID
+            
+        返回:
+            list: 学校账号用户名列表
+        """
+        try:
+            config = _load_auto_attendance_config()
+            accounts = []
+            for school_username, info in config["enabled_accounts"].items():
+                if info.get("session_uuid") == session_uuid:
+                    accounts.append(school_username)
+            return accounts
+        except Exception as e:
+            logging.error(
+                f"[自动签到配置] 根据会话查询失败 - 会话: {session_uuid}, 错误: {e}"
+            )
+            return []
 
     def _write_payment_log(user_id, order_id, action, log_data):
         """
