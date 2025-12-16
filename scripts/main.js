@@ -1824,10 +1824,50 @@ function switchPaymentSettingsTab(tabName) {
 
     // 检查当前遍历的标签页是否是要显示的目标标签页
     if (tab === tabName) {
+      // ========================================
       // 【修复】根据不同的标签页执行相应的初始化函数
-      if (tab === "yipay") {
+      // ========================================
+      // 这是一个关键的初始化逻辑，确保每个标签页在显示时都能加载对应的数据
+      // 移动端的实现与PC端保持一致，但使用不同的函数和容器ID
+      
+      if (tab === "config") {
+        // ========================================
+        // 【修复移动端支付方式列表无法加载的问题】
+        // ========================================
+        // 问题原因：
+        // - 移动端之前缺少此逻辑，导致切换到支付配置标签页时，payment-methods-list容器为空
+        // - PC端有相同逻辑（switchAdminPaymentSettingsTab函数第5060-5066行），工作正常
+        // 
+        // 修复方案：
+        // - 参考PC端实现，在切换到config标签页时自动调用loadPaymentMethodsConfig()
+        // - 使用show_Modal_Alert=false参数，避免显示弹窗提示（保持与PC端一致）
+        // 
+        // 函数说明：loadPaymentMethodsConfig(show_Modal_Alert, isMobile)
+        // - show_Modal_Alert: 是否显示弹窗提示，移动端和PC端都设置为false
+        // - isMobile: （可选）是否为移动端，函数内部会自动检测容器ID
+        // 
+        // 容器区别：
+        // - 移动端容器ID: payment-methods-list（第3900行）
+        // - PC端容器ID: payment-methods-list_modal（第8698行）
+        // 
+        // 调用时机：
+        // - 当用户点击"支付方式"标签页按钮时触发（index.html第3822行）
+        // - 通过onclick="switchPaymentSettingsTab('config')"调用此函数
+        // 
+        // 预期效果：
+        // - 移动端切换到支付配置标签页时，自动加载并显示所有已配置的支付方式
+        // - 每个支付方式显示：Logo、名称、描述、启用开关、编辑按钮、删除按钮
+        // - 如果没有配置任何支付方式，显示"暂无支付方式"的占位符提示
+        loadPaymentMethodsConfig((show_Modal_Alert = false));
+        
+        // 在控制台输出日志，方便调试和追踪
+        console.log("[移动端支付设置] 已触发支付方式配置加载");
+        
+      } else if (tab === "yipay") {
         // 切换到易支付配置标签页时，加载易支付配置
+        // 调用移动端专用的易支付配置加载函数
         loadMobileYiPayConfig();
+        
       } else if (tab === "query") {
         // 【新增】切换到订单查询标签页时，自动加载本地订单列表
         // 这样用户打开标签页就能立即看到订单数据，无需手动点击"加载本地"按钮
