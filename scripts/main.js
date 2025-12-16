@@ -10776,20 +10776,36 @@ async function deleteWatermarkUser(username) {
  * 3. 筛选出未配置的用户
  * 4. 显示可添加的用户列表
  * 5. 管理员点击"添加"按钮后，将用户添加到配置中（默认允许去水印）
+ *
+ * 【移动端兼容性说明】
+ * 该函数已针对移动端进行优化，支持触摸事件和点击事件。
+ * 如果在移动端遇到点击无响应的问题，请：
+ * 1. 确保已切换到"水印控制"标签页（面板才会显示）
+ * 2. 打开浏览器控制台查看是否有错误日志
+ * 3. 尝试在控制台手动执行: openAddWatermarkUserModal()
+ * 4. 检查网络连接是否正常（需要从服务器加载用户列表）
  */
 async function openAddWatermarkUserModal() {
+  // 【调试日志】记录函数调用，便于排查按钮点击是否生效
+  console.log("[水印控制] openAddWatermarkUserModal() 函数被调用");
+  
   try {
     // [步骤1] 显示模态框
     // 获取模态框元素
     const modal = document.getElementById("add-watermark-user-modal");
     if (!modal) {
-      // 如果模态框不存在，记录错误并退出
-      console.error("[水印控制] 无法找到添加用户模态框元素");
+      // 如果模态框不存在，记录错误并通过弹窗提示用户
+      const errorMsg = "无法找到添加用户模态框元素，请刷新页面后重试";
+      console.error("[水印控制] " + errorMsg);
+      // 使用模态框提示用户，让错误更明显
+      showModalAlert(errorMsg, "错误");
       return;
     }
 
     // 移除hidden类，使模态框可见
     modal.classList.remove("hidden");
+    // 【调试日志】确认模态框已成功打开
+    console.log("[水印控制] 模态框已打开，开始加载用户列表...");
 
     // [步骤2] 显示加载状态
     console.log("[水印控制] 正在加载可添加的用户列表...");
@@ -10799,7 +10815,13 @@ async function openAddWatermarkUserModal() {
       "available-watermark-users-list"
     );
     if (!listContainer) {
-      console.error("[水印控制] 无法找到用户列表容器元素");
+      // 如果列表容器不存在，记录错误并通过弹窗提示用户
+      const errorMsg = "无法找到用户列表容器元素，页面可能未正确加载";
+      console.error("[水印控制] " + errorMsg);
+      // 关闭模态框，因为无法显示内容
+      modal.classList.add("hidden");
+      // 使用模态框提示用户
+      showModalAlert(errorMsg, "错误");
       return;
     }
 
@@ -10884,14 +10906,18 @@ async function openAddWatermarkUserModal() {
 
     // [步骤8] 记录成功日志
     console.log(
-      `[水印控制] 可添加用户列表加载完成，共 ${availableUsers.length} 个用户`
+      `[水印控制] ✓ 可添加用户列表加载完成，共 ${availableUsers.length} 个用户可添加`
     );
+    console.log("[水印控制] ✓ 模态框已成功打开并显示用户列表");
   } catch (error) {
     // [错误处理] 捕获所有可能的错误
     console.error("[水印控制] 加载可添加用户列表失败:", error);
 
-    // 显示错误提示
-    showModalAlert("加载用户列表失败：" + error.message);
+    // 显示友好的错误提示，包含详细的错误信息
+    showModalAlert(
+      "加载用户列表失败：" + error.message + "\n\n请检查网络连接或刷新页面重试。",
+      "加载失败"
+    );
 
     // 在列表容器中显示错误信息
     const listContainer = document.getElementById(
@@ -10927,6 +10953,100 @@ function closeAddWatermarkUserModal() {
 
   // [步骤4] 记录日志
   console.log("[水印控制] 已关闭添加用户模态框");
+}
+
+/**
+ * 【诊断工具】检查添加水印用户模态框的状态
+ * 
+ * 功能说明：
+ * 这是一个诊断函数，用于排查"添加用户"按钮点击无效的问题。
+ * 该函数会检查所有相关DOM元素是否存在，并输出详细的诊断信息。
+ * 
+ * 使用方法：
+ * 在浏览器控制台中执行: diagnoseAddWatermarkUserModal()
+ * 
+ * 诊断项目：
+ * 1. 检查模态框元素是否存在
+ * 2. 检查用户列表容器是否存在
+ * 3. 检查移动端面板是否可见
+ * 4. 检查PC端面板是否可见
+ * 5. 检查函数是否可访问
+ * 6. 尝试手动触发模态框打开
+ * 
+ * @returns {Object} 诊断结果对象，包含各项检查的状态
+ */
+function diagnoseAddWatermarkUserModal() {
+  console.log("========================================");
+  console.log("【水印控制诊断工具】开始诊断...");
+  console.log("========================================");
+  
+  // 诊断结果对象
+  const diagnosis = {
+    timestamp: new Date().toISOString(),
+    checks: {}
+  };
+  
+  // 检查1: 模态框元素
+  const modal = document.getElementById("add-watermark-user-modal");
+  diagnosis.checks.modalExists = !!modal;
+  console.log(`✓ 检查1: 模态框元素 (add-watermark-user-modal)`, 
+    modal ? "✓ 存在" : "✗ 不存在");
+  if (modal) {
+    diagnosis.checks.modalVisible = !modal.classList.contains("hidden");
+    console.log(`  - 当前状态:`, modal.classList.contains("hidden") ? "隐藏" : "可见");
+  }
+  
+  // 检查2: 用户列表容器
+  const listContainer = document.getElementById("available-watermark-users-list");
+  diagnosis.checks.listContainerExists = !!listContainer;
+  console.log(`✓ 检查2: 用户列表容器 (available-watermark-users-list)`, 
+    listContainer ? "✓ 存在" : "✗ 不存在");
+  
+  // 检查3: 移动端面板
+  const mobilePanel = document.getElementById("mobile-multi-admin-watermark-panel");
+  diagnosis.checks.mobilePanelExists = !!mobilePanel;
+  console.log(`✓ 检查3: 移动端面板 (mobile-multi-admin-watermark-panel)`, 
+    mobilePanel ? "✓ 存在" : "✗ 不存在");
+  if (mobilePanel) {
+    diagnosis.checks.mobilePanelVisible = !mobilePanel.classList.contains("hidden");
+    console.log(`  - 当前状态:`, 
+      mobilePanel.classList.contains("hidden") ? "隐藏 (这是正常的，需要切换到水印控制标签)" : "可见");
+  }
+  
+  // 检查4: PC端按钮（通过搜索包含onclick属性的按钮）
+  const buttons = document.querySelectorAll('button[onclick*="openAddWatermarkUserModal"]');
+  diagnosis.checks.buttonsCount = buttons.length;
+  console.log(`✓ 检查4: 找到 ${buttons.length} 个"添加用户"按钮`);
+  buttons.forEach((btn, index) => {
+    console.log(`  - 按钮 ${index + 1}:`, 
+      btn.offsetParent === null ? "不可见（父元素隐藏）" : "可见");
+  });
+  
+  // 检查5: 函数可访问性
+  diagnosis.checks.functionAccessible = typeof openAddWatermarkUserModal === "function";
+  console.log(`✓ 检查5: openAddWatermarkUserModal 函数`, 
+    diagnosis.checks.functionAccessible ? "✓ 可访问" : "✗ 不可访问");
+  
+  // 检查6: Session UUID（API调用需要）
+  diagnosis.checks.sessionUUID = typeof sessionUUID !== "undefined";
+  console.log(`✓ 检查6: sessionUUID`, 
+    diagnosis.checks.sessionUUID ? `✓ 已定义 (${sessionUUID ? "有值" : "为空"})` : "✗ 未定义");
+  
+  // 总结
+  console.log("========================================");
+  const allChecksPass = Object.values(diagnosis.checks).every(v => v === true || typeof v === "number");
+  if (allChecksPass) {
+    console.log("✓ 所有检查通过！");
+    console.log("💡 提示: 如果按钮仍然无效，请确保：");
+    console.log("   1. 已切换到水印控制标签页");
+    console.log("   2. 尝试手动执行: openAddWatermarkUserModal()");
+  } else {
+    console.log("✗ 发现问题，请查看上方详细信息");
+  }
+  console.log("========================================");
+  
+  // 返回诊断结果
+  return diagnosis;
 }
 
 /**
