@@ -392,7 +392,7 @@ function loadPaymentLogs(page) {
   const url = `/api/payment_logs?${params.toString()}`;
 
   // 在控制台输出请求信息，方便调试
-  logMessage(`[支付日志] 正在加载第${page}页，筛选条件:`, {
+  logMessage_Info(`[支付日志] 正在加载第${page}页，筛选条件:`, {
     actionType: actionType || '全部',
     startDate: startDate || '无限制',
     endDate: endDate || '无限制'
@@ -659,7 +659,7 @@ function loadPaymentLogsPrevPage() {
   // 检查是否已经是第一页
   if (paymentLogsState.currentPage <= 1) {
     // console.log('[支付日志] 已经是第一页');
-    logMessage_Info('[支付日志] 已经是第一页，无法加载上一页');
+    logMessage_Warning('[支付日志] 已经是第一页，无法加载上一页');
     return; // 如果已经是第一页，直接返回，不执行操作
   }
 
@@ -687,7 +687,7 @@ function loadPaymentLogsNextPage() {
   // 检查是否已经是最后一页
   if (paymentLogsState.currentPage >= paymentLogsState.totalPages) {
     // console.log('[支付日志] 已经是最后一页');
-    logMessage_Info('[支付日志] 已经是最后一页，无法加载下一页');
+    logMessage_Warning('[支付日志] 已经是最后一页，无法加载下一页');
     return; // 如果已经是最后一页，直接返回，不执行操作
   }
 
@@ -24477,15 +24477,15 @@ function refreshMobileSessionPicker() {
               const initialData = await loadInitialData({ force: true });
               if (initialData && initialData.accounts) {
                 renderMultiAccountList(initialData.accounts);
-                logMessage(
+                logMessage_Info(
                   `已恢复多账号模式，当前有 ${initialData.accounts.length} 个账号`
                 );
               } else {
-                logMessage(`已恢复多账号模式，当前有 0 个账号`);
+                logMessage_Info(`已恢复多账号模式，当前有 0 个账号`);
               }
             } catch (e) {
               logMessage_Error("恢复账号列表失败:", e);
-              logMessage(
+              logMessage_Info(
                 `已恢复多账号模式，当前有 ${
                   sessionModeInfo.multi_account_count || 0
                 } 个账号（列表加载失败）`
@@ -24821,14 +24821,14 @@ function refreshMobileSessionPicker() {
         });
 
         socket.on("accounts_updated", (data) => {
-          // if (data && data.accounts) {
-          //   logMessage(
-          //     `[Socket] 收到账号列表更新，共 ${data.accounts.length} 个账号`,
-          //     "INFO",
-          //     "Socket"
-          //   );
-          //   onAccountsUpdated(data.accounts);
-          // }
+          if (data && data.accounts) {
+            logMessage(
+              `[Socket] 收到账号列表更新，共 ${data.accounts.length} 个账号`,
+              "INFO",
+              "Socket"
+            );
+            onAccountsUpdated(data.accounts);
+          }
         });
 
         socket.on("multi_global_buttons_update", (data) => {
