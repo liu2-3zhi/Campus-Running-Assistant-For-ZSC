@@ -19754,6 +19754,8 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "游客无权访问此功能"}), 403
             g.user = auth_username
             g.api_instance = api_instance
+            # 将 session_id 存储到 g 对象中，以便被装饰的函数可以访问它（用于审计日志等）
+            g.session_id = session_id
             return f(*args, **kwargs)
 
         return decorated_function
@@ -19804,6 +19806,8 @@ def start_web_server(args_param):
             # 3. 设置上下文变量
             g.user = auth_username
             g.api_instance = api_instance
+            # 将 session_id 存储到 g 对象中，以便被装饰的函数可以访问它（用于审计日志等）
+            g.session_id = session_id
             return f(*args, **kwargs)
 
         return decorated_function
@@ -21285,6 +21289,8 @@ def start_web_server(args_param):
         """
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
+        # 从Flask的g对象中获取会话ID（由 @login_required 装饰器设置），用于审计日志记录
+        session_id = g.session_id
 
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许创建新用户账号
@@ -21362,6 +21368,8 @@ def start_web_server(args_param):
         """管理员：封禁用户"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
+        # 从Flask的g对象中获取会话ID（由 @login_required 装饰器设置），用于审计日志记录
+        session_id = g.session_id
 
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许封禁用户账号
@@ -21392,6 +21400,8 @@ def start_web_server(args_param):
         """管理员：解封用户"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
+        # 从Flask的g对象中获取会话ID（由 @login_required 装饰器设置），用于审计日志记录
+        session_id = g.session_id
 
         # 检查细粒度权限：管理用户权限
         # manage_users 权限允许解封用户账号
@@ -22700,13 +22710,15 @@ def start_web_server(args_param):
         auth_username = g.user
 
         # 检查细粒度权限：用户管理权限
-        # manage_users 权限允许管理员执行用户相关的管理操作，包括清除用户头像
+        # manage_users 权限允许管理员执行用户相关的管理操作,包括清除用户头像
         # 这是一个涉及用户数据修改的敏感操作，需要专门的用户管理权限
         if not auth_system.check_permission(auth_username, 'manage_users'):
             return jsonify({
                 "success": False,
                 "message": "权限不足，需要用户管理权限（manage_users）"
             }), 403
+        # 从Flask的g对象中获取会话ID（由 @login_required 装饰器设置），用于审计日志记录
+        session_id = g.session_id
 
         data = request.json
         target_username = data.get("username", "")
@@ -23059,6 +23071,8 @@ def start_web_server(args_param):
         # manage_users 权限允许修改用户的可用执行次数配额
         if not auth_system.check_permission(auth_username, "manage_users"):
             return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
+        # 从Flask的g对象中获取会话ID（由 @login_required 装饰器设置），用于审计日志记录
+        session_id = g.session_id
 
         # 步骤5：解析请求体中的JSON数据
         data = request.json
