@@ -10682,17 +10682,65 @@ async function saveWatermarkControlConfig() {
  */
 async function deleteWatermarkUser(username) {
   try {
-    // ========== 步骤1: 确认删除操作 ==========
-    // 使用confirm对话框让用户确认，防止误操作
-    const confirmed = confirm(
-      `确定要删除用户"${username}"的自定义配置吗？\n\n删除后该用户将使用系统默认值。`
-    );
-    if (!confirmed) {
-      // 用户取消操作
+    // ========== 步骤1: 使用SweetAlert2进行二次确认 ==========
+    // 为什么使用Swal.fire而不是原生confirm:
+    // 1. 提供更美观、现代化的用户界面，提升用户体验
+    // 2. 支持自定义样式（按钮颜色、图标等），使界面更符合设计规范
+    // 3. 更好的可读性，文本显示更清晰，避免原生对话框的简陋外观
+    // 4. 与项目中其他使用Swal.fire的地方保持一致的交互风格
+    const result = await Swal.fire({
+      // title: 对话框标题，使用疑问句让用户明确当前操作的性质
+      title: '确认删除用户配置？',
+      
+      // html: 对话框的主要内容，使用HTML格式以支持更丰富的文本展示
+      // 使用<strong>标签突出显示用户名，让用户清楚知道要删除的是哪个用户
+      // 使用<br><br>进行段落分隔，提高可读性
+      html: `您即将删除用户 <strong>"${username}"</strong> 的自定义水印配置。<br><br>删除后该用户将使用系统默认值。<br><br>此操作不可撤销，请谨慎操作。`,
+      
+      // icon: 显示警告图标，提示用户这是一个需要谨慎处理的操作
+      // 'warning' 图标会显示为黄色感叹号，符合删除操作的警告性质
+      icon: 'warning',
+      
+      // showCancelButton: 显示取消按钮，给用户提供退出的机会，防止误操作
+      showCancelButton: true,
+      
+      // confirmButtonColor: 确认按钮使用红色（#ef4444 是Tailwind的red-500）
+      // 红色表示这是一个危险操作，提醒用户三思而后行
+      confirmButtonColor: '#ef4444',
+      
+      // cancelButtonColor: 取消按钮使用蓝色（#3085d6 是SweetAlert2的默认蓝色）
+      // 蓝色表示安全的、非破坏性的操作
+      cancelButtonColor: '#3085d6',
+      
+      // confirmButtonText: 确认按钮的文字，使用明确的动作描述
+      // "确定删除"比简单的"确定"更能让用户明白点击后的后果
+      confirmButtonText: '确定删除',
+      
+      // cancelButtonText: 取消按钮的文字，使用简洁的中文表达
+      cancelButtonText: '取消',
+      
+      // focusCancel: 默认聚焦到取消按钮，而不是确认按钮
+      // 这是一个重要的安全设计：防止用户不小心按回车键就执行了删除操作
+      // 用户必须主动移动焦点或点击才能确认删除
+      focusCancel: true,
+      
+      // reverseButtons: 反转按钮顺序，让取消按钮显示在左边，确认按钮在右边
+      // 这符合常见的UI设计习惯（危险操作按钮通常在右侧）
+      reverseButtons: true
+    });
+
+    // 处理用户的选择结果
+    // result.isConfirmed: 如果用户点击了"确定删除"按钮，此属性为true
+    // result.isDismissed: 如果用户点击了"取消"按钮或点击对话框外部关闭，此属性为true
+    if (!result.isConfirmed) {
+      // 用户取消了删除操作（点击取消、按ESC键或点击对话框外部）
+      // 记录日志后直接返回，不执行后续的删除逻辑
       console.log(`[水印控制] 用户取消删除"${username}"的配置`);
-      return;
+      return; // 提前返回，终止函数执行
     }
 
+    // 如果代码执行到这里，说明用户已经确认要删除
+    // 记录日志，标记删除操作的开始
     console.log(`[水印控制] 正在删除用户"${username}"的自定义配置...`);
 
     // ========== 步骤2: 获取当前配置 ==========
