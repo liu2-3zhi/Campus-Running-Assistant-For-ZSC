@@ -1755,8 +1755,18 @@ function switchPaymentSettingsTab(tabName) {
     // 检查当前遍历的标签页是否是要显示的目标标签页
     if (tab === tabName) {
 
+      // 【修复】根据不同的标签页执行相应的初始化函数
       if(tab==='yipay'){
+        // 切换到易支付配置标签页时，加载易支付配置
         loadMobileYiPayConfig()
+      } else if(tab==='query'){
+        // 【新增】切换到订单查询标签页时，自动加载本地订单列表
+        // 这样用户打开标签页就能立即看到订单数据，无需手动点击"加载本地"按钮
+        // 使用setTimeout异步执行，避免阻塞标签页切换动画
+        setTimeout(() => {
+          console.log('[订单查询] 自动加载本地订单列表...');
+          loadAllPaymentOrders();
+        }, 100);
       }
       // === 激活目标标签页 ===
       
@@ -9800,6 +9810,10 @@ async function loadWatermarkControlConfig() {
         // 如果用户在配置中有明确设置，使用该设置；否则使用默认值
         const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
         
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+        const safeUsername = escapeHtml(username);
+        
         // 创建用户权限控制项的HTML
         // 包含：用户名 + 开关按钮
         const userItem = document.createElement('div');
@@ -9808,7 +9822,7 @@ async function loadWatermarkControlConfig() {
         // 构建HTML内容
         userItem.innerHTML = `
           <div class="flex-1">
-            <span class="text-sm font-medium text-slate-700">${username}</span>
+            <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
             <p class="text-xs text-slate-500 mt-0.5">
               ${(username in usersConfig) ? '已自定义' : '使用默认值'}
             </p>
@@ -9816,9 +9830,9 @@ async function loadWatermarkControlConfig() {
           <label class="relative inline-flex items-center cursor-pointer ml-4">
             <input 
               type="checkbox" 
-              id="watermark-user-${username}_modal" 
+              id="watermark-user-${safeUsername}_modal" 
               class="sr-only peer watermark-user-checkbox" 
-              data-username="${username}"
+              data-username="${safeUsername}"
               ${userValue ? 'checked' : ''}
             >
             <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
@@ -10012,7 +10026,10 @@ async function openAddWatermarkUserModal() {
     const configuredUsers = data.config.users || {};
     
     // 获取所有系统用户列表
+    // 【调试日志】记录API返回的用户数据，便于排查用户列表加载问题
     const allUsers = data.all_users || [];
+    console.log(`[水印控制] API返回的系统用户列表:`, allUsers);
+    console.log(`[水印控制] 已配置的用户:`, Object.keys(configuredUsers));
     
     // [步骤6] 筛选出未配置的用户
     // 只显示那些尚未在水印控制配置中的用户
@@ -10032,15 +10049,20 @@ async function openAddWatermarkUserModal() {
         const userItem = document.createElement('div');
         // 添加CSS类：白色背景、圆角、边框、flex布局
         userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors';
-        // 为搜索功能添加data属性
+        // 为搜索功能添加data属性（存储原始用户名的小写形式用于搜索）
         userItem.setAttribute('data-username', username.toLowerCase());
         
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+        const safeUsername = escapeHtml(username);
+        
         // 构建HTML内容：用户名 + 添加按钮
+        // 注意：按钮的onclick中也使用转义后的用户名，确保JavaScript字符串安全
         userItem.innerHTML = `
           <div class="flex-1">
-            <span class="text-sm font-medium text-slate-700">${username}</span>
+            <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
           </div>
-          <button onclick="addWatermarkUser('${username}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
+          <button onclick="addWatermarkUser('${safeUsername}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
             <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -10095,6 +10117,136 @@ function closeAddWatermarkUserModal() {
   
   // [步骤4] 记录日志
   console.log('[水印控制] 已关闭添加用户模态框');
+}
+
+/**
+ * 刷新水印用户列表
+ * 
+ * 功能说明：
+ * 重新加载可添加的用户列表，用于在添加用户后更新列表，
+ * 或者手动刷新以获取最新的用户数据。
+ * 
+ * 调用场景：
+ * 1. 用户点击刷新按钮时
+ * 2. 成功添加用户后自动调用
+ * 
+ * 实现细节：
+ * - 显示"加载中..."提示
+ * - 重新调用openAddWatermarkUserModal的核心逻辑
+ * - 不关闭模态框，保持用户体验流畅
+ * 
+ * @returns {Promise<void>} 无返回值
+ */
+async function refreshWatermarkUserList() {
+  try {
+    // [步骤1] 显示加载状态
+    console.log('[水印控制] 正在刷新用户列表...');
+    
+    // 获取用户列表容器元素
+    const listContainer = document.getElementById('available-watermark-users-list');
+    if (!listContainer) {
+      console.error('[水印控制] 无法找到用户列表容器元素');
+      return;
+    }
+    
+    // 显示"加载中..."提示
+    listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">刷新中...</p>';
+    
+    // [步骤2] 发送HTTP请求获取配置和用户列表
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID  // 传递会话ID用于身份验证
+      }
+    });
+    
+    // [步骤3] 解析响应数据
+    const data = await response.json();
+    
+    // 检查请求是否成功
+    if (!data.success) {
+      throw new Error(data.message || '刷新用户列表失败');
+    }
+    
+    // [步骤4] 提取数据
+    // 获取当前已配置的用户列表
+    const configuredUsers = data.config.users || {};
+    
+    // 获取所有系统用户列表
+    // 【调试日志】记录API返回的用户数据
+    const allUsers = data.all_users || [];
+    console.log(`[水印控制] 刷新后的系统用户列表:`, allUsers);
+    console.log(`[水印控制] 刷新后的已配置用户:`, Object.keys(configuredUsers));
+    
+    // [步骤5] 筛选出未配置的用户
+    const availableUsers = allUsers.filter(username => !(username in configuredUsers));
+    
+    // [步骤6] 生成用户列表HTML
+    if (availableUsers.length === 0) {
+      // 如果没有可添加的用户，显示提示信息
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-sm">所有用户都已添加到配置中</p>';
+    } else {
+      // 清空容器，准备添加用户项
+      listContainer.innerHTML = '';
+      
+      // 为每个可添加的用户创建一个列表项
+      availableUsers.forEach(username => {
+        // 创建用户项容器
+        const userItem = document.createElement('div');
+        // 添加CSS类：白色背景、圆角、边框、flex布局
+        userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors';
+        // 为搜索功能添加data属性
+        userItem.setAttribute('data-username', username.toLowerCase());
+        
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        const safeUsername = escapeHtml(username);
+        
+        // 构建HTML内容：用户名 + 添加按钮
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
+          </div>
+          <button onclick="addWatermarkUser('${safeUsername}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
+            <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            添加
+          </button>
+        `;
+        
+        // 将用户项添加到列表容器中
+        listContainer.appendChild(userItem);
+      });
+    }
+    
+    // [步骤7] 记录成功日志
+    console.log(`[水印控制] 用户列表刷新完成，共 ${availableUsers.length} 个可添加用户`);
+    
+    // [步骤8] 显示成功提示（可选，避免过多打扰）
+    // 使用简短的Toast提示，而不是弹窗
+    Swal.fire({
+      icon: 'success',
+      title: '刷新成功',
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 1500
+    });
+    
+  } catch (error) {
+    // [错误处理] 捕获所有可能的错误
+    console.error('[水印控制] 刷新用户列表失败:', error);
+    
+    // 显示错误提示
+    showModalAlert('刷新用户列表失败：' + error.message);
+    
+    // 在列表容器中显示错误信息
+    const listContainer = document.getElementById('available-watermark-users-list');
+    if (listContainer) {
+      listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-sm">刷新失败：${error.message}</p>`;
+    }
+  }
 }
 
 /**
@@ -10173,7 +10325,9 @@ async function addWatermarkUser(username) {
     await loadWatermarkControlConfig();
     
     // [步骤8] 显示成功提示
-    showModalAlert(`用户 "${username}" 已成功添加到水印控制配置！`);
+    // [安全修复] 使用escapeHtml()转义用户名，防止在提示信息中出现XSS漏洞
+    const safeUsername = escapeHtml(username);
+    showModalAlert(`用户 "${safeUsername}" 已成功添加到水印控制配置！`);
     
     // [步骤9] 记录成功日志
     console.log(`[水印控制] 用户 "${username}" 添加成功`);
@@ -10333,13 +10487,17 @@ async function loadMobileWatermarkControlConfig() {
       allUsers.forEach(username => {
         const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
         
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+        const safeUsername = escapeHtml(username);
+        
         const userItem = document.createElement('div');
         userItem.className = 'bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between';
         
         // 移动端使用更紧凑的布局
         userItem.innerHTML = `
           <div class="flex-1">
-            <span class="text-xs font-medium text-slate-700">${username}</span>
+            <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
             <p class="text-xs text-slate-500 mt-0.5">
               ${(username in usersConfig) ? '已自定义' : '使用默认值'}
             </p>
@@ -10347,9 +10505,9 @@ async function loadMobileWatermarkControlConfig() {
           <label class="relative inline-flex items-center cursor-pointer ml-3">
             <input 
               type="checkbox" 
-              id="mobile-watermark-user-${username}" 
+              id="mobile-watermark-user-${safeUsername}" 
               class="sr-only peer mobile-watermark-user-checkbox" 
-              data-username="${username}"
+              data-username="${safeUsername}"
               ${userValue ? 'checked' : ''}
             >
             <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
@@ -19629,17 +19787,22 @@ function refreshMobileSessionPicker() {
         }
       }
       async function submitEditSchoolAccount() {
+        // 获取表单中的数据
+        // 注意：auth_username和school_username存储在span元素的textContent中
+        // password和ua存储在input/textarea元素的value中
         const authUsername = $("edit-auth-username").textContent;
         const schoolUsername = $("edit-school-username").textContent;
         const password = $("edit-school-password").value.trim();
         const ua = $("edit-school-ua").value.trim();
 
+        // 验证密码不能为空
         if (!password) {
           showModalAlert("密码不能为空", "错误");
           return;
         }
 
         try {
+          // 向服务器发送更新请求
           const response = await fetch("/api/admin/school_account/update", {
             method: "POST",
             headers: {
@@ -19653,31 +19816,55 @@ function refreshMobileSessionPicker() {
               ua: ua,
             }),
           });
+          
+          // 解析服务器响应
           const result = await response.json();
 
           if (result.success) {
+            // 更新成功，显示成功提示
             showModalAlert(result.message || "更新成功", "成功");
+            
+            // 关闭编辑模态框
             closeEditSchoolAccountModal();
-            await showUserSchoolAccounts(authUsername);
+            
+            // 判断当前是在PC端还是移动端模态框中
+            // 通过检查移动端模态框是否显示来判断
+            const mobileModal = $("mobile-user-school-accounts-modal");
+            const isMobileModalVisible = mobileModal && !mobileModal.classList.contains("hidden");
+            
+            if (isMobileModalVisible) {
+              // 如果是在移动端模态框中，刷新移动端列表
+              await showMobileUserSchoolAccounts(authUsername);
+            } else {
+              // 如果是在PC端模态框中，刷新PC端列表
+              await showUserSchoolAccounts(authUsername);
+            }
           } else {
+            // 更新失败，显示错误提示
             showModalAlert(result.message || "更新失败", "错误");
           }
         } catch (error) {
+          // 捕获网络错误或其他异常
           console.error("submitEditSchoolAccount error:", error);
           showModalAlert("更新失败: " + error.message, "错误");
         }
       }
 
       async function deleteSchoolAccount(authUsername, schoolUsername) {
+        // 显示确认对话框，防止误删除操作
+        // jsShowConfirm是异步函数，返回Promise<boolean>
         const confirmed = await jsShowConfirm(
           "确认删除",
           `确定要删除学校账户 <strong>${escapeHtml(
             schoolUsername
           )}</strong> 吗？此操作不可恢复。`
         );
+        
+        // 如果用户点击取消，则提前返回，不执行删除操作
         if (!confirmed) return;
 
         try {
+          // 向服务器发送DELETE请求
           const response = await fetch("/api/admin/school_account/delete", {
             method: "POST",
             headers: {
@@ -19689,18 +19876,615 @@ function refreshMobileSessionPicker() {
               school_username: schoolUsername,
             }),
           });
+          
+          // 解析服务器响应
           const result = await response.json();
+          
           if (result.success) {
+            // 删除成功，显示成功提示
             showModalAlert(result.message || "删除成功", "成功");
-            await showUserSchoolAccounts(authUsername);
+            
+            // 判断当前是在PC端还是移动端模态框中
+            // 通过检查移动端模态框是否显示来判断
+            const mobileModal = $("mobile-user-school-accounts-modal");
+            const isMobileModalVisible = mobileModal && !mobileModal.classList.contains("hidden");
+            
+            if (isMobileModalVisible) {
+              // 如果是在移动端模态框中，刷新移动端列表
+              await showMobileUserSchoolAccounts(authUsername);
+            } else {
+              // 如果是在PC端模态框中，刷新PC端列表
+              await showUserSchoolAccounts(authUsername);
+            }
           } else {
+            // 删除失败，显示错误提示
             showModalAlert(result.message || "删除失败", "错误");
           }
         } catch (error) {
+          // 捕获网络错误或其他异常
           console.error("deleteSchoolAccount error:", error);
           showModalAlert("删除失败: " + error.message, "错误");
         }
       }
+
+      // ==================== 移动端学校账户管理功能 ====================
+      // 以下函数专门用于移动端的学校账户管理模态框
+      // 功能与PC端保持一致，但适配了移动端的UI和交互方式
+      // ================================================================
+
+      /**
+       * 关闭移动端学校账户管理模态框
+       * 
+       * 功能说明：
+       * - 隐藏移动端的学校账户管理模态框（mobile-user-school-accounts-modal）
+       * - 通过调用hideModal工具函数实现模态框的隐藏动画和状态管理
+       * 
+       * 调用时机：
+       * - 用户点击模态框外的背景遮罩层
+       * - 用户点击模态框底部的"关闭"按钮
+       * 
+       * 注意事项：
+       * - 该函数不会关闭二级模态框（如edit-school-account-modal）
+       * - 如果二级模态框已打开，需要先关闭二级模态框
+       */
+      function closeMobileUserSchoolAccountsModal() {
+        // 调用hideModal工具函数，传入模态框的DOM元素ID
+        // hideModal会自动处理移除显示类、添加隐藏类、清理事件监听器等工作
+        hideModal("mobile-user-school-accounts-modal");
+        
+        // 输出日志，便于调试和追踪模态框的关闭操作
+        console.log("[移动端学校账户管理] 已关闭模态框");
+      }
+
+      /**
+       * 刷新移动端学校账户列表
+       * 
+       * 功能说明：
+       * - 重新从服务器加载当前用户的学校账户数据
+       * - 更新移动端模态框中的账户列表显示
+       * 
+       * 实现逻辑：
+       * - 获取当前正在查看的用户名（从mobile-school-accounts-username元素）
+       * - 调用showMobileUserSchoolAccounts函数重新加载数据
+       * 
+       * 用户体验：
+       * - 用户点击"刷新"按钮后，可以看到最新的账户数据
+       * - 如果在其他地方修改了账户信息，可以通过刷新来同步显示
+       * 
+       * 错误处理：
+       * - 如果无法获取用户名，会在控制台输出错误信息并提示用户
+       */
+      async function mobileRefreshSchoolAccounts() {
+        // 输出日志，标记刷新操作的开始
+        console.log("[移动端学校账户管理] 开始刷新账户列表...");
+        
+        // 尝试获取当前显示的用户名
+        // $("mobile-school-accounts-username")获取DOM元素
+        // ?.textContent 使用可选链操作符，如果元素不存在则返回undefined
+        // || "" 如果textContent为空或undefined，则使用空字符串作为默认值
+        const currentUsername = $("mobile-school-accounts-username")?.textContent || "";
+        
+        // 验证用户名是否有效
+        if (!currentUsername) {
+          // 如果用户名为空，输出错误日志
+          console.error("[移动端学校账户管理] 刷新失败：无法获取当前用户名");
+          
+          // 使用showModalAlert显示友好的错误提示
+          showModalAlert("刷新失败：无法确定当前用户", "错误");
+          
+          // 提前返回，不执行后续的刷新操作
+          return;
+        }
+        
+        // 调用showMobileUserSchoolAccounts函数重新加载账户数据
+        // 该函数会自动：
+        // 1. 从服务器获取最新数据
+        // 2. 更新账户列表的HTML
+        // 3. 更新账户统计信息
+        await showMobileUserSchoolAccounts(currentUsername);
+        
+        // 输出成功日志
+        console.log("[移动端学校账户管理] 账户列表刷新完成");
+      }
+
+      /**
+       * 移动端：打开新增学校账户表单
+       * 
+       * 功能说明：
+       * - 打开新增学校账户的表单模态框（edit-school-account-modal）
+       * - 复用PC端的编辑模态框，但将其用于新增账户
+       * - 预填充当前用户名，清空其他字段
+       * 
+       * 设计思路：
+       * - 移动端和PC端共用同一个编辑表单模态框（edit-school-account-modal）
+       * - 通过修改表单标题和字段内容，区分"新增"和"编辑"两种场景
+       * - 这样可以减少代码重复，保持UI一致性
+       * 
+       * 表单字段处理：
+       * - auth_username（认证用户名）：自动填充当前用户名，设为只读
+       * - school_username（学校账号用户名）：清空，允许用户输入
+       * - password（密码）：清空，允许用户输入
+       * - ua（User-Agent）：清空，允许用户输入或使用生成功能
+       * 
+       * 注意事项：
+       * - 新增操作不会关闭移动端的主模态框（mobile-user-school-accounts-modal）
+       * - 两个模态框会叠加显示（二级模态框在上层）
+       * - 提交或关闭二级模态框后，会自动刷新主模态框的数据
+       */
+      function mobileAddNewSchoolAccount() {
+        // 输出日志，标记新增账户操作的开始
+        console.log("[移动端学校账户管理] 打开新增账户表单...");
+        
+        // 获取当前正在管理的用户名
+        // 从移动端模态框的标题中提取用户名
+        // ?.textContent 使用可选链操作符避免null引用错误
+        // || "" 如果获取失败，使用空字符串作为后备值
+        const currentAuthUsername = $("mobile-school-accounts-username")?.textContent || "";
+        
+        // 验证用户名是否有效
+        if (!currentAuthUsername) {
+          // 如果无法获取用户名，输出错误日志
+          console.error("[移动端学校账户管理] 打开新增表单失败：无法获取当前用户名");
+          
+          // 显示友好的错误提示
+          showModalAlert("无法打开新增表单：用户名无效", "错误");
+          
+          // 提前返回，不执行后续操作
+          return;
+        }
+        
+        // ========== 填充表单字段 ==========
+        // 获取表单中的各个输入字段的DOM元素
+        const authUsernameField = $("edit-school-account-auth-username");
+        const schoolUsernameField = $("edit-school-account-school-username");
+        const passwordField = $("edit-school-account-password");
+        const uaField = $("edit-school-account-ua");
+        
+        // 填充"认证用户名"字段
+        if (authUsernameField) {
+          // 设置字段值为当前用户名
+          authUsernameField.value = currentAuthUsername;
+          
+          // 设置为只读，防止用户修改（新增账户不应该改变所属用户）
+          authUsernameField.readOnly = true;
+        }
+        
+        // 清空"学校账号用户名"字段
+        if (schoolUsernameField) {
+          // 清空字段内容，等待用户输入新的学校账号
+          schoolUsernameField.value = "";
+          
+          // 设置为可编辑状态（新增时必须输入学校账号）
+          schoolUsernameField.readOnly = false;
+        }
+        
+        // 清空"密码"字段
+        if (passwordField) {
+          // 清空密码，等待用户输入新密码
+          passwordField.value = "";
+        }
+        
+        // 清空"User-Agent"字段
+        if (uaField) {
+          // 清空UA字段，用户可以手动输入或使用"生成随机UA"按钮
+          uaField.value = "";
+        }
+        
+        // ========== 更新模态框标题 ==========
+        // 获取模态框标题元素
+        const modalTitle = $("edit-school-account-modal-title");
+        if (modalTitle) {
+          // 修改标题文字为"新增学校账户"，区别于"编辑学校账户"
+          modalTitle.textContent = "新增学校账户";
+        }
+        
+        // ========== 显示编辑表单模态框 ==========
+        // 调用showModal工具函数显示二级模态框
+        // 该模态框会叠加在移动端主模态框之上
+        showModal("edit-school-account-modal");
+        
+        // 输出成功日志
+        console.log("[移动端学校账户管理] 已打开新增学校账户表单");
+      }
+
+      /**
+       * 移动端：编辑学校账户
+       * 
+       * 功能说明：
+       * - 打开编辑学校账户的表单模态框（edit-school-account-modal）
+       * - 预填充现有账户的所有信息
+       * - 允许用户修改密码和User-Agent，但不允许修改学校账号用户名
+       * 
+       * 参数说明：
+       * @param {string} authUsername - 认证用户名（账户所属用户）
+       * @param {string} schoolUsername - 学校账号用户名（要编辑的账户标识）
+       * @param {string} password - 当前密码（预填充到表单中）
+       * @param {string} ua - 当前User-Agent（预填充到表单中，可能为空）
+       * 
+       * 设计思路：
+       * - 与mobileAddNewSchoolAccount复用同一个模态框
+       * - 通过预填充数据和设置只读属性来区分"编辑"场景
+       * - 学校账号用户名不可修改（因为它是账户的唯一标识）
+       * 
+       * 表单字段处理：
+       * - auth_username：预填充并设为只读
+       * - school_username：预填充并设为只读（编辑时不允许修改账号标识）
+       * - password：预填充现有密码，允许修改
+       * - ua：预填充现有UA（如果有），允许修改
+       * 
+       * 用户体验：
+       * - 用户可以直接看到当前账户的所有信息
+       * - 可以修改密码和UA，提交后更新到服务器
+       * - 编辑完成后自动刷新账户列表
+       */
+      function mobileEditSchoolAccount(authUsername, schoolUsername, password, ua) {
+        // 输出日志，标记编辑操作的开始，包含账户标识信息
+        console.log(`[移动端学校账户管理] 打开编辑表单：${authUsername} - ${schoolUsername}`);
+        
+        // ========== 填充表单字段 ==========
+        // 获取表单中的各个输入字段的DOM元素
+        const authUsernameField = $("edit-school-account-auth-username");
+        const schoolUsernameField = $("edit-school-account-school-username");
+        const passwordField = $("edit-school-account-password");
+        const uaField = $("edit-school-account-ua");
+        
+        // 填充"认证用户名"字段
+        if (authUsernameField) {
+          // 设置字段值为传入的认证用户名
+          authUsernameField.value = authUsername;
+          
+          // 设置为只读，防止用户修改所属用户
+          authUsernameField.readOnly = true;
+        }
+        
+        // 填充"学校账号用户名"字段
+        if (schoolUsernameField) {
+          // 设置字段值为传入的学校账号用户名
+          schoolUsernameField.value = schoolUsername;
+          
+          // 设置为只读，因为学校账号用户名是账户的唯一标识，不允许修改
+          // 如果需要修改学校账号用户名，应该删除旧账户并新增一个账户
+          schoolUsernameField.readOnly = true;
+        }
+        
+        // 填充"密码"字段
+        if (passwordField) {
+          // 设置字段值为传入的密码
+          // 用户可以看到当前密码，并根据需要进行修改
+          passwordField.value = password;
+        }
+        
+        // 填充"User-Agent"字段
+        if (uaField) {
+          // 设置字段值为传入的User-Agent
+          // 使用 || "" 确保即使ua为null或undefined，也设置为空字符串
+          // 这样可以避免在输入框中显示"undefined"或"null"文本
+          uaField.value = ua || "";
+        }
+        
+        // ========== 更新模态框标题 ==========
+        // 获取模态框标题元素
+        const modalTitle = $("edit-school-account-modal-title");
+        if (modalTitle) {
+          // 修改标题文字为"编辑学校账户"，区别于"新增学校账户"
+          modalTitle.textContent = "编辑学校账户";
+        }
+        
+        // ========== 显示编辑表单模态框 ==========
+        // 调用showModal工具函数显示二级模态框
+        // 该模态框会叠加在移动端主模态框之上
+        showModal("edit-school-account-modal");
+        
+        // 输出成功日志
+        console.log("[移动端学校账户管理] 已打开编辑学校账户表单");
+      }
+
+      /**
+       * 显示移动端学校账户管理模态框
+       * 
+       * 功能说明：
+       * - 从服务器加载指定用户的所有学校账户数据
+       * - 在移动端模态框中显示账户列表
+       * - 渲染每个账户的详细信息和操作按钮（编辑、删除、查看详情）
+       * 
+       * 参数说明：
+       * @param {string} username - 要查询学校账户的用户名
+       * 
+       * 功能流程：
+       * 1. 向服务器发送GET请求，获取用户的学校账户数据
+       * 2. 解析返回的JSON数据，验证是否成功
+       * 3. 更新模态框标题，显示用户名和账户总数
+       * 4. 遍历账户数据，为每个账户生成HTML卡片
+       * 5. 将生成的HTML插入到账户列表容器中
+       * 6. 显示移动端模态框
+       * 
+       * 账户卡片包含内容：
+       * - 学校账号用户名（醒目显示）
+       * - 密码（等宽字体，可选中复制）
+       * - User-Agent（如果存在，显示在可滚动的代码块中）
+       * - 操作按钮：编辑、删除、查看详情
+       * 
+       * 错误处理：
+       * - 网络请求失败：捕获异常并显示错误提示
+       * - 服务器返回错误：解析error message并显示
+       * - 没有账户数据：显示友好的空状态提示
+       * 
+       * 安全措施：
+       * - 使用escapeHtml函数转义所有用户输入，防止XSS攻击
+       * - 使用JSON.stringify和data属性安全传递复杂数据
+       * - 使用encodeURIComponent编码URL参数
+       */
+      async function showMobileUserSchoolAccounts(username) {
+        // 输出日志，标记数据加载的开始
+        console.log(`[移动端学校账户管理] 开始加载用户账户：${username}`);
+        
+        try {
+          // ========== 发送HTTP请求获取账户数据 ==========
+          // 构建API端点URL，使用encodeURIComponent编码用户名，避免特殊字符导致的问题
+          const apiUrl = `/auth/admin/get_user_school_accounts?username=${encodeURIComponent(username)}`;
+          
+          // 发送GET请求到服务器
+          const response = await fetch(apiUrl, {
+            headers: {
+              // 添加会话ID到请求头，用于服务器端的身份验证
+              // sessionUUID应该在用户登录时设置，存储在全局变量中
+              "X-Session-ID": sessionUUID,
+            },
+          });
+          
+          // 解析响应体为JSON对象
+          const result = await response.json();
+          
+          // ========== 验证API响应 ==========
+          // 检查result.success标志，判断服务器端操作是否成功
+          if (!result.success) {
+            // 如果失败，显示服务器返回的错误消息
+            // result.message包含服务器提供的错误描述
+            // 如果message不存在，使用默认文本"加载失败"
+            showModalAlert(result.message || "加载失败", "错误");
+            
+            // 输出错误日志，便于调试
+            console.error("[移动端学校账户管理] 加载失败：", result.message);
+            
+            // 提前返回，不执行后续的渲染操作
+            return;
+          }
+          
+          // ========== 解析账户数据 ==========
+          // result.accounts是一个对象，键为学校账号用户名，值为账户详情
+          // 使用 || {} 确保即使accounts不存在，也有一个空对象作为后备值
+          const accounts = result.accounts || {};
+          
+          // 计算账户总数
+          // Object.keys()返回对象的所有键组成的数组
+          // .length获取数组长度，即账户数量
+          const accountCount = Object.keys(accounts).length;
+          
+          // 输出日志，显示成功加载的账户数量
+          console.log(`[移动端学校账户管理] 成功加载 ${accountCount} 个账户`);
+          
+          // ========== 更新模态框标题和统计信息 ==========
+          // 更新标题中的用户名显示
+          // $()函数是getElementById的简写
+          const usernameEl = $("mobile-school-accounts-username");
+          if (usernameEl) {
+            // 使用textContent而非innerHTML，避免XSS攻击
+            usernameEl.textContent = username;
+          }
+          
+          // 更新账户总数显示
+          const countEl = $("mobile-school-accounts-count");
+          if (countEl) {
+            // 将账户数量转换为字符串并显示
+            countEl.textContent = accountCount.toString();
+          }
+          
+          // ========== 渲染账户列表 ==========
+          // 获取账户列表容器元素
+          const listContainer = $("mobile-school-accounts-list");
+          
+          // 验证容器元素是否存在
+          if (!listContainer) {
+            console.error("[移动端学校账户管理] 错误：找不到账户列表容器元素");
+            return;
+          }
+          
+          // 判断是否有账户数据
+          if (accountCount === 0) {
+            // ========== 空状态处理 ==========
+            // 如果没有账户，显示友好的空状态提示
+            listContainer.innerHTML = `
+              <p class="text-slate-400 text-center text-xs py-8">
+                该用户暂无学校账户
+              </p>
+            `;
+          } else {
+            // ========== 生成账户卡片HTML ==========
+            // 初始化HTML字符串
+            let html = "";
+            
+            // 遍历accounts对象的所有条目
+            // Object.entries()返回[key, value]对的数组
+            for (const [schoolUsername, accountData] of Object.entries(accounts)) {
+              // 解析账户数据
+              // accountData可能是字符串（仅包含密码）或对象（包含password和ua）
+              let password = "";
+              let ua = "";
+              
+              if (typeof accountData === "string") {
+                // 如果accountData是字符串，则它就是密码
+                password = accountData;
+              } else if (typeof accountData === "object" && accountData !== null) {
+                // 如果accountData是对象，则提取password和ua字段
+                password = accountData.password || "";
+                ua = accountData.ua || "";
+              }
+              
+              // 构建账户数据的JSON字符串，用于传递给onclick函数
+              // 将所有需要的数据打包成一个对象
+              const accountDataJson = JSON.stringify({
+                authUsername: username,
+                schoolUsername: schoolUsername,
+                password: password,
+                ua: ua,
+              });
+              
+              // 生成账户卡片的HTML
+              // 使用模板字符串拼接HTML，注意所有动态内容都要用escapeHtml转义
+              html += `
+                <!-- 账户卡片容器 -->
+                <!-- bg-slate-50: 浅灰色背景，区分不同的账户卡片 -->
+                <!-- p-3: 内边距0.75rem，移动端紧凑布局 -->
+                <!-- rounded-lg: 中等圆角 -->
+                <!-- border border-slate-200: 淡灰色边框 -->
+                <!-- space-y-2: 子元素之间垂直间距0.5rem -->
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+                  
+                  <!-- 学校账号用户名和操作按钮行 -->
+                  <!-- flex items-center justify-between: 左右两端对齐布局 -->
+                  <div class="flex items-center justify-between">
+                    
+                    <!-- 学校账号用户名 -->
+                    <!-- font-semibold: 字体半粗 -->
+                    <!-- text-slate-800: 深灰色文字 -->
+                    <!-- text-base: 字体大小1rem（16px） -->
+                    <div class="font-semibold text-slate-800 text-base">
+                      ${escapeHtml(schoolUsername)}
+                    </div>
+                    
+                    <!-- 操作按钮组 -->
+                    <!-- flex gap-1.5: 水平排列，按钮之间间距6px -->
+                    <div class="flex gap-1.5">
+                      
+                      <!-- 编辑按钮 -->
+                      <!-- 点击时调用mobileEditSchoolAccount函数 -->
+                      <!-- 使用data-account属性存储JSON数据 -->
+                      <!-- 点击时解析JSON并传递给函数 -->
+                      <!-- py-1.5 px-2.5: 紧凑的内边距，适合移动端 -->
+                      <!-- bg-sky-500: 天蓝色背景 -->
+                      <!-- text-white: 白色文字 -->
+                      <!-- rounded: 小圆角 -->
+                      <!-- text-xs: 小字体（12px） -->
+                      <!-- font-medium: 中等字重 -->
+                      <!-- hover:bg-sky-600: 鼠标悬停时背景颜色加深 -->
+                      <!-- transition: 平滑过渡动画 -->
+                      <!-- min-h-[44px]: 最小高度44px，符合触控友好设计 -->
+                      <button 
+                        class="py-1.5 px-2.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[44px]" 
+                        data-account='${escapeHtml(accountDataJson)}'
+                        onclick="(function(btn) { 
+                          const data = JSON.parse(btn.getAttribute('data-account')); 
+                          mobileEditSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); 
+                        })(this)"
+                        title="编辑此账户">
+                        编辑
+                      </button>
+                      
+                      <!-- 删除按钮 -->
+                      <!-- 点击时调用deleteSchoolAccount函数（PC端和移动端共用） -->
+                      <!-- 删除成功后会自动刷新列表 -->
+                      <!-- bg-red-500: 红色背景，表示危险操作 -->
+                      <!-- hover:bg-red-600: 鼠标悬停时颜色加深 -->
+                      <button 
+                        class="py-1.5 px-2.5 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition min-h-[44px]" 
+                        data-auth-username='${escapeHtml(username)}'
+                        data-school-username='${escapeHtml(schoolUsername)}'
+                        onclick="(function(btn) { 
+                          deleteSchoolAccount(
+                            btn.getAttribute('data-auth-username'), 
+                            btn.getAttribute('data-school-username')
+                          ); 
+                        })(this)"
+                        title="删除此账户">
+                        删除
+                      </button>
+                      
+                      <!-- 查看详情按钮 -->
+                      <!-- 调用View_details_of_users_with_outstanding_payments函数 -->
+                      <!-- 显示学号、姓名、欠费信息等详细数据 -->
+                      <!-- bg-emerald-500: 翡翠绿色背景 -->
+                      <!-- hover:bg-emerald-600: 鼠标悬停时颜色加深 -->
+                      <button 
+                        class="py-1.5 px-2.5 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[44px]" 
+                        onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(schoolUsername)}')"
+                        title="查看此账户的详细信息">
+                        详情
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <!-- 密码显示行 -->
+                  <!-- text-xs: 小字体（12px） -->
+                  <div class="text-xs">
+                    <!-- 标签文字 -->
+                    <!-- text-slate-500: 中灰色，次要信息 -->
+                    <span class="text-slate-500">密码:</span>
+                    
+                    <!-- 密码内容 -->
+                    <!-- font-mono: 等宽字体，适合显示密码 -->
+                    <!-- text-slate-700: 深灰色 -->
+                    <!-- ml-2: 左边距0.5rem（8px） -->
+                    <!-- select-all: 点击时自动全选内容，方便复制 -->
+                    <span class="font-mono text-slate-700 ml-2 select-all">
+                      ${escapeHtml(password)}
+                    </span>
+                  </div>
+                  
+                  ${
+                    // 条件渲染：只在UA存在时显示User-Agent区域
+                    ua
+                      ? `
+                  <!-- User-Agent显示区域 -->
+                  <div class="text-xs">
+                    <!-- 标签文字 -->
+                    <span class="text-slate-500">User-Agent:</span>
+                    
+                    <!-- UA内容容器 -->
+                    <!-- font-mono: 等宽字体，适合显示长字符串 -->
+                    <!-- text-xs: 小字体 -->
+                    <!-- text-slate-600: 中灰色 -->
+                    <!-- mt-1: 顶部外边距0.25rem（4px） -->
+                    <!-- p-2: 内边距0.5rem（8px） -->
+                    <!-- bg-white: 白色背景，与卡片背景区分 -->
+                    <!-- rounded: 小圆角 -->
+                    <!-- break-all: 允许在任意字符处换行，避免长字符串溢出 -->
+                    <!-- select-all: 点击时自动全选内容，方便复制 -->
+                    <div class="font-mono text-xs text-slate-600 mt-1 p-2 bg-white rounded break-all select-all">
+                      ${escapeHtml(ua)}
+                    </div>
+                  </div>
+                  `
+                      : "" // 如果ua不存在，返回空字符串，不渲染该区域
+                  }
+                </div>
+              `;
+            }
+            
+            // 将生成的HTML插入到列表容器中
+            listContainer.innerHTML = html;
+          }
+          
+          // ========== 显示移动端模态框 ==========
+          // 调用showModal工具函数显示模态框
+          // showModal会自动处理显示动画、事件绑定等工作
+          showModal("mobile-user-school-accounts-modal");
+          
+          // 输出成功日志
+          console.log("[移动端学校账户管理] 模态框已显示");
+          
+        } catch (error) {
+          // ========== 错误处理 ==========
+          // 捕获所有可能的异常（网络错误、解析错误等）
+          
+          // 输出详细的错误日志到控制台，便于开发调试
+          console.error("[移动端学校账户管理] 加载失败：", error);
+          
+          // 显示友好的错误提示给用户
+          // error.message包含错误的具体描述
+          showModalAlert("加载失败: " + error.message, "错误");
+        }
+      }
+      // ==================== 移动端学校账户管理功能 END ====================
 
       async function manageUserPermissions(username) {
         currentManageUsername = username;
@@ -35508,31 +36292,121 @@ async function loadSystemConfig() {
     formContainer.innerHTML = `<p class="text-red-500 text-center py-10">加载配置时发生错误: ${e.message}</p>`;
   }
 }
+/**
+ * 加载验证码配置参数（PC端）
+ * 从后端 /api/captcha/config API 获取验证码配置参数并填充到表单中
+ * 
+ * 功能说明：
+ * - 调用 /api/captcha/config API 获取最新的验证码配置
+ * - 将获取到的配置值填充到PC端的三个输入框中
+ * - 提供友好的错误提示和日志记录
+ * 
+ * 涉及的表单字段：
+ * - captcha-length: 验证码字符长度（3-6）
+ * - captcha-scale-factor: 图像缩放因子（2-4）
+ * - captcha-noise-level: 噪声级别（0.0-0.3）
+ * 
+ * @returns {Promise<void>} 无返回值
+ */
 async function loadCaptchaSettings() {
   try {
-    console.log("[验证码设置] 开始加载验证码配置参数...");
-    if (window.initialData && window.initialData.captcha_settings) {
-      const settings = window.initialData.captcha_settings;
-      $("captcha-length").value = settings.length || 4;
-      $("captcha-scale-factor").value = settings.scale_factor || 2;
-      $("captcha-noise-level").value = settings.noise_level || 0.08;
-      console.log("[验证码设置] 已从缓存加载配置:", settings);
+    // 步骤1：记录开始加载的日志，便于调试和追踪
+    console.log("[验证码设置] 开始从 /api/captcha/config 加载验证码配置参数...");
+    
+    // 步骤2：调用后端API获取验证码配置
+    // 使用fetch进行HTTP GET请求
+    const response = await fetch("/api/captcha/config", {
+      method: "GET",  // 使用GET方法获取数据
+      headers: {
+        // 发送Session ID用于身份验证，确保只有已登录的管理员可以访问
+        "X-Session-ID": sessionUUID,
+        // 指定期望的响应内容类型为JSON
+        "Content-Type": "application/json"
+      },
+      // 包含cookie凭证，确保会话状态正确传递
+      credentials: "include"
+    });
+    
+    // 步骤3：解析响应的JSON数据
+    // await确保等待JSON解析完成
+    const result = await response.json();
+    
+    // 步骤4：检查API调用是否成功
+    // result.success 表示后端是否成功返回了配置数据
+    // result.config 包含实际的配置参数对象
+    if (result && result.success && result.config) {
+      // 步骤5：从返回的config对象中提取配置参数
+      const settings = result.config;
+      
+      // 步骤6：填充PC端的验证码长度输入框
+      // 【修复】使用 !== undefined 判断，正确区分"值为0"和"未设置"
+      // 原代码：settings.length || 4 会将0误判为falsy值
+      // 新代码：只有在undefined时才使用默认值4
+      $("captcha-length").value = settings.length !== undefined ? settings.length : 4;
+      
+      // 步骤7：填充PC端的细分倍数输入框
+      // 【修复】使用 !== undefined 判断，正确区分"值为0"和"未设置"
+      // 默认值为2，这是一个适中的缩放比例
+      // 原代码：settings.scale_factor || 2 可能将0误判为falsy值（虽然scale_factor不太可能为0）
+      $("captcha-scale-factor").value = settings.scale_factor !== undefined ? settings.scale_factor : 2;
+      
+      // 步骤8：填充PC端的噪点比例输入框
+      // 【修复】使用 !== undefined 判断，正确区分"值为0.0"和"未设置"
+      // ⚠️ 关键修复：当noise_level为0.0时，原代码 settings.noise_level || 0.08 会错误地返回0.08
+      // 因为JavaScript中0.0是falsy值，|| 运算符会跳过它并使用默认值
+      // 新代码：只有在noise_level === undefined时才使用默认值0.08，允许用户设置0.0
+      // 默认值为0.08（8%），这是一个适中的噪点密度
+      $("captcha-noise-level").value = settings.noise_level !== undefined ? settings.noise_level : 0.08;
+      
+      // 步骤9：记录成功加载的日志，包含实际加载的配置值
+      console.log("[验证码设置] 成功从 /api/captcha/config 加载配置:", settings);
+      
+      // 步骤10：显示成功提示（可选，避免过多打扰用户）
+      // 使用Swal.fire显示简短的成功提示，2秒后自动关闭
+      Swal.fire({
+        icon: "success",            // 成功图标（绿色对号）
+        title: "加载成功",          // 标题
+        text: "验证码配置已加载",   // 提示文本
+        timer: 1500,                // 1.5秒后自动关闭
+        showConfirmButton: false    // 不显示确认按钮，自动关闭
+      });
     } else {
-      // 从后端获取验证码配置，同时更新其他初始数据
-      const response = await loadInitialData();
-      if (response && response.captcha_settings) {
-        const settings = response.captcha_settings;
-        $("captcha-length").value = settings.length || 4;
-        $("captcha-scale-factor").value = settings.scale_factor || 2;
-        $("captcha-noise-level").value = settings.noise_level || 0.08;
-
-        console.log("[验证码设置] 已从API加载配置:", settings);
-      } else {
-        console.warn("[验证码设置] 未能获取配置，使用默认值");
-      }
+      // 步骤11：处理API返回成功但没有配置数据的情况
+      // 这通常表示配置文件不存在或格式错误
+      console.warn("[验证码设置] API返回成功但未包含配置数据，使用默认值");
+      
+      // 步骤12：使用默认值填充表单
+      $("captcha-length").value = 4;         // 默认长度4个字符
+      $("captcha-scale-factor").value = 2;   // 默认缩放因子2倍
+      $("captcha-noise-level").value = 0.08; // 默认噪点比例8%
+      
+      // 步骤13：显示警告提示，告知用户正在使用默认值
+      Swal.fire({
+        icon: "warning",                     // 警告图标（黄色感叹号）
+        title: "使用默认配置",               // 标题
+        text: "未找到配置文件，已加载默认值", // 提示文本
+        timer: 2000,                         // 2秒后自动关闭
+        showConfirmButton: false             // 不显示确认按钮
+      });
     }
   } catch (error) {
-    console.error("[验证码设置] 加载配置失败:", error);
+    // 步骤14：捕获并处理所有可能的异常（网络错误、解析错误等）
+    // 记录详细的错误日志，包含错误对象的完整信息
+    console.error("[验证码设置] 从 /api/captcha/config 加载配置失败:", error);
+    
+    // 步骤15：在发生错误时，仍然提供默认值，确保用户可以继续使用
+    $("captcha-length").value = 4;         // 默认长度
+    $("captcha-scale-factor").value = 2;   // 默认缩放因子
+    $("captcha-noise-level").value = 0.08; // 默认噪点比例
+    
+    // 步骤16：显示友好的错误提示给用户
+    // 使用Swal.fire显示错误对话框，用户需要点击确认才能关闭
+    Swal.fire({
+      icon: "error",                              // 错误图标（红色叉号）
+      title: "加载失败",                          // 标题
+      text: "无法加载验证码配置: " + error.message, // 错误信息，包含具体的错误原因
+      confirmButtonText: "确定"                    // 确认按钮文本
+    });
   }
 }
 async function saveCaptchaSettings() {
@@ -37972,6 +38846,19 @@ async function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
       permission: "admin",  // 权限要求：管理员级别
     },
+    // ========================================
+    // [新增] 水印控制标签
+    // 移动端水印控制面板的标签，与PC端功能对应
+    // 功能：配置用户是否可以使用高德地图去水印功能
+    // 权限：管理员（admin）和超级管理员（super_admin）
+    // ========================================
+    {
+      id: "watermark",  // 标签ID，用于标识和切换面板
+      label: "水印控制",  // 标签显示的文本
+      // 图层/文档图标：表示水印管理
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>',
+      permission: "admin",  // 权限要求：管理员级别
+    },
   ];
   // ========================================
   // 【标签权限过滤逻辑】
@@ -39274,6 +40161,7 @@ function switchMobileAdminTab(tabId, prefix) {
       欠费查询: "overdue",        // [新增] 欠费查询标签映射
       CDN: "cdn",                 // CDN缓存管理标签
       密码恢复: "bruteforce",     // 密码恢复标签
+      水印控制: "watermark",      // [新增] 水印控制标签映射
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -39428,6 +40316,7 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-cdn-panel", // CDN缓存管理面板
       "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
       "mobile-multi-admin-overdue-panel", // [新增] 欠费查询面板
+      "mobile-multi-admin-watermark-panel", // [新增] 水印控制面板
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -39585,6 +40474,17 @@ function switchMobileAdminTab(tabId, prefix) {
       case "pricing":
         // 加载价格配置数据并填充到表单
         loadMobilePricingConfig();
+        break;
+      // ========================================
+      // [新增] 水印控制面板加载逻辑
+      // 当管理员切换到"水印控制"标签时，调用loadMobileWatermarkControlConfig函数
+      // 该函数会从后端加载水印控制配置，包括：
+      // - 系统默认值（default）：未配置用户使用的默认权限
+      // - 用户个性化配置（users）：每个用户的自定义权限设置
+      // ========================================
+      case "watermark":
+        // 加载移动端水印控制配置数据并填充到表单
+        loadMobileWatermarkControlConfig();
         break;
     }
     // 处理完成后直接返回，不执行后续的通用处理逻辑
@@ -44192,50 +45092,151 @@ async function mobileCheckSMSBalance() {
  * 加载移动端验证码设置
  * 从缓存或API获取验证码配置参数
  */
+/**
+ * 加载验证码配置参数（移动端）
+ * 从后端 /api/captcha/config API 获取验证码配置参数并填充到移动端表单中
+ * 
+ * 功能说明：
+ * - 调用 /api/captcha/config API 获取最新的验证码配置
+ * - 将获取到的配置值填充到移动端的三个输入框中
+ * - 提供友好的错误提示和日志记录
+ * - 与PC端的loadCaptchaSettings()功能平行，但适配移动端UI
+ * 
+ * 涉及的表单字段：
+ * - mobile-captcha-length: 验证码字符长度（3-6）
+ * - mobile-captcha-scale-factor: 图像缩放因子（2-4）
+ * - mobile-captcha-noise-level: 噪声级别（0.0-0.3）
+ * 
+ * @returns {Promise<void>} 无返回值
+ */
 async function mobileLoadCaptchaSettings() {
   try {
-    console.log("[移动端验证码] 开始加载验证码配置...");
+    // 步骤1：记录开始加载的日志，便于调试和追踪
+    console.log("[移动端验证码] 开始从 /api/captcha/config 加载验证码配置...");
 
+    // 步骤2：调用后端API获取验证码配置
+    // 使用fetch进行HTTP GET请求
+    const response = await fetch("/api/captcha/config", {
+      method: "GET",  // 使用GET方法获取数据
+      headers: {
+        // 发送Session ID用于身份验证，确保只有已登录的管理员可以访问
+        "X-Session-ID": sessionUUID,
+        // 指定期望的响应内容类型为JSON
+        "Content-Type": "application/json"
+      },
+      // 包含cookie凭证，确保会话状态正确传递
+      credentials: "include"
+    });
 
-      // 从API获取配置，使用统一的初始化函数
-      const response = await loadInitialData();
-      if (response && response.captcha_settings) {
-        mobileUpdateCaptchaForm(response.captcha_settings);
-        console.log(
-          "[移动端验证码] 已从API加载配置:",
-          response.captcha_settings
-        );
-      } else {
-        console.warn("[移动端验证码] 未能获取配置，使用默认值");
-        mobileUpdateCaptchaForm({
-          length: 4,
-          scale_factor: 2,
-          noise_level: 0.08,
-        });
-      }
-    
+    // 步骤3：解析响应的JSON数据
+    // await确保等待JSON解析完成
+    const result = await response.json();
+
+    // 步骤4：检查API调用是否成功
+    // result.success 表示后端是否成功返回了配置数据
+    // result.config 包含实际的配置参数对象
+    if (result && result.success && result.config) {
+      // 步骤5：从返回的config对象中提取配置参数
+      const settings = result.config;
+      
+      // 步骤6：调用辅助函数更新移动端表单
+      // mobileUpdateCaptchaForm 会处理实际的DOM更新操作
+      mobileUpdateCaptchaForm(settings);
+      
+      // 步骤7：记录成功加载的日志，包含实际加载的配置值
+      console.log("[移动端验证码] 成功从 /api/captcha/config 加载配置:", settings);
+      
+      // 步骤8：显示成功提示（使用移动端专用的提示函数）
+      // showModalAlert是移动端使用的提示函数，比Swal更适合移动设备
+      showModalAlert("验证码配置已加载", "成功");
+    } else {
+      // 步骤9：处理API返回成功但没有配置数据的情况
+      // 这通常表示配置文件不存在或格式错误
+      console.warn("[移动端验证码] API返回成功但未包含配置数据，使用默认值");
+      
+      // 步骤10：使用默认配置对象更新表单
+      mobileUpdateCaptchaForm({
+        length: 4,          // 默认长度4个字符
+        scale_factor: 2,    // 默认缩放因子2倍
+        noise_level: 0.08   // 默认噪点比例8%
+      });
+      
+      // 步骤11：显示警告提示，告知用户正在使用默认值
+      showModalAlert("未找到配置文件，已加载默认值", "警告");
+    }
   } catch (error) {
-    console.error("[移动端验证码] 加载配置失败:", error);
-    showModalAlert("加载验证码配置失败", "错误");
+    // 步骤12：捕获并处理所有可能的异常（网络错误、解析错误等）
+    // 记录详细的错误日志，包含错误对象的完整信息
+    console.error("[移动端验证码] 从 /api/captcha/config 加载配置失败:", error);
+    
+    // 步骤13：在发生错误时，仍然提供默认值，确保用户可以继续使用
+    mobileUpdateCaptchaForm({
+      length: 4,          // 默认长度
+      scale_factor: 2,    // 默认缩放因子
+      noise_level: 0.08   // 默认噪点比例
+    });
+    
+    // 步骤14：显示友好的错误提示给用户
+    // 包含具体的错误原因，帮助用户理解问题所在
+    showModalAlert("加载验证码配置失败: " + error.message, "错误");
   }
 }
 
 /**
  * 更新移动端验证码表单
+ * 这是一个辅助函数，用于将验证码配置参数填充到移动端的表单输入框中
+ * 
+ * 功能说明：
+ * - 接收一个配置对象（包含length、scale_factor、noise_level）
+ * - 查找移动端的三个输入框元素
+ * - 将配置值填充到对应的输入框中
+ * - 如果输入框不存在，则跳过（安全性检查）
+ * 
+ * 设计模式：
+ * - 使用可选链操作符(?.)确保在元素不存在时不会抛出错误
+ * - 使用逻辑或(||)运算符提供默认值
+ * - 将UI更新逻辑与数据获取逻辑分离，提高代码可维护性
+ * 
  * @param {Object} settings - 验证码配置对象
+ * @param {number} settings.length - 验证码字符长度（3-6）
+ * @param {number} settings.scale_factor - 图像缩放因子（2-4）
+ * @param {number} settings.noise_level - 噪声级别（0.0-0.3）
  */
 function mobileUpdateCaptchaForm(settings) {
+  // 步骤1：获取移动端验证码长度输入框的DOM元素引用
+  // 使用document.getElementById根据元素ID获取元素
   const lengthInput = document.getElementById("mobile-captcha-length");
+  
+  // 步骤2：获取移动端细分倍数（缩放因子）输入框的DOM元素引用
   const scaleInput = document.getElementById(
     "mobile-captcha-scale-factor"
   );
+  
+  // 步骤3：获取移动端噪点比例（噪声级别）输入框的DOM元素引用
   const noiseInput = document.getElementById(
     "mobile-captcha-noise-level"
   );
 
-  if (lengthInput) lengthInput.value = settings.length || 4;
-  if (scaleInput) scaleInput.value = settings.scale_factor || 2;
-  if (noiseInput) noiseInput.value = settings.noise_level || 0.08;
+  // 步骤4：填充验证码长度输入框
+  // 【修复】使用 !== undefined 判断，正确区分"值为0"和"未设置"
+  // 原代码：settings.length || 4 会将0误判为falsy值
+  // 新代码：只有在undefined时才使用默认值4
+  // 使用if检查确保元素存在，避免在元素不存在时产生错误
+  if (lengthInput) lengthInput.value = settings.length !== undefined ? settings.length : 4;
+  
+  // 步骤5：填充细分倍数输入框
+  // 【修复】使用 !== undefined 判断，正确区分"值为0"和"未设置"
+  // 原代码：settings.scale_factor || 2 可能将0误判为falsy值（虽然scale_factor不太可能为0）
+  // 如果scaleInput存在，则将其value属性设置为settings.scale_factor或默认值2
+  if (scaleInput) scaleInput.value = settings.scale_factor !== undefined ? settings.scale_factor : 2;
+  
+  // 步骤6：填充噪点比例输入框
+  // 【修复】使用 !== undefined 判断，正确区分"值为0.0"和"未设置"
+  // ⚠️ 关键修复：当noise_level为0.0时，原代码 settings.noise_level || 0.08 会错误地返回0.08
+  // 因为JavaScript中0.0是falsy值，|| 运算符会跳过它并使用默认值
+  // 新代码：只有在noise_level === undefined时才使用默认值0.08，允许用户设置0.0
+  // 如果noiseInput存在，则将其value属性设置为settings.noise_level或默认值0.08
+  if (noiseInput) noiseInput.value = settings.noise_level !== undefined ? settings.noise_level : 0.08;
 }
 
 /**
