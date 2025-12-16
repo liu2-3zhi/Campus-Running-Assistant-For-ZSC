@@ -26893,17 +26893,22 @@ def start_web_server(args_param):
                                 else:
                                     order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
 
-                            # 确保订单目录存在
-                            os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-
-                            # 保存订单文件
+                            # 保存订单文件（使用增量更新模式）
+                            # [任务3优化] 调用统一的订单文件保存函数
+                            # 即使是首次创建订单，也使用增量更新模式，以防文件已存在
                             try:
-                                with open(order_file, "w", encoding="utf-8") as f:
-                                    json.dump(order_data, f, indent=2,
-                                              ensure_ascii=False)
-
-                                logging.info(
-                                    f"[支付通知-异步] 订单文件已创建 - 订单号: {out_trade_no}")
+                                # 调用 _save_order_file_incremental 函数保存订单数据
+                                # 该函数会自动检查文件是否存在，如果存在则合并数据
+                                save_success = _save_order_file_incremental(out_trade_no, order_data)
+                                
+                                # 检查保存是否成功
+                                if save_success:
+                                    logging.info(
+                                        f"[支付通知-异步] 订单文件已创建 - 订单号: {out_trade_no}")
+                                else:
+                                    # 保存失败，记录错误日志
+                                    logging.error(
+                                        f"[支付通知-异步] 订单文件保存失败 - 订单号: {out_trade_no}")
 
                                 # 记录创建订单日志
                                 _write_payment_log(
@@ -26995,11 +27000,10 @@ def start_web_server(args_param):
                             order_data["last_notify_time"] = time.strftime(
                                 "%Y-%m-%d %H:%M:%S")
 
-                            # 保存订单数据的更新（只更新计数和时间，不执行任何业务逻辑）
-                            # 这样我们可以统计重复通知的次数，用于监控支付系统的稳定性
-                            with open(order_file, "w", encoding="utf-8") as f:
-                                json.dump(order_data, f, indent=2,
-                                          ensure_ascii=False)
+                            # [任务3优化] 保存订单数据的更新（使用增量更新模式）
+                            # 这里只更新计数和时间，不执行任何业务逻辑
+                            # 调用统一的订单文件保存函数，确保不丢失其他字段
+                            _save_order_file_incremental(out_trade_no, order_data)
 
                             # 记录日志：订单已支付，跳过重复处理
                             logging.info(
@@ -27057,10 +27061,9 @@ def start_web_server(args_param):
                         # notify_count: 通知计数，初始值为1（表示这是第一次处理）
                         order_data["notify_count"] = 1
 
-                        # 保存更新后的订单数据
-                        with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2,
-                                      ensure_ascii=False)
+                        # [任务3优化] 保存更新后的订单数据（使用增量更新模式）
+                        # 调用统一的订单文件保存函数
+                        _save_order_file_incremental(out_trade_no, order_data)
 
                         # ========== 写入支付操作日志（支付成功通知） ==========
 
@@ -27187,10 +27190,10 @@ def start_web_server(args_param):
 
                         # 可以根据状态更新订单状态
                         if trade_status == "TRADE_CLOSED":
+                            # [任务3优化] 更新订单状态为失败（使用增量更新模式）
+                            # 调用统一的订单文件保存函数
                             order_data["status"] = ORDER_STATUS_FAILED
-                            with open(order_file, "w", encoding="utf-8") as f:
-                                json.dump(order_data, f, indent=2,
-                                          ensure_ascii=False)
+                            _save_order_file_incremental(out_trade_no, order_data)
 
                         # 异步处理完成
                         return
@@ -31350,6 +31353,164 @@ def start_web_server(args_param):
             logging.error(f"[自动签到配置迁移] 迁移过程失败: {e}", exc_info=True)
             return {"scanned": 0, "migrated": 0, "errors": [str(e)]}
 
+    def _save_order_file_incremental(order_id, order_data):
+        """
+        [任务3] 增量更新模式保存订单文件
+        
+        功能说明:
+        这是一个统一的订单文件写入函数，用于替代所有直接覆盖写入的代码。
+        采用"读取-合并-写入"的增量更新模式，确保不会丢失订单文件中的额外字段。
+        
+        核心优势:
+        1. 保护数据：如果文件已存在，会先读取现有数据，然后合并新数据
+        2. 统一格式：所有订单文件使用相同的JSON格式（indent=2, ensure_ascii=False）
+        3. 容错性强：读取失败时会记录警告，但仍会创建新文件
+        4. 易于维护：所有写入逻辑集中在一处，便于统一修改和优化
+        
+        参数:
+            order_id (str): 订单号，用于构造文件路径（例如："order_123456"）
+            order_data (dict): 要保存/更新的订单数据（例如：{"status": "paid", "amount": 100}）
+            
+        返回:
+            bool: 操作是否成功
+                - True: 文件保存成功
+                - False: 文件保存失败（会记录错误日志）
+                
+        使用示例:
+            # 创建新订单
+            success = _save_order_file_incremental("order_123", {
+                "order_id": "order_123",
+                "status": "pending",
+                "amount": 100
+            })
+            
+            # 更新订单状态（保留其他字段）
+            success = _save_order_file_incremental("order_123", {
+                "status": "paid",
+                "paid_at": "2024-01-01 12:00:00"
+            })
+        """
+        try:
+            # ========== 步骤1：构造订单文件路径 ==========
+            # 使用 PAYMENT_ORDERS_DIR 常量确保所有订单文件存储在统一目录
+            # 文件名格式：{订单号}.json（例如：order_123456.json）
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            
+            # ========== 步骤2：确保订单目录存在 ==========
+            # exist_ok=True 表示目录已存在时不会报错
+            # 这一步确保即使是首次写入也不会因为目录不存在而失败
+            os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+            
+            # ========== 步骤3：读取现有订单数据（如果文件存在）==========
+            # 初始化一个空字典用于存储现有订单数据
+            # 如果文件不存在，existing_order_data 保持为空，后续直接写入新数据
+            existing_order_data = {}
+            
+            # 检查订单文件是否已经存在
+            if os.path.exists(order_file):
+                # --- 文件存在，需要读取现有数据以实现增量更新 ---
+                try:
+                    # 以只读模式打开文件，使用 UTF-8 编码支持中文字符
+                    with open(order_file, "r", encoding="utf-8") as f:
+                        # 将JSON文件内容解析为Python字典对象
+                        # 这个字典包含了文件中所有现有的订单信息
+                        existing_order_data = json.load(f)
+                    
+                    # 记录信息日志：成功读取现有订单文件
+                    # 这有助于在日志中追踪订单的更新操作
+                    logging.info(
+                        f"[订单文件-增量更新] 检测到现有订单文件，将进行数据合并 - "
+                        f"订单号: {order_id}"
+                    )
+                    
+                except json.JSONDecodeError as json_error:
+                    # JSON解析失败（文件内容格式错误或损坏）
+                    # 记录警告日志，但不中断流程
+                    # existing_order_data 保持为空字典，后续会用新数据完全覆盖文件
+                    logging.warning(
+                        f"[订单文件-增量更新] 现有订单文件JSON格式错误，将创建新文件 - "
+                        f"订单号: {order_id}, JSON错误: {str(json_error)}"
+                    )
+                    
+                except Exception as read_error:
+                    # 其他读取错误（例如：权限问题、文件被占用等）
+                    # 同样记录警告并继续执行，用新数据创建文件
+                    logging.warning(
+                        f"[订单文件-增量更新] 读取现有订单文件失败，将创建新文件 - "
+                        f"订单号: {order_id}, 错误: {str(read_error)}"
+                    )
+            else:
+                # --- 文件不存在，这是首次创建订单文件 ---
+                # 记录调试日志：首次创建订单文件
+                logging.debug(
+                    f"[订单文件-增量更新] 订单文件不存在，将创建新文件 - "
+                    f"订单号: {order_id}"
+                )
+            
+            # ========== 步骤4：合并订单数据（实现增量更新的核心）==========
+            # 使用字典的 update() 方法将新数据合并到现有数据中
+            # 
+            # 工作原理：
+            # - existing_order_data 中存在但 order_data 中不存在的字段：保持不变（保护数据）
+            # - existing_order_data 和 order_data 中都存在的字段：使用 order_data 的值（更新数据）
+            # - order_data 中存在但 existing_order_data 中不存在的字段：添加到结果中（新增数据）
+            #
+            # 示例：
+            # existing_order_data = {"order_id": "123", "status": "pending", "custom_field": "value"}
+            # order_data = {"status": "paid", "paid_at": "2024-01-01"}
+            # 合并后 = {"order_id": "123", "status": "paid", "custom_field": "value", "paid_at": "2024-01-01"}
+            #          ↑保留           ↑更新            ↑保留                      ↑新增
+            existing_order_data.update(order_data)
+            
+            # ========== 步骤5：写入合并后的订单数据到文件 ==========
+            # 使用写入模式打开文件（'w'模式会覆盖文件原内容）
+            # 注意：虽然是覆盖写入，但写入的是合并后的完整数据，所以不会丢失信息
+            with open(order_file, "w", encoding="utf-8") as f:
+                # 将Python字典序列化为JSON格式并写入文件
+                # 参数说明：
+                # - existing_order_data: 合并后的完整订单数据（包含新旧字段）
+                # - indent=2: 格式化输出，每层缩进2个空格，提高可读性
+                # - ensure_ascii=False: 保存中文字符为Unicode，不转义为\uXXXX格式
+                json.dump(existing_order_data, f, indent=2, ensure_ascii=False)
+            
+            # ========== 步骤6：记录成功日志 ==========
+            # 使用 debug 级别记录详细的操作信息
+            # 生产环境中，debug日志可以被过滤，减少日志量
+            logging.debug(
+                f"[订单文件-增量更新] 订单数据保存成功 - "
+                f"文件: {order_file}, 订单号: {order_id}"
+            )
+            
+            # 返回 True 表示操作成功
+            return True
+            
+        except PermissionError as perm_error:
+            # 权限错误：没有写入文件的权限
+            # 这通常是由于目录权限配置错误或磁盘保护导致
+            logging.error(
+                f"[订单文件-增量更新] 权限错误，无法写入订单文件 - "
+                f"订单号: {order_id}, 错误: {str(perm_error)}"
+            )
+            return False
+            
+        except OSError as os_error:
+            # 操作系统错误：磁盘空间不足、I/O错误等
+            logging.error(
+                f"[订单文件-增量更新] 操作系统错误，订单文件保存失败 - "
+                f"订单号: {order_id}, 错误: {str(os_error)}"
+            )
+            return False
+            
+        except Exception as unexpected_error:
+            # 捕获所有未预期的异常，确保函数不会导致整个程序崩溃
+            # 记录完整的异常堆栈信息，便于调试
+            logging.error(
+                f"[订单文件-增量更新] 未预期的错误，订单文件保存失败 - "
+                f"订单号: {order_id}, 错误: {str(unexpected_error)}",
+                exc_info=True  # 记录完整的异常堆栈跟踪
+            )
+            return False
+
     def _write_payment_log(user_id, order_id, action, log_data):
         """
         写入支付操作日志（内部函数）
@@ -32275,10 +32436,9 @@ def start_web_server(args_param):
                         else:
                             order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
 
-                        # 保存更新后的订单
-                        with open(order_file, "w", encoding="utf-8") as f:
-                            json.dump(order_data, f, indent=2,
-                                      ensure_ascii=False)
+                        # [任务3优化] 保存更新后的订单（使用增量更新模式）
+                        # 调用统一的订单文件保存函数
+                        _save_order_file_incremental(trade_no, order_data)
 
                         logging.info(f"[退款请求] 已同步本地订单状态 - 订单号: {trade_no}")
 
@@ -32554,11 +32714,9 @@ def start_web_server(args_param):
                 order_data["refund_count"] = 1
                 logging.info(f"[退款请求] 退款次数已更新为：1")
 
-                # 保存更新后的订单数据到文件
-                # 使用 indent=2 格式化输出，便于人工查看
-                # ensure_ascii=False 保留中文字符
-                with open(order_file, "w", encoding="utf-8") as f:
-                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                # [任务3优化] 保存更新后的订单数据到文件（使用增量更新模式）
+                # 调用统一的订单文件保存函数，确保不丢失其他字段
+                _save_order_file_incremental(trade_no, order_data)
 
                 # ========== 记录退款日志 ==========
 
@@ -32850,12 +33008,9 @@ def start_web_server(args_param):
                 order_file = os.path.join(
                     PAYMENT_ORDERS_DIR, f"{order_id}.json")
 
-                # 将订单数据写入JSON文件
-                # 使用 UTF-8 编码支持中文
-                # indent=2 使JSON格式化输出，便于人工查看
-                # ensure_ascii=False 保留中文字符，不转义为 \uXXXX 格式
-                with open(order_file, "w", encoding="utf-8") as f:
-                    json.dump(order_data, f, indent=2, ensure_ascii=False)
+                # [任务3优化] 将订单数据写入JSON文件（使用增量更新模式）
+                # 调用统一的订单文件保存函数
+                _save_order_file_incremental(order_id, order_data)
 
                 # ========== 写入支付操作日志 ==========
 
@@ -33039,29 +33194,9 @@ def start_web_server(args_param):
                     # 原因：避免覆盖订单文件中可能存在的其他字段
                     # 例如：退款信息、管理员备注等
 
-                    # 步骤1：读取现有订单数据（如果文件存在）
-                    existing_order_data = {}
-                    if os.path.exists(order_file):
-                        try:
-                            with open(order_file, "r", encoding="utf-8") as f:
-                                existing_order_data = json.load(f)
-                            logging.debug(
-                                f"[订单查询] 读取现有订单文件成功 - 订单号: {order_id}"
-                            )
-                        except Exception as read_error:
-                            logging.warning(
-                                f"[订单查询] 读取现有订单文件失败，将创建新文件 - "
-                                f"订单号: {order_id}, 错误: {str(read_error)}"
-                            )
-
-                    # 步骤2：合并订单数据（增量更新）
-                    # 将新数据合并到现有数据中，保留现有数据中新数据没有的字段
-                    existing_order_data.update(order_data)
-
-                    # 步骤3：保存更新后的订单数据
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(existing_order_data, f,
-                                  indent=2, ensure_ascii=False)
+                    # [任务3优化] 使用统一的增量更新函数保存订单数据
+                    # 替换原来的手动增量更新逻辑
+                    _save_order_file_incremental(order_id, order_data)
 
                     logging.debug(
                         f"[订单查询] 订单状态已更新（增量更新模式） - "
@@ -33582,63 +33717,15 @@ def start_web_server(args_param):
                 "device": device,  # 设备类型
             }
 
-            # 确保payment_orders目录存在
-            # PAYMENT_ORDERS_DIR是全局常量，指向存储订单的目录
-            if not os.path.exists(PAYMENT_ORDERS_DIR):
-                # 如果目录不存在，创建它
-                # exist_ok=True 表示如果目录已存在也不报错
-                os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-
-            # ========== 任务3优化：使用增量更新模式写入订单文件 ==========
-            # 构造订单文件路径：payment_orders/{订单号}.json
-            # order_file 是订单JSON文件的完整路径
-            order_file = os.path.join(
-                PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
-
-            # --- 步骤1：检查文件是否已存在 ---
-            # 如果订单文件已存在，说明可能是重复创建或订单更新操作
-            # 需要先读取现有数据，避免覆盖其他字段
-            existing_order_data = {}  # 初始化现有订单数据字典为空
-            if os.path.exists(order_file):
-                # 文件存在，尝试读取现有订单数据
-                try:
-                    # 以只读模式打开文件，使用UTF-8编码支持中文
-                    with open(order_file, "r", encoding="utf-8") as f:
-                        # 解析JSON文件内容为Python字典对象
-                        existing_order_data = json.load(f)
-                    # 记录日志：成功读取现有订单文件
-                    logging.info(
-                        f"[订单文件] 检测到现有订单文件，将进行增量更新 - 订单号: {out_trade_no}"
-                    )
-                except Exception as read_error:
-                    # 读取失败（文件损坏或格式错误），记录警告但不中断流程
-                    # 此时 existing_order_data 保持为空字典，后续会完全覆盖
-                    logging.warning(
-                        f"[订单文件] 读取现有订单文件失败，将创建新文件 - "
-                        f"订单号: {out_trade_no}, 错误: {str(read_error)}"
-                    )
-
-            # --- 步骤2：合并订单数据（增量更新） ---
-            # 使用字典的update()方法，将新的order_data合并到existing_order_data中
-            # update()会保留existing_order_data中order_data没有的字段
-            # 并更新existing_order_data中order_data已有的字段
-            # 这样可以避免丢失文件中可能存在的其他自定义字段
-            existing_order_data.update(order_data)
-
-            # --- 步骤3：写入合并后的订单数据到文件 ---
-            # 使用写入模式打开文件（会覆盖原文件内容）
-            # 注意：此时写入的是合并后的数据，保留了原有的额外字段
-            with open(order_file, "w", encoding="utf-8") as f:
-                # json.dump() 将Python对象序列化为JSON格式并写入文件
-                # existing_order_data: 合并后的完整订单数据（包含新旧字段）
-                # indent=2: 格式化输出，每层缩进2个空格，便于人工阅读
-                # ensure_ascii=False: 保存中文字符，不转义为\uXXXX格式
-                json.dump(existing_order_data, f, indent=2, ensure_ascii=False)
+            # [任务3优化] 使用统一的增量更新函数写入订单文件
+            # 替换原来的手动增量更新逻辑，使用统一的 _save_order_file_incremental 函数
+            # 该函数会自动处理：目录创建、文件读取、数据合并、文件写入、异常处理
+            _save_order_file_incremental(out_trade_no, order_data)
 
             # 记录日志：订单文件写入成功
             logging.debug(
                 f"[订单文件] 订单数据已保存（增量更新模式） - "
-                f"文件: {order_file}, 订单号: {out_trade_no}"
+                f"订单号: {out_trade_no}"
             )
 
             # ========== 步骤12：记录操作日志 ==========
@@ -37253,18 +37340,13 @@ def start_web_server(args_param):
 
                 local_order_data = order_data  # 使用更新后的订单数据
                 try:
-                    # 写入订单文件
-                    # 使用UTF-8编码保存中文内容
-                    # indent=2使JSON格式化，便于人工查看
-                    # ensure_ascii=False保留中文字符不转义
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(local_order_data, f,
-                                  indent=2, ensure_ascii=False)
+                    # [任务3优化] 写入订单文件（使用增量更新模式）
+                    # 调用统一的订单文件保存函数
+                    _save_order_file_incremental(out_trade_no, local_order_data)
 
                     logging.info(
                         f"[管理员查询订单] 平台订单已保存到本地 - "
-                        f"订单号: {out_trade_no}, "
-                        f"文件路径: {order_file}"
+                        f"订单号: {out_trade_no}"
                     )
 
                     # 记录同步日志
@@ -37780,10 +37862,9 @@ def start_web_server(args_param):
                             logging.warning(
                                 f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, 错误: {str(e)}")
 
-                    # 保存订单到本地文件
-                    with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(local_order_data, f,
-                                  indent=2, ensure_ascii=False)
+                    # [任务3优化] 保存订单到本地文件（使用增量更新模式）
+                    # 调用统一的订单文件保存函数
+                    _save_order_file_incremental(out_trade_no, local_order_data)
 
                     # ========== 处理订单状态变更时的overdue_accounts逻辑 ==========
                     #
