@@ -2314,62 +2314,134 @@ async function loadPaymentMethodsConfig(
       // 3. 不使用内联onclick属性
       const safeCode = escapeHtml(code);
 
-      // 生成支付方式卡片HTML
-      // 包含：Logo、名称、启用开关、编辑按钮、删除按钮
-      const itemHTML = `
-        <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 ${safeBorderColor} transition-colors">
-          <!-- 左侧：Logo和名称 -->
-          <div class="flex items-center gap-3 flex-1 min-w-0">
-            <!-- Logo -->
-            ${logoHTML}
-            <!-- 名称和描述 -->
-            <div class="flex-1 min-w-0">
-              <span class="text-sm font-semibold text-slate-700 block truncate">${safeName}</span>
-              ${
-                safeDescription
-                  ? `<span class="text-xs text-slate-500 block truncate">${safeDescription}</span>`
-                  : ""
-              }
+      // === 【问题46修复】根据移动端/PC端生成不同的HTML结构 ===
+      // 原问题：移动端和PC端共用相同的HTML模板，导致移动端显示错位
+      // 修复方案：根据isModalVersion标志，为移动端和PC端生成专门优化的HTML结构
+      // - 移动端(isModalVersion=false)：单列布局、紧凑间距、小图标、小按钮、小字体
+      // - PC端(isModalVersion=true)：保持原有的标准尺寸和间距
+      
+      let itemHTML;
+      
+      // 判断是否为移动端版本
+      if (!isModalVersion) {
+        // === 移动端专用HTML（紧凑布局）===
+        // 特点：
+        // 1. 更小的内边距(p-2而非p-3)
+        // 2. 更小的图标尺寸(w-8 h-8而非w-10 h-10)
+        // 3. 更小的字体(text-xs而非text-sm)
+        // 4. 更小的开关尺寸(w-9 h-5而非w-11 h-6)
+        // 5. 更小的按钮尺寸(p-1而非p-1.5)
+        // 6. 更紧凑的间距(gap-2而非gap-3)
+        itemHTML = `
+          <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 ${safeBorderColor} transition-colors">
+            <!-- 左侧：Logo和名称 (移动端紧凑版) -->
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+              <!-- Logo - 移动端使用更小的尺寸 -->
+              ${logoHTML.replace(/w-10 h-10/g, "w-8 h-8")}
+              <!-- 名称和描述 - 移动端使用更小的字体 -->
+              <div class="flex-1 min-w-0">
+                <span class="text-xs font-semibold text-slate-700 block truncate">${safeName}</span>
+                ${
+                  safeDescription
+                    ? `<span class="text-xs text-slate-500 block truncate">${safeDescription}</span>`
+                    : ""
+                }
+              </div>
+            </div>
+            
+            <!-- 右侧：操作按钮组 (移动端紧凑版) -->
+            <div class="flex items-center gap-1.5 ml-2">
+              <!-- 启用/禁用开关 - 移动端使用更小的开关 -->
+              <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
+                <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
+          isEnabled ? "checked" : ""
+        }>
+                <!-- 移动端开关：w-9 h-5（比PC端的w-11 h-6小）-->
+                <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+              
+              <!-- 【安全修复3】编辑按钮 - 移动端紧凑版 -->
+              <button class="payment-edit-btn p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors" 
+                title="编辑" 
+                data-payment-code="${safeCode}">
+                <!-- 移动端图标：w-3.5 h-3.5（比PC端的w-4 h-4小）-->
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+              </button>
+              
+              <!-- 【安全修复4】删除按钮 - 移动端紧凑版 -->
+              <button class="payment-delete-btn p-1 text-red-600 hover:bg-red-50 rounded transition-colors" 
+                title="删除" 
+                data-payment-code="${safeCode}">
+                <!-- 移动端图标：w-3.5 h-3.5（比PC端的w-4 h-4小）-->
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+              </button>
             </div>
           </div>
-          
-          <!-- 右侧：操作按钮组 -->
-          <div class="flex items-center gap-2 ml-3">
-            <!-- 启用/禁用开关 -->
-            <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
-              <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
-        isEnabled ? "checked" : ""
-      }>
-              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-            </label>
+        `;
+      } else {
+        // === PC端标准HTML（原有布局）===
+        // 保持原有的标准尺寸和间距，确保PC端显示效果不变
+        itemHTML = `
+          <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 ${safeBorderColor} transition-colors">
+            <!-- 左侧：Logo和名称 -->
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+              <!-- Logo -->
+              ${logoHTML}
+              <!-- 名称和描述 -->
+              <div class="flex-1 min-w-0">
+                <span class="text-sm font-semibold text-slate-700 block truncate">${safeName}</span>
+                ${
+                  safeDescription
+                    ? `<span class="text-xs text-slate-500 block truncate">${safeDescription}</span>`
+                    : ""
+                }
+              </div>
+            </div>
             
-            <!-- 【安全修复3】编辑按钮 - 使用data属性存储code -->
-            <!-- 原问题：onclick="openEditPaymentMethodModal('${code}')" 中的code未转义 -->
-            <!-- 如果code包含单引号，会导致JavaScript语法错误或注入攻击 -->
-            <!-- 修复方案：使用data-payment-code属性存储code，稍后用addEventListener绑定 -->
-            <button class="payment-edit-btn p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" 
-              title="编辑" 
-              data-payment-code="${safeCode}">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-              </svg>
-            </button>
-            
-            <!-- 【安全修复4】删除按钮 - 使用data属性存储code -->
-            <!-- 原问题：onclick="deletePaymentMethod('${code}')" 中的code未转义 -->
-            <!-- 修复方案：同上，使用data属性 + addEventListener -->
-            <button class="payment-delete-btn p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" 
-              title="删除" 
-              data-payment-code="${safeCode}">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-              </svg>
-            </button>
+            <!-- 右侧：操作按钮组 -->
+            <div class="flex items-center gap-2 ml-3">
+              <!-- 启用/禁用开关 -->
+              <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
+                <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
+          isEnabled ? "checked" : ""
+        }>
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+              
+              <!-- 【安全修复3】编辑按钮 - 使用data属性存储code -->
+              <!-- 原问题：onclick="openEditPaymentMethodModal('${code}')" 中的code未转义 -->
+              <!-- 如果code包含单引号，会导致JavaScript语法错误或注入攻击 -->
+              <!-- 修复方案：使用data-payment-code属性存储code，稍后用addEventListener绑定 -->
+              <button class="payment-edit-btn p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" 
+                title="编辑" 
+                data-payment-code="${safeCode}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+              </button>
+              
+              <!-- 【安全修复4】删除按钮 - 使用data属性存储code -->
+              <!-- 原问题：onclick="deletePaymentMethod('${code}')" 中的code未转义 -->
+              <!-- 修复方案：同上，使用data属性 + addEventListener -->
+              <button class="payment-delete-btn p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" 
+                title="删除" 
+                data-payment-code="${safeCode}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+              </button>
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      }
 
       // 【性能优化】将生成的HTML片段添加到数组中，而不是立即插入DOM
       // 这样避免了每次循环都触发DOM重新解析和渲染
@@ -10471,32 +10543,120 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
  * - 开关打开（checked=true）：显示"允许"
  * - 开关关闭（checked=false）：显示"禁止"
  */
+/**
+ * 更新水印默认值标签显示
+ * 
+ * 功能说明：
+ * 根据系统默认值开关的状态（checked/unchecked），更新标签文本显示为"允许"或"禁止"。
+ * 
+ * 支持平台：
+ * - PC端：使用ID "watermark-default-value_modal" 和 "watermark-default-label_modal"
+ * - 移动端：使用ID "watermark-default-value-mobile" 和 "watermark-default-label-mobile"
+ * 
+ * 【问题45修复】此函数现在同时支持PC端和移动端
+ * 原问题：只支持PC端
+ * 修复方案：检测移动端元素，如果存在则同步更新移动端标签
+ * 
+ * 调用时机：
+ * 1. 页面加载完成后，初次设置开关状态时
+ * 2. 用户手动切换开关时（通过onchange事件触发）
+ * 3. 从服务器加载配置后，根据服务器返回的默认值更新显示
+ * 
+ * 实现细节：
+ * 1. 查找PC端的默认值开关元素（checkbox）
+ * 2. 查找PC端的默认值标签元素
+ * 3. 如果两个元素都存在，根据checkbox的checked状态设置标签文本
+ * 4. 同样处理移动端的元素（新增）
+ */
 function updateWatermarkDefaultLabel() {
-  // 获取默认值开关元素（checkbox）
-  const defaultCheckbox = document.getElementById(
+  // ========== PC端标签更新 ==========
+  // 获取PC端默认值开关元素（checkbox）
+  const defaultCheckbox_PC = document.getElementById(
     "watermark-default-value_modal"
   );
-  // 获取默认值标签元素
-  const defaultLabel = document.getElementById("watermark-default-label_modal");
+  // 获取PC端默认值标签元素
+  const defaultLabel_PC = document.getElementById("watermark-default-label_modal");
 
-  // 如果两个元素都存在，则更新标签文本
-  if (defaultCheckbox && defaultLabel) {
+  // 如果PC端两个元素都存在，则更新标签文本
+  if (defaultCheckbox_PC && defaultLabel_PC) {
     // 根据checkbox的checked状态设置标签文本
-    defaultLabel.textContent = defaultCheckbox.checked ? "允许" : "禁止";
+    // checked=true 表示允许去水印，显示"允许"
+    // checked=false 表示禁止去水印，显示"禁止"
+    defaultLabel_PC.textContent = defaultCheckbox_PC.checked ? "允许" : "禁止";
+  }
+  
+  // ========== 【问题45修复】移动端标签更新 ==========
+  // 获取移动端默认值开关元素（checkbox）
+  // 使用-mobile后缀以区别于PC端的_modal后缀
+  const defaultCheckbox_Mobile = document.getElementById(
+    "watermark-default-value-mobile"
+  );
+  // 获取移动端默认值标签元素
+  const defaultLabel_Mobile = document.getElementById("watermark-default-label-mobile");
+
+  // 如果移动端两个元素都存在，则更新标签文本
+  if (defaultCheckbox_Mobile && defaultLabel_Mobile) {
+    // 根据checkbox的checked状态设置标签文本（与PC端逻辑相同）
+    defaultLabel_Mobile.textContent = defaultCheckbox_Mobile.checked ? "允许" : "禁止";
   }
 }
 
+/**
+ * 加载高德地图去水印控制配置
+ * 
+ * 功能说明：
+ * 从服务器获取水印控制配置，包括系统默认值和所有用户的个性化设置，
+ * 并更新UI显示（包括PC端和移动端）。
+ * 
+ * API端点：GET /api/amap/watermark_control/config
+ * 权限要求：管理员权限 + view_config 权限
+ * 
+ * 响应数据格式：
+ * {
+ *   "success": true,
+ *   "config": {
+ *     "default": true/false,  // 系统默认值
+ *     "users": {
+ *       "username1": true,
+ *       "username2": false,
+ *       ...
+ *     }
+ *   },
+ *   "all_users": ["username1", "username2", ...]  // 系统中所有用户
+ * }
+ * 
+ * UI更新内容：
+ * 1. 更新系统默认值开关状态（PC端和移动端）
+ * 2. 更新用户数量显示
+ * 3. 生成用户权限列表（只显示已自定义的用户）
+ * 
+ * 【问题45修复】此函数现在同时支持PC端和移动端
+ * 原问题：只支持PC端（_modal后缀的元素）
+ * 修复方案：检测移动端容器，如果存在则同步更新移动端UI
+ * 
+ * 错误处理：
+ * 1. 网络请求失败：显示错误提示
+ * 2. 响应解析失败：显示错误提示
+ * 3. 服务器返回失败：显示错误消息
+ */
 async function loadWatermarkControlConfig() {
   try {
     // ========== 步骤1: 显示加载状态 ==========
     // 记录日志，便于调试
-    console.log("[水印控制] 正在加载水印控制配置（PC端）...");
+    console.log("[水印控制] 正在加载水印控制配置...");
 
-    // 更新用户列表容器，显示"加载中..."提示
-    const listContainer = document.getElementById("watermark-users-list_modal");
-    if (listContainer) {
-      listContainer.innerHTML =
+    // 更新PC端用户列表容器，显示"加载中..."提示
+    const listContainer_PC = document.getElementById("watermark-users-list_modal");
+    if (listContainer_PC) {
+      listContainer_PC.innerHTML =
         '<p class="text-slate-400 text-center py-10">加载中...</p>';
+    }
+    
+    // 【问题45修复】更新移动端用户列表容器，显示"加载中..."提示
+    const listContainer_Mobile = document.getElementById("watermark-users-list-mobile");
+    if (listContainer_Mobile) {
+      listContainer_Mobile.innerHTML =
+        '<p class="text-slate-400 text-center py-6 text-xs">加载中...</p>';
     }
 
     // ========== 步骤2: 发送HTTP请求获取配置 ==========
@@ -10526,25 +10686,42 @@ async function loadWatermarkControlConfig() {
     const usersConfig = config.users; // 用户个性化配置字典
     const allUsers = data.all_users; // 系统中所有用户的列表
 
-    // ========== 步骤6: 更新默认值开关 ==========
-    // 找到默认值开关元素（checkbox）
-    const defaultCheckbox = document.getElementById(
+    // ========== 步骤6: 更新默认值开关（PC端和移动端）==========
+    // 找到PC端默认值开关元素（checkbox）
+    const defaultCheckbox_PC = document.getElementById(
       "watermark-default-value_modal"
     );
-    if (defaultCheckbox) {
-      // 设置开关状态（checked表示允许去水印）
-      defaultCheckbox.checked = defaultValue;
+    if (defaultCheckbox_PC) {
+      // 设置PC端开关状态（checked表示允许去水印）
+      defaultCheckbox_PC.checked = defaultValue;
+    }
+    
+    // 【问题45修复】找到移动端默认值开关元素（checkbox）
+    const defaultCheckbox_Mobile = document.getElementById(
+      "watermark-default-value-mobile"
+    );
+    if (defaultCheckbox_Mobile) {
+      // 设置移动端开关状态（checked表示允许去水印）
+      defaultCheckbox_Mobile.checked = defaultValue;
     }
 
-    // 更新默认值标签显示
+    // 更新默认值标签显示（PC端和移动端都会更新）
     updateWatermarkDefaultLabel();
 
-    // ========== 步骤7: 更新用户数量显示 ==========
-    const userCountElement = document.getElementById(
+    // ========== 步骤7: 更新用户数量显示（PC端和移动端）==========
+    const userCountElement_PC = document.getElementById(
       "watermark-user-count_modal"
     );
-    if (userCountElement) {
-      userCountElement.textContent = `共 ${allUsers.length} 个用户`;
+    if (userCountElement_PC) {
+      userCountElement_PC.textContent = `共 ${allUsers.length} 个用户`;
+    }
+    
+    // 【问题45修复】更新移动端用户数量显示
+    const userCountElement_Mobile = document.getElementById(
+      "watermark-user-count-mobile"
+    );
+    if (userCountElement_Mobile) {
+      userCountElement_Mobile.textContent = `共 ${allUsers.length} 个用户`;
     }
 
     // ========== 步骤8: 生成用户权限列表 ==========
@@ -11535,8 +11712,21 @@ async function loadMobileWatermarkControlConfig() {
     const usersConfig = config.users;
     const allUsers = data.all_users;
 
-    // ========== 步骤6: 更新默认值显示（移动端样式）==========
-    // 更新查看面板的默认值显示
+    // ========== 步骤6: 更新默认值开关（移动端）==========
+    // 【问题45修复】找到移动端默认值开关元素（checkbox）
+    const defaultCheckbox_Mobile = document.getElementById(
+      "watermark-default-value-mobile"
+    );
+    if (defaultCheckbox_Mobile) {
+      // 设置移动端开关状态（checked表示允许去水印）
+      defaultCheckbox_Mobile.checked = defaultValue;
+    }
+
+    // 更新默认值标签显示（会同时更新PC端和移动端）
+    updateWatermarkDefaultLabel();
+    
+    // 【兼容性】同时保留旧的只读显示更新（如果存在）
+    // 更新查看面板的默认值显示（旧版，可能在其他地方使用）
     const defaultValueElement = document.getElementById(
       "mobile-watermark-default-value"
     );
@@ -11552,7 +11742,7 @@ async function loadMobileWatermarkControlConfig() {
       }
     }
 
-    // 更新配置面板的默认值显示
+    // 更新配置面板的默认值显示（旧版，可能在其他地方使用）
     const defaultValueElementCtrl = document.getElementById(
       "mobile-watermark-default-value-ctrl"
     );
@@ -11706,12 +11896,23 @@ async function loadMobileWatermarkControlConfig() {
  *
  * 功能说明：
  * 与PC端的 saveWatermarkControlConfig() 功能相同，但操作移动端的表单元素。
+ * 
+ * 【问题45修复】现在包含默认值的收集和保存
+ * 原问题：移动端只保存用户配置，不保存默认值
+ * 修复方案：参考PC端实现，同时收集默认值和用户配置
  */
 async function saveMobileWatermarkControlConfig() {
   try {
-    // ========== 步骤1: 收集用户配置数据 ==========
-    console.log("[水印控制] 正在收集用户配置数据（移动端）...");
+    // ========== 步骤1: 收集默认值配置 ==========
+    console.log("[水印控制] 正在收集配置数据（移动端）...");
 
+    // 【问题45修复】获取移动端默认值开关的状态
+    const defaultCheckbox = document.getElementById(
+      "watermark-default-value-mobile"
+    );
+    const defaultValue = defaultCheckbox ? defaultCheckbox.checked : true;
+
+    // ========== 步骤2: 收集用户配置数据 ==========
     const usersConfig = {};
 
     // 查找移动端的所有用户权限复选框
@@ -11725,8 +11926,10 @@ async function saveMobileWatermarkControlConfig() {
       usersConfig[username] = allowed;
     });
 
-    // ========== 步骤2: 构建请求体 ==========
+    // ========== 步骤3: 构建请求体 ==========
+    // 【问题45修复】添加默认值字段，与PC端保持一致
     const requestBody = {
+      default: defaultValue, // 添加默认值字段
       users: usersConfig,
     };
 
