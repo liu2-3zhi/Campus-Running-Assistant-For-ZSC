@@ -21407,7 +21407,13 @@ async function showMobileUserSchoolAccounts(username) {
                       <!-- font-medium: 中等字重 -->
                       <!-- hover:bg-sky-600: 鼠标悬停时背景颜色加深 -->
                       <!-- transition: 平滑过渡动画 -->
-                      <!-- min-h-[44px]: 最小高度44px，符合触控友好设计 -->
+                      <!-- 
+                        【尺寸优化】按钮尺寸调整说明：
+                        - 原尺寸 min-h-[44px] + py-1.5 px-2.5 在移动端显得过大
+                        - 调整为 min-h-[36px] + py-1 px-2，使按钮更紧凑
+                        - 36px 的最小高度仍然保持了良好的触控友好性（iOS建议最小触控目标为32-44px）
+                        - 减少内边距（py-1=4px, px-2=8px）使视觉更轻量，同时不影响可点击性
+                      -->
                       <!-- 
                         【关键修复点】data-account属性的处理：
                         - accountDataJson 已通过 JSON.stringify() 生成，格式正确
@@ -21416,7 +21422,7 @@ async function showMobileUserSchoolAccounts(username) {
                         - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
                       -->
                       <button 
-                        class="py-1.5 px-2.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[44px]" 
+                        class="py-1 px-2 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[36px]" 
                         data-account='${accountDataJson.replace(/'/g, "&apos;")}'
                         onclick="(function(btn) { 
                           const data = JSON.parse(btn.getAttribute('data-account')); 
@@ -21431,8 +21437,9 @@ async function showMobileUserSchoolAccounts(username) {
                       <!-- 删除成功后会自动刷新列表 -->
                       <!-- bg-red-500: 红色背景，表示危险操作 -->
                       <!-- hover:bg-red-600: 鼠标悬停时颜色加深 -->
+                      <!-- 【尺寸优化】与编辑按钮保持一致：min-h-[36px] + py-1 px-2 -->
                       <button 
-                        class="py-1.5 px-2.5 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition min-h-[44px]" 
+                        class="py-1 px-2 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition min-h-[36px]" 
                         data-auth-username='${escapeHtml(username)}'
                         data-school-username='${escapeHtml(schoolUsername)}'
                         onclick="(function(btn) { 
@@ -21450,8 +21457,9 @@ async function showMobileUserSchoolAccounts(username) {
                       <!-- 显示学号、姓名、欠费信息等详细数据 -->
                       <!-- bg-emerald-500: 翡翠绿色背景 -->
                       <!-- hover:bg-emerald-600: 鼠标悬停时颜色加深 -->
+                      <!-- 【尺寸优化】与编辑按钮保持一致：min-h-[36px] + py-1 px-2 -->
                       <button 
-                        class="py-1.5 px-2.5 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[44px]" 
+                        class="py-1 px-2 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[36px]" 
                         onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
                           schoolUsername
                         )}')"
