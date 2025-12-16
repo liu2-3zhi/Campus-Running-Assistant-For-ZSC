@@ -1482,7 +1482,8 @@ def auto_init_system():
         # [任务47] 调用迁移函数，将 INI 文件中的 auto_attendance_enabled 迁移到 JSON 文件
         # 此函数会扫描所有账号的INI文件，查找启用了自动签到的账号
         # 注意：由于需要学校用户名，完整迁移会在用户登录时完成
-        Api._migrate_auto_attendance_from_ini()
+        # 修复：函数已移至模块级别，直接调用而非通过Api类
+        _migrate_auto_attendance_from_ini()
 
         logging.info("步骤3: 创建权限配置文件...")
         print("[系统初始化] 创建权限配置文件...")
