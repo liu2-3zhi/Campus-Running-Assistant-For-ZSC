@@ -73,6 +73,7 @@ RUN touch /app/permissions.json
 RUN touch /app/messages.json
 RUN touch /app/config.ini
 RUN touch /app/payment_methods.json
+RUN touch /app/auto_attendance_config.json
 
 
 # 在构建阶段就转换换行符
