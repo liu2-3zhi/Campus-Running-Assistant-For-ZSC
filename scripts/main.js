@@ -29,7 +29,7 @@ function openSMSReplyLogsModal() {
   const modal = document.getElementById('sms-reply-logs-modal');
   if (!modal) {
     // console.error('[SMS回复记录] 未找到modal元素');
-    logMessage('[SMS回复记录] 无法打开回复记录面板，modal元素不存在', 'error');
+    logMessage_Error('[SMS回复记录] 无法打开回复记录面板，modal元素不存在', 'error');
     return;
   }
   
@@ -110,7 +110,7 @@ function loadSMSReplyLogs() {
   const listContainer = document.getElementById('sms-reply-logs-list');
   if (!listContainer) {
     // console.error('[SMS回复记录] 未找到列表容器元素');
-    logMessage('[SMS回复记录] 无法加载回复记录，列表容器元素不存在', 'error');
+    logMessage_Error('[SMS回复记录] 无法加载回复记录，列表容器元素不存在', 'error');
     return;
   }
   
@@ -225,12 +225,12 @@ function loadSMSReplyLogs() {
       
       // 在控制台输出加载成功信息
       // console.log(`[SMS回复记录] 成功加载${logs.length}条记录`);
-      logMessage(`[SMS回复记录] 成功加载${logs.length}条记录`, 'success');
+      logMessage_Info(`[SMS回复记录] 成功加载${logs.length}条记录`, 'success');
     })
     .catch(error => {
       // 错误处理：显示错误提示
       // console.error('[SMS回复记录] 加载失败:', error);
-      logMessage('[SMS回复记录] 加载失败: ' + 'error');
+      logMessage_Error('[SMS回复记录] 加载失败: ' + 'error');
       listContainer.innerHTML = `
         <div class="flex flex-col items-center justify-center py-12">
           <svg class="w-16 h-16 text-red-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +330,7 @@ function loadPaymentLogs(page) {
   if (!listContainer) {
     // 防御性检查：如果找不到容器元素，在控制台输出错误并返回
     // console.error('[支付日志] 未找到日志列表容器元素');
-    logMessage('[支付日志] 无法加载支付日志，列表容器元素不存在', 'error');
+    logMessage_Error('[支付日志] 无法加载支付日志，列表容器元素不存在', 'error');
     return;
   }
 
@@ -392,7 +392,7 @@ function loadPaymentLogs(page) {
   const url = `/api/payment_logs?${params.toString()}`;
 
   // 在控制台输出请求信息，方便调试
-  logMessage(`[支付日志] 正在加载第${page}页，筛选条件:`, {
+  logMessage_Info(`[支付日志] 正在加载第${page}页，筛选条件:`, {
     actionType: actionType || '全部',
     startDate: startDate || '无限制',
     endDate: endDate || '无限制'
@@ -561,14 +561,14 @@ function loadPaymentLogs(page) {
 
       // 在控制台输出成功信息，方便调试
       // console.log(`[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
-      logMessage(`[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
+      logMessage_Info(`[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
     })
     .catch(error => {
       // ========== 错误处理 ==========
       
       // 在控制台输出详细错误信息
       // console.error('[支付日志] 加载失败:', error);
-      logMessage('[支付日志] 加载失败: ' + 'error');
+      logMessage_Error('[支付日志] 加载失败: ' + 'error');
       
       // 在列表容器中显示错误提示
       listContainer.innerHTML = `
@@ -613,7 +613,7 @@ function updatePaymentLogsPagination() {
   // 防御性检查：确保所有元素都存在
   if (!pageInfo || !prevBtn || !nextBtn) {
     // console.error('[支付日志] 分页控件元素未找到');
-    logMessage('[支付日志] 无法更新分页控件，元素不存在');
+    logMessage_Error('[支付日志] 无法更新分页控件，元素不存在');
     return;
   }
 
@@ -659,7 +659,7 @@ function loadPaymentLogsPrevPage() {
   // 检查是否已经是第一页
   if (paymentLogsState.currentPage <= 1) {
     // console.log('[支付日志] 已经是第一页');
-    logMessage('[支付日志] 已经是第一页，无法加载上一页');
+    logMessage_Warning('[支付日志] 已经是第一页，无法加载上一页');
     return; // 如果已经是第一页，直接返回，不执行操作
   }
 
@@ -687,7 +687,7 @@ function loadPaymentLogsNextPage() {
   // 检查是否已经是最后一页
   if (paymentLogsState.currentPage >= paymentLogsState.totalPages) {
     // console.log('[支付日志] 已经是最后一页');
-    logMessage('[支付日志] 已经是最后一页，无法加载下一页');
+    logMessage_Warning('[支付日志] 已经是最后一页，无法加载下一页');
     return; // 如果已经是最后一页，直接返回，不执行操作
   }
 
@@ -712,7 +712,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (refreshBtn) {
     refreshBtn.addEventListener('click', function() {
       // console.log('[支付日志] 用户点击刷新按钮');
-      logMessage('[支付日志] 用户点击刷新按钮');
+      logMessage_Info('[支付日志] 用户点击刷新按钮');
       loadPaymentLogs(); // 重新加载当前页
     });
   }
@@ -723,7 +723,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (searchBtn) {
     searchBtn.addEventListener('click', function() {
       // console.log('[支付日志] 用户点击查询按钮');
-      logMessage('[支付日志] 用户点击查询按钮');
+      logMessage_Info('[支付日志] 用户点击查询按钮');
       paymentLogsState.currentPage = 1; // 重置为第1页
       loadPaymentLogs(1); // 从第1页开始加载
     });
@@ -734,7 +734,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (prevBtn) {
     prevBtn.addEventListener('click', function() {
       // console.log('[支付日志] 用户点击上一页按钮');
-      logMessage('[支付日志] 用户点击上一页按钮');
+      logMessage_Info('[支付日志] 用户点击上一页按钮');
       loadPaymentLogsPrevPage();
     });
   }
@@ -744,7 +744,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (nextBtn) {
     nextBtn.addEventListener('click', function() {
       // console.log('[支付日志] 用户点击下一页按钮');
-      logMessage('[支付日志] 用户点击下一页按钮');
+      logMessage_Info('[支付日志] 用户点击下一页按钮');
       loadPaymentLogsNextPage();
     });
   }
@@ -849,7 +849,7 @@ function loadAdminPaymentLogs(page) {
     // 防御性检查：如果找不到容器元素，输出错误信息并返回
     // 这通常意味着HTML结构有问题或ID命名错误
     // console.error('[PC端支付日志] 未找到日志列表容器元素');
-    logMessage('[PC端支付日志] 未找到日志列表容器元素');
+    logMessage_Error('[PC端支付日志] 未找到日志列表容器元素');
     return;
   }
 
@@ -928,7 +928,7 @@ function loadAdminPaymentLogs(page) {
   const url = `/api/payment_logs?${params.toString()}`;
 
   // 在控制台输出请求信息，方便开发调试
-  logMessage(`[PC端支付日志] 正在加载第${page}页，筛选条件:`, {
+  logMessage_Info(`[PC端支付日志] 正在加载第${page}页，筛选条件:`, {
     actionType: actionType || '全部',
     startDate: startDate || '无限制',
     endDate: endDate || '无限制'
@@ -24021,15 +24021,15 @@ function refreshMobileSessionPicker() {
               const initialData = await loadInitialData({ force: true });
               if (initialData && initialData.accounts) {
                 renderMultiAccountList(initialData.accounts);
-                logMessage(
+                logMessage_Info(
                   `已恢复多账号模式，当前有 ${initialData.accounts.length} 个账号`
                 );
               } else {
-                logMessage(`已恢复多账号模式，当前有 0 个账号`);
+                logMessage_Info(`已恢复多账号模式，当前有 0 个账号`);
               }
             } catch (e) {
               logMessage_Error("恢复账号列表失败:", e);
-              logMessage(
+              logMessage_Info(
                 `已恢复多账号模式，当前有 ${
                   sessionModeInfo.multi_account_count || 0
                 } 个账号（列表加载失败）`
@@ -24365,14 +24365,14 @@ function refreshMobileSessionPicker() {
         });
 
         socket.on("accounts_updated", (data) => {
-          // if (data && data.accounts) {
-          //   logMessage(
-          //     `[Socket] 收到账号列表更新，共 ${data.accounts.length} 个账号`,
-          //     "INFO",
-          //     "Socket"
-          //   );
-          //   onAccountsUpdated(data.accounts);
-          // }
+          if (data && data.accounts) {
+            logMessage(
+              `[Socket] 收到账号列表更新，共 ${data.accounts.length} 个账号`,
+              "INFO",
+              "Socket"
+            );
+            onAccountsUpdated(data.accounts);
+          }
         });
 
         socket.on("multi_global_buttons_update", (data) => {
