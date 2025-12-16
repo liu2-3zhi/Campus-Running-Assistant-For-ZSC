@@ -100,6 +100,8 @@ document.addEventListener("DOMContentLoaded", function loadBeianInfo() {
   }
 
   // ================= 注入逻辑 =================
+  
+  // 直接覆盖 document.createElement，不需要额外的变量接收
   document.createElement = function (tagName) {
     const element = originalCreateElement.call(document, tagName);
 
