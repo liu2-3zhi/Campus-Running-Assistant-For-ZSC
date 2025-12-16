@@ -34896,6 +34896,24 @@ def start_web_server(args_param):
                     f"操作者: {g.user}, 旧配置: {old_methods_str}, 新配置: {new_methods_str}"
                 )
 
+                # ========== 写入支付操作日志（配置修改） ==========
+                # 记录管理员修改支付方式配置的操作，用于审计和追溯
+                # 支付方式配置的修改会直接影响用户可用的支付选项，属于敏感操作
+                _write_payment_log(
+                    user_id=g.user,                     # 操作管理员的用户名
+                    order_id="",                        # 配置操作无订单号，使用空字符串
+                    action="admin_update_payment_config",  # 操作类型：管理员更新支付配置
+                    log_data={
+                        # 配置变更信息
+                        "old_config": old_methods_str,           # 修改前的配置
+                        "new_config": new_methods_str,           # 修改后的配置
+                        "enabled_methods": new_methods,          # 启用的支付方式列表
+                        # 操作结果
+                        "success": True,                         # 操作成功
+                        "message": "支付方式配置更新成功"         # 操作消息
+                    }
+                )
+
                 # 构造中文名称列表用于返回消息
                 # 从 payment_methods_config 中获取名称
                 method_names = []
@@ -35626,6 +35644,51 @@ def start_web_server(args_param):
                     f"register_available_runs_hint: '{old_register_available_runs_hint}' -> '{new_register_available_runs_hint}'"
                 )
 
+                # ========== 写入支付操作日志（价格配置修改） ==========
+                # 记录管理员修改价格配置的操作，用于审计和追溯
+                # 价格配置的修改会直接影响所有用户的付费行为和免费次数
+                # 这是敏感的业务配置，必须详细记录每次修改
+                _write_payment_log(
+                    user_id=g.user,                          # 操作管理员的用户名
+                    order_id="",                             # 配置操作无订单号，使用空字符串
+                    action="admin_update_pricing_config",    # 操作类型：管理员更新价格配置
+                    log_data={
+                        # 支付设置变更详情
+                        "require_payment": {                 # 是否需要付费
+                            "old": old_require_payment,
+                            "new": new_require_payment
+                        },
+                        "per_run_cost": {                    # 单次跑步费用
+                            "old": old_per_run_cost,
+                            "new": new_per_run_cost
+                        },
+                        "default_available_runs": {          # 新用户默认免费次数
+                            "old": old_default_available_runs,
+                            "new": new_default_available_runs
+                        },
+                        # UI显示配置变更详情
+                        "show_available_runs": {             # 是否在个人资料页显示剩余次数
+                            "old": old_show_available_runs,
+                            "new": new_show_available_runs
+                        },
+                        "available_runs_format": {           # 剩余次数显示格式
+                            "old": old_available_runs_format,
+                            "new": new_available_runs_format
+                        },
+                        "show_available_runs_on_register": { # 是否在注册页显示提示
+                            "old": old_show_available_runs_on_register,
+                            "new": new_show_available_runs_on_register
+                        },
+                        "register_available_runs_hint": {    # 注册页提示文本
+                            "old": old_register_available_runs_hint,
+                            "new": new_register_available_runs_hint
+                        },
+                        # 操作结果
+                        "success": True,                     # 操作成功
+                        "message": "价格配置更新成功"         # 操作消息
+                    }
+                )
+
                 # ========== 返回成功响应 ==========
                 return jsonify({
                     "success": True,
@@ -36049,6 +36112,48 @@ def start_web_server(args_param):
                     f"payment_timeout_minutes: {old_payment_timeout_minutes} -> {new_payment_timeout_minutes}, "
                     f"enabled_payment_methods: {old_enabled_payment_methods} -> {new_enabled_payment_methods}, "
                     # f"payment_method: {old_payment_method} -> {new_payment_method}"
+                )
+
+                # ========== 写入支付操作日志（易支付配置修改） ==========
+                # 记录管理员修改易支付配置的操作，用于审计和追溯
+                # 易支付配置包含敏感的商户密钥和公钥，修改这些配置会直接影响支付功能
+                # 必须详细记录每次修改操作，包括修改前后的值，便于问题排查和安全审计
+                _write_payment_log(
+                    user_id=g.user,                          # 操作管理员的用户名
+                    order_id="",                             # 配置操作无订单号，使用空字符串
+                    action="admin_update_yipay_config",      # 操作类型：管理员更新易支付配置
+                    log_data={
+                        # 配置变更详情（记录新旧值对比）
+                        "host": {                            # 易支付接口域名
+                            "old": old_host,                 # 修改前的值
+                            "new": new_host                  # 修改后的值
+                        },
+                        "pid": {                             # 商户ID
+                            "old": old_pid,
+                            "new": new_pid
+                        },
+                        "key_changed": key_changed,          # 商户密钥是否被修改（不记录密钥本身）
+                        "product_id": {                      # 商品ID
+                            "old": old_product_id,
+                            "new": new_product_id
+                        },
+                        "app_host": {                        # 应用域名地址
+                            "old": old_app_host,
+                            "new": new_app_host
+                        },
+                        "pubc_key_changed": pubc_key_changed,  # 平台公钥是否被修改（不记录公钥本身）
+                        "payment_timeout_minutes": {         # 支付超时时间
+                            "old": old_payment_timeout_minutes,
+                            "new": new_payment_timeout_minutes
+                        },
+                        "enabled_payment_methods": {         # 启用的支付方式
+                            "old": old_enabled_payment_methods,
+                            "new": new_enabled_payment_methods
+                        },
+                        # 操作结果
+                        "success": True,                     # 操作成功
+                        "message": "易支付配置更新成功"       # 操作消息
+                    }
                 )
 
                 # ========== 返回成功响应 ==========
