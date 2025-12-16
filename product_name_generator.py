@@ -18,8 +18,6 @@
     product_name = generator.generate(5)  # 生成5份商品的描述
     print(product_name)  # 输出：五串麻辣鸭脖配上三根秘制烤肠
 
-作者：AI代理
-版本：2.0（纯中文数字版）
 """
 
 import random  # 用于随机选择食材、形容词等元素，增加生成结果的多样性
@@ -33,8 +31,8 @@ class LoMeiGenerator:
     def __init__(self):
         # 1. 食材库
         self.foods = [
-            "鸭脖", "鸭翅", "鸭掌", "鸭舌", "鸭头", "锁骨", 
-            "鱼豆腐", "豆皮", "海带结", "藕片", "烤肠", "波波肠", 
+            "鸭脖", "鸭翅", "鸭掌", "鸭舌", "鸭头", "锁骨",
+            "鱼豆腐", "豆皮", "海带结", "藕片", "烤肠", "波波肠",
             "鸡尖", "鹌鹑蛋", "腐竹", "魔芋爽", "大鸡腿", "兰花干"
         ]
 
@@ -43,16 +41,16 @@ class LoMeiGenerator:
 
         # 3. 风味形容词
         self.adj_flavor = [
-            "秘制", "麻辣", "五香", "甜辣", "变态辣", "爆辣", 
-            "酱香", "卤味", "满口香", "红油", "脆皮", "多汁", 
+            "秘制", "麻辣", "五香", "甜辣", "变态辣", "爆辣",
+            "酱香", "卤味", "满口香", "红油", "脆皮", "多汁",
             "Q弹", "入味", "鲜嫩", "吮指", "藤椒"
         ]
 
         # 4. 趣味/情感形容词 (核心趣味来源)
         self.adj_emotion = [
-            "寂寞的", "快乐的", "治愈的", "灵魂", "让室友流泪的", 
-            "高贵的", "卑微的", "暴躁的", "佛系养生的", "充满希望的", 
-            "绝望的", "初恋般的", "热血的", "深夜的", "独自享用的", 
+            "寂寞的", "快乐的", "治愈的", "灵魂", "让室友流泪的",
+            "高贵的", "卑微的", "暴躁的", "佛系养生的", "充满希望的",
+            "绝望的", "初恋般的", "热血的", "深夜的", "独自享用的",
             "令人发指的", "不仅防饿还能防脱发的", "吃完就通过考试的",
             "甚至想再来一份的", "老板含泪推荐的", "也就是个", "减肥路上的绊脚石"
         ]
@@ -69,18 +67,19 @@ class LoMeiGenerator:
         将整数转换为中文数字字符串
         例如: 1 -> 一, 12 -> 十二, 20 -> 二十, 105 -> 一百零五
         """
-        if n == 0: return "零"
-        
+        if n == 0:
+            return "零"
+
         # 简单处理万以内的数字，满足现捞场景
         s = str(n)
         length = len(s)
         result = []
-        
+
         # 逐位处理
         for i, digit in enumerate(s):
             d = int(digit)
             unit = self.zh_units[length - i - 1]
-            
+
             if d != 0:
                 result.append(self.zh_nums[d] + unit)
             else:
@@ -88,18 +87,18 @@ class LoMeiGenerator:
                 # (简化逻辑：对于连续零，只加一个零，且不加单位)
                 if result and result[-1][-1] != "零":
                     result.append("零")
-        
+
         # 拼接结果
         final_str = "".join(result)
-        
+
         # 修正逻辑：去掉末尾的“零”
         if final_str.endswith("零"):
             final_str = final_str[:-1]
-            
+
         # 口语修正：10-19 读作 "十" 到 "十九"，而不是 "一十"
         if 10 <= n < 20 and final_str.startswith("一十"):
             final_str = final_str[1:]
-            
+
         return final_str
 
     def _get_byte_len(self, s: str) -> int:
@@ -113,7 +112,7 @@ class LoMeiGenerator:
         if parts == 1 or n == 1:
             return [n]
         if n < parts:
-            return [1] * n 
+            return [1] * n
 
         cut_points = sorted(random.sample(range(1, n), parts - 1))
         result = []
@@ -128,21 +127,21 @@ class LoMeiGenerator:
         """构建单个描述，count会被转为中文"""
         food = random.choice(self.foods)
         quant = random.choice(self.quantifiers)
-        
+
         # 核心修改：将数字转为中文
         count_str = self._int_to_chinese(count)
 
         use_flavor = True
         # 如果强制长描述，或者随机概率触发情感词
         use_emotion = True if force_long or random.random() > 0.3 else False
-        
+
         desc_parts = [count_str, quant]
-        
+
         if use_emotion:
             desc_parts.append(random.choice(self.adj_emotion))
         if use_flavor:
             desc_parts.append(random.choice(self.adj_flavor))
-            
+
         desc_parts.append(food)
         return "".join(desc_parts)
 
@@ -152,27 +151,27 @@ class LoMeiGenerator:
             return None
 
         MAX_BYTES = 127
-        
+
         # 尝试生成的循环
-        for _ in range(15): # 增加尝试次数，因为中文数字占字节更多，更容易超长
+        for _ in range(15):  # 增加尝试次数，因为中文数字占字节更多，更容易超长
             res = self._try_generate_strategy(n)
             if self._get_byte_len(res) <= MAX_BYTES:
                 return res
-        
+
         # 兜底方案 (也必须用中文数字)
         return f"{self._int_to_chinese(n)}份现捞小吃"
 
     def _try_generate_strategy(self, n):
         """根据 n 的大小选择生成策略"""
-        
+
         # 策略 A: n=1
         if n == 1:
             food = random.choice(self.foods)
             quant = random.choice(self.quantifiers)
             adj1 = random.choice(self.adj_emotion)
             adj2 = random.choice(self.adj_flavor)
-            count_str = self._int_to_chinese(1) # "一"
-            
+            count_str = self._int_to_chinese(1)  # "一"
+
             # 随机模板
             templates = [
                 f"{count_str}{quant}{adj1}{adj2}{food}",
@@ -199,11 +198,11 @@ class LoMeiGenerator:
             # 尝试拆分成 2-3 份
             parts_num = random.choice([2, 3])
             counts = self._partition_integer(n, parts_num)
-            
+
             desc_list = []
             for c in counts:
                 desc_list.append(self._build_single_desc(c))
-            
+
             return "，".join(desc_list)
 
         # 策略 D: 大额批发 (>20)
@@ -217,6 +216,6 @@ class LoMeiGenerator:
 #   from product_name_generator import LoMeiGenerator
 #   generator = LoMeiGenerator()
 #   product_name = generator.generate(5)  # 生成5份商品的描述
-# 
+#
 # 验证测试代码已移除，确保此文件可作为纯模块被导入
 # 如需测试，请创建单独的测试脚本

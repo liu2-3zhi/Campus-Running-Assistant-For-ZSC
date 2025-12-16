@@ -2969,12 +2969,14 @@ def _get_default_payment_methods_config():
     # 返回默认的支付方式配置字典
     # 此配置包含了系统支持的所有支付方式及其前端显示样式
     return {
+        
+        
         # 支付宝支付配置
         "alipay": {
             "name": "支付宝支付",  # 显示名称
             "icon": "svg",  # 图标类型标识
             # SVG 图标代码，使用天蓝色主题，包含货币符号图标
-            "svg": '<svg class="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+            "svg": '<svg t="1765858760722" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2038" width="200" height="200"><path d="M543.940818 632.713724s-119.827669 151.276279-261.021488 151.276279c-141.252896 0-170.929198-71.876909-170.929198-123.569207 0-51.633221 29.380917-107.815364 149.563048-115.928593 120.123054-8.113229 282.446715 88.221521 282.446715 88.221521h-0.059077zM1023.999803 696.910635l-329.373475-110.769209s25.304611-37.907685 52.322451-112.187056c27.017841-74.299063 30.897225-115.101516 30.897225-115.101516l-213.228266-1.752615v-72.82214l258.225181-1.831384V230.990725H564.578353V113.782132h-126.483668v117.169208H197.179039v51.495375l240.915646-1.693538v78.099677h-193.240578v40.782761h397.764846s-4.391384 33.122455-19.633227 74.299063c-15.241843 41.1963-30.936609 77.272601-30.936609 77.272601s-186.781503-65.378449-285.183945-65.378449c-98.422135 0-218.111958 39.542146-229.730418 154.289201-11.53969 114.687978 55.768605 176.797504 150.587048 199.679961 94.838136 22.980919 182.390119-0.216615 258.619028-37.553223 76.228908-37.257839 151.039971-121.97413 151.039971-121.974131l383.881772 186.427041A189.439964 189.439964 0 0 1 834.382609 1023.999803H189.617194C84.991984 1024.098265 0.098462 939.362281 0 834.756763V189.597502C-0.098462 84.991984 84.657214 0.098462 189.262733 0h645.119876C939.007819-0.098462 1023.901342 84.637522 1023.999803 189.262733V696.910635z" fill="#02A9F1" p-id="2039"></path></svg>',
             "description": "支持支付宝扫码支付",  # 支付方式描述
             "borderColor": "hover:border-sky-500",  # 鼠标悬停时的边框颜色
             "textColor": "text-sky-600"  # 文字颜色
@@ -2984,7 +2986,7 @@ def _get_default_payment_methods_config():
             "name": "微信支付",  # 显示名称
             "icon": "svg",  # 图标类型标识
             # SVG 图标代码，使用绿色主题，包含聊天图标
-            "svg": '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>',
+            "svg": '<svg t="1765858698694" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1581" width="200" height="200"><path d="M0 488.96v-30.72C2.56 430.08 7.68 404.48 15.36 378.88c20.48-66.56 53.76-122.88 99.84-171.52C179.2 138.24 256 94.72 340.48 66.56c48.64-15.36 97.28-23.04 145.92-25.6 40.96-2.56 79.36 0 120.32 7.68 33.28 5.12 64 12.8 97.28 25.6 79.36 28.16 148.48 71.68 207.36 133.12 7.68 7.68 12.8 15.36 20.48 23.04-2.56 0-2.56 2.56-5.12 2.56-20.48 10.24-40.96 20.48-61.44 28.16-143.36 66.56-286.72 133.12-430.08 197.12-28.16 12.8-56.32 10.24-81.92-5.12-20.48-12.8-38.4-25.6-58.88-38.4-12.8-10.24-25.6-17.92-40.96-28.16-12.8-7.68-20.48-2.56-20.48 12.8v2.56c2.56 12.8 5.12 25.6 10.24 38.4 25.6 61.44 51.2 120.32 76.8 181.76 7.68 17.92 20.48 25.6 35.84 23.04 10.24 0 20.48-2.56 28.16-7.68 30.72-15.36 58.88-33.28 87.04-51.2 156.16-92.16 309.76-184.32 465.92-276.48 10.24-7.68 23.04-12.8 33.28-20.48 0 2.56 2.56 2.56 2.56 5.12 5.12 10.24 10.24 17.92 12.8 28.16 28.16 61.44 40.96 125.44 35.84 192-2.56 28.16-7.68 56.32-15.36 84.48-17.92 61.44-48.64 115.2-92.16 163.84-51.2 56.32-115.2 99.84-184.32 128-40.96 15.36-81.92 28.16-122.88 35.84-28.16 5.12-56.32 7.68-81.92 7.68h-46.08c-20.48-2.56-40.96-2.56-58.88-5.12-30.72-5.12-61.44-12.8-89.6-23.04H322.56c-12.8 7.68-23.04 15.36-35.84 23.04-28.16 17.92-53.76 33.28-81.92 48.64-5.12 2.56-12.8 5.12-17.92 5.12s-10.24-2.56-10.24-10.24c0-5.12 0-12.8 2.56-17.92 5.12-38.4 12.8-74.24 20.48-112.64 0-5.12 0-7.68-5.12-10.24-15.36-12.8-30.72-23.04-46.08-38.4-51.2-46.08-92.16-102.4-117.76-166.4C20.48 599.04 12.8 568.32 7.68 537.6c-2.56-12.8-2.56-25.6-2.56-40.96-5.12 0-5.12-2.56-5.12-7.68z" fill="#6BCC03" p-id="1582"></path></svg>',
             "description": "支持微信扫码支付",  # 支付方式描述
             "borderColor": "hover:border-green-500",  # 鼠标悬停时的边框颜色
             "textColor": "text-green-600"  # 文字颜色
@@ -2994,31 +2996,13 @@ def _get_default_payment_methods_config():
             "name": "网银支付",  # 显示名称
             "icon": "svg",  # 图标类型标识
             # SVG 图标代码，使用蓝色主题，包含银行卡图标
-            "svg": '<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
+            "svg": '<svg t="1765858843045" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="4458" width="200" height="200"><path d="M333.2 800H100c-22.9 0-40-21.5-35.2-44.4l94.5-453.9c9.4-45.3 48.6-77.6 93.9-77.6H467c22.9 0 40 21.5 35.2 44.4l-98.6 473.4c-7.1 33.8-36.4 58.1-70.4 58.1z" fill="#DD2C34" p-id="4459"></path><path d="M540.6 800H307.5c-22.9 0-40-21.5-35.2-44.4l94.5-453.9c9.4-45.3 48.6-77.6 93.9-77.6h213.8c22.9 0 40 21.5 35.2 44.4l-98.6 473.4c-7.1 33.8-36.5 58.1-70.5 58.1z" fill="#01488A" p-id="4460"></path><path d="M790.2 800H557c-22.9 0-40-21.5-35.2-44.4l94.5-453.9c9.4-45.3 48.6-77.6 93.9-77.6H924c22.9 0 40 21.5 35.2 44.4l-98.6 473.4c-7.1 33.8-36.4 58.1-70.4 58.1z" fill="#008189" p-id="4461"></path><path d="M185.5 392.1h21.7l-12 69.1-3 17c-0.2 1.4-0.3 2.8-0.3 4.1 0 5 1.5 9.2 4.6 12.5 3.1 3.3 7.5 4.9 13.3 4.9 5.2 0 9.6-1.2 13-3.6 3.4-2.4 6.1-5.9 7.9-10.6 1.9-4.7 3.8-12.6 5.7-23.9l12.1-69.5h21.7l-12 69.6c-2.5 14.6-5.5 25.8-8.8 33.6-3.3 7.8-8.3 14.1-15.1 18.9-6.7 4.9-15.2 7.3-25.5 7.3-12.3 0-21.7-3.6-28.2-10.9-6.5-7.3-9.8-16.6-9.8-28 0-2.4 0.2-4.9 0.5-7.7 0.2-1.9 1-7.1 2.5-15.8l11.7-67zM290.4 427.2H310l-2 12c4.9-5.1 9.5-8.7 13.7-10.9 4.3-2.2 8.7-3.3 13.4-3.3 6.3 0 11.3 2.2 14.9 6.5 3.6 4.3 5.4 10.1 5.4 17.3 0 3.2-0.8 9.4-2.4 18.4l-9 52.1h-20.7l9.1-52.3c1.3-7.8 2-12.5 2-14 0-3.2-0.8-5.7-2.3-7.5-1.6-1.8-3.7-2.7-6.5-2.7-3 0-6.4 1.5-10.1 4.6-3.7 3.1-6.6 7.1-8.7 12.1-1.5 3.6-3.3 10.9-5.2 22l-6.6 37.8h-20.7l16.1-92.1zM384.6 427.2h20.7l-16 92.1h-20.7l16-92.1z m6-35.1h20.7l-3.9 22.6h-20.7l3.9-22.6zM416.9 481.1c0-17.1 4-30.7 12-40.8 8-10.2 18.5-15.2 31.5-15.2 11.3 0 20.1 3.7 26.4 11.2 6.3 7.5 9.5 17.6 9.5 30.2 0 14.9-4 27.8-11.9 38.7-7.9 10.9-18.5 16.3-31.9 16.3-7.2 0-13.6-1.7-19.2-5.2s-9.7-8.4-12.5-14.8c-2.6-6.3-3.9-13.1-3.9-20.4z m58.9-17.8c0-5.9-1.4-10.6-4.3-14.2-2.9-3.6-6.5-5.3-11.1-5.3-4.5 0-8.4 1.7-11.9 5s-6.1 8.2-8.1 14.5c-1.9 6.3-2.9 12.2-2.9 17.5 0 6.6 1.5 11.8 4.5 15.7 3 3.9 6.7 5.8 11.2 5.8 5.7 0 10.4-2.9 14.3-8.8 5.6-8.3 8.3-18.3 8.3-30.2zM524.6 427.2h19.6l-2 12c4.9-5.1 9.5-8.7 13.7-10.9 4.3-2.2 8.7-3.3 13.4-3.3 6.3 0 11.3 2.2 14.9 6.5 3.6 4.3 5.4 10.1 5.4 17.3 0 3.2-0.8 9.4-2.4 18.4l-9 52.1h-20.7l9.1-52.3c1.3-7.8 2-12.5 2-14 0-3.2-0.8-5.7-2.3-7.5-1.6-1.8-3.7-2.7-6.5-2.7-3 0-6.4 1.5-10.1 4.6-3.7 3.1-6.6 7.1-8.7 12.1-1.5 3.6-3.3 10.9-5.2 22l-6.6 37.8h-20.7l16.1-92.1zM624.5 519.3h-21.8l22.1-127.2h43c7.6 0 13.7 1.1 18.1 3.3 4.4 2.2 8 5.8 10.6 10.8 2.6 5 3.9 11 3.9 17.9 0 6.4-1 12.7-3.1 18.7-2.1 6.1-4.6 10.9-7.6 14.6-3 3.6-6.2 6.4-9.7 8.3-3.5 1.9-8.1 3.3-14 4.3-3.4 0.6-9.8 0.9-19.2 0.9H633l-8.5 48.4z m12.1-69.5h6.7c11.5 0 19.1-0.9 23-2.6 3.8-1.7 6.9-4.5 9.1-8.3 2.2-3.8 3.3-8 3.3-12.6 0-3.1-0.6-5.6-1.7-7.5-1.1-2-2.7-3.4-4.8-4.3-2-0.9-6.6-1.3-13.7-1.3H643l-6.4 36.6zM734.6 453.3l-20.2-2.1c2.3-8.2 6.3-14.6 12.1-19.3 5.7-4.6 13.3-6.9 22.8-6.9 9.8 0 17.1 2.4 21.8 7.2 4.7 4.8 7.1 10.6 7.1 17.5 0 2.8-0.2 5.7-0.6 8.9-0.4 3.1-1.8 11.3-4.3 24.6-2 11-3 18.7-3 23.1 0 3.9 0.6 8.3 1.7 13.1h-20.1c-0.8-3.4-1.3-6.8-1.5-10.4-3 4-6.5 7.2-10.5 9.3-3.9 2.2-7.9 3.3-11.9 3.3-6.3 0-11.6-2.5-15.7-7.5s-6.2-11.4-6.2-19.3c0-8.8 2.3-15.8 6.8-21.1 4.5-5.3 12.6-8.4 24.3-9.5 9.8-1 16.4-2.2 19.7-3.6 0.9-3.5 1.3-6.2 1.3-8.3 0-2.7-0.9-4.9-2.7-6.7-1.8-1.8-4.4-2.7-7.9-2.7-3.7 0-6.6 0.9-8.8 2.7s-3.4 4.4-4.2 7.7z m19.7 23.1c-1.2 0.4-2.9 0.8-5 1.1-10.4 1.5-17.2 3.7-20.3 6.6-2.3 2.1-3.4 4.9-3.4 8.4 0 2.9 0.9 5.3 2.6 7.3 1.7 2 4 3 6.8 3 3.1 0 6.1-0.9 8.8-2.7s4.8-4.2 6.2-7c1.4-2.9 2.6-7.3 3.6-13.4l0.7-3.3zM798.2 427.2h20.6l5.2 45.9c1.3 11.8 2 20.1 2.2 24.8 2.7-9.4 6.4-19.4 11.1-29.8l18.3-40.9h21.9l-47.3 101.2c-3.9 8.4-7 14.3-9.2 17.6-2.2 3.4-4.9 6-8.1 7.9-3.1 1.9-6.9 2.9-11.4 2.9-4.4 0-9.3-0.9-14.8-2.8l1.8-18.6c2.5 0.9 4.9 1.3 7.3 1.3 6.3 0 11.6-5.8 15.6-17.4l-13.2-92.1z" fill="#FFFFFF" p-id="4462"></path><path d="M491.9 660.3c-1.1 4.5-2 8.6-2.6 12.4-9.5 4.2-19.9 9.2-31.3 15.1-3.4 1.8-6.7 3.9-10 6.3l-6.1-10.5c4.7-3.3 7.6-7.1 8.8-11.4l9.5-33.9h-23.5l2.9-10.5h23.5l6.2-22.3h-11.6l2.9-10.4c-2.5 2.5-5.1 5-7.7 7.3-1.1-3.7-2.6-7.1-4.5-10.4 15.1-13.9 28.3-29.6 39.7-47.1l11.5 3.7c-4.8 6.9-9.8 13.5-15 19.8h31.5l-2.9 10.5h-37.5c-4.9 5.6-9.9 10.9-15.1 16h44l-2.9 10.5h-20l-6.2 22.3h24.8l-2.9 10.5h-24.8l-10.1 36.3c8.1-3.8 17.9-8.6 29.4-14.2zM594 631.4l6.3 8.8c-13.1 7-26 13.5-38.7 19.5 7.7 9.8 19.1 16.7 34.3 20.7-4.7 4.3-8.8 8.1-12.1 11.6-30.1-11.1-45.5-32.8-46.1-65.3h-16.1l-13.9 49.7c10.2-3.9 21.5-8.4 33.8-13.7-1.2 4.7-2.1 8.8-2.6 12.4-9.8 3.8-22.2 8.9-37 15.4-1.9 0.9-4.7 2.6-8.6 5.2l-6.1-10.5c4.6-3.4 7.5-7.1 8.6-11.3l34-121.7h84.7l-21.9 78.4H580l1.1-3.8h-31c0.6 9.6 2.8 17.9 6.5 25.2 13-6.5 25.4-13.4 37.4-20.6z m-10-15l6.1-22h-59.6l-6.1 22H584z m15-53.8h-59.6l-6.1 21.8h59.6l6.1-21.8zM627.1 661.1c4.5-0.6 9-1.2 13.5-1.9l25.9-92.6h-11.1l3-10.7h74l-3 10.7h-12.8l-23.7 84.8c5.4-0.9 10.9-1.7 16.3-2.6-0.9 4.2-1.5 7.7-1.8 10.7-5.7 1-11.6 2-17.6 3l-9 32.3h-12.5l8.4-30c-15.4 2.6-32 5.5-49.7 8.6l0.1-12.3z m52.7-7.7l6-21.6h-25l-7.1 25.5 26.1-3.9z m-16.1-31.9h25l6.2-22.3h-25l-6.2 22.3z m9.1-32.7h25l6.2-22.3h-25l-6.2 22.3z m35.9 27.3h39.5c2.5-7.4 5.3-16.6 8.3-27.6h-35.3l3.2-11.3h46.2c7.2-7.3 16.9-18 29.2-32.2l11.8 5.6c-9.8 9.8-18.9 18.7-27.2 26.5H813l-3.2 11.3h-40.1c-3.1 11-5.9 20.2-8.3 27.6h46.5l-3.2 11.3H760c1.9 24.3 12.6 42.3 32 54.1-5.1 3.7-9.8 7.5-14.2 11.4-16.4-13.7-25.9-30.8-28.4-51.4-12.4 21.8-31.2 39.4-56.4 52.9-2.4-4-4.7-7.3-6.8-9.9C713.7 671 733 652 744 627.2h-38.5l3.2-11.1z m29.4-64.8l11.7-6.3c4.9 6.9 9.2 14.5 13 22.7l-13 6.9c-2.9-7-6.8-14.8-11.7-23.3z" fill="#FFFFFF" p-id="4463"></path></svg>',
             "description": "支持各大银行网银支付",  # 支付方式描述
             "borderColor": "hover:border-blue-500",  # 鼠标悬停时的边框颜色
             "textColor": "text-blue-600"  # 文字颜色
-        },
-        # QQ钱包支付配置
-        "qqpay": {
-            "name": "QQ钱包",  # 显示名称
-            "icon": "svg",  # 图标类型标识
-            # SVG 图标代码，使用靛蓝色主题，包含钱包图标
-            "svg": '<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>',
-            "description": "支持QQ钱包扫码支付",  # 支付方式描述
-            "borderColor": "hover:border-indigo-500",  # 鼠标悬停时的边框颜色
-            "textColor": "text-indigo-600"  # 文字颜色
-        },
-        # 云闪付配置
-        "unionpay": {
-            "name": "云闪付",  # 显示名称
-            "icon": "svg",  # 图标类型标识
-            # SVG 图标代码，使用红色主题，包含银行卡图标
-            "svg": '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>',
-            "description": "支持云闪付扫码支付",  # 支付方式描述
-            "borderColor": "hover:border-red-500",  # 鼠标悬停时的边框颜色
-            "textColor": "text-red-600"  # 文字颜色
         }
+        
+        
     }
 
 
@@ -3177,10 +3161,10 @@ def _migrate_payment_methods_to_json():
 def _get_default_amap_watermark_config():
     """
     获取高德地图去水印控制的默认配置
-    
+
     返回值:
         dict: 默认的水印控制配置字典
-        
+
     说明:
         此函数返回一个包含默认配置的字典结构。
         默认配置包括：
@@ -3188,7 +3172,7 @@ def _get_default_amap_watermark_config():
         - _description: 详细描述配置的作用
         - default: 默认的水印显示设置（true表示允许去水印，false表示不允许）
         - users: 用户级别的个性化配置字典，默认为空
-        
+
     配置结构:
         {
             "_comment": "配置说明",
@@ -3203,7 +3187,7 @@ def _get_default_amap_watermark_config():
     # 使用有序字典确保注释字段显示在最前面，便于阅读
     # 从config.ini读取初始默认值
     initial_default = _get_watermark_removal_default()
-    
+
     return {
         "_comment": "高德地图去水印个性化控制配置",
         "_description": "为每个用户配置是否允许去除高德地图水印，未配置的用户使用默认值",
@@ -3215,23 +3199,23 @@ def _get_default_amap_watermark_config():
 def _read_amap_watermark_config():
     """
     读取高德地图去水印控制配置文件
-    
+
     返回值:
         dict: 水印控制配置字典，如果文件不存在或读取失败，则返回默认配置
-        
+
     说明:
         此函数负责从 amap_watermark_control.json 文件中读取去水印控制配置。
         - 如果文件存在且格式正确，返回文件中的配置
         - 如果文件不存在，返回默认配置（不会自动创建文件）
         - 如果读取过程中发生错误（如JSON格式错误），记录错误日志并返回默认配置
-        
+
     异常处理:
         所有异常都会被捕获，确保函数始终返回一个有效的配置字典
         即使配置文件损坏，也不会影响系统的正常运行
     """
     # 定义配置文件路径为当前目录下的 amap_watermark_control.json
     config_file = "amap_watermark_control.json"
-    
+
     try:
         # 检查配置文件是否存在
         if os.path.exists(config_file):
@@ -3241,14 +3225,14 @@ def _read_amap_watermark_config():
                 # 使用 json.load 解析JSON文件内容
                 # 返回解析后的字典对象
                 config = json.load(f)
-                
+
                 # 验证配置文件的基本结构是否正确
                 # 确保 "users" 字段存在且为字典类型
                 if not isinstance(config.get("users"), dict):
                     # 如果结构不正确，记录警告并返回默认配置
                     logging.warning(f"[水印控制] 配置文件结构不正确，使用默认配置")
                     return _get_default_amap_watermark_config()
-                
+
                 # 配置文件格式正确，返回读取的配置
                 return config
         else:
@@ -3270,25 +3254,25 @@ def _read_amap_watermark_config():
 def _write_amap_watermark_config(config):
     """
     写入高德地图去水印控制配置文件
-    
+
     参数:
         config (dict): 水印控制配置字典，将被写入到JSON文件
-        
+
     说明:
         此函数负责将水印控制配置写入到 amap_watermark_control.json 文件。
         - 使用 utf-8 编码确保中文内容正确保存
         - 使用 ensure_ascii=False 保持中文字符不被转义
         - 使用 indent=2 格式化JSON输出，便于人工编辑
-        
+
     写入前验证:
         在写入前会验证配置结构的有效性，确保 "users" 字段存在且为字典类型
-        
+
     异常处理:
         如果写入失败，会记录错误日志并重新抛出异常，由调用方处理
     """
     # 定义配置文件路径为当前目录下的 amap_watermark_control.json
     config_file = "amap_watermark_control.json"
-    
+
     try:
         # 验证配置数据的有效性
         # 确保 config 是字典类型且包含 "users" 字段
@@ -3297,13 +3281,13 @@ def _write_amap_watermark_config(config):
             error_msg = "配置数据格式无效，必须包含 'users' 字段"
             logging.error(f"[水印控制] {error_msg}")
             raise ValueError(error_msg)
-        
+
         # 确保 "users" 字段是字典类型
         if not isinstance(config["users"], dict):
             error_msg = "'users' 字段必须是字典类型"
             logging.error(f"[水印控制] {error_msg}")
             raise ValueError(error_msg)
-        
+
         # 打开文件进行写入，如果文件不存在则创建
         # 使用 utf-8 编码确保中文内容正确保存
         with open(config_file, 'w', encoding='utf-8') as f:
@@ -3311,7 +3295,7 @@ def _write_amap_watermark_config(config):
             # ensure_ascii=False: 保持中文字符不被转义为 \uXXXX 格式
             # indent=2: 使用2个空格缩进，使JSON格式更易读
             json.dump(config, f, ensure_ascii=False, indent=2)
-        
+
         # 写入成功，记录信息日志
         logging.info(f"[水印控制] 配置已保存到 {config_file}")
     except Exception as e:
@@ -3326,44 +3310,44 @@ def _write_amap_watermark_config(config):
 def _initialize_amap_watermark_config():
     """
     初始化高德地图去水印控制配置文件
-    
+
     说明:
         此函数在应用启动时调用，用于确保配置文件存在且格式正确。
         - 如果配置文件不存在，创建默认配置文件
         - 如果配置文件存在但格式错误，记录警告但不覆盖（避免丢失数据）
         - 创建文件时会添加详细的注释，方便用户理解和修改
-        
+
     执行逻辑:
         1. 检查配置文件是否存在
         2. 如果不存在，读取当前配置（会返回默认配置）
         3. 将配置写入文件（创建新文件）
         4. 如果文件已存在，只验证格式，不进行修改
-        
+
     异常处理:
         所有异常都会被捕获，确保即使初始化失败也不影响应用启动
     """
     # 定义配置文件路径
     config_file = "amap_watermark_control.json"
-    
+
     try:
         # 检查配置文件是否存在
         if not os.path.exists(config_file):
             # 配置文件不存在，需要创建默认配置文件
             logging.info(f"[水印控制] 配置文件不存在，正在创建默认配置...")
-            
+
             # 获取默认配置
             default_config = _get_default_amap_watermark_config()
-            
+
             # 将默认配置写入文件
             _write_amap_watermark_config(default_config)
-            
+
             # 创建成功，记录信息日志
             logging.info(f"[水印控制] 默认配置文件已创建")
         else:
             # 配置文件已存在，验证其格式是否正确
             # 尝试读取配置文件
             config = _read_amap_watermark_config()
-            
+
             # 如果读取成功（返回的不是默认配置），说明文件格式正确
             # 注意：这里我们简单地验证 "users" 字段是否存在
             if "users" in config:
@@ -3380,30 +3364,30 @@ def _initialize_amap_watermark_config():
 def _get_watermark_removal_default():
     """
     从 config.ini 读取高德地图去水印的默认值
-    
+
     返回值:
         bool: 默认的去水印设置，True 表示允许，False 表示禁止
-        
+
     说明:
         此函数从 config.ini 文件的 [Map] 节读取 watermark_removal_default 配置项。
         - 如果配置项存在且值为 "true"（不区分大小写），返回 True
         - 如果配置项存在且值为 "false"（不区分大小写），返回 False
         - 如果配置项不存在或读取失败，返回默认值 True（允许去水印）
-        
+
     配置格式:
         [Map]
         watermark_removal_default = true
-        
+
     异常处理:
         所有异常都会被捕获，返回默认值 True，确保系统可以正常运行
     """
     try:
         # 创建 ConfigParser 对象用于读取 INI 文件
         config = configparser.ConfigParser()
-        
+
         # 读取 config.ini 文件，使用 utf-8 编码
         config.read("config.ini", encoding="utf-8")
-        
+
         # 检查 [Map] 节是否存在
         if config.has_section("Map"):
             # [Map] 节存在，尝试读取 watermark_removal_default 配置项
@@ -3424,13 +3408,13 @@ def _get_watermark_removal_default():
 def _normalize_watermark_default_value(value):
     """
     标准化水印控制的默认值，将各种类型的值统一转换为布尔类型
-    
+
     参数:
         value: 任意类型的值，可能来自JSON配置文件
-        
+
     返回值:
         bool: 转换后的布尔值
-        
+
     说明:
         此函数用于处理配置文件中default字段的各种可能情况：
         - 如果是布尔值，直接返回
@@ -3439,7 +3423,7 @@ def _normalize_watermark_default_value(value):
         - 如果是数字1，返回True
         - 如果是数字0，返回False
         - 如果是None或其他无效值，返回None（调用方需要进一步处理）
-        
+
     用途:
         - 兼容手动编辑配置文件时可能产生的格式错误
         - 确保即使配置值类型不正确，也能尝试转换而不是直接失败
@@ -3447,25 +3431,25 @@ def _normalize_watermark_default_value(value):
     # [类型检查] 如果已经是布尔类型，直接返回
     if isinstance(value, bool):
         return value
-    
+
     # [字符串转换] 如果是字符串类型，尝试转换为布尔值
     if isinstance(value, str):
         # 将字符串转换为小写，方便比较
         value_lower = value.lower().strip()
-        
+
         # 检查是否为"true"（表示允许去水印）
         if value_lower == "true":
             return True
-        
+
         # 检查是否为"false"（表示不允许去水印）
         elif value_lower == "false":
             return False
-        
+
         # 字符串既不是"true"也不是"false"，无法转换
         # 返回None，让调用方决定如何处理
         else:
             return None
-    
+
     # [数字转换] 如果是数字类型（int或float），尝试转换为布尔值
     if isinstance(value, (int, float)):
         # 1表示True（允许去水印）
@@ -3477,7 +3461,7 @@ def _normalize_watermark_default_value(value):
         # 其他数字无法转换，返回None
         else:
             return None
-    
+
     # [其他类型] 对于None或其他无法识别的类型，返回None
     # 调用方应该检查返回值是否为None，并使用备用方案（如从config.ini读取）
     return None
@@ -4173,7 +4157,7 @@ class RainbowYiPayClient:
                 url = "http://" + url
 
             # 2. 解析 URL
-            parsed_url =  urllib.parse.urlparse(url)
+            parsed_url = urllib.parse.urlparse(url)
 
             # 3. 获取路径部分 (path) 并进行比对
             # parsed_url.path 会自动去除 ? 后面的参数
@@ -4428,19 +4412,19 @@ class AuthSystem:
     def reload_config(self):
         """
         重新加载配置文件
-        
+
         功能说明：
         当配置文件被修改后，调用此方法重新加载配置，确保内存中的配置与文件一致。
         这样可以避免使用缓存的旧配置值。
-        
+
         使用场景：
         - 管理员通过管理面板修改了 config.ini 文件
         - 外部脚本修改了配置文件
         - 需要立即应用新配置而不重启服务器
-        
+
         线程安全：
         使用锁来确保在多线程环境下安全地重新加载配置
-        
+
         返回值：
         无返回值。重新加载后，self.config 会指向新的配置对象
         """
@@ -4450,14 +4434,15 @@ class AuthSystem:
             try:
                 # [步骤2] 记录日志
                 logging.info("[配置重载] 开始重新加载 config.ini 配置文件...")
-                
+
                 # [步骤3] 调用 _load_config 方法重新加载配置
                 # 这会创建一个新的 ConfigParser 对象并读取最新的文件内容
                 self.config = self._load_config()
-                
+
                 # [步骤4] 记录成功日志
-                logging.info("[配置重载] 配置文件重新加载完成，当前配置节: {}".format(list(self.config.sections())))
-                
+                logging.info("[配置重载] 配置文件重新加载完成，当前配置节: {}".format(
+                    list(self.config.sections())))
+
             except Exception as e:
                 # [错误处理] 如果重新加载失败，记录错误日志
                 # 保持旧的配置对象不变，确保系统仍能使用之前的配置运行
@@ -5805,7 +5790,8 @@ class AuthSystem:
             "last_used_school_account": user_data.get(
                 "last_used_school_account", ""
             ),  # 新增字段
-            "available_runs": user_data.get("available_runs", 0),  # 新增字段：可用运行次数
+            # 新增字段：可用运行次数
+            "available_runs": user_data.get("available_runs", 0),
         }
 
     def update_user_last_school_account(self, auth_username, school_username):
@@ -7390,7 +7376,7 @@ class Api:
             logging.debug(
                 f"[任务20修复] 创建新账号 {school_username}，统计数据初始化为0"
             )
-        
+
         self._save_user_school_accounts(auth_username, accounts)
         logging.info(
             f"已更新用户 {auth_username} 的 school_account {school_username} 的密码和UA"
@@ -7819,7 +7805,7 @@ class Api:
                 logging.warning(
                     f"读取旧配置文件 {user_ini_path} 失败: {e}, 将创建新的。"
                 )
-        
+
         # ========== 任务20修复：保留 [stats] 节，避免覆盖欠费数据 ==========
         # 问题背景：
         # 1. 欠费系统通过 _save_school_account_stats_to_ini() 修改了 [stats] 节
@@ -7832,18 +7818,18 @@ class Api:
         # 在写入文件前，将保存的内容恢复到配置对象中
         #
         # 这样可以确保 [stats] 节的 overdue_count 和 completed_count 不被覆盖
-        
+
         # --- 步骤1：备份 [stats] 节的数据 ---
         # 初始化备份字典，用于存储 [stats] 节的所有配置项
         stats_section_backup = {}
-        
+
         # 检查配置对象中是否存在 [stats] 节
         if cfg_to_save.has_section('stats'):
             # [stats] 节存在，遍历并保存其所有配置项
             for option in cfg_to_save.options('stats'):
                 # 将每个配置项的名称和值保存到备份字典中
                 stats_section_backup[option] = cfg_to_save.get('stats', option)
-            
+
             # 记录调试日志：已检测到并备份 [stats] 节
             # 这有助于排查问题，确认备份操作是否执行
             logging.debug(
@@ -7903,16 +7889,16 @@ class Api:
         for k, v in params_to_save.items():
             if k in self.global_params and k != "amap_js_key":
                 cfg_to_save.set("Config", k, str(v))
-        
+
         # ========== 任务20修复：恢复 [stats] 节 ==========
         # 在写入文件之前，将之前备份的 [stats] 节数据恢复到配置对象中
         # 这样可以确保 [stats] 节的数据不会在保存配置时丢失
-        
+
         # --- 步骤2：恢复 [stats] 节的数据 ---
         # 检查备份字典是否包含数据（非空）
         if stats_section_backup:
             # 备份字典非空，说明之前存在 [stats] 节，需要恢复
-            
+
             # 首先检查配置对象中是否已经有 [stats] 节
             # 如果没有，则创建一个新的 [stats] 节
             if not cfg_to_save.has_section('stats'):
@@ -7920,18 +7906,18 @@ class Api:
                 logging.debug(
                     f"[任务20修复] 重新创建 [stats] 节 - 用户: {username}"
                 )
-            
+
             # 遍历备份字典，将所有配置项恢复到 [stats] 节中
             for option, value in stats_section_backup.items():
                 cfg_to_save.set('stats', option, value)
-            
+
             # 记录调试日志：已成功恢复 [stats] 节
             # 这是关键的验证步骤，确保数据恢复成功
             logging.debug(
                 f"[任务20修复] 已恢复 [stats] 节到配置文件 - "
                 f"用户: {username}, 恢复的配置项数量: {len(stats_section_backup)}"
             )
-            
+
             # 记录信息日志：用于监控和审计
             # 让管理员知道 [stats] 节被正确保留了
             logging.info(
@@ -7958,7 +7944,7 @@ class Api:
                     f" _save_config即将写入但没有 [stats] 节 - "
                     f"用户: {username}"
                 )
-            
+
             with open(user_ini_path, "w", encoding="utf-8") as f:
                 cfg_to_save.write(f)
             logging.debug(
@@ -9554,7 +9540,7 @@ class Api:
     def start_single_run(self):
         """开始执行单个任务"""
         logging.info("API调用: start_single_run - 开始执行单个任务")
-        
+
         # ============================================================
         # [安全加固] 欠费检查：防止单账号模式绕过欠费限制
         # ============================================================
@@ -9563,12 +9549,12 @@ class Api:
         if self.user_data and self.user_data.username:
             # 获取当前登录的学校账号用户名
             school_username = self.user_data.username
-            
+
             # 从 INI 文件读取该账号的欠费统计数据
             # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
             stats = self._load_school_account_stats_from_ini(school_username)
             overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
-            
+
             # 如果存在欠费（overdue_count > 0），拒绝启动任务
             # 这是关键的安全检查点，防止欠费用户继续使用服务
             if overdue_count > 0:
@@ -9595,7 +9581,7 @@ class Api:
                 "success": False,
                 "message": "请先登录后再启动任务"
             }
-        
+
         # 通过欠费检查后，继续执行原有的任务启动逻辑
         if not self.stop_run_flag.is_set():
             return {"success": False, "message": "已有任务在运行"}
@@ -9864,8 +9850,7 @@ class Api:
                     run_data.status = 1
                     log_func("任务已确认完成。")
                     logging.info(f"任务已成功完成: 任务名称={run_data.run_name}")
-                    
-                    
+
                     # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
                     # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
                     # 这里处理单账号模式下的后台任务完成情况
@@ -9920,12 +9905,7 @@ class Api:
                             f"[单账号后台任务] 处理次数扣减时发生异常: {e}",
                             exc_info=True
                         )
-                    
-                    
-                    
-                    
-                    
-                    
+
                     session_id = getattr(self, "_web_session_id", None)
                     if socketio and session_id and task_index != -1:
                         try:
@@ -10282,7 +10262,7 @@ class Api:
         logging.info(
             f"API CALL: start_all_runs (ignore_completed={ignore_completed}, auto_generate={auto_generate})"
         )
-        
+
         # ============================================================
         # [安全加固] 欠费检查：防止单账号模式绕过欠费限制
         # ============================================================
@@ -10291,12 +10271,12 @@ class Api:
         if self.user_data and self.user_data.username:
             # 获取当前登录的学校账号用户名
             school_username = self.user_data.username
-            
+
             # 从 INI 文件读取该账号的欠费统计数据
             # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
             stats = self._load_school_account_stats_from_ini(school_username)
             overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
-            
+
             # 如果存在欠费（overdue_count > 0），拒绝启动所有任务
             # 这是关键的安全检查点，防止欠费用户批量启动任务继续使用服务
             if overdue_count > 0:
@@ -10323,7 +10303,7 @@ class Api:
                 "success": False,
                 "message": "请先登录后再启动任务"
             }
-        
+
         # 通过欠费检查后，继续执行原有的任务启动逻辑
         if not self.stop_run_flag.is_set():
             return {"success": False, "message": "已有任务在运行"}
@@ -15826,37 +15806,36 @@ class BackgroundTaskManager:
         # 获取当前用户的认证用户名
         auth_username = getattr(api_instance, 'auth_username', None)
 
-
-
         # 如果能获取到用户名，进行欠费检查
         if auth_username:
             # 从 api_instance.user_info 获取学校账号用户名
             # 注意：user_info 可能包含持久化会话中的旧数据
             self.user_info = getattr(api_instance, "user_info", {})
             school_username = self.user_info.get("student_id")
-            
+
             logging.debug(
                 f"[任务20修复] 检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费"
             )
-            
+
             # --- 关键修复：强制从INI文件重新读取最新的统计数据 ---
             # 原因：user_info 中可能包含缓存的旧数据
             # 如果用户在程序运行期间通过欠费系统修改了INI文件，
             # 而任务系统仍使用缓存的 user_info，就会导致数据不同步
             # 解决方案：每次启动任务前，都从INI文件实时读取最新的欠费状态
-            
+
             # 初始化欠费账号列表（用于记录所有存在欠费的账号）
             overdue_accounts_list = []
-            
+
             # 调用 _load_school_account_stats_from_ini() 方法
             # 此方法会直接打开INI文件读取，不依赖任何缓存
             # 返回格式：{"overdue_count": int, "completed_count": int}
-            stats = api_instance._load_school_account_stats_from_ini(school_username)
-            
+            stats = api_instance._load_school_account_stats_from_ini(
+                school_username)
+
             # 从返回的统计数据中提取欠费次数
             # 使用 .get() 方法并指定默认值 0，防止键不存在时报错
             overdue_count = stats.get("overdue_count", 0)
-            
+
             # 记录日志：显示从INI文件读取到的欠费次数
             # 这有助于追踪数据同步问题
             logging.info(
@@ -15870,7 +15849,7 @@ class BackgroundTaskManager:
                     "school_username": school_username,  # 学校账号用户名
                     "overdue_count": overdue_count       # 欠费次数
                 })
-                
+
                 # 记录警告日志：发现欠费账号
                 logging.warning(
                     f"[任务20修复] 发现欠费账号 - "
@@ -15883,7 +15862,7 @@ class BackgroundTaskManager:
                 logging.warning(
                     f"[欠费检查] 用户 {auth_username} 有 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
                 )
-                
+
                 # 返回失败响应，包含详细的错误信息和欠费账号列表
                 return {
                     "success": False,                       # 操作失败标志
@@ -15891,10 +15870,6 @@ class BackgroundTaskManager:
                     "error_code": "OVERDUE_PAYMENT",        # 错误代码，前端可据此识别错误类型
                     "overdue_accounts": overdue_accounts_list  # 欠费账号详细列表
                 }
-
-
-
-
 
         # 步骤2：启动任务（没有欠费问题）
         with self.lock:
@@ -16461,10 +16436,6 @@ class BackgroundTaskManager:
                     f"任务 {i+1}/{len(task_indices)} 已完成，会话ID: {session_id}"
                 )
 
-
-
-
-                
                 # ========== 结束：次数扣减处理 ==========
             if tasks_executed > 0:
                 with self.lock:
@@ -17458,8 +17429,6 @@ class ChromeBrowserPool:
                 logging.info("Playwright 工作线程已正常退出")
         else:
             logging.info("Playwright 工作线程已结束")
-
-
 
 
 def _cleanup_playwright():
@@ -18611,8 +18580,7 @@ def start_web_server(args_param):
     # 字体文件缓存存储（用于Google Fonts的TTF文件）
     font_cache_storage = {}
     font_cache_lock = threading.Lock()
-    
-    
+
     def _process_overdue_payment_async(overdue_accounts: list, auth_username: str, out_trade_no: str):
         logging.info(f"[overdue_count处理] 欠费账号列表: {overdue_accounts}")
         # 提取总欠费次数（订单创建时已计算好）
@@ -18709,7 +18677,6 @@ def start_web_server(args_param):
 
                 # ========== 步骤3：记录欠费支付成功日志 ==========
 
-
                 # 记录总结日志
                 logging.info(
                     f"[欠费支付-异步] 欠费补缴处理完成 - 学校账号: {overdue_accounts}, "
@@ -18745,7 +18712,6 @@ def start_web_server(args_param):
             )
 
         logging.info(f"[overdue_count处理] 订单处理完成 - 订单号: {out_trade_no}")
-
 
     def parse_google_fonts_css(css_content):
         """
@@ -19290,13 +19256,13 @@ def start_web_server(args_param):
     def auth_register():
         """
         用户注册API端点（已升级支持手机号、昵称、头像）。
-        
+
         功能说明：
         - 允许新用户自助注册账号
         - 支持手机号绑定、昵称设置、头像上传
         - 支持短信验证码验证（可选，取决于配置）
         - 支持图形验证码防止机器注册
-        
+
         available_runs（可用次数）处理：
         - 新注册用户的 available_runs 将自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
         - 这确保了所有注册方式（自助注册、管理员创建）都使用统一的默认值
@@ -20126,7 +20092,7 @@ def start_web_server(args_param):
         # manage_permissions 权限允许查看用户的权限配置
         if not auth_system.check_permission(auth_username, "manage_permissions"):
             return jsonify({"success": False, "message": "权限不足，需要权限管理权限（manage_permissions）"}), 403
-        
+
         data = request.get_json() or {}
         target_username = data.get("username", "")
 
@@ -20591,7 +20557,7 @@ def start_web_server(args_param):
         - phone: 手机号（可选）
         - nickname: 昵称（可选）
         - sms_code: 短信验证码（可选，如非空则进行校验）
-        
+
         available_runs（可用次数）处理：
         - 本API不需要在请求参数中指定 available_runs
         - 新用户的 available_runs 将自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
@@ -21329,7 +21295,7 @@ def start_web_server(args_param):
                 f"保存用户 {auth_username} 的 school_accounts 失败: {e}", exc_info=True
             )
             return jsonify({"success": False, "message": "保存账户数据失败"}), 500
-        
+
     @app.route("/api/admin/backup-info", methods=["GET"])
     @login_required
     @admin_required
@@ -21358,16 +21324,16 @@ def start_web_server(args_param):
 
         if not os.path.exists(backup_filepath):
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": f"未找到该账号的备份数据 ({backup_filename})，请确认是否已执行过备份操作。"
             }), 404
 
         try:
             with open(backup_filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            
+
             return jsonify({
-                "success": True, 
+                "success": True,
                 "data": data,
                 "message": "获取成功"
             })
@@ -21376,7 +21342,6 @@ def start_web_server(args_param):
         except Exception as e:
             app.logger.error(f"读取备份文件失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"读取文件出错: {str(e)}"}), 500
-        
 
     @app.route("/api/admin/school_account/delete", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
@@ -24286,24 +24251,24 @@ def start_web_server(args_param):
                                str(review_data["enable_message_review"]).lower())
 
             _write_config_with_comments(config, CONFIG_FILE)
-            
+
             # [修复问题29] 重新加载配置，清除内存缓存
             # 在保存配置文件后，立即重新加载 auth_system 的配置
             # 这样确保后续读取配置时使用的是最新的值，而不是旧的缓存值
-            # 
+            #
             # 问题背景：
             # auth_system.config 在初始化时加载一次，之后一直使用缓存
             # 当管理员修改配置后，register_user 等函数读取的仍是旧值
             # 例如：修改 default_available_runs 从 10 改为 20，
             # 但新注册的用户仍然得到 10 次免费次数
-            # 
+            #
             # 解决方案：
             # 在保存配置后立即调用 reload_config()，重新读取文件
             # 这样 self.config 就会包含最新的配置值
             logging.info("[配置保存] 正在重新加载配置以清除缓存...")
             auth_system.reload_config()
             logging.info("[配置保存] 配置已重新加载，内存缓存已更新")
-            
+
             # 使用统一函数获取客户端真实IP（任务2）
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
@@ -26901,28 +26866,32 @@ def start_web_server(args_param):
 
                         # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
                         # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
-                        logging.info(f"[支付通知-异步] 检查订单是否包含欠费账号信息 - 订单号: {out_trade_no} ，订单数据: {order_data}")
-                        if "overdue_accounts" in order_data :
-                            
+                        logging.info(
+                            f"[支付通知-异步] 检查订单是否包含欠费账号信息 - 订单号: {out_trade_no} ，订单数据: {order_data}")
+                        if "overdue_accounts" in order_data:
+
                             # 这是一个欠费补缴订单，需要：
                             # 1. 增加用户的available_runs
                             # 2. 清零所有欠费账号的overdue_count
 
                             # 提取订单中保存的用户名
-                            auth_username = order_data.get("auth_username", "未知")
+                            auth_username = order_data.get(
+                                "auth_username", "未知")
 
                             # 提取欠费账号列表
                             # 格式：[{"school_username": "xxx", "overdue_count": 5}, ...]
                             overdue_accounts = order_data.get(
                                 "overdue_accounts", [])
-                            total_count=order_data.get("total_overdue_count", 0)
-                            logging.info(f"[支付通知-异步] 欠费账号列表: {overdue_accounts}")
+                            total_count = order_data.get(
+                                "total_overdue_count", 0)
+                            logging.info(
+                                f"[支付通知-异步] 欠费账号列表: {overdue_accounts}")
                             if auth_username and overdue_accounts:
                                 try:
-                                    _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
+                                    _process_overdue_payment_async(
+                                        overdue_accounts, auth_username, out_trade_no)
                                     # ========== 步骤3：记录欠费支付成功日志 ==========
-                                
-                                    
+
                                     _write_payment_log(
                                         user_id=auth_username,
                                         order_id=out_trade_no,
@@ -26934,8 +26903,8 @@ def start_web_server(args_param):
                                             "overdue_cleared": True,
                                             "trade_no": trade_no,
                                             "paid_amount": paid_amount
-                                            }
-                                        )
+                                        }
+                                    )
 
                                     # 记录总结日志
                                     logging.info(
@@ -28966,23 +28935,23 @@ def start_web_server(args_param):
     # 高德地图去水印控制API
     # 用于控制用户是否可以使用高德地图去水印功能
     # ============================================================
-    
+
     @app.route("/api/amap/watermark_control", methods=["GET"])
     def get_watermark_control():
         """
         检查当前用户是否允许使用去水印功能
-        
+
         此端点用于前端在加载去水印脚本前检查权限。
         不需要 @login_required 装饰器，因为需要处理无效session的情况。
-        
+
         请求头:
             X-Session-ID: 用户的会话ID（可以为空、null、NULL等无效值）
-            
+
         返回值:
             JSON对象: {"allowed": true/false}
             - allowed=true: 允许去水印
             - allowed=false: 不允许去水印
-            
+
         权限逻辑:
             1. 如果 session 无效或用户未登录，返回 {"allowed": false}
             2. 如果用户已登录，检查个性化配置（amap_watermark_control.json）
@@ -28991,40 +28960,38 @@ def start_web_server(args_param):
         """
         # 从请求头获取 session ID
         session_id = request.headers.get("X-Session-ID", "")
-        
+
         # 初始化变量，用于存储用户信息
         api_instance = None
         is_authenticated = False
         auth_username = None
-        
+
         try:
             # 读取去水印控制配置
             config = _read_amap_watermark_config()
-            
+
             # 步骤5: 用户没有个性化设置，使用默认值
             # 首先尝试从JSON配置文件中读取default字段
             default_allowed_raw = config.get("default")
-            
+
             # [修复] 使用标准化函数尝试将default值转换为布尔类型
             # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
-            default_allowed = _normalize_watermark_default_value(default_allowed_raw)
-            
-            logging.debug(f"[水印控制] 读取默认值: {default_allowed} (原始值: {default_allowed_raw})")
-            
+            default_allowed = _normalize_watermark_default_value(
+                default_allowed_raw)
+
+            logging.debug(
+                f"[水印控制] 读取默认值: {default_allowed} (原始值: {default_allowed_raw})")
+
         except Exception as e:
             logging.error(f"[水印控制] 读取配置时发生错误: {str(e)}")
             default_allowed = False  # 出错时采用保守策略，不允许去水印
-            
-            
-            
-            
+
         if session_id and session_id not in ["NULL", "null", "undefined", "none", ""]:
             logging.debug(f"[水印控制] 收到请求，Session ID: {session_id}")
         else:
             logging.debug(f"[水印控制] 收到请求，Session ID 无效或缺失，返回默认值")
             return jsonify({"allowed": default_allowed})
-            
-            
+
         # # 步骤1: 验证 session ID 是否有效
         # # 检查 session_id 是否为空或为常见的无效值（null、NULL、undefined等）
         # if session_id and session_id.lower() not in ["null", "undefined", "none", ""]:
@@ -29037,7 +29004,7 @@ def start_web_server(args_param):
         #             is_authenticated = getattr(api_instance, "is_authenticated", False)
         #             # 获取用户名
         #             auth_username = getattr(api_instance, "auth_username", None)
-        
+
         if session_id in web_sessions:
             api_instance = web_sessions[session_id]
         else:
@@ -29049,7 +29016,8 @@ def start_web_server(args_param):
                 api_instance = Api(args)
                 api_instance._web_session_id = session_id
                 # 恢复会话创建时间
-                api_instance._session_created_at = state.get("created_at", time.time())
+                api_instance._session_created_at = state.get(
+                    "created_at", time.time())
                 # 恢复数据
                 restore_session_to_api_instance(api_instance, state)
                 # 存入内存，避免重复加载
@@ -29057,7 +29025,7 @@ def start_web_server(args_param):
                 logging.info(f"[水印控制] 已自动恢复会话: {session_id[:8]}...")
             else:
                 api_instance = None
-        
+
         # 如果成功获取了实例 (无论是内存还是磁盘恢复)
         if api_instance:
             # 获取认证状态
@@ -29073,18 +29041,18 @@ def start_web_server(args_param):
             )
             # 返回不允许的响应
             return jsonify({"allowed": default_allowed})
-        
+
         # 步骤3: 用户已登录，检查权限配置
         try:
-            
+
             # 获取用户级别的配置字典
             users_config = config.get("users", {})
-            
+
             # 步骤4: 检查用户是否有个性化设置
             if auth_username in users_config:
                 # 用户有个性化设置，使用该设置
                 user_allowed = users_config[auth_username]
-                
+
                 # 确保值是布尔类型（防止配置文件被手动修改为其他类型）
                 if isinstance(user_allowed, bool):
                     # 记录日志
@@ -29098,39 +29066,39 @@ def start_web_server(args_param):
                     logging.warning(
                         f"[水印控制] 用户 {auth_username} 的配置值类型不正确: {type(user_allowed)}，使用默认值"
                     )
-            
+
             # 如果标准化后的值仍然不是布尔类型（即转换失败），则从config.ini读取
             if not isinstance(default_allowed, bool):
                 logging.warning(
                     f"[水印控制] JSON配置中default字段无效（值: {default_allowed_raw}），从config.ini读取默认值"
                 )
                 default_allowed = _get_watermark_removal_default()
-            
+
             # 记录日志
             logging.debug(
                 f"[水印控制] 用户 {auth_username} 使用默认设置: {default_allowed}"
             )
-            
+
             # 返回默认设置
             return jsonify({"allowed": default_allowed})
-            
+
         except Exception as e:
             # 捕获所有异常，确保即使出错也返回一个有效的响应
             logging.error(f"[水印控制] 检查权限时发生错误: {str(e)}")
-            
+
             # 出错时采用保守策略，不允许去水印
             # 这样可以避免因配置错误导致的安全问题
             return jsonify({"allowed": False})
-    
+
     @app.route("/api/amap/watermark_control/config", methods=["GET"])
     @admin_required  # 需要管理员权限
     def get_watermark_control_config():
         """
         获取所有用户的去水印控制配置（管理员专用）
-        
+
         此端点用于管理面板显示和编辑所有用户的去水印权限。
         需要管理员权限才能访问。
-        
+
         返回值:
             JSON对象: 
             {
@@ -29143,29 +29111,30 @@ def start_web_server(args_param):
                 },
                 "all_users": ["user1", "user2", ...]  # 系统中所有用户的列表
             }
-            
+
         权限要求:
             需要管理员权限（admin 或 super_admin 组）
         """
         try:
             # 步骤1: 读取去水印控制配置
             config = _read_amap_watermark_config()
-            
+
             # 步骤2: 读取默认值
             # 首先尝试从JSON配置文件的default字段读取
             default_value_raw = config.get("default")
-            
+
             # [修复] 使用标准化函数尝试将default值转换为布尔类型
             # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
-            default_value = _normalize_watermark_default_value(default_value_raw)
-            
+            default_value = _normalize_watermark_default_value(
+                default_value_raw)
+
             # 如果标准化后的值仍然不是布尔类型（即转换失败），则从config.ini读取
             if not isinstance(default_value, bool):
                 logging.warning(
                     f"[水印控制] JSON配置中default字段无效（值: {default_value_raw}），从config.ini读取默认值"
                 )
                 default_value = _get_watermark_removal_default()
-            
+
             # 步骤3: 获取所有用户列表
             # 从认证系统获取所有用户（排除游客）
             all_users = []
@@ -29178,8 +29147,8 @@ def start_web_server(args_param):
                 # 原代码使用"username"会导致KeyError，致使all_users列表为空
                 # 同时过滤掉is_guest为True的用户和被封禁的用户
                 all_users = [
-                    user["auth_username"] 
-                    for user in users_data 
+                    user["auth_username"]
+                    for user in users_data
                     if not user.get("is_guest", False) and not user.get("banned", False)
                 ]
             except Exception as e:
@@ -29187,7 +29156,7 @@ def start_web_server(args_param):
                 logging.error(f"[水印控制] 获取用户列表失败: {str(e)}")
                 # 用户列表为空，但不影响配置的读取
                 all_users = []
-            
+
             # 步骤4: 构建返回数据
             response_data = {
                 "success": True,
@@ -29197,13 +29166,13 @@ def start_web_server(args_param):
                 },
                 "all_users": all_users
             }
-            
+
             # 记录日志
             logging.info(f"[水印控制] 管理员 {g.user} 获取配置，共 {len(all_users)} 个用户")
-            
+
             # 返回响应
             return jsonify(response_data)
-            
+
         except Exception as e:
             # 捕获所有异常
             logging.error(f"[水印控制] 获取配置失败: {str(e)}")
@@ -29212,16 +29181,16 @@ def start_web_server(args_param):
                 "success": False,
                 "message": f"获取配置失败: {str(e)}"
             }), 500
-    
+
     @app.route("/api/amap/watermark_control/config", methods=["PUT"])
     @admin_required  # 需要管理员权限
     def update_watermark_control_config():
         """
         更新用户的去水印控制配置（管理员专用）
-        
+
         此端点用于管理面板保存用户的去水印权限设置。
         需要管理员权限和 modify_config 权限才能访问。
-        
+
         请求体:
             JSON对象:
             {
@@ -29229,10 +29198,10 @@ def start_web_server(args_param):
                     "username": true/false
                 }
             }
-            
+
         返回值:
             JSON对象: {"success": true/false, "message": "..."}
-            
+
         权限要求:
             1. 需要管理员权限（admin 或 super_admin 组）
             2. 需要 modify_config 权限
@@ -29241,7 +29210,7 @@ def start_web_server(args_param):
             # 步骤1: 检查细粒度权限
             # 获取当前用户名（由 @admin_required 装饰器设置）
             auth_username = g.user
-            
+
             # 检查是否有 modify_config 权限
             if not auth_system.check_permission(auth_username, "modify_config"):
                 # 记录权限不足的日志
@@ -29253,12 +29222,12 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "权限不足，需要 modify_config 权限"
                 }), 403
-            
+
             # 步骤2: 获取请求数据
             data = request.get_json() or {}
             new_users_config = data.get("users", {})
             new_default_value = data.get("default")
-            
+
             # 步骤3: 验证请求数据的格式
             # 验证users字段
             if not isinstance(new_users_config, dict):
@@ -29267,7 +29236,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "请求数据格式错误，'users' 必须是字典类型"
                 }), 400
-            
+
             # 验证每个用户的配置值都是布尔类型
             for username, allowed in new_users_config.items():
                 if not isinstance(allowed, bool):
@@ -29276,40 +29245,41 @@ def start_web_server(args_param):
                         "success": False,
                         "message": f"用户 {username} 的配置值必须是布尔类型"
                     }), 400
-            
+
             # 验证default字段（如果提供了的话）
             if new_default_value is not None and not isinstance(new_default_value, bool):
                 return jsonify({
                     "success": False,
                     "message": "'default' 字段必须是布尔类型"
                 }), 400
-            
+
             # 步骤4: 读取当前配置
             current_config = _read_amap_watermark_config()
-            
+
             # 步骤5: 更新配置
             # 保留配置文件中的注释字段
             updated_config = {
                 "_comment": current_config.get("_comment", "高德地图去水印个性化控制配置"),
                 "_description": current_config.get("_description", "为每个用户配置是否允许去除高德地图水印"),
-                "default": new_default_value if new_default_value is not None else current_config.get("default", True),  # 更新或保留默认值
+                # 更新或保留默认值
+                "default": new_default_value if new_default_value is not None else current_config.get("default", True),
                 "users": new_users_config  # 使用新的用户配置
             }
-            
+
             # 步骤6: 保存更新后的配置
             _write_amap_watermark_config(updated_config)
-            
+
             # 步骤7: 记录操作日志
             logging.info(
                 f"[水印控制] 管理员 {auth_username} 更新配置，共 {len(new_users_config)} 个用户"
             )
-            
+
             # 步骤8: 返回成功响应
             return jsonify({
                 "success": True,
                 "message": "配置已更新"
             })
-            
+
         except ValueError as e:
             # 数据验证错误
             logging.error(f"[水印控制] 数据验证失败: {str(e)}")
@@ -29708,11 +29678,11 @@ def start_web_server(args_param):
         """
         获取验证码配置参数接口
         该接口用于管理员查询当前系统验证码的配置参数（长度、缩放因子、噪声级别）
-        
+
         要求：
         - 必须具有管理员权限（admin 或 super_admin）
         - 使用GET方法访问
-        
+
         返回值：
         - success: bool - 操作是否成功
         - config: dict - 包含验证码配置参数的字典
@@ -29723,44 +29693,44 @@ def start_web_server(args_param):
         try:
             # 记录调试信息：开始读取验证码配置
             logging.debug("[验证码配置] 开始读取验证码配置参数")
-            
+
             # 构建配置文件的完整路径
             # os.path.dirname(__file__) 获取当前脚本所在目录
             # os.path.join() 安全地拼接路径，避免不同操作系统路径分隔符问题
             config_file = os.path.join(os.path.dirname(__file__), "config.ini")
-            
+
             # 定义默认配置参数
             # 这些默认值确保即使配置文件不存在或读取失败，系统仍能正常工作
             length = 4          # 验证码字符长度，默认4个字符
             scale_factor = 2    # 图像缩放因子，默认放大2倍以提高可读性
             noise_level = 0.08  # 噪声级别，默认0.08（8%），用于增加验证码的安全性
-            
+
             # 检查配置文件是否存在
             # 这是一个健壮性检查，避免在文件不存在时产生异常
             if os.path.exists(config_file):
                 try:
                     # 创建ConfigParser对象用于解析INI格式的配置文件
                     cfg = configparser.ConfigParser()
-                    
+
                     # 读取配置文件，指定UTF-8编码以支持中文等多字节字符
                     cfg.read(config_file, encoding="utf-8")
-                    
+
                     # 从[Captcha]节中读取length参数
                     # int()转换为整数类型
                     # fallback="4"表示如果该配置项不存在，则使用"4"作为默认值
                     length = int(cfg.get("Captcha", "length", fallback="4"))
-                    
+
                     # 从[Captcha]节中读取scale_factor参数
                     # 缩放因子决定验证码图像的显示尺寸
                     scale_factor = int(
                         cfg.get("Captcha", "scale_factor", fallback="2"))
-                    
+
                     # 从[Captcha]节中读取noise_level参数
                     # float()转换为浮点数类型，因为噪声级别是一个小数值
                     noise_level = float(
                         cfg.get("Captcha", "noise_level", fallback="0.08")
                     )
-                    
+
                     # 记录成功读取的配置参数，方便调试和监控
                     logging.debug(
                         f"[验证码配置] 成功从config.ini读取参数: length={length}, scale_factor={scale_factor}, noise_level={noise_level}"
@@ -29773,7 +29743,7 @@ def start_web_server(args_param):
                 # 如果配置文件不存在，记录信息级别日志
                 # 这是正常情况（如首次运行），使用默认值即可
                 logging.info(f"[验证码配置] 配置文件不存在，使用默认值: {config_file}")
-            
+
             # 构建返回的配置字典
             # 将所有配置参数组织成一个字典结构，便于JSON序列化
             config_data = {
@@ -29781,10 +29751,10 @@ def start_web_server(args_param):
                 "scale_factor": scale_factor,  # 缩放因子
                 "noise_level": noise_level    # 噪声级别
             }
-            
+
             # 记录调试信息：准备返回配置数据
             logging.debug(f"[验证码配置] 准备返回配置数据: {config_data}")
-            
+
             # 返回成功响应
             # jsonify()将Python字典转换为JSON格式的HTTP响应
             # HTTP状态码200表示请求成功
@@ -29792,12 +29762,12 @@ def start_web_server(args_param):
                 "success": True,      # 操作成功标志
                 "config": config_data  # 配置参数字典
             }), 200
-            
+
         except Exception as e:
             # 捕获所有未预期的异常，确保API不会因异常而崩溃
             # 记录错误级别日志，包含完整的异常堆栈信息（exc_info=True）
             logging.error(f"[验证码配置] 获取配置时发生未知错误: {str(e)}", exc_info=True)
-            
+
             # 即使发生错误，仍然返回默认配置值，确保客户端能获得有效数据
             # HTTP状态码200表示请求本身成功（虽然使用了默认值）
             return jsonify({
@@ -30882,32 +30852,38 @@ def start_web_server(args_param):
             full_log_data = {
                 # === 基础元信息 ===
                 "timestamp": time.time(),                          # Unix时间戳（数字），用于精确计算时间差
-                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),   # 可读时间字符串，便于人工查看
+                # 可读时间字符串，便于人工查看
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "iso_datetime": datetime.datetime.now().isoformat(),  # ISO 8601格式时间，便于跨系统交换
-                
+
                 # === 业务信息 ===
-                "action": action,                                  # 操作类型（如：create_order、query_order、payment_notify）
-                "user_id": user_id,                                # 用户标识（注册用户为username，游客为session UUID）
+                # 操作类型（如：create_order、query_order、payment_notify）
+                "action": action,
+                # 用户标识（注册用户为username，游客为session UUID）
+                "user_id": user_id,
                 "order_id": order_id,                              # 订单号，用于关联订单和日志
-                
+
                 # === 请求元信息（仅在Flask请求上下文中可用） ===
                 # 以下字段只有在HTTP请求处理过程中才有值，后台任务中为None
-                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,  # 客户端真实IP地址
-                "user_agent": request.headers.get("User-Agent", "") if request else "",  # 浏览器User-Agent字符串
-                "referer": request.headers.get("Referer", "") if request else "",  # HTTP Referer头，表示请求来源页面
+                # 客户端真实IP地址
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr if request else None,
+                # 浏览器User-Agent字符串
+                "user_agent": request.headers.get("User-Agent", "") if request else "",
+                # HTTP Referer头，表示请求来源页面
+                "referer": request.headers.get("Referer", "") if request else "",
                 "request_method": request.method if request else None,  # HTTP请求方法（GET、POST等）
                 "request_path": request.path if request else None,  # 请求的URL路径
                 "request_url": request.url if request else None,  # 完整的请求URL
-                
+
                 # === 会话信息 ===
                 # session_id用于追踪同一用户的多次请求
                 "session_id": session.get("session_id") if request and hasattr(session, "get") else None,
-                
+
                 # === 服务器信息 ===
                 # 记录处理请求的服务器信息，便于分布式环境下的问题排查
                 "server_hostname": socket.gethostname() if socket else "unknown",  # 服务器主机名
                 "process_id": os.getpid(),  # 当前进程ID
-                
+
                 # === 自定义数据（从参数传入） ===
                 # 使用**运算符展开log_data字典，将其所有键值对添加到full_log_data中
                 # 这允许调用者传入任意额外的业务数据
@@ -30915,7 +30891,7 @@ def start_web_server(args_param):
             }
 
             # ========== 任务4增强：写入日志文件并检查日志目录大小 ==========
-            
+
             # --- 步骤1：写入日志文件 ---
             # 将日志数据序列化为JSON格式并写入文件
             # 使用UTF-8编码支持中文
@@ -30931,29 +30907,29 @@ def start_web_server(args_param):
                 # 定义日志目录最大大小限制（单位：字节）
                 # 这里设置为100MB，可根据实际需求调整
                 MAX_LOG_DIR_SIZE = 100 * 1024 * 1024  # 100 MB
-                
+
                 # 计算当前日志目录的总大小
                 total_size = 0  # 初始化总大小为0
                 log_files = []  # 用于存储日志文件信息的列表
-                
+
                 # 遍历日志目录中的所有文件
                 for filename in os.listdir(PAYMENT_LOGS_DIR):
                     # 构造文件的完整路径
                     filepath = os.path.join(PAYMENT_LOGS_DIR, filename)
-                    
+
                     # 只处理.json文件，忽略其他文件
                     if os.path.isfile(filepath) and filename.endswith('.json'):
                         # 获取文件大小（单位：字节）
                         file_size = os.path.getsize(filepath)
                         # 获取文件最后修改时间（Unix时间戳）
                         file_mtime = os.path.getmtime(filepath)
-                        
+
                         # 累加文件大小到总大小
                         total_size += file_size
                         # 将文件信息添加到列表中，用于后续排序
                         # 元组格式：(文件路径, 修改时间, 文件大小)
                         log_files.append((filepath, file_mtime, file_size))
-                
+
                 # 如果日志目录总大小超过限制，执行清理
                 if total_size > MAX_LOG_DIR_SIZE:
                     # 记录警告日志：日志目录大小超限
@@ -30961,22 +30937,22 @@ def start_web_server(args_param):
                         f"[支付日志轮转] 日志目录大小 {total_size / (1024*1024):.2f}MB "
                         f"超过限制 {MAX_LOG_DIR_SIZE / (1024*1024):.2f}MB，开始清理旧日志"
                     )
-                    
+
                     # 按文件修改时间排序，最旧的文件排在前面
                     # key=lambda x: x[1] 表示按元组的第二个元素（修改时间）排序
                     log_files.sort(key=lambda x: x[1])
-                    
+
                     # 删除文件直到总大小降到限制的80%以下
                     # 保留20%的缓冲空间，避免频繁触发清理
                     target_size = MAX_LOG_DIR_SIZE * 0.8
                     deleted_count = 0  # 记录删除的文件数量
-                    
+
                     # 从最旧的文件开始删除
                     for filepath, file_mtime, file_size in log_files:
                         # 如果当前总大小已低于目标大小，停止删除
                         if total_size <= target_size:
                             break
-                        
+
                         try:
                             # 删除文件
                             os.remove(filepath)
@@ -30984,7 +30960,7 @@ def start_web_server(args_param):
                             total_size -= file_size
                             # 删除计数器加1
                             deleted_count += 1
-                            
+
                             # 记录调试日志：文件已删除
                             logging.debug(
                                 f"[支付日志轮转] 已删除旧日志文件: {os.path.basename(filepath)} "
@@ -30996,14 +30972,14 @@ def start_web_server(args_param):
                                 f"[支付日志轮转] 删除日志文件失败: {os.path.basename(filepath)}, "
                                 f"错误: {str(delete_error)}"
                             )
-                    
+
                     # 记录信息日志：清理完成
                     if deleted_count > 0:
                         logging.info(
                             f"[支付日志轮转] 清理完成，已删除 {deleted_count} 个旧日志文件，"
                             f"当前目录大小: {total_size / (1024*1024):.2f}MB"
                         )
-            
+
             except Exception as rotation_error:
                 # 日志轮转失败不影响主业务，只记录警告日志
                 logging.warning(
@@ -31447,10 +31423,10 @@ def start_web_server(args_param):
     def payment_methods_config():
         """
         获取支付方式配置接口
-        
+
         功能说明：
         此接口返回支付方式的完整配置信息和当前启用的支付方式列表。
-        
+
         返回数据格式：
         {
             "success": true,
@@ -31476,14 +31452,14 @@ def start_web_server(args_param):
             # ========== 第2步：从 config.ini 读取启用的支付方式列表 ==========
             # 启用状态存储在 config.ini 文件的 [Rainbow_YiPay] 节中
             # 配置格式为逗号分隔的字符串，例如："alipay,wxpay"
-            
+
             # 创建配置解析器对象
             config = configparser.ConfigParser()
-            
+
             # 读取配置文件
             # encoding="utf-8" 确保正确读取中文内容
             config.read("config.ini", encoding="utf-8")
-            
+
             # 获取启用的支付方式配置
             # fallback 参数指定默认值："alipay,wxpay"（当配置项不存在时使用）
             enabled_methods_str = config.get(
@@ -31491,25 +31467,25 @@ def start_web_server(args_param):
                 "enabled_payment_methods",
                 fallback="alipay,wxpay"
             ).strip()
-            
+
             # 将逗号分隔的字符串转换为列表
             # 使用列表推导式处理字符串：
             # 1. split(",") 按逗号分割
             # 2. method.strip() 去除空格
             # 3. if method.strip() 过滤空字符串
             enabled_methods = [
-                method.strip() 
-                for method in enabled_methods_str.split(",") 
+                method.strip()
+                for method in enabled_methods_str.split(",")
                 if method.strip()
             ]
-            
+
             # 如果解析结果为空，使用默认列表
             if not enabled_methods:
                 enabled_methods = ["alipay", "wxpay"]
                 logging.warning(
                     f"[支付方式配置] config.ini中未配置启用的支付方式，使用默认值: {enabled_methods}"
                 )
-            
+
             # 记录当前启用的支付方式
             logging.info(f"[支付方式配置] 当前启用的支付方式: {enabled_methods}")
 
@@ -31521,13 +31497,13 @@ def start_web_server(args_param):
                 "methods": methods_config,  # 所有支付方式的完整配置信息
                 "enabled_methods": enabled_methods  # 当前启用的支付方式列表
             })
-            
+
         except Exception as e:
             # 捕获所有可能的异常
             # 记录错误日志，包含完整的异常堆栈，便于排查问题
             logging.error(f"[支付方式配置] 读取配置失败: {str(e)}")
             logging.error(traceback.format_exc())
-            
+
             # 返回错误响应，HTTP状态码 500 表示服务器内部错误
             return jsonify({
                 "success": False,  # 标识请求失败
@@ -31734,7 +31710,7 @@ def start_web_server(args_param):
                         "success": False,
                         "message": "该订单在支付平台已退款，无法重复退款"
                     })
-                
+
                 platform_status = str(platform_status)
                 # 如果平台状态不是"已支付"(1)，也不允许退款
                 if platform_status != "1":
@@ -32474,7 +32450,6 @@ def start_web_server(args_param):
 
                 # 调用查询接口
                 query_result = _query_yipay_order(order_id)
-                
 
                 # 如果查询成功且订单已支付
                 if query_result["success"] and query_result.get("data").get("status") == "TRADE_SUCCESS":
@@ -32487,7 +32462,7 @@ def start_web_server(args_param):
                     # ========== 任务3优化：使用增量更新模式保存订单 ==========
                     # 原因：避免覆盖订单文件中可能存在的其他字段
                     # 例如：退款信息、管理员备注等
-                    
+
                     # 步骤1：读取现有订单数据（如果文件存在）
                     existing_order_data = {}
                     if os.path.exists(order_file):
@@ -32502,15 +32477,16 @@ def start_web_server(args_param):
                                 f"[订单查询] 读取现有订单文件失败，将创建新文件 - "
                                 f"订单号: {order_id}, 错误: {str(read_error)}"
                             )
-                    
+
                     # 步骤2：合并订单数据（增量更新）
                     # 将新数据合并到现有数据中，保留现有数据中新数据没有的字段
                     existing_order_data.update(order_data)
-                    
+
                     # 步骤3：保存更新后的订单数据
                     with open(order_file, "w", encoding="utf-8") as f:
-                        json.dump(existing_order_data, f, indent=2, ensure_ascii=False)
-                    
+                        json.dump(existing_order_data, f,
+                                  indent=2, ensure_ascii=False)
+
                     logging.debug(
                         f"[订单查询] 订单状态已更新（增量更新模式） - "
                         f"订单号: {order_id}, 状态: pending -> paid"
@@ -32672,11 +32648,11 @@ def start_web_server(args_param):
                 # 创建配置解析器对象
                 # ConfigParser 是 Python 标准库中用于读取 INI 格式配置文件的类
                 config = configparser.ConfigParser()
-                
+
                 # 读取配置文件
                 # encoding="utf-8" 确保正确读取中文内容
                 config.read("config.ini", encoding="utf-8")
-                
+
                 # 获取启用的支付方式配置
                 # config.get() 方法从指定节（Rainbow_YiPay）获取指定键（enabled_payment_methods）的值
                 # fallback 参数指定默认值："alipay,wxpay"（当配置项不存在时使用）
@@ -32685,7 +32661,7 @@ def start_web_server(args_param):
                     "enabled_payment_methods",
                     fallback="alipay,wxpay"
                 ).strip()
-                
+
                 # 将逗号分隔的字符串转换为列表
                 # 使用列表推导式（List Comprehension）处理字符串：
                 # 1. split(",") 按逗号分割字符串
@@ -32693,25 +32669,26 @@ def start_web_server(args_param):
                 # 3. if method.strip() 过滤掉空字符串
                 # 例如："alipay, wxpay, " -> ["alipay", "wxpay"]
                 enabled_methods = [
-                    method.strip() 
-                    for method in enabled_methods_str.split(",") 
+                    method.strip()
+                    for method in enabled_methods_str.split(",")
                     if method.strip()
                 ]
-                
+
                 # 记录读取到的启用支付方式
                 # 这有助于调试和审计
                 logging.info(
                     f"[欠费支付] 从config.ini读取到 {len(enabled_methods)} 个启用的支付方式: {enabled_methods}"
                 )
-                
+
                 # 如果配置为空或解析失败，使用默认的支付方式列表
                 # 这是一个回退机制，确保系统始终有可用的支付方式
                 if not enabled_methods:
-                    enabled_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
+                    enabled_methods = ["alipay", "wxpay",
+                                       "qqpay", "bank", "unionpay"]
                     logging.warning(
                         f"[欠费支付] config.ini中没有配置启用的支付方式，使用默认列表: {enabled_methods}"
                     )
-                
+
                 # ========== 验证用户选择的支付方式是否在启用列表中 ==========
                 # 使用 in 操作符检查 pay_type 是否在 enabled_methods 列表中
                 if pay_type not in enabled_methods:
@@ -32724,26 +32701,27 @@ def start_web_server(args_param):
                         f"[欠费支付] 收到未启用的支付方式: {pay_type}，"
                         f"已启用的支付方式: {enabled_methods}，将使用第一个启用的支付方式"
                     )
-                    
+
                     # 自动切换到启用列表中的第一个支付方式
                     # 这是一个友好的回退机制，避免直接返回错误
                     # 如果启用列表为空（理论上不可能，因为上面有回退逻辑），则使用 "alipay"
                     pay_type = enabled_methods[0] if enabled_methods else "alipay"
-                    
+
                     # 记录最终使用的支付方式
                     logging.info(
                         f"[欠费支付] 已自动切换到支付方式: {pay_type}"
                     )
-                    
+
             except Exception as e:
                 # 捕获所有异常（文件读取错误、配置解析错误等）
                 # 这确保即使配置文件有问题，系统也能继续运行
                 logging.error(f"[欠费支付] 读取config.ini配置失败: {str(e)}")
                 logging.error(traceback.format_exc())
-                
+
                 # 出错时使用默认的支付方式验证逻辑
                 # 使用硬编码的默认支付方式列表作为最后的回退方案
-                default_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
+                default_methods = ["alipay", "wxpay",
+                                   "qqpay", "bank", "unionpay"]
                 if pay_type not in default_methods:
                     logging.warning(
                         f"[欠费支付] 支付方式 {pay_type} 不在默认列表中，强制使用 alipay"
@@ -32876,10 +32854,10 @@ def start_web_server(args_param):
             # ========== 步骤7：判断设备类型（根据User-Agent） ==========
 
             device = data.get("device", "").strip()
-            
-            payment_type= data.get("payment_type", "web").strip()
-            
-            payment_method=pay_type
+
+            payment_type = data.get("payment_type", "web").strip()
+
+            payment_method = pay_type
 
             # ========== 步骤8：获取客户端IP地址 ==========
 
@@ -32911,12 +32889,12 @@ def start_web_server(args_param):
             # 构造同步返回URL（用户支付完成后浏览器跳转的地址）
             # 这里使用前端主页作为返回地址（可根据需求修改）
             return_url = data.get("return_url", "").strip()
-            
-            sub_openid=data.get("sub_openid","").strip()
-            
-            sub_appid=data.get("sub_appid","").strip()
-            
-            auth_code=data.get("auth_code","").strip()
+
+            sub_openid = data.get("sub_openid", "").strip()
+
+            sub_appid = data.get("sub_appid", "").strip()
+
+            auth_code = data.get("auth_code", "").strip()
 
             # ========== 步骤10：创建彩虹易支付订单 ==========
 
@@ -32930,7 +32908,7 @@ def start_web_server(args_param):
             #   - money: 支付金额（单位：元）
             #   - pay_type: 支付方式（用户选择的支付方式：alipay/wxpay/qqpay等）
             #   - return_url: 同步返回URL
-            
+
             data_need_to_pay = {
                 "out_trade_no": out_trade_no,
                 "name": product_name,
@@ -32949,14 +32927,11 @@ def start_web_server(args_param):
                 data_need_to_pay["sub_openid"] = sub_openid
             if sub_appid is not None and sub_appid != "":
                 data_need_to_pay["sub_appid"] = sub_appid
-            
-            
-            
-            
+
             result = yipay_client.create_order(**data_need_to_pay)
 
             # ========== 步骤10.1：验证返回值类型 ==========
-            
+
             # 检查返回值的类型，防止出现 'str' object has no attribute 'get' 错误
             # 正常情况下，yipay_client.create_order() 应该返回字典类型
             # 但在某些错误情况下（如网络异常、配置错误），可能返回字符串类型的错误信息
@@ -32967,14 +32942,13 @@ def start_web_server(args_param):
                     f"[欠费支付] create_order 返回值类型错误: "
                     f"期望dict, 实际{type(result).__name__}, 值: {result}"
                 )
-                
+
                 # 返回友好的错误信息给前端
                 # 将返回值转换为字符串，方便用户查看具体错误
                 return jsonify({
                     "success": False,
                     "message": f"创建支付订单失败: {str(result)}"
                 })
-
 
             # 检查订单创建是否成功
             # 此时已确保 result 是字典类型，可以安全调用 .get() 方法
@@ -33008,8 +32982,8 @@ def start_web_server(args_param):
                 })
 
             # ========== 步骤11：保存订单信息到本地文件 ==========
-            pay_type=result.get("pay_type",pay_type)
-            
+            pay_type = result.get("pay_type", pay_type)
+
             # 构造订单数据字典
             order_data = {
                 "order_id": out_trade_no,              # 订单号
@@ -33074,7 +33048,7 @@ def start_web_server(args_param):
             # 并更新existing_order_data中order_data已有的字段
             # 这样可以避免丢失文件中可能存在的其他自定义字段
             existing_order_data.update(order_data)
-            
+
             # --- 步骤3：写入合并后的订单数据到文件 ---
             # 使用写入模式打开文件（会覆盖原文件内容）
             # 注意：此时写入的是合并后的数据，保留了原有的额外字段
@@ -33084,7 +33058,7 @@ def start_web_server(args_param):
                 # indent=2: 格式化输出，每层缩进2个空格，便于人工阅读
                 # ensure_ascii=False: 保存中文字符，不转义为\uXXXX格式
                 json.dump(existing_order_data, f, indent=2, ensure_ascii=False)
-            
+
             # 记录日志：订单文件写入成功
             logging.debug(
                 f"[订单文件] 订单数据已保存（增量更新模式） - "
@@ -33109,18 +33083,18 @@ def start_web_server(args_param):
                     "total_count": total_overdue_count,
                     "total_amount": amount,
                     "amount": amount,                      # 支付金额
-                        "product_name": product_name,          # 商品名称
-                        "pay_type": pay_type,                  # 支付方式
-                        "pay_url": result["pay_url"],          # 支付跳转URL
-                        "return_url": return_url,              # 同步返回URL
-                        # 请求信息
-                        # 客户端IP
-                        "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
-                        # 浏览器UA
-                        "user_agent": request.headers.get("User-Agent", ""),
-                        # 操作结果
-                        "success": True,                       # 操作是否成功
-                        "message": "订单创建成功"              # 操作消息
+                    "product_name": product_name,          # 商品名称
+                    "pay_type": pay_type,                  # 支付方式
+                    "pay_url": result["pay_url"],          # 支付跳转URL
+                    "return_url": return_url,              # 同步返回URL
+                    # 请求信息
+                    # 客户端IP
+                    "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                    # 浏览器UA
+                    "user_agent": request.headers.get("User-Agent", ""),
+                    # 操作结果
+                    "success": True,                       # 操作是否成功
+                    "message": "订单创建成功"              # 操作消息
                 }
             )
 
@@ -33133,7 +33107,7 @@ def start_web_server(args_param):
                 "order_id": out_trade_no,              # 订单号
                 "total_count": total_overdue_count,    # 总欠费次数
                 "total_amount": amount,      # 总金额（字符串格式）
-                "pay_type":pay_type
+                "pay_type": pay_type
             })
 
         except Exception as e:
@@ -33705,30 +33679,30 @@ def start_web_server(args_param):
     # ==============================================================================
     # 任务1新增：通过订单号直接查询订单接口（无需遍历所有订单，性能更优）
     # ==============================================================================
-    
+
     @app.route("/api/payment/order_by_tradeno", methods=["GET"])
     @login_required
     def payment_get_order_by_tradeno():
         """
         通过订单号直接查询单个订单接口（任务1新增）
-        
+
         请求方法：GET
         权限要求：需要登录
-        
+
         查询参数（URL参数）：
             - trade_no (str, 必需): 商户订单号
-        
+
         返回数据（JSON格式）：
             - success (bool): 是否成功
             - message (str): 提示信息
             - order (dict): 订单详细数据（仅在success=true时存在）
-        
+
         功能说明：
         1. 普通用户只能查询自己的订单，否则返回权限错误
         2. 管理员可以查询所有用户的订单
         3. 直接通过文件路径读取订单，无需遍历所有订单文件
         4. 相比 /api/payment/orders 接口，性能更优，适用于按订单号精确查询的场景
-        
+
         使用场景：
         - 前端通过订单号快速获取订单金额等信息
         - 退款时验证订单是否存在
@@ -33736,11 +33710,11 @@ def start_web_server(args_param):
         """
         try:
             # ========== 步骤1：获取并验证请求参数 ==========
-            
+
             # 从URL查询参数中获取订单号（trade_no）
             # strip() 去除首尾空格，避免用户误输入空格导致查询失败
             trade_no = request.args.get("trade_no", "").strip()
-            
+
             # 验证订单号是否为空
             # 如果为空，返回400错误（Bad Request - 客户端请求参数错误）
             if not trade_no:
@@ -33748,22 +33722,22 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "订单号不能为空"
                 }), 400
-            
+
             # ========== 步骤2：构造订单文件路径 ==========
-            
+
             # 使用 os.path.join() 安全地拼接路径，避免路径注入攻击
             # PAYMENT_ORDERS_DIR: 订单存储目录（全局常量）
             # 订单文件命名规则：{订单号}.json
             order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{trade_no}.json")
-            
+
             # 记录调试日志：开始查询订单
             logging.debug(
                 f"[订单查询] 通过订单号查询订单 - "
                 f"用户: {g.user}, 订单号: {trade_no}, 文件路径: {order_file}"
             )
-            
+
             # ========== 步骤3：检查订单文件是否存在 ==========
-            
+
             # 使用 os.path.exists() 检查文件是否存在
             # 如果文件不存在，说明订单号无效或订单已被删除
             if not os.path.exists(order_file):
@@ -33777,16 +33751,16 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"订单不存在：{trade_no}"
                 }), 404
-            
+
             # ========== 步骤4：读取订单文件 ==========
-            
+
             try:
                 # 以只读模式打开订单文件
                 # encoding="utf-8": 指定UTF-8编码，确保正确读取中文内容
                 with open(order_file, "r", encoding="utf-8") as f:
                     # json.load() 将JSON格式的文件内容解析为Python字典对象
                     order_data = json.load(f)
-                    
+
             except json.JSONDecodeError as json_err:
                 # JSON解析失败（文件内容格式错误或损坏）
                 # 这通常是由于文件写入不完整或手动编辑错误导致
@@ -33798,7 +33772,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "订单文件格式错误，请联系管理员"
                 }), 500
-                
+
             except IOError as io_err:
                 # 文件读取失败（磁盘IO错误、权限不足等）
                 logging.error(
@@ -33809,17 +33783,17 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "读取订单失败，请稍后重试"
                 }), 500
-            
+
             # ========== 步骤5：权限检查（重要安全控制） ==========
-            
+
             # 检查当前用户是否为管理员
             # check_permission() 会验证用户是否有"manage_users"权限
             is_admin = auth_system.check_permission(g.user, "manage_users")
-            
+
             # 从订单数据中获取订单所属用户名
             # get() 方法安全地获取字段值，如果字段不存在则返回None
             order_username = order_data.get("username")
-            
+
             # 权限验证逻辑：
             # - 如果不是管理员（is_admin=False）
             # - 并且订单不属于当前用户（order_username != g.user）
@@ -33835,9 +33809,9 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "无权限访问该订单"
                 }), 403
-            
+
             # ========== 步骤6：返回订单数据 ==========
-            
+
             # 任务4增强：记录订单查询操作日志
             # 记录成功的订单查询，用于审计和安全监控
             _write_payment_log(
@@ -33852,14 +33826,14 @@ def start_web_server(args_param):
                     "result": "success"             # 查询结果：成功
                 }
             )
-            
+
             # 记录成功日志
             logging.info(
                 f"[订单查询] 查询订单成功 - "
                 f"用户: {g.user}, 订单号: {trade_no}, "
                 f"订单状态: {order_data.get('status')}"
             )
-            
+
             # 返回成功响应（HTTP 200 OK）
             # order字段包含完整的订单数据
             return jsonify({
@@ -33867,10 +33841,10 @@ def start_web_server(args_param):
                 "message": "查询成功",
                 "order": order_data
             })
-        
+
         except Exception as e:
             # ========== 捕获所有未预期的异常 ==========
-            
+
             # 记录详细的错误日志，包含完整的堆栈跟踪
             # 这有助于快速定位和修复问题
             logging.error(
@@ -33878,7 +33852,7 @@ def start_web_server(args_param):
                 f"用户: {g.user}, 订单号: {trade_no}, 错误: {str(e)}"
             )
             logging.error(traceback.format_exc())
-            
+
             # 返回500错误（Internal Server Error - 服务器内部错误）
             # 不向客户端暴露详细的错误信息，避免安全风险
             return jsonify({
@@ -34252,7 +34226,7 @@ def start_web_server(args_param):
                 # 调用 _read_payment_methods_config() 从 payment_methods.json 读取
                 # 该文件包含所有支付方式的详细配置（名称、SVG图标、颜色等）
                 payment_methods = _read_payment_methods_config()
-                
+
                 # 记录日志
                 logging.info(
                     f"[管理员配置] 读取支付方式配置 - 启用: {enabled_methods}, "
@@ -35272,7 +35246,8 @@ def start_web_server(args_param):
                         "product_id": product_id,  # [新增] 返回商品ID
                         "app_host": app_host,  # [新增] 返回应用域名地址
                         "pubc_key": pubc_key,  # [新增] 返回平台公钥
-                        "payment_timeout_minutes": payment_timeout_minutes,  # [新增] 返回支付超时时间
+                        # [新增] 返回支付超时时间
+                        "payment_timeout_minutes": payment_timeout_minutes,
                         "enabled_payment_methods": enabled_payment_methods,
                         # "payment_method": payment_method
                     }
@@ -35352,7 +35327,8 @@ def start_web_server(args_param):
                 # 从请求数据中获取，如果不存在则使用当前配置值，默认为30秒
                 new_payment_timeout_minutes = data.get(
                     "payment_timeout_minutes",
-                    config.get("Rainbow_YiPay", "payment_timeout_minutes", fallback="30")
+                    config.get("Rainbow_YiPay",
+                               "payment_timeout_minutes", fallback="30")
                 ).strip()
 
                 # ========== 验证参数的有效性 ==========
@@ -35759,7 +35735,7 @@ def start_web_server(args_param):
                         # log_id是日志文件名（不含.json后缀），用于后续查询日志详情
                         # 例如：20231201_120530_admin_ORDER20231201120530123456
                         log_entry["log_id"] = filename[:-5]  # 去掉.json后缀（5个字符）
-                        
+
                         # 通过筛选，添加到结果列表
                         logs.append(log_entry)
 
@@ -35972,7 +35948,7 @@ def start_web_server(args_param):
                     # log_id是日志文件名（不含.json后缀），用于后续查询日志详情
                     # 例如：20231201_120530_admin_ORDER20231201120530123456
                     log_data["log_id"] = log_filename[:-5]  # 去掉.json后缀（5个字符）
-                    
+
                     # 添加到日志列表
                     logs.append(log_data)
 
@@ -36021,19 +35997,19 @@ def start_web_server(args_param):
     def admin_get_payment_log_detail():
         """
         获取支付日志详情接口（管理员专用）
-        
+
         功能说明：
         根据日志ID（即日志文件名）读取并返回完整的日志详细信息。
         用于支持前端点击"查看详情"按钮后显示日志的完整内容。
-        
+
         请求方法：POST
         权限要求：审计日志查看权限（view_audit_logs）
-        
+
         请求体（JSON格式）：
             {
                 "log_id": "20231201_120530_admin_ORDER20231201120530123456"  # 日志ID（文件名，不含.json后缀）
             }
-        
+
         返回数据（JSON格式）：
             {
                 "success": true,
@@ -36050,7 +36026,7 @@ def start_web_server(args_param):
                     # ... 其他日志中包含的字段
                 }
             }
-        
+
         使用场景：
         - 查看日志的完整详细信息，包括所有字段
         - 调试支付问题时查看完整的请求和响应数据
@@ -36058,7 +36034,7 @@ def start_web_server(args_param):
         """
         try:
             # ========== 步骤1：权限检查 ==========
-            
+
             # 细粒度权限检查：需要 'view_audit_logs' 权限
             # 查看日志详情与查看日志列表需要相同的权限
             if not auth_system.check_permission(g.user, "view_audit_logs"):
@@ -36066,18 +36042,18 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "权限不足，需要审计日志查看权限（view_audit_logs）"
                 }), 403
-            
+
             # ========== 步骤2：获取并验证请求参数 ==========
-            
+
             # 从请求体中获取JSON数据
             # 使用 request.get_json() 自动解析JSON格式的请求体
             data = request.get_json() or {}
-            
+
             # 提取日志ID参数
             # 日志ID即日志文件名（不含.json后缀）
             # 格式示例：20231201_120530_admin_ORDER20231201120530123456
             log_id = data.get("log_id", "").strip()
-            
+
             # 验证日志ID是否为空
             if not log_id:
                 # 日志ID为空，返回400错误（参数错误）
@@ -36085,20 +36061,20 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "日志ID不能为空"
                 }), 400
-            
+
             # ========== 步骤3：构造日志文件路径 ==========
-            
+
             # 构造日志文件的完整路径
             # 日志文件存储在 PAYMENT_LOGS_DIR 目录下
             # 文件名格式：{log_id}.json
             log_filepath = os.path.join(PAYMENT_LOGS_DIR, f"{log_id}.json")
-            
+
             # 安全性检查：防止路径遍历攻击
             # 例如：log_id = "../../../etc/passwd" 这样的恶意输入
             # 确保构造的路径必须在 PAYMENT_LOGS_DIR 目录内
             real_log_dir = os.path.realpath(PAYMENT_LOGS_DIR)
             real_log_path = os.path.realpath(log_filepath)
-            
+
             # 检查real_log_path是否以real_log_dir开头
             # 如果不是，说明有路径遍历企图，拒绝访问
             if not real_log_path.startswith(real_log_dir):
@@ -36110,9 +36086,9 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "无效的日志ID"
                 }), 400
-            
+
             # ========== 步骤4：检查日志文件是否存在 ==========
-            
+
             # 检查日志文件是否真实存在
             if not os.path.exists(log_filepath):
                 # 文件不存在，可能是：
@@ -36127,28 +36103,28 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "日志文件不存在，可能已被删除"
                 }), 404
-            
+
             # ========== 步骤5：读取日志文件内容 ==========
-            
+
             try:
                 # 打开并读取日志JSON文件
                 # 使用UTF-8编码确保中文内容正确显示
                 with open(log_filepath, "r", encoding="utf-8") as f:
                     log_detail = json.load(f)
-                
+
                 # 记录操作日志（用于审计）
                 # 记录谁在什么时候查看了哪条日志
                 logging.info(
                     f"[支付日志详情] 管理员查看日志详情 - "
                     f"用户: {g.user}, log_id: {log_id}"
                 )
-                
+
                 # 返回成功响应，包含完整的日志详情
                 return jsonify({
                     "success": True,
                     "log_detail": log_detail
                 })
-                
+
             except json.JSONDecodeError as e:
                 # JSON解析失败，可能是文件损坏
                 logging.error(
@@ -36169,7 +36145,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"读取日志文件失败：{str(e)}"
                 }), 500
-        
+
         except Exception as e:
             # 捕获所有未预期的异常
             # 记录详细的错误日志（包含堆栈跟踪）
@@ -36504,12 +36480,13 @@ def start_web_server(args_param):
                     # 平台返回的完整订单对象（包含所有字段）
                     "platform_data": platform_order
                 }
-                
+
                 if order_data is None:
                     local_order_data["username"] = "未知"
                 else:
-                    local_order_data["username"] = order_data.get("username", "未知")
-                
+                    local_order_data["username"] = order_data.get(
+                        "username", "未知")
+
                 logging.info(
                     f"[管理员查询订单] 平台订单数据转换完成 - 单号: {local_order_data['order_id']}，数据：{local_order_data}")
 
@@ -36565,13 +36542,13 @@ def start_web_server(args_param):
                 #
                 # 目的：在保存新订单之前，记录旧订单的状态
                 # 如果订单状态从pending变为paid，且包含overdue_accounts，需要处理欠费减少
-                
+
                 # 记录旧订单状态（如果本地已有订单）
                 old_status = None
                 if order_data is not None:
                     # 本地已有订单数据，记录其状态
                     old_status = order_data.get("status")
-                
+
                 # ========== 保存平台订单到本地文件 ==========
                 #
                 # 目的：
@@ -36590,10 +36567,10 @@ def start_web_server(args_param):
 
                 # 确保订单目录存在
                 os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-                
+
                 order_data.update(local_order_data)  # 更新本地订单数据
 
-                local_order_data=order_data  # 使用更新后的订单数据
+                local_order_data = order_data  # 使用更新后的订单数据
                 try:
                     # 写入订单文件
                     # 使用UTF-8编码保存中文内容
@@ -36620,40 +36597,43 @@ def start_web_server(args_param):
                             "success": True
                         }
                     )
-                    
+
                     # ========== 处理订单状态变更时的overdue_accounts逻辑 ==========
                     #
                     # 检查订单状态是否从pending变为paid
                     # 如果是，且订单包含overdue_accounts字段，则需要减少对应账号的overdue_count
-                    
+
                     # 获取新订单状态（从平台获取的状态）
                     new_status = local_order_data.get("status", "")
-                    
+
                     logging.info(
                         f"[管理员从平台查询订单] 订单状态检查 - "
                         f"单号: {out_trade_no}, "
                         f"旧状态: {old_status}, "
                         f"新状态: {new_status}"
                     )
-                    
+
                     # 判断是否状态改变：
                     # 1. 旧状态为pending或None（订单不存在）
                     # 2. 新状态为paid
-                    is_status_changed = (old_status in [ORDER_STATUS_PENDING, None]) and (new_status == ORDER_STATUS_PAID)
-                    
+                    is_status_changed = (old_status in [ORDER_STATUS_PENDING, None]) and (
+                        new_status == ORDER_STATUS_PAID)
+
                     # 如果状态改变，且订单包含overdue_accounts字段
                     if is_status_changed and "overdue_accounts" in local_order_data:
                         # 提取欠费账号列表
-                        overdue_accounts = local_order_data.get("overdue_accounts", [])
-                        
+                        overdue_accounts = local_order_data.get(
+                            "overdue_accounts", [])
+
                         # 验证overdue_accounts是否为有效的列表
                         if overdue_accounts and isinstance(overdue_accounts, list):
                             logging.info(
                                 f"[订单状态变更] 订单 {out_trade_no} 状态从 {old_status} 变为 {new_status}，"
                                 f"开始处理overdue_accounts"
                             )
-                            auth_username=local_order_data["username"]
-                            _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
+                            auth_username = local_order_data["username"]
+                            _process_overdue_payment_async(
+                                overdue_accounts, auth_username, out_trade_no)
 
                 except Exception as e:
                     # 保存失败，记录错误但仍然返回平台数据
@@ -37081,7 +37061,7 @@ def start_web_server(args_param):
                     order_file = os.path.join(
                         PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
                     is_update = os.path.exists(order_file)
-                    
+
                     # 记录旧订单状态（用于后续检查状态变更）
                     old_status = None
 
@@ -37090,7 +37070,7 @@ def start_web_server(args_param):
                         try:
                             with open(order_file, "r", encoding="utf-8") as f:
                                 existing_order = json.load(f)
-                            
+
                             # 记录旧订单的状态
                             old_status = existing_order.get("status")
 
@@ -37103,7 +37083,7 @@ def start_web_server(args_param):
                                 local_order_data["refund_count"] = existing_order["refund_count"]
                             if "refund_records" in existing_order:
                                 local_order_data["refund_records"] = existing_order["refund_records"]
-                            
+
                             # 保留overdue_accounts字段（如果存在）
                             # 这个字段包含欠费账号列表，对于后续处理很重要
                             if "overdue_accounts" in existing_order:
@@ -37123,34 +37103,37 @@ def start_web_server(args_param):
                     with open(order_file, "w", encoding="utf-8") as f:
                         json.dump(local_order_data, f,
                                   indent=2, ensure_ascii=False)
-                    
+
                     # ========== 处理订单状态变更时的overdue_accounts逻辑 ==========
                     #
                     # 检查订单状态是否从pending变为paid
                     # 如果是，且订单包含overdue_accounts字段，则需要减少对应账号的overdue_count
-                    
+
                     # 获取新订单状态（从平台获取的状态）
                     new_status = local_order_data.get("status", "")
-                    
+
                     # 判断是否状态改变：
                     # 1. 旧状态为pending或None（订单不存在）
                     # 2. 新状态为paid
-                    is_status_changed = (old_status in [ORDER_STATUS_PENDING, None]) and (new_status == ORDER_STATUS_PAID)
-                    
+                    is_status_changed = (old_status in [ORDER_STATUS_PENDING, None]) and (
+                        new_status == ORDER_STATUS_PAID)
+
                     # 如果状态改变，且订单包含overdue_accounts字段
                     if is_status_changed and "overdue_accounts" in local_order_data:
                         # 提取欠费账号列表
-                        overdue_accounts = local_order_data.get("overdue_accounts", [])
-                        
+                        overdue_accounts = local_order_data.get(
+                            "overdue_accounts", [])
+
                         # 验证overdue_accounts是否为有效的列表
                         if overdue_accounts and isinstance(overdue_accounts, list):
                             logging.info(
                                 f"[订单状态变更] 订单 {out_trade_no} 状态从 {old_status} 变为 {new_status}，"
                                 f"开始处理overdue_accounts"
                             )
-                            auth_username=local_order_data["username"]
-                            
-                            _process_overdue_payment_async(overdue_accounts, auth_username, out_trade_no)
+                            auth_username = local_order_data["username"]
+
+                            _process_overdue_payment_async(
+                                overdue_accounts, auth_username, out_trade_no)
 
                     # 统计成功
                     saved_count += 1
@@ -37251,7 +37234,6 @@ def start_web_server(args_param):
                     "overdue_accounts": []
                 })
 
-            
             # ========== 步骤2：检查学校账号欠费情况 ==========
             # 从请求体中获取参数
             data = request.get_json() or {}
@@ -37261,8 +37243,10 @@ def start_web_server(args_param):
             logging.info(f"[欠费检查] 得到的请求数据: {data}")
             school_username_input_before1 = data.get("school_username")
             school_username_input_before2 = data.get("school_usernames")
-            logging.info(f"[欠费检查] 得到的 school_username 参数: {school_username_input_before1}")
-            logging.info(f"[欠费检查] 得到的 school_usernames 参数: {school_username_input_before2}")
+            logging.info(
+                f"[欠费检查] 得到的 school_username 参数: {school_username_input_before1}")
+            logging.info(
+                f"[欠费检查] 得到的 school_usernames 参数: {school_username_input_before2}")
 
             # 统一处理输入，确保最终是列表
             def normalize_input(input_val):
@@ -37282,9 +37266,11 @@ def start_web_server(args_param):
             # 获取输入
             school_username_input = None
             if school_username_input_before1:
-                school_username_input = normalize_input(school_username_input_before1)
+                school_username_input = normalize_input(
+                    school_username_input_before1)
             elif school_username_input_before2:
-                school_username_input = normalize_input(school_username_input_before2)
+                school_username_input = normalize_input(
+                    school_username_input_before2)
 
             # 处理筛选逻辑：将输入统一转换为集合
             target_usernames = set(school_username_input)
@@ -37293,14 +37279,15 @@ def start_web_server(args_param):
             auth_username = g.user
 
             if auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
-                user_school_accounts = g.api_instance._load_user_school_accounts(g.user)
-                missing_school_acount = [u for u in school_username_input if u not in user_school_accounts]
+                user_school_accounts = g.api_instance._load_user_school_accounts(
+                    g.user)
+                missing_school_acount = [
+                    u for u in school_username_input if u not in user_school_accounts]
                 if missing_school_acount:
                     return jsonify({
                         "success": False,
                         "message": f"以下学校账号不存在或不属于当前用户：{', '.join(missing_school_acount)}"
                     }), 404
-
 
             # 获取该认证用户的所有学校账号配置
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
@@ -37325,8 +37312,7 @@ def start_web_server(args_param):
                     continue
 
                 # 兼容旧格式：如果 account_info 是字符串（密码），跳过
-            
-            
+
                 if isinstance(account_info, str):
                     continue
 
@@ -37380,7 +37366,6 @@ def start_web_server(args_param):
                 "message": f"检查欠费状态失败：{str(e)}"
             }), 500
 
-
     @app.route("/api/school_account/stats", methods=["POST"])
     @login_required
     def get_school_account_stats():
@@ -37401,14 +37386,16 @@ def start_web_server(args_param):
 
             # 验证该学校账号是否属于当前用户
             # 使用 g.api_instance._load_user_school_accounts 加载用户的所有学校账号
-            school_accounts = g.api_instance._load_user_school_accounts(auth_username)
+            school_accounts = g.api_instance._load_user_school_accounts(
+                auth_username)
 
             if school_username not in school_accounts and auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
                 return jsonify({"success": False, "message": "账号不存在或不属于当前用户"}), 404
 
             # 读取统计信息 (使用现有的辅助函数读取ini中的stats节)
             # 返回格式: {"overdue_count": int, "completed_count": int}
-            stats = g.api_instance._load_school_account_stats_from_ini(school_username)
+            stats = g.api_instance._load_school_account_stats_from_ini(
+                school_username)
 
             return jsonify({
                 "success": True,
@@ -37418,7 +37405,6 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[获取统计] 获取账号统计信息失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"获取失败: {str(e)}"}), 500
-
 
     # ==============================================================================
     # 付费配置获取接口
@@ -37574,39 +37560,39 @@ def start_web_server(args_param):
     def admin_clear_overdue():
         """
         管理员清除/修改学校账号欠费次数
-        
+
         功能说明：
         此接口允许管理员直接修改指定用户的指定学校账号的欠费次数。
         主要用于帮助用户结清欠费、纠正错误的欠费记录，或进行其他管理操作。
-        
+
         权限要求：管理员（admin或super_admin）
         请求方法：POST
-        
+
         请求参数（JSON格式）：
         {
             "auth_username": "user123",        // 用户名（账号所属用户）
             "school_username": "2021001",      // 学校账号用户名
             "new_overdue_count": 0             // 新的欠费次数（默认0，表示清零）
         }
-        
+
         返回数据（JSON格式）：
         成功时：
         {
             "success": true,
             "message": "欠费次数已更新为 0"
         }
-        
+
         失败时：
         {
             "success": false,
             "message": "错误信息描述"
         }
-        
+
         使用场景：
         1. 用户完成线下支付后，管理员手动清零欠费
         2. 系统误判导致欠费次数错误，管理员纠正数据
         3. 特殊情况下需要重置或调整欠费次数
-        
+
         安全机制：
         1. 必须有管理员权限（@admin_required装饰器）
         2. 参数验证：用户名、学校账号不能为空
@@ -37615,55 +37601,54 @@ def start_web_server(args_param):
         """
         try:
             # ========== 步骤1：获取并验证请求参数 ==========
-            
+
             # 从请求体中获取JSON数据
             # 如果请求体为空或不是JSON格式，使用空字典作为默认值
             data = request.get_json() or {}
-            
+
             # 从请求数据中提取参数，并去除首尾空白字符
             # auth_username: 目标用户的用户名（认证系统中的用户）
-            
+
             auth_username = str(data.get("auth_username", "")).strip()
-            
+
             # school_username: 要操作的学校账号用户名
             school_username = str(data.get("school_username", "")).strip()
-            
+
             # new_overdue_count: 新的欠费次数，默认为0（清零）
             new_overdue_count = data.get("new_overdue_count", 0)
-            
+
             # ========== 步骤2：基本参数验证 ==========
-            
+
             # 验证学校账号不能为空（这是必须的）
             if not school_username:
                 return jsonify({
                     "success": False,
                     "message": "学校账号不能为空"
                 }), 400
-            
+
             # 如果auth_username为空，尝试自动查找
             # 这种情况通常发生在管理员只知道school_username的情况下
 
-        
-        
             # ========== 步骤3：验证欠费次数参数 ==========
             try:
                 new_overdue_count = int(new_overdue_count)
                 # 验证欠费次数不能为负数
                 if new_overdue_count < 0:
-                    return jsonify({ "success": False, "message": "欠费次数不能为负数" }), 400
+                    return jsonify({"success": False, "message": "欠费次数不能为负数"}), 400
             except (ValueError, TypeError):
                 # 如果转换失败，返回400错误
-                return jsonify({ "success": False, "message": "欠费次数必须是整数" }), 400
+                return jsonify({"success": False, "message": "欠费次数必须是整数"}), 400
 
             # ========== 步骤4：直接修改INI文件 (不查找用户) ==========
             try:
                 # 构造INI文件路径 (全局变量 SCHOOL_ACCOUNTS_DIR 指向 school_accounts 目录)
-                ini_file = os.path.join(SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
-                
+                ini_file = os.path.join(
+                    SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
+
                 # 检查文件是否存在
                 if not os.path.exists(ini_file):
                     return jsonify({
-                        "success": False, 
+                        "success": False,
                         "message": f"学校账号配置文件不存在: {school_username}"
                     }), 404
 
@@ -37671,29 +37656,30 @@ def start_web_server(args_param):
                 config = configparser.RawConfigParser()
                 config.optionxform = str
                 config.read(ini_file, encoding='utf-8')
-                
+
                 # 确保 [stats] 节存在
                 if not config.has_section('stats'):
                     config.add_section('stats')
-                
+
                 # 更新欠费次数
                 config.set('stats', 'overdue_count', str(new_overdue_count))
-                
+
                 # 保存文件
                 with open(ini_file, 'w', encoding='utf-8') as f:
                     config.write(f)
-                    
+
                 # 获取当前登录管理员（用于日志）
                 admin_username = g.user if hasattr(g, 'user') else "unknown"
                 # 兼容处理 g.user 可能是字典的情况
                 if isinstance(admin_username, dict):
-                    admin_username = admin_username.get("auth_username", "unknown")
-                
+                    admin_username = admin_username.get(
+                        "auth_username", "unknown")
+
                 logging.info(
                     f"[管理员操作] {admin_username} 已直接修改INI文件 - "
                     f"学校账号: {school_username}, 新欠费次数: {new_overdue_count}"
                 )
-                
+
                 _write_payment_log(
                     user_id=admin_username,
                     order_id="",
@@ -37704,7 +37690,7 @@ def start_web_server(args_param):
                         "new_overdue_count": new_overdue_count
                     }
                 )
-                
+
                 return jsonify({
                     "success": True,
                     "message": f"已将学校账号 {school_username} 的欠费次数更新为 {new_overdue_count}"
@@ -37716,21 +37702,17 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"操作失败: {str(e)}"
                 }), 500
-        
-        
-        
-        
-            
+
         except Exception as e:
             # ========== 异常处理 ==========
-            
+
             # 捕获所有未预期的异常
             # 记录ERROR级别日志，包含异常信息
             logging.error(f"[管理员操作] 清除欠费异常: {str(e)}")
-            
+
             # 记录完整的异常堆栈信息，便于调试
             logging.error(traceback.format_exc())
-            
+
             # 返回500错误，告知前端服务器内部错误
             return jsonify({
                 "success": False,
@@ -37861,7 +37843,7 @@ def start_web_server(args_param):
             }), 500
 
     @app.route("/api/admin/overdue-accounts", methods=["GET"])
-    @login_required # 只需要登录即可，细粒度权限在函数内部检查
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_get_overdue_accounts():
         """
         获取所有有欠费的学校账号列表（仅管理员可访问）
@@ -37920,11 +37902,11 @@ def start_web_server(args_param):
                             backup_file = os.path.join(
                                 g.api_instance.user_dir, f"{school_username}_backup.json"
                             )
-                            
+
                             # 初始化默认值
-                            name = "未知" # 如果读取失败，显示"未知"
-                            student_id = school_username # 默认使用学校用户名作为学号
-                            has_backup = False # 标记是否存在备份文件
+                            name = "未知"  # 如果读取失败，显示"未知"
+                            student_id = school_username  # 默认使用学校用户名作为学号
+                            has_backup = False  # 标记是否存在备份文件
 
                             # 尝试读取备份文件
                             if os.path.exists(backup_file):
@@ -37932,27 +37914,27 @@ def start_web_server(args_param):
                                     # 打开并解析 JSON 备份文件
                                     with open(backup_file, 'r', encoding='utf-8') as f:
                                         backup_data = json.load(f)
-                                    
+
                                     # 从 userInfo 字段中提取信息
                                     user_info = backup_data.get('userInfo', {})
-                                    name = user_info.get('name', '未知') # 姓名
+                                    name = user_info.get('name', '未知')  # 姓名
                                     student_id = user_info.get(
-                                        'account', school_username) # 学号
-                                    has_backup = True # 标记备份文件存在
+                                        'account', school_username)  # 学号
+                                    has_backup = True  # 标记备份文件存在
                                 except Exception as e:
                                     # 备份文件读取失败，使用默认值
                                     logging.warning(
                                         f"[欠费查询] 读取备份文件失败 {backup_file}: {e}"
                                     )
-                            
+
                             # ========== 将欠费账号信息添加到结果列表 ==========
                             overdue_accounts.append({
-                                "auth_username": auth_username, # 认证系统用户名
-                                "school_username": school_username, # 学校账号用户名
-                                "overdue_count": overdue_count, # 欠费次数
-                                "name": name, # 姓名
-                                "student_id": student_id, # 学号
-                                "has_backup": has_backup # 是否有备份文件
+                                "auth_username": auth_username,  # 认证系统用户名
+                                "school_username": school_username,  # 学校账号用户名
+                                "overdue_count": overdue_count,  # 欠费次数
+                                "name": name,  # 姓名
+                                "student_id": student_id,  # 学号
+                                "has_backup": has_backup  # 是否有备份文件
                             })
 
                 except Exception as e:
@@ -37970,8 +37952,8 @@ def start_web_server(args_param):
             # ========== 返回结果 ==========
             return jsonify({
                 "success": True,
-                "accounts": overdue_accounts, # 欠费账号列表
-                "total": len(overdue_accounts) # 欠费账号总数
+                "accounts": overdue_accounts,  # 欠费账号列表
+                "total": len(overdue_accounts)  # 欠费账号总数
             })
 
         except Exception as e:
@@ -37983,10 +37965,6 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "获取欠费账号失败"
             }), 500
-
-
-
-
 
     @app.route("/api/config/get_user_run_cost", methods=["GET"])
     @login_required
@@ -38000,22 +37978,22 @@ def start_web_server(args_param):
             # 读取配置文件
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
-            
+
             # 从 Payment_Settings 节读取 single_run_cost
             # 默认值为 1.0 元
             single_run_cost = config.getfloat(
                 "Payment_Settings", "single_run_cost", fallback=1.0
             )
-            
+
             # 记录调试日志
             logging.debug(f"[配置读取] 前端获取单次运行费用: {single_run_cost}")
-            
+
             # 返回成功响应
             return jsonify({
                 "success": True,
                 "single_run_cost": single_run_cost
             })
-            
+
         except Exception as e:
             # 异常处理
             logging.error(f"[配置读取] 获取单次运行费用失败: {e}", exc_info=True)
