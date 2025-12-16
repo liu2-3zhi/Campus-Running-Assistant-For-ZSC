@@ -9800,51 +9800,65 @@ async function loadWatermarkControlConfig() {
     }
 
     // ========== 步骤8: 生成用户权限列表 ==========
-    if (listContainer && allUsers.length > 0) {
+    // 【修复问题38】只显示已自定义的用户（在usersConfig中的用户）
+    if (listContainer) {
       // 清空加载提示
       listContainer.innerHTML = '';
       
-      // 为每个用户创建一个权限控制项
-      allUsers.forEach(username => {
-        // 获取该用户的配置值
-        // 如果用户在配置中有明确设置，使用该设置；否则使用默认值
-        const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
-        
-        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
-        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
-        const safeUsername = escapeHtml(username);
-        
-        // 创建用户权限控制项的HTML
-        // 包含：用户名 + 开关按钮
-        const userItem = document.createElement('div');
-        userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between';
-        
-        // 构建HTML内容
-        userItem.innerHTML = `
-          <div class="flex-1">
-            <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
-            <p class="text-xs text-slate-500 mt-0.5">
-              ${(username in usersConfig) ? '已自定义' : '使用默认值'}
-            </p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-4">
-            <input 
-              type="checkbox" 
-              id="watermark-user-${safeUsername}_modal" 
-              class="sr-only peer watermark-user-checkbox" 
-              data-username="${safeUsername}"
-              ${userValue ? 'checked' : ''}
-            >
-            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        `;
-        
-        // 将用户项添加到列表容器中
-        listContainer.appendChild(userItem);
-      });
-    } else if (listContainer && allUsers.length === 0) {
-      // 如果没有用户，显示空状态提示
-      listContainer.innerHTML = '<p class="text-slate-400 text-center py-10">暂无用户</p>';
+      // 获取已自定义的用户列表（即在usersConfig中的用户）
+      const customizedUsers = Object.keys(usersConfig);
+      
+      if (customizedUsers.length === 0) {
+        // 如果没有自定义用户，显示空状态提示
+        listContainer.innerHTML = '<p class="text-slate-400 text-center py-10">暂无已自定义的用户，点击右侧"添加"按钮添加</p>';
+      } else {
+        // 为每个已自定义的用户创建一个权限控制项
+        customizedUsers.forEach(username => {
+          // 获取该用户的配置值（一定在usersConfig中）
+          const userValue = usersConfig[username];
+          
+          // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+          // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+          const safeUsername = escapeHtml(username);
+          
+          // 创建用户权限控制项的HTML
+          // 包含：用户名 + 开关按钮 + 删除按钮
+          const userItem = document.createElement('div');
+          userItem.className = 'bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between';
+          
+          // 构建HTML内容
+          userItem.innerHTML = `
+            <div class="flex-1">
+              <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
+              <p class="text-xs text-slate-500 mt-0.5">已自定义</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  id="watermark-user-${safeUsername}_modal" 
+                  class="sr-only peer watermark-user-checkbox" 
+                  data-username="${safeUsername}"
+                  ${userValue ? 'checked' : ''}
+                >
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+              <button 
+                onclick="deleteWatermarkUser('${safeUsername}')" 
+                class="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                title="删除此用户的自定义配置，恢复使用默认值"
+              >
+                <svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+              </button>
+            </div>
+          `;
+          
+          // 将用户项添加到列表容器中
+          listContainer.appendChild(userItem);
+        });
+      }
     }
 
     // ========== 步骤9: 记录成功日志 ==========
@@ -9956,6 +9970,101 @@ async function saveWatermarkControlConfig() {
     // ========== 错误处理 ==========
     console.error('[水印控制] 保存配置失败（PC端）:', error);
     showModalAlert('保存水印控制配置失败：' + error.message);
+  }
+}
+
+/**
+ * 删除水印控制用户的自定义配置（PC端）
+ * 
+ * 功能说明：
+ * 删除指定用户的自定义水印控制配置，使其恢复使用系统默认值。
+ * 
+ * 实现步骤：
+ * 1. 确认用户是否要删除
+ * 2. 获取当前配置
+ * 3. 从usersConfig中删除该用户
+ * 4. 保存更新后的配置
+ * 5. 刷新列表
+ * 
+ * @param {string} username - 要删除配置的用户名
+ * 
+ * API端点：
+ * - GET /api/amap/watermark_control/config - 获取当前配置
+ * - PUT /api/amap/watermark_control/config - 保存更新后的配置
+ */
+async function deleteWatermarkUser(username) {
+  try {
+    // ========== 步骤1: 确认删除操作 ==========
+    // 使用confirm对话框让用户确认，防止误操作
+    const confirmed = confirm(`确定要删除用户"${username}"的自定义配置吗？\n\n删除后该用户将使用系统默认值。`);
+    if (!confirmed) {
+      // 用户取消操作
+      console.log(`[水印控制] 用户取消删除"${username}"的配置`);
+      return;
+    }
+    
+    console.log(`[水印控制] 正在删除用户"${username}"的自定义配置...`);
+    
+    // ========== 步骤2: 获取当前配置 ==========
+    // 需要先获取完整配置，然后删除指定用户，再保存
+    const response = await fetch('/api/amap/watermark_control/config', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.message || '获取当前配置失败');
+    }
+    
+    // ========== 步骤3: 从配置中删除该用户 ==========
+    const usersConfig = data.config.users || {};
+    
+    // 检查用户是否存在于配置中
+    if (!(username in usersConfig)) {
+      console.warn(`[水印控制] 用户"${username}"不在配置中，无需删除`);
+      showModalAlert(`用户"${username}"未在配置中，无需删除`);
+      return;
+    }
+    
+    // 删除该用户的配置
+    delete usersConfig[username];
+    
+    console.log(`[水印控制] 已从配置中移除用户"${username}"`);
+    
+    // ========== 步骤4: 保存更新后的配置 ==========
+    const saveResponse = await fetch('/api/amap/watermark_control/config', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionUUID
+      },
+      body: JSON.stringify({
+        users: usersConfig
+      })
+    });
+    
+    const saveData = await saveResponse.json();
+    
+    if (!saveData.success) {
+      throw new Error(saveData.message || '保存配置失败');
+    }
+    
+    // ========== 步骤5: 显示成功提示并刷新列表 ==========
+    showModalAlert(`已成功删除用户"${username}"的自定义配置！\n\n该用户现在将使用系统默认值。`);
+    console.log(`[水印控制] 成功删除用户"${username}"的配置`);
+    
+    // 重新加载配置以刷新显示
+    await loadWatermarkControlConfig();
+    
+  } catch (error) {
+    // ========== 错误处理 ==========
+    console.error(`[水印控制] 删除用户"${username}"的配置失败:`, error);
+    showModalAlert(`删除配置失败：${error.message}`);
   }
 }
 
@@ -10423,20 +10532,30 @@ function filterWatermarkUsers() {
  * 
  * 功能说明：
  * 与PC端的 loadWatermarkControlConfig() 功能相同，但操作移动端的表单元素。
+ * 支持两个移动端面板：
+ * 1. mobile-multi-admin-watermark-panel（查看面板，显示所有用户）
+ * 2. mobile-multi-admin-watermark-control-panel（配置面板，使用-ctrl后缀的ID）
  * 
  * 表单元素：
- * - mobile-watermark-default-value：显示系统默认值
- * - mobile-watermark-user-count：显示用户总数
- * - mobile-watermark-users-list：用户权限列表容器
+ * - mobile-watermark-default-value / mobile-watermark-default-value-ctrl：显示系统默认值
+ * - mobile-watermark-user-count / mobile-watermark-user-count-ctrl：显示用户总数
+ * - mobile-watermark-users-list / mobile-watermark-users-list-ctrl：用户权限列表容器
  */
 async function loadMobileWatermarkControlConfig() {
   try {
     // ========== 步骤1: 显示加载状态 ==========
     console.log('[水印控制] 正在加载水印控制配置（移动端）...');
     
+    // 获取两个可能的列表容器（查看面板和配置面板）
     const listContainer = document.getElementById('mobile-watermark-users-list');
+    const listContainerCtrl = document.getElementById('mobile-watermark-users-list-ctrl');
+    
+    // 为两个容器显示加载状态
     if (listContainer) {
       listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
+    }
+    if (listContainerCtrl) {
+      listContainerCtrl.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
     }
 
     // ========== 步骤2: 发送HTTP请求获取配置 ==========
@@ -10463,6 +10582,7 @@ async function loadMobileWatermarkControlConfig() {
     const allUsers = data.all_users;
 
     // ========== 步骤6: 更新默认值显示（移动端样式）==========
+    // 更新查看面板的默认值显示
     const defaultValueElement = document.getElementById('mobile-watermark-default-value');
     if (defaultValueElement) {
       defaultValueElement.textContent = defaultValue ? '允许去水印' : '禁止去水印';
@@ -10473,14 +10593,34 @@ async function loadMobileWatermarkControlConfig() {
         defaultValueElement.className = 'text-xs font-bold text-red-600';
       }
     }
+    
+    // 更新配置面板的默认值显示
+    const defaultValueElementCtrl = document.getElementById('mobile-watermark-default-value-ctrl');
+    if (defaultValueElementCtrl) {
+      defaultValueElementCtrl.textContent = defaultValue ? '允许去水印' : '禁止去水印';
+      
+      if (defaultValue) {
+        defaultValueElementCtrl.className = 'text-xs font-bold text-green-600';
+      } else {
+        defaultValueElementCtrl.className = 'text-xs font-bold text-red-600';
+      }
+    }
 
     // ========== 步骤7: 更新用户数量显示 ==========
+    // 更新查看面板的用户数量
     const userCountElement = document.getElementById('mobile-watermark-user-count');
     if (userCountElement) {
       userCountElement.textContent = `共 ${allUsers.length} 个用户`;
     }
+    
+    // 更新配置面板的用户数量
+    const userCountElementCtrl = document.getElementById('mobile-watermark-user-count-ctrl');
+    if (userCountElementCtrl) {
+      userCountElementCtrl.textContent = `共 ${allUsers.length} 个用户`;
+    }
 
     // ========== 步骤8: 生成用户权限列表（移动端样式）==========
+    // 为查看面板生成列表（显示所有用户）
     if (listContainer && allUsers.length > 0) {
       listContainer.innerHTML = '';
       
@@ -10519,6 +10659,45 @@ async function loadMobileWatermarkControlConfig() {
     } else if (listContainer && allUsers.length === 0) {
       listContainer.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">暂无用户</p>';
     }
+    
+    // 为配置面板生成列表（显示所有用户）
+    if (listContainerCtrl && allUsers.length > 0) {
+      listContainerCtrl.innerHTML = '';
+      
+      allUsers.forEach(username => {
+        const userValue = (username in usersConfig) ? usersConfig[username] : defaultValue;
+        
+        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+        const safeUsername = escapeHtml(username);
+        
+        const userItem = document.createElement('div');
+        userItem.className = 'bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between';
+        
+        // 移动端使用更紧凑的布局
+        userItem.innerHTML = `
+          <div class="flex-1">
+            <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
+            <p class="text-xs text-slate-500 mt-0.5">
+              ${(username in usersConfig) ? '已自定义' : '使用默认值'}
+            </p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-3">
+            <input 
+              type="checkbox" 
+              id="mobile-watermark-user-ctrl-${safeUsername}" 
+              class="sr-only peer mobile-watermark-user-checkbox" 
+              data-username="${safeUsername}"
+              ${userValue ? 'checked' : ''}
+            >
+            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        `;
+        
+        listContainerCtrl.appendChild(userItem);
+      });
+    } else if (listContainerCtrl && allUsers.length === 0) {
+      listContainerCtrl.innerHTML = '<p class="text-slate-400 text-center py-10 text-xs">暂无用户</p>';
+    }
 
     // ========== 步骤9: 记录成功日志 ==========
     console.log('[水印控制] 配置加载成功（移动端）');
@@ -10528,9 +10707,15 @@ async function loadMobileWatermarkControlConfig() {
     console.error('[水印控制] 加载配置失败（移动端）:', error);
     alert('加载水印控制配置失败：' + error.message);
     
+    // 在两个容器中显示错误信息
     const listContainer = document.getElementById('mobile-watermark-users-list');
     if (listContainer) {
       listContainer.innerHTML = '<p class="text-red-500 text-center py-10 text-xs">加载失败：' + error.message + '</p>';
+    }
+    
+    const listContainerCtrl = document.getElementById('mobile-watermark-users-list-ctrl');
+    if (listContainerCtrl) {
+      listContainerCtrl.innerHTML = '<p class="text-red-500 text-center py-10 text-xs">加载失败：' + error.message + '</p>';
     }
   }
 }

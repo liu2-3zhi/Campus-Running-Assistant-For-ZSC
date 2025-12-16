@@ -4845,7 +4845,8 @@
                 </svg>
                 <span class="text-xs font-medium text-amber-800">系统默认：</span>
               </div>
-              <span id="mobile-watermark-default-value" class="text-xs font-bold text-amber-900">加载中...</span>
+              <!-- 使用独立ID避免与mobile-multi-admin-watermark-panel中的ID冲突 -->
+              <span id="mobile-watermark-default-value-ctrl" class="text-xs font-bold text-amber-900">加载中...</span>
             </div>
             <p class="text-xs text-amber-700 mt-1 ml-5">
               未配置的用户使用此默认值
@@ -4862,11 +4863,13 @@
                 </svg>
                 用户权限配置
               </h5>
-              <span id="mobile-watermark-user-count" class="text-xs text-slate-500">共 0 个用户</span>
+              <!-- 使用独立ID避免与mobile-multi-admin-watermark-panel中的ID冲突 -->
+              <span id="mobile-watermark-user-count-ctrl" class="text-xs text-slate-500">共 0 个用户</span>
             </div>
 
             <!-- 用户权限列表容器：动态生成每个用户的权限开关 -->
-            <div id="mobile-watermark-users-list" class="space-y-2 max-h-96 overflow-y-auto">
+            <!-- 使用独立ID避免与mobile-multi-admin-watermark-panel中的ID冲突 -->
+            <div id="mobile-watermark-users-list-ctrl" class="space-y-2 max-h-96 overflow-y-auto">
               <!-- 加载提示：初始显示，加载完成后由JS替换为用户列表 -->
               <p class="text-slate-400 text-center py-10 text-xs">
                 加载中...
