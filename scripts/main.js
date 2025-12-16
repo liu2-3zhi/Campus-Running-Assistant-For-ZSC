@@ -30,8 +30,7 @@ function openSMSReplyLogsModal() {
   if (!modal) {
     // console.error('[SMS回复记录] 未找到modal元素');
     logMessage_Error(
-      "[SMS回复记录] 无法打开回复记录面板，modal元素不存在",
-      "error"
+      "[SMS回复记录] 无法打开回复记录面板，modal元素不存在"
     );
     return;
   }
@@ -114,8 +113,7 @@ function loadSMSReplyLogs() {
   if (!listContainer) {
     // console.error('[SMS回复记录] 未找到列表容器元素');
     logMessage_Error(
-      "[SMS回复记录] 无法加载回复记录，列表容器元素不存在",
-      "error"
+      "[SMS回复记录] 无法加载回复记录，列表容器元素不存在"
     );
     return;
   }
@@ -236,12 +234,12 @@ function loadSMSReplyLogs() {
 
       // 在控制台输出加载成功信息
       // console.log(`[SMS回复记录] 成功加载${logs.length}条记录`);
-      logMessage_Info(`[SMS回复记录] 成功加载${logs.length}条记录`, "success");
+      logMessage_Info(`[SMS回复记录] 成功加载${logs.length}条记录`);
     })
     .catch((error) => {
       // 错误处理：显示错误提示
       // console.error('[SMS回复记录] 加载失败:', error);
-      logMessage_Error("[SMS回复记录] 加载失败: " + "error");
+      logMessage_Error("[SMS回复记录] 加载失败: " + error);
       listContainer.innerHTML = `
         <div class="flex flex-col items-center justify-center py-12">
           <svg class="w-16 h-16 text-red-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -346,8 +344,7 @@ function loadPaymentLogs(page) {
     // 防御性检查：如果找不到容器元素，在控制台输出错误并返回
     // console.error('[支付日志] 未找到日志列表容器元素');
     logMessage_Error(
-      "[支付日志] 无法加载支付日志，列表容器元素不存在",
-      "error"
+      "[支付日志] 无法加载支付日志，列表容器元素不存在"
     );
     return;
   }
@@ -1861,7 +1858,7 @@ function switchPaymentSettingsTab(tabName) {
         loadPaymentMethodsConfig((show_Modal_Alert = false));
         
         // 在控制台输出日志，方便调试和追踪
-        console.log("[移动端支付设置] 已触发支付方式配置加载");
+        logMessage_Info("[移动端支付设置] 已触发支付方式配置加载");
         
       } else if (tab === "yipay") {
         // 切换到易支付配置标签页时，加载易支付配置
@@ -1873,7 +1870,7 @@ function switchPaymentSettingsTab(tabName) {
         // 这样用户打开标签页就能立即看到订单数据，无需手动点击"加载本地"按钮
         // 使用setTimeout异步执行，避免阻塞标签页切换动画
         setTimeout(() => {
-          console.log("[订单查询] 自动加载本地订单列表...");
+          logMessage_Info("[订单查询] 自动加载本地订单列表...");
           loadAllPaymentOrders();
         }, 100);
       }
@@ -2586,7 +2583,7 @@ async function loadPaymentMethodsConfig(
         );
       }
 
-      console.log("[支付配置] 测试支付方式下拉框更新完成");
+      logMessage_Info("[支付配置] 测试支付方式下拉框更新完成");
     } else {
       // 如果找不到测试支付方式下拉框元素，输出警告日志
       // console.warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
@@ -2725,7 +2722,7 @@ async function savePaymentMethodsConfig() {
 
     // 输出成功日志
     // console.log('[支付配置] 支付方式配置保存成功：', result);
-    logMessage_Success("[支付配置] 支付方式配置保存成功");
+    logMessage_Info("[支付配置] 支付方式配置保存成功");
 
     // === 第6步：显示成功提示 ===
 
@@ -3124,7 +3121,7 @@ async function savePaymentMethod() {
     // === 第6步：解析响应 ===
     const result = await response.json();
     // console.log('[支付配置] 支付方式保存成功：', result);
-    logMessage_Success("[支付配置] 支付方式保存成功");
+    logMessage_Info("[支付配置] 支付方式保存成功");
 
     // === 第7步：关闭模态框并刷新列表 ===
     closePaymentMethodModal();
@@ -3196,7 +3193,7 @@ async function deletePaymentMethod(code) {
     // === 第4步：解析响应 ===
     const result = await response.json();
     // console.log('[支付配置] 支付方式删除成功：', result);
-    logMessage_Success("[支付配置] 支付方式删除成功");
+    logMessage_Info("[支付配置] 支付方式删除成功");
 
     // === 第5步：显示成功提示并刷新列表 ===
     showModalAlert("支付方式已删除");
@@ -3450,7 +3447,7 @@ async function queryOrder() {
   }
 
   // 输出日志，记录用户输入的订单号（便于调试）
-  console.log("[订单查询] 查询订单号：", tradeNo);
+  logMessage_Info("[订单查询] 查询订单号：", tradeNo);
 
   // ========== 第2步：获取结果显示区域的DOM元素 ==========
 
@@ -3462,7 +3459,7 @@ async function queryOrder() {
 
   // 2.3 防御性检查：确保两个元素都存在
   if (!resultDiv || !detailContainer) {
-    console.error("[订单查询] 错误：未找到结果显示区域");
+    logMessage_Error("[订单查询] 错误：未找到结果显示区域");
     showModalAlert("页面元素异常，请刷新页面后重试。");
     return;
   }
@@ -3513,7 +3510,7 @@ async function queryOrder() {
     const result = await response.json();
 
     // 输出完整的API响应，方便开发者调试
-    console.log("[订单查询] API响应：", result);
+    logMessage_Info("[订单查询] API响应：", result);
 
     // 4.4 检查业务状态
     // 即使HTTP状态码是200，业务逻辑也可能失败（如订单不存在）
@@ -3533,7 +3530,7 @@ async function queryOrder() {
     const order = result.order;
 
     // 输出订单数据
-    console.log("[订单查询] 查询成功，订单数据：", order);
+    logMessage_Info("[订单查询] 查询成功，订单数据：", order);
 
     // ========== 第6步：根据订单状态确定显示样式 ==========
 
@@ -3646,13 +3643,13 @@ async function queryOrder() {
     }, 3000);
 
     // 输出成功日志
-    console.log("[订单查询] 订单详情已成功显示");
+    logMessage_Info("[订单查询] 订单详情已成功显示");
   } catch (error) {
     // ========== 错误处理 ==========
     // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
 
     // 在控制台输出详细的错误信息
-    console.error("[订单查询] 查询失败：", error);
+    logMessage_Error("[订单查询] 查询失败：", error);
 
     // 在结果提示区域显示错误消息
     resultDiv.innerHTML = `
@@ -3682,7 +3679,7 @@ async function queryOrder() {
 
 document.addEventListener("DOMContentLoaded", function () {
   // 在控制台输出日志，标记订单查询功能初始化开始
-  console.log("[订单查询] 开始初始化订单查询功能...");
+  logMessage_Info("[订单查询] 开始初始化订单查询功能...");
 
   // === 绑定"查询订单"按钮的点击事件 ===
 
@@ -3695,7 +3692,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 当用户点击按钮时，会自动调用queryOrder函数
     queryBtn.addEventListener("click", function () {
       // 输出日志，记录用户操作
-      console.log("[订单查询] 用户点击了查询订单按钮");
+      logMessage_Info("[订单查询] 用户点击了查询订单按钮");
 
       // 调用查询函数，执行订单查询逻辑
       // 这是一个async函数，会异步执行，不会阻塞页面
@@ -3703,11 +3700,11 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // 输出成功日志
-    console.log("[订单查询] 查询按钮事件监听器已绑定");
+    logMessage_Info("[订单查询] 查询按钮事件监听器已绑定");
   } else {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
-    console.warn("[订单查询] 警告：未找到查询订单按钮（ID: query-order-btn）");
+    logMessage_Warning("[订单查询] 警告：未找到查询订单按钮（ID: query-order-btn）");
   }
 
   // === 可选：绑定输入框的Enter键事件 ===
@@ -3722,16 +3719,16 @@ document.addEventListener("DOMContentLoaded", function () {
         // 阻止默认行为（如表单提交）
         event.preventDefault();
         // 触发查询操作
-        console.log("[订单查询] 用户按下Enter键触发查询");
+        logMessage_Info("[订单查询] 用户按下Enter键触发查询");
         queryOrder();
       }
     });
 
-    console.log("[订单查询] 输入框Enter键事件监听器已绑定");
+    logMessage_Info("[订单查询] 输入框Enter键事件监听器已绑定");
   }
 
   // 输出完成日志
-  console.log("[订单查询] 订单查询功能初始化完成");
+  logMessage_Info("[订单查询] 订单查询功能初始化完成");
 });
 
 // ==========================================
@@ -3783,7 +3780,7 @@ document.addEventListener("DOMContentLoaded", function () {
  */
 async function processRefund() {
   // 在控制台输出日志，标记退款操作开始
-  console.log("[退款功能] 开始处理退款请求...");
+  logMessage_Info("[退款功能] 开始处理退款请求...");
 
   // ========== 第1步：获取所有输入框的DOM元素 ==========
 
@@ -3814,8 +3811,8 @@ async function processRefund() {
     !resultContainer
   ) {
     // 输出错误日志，列出缺失的元素（便于调试）
-    console.error("[退款功能] 错误：页面元素未找到");
-    console.error("元素检查：", {
+    logMessage_Error("[退款功能] 错误：页面元素未找到");
+    logMessage_Error("元素检查：", {
       tradeNoInput: !!tradeNoInput,
       amountInput: !!amountInput,
       refundNoInput: !!refundNoInput,
@@ -3836,7 +3833,7 @@ async function processRefund() {
   // 3.2 验证订单号不为空（必填项验证）
   if (!tradeNo) {
     // 输出日志记录验证失败
-    console.log("[退款功能] 验证失败：订单号为空");
+    logMessage_Error("[退款功能] 验证失败：订单号为空");
     // 向用户显示友好的错误提示
     showModalAlert("请输入订单号");
     // 将焦点设置到订单号输入框，方便用户立即输入
@@ -3849,7 +3846,7 @@ async function processRefund() {
 
   // 3.4 验证退款金额不为空（必填项验证）
   if (!amountStr) {
-    console.log("[退款功能] 验证失败：退款金额为空");
+    logMessage_Error("[退款功能] 验证失败：退款金额为空");
     showModalAlert("请输入退款金额");
     amountInput.focus();
     return;
@@ -3862,7 +3859,7 @@ async function processRefund() {
   // 3.6 验证退款金额是否为有效数字
   // isNaN()检查值是否为NaN（Not a Number）
   if (isNaN(refundAmount)) {
-    console.log("[退款功能] 验证失败：退款金额不是有效数字");
+    logMessage_Error("[退款功能] 验证失败：退款金额不是有效数字");
     showModalAlert("退款金额必须是有效的数字");
     amountInput.focus();
     return;
@@ -3871,7 +3868,7 @@ async function processRefund() {
   // 3.7 验证退款金额必须大于0
   // 退款金额不能是负数或0
   if (refundAmount <= 0) {
-    console.log(
+    logMessage_Error(
       "[退款功能] 验证失败：退款金额必须大于0，当前值：",
       refundAmount
     );
@@ -3897,7 +3894,7 @@ async function processRefund() {
     refundNo = `REFUND${Date.now()}${randomNum}`;
 
     // 输出日志记录自动生成的退款单号
-    console.log("[退款功能] 自动生成退款单号：", refundNo);
+    logMessage_Info("[退款功能] 自动生成退款单号：", refundNo);
 
     // 可选：将生成的退款单号回填到输入框，让用户看到
     // 这样用户可以知道系统使用了哪个退款单号
@@ -3908,7 +3905,7 @@ async function processRefund() {
   const refundReason = reasonInput.value.trim();
 
   // 输出日志，记录所有输入参数（便于调试）
-  console.log("[退款功能] 退款参数：", {
+  logMessage_Info("[退款功能] 退款参数：", {
     trade_no: tradeNo,
     refund_amount: refundAmount,
     refund_no: refundNo,
@@ -3960,7 +3957,7 @@ async function processRefund() {
     const result = await response.json();
 
     // 输出完整的API响应，方便开发者调试
-    console.log("[退款功能] API响应：", result);
+    logMessage_Info("[退款功能] API响应：", result);
 
     // 5.4 检查业务状态
     // 即使HTTP状态码是200，业务逻辑也可能失败（如订单不存在、退款金额超过订单金额等）
@@ -3972,7 +3969,7 @@ async function processRefund() {
     // ========== 第6步：显示退款成功结果 ==========
 
     // 6.1 输出成功日志
-    console.log("[退款功能] 退款成功：", result);
+    logMessage_Info("[退款功能] 退款成功：", result);
 
     // 6.2 构建成功提示HTML
     // 显示绿色的成功提示框，包含退款单号和相关信息
@@ -4026,13 +4023,13 @@ async function processRefund() {
     // reasonInput.value = '';
 
     // 输出完成日志
-    console.log("[退款功能] 退款操作完成");
+    logMessage_Info("[退款功能] 退款操作完成");
   } catch (error) {
     // ========== 错误处理 ==========
     // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
 
     // 在控制台输出详细的错误信息
-    console.error("[退款功能] 退款失败：", error);
+    logMessage_Error("[退款功能] 退款失败：", error);
 
     // 在结果容器中显示错误消息
     // 使用红色背景和边框，明确标识为错误状态
@@ -4118,7 +4115,7 @@ async function processRefund() {
  */
 function toggleProductNameInputMethod() {
   // 在控制台输出日志，记录函数调用
-  console.log("[移动端测试支付] 切换商品名称输入方式...");
+  logMessage_Info("[移动端测试支付] 切换商品名称输入方式...");
 
   // === 第1步：获取选中的单选按钮值 ===
   // 获取所有name为"product-name-input-method"的单选按钮
@@ -4134,7 +4131,7 @@ function toggleProductNameInputMethod() {
     }
   }
 
-  console.log("[移动端测试支付] 选中的输入方式：", selectedMethod);
+  logMessage_Info("[移动端测试支付] 选中的输入方式：", selectedMethod);
 
   // === 第2步：获取两个容器的DOM元素 ===
   const manualContainer = document.getElementById(
@@ -4144,7 +4141,7 @@ function toggleProductNameInputMethod() {
 
   // === 第3步：防御性检查，确保元素存在 ===
   if (!manualContainer || !autoContainer) {
-    console.warn("[移动端测试支付] 警告：找不到商品名称容器元素");
+    logMessage_Warning("[移动端测试支付] 警告：找不到商品名称容器元素");
     return; // 元素不存在则退出
   }
 
@@ -4153,12 +4150,12 @@ function toggleProductNameInputMethod() {
     // 手动输入模式：显示文本输入框，隐藏数量输入框
     manualContainer.classList.remove("hidden");
     autoContainer.classList.add("hidden");
-    console.log("[移动端测试支付] 已切换到手动输入模式");
+    logMessage_Info("[移动端测试支付] 已切换到手动输入模式");
   } else if (selectedMethod === "auto") {
     // 自动生成模式：隐藏文本输入框，显示数量输入框
     manualContainer.classList.add("hidden");
     autoContainer.classList.remove("hidden");
-    console.log("[移动端测试支付] 已切换到自动生成模式");
+    logMessage_Info("[移动端测试支付] 已切换到自动生成模式");
   }
 }
 
@@ -4189,7 +4186,7 @@ function toggleProductNameInputMethod() {
  */
 function toggleAuthCodeFieldMobile() {
   // 在控制台输出日志，记录函数调用
-  console.log("[移动端测试支付] 切换支付类型参数输入框显示状态...");
+  logMessage_Info("[移动端测试支付] 切换支付类型参数输入框显示状态...");
 
   // === 第1步：获取DOM元素 ===
 
@@ -4205,13 +4202,13 @@ function toggleAuthCodeFieldMobile() {
   // === 第2步：防御性检查 ===
   // 确保DOM元素存在，避免null引用错误
   if (!typeSelect || !authCodeContainer) {
-    console.warn("[移动端测试支付] 警告：找不到必需的DOM元素");
+    logMessage_Warning("[移动端测试支付] 警告：找不到必需的DOM元素");
     return; // 如果元素不存在，直接返回，不执行后续操作
   }
 
   // === 第3步：获取当前选中的接口类型 ===
   const selectedType = typeSelect.value;
-  console.log("[移动端测试支付] 当前选中的接口类型：", selectedType);
+  logMessage_Info("[移动端测试支付] 当前选中的接口类型：", selectedType);
 
   // === 第4步：根据接口类型决定显示哪些参数输入框 ===
 
@@ -4220,7 +4217,7 @@ function toggleAuthCodeFieldMobile() {
     // 如果是扫码支付，则显示付款码输入框
     // 移除hidden类，使容器可见
     authCodeContainer.classList.remove("hidden");
-    console.log("[移动端测试支付] 付款码输入框已显示");
+    logMessage_Info("[移动端测试支付] 付款码输入框已显示");
 
     // 同时隐藏JSAPI参数容器（互斥关系）
     if (jsapiParamsContainer) {
@@ -4237,7 +4234,7 @@ function toggleAuthCodeFieldMobile() {
     // 如果是JSAPI支付，则显示JSAPI参数容器
     if (jsapiParamsContainer) {
       jsapiParamsContainer.classList.remove("hidden");
-      console.log("[移动端测试支付] JSAPI参数输入框已显示");
+      logMessage_Info("[移动端测试支付] JSAPI参数输入框已显示");
     }
 
     // 同时隐藏付款码输入框（互斥关系）
@@ -4269,7 +4266,7 @@ function toggleAuthCodeFieldMobile() {
       if (subAppidInput) subAppidInput.value = "";
     }
 
-    console.log("[移动端测试支付] 所有额外参数输入框已隐藏");
+    logMessage_Info("[移动端测试支付] 所有额外参数输入框已隐藏");
   }
 }
 
@@ -4286,7 +4283,7 @@ function toggleAuthCodeFieldMobile() {
  * - 用户在商品名测试面板点击"生成商品名"按钮时
  */
 async function testGenerateProductName() {
-  console.log("[移动端商品名测试] 开始单次测试...");
+  logMessage_Info("[移动端商品名测试] 开始单次测试...");
 
   // === 第1步：获取输入元素 ===
   const quantityInput = document.getElementById("product-test-quantity");
@@ -4303,7 +4300,7 @@ async function testGenerateProductName() {
     return;
   }
 
-  console.log("[移动端商品名测试] 商品数量：", quantity);
+  logMessage_Info("[移动端商品名测试] 商品数量：", quantity);
 
   try {
     // === 第3步：调用后端API生成商品名 ===
@@ -4320,7 +4317,7 @@ async function testGenerateProductName() {
 
     // 解析响应JSON
     const result = await response.json();
-    console.log("[移动端商品名测试] API响应：", result);
+    logMessage_Info("[移动端商品名测试] API响应：", result);
 
     // === 第4步：处理响应 ===
     if (result.success) {
@@ -4335,14 +4332,14 @@ async function testGenerateProductName() {
       if (resultContainer) {
         resultContainer.classList.remove("hidden");
       }
-      console.log("[移动端商品名测试] 生成成功");
+      logMessage_Info("[移动端商品名测试] 生成成功");
     } else {
       // 生成失败：显示错误消息
       showModalAlert("生成失败：" + (result.message || "未知错误"));
     }
   } catch (error) {
     // === 第5步：错误处理 ===
-    console.error("[移动端商品名测试] 请求失败：", error);
+    logMessage_Error("[移动端商品名测试] 请求失败：", error);
     showModalAlert("网络错误，请稍后重试");
   }
 }
@@ -4360,7 +4357,7 @@ async function testGenerateProductName() {
  * - 用户在商品名测试面板点击"批量测试（生成10个示例）"按钮时
  */
 async function batchTestProductNames() {
-  console.log("[移动端商品名测试] 开始批量测试...");
+  logMessage_Info("[移动端商品名测试] 开始批量测试...");
 
   // === 第1步：获取容器元素 ===
   const batchResultsContainer = document.getElementById("batch-test-results");
@@ -4368,7 +4365,7 @@ async function batchTestProductNames() {
 
   // 验证元素是否存在
   if (!batchListContainer) {
-    console.error("[移动端商品名测试] 找不到批量测试结果列表容器");
+    logMessage_Error("[移动端商品名测试] 找不到批量测试结果列表容器");
     return;
   }
 
@@ -4411,12 +4408,12 @@ async function batchTestProductNames() {
           productName: result.product_name,
           byteLength: result.byte_length,
         });
-        console.log(
+        logMessage_Info(
           `[移动端商品名测试] 数量${quantity}：${result.product_name}`
         );
       }
     } catch (error) {
-      console.error(`[移动端商品名测试] 数量${quantity}生成失败：`, error);
+      logMessage_Error(`[移动端商品名测试] 数量${quantity}生成失败：`, error);
     }
   }
 
@@ -4464,14 +4461,14 @@ async function batchTestProductNames() {
   });
 
   batchListContainer.innerHTML = html;
-  console.log(
+  logMessage_Info(
     `[移动端商品名测试] 批量测试完成，成功生成${results.length}个示例`
   );
 }
 
 async function createTestOrder() {
   // 在控制台输出日志，标记创建测试订单操作开始
-  console.log("[测试支付] 开始创建测试订单...");
+  logMessage_Info("[测试支付] 开始创建测试订单...");
 
   // ========== 第1步：获取所有输入框和显示区域的DOM元素 ==========
 
@@ -4515,8 +4512,8 @@ async function createTestOrder() {
     !openPayBtn
   ) {
     // 输出错误日志，列出缺失的元素（便于调试）
-    console.error("[测试支付] 错误：页面元素未找到");
-    console.error("元素检查：", {
+    logMessage_Error("[测试支付] 错误：页面元素未找到");
+    logMessage_Error("元素检查：", {
       amountInput: !!amountInput,
       productInput: !!productInput,
       methodSelect: !!methodSelect,
@@ -4538,7 +4535,7 @@ async function createTestOrder() {
 
   // 3.2 验证金额不为空（必填项验证）
   if (!amountStr) {
-    console.log("[测试支付] 验证失败：支付金额为空");
+    logMessage_Info("[测试支付] 验证失败：支付金额为空");
     showModalAlert("请输入支付金额");
     amountInput.focus();
     return;
@@ -4549,7 +4546,7 @@ async function createTestOrder() {
 
   // 3.4 验证金额是否为有效数字
   if (isNaN(amount)) {
-    console.log("[测试支付] 验证失败：支付金额不是有效数字");
+    logMessage_Info("[测试支付] 验证失败：支付金额不是有效数字");
     showModalAlert("支付金额必须是有效的数字");
     amountInput.focus();
     return;
@@ -4557,7 +4554,7 @@ async function createTestOrder() {
 
   // 3.5 验证金额必须大于0
   if (amount <= 0) {
-    console.log("[测试支付] 验证失败：支付金额必须大于0，当前值：", amount);
+    logMessage_Error("[测试支付] 验证失败：支付金额必须大于0，当前值：", amount);
     showModalAlert("支付金额必须大于0");
     amountInput.focus();
     return;
@@ -4581,7 +4578,7 @@ async function createTestOrder() {
     }
   }
 
-  console.log("[移动端测试支付] 商品名称输入方式：", inputMethod);
+  logMessage_Info("[移动端测试支付] 商品名称输入方式：", inputMethod);
 
   // 3.6.2 根据输入方式获取商品名称
   if (inputMethod === "manual") {
@@ -4590,9 +4587,9 @@ async function createTestOrder() {
     if (!productName) {
       // 如果用户没有填写商品名称，使用默认值
       productName = "测试商品";
-      console.log("[移动端测试支付] 使用默认商品名称：", productName);
+      logMessage_Info("[移动端测试支付] 使用默认商品名称：", productName);
     } else {
-      console.log("[移动端测试支付] 手动输入的商品名称：", productName);
+      logMessage_Info("[移动端测试支付] 手动输入的商品名称：", productName);
     }
   } else if (inputMethod === "auto") {
     // 自动生成模式：从数量输入框获取数值，然后调用后端API生成商品名
@@ -4606,7 +4603,7 @@ async function createTestOrder() {
       return; // 中断函数执行
     }
 
-    console.log(
+    logMessage_Info(
       "[移动端测试支付] 商品数量：",
       quantity,
       "，正在调用生成器API..."
@@ -4641,10 +4638,10 @@ async function createTestOrder() {
 
       // 使用生成的商品名称
       productName = genResult.product_name;
-      console.log("[移动端测试支付] 自动生成的商品名称：", productName);
+      logMessage_Info("[移动端测试支付] 自动生成的商品名称：", productName);
     } catch (error) {
       // 生成商品名失败，显示错误并中断
-      console.error("[移动端测试支付] 生成商品名失败：", error);
+      logMessage_Error("[移动端测试支付] 生成商品名失败：", error);
       showModalAlert(`生成商品名失败：${error.message}`);
       return; // 中断函数执行
     }
@@ -4655,7 +4652,7 @@ async function createTestOrder() {
 
   // 3.8 验证支付方式已选择
   if (!paymentMethod) {
-    console.log("[测试支付] 验证失败：未选择支付方式");
+    logMessage_Info("[测试支付] 验证失败：未选择支付方式");
     showModalAlert("请选择支付方式");
     methodSelect.focus();
     return;
@@ -4667,13 +4664,13 @@ async function createTestOrder() {
 
   // 验证接口类型已选择
   if (!paymentType) {
-    console.log("[测试支付] 验证失败：未选择接口类型");
+    logMessage_Info("[测试支付] 验证失败：未选择接口类型");
     showModalAlert("请选择接口类型");
     if (typeSelect) typeSelect.focus();
     return;
   }
 
-  console.log("[测试支付] 接口类型：", paymentType);
+  logMessage_Info("[测试支付] 接口类型：", paymentType);
 
   // 3.10 [新增] 获取付款码（仅扫码支付需要）
   // 声明变量用于存储付款码，默认为空字符串
@@ -4687,7 +4684,7 @@ async function createTestOrder() {
 
     // 验证付款码是否为空
     if (!auth_code) {
-      console.log("[移动端测试支付] 验证失败：扫码支付需要提供付款码");
+      logMessage_Error("[移动端测试支付] 验证失败：扫码支付需要提供付款码");
       showModalAlert("扫码支付需要提供付款码（auth_code）");
       // 聚焦到付款码输入框，引导用户输入
       if (authCodeInput) authCodeInput.focus();
@@ -4696,7 +4693,7 @@ async function createTestOrder() {
 
     // 验证付款码长度和格式（通常为18位数字）
     if (auth_code.length !== 18 || !/^\d+$/.test(auth_code)) {
-      console.log(
+      logMessage_Error(
         "[移动端测试支付] 验证失败：付款码格式不正确，当前长度：",
         auth_code.length
       );
@@ -4705,7 +4702,7 @@ async function createTestOrder() {
       return; // 中断函数执行
     }
 
-    console.log("[移动端测试支付] 付款码已提供（已隐藏显示）");
+    logMessage_Info("[移动端测试支付] 付款码已提供（已隐藏显示）");
   }
 
   // 3.11 [新增] 获取JSAPI支付参数（仅JSAPI支付需要）
@@ -4726,7 +4723,7 @@ async function createTestOrder() {
 
     // 验证sub_openid是否为空
     if (!subOpenid) {
-      console.log("[移动端测试支付] 验证失败：JSAPI支付需要提供用户Openid");
+      logMessage_Error("[移动端测试支付] 验证失败：JSAPI支付需要提供用户Openid");
       showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
       // 聚焦到sub_openid输入框，引导用户输入
       if (subOpenidInput) subOpenidInput.focus();
@@ -4735,7 +4732,7 @@ async function createTestOrder() {
 
     // 验证sub_appid是否为空
     if (!subAppid) {
-      console.log("[移动端测试支付] 验证失败：JSAPI支付需要提供公众号AppId");
+      logMessage_Error("[移动端测试支付] 验证失败：JSAPI支付需要提供公众号AppId");
       showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
       // 聚焦到sub_appid输入框，引导用户输入
       if (subAppidInput) subAppidInput.focus();
@@ -4745,7 +4742,7 @@ async function createTestOrder() {
     // 验证sub_openid的格式（微信openid通常以字母o开头，支付宝以数字2开头，长度约28个字符）
     // 这里使用宽松的验证规则，确保长度合理即可
     if (subOpenid.length < 20 || subOpenid.length > 64) {
-      console.log(
+      logMessage_Warning(
         "[移动端测试支付] 警告：用户Openid格式可能不正确，长度不在合理范围"
       );
       showModalAlert("用户Openid格式可能不正确，长度应在20-64字符之间");
@@ -4756,13 +4753,13 @@ async function createTestOrder() {
     // 验证sub_appid的格式（微信以wx开头，支付宝以数字开头，长度约18个字符）
     // 使用宽松验证：长度在10-32字符之间即可
     if (subAppid.length < 10 || subAppid.length > 32) {
-      console.log("[移动端测试支付] 警告：公众号AppId格式可能不正确");
+      logMessage_Warning("[移动端测试支付] 警告：公众号AppId格式可能不正确");
       showModalAlert("公众号AppId格式可能不正确，长度应在10-32字符之间");
       if (subAppidInput) subAppidInput.focus();
       return; // 中断函数执行
     }
 
-    console.log(
+    logMessage_Info(
       "[移动端测试支付] JSAPI参数已提供：sub_openid和sub_appid（已隐藏显示）"
     );
   }
@@ -4781,10 +4778,9 @@ async function createTestOrder() {
   const tradeNo = `${timestamp}${randomNum}`;
 
   // 输出日志记录生成的订单号
-  console.log("[测试支付] 生成订单号：", tradeNo);
-
+  logMessage_Info("[测试支付] 生成订单号：", tradeNo);
   // 输出日志，记录所有订单参数（便于调试）
-  console.log("[测试支付] 订单参数：", {
+  logMessage_Info("[测试支付] 订单参数：", {
     trade_no: tradeNo,
     amount: amount,
     product_name: productName,
@@ -4836,7 +4832,7 @@ async function createTestOrder() {
     const result = await response.json();
 
     // 输出完整的API响应，方便开发者调试
-    console.log("[测试支付] API响应：", result);
+    logMessage_Info("[测试支付] API响应：", result);
 
     // 6.4 检查业务状态
     // 即使HTTP状态码是200，业务逻辑也可能失败
@@ -4856,7 +4852,7 @@ async function createTestOrder() {
     const order = result.order || {};
 
     // 输出成功日志
-    console.log("[测试支付] 订单创建成功：", result);
+    logMessage_Info("[测试支付] 订单创建成功：", result);
 
     // 7.2 显示订单号
     // 优先使用平台订单号（trade_no），如果没有则使用商户订单号
@@ -4930,7 +4926,7 @@ async function createTestOrder() {
         openPayBtn.classList.add("opacity-50", "cursor-not-allowed");
       }
 
-      console.log("[测试支付] 支付信息已保存，类型：", payType);
+      logMessage_Info("[测试支付] 支付信息已保存，类型：", payType);
     } else {
       // 如果没有返回支付信息，显示提示信息
       payUrlSpan.textContent = "（未返回支付信息）";
@@ -4939,7 +4935,7 @@ async function createTestOrder() {
       openPayBtn.disabled = true;
       openPayBtn.classList.add("opacity-50", "cursor-not-allowed");
 
-      console.warn("[测试支付] 警告：API未返回支付信息");
+      logMessage_Warning("[测试支付] 警告：API未返回支付信息");
     }
 
     // 7.5 显示订单结果容器
@@ -4947,7 +4943,7 @@ async function createTestOrder() {
     resultContainer.classList.remove("hidden");
 
     // 输出完成日志
-    console.log("[测试支付] 订单信息已成功显示");
+    logMessage_Info("[测试支付] 订单信息已成功显示");
 
     // 7.6 可选：向用户显示成功提示
     // showModalAlert('测试订单创建成功！请点击下方按钮打开支付链接。');
@@ -4956,7 +4952,7 @@ async function createTestOrder() {
     // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
 
     // 在控制台输出详细的错误信息
-    console.error("[测试支付] 创建订单失败：", error);
+    logMessage_Error("[测试支付] 创建订单失败：", error);
 
     // 向用户显示错误提示
     showModalAlert(
@@ -4986,7 +4982,7 @@ async function createTestOrder() {
  */
 function openTestPayUrl() {
   // 在控制台输出日志，标记打开支付链接操作开始
-  console.log("[测试支付] 准备打开支付链接...");
+  logMessage_Info("[测试支付] 准备打开支付链接...");
 
   // ========== 第1步：获取按钮元素 ==========
 
@@ -4995,7 +4991,7 @@ function openTestPayUrl() {
 
   // 防御性检查：确保按钮元素存在
   if (!openPayBtn) {
-    console.error(
+    logMessage_Error(
       "[测试支付] 错误：未找到打开支付链接按钮（ID: open-test-pay-url-btn）"
     );
     showModalAlert("页面元素异常，请刷新页面后重试。");
@@ -5009,14 +5005,14 @@ function openTestPayUrl() {
   const payUrl = openPayBtn.getAttribute("data-url");
 
   // 输出日志，记录获取到的支付链接
-  console.log("[测试支付] 获取到的支付链接：", payUrl);
+  logMessage_Info("[测试支付] 获取到的支付链接：", payUrl);
 
   // ========== 第3步：验证支付链接是否存在 ==========
 
   // 检查链接是否为空或undefined
   if (!payUrl) {
     // 如果链接不存在，说明订单创建失败或API未返回支付链接
-    console.error("[测试支付] 错误：支付链接不存在");
+    logMessage_Error("[测试支付] 错误：支付链接不存在");
     showModalAlert("支付链接不存在，请先创建测试订单。");
     return;
   }
@@ -5039,7 +5035,7 @@ function openTestPayUrl() {
     // 现代浏览器默认会拦截非用户主动触发的弹窗，需要用户在浏览器设置中允许
     if (!newWindow) {
       // 输出警告日志
-      console.warn("[测试支付] 警告：浏览器可能拦截了弹窗");
+      logMessage_Warning("[测试支付] 警告：浏览器可能拦截了弹窗");
 
       // 向用户显示友好的提示信息
       // 不在alert中直接显示URL，避免安全问题
@@ -5053,7 +5049,7 @@ function openTestPayUrl() {
       }
     } else {
       // 如果成功打开，输出成功日志
-      console.log("[测试支付] 支付链接已在新标签页中打开");
+      logMessage_Info("[测试支付] 支付链接已在新标签页中打开");
 
       // 可选：将焦点设置到新窗口
       // newWindow.focus();
@@ -5063,7 +5059,7 @@ function openTestPayUrl() {
     // 捕获可能的异常（虽然window.open()很少抛出异常）
 
     // 在控制台输出详细的错误信息
-    console.error("[测试支付] 打开支付链接时发生错误：", error);
+    logMessage_Error("[测试支付] 打开支付链接时发生错误：", error);
 
     // 向用户显示错误提示
     showModalAlert(
@@ -5108,7 +5104,7 @@ function openTestPayUrl() {
  */
 function switchAdminPaymentSettingsTab(tabName) {
   // 在控制台输出日志，记录Tab切换操作
-  console.log(`[PC端支付设置] 切换到Tab: ${tabName}`);
+  logMessage_Info(`[PC端支付设置] 切换到Tab: ${tabName}`);
 
   // 定义所有标签页的名称数组
   // 这样可以统一管理所有标签页，便于维护
@@ -5136,7 +5132,7 @@ function switchAdminPaymentSettingsTab(tabName) {
     // 防御性检查：确保DOM元素存在
     // 如果元素不存在，跳过此次循环，避免null引用错误
     if (!tabButton || !tabContent) {
-      console.warn(`[PC端支付设置] 警告：找不到Tab "${tab}" 的DOM元素`);
+      logMessage_Warning(`[PC端支付设置] 警告：找不到Tab "${tab}" 的DOM元素`);
       return; // 使用return跳过当前循环迭代
     }
 
@@ -5177,25 +5173,25 @@ function switchAdminPaymentSettingsTab(tabName) {
         // 此函数会从服务器获取所有支付方式的定义和启用状态
         // 然后动态渲染到 payment-methods-list_modal 容器中
         loadPaymentMethodsConfig((show_Modal_Alert = false));
-        console.log(`[PC端支付设置] 已触发支付方式配置加载`);
+        logMessage_Info(`[PC端支付设置] 已触发支付方式配置加载`);
       }
 
       // 步骤5：当切换到订单查询Tab时，显示提示信息
       // 注意：订单列表需要手动查询，避免自动加载造成过多请求
       if (tab === "query") {
         // 不自动加载订单列表，用户需要手动点击"手动查询"或"从平台拉取"按钮
-        console.log(`[PC端支付设置] 已切换到订单查询Tab`);
+        logMessage_Info(`[PC端支付设置] 已切换到订单查询Tab`);
         loadAllPaymentOrders();
       }
 
       if (tab === "yipay") {
         // 调用 loadYiPayConfig() 函数加载易支付配置
         loadAdminYiPayConfig((show_Modal = false));
-        console.log(`[PC端支付设置] 已触发易支付配置加载`);
+        logMessage_Info(`[PC端支付设置] 已触发易支付配置加载`);
       }
 
       // 在控制台输出日志，标记Tab激活成功
-      console.log(`[PC端支付设置] Tab "${tab}" 已激活`);
+      logMessage_Info(`[PC端支付设置] Tab "${tab}" 已激活`);
     } else {
       // === 取消激活其他标签页 ===
 
@@ -5220,203 +5216,12 @@ function switchAdminPaymentSettingsTab(tabName) {
   });
 
   // Tab切换完成，输出日志
-  console.log(`[PC端支付设置] Tab切换完成`);
+  logMessage_Info(`[PC端支付设置] Tab切换完成`);
 }
 
-// ==========================================
-// Tab 1: 支付方式配置功能
-// ==========================================
-// 【功能说明】
-// 实现支付方式（支付宝、微信、QQ钱包、云闪付）的启用/禁用配置
-// 包括从服务器加载当前配置和保存用户的更改
-// ==========================================
-
-/**
- * 加载PC端管理员支付方式配置
- *
- * 功能说明：
- * 从服务器获取当前的支付方式启用状态，并更新页面上的checkbox
- * 此函数会在页面加载时自动调用，以确保显示最新的配置状态
- *
- * API端点：GET /api/admin/payment/config
- *
- * 预期返回格式：
- * {
- *   success: true,
- *   config: {
- *     alipay: true,      // 支付宝是否启用
- *     wechat: true,      // 微信支付是否启用
- *     qq: false,         // QQ钱包是否启用
- *     unionpay: false    // 云闪付是否启用
- *   }
- * }
- *
- * 调用时机：
- * - 页面加载完成后自动调用
- * - 保存配置成功后重新加载（确保数据同步）
- *
- * 实现步骤：
- * 1. 发起HTTP GET请求到API端点
- * 2. 检查响应状态码和业务状态
- * 3. 解析返回的JSON数据
- * 4. 更新页面上4个checkbox的状态
- * 5. 错误处理：显示友好的错误提示
- */
-// async function loadAdminPaymentMethodsConfig() {
-//   // 在控制台输出日志，便于调试和追踪函数执行
-//   console.log('[PC端支付配置] 开始加载支付方式配置...');
-
-//   if (!sessionUUID) {
-//     console.error('[PC端支付配置] 错误：sessionUUID未定义，无法进行身份验证');
-//     // showModalAlert('会话异常，请重新登录后重试。');
-//     return;
-//   }
-
-//   try {
-//     // === 第1步：发起HTTP GET请求获取配置数据 ===
-
-//     // 使用fetch API调用后端接口
-//     // fetch是现代浏览器提供的原生API，返回Promise对象
-//     // await关键字会等待Promise resolve，确保获取到响应后再继续执行
-//     const response = await fetch('/api/admin/payment/config', {
-//       method: 'GET',  // HTTP方法：GET用于获取数据（幂等操作）
-//       headers: {
-//         // 设置请求头，告知服务器期望返回JSON格式的数据
-//         // Content-Type标头说明了请求/响应的MIME类型
-//         'Content-Type': 'application/json',
-//         "X-Session-ID": sessionUUID,         // 附加会话ID用于身份验证
-//       }
-//     });
-
-//     // === 第2步：检查HTTP响应状态码 ===
-
-//     // response.ok 是一个布尔值
-//     // 为true时，表示状态码在200-299范围内（HTTP成功状态）
-//     // 为false时，表示请求失败（如404 Not Found、500 Internal Server Error等）
-//     if (!response.ok) {
-//       // 如果响应状态码不是成功状态
-//       // 抛出错误，中断当前执行流程，进入catch块处理
-//       // 错误消息包含具体的HTTP状态码，便于调试
-//       throw new Error(`加载配置失败：HTTP状态码 ${response.status}`);
-//     }
-
-//     // === 第3步：解析JSON响应数据 ===
-
-//     // response.json()方法将响应体解析为JavaScript对象
-//     // 这也是一个异步操作，返回Promise，需要await等待
-//     // 如果响应体不是有效的JSON，会抛出解析错误
-//     const result = await response.json();
-
-//     // 在控制台输出获取到的完整响应数据，方便开发者查看和调试
-//     console.log('[PC端支付配置] 成功获取API响应：', result);
-
-//     // === 第4步：提取配置对象 ===
-
-//     // 从API响应中提取config对象
-//     // 假设API返回格式为 { success: true, config: {...} }
-//     // 如果API直接返回配置对象，则使用 const config = result;
-//     const config = result.config || result;
-
-//     // 输出配置对象，确认数据正确
-//     console.log('[PC端支付配置] 解析到的配置数据：', config);
-
-//     // === 第5步：根据配置数据更新页面上的checkbox状态 ===
-
-//     // 5.1 更新支付宝checkbox
-//     // 通过getElementById获取DOM元素
-//     const alipayCheckbox = document.getElementById('admin-payment-method-alipay_modal');
-//     // 防御性检查：确保元素存在（避免null引用错误）
-//     if (alipayCheckbox) {
-//       // 设置checkbox的checked属性
-//       // 使用 !! 将值转换为布尔类型，确保只有true/false
-//       // 这样即使config.alipay是undefined或其他假值，也能正确处理
-//       alipayCheckbox.checked = !!config.alipay;
-//       console.log('[PC端支付配置] 支付宝状态已更新：', alipayCheckbox.checked);
-//     } else {
-//       console.warn('[PC端支付配置] 警告：找不到支付宝checkbox元素');
-//     }
-
-//     // 5.2 更新微信支付checkbox
-//     // 同样的逻辑：获取元素 -> 检查存在性 -> 设置状态
-//     const wechatCheckbox = document.getElementById('admin-payment-method-wechat_modal');
-//     if (wechatCheckbox) {
-//       wechatCheckbox.checked = !!config.wechat;
-//       console.log('[PC端支付配置] 微信支付状态已更新：', wechatCheckbox.checked);
-//     } else {
-//       console.warn('[PC端支付配置] 警告：找不到微信支付checkbox元素');
-//     }
-
-//     // 5.3 更新QQ钱包checkbox
-//     const qqCheckbox = document.getElementById('admin-payment-method-qq_modal');
-//     if (qqCheckbox) {
-//       qqCheckbox.checked = !!config.qq;
-//       console.log('[PC端支付配置] QQ钱包状态已更新：', qqCheckbox.checked);
-//     } else {
-//       console.warn('[PC端支付配置] 警告：找不到QQ钱包checkbox元素');
-//     }
-
-//     // 5.4 更新云闪付checkbox
-//     const unionpayCheckbox = document.getElementById('admin-payment-method-unionpay_modal');
-//     if (unionpayCheckbox) {
-//       unionpayCheckbox.checked = !!config.unionpay;
-//       console.log('[PC端支付配置] 云闪付状态已更新：', unionpayCheckbox.checked);
-//     } else {
-//       console.warn('[PC端支付配置] 警告：找不到云闪付checkbox元素');
-//     }
-
-//     // 记录成功日志
-//     console.log('[PC端支付配置] 支付方式配置已成功应用到页面');
-
-//   } catch (error) {
-//     // === 错误处理 ===
-
-//     // 当任何步骤发生错误时（网络失败、JSON解析失败、服务器错误等）
-//     // 都会被捕获到这里统一处理
-
-//     // 在控制台输出详细的错误信息，帮助开发者定位问题
-//     // error对象包含错误类型、消息、堆栈跟踪等信息
-//     // 详细的错误信息仅在控制台显示，不暴露给最终用户，避免泄露敏感信息
-//     console.error('[PC端支付配置] 加载支付方式配置时发生错误：', error);
-
-//     // 向用户显示友好的通用错误提示
-//     // 使用alert弹窗，确保用户能够看到错误信息
-//     // 提供操作建议：刷新页面或联系管理员
-//     // 不包含具体的错误详情，避免暴露敏感的技术信息
-//     showModalAlert('无法加载支付方式配置，请刷新页面重试。\n如果问题持续，请联系系统管理员。');
-//   }
-// }
-
-/**
- * 保存PC端管理员支付方式配置
- *
- * 功能说明：
- * 读取页面上4个checkbox的当前状态，并将配置提交到服务器保存
- * 保存成功后会显示提示信息，并重新加载配置以确保数据同步
- *
- * API端点：PUT /api/admin/payment/config
- *
- * 请求体格式：
- * {
- *   alipay: true,      // 支付宝是否启用
- *   wechat: true,      // 微信支付是否启用
- *   qq: false,         // QQ钱包是否启用
- *   unionpay: false    // 云闪付是否启用
- * }
- *
- * 调用时机：
- * - 用户点击"保存配置"按钮时
- *
- * 实现步骤：
- * 1. 从页面读取4个checkbox的状态
- * 2. 构建配置对象
- * 3. 发起HTTP PUT请求保存到服务器
- * 4. 检查响应状态
- * 5. 显示成功/失败提示
- * 6. 重新加载配置（确保数据同步）
- */
 async function saveAdminPaymentMethodsConfig() {
   // 输出日志，标记保存操作开始
-  console.log("[PC端支付配置] 开始保存支付方式配置...");
+  logMessage_Info("[PC端支付配置] 开始保存支付方式配置...");
 
   try {
     // === 第1步：从payment-methods-list_modal容器中读取所有checkbox的状态 ===
@@ -5457,7 +5262,7 @@ async function saveAdminPaymentMethodsConfig() {
     });
 
     // 在控制台输出即将提交的启用列表，便于调试
-    console.log("[PC端支付配置] 已启用的支付方式：", enabledMethods);
+    logMessage_Info("[PC端支付配置] 已启用的支付方式：", enabledMethods);
 
     // === 第2步：构建要提交的配置对象 ===
 
@@ -5468,7 +5273,7 @@ async function saveAdminPaymentMethodsConfig() {
     };
 
     // 在控制台输出即将提交的配置，便于调试
-    console.log("[PC端支付配置] 准备提交的配置数据：", config);
+    logMessage_Info("[PC端支付配置] 准备提交的配置数据：", config);
 
     // === 第3步：发起HTTP PUT请求保存配置 ===
 
@@ -5499,7 +5304,7 @@ async function saveAdminPaymentMethodsConfig() {
       // 5.1 成功情况：响应状态为200且result.success为true
 
       // 输出成功日志
-      console.log("[PC端支付配置] 支付方式配置保存成功：", result);
+      logMessage_Info("[PC端支付配置] 支付方式配置保存成功：", result);
 
       // 使用showModalAlert()显示成功提示（绿色样式）
       // 标题设置为"成功"，会触发showModalAlert内部的样式判断，显示为绿色
@@ -5516,7 +5321,7 @@ async function saveAdminPaymentMethodsConfig() {
       const errorMessage = result.message || "保存配置失败，请重试";
 
       // 输出错误日志
-      console.error("[PC端支付配置] 保存支付方式配置失败：", errorMessage);
+      logMessage_Error("[PC端支付配置] 保存支付方式配置失败：", errorMessage);
 
       // 使用showModalAlert()显示错误提示（红色样式）
       // 标题设置为"错误"或"失败"，会触发showModalAlert内部的样式判断，显示为红色
@@ -5528,7 +5333,7 @@ async function saveAdminPaymentMethodsConfig() {
     // 捕获所有可能的错误：网络错误、服务器错误、JSON解析错误、DOM操作错误等
 
     // 在控制台输出详细的错误信息
-    console.error("[PC端支付配置] 保存支付方式配置时发生错误：", error);
+    logMessage_Error("[PC端支付配置] 保存支付方式配置时发生错误：", error);
 
     // 使用showModalAlert()显示错误提示
     // 显示用户友好的错误消息
@@ -5586,7 +5391,7 @@ async function saveAdminPaymentMethodsConfig() {
  */
 async function queryAdminPaymentOrder() {
   // 输出日志，标记查询操作开始
-  console.log("[PC端订单查询] 开始查询订单...");
+  logMessage_Info("[PC端订单查询] 开始查询订单...");
 
   // === 第1步：获取DOM元素 ===
 
@@ -5603,7 +5408,7 @@ async function queryAdminPaymentOrder() {
 
   // 防御性检查：确保关键元素存在
   if (!tradeNoInput) {
-    console.error("[PC端订单查询] 错误：找不到订单号输入框");
+    logMessage_Error("[PC端订单查询] 错误：找不到订单号输入框");
     showModalAlert("页面元素异常，请刷新页面后重试。");
     return;
   }
@@ -5616,7 +5421,7 @@ async function queryAdminPaymentOrder() {
   // 验证订单号是否为空
   if (!tradeNo) {
     // 如果订单号为空，显示错误提示
-    console.warn("[PC端订单查询] 订单号为空");
+    logMessage_Warning("[PC端订单查询] 订单号为空");
 
     // 隐藏订单详情容器
     if (detailContainer) {
@@ -5645,7 +5450,7 @@ async function queryAdminPaymentOrder() {
   }
 
   // 在控制台输出即将查询的订单号
-  console.log("[PC端订单查询] 查询订单号：", tradeNo);
+  logMessage_Info("[PC端订单查询] 查询订单号：", tradeNo);
 
   try {
     // === 第3步：发起HTTP POST请求查询订单 ===
@@ -5672,7 +5477,7 @@ async function queryAdminPaymentOrder() {
 
     const result = await response.json();
 
-    console.log("[PC端订单查询] API响应：", result);
+    logMessage_Info("[PC端订单查询] API响应：", result);
 
     // === 第6步：检查业务状态 ===
 
@@ -5824,13 +5629,13 @@ async function queryAdminPaymentOrder() {
       resultDiv.classList.add("hidden");
     }
 
-    console.log("[PC端订单查询] 订单详情已显示");
+    logMessage_Info("[PC端订单查询] 订单详情已显示");
   } catch (error) {
     // === 错误处理 ===
 
     // 在控制台输出详细的错误信息，用于开发和调试
     // 详细的错误信息仅在控制台显示，不暴露给最终用户，避免泄露敏感信息
-    console.error("[PC端订单查询] 查询订单时发生错误：", error);
+    logMessage_Error("[PC端订单查询] 查询订单时发生错误：", error);
 
     // 隐藏订单详情容器
     if (detailContainer) {
@@ -5896,7 +5701,7 @@ let filteredPaymentOrders = []; // 存储经过筛选后的订单数据
  */
 async function loadAllPaymentOrders() {
   // 输出日志：标记开始加载订单列表
-  console.log("[订单列表] 开始加载本地订单...");
+  logMessage_Info("[订单列表] 开始加载本地订单...");
 
   try {
     // === 第1步：发起HTTP GET请求获取本地订单列表 ===
@@ -5918,7 +5723,7 @@ async function loadAllPaymentOrders() {
 
     // === 第3步：解析响应数据 ===
     const result = await response.json();
-    console.log("[订单列表] API响应：", result);
+    logMessage_Info("[订单列表] API响应：", result);
 
     // === 第4步：检查业务状态 ===
     if (!result.success) {
@@ -5929,14 +5734,14 @@ async function loadAllPaymentOrders() {
     // 后端返回的订单列表在 result.orders 中
     allPaymentOrders = result.orders || [];
 
-    console.log(`[订单列表] 成功加载 ${allPaymentOrders.length} 个本地订单`);
+    logMessage_Info(`[订单列表] 成功加载 ${allPaymentOrders.length} 个本地订单`);
 
     // === 第6步：显示订单列表 ===
     // 调用筛选函数来显示订单（初始状态下不筛选，显示全部）
     filterPaymentOrders();
   } catch (error) {
     // === 错误处理 ===
-    console.error("[订单列表] 加载订单时发生错误：", error);
+    logMessage_Error("[订单列表] 加载订单时发生错误：", error);
 
     // 【修复】同时在桌面端和移动端容器中显示错误提示
     // 生成错误提示HTML
@@ -6003,7 +5808,7 @@ async function loadAllPaymentOrders() {
  */
 function filterPaymentOrders() {
   // 输出日志：标记开始筛选订单
-  console.log("[订单筛选] 开始筛选订单...");
+  logMessage_Info("[订单筛选] 开始筛选订单...");
 
   // === 第1步：获取所有筛选条件的值 ===
   // 【修复】同时支持桌面端(_modal)和移动端(无后缀)的筛选条件输入框
@@ -6044,7 +5849,7 @@ function filterPaymentOrders() {
     (orderNoFilterDesktop || orderNoFilterMobile)?.value.trim() || ""
   ).toLowerCase();
 
-  console.log("[订单筛选] 筛选条件：", {
+  logMessage_Info("[订单筛选] 筛选条件：", {
     status: statusFilter || "全部",
     payType: payTypeFilter || "全部",
     username: usernameFilter || "全部",
@@ -6097,7 +5902,7 @@ function filterPaymentOrders() {
     return true;
   });
 
-  console.log(
+  logMessage_Info(
     `[订单筛选] 筛选结果：${filteredPaymentOrders.length} / ${allPaymentOrders.length} 个订单`
   );
 
@@ -6124,7 +5929,7 @@ function filterPaymentOrders() {
  */
 function renderPaymentOrdersTable() {
   // 输出日志：标记开始渲染订单卡片
-  console.log("[订单卡片] 开始渲染订单卡片...");
+  logMessage_Info("[订单卡片] 开始渲染订单卡片...");
 
   // === 第1步：获取容器元素（同时获取桌面端和移动端容器）===
   // 【修复】同时支持桌面端(_modal后缀)和移动端(无后缀)的订单表格容器
@@ -6142,7 +5947,7 @@ function renderPaymentOrdersTable() {
   // 防御性检查：至少要有一个容器元素存在才能继续
   // 如果两个容器都不存在，则记录错误并返回
   if (!cardsContainerDesktop && !cardsContainerMobile) {
-    console.error(
+    logMessage_Error(
       "[订单卡片] 错误：找不到任何容器元素（桌面端和移动端都不存在）"
     );
     return;
@@ -6366,14 +6171,14 @@ function renderPaymentOrdersTable() {
   // 【修复】同时设置桌面端和移动端容器的内容
   if (cardsContainerDesktop) {
     cardsContainerDesktop.innerHTML = orderCards;
-    console.log("[订单卡片] 桌面端卡片渲染完成");
+    logMessage_Info("[订单卡片] 桌面端卡片渲染完成");
   }
   if (cardsContainerMobile) {
     cardsContainerMobile.innerHTML = orderCards;
-    console.log("[订单卡片] 移动端卡片渲染完成");
+    logMessage_Info("[订单卡片] 移动端卡片渲染完成");
   }
 
-  console.log("[订单卡片] 所有卡片渲染完成");
+  logMessage_Info("[订单卡片] 所有卡片渲染完成");
 }
 
 /**
@@ -6401,7 +6206,7 @@ function renderPaymentOrdersTable() {
  */
 async function queryOrderManually() {
   // 输出日志：标记开始手动查询订单
-  console.log("[手动查询] 开始查询订单...");
+  logMessage_Info("[手动查询] 开始查询订单...");
 
   // === 第1步：获取订单号输入框的值（同时支持桌面端和移动端）===
   // 【修复】优先获取桌面端输入框，如果不存在则获取移动端输入框
@@ -6415,7 +6220,7 @@ async function queryOrderManually() {
 
   // 防御性检查：确保至少有一个输入框元素存在
   if (!orderNoInput) {
-    console.error(
+    logMessage_Error(
       "[手动查询] 错误：找不到订单号输入框（桌面端和移动端都不存在）"
     );
     showModalAlert("页面元素异常，请刷新页面后重试。");
@@ -6431,7 +6236,7 @@ async function queryOrderManually() {
     return;
   }
 
-  console.log("[手动查询] 查询订单号：", orderNo);
+  logMessage_Info("[手动查询] 查询订单号：", orderNo);
 
   try {
     // === 第3步：发起HTTP POST请求查询订单 ===
@@ -6454,7 +6259,7 @@ async function queryOrderManually() {
 
     // === 第5步：解析响应数据 ===
     const result = await response.json();
-    console.log("[手动查询] API响应：", result);
+    logMessage_Info("[手动查询] API响应：", result);
 
     // === 第6步：检查业务状态 ===
     if (!result.success) {
@@ -6481,7 +6286,7 @@ async function queryOrderManually() {
     await loadAllPaymentOrders();
   } catch (error) {
     // === 错误处理 ===
-    console.error("[手动查询] 查询订单时发生错误：", error);
+    logMessage_Error("[手动查询] 查询订单时发生错误：", error);
     showModalAlert("查询订单失败，请稍后重试", "错误");
   }
 }
@@ -6512,7 +6317,7 @@ async function queryOrderManually() {
  */
 async function fetchOrdersFromPlatform() {
   // 输出日志：标记开始拉取订单
-  console.log("[拉取订单] 开始从平台拉取订单...");
+  logMessage_Info("[拉取订单] 开始从平台拉取订单...");
 
   // === 第1步：显示加载提示 ===
   // 使用自定义的模态框提示用户正在拉取订单
@@ -6540,7 +6345,7 @@ async function fetchOrdersFromPlatform() {
 
     // === 第4步：解析响应数据 ===
     const result = await response.json();
-    console.log("[拉取订单] API响应：", result);
+    logMessage_Info("[拉取订单] API响应：", result);
 
     // === 第5步：检查业务状态 ===
     if (!result.success) {
@@ -6569,7 +6374,7 @@ async function fetchOrdersFromPlatform() {
     await loadAllPaymentOrders();
   } catch (error) {
     // === 错误处理 ===
-    console.error("[拉取订单] 拉取订单时发生错误：", error);
+    logMessage_Error("[拉取订单] 拉取订单时发生错误：", error);
     showModalAlert("从平台拉取订单失败，请稍后重试", "错误");
   }
 }
@@ -6596,7 +6401,7 @@ function showOrderDetailModal_form_botton(order) {
  */
 function showOrderDetailModal(order) {
   // 输出日志：标记显示订单详情
-  console.log("[订单详情] 显示订单详情：", order);
+  logMessage_Info("[订单详情] 显示订单详情：", order);
 
   // === 保存当前订单信息到全局变量，供刷新功能使用 ===
   // 将订单对象存储为全局变量，这样刷新按钮的函数可以知道要刷新哪个订单
@@ -6792,29 +6597,6 @@ function showOrderDetailModal(order) {
   if (modalOverlay) {
     modalOverlay.classList.remove("hidden");
   }
-
-  // === 第3步：自动刷新订单信息 ===
-  // 为什么要在弹窗打开时自动刷新？
-  // 1. 确保显示的订单信息是最新的：订单状态可能在后台发生了变化（例如从"待支付"变为"已支付"）
-  // 2. 同步最新的平台数据：如果订单有平台同步记录，可以获取最新的支付时间、退款等信息
-  // 3. 提升用户体验：用户每次打开详情，都能看到最准确的订单状态和金额
-  //
-  // 实现方式：
-  // - 使用 setTimeout 延迟100毫秒执行刷新操作
-  // - 延迟的原因：确保弹窗的DOM完全渲染后再进行数据更新，避免视觉闪烁
-  // - refreshOrderDetailLocal() 会从本地API重新拉取订单数据并更新弹窗内容
-  // setTimeout(() => {
-  //   // 检查 window.currentOrderDetail 是否已设置
-  //   // 这个检查是防御性编程，确保有订单信息才执行刷新
-  //   if (window.currentOrderDetail && window.currentOrderDetail.order_id) {
-  //     // 调用本地刷新函数，更新订单详情
-  //     // 该函数会异步获取最新数据并更新弹窗显示
-  //     refreshOrderDetailLocal();
-
-  //     // 输出日志：记录自动刷新操作
-  //     console.log('[订单详情] 弹窗打开，自动刷新订单信息（订单号：' + window.currentOrderDetail.order_id + '）');
-  //   }
-  // }, 100); // 100毫秒的延迟，既保证DOM渲染完成，又不会让用户感觉到明显的等待
 }
 
 /**
@@ -6841,7 +6623,7 @@ function closeOrderDetailModal(event) {
     modalOverlay.classList.add("hidden");
   }
 
-  console.log("[订单详情] 关闭订单详情弹窗");
+  logMessage_Info("[订单详情] 关闭订单详情弹窗");
 }
 
 /**
@@ -6858,7 +6640,7 @@ function closeOrderDetailModal(event) {
  */
 async function refreshOrderDetailLocal(show_Modal_Alert = true) {
   // 输出日志：标记本地刷新操作开始
-  console.log("[订单详情] 开始本地刷新订单详情...");
+  logMessage_Info("[订单详情] 开始本地刷新订单详情...");
   if (show_Modal_Alert) {
     showModalAlert("正在本地刷新订单详情，请稍候...", "提示");
   }
@@ -6876,7 +6658,7 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
     }
 
     const orderId = currentOrder.order_id;
-    console.log("[订单详情] 正在刷新订单：", orderId);
+    logMessage_Info("[订单详情] 正在刷新订单：", orderId);
 
     // === 第2步：从本地API获取最新订单数据 ===
 
@@ -6900,7 +6682,7 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
     if (!response.ok || !result.success) {
       // 获取失败，显示错误消息
       const errorMessage = result.message || "获取订单数据失败";
-      console.error("[订单详情] 本地刷新失败：", errorMessage);
+      logMessage_Error("[订单详情] 本地刷新失败：", errorMessage);
       showModalAlert(`本地刷新失败：${errorMessage}`, "错误");
       return;
     }
@@ -6912,7 +6694,7 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
 
     if (!updatedOrder) {
       // 如果没找到订单，显示提示
-      console.warn("[订单详情] 本地未找到该订单");
+      logMessage_Warning("[订单详情] 本地未找到该订单");
       showModalAlert("本地未找到该订单，可能已被删除", "警告");
       return;
     }
@@ -6924,7 +6706,7 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
     showOrderDetailModal(updatedOrder);
 
     // 输出成功日志
-    console.log("[订单详情] 本地刷新成功");
+    logMessage_Info("[订单详情] 本地刷新成功");
 
     loadAllPaymentOrders();
 
@@ -6936,7 +6718,7 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
     // === 错误处理 ===
 
     // 捕获所有可能的错误：网络错误、JSON解析错误等
-    console.error("[订单详情] 本地刷新时发生错误：", error);
+    logMessage_Error("[订单详情] 本地刷新时发生错误：", error);
     showModalAlert(`本地刷新失败：${error.message || "未知错误"}`, "错误");
   }
 }
@@ -6956,7 +6738,7 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
  */
 async function refreshOrderDetailFromPlatform() {
   // 输出日志：标记平台刷新操作开始
-  console.log("[订单详情] 开始从平台刷新订单详情...");
+  logMessage_Info("[订单详情] 开始从平台刷新订单详情...");
 
   try {
     // === 第1步：获取当前订单号 ===
@@ -6970,7 +6752,7 @@ async function refreshOrderDetailFromPlatform() {
     }
 
     const orderId = currentOrder.order_id;
-    console.log("[订单详情] 正在从平台刷新订单：", orderId);
+    logMessage_Info("[订单详情] 正在从平台刷新订单：", orderId);
 
     // === 第2步：调用平台查询API ===
 
@@ -6995,7 +6777,7 @@ async function refreshOrderDetailFromPlatform() {
     if (!response.ok || !result.success) {
       // 查询失败，显示错误消息
       const errorMessage = result.message || "从平台查询订单失败";
-      console.error("[订单详情] 平台刷新失败：", errorMessage);
+      logMessage_Error("[订单详情] 平台刷新失败：", errorMessage);
       showModalAlert(`平台刷新失败：${errorMessage}`, "错误");
       return;
     }
@@ -7007,7 +6789,7 @@ async function refreshOrderDetailFromPlatform() {
 
     if (!updatedOrder) {
       // 如果没有返回订单数据，显示提示
-      console.warn("[订单详情] 平台返回数据为空");
+      logMessage_Warning("[订单详情] 平台返回数据为空");
       showModalAlert("平台返回数据为空", "警告");
       return;
     }
@@ -7019,7 +6801,7 @@ async function refreshOrderDetailFromPlatform() {
     showOrderDetailModal(updatedOrder);
 
     // 输出成功日志
-    console.log("[订单详情] 平台刷新成功");
+    logMessage_Info("[订单详情] 平台刷新成功");
 
     loadAllPaymentOrders();
 
@@ -7029,38 +6811,16 @@ async function refreshOrderDetailFromPlatform() {
     // === 错误处理 ===
 
     // 捕获所有可能的错误：网络错误、JSON解析错误等
-    console.error("[订单详情] 平台刷新时发生错误：", error);
+    logMessage_Error("[订单详情] 平台刷新时发生错误：", error);
     showModalAlert(`平台刷新失败：${error.message || "未知错误"}`, "错误");
   }
 }
 
-// ==========================================
-// Tab 3: 退款处理功能
-// ==========================================
-// 【功能说明】
-// 实现退款处理功能，包括：
-// 1. 生成退款单号
-// 2. 提交退款申请
-// 3. 显示退款结果
-//
-// 【API说明】
-// - POST /api/payment/refund: 提交退款申请
-// ==========================================
-
 /**
  * 生成PC端管理员退款单号
- *
- * 功能说明：
- * 自动生成一个唯一的退款单号，填充到退款单号输入框
- * 格式：REFUND + 时间戳(YYYYMMDDHHmmss) + 随机数(6位)
- * 例如：REFUND20231210123456123456
- *
- * 调用时机：
- * - 用户点击"自动生成"按钮时
- * - 也可以在提交退款时如果没有填写退款单号则自动生成
  */
 function generateAdminRefundOrderNo() {
-  console.log("[PC端退款] 生成退款单号...");
+  logMessage_Info("[PC端退款] 生成退款单号...");
 
   // === 生成退款单号 ===
 
@@ -7084,7 +6844,7 @@ function generateAdminRefundOrderNo() {
   // 拼接退款单号
   const refundNo = `REFUND${year}${month}${day}${hours}${minutes}${seconds}${randomNum}`;
 
-  console.log("[PC端退款] 生成的退款单号：", refundNo);
+  logMessage_Info("[PC端退款] 生成的退款单号：", refundNo);
 
   // === 填充到输入框 ===
 
@@ -7092,40 +6852,12 @@ function generateAdminRefundOrderNo() {
   if (refundNoInput) {
     refundNoInput.value = refundNo;
   } else {
-    console.error("[PC端退款] 错误：找不到退款单号输入框");
+    logMessage_Error("[PC端退款] 错误：找不到退款单号输入框");
   }
 }
 
-/**
- * 提交PC端管理员退款申请
- *
- * 功能说明：
- * 收集退款表单数据，提交到服务器进行退款处理
- * 包括验证输入、发送请求、显示结果
- *
- * API端点：POST /api/payment/refund
- *
- * 请求体格式：
- * {
- *   trade_no: "20231210123456789012",  // 原订单号
- *   refund_amount: 99.99,              // 退款金额
- *   refund_no: "REFUND20231210...",    // 退款单号（可选）
- *   reason: "用户申请退款"              // 退款原因（可选）
- * }
- *
- * 预期返回格式：
- * {
- *   success: true,
- *   refund_no: "REFUND20231210...",    // 退款单号
- *   refund_amount: 99.99,              // 退款金额
- *   message: "退款成功"
- * }
- *
- * 调用时机：
- * - 用户点击"确认退款"按钮时
- */
 async function submitAdminPaymentRefund() {
-  console.log("[PC端退款] 开始处理退款...");
+  logMessage_Info("[PC端退款] 开始处理退款...");
 
   // === 第1步：获取DOM元素 ===
 
@@ -7168,7 +6900,7 @@ async function submitAdminPaymentRefund() {
     // 这是一个健壮性检查，防止退款单号生成失败导致的问题
     if (!refundNo) {
       showModalAlert("请先生成退款单号");
-      console.error("[PC端退款] 错误：退款单号生成失败");
+      logMessage_Error("[PC端退款] 错误：退款单号生成失败");
       return;
     }
   }
@@ -7176,7 +6908,7 @@ async function submitAdminPaymentRefund() {
   // 获取退款原因（可选）
   const reason = reasonInput ? reasonInput.value.trim() : "";
 
-  console.log("[PC端退款] 退款数据：", { tradeNo, amount, refundNo, reason });
+  logMessage_Info("[PC端退款] 退款数据：", { tradeNo, amount, refundNo, reason });
 
   try {
     // === 第3步：发起HTTP POST请求提交退款 ===
@@ -7205,7 +6937,7 @@ async function submitAdminPaymentRefund() {
 
     const result = await response.json();
 
-    console.log("[PC端退款] API响应：", result);
+    logMessage_Info("[PC端退款] API响应：", result);
 
     // === 第6步：检查业务状态 ===
 
@@ -7253,14 +6985,14 @@ async function submitAdminPaymentRefund() {
     if (refundNoInput) refundNoInput.value = "";
     if (reasonInput) reasonInput.value = "";
 
-    console.log("[PC端退款] 退款成功，已显示Swal弹窗");
+    logMessage_Info("[PC端退款] 退款成功，已显示Swal弹窗");
 
     // 注意：任务2已移除对 successDiv 的操作
     // 原有的5秒自动隐藏逻辑已删除，改用Swal弹窗（用户手动点击"确定"关闭）
   } catch (error) {
     // === 错误处理 ===
 
-    console.error("[PC端退款] 退款时发生错误：", error);
+    logMessage_Error("[PC端退款] 退款时发生错误：", error);
 
     // 任务2修改：错误提示继续使用showModalAlert（保持原有行为）
     // 只有成功时才使用Swal.fire，失败时使用原有的错误提示方式
@@ -7269,38 +7001,9 @@ async function submitAdminPaymentRefund() {
   }
 }
 
-// ==========================================
-// Tab 4: 测试支付功能
-// ==========================================
-// 【功能说明】
-// 实现测试支付功能，包括：
-// 1. 创建测试订单
-// 2. 生成支付链接
-// 3. 打开支付链接
-// 4. 复制支付链接
-//
-// 【API说明】
-// - POST /api/payment/create: 创建测试支付订单
-// ==========================================
-
-/**
- * 切换付款码输入框的显示/隐藏
- *
- * 功能说明：
- * 当用户选择"扫码支付(scan)"接口类型时，显示付款码输入框
- * 选择其他接口类型时，隐藏付款码输入框
- *
- * 调用时机：
- * - 支付接口类型下拉框的onchange事件触发时
- *
- * 实现逻辑：
- * 1. 获取支付接口类型下拉框的当前选中值
- * 2. 如果选中"scan"，则显示付款码输入框
- * 3. 否则隐藏付款码输入框
- */
 function toggleAuthCodeField() {
   // 在控制台输出日志，记录函数调用
-  console.log("[PC端测试支付] 切换支付类型参数输入框显示状态...");
+  logMessage_Info("[PC端测试支付] 切换支付类型参数输入框显示状态...");
 
   // === 第1步：获取DOM元素 ===
 
@@ -7318,13 +7021,13 @@ function toggleAuthCodeField() {
   // === 第2步：防御性检查 ===
   // 确保DOM元素存在，避免null引用错误
   if (!typeSelect || !authCodeContainer) {
-    console.warn("[PC端测试支付] 警告：找不到必需的DOM元素");
+    logMessage_Warning("[PC端测试支付] 警告：找不到必需的DOM元素");
     return; // 如果元素不存在，直接返回，不执行后续操作
   }
 
   // === 第3步：获取当前选中的接口类型 ===
   const selectedType = typeSelect.value;
-  console.log("[PC端测试支付] 当前选中的接口类型：", selectedType);
+  logMessage_Info("[PC端测试支付] 当前选中的接口类型：", selectedType);
 
   // === 第4步：根据接口类型决定显示哪些参数输入框 ===
 
@@ -10709,11 +10412,14 @@ async function loadWatermarkControlConfig() {
     updateWatermarkDefaultLabel();
 
     // ========== 步骤7: 更新用户数量显示（PC端和移动端）==========
+    // 获取已自定义的用户数量（而非系统所有用户数量）
+    const customizedUsersCount = Object.keys(usersConfig).length;
+    
     const userCountElement_PC = document.getElementById(
       "watermark-user-count_modal"
     );
     if (userCountElement_PC) {
-      userCountElement_PC.textContent = `共 ${allUsers.length} 个用户`;
+      userCountElement_PC.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
     
     // 【问题45修复】更新移动端用户数量显示
@@ -10721,21 +10427,22 @@ async function loadWatermarkControlConfig() {
       "watermark-user-count-mobile"
     );
     if (userCountElement_Mobile) {
-      userCountElement_Mobile.textContent = `共 ${allUsers.length} 个用户`;
+      userCountElement_Mobile.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
 
-    // ========== 步骤8: 生成用户权限列表 ==========
+    // ========== 步骤8: 生成用户权限列表（PC端）==========
     // 【修复问题38】只显示已自定义的用户（在usersConfig中的用户）
-    if (listContainer) {
+    // 使用正确的变量名 listContainer_PC
+    if (listContainer_PC) {
       // 清空加载提示
-      listContainer.innerHTML = "";
+      listContainer_PC.innerHTML = "";
 
       // 获取已自定义的用户列表（即在usersConfig中的用户）
       const customizedUsers = Object.keys(usersConfig);
 
       if (customizedUsers.length === 0) {
         // 如果没有自定义用户，显示空状态提示
-        listContainer.innerHTML =
+        listContainer_PC.innerHTML =
           '<p class="text-slate-400 text-center py-10">暂无已自定义的用户，点击右侧"添加"按钮添加</p>';
       } else {
         // 为每个已自定义的用户创建一个权限控制项
@@ -10783,7 +10490,7 @@ async function loadWatermarkControlConfig() {
           `;
 
           // 将用户项添加到列表容器中
-          listContainer.appendChild(userItem);
+          listContainer_PC.appendChild(userItem);
         });
       }
     }
@@ -11758,13 +11465,16 @@ async function loadMobileWatermarkControlConfig() {
       }
     }
 
-    // ========== 步骤7: 更新用户数量显示 ==========
+    // ========== 步骤7: 更新用户数量显示（显示自定义用户数量）==========
+    // 获取已自定义的用户数量（而非系统所有用户数量）
+    const customizedUsersCount = Object.keys(usersConfig).length;
+    
     // 更新查看面板的用户数量
     const userCountElement = document.getElementById(
       "mobile-watermark-user-count"
     );
     if (userCountElement) {
-      userCountElement.textContent = `共 ${allUsers.length} 个用户`;
+      userCountElement.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
 
     // 更新配置面板的用户数量
@@ -11772,93 +11482,115 @@ async function loadMobileWatermarkControlConfig() {
       "mobile-watermark-user-count-ctrl"
     );
     if (userCountElementCtrl) {
-      userCountElementCtrl.textContent = `共 ${allUsers.length} 个用户`;
+      userCountElementCtrl.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
 
     // ========== 步骤8: 生成用户权限列表（移动端样式）==========
-    // 为查看面板生成列表（显示所有用户）
-    if (listContainer && allUsers.length > 0) {
+    // 【修改】与PC端保持一致：只显示已自定义的用户（在usersConfig中的用户）
+    // 为查看面板生成列表（仅显示自定义用户）
+    if (listContainer) {
+      // 清空当前内容
       listContainer.innerHTML = "";
 
-      allUsers.forEach((username) => {
-        const userValue =
-          username in usersConfig ? usersConfig[username] : defaultValue;
+      // 获取已自定义的用户列表（即在usersConfig中的用户）
+      // 说明：只有在配置文件中明确设置过的用户才会显示在列表中
+      const customizedUsers = Object.keys(usersConfig);
 
-        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
-        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
-        const safeUsername = escapeHtml(username);
+      // 判断是否有自定义用户
+      if (customizedUsers.length === 0) {
+        // 如果没有自定义用户，显示空状态提示
+        listContainer.innerHTML =
+          '<p class="text-slate-400 text-center py-10 text-xs">暂无已自定义的用户，点击右侧"添加"按钮添加</p>';
+      } else {
+        // 为每个已自定义的用户创建一个权限控制项
+        customizedUsers.forEach((username) => {
+          // 获取该用户的配置值（一定在usersConfig中）
+          const userValue = usersConfig[username];
 
-        const userItem = document.createElement("div");
-        userItem.className =
-          "bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between";
+          // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+          // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+          const safeUsername = escapeHtml(username);
 
-        // 移动端使用更紧凑的布局
-        userItem.innerHTML = `
-          <div class="flex-1">
-            <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
-            <p class="text-xs text-slate-500 mt-0.5">
-              ${username in usersConfig ? "已自定义" : "使用默认值"}
-            </p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-3">
-            <input 
-              type="checkbox" 
-              id="mobile-watermark-user-${safeUsername}" 
-              class="sr-only peer mobile-watermark-user-checkbox" 
-              data-username="${safeUsername}"
-              ${userValue ? "checked" : ""}
-            >
-            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        `;
+          // 创建用户权限控制项的HTML元素
+          const userItem = document.createElement("div");
+          userItem.className =
+            "bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between";
 
-        listContainer.appendChild(userItem);
-      });
-    } else if (listContainer && allUsers.length === 0) {
-      listContainer.innerHTML =
-        '<p class="text-slate-400 text-center py-10 text-xs">暂无用户</p>';
+          // 移动端使用更紧凑的布局
+          // 包含：用户名（带"已自定义"标签）+ 开关按钮
+          userItem.innerHTML = `
+            <div class="flex-1">
+              <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
+              <p class="text-xs text-slate-500 mt-0.5">已自定义</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer ml-3">
+              <input 
+                type="checkbox" 
+                id="mobile-watermark-user-${safeUsername}" 
+                class="sr-only peer mobile-watermark-user-checkbox" 
+                data-username="${safeUsername}"
+                ${userValue ? "checked" : ""}
+              >
+              <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          `;
+
+          // 将用户项添加到列表容器中
+          listContainer.appendChild(userItem);
+        });
+      }
     }
 
-    // 为配置面板生成列表（显示所有用户）
-    if (listContainerCtrl && allUsers.length > 0) {
+    // 为配置面板生成列表（仅显示自定义用户，与查看面板逻辑一致）
+    if (listContainerCtrl) {
+      // 清空当前内容
       listContainerCtrl.innerHTML = "";
 
-      allUsers.forEach((username) => {
-        const userValue =
-          username in usersConfig ? usersConfig[username] : defaultValue;
+      // 获取已自定义的用户列表（即在usersConfig中的用户）
+      const customizedUsers = Object.keys(usersConfig);
 
-        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
-        const safeUsername = escapeHtml(username);
+      // 判断是否有自定义用户
+      if (customizedUsers.length === 0) {
+        // 如果没有自定义用户，显示空状态提示
+        listContainerCtrl.innerHTML =
+          '<p class="text-slate-400 text-center py-10 text-xs">暂无已自定义的用户，点击右侧"添加"按钮添加</p>';
+      } else {
+        // 为每个已自定义的用户创建一个权限控制项
+        customizedUsers.forEach((username) => {
+          // 获取该用户的配置值（一定在usersConfig中）
+          const userValue = usersConfig[username];
 
-        const userItem = document.createElement("div");
-        userItem.className =
-          "bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between";
+          // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+          const safeUsername = escapeHtml(username);
 
-        // 移动端使用更紧凑的布局
-        userItem.innerHTML = `
-          <div class="flex-1">
-            <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
-            <p class="text-xs text-slate-500 mt-0.5">
-              ${username in usersConfig ? "已自定义" : "使用默认值"}
-            </p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-3">
-            <input 
-              type="checkbox" 
-              id="mobile-watermark-user-ctrl-${safeUsername}" 
-              class="sr-only peer mobile-watermark-user-checkbox" 
-              data-username="${safeUsername}"
-              ${userValue ? "checked" : ""}
-            >
-            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        `;
+          // 创建用户权限控制项的HTML元素
+          const userItem = document.createElement("div");
+          userItem.className =
+            "bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between";
 
-        listContainerCtrl.appendChild(userItem);
-      });
-    } else if (listContainerCtrl && allUsers.length === 0) {
-      listContainerCtrl.innerHTML =
-        '<p class="text-slate-400 text-center py-10 text-xs">暂无用户</p>';
+          // 移动端使用更紧凑的布局
+          // 包含：用户名（带"已自定义"标签）+ 开关按钮
+          userItem.innerHTML = `
+            <div class="flex-1">
+              <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
+              <p class="text-xs text-slate-500 mt-0.5">已自定义</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer ml-3">
+              <input 
+                type="checkbox" 
+                id="mobile-watermark-user-ctrl-${safeUsername}" 
+                class="sr-only peer mobile-watermark-user-checkbox" 
+                data-username="${safeUsername}"
+                ${userValue ? "checked" : ""}
+              >
+              <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          `;
+
+          // 将用户项添加到列表容器中
+          listContainerCtrl.appendChild(userItem);
+        });
+      }
     }
 
     // ========== 步骤9: 记录成功日志 ==========
@@ -12763,7 +12495,7 @@ function run_code_not_need_sessionuuid(codeToRun) {
     isInvalid = isSessionUUIDInvalid(sessionUUID);
 
     if (!isInvalid) {
-      logMessage_Success("成功从 URL 中提取 sessionUUID: " + sessionUUID);
+      logMessage_Info("成功从 URL 中提取 sessionUUID: " + sessionUUID);
     }
   }
 
