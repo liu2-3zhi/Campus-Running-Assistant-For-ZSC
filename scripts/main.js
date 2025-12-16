@@ -20330,9 +20330,16 @@ async function showUserSchoolAccounts(username) {
                   <div class="flex gap-2">
                     <!-- 编辑按钮：打开编辑模态框 -->
                     <!-- 使用data属性存储JSON数据，点击时解析并调用函数 -->
+                    <!-- 
+                      【关键修复点】data-account属性的处理（PC版）：
+                      - accountDataJson 已通过 JSON.stringify() 生成，格式正确
+                      - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
+                      - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
+                      - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
+                    -->
                     <button 
                       class="btn btn-sm btn-primary !py-1 !px-3 !text-xs" 
-                      data-account='${escapeHtml(accountDataJson)}'
+                      data-account='${accountDataJson.replace(/'/g, "&apos;")}'
                       onclick="(function(btn) { const data = JSON.parse(btn.getAttribute('data-account')); editSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); })(this)"
                       title="编辑此账户">
                       编辑
@@ -21137,9 +21144,16 @@ async function showMobileUserSchoolAccounts(username) {
                       <!-- hover:bg-sky-600: 鼠标悬停时背景颜色加深 -->
                       <!-- transition: 平滑过渡动画 -->
                       <!-- min-h-[44px]: 最小高度44px，符合触控友好设计 -->
+                      <!-- 
+                        【关键修复点】data-account属性的处理：
+                        - accountDataJson 已通过 JSON.stringify() 生成，格式正确
+                        - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
+                        - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
+                        - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
+                      -->
                       <button 
                         class="py-1.5 px-2.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[44px]" 
-                        data-account='${escapeHtml(accountDataJson)}'
+                        data-account='${accountDataJson.replace(/'/g, "&apos;")}'
                         onclick="(function(btn) { 
                           const data = JSON.parse(btn.getAttribute('data-account')); 
                           mobileEditSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); 
@@ -42470,16 +42484,21 @@ async function showMobileUserSchoolAccounts(username) {
           <div class="flex flex-col gap-2 pt-3 border-t border-slate-100">
             <!-- 编辑按钮：打开编辑模态框，允许修改密码和UA -->
             <!-- 使用data属性存储JSON数据，避免onclick中的转义问题 -->
+            <!-- 
+              【关键修复点】data-account属性的处理（移动端PC版本）：
+              - JSON.stringify() 已经正确处理了JSON格式
+              - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
+              - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
+              - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
+            -->
             <button 
               class="w-full py-2.5 px-4 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition-colors min-h-[44px] flex items-center justify-center gap-2"
-              data-account='${escapeHtml(
-                JSON.stringify({
-                  authUsername: username,
-                  schoolUsername: schoolUsername,
-                  password: password,
-                  ua: ua,
-                })
-              )}'
+              data-account='${JSON.stringify({
+                authUsername: username,
+                schoolUsername: schoolUsername,
+                password: password,
+                ua: ua,
+              }).replace(/'/g, "&apos;")}'
               onclick="(function(btn) { const data = JSON.parse(btn.getAttribute('data-account')); editSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); })(this)"
               title="编辑此账户的密码和UA">
               <!-- 编辑图标 -->
