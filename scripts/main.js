@@ -20686,7 +20686,7 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
  *
  * 功能说明：
  * - 隐藏移动端的学校账户管理模态框（mobile-user-school-accounts-modal）
- * - 通过调用hideModal工具函数实现模态框的隐藏动画和状态管理
+ * - 使用CSS过渡动画实现平滑的关闭效果
  *
  * 调用时机：
  * - 用户点击模态框外的背景遮罩层
@@ -20695,14 +20695,48 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
  * 注意事项：
  * - 该函数不会关闭二级模态框（如edit-school-account-modal）
  * - 如果二级模态框已打开，需要先关闭二级模态框
+ *
+ * 修复说明（2024）：
+ * - 问题原因：由于showMobileUserSchoolAccounts()函数存在两个定义，第二个定义（动态创建模态框）
+ *   会覆盖第一个定义。第二个定义使用的是"show"类来控制显示，而不是"flex"类。
+ * - 原实现使用hideModal()函数，该函数移除"flex"类并添加"hidden"类，但实际模态框使用的是"show"类，
+ *   导致hideModal()无法正确隐藏模态框。
+ * - 修复方法：改为直接操作DOM，移除"show"类并添加"hidden"类，与实际使用的类名模式保持一致。
+ * - 参考了closeMobileUserSchoolAccounts()函数的实现（line 42556），该函数正确处理了"show"类。
  */
 function closeMobileUserSchoolAccountsModal() {
-  // 调用hideModal工具函数，传入模态框的DOM元素ID
-  // hideModal会自动处理移除显示类、添加隐藏类、清理事件监听器等工作
-  hideModal("mobile-user-school-accounts-modal");
-
-  // 输出日志，便于调试和追踪模态框的关闭操作
-  console.log("[移动端学校账户管理] 已关闭模态框");
+  // 步骤1：通过DOM API获取模态框元素
+  // 使用document.getElementById而不是$()工具函数，确保在任何情况下都能获取到元素
+  const modal = document.getElementById("mobile-user-school-accounts-modal");
+  
+  // 步骤2：检查模态框元素是否存在
+  // 如果元素不存在（例如尚未创建或已被删除），直接返回，避免后续操作出错
+  if (!modal) {
+    console.warn("[移动端学校账户管理] 模态框元素未找到，无法关闭");
+    return;
+  }
+  
+  // 步骤3：移除"show"类，触发CSS过渡动画
+  // "show"类用于控制模态框的显示状态（通过CSS的opacity和transform属性）
+  // 移除该类会触发淡出和下滑动画，提供更好的用户体验
+  modal.classList.remove("show");
+  
+  // 步骤4：延迟添加"hidden"类，等待CSS过渡动画完成
+  // 延迟时间300ms与CSS transition的持续时间保持一致
+  // 这样可以确保用户看到完整的关闭动画，然后才将模态框从文档流中移除
+  // 使用setTimeout是一种常见的处理CSS动画的模式
+  setTimeout(() => {
+    // 添加"hidden"类，将模态框的display属性设置为none
+    // 这会将模态框从文档流中完全移除，释放页面空间
+    modal.classList.add("hidden");
+    
+    // 输出日志，便于调试和追踪模态框的关闭操作
+    // 日志在动画完成后输出，表示模态框已完全关闭
+    console.log("[移动端学校账户管理] 模态框已关闭（动画完成）");
+  }, 300); // 300ms延迟，与CSS过渡动画时长匹配
+  
+  // 立即输出日志，表示关闭操作已开始
+  console.log("[移动端学校账户管理] 开始关闭模态框（触发动画）");
 }
 
 /**
