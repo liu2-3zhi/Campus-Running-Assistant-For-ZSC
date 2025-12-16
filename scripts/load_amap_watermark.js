@@ -138,7 +138,7 @@
             // 用户有权限，加载去水印脚本
             console.log("[水印控制] 用户有权限，正在加载去水印脚本...");
             loadWatermarkRemovalScript();
-            loadAmapScript();
+            // loadAmapScript();
           } else {
             // 用户没有权限，不加载去水印脚本
             console.log("[水印控制] 用户无权限，不加载去水印脚本");

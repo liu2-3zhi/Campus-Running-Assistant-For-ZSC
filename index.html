@@ -4845,7 +4845,8 @@
                 </svg>
                 <span class="text-xs font-medium text-amber-800">系统默认：</span>
               </div>
-              <span id="mobile-watermark-default-value" class="text-xs font-bold text-amber-900">加载中...</span>
+              <!-- 使用独立ID避免与mobile-multi-admin-watermark-panel中的ID冲突 -->
+              <span id="mobile-watermark-default-value-ctrl" class="text-xs font-bold text-amber-900">加载中...</span>
             </div>
             <p class="text-xs text-amber-700 mt-1 ml-5">
               未配置的用户使用此默认值
@@ -4862,11 +4863,13 @@
                 </svg>
                 用户权限配置
               </h5>
-              <span id="mobile-watermark-user-count" class="text-xs text-slate-500">共 0 个用户</span>
+              <!-- 使用独立ID避免与mobile-multi-admin-watermark-panel中的ID冲突 -->
+              <span id="mobile-watermark-user-count-ctrl" class="text-xs text-slate-500">共 0 个用户</span>
             </div>
 
             <!-- 用户权限列表容器：动态生成每个用户的权限开关 -->
-            <div id="mobile-watermark-users-list" class="space-y-2 max-h-96 overflow-y-auto">
+            <!-- 使用独立ID避免与mobile-multi-admin-watermark-panel中的ID冲突 -->
+            <div id="mobile-watermark-users-list-ctrl" class="space-y-2 max-h-96 overflow-y-auto">
               <!-- 加载提示：初始显示，加载完成后由JS替换为用户列表 -->
               <p class="text-slate-400 text-center py-10 text-xs">
                 加载中...
@@ -11410,91 +11413,5 @@
       </div>
     </div>
   </div>
-
-  <!-- ==================== SMS回复记录功能JavaScript ==================== -->
-  <!-- 功能说明：实现SMS回复记录modal的打开、关闭和数据加载功能 -->
-  <!-- 作者注释：提供详细的中文注释，便于理解和维护 -->
-
-  <!-- ==========================================
-       PC端管理员支付日志面板脚本
-       ==========================================
-       【功能说明】
-       此脚本负责PC端（桌面端）管理员面板中支付日志功能的实现。
-       与移动端支付日志功能平行，但适配了桌面端的UI布局和交互方式。
-       
-       【主要功能】
-       1. 从后端API加载支付日志数据（/api/payment_logs）
-       2. 支持按操作类型（action）筛选日志
-       3. 支持按日期范围（start_date, end_date）筛选日志
-       4. 支持分页浏览（上一页/下一页）
-       5. 使用textContent防止XSS攻击
-       
-       【API端点】
-       - /api/payment_logs: 查询当前登录用户的支付日志
-       
-       【权限控制】
-       - 仅管理员（admin）和超级管理员（super_admin）可访问
-       
-       【参考实现】
-       - 移动端实现：第9855-10325行
-       - HTML结构：第8260-8398行（本文件）
-       ========================================== -->
-
-  <!-- ==========================================
-       备案信息加载脚本 (Beian Information Loading Script)
-       ==========================================
-       【功能说明】
-       此脚本负责从后端API获取备案配置信息，并根据配置动态显示备案信息。
-       它会在页面加载时自动执行，更新三个footer区域的备案链接显示状态。
-       
-       【涉及的Footer区域】
-       1. auth-beian-footer - 认证登录页面的备案footer
-       2. pc-beian-footer - PC端所有页面的备案footer
-       3. mobile-beian-footer - 移动端所有页面的备案footer
-       
-       【设计特点】
-       - Footer容器始终可见，不会因为没有备案信息而隐藏
-       - 只控制容器内ICP和公安备案链接的显示/隐藏
-       - 这样可以防止UI布局错位和跳动
-       ========================================== -->
-
-  <!-- ==========================================
-       PC端管理员支付设置面板脚本
-       ==========================================
-       【功能说明】
-       此脚本负责PC端（桌面端）管理员面板中支付设置功能的实现。
-       与移动端支付设置功能平行，但适配了桌面端的UI布局和交互方式。
-       
-       【主要功能】
-       1. Tab切换：在4个功能模块之间切换（支付方式配置、订单查询、退款处理、测试支付）
-       2. Tab 1 - 支付方式配置：从后端加载和保存支付方式的启用状态
-       3. Tab 2 - 订单查询：根据订单号查询订单详情并显示
-       4. Tab 3 - 退款处理：为已支付订单发起退款申请
-       5. Tab 4 - 测试支付：创建测试订单并生成支付链接
-       
-       【API端点】
-       - /api/admin/payment/config (GET/PUT): 支付方式配置
-       - /api/payment/query (POST): 订单查询
-       - /api/payment/refund (POST): 退款处理
-       - /api/payment/create (POST): 创建测试订单
-       
-       【权限控制】
-       - 仅管理员（admin）和超级管理员（super_admin）可访问
-       - API端点会进行服务器端权限验证
-       
-       【安全措施】
-       - 使用textContent防止XSS攻击
-       - 使用DOM方法而非innerHTML（除非必要）
-       - 所有用户输入都进行验证
-       
-       【参考实现】
-       - 移动端实现：第11141-12594行
-       - HTML结构：第8456行开始（本文件）
-       ========================================== -->
-
-  <!-- ========================================================================== -->
-  <!-- 注册提示和个人资料available_runs显示功能 -->
-  <!-- ========================================================================== -->
-
 </body>
 </html>
