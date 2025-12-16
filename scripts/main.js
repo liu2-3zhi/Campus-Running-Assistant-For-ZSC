@@ -10709,11 +10709,14 @@ async function loadWatermarkControlConfig() {
     updateWatermarkDefaultLabel();
 
     // ========== 步骤7: 更新用户数量显示（PC端和移动端）==========
+    // 获取已自定义的用户数量（而非系统所有用户数量）
+    const customizedUsersCount = Object.keys(usersConfig).length;
+    
     const userCountElement_PC = document.getElementById(
       "watermark-user-count_modal"
     );
     if (userCountElement_PC) {
-      userCountElement_PC.textContent = `共 ${allUsers.length} 个用户`;
+      userCountElement_PC.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
     
     // 【问题45修复】更新移动端用户数量显示
@@ -10721,21 +10724,22 @@ async function loadWatermarkControlConfig() {
       "watermark-user-count-mobile"
     );
     if (userCountElement_Mobile) {
-      userCountElement_Mobile.textContent = `共 ${allUsers.length} 个用户`;
+      userCountElement_Mobile.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
 
-    // ========== 步骤8: 生成用户权限列表 ==========
+    // ========== 步骤8: 生成用户权限列表（PC端）==========
     // 【修复问题38】只显示已自定义的用户（在usersConfig中的用户）
-    if (listContainer) {
+    // 使用正确的变量名 listContainer_PC
+    if (listContainer_PC) {
       // 清空加载提示
-      listContainer.innerHTML = "";
+      listContainer_PC.innerHTML = "";
 
       // 获取已自定义的用户列表（即在usersConfig中的用户）
       const customizedUsers = Object.keys(usersConfig);
 
       if (customizedUsers.length === 0) {
         // 如果没有自定义用户，显示空状态提示
-        listContainer.innerHTML =
+        listContainer_PC.innerHTML =
           '<p class="text-slate-400 text-center py-10">暂无已自定义的用户，点击右侧"添加"按钮添加</p>';
       } else {
         // 为每个已自定义的用户创建一个权限控制项
@@ -10783,7 +10787,7 @@ async function loadWatermarkControlConfig() {
           `;
 
           // 将用户项添加到列表容器中
-          listContainer.appendChild(userItem);
+          listContainer_PC.appendChild(userItem);
         });
       }
     }
@@ -11758,13 +11762,16 @@ async function loadMobileWatermarkControlConfig() {
       }
     }
 
-    // ========== 步骤7: 更新用户数量显示 ==========
+    // ========== 步骤7: 更新用户数量显示（显示自定义用户数量）==========
+    // 获取已自定义的用户数量（而非系统所有用户数量）
+    const customizedUsersCount = Object.keys(usersConfig).length;
+    
     // 更新查看面板的用户数量
     const userCountElement = document.getElementById(
       "mobile-watermark-user-count"
     );
     if (userCountElement) {
-      userCountElement.textContent = `共 ${allUsers.length} 个用户`;
+      userCountElement.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
 
     // 更新配置面板的用户数量
@@ -11772,93 +11779,115 @@ async function loadMobileWatermarkControlConfig() {
       "mobile-watermark-user-count-ctrl"
     );
     if (userCountElementCtrl) {
-      userCountElementCtrl.textContent = `共 ${allUsers.length} 个用户`;
+      userCountElementCtrl.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
 
     // ========== 步骤8: 生成用户权限列表（移动端样式）==========
-    // 为查看面板生成列表（显示所有用户）
-    if (listContainer && allUsers.length > 0) {
+    // 【修改】与PC端保持一致：只显示已自定义的用户（在usersConfig中的用户）
+    // 为查看面板生成列表（仅显示自定义用户）
+    if (listContainer) {
+      // 清空当前内容
       listContainer.innerHTML = "";
 
-      allUsers.forEach((username) => {
-        const userValue =
-          username in usersConfig ? usersConfig[username] : defaultValue;
+      // 获取已自定义的用户列表（即在usersConfig中的用户）
+      // 说明：只有在配置文件中明确设置过的用户才会显示在列表中
+      const customizedUsers = Object.keys(usersConfig);
 
-        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
-        // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
-        const safeUsername = escapeHtml(username);
+      // 判断是否有自定义用户
+      if (customizedUsers.length === 0) {
+        // 如果没有自定义用户，显示空状态提示
+        listContainer.innerHTML =
+          '<p class="text-slate-400 text-center py-10 text-xs">暂无已自定义的用户，点击右侧"添加"按钮添加</p>';
+      } else {
+        // 为每个已自定义的用户创建一个权限控制项
+        customizedUsers.forEach((username) => {
+          // 获取该用户的配置值（一定在usersConfig中）
+          const userValue = usersConfig[username];
 
-        const userItem = document.createElement("div");
-        userItem.className =
-          "bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between";
+          // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+          // 转义后的用户名可以安全地插入到HTML中，避免特殊字符（如'<>"等）导致的安全问题
+          const safeUsername = escapeHtml(username);
 
-        // 移动端使用更紧凑的布局
-        userItem.innerHTML = `
-          <div class="flex-1">
-            <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
-            <p class="text-xs text-slate-500 mt-0.5">
-              ${username in usersConfig ? "已自定义" : "使用默认值"}
-            </p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-3">
-            <input 
-              type="checkbox" 
-              id="mobile-watermark-user-${safeUsername}" 
-              class="sr-only peer mobile-watermark-user-checkbox" 
-              data-username="${safeUsername}"
-              ${userValue ? "checked" : ""}
-            >
-            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        `;
+          // 创建用户权限控制项的HTML元素
+          const userItem = document.createElement("div");
+          userItem.className =
+            "bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between";
 
-        listContainer.appendChild(userItem);
-      });
-    } else if (listContainer && allUsers.length === 0) {
-      listContainer.innerHTML =
-        '<p class="text-slate-400 text-center py-10 text-xs">暂无用户</p>';
+          // 移动端使用更紧凑的布局
+          // 包含：用户名（带"已自定义"标签）+ 开关按钮
+          userItem.innerHTML = `
+            <div class="flex-1">
+              <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
+              <p class="text-xs text-slate-500 mt-0.5">已自定义</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer ml-3">
+              <input 
+                type="checkbox" 
+                id="mobile-watermark-user-${safeUsername}" 
+                class="sr-only peer mobile-watermark-user-checkbox" 
+                data-username="${safeUsername}"
+                ${userValue ? "checked" : ""}
+              >
+              <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          `;
+
+          // 将用户项添加到列表容器中
+          listContainer.appendChild(userItem);
+        });
+      }
     }
 
-    // 为配置面板生成列表（显示所有用户）
-    if (listContainerCtrl && allUsers.length > 0) {
+    // 为配置面板生成列表（仅显示自定义用户，与查看面板逻辑一致）
+    if (listContainerCtrl) {
+      // 清空当前内容
       listContainerCtrl.innerHTML = "";
 
-      allUsers.forEach((username) => {
-        const userValue =
-          username in usersConfig ? usersConfig[username] : defaultValue;
+      // 获取已自定义的用户列表（即在usersConfig中的用户）
+      const customizedUsers = Object.keys(usersConfig);
 
-        // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
-        const safeUsername = escapeHtml(username);
+      // 判断是否有自定义用户
+      if (customizedUsers.length === 0) {
+        // 如果没有自定义用户，显示空状态提示
+        listContainerCtrl.innerHTML =
+          '<p class="text-slate-400 text-center py-10 text-xs">暂无已自定义的用户，点击右侧"添加"按钮添加</p>';
+      } else {
+        // 为每个已自定义的用户创建一个权限控制项
+        customizedUsers.forEach((username) => {
+          // 获取该用户的配置值（一定在usersConfig中）
+          const userValue = usersConfig[username];
 
-        const userItem = document.createElement("div");
-        userItem.className =
-          "bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between";
+          // [安全修复] 使用escapeHtml()函数转义用户名，防止XSS攻击
+          const safeUsername = escapeHtml(username);
 
-        // 移动端使用更紧凑的布局
-        userItem.innerHTML = `
-          <div class="flex-1">
-            <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
-            <p class="text-xs text-slate-500 mt-0.5">
-              ${username in usersConfig ? "已自定义" : "使用默认值"}
-            </p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-3">
-            <input 
-              type="checkbox" 
-              id="mobile-watermark-user-ctrl-${safeUsername}" 
-              class="sr-only peer mobile-watermark-user-checkbox" 
-              data-username="${safeUsername}"
-              ${userValue ? "checked" : ""}
-            >
-            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        `;
+          // 创建用户权限控制项的HTML元素
+          const userItem = document.createElement("div");
+          userItem.className =
+            "bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between";
 
-        listContainerCtrl.appendChild(userItem);
-      });
-    } else if (listContainerCtrl && allUsers.length === 0) {
-      listContainerCtrl.innerHTML =
-        '<p class="text-slate-400 text-center py-10 text-xs">暂无用户</p>';
+          // 移动端使用更紧凑的布局
+          // 包含：用户名（带"已自定义"标签）+ 开关按钮
+          userItem.innerHTML = `
+            <div class="flex-1">
+              <span class="text-xs font-medium text-slate-700">${safeUsername}</span>
+              <p class="text-xs text-slate-500 mt-0.5">已自定义</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer ml-3">
+              <input 
+                type="checkbox" 
+                id="mobile-watermark-user-ctrl-${safeUsername}" 
+                class="sr-only peer mobile-watermark-user-checkbox" 
+                data-username="${safeUsername}"
+                ${userValue ? "checked" : ""}
+              >
+              <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          `;
+
+          // 将用户项添加到列表容器中
+          listContainerCtrl.appendChild(userItem);
+        });
+      }
     }
 
     // ========== 步骤9: 记录成功日志 ==========
