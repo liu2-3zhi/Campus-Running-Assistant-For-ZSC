@@ -6207,9 +6207,31 @@ function renderPaymentOrdersTable() {
             ${createdAt}
           </div>
           <!-- 查看详情按钮 -->
-          <button onclick='showOrderDetailModal_form_botton(${JSON.stringify(
-            order
-          )})' 
+          <!--
+            【关键修复点】data-order属性的处理（移动端订单查看按钮）：
+            
+            问题原因：
+            - 原代码使用 onclick='showOrderDetailModal_form_botton(${JSON.stringify(order)})'
+            - JSON.stringify()生成的JSON字符串包含双引号，与HTML属性的引号冲突
+            - 特殊字符（如换行、引号）会破坏HTML解析，导致onclick事件失效
+            - 浏览器控制台可能显示语法错误或点击无响应
+            
+            修复方法：
+            - 使用 data-order 自定义属性存储订单对象的JSON字符串
+            - JSON.stringify()已经提供了正确的JSON编码
+            - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
+            - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
+            - 在onclick中使用内联函数：通过this.getAttribute('data-order')获取JSON字符串
+            - 使用JSON.parse()解析后传递给目标函数
+            
+            优势：
+            - 数据与事件处理逻辑分离，更清晰
+            - 避免JSON字符串直接嵌入JavaScript代码导致的解析问题
+            - 遵循Web标准的data-*属性最佳实践
+          -->
+          <button 
+            data-order='${JSON.stringify(order).replace(/'/g, "&apos;")}'
+            onclick="(function(btn) { const orderData = JSON.parse(btn.getAttribute('data-order')); showOrderDetailModal_form_botton(orderData); })(this)"
             class="px-3 py-1.5 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition-colors flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
