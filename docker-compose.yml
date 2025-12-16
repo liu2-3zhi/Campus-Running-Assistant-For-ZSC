@@ -30,6 +30,7 @@ services:
       - ./system_accounts:/app/system_accounts
       - ./payment_orders:/app/payment_orders
       - ./payment_methods.json:/app/payment_methods.json
+      - ./auto_attendance_config.json:/app/auto_attendance_config.json
 
     environment:
       - PYTHONUNBUFFERED=1
