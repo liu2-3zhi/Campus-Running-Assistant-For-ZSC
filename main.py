@@ -21906,64 +21906,268 @@ def start_web_server(args_param):
     @app.route("/auth/get_user_school_accounts", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_get_user_school_accounts():
-        """获取指定认证用户的所有 school_account（基于get_initial_data权限过滤）"""
-        # 从Flask的g对象中获取当前登录的用户名
-        auth_username = g.user
+        """
+        获取指定认证用户的所有 school_account（基于get_initial_data权限过滤）
+        
+        功能说明：
+        - 该接口用于获取认证用户（auth user）关联的学校账号（school accounts）
+        - 返回的账号列表会根据当前登录用户的权限进行过滤
+        - 使用get_initial_data()的权限逻辑确保用户只能看到授权范围内的账号
+        
+        权限模型：
+        - 需要 'manage_users' 权限才能调用此接口
+        - 普通用户：只能看到自己的学校账号
+        - 管理员/有auto_fill_password权限：可以看到所有学校账号
+        
+        安全机制：
+        - 双重保护：manage_users权限检查 + get_initial_data权限过滤
+        - 输入验证：对username参数进行安全检查
+        - 会话验证：确保请求来自有效的登录会话
+        
+        请求参数：
+        - username (可选): 目标认证用户名，默认为当前登录用户
+        
+        返回格式：
+        {
+            "success": true,
+            "username": "目标用户名",
+            "accounts": {
+                "school_account_1": {"password": "xxx", "ua": "xxx", ...},
+                "school_account_2": {"password": "yyy", "ua": "yyy", ...}
+            }
+        }
+        """
+        try:
+            # ========== 步骤1：获取当前登录用户信息 ==========
+            # 从Flask的g对象中获取当前登录的用户名
+            # g.user 是在 @login_required 装饰器中设置的全局请求上下文变量
+            auth_username = g.user
+            
+            # 记录API调用日志，用于审计和调试
+            # 包含调用者信息，便于追踪安全问题
+            logging.info(
+                f"[API调用] auth_get_user_school_accounts - "
+                f"调用者: {auth_username}"
+            )
 
-        # 细粒度权限检查：需要 'manage_users' 权限
-        # manage_users 权限允许查看和管理用户的学校账号信息
-        # 这是敏感信息，包含用户的学校账户凭证
-        if not auth_system.check_permission(auth_username, "manage_users"):
+            # ========== 步骤2：权限检查（第一层安全保护）==========
+            # 细粒度权限检查：需要 'manage_users' 权限
+            # manage_users 权限允许查看和管理用户的学校账号信息
+            # 这是敏感信息，包含用户的学校账户凭证（用户名和密码）
+            # 只有管理员或被授予此权限的用户才能调用此接口
+            if not auth_system.check_permission(auth_username, "manage_users"):
+                logging.warning(
+                    f"[权限拒绝] 用户 {auth_username} 尝试访问学校账号接口但缺少manage_users权限"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要用户管理权限（manage_users）"
+                }), 403
+
+            # ========== 步骤3：获取并验证目标用户名 ==========
+            # 从URL查询参数获取目标用户名，如果未指定则默认为当前登录用户
+            # 这允许管理员查询其他用户的账号信息
+            target_username = request.args.get("username", auth_username)
+            
+            # [安全加固] 验证target_username参数，防止注入攻击和路径遍历
+            # 检查1：确保username不为空且为字符串类型
+            if not target_username or not isinstance(target_username, str):
+                logging.warning(
+                    f"[参数验证失败] 无效的username参数: {target_username}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "无效的用户名参数"
+                }), 400
+            
+            # 检查2：验证username长度，防止过长输入导致的DoS攻击
+            # 使用全局常量 MAX_USERNAME_LENGTH（定义在文件开头，值为200）
+            if len(target_username) > MAX_USERNAME_LENGTH:
+                logging.warning(
+                    f"[参数验证失败] username参数过长: {len(target_username)} > {MAX_USERNAME_LENGTH}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": f"用户名长度不能超过{MAX_USERNAME_LENGTH}个字符"
+                }), 400
+            
+            # 检查3：验证username格式，只允许字母、数字、下划线、连字符、点和@符号
+            # 使用全局正则表达式 USERNAME_PATTERN（定义在文件开头）
+            # 这可以防止路径遍历攻击（如 ../../../etc/passwd）和特殊字符注入
+            if USERNAME_PATTERN and not USERNAME_PATTERN.match(target_username):
+                logging.warning(
+                    f"[参数验证失败] username包含非法字符: {target_username}"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号"
+                }), 400
+            
+            # 记录目标用户信息，便于审计
+            logging.debug(
+                f"[参数验证通过] 目标用户: {target_username}, "
+                f"请求者: {auth_username}"
+            )
+
+            # ========== 步骤4：获取API实例 ==========
+            # 从请求头获取会话ID（Session ID）
+            # 会话ID用于标识用户的登录会话，每个会话对应一个api_instance
+            session_id = request.headers.get("X-Session-ID", "")
+            
+            # 验证会话ID是否存在于活跃会话列表中
+            # web_sessions 是全局字典，存储所有活跃的用户会话
+            if session_id and session_id in web_sessions:
+                api_instance = web_sessions[session_id]
+                logging.debug(f"[会话验证] 找到有效会话: {session_id[:8]}...")
+            else:
+                # 会话无效的情况：
+                # 1. 会话ID为空（客户端未发送）
+                # 2. 会话已过期或被清理
+                # 3. 会话ID被伪造
+                logging.warning(
+                    f"[会话验证失败] 无效的会话ID: {session_id[:8] if session_id else 'empty'}..."
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "会话无效或已过期，请重新登录"
+                }), 401
+
+            # ========== 步骤5：获取允许查看的学校账号列表（第二层安全保护）==========
+            # 调用 get_initial_data() 获取当前用户权限下可见的学校账号列表
+            # 该方法会根据用户权限返回不同的账号列表：
+            # - 游客：返回空列表 []
+            # - 普通用户：返回自己的学校账号列表（从school_accounts配置中读取）
+            # - 管理员或有 auto_fill_password 权限的用户：返回所有学校账号（遍历user_dir目录）
+            #
+            # 这个权限过滤是第二层安全保护，即使用户通过了manage_users权限检查，
+            # 也只能看到get_initial_data()允许的账号
+            try:
+                initial_data = api_instance.get_initial_data()
+                allowed_users = initial_data.get("users", [])
+                logging.debug(
+                    f"[权限过滤] 用户 {auth_username} 可见的学校账号数量: {len(allowed_users)}"
+                )
+            except Exception as e:
+                # 处理get_initial_data()可能抛出的异常
+                # 例如：文件系统错误、配置文件损坏等
+                logging.error(
+                    f"[权限过滤失败] 调用get_initial_data()时发生异常: {str(e)}",
+                    exc_info=True
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "获取权限信息失败，请稍后重试"
+                }), 500
+
+            # ========== 步骤6：加载目标用户的学校账号信息 ==========
+            # 调用 _load_user_school_accounts() 加载指定认证用户的所有学校账号
+            # 参数说明：
+            # - target_username: 认证系统的用户名（auth username），如 "user123"
+            # 返回值说明：
+            # - accounts: 字典格式，key为学校账号名称，value为账号详细信息
+            #   例如：{"20210001": {"password": "123456", "ua": "Mozilla/5.0...", ...}}
+            #
+            # 注意：这里加载的是原始的、未经过滤的账号数据
+            # 后续会根据allowed_users进行过滤
+            try:
+                accounts = api_instance._load_user_school_accounts(target_username)
+                logging.debug(
+                    f"[加载账号] 为用户 {target_username} 加载了 {len(accounts)} 个学校账号"
+                )
+            except Exception as e:
+                # 处理_load_user_school_accounts()可能抛出的异常
+                # 例如：用户不存在、配置文件损坏、文件系统错误等
+                logging.error(
+                    f"[加载账号失败] 为用户 {target_username} 加载学校账号时发生异常: {str(e)}",
+                    exc_info=True
+                )
+                return jsonify({
+                    "success": False,
+                    "message": f"加载用户 {target_username} 的账号信息失败"
+                }), 500
+
+            # ========== 步骤7：过滤账号（应用权限限制）==========
+            # [性能优化] 将 allowed_users 列表转换为集合（set）
+            # 原因：列表的 'in' 操作是 O(n)，集合的 'in' 操作是 O(1)
+            # 当账号数量很多时（例如几百个），这个优化能显著提升性能
+            allowed_users_set = set(allowed_users)
+            
+            # 过滤账号：只保留在 allowed_users_set 中的账号
+            # 过滤逻辑说明：
+            # - allowed_users_set: get_initial_data() 返回的学校账号名称集合
+            # - accounts: 从 _load_user_school_accounts(target_username) 加载的账号字典
+            # - 过滤结果：只包含同时满足以下条件的账号：
+            #   1. 账号属于target_username（来自accounts）
+            #   2. 账号在当前用户的可见范围内（在allowed_users_set中）
+            #
+            # 权限场景示例：
+            # 场景1：普通用户查看自己的账号
+            #   - target_username = "user123"（当前用户）
+            #   - allowed_users_set = {"20210001", "20210002"}（user123的学校账号）
+            #   - accounts = {"20210001": {...}, "20210002": {...}}
+            #   - 结果：返回user123的所有学校账号
+            #
+            # 场景2：管理员查看其他用户的账号
+            #   - target_username = "user456"（其他用户）
+            #   - allowed_users_set = {"所有学校账号"}（管理员可见全部）
+            #   - accounts = {"20210003": {...}, "20210004": {...}}（user456的账号）
+            #   - 结果：返回user456的所有学校账号
+            #
+            # 场景3：普通用户试图查看其他用户的账号（安全防护）
+            #   - target_username = "user456"（其他用户）
+            #   - allowed_users_set = {"20210001", "20210002"}（只有自己的账号）
+            #   - accounts = {"20210003": {...}, "20210004": {...}}（user456的账号）
+            #   - 结果：返回空字典{}（没有交集，防止越权访问）
+            filtered_accounts = {
+                account_name: account_info
+                for account_name, account_info in accounts.items()
+                if account_name in allowed_users_set
+            }
+            
+            # 记录过滤结果，用于审计和调试
+            logging.info(
+                f"[过滤完成] 用户 {auth_username} 查询 {target_username} 的账号: "
+                f"原始数量={len(accounts)}, 过滤后数量={len(filtered_accounts)}"
+            )
+            
+            # [安全审计] 如果过滤后账号数量为0，记录警告日志
+            # 这可能表示：
+            # 1. target_username确实没有学校账号（正常）
+            # 2. 普通用户试图越权访问其他用户的账号（安全事件）
+            if len(filtered_accounts) == 0 and len(accounts) > 0:
+                logging.warning(
+                    f"[潜在越权] 用户 {auth_username} 查询 {target_username} 的账号被完全过滤: "
+                    f"原始账号数={len(accounts)}, 过滤后=0"
+                )
+
+            # ========== 步骤8：返回结果 ==========
+            # 返回过滤后的账号列表
+            # 注意：这里返回的是字典格式，与原接口保持一致，确保向后兼容
+            # 返回值说明：
+            # - success: 操作是否成功（布尔值）
+            # - username: 目标认证用户名（auth username），即查询的是谁的账号
+            # - accounts: 过滤后的学校账号字典
+            #   - key: 学校账号名称（school account name），如 "20210001"
+            #   - value: 账号详细信息（字典），包含password、ua等字段
+            return jsonify({
+                "success": True,
+                "username": target_username,
+                "accounts": filtered_accounts
+            })
+            
+        except Exception as e:
+            # ========== 异常处理（最外层保护）==========
+            # 捕获所有未预期的异常，防止敏感信息泄露
+            # 记录详细的错误信息到日志（包含堆栈跟踪），但向客户端返回通用错误消息
+            logging.error(
+                f"[接口异常] auth_get_user_school_accounts发生未预期的异常: {str(e)}",
+                exc_info=True
+            )
+            # 返回通用错误消息，避免向客户端暴露内部实现细节
             return jsonify({
                 "success": False,
-                "message": "权限不足，需要用户管理权限（manage_users）"
-            }), 403
-
-        # 获取目标用户名，如果未指定则默认为当前用户
-        target_username = request.args.get("username", auth_username)
-
-        # 获取api_instance用于调用内部方法
-        session_id = request.headers.get("X-Session-ID", "")
-        if session_id and session_id in web_sessions:
-            api_instance = web_sessions[session_id]
-        else:
-            # 如果没有有效的session，返回错误
-            return jsonify({"success": False, "message": "会话无效"}), 401
-
-        # 调用 get_initial_data() 获取当前用户权限下可见的学校账号列表
-        # 该方法会根据用户权限返回不同的账号列表：
-        # - 游客：返回空列表
-        # - 普通用户：返回自己的学校账号列表
-        # - 管理员或有 auto_fill_password 权限的用户：返回所有学校账号
-        initial_data = api_instance.get_initial_data()
-        allowed_users = initial_data.get("users", [])
-
-        # 加载目标用户的所有学校账号信息
-        # target_username 是认证系统的用户名（auth username）
-        # 返回的 accounts 是该认证用户绑定的所有学校账号
-        accounts = api_instance._load_user_school_accounts(target_username)
-
-        # 过滤账号：只保留在 allowed_users 列表中的账号
-        # allowed_users 是 get_initial_data() 返回的学校账号名称列表
-        # 这样可以确保返回的账号符合当前用户的权限范围：
-        # - 如果是普通用户查看自己的账号：allowed_users 包含该用户的学校账号
-        # - 如果是管理员：allowed_users 包含所有学校账号
-        # 键（key）是学校账号名称，值（value）是账号的详细信息
-        filtered_accounts = {
-            account_name: account_info
-            for account_name, account_info in accounts.items()
-            if account_name in allowed_users
-        }
-
-        # 返回过滤后的账号列表
-        # 注意：这里返回的是字典格式，与原接口保持一致
-        # 返回值说明：
-        # - success: 操作是否成功
-        # - username: 目标认证用户名（auth username）
-        # - accounts: 过滤后的学校账号字典，key为学校账号名，value为账号详情
-        return jsonify(
-            {"success": True, "username": target_username, "accounts": filtered_accounts}
-        )
+                "message": "服务器内部错误，请稍后重试"
+            }), 500
 
     @app.route("/auth/admin/get_all_users_school_accounts", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
