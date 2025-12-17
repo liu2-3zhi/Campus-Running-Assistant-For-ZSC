@@ -20498,7 +20498,8 @@ async function showUserSchoolAccounts(username) {
     
     // 检查4：验证username格式（只允许字母、数字、下划线、连字符、点和@）
     // 与后端USERNAME_PATTERN正则保持一致
-    const USERNAME_PATTERN = /^[a-zA-Z0-9_\-\.@]+$/;
+    // 注意：连字符在字符类中需要转义或放在开头/结尾
+    const USERNAME_PATTERN = /^[a-zA-Z0-9_\-.@]+$/;
     if (!USERNAME_PATTERN.test(username)) {
       console.error(
         "[学校账户管理] 参数错误：username包含非法字符",
@@ -20740,9 +20741,11 @@ async function showUserSchoolAccounts(username) {
                     - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
                     
                     安全性说明：
-                    - JSON.stringify() 已经对特殊字符进行了转义
+                    - JSON.stringify() 已经对特殊字符进行了转义（包括<>等）
                     - replace(/'/g, "&apos;") 只转义单引号，避免破坏HTML属性
                     - JSON.parse() 在onclick中安全解析数据
+                    - 这种方法比escapeHtml()更适合JSON数据，因为它保持了JSON的可解析性
+                    - 如果使用escapeHtml()，会将"转义为&quot;，导致JSON.parse()失败
                   -->
                   <button 
                     class="btn btn-sm btn-primary !py-1 !px-3 !text-xs" 
@@ -20869,15 +20872,11 @@ async function showUserSchoolAccounts(username) {
     
     showModalAlert(errorMessage, "错误");
   }
-}
-
-    // ==========显示模态框 ==========
-    showModal("manage-school-accounts-modal");
-  } catch (error) {
-    // ========== 错误处理 ==========
-    console.error("showUserSchoolAccounts error:", error);
-    showModalAlert("加载失败: " + error.message, "错误");
-  }
+  
+  // ========== 最后：显示模态框 ==========
+  // 在所有数据加载和渲染完成后，显示包含账户列表的模态框
+  // 这样用户看到的是完整渲染好的内容，不会看到加载过程
+  showModal("manage-school-accounts-modal");
 }
 
 function closeManageSchoolAccountsModal() {
