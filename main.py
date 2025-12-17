@@ -12,6 +12,15 @@ MAX_MEMORY_SESSIONS = 100
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 
+# [安全配置] 输入验证常量
+MAX_USERNAME_LENGTH = 200  # 用户名最大长度
+MAX_PASSWORD_LENGTH = 1000  # 密码最大长度
+MAX_TAG_LENGTH = 200  # 标签最大长度
+MAX_UA_LENGTH = 2000  # User-Agent最大长度
+MAX_PARAMS_COUNT = 100  # 参数字典最大键值对数量
+# 用户名格式验证：只允许字母、数字、下划线、连字符、点和@符号
+USERNAME_PATTERN = re.compile(r'^[a-zA-Z0-9_\-\.@]+$') if 're' in dir() else None
+
 
 def _buffer_log(level, message):
     """
@@ -11901,10 +11910,47 @@ class Api:
 
     def multi_add_account(self, username, password, tag=None, params=None):
         """模式二：手动或选择性添加账号"""
+        # [安全修复] 验证username输入，防止路径遍历和注入攻击
+        if not username or not isinstance(username, str):
+            logging.error("[安全] multi_add_account: username必须是非空字符串")
+            return {"success": False, "error": "无效的用户名"}
+        
+        # [安全修复] 限制username长度，防止DoS攻击
+        if len(username) > MAX_USERNAME_LENGTH:
+            logging.error(f"[安全] multi_add_account: username过长(>{MAX_USERNAME_LENGTH})")
+            return {"success": False, "error": "用户名过长"}
+        
+        # [安全修复] 验证username格式，只允许安全字符
+        # 使用模块级编译的正则表达式，提高性能
+        if USERNAME_PATTERN and not USERNAME_PATTERN.match(username):
+            logging.error(f"[安全] multi_add_account: username包含非法字符: {username}")
+            return {"success": False, "error": "用户名包含非法字符"}
+        
+        # [安全修复] 验证password类型和长度
+        if password is not None:
+            if not isinstance(password, str):
+                logging.error("[安全] multi_add_account: password必须是字符串")
+                return {"success": False, "error": "无效的密码"}
+            if len(password) > MAX_PASSWORD_LENGTH:
+                logging.error(f"[安全] multi_add_account: password过长(>{MAX_PASSWORD_LENGTH})")
+                return {"success": False, "error": "密码过长"}
+        
+        # [安全修复] 验证tag类型和长度
+        if tag is not None:
+            if not isinstance(tag, str):
+                tag = str(tag)
+            if len(tag) > MAX_TAG_LENGTH:
+                logging.error(f"[安全] multi_add_account: tag过长(>{MAX_TAG_LENGTH})")
+                return {"success": False, "error": "标签过长"}
+        
         if username in self.accounts:
             acc = self.accounts[username]
 
             if params and isinstance(params, dict):
+                # [安全修复] 限制params中的键值对数量，防止DoS攻击
+                if len(params) > MAX_PARAMS_COUNT:
+                    logging.error(f"[安全] multi_add_account: params包含过多键值对(>{MAX_PARAMS_COUNT})")
+                    return {"success": False, "error": "参数过多"}
                 for k, v in params.items():
                     if k in acc.params:
                         acc.params[k] = v

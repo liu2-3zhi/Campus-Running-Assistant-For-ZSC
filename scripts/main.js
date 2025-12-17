@@ -1,3 +1,17 @@
+// ============================================================
+// [安全配置] 输入验证常量
+// 这些常量与Python后端保持一致，确保前后端验证规则统一
+// ============================================================
+const SECURITY_CONSTRAINTS = {
+  MAX_USERNAME_LENGTH: 200,  // 用户名最大长度
+  MAX_PASSWORD_LENGTH: 1000,  // 密码最大长度
+  MAX_TAG_LENGTH: 200,  // 标签最大长度
+  MAX_UA_LENGTH: 2000,  // User-Agent最大长度
+  MIN_PASSWORD_LENGTH: 6,  // 密码最小长度
+  // 用户名格式验证：只允许字母、数字、下划线、连字符、点和@符号
+  USERNAME_PATTERN: /^[a-zA-Z0-9_\-\.@]+$/
+};
+
 function getUUIDFromURL() {
   const urlPath = window.location.pathname;
 
@@ -2169,10 +2183,10 @@ async function loadPaymentMethodsConfig(
         logMessage_Info("[支付配置] 成功获取启用状态响应：", configData);
       } else {
         // console.warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：', configData.message || '未知错误');
-        logMessage_Warning(
-          "[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：" +
-            (configData.message || "未知错误")
-        );
+        // logMessage_Warning(
+        //   "[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：" +
+        //     (configData.message || "未知错误")
+        // );
         if (!DOMContentLoaded_Event) {
           showModalAlert(
             "获取启用状态失败，默认显示所有支付方式为启用：" +
@@ -3238,7 +3252,7 @@ document.addEventListener("DOMContentLoaded", function () {
     saveBtn.addEventListener("click", function () {
       // 输出日志，记录用户操作
       // console.log('[支付设置] 用户点击了保存配置按钮');
-      logMessage_Info("[支付设置] 用户点击了保存配置按钮");
+      // logMessage_Info("[支付设置] 用户点击了保存配置按钮");
 
       // 调用保存函数，提交配置到服务器
       // 这是一个async函数，会异步执行，不会阻塞页面
@@ -3247,14 +3261,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // 输出成功日志
     // console.log('[支付设置] 保存按钮事件监听器已绑定');
-    logMessage_Info("[支付设置] 保存按钮事件监听器已绑定");
+    // logMessage_Info("[支付设置] 保存按钮事件监听器已绑定");
   } else {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
     // console.warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
-    logMessage_Warning(
-      "[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）"
-    );
+    // logMessage_Warning(
+      // "[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）"
+    // );
   }
 
   // === 页面加载时自动加载支付方式配置 ===
@@ -3692,7 +3706,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 当用户点击按钮时，会自动调用queryOrder函数
     queryBtn.addEventListener("click", function () {
       // 输出日志，记录用户操作
-      logMessage_Info("[订单查询] 用户点击了查询订单按钮");
+      // logMessage_Info("[订单查询] 用户点击了查询订单按钮");
 
       // 调用查询函数，执行订单查询逻辑
       // 这是一个async函数，会异步执行，不会阻塞页面
@@ -3700,11 +3714,11 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // 输出成功日志
-    logMessage_Info("[订单查询] 查询按钮事件监听器已绑定");
+    // logMessage_Info("[订单查询] 查询按钮事件监听器已绑定");
   } else {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
-    logMessage_Warning("[订单查询] 警告：未找到查询订单按钮（ID: query-order-btn）");
+    // logMessage_Warning("[订单查询] 警告：未找到查询订单按钮（ID: query-order-btn）");
   }
 
   // === 可选：绑定输入框的Enter键事件 ===
@@ -28623,19 +28637,42 @@ async function multi_loadAllFromConfig() {
             const accountDataMap = schoolAccountsResult.accounts;
             let updatedCount = 0;
             result.accounts.forEach((account) => {
-              if (account.username && accountDataMap[account.username]) {
+              // [安全修复] 验证account.username是否为有效字符串，防止原型链污染
+              if (
+                account &&
+                account.username &&
+                typeof account.username === "string" &&
+                account.username.length > 0 &&
+                accountDataMap.hasOwnProperty(account.username)
+              ) {
                 const accountData = accountDataMap[account.username];
+                // [安全修复] 只处理字符串密码，防止XSS和对象注入攻击
                 if (typeof accountData === "string") {
-                  account.password = accountData;
-                  updatedCount++;
+                  // [安全修复] 使用统一的安全常量验证密码长度
+                  if (accountData.length > 0 && accountData.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
+                    account.password = accountData;
+                    updatedCount++;
+                  }
                 } else if (
                   typeof accountData === "object" &&
                   accountData !== null
                 ) {
-                  if (accountData.password) {
+                  // [安全修复] 严格验证对象属性，防止注入攻击
+                  if (
+                    accountData.hasOwnProperty("password") &&
+                    typeof accountData.password === "string" &&
+                    accountData.password.length > 0 &&
+                    accountData.password.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH
+                  ) {
                     account.password = accountData.password;
                   }
-                  if (accountData.ua) {
+                  // [安全修复] 使用统一的安全常量验证User-Agent长度
+                  if (
+                    accountData.hasOwnProperty("ua") &&
+                    typeof accountData.ua === "string" &&
+                    accountData.ua.length > 0 &&
+                    accountData.ua.length <= SECURITY_CONSTRAINTS.MAX_UA_LENGTH
+                  ) {
                     account.device_ua = accountData.ua;
                   }
                   updatedCount++;
@@ -29026,14 +29063,41 @@ async function submitMultiAddUser() {
   const usernameVal = inputUsername.value.trim();
   const passwordVal = inputPassword.value;
   const tagVal = inputTag.value.trim();
+  
+  // [安全修复] 基本验证：用户名和密码不能为空
   if (!usernameVal || !passwordVal) {
     showModalAlert("账号和密码均不能为空");
     return;
   }
-  if (passwordVal.length < 6) {
-    showModalAlert("密码长度至少为6个字符", "错误");
+  
+  // [安全修复] 使用统一的安全常量验证用户名长度
+  if (usernameVal.length > SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH) {
+    showModalAlert(`用户名过长（最多${SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH}个字符）`, "错误");
     return;
   }
+  
+  // [安全修复] 使用统一的正则表达式验证用户名格式
+  if (!SECURITY_CONSTRAINTS.USERNAME_PATTERN.test(usernameVal)) {
+    showModalAlert("用户名只能包含字母、数字、下划线、连字符、点和@符号", "错误");
+    return;
+  }
+  
+  // [安全修复] 使用统一的安全常量验证密码长度范围
+  if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
+    showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`, "错误");
+    return;
+  }
+  if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
+    showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
+    return;
+  }
+  
+  // [安全修复] 使用统一的安全常量验证标签长度
+  if (tagVal.length > SECURITY_CONSTRAINTS.MAX_TAG_LENGTH) {
+    showModalAlert(`标签过长（最多${SECURITY_CONSTRAINTS.MAX_TAG_LENGTH}个字符）`, "错误");
+    return;
+  }
+  
   setButtonLoading("multi-add-user-confirm", true, "添加中...");
   try {
     const result = await callPythonAPI(
@@ -43461,7 +43525,7 @@ function showMobileResetPassword(username) {
         <div class="text-center text-sm text-slate-600">用户: <span id="mobile-reset-password-username" class="font-semibold"></span></div>
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-2">新密码（至少6位）</label>
-          <input type="password" id="mobile-new-password" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新密码">
+          <input type="password" id="mobile-new-password_2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新密码">
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
           <button onclick="closeMobileResetPassword()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
@@ -43497,9 +43561,10 @@ function closeMobileResetPassword() {
 
 async function submitMobileResetPassword() {
   const username = window.currentMobileResetPasswordUsername;
-  const newPassword = document.getElementById("mobile-new-password").value;
+  const newPassword = document.getElementById("mobile-new-password_2").value;
 
   if (!newPassword || newPassword.length < 6) {
+    logMessage_Warning("密码长度不足, 当前输入密码：" + newPassword + "， 长度：" + newPassword.length );
     showModalAlert("密码长度至少为6个字符", "错误");
     return;
   }

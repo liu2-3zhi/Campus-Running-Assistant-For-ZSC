@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  python-running-helper:
+    image: python_runing-python-running-helper
+    container_name: python-running-helper
+    ports:
+      # HTTP端口映射
+      - "80:80"
+      # HTTPS端口映射
+      - "443:443"
+      # - "5000:5000"
+    volumes:
+      # SSL证书目录挂载（将宿主机的证书挂载到容器内）
+      - ./ssl:/app/ssl:ro
+      # 配置文件挂载
+      - ./config.ini:/app/config.ini
+      # 数据持久化目录
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+      - ./messages.json:/app/messages.json
+      - ./permissions.json:/app/permissions.json
+      - ./reminders.json:/app/reminders.json
+      - ./background_tasks:/app/background_tasks
+      - ./school_accounts:/app/school_accounts
+      - ./sessions:/app/sessions
+      - ./tokens:/app/tokens
+      - ./system_accounts:/app/system_accounts
+      - ./payment_orders:/app/payment_orders
+      - ./payment_methods.json:/app/payment_methods.json
+      - ./auto_attendance_config.json:/app/auto_attendance_config.json
+
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    
+    # 限制Docker容器日志大小
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"  # 单个日志文件最大10MB
+        max-file: "3"    # 最多保留3个日志文件
+        
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
