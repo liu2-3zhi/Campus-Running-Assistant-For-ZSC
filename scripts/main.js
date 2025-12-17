@@ -8987,8 +8987,9 @@ document.addEventListener("DOMContentLoaded", function () {
  * - register_available_runs_hint: 提示文本模板（包含 {available_runs} 占位符）
  *
  * 默认免费次数：
- * - 目前硬编码为10次（可后续改为从另一个API获取）
- * - 这个数值应该与系统实际给新用户分配的次数一致
+ * - 从 /api/config/registration_display 的 available_runs 字段获取
+ * - 该值从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+ * - 这个数值与系统实际给新用户分配的次数一致
  */
 async function initRegisterAvailableRunsHint() {
   try {
@@ -9041,12 +9042,13 @@ async function initRegisterAvailableRunsHint() {
     if (config.show_available_runs_on_register === "true") {
       // 配置为显示，继续处理
 
-      // ========== 步骤3：获取默认的available_runs值 ==========
+      // ========== 步骤3：获取available_runs值 ==========
 
-      // TODO: 后续可改为从另一个API获取实际的默认值
-      // 例如：const runsResponse = await fetch('/api/config/default_available_runs');
-      // 目前硬编码为10次
-      const defaultRuns = 10;
+      // 从API响应中获取 available_runs 的值
+      // 这个值是从服务器的 config.ini 配置文件中读取的
+      // [Payment_Settings] -> default_available_runs
+      // 如果配置中没有该字段，使用默认值10次作为后备
+      const defaultRuns = config.available_runs || 10;
 
       // ========== 步骤4：替换占位符，生成实际的提示文本 ==========
 

@@ -67,6 +67,7 @@ argparse = _try_import_builtin("argparse")
 gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
+shutil = _try_import_builtin("shutil")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -1521,10 +1522,112 @@ PERMISSIONS_FILE = "permissions.json"
 # [任务47新增] 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
-AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config.json"
+AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config_new.json"
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
+
+
+# ========================================================================
+# [通用工具函数] 文件备份和重置功能
+# 用于在遇到文件读取异常（特别是JSON解析错误）时自动备份损坏的文件并重置
+# ========================================================================
+
+def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="json"):
+    """
+    备份损坏的文件并用默认内容重置
+    
+    功能说明：
+        当文件读取异常（特别是JSON解析错误）时，此函数会：
+        1. 创建 ./logs/backup/ 目录（如果不存在）
+        2. 将损坏的文件复制到备份目录，文件名格式为：原文件名_时间戳.backup
+        3. 根据文件类型，用默认内容覆写原文件
+        4. 记录日志说明已备份和重置
+    
+    参数:
+        file_path (str): 要备份的文件路径（绝对路径或相对路径）
+        default_content: 重置后的默认内容
+            - 对于JSON文件：可以是dict或list，函数会自动转换为JSON字符串
+            - 对于ini文件：应该是字符串，可以是空字符串或默认配置文本
+            - 对于text文件：应该是字符串
+        file_type (str): 文件类型，可选值："json", "ini", "text"，默认为"json"
+    
+    返回值:
+        bool: 如果成功备份并重置返回True，否则返回False
+    
+    异常处理：
+        所有异常都会被捕获并记录到日志中，确保不会影响主业务逻辑
+    
+    示例:
+        # JSON文件，默认内容为空字典
+        _backup_and_reset_corrupted_file("config.json", {}, "json")
+        
+        # JSON文件，默认内容为空列表
+        _backup_and_reset_corrupted_file("messages.json", [], "json")
+        
+        # INI文件，默认内容为空字符串
+        _backup_and_reset_corrupted_file("config.ini", "", "ini")
+    """
+    try:
+        # 首先检查源文件是否存在
+        # 如果文件不存在，则无需备份，直接返回False
+        if not os.path.exists(file_path):
+            logging.warning(f"[文件备份] 文件不存在，无需备份: {file_path}")
+            return False
+        
+        # 创建备份目录：./logs/backup/
+        # exist_ok=True 表示如果目录已存在不会报错
+        backup_dir = os.path.join("logs", "backup")
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        # 生成备份文件名
+        # 格式：原文件名（不含路径）_时间戳.backup
+        # 例如：payment_methods_20251217_123045.json.backup
+        base_name = os.path.basename(file_path)  # 获取文件名（不含路径）
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")  # 生成时间戳
+        backup_filename = f"{base_name}_{timestamp}.backup"  # 组装备份文件名
+        backup_path = os.path.join(backup_dir, backup_filename)  # 完整的备份文件路径
+        
+        # 使用 shutil.copy2() 复制文件到备份目录
+        # copy2() 会同时复制文件内容和元数据（如时间戳、权限等）
+        shutil.copy2(file_path, backup_path)
+        logging.info(f"[文件备份] 已备份损坏文件: {file_path} -> {backup_path}")
+        
+        # 根据文件类型，准备要写入的内容
+        if file_type == "json":
+            # 对于JSON文件，需要将Python对象（dict或list）转换为JSON字符串
+            # 如果default_content已经是字符串，直接使用；否则转换为JSON格式
+            if isinstance(default_content, str):
+                # 已经是字符串，直接使用
+                content_to_write = default_content
+            else:
+                # 是dict或list，需要转换为JSON字符串
+                # indent=2: 使用2个空格缩进，使输出更易读
+                # ensure_ascii=False: 允许中文字符不被转义
+                content_to_write = json.dumps(default_content, indent=2, ensure_ascii=False)
+        else:
+            # 对于ini或text文件，default_content应该已经是字符串
+            # 如果不是字符串，强制转换为字符串
+            content_to_write = str(default_content) if not isinstance(default_content, str) else default_content
+        
+        # 用默认内容覆写原文件
+        # 使用 'w' 模式会清空原文件内容并写入新内容
+        # encoding='utf-8' 确保中文内容正确写入
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content_to_write)
+        
+        # 记录重置操作的日志
+        logging.info(f"[文件备份] 已用默认内容重置文件: {file_path}")
+        
+        # 操作成功，返回True
+        return True
+        
+    except Exception as e:
+        # 捕获所有可能的异常（文件操作失败、权限错误、磁盘空间不足等）
+        # 记录错误日志，但不抛出异常，确保不影响主业务逻辑
+        logging.error(f"[文件备份] 备份和重置文件失败 ({file_path}): {e}", exc_info=True)
+        # 操作失败，返回False
+        return False
 
 
 # ========================================================================
@@ -1585,6 +1688,15 @@ def _load_auto_attendance_config():
     except json.JSONDecodeError as e:
         # JSON解析失败，可能是文件损坏或格式错误
         logging.error(f"[自动签到配置] 配置文件解析失败: {e}")
+        
+        # 调用通用备份函数，备份损坏的文件并重置为默认内容
+        # 默认内容为空的配置结构：{"enabled_accounts": {}}
+        _backup_and_reset_corrupted_file(
+            AUTO_ATTENDANCE_CONFIG_FILE,
+            {"enabled_accounts": {}},
+            "json"
+        )
+        
         # 返回空配置，避免程序崩溃
         return {"enabled_accounts": {}}
     except Exception as e:
@@ -3555,8 +3667,24 @@ def _read_payment_methods_config():
             # 文件不存在，返回默认配置
             # 这是正常情况（首次运行或文件被删除）
             return _get_default_payment_methods_config()
+    # 特别捕获JSON解析错误：当配置文件为空或格式错误时
+    # 这通常是由于文件损坏或手动编辑错误导致的，属于预期的错误情况
+    except json.JSONDecodeError as e:
+        # 使用WARNING级别记录日志，因为这不是严重错误，系统可以使用默认配置继续运行
+        logging.warning(f"[支付方式配置] 配置文件JSON格式错误，使用默认配置: {str(e)}")
+        
+        # 调用通用备份函数，备份损坏的文件并重置为默认配置
+        # 使用_get_default_payment_methods_config()获取默认配置内容
+        _backup_and_reset_corrupted_file(
+            config_file,
+            _get_default_payment_methods_config(),
+            "json"
+        )
+        
+        # 返回默认配置，确保系统可以正常运行
+        return _get_default_payment_methods_config()
     except Exception as e:
-        # 捕获所有可能的异常（文件读取错误、JSON解析错误等）
+        # 捕获其他所有可能的异常（文件读取错误、权限错误等）
         # 记录错误日志，便于排查问题
         logging.error(f"[支付方式配置] 读取配置文件失败: {str(e)}")
         # 即使发生错误，也返回默认配置，确保系统可以正常运行
@@ -5062,9 +5190,17 @@ class AuthSystem:
             logging.error(
                 f"_load_permissions: 读取权限文件异常 ({type(e).__name__}): {e}"
             )
-            logging.warning("检测到权限文件损坏或格式错误，正在直接清空并重建...")
+            logging.warning("检测到权限文件损坏或格式错误，正在备份并重建...")
 
-            # 强制清空重建，不备份，不重命名
+            # 调用通用备份函数，备份损坏的权限文件
+            # 使用default_perms（默认权限配置）作为重置内容
+            _backup_and_reset_corrupted_file(
+                PERMISSIONS_FILE,
+                default_perms,
+                "json"
+            )
+
+            # 强制清空重建，确保权限文件结构完整
             _create_permissions_json(force=True)
 
             # 重建后尝试重新读取新文件，确保内存数据与文件一致
@@ -6563,7 +6699,12 @@ class TokenManager:
 
             return True, "valid"
 
+        # 捕获JSON解析错误：当token文件为空或格式错误时，直接返回无效标记，不记录ERROR日志
+        # 这是预期的错误情况（文件损坏或被手动修改），不需要记录错误级别日志
+        except json.JSONDecodeError:
+            return False, "invalid_token_file"
         except Exception as e:
+            # 只有在遇到其他意外错误时才记录ERROR日志
             logging.error(f"验证令牌时出错: {e}")
             return False, "error"
 
@@ -7703,71 +7844,214 @@ class Api:
 
     def _load_user_school_accounts(self, auth_username):
         """
-        加载指定认证用户的所有 school_account 账户密码和UA。
+        加载指定认证用户可见的所有 school_account 账户密码和UA。
+        
+        【安全改进】本方法已修复权限绕过漏洞：
+            - 管理员：只返回 get_initial_data() 返回的可见用户列表中的账号
+            - 普通用户：只返回自己的账号
+        
+        这确保了即使管理员有权限查看多个用户的账号，也只能看到系统允许其查看的账号。
+        防止了通过直接读取所有用户JSON文件而绕过权限控制的安全风险。
 
         参数:
-            auth_username: 认证用户名
+            auth_username: 认证用户名（system_accounts中的用户名）
 
         返回:
-            字典，格式为 {school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
+            字典，格式为 {school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0, "completed_count": 0}, ...}
             或旧格式 {school_username: password, ...}（向后兼容）
         """
+        # 安全检查：拒绝未认证用户和游客访问
         if not auth_username or auth_username == "guest":
             return {}
 
-        file_path = self._get_user_accounts_file(auth_username)
-        if not os.path.exists(file_path):
-            return {}
+        # ========== 第一步：判断用户角色（管理员 vs 普通用户）==========
+        # 获取用户的权限组信息（admin、super_admin、user等）
+        auth_group = getattr(self, "auth_group", None)
+        
+        # 检查用户是否属于管理员权限组
+        # 【修复】只有 admin 和 super_admin 组才拥有查看多个用户账号的权限
+        # 移除了之前的 auto_fill_password 权限检查，因为该权限不等同于管理员权限
+        # auto_fill_password 只是允许用户自动填充密码，不应该授予查看其他用户账号的能力
+        is_admin = auth_group in ["admin", "super_admin"]
 
-        try:
-            # 步骤1：从 JSON 文件读取账号密码和 UA 信息
-            # JSON 文件只包含账号基本信息，不包含统计数据
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+        # ========== 第二步：根据用户角色采取不同的加载策略 ==========
+        if is_admin:
+            # ========== 管理员分支：需要根据可见列表进行过滤 ==========
+            # 【关键安全修复】管理员不能直接看到所有账号，必须受到 get_initial_data 的约束
+            try:
+                # 调用 get_initial_data() 获取当前管理员可以查看的用户列表
+                # 这个列表已经经过了权限过滤，确保管理员只能看到被授权查看的用户
+                initial_data = self.get_initial_data()
+                
+                # 将可见用户列表转换为集合（set），以便快速查找
+                # 【修复】添加字符串验证，确保列表中的所有项都是字符串类型
+                # 这样可以防止 API 返回包含非字符串值的列表导致安全检查失败
+                if isinstance(initial_data, list):
+                    # 只保留字符串类型的用户名，忽略非字符串项
+                    # 使用生成器表达式过滤，确保 visible_users 集合中只有有效的用户名字符串
+                    visible_users = set(item for item in initial_data if isinstance(item, str))
+                    
+                    # 检测并记录非字符串项，用于调试和安全审计
+                    # 如果 get_initial_data() 返回了非预期的数据类型，这可能是 API 实现的问题
+                    non_string_items = [item for item in initial_data if not isinstance(item, str)]
+                    if non_string_items:
+                        # 记录警告日志，提醒开发者检查 API 返回值
+                        logging.warning(
+                            f"[安全警告] get_initial_data() 返回的列表中包含非字符串项: {non_string_items}，已忽略"
+                        )
+                else:
+                    # 如果 initial_data 不是列表类型，使用空集合作为默认值
+                    visible_users = set()
+                
+                # 日志记录：记录管理员可见的用户数量，用于审计和调试
+                logging.debug(
+                    f"[安全] 管理员 {auth_username} 的可见用户列表包含 {len(visible_users)} 个用户"
+                )
 
-            # 步骤2：处理并标准化每个账号的数据格式
-            # 同时从对应的 INI 文件读取统计数据（overdue_count 和 completed_count）
-            for school_username, account_info in data.items():
-                # 如果是新格式（字典类型），处理并加载统计数据
-                if isinstance(account_info, dict):
-                    # 从 INI 文件加载该学校账号的统计数据
-                    # _load_school_account_stats_from_ini() 返回：
-                    # {"overdue_count": int, "completed_count": int}
-                    stats = self._load_school_account_stats_from_ini(
-                        school_username)
+                # 定义用户账号文件存储目录
+                # 所有用户的账号信息都存储在 school_accounts/user_accounts/ 目录下
+                user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+                
+                # 初始化一个空字典，用于存储所有符合条件的账号信息
+                all_accounts = {}
 
-                    # 将从 INI 读取的统计数据合并到账号信息中
-                    # 这样返回的数据结构就包含了完整信息：密码、UA、欠费次数、完成次数
-                    account_info["overdue_count"] = stats["overdue_count"]
-                    account_info["completed_count"] = stats["completed_count"]
+                # 检查用户账号目录是否存在
+                if os.path.exists(user_accounts_dir):
+                    # 遍历目录中的所有文件
+                    for filename in os.listdir(user_accounts_dir):
+                        # 只处理 .json 文件（每个文件代表一个系统用户的账号列表）
+                        if filename.endswith(".json"):
+                            # 构造完整的文件路径
+                            file_path = os.path.join(user_accounts_dir, filename)
+                            
+                            try:
+                                # 从 JSON 文件读取该用户的所有学校账号信息
+                                with open(file_path, "r", encoding="utf-8") as f:
+                                    user_data = json.load(f)
 
-                # 如果是旧格式（字符串密码），转换为新格式并加载统计数据
-                elif isinstance(account_info, str):
-                    # 从 INI 文件加载统计数据
-                    stats = self._load_school_account_stats_from_ini(
-                        school_username)
+                                # 遍历该文件中的每个学校账号
+                                # user_data 的格式：{school_username: account_info, ...}
+                                for school_username, account_info in user_data.items():
+                                    # 【关键安全检查】只添加在可见列表中的账号
+                                    # 这是防止权限绕过的核心逻辑
+                                    if school_username in visible_users:
+                                        # 处理新格式（字典类型）的账号信息
+                                        if isinstance(account_info, dict):
+                                            # 从 INI 文件加载统计数据（欠费次数、完成次数）
+                                            stats = self._load_school_account_stats_from_ini(
+                                                school_username
+                                            )
+                                            
+                                            # 将统计数据合并到账号信息中
+                                            account_info["overdue_count"] = stats["overdue_count"]
+                                            account_info["completed_count"] = stats["completed_count"]
+                                            
+                                            # 将账号信息添加到结果字典中
+                                            all_accounts[school_username] = account_info
+                                        
+                                        # 处理旧格式（字符串密码）的账号信息
+                                        elif isinstance(account_info, str):
+                                            # 从 INI 文件加载统计数据
+                                            stats = self._load_school_account_stats_from_ini(
+                                                school_username
+                                            )
+                                            
+                                            # 转换为新格式并添加到结果字典
+                                            all_accounts[school_username] = {
+                                                "password": account_info,  # 字符串密码
+                                                "ua": None,                # UA 默认为 None
+                                                "overdue_count": stats["overdue_count"],
+                                                "completed_count": stats["completed_count"]
+                                            }
+                            except Exception as e:
+                                # 如果某个文件读取失败，记录警告日志但继续处理其他文件
+                                # 这确保一个文件的问题不会影响整个加载过程
+                                logging.warning(
+                                    f"[安全] 读取用户账号文件 {filename} 失败: {e}"
+                                )
+                                continue
 
-                    # 转换为新格式：将字符串密码转换为字典结构
-                    data[school_username] = {
-                        "password": account_info,    # 保留原密码
-                        "ua": None,                  # UA 默认为 None
-                        # 从 INI 读取
-                        "overdue_count": stats["overdue_count"],
-                        # 从 INI 读取
-                        "completed_count": stats["completed_count"]
-                    }
+                # 记录成功加载的日志，包含最终加载的账号数量
+                # 这个数量应该 <= 可见用户列表的数量（因为有些可见用户可能没有配置账号）
+                logging.info(
+                    f"[安全] 管理员 {auth_username} 成功加载了 {len(all_accounts)} 个可见的学校账号 "
+                    f"(从 {len(visible_users)} 个可见用户中筛选)"
+                )
+                
+                # 返回过滤后的账号字典
+                return all_accounts
 
-            # 记录加载成功的日志
-            logging.debug(
-                f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户 "
-                f"(从 JSON 加载密码和 UA，从 INI 加载统计数据)"
-            )
-            return data
-        except Exception as e:
-            logging.error(
-                f"加载用户 {auth_username} 的 school_accounts 失败: {e}", exc_info=True
-            )
-            return {}
+            except Exception as e:
+                # 如果管理员加载过程中发生任何异常，记录详细的错误日志
+                # exc_info=True 会包含完整的堆栈跟踪，便于调试
+                logging.error(
+                    f"[安全] 管理员 {auth_username} 加载可见账号失败: {e}",
+                    exc_info=True
+                )
+                # 发生异常时返回空字典，遵循"安全失败"（fail-safe）原则
+                return {}
+        else:
+            # ========== 普通用户分支：只加载自己的账号 ==========
+            # 【向后兼容】保持原有逻辑，普通用户只能看到自己的账号
+            
+            # 获取该用户的账号文件路径
+            file_path = self._get_user_accounts_file(auth_username)
+            
+            # 如果文件不存在，说明该用户还没有配置任何学校账号
+            if not os.path.exists(file_path):
+                return {}
+
+            try:
+                # 从 JSON 文件读取该用户的账号密码和 UA 信息
+                # JSON 文件只包含账号基本信息，不包含统计数据
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                # 处理并标准化每个账号的数据格式
+                # 同时从对应的 INI 文件读取统计数据（overdue_count 和 completed_count）
+                for school_username, account_info in data.items():
+                    # 如果是新格式（字典类型），处理并加载统计数据
+                    if isinstance(account_info, dict):
+                        # 从 INI 文件加载该学校账号的统计数据
+                        stats = self._load_school_account_stats_from_ini(
+                            school_username
+                        )
+
+                        # 将从 INI 读取的统计数据合并到账号信息中
+                        account_info["overdue_count"] = stats["overdue_count"]
+                        account_info["completed_count"] = stats["completed_count"]
+
+                    # 如果是旧格式（字符串密码），转换为新格式并加载统计数据
+                    elif isinstance(account_info, str):
+                        # 从 INI 文件加载统计数据
+                        stats = self._load_school_account_stats_from_ini(
+                            school_username
+                        )
+
+                        # 转换为新格式：将字符串密码转换为字典结构
+                        data[school_username] = {
+                            "password": account_info,    # 保留原密码
+                            "ua": None,                  # UA 默认为 None
+                            "overdue_count": stats["overdue_count"],
+                            "completed_count": stats["completed_count"]
+                        }
+
+                # 记录加载成功的日志
+                logging.debug(
+                    f"普通用户 {auth_username} 加载了 {len(data)} 个自己的学校账号 "
+                    f"(从 JSON 加载密码和 UA，从 INI 加载统计数据)"
+                )
+                
+                # 返回该用户的所有账号信息
+                return data
+            except Exception as e:
+                # 如果加载失败，记录错误日志
+                logging.error(
+                    f"加载用户 {auth_username} 的 school_accounts 失败: {e}",
+                    exc_info=True
+                )
+                # 发生异常时返回空字典
+                return {}
 
     def _save_user_school_accounts(self, auth_username, accounts_dict):
         """
@@ -8846,6 +9130,7 @@ class Api:
                         )
                     else:
                         logging.debug(f"普通用户 {auth_username} 还没有任何学校账户")
+                        return []
             else:
                 users = all_users
                 logging.debug(
@@ -19042,6 +19327,17 @@ def get_ssl_certificate_info(cert_path):
     """
     if not os.path.isabs(cert_path):
         cert_path = os.path.join(os.path.dirname(__file__), cert_path)
+    
+    # 在打开文件前检查文件是否存在
+    # 如果证书文件不存在，返回友好的错误信息而不记录ERROR日志
+    # 这是预期的情况（证书未上传或已被删除），不是系统错误
+    if not os.path.exists(cert_path):
+        return {
+            "error": "证书文件不存在",
+            "path": cert_path,
+            "message": "请先上传SSL证书"
+        }
+    
     cert_info = {}
 
     try:
@@ -19081,6 +19377,7 @@ def get_ssl_certificate_info(cert_path):
             "install_hint": "pip install cryptography",
         }
     except Exception as e:
+        # 只在真正的异常情况下（如证书格式错误、读取权限问题等）记录ERROR日志
         logging.error(f"获取证书信息时发生错误: {e}")
         cert_info = {"error": f"读取证书信息失败: {str(e)}"}
 
@@ -20913,6 +21210,7 @@ def start_web_server(args_param):
         """管理员：为用户设置自定义权限（差分化存储）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
+        session_id =g.session_id
 
         # 检查细粒度权限：权限管理权限
         # manage_permissions 权限允许为用户设置自定义权限
@@ -26487,6 +26785,7 @@ def start_web_server(args_param):
             ssl_dir = os.path.join(os.path.dirname(__file__), "ssl")
             os.makedirs(ssl_dir, exist_ok=True)
             import tempfile
+            import shutil
 
             with tempfile.NamedTemporaryFile(
                 mode="wb", delete=False, suffix=".pem"
@@ -26518,15 +26817,22 @@ def start_web_server(args_param):
                 final_key_path = os.path.join(ssl_dir, "privkey.key")
                 if os.path.exists(final_cert_path):
                     backup_cert_path = final_cert_path + ".backup"
-                    os.replace(final_cert_path, backup_cert_path)
+                    # 使用 shutil.move() 替代 os.replace()
+                    # shutil.move() 支持跨文件系统移动，可以避免"Invalid cross-device link"错误
+                    # 当源文件和目标文件在不同的文件系统（如 /tmp 和 /app）时，os.replace() 会失败
+                    shutil.move(final_cert_path, backup_cert_path)
                     logging.info(f"[SSL管理] 已备份旧证书: {backup_cert_path}")
 
                 if os.path.exists(final_key_path):
                     backup_key_path = final_key_path + ".backup"
-                    os.replace(final_key_path, backup_key_path)
+                    # 使用 shutil.move() 支持跨文件系统备份
+                    shutil.move(final_key_path, backup_key_path)
                     logging.info(f"[SSL管理] 已备份旧密钥: {backup_key_path}")
-                os.replace(temp_cert_path, final_cert_path)
-                os.replace(temp_key_path, final_key_path)
+                # 使用 shutil.move() 将临时文件移动到最终位置
+                # 这是关键修复：临时文件通常在 /tmp 目录，而最终位置在 /app/ssl
+                # 这两个目录可能在不同的文件系统上，必须使用 shutil.move() 而不是 os.replace()
+                shutil.move(temp_cert_path, final_cert_path)
+                shutil.move(temp_key_path, final_key_path)
                 os.chmod(final_cert_path, 0o644)
                 os.chmod(final_key_path, 0o600)
 
@@ -29873,8 +30179,21 @@ def start_web_server(args_param):
             try:
                 with open(messages_file, "r", encoding="utf-8") as f:
                     messages = json.load(f)
-            except (json.JSONDecodeError, OSError) as e:
-                logging.error(f"[留言板] 读取留言失败: {e}")
+            except json.JSONDecodeError as e:
+                # JSON解析失败，文件损坏
+                logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的留言文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    messages_file,
+                    [],
+                    "json"
+                )
+                
+                return jsonify({"success": False, "message": "留言文件损坏，已备份并重置"}), 500
+            except OSError as e:
+                # 文件读取失败（权限错误、磁盘错误等）
+                logging.error(f"[留言板] 读取留言失败（文件操作错误）: {e}")
                 return jsonify({"success": False, "message": "读取留言失败"}), 500
         message_to_delete = None
         for msg in messages:
@@ -29900,14 +30219,85 @@ def start_web_server(args_param):
             pass
         else:
             return jsonify({"success": False, "message": "无权删除此留言"}), 403
+        
+        # 在删除之前，保存要删除的留言的完整副本
+        # 稍后会将这个副本记录到删除日志中
+        message_to_delete_copy = message_to_delete.copy()
+        
+        # 从留言列表中移除要删除的留言
         messages = [msg for msg in messages if msg.get("id") != message_id]
         try:
+            # 将更新后的留言列表写入文件
             with open(messages_file, "w", encoding="utf-8") as f:
                 json.dump(messages, f, indent=2, ensure_ascii=False)
 
             logging.info(
                 f"[留言板] 删除留言 --> 操作用户: {auth_username}, 留言ID: {message_id}"
             )
+            
+            # ========================================================================
+            # [新增] 记录删除日志
+            # 将被删除的留言保存到 ./logs/deleted_messages.json
+            # 即使日志记录失败，也不影响删除操作的成功
+            # ========================================================================
+            try:
+                # 确保logs目录存在
+                # exist_ok=True 表示如果目录已存在不会报错
+                logs_dir = "logs"
+                os.makedirs(logs_dir, exist_ok=True)
+                
+                # 删除日志文件的路径
+                deleted_messages_log_file = os.path.join(logs_dir, "deleted_messages.json")
+                
+                # 准备要记录的删除记录
+                # 包含原留言的所有字段，加上删除相关的元数据
+                deletion_record = message_to_delete_copy.copy()  # 复制原留言的所有字段
+                
+                # 添加删除相关的元数据
+                deletion_record["deleted_at"] = datetime.datetime.now().isoformat()  # 删除时间（ISO 8601格式）
+                deletion_record["deleted_by"] = auth_username  # 执行删除操作的用户
+                
+                # 【修复】根据实际情况确定删除原因，提供准确的审计跟踪
+                # 如果是留言作者自己删除，标记为"作者自删"；否则标记为"管理员删除"
+                # 这样可以在审计日志中清晰地区分自我删除和管理员删除两种情况
+                if is_own_message:
+                    deletion_record["deletion_reason"] = "作者自删"
+                else:
+                    deletion_record["deletion_reason"] = "管理员删除"
+                
+                # 读取现有的删除日志（如果存在）
+                deleted_messages_log = []
+                if os.path.exists(deleted_messages_log_file):
+                    try:
+                        # 尝试读取现有的日志文件
+                        with open(deleted_messages_log_file, "r", encoding="utf-8") as f:
+                            deleted_messages_log = json.load(f)
+                            # 确保读取的是一个列表
+                            if not isinstance(deleted_messages_log, list):
+                                deleted_messages_log = []
+                    except (json.JSONDecodeError, OSError) as read_e:
+                        # 如果读取失败（文件损坏或格式错误），记录警告并使用空列表
+                        logging.warning(f"[留言板] 删除日志文件读取失败，将创建新文件: {read_e}")
+                        deleted_messages_log = []
+                
+                # 将新的删除记录追加到日志列表中
+                deleted_messages_log.append(deletion_record)
+                
+                # 将更新后的删除日志写入文件
+                with open(deleted_messages_log_file, "w", encoding="utf-8") as f:
+                    json.dump(deleted_messages_log, f, indent=2, ensure_ascii=False)
+                
+                # 记录成功写入删除日志的信息
+                logging.info(f"[留言板] 已记录删除日志 --> 留言ID: {message_id}, 删除者: {auth_username}")
+                
+            except Exception as log_e:
+                # 删除日志记录失败，只记录警告，不影响删除操作本身
+                # 这确保即使日志系统出现问题，用户的删除操作仍然可以成功
+                logging.warning(f"[留言板] 删除日志记录失败（不影响删除操作）: {log_e}")
+            # ========================================================================
+            # [删除日志记录结束]
+            # ========================================================================
+            
             return jsonify({"success": True, "message": "留言已删除"})
         except OSError as e:
             logging.error(f"[留言板] 保存留言失败: {e}")
@@ -30355,15 +30745,14 @@ def start_web_server(args_param):
 
         except json.JSONDecodeError as e:
             logging.error(f"[定时提醒] JSON解析失败: {e}")
-            logging.warning("[定时提醒] 检测到提醒文件损坏，正在直接清空并重建...")
+            logging.warning("[定时提醒] 检测到提醒文件损坏，正在备份并重建...")
 
-            # 强制清空重建
-            try:
-                with open(reminders_file, "w", encoding="utf-8") as f:
-                    json.dump({"reminders": []}, f,
-                              indent=2, ensure_ascii=False)
-            except Exception as write_e:
-                logging.error(f"[定时提醒] 重建文件失败: {write_e}")
+            # 调用通用备份函数，备份损坏的提醒文件并重置为空列表
+            _backup_and_reset_corrupted_file(
+                reminders_file,
+                {"reminders": []},
+                "json"
+            )
 
             # 返回空列表，保证前端正常加载
             return jsonify({"success": True, "reminders": []})
@@ -39229,7 +39618,8 @@ def start_web_server(args_param):
         返回数据（JSON格式）：
         {
             "show_available_runs_on_register": "true",  // 是否在注册页面显示提示
-            "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑"  // 提示文本模板
+            "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑",  // 提示文本模板
+            "available_runs": 10  // 默认免费次数（整数类型）
         }
 
         配置说明：
@@ -39240,6 +39630,11 @@ def start_web_server(args_param):
         - register_available_runs_hint: 提示文本模板，包含占位符 {available_runs}
           * 占位符会被前端JavaScript替换为实际的初始免费次数
           * 示例："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
+
+        - available_runs: 整数类型，表示新用户注册后的默认免费次数
+          * 从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+          * 前端可以直接使用该值，无需硬编码
+          * 示例：10 表示新用户注册后可获得10次免费跑步机会
 
         使用场景：
         - 页面加载时：前端调用此接口获取配置，决定是否显示注册提示
@@ -39288,12 +39683,23 @@ def start_web_server(args_param):
                 fallback='注册即可得 {available_runs} 次校园跑'  # 默认提示文本
             )
 
+            # 读取 available_runs 配置项（默认免费次数）
+            # 从 Payment_Settings 节读取 default_available_runs 配置
+            # 使用 getint() 方法确保返回整数类型
+            available_runs = config.getint(
+                'Payment_Settings',                      # 配置节名
+                'default_available_runs',                # 配置项名
+                fallback=10                              # 默认值：10次
+            )
+
             # ========== 步骤3：返回配置数据 ==========
 
             # 将配置数据封装为JSON格式返回给前端
+            # 【新增】添加 available_runs 字段，前端可以直接使用该值，无需硬编码
             return jsonify({
                 'show_available_runs_on_register': show_available_runs_on_register,
-                'register_available_runs_hint': register_available_runs_hint
+                'register_available_runs_hint': register_available_runs_hint,
+                'available_runs': available_runs  # 新增：默认免费次数
             })
 
         except Exception as e:
