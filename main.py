@@ -20947,7 +20947,7 @@ def start_web_server(args_param):
                     "set_user_permissions_batch",
                     f"批量更新用户 {target_username} 的差分权限: 添加{len(added_permissions)}个, 移除{len(removed_permissions)}个",
                     ip_address,
-                    session_id,
+                    g.session_id,
                 )
 
                 return jsonify({"success": True, "message": "权限已更新"})
@@ -20983,7 +20983,7 @@ def start_web_server(args_param):
                         "set_user_permissions_batch",
                         f"批量更新用户 {target_username} 的差分权限: 清空用户的差分权限",
                         ip_address,
-                        session_id,
+                        g.session_id,
                     )
 
                     return jsonify({"success": True, "message": "权限已更新"})
@@ -21007,7 +21007,7 @@ def start_web_server(args_param):
                 "set_user_permission",
                 f'为用户 {target_username} {"授予" if grant else "移除"} 权限: {permission}',
                 ip_address,
-                session_id,
+                g.session_id,
             )
 
             return jsonify(result)
@@ -21904,7 +21904,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "logs": logs})
 
     @app.route("/auth/get_user_school_accounts", methods=["GET"])
-    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
+    @login_required  # 只需要登录即可，权限过滤在数据层通过get_initial_data实现
     def auth_get_user_school_accounts():
         """
         获取指定认证用户的所有 school_account（基于get_initial_data权限过滤）
@@ -21915,12 +21915,12 @@ def start_web_server(args_param):
         - 使用get_initial_data()的权限逻辑确保用户只能看到授权范围内的账号
         
         权限模型：
-        - 需要 'manage_users' 权限才能调用此接口
-        - 普通用户：只能看到自己的学校账号
-        - 管理员/有auto_fill_password权限：可以看到所有学校账号
+        - 仅需要登录即可调用此接口，权限过滤在数据层面实现
+        - 普通用户：只能查看自己的学校账号（请求其他用户名时返回空结果）
+        - 管理员/有auto_fill_password权限：可以查看所有学校账号
         
         安全机制：
-        - 双重保护：manage_users权限检查 + get_initial_data权限过滤
+        - get_initial_data权限过滤：根据用户权限自动过滤账号数据
         - 输入验证：对username参数进行安全检查
         - 会话验证：确保请求来自有效的登录会话
         
@@ -21950,21 +21950,7 @@ def start_web_server(args_param):
                 f"调用者: {auth_username}"
             )
 
-            # ========== 步骤2：权限检查（第一层安全保护）==========
-            # 细粒度权限检查：需要 'manage_users' 权限
-            # manage_users 权限允许查看和管理用户的学校账号信息
-            # 这是敏感信息，包含用户的学校账户凭证（用户名和密码）
-            # 只有管理员或被授予此权限的用户才能调用此接口
-            if not auth_system.check_permission(auth_username, "manage_users"):
-                logging.warning(
-                    f"[权限拒绝] 用户 {auth_username} 尝试访问学校账号接口但缺少manage_users权限"
-                )
-                return jsonify({
-                    "success": False,
-                    "message": "权限不足，需要用户管理权限（manage_users）"
-                }), 403
-
-            # ========== 步骤3：获取并验证目标用户名 ==========
+            # ========== 步骤2：获取并验证目标用户名 ==========
             # 从URL查询参数获取目标用户名，如果未指定则默认为当前登录用户
             # 这允许管理员查询其他用户的账号信息
             target_username = request.args.get("username", auth_username)
@@ -22009,7 +21995,7 @@ def start_web_server(args_param):
                 f"请求者: {auth_username}"
             )
 
-            # ========== 步骤4：获取API实例 ==========
+            # ========== 步骤3：获取API实例 ==========
             # 从请求头获取会话ID（Session ID）
             # 会话ID用于标识用户的登录会话，每个会话对应一个api_instance
             session_id = request.headers.get("X-Session-ID", "")
@@ -22032,15 +22018,14 @@ def start_web_server(args_param):
                     "message": "会话无效或已过期，请重新登录"
                 }), 401
 
-            # ========== 步骤5：获取允许查看的学校账号列表（第二层安全保护）==========
+            # ========== 步骤4：获取允许查看的学校账号列表（权限过滤保护）==========
             # 调用 get_initial_data() 获取当前用户权限下可见的学校账号列表
             # 该方法会根据用户权限返回不同的账号列表：
             # - 游客：返回空列表 []
             # - 普通用户：返回自己的学校账号列表（从school_accounts配置中读取）
             # - 管理员或有 auto_fill_password 权限的用户：返回所有学校账号（遍历user_dir目录）
             #
-            # 这个权限过滤是第二层安全保护，即使用户通过了manage_users权限检查，
-            # 也只能看到get_initial_data()允许的账号
+            # 这个权限过滤确保用户只能看到get_initial_data()允许的账号
             try:
                 initial_data = api_instance.get_initial_data()
                 allowed_users = initial_data.get("users", [])
@@ -22059,7 +22044,7 @@ def start_web_server(args_param):
                     "message": "获取权限信息失败，请稍后重试"
                 }), 500
 
-            # ========== 步骤6：加载目标用户的学校账号信息 ==========
+            # ========== 步骤5：加载目标用户的学校账号信息 ==========
             # 调用 _load_user_school_accounts() 加载指定认证用户的所有学校账号
             # 参数说明：
             # - target_username: 认证系统的用户名（auth username），如 "user123"
@@ -22086,7 +22071,7 @@ def start_web_server(args_param):
                     "message": f"加载用户 {target_username} 的账号信息失败"
                 }), 500
 
-            # ========== 步骤7：过滤账号（应用权限限制）==========
+            # ========== 步骤6：过滤账号（应用权限限制）==========
             # [性能优化] 将 allowed_users 列表转换为集合（set）
             # 原因：列表的 'in' 操作是 O(n)，集合的 'in' 操作是 O(1)
             # 当账号数量很多时（例如几百个），这个优化能显著提升性能
@@ -22140,7 +22125,7 @@ def start_web_server(args_param):
                     f"原始账号数={len(accounts)}, 过滤后=0"
                 )
 
-            # ========== 步骤8：返回结果 ==========
+            # ========== 步骤7：返回结果 ==========
             # 返回过滤后的账号列表
             # 注意：这里返回的是字典格式，与原接口保持一致，确保向后兼容
             # 返回值说明：

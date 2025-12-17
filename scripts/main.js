@@ -16372,7 +16372,7 @@ const permissionTranslations = {
   view_audit_logs: "查看审计日志",
   view_all_sessions: "查看系统中的所有会话",
   force_logout_users: "强制用户登出",
-  manage_system: "修改系统配置文件config.ini",
+  manage_system: "修改系统配置",
   create_permission_groups: "创建权限组",
   delete_permission_groups: "删除权限组",
   modify_permission_groups: "修改权限组",
