@@ -20439,135 +20439,437 @@ async function updateAvailableRuns(username, newRuns) {
   }
 }
 
+/**
+ * 显示指定用户的学校账户列表（PC端管理界面）
+ * 
+ * 功能说明：
+ * - 从服务器获取指定认证用户（auth user）的所有学校账号（school accounts）
+ * - 在模态框中显示账号列表，包含用户名、密码、User-Agent等信息
+ * - 提供编辑、删除、查看详情等操作按钮
+ * 
+ * 安全特性：
+ * - 输入验证：验证username参数的合法性
+ * - XSS防护：使用escapeHtml()转义所有用户输入
+ * - 超时控制：设置10秒请求超时，防止无限等待
+ * - 错误处理：完整的try-catch处理网络和解析错误
+ * 
+ * @param {string} username - 目标认证用户名（auth username）
+ * @returns {Promise<void>}
+ * 
+ * 调用场景：
+ * - 管理员点击"管理学校账户"按钮
+ * - 需要查看或管理某个用户的学校账号信息
+ * 
+ * 权限要求：
+ * - 需要manage_users权限（后端验证）
+ * - 会话必须有效（sessionUUID存在且有效）
+ */
 async function showUserSchoolAccounts(username) {
-  // ========== 功能说明 ==========
+  // ========== 步骤1：输入验证（前端防护第一层）==========
+  // 验证username参数是否合法，防止无效输入和潜在的安全问题
   try {
+    // 检查1：确保username不为空
+    if (!username) {
+      console.error("[学校账户管理] 参数错误：username为空");
+      showModalAlert("用户名不能为空", "参数错误");
+      return;
+    }
+    
+    // 检查2：确保username是字符串类型
+    if (typeof username !== "string") {
+      console.error("[学校账户管理] 参数错误：username不是字符串类型", typeof username);
+      showModalAlert("用户名格式错误", "参数错误");
+      return;
+    }
+    
+    // 检查3：验证username长度（防止超长输入）
+    // 与后端MAX_USERNAME_LENGTH保持一致（200字符）
+    const MAX_USERNAME_LENGTH = 200;
+    if (username.length > MAX_USERNAME_LENGTH) {
+      console.error(
+        `[学校账户管理] 参数错误：username过长 (${username.length} > ${MAX_USERNAME_LENGTH})`
+      );
+      showModalAlert(
+        `用户名长度不能超过${MAX_USERNAME_LENGTH}个字符`,
+        "参数错误"
+      );
+      return;
+    }
+    
+    // 检查4：验证username格式（只允许字母、数字、下划线、连字符、点和@）
+    // 与后端USERNAME_PATTERN正则保持一致
+    const USERNAME_PATTERN = /^[a-zA-Z0-9_\-\.@]+$/;
+    if (!USERNAME_PATTERN.test(username)) {
+      console.error(
+        "[学校账户管理] 参数错误：username包含非法字符",
+        username
+      );
+      showModalAlert(
+        "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号",
+        "参数错误"
+      );
+      return;
+    }
+    
+    // 检查5：验证会话ID是否存在
+    if (!sessionUUID) {
+      console.error("[学校账户管理] 会话错误：sessionUUID不存在");
+      showModalAlert("会话已过期，请重新登录", "会话错误");
+      return;
+    }
+    
+    // 输入验证通过，记录调试日志
+    console.log(
+      `[学校账户管理] 开始加载用户账户：${username}（长度：${username.length}）`
+    );
+    
+  } catch (validationError) {
+    // 输入验证本身发生异常（理论上不应该发生，但做好防护）
+    console.error("[学校账户管理] 输入验证异常：", validationError);
+    showModalAlert("输入验证失败，请稍后重试", "错误");
+    return;
+  }
+  
+  // ========== 步骤2：发起API请求（添加超时控制）==========
+  try {
+    // 创建AbortController用于实现请求超时
+    // 如果10秒内没有响应，自动取消请求
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      console.warn("[学校账户管理] 请求超时，已自动取消");
+    }, 10000); // 10秒超时
+    
+    // 发送GET请求到后端API
+    // 使用encodeURIComponent编码username，防止特殊字符导致URL解析错误
     const response = await fetch(
       `/auth/get_user_school_accounts?username=${encodeURIComponent(
         username
       )}`,
       {
+        method: "GET", // 明确指定请求方法
         headers: {
-          "X-Session-ID": sessionUUID,
+          "X-Session-ID": sessionUUID, // 会话ID，用于后端身份验证
         },
+        signal: controller.signal, // 绑定AbortController，支持超时取消
       }
     );
-
-    const result = await response.json();
-
-    if (!result.success) {
-      showModalAlert(result.message || "加载失败", "错误");
+    
+    // 请求成功，清除超时定时器
+    clearTimeout(timeoutId);
+    
+    // 检查HTTP状态码
+    // 注意：fetch只在网络错误时抛出异常，HTTP 4xx/5xx不会抛异常
+    if (!response.ok) {
+      // HTTP状态码不是2xx
+      console.error(
+        `[学校账户管理] HTTP请求失败：状态码 ${response.status}`,
+        response.statusText
+      );
+      
+      // 根据状态码给出更友好的错误提示
+      let errorMessage = "加载失败";
+      if (response.status === 401) {
+        errorMessage = "会话已过期，请重新登录";
+      } else if (response.status === 403) {
+        errorMessage = "权限不足，需要管理员权限";
+      } else if (response.status === 404) {
+        errorMessage = "用户不存在";
+      } else if (response.status >= 500) {
+        errorMessage = "服务器错误，请稍后重试";
+      }
+      
+      showModalAlert(errorMessage, "错误");
       return;
     }
 
-    const accounts = result.accounts || {};
-    const accountCount = Object.keys(accounts).length;
+    // ========== 步骤3：解析JSON响应 ==========
+    // 使用try-catch捕获JSON解析错误
+    let result;
+    try {
+      result = await response.json();
+    } catch (jsonError) {
+      // JSON解析失败，说明响应内容不是有效的JSON
+      console.error("[学校账户管理] JSON解析失败：", jsonError);
+      console.error("响应内容：", await response.text());
+      showModalAlert("服务器返回了无效的数据格式", "解析错误");
+      return;
+    }
 
-    // ========== 用户名和统计信息 ==========
-    $("school-accounts-username").textContent = username;
-    $("school-accounts-count").textContent = accountCount;
+    // ========== 步骤4：验证响应数据格式 ==========
+    // 检查响应是否包含success字段
+    if (typeof result.success === "undefined") {
+      console.error("[学校账户管理] 响应数据格式错误：缺少success字段", result);
+      showModalAlert("服务器返回了格式错误的数据", "数据错误");
+      return;
+    }
+    
+    // 检查操作是否成功
+    if (!result.success) {
+      // 服务器返回失败状态
+      const errorMessage = result.message || "加载失败";
+      console.warn(`[学校账户管理] 操作失败：${errorMessage}`);
+      showModalAlert(errorMessage, "错误");
+      return;
+    }
+
+    // ========== 步骤5：提取账户数据并验证 ==========
+    // 从响应中获取accounts字段，如果不存在则使用空对象
+    const accounts = result.accounts || {};
+    
+    // 验证accounts是否为对象类型
+    if (typeof accounts !== "object" || Array.isArray(accounts)) {
+      console.error("[学校账户管理] 数据格式错误：accounts不是对象", typeof accounts);
+      showModalAlert("账户数据格式错误", "数据错误");
+      return;
+    }
+    
+    // 计算账户数量
+    const accountCount = Object.keys(accounts).length;
+    
+    // 记录成功日志
+    console.log(
+      `[学校账户管理] 成功加载 ${accountCount} 个学校账户（用户：${username}）`
+    );
+
+    // ========== 步骤6：更新UI显示用户名和统计信息 ==========
+    // 使用textContent而不是innerHTML，防止XSS攻击
+    // textContent会自动转义HTML标签，安全性更高
+    const usernameElement = $("school-accounts-username");
+    const countElement = $("school-accounts-count");
+    
+    // 验证DOM元素是否存在
+    if (!usernameElement || !countElement) {
+      console.error("[学校账户管理] DOM元素不存在");
+      showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
+      return;
+    }
+    
+    // 安全地设置用户名和账户数量
+    usernameElement.textContent = username;
+    countElement.textContent = accountCount;
+    
+    // ========== 步骤7：渲染账户列表 ==========
     const listContainer = $("school-accounts-list");
+    
+    // 验证列表容器是否存在
+    if (!listContainer) {
+      console.error("[学校账户管理] 列表容器元素不存在");
+      showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
+      return;
+    }
+    
+    // 情况1：没有账户，显示空状态提示
     if (accountCount === 0) {
+      // 使用innerHTML是安全的，因为这是静态HTML，不包含用户输入
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10">该用户暂无学校账户</p>';
-    } else {
-      let html = "";
-      for (const [schoolUsername, accountData] of Object.entries(accounts)) {
-        let password = "";
-        let ua = "";
-        if (typeof accountData === "string") {
-          password = accountData;
-        } else if (typeof accountData === "object" && accountData !== null) {
-          password = accountData.password || "";
-          ua = accountData.ua || "";
-        }
-
-        // ==========为安全传递数据，使用JSON编码 ==========
-        const accountDataJson = JSON.stringify({
-          authUsername: username,
-          schoolUsername: schoolUsername,
-          password: password,
-          ua: ua,
-        });
-
-        // ==========生成账户卡片HTML ==========
-        html += `
-              <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
-                <!-- 学校账户用户名 -->
-                <div class="flex items-center justify-between">
-                  <div class="font-semibold text-slate-800 text-lg">${escapeHtml(
-                    schoolUsername
-                  )}</div>
-                  <!-- 操作按钮组 -->
-                  <!-- 包含三个按钮：编辑、删除、查看详情 -->
-                  <div class="flex gap-2">
-                    <!-- 编辑按钮：打开编辑模态框 -->
-                    <!-- 使用data属性存储JSON数据，点击时解析并调用函数 -->
-                    <!-- 
-                      【关键修复点】data-account属性的处理（PC版）：
-                      - accountDataJson 已通过 JSON.stringify() 生成，格式正确
-                      - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
-                      - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
-                      - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
-                    -->
-                    <button 
-                      class="btn btn-sm btn-primary !py-1 !px-3 !text-xs" 
-                      data-account='${accountDataJson.replace(/'/g, "&apos;")}'
-                      onclick="(function(btn) { const data = JSON.parse(btn.getAttribute('data-account')); editSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); })(this)"
-                      title="编辑此账户">
-                      编辑
-                    </button>
-                    <!-- 删除按钮：确认后删除账户 -->
-                    <!-- 同样使用data属性存储数据 -->
-                    <button 
-                      class="btn btn-sm btn-danger !py-1 !px-3 !text-xs" 
-                      data-auth-username='${escapeHtml(username)}'
-                      data-school-username='${escapeHtml(schoolUsername)}'
-                      onclick="(function(btn) { deleteSchoolAccount(btn.getAttribute('data-auth-username'), btn.getAttribute('data-school-username')); })(this)"
-                      title="删除此账户">
-                      删除
-                    </button>
-                    <!-- 查看详情按钮：显示该学校账号的备份详情和欠费信息 -->
-                    <!-- 直接调用 View_details_of_users_with_outstanding_payments 函数 -->
-                    <!-- 该函数会显示一个包含详细信息的弹窗（学号、姓名、欠费次数等） -->
-                    <button 
-                      class="btn btn-sm !py-1 !px-3 !text-xs bg-sky-500 text-white hover:bg-sky-600 border-sky-500" 
-                      onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
-                        schoolUsername
-                      )}')"
-                      title="查看此账户的详细信息">
-                      查看详情
-                    </button>
-                  </div>
-                </div>
-                
-                <!-- 密码显示 -->
-                <div class="text-sm">
-                  <span class="text-slate-500">密码:</span>
-                  <span class="font-mono text-slate-700 ml-2 select-all">${escapeHtml(
-                    password
-                  )}</span>
-                </div>
-                
-                <!-- User-Agent显示（如果存在） -->
-                ${
-                  ua
-                    ? `
-                <div class="text-sm">
-                  <span class="text-slate-500">User-Agent:</span>
-                  <div class="font-mono text-xs text-slate-600 mt-1 p-2 bg-white rounded break-all select-all">${escapeHtml(
-                    ua
-                  )}</div>
-                </div>
-                `
-                    : ""
-                }
-              </div>
-            `;
+      console.log("[学校账户管理] 该用户暂无学校账户");
+      return; // 提前返回，不需要后续渲染
+    }
+    
+    // 情况2：有账户，逐个渲染账户卡片
+    let html = ""; // 累积HTML字符串
+    
+    // 遍历所有账户，生成HTML
+    for (const [schoolUsername, accountData] of Object.entries(accounts)) {
+      // [安全检查] 验证schoolUsername和accountData的有效性
+      // 防止服务器返回了异常数据导致前端崩溃
+      if (!schoolUsername || typeof schoolUsername !== "string") {
+        console.warn("[学校账户管理] 跳过无效的学校账户名：", schoolUsername);
+        continue; // 跳过这个无效账户
+      }
+      
+      // ========== 提取账户信息（兼容新旧格式）==========
+      let password = "";
+      let ua = "";
+      
+      // 旧格式：accountData是字符串（仅包含密码）
+      if (typeof accountData === "string") {
+        password = accountData;
+        console.log(`[学校账户管理] 账户 ${schoolUsername} 使用旧格式（仅密码）`);
+      } 
+      // 新格式：accountData是对象（包含password和ua字段）
+      else if (typeof accountData === "object" && accountData !== null) {
+        password = accountData.password || "";
+        ua = accountData.ua || "";
+        console.log(
+          `[学校账户管理] 账户 ${schoolUsername} 使用新格式（password + ua）`
+        );
+      } 
+      // 未知格式：记录警告并跳过
+      else {
+        console.warn(
+          `[学校账户管理] 账户 ${schoolUsername} 数据格式未知：`,
+          typeof accountData
+        );
+        continue;
       }
 
-      listContainer.innerHTML = html;
+      // ========== 准备安全的数据传递（防止XSS和JSON注入）==========
+      // 将账户数据打包成JSON字符串，用于存储在HTML的data属性中
+      // 后续按钮点击时会解析这个JSON并传递给处理函数
+      const accountDataJson = JSON.stringify({
+        authUsername: username,        // 认证用户名
+        schoolUsername: schoolUsername, // 学校账号用户名
+        password: password,             // 密码
+        ua: ua,                         // User-Agent
+      });
+
+      // ========== 生成账户卡片HTML（使用模板字符串）==========
+      // 注意：所有用户输入都必须通过escapeHtml()转义，防止XSS攻击
+      html += `
+            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+              <!-- 学校账户用户名 -->
+              <div class="flex items-center justify-between">
+                <!-- 用户名显示：使用escapeHtml()转义，防止XSS -->
+                <div class="font-semibold text-slate-800 text-lg">${escapeHtml(
+                  schoolUsername
+                )}</div>
+                
+                <!-- 操作按钮组：包含编辑、删除、查看详情三个按钮 -->
+                <div class="flex gap-2">
+                  <!-- 
+                    ========== 编辑按钮 ==========
+                    功能：打开编辑模态框，允许修改密码和UA
+                    
+                    【关键修复点】data-account属性的处理（PC版）：
+                    - accountDataJson 已通过 JSON.stringify() 生成，格式正确
+                    - 不能使用 escapeHtml()，因为它会将双引号转义为 &quot;，破坏JSON格式
+                    - 只需转义单引号为 &apos;，因为HTML属性值使用单引号包裹
+                    - 这样 JSON.parse() 可以正确解析数据，按钮才能正常工作
+                    
+                    安全性说明：
+                    - JSON.stringify() 已经对特殊字符进行了转义
+                    - replace(/'/g, "&apos;") 只转义单引号，避免破坏HTML属性
+                    - JSON.parse() 在onclick中安全解析数据
+                  -->
+                  <button 
+                    class="btn btn-sm btn-primary !py-1 !px-3 !text-xs" 
+                    data-account='${accountDataJson.replace(/'/g, "&apos;")}'
+                    onclick="(function(btn) { 
+                      try {
+                        const data = JSON.parse(btn.getAttribute('data-account')); 
+                        editSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); 
+                      } catch(e) {
+                        console.error('[编辑按钮] JSON解析失败:', e);
+                        showModalAlert('数据解析失败', '错误');
+                      }
+                    })(this)"
+                    title="编辑此账户">
+                    编辑
+                  </button>
+                  
+                  <!-- 
+                    ========== 删除按钮 ==========
+                    功能：删除学校账号（需要确认）
+                    
+                    数据传递方式：
+                    - 使用两个独立的data属性存储authUsername和schoolUsername
+                    - 每个值都经过escapeHtml()转义，确保安全
+                    - 点击时从data属性读取并调用deleteSchoolAccount函数
+                  -->
+                  <button 
+                    class="btn btn-sm btn-danger !py-1 !px-3 !text-xs" 
+                    data-auth-username='${escapeHtml(username)}'
+                    data-school-username='${escapeHtml(schoolUsername)}'
+                    onclick="(function(btn) { 
+                      deleteSchoolAccount(
+                        btn.getAttribute('data-auth-username'), 
+                        btn.getAttribute('data-school-username')
+                      ); 
+                    })(this)"
+                    title="删除此账户">
+                    删除
+                  </button>
+                  
+                  <!-- 
+                    ========== 查看详情按钮 ==========
+                    功能：显示该学校账号的备份详情和欠费信息
+                    
+                    调用函数：View_details_of_users_with_outstanding_payments
+                    - 该函数会显示一个包含详细信息的弹窗
+                    - 包括：学号、姓名、欠费次数等
+                    - schoolUsername经过escapeHtml()转义后安全嵌入
+                  -->
+                  <button 
+                    class="btn btn-sm !py-1 !px-3 !text-xs bg-sky-500 text-white hover:bg-sky-600 border-sky-500" 
+                    onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
+                      schoolUsername
+                    )}')"
+                    title="查看此账户的详细信息">
+                    查看详情
+                  </button>
+                </div>
+              </div>
+              
+              <!-- 
+                ========== 密码显示区域 ==========
+                - 使用font-mono（等宽字体）便于复制
+                - 使用select-all类支持双击全选
+                - password经过escapeHtml()转义，防止XSS
+              -->
+              <div class="text-sm">
+                <span class="text-slate-500">密码:</span>
+                <span class="font-mono text-slate-700 ml-2 select-all">${escapeHtml(
+                  password
+                )}</span>
+              </div>
+              
+              <!-- 
+                ========== User-Agent显示区域（条件渲染）==========
+                - 只在UA存在时显示
+                - UA可能很长，使用break-all自动换行
+                - 使用小号字体（text-xs）节省空间
+                - ua经过escapeHtml()转义，防止XSS
+              -->
+              ${
+                ua
+                  ? `
+              <div class="text-sm">
+                <span class="text-slate-500">User-Agent:</span>
+                <div class="font-mono text-xs text-slate-600 mt-1 p-2 bg-white rounded break-all select-all">${escapeHtml(
+                  ua
+                )}</div>
+              </div>
+              `
+                  : ""
+              }
+            </div>
+          `;
+    } // end for loop
+
+    // ========== 步骤8：将生成的HTML插入DOM ==========
+    // 使用innerHTML是必要的，因为需要插入HTML结构
+    // 安全性已经通过escapeHtml()确保
+    listContainer.innerHTML = html;
+    
+    // 记录渲染成功日志
+    console.log(`[学校账户管理] 成功渲染 ${accountCount} 个账户卡片`);
+    
+  } catch (error) {
+    // ========== 异常处理（捕获所有未预期的错误）==========
+    // 区分不同类型的错误并给出友好提示
+    console.error("[学校账户管理] 发生异常：", error);
+    
+    let errorMessage = "加载失败，请稍后重试";
+    
+    // 网络错误（无法连接到服务器）
+    if (error.name === "NetworkError" || error.message.includes("Failed to fetch")) {
+      errorMessage = "网络连接失败，请检查网络后重试";
+    } 
+    // 请求超时（AbortController触发）
+    else if (error.name === "AbortError") {
+      errorMessage = "请求超时，请稍后重试";
     }
+    // JSON解析错误（已在前面处理，这里是兜底）
+    else if (error.name === "SyntaxError") {
+      errorMessage = "服务器返回了无效的数据格式";
+    }
+    
+    showModalAlert(errorMessage, "错误");
+  }
+}
 
     // ==========显示模态框 ==========
     showModal("manage-school-accounts-modal");
