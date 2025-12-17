@@ -20443,7 +20443,7 @@ async function showUserSchoolAccounts(username) {
   // ========== 功能说明 ==========
   try {
     const response = await fetch(
-      `/auth/get_user_school_accounts?username=${encodeURIComponent(
+      `/auth/admin/get_user_school_accounts?username=${encodeURIComponent(
         username
       )}`,
       {
@@ -21201,7 +21201,7 @@ async function showMobileUserSchoolAccounts(username) {
   try {
     // ========== 发送HTTP请求获取账户数据 ==========
     // 构建API端点URL，使用encodeURIComponent编码用户名，避免特殊字符导致的问题
-    const apiUrl = `/auth/get_user_school_accounts?username=${encodeURIComponent(
+    const apiUrl = `/auth/admin/get_user_school_accounts?username=${encodeURIComponent(
       username
     )}`;
 
@@ -27555,7 +27555,7 @@ async function onUserChange() {
 
     if (sessionUUID && currentAuthUsername) {
       try {
-        const response = await fetch("/auth/get_user_school_accounts", {
+        const response = await fetch("/auth/admin/get_user_school_accounts", {
           method: "GET",
           headers: {
             "X-Session-ID": sessionUUID,
@@ -28625,7 +28625,7 @@ async function multi_loadAllFromConfig() {
   if (result && result.accounts) {
     if (sessionUUID && currentAuthUsername) {
       try {
-        const response = await fetch("/auth/get_user_school_accounts", {
+        const response = await fetch("/auth/admin/get_user_school_accounts", {
           method: "GET",
           headers: {
             "X-Session-ID": sessionUUID,
@@ -29002,7 +29002,7 @@ async function multi_addFromConfig() {
   let uaToUse = "";
   if (sessionUUID && currentAuthUsername) {
     try {
-      const response = await fetch("/auth/get_user_school_accounts", {
+      const response = await fetch("/auth/admin/get_user_school_accounts", {
         method: "GET",
         headers: {
           "X-Session-ID": sessionUUID,
@@ -42641,7 +42641,7 @@ async function showMobileUserSchoolAccounts(username) {
 
   try {
     const response = await fetch(
-      `/auth/get_user_school_accounts?username=${encodeURIComponent(
+      `/auth/admin/get_user_school_accounts?username=${encodeURIComponent(
         username
       )}`,
       {
@@ -43613,7 +43613,7 @@ async function addMobileSelectedConfig() {
     currentAuthUsername
   ) {
     try {
-      const response = await fetch("/auth/get_user_school_accounts", {
+      const response = await fetch("/auth/admin/get_user_school_accounts", {
         method: "GET",
         headers: {
           "X-Session-ID": sessionUUID,
@@ -43692,7 +43692,7 @@ async function addMobileAllConfigs() {
         currentAuthUsername
       ) {
         try {
-          const response = await fetch("/auth/get_user_school_accounts", {
+          const response = await fetch("/auth/admin/get_user_school_accounts", {
             method: "GET",
             headers: {
               "X-Session-ID": sessionUUID,

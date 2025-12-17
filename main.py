@@ -21903,30 +21903,24 @@ def start_web_server(args_param):
         logs = auth_system.get_login_history(username, limit)
         return jsonify({"success": True, "logs": logs})
 
-    @app.route("/auth/get_user_school_accounts", methods=["GET"])
+    @app.route("/auth/admin/get_user_school_accounts", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
-    def auth_get_user_school_accounts():
-        """
-        获取指定认证用户的所有 school_account。
-        - 普通用户只能访问自己的账号（从 ./school_accounts/user_accounts/{username}.json）
-        - 管理员可以访问任何用户的账号
-        """
+    def auth_admin_get_user_school_accounts():
+        """获取指定认证用户的所有 school_account（管理员或有 auto_fill_password 权限）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
 
+        # 细粒度权限检查：需要 'manage_users' 权限
+        # manage_users 权限允许查看和管理用户的学校账号信息
+        # 这是敏感信息，包含用户的学校账户凭证
+        if not auth_system.check_permission(auth_username, "manage_users"):
+            return jsonify({
+                "success": False,
+                "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
+
         # 获取目标用户名，如果未指定则默认为当前用户
         target_username = request.args.get("username", auth_username)
-
-        # 权限检查：如果目标用户不是当前用户，需要管理员权限
-        if target_username != auth_username:
-            # 细粒度权限检查：需要 'manage_users' 权限
-            # manage_users 权限允许查看和管理其他用户的学校账号信息
-            # 这是敏感信息，包含用户的学校账户凭证
-            if not auth_system.check_permission(auth_username, "manage_users"):
-                return jsonify({
-                    "success": False,
-                    "message": "权限不足，只能访问自己的账号信息"
-                }), 403
 
         # 获取api_instance用于调用内部方法
         session_id = request.headers.get("X-Session-ID", "")
@@ -21936,7 +21930,7 @@ def start_web_server(args_param):
             # 如果没有有效的session，返回错误
             return jsonify({"success": False, "message": "会话无效"}), 401
 
-        # 加载并返回用户的学校账号信息（只从 ./school_accounts/user_accounts/{username}.json 读取）
+        # 加载并返回用户的学校账号信息
         accounts = api_instance._load_user_school_accounts(target_username)
 
         return jsonify(
