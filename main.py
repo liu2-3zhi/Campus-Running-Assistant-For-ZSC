@@ -20947,7 +20947,7 @@ def start_web_server(args_param):
                     "set_user_permissions_batch",
                     f"批量更新用户 {target_username} 的差分权限: 添加{len(added_permissions)}个, 移除{len(removed_permissions)}个",
                     ip_address,
-                    session_id,
+                    g.session_id,
                 )
 
                 return jsonify({"success": True, "message": "权限已更新"})
@@ -20983,7 +20983,7 @@ def start_web_server(args_param):
                         "set_user_permissions_batch",
                         f"批量更新用户 {target_username} 的差分权限: 清空用户的差分权限",
                         ip_address,
-                        session_id,
+                        g.session_id,
                     )
 
                     return jsonify({"success": True, "message": "权限已更新"})
@@ -21007,7 +21007,7 @@ def start_web_server(args_param):
                 "set_user_permission",
                 f'为用户 {target_username} {"授予" if grant else "移除"} 权限: {permission}',
                 ip_address,
-                session_id,
+                g.session_id,
             )
 
             return jsonify(result)
@@ -21916,8 +21916,8 @@ def start_web_server(args_param):
         
         权限模型：
         - 仅需要登录即可调用此接口，权限过滤在数据层面实现
-        - 普通用户：只能看到自己的学校账号
-        - 管理员/有auto_fill_password权限：可以看到所有学校账号
+        - 普通用户：只能查看自己的学校账号（请求其他用户名时返回空结果）
+        - 管理员/有auto_fill_password权限：可以查看所有学校账号
         
         安全机制：
         - get_initial_data权限过滤：根据用户权限自动过滤账号数据
