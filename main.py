@@ -21904,7 +21904,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "logs": logs})
 
     @app.route("/auth/get_user_school_accounts", methods=["GET"])
-    @login_required  # 只需要登录即可，get_initial_data已对账号数据进行权限过滤
+    @login_required  # 只需要登录即可，权限过滤通过get_initial_data方法实现
     def auth_get_user_school_accounts():
         """
         获取指定认证用户的所有 school_account（基于get_initial_data权限过滤）
@@ -21915,7 +21915,7 @@ def start_web_server(args_param):
         - 使用get_initial_data()的权限逻辑确保用户只能看到授权范围内的账号
         
         权限模型：
-        - 仅需要登录即可调用此接口，不需要额外权限
+        - 仅需要登录即可调用此接口，权限过滤在数据层面实现
         - 普通用户：只能看到自己的学校账号
         - 管理员/有auto_fill_password权限：可以看到所有学校账号
         
