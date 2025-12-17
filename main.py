@@ -21906,7 +21906,7 @@ def start_web_server(args_param):
     @app.route("/auth/get_user_school_accounts", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_get_user_school_accounts():
-        """获取指定认证用户的所有 school_account（管理员或有 auto_fill_password 权限）"""
+        """获取指定认证用户的所有 school_account（基于get_initial_data权限过滤）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
 
@@ -21939,11 +21939,15 @@ def start_web_server(args_param):
         allowed_users = initial_data.get("users", [])
 
         # 加载目标用户的所有学校账号信息
-        # 这里加载的是原始的、未经过滤的账号数据
+        # target_username 是认证系统的用户名（auth username）
+        # 返回的 accounts 是该认证用户绑定的所有学校账号
         accounts = api_instance._load_user_school_accounts(target_username)
 
         # 过滤账号：只保留在 allowed_users 列表中的账号
-        # 这样可以确保用户只能看到自己有权限查看的学校账号
+        # allowed_users 是 get_initial_data() 返回的学校账号名称列表
+        # 这样可以确保返回的账号符合当前用户的权限范围：
+        # - 如果是普通用户查看自己的账号：allowed_users 包含该用户的学校账号
+        # - 如果是管理员：allowed_users 包含所有学校账号
         # 键（key）是学校账号名称，值（value）是账号的详细信息
         filtered_accounts = {
             account_name: account_info
@@ -21953,6 +21957,10 @@ def start_web_server(args_param):
 
         # 返回过滤后的账号列表
         # 注意：这里返回的是字典格式，与原接口保持一致
+        # 返回值说明：
+        # - success: 操作是否成功
+        # - username: 目标认证用户名（auth username）
+        # - accounts: 过滤后的学校账号字典，key为学校账号名，value为账号详情
         return jsonify(
             {"success": True, "username": target_username, "accounts": filtered_accounts}
         )
