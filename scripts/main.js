@@ -28623,19 +28623,42 @@ async function multi_loadAllFromConfig() {
             const accountDataMap = schoolAccountsResult.accounts;
             let updatedCount = 0;
             result.accounts.forEach((account) => {
-              if (account.username && accountDataMap[account.username]) {
+              // [安全修复] 验证account.username是否为有效字符串，防止原型链污染
+              if (
+                account &&
+                account.username &&
+                typeof account.username === "string" &&
+                account.username.length > 0 &&
+                accountDataMap.hasOwnProperty(account.username)
+              ) {
                 const accountData = accountDataMap[account.username];
+                // [安全修复] 只处理字符串密码，防止XSS和对象注入攻击
                 if (typeof accountData === "string") {
-                  account.password = accountData;
-                  updatedCount++;
+                  // [安全修复] 验证密码长度，防止过长数据导致的DoS攻击
+                  if (accountData.length > 0 && accountData.length <= 1000) {
+                    account.password = accountData;
+                    updatedCount++;
+                  }
                 } else if (
                   typeof accountData === "object" &&
                   accountData !== null
                 ) {
-                  if (accountData.password) {
+                  // [安全修复] 严格验证对象属性，防止注入攻击
+                  if (
+                    accountData.hasOwnProperty("password") &&
+                    typeof accountData.password === "string" &&
+                    accountData.password.length > 0 &&
+                    accountData.password.length <= 1000
+                  ) {
                     account.password = accountData.password;
                   }
-                  if (accountData.ua) {
+                  // [安全修复] 验证User-Agent字符串，防止注入攻击
+                  if (
+                    accountData.hasOwnProperty("ua") &&
+                    typeof accountData.ua === "string" &&
+                    accountData.ua.length > 0 &&
+                    accountData.ua.length <= 2000
+                  ) {
                     account.device_ua = accountData.ua;
                   }
                   updatedCount++;
@@ -29026,14 +29049,42 @@ async function submitMultiAddUser() {
   const usernameVal = inputUsername.value.trim();
   const passwordVal = inputPassword.value;
   const tagVal = inputTag.value.trim();
+  
+  // [安全修复] 基本验证：用户名和密码不能为空
   if (!usernameVal || !passwordVal) {
     showModalAlert("账号和密码均不能为空");
     return;
   }
+  
+  // [安全修复] 验证用户名长度，防止DoS攻击
+  if (usernameVal.length > 200) {
+    showModalAlert("用户名过长（最多200个字符）", "错误");
+    return;
+  }
+  
+  // [安全修复] 验证用户名格式，只允许字母、数字、下划线、连字符、点和@符号
+  const usernamePattern = /^[a-zA-Z0-9_\-\.@]+$/;
+  if (!usernamePattern.test(usernameVal)) {
+    showModalAlert("用户名只能包含字母、数字、下划线、连字符、点和@符号", "错误");
+    return;
+  }
+  
+  // [安全修复] 验证密码长度范围
   if (passwordVal.length < 6) {
     showModalAlert("密码长度至少为6个字符", "错误");
     return;
   }
+  if (passwordVal.length > 1000) {
+    showModalAlert("密码过长（最多1000个字符）", "错误");
+    return;
+  }
+  
+  // [安全修复] 验证标签长度
+  if (tagVal.length > 200) {
+    showModalAlert("标签过长（最多200个字符）", "错误");
+    return;
+  }
+  
   setButtonLoading("multi-add-user-confirm", true, "添加中...");
   try {
     const result = await callPythonAPI(
