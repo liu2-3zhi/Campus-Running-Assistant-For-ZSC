@@ -1,4 +1,4 @@
-touch -p ./ssh
+mkdir -p ./ssh
 touch ./config.ini
 mkdir -p ./cache
 mkdir -p ./logs
