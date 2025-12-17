@@ -2183,10 +2183,10 @@ async function loadPaymentMethodsConfig(
         logMessage_Info("[支付配置] 成功获取启用状态响应：", configData);
       } else {
         // console.warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：', configData.message || '未知错误');
-        logMessage_Warning(
-          "[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：" +
-            (configData.message || "未知错误")
-        );
+        // logMessage_Warning(
+        //   "[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：" +
+        //     (configData.message || "未知错误")
+        // );
         if (!DOMContentLoaded_Event) {
           showModalAlert(
             "获取启用状态失败，默认显示所有支付方式为启用：" +
@@ -3252,7 +3252,7 @@ document.addEventListener("DOMContentLoaded", function () {
     saveBtn.addEventListener("click", function () {
       // 输出日志，记录用户操作
       // console.log('[支付设置] 用户点击了保存配置按钮');
-      logMessage_Info("[支付设置] 用户点击了保存配置按钮");
+      // logMessage_Info("[支付设置] 用户点击了保存配置按钮");
 
       // 调用保存函数，提交配置到服务器
       // 这是一个async函数，会异步执行，不会阻塞页面
@@ -3261,14 +3261,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // 输出成功日志
     // console.log('[支付设置] 保存按钮事件监听器已绑定');
-    logMessage_Info("[支付设置] 保存按钮事件监听器已绑定");
+    // logMessage_Info("[支付设置] 保存按钮事件监听器已绑定");
   } else {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
     // console.warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
-    logMessage_Warning(
-      "[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）"
-    );
+    // logMessage_Warning(
+      // "[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）"
+    // );
   }
 
   // === 页面加载时自动加载支付方式配置 ===
@@ -3706,7 +3706,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 当用户点击按钮时，会自动调用queryOrder函数
     queryBtn.addEventListener("click", function () {
       // 输出日志，记录用户操作
-      logMessage_Info("[订单查询] 用户点击了查询订单按钮");
+      // logMessage_Info("[订单查询] 用户点击了查询订单按钮");
 
       // 调用查询函数，执行订单查询逻辑
       // 这是一个async函数，会异步执行，不会阻塞页面
@@ -3714,11 +3714,11 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // 输出成功日志
-    logMessage_Info("[订单查询] 查询按钮事件监听器已绑定");
+    // logMessage_Info("[订单查询] 查询按钮事件监听器已绑定");
   } else {
     // 如果按钮不存在，输出警告日志
     // 这可能表示HTML结构有问题或ID名称不匹配
-    logMessage_Warning("[订单查询] 警告：未找到查询订单按钮（ID: query-order-btn）");
+    // logMessage_Warning("[订单查询] 警告：未找到查询订单按钮（ID: query-order-btn）");
   }
 
   // === 可选：绑定输入框的Enter键事件 ===
@@ -43525,7 +43525,7 @@ function showMobileResetPassword(username) {
         <div class="text-center text-sm text-slate-600">用户: <span id="mobile-reset-password-username" class="font-semibold"></span></div>
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-2">新密码（至少6位）</label>
-          <input type="password" id="mobile-new-password" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新密码">
+          <input type="password" id="mobile-new-password_2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新密码">
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
           <button onclick="closeMobileResetPassword()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
@@ -43561,9 +43561,10 @@ function closeMobileResetPassword() {
 
 async function submitMobileResetPassword() {
   const username = window.currentMobileResetPasswordUsername;
-  const newPassword = document.getElementById("mobile-new-password").value;
+  const newPassword = document.getElementById("mobile-new-password_2").value;
 
   if (!newPassword || newPassword.length < 6) {
+    logMessage_Warning("密码长度不足, 当前输入密码：" + newPassword + "， 长度：" + newPassword.length );
     showModalAlert("密码长度至少为6个字符", "错误");
     return;
   }
