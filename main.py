@@ -26511,6 +26511,7 @@ def start_web_server(args_param):
             ssl_dir = os.path.join(os.path.dirname(__file__), "ssl")
             os.makedirs(ssl_dir, exist_ok=True)
             import tempfile
+            import shutil
 
             with tempfile.NamedTemporaryFile(
                 mode="wb", delete=False, suffix=".pem"
