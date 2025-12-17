@@ -1,3 +1,17 @@
+// ============================================================
+// [安全配置] 输入验证常量
+// 这些常量与Python后端保持一致，确保前后端验证规则统一
+// ============================================================
+const SECURITY_CONSTRAINTS = {
+  MAX_USERNAME_LENGTH: 200,  // 用户名最大长度
+  MAX_PASSWORD_LENGTH: 1000,  // 密码最大长度
+  MAX_TAG_LENGTH: 200,  // 标签最大长度
+  MAX_UA_LENGTH: 2000,  // User-Agent最大长度
+  MIN_PASSWORD_LENGTH: 6,  // 密码最小长度
+  // 用户名格式验证：只允许字母、数字、下划线、连字符、点和@符号
+  USERNAME_PATTERN: /^[a-zA-Z0-9_\-\.@]+$/
+};
+
 function getUUIDFromURL() {
   const urlPath = window.location.pathname;
 
@@ -28634,8 +28648,8 @@ async function multi_loadAllFromConfig() {
                 const accountData = accountDataMap[account.username];
                 // [安全修复] 只处理字符串密码，防止XSS和对象注入攻击
                 if (typeof accountData === "string") {
-                  // [安全修复] 验证密码长度，防止过长数据导致的DoS攻击
-                  if (accountData.length > 0 && accountData.length <= 1000) {
+                  // [安全修复] 使用统一的安全常量验证密码长度
+                  if (accountData.length > 0 && accountData.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
                     account.password = accountData;
                     updatedCount++;
                   }
@@ -28648,16 +28662,16 @@ async function multi_loadAllFromConfig() {
                     accountData.hasOwnProperty("password") &&
                     typeof accountData.password === "string" &&
                     accountData.password.length > 0 &&
-                    accountData.password.length <= 1000
+                    accountData.password.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH
                   ) {
                     account.password = accountData.password;
                   }
-                  // [安全修复] 验证User-Agent字符串，防止注入攻击
+                  // [安全修复] 使用统一的安全常量验证User-Agent长度
                   if (
                     accountData.hasOwnProperty("ua") &&
                     typeof accountData.ua === "string" &&
                     accountData.ua.length > 0 &&
-                    accountData.ua.length <= 2000
+                    accountData.ua.length <= SECURITY_CONSTRAINTS.MAX_UA_LENGTH
                   ) {
                     account.device_ua = accountData.ua;
                   }
@@ -29056,32 +29070,31 @@ async function submitMultiAddUser() {
     return;
   }
   
-  // [安全修复] 验证用户名长度，防止DoS攻击
-  if (usernameVal.length > 200) {
-    showModalAlert("用户名过长（最多200个字符）", "错误");
+  // [安全修复] 使用统一的安全常量验证用户名长度
+  if (usernameVal.length > SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH) {
+    showModalAlert(`用户名过长（最多${SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH}个字符）`, "错误");
     return;
   }
   
-  // [安全修复] 验证用户名格式，只允许字母、数字、下划线、连字符、点和@符号
-  const usernamePattern = /^[a-zA-Z0-9_\-\.@]+$/;
-  if (!usernamePattern.test(usernameVal)) {
+  // [安全修复] 使用统一的正则表达式验证用户名格式
+  if (!SECURITY_CONSTRAINTS.USERNAME_PATTERN.test(usernameVal)) {
     showModalAlert("用户名只能包含字母、数字、下划线、连字符、点和@符号", "错误");
     return;
   }
   
-  // [安全修复] 验证密码长度范围
-  if (passwordVal.length < 6) {
-    showModalAlert("密码长度至少为6个字符", "错误");
+  // [安全修复] 使用统一的安全常量验证密码长度范围
+  if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
+    showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`, "错误");
     return;
   }
-  if (passwordVal.length > 1000) {
-    showModalAlert("密码过长（最多1000个字符）", "错误");
+  if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
+    showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
     return;
   }
   
-  // [安全修复] 验证标签长度
-  if (tagVal.length > 200) {
-    showModalAlert("标签过长（最多200个字符）", "错误");
+  // [安全修复] 使用统一的安全常量验证标签长度
+  if (tagVal.length > SECURITY_CONSTRAINTS.MAX_TAG_LENGTH) {
+    showModalAlert(`标签过长（最多${SECURITY_CONSTRAINTS.MAX_TAG_LENGTH}个字符）`, "错误");
     return;
   }
   
