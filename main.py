@@ -22710,7 +22710,7 @@ def start_web_server(args_param):
         auth_username = g.user
 
         # 检查细粒度权限：用户管理权限
-        # manage_users 权限允许管理员执行用户相关的管理操作,包括清除用户头像
+        # manage_users 权限允许管理员执行用户相关的管理操作，包括清除用户头像
         # 这是一个涉及用户数据修改的敏感操作，需要专门的用户管理权限
         if not auth_system.check_permission(auth_username, 'manage_users'):
             return jsonify({
