@@ -8987,6 +8987,7 @@ class Api:
                         )
                     else:
                         logging.debug(f"普通用户 {auth_username} 还没有任何学校账户")
+                        return []
             else:
                 users = all_users
                 logging.debug(
@@ -21066,6 +21067,7 @@ def start_web_server(args_param):
         """管理员：为用户设置自定义权限（差分化存储）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
+        session_id =g.session_id
 
         # 检查细粒度权限：权限管理权限
         # manage_permissions 权限允许为用户设置自定义权限

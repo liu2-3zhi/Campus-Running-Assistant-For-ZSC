@@ -68,11 +68,21 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone
 
-RUN touch /app/reminders.json
-RUN touch /app/permissions.json
-RUN touch /app/messages.json
+RUN touch /app/ssh
 RUN touch /app/config.ini
+RUN mkdir -p /app/cache
+RUN mkdir -p /app/logs
+RUN touch /app/messages.json
+RUN touch /app/permissions.json
+RUN touch /app/reminders.json
+RUN mkdir -p /app/background_tasks
+RUN mkdir -p /app/school_accounts
+RUN mkdir -p /app/sessions
+RUN mkdir -p /app/tokens
+RUN mkdir -p /app/system_accounts
+RUN mkdir -p /app/payment_orders
 RUN touch /app/payment_methods.json
+RUN rm -rf /app/auto_attendance_config.json
 RUN touch /app/auto_attendance_config.json
 
 
