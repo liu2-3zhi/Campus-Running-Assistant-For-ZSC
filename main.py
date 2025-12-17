@@ -7844,71 +7844,208 @@ class Api:
 
     def _load_user_school_accounts(self, auth_username):
         """
-        加载指定认证用户的所有 school_account 账户密码和UA。
+        加载指定认证用户可见的所有 school_account 账户密码和UA。
+        
+        【安全改进】本方法已修复权限绕过漏洞：
+            - 管理员：只返回 get_initial_data() 返回的可见用户列表中的账号
+            - 普通用户：只返回自己的账号
+        
+        这确保了即使管理员有权限查看多个用户的账号，也只能看到系统允许其查看的账号。
+        防止了通过直接读取所有用户JSON文件而绕过权限控制的安全风险。
 
         参数:
-            auth_username: 认证用户名
+            auth_username: 认证用户名（system_accounts中的用户名）
 
         返回:
-            字典，格式为 {school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
+            字典，格式为 {school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0, "completed_count": 0}, ...}
             或旧格式 {school_username: password, ...}（向后兼容）
         """
+        # 安全检查：拒绝未认证用户和游客访问
         if not auth_username or auth_username == "guest":
             return {}
 
-        file_path = self._get_user_accounts_file(auth_username)
-        if not os.path.exists(file_path):
-            return {}
+        # ========== 第一步：判断用户角色（管理员 vs 普通用户）==========
+        # 获取用户的权限组信息（admin、super_admin、user等）
+        auth_group = getattr(self, "auth_group", None)
+        
+        # 检查用户是否属于管理员权限组
+        # admin 和 super_admin 组拥有查看多个用户账号的权限
+        is_admin = auth_group in ["admin", "super_admin"]
+        
+        # 如果不是管理员组，还需检查是否有 auto_fill_password 权限
+        # auto_fill_password 权限允许用户自动填充密码，通常也意味着可以查看多个账号
+        if not is_admin and hasattr(self, "auth_system"):
+            try:
+                # 调用认证系统检查用户是否有 auto_fill_password 权限
+                is_admin = auth_system.check_permission(
+                    auth_username, "auto_fill_password"
+                )
+            except Exception:
+                # 如果权限检查失败（例如认证系统异常），保守地认为不是管理员
+                pass
 
-        try:
-            # 步骤1：从 JSON 文件读取账号密码和 UA 信息
-            # JSON 文件只包含账号基本信息，不包含统计数据
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+        # ========== 第二步：根据用户角色采取不同的加载策略 ==========
+        if is_admin:
+            # ========== 管理员分支：需要根据可见列表进行过滤 ==========
+            # 【关键安全修复】管理员不能直接看到所有账号，必须受到 get_initial_data 的约束
+            try:
+                # 调用 get_initial_data() 获取当前管理员可以查看的用户列表
+                # 这个列表已经经过了权限过滤，确保管理员只能看到被授权查看的用户
+                initial_data = self.get_initial_data()
+                
+                # 将可见用户列表转换为集合（set），以便快速查找
+                # isinstance 检查确保 initial_data 是列表类型，否则使用空集合
+                visible_users = set(initial_data) if isinstance(initial_data, list) else set()
+                
+                # 日志记录：记录管理员可见的用户数量，用于审计和调试
+                logging.debug(
+                    f"[安全] 管理员 {auth_username} 的可见用户列表包含 {len(visible_users)} 个用户"
+                )
 
-            # 步骤2：处理并标准化每个账号的数据格式
-            # 同时从对应的 INI 文件读取统计数据（overdue_count 和 completed_count）
-            for school_username, account_info in data.items():
-                # 如果是新格式（字典类型），处理并加载统计数据
-                if isinstance(account_info, dict):
-                    # 从 INI 文件加载该学校账号的统计数据
-                    # _load_school_account_stats_from_ini() 返回：
-                    # {"overdue_count": int, "completed_count": int}
-                    stats = self._load_school_account_stats_from_ini(
-                        school_username)
+                # 定义用户账号文件存储目录
+                # 所有用户的账号信息都存储在 school_accounts/user_accounts/ 目录下
+                user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+                
+                # 初始化一个空字典，用于存储所有符合条件的账号信息
+                all_accounts = {}
 
-                    # 将从 INI 读取的统计数据合并到账号信息中
-                    # 这样返回的数据结构就包含了完整信息：密码、UA、欠费次数、完成次数
-                    account_info["overdue_count"] = stats["overdue_count"]
-                    account_info["completed_count"] = stats["completed_count"]
+                # 检查用户账号目录是否存在
+                if os.path.exists(user_accounts_dir):
+                    # 遍历目录中的所有文件
+                    for filename in os.listdir(user_accounts_dir):
+                        # 只处理 .json 文件（每个文件代表一个系统用户的账号列表）
+                        if filename.endswith(".json"):
+                            # 构造完整的文件路径
+                            file_path = os.path.join(user_accounts_dir, filename)
+                            
+                            try:
+                                # 从 JSON 文件读取该用户的所有学校账号信息
+                                with open(file_path, "r", encoding="utf-8") as f:
+                                    user_data = json.load(f)
 
-                # 如果是旧格式（字符串密码），转换为新格式并加载统计数据
-                elif isinstance(account_info, str):
-                    # 从 INI 文件加载统计数据
-                    stats = self._load_school_account_stats_from_ini(
-                        school_username)
+                                # 遍历该文件中的每个学校账号
+                                # user_data 的格式：{school_username: account_info, ...}
+                                for school_username, account_info in user_data.items():
+                                    # 【关键安全检查】只添加在可见列表中的账号
+                                    # 这是防止权限绕过的核心逻辑
+                                    if school_username in visible_users:
+                                        # 处理新格式（字典类型）的账号信息
+                                        if isinstance(account_info, dict):
+                                            # 从 INI 文件加载统计数据（欠费次数、完成次数）
+                                            stats = self._load_school_account_stats_from_ini(
+                                                school_username
+                                            )
+                                            
+                                            # 将统计数据合并到账号信息中
+                                            account_info["overdue_count"] = stats["overdue_count"]
+                                            account_info["completed_count"] = stats["completed_count"]
+                                            
+                                            # 将账号信息添加到结果字典中
+                                            all_accounts[school_username] = account_info
+                                        
+                                        # 处理旧格式（字符串密码）的账号信息
+                                        elif isinstance(account_info, str):
+                                            # 从 INI 文件加载统计数据
+                                            stats = self._load_school_account_stats_from_ini(
+                                                school_username
+                                            )
+                                            
+                                            # 转换为新格式并添加到结果字典
+                                            all_accounts[school_username] = {
+                                                "password": account_info,  # 字符串密码
+                                                "ua": None,                # UA 默认为 None
+                                                "overdue_count": stats["overdue_count"],
+                                                "completed_count": stats["completed_count"]
+                                            }
+                            except Exception as e:
+                                # 如果某个文件读取失败，记录警告日志但继续处理其他文件
+                                # 这确保一个文件的问题不会影响整个加载过程
+                                logging.warning(
+                                    f"[安全] 读取用户账号文件 {filename} 失败: {e}"
+                                )
+                                continue
 
-                    # 转换为新格式：将字符串密码转换为字典结构
-                    data[school_username] = {
-                        "password": account_info,    # 保留原密码
-                        "ua": None,                  # UA 默认为 None
-                        # 从 INI 读取
-                        "overdue_count": stats["overdue_count"],
-                        # 从 INI 读取
-                        "completed_count": stats["completed_count"]
-                    }
+                # 记录成功加载的日志，包含最终加载的账号数量
+                # 这个数量应该 <= 可见用户列表的数量（因为有些可见用户可能没有配置账号）
+                logging.info(
+                    f"[安全] 管理员 {auth_username} 成功加载了 {len(all_accounts)} 个可见的学校账号 "
+                    f"(从 {len(visible_users)} 个可见用户中筛选)"
+                )
+                
+                # 返回过滤后的账号字典
+                return all_accounts
 
-            # 记录加载成功的日志
-            logging.debug(
-                f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户 "
-                f"(从 JSON 加载密码和 UA，从 INI 加载统计数据)"
-            )
-            return data
-        except Exception as e:
-            logging.error(
-                f"加载用户 {auth_username} 的 school_accounts 失败: {e}", exc_info=True
-            )
-            return {}
+            except Exception as e:
+                # 如果管理员加载过程中发生任何异常，记录详细的错误日志
+                # exc_info=True 会包含完整的堆栈跟踪，便于调试
+                logging.error(
+                    f"[安全] 管理员 {auth_username} 加载可见账号失败: {e}",
+                    exc_info=True
+                )
+                # 发生异常时返回空字典，遵循"安全失败"（fail-safe）原则
+                return {}
+        else:
+            # ========== 普通用户分支：只加载自己的账号 ==========
+            # 【向后兼容】保持原有逻辑，普通用户只能看到自己的账号
+            
+            # 获取该用户的账号文件路径
+            file_path = self._get_user_accounts_file(auth_username)
+            
+            # 如果文件不存在，说明该用户还没有配置任何学校账号
+            if not os.path.exists(file_path):
+                return {}
+
+            try:
+                # 从 JSON 文件读取该用户的账号密码和 UA 信息
+                # JSON 文件只包含账号基本信息，不包含统计数据
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                # 处理并标准化每个账号的数据格式
+                # 同时从对应的 INI 文件读取统计数据（overdue_count 和 completed_count）
+                for school_username, account_info in data.items():
+                    # 如果是新格式（字典类型），处理并加载统计数据
+                    if isinstance(account_info, dict):
+                        # 从 INI 文件加载该学校账号的统计数据
+                        stats = self._load_school_account_stats_from_ini(
+                            school_username
+                        )
+
+                        # 将从 INI 读取的统计数据合并到账号信息中
+                        account_info["overdue_count"] = stats["overdue_count"]
+                        account_info["completed_count"] = stats["completed_count"]
+
+                    # 如果是旧格式（字符串密码），转换为新格式并加载统计数据
+                    elif isinstance(account_info, str):
+                        # 从 INI 文件加载统计数据
+                        stats = self._load_school_account_stats_from_ini(
+                            school_username
+                        )
+
+                        # 转换为新格式：将字符串密码转换为字典结构
+                        data[school_username] = {
+                            "password": account_info,    # 保留原密码
+                            "ua": None,                  # UA 默认为 None
+                            "overdue_count": stats["overdue_count"],
+                            "completed_count": stats["completed_count"]
+                        }
+
+                # 记录加载成功的日志
+                logging.debug(
+                    f"普通用户 {auth_username} 加载了 {len(data)} 个自己的学校账号 "
+                    f"(从 JSON 加载密码和 UA，从 INI 加载统计数据)"
+                )
+                
+                # 返回该用户的所有账号信息
+                return data
+            except Exception as e:
+                # 如果加载失败，记录错误日志
+                logging.error(
+                    f"加载用户 {auth_username} 的 school_accounts 失败: {e}",
+                    exc_info=True
+                )
+                # 发生异常时返回空字典
+                return {}
 
     def _save_user_school_accounts(self, auth_username, accounts_dict):
         """
