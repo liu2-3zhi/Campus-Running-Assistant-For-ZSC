@@ -7869,20 +7869,10 @@ class Api:
         auth_group = getattr(self, "auth_group", None)
         
         # 检查用户是否属于管理员权限组
-        # admin 和 super_admin 组拥有查看多个用户账号的权限
+        # 【修复】只有 admin 和 super_admin 组才拥有查看多个用户账号的权限
+        # 移除了之前的 auto_fill_password 权限检查，因为该权限不等同于管理员权限
+        # auto_fill_password 只是允许用户自动填充密码，不应该授予查看其他用户账号的能力
         is_admin = auth_group in ["admin", "super_admin"]
-        
-        # 如果不是管理员组，还需检查是否有 auto_fill_password 权限
-        # auto_fill_password 权限允许用户自动填充密码，通常也意味着可以查看多个账号
-        if not is_admin and hasattr(self, "auth_system"):
-            try:
-                # 调用认证系统检查用户是否有 auto_fill_password 权限
-                is_admin = auth_system.check_permission(
-                    auth_username, "auto_fill_password"
-                )
-            except Exception:
-                # 如果权限检查失败（例如认证系统异常），保守地认为不是管理员
-                pass
 
         # ========== 第二步：根据用户角色采取不同的加载策略 ==========
         if is_admin:
@@ -7894,8 +7884,24 @@ class Api:
                 initial_data = self.get_initial_data()
                 
                 # 将可见用户列表转换为集合（set），以便快速查找
-                # isinstance 检查确保 initial_data 是列表类型，否则使用空集合
-                visible_users = set(initial_data) if isinstance(initial_data, list) else set()
+                # 【修复】添加字符串验证，确保列表中的所有项都是字符串类型
+                # 这样可以防止 API 返回包含非字符串值的列表导致安全检查失败
+                if isinstance(initial_data, list):
+                    # 只保留字符串类型的用户名，忽略非字符串项
+                    # 使用生成器表达式过滤，确保 visible_users 集合中只有有效的用户名字符串
+                    visible_users = set(item for item in initial_data if isinstance(item, str))
+                    
+                    # 检测并记录非字符串项，用于调试和安全审计
+                    # 如果 get_initial_data() 返回了非预期的数据类型，这可能是 API 实现的问题
+                    non_string_items = [item for item in initial_data if not isinstance(item, str)]
+                    if non_string_items:
+                        # 记录警告日志，提醒开发者检查 API 返回值
+                        logging.warning(
+                            f"[安全警告] get_initial_data() 返回的列表中包含非字符串项: {non_string_items}，已忽略"
+                        )
+                else:
+                    # 如果 initial_data 不是列表类型，使用空集合作为默认值
+                    visible_users = set()
                 
                 # 日志记录：记录管理员可见的用户数量，用于审计和调试
                 logging.debug(
@@ -30250,7 +30256,14 @@ def start_web_server(args_param):
                 # 添加删除相关的元数据
                 deletion_record["deleted_at"] = datetime.datetime.now().isoformat()  # 删除时间（ISO 8601格式）
                 deletion_record["deleted_by"] = auth_username  # 执行删除操作的用户
-                deletion_record["deletion_reason"] = "管理员删除"  # 删除原因（目前固定值）
+                
+                # 【修复】根据实际情况确定删除原因，提供准确的审计跟踪
+                # 如果是留言作者自己删除，标记为"作者自删"；否则标记为"管理员删除"
+                # 这样可以在审计日志中清晰地区分自我删除和管理员删除两种情况
+                if is_own_message:
+                    deletion_record["deletion_reason"] = "作者自删"
+                else:
+                    deletion_record["deletion_reason"] = "管理员删除"
                 
                 # 读取现有的删除日志（如果存在）
                 deleted_messages_log = []
