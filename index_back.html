@@ -32439,7 +32439,7 @@ function refreshMobileSessionPicker() {
         // ========== 功能说明 ==========
         try {
           const response = await fetch(
-            `/auth/admin/get_user_school_accounts?username=${encodeURIComponent(
+            `/auth/get_user_school_accounts?username=${encodeURIComponent(
               username
             )}`,
             {
@@ -39012,7 +39012,7 @@ function refreshMobileSessionPicker() {
           if (sessionUUID && currentAuthUsername) {
             try {
               const response = await fetch(
-                "/auth/admin/get_user_school_accounts",
+                "/auth/get_user_school_accounts",
                 {
                   method: "GET",
                   headers: {
@@ -40142,7 +40142,7 @@ function refreshMobileSessionPicker() {
           if (sessionUUID && currentAuthUsername) {
             try {
               const response = await fetch(
-                "/auth/admin/get_user_school_accounts",
+                "/auth/get_user_school_accounts",
                 {
                   method: "GET",
                   headers: {
@@ -40480,7 +40480,7 @@ function refreshMobileSessionPicker() {
         if (sessionUUID && currentAuthUsername) {
           try {
             const response = await fetch(
-              "/auth/admin/get_user_school_accounts",
+              "/auth/get_user_school_accounts",
               {
                 method: "GET",
                 headers: {
@@ -54338,7 +54338,7 @@ async function showMobileUserSchoolAccounts(username) {
 
   try {
     const response = await fetch(
-      `/auth/admin/get_user_school_accounts?username=${encodeURIComponent(
+      `/auth/get_user_school_accounts?username=${encodeURIComponent(
         username
       )}`,
       {
@@ -55280,7 +55280,7 @@ async function addMobileSelectedConfig() {
   if (typeof sessionUUID !== "undefined" && sessionUUID && typeof currentAuthUsername !== "undefined" && currentAuthUsername) {
     try {
       const response = await fetch(
-        "/auth/admin/get_user_school_accounts",
+        "/auth/get_user_school_accounts",
         {
           method: "GET",
           headers: {
@@ -55353,7 +55353,7 @@ async function addMobileAllConfigs() {
       if (typeof sessionUUID !== "undefined" && sessionUUID && typeof currentAuthUsername !== "undefined" && currentAuthUsername) {
         try {
           const response = await fetch(
-            "/auth/admin/get_user_school_accounts",
+            "/auth/get_user_school_accounts",
             {
               method: "GET",
               headers: {
