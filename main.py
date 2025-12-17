@@ -39618,7 +39618,8 @@ def start_web_server(args_param):
         返回数据（JSON格式）：
         {
             "show_available_runs_on_register": "true",  // 是否在注册页面显示提示
-            "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑"  // 提示文本模板
+            "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑",  // 提示文本模板
+            "available_runs": 10  // 默认免费次数（整数类型）
         }
 
         配置说明：
@@ -39629,6 +39630,11 @@ def start_web_server(args_param):
         - register_available_runs_hint: 提示文本模板，包含占位符 {available_runs}
           * 占位符会被前端JavaScript替换为实际的初始免费次数
           * 示例："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
+
+        - available_runs: 整数类型，表示新用户注册后的默认免费次数
+          * 从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+          * 前端可以直接使用该值，无需硬编码
+          * 示例：10 表示新用户注册后可获得10次免费跑步机会
 
         使用场景：
         - 页面加载时：前端调用此接口获取配置，决定是否显示注册提示
@@ -39677,12 +39683,23 @@ def start_web_server(args_param):
                 fallback='注册即可得 {available_runs} 次校园跑'  # 默认提示文本
             )
 
+            # 读取 available_runs 配置项（默认免费次数）
+            # 从 Payment_Settings 节读取 default_available_runs 配置
+            # 使用 getint() 方法确保返回整数类型
+            available_runs = config.getint(
+                'Payment_Settings',                      # 配置节名
+                'default_available_runs',                # 配置项名
+                fallback=10                              # 默认值：10次
+            )
+
             # ========== 步骤3：返回配置数据 ==========
 
             # 将配置数据封装为JSON格式返回给前端
+            # 【新增】添加 available_runs 字段，前端可以直接使用该值，无需硬编码
             return jsonify({
                 'show_available_runs_on_register': show_available_runs_on_register,
-                'register_available_runs_hint': register_available_runs_hint
+                'register_available_runs_hint': register_available_runs_hint,
+                'available_runs': available_runs  # 新增：默认免费次数
             })
 
         except Exception as e:
