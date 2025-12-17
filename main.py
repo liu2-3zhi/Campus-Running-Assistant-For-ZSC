@@ -67,6 +67,7 @@ argparse = _try_import_builtin("argparse")
 gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
+shutil = _try_import_builtin("shutil")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -1528,6 +1529,108 @@ AUDIT_LOG_FILE = None
 
 
 # ========================================================================
+# [通用工具函数] 文件备份和重置功能
+# 用于在遇到文件读取异常（特别是JSON解析错误）时自动备份损坏的文件并重置
+# ========================================================================
+
+def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="json"):
+    """
+    备份损坏的文件并用默认内容重置
+    
+    功能说明：
+        当文件读取异常（特别是JSON解析错误）时，此函数会：
+        1. 创建 ./logs/backup/ 目录（如果不存在）
+        2. 将损坏的文件复制到备份目录，文件名格式为：原文件名_时间戳.backup
+        3. 根据文件类型，用默认内容覆写原文件
+        4. 记录日志说明已备份和重置
+    
+    参数:
+        file_path (str): 要备份的文件路径（绝对路径或相对路径）
+        default_content: 重置后的默认内容
+            - 对于JSON文件：可以是dict或list，函数会自动转换为JSON字符串
+            - 对于ini文件：应该是字符串，可以是空字符串或默认配置文本
+            - 对于text文件：应该是字符串
+        file_type (str): 文件类型，可选值："json", "ini", "text"，默认为"json"
+    
+    返回值:
+        bool: 如果成功备份并重置返回True，否则返回False
+    
+    异常处理：
+        所有异常都会被捕获并记录到日志中，确保不会影响主业务逻辑
+    
+    示例:
+        # JSON文件，默认内容为空字典
+        _backup_and_reset_corrupted_file("config.json", {}, "json")
+        
+        # JSON文件，默认内容为空列表
+        _backup_and_reset_corrupted_file("messages.json", [], "json")
+        
+        # INI文件，默认内容为空字符串
+        _backup_and_reset_corrupted_file("config.ini", "", "ini")
+    """
+    try:
+        # 首先检查源文件是否存在
+        # 如果文件不存在，则无需备份，直接返回False
+        if not os.path.exists(file_path):
+            logging.warning(f"[文件备份] 文件不存在，无需备份: {file_path}")
+            return False
+        
+        # 创建备份目录：./logs/backup/
+        # exist_ok=True 表示如果目录已存在不会报错
+        backup_dir = os.path.join("logs", "backup")
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        # 生成备份文件名
+        # 格式：原文件名（不含路径）_时间戳.backup
+        # 例如：payment_methods_20251217_123045.json.backup
+        base_name = os.path.basename(file_path)  # 获取文件名（不含路径）
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")  # 生成时间戳
+        backup_filename = f"{base_name}_{timestamp}.backup"  # 组装备份文件名
+        backup_path = os.path.join(backup_dir, backup_filename)  # 完整的备份文件路径
+        
+        # 使用 shutil.copy2() 复制文件到备份目录
+        # copy2() 会同时复制文件内容和元数据（如时间戳、权限等）
+        shutil.copy2(file_path, backup_path)
+        logging.info(f"[文件备份] 已备份损坏文件: {file_path} -> {backup_path}")
+        
+        # 根据文件类型，准备要写入的内容
+        if file_type == "json":
+            # 对于JSON文件，需要将Python对象（dict或list）转换为JSON字符串
+            # 如果default_content已经是字符串，直接使用；否则转换为JSON格式
+            if isinstance(default_content, str):
+                # 已经是字符串，直接使用
+                content_to_write = default_content
+            else:
+                # 是dict或list，需要转换为JSON字符串
+                # indent=2: 使用2个空格缩进，使输出更易读
+                # ensure_ascii=False: 允许中文字符不被转义
+                content_to_write = json.dumps(default_content, indent=2, ensure_ascii=False)
+        else:
+            # 对于ini或text文件，default_content应该已经是字符串
+            # 如果不是字符串，强制转换为字符串
+            content_to_write = str(default_content) if not isinstance(default_content, str) else default_content
+        
+        # 用默认内容覆写原文件
+        # 使用 'w' 模式会清空原文件内容并写入新内容
+        # encoding='utf-8' 确保中文内容正确写入
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content_to_write)
+        
+        # 记录重置操作的日志
+        logging.info(f"[文件备份] 已用默认内容重置文件: {file_path}")
+        
+        # 操作成功，返回True
+        return True
+        
+    except Exception as e:
+        # 捕获所有可能的异常（文件操作失败、权限错误、磁盘空间不足等）
+        # 记录错误日志，但不抛出异常，确保不影响主业务逻辑
+        logging.error(f"[文件备份] 备份和重置文件失败 ({file_path}): {e}", exc_info=True)
+        # 操作失败，返回False
+        return False
+
+
+# ========================================================================
 # [任务47新增] 自动签到配置管理函数
 # 这些函数用于管理集中化的自动签到配置文件（JSON格式）
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
@@ -1585,6 +1688,15 @@ def _load_auto_attendance_config():
     except json.JSONDecodeError as e:
         # JSON解析失败，可能是文件损坏或格式错误
         logging.error(f"[自动签到配置] 配置文件解析失败: {e}")
+        
+        # 调用通用备份函数，备份损坏的文件并重置为默认内容
+        # 默认内容为空的配置结构：{"enabled_accounts": {}}
+        _backup_and_reset_corrupted_file(
+            AUTO_ATTENDANCE_CONFIG_FILE,
+            {"enabled_accounts": {}},
+            "json"
+        )
+        
         # 返回空配置，避免程序崩溃
         return {"enabled_accounts": {}}
     except Exception as e:
@@ -3560,6 +3672,15 @@ def _read_payment_methods_config():
     except json.JSONDecodeError as e:
         # 使用WARNING级别记录日志，因为这不是严重错误，系统可以使用默认配置继续运行
         logging.warning(f"[支付方式配置] 配置文件JSON格式错误，使用默认配置: {str(e)}")
+        
+        # 调用通用备份函数，备份损坏的文件并重置为默认配置
+        # 使用_get_default_payment_methods_config()获取默认配置内容
+        _backup_and_reset_corrupted_file(
+            config_file,
+            _get_default_payment_methods_config(),
+            "json"
+        )
+        
         # 返回默认配置，确保系统可以正常运行
         return _get_default_payment_methods_config()
     except Exception as e:
@@ -5069,9 +5190,17 @@ class AuthSystem:
             logging.error(
                 f"_load_permissions: 读取权限文件异常 ({type(e).__name__}): {e}"
             )
-            logging.warning("检测到权限文件损坏或格式错误，正在直接清空并重建...")
+            logging.warning("检测到权限文件损坏或格式错误，正在备份并重建...")
 
-            # 强制清空重建，不备份，不重命名
+            # 调用通用备份函数，备份损坏的权限文件
+            # 使用default_perms（默认权限配置）作为重置内容
+            _backup_and_reset_corrupted_file(
+                PERMISSIONS_FILE,
+                default_perms,
+                "json"
+            )
+
+            # 强制清空重建，确保权限文件结构完整
             _create_permissions_json(force=True)
 
             # 重建后尝试重新读取新文件，确保内存数据与文件一致
@@ -29905,8 +30034,21 @@ def start_web_server(args_param):
             try:
                 with open(messages_file, "r", encoding="utf-8") as f:
                     messages = json.load(f)
-            except (json.JSONDecodeError, OSError) as e:
-                logging.error(f"[留言板] 读取留言失败: {e}")
+            except json.JSONDecodeError as e:
+                # JSON解析失败，文件损坏
+                logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的留言文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    messages_file,
+                    [],
+                    "json"
+                )
+                
+                return jsonify({"success": False, "message": "留言文件损坏，已备份并重置"}), 500
+            except OSError as e:
+                # 文件读取失败（权限错误、磁盘错误等）
+                logging.error(f"[留言板] 读取留言失败（文件操作错误）: {e}")
                 return jsonify({"success": False, "message": "读取留言失败"}), 500
         message_to_delete = None
         for msg in messages:
@@ -29932,14 +30074,78 @@ def start_web_server(args_param):
             pass
         else:
             return jsonify({"success": False, "message": "无权删除此留言"}), 403
+        
+        # 在删除之前，保存要删除的留言的完整副本
+        # 稍后会将这个副本记录到删除日志中
+        message_to_delete_copy = message_to_delete.copy()
+        
+        # 从留言列表中移除要删除的留言
         messages = [msg for msg in messages if msg.get("id") != message_id]
         try:
+            # 将更新后的留言列表写入文件
             with open(messages_file, "w", encoding="utf-8") as f:
                 json.dump(messages, f, indent=2, ensure_ascii=False)
 
             logging.info(
                 f"[留言板] 删除留言 --> 操作用户: {auth_username}, 留言ID: {message_id}"
             )
+            
+            # ========================================================================
+            # [新增] 记录删除日志
+            # 将被删除的留言保存到 ./logs/deleted_messages.json
+            # 即使日志记录失败，也不影响删除操作的成功
+            # ========================================================================
+            try:
+                # 确保logs目录存在
+                # exist_ok=True 表示如果目录已存在不会报错
+                logs_dir = "logs"
+                os.makedirs(logs_dir, exist_ok=True)
+                
+                # 删除日志文件的路径
+                deleted_messages_log_file = os.path.join(logs_dir, "deleted_messages.json")
+                
+                # 准备要记录的删除记录
+                # 包含原留言的所有字段，加上删除相关的元数据
+                deletion_record = message_to_delete_copy.copy()  # 复制原留言的所有字段
+                
+                # 添加删除相关的元数据
+                deletion_record["deleted_at"] = datetime.datetime.now().isoformat()  # 删除时间（ISO 8601格式）
+                deletion_record["deleted_by"] = auth_username  # 执行删除操作的用户
+                deletion_record["deletion_reason"] = "管理员删除"  # 删除原因（目前固定值）
+                
+                # 读取现有的删除日志（如果存在）
+                deleted_messages_log = []
+                if os.path.exists(deleted_messages_log_file):
+                    try:
+                        # 尝试读取现有的日志文件
+                        with open(deleted_messages_log_file, "r", encoding="utf-8") as f:
+                            deleted_messages_log = json.load(f)
+                            # 确保读取的是一个列表
+                            if not isinstance(deleted_messages_log, list):
+                                deleted_messages_log = []
+                    except (json.JSONDecodeError, OSError) as read_e:
+                        # 如果读取失败（文件损坏或格式错误），记录警告并使用空列表
+                        logging.warning(f"[留言板] 删除日志文件读取失败，将创建新文件: {read_e}")
+                        deleted_messages_log = []
+                
+                # 将新的删除记录追加到日志列表中
+                deleted_messages_log.append(deletion_record)
+                
+                # 将更新后的删除日志写入文件
+                with open(deleted_messages_log_file, "w", encoding="utf-8") as f:
+                    json.dump(deleted_messages_log, f, indent=2, ensure_ascii=False)
+                
+                # 记录成功写入删除日志的信息
+                logging.info(f"[留言板] 已记录删除日志 --> 留言ID: {message_id}, 删除者: {auth_username}")
+                
+            except Exception as log_e:
+                # 删除日志记录失败，只记录警告，不影响删除操作本身
+                # 这确保即使日志系统出现问题，用户的删除操作仍然可以成功
+                logging.warning(f"[留言板] 删除日志记录失败（不影响删除操作）: {log_e}")
+            # ========================================================================
+            # [删除日志记录结束]
+            # ========================================================================
+            
             return jsonify({"success": True, "message": "留言已删除"})
         except OSError as e:
             logging.error(f"[留言板] 保存留言失败: {e}")
@@ -30387,15 +30593,14 @@ def start_web_server(args_param):
 
         except json.JSONDecodeError as e:
             logging.error(f"[定时提醒] JSON解析失败: {e}")
-            logging.warning("[定时提醒] 检测到提醒文件损坏，正在直接清空并重建...")
+            logging.warning("[定时提醒] 检测到提醒文件损坏，正在备份并重建...")
 
-            # 强制清空重建
-            try:
-                with open(reminders_file, "w", encoding="utf-8") as f:
-                    json.dump({"reminders": []}, f,
-                              indent=2, ensure_ascii=False)
-            except Exception as write_e:
-                logging.error(f"[定时提醒] 重建文件失败: {write_e}")
+            # 调用通用备份函数，备份损坏的提醒文件并重置为空列表
+            _backup_and_reset_corrupted_file(
+                reminders_file,
+                {"reminders": []},
+                "json"
+            )
 
             # 返回空列表，保证前端正常加载
             return jsonify({"success": True, "reminders": []})
