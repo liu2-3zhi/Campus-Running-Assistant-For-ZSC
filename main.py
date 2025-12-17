@@ -21904,7 +21904,7 @@ def start_web_server(args_param):
         return jsonify({"success": True, "logs": logs})
 
     @app.route("/auth/get_user_school_accounts", methods=["GET"])
-    @login_required  # 只需要登录即可，权限过滤通过get_initial_data方法实现
+    @login_required  # 只需要登录即可，权限过滤在数据层通过get_initial_data实现
     def auth_get_user_school_accounts():
         """
         获取指定认证用户的所有 school_account（基于get_initial_data权限过滤）
