@@ -8987,8 +8987,9 @@ document.addEventListener("DOMContentLoaded", function () {
  * - register_available_runs_hint: 提示文本模板（包含 {available_runs} 占位符）
  *
  * 默认免费次数：
- * - 目前硬编码为10次（可后续改为从另一个API获取）
- * - 这个数值应该与系统实际给新用户分配的次数一致
+ * - 从 /api/config/registration_display 的 available_runs 字段获取
+ * - 该值从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+ * - 这个数值与系统实际给新用户分配的次数一致
  */
 async function initRegisterAvailableRunsHint() {
   try {
