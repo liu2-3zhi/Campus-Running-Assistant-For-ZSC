@@ -1522,7 +1522,7 @@ PERMISSIONS_FILE = "permissions.json"
 # [任务47新增] 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
-AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config.json"
+AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config_new.json"
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None

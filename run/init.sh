@@ -12,4 +12,4 @@ mkdir -p ./tokens
 mkdir -p ./system_accounts
 mkdir -p ./payment_orders
 touch ./payment_methods.json
-touch ./auto_attendance_config.json
+touch ./auto_attendance_config_new.json
