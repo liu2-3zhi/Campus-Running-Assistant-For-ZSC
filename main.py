@@ -3555,8 +3555,15 @@ def _read_payment_methods_config():
             # 文件不存在，返回默认配置
             # 这是正常情况（首次运行或文件被删除）
             return _get_default_payment_methods_config()
+    # 特别捕获JSON解析错误：当配置文件为空或格式错误时
+    # 这通常是由于文件损坏或手动编辑错误导致的，属于预期的错误情况
+    except json.JSONDecodeError as e:
+        # 使用WARNING级别记录日志，因为这不是严重错误，系统可以使用默认配置继续运行
+        logging.warning(f"[支付方式配置] 配置文件JSON格式错误，使用默认配置: {str(e)}")
+        # 返回默认配置，确保系统可以正常运行
+        return _get_default_payment_methods_config()
     except Exception as e:
-        # 捕获所有可能的异常（文件读取错误、JSON解析错误等）
+        # 捕获其他所有可能的异常（文件读取错误、权限错误等）
         # 记录错误日志，便于排查问题
         logging.error(f"[支付方式配置] 读取配置文件失败: {str(e)}")
         # 即使发生错误，也返回默认配置，确保系统可以正常运行
@@ -6563,7 +6570,12 @@ class TokenManager:
 
             return True, "valid"
 
+        # 捕获JSON解析错误：当token文件为空或格式错误时，直接返回无效标记，不记录ERROR日志
+        # 这是预期的错误情况（文件损坏或被手动修改），不需要记录错误级别日志
+        except json.JSONDecodeError:
+            return False, "invalid_token_file"
         except Exception as e:
+            # 只有在遇到其他意外错误时才记录ERROR日志
             logging.error(f"验证令牌时出错: {e}")
             return False, "error"
 
@@ -19042,6 +19054,17 @@ def get_ssl_certificate_info(cert_path):
     """
     if not os.path.isabs(cert_path):
         cert_path = os.path.join(os.path.dirname(__file__), cert_path)
+    
+    # 在打开文件前检查文件是否存在
+    # 如果证书文件不存在，返回友好的错误信息而不记录ERROR日志
+    # 这是预期的情况（证书未上传或已被删除），不是系统错误
+    if not os.path.exists(cert_path):
+        return {
+            "error": "证书文件不存在",
+            "path": cert_path,
+            "message": "请先上传SSL证书"
+        }
+    
     cert_info = {}
 
     try:
@@ -19081,6 +19104,7 @@ def get_ssl_certificate_info(cert_path):
             "install_hint": "pip install cryptography",
         }
     except Exception as e:
+        # 只在真正的异常情况下（如证书格式错误、读取权限问题等）记录ERROR日志
         logging.error(f"获取证书信息时发生错误: {e}")
         cert_info = {"error": f"读取证书信息失败: {str(e)}"}
 
@@ -26518,15 +26542,22 @@ def start_web_server(args_param):
                 final_key_path = os.path.join(ssl_dir, "privkey.key")
                 if os.path.exists(final_cert_path):
                     backup_cert_path = final_cert_path + ".backup"
-                    os.replace(final_cert_path, backup_cert_path)
+                    # 使用 shutil.move() 替代 os.replace()
+                    # shutil.move() 支持跨文件系统移动，可以避免"Invalid cross-device link"错误
+                    # 当源文件和目标文件在不同的文件系统（如 /tmp 和 /app）时，os.replace() 会失败
+                    shutil.move(final_cert_path, backup_cert_path)
                     logging.info(f"[SSL管理] 已备份旧证书: {backup_cert_path}")
 
                 if os.path.exists(final_key_path):
                     backup_key_path = final_key_path + ".backup"
-                    os.replace(final_key_path, backup_key_path)
+                    # 使用 shutil.move() 支持跨文件系统备份
+                    shutil.move(final_key_path, backup_key_path)
                     logging.info(f"[SSL管理] 已备份旧密钥: {backup_key_path}")
-                os.replace(temp_cert_path, final_cert_path)
-                os.replace(temp_key_path, final_key_path)
+                # 使用 shutil.move() 将临时文件移动到最终位置
+                # 这是关键修复：临时文件通常在 /tmp 目录，而最终位置在 /app/ssl
+                # 这两个目录可能在不同的文件系统上，必须使用 shutil.move() 而不是 os.replace()
+                shutil.move(temp_cert_path, final_cert_path)
+                shutil.move(temp_key_path, final_key_path)
                 os.chmod(final_cert_path, 0o644)
                 os.chmod(final_key_path, 0o600)
 
