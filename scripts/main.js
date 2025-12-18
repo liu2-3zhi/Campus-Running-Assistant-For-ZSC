@@ -16393,7 +16393,7 @@ const permissionTranslations = {
   god_mode: "查看所有会话",
 
   use_login_button: "使用登录按钮",
-  use_multi_account_button: "使用多账号控制台",
+  use_multi_account_button: "使用多账号控制台按钮",
   use_import_button: "导入离线文件",
 
   view_messages: "查看留言板",

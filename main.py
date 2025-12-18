@@ -4184,7 +4184,7 @@ def _create_permissions_json(force=False):
                     "mark_notifications_read": True,
                     "view_user_details": True,
                     "modify_user_settings": True,
-                    "execute_multi_account": True,
+                    "execute_multi_account": False,
                     "use_attendance": True,
                     "view_logs": False,
                     "clear_logs": False,
@@ -4246,6 +4246,7 @@ def _create_permissions_json(force=False):
                     "delete_any_messages": True,
                     "view_captcha_history": True,
                     "modify_config": True,
+                    "manage_system": True,
                 },
             },
             "super_admin": {
