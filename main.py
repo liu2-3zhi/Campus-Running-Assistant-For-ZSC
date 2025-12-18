@@ -22368,6 +22368,80 @@ def start_web_server(args_param):
 
         return jsonify({"success": True, "all_accounts": all_users_accounts})
 
+    @app.route("/auth/list_all_user_school_accounts", methods=["GET"])
+    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
+    def auth_list_all_user_school_accounts():
+        """
+        获取所有拥有school_accounts的认证用户名列表（管理员专用）
+        
+        功能说明：
+        - 返回所有在 school_accounts/user_accounts/ 目录下有JSON文件的用户名列表
+        - 用于前端遍历所有用户并获取其学校账号
+        - 比 get_all_users_school_accounts 更轻量（只返回用户名列表，不返回账号详情）
+        
+        权限要求：
+        - 需要 manage_users 权限（管理员）
+        
+        返回格式：
+        {
+            "success": true,
+            "users": ["user1", "user2", "user3", ...]
+        }
+        """
+        try:
+            # ========== 步骤1：权限检查 ==========
+            auth_username = g.user
+            
+            # 检查是否有管理用户的权限
+            # manage_users 权限允许查看所有用户的信息
+            if not auth_system.check_permission(auth_username, "manage_users"):
+                logging.warning(
+                    f"[权限拒绝] 用户 {auth_username} 试图访问所有用户列表，但缺少 manage_users 权限"
+                )
+                return jsonify({
+                    "success": False,
+                    "message": "权限不足，需要用户管理权限（manage_users）"
+                }), 403
+            
+            # ========== 步骤2：扫描用户账号目录 ==========
+            user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+            users = []
+            
+            # 检查目录是否存在
+            if os.path.exists(user_accounts_dir):
+                # 遍历目录中的所有文件
+                for filename in os.listdir(user_accounts_dir):
+                    # 只处理 .json 文件
+                    if filename.endswith(".json"):
+                        # 从文件名提取用户名（去掉 .json 后缀）
+                        username = filename[:-5]  # 移除 ".json"
+                        users.append(username)
+                
+                logging.info(
+                    f"[用户列表] 管理员 {auth_username} 获取用户列表，共 {len(users)} 个用户"
+                )
+            else:
+                logging.warning(
+                    f"[目录不存在] user_accounts 目录不存在: {user_accounts_dir}"
+                )
+            
+            # ========== 步骤3：返回结果 ==========
+            return jsonify({
+                "success": True,
+                "users": users
+            })
+            
+        except Exception as e:
+            # ========== 异常处理 ==========
+            logging.error(
+                f"[接口异常] auth_list_all_user_school_accounts 发生异常: {str(e)}",
+                exc_info=True
+            )
+            return jsonify({
+                "success": False,
+                "message": "服务器内部错误，请稍后重试"
+            }), 500
+
     # ========== 新增：School Account 管理API（保存/添加） ==========
     @app.route("/api/admin/school_account/save", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
