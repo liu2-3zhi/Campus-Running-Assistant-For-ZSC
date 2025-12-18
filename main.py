@@ -11998,6 +11998,78 @@ class Api:
 
         return mode_info
 
+    def _find_password_for_account(self, username):
+        """
+        查找指定学校账号的密码
+        
+        逻辑：
+        - 普通用户：只在自己的school_accounts中查找
+        - 管理员：在所有用户的school_accounts中查找
+        
+        参数:
+            username: 学校账号用户名
+        
+        返回:
+            密码字符串，如果未找到则返回None
+        """
+        # 首先尝试从INI配置文件加载
+        ini_password = self._load_config(username)
+        if ini_password:
+            return ini_password
+        
+        # 如果没有认证用户，无法查找school_accounts
+        if not hasattr(self, "auth_username") or not self.auth_username:
+            return None
+        
+        # 获取当前用户的权限
+        is_admin = False
+        if hasattr(self, "auth_permissions") and self.auth_permissions:
+            is_admin = self.auth_permissions.get("is_admin", False)
+        
+        # 普通用户：只查找自己的school_accounts
+        if not is_admin:
+            school_accounts = self._load_user_school_accounts(self.auth_username)
+            if username in school_accounts:
+                account_data = school_accounts[username]
+                if isinstance(account_data, dict):
+                    return account_data.get("password", "")
+                elif isinstance(account_data, str):
+                    return account_data
+            return None
+        
+        # 管理员：查找所有用户的school_accounts
+        accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        if not os.path.exists(accounts_dir):
+            return None
+        
+        try:
+            # 遍历所有用户的账户文件
+            for filename in os.listdir(accounts_dir):
+                if not filename.endswith(".json"):
+                    continue
+                
+                auth_user = os.path.splitext(filename)[0]
+                school_accounts = self._load_user_school_accounts(auth_user)
+                
+                if username in school_accounts:
+                    account_data = school_accounts[username]
+                    if isinstance(account_data, dict):
+                        password = account_data.get("password", "")
+                        if password:
+                            logging.info(
+                                f"管理员查找：在用户 {auth_user} 的账户中找到 {username} 的密码"
+                            )
+                            return password
+                    elif isinstance(account_data, str) and account_data:
+                        logging.info(
+                            f"管理员查找：在用户 {auth_user} 的账户中找到 {username} 的密码"
+                        )
+                        return account_data
+        except Exception as e:
+            logging.error(f"管理员查找密码时出错: {e}", exc_info=True)
+        
+        return None
+
     def multi_get_all_config_users(self):
         """
         获取所有存在配置文件的用户列表，用于前端便捷添加
@@ -12028,6 +12100,50 @@ class Api:
 
         return {"users": filtered_users}
 
+    def multi_add_account(self, username, password, tag=""):
+        """
+        添加一个多账号到账号列表
+        
+        参数:
+            username: 学校账号用户名
+            password: 学校账号密码（可以为空字符串）
+            tag: 账号标签（可选）
+        
+        返回:
+            账号状态字典
+        """
+        try:
+            # 创建AccountSession对象
+            acc_session = AccountSession(
+                username=username,
+                password=password,
+                api_bridge=self,
+                tag=tag or ""
+            )
+            
+            # 添加到账号字典
+            self.accounts[username] = acc_session
+            
+            # 保存账号信息到用户的school_accounts
+            if hasattr(self, "auth_username") and self.auth_username:
+                school_accounts = self._load_user_school_accounts(self.auth_username)
+                school_accounts[username] = {
+                    "password": password,
+                    "tag": tag or ""
+                }
+                self._save_user_school_accounts(self.auth_username, school_accounts)
+            
+            self.log(f"已添加账号: {username}" + (f" (标签: {tag})" if tag else ""))
+            
+        except Exception as e:
+            logging.error(f"添加账号 {username} 失败: {e}", exc_info=True)
+            raise
+        
+        self._update_multi_global_buttons()
+        if hasattr(self, "_web_session_id") and self._web_session_id:
+            save_session_state(self._web_session_id, self, force_save=True)
+        
+        return self.multi_get_all_accounts_status()
 
     def multi_remove_account(self, username):
         """移除一个账号"""
@@ -12440,15 +12556,19 @@ class Api:
                         continue
                     seen_usernames.add(username)
 
-                    loaded_password = self._load_config(username)
-                    final_password = password or (loaded_password or "")
-
+                    # 如果密码为空，尝试从配置中查找
+                    final_password = password
                     if not final_password:
-                        skipped_no_password.append(username)
-                        continue
-
+                        found_password = self._find_password_for_account(username)
+                        final_password = found_password or ""
+                    
+                    # 即使密码为空也允许添加账号
                     self.multi_add_account(username, final_password, tag=tag)
                     imported += 1
+                    
+                    # 记录未找到密码的账号
+                    if not final_password:
+                        skipped_no_password.append(username)
 
             elif ext == ".xls":
                 file_stream.seek(0)
@@ -12471,15 +12591,19 @@ class Api:
                             continue
                         seen_usernames.add(username)
 
-                        loaded_password = self._load_config(username)
-                        final_password = password or (loaded_password or "")
+                        # 如果密码为空，尝试从配置中查找
+                        final_password = password
+                        if not final_password:
+                            found_password = self._find_password_for_account(username)
+                            final_password = found_password or ""
+                        
+                        # 即使密码为空也允许添加账号
+                        self.multi_add_account(username, final_password, tag=tag)
+                        imported += 1
+                        
+                        # 记录未找到密码的账号
                         if not final_password:
                             skipped_no_password.append(username)
-                            continue
-
-                        self.multi_add_account(
-                            username, final_password, tag=tag)
-                        imported += 1
 
             elif ext == ".csv":
                 skipped_no_password = []
@@ -12513,22 +12637,26 @@ class Api:
                             continue
                         seen_usernames.add(username)
 
-                        loaded_password = self._load_config(username)
-                        final_password = password or (loaded_password or "")
+                        # 如果密码为空，尝试从配置中查找
+                        final_password = password
+                        if not final_password:
+                            found_password = self._find_password_for_account(username)
+                            final_password = found_password or ""
+                        
+                        # 即使密码为空也允许添加账号
+                        self.multi_add_account(username, final_password, tag=tag)
+                        imported += 1
+                        
+                        # 记录未找到密码的账号
                         if not final_password:
                             skipped_no_password.append(username)
-                            continue
-
-                        self.multi_add_account(
-                            username, final_password, tag=tag)
-                        imported += 1
 
             else:
                 return {"success": False, "message": f"不支持的导入格式: {ext}"}
 
             self.log(f"成功导入 {imported} 个账号。")
             if skipped_no_password:
-                msg = "以下账号缺少密码，已跳过导入。请在多账号控制台手动添加并输入密码：\n" + "\n".join(
+                msg = "以下账号未找到密码，已添加但需要您手动设置密码：\n" + "\n".join(
                     skipped_no_password[:20]
                 )
                 try:
@@ -39709,6 +39837,456 @@ def start_web_server(args_param):
             return jsonify({
                 'error': str(e)
             }), 500
+
+    # ==============================================================================
+    # 多账号管理API接口
+    # ==============================================================================
+
+    @app.route("/api/multi_add_account", methods=["POST"])
+    @login_required
+    def api_multi_add_account():
+        """
+        添加多账号API接口
+        
+        功能：向多账号系统添加一个学校账号
+        请求方法：POST
+        权限要求：需要登录
+        
+        请求参数（JSON格式）：
+        - username: 学号（必填，最大长度200字符）
+        - password: 密码（必填，长度6-1000字符）
+        - tag: 标签（可选，最大长度200字符）
+        
+        返回数据（JSON格式）：
+        - success: 布尔值，表示操作是否成功
+        - message: 字符串，操作结果的描述信息
+        
+        安全验证：
+        - 验证用户名长度不超过200字符
+        - 验证密码长度在6-1000字符之间
+        - 验证标签长度不超过200字符
+        - 使用USERNAME_PATTERN验证用户名格式：只允许字母、数字、下划线、连字符、点和@符号
+        """
+        
+        # ========== 步骤1：获取当前登录用户信息 ==========
+        
+        # 从Flask的g对象中获取当前登录的用户名
+        # g对象是Flask提供的请求上下文对象，用于存储请求期间的全局变量
+        current_auth_username = g.user
+        
+        # ========== 步骤2：获取并验证会话信息 ==========
+        
+        # 从请求头中获取session_id，用于后续操作
+        # session_id是客户端与服务器之间的会话标识符
+        session_id = request.headers.get("X-Session-ID", "")
+        
+        # 验证session_id是否存在且有效
+        # 如果session_id为空或不在web_sessions字典中，说明会话无效
+        if not session_id or session_id not in web_sessions:
+            # 返回401未授权错误，提示用户未登录或会话已过期
+            return jsonify({"success": False, "message": "未登录或会话无效"}), 401
+        
+        # 通过session_id获取API实例对象
+        # api_instance包含了该用户的所有操作方法和状态信息
+        api_instance = web_sessions[session_id]
+        
+        # ========== 步骤3：解析请求数据 ==========
+        
+        try:
+            # 获取POST请求的JSON数据
+            # request.get_json()会自动解析请求体中的JSON数据
+            data = request.get_json()
+            
+            # 检查数据是否为空
+            # 如果客户端没有发送数据或数据格式错误，data会是None
+            if not data:
+                # 返回400错误请求，提示缺少请求数据
+                return jsonify({"success": False, "message": "缺少请求数据"}), 400
+            
+            # 从数据中提取username字段，并进行类型转换和空白字符清理
+            # str()确保即使传入的是数字也会被转换为字符串
+            # or "" 确保如果字段不存在或为None时返回空字符串
+            # strip()去除字符串首尾的空白字符（空格、换行符等）
+            username = str(data.get("username") or "").strip()
+            
+            # 从数据中提取password字段，进行相同的处理
+            password = str(data.get("password") or "").strip()
+            
+            # 从数据中提取tag字段（可选），进行相同的处理
+            # tag用于给账号打标签，便于分类管理
+            tag = str(data.get("tag") or "").strip()
+            
+        except Exception as e:
+            # 如果在解析过程中发生任何异常（如JSON格式错误）
+            # 记录错误日志，包含完整的堆栈信息，便于调试
+            logging.error(f"解析multi_add_account请求失败: {e}", exc_info=True)
+            
+            # 返回400错误请求，提示数据格式错误
+            return jsonify({"success": False, "message": "请求数据格式错误"}), 400
+        
+        # ========== 步骤4：验证必填字段 ==========
+        
+        # 检查username是否为空
+        # username是添加账号的必需信息
+        if not username:
+            # 返回400错误请求，明确提示缺少哪些必填字段
+            return jsonify({
+                "success": False,
+                "message": "缺少必填字段：username"
+            }), 400
+        
+        # [修改] 允许密码为空，如果为空则尝试查找已有密码
+        if not password:
+            # 尝试查找该账号的已有密码
+            found_password = api_instance._find_password_for_account(username)
+            if found_password:
+                password = found_password
+                logging.info(f"为账号 {username} 从配置中找到了密码")
+            else:
+                # 如果找不到密码，返回错误
+                return jsonify({
+                    "success": False,
+                    "message": f"账号 {username} 没有密码，且未在配置中找到已有密码"
+                }), 400
+        
+        # ========== 步骤5：安全性验证 ==========
+        
+        # [安全验证1] 验证用户名长度
+        # MAX_USERNAME_LENGTH在文件开头定义为200
+        # 防止过长的用户名导致数据库溢出或其他安全问题
+        if len(username) > MAX_USERNAME_LENGTH:
+            return jsonify({
+                "success": False,
+                "message": f"用户名长度不能超过{MAX_USERNAME_LENGTH}字符"
+            }), 400
+        
+        # [安全验证2] 验证密码长度（移除最小长度限制，因为学校账号密码位数没有限制）
+        # 只验证最大长度以防止过长密码导致的性能问题
+        if len(password) > MAX_PASSWORD_LENGTH:
+            return jsonify({
+                "success": False,
+                "message": f"密码长度不能超过{MAX_PASSWORD_LENGTH}字符"
+            }), 400
+        
+        # [安全验证3] 验证标签长度（如果提供了标签）
+        # MAX_TAG_LENGTH在文件开头定义为200
+        if tag and len(tag) > MAX_TAG_LENGTH:
+            return jsonify({
+                "success": False,
+                "message": f"标签长度不能超过{MAX_TAG_LENGTH}字符"
+            }), 400
+        
+        # [安全验证4] 验证用户名格式
+        # USERNAME_PATTERN是一个正则表达式，定义在文件开头
+        # 只允许字母、数字、下划线、连字符、点和@符号
+        # 这样可以防止SQL注入、路径遍历等安全问题
+        if USERNAME_PATTERN and not USERNAME_PATTERN.match(username):
+            return jsonify({
+                "success": False,
+                "message": "用户名格式不合法，只允许字母、数字、下划线、连字符、点和@符号"
+            }), 400
+        
+        # ========== 步骤6：加载现有账号数据 ==========
+        
+        try:
+            # 调用_load_user_school_accounts方法加载当前用户的所有学校账号
+            # 返回一个字典，键是学校用户名，值是账号信息（密码、UA等）
+            accounts = api_instance._load_user_school_accounts(current_auth_username)
+            
+            # 如果返回None（文件不存在或读取失败），初始化为空字典
+            if accounts is None:
+                accounts = {}
+        
+        except Exception as e:
+            # 如果加载账号数据时发生异常，记录错误日志
+            logging.error(
+                f"加载用户 {current_auth_username} 的 school_accounts 失败: {e}",
+                exc_info=True
+            )
+            # 返回500服务器内部错误
+            return jsonify({"success": False, "message": "加载账户数据失败"}), 500
+        
+        # ========== 步骤7：检查账号是否已存在 ==========
+        
+        # 判断要添加的用户名是否已经在accounts字典中
+        # 如果存在，说明是更新操作；如果不存在，说明是新增操作
+        is_new_account = username not in accounts
+        
+        # ========== 步骤8：保存账号信息 ==========
+        
+        # 将新账号或更新后的账号信息存入字典
+        # 账号信息包括密码和标签
+        accounts[username] = {
+            "password": password,  # 学校账号的密码
+            "tag": tag if tag else ""  # 标签（如果没有提供则为空字符串）
+        }
+        
+        # 根据是否是新账号，设置操作类型描述
+        action = "添加" if is_new_account else "更新"
+        
+        # 记录操作日志，便于后续审计和问题追踪
+        logging.info(
+            f"{action} multi_account: 认证用户={current_auth_username}, "
+            f"学校账户={username}, 标签={tag}"
+        )
+        
+        # ========== 步骤9：持久化保存账号数据 ==========
+        
+        try:
+            # 调用_save_user_school_accounts方法将更新后的账号字典保存到文件
+            # 这个方法会将数据写入JSON文件，确保数据持久化
+            api_instance._save_user_school_accounts(current_auth_username, accounts)
+            
+            # 返回成功响应，包含操作类型和账号信息
+            return jsonify({
+                "success": True,
+                "message": f"账户 {username} {action}成功",
+                "is_new": is_new_account  # 告诉前端这是新增还是更新操作
+            })
+        
+        except Exception as e:
+            # 如果保存数据时发生异常，记录错误日志
+            logging.error(
+                f"保存用户 {current_auth_username} 的 school_accounts 失败: {e}",
+                exc_info=True
+            )
+            # 返回500服务器内部错误
+            return jsonify({"success": False, "message": "保存账户数据失败"}), 500
+
+    @app.route("/api/multi_load_accounts_from_config", methods=["POST"])
+    @login_required
+    def api_multi_load_accounts_from_config():
+        """
+        从配置文件批量加载账号API接口
+        
+        功能：从服务器端的配置文件批量导入多个学校账号
+        请求方法：POST
+        权限要求：需要登录
+        
+        返回数据（JSON格式）：
+        - success: 布尔值，表示操作是否成功
+        - message: 字符串，操作结果的描述信息
+        - added_count: 整数，成功添加的账号数量
+        - failed_count: 整数，添加失败的账号数量
+        - accounts: 数组，包含所有账号的信息列表
+        
+        逻辑说明：
+        1. 读取配置文件中的用户配置
+        2. 验证每个账号的格式和安全性
+        3. 批量添加到多账号系统
+        4. 返回操作统计信息
+        """
+        
+        # ========== 步骤1：获取当前登录用户信息 ==========
+        
+        # 从Flask的g对象中获取当前登录的用户名
+        current_auth_username = g.user
+        
+        # ========== 步骤2：获取并验证会话信息 ==========
+        
+        # 从请求头中获取session_id
+        session_id = request.headers.get("X-Session-ID", "")
+        
+        # 验证session_id是否存在且有效
+        if not session_id or session_id not in web_sessions:
+            return jsonify({"success": False, "message": "未登录或会话无效"}), 401
+        
+        # 通过session_id获取API实例对象
+        api_instance = web_sessions[session_id]
+        
+        # ========== 步骤3：加载当前用户的学校账号 ==========
+        
+        try:
+            # 调用_load_user_school_accounts方法加载现有账号
+            accounts = api_instance._load_user_school_accounts(current_auth_username)
+            
+            # 如果返回None，初始化为空字典
+            if accounts is None:
+                accounts = {}
+        
+        except Exception as e:
+            # 记录加载账号数据失败的错误日志
+            logging.error(
+                f"加载用户 {current_auth_username} 的 school_accounts 失败: {e}",
+                exc_info=True
+            )
+            return jsonify({"success": False, "message": "加载账户数据失败"}), 500
+        
+        # ========== 步骤4：调用multi_get_all_config_users获取配置用户列表 ==========
+        
+        try:
+            # 调用api_instance的multi_get_all_config_users方法
+            # 该方法会返回一个字典，包含"users"键，值是用户名列表
+            config_result = api_instance.multi_get_all_config_users()
+            
+            # 从结果中提取用户名列表
+            # config_result['users']是一个包含所有配置用户名的数组
+            config_users = config_result.get("users", [])
+            
+            # 记录日志，显示找到的配置用户数量
+            logging.info(
+                f"从配置文件中找到 {len(config_users)} 个用户配置 "
+                f"(认证用户={current_auth_username})"
+            )
+        
+        except Exception as e:
+            # 如果读取配置文件失败，记录错误日志
+            logging.error(
+                f"读取配置用户列表失败 (认证用户={current_auth_username}): {e}",
+                exc_info=True
+            )
+            return jsonify({
+                "success": False,
+                "message": "读取配置文件失败",
+                "added_count": 0,
+                "failed_count": 0
+            }), 500
+        
+        # ========== 步骤5：批量验证和添加账号 ==========
+        
+        # 初始化计数器
+        # added_count：成功添加的账号数量
+        # failed_count：添加失败的账号数量
+        added_count = 0
+        failed_count = 0
+        
+        # 遍历配置用户列表，逐个处理
+        for username in config_users:
+            try:
+                # [安全验证1] 验证用户名不为空
+                # strip()后如果为空字符串，说明用户名无效
+                if not username or not username.strip():
+                    # 记录警告日志，跳过该用户
+                    logging.warning(f"跳过空用户名 (认证用户={current_auth_username})")
+                    failed_count += 1
+                    continue
+                
+                # 去除用户名首尾的空白字符
+                username = username.strip()
+                
+                # [安全验证2] 验证用户名长度
+                if len(username) > MAX_USERNAME_LENGTH:
+                    logging.warning(
+                        f"跳过用户名过长的账号: {username} "
+                        f"(长度={len(username)}, 最大={MAX_USERNAME_LENGTH})"
+                    )
+                    failed_count += 1
+                    continue
+                
+                # [安全验证3] 验证用户名格式
+                # 只允许字母、数字、下划线、连字符、点和@符号
+                if USERNAME_PATTERN and not USERNAME_PATTERN.match(username):
+                    logging.warning(
+                        f"跳过用户名格式不合法的账号: {username} "
+                        f"(认证用户={current_auth_username})"
+                    )
+                    failed_count += 1
+                    continue
+                
+                # [检查账号是否已存在]
+                # 如果账号已经在accounts字典中，说明之前已经添加过
+                if username in accounts:
+                    # 记录调试日志，说明账号已存在，跳过
+                    logging.debug(
+                        f"账号 {username} 已存在，跳过 "
+                        f"(认证用户={current_auth_username})"
+                    )
+                    # 注意：已存在的账号不计入failed_count，因为这不算失败
+                    continue
+                
+                # [添加账号到字典]
+                # 由于是从配置文件加载，通常只有用户名，没有密码
+                # 所以这里密码设置为空字符串，后续需要用户补全
+                accounts[username] = {
+                    "password": "",  # 密码为空，需要用户后续补全
+                    "tag": ""  # 标签为空
+                }
+                
+                # 成功添加，计数器加1
+                added_count += 1
+                
+                # 记录信息日志，说明成功添加账号
+                logging.info(
+                    f"从配置加载账号: {username} "
+                    f"(认证用户={current_auth_username})"
+                )
+            
+            except Exception as e:
+                # 如果处理某个账号时发生异常，记录错误日志
+                logging.error(
+                    f"处理配置用户 {username} 时出错 "
+                    f"(认证用户={current_auth_username}): {e}",
+                    exc_info=True
+                )
+                # 失败计数器加1
+                failed_count += 1
+        
+        # ========== 步骤6：持久化保存账号数据 ==========
+        
+        try:
+            # 调用_save_user_school_accounts方法保存更新后的账号字典
+            api_instance._save_user_school_accounts(current_auth_username, accounts)
+            
+            # 记录信息日志，显示批量操作的结果统计
+            logging.info(
+                f"批量加载账号完成: 成功={added_count}, 失败={failed_count} "
+                f"(认证用户={current_auth_username})"
+            )
+        
+        except Exception as e:
+            # 如果保存数据失败，记录错误日志
+            logging.error(
+                f"保存用户 {current_auth_username} 的 school_accounts 失败: {e}",
+                exc_info=True
+            )
+            return jsonify({
+                "success": False,
+                "message": "保存账户数据失败",
+                "added_count": 0,
+                "failed_count": failed_count
+            }), 500
+        
+        # ========== 步骤7：构建返回的账号列表 ==========
+        
+        # 创建一个账号信息列表，用于返回给前端
+        accounts_list = []
+        
+        # 遍历accounts字典，将每个账号的信息添加到列表中
+        for username, account_data in accounts.items():
+            accounts_list.append({
+                "username": username,  # 用户名
+                "name": username,  # 显示名称（默认与用户名相同）
+                "tag": account_data.get("tag", ""),  # 标签
+                "has_password": bool(account_data.get("password", "")),  # 是否有密码
+                "status": "idle",  # 默认状态为空闲
+                "status_text": "未登录",  # 状态文本
+                # 添加默认的summary字段，防止前端渲染时出现undefined错误
+                "summary": {
+                    "total": 0,  # 总任务数
+                    "completed": 0,  # 已完成任务数
+                    "not_started": 0,  # 未开始任务数
+                    "executable": 0,  # 可执行任务数
+                    "expired": 0,  # 已过期任务数
+                    "att_pending": 0,  # 待签到任务数
+                    "att_completed": 0,  # 已签到任务数
+                    "att_missed": 0  # 错过签到任务数
+                }
+            })
+        
+        # ========== 步骤8：返回成功响应 ==========
+        
+        # 构建响应消息，包含操作统计信息
+        message = f"批量加载完成：成功添加 {added_count} 个账号"
+        if failed_count > 0:
+            message += f"，{failed_count} 个失败"
+        
+        return jsonify({
+            "success": True,
+            "message": message,
+            "added_count": added_count,  # 成功添加的数量
+            "failed_count": failed_count,  # 失败的数量
+            "accounts": accounts_list  # 所有账号的信息列表
+        })
 
     # ==============================================================================
     # 健康检查和监控接口

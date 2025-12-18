@@ -6108,12 +6108,23 @@ function renderPaymentOrdersTable() {
     return;
   }
 
-  // === 第4步：生成卡片HTML ===
+  // === 第4步：排序订单（按created_at时间倒序，最新的在前）===
+  const sortedOrders = [...filteredPaymentOrders].sort((a, b) => {
+    // 如果created_at不存在，放到最后
+    if (!a.created_at && !b.created_at) return 0;
+    if (!a.created_at) return 1;
+    if (!b.created_at) return -1;
+    
+    // 按时间倒序排序（最新的在前）
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  // === 第5步：生成卡片HTML ===
 
   // 使用 Array.map() 将每个订单对象转换为卡片HTML
-  const orderCards = filteredPaymentOrders
+  const orderCards = sortedOrders
     .map((order) => {
-      // 4.1 清理和格式化订单数据（使用 escapeHtml 防止XSS攻击）
+      // 5.1 清理和格式化订单数据（使用 escapeHtml 防止XSS攻击）
       const orderId = escapeHtml(order.order_id || "-");
       const tradeNo = escapeHtml(order.trade_no || "-");
       const username = escapeHtml(order.username || "-");
@@ -6122,7 +6133,7 @@ function renderPaymentOrdersTable() {
         : "-";
       const createdAt = escapeHtml(order.created_at || "-");
 
-      // 4.2 格式化支付方式显示
+      // 5.2 格式化支付方式显示
       let payTypeText = "-";
       let payTypeColor = "text-slate-600";
       switch (order.pay_type) {
@@ -6146,7 +6157,7 @@ function renderPaymentOrdersTable() {
           payTypeText = escapeHtml(order.pay_type || "-");
       }
 
-      // 4.3 格式化状态显示（使用彩色标签）
+      // 5.3 格式化状态显示（使用彩色标签）
       let statusHtml = "";
       switch (order.status) {
         case "failed":
@@ -21061,6 +21072,55 @@ async function showUserSchoolAccounts(username) {
 function closeManageSchoolAccountsModal() {
   hideModal("manage-school-accounts-modal");
 }
+
+/**
+ * 刷新学校账户列表（桌面端）
+ * 
+ * 功能说明：
+ * - 重新加载当前显示的用户的学校账户列表
+ * - 从服务器获取最新数据并更新界面
+ * 
+ * 使用场景：
+ * - 用户点击"刷新"按钮时
+ * - 添加、编辑或删除账户后自动刷新
+ * 
+ * 实现逻辑：
+ * 1. 获取当前模态框中显示的用户名
+ * 2. 调用showUserSchoolAccounts重新加载该用户的账户数据
+ * 3. 自动更新列表和统计信息
+ */
+async function refreshSchoolAccounts() {
+  // 输出日志，标记刷新操作的开始
+  console.log("[学校账户管理] 开始刷新账户列表...");
+
+  // 尝试获取当前显示的用户名
+  // $("school-accounts-username")获取DOM元素
+  // ?.textContent 使用可选链操作符，如果元素不存在则返回undefined
+  // || "" 如果textContent为空或undefined，则使用空字符串作为默认值
+  const currentUsername = $("school-accounts-username")?.textContent || "";
+
+  // 验证用户名是否有效
+  if (!currentUsername) {
+    // 如果用户名为空，输出错误日志
+    console.error("[学校账户管理] 刷新失败：无法获取当前用户名");
+
+    // 使用showModalAlert显示友好的错误提示
+    showModalAlert("刷新失败：无法确定当前用户", "错误");
+
+    // 提前返回，不执行后续的刷新操作
+    return;
+  }
+
+  // 调用showUserSchoolAccounts函数重新加载账户数据
+  // 该函数会自动：
+  // 1. 从服务器获取最新数据
+  // 2. 更新账户列表的HTML
+  // 3. 更新账户统计信息
+  await showUserSchoolAccounts(currentUsername);
+
+  // 输出成功日志
+  console.log("[学校账户管理] 账户列表刷新完成");
+}
 function editSchoolAccount(authUsername, schoolUsername, password, ua) {
   const authUsernameField = $("edit-school-account-auth-username");
   const schoolUsernameField = $("edit-school-account-school-username");
@@ -29100,30 +29160,137 @@ async function exitMultiMode() {
 }
 
 async function multi_loadAllFromConfig() {
-  // [步骤1] 从后端API加载账号配置（仅包含用户名和标签，不含密码）
-  const result = await callPythonAPI("multi_load_accounts_from_config");
-
+  // ============================================================
+  // 函数功能：从配置文件批量加载多账号
+  // 
+  // 功能描述：
+  // 1. 调用后端API批量加载账号配置
+  // 2. 显示加载动画和进度提示
+  // 3. 处理加载结果并更新界面
+  // 4. 对于缺少密码的账号，引导用户补全
+  // ============================================================
   
+  // [步骤1] 显示加载中的提示弹窗
+  // 使用SweetAlert2显示一个带有加载动画的弹窗
+  // 这样用户知道系统正在处理，避免重复点击
+  Swal.fire({
+    title: "正在加载账号...",  // 弹窗标题
+    text: "请稍候，正在从配置文件中批量导入账号",  // 提示文本
+    icon: "info",  // 信息图标（蓝色圆圈i）
+    allowOutsideClick: false,  // 不允许点击外部关闭弹窗
+    allowEscapeKey: false,  // 不允许按ESC键关闭弹窗
+    showConfirmButton: false,  // 不显示确认按钮
+    didOpen: () => {
+      // 当弹窗打开时，显示加载动画
+      // Swal.showLoading()会在弹窗中显示一个旋转的加载图标
+      Swal.showLoading();
+    }
+  });
+  
+  // [步骤2] 调用后端API加载账号配置
+  // callPythonAPI是项目中封装的API调用函数
+  // 它会自动处理请求头（如session_id）和错误处理
+  try {
+    // 调用后端的multi_load_accounts_from_config接口
+    // 该接口会从服务器配置文件中读取账号列表并返回
+    const result = await callPythonAPI("multi_load_accounts_from_config");
     
-    // [步骤6] 渲染更新后的账号列表到界面
-    renderMultiAccountList(result.accounts);
-  }
-  
-  // [步骤7] 检查是否有账号缺少密码，如果有则提示用户补全
-  if (
-    result &&
-    result.accounts_missing_password &&
-    result.accounts_missing_password.length > 0
-  ) {
-    const missingAccount = result.accounts_missing_password[0];
-    showModalAlert(
-      `检测到 ${result.accounts_missing_password.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`,
-      "提示"
-    );
-    openMultiAddUserModalForPassword(
-      missingAccount.username,
-      missingAccount.tag
-    );
+    // [步骤3] 关闭加载弹窗
+    // 无论成功还是失败，都需要关闭加载弹窗
+    Swal.close();
+    
+    // [步骤4] 检查API调用是否成功
+    if (!result || !result.success) {
+      // 如果API返回失败，显示错误提示
+      Swal.fire({
+        title: "加载失败",  // 错误标题
+        text: result?.message || "从配置文件加载账号失败，请重试",  // 错误消息
+        icon: "error",  // 错误图标（红色叉号）
+        confirmButtonText: "确定",  // 确认按钮文本
+        confirmButtonColor: "#ef4444"  // 确认按钮颜色（红色）
+      });
+      return;  // 终止函数执行
+    }
+    
+    // [步骤5] 检查是否有账号缺少密码
+    // 从配置文件加载的账号通常只有用户名，没有密码
+    // 需要用户手动补全密码才能使用
+    // 注意：我们先处理密码问题，然后再渲染列表和显示成功消息
+    let accounts_missing_password = [];
+    if (result.accounts && Array.isArray(result.accounts)) {
+      // 过滤出所有没有密码的账号
+      // has_password字段由后端返回，表示该账号是否已设置密码
+      accounts_missing_password = result.accounts.filter(
+        acc => !acc.has_password && acc.username
+      );
+    }
+    
+    // [步骤6] 只渲染有密码的账号到界面
+    // 没有密码的账号不应该显示在列表中，直到用户设置密码后才显示
+    if (result.accounts && Array.isArray(result.accounts)) {
+      // 只显示已经有密码的账号
+      const accounts_with_password = result.accounts.filter(
+        acc => acc.has_password
+      );
+      renderMultiAccountList(accounts_with_password);
+    }
+    
+    // [步骤7] 显示加载成功的提示信息
+    // 包含成功添加和失败的账号数量统计
+    const added_count = result.added_count || 0;  // 成功添加的账号数量
+    const failed_count = result.failed_count || 0;  // 失败的账号数量
+    const total_accounts = result.accounts ? result.accounts.length : 0;  // 总账号数
+    
+    // 构建提示消息
+    // 如果added_count为0（表示都是已存在的账号），显示总账号数
+    let message = added_count > 0 
+      ? `成功加载 ${added_count} 个新账号` 
+      : `配置文件中有 ${total_accounts} 个账号`;
+    
+    if (failed_count > 0) {
+      // 如果有失败的账号，也要告知用户
+      message += `\n${failed_count} 个账号加载失败`;
+    }
+    
+    // 如果有缺少密码的账号，在消息中提示（使用更明确的格式）
+    if (accounts_missing_password.length > 0) {
+      message += `\n其中 ${accounts_missing_password.length} 个账号需要设置密码`;
+    }
+    
+    // 显示成功提示弹窗
+    Swal.fire({
+      title: "加载完成",  // 成功标题
+      html: message.replace(/\n/g, '<br>'),  // 使用html而不是text，支持换行
+      icon: accounts_missing_password.length > 0 ? "warning" : "success",  // 如果有缺少密码的账号，显示警告图标
+      confirmButtonText: "确定",  // 确认按钮文本
+      confirmButtonColor: accounts_missing_password.length > 0 ? "#f59e0b" : "#3b82f6"  // 按钮颜色
+    }).then((swalResult) => {
+      // [步骤8] 在用户确认后，如果有缺少密码的账号，引导用户设置密码
+      if (accounts_missing_password.length > 0) {
+        // 实现队列机制，处理多个缺少密码的账号
+        processPasswordQueue(accounts_missing_password, 0);
+      }
+    });
+    
+  } catch (error) {
+    // [步骤9] 错误处理
+    // 如果在整个过程中发生任何未预期的错误
+    // 记录错误日志并显示友好的错误提示
+    
+    // 关闭加载弹窗（如果还在显示）
+    Swal.close();
+    
+    // 在控制台输出错误日志，便于调试
+    console.error("批量加载账号时发生错误:", error);
+    
+    // 显示错误提示弹窗
+    Swal.fire({
+      title: "加载出错",  // 错误标题
+      text: `批量加载账号时发生错误：${error.message || "未知错误"}`,  // 错误消息
+      icon: "error",  // 错误图标（红色叉号）
+      confirmButtonText: "确定",  // 确认按钮文本
+      confirmButtonColor: "#ef4444"  // 确认按钮颜色（红色）
+    });
   }
 }
 
@@ -29343,7 +29510,15 @@ $("newUserCancel").onclick = closeNewUserModal;
 
 function openMultiAddUserModal() {
   if ($("multi-add-username")) $("multi-add-username").value = "";
-  if ($("multi-add-password")) $("multi-add-password").value = "";
+  if ($("multi-add-password")) {
+    $("multi-add-password").value = "";
+    // [新增] 如果从config按钮进入，提示密码可以留空
+    if (window._addFromConfigContext) {
+      $("multi-add-password").placeholder = "请输入密码（可留空，后端会自动查找）";
+    } else {
+      $("multi-add-password").placeholder = "请输入密码";
+    }
+  }
   // 修复：多账号添加模态框中不存在 password-confirm 字段，移除该行以防止报错
   // $("multi-add-password-confirm").value = "";
   if ($("multi-add-tag")) $("multi-add-tag").value = "";
@@ -29360,10 +29535,74 @@ function closeMultiAddUserModal() {
     usernameInput.classList.remove("bg-slate-100", "cursor-not-allowed");
   }
   if (passwordInput) {
-    passwordInput.placeholder = "请输入密码 (至少6字符)";
+    passwordInput.placeholder = "请输入密码";
   }
 
   $("multi-add-user-modal").style.display = "none";
+  
+  // [新增] 如果在队列模式下关闭模态框（用户点击取消），继续处理下一个账号
+  if (window._passwordQueueContext) {
+    const context = window._passwordQueueContext;
+    console.log(`[密码队列] 用户取消设置密码，跳过账号: ${context.accounts[context.currentIndex].username}`);
+    // 清除上下文
+    window._passwordQueueContext = null;
+    // 处理下一个账号
+    processPasswordQueue(context.accounts, context.currentIndex + 1);
+  } else if (window._addFromConfigContext) {
+    // [新增] 如果从config按钮进入，清除上下文
+    console.log(`[手动添加] 用户取消添加账号`);
+    window._addFromConfigContext = null;
+  }
+}
+
+/**
+ * 处理缺少密码的账号队列
+ * 
+ * @param {Array} accounts_missing_password - 缺少密码的账号数组
+ * @param {number} currentIndex - 当前处理的账号索引
+ */
+function processPasswordQueue(accounts_missing_password, currentIndex) {
+  // 如果所有账号都已处理完毕，刷新账号列表
+  if (currentIndex >= accounts_missing_password.length) {
+    console.log("[密码队列] 所有账号密码已处理完毕");
+    // 刷新账号列表，显示已设置密码的账号
+    callPythonAPI("multi_load_accounts_from_config").then(result => {
+      if (result && result.accounts) {
+        const accounts_with_password = result.accounts.filter(acc => acc.has_password);
+        renderMultiAccountList(accounts_with_password);
+      }
+    });
+    return;
+  }
+  
+  const missingAccount = accounts_missing_password[currentIndex];
+  const remainingCount = accounts_missing_password.length - currentIndex;
+  
+  // 显示提示弹窗，告知用户需要补全密码
+  Swal.fire({
+    title: "需要补全密码",
+    html: `还有 ${remainingCount} 个账号需要设置密码<br>请为账号 <strong>${missingAccount.username}</strong> 设置密码`,
+    icon: "warning",
+    confirmButtonText: "立即设置",
+    cancelButtonText: remainingCount > 1 ? "跳过当前" : "稍后设置",
+    showCancelButton: true,
+    confirmButtonColor: "#f59e0b",
+    cancelButtonColor: "#64748b"
+  }).then((result) => {
+    if (result.isConfirmed) {
+      // 用户点击"立即设置"，打开密码设置模态框
+      // 设置一个标记，让模态框知道这是队列模式
+      window._passwordQueueContext = {
+        accounts: accounts_missing_password,
+        currentIndex: currentIndex
+      };
+      openMultiAddUserModalForPassword(missingAccount.username, missingAccount.tag || "");
+    } else if (result.isDismissed) {
+      // 用户点击"跳过当前"或关闭弹窗，处理下一个账号
+      console.log(`[密码队列] 用户跳过账号: ${missingAccount.username}`);
+      processPasswordQueue(accounts_missing_password, currentIndex + 1);
+    }
+  });
 }
 
 function openMultiAddUserModalForPassword(username, tag) {
@@ -29411,6 +29650,8 @@ async function multi_addFromConfig() {
   const user = $("multi-config-user-select").value;
 
   if (!user) {
+    // [新增] 设置上下文标记，表示从config按钮进入
+    window._addFromConfigContext = true;
     openMultiAddUserModal();
     return;
   }
@@ -29456,7 +29697,12 @@ async function multi_addFromConfig() {
       );
     }
   }
-  const result = await callPythonAPI("multi_add_account", user, passwordToUse);
+  // [修复] 使用对象格式调用API
+  const result = await callPythonAPI("multi_add_account", {
+    username: user,
+    password: passwordToUse,
+    tag: ""
+  });
   if (
     result &&
     result.success === false &&
@@ -29480,9 +29726,19 @@ async function submitMultiAddUser() {
   const passwordVal = inputPassword.value;
   const tagVal = inputTag.value.trim();
   
-  // [安全修复] 基本验证：用户名和密码不能为空
-  if (!usernameVal || !passwordVal) {
-    showModalAlert("账号和密码均不能为空");
+  // [修改] 检查是否从config按钮进入（允许空密码）或从密码队列进入（不允许空密码）
+  const isFromConfig = window._addFromConfigContext;
+  const isFromPasswordQueue = window._passwordQueueContext;
+  
+  // [安全修复] 基本验证：用户名不能为空
+  if (!usernameVal) {
+    showModalAlert("账号不能为空");
+    return;
+  }
+  
+  // [修改] 如果从密码队列进入，密码不能为空；如果从config按钮进入，密码可以为空
+  if (isFromPasswordQueue && !passwordVal) {
+    showModalAlert("密码不能为空");
     return;
   }
   
@@ -29498,11 +29754,8 @@ async function submitMultiAddUser() {
     return;
   }
   
-  // [安全修复] 使用统一的安全常量验证密码长度范围
-  if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
-    showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`, "错误");
-    return;
-  }
+  // [修改] 移除密码长度验证，允许任何长度的密码（包括空密码）
+  // 空密码将由后端尝试从配置中查找
   if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
     showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
     return;
@@ -29516,17 +29769,41 @@ async function submitMultiAddUser() {
   
   setButtonLoading("multi-add-user-confirm", true, "添加中...");
   try {
-    const result = await callPythonAPI(
-      "multi_add_account",
-      usernameVal,
-      passwordVal,
-      tagVal
-    );
+    // [修复] 使用对象格式发送数据，而不是单独的参数
+    const result = await callPythonAPI("multi_add_account", {
+      username: usernameVal,
+      password: passwordVal,
+      tag: tagVal
+    });
 
     if (result && result.accounts) {
       showModalAlert("账号添加成功", "成功");
-      closeMultiAddUserModal();
-      renderMultiAccountList(result.accounts);
+      
+      // [修改] 根据不同的上下文执行不同的处理逻辑
+      if (window._passwordQueueContext) {
+        // 场景1：从密码队列进入（批量加载缺少密码的账号）
+        const context = window._passwordQueueContext;
+        console.log(`[密码队列] 账号 ${usernameVal} 密码设置成功，继续处理下一个`);
+        // 清除上下文
+        window._passwordQueueContext = null;
+        // 关闭模态框
+        closeMultiAddUserModal();
+        // 处理下一个账号
+        processPasswordQueue(context.accounts, context.currentIndex + 1);
+      } else if (window._addFromConfigContext) {
+        // 场景2：从config按钮进入（手动添加账号）
+        console.log(`[手动添加] 账号 ${usernameVal} 添加成功`);
+        // 清除上下文
+        window._addFromConfigContext = null;
+        // 关闭模态框
+        closeMultiAddUserModal();
+        // 刷新列表
+        renderMultiAccountList(result.accounts);
+      } else {
+        // 场景3：其他方式进入（默认行为）
+        closeMultiAddUserModal();
+        renderMultiAccountList(result.accounts);
+      }
     } else {
       showModalAlert(result?.message || "添加失败");
     }
@@ -29538,7 +29815,7 @@ async function submitMultiAddUser() {
     if (inputUsername && inputUsername.readOnly) {
       inputUsername.readOnly = false;
       inputUsername.classList.remove("bg-slate-100", "cursor-not-allowed");
-      $("multi-add-password").placeholder = "请输入密码 (至少6字符)";
+      $("multi-add-password").placeholder = "请输入密码";
     }
   }
 }
