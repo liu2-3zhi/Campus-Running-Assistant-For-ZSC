@@ -1429,7 +1429,12 @@ async function showPaymentLogDetail(logId) {
   if (!logId) {
     // console.error('[支付日志详情] 日志ID为空');
     logMessage_Error("[支付日志详情] 日志ID为空");
-    showModalAlert("日志ID无效");
+    // showModalAlert("日志ID无效");
+    Swal.fire({
+      icon: "error",
+      title: "日志ID无效",
+      text: "无法加载日志详情，请稍后重试。",
+    });
     return;
   }
 
@@ -2115,7 +2120,12 @@ async function loadPaymentMethodsConfig(
   // console.log('[支付配置] 开始加载支付方式配置...');
   logMessage_Info("[支付配置] 开始加载支付方式配置...");
   if (show_Modal_Alert) {
-    showModalAlert("正在加载支付方式配置，请稍候...", "提示");
+    // showModalAlert("正在加载支付方式配置，请稍候...", "提示");
+    Swal.fire({
+      icon: "info",
+      title: "提示",
+      text: "正在加载支付方式配置，请稍候...",
+    });
   }
 
   // 检查会话ID是否存在，不存在则无法进行API调用
@@ -2148,10 +2158,15 @@ async function loadPaymentMethodsConfig(
           (methodsData.message || "未知错误")
       );
       if (!DOMContentLoaded_Event) {
-        showModalAlert(
-          "获取支付方式定义失败：" + (methodsData.message || "未知错误"),
-          "错误"
-        );
+        // showModalAlert(
+        //   "获取支付方式定义失败：" + (methodsData.message || "未知错误"),
+        //   "错误"
+        // );
+        Swal.fire({
+          icon: "error",
+          title: "错误",
+          text: "获取支付方式定义失败：" + (methodsData.message || "未知错误"),
+        });
       }
       return;
     }
@@ -2188,11 +2203,16 @@ async function loadPaymentMethodsConfig(
         //     (configData.message || "未知错误")
         // );
         if (!DOMContentLoaded_Event) {
-          showModalAlert(
-            "获取启用状态失败，默认显示所有支付方式为启用：" +
-              (configData.message || "未知错误"),
-            "警告"
-          );
+          // showModalAlert(
+          //   "获取启用状态失败，默认显示所有支付方式为启用：" +
+          //     (configData.message || "未知错误"),
+          //   "警告"
+          // );
+          Swal.fire({
+            icon: "warning",
+            title: "警告",
+            text: "获取启用状态失败，默认显示所有支付方式为启用：" + (configData.message || "未知错误"),
+          });
         }
         return;
       }
@@ -2205,10 +2225,15 @@ async function loadPaymentMethodsConfig(
         "[支付配置] 获取启用状态时出错，默认显示所有支付方式：" + configError
       );
       if (!DOMContentLoaded_Event) {
-        showModalAlert(
-          "获取启用状态时出错，默认显示所有支付方式：" + configError,
-          "警告"
-        );
+        // showModalAlert(
+        //   "获取启用状态时出错，默认显示所有支付方式：" + configError,
+        //   "警告"
+        // );
+        Swal.fire({
+          icon: "warning",
+          title: "警告",
+          text: "获取启用状态时出错，默认显示所有支付方式：" + configError,
+        });
       }
       enabledMethods = Object.keys(methods);
     }
@@ -2230,7 +2255,12 @@ async function loadPaymentMethodsConfig(
       // console.error('[支付配置] 找不到支付方式列表容器');
       logMessage_Error("[支付配置] 找不到支付方式列表容器");
       if (!DOMContentLoaded_Event) {
-        showModalAlert("找不到支付方式列表容器", "错误");
+        // showModalAlert("找不到支付方式列表容器", "错误");
+        Swal.fire({
+          icon: "error",
+          title: "错误",
+          text: "找不到支付方式列表容器",
+        });
       }
       return;
     }
@@ -2498,7 +2528,12 @@ async function loadPaymentMethodsConfig(
     // console.log('[支付配置] 支付方式列表渲染完成');
     logMessage_Info("[支付配置] 支付方式列表渲染完成");
     if (show_Modal_Alert) {
-      showModalAlert("支付方式配置加载完成", "成功");
+      // showModalAlert("支付方式配置加载完成", "成功");
+      Swal.fire({
+        icon: "success",
+        title: "成功",
+        text: "支付方式配置加载完成",
+      });
     }
 
     // === 【新增功能】动态填充测试支付方式下拉框 ===
@@ -2610,9 +2645,14 @@ async function loadPaymentMethodsConfig(
     // console.error('[支付配置] 加载支付方式配置时发生错误：', error);
     logMessage_Error("[支付配置] 加载支付方式配置时发生错误：" + error);
     if (!DOMContentLoaded_Event) {
-      showModalAlert(
-        "无法加载支付方式配置，请刷新页面重试。如果问题持续，请联系管理员。"
-      );
+      // showModalAlert(
+      //   "无法加载支付方式配置，请刷新页面重试。如果问题持续，请联系管理员。"
+      // );
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "无法加载支付方式配置，请刷新页面重试。如果问题持续，请联系管理员。",
+      });
     }
   }
 }
@@ -2839,7 +2879,12 @@ async function savePaymentMethodsConfig() {
       }, 5000);
     } else {
       // 如果结果显示区域不存在，使用alert作为备用方案
-      showModalAlert(`保存失败：${error.message || "未知错误"}。请重试。`);
+      // showModalAlert(`保存失败：${error.message || "未知错误"}。请重试。`);
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: `保存失败：${error.message || "未知错误"}。请重试或联系管理员。`,
+      });
     }
   }
 }
@@ -2981,7 +3026,12 @@ async function openEditPaymentMethodModal(code) {
   } catch (error) {
     // console.error('[支付配置] 加载支付方式配置失败：', error);
     logMessage_Error("[支付配置] 加载支付方式配置失败：" + error);
-    showModalAlert("无法加载支付方式配置，请重试。");
+    // showModalAlert("无法加载支付方式配置，请重试。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "无法加载支付方式配置，请重试。如果问题持续，请联系管理员。",
+    });
   }
 }
 
@@ -3141,7 +3191,12 @@ async function savePaymentMethod() {
     closePaymentMethodModal();
 
     // 显示成功提示
-    showModalAlert(isEditMode ? "支付方式已更新" : "支付方式已添加");
+    // showModalAlert(isEditMode ? "支付方式已更新" : "支付方式已添加");
+    Swal.fire({
+      icon: "success",
+      title: "成功",
+      text: isEditMode ? "支付方式已更新" : "支付方式已添加",
+    });
 
     // 重新加载支付方式列表
     await loadPaymentMethodsConfig();
@@ -3210,7 +3265,12 @@ async function deletePaymentMethod(code) {
     logMessage_Info("[支付配置] 支付方式删除成功");
 
     // === 第5步：显示成功提示并刷新列表 ===
-    showModalAlert("支付方式已删除");
+    // showModalAlert("支付方式已删除");
+    Swal.fire({
+      icon: "success",
+      title: "成功",
+      text: "支付方式已删除",
+    });
 
     // 重新加载支付方式列表
     await loadPaymentMethodsConfig();
@@ -3218,7 +3278,12 @@ async function deletePaymentMethod(code) {
     // === 错误处理 ===
     // console.error('[支付配置] 删除支付方式失败：', error);
     logMessage_Error("[支付配置] 删除支付方式失败：" + error);
-    showModalAlert(`删除失败：${error.message || "未知错误"}。请重试。`);
+    // showModalAlert(`删除失败：${error.message || "未知错误"}。请重试。`);
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: `删除失败：${error.message || "未知错误"}。请重试或联系管理员。`,
+    });
   }
 }
 
@@ -3441,7 +3506,12 @@ async function queryOrder() {
     logMessage_Error(
       "[订单查询] 错误：未找到订单号输入框（ID: query-order-trade-no）"
     );
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return; // 终止函数执行
   }
 
@@ -3453,7 +3523,12 @@ async function queryOrder() {
   // 如果用户没有输入订单号或只输入了空格，显示友好的提示
   if (!tradeNo) {
     // 使用alert弹窗提示用户，确保用户能看到错误信息
-    showModalAlert("请输入订单号");
+    // showModalAlert("请输入订单号");
+    Swal.fire({
+      icon: "warning",
+      title: "警告",
+      text: "请输入订单号",
+    });
     // 将焦点重新设置到输入框，方便用户立即输入
     tradeNoInput.focus();
     // 终止函数执行，不发送请求
@@ -3474,7 +3549,12 @@ async function queryOrder() {
   // 2.3 防御性检查：确保两个元素都存在
   if (!resultDiv || !detailContainer) {
     logMessage_Error("[订单查询] 错误：未找到结果显示区域");
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return;
   }
 
@@ -3834,7 +3914,12 @@ async function processRefund() {
       resultContainer: !!resultContainer,
     });
     // 向用户显示友好的错误提示
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return; // 终止函数执行
   }
 
@@ -3849,7 +3934,12 @@ async function processRefund() {
     // 输出日志记录验证失败
     logMessage_Error("[退款功能] 验证失败：订单号为空");
     // 向用户显示友好的错误提示
-    showModalAlert("请输入订单号");
+    // showModalAlert("请输入订单号");
+    Swal.fire({
+      icon: "warning",
+      title: "警告",
+      text: "请输入订单号",
+    });
     // 将焦点设置到订单号输入框，方便用户立即输入
     tradeNoInput.focus();
     return; // 终止函数执行
@@ -3861,7 +3951,12 @@ async function processRefund() {
   // 3.4 验证退款金额不为空（必填项验证）
   if (!amountStr) {
     logMessage_Error("[退款功能] 验证失败：退款金额为空");
-    showModalAlert("请输入退款金额");
+    // showModalAlert("请输入退款金额");
+    Swal.fire({
+      icon: "warning",
+      title: "警告",
+      text: "请输入退款金额",
+    });
     amountInput.focus();
     return;
   }
@@ -3874,7 +3969,12 @@ async function processRefund() {
   // isNaN()检查值是否为NaN（Not a Number）
   if (isNaN(refundAmount)) {
     logMessage_Error("[退款功能] 验证失败：退款金额不是有效数字");
-    showModalAlert("退款金额必须是有效的数字");
+    // showModalAlert("退款金额必须是有效的数字");
+    Swal.fire({
+      icon: "warning",
+      title: "警告",
+      text: "退款金额必须是有效的数字",
+    });
     amountInput.focus();
     return;
   }
