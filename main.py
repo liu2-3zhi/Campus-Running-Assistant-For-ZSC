@@ -1522,7 +1522,7 @@ PERMISSIONS_FILE = "permissions.json"
 # [任务47新增] 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
-AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config_new.json"
+AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config.json"
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -29674,8 +29674,21 @@ def start_web_server(args_param):
             try:
                 with open(messages_file, "r", encoding="utf-8") as f:
                     messages = json.load(f)
-            except (json.JSONDecodeError, OSError) as e:
-                logging.error(f"[留言板] 读取留言失败: {e}")
+            except json.JSONDecodeError as e:
+                # JSON解析失败，文件损坏
+                logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的留言文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    messages_file,
+                    [],
+                    "json"
+                )
+                
+                messages = []
+            except OSError as e:
+                # 文件读取失败（权限错误、磁盘错误等）
+                logging.error(f"[留言板] 读取留言失败（文件操作错误）: {e}")
                 messages = []
 
         # --- 实时数据扩充 ---
@@ -30135,8 +30148,21 @@ def start_web_server(args_param):
             try:
                 with open(messages_file, "r", encoding="utf-8") as f:
                     messages = json.load(f)
-            except (json.JSONDecodeError, OSError) as e:
-                logging.error(f"[留言板] 读取留言失败: {e}")
+            except json.JSONDecodeError as e:
+                # JSON解析失败，文件损坏
+                logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的留言文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    messages_file,
+                    [],
+                    "json"
+                )
+                
+                messages = []
+            except OSError as e:
+                # 文件读取失败（权限错误、磁盘错误等）
+                logging.error(f"[留言板] 读取留言失败（文件操作错误）: {e}")
                 messages = []
         messages.append(message)
         try:
@@ -31083,6 +31109,13 @@ def start_web_server(args_param):
     # 用于获取和验证图形验证码，增强系统安全性
     # ============================================================
 
+    # [新增] 验证码请求速率限制
+    # 用于存储每个会话的验证码请求时间戳，防止频繁刷新攻击
+    # 格式: {session_id: [timestamp1, timestamp2, ...]}
+    captcha_request_history = {}
+    CAPTCHA_RATE_LIMIT = 2  # 每秒最多请求2次
+    CAPTCHA_RATE_WINDOW = 1.0  # 时间窗口为1秒
+
     @app.route("/api/captcha/config", methods=["GET"])
     @admin_required
     def get_captcha_config():
@@ -31195,10 +31228,39 @@ def start_web_server(args_param):
     def get_captcha():
         """
         获取验证码接口 【本地验证码生成器】
+        包含速率限制：每秒最多2次请求
         """
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id:
             return jsonify({"success": False, "message": "缺少会话ID"}), 401
+
+        # [新增] 验证码请求速率限制检查
+        current_time = time.time()
+        
+        # 获取当前会话的请求历史
+        if session_id not in captcha_request_history:
+            captcha_request_history[session_id] = []
+        
+        # 清理超过时间窗口的旧请求记录
+        captcha_request_history[session_id] = [
+            t for t in captcha_request_history[session_id]
+            if current_time - t < CAPTCHA_RATE_WINDOW
+        ]
+        
+        # 检查是否超过速率限制
+        if len(captcha_request_history[session_id]) >= CAPTCHA_RATE_LIMIT:
+            logging.warning(
+                f"[验证码速率限制] 会话 {session_id[:8]}... 请求过于频繁，"
+                f"已达到限制 ({CAPTCHA_RATE_LIMIT}次/{CAPTCHA_RATE_WINDOW}秒)"
+            )
+            return jsonify({
+                "success": False,
+                "message": "请求过于频繁，请稍后再试",
+                "rate_limit": True
+            }), 429  # 429 Too Many Requests
+        
+        # 记录本次请求时间
+        captcha_request_history[session_id].append(current_time)
 
         try:
             config_file = os.path.join(os.path.dirname(__file__), "config.ini")
