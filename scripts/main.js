@@ -44462,11 +44462,26 @@ async function addMobileSelectedConfig() {
   }
 
   try {
-    const result = await callPythonAPI(
-      "multi_add_account",
-      user,
-      passwordToUse
-    );
+    // ===== REST API调用：添加多账号 =====
+    // 通过HTTP POST请求向后端API发送添加账号的请求
+    // 使用fetch API替代WebSocket的callPythonAPI方法，提高可靠性和兼容性
+    const response = await fetch("/api/multi_add_account", {
+      method: "POST", // 使用POST方法提交数据
+      headers: {
+        "Content-Type": "application/json", // 声明发送的是JSON格式数据
+        "X-Session-ID": sessionUUID, // 携带会话ID用于身份验证和会话跟踪
+      },
+      body: JSON.stringify({
+        // 将JavaScript对象序列化为JSON字符串
+        username: user, // 用户名：从下拉选择框中获取
+        password: passwordToUse, // 密码：可能来自school_accounts或为空字符串
+        tag: "", // 标签：当前为空，用于未来扩展分组功能
+      }),
+    });
+    
+    // 解析服务器返回的JSON响应数据
+    // 将响应体从JSON字符串转换为JavaScript对象
+    const result = await response.json();
 
     if (
       result &&
@@ -44633,12 +44648,29 @@ async function confirmManualAccountAdd() {
   }
 
   try {
+    // 显示加载提示，告知用户操作正在进行
     showModalAlert("正在添加账号...", "提示");
-    const result = await callPythonAPI("multi_add_account", {
-      username: username,
-      password: password,
-      params: {},
+    
+    // ===== REST API调用：手动添加账号 =====
+    // 通过HTTP POST请求向后端API发送手动添加账号的请求
+    // 这是用户在手动输入模态框中填写用户名和密码后的确认操作
+    const response = await fetch("/api/multi_add_account", {
+      method: "POST", // 使用POST方法提交表单数据
+      headers: {
+        "Content-Type": "application/json", // 声明发送的是JSON格式数据
+        "X-Session-ID": sessionUUID, // 携带会话ID，用于后端验证用户身份和维护会话状态
+      },
+      body: JSON.stringify({
+        // 将表单数据序列化为JSON字符串
+        username: username, // 用户名：从手动输入框中获取并已trim()处理
+        password: password, // 密码：从手动输入框中获取的原始密码
+        tag: "", // 标签：当前为空字符串，预留给未来的账号分组功能
+      }),
     });
+    
+    // 解析服务器返回的JSON响应数据
+    // 服务器会返回操作结果（成功或失败）以及可能的错误信息
+    const result = await response.json();
 
     if (result.success) {
       showModalAlert("账号添加成功", "成功");
