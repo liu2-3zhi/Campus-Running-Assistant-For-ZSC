@@ -13773,41 +13773,47 @@ function handleCdnError(resourceName = "未指定") {
 }
 
 function showModalAlert(message, title = "提示", onCloseCallback = null) {
-  const modal = $("alert-modal");
-  const titleEl = $("alert-modal-title");
-  const msgEl = $("alert-modal-message");
-  const closeBtn = $("alert-modal-close-btn");
-
-  if (!modal || !titleEl || !msgEl || !closeBtn) {
-    logMessage_Warning(
-      "Alert modal DOM not found, falling back to native alert."
-    );
-    alert(`${title}:\n${message}`);
-    if (onCloseCallback && typeof onCloseCallback === "function")
-      onCloseCallback();
-    return;
+  // [重构说明] 本函数已从自定义模态框改为使用 SweetAlert2 (Swal.fire)
+  // [参数说明]
+  //   - message: 要显示的消息文本
+  //   - title: 标题文本（默认为"提示"）
+  //   - onCloseCallback: 关闭时的回调函数（SweetAlert2会自动处理，但我们保留以兼容旧代码）
+  
+  // [步骤1] 根据标题文本判断 icon 类型
+  // 通过标题中的关键词来智能选择合适的图标类型
+  let iconType = "info";  // 默认图标类型为 info（信息）
+  
+  if (title && typeof title === "string") {
+    // [icon判断逻辑] 根据标题中的关键词设置图标
+    // - "成功" → success（绿色对勾）
+    // - "错误" 或 "失败" → error（红色叉号）
+    // - "警告" → warning（黄色感叹号）
+    // - 其他 → info（蓝色信息图标）
+    if (title.includes("成功")) {
+      iconType = "success";
+    } else if (title.includes("错误") || title.includes("失败")) {
+      iconType = "error";
+    } else if (title.includes("警告")) {
+      iconType = "warning";
+    }
   }
-
-  titleEl.textContent = title;
-  msgEl.innerHTML = String(message).replace(/\n/g, "<br>");
-
-  if (title.includes("失败") || title.includes("错误")) {
-    titleEl.classList.remove("text-sky-600");
-    titleEl.classList.add("text-red-600");
-  } else {
-    titleEl.classList.remove("text-red-600");
-    titleEl.classList.add("text-sky-600");
-  }
-
-  closeBtn.onclick = () => {
-    closeModalAlert();
-    if (onCloseCallback && typeof onCloseCallback === "function")
+  
+  // [步骤2] 调用 SweetAlert2 显示弹窗
+  // SweetAlert2 是一个现代化的、美观的弹窗库
+  // 相比自定义模态框，它提供更好的用户体验和更多功能
+  Swal.fire({
+    title: title,       // 标题文本
+    text: message,      // 消息文本（SweetAlert2会自动处理换行符）
+    icon: iconType,     // 图标类型（根据标题智能判断）
+    confirmButtonText: "确定",  // 确认按钮的文本
+    confirmButtonColor: "#3b82f6",  // 确认按钮的颜色（蓝色）
+  }).then((result) => {
+    // [步骤3] 如果提供了回调函数，则在用户关闭弹窗后执行
+    // 这样可以兼容旧代码中使用 onCloseCallback 的场景
+    if (onCloseCallback && typeof onCloseCallback === "function") {
       onCloseCallback();
-  };
-
-  modal.classList.remove("hidden");
-  modal.classList.add("flex");
-  document.body.classList.add("modal-visible");
+    }
+  });
 }
 
 function closeModalAlert() {
@@ -29094,80 +29100,16 @@ async function exitMultiMode() {
 }
 
 async function multi_loadAllFromConfig() {
+  // [步骤1] 从后端API加载账号配置（仅包含用户名和标签，不含密码）
   const result = await callPythonAPI("multi_load_accounts_from_config");
 
-  if (result && result.accounts) {
-    if (sessionUUID && currentAuthUsername) {
-      try {
-        const response = await fetch("/auth/get_user_school_accounts", {
-          method: "GET",
-          headers: {
-            "X-Session-ID": sessionUUID,
-          },
-        });
-        if (response.ok) {
-          const schoolAccountsResult = await response.json();
-          if (schoolAccountsResult.success && schoolAccountsResult.accounts) {
-            const accountDataMap = schoolAccountsResult.accounts;
-            let updatedCount = 0;
-            result.accounts.forEach((account) => {
-              // [安全修复] 验证account.username是否为有效字符串，防止原型链污染
-              if (
-                account &&
-                account.username &&
-                typeof account.username === "string" &&
-                account.username.length > 0 &&
-                accountDataMap.hasOwnProperty(account.username)
-              ) {
-                const accountData = accountDataMap[account.username];
-                // [安全修复] 只处理字符串密码，防止XSS和对象注入攻击
-                if (typeof accountData === "string") {
-                  // [安全修复] 使用统一的安全常量验证密码长度
-                  if (accountData.length > 0 && accountData.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
-                    account.password = accountData;
-                    updatedCount++;
-                  }
-                } else if (
-                  typeof accountData === "object" &&
-                  accountData !== null
-                ) {
-                  // [安全修复] 严格验证对象属性，防止注入攻击
-                  if (
-                    accountData.hasOwnProperty("password") &&
-                    typeof accountData.password === "string" &&
-                    accountData.password.length > 0 &&
-                    accountData.password.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH
-                  ) {
-                    account.password = accountData.password;
-                  }
-                  // [安全修复] 使用统一的安全常量验证User-Agent长度
-                  if (
-                    accountData.hasOwnProperty("ua") &&
-                    typeof accountData.ua === "string" &&
-                    accountData.ua.length > 0 &&
-                    accountData.ua.length <= SECURITY_CONSTRAINTS.MAX_UA_LENGTH
-                  ) {
-                    account.device_ua = accountData.ua;
-                  }
-                  updatedCount++;
-                }
-              }
-            });
-            if (updatedCount > 0) {
-              logMessage_Info(
-                `[多账号-加载全部] 已从 school_accounts 更新 ${updatedCount} 个账号的密码和UA`
-              );
-            }
-          }
-        }
-      } catch (error) {
-        logMessage_Warning(
-          `[多账号-加载全部] 无法加载 school_accounts: ${error.message}`
-        );
-      }
-    }
+  
+    
+    // [步骤6] 渲染更新后的账号列表到界面
     renderMultiAccountList(result.accounts);
   }
+  
+  // [步骤7] 检查是否有账号缺少密码，如果有则提示用户补全
   if (
     result &&
     result.accounts_missing_password &&
