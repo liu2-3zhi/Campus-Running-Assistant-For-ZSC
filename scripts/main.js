@@ -6108,12 +6108,23 @@ function renderPaymentOrdersTable() {
     return;
   }
 
-  // === 第4步：生成卡片HTML ===
+  // === 第4步：排序订单（按created_at时间倒序，最新的在前）===
+  const sortedOrders = [...filteredPaymentOrders].sort((a, b) => {
+    // 如果created_at不存在，放到最后
+    if (!a.created_at && !b.created_at) return 0;
+    if (!a.created_at) return 1;
+    if (!b.created_at) return -1;
+    
+    // 按时间倒序排序（最新的在前）
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  // === 第5步：生成卡片HTML ===
 
   // 使用 Array.map() 将每个订单对象转换为卡片HTML
-  const orderCards = filteredPaymentOrders
+  const orderCards = sortedOrders
     .map((order) => {
-      // 4.1 清理和格式化订单数据（使用 escapeHtml 防止XSS攻击）
+      // 5.1 清理和格式化订单数据（使用 escapeHtml 防止XSS攻击）
       const orderId = escapeHtml(order.order_id || "-");
       const tradeNo = escapeHtml(order.trade_no || "-");
       const username = escapeHtml(order.username || "-");
@@ -6122,7 +6133,7 @@ function renderPaymentOrdersTable() {
         : "-";
       const createdAt = escapeHtml(order.created_at || "-");
 
-      // 4.2 格式化支付方式显示
+      // 5.2 格式化支付方式显示
       let payTypeText = "-";
       let payTypeColor = "text-slate-600";
       switch (order.pay_type) {
@@ -6146,7 +6157,7 @@ function renderPaymentOrdersTable() {
           payTypeText = escapeHtml(order.pay_type || "-");
       }
 
-      // 4.3 格式化状态显示（使用彩色标签）
+      // 5.3 格式化状态显示（使用彩色标签）
       let statusHtml = "";
       switch (order.status) {
         case "failed":
@@ -29241,7 +29252,7 @@ async function multi_loadAllFromConfig() {
       message += `\n${failed_count} 个账号加载失败`;
     }
     
-    // 如果有缺少密码的账号，在消息中提示
+    // 如果有缺少密码的账号，在消息中提示（使用更明确的格式）
     if (accounts_missing_password.length > 0) {
       message += `\n其中 ${accounts_missing_password.length} 个账号需要设置密码`;
     }
@@ -29249,7 +29260,7 @@ async function multi_loadAllFromConfig() {
     // 显示成功提示弹窗
     Swal.fire({
       title: "加载完成",  // 成功标题
-      text: message,  // 提示消息
+      html: message.replace(/\n/g, '<br>'),  // 使用html而不是text，支持换行
       icon: accounts_missing_password.length > 0 ? "warning" : "success",  // 如果有缺少密码的账号，显示警告图标
       confirmButtonText: "确定",  // 确认按钮文本
       confirmButtonColor: accounts_missing_password.length > 0 ? "#f59e0b" : "#3b82f6"  // 按钮颜色
@@ -29676,14 +29687,17 @@ async function submitMultiAddUser() {
     return;
   }
   
-  // [安全修复] 使用统一的安全常量验证密码长度范围
-  if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
-    showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`, "错误");
-    return;
-  }
-  if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
-    showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
-    return;
+  // [修改] 允许空密码，但非空密码需要满足长度要求
+  if (passwordVal.length > 0) {
+    // 如果密码不为空，检查长度
+    if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
+      showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符，或留空`, "错误");
+      return;
+    }
+    if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
+      showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
+      return;
+    }
   }
   
   // [安全修复] 使用统一的安全常量验证标签长度

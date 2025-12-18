@@ -11998,6 +11998,78 @@ class Api:
 
         return mode_info
 
+    def _find_password_for_account(self, username):
+        """
+        查找指定学校账号的密码
+        
+        逻辑：
+        - 普通用户：只在自己的school_accounts中查找
+        - 管理员：在所有用户的school_accounts中查找
+        
+        参数:
+            username: 学校账号用户名
+        
+        返回:
+            密码字符串，如果未找到则返回None
+        """
+        # 首先尝试从INI配置文件加载
+        ini_password = self._load_config(username)
+        if ini_password:
+            return ini_password
+        
+        # 如果没有认证用户，无法查找school_accounts
+        if not hasattr(self, "auth_username") or not self.auth_username:
+            return None
+        
+        # 获取当前用户的权限
+        is_admin = False
+        if hasattr(self, "auth_permissions") and self.auth_permissions:
+            is_admin = self.auth_permissions.get("is_admin", False)
+        
+        # 普通用户：只查找自己的school_accounts
+        if not is_admin:
+            school_accounts = self._load_user_school_accounts(self.auth_username)
+            if username in school_accounts:
+                account_data = school_accounts[username]
+                if isinstance(account_data, dict):
+                    return account_data.get("password", "")
+                elif isinstance(account_data, str):
+                    return account_data
+            return None
+        
+        # 管理员：查找所有用户的school_accounts
+        accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        if not os.path.exists(accounts_dir):
+            return None
+        
+        try:
+            # 遍历所有用户的账户文件
+            for filename in os.listdir(accounts_dir):
+                if not filename.endswith(".json"):
+                    continue
+                
+                auth_user = os.path.splitext(filename)[0]
+                school_accounts = self._load_user_school_accounts(auth_user)
+                
+                if username in school_accounts:
+                    account_data = school_accounts[username]
+                    if isinstance(account_data, dict):
+                        password = account_data.get("password", "")
+                        if password:
+                            logging.info(
+                                f"管理员查找：在用户 {auth_user} 的账户中找到 {username} 的密码"
+                            )
+                            return password
+                    elif isinstance(account_data, str) and account_data:
+                        logging.info(
+                            f"管理员查找：在用户 {auth_user} 的账户中找到 {username} 的密码"
+                        )
+                        return account_data
+        except Exception as e:
+            logging.error(f"管理员查找密码时出错: {e}", exc_info=True)
+        
+        return None
+
     def multi_get_all_config_users(self):
         """
         获取所有存在配置文件的用户列表，用于前端便捷添加
@@ -12028,6 +12100,50 @@ class Api:
 
         return {"users": filtered_users}
 
+    def multi_add_account(self, username, password, tag=""):
+        """
+        添加一个多账号到账号列表
+        
+        参数:
+            username: 学校账号用户名
+            password: 学校账号密码（可以为空字符串）
+            tag: 账号标签（可选）
+        
+        返回:
+            账号状态字典
+        """
+        try:
+            # 创建AccountSession对象
+            acc_session = AccountSession(
+                username=username,
+                password=password,
+                api_bridge=self,
+                tag=tag or ""
+            )
+            
+            # 添加到账号字典
+            self.accounts[username] = acc_session
+            
+            # 保存账号信息到用户的school_accounts
+            if hasattr(self, "auth_username") and self.auth_username:
+                school_accounts = self._load_user_school_accounts(self.auth_username)
+                school_accounts[username] = {
+                    "password": password,
+                    "tag": tag or ""
+                }
+                self._save_user_school_accounts(self.auth_username, school_accounts)
+            
+            self.log(f"已添加账号: {username}" + (f" (标签: {tag})" if tag else ""))
+            
+        except Exception as e:
+            logging.error(f"添加账号 {username} 失败: {e}", exc_info=True)
+            raise
+        
+        self._update_multi_global_buttons()
+        if hasattr(self, "_web_session_id") and self._web_session_id:
+            save_session_state(self._web_session_id, self, force_save=True)
+        
+        return self.multi_get_all_accounts_status()
 
     def multi_remove_account(self, username):
         """移除一个账号"""
@@ -12440,15 +12556,19 @@ class Api:
                         continue
                     seen_usernames.add(username)
 
-                    loaded_password = self._load_config(username)
-                    final_password = password or (loaded_password or "")
-
+                    # 如果密码为空，尝试从配置中查找
+                    final_password = password
                     if not final_password:
-                        skipped_no_password.append(username)
-                        continue
-
+                        found_password = self._find_password_for_account(username)
+                        final_password = found_password or ""
+                    
+                    # 即使密码为空也允许添加账号
                     self.multi_add_account(username, final_password, tag=tag)
                     imported += 1
+                    
+                    # 记录未找到密码的账号
+                    if not final_password:
+                        skipped_no_password.append(username)
 
             elif ext == ".xls":
                 file_stream.seek(0)
@@ -12471,15 +12591,19 @@ class Api:
                             continue
                         seen_usernames.add(username)
 
-                        loaded_password = self._load_config(username)
-                        final_password = password or (loaded_password or "")
+                        # 如果密码为空，尝试从配置中查找
+                        final_password = password
+                        if not final_password:
+                            found_password = self._find_password_for_account(username)
+                            final_password = found_password or ""
+                        
+                        # 即使密码为空也允许添加账号
+                        self.multi_add_account(username, final_password, tag=tag)
+                        imported += 1
+                        
+                        # 记录未找到密码的账号
                         if not final_password:
                             skipped_no_password.append(username)
-                            continue
-
-                        self.multi_add_account(
-                            username, final_password, tag=tag)
-                        imported += 1
 
             elif ext == ".csv":
                 skipped_no_password = []
@@ -12513,22 +12637,26 @@ class Api:
                             continue
                         seen_usernames.add(username)
 
-                        loaded_password = self._load_config(username)
-                        final_password = password or (loaded_password or "")
+                        # 如果密码为空，尝试从配置中查找
+                        final_password = password
+                        if not final_password:
+                            found_password = self._find_password_for_account(username)
+                            final_password = found_password or ""
+                        
+                        # 即使密码为空也允许添加账号
+                        self.multi_add_account(username, final_password, tag=tag)
+                        imported += 1
+                        
+                        # 记录未找到密码的账号
                         if not final_password:
                             skipped_no_password.append(username)
-                            continue
-
-                        self.multi_add_account(
-                            username, final_password, tag=tag)
-                        imported += 1
 
             else:
                 return {"success": False, "message": f"不支持的导入格式: {ext}"}
 
             self.log(f"成功导入 {imported} 个账号。")
             if skipped_no_password:
-                msg = "以下账号缺少密码，已跳过导入。请在多账号控制台手动添加并输入密码：\n" + "\n".join(
+                msg = "以下账号未找到密码，已添加但需要您手动设置密码：\n" + "\n".join(
                     skipped_no_password[:20]
                 )
                 try:
