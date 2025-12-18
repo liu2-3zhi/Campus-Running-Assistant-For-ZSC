@@ -29578,29 +29578,52 @@ function processPasswordQueue(accounts_missing_password, currentIndex) {
   const missingAccount = accounts_missing_password[currentIndex];
   const remainingCount = accounts_missing_password.length - currentIndex;
   
-  // 显示提示弹窗，告知用户需要补全密码
+  // 显示三按钮提示弹窗，告知用户需要补全密码
+  // 使用Swal.fire的三按钮模式，提供更细粒度的操作选项
   Swal.fire({
-    title: "需要补全密码",
-    html: `还有 ${remainingCount} 个账号需要设置密码<br>请为账号 <strong>${missingAccount.username}</strong> 设置密码`,
-    icon: "warning",
-    confirmButtonText: "立即设置",
-    cancelButtonText: remainingCount > 1 ? "跳过当前" : "稍后设置",
-    showCancelButton: true,
-    confirmButtonColor: "#f59e0b",
-    cancelButtonColor: "#64748b"
+    title: "需要补全密码", // 弹窗标题
+    html: `还有 ${remainingCount} 个账号需要设置密码<br>请为账号 <strong>${missingAccount.username}</strong> 设置密码`, // 弹窗内容，显示剩余账号数和当前账号名
+    icon: "warning", // 警告图标，提示用户需要注意
+    showDenyButton: true, // 启用第三个按钮（中间按钮），用于"跳过当前账号"
+    showCancelButton: true, // 启用取消按钮（最右侧按钮），用于"稍后再设置"
+    confirmButtonText: "立即设置当前账号密码", // 确认按钮文案（最左侧按钮），点击后打开密码设置模态框
+    denyButtonText: "跳过当前账号", // Deny按钮文案（中间按钮），点击后跳过当前账号，继续处理下一个
+    cancelButtonText: "稍后再设置", // 取消按钮文案（最右侧按钮），点击后停止整个队列处理流程
+    confirmButtonColor: "#10b981", // 确认按钮颜色：绿色，表示积极的操作
+    denyButtonColor: "#f59e0b", // Deny按钮颜色：橙色，表示中性的跳过操作
+    cancelButtonColor: "#64748b" // 取消按钮颜色：灰色，表示消极的延迟操作
   }).then((result) => {
+    // 根据用户点击的按钮，执行不同的操作
     if (result.isConfirmed) {
-      // 用户点击"立即设置"，打开密码设置模态框
-      // 设置一个标记，让模态框知道这是队列模式
+      // ========== 用户选择"立即设置当前账号密码" ==========
+      // 打开密码设置模态框，让用户为当前账号输入密码
+      console.log(`[密码队列] 用户选择立即设置账号: ${missingAccount.username}`);
+      
+      // 设置一个全局上下文标记，让模态框知道这是队列模式
+      // 模态框在提交密码后，会根据这个标记决定是否继续处理下一个账号
       window._passwordQueueContext = {
-        accounts: accounts_missing_password,
-        currentIndex: currentIndex
+        accounts: accounts_missing_password, // 缺少密码的账号列表
+        currentIndex: currentIndex // 当前正在处理的账号索引
       };
+      
+      // 打开模态框，传入当前账号的用户名和标签
       openMultiAddUserModalForPassword(missingAccount.username, missingAccount.tag || "");
-    } else if (result.isDismissed) {
-      // 用户点击"跳过当前"或关闭弹窗，处理下一个账号
-      console.log(`[密码队列] 用户跳过账号: ${missingAccount.username}`);
+      
+    } else if (result.isDenied) {
+      // ========== 用户选择"跳过当前账号" ==========
+      // 跳过当前账号，继续处理队列中的下一个账号
+      console.log(`[密码队列] 用户选择跳过账号: ${missingAccount.username}`);
+      
+      // 递归调用processPasswordQueue，索引+1，处理下一个账号
       processPasswordQueue(accounts_missing_password, currentIndex + 1);
+      
+    } else {
+      // ========== 用户选择"稍后再设置"或关闭弹窗 ==========
+      // 停止整个队列处理流程，不再继续处理后续账号
+      console.log(`[密码队列] 用户选择稍后设置，停止处理队列`);
+      
+      // 什么都不做，流程终止
+      // 用户可以稍后通过"添加账号"按钮重新触发队列处理
     }
   });
 }
@@ -29729,13 +29752,47 @@ async function multi_addFromConfig() {
       result.success === false &&
       result.action === "request_password"
     ) {
-      // 显示提示信息，告知用户需要补全密码
-      showModalAlert(
-        `账号 ${result.username} 缺少密码，请在弹窗中补全。`,
-        "缺少密码"
-      );
-      // 打开密码补全模态框，让用户输入密码
-      openMultiAddUserModalForPassword(result.username, result.tag);
+      // ========== 显示三按钮提示弹窗，让用户选择如何处理缺少密码的账号 ==========
+      // 使用Swal.fire提供三个选项：立即设置、跳过此账号、稍后再说
+      Swal.fire({
+        title: "账号缺少密码", // 弹窗标题，明确指出问题
+        html: `账号 <strong>${result.username}</strong> 缺少密码<br>请选择如何处理`, // 弹窗内容，高亮显示账号名，并引导用户做出选择
+        icon: "warning", // 警告图标，提示用户需要注意
+        showDenyButton: true, // 启用第三个按钮（中间按钮），用于"跳过此账号"
+        showCancelButton: true, // 启用取消按钮（最右侧按钮），用于"稍后再说"
+        confirmButtonText: "立即设置密码", // 确认按钮文案（最左侧按钮），点击后打开模态框输入密码
+        denyButtonText: "跳过此账号", // Deny按钮文案（中间按钮），点击后跳过此账号，不进行任何操作
+        cancelButtonText: "稍后再说", // 取消按钮文案（最右侧按钮），点击后关闭弹窗，稍后再处理
+        confirmButtonColor: "#10b981", // 确认按钮颜色：绿色，表示积极的设置密码操作
+        denyButtonColor: "#f59e0b", // Deny按钮颜色：橙色，表示中性的跳过操作
+        cancelButtonColor: "#64748b" // 取消按钮颜色：灰色，表示消极的延迟操作
+      }).then((swalResult) => {
+        // 根据用户点击的按钮，执行不同的操作
+        if (swalResult.isConfirmed) {
+          // ========== 用户选择"立即设置密码" ==========
+          // 打开密码设置模态框，让用户为该账号输入密码
+          console.log(`[多账号-添加] 用户选择立即设置密码: ${result.username}`);
+          
+          // 打开模态框，传入账号的用户名和标签信息
+          openMultiAddUserModalForPassword(result.username, result.tag);
+          
+        } else if (swalResult.isDenied) {
+          // ========== 用户选择"跳过此账号" ==========
+          // 用户决定跳过此账号，不设置密码，也不进行任何操作
+          console.log(`[多账号-添加] 用户选择跳过账号: ${result.username}`);
+          
+          // 什么都不做，流程终止
+          // 该账号将保持缺少密码的状态，不会被添加到账号列表中
+          
+        } else {
+          // ========== 用户选择"稍后再说"或关闭弹窗 ==========
+          // 用户决定稍后再处理，关闭弹窗，不进行任何操作
+          console.log(`[多账号-添加] 用户选择稍后设置密码: ${result.username}`);
+          
+          // 什么都不做，流程终止
+          // 用户可以稍后通过"添加账号"按钮重新触发添加流程
+        }
+      });
     } else if (result && result.accounts) {
       // 添加成功，更新账号列表显示
       renderMultiAccountList(result.accounts);
