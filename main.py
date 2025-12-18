@@ -40115,9 +40115,22 @@ def start_web_server(args_param):
         for username, account_data in accounts.items():
             accounts_list.append({
                 "username": username,  # 用户名
+                "name": username,  # 显示名称（默认与用户名相同）
                 "tag": account_data.get("tag", ""),  # 标签
                 "has_password": bool(account_data.get("password", "")),  # 是否有密码
-                "status": "idle"  # 默认状态为空闲
+                "status": "idle",  # 默认状态为空闲
+                "status_text": "未登录",  # 状态文本
+                # 添加默认的summary字段，防止前端渲染时出现undefined错误
+                "summary": {
+                    "total": 0,  # 总任务数
+                    "completed": 0,  # 已完成任务数
+                    "not_started": 0,  # 未开始任务数
+                    "executable": 0,  # 可执行任务数
+                    "expired": 0,  # 已过期任务数
+                    "att_pending": 0,  # 待签到任务数
+                    "att_completed": 0,  # 已签到任务数
+                    "att_missed": 0  # 错过签到任务数
+                }
             })
         
         # ========== 步骤8：返回成功响应 ==========
