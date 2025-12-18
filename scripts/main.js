@@ -20636,6 +20636,7 @@ async function updateAvailableRuns(username, newRuns) {
 async function showUserSchoolAccounts(username) {
   // ========== 步骤1：输入验证（前端防护第一层）==========
   // 验证username参数是否合法，防止无效输入和潜在的安全问题
+  console.log("[学校账户管理] 准备加载用户账户：", username);
   try {
     // 检查1：确保username不为空
     if (!username) {
@@ -20828,14 +20829,15 @@ async function showUserSchoolAccounts(username) {
       showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
       return;
     }
-    
+    console.log("[学校账户管理] 准备渲染账户列表，账户数量：", accountCount, accounts);
     // 情况1：没有账户，显示空状态提示
-    if (accountCount === 0) {
+    if (accountCount == 0) {
       // 使用innerHTML是安全的，因为这是静态HTML，不包含用户输入
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10">该用户暂无学校账户</p>';
       console.log("[学校账户管理] 该用户暂无学校账户");
-      return; // 提前返回，不需要后续渲染
+      showModal("manage-school-accounts-modal");
+      return;
     }
     
     // 情况2：有账户，逐个渲染账户卡片
@@ -21015,6 +21017,8 @@ async function showUserSchoolAccounts(username) {
     // 使用innerHTML是必要的，因为需要插入HTML结构
     // 安全性已经通过escapeHtml()确保
     listContainer.innerHTML = html;
+
+    console.log("[学校账户管理] 账户列表渲染完成，开始显示模态框，内容："+listContainer.innerHTML);
     
     // 记录渲染成功日志
     console.log(`[学校账户管理] 成功渲染 ${accountCount} 个账户卡片`);
