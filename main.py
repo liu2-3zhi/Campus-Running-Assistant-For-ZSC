@@ -1522,7 +1522,7 @@ PERMISSIONS_FILE = "permissions.json"
 # [任务47新增] 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
-AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config.json"
+AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config_new.json"
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -3887,6 +3887,14 @@ def _read_amap_watermark_config():
     except json.JSONDecodeError as e:
         # JSON 格式错误，记录详细错误信息
         logging.error(f"[水印控制] 配置文件JSON格式错误: {str(e)}")
+        
+        # 调用通用备份函数，备份损坏的文件并重置为默认配置
+        _backup_and_reset_corrupted_file(
+            config_file,
+            _get_default_amap_watermark_config(),
+            "json"
+        )
+        
         # 返回默认配置，确保系统可以正常运行
         return _get_default_amap_watermark_config()
     except Exception as e:
@@ -15612,8 +15620,19 @@ def _load_ip_cache():
             with open(IP_CACHE_FILE, "r", encoding="utf-8") as f:
                 ip_location_cache = json.load(f)
             logging.info(f"[IP缓存] 成功加载 {len(ip_location_cache)} 条IP缓存记录")
-        except (json.JSONDecodeError, OSError) as e:
-            logging.warning(f"[IP缓存] 加载缓存文件失败: {e}，将创建新缓存")
+        except json.JSONDecodeError as e:
+            logging.error(f"[IP缓存] 加载缓存文件失败（JSON解析错误）: {e}")
+            
+            # 调用通用备份函数，备份损坏的缓存文件并重置为空字典
+            _backup_and_reset_corrupted_file(
+                IP_CACHE_FILE,
+                {},
+                "json"
+            )
+            
+            ip_location_cache = {}
+        except OSError as e:
+            logging.warning(f"[IP缓存] 加载缓存文件失败（文件操作错误）: {e}，将创建新缓存")
             ip_location_cache = {}
 
 
@@ -26051,8 +26070,23 @@ def start_web_server(args_param):
             if not os.path.exists("logs"):
                 os.makedirs("logs", exist_ok=True)
             if os.path.exists(IP_BANS_FILE):
-                with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
-                    bans = json.load(f)
+                try:
+                    with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
+                        bans = json.load(f)
+                except json.JSONDecodeError as e:
+                    logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
+                    
+                    # 调用通用备份函数，备份损坏的文件并重置为空列表
+                    _backup_and_reset_corrupted_file(
+                        IP_BANS_FILE,
+                        [],
+                        "json"
+                    )
+                    
+                    bans = []
+                except OSError as e:
+                    logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
+                    bans = []
             else:
                 bans = []
 
@@ -26084,8 +26118,23 @@ def start_web_server(args_param):
             if not os.path.exists("logs"):
                 os.makedirs("logs", exist_ok=True)
             if os.path.exists(IP_BANS_FILE):
-                with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
-                    bans = json.load(f)
+                try:
+                    with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
+                        bans = json.load(f)
+                except json.JSONDecodeError as e:
+                    logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
+                    
+                    # 调用通用备份函数，备份损坏的文件并重置为空列表
+                    _backup_and_reset_corrupted_file(
+                        IP_BANS_FILE,
+                        [],
+                        "json"
+                    )
+                    
+                    bans = []
+                except OSError as e:
+                    logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
+                    bans = []
             else:
                 bans = []
             new_ban = {
@@ -26124,8 +26173,24 @@ def start_web_server(args_param):
             if not os.path.exists(IP_BANS_FILE):
                 return jsonify({"success": False, "message": "封禁列表不存在"})
 
-            with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
-                bans = json.load(f)
+            try:
+                with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
+                    bans = json.load(f)
+            except json.JSONDecodeError as e:
+                logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    IP_BANS_FILE,
+                    [],
+                    "json"
+                )
+                
+                return jsonify({"success": False, "message": "封禁列表文件损坏，已备份并重置"}), 500
+            except OSError as e:
+                logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
+                return jsonify({"success": False, "message": "读取封禁列表失败"}), 500
+            
             original_count = len(bans)
             bans = [b for b in bans if b["id"] != ban_id]
 
