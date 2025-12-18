@@ -29267,35 +29267,13 @@ async function multi_loadAllFromConfig() {
     }).then((swalResult) => {
       // [步骤8] 在用户确认后，如果有缺少密码的账号，引导用户设置密码
       if (accounts_missing_password.length > 0) {
-        // 获取第一个缺少密码的账号信息
-        const missingAccount = accounts_missing_password[0];
-        
-        // 显示提示弹窗，告知用户需要补全密码
-        Swal.fire({
-          title: "需要补全密码",  // 提示标题
-          text: `请为账号 ${missingAccount.username} 设置密码后才能使用`,  // 提示消息
-          icon: "warning",  // 警告图标（黄色感叹号）
-          confirmButtonText: "立即设置",  // 确认按钮文本
-          cancelButtonText: "稍后设置",  // 取消按钮文本
-          showCancelButton: true,  // 显示取消按钮
-          confirmButtonColor: "#f59e0b"  // 确认按钮颜色（橙色）
-        }).then((result) => {
-          // 当用户点击"立即设置"按钮后
-          if (result.isConfirmed) {
-            // 调用openMultiAddUserModalForPassword函数
-            // 打开密码设置模态框，让用户为该账号设置密码
-            // 传入用户名和标签，预填充到表单中
-            openMultiAddUserModalForPassword(
-              missingAccount.username,
-              missingAccount.tag || ""
-            );
-          }
-        });
+        // 实现队列机制，处理多个缺少密码的账号
+        processPasswordQueue(accounts_missing_password, 0);
       }
     });
     
   } catch (error) {
-    // [步骤8] 错误处理
+    // [步骤9] 错误处理
     // 如果在整个过程中发生任何未预期的错误
     // 记录错误日志并显示友好的错误提示
     
@@ -29549,10 +29527,70 @@ function closeMultiAddUserModal() {
     usernameInput.classList.remove("bg-slate-100", "cursor-not-allowed");
   }
   if (passwordInput) {
-    passwordInput.placeholder = "请输入密码 (至少6字符)";
+    passwordInput.placeholder = "请输入密码";
   }
 
   $("multi-add-user-modal").style.display = "none";
+  
+  // [新增] 如果在队列模式下关闭模态框（用户点击取消），继续处理下一个账号
+  if (window._passwordQueueContext) {
+    const context = window._passwordQueueContext;
+    console.log(`[密码队列] 用户取消设置密码，跳过账号: ${context.accounts[context.currentIndex].username}`);
+    // 清除上下文
+    window._passwordQueueContext = null;
+    // 处理下一个账号
+    processPasswordQueue(context.accounts, context.currentIndex + 1);
+  }
+}
+
+/**
+ * 处理缺少密码的账号队列
+ * 
+ * @param {Array} accounts_missing_password - 缺少密码的账号数组
+ * @param {number} currentIndex - 当前处理的账号索引
+ */
+function processPasswordQueue(accounts_missing_password, currentIndex) {
+  // 如果所有账号都已处理完毕，刷新账号列表
+  if (currentIndex >= accounts_missing_password.length) {
+    console.log("[密码队列] 所有账号密码已处理完毕");
+    // 刷新账号列表，显示已设置密码的账号
+    callPythonAPI("multi_load_accounts_from_config").then(result => {
+      if (result && result.accounts) {
+        const accounts_with_password = result.accounts.filter(acc => acc.has_password);
+        renderMultiAccountList(accounts_with_password);
+      }
+    });
+    return;
+  }
+  
+  const missingAccount = accounts_missing_password[currentIndex];
+  const remainingCount = accounts_missing_password.length - currentIndex;
+  
+  // 显示提示弹窗，告知用户需要补全密码
+  Swal.fire({
+    title: "需要补全密码",
+    html: `还有 ${remainingCount} 个账号需要设置密码<br>请为账号 <strong>${missingAccount.username}</strong> 设置密码`,
+    icon: "warning",
+    confirmButtonText: "立即设置",
+    cancelButtonText: remainingCount > 1 ? "跳过当前" : "稍后设置",
+    showCancelButton: true,
+    confirmButtonColor: "#f59e0b",
+    cancelButtonColor: "#64748b"
+  }).then((result) => {
+    if (result.isConfirmed) {
+      // 用户点击"立即设置"，打开密码设置模态框
+      // 设置一个标记，让模态框知道这是队列模式
+      window._passwordQueueContext = {
+        accounts: accounts_missing_password,
+        currentIndex: currentIndex
+      };
+      openMultiAddUserModalForPassword(missingAccount.username, missingAccount.tag || "");
+    } else if (result.isDismissed) {
+      // 用户点击"跳过当前"或关闭弹窗，处理下一个账号
+      console.log(`[密码队列] 用户跳过账号: ${missingAccount.username}`);
+      processPasswordQueue(accounts_missing_password, currentIndex + 1);
+    }
+  });
 }
 
 function openMultiAddUserModalForPassword(username, tag) {
@@ -29687,17 +29725,11 @@ async function submitMultiAddUser() {
     return;
   }
   
-  // [修改] 允许空密码，但非空密码需要满足长度要求
-  if (passwordVal.length > 0) {
-    // 如果密码不为空，检查长度
-    if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
-      showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符，或留空`, "错误");
-      return;
-    }
-    if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
-      showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
-      return;
-    }
+  // [修改] 移除密码长度验证，允许任何长度的密码（包括空密码）
+  // 空密码将由后端尝试从配置中查找
+  if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
+    showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
+    return;
   }
   
   // [安全修复] 使用统一的安全常量验证标签长度
@@ -29708,17 +29740,29 @@ async function submitMultiAddUser() {
   
   setButtonLoading("multi-add-user-confirm", true, "添加中...");
   try {
-    const result = await callPythonAPI(
-      "multi_add_account",
-      usernameVal,
-      passwordVal,
-      tagVal
-    );
+    // [修复] 使用对象格式发送数据，而不是单独的参数
+    const result = await callPythonAPI("multi_add_account", {
+      username: usernameVal,
+      password: passwordVal,
+      tag: tagVal
+    });
 
     if (result && result.accounts) {
       showModalAlert("账号添加成功", "成功");
       closeMultiAddUserModal();
-      renderMultiAccountList(result.accounts);
+      
+      // [新增] 如果在队列模式下，处理下一个账号
+      if (window._passwordQueueContext) {
+        const context = window._passwordQueueContext;
+        console.log(`[密码队列] 账号 ${usernameVal} 密码设置成功，继续处理下一个`);
+        // 清除上下文
+        window._passwordQueueContext = null;
+        // 处理下一个账号
+        processPasswordQueue(context.accounts, context.currentIndex + 1);
+      } else {
+        // 非队列模式，正常刷新列表
+        renderMultiAccountList(result.accounts);
+      }
     } else {
       showModalAlert(result?.message || "添加失败");
     }
@@ -29730,7 +29774,7 @@ async function submitMultiAddUser() {
     if (inputUsername && inputUsername.readOnly) {
       inputUsername.readOnly = false;
       inputUsername.classList.remove("bg-slate-100", "cursor-not-allowed");
-      $("multi-add-password").placeholder = "请输入密码 (至少6字符)";
+      $("multi-add-password").placeholder = "请输入密码";
     }
   }
 }

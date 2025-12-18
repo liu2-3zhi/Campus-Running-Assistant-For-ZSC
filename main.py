@@ -39926,14 +39926,28 @@ def start_web_server(args_param):
         
         # ========== 步骤4：验证必填字段 ==========
         
-        # 检查username和password是否为空
-        # 这两个字段是添加账号的必需信息
-        if not username or not password:
+        # 检查username是否为空
+        # username是添加账号的必需信息
+        if not username:
             # 返回400错误请求，明确提示缺少哪些必填字段
             return jsonify({
                 "success": False,
-                "message": "缺少必填字段：username, password"
+                "message": "缺少必填字段：username"
             }), 400
+        
+        # [修改] 允许密码为空，如果为空则尝试查找已有密码
+        if not password:
+            # 尝试查找该账号的已有密码
+            found_password = api_instance._find_password_for_account(username)
+            if found_password:
+                password = found_password
+                logging.info(f"为账号 {username} 从配置中找到了密码")
+            else:
+                # 如果找不到密码，返回错误
+                return jsonify({
+                    "success": False,
+                    "message": f"账号 {username} 没有密码，且未在配置中找到已有密码"
+                }), 400
         
         # ========== 步骤5：安全性验证 ==========
         
@@ -39946,14 +39960,12 @@ def start_web_server(args_param):
                 "message": f"用户名长度不能超过{MAX_USERNAME_LENGTH}字符"
             }), 400
         
-        # [安全验证2] 验证密码长度
-        # 密码长度必须在6-1000字符之间
-        # 最小长度6字符确保密码有基本的安全强度
-        # 最大长度1000字符防止过长密码导致的性能问题
-        if len(password) < 6 or len(password) > MAX_PASSWORD_LENGTH:
+        # [安全验证2] 验证密码长度（移除最小长度限制，因为学校账号密码位数没有限制）
+        # 只验证最大长度以防止过长密码导致的性能问题
+        if len(password) > MAX_PASSWORD_LENGTH:
             return jsonify({
                 "success": False,
-                "message": f"密码长度必须在6-{MAX_PASSWORD_LENGTH}字符之间"
+                "message": f"密码长度不能超过{MAX_PASSWORD_LENGTH}字符"
             }), 400
         
         # [安全验证3] 验证标签长度（如果提供了标签）
