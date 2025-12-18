@@ -29697,24 +29697,57 @@ async function multi_addFromConfig() {
       );
     }
   }
-  // [修复] 使用对象格式调用API
-  const result = await callPythonAPI("multi_add_account", {
-    username: user,
-    password: passwordToUse,
-    tag: ""
-  });
-  if (
-    result &&
-    result.success === false &&
-    result.action === "request_password"
-  ) {
-    showModalAlert(
-      `账号 ${result.username} 缺少密码，请在弹窗中补全。`,
-      "缺少密码"
-    );
-    openMultiAddUserModalForPassword(result.username, result.tag);
-  } else if (result && result.accounts) {
-    renderMultiAccountList(result.accounts);
+  // ========== 调用REST API添加账号 ==========
+  // [修复] 将WebSocket通信改为REST API调用
+  // API端点: /api/multi_add_account (POST方法)
+  // 使用fetch()发送HTTP请求，替代原来的callPythonAPI()
+  try {
+    // 发送POST请求到后端REST API
+    const response = await fetch("/api/multi_add_account", {
+      method: "POST", // 请求方法：POST
+      headers: {
+        "Content-Type": "application/json", // 指定请求体格式为JSON
+        "X-Session-ID": sessionUUID, // 会话ID，用于身份验证
+      },
+      // 将请求数据转换为JSON字符串
+      body: JSON.stringify({
+        username: user, // 学校账号用户名
+        password: passwordToUse, // 密码（可能为空，由后端从配置中查找）
+        tag: "" // 标签（默认为空字符串）
+      }),
+    });
+
+    // 解析响应体为JSON对象
+    const result = await response.json();
+
+    // ========== 处理API响应 ==========
+    
+    // 检查是否需要请求密码
+    // 如果后端返回success=false且action="request_password"，说明账号缺少密码
+    if (
+      result &&
+      result.success === false &&
+      result.action === "request_password"
+    ) {
+      // 显示提示信息，告知用户需要补全密码
+      showModalAlert(
+        `账号 ${result.username} 缺少密码，请在弹窗中补全。`,
+        "缺少密码"
+      );
+      // 打开密码补全模态框，让用户输入密码
+      openMultiAddUserModalForPassword(result.username, result.tag);
+    } else if (result && result.accounts) {
+      // 添加成功，更新账号列表显示
+      renderMultiAccountList(result.accounts);
+    } else {
+      // 处理其他错误情况
+      showModalAlert(result?.message || "添加账号失败", "错误");
+    }
+  } catch (error) {
+    // ========== 异常处理 ==========
+    // 捕获网络错误、解析错误等异常
+    console.error("[多账号-添加] 调用API失败:", error);
+    showModalAlert(`添加账号失败: ${error.message}`, "错误");
   }
 }
 async function submitMultiAddUser() {
@@ -29767,55 +29800,86 @@ async function submitMultiAddUser() {
     return;
   }
   
+  // ========== 设置按钮为加载状态 ==========
+  // 在API调用期间禁用按钮，并显示"添加中..."提示
   setButtonLoading("multi-add-user-confirm", true, "添加中...");
+  
   try {
-    // [修复] 使用对象格式发送数据，而不是单独的参数
-    const result = await callPythonAPI("multi_add_account", {
-      username: usernameVal,
-      password: passwordVal,
-      tag: tagVal
+    // ========== 调用REST API添加账号 ==========
+    // [修复] 将WebSocket通信改为REST API调用
+    // API端点: /api/multi_add_account (POST方法)
+    // 使用fetch()发送HTTP请求，替代原来的callPythonAPI()
+    
+    // 发送POST请求到后端REST API
+    const response = await fetch("/api/multi_add_account", {
+      method: "POST", // 请求方法：POST
+      headers: {
+        "Content-Type": "application/json", // 指定请求体格式为JSON
+        "X-Session-ID": sessionUUID, // 会话ID，用于身份验证
+      },
+      // 将请求数据转换为JSON字符串
+      body: JSON.stringify({
+        username: usernameVal, // 学校账号用户名
+        password: passwordVal, // 密码（可能为空，由后端从配置中查找）
+        tag: tagVal // 标签
+      }),
     });
 
+    // 解析响应体为JSON对象
+    const result = await response.json();
+
+    // ========== 处理API响应 ==========
+    
+    // 检查是否添加成功
     if (result && result.accounts) {
+      // 显示成功提示
       showModalAlert("账号添加成功", "成功");
       
       // [修改] 根据不同的上下文执行不同的处理逻辑
       if (window._passwordQueueContext) {
-        // 场景1：从密码队列进入（批量加载缺少密码的账号）
+        // ========== 场景1：从密码队列进入（批量加载缺少密码的账号）==========
         const context = window._passwordQueueContext;
         console.log(`[密码队列] 账号 ${usernameVal} 密码设置成功，继续处理下一个`);
-        // 清除上下文
+        // 清除上下文标记
         window._passwordQueueContext = null;
         // 关闭模态框
         closeMultiAddUserModal();
-        // 处理下一个账号
+        // 处理下一个账号（继续批量添加流程）
         processPasswordQueue(context.accounts, context.currentIndex + 1);
       } else if (window._addFromConfigContext) {
-        // 场景2：从config按钮进入（手动添加账号）
+        // ========== 场景2：从config按钮进入（手动添加账号）==========
         console.log(`[手动添加] 账号 ${usernameVal} 添加成功`);
-        // 清除上下文
+        // 清除上下文标记
         window._addFromConfigContext = null;
         // 关闭模态框
         closeMultiAddUserModal();
-        // 刷新列表
+        // 刷新账号列表显示
         renderMultiAccountList(result.accounts);
       } else {
-        // 场景3：其他方式进入（默认行为）
+        // ========== 场景3：其他方式进入（默认行为）==========
         closeMultiAddUserModal();
         renderMultiAccountList(result.accounts);
       }
     } else {
+      // 添加失败，显示错误信息
       showModalAlert(result?.message || "添加失败");
     }
   } catch (e) {
+    // ========== 异常处理 ==========
+    // 捕获网络错误、解析错误等异常
     showModalAlert(`添加时发生错误: ${e.message}`);
     logMessage_Error("添加新账号时发生错误:", e);
   } finally {
+    // ========== 恢复按钮状态 ==========
+    // 无论成功或失败，都需要恢复按钮的正常状态
     setButtonLoading("multi-add-user-confirm", false, "确认添加");
+    
+    // 如果用户名输入框是只读状态，恢复为可编辑状态
+    // 这种情况发生在从密码队列进入时，用户名被预填充且锁定
     if (inputUsername && inputUsername.readOnly) {
-      inputUsername.readOnly = false;
-      inputUsername.classList.remove("bg-slate-100", "cursor-not-allowed");
-      $("multi-add-password").placeholder = "请输入密码";
+      inputUsername.readOnly = false; // 解除只读状态
+      inputUsername.classList.remove("bg-slate-100", "cursor-not-allowed"); // 移除视觉提示样式
+      $("multi-add-password").placeholder = "请输入密码"; // 恢复密码框的占位符
     }
   }
 }
