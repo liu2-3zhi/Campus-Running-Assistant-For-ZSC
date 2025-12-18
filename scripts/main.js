@@ -15242,45 +15242,90 @@ async function handleAuthLogin() {
     login_verification_method = "sms";
   }
   if (!captcha) {
-    showModalAlert("请输入图形验证码", "登录失败");
+    // showModalAlert("请输入图形验证码", "登录失败");
+    Swal.fire({
+      icon: "warning",
+      title: "请输入图形验证码",
+      text: "登录失败",
+    });
     return;
   }
   if (!login_id) {
-    showModalAlert("请输入用户名或手机号", "登录失败");
+    // showModalAlert("请输入用户名或手机号", "登录失败");
+    Swal.fire({
+      icon: "warning",
+      title: "请输入用户名或手机号",
+      text: "登录失败",
+    });
     return;
   }
 
   if (login_mode === "username") {
     if (!password) {
-      showModalAlert("请输入密码", "登录失败");
+      // showModalAlert("请输入密码", "登录失败");
+      Swal.fire({
+        icon: "warning",
+        title: "请输入密码",
+        text: "登录失败",
+      });
       return;
     }
     if (password.length < 6 && login_id !== "admin") {
-      showModalAlert("密码长度至少6个字符", "登录失败");
+      // showModalAlert("密码长度至少6个字符", "登录失败");
+      Swal.fire({
+        icon: "warning",
+        title: "密码长度至少6个字符",
+        text: "登录失败",
+      });
       return;
     }
   } else if (login_mode === "phone") {
     if (!validateInput(login_id, "phone").valid) {
-      showModalAlert("手机号格式不正确", "登录失败");
+      // showModalAlert("手机号格式不正确", "登录失败");
+      Swal.fire({
+        icon: "warning",
+        title: "手机号格式不正确",
+        text: "登录失败",
+      });
       return;
     }
 
     if (login_verification_method === "password") {
       if (!password) {
-        showModalAlert("请输入密码", "登录失败");
+        // showModalAlert("请输入密码", "登录失败");
+        Swal.fire({
+          icon: "warning",
+          title: "请输入密码",
+          text: "登录失败",
+        });
         return;
       }
       if (password.length < 6) {
-        showModalAlert("密码长度至少6个字符", "登录失败");
+        // showModalAlert("密码长度至少6个字符", "登录失败");
+        Swal.fire({
+          icon: "warning",
+          title: "密码长度至少6个字符",
+          text: "登录失败",
+        });
         return;
       }
     } else if (login_verification_method === "sms") {
       if (!sms_code) {
-        showModalAlert("请输入短信验证码", "登录失败");
+        // showModalAlert("请输入短信验证码", "登录失败");
+        swal.fire({
+          icon: "warning",
+          title: "请输入短信验证码",
+          text: "登录失败",
+        });
         return;
       }
       if (sms_code.length !== 6 || !/^\d{6}$/.test(sms_code)) {
-        showModalAlert("短信验证码格式不正确", "登录失败");
+        // showModalAlert("短信验证码格式不正确", "登录失败");
+        Swal.fire({
+          icon: "warning",
+          title: "短信验证码格式不正确",
+          text: "登录失败",
+        });
         return;
       }
     }
@@ -43829,6 +43874,10 @@ async function submitMobileAdminModifyPhone() {
 function showMobileResetPassword(username) {
   let modal = document.getElementById("mobile-reset-password-modal");
   if (!modal) {
+    let password_input_id = document.getElementById("mobile-new-password_2");
+    if (password_input_id ) {
+      password_input_id.value = "";
+    }
     modal = document.createElement("div");
     modal.id = "mobile-reset-password-modal";
     modal.className = "fixed inset-0 hidden mobile-modal z-[60]";
