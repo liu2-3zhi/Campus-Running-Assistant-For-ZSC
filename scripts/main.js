@@ -14753,6 +14753,7 @@ async function checkAuthStatus() {
   try {
     // 调用统一的初始数据加载函数进行认证状态检查
     const result = await loadInitialData();
+    logMessage_Info("[认证状态] 检查结果:", result);
     if (result && result.is_authenticated) {
       return true;
     }
@@ -16392,7 +16393,7 @@ const permissionTranslations = {
   god_mode: "查看所有会话",
 
   use_login_button: "使用登录按钮",
-  use_multi_account_button: "使用多账号控制台",
+  use_multi_account_button: "使用多账号控制台按钮",
   use_import_button: "导入离线文件",
 
   view_messages: "查看留言板",
@@ -16602,6 +16603,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
   // [修复] 获取CDN和密码恢复标签页元素
   const cdnTab = $("admin-tab-cdn_modal");
   const bruteforceTab = $("admin-tab-bruteforce_modal");
+  // [新增] 获取水印控制标签页元素
+  const watermarkControlTab = $("admin-tab-watermark-control_modal");
 
   if (show) {
     let canViewMessages = false;
@@ -16976,6 +16979,25 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
       );
     }
     // ========== [任务3修复结束] 4个新标签的显示控制逻辑添加完成 ==========
+
+    // 步骤9：设置"水印控制"标签的显示状态
+    // 逻辑：仅管理员可见（用于配置用户的高德地图去水印权限）
+    if (watermarkControlTab) {
+      // 与其他管理员专属标签相同的显示逻辑
+      watermarkControlTab.style.display = isAdmin ? "block" : "none";
+
+      // [调试日志] 记录水印控制标签的显示控制信息
+      console.log("[水印控制Tab] 显示状态:", {
+        userGroup: userGroup, // 当前用户的组别
+        isAdmin: isAdmin, // 是否拥有管理员权限
+        display: watermarkControlTab.style.display, // 设置后的display属性值
+      });
+    } else {
+      // [错误日志] 如果找不到水印控制标签元素，记录警告
+      console.warn(
+        "[水印控制Tab警告] 未找到ID为'admin-tab-watermark-control_modal'的元素"
+      );
+    }
 
     if (modalCaptchaTab)
       modalCaptchaTab.style.display = canViewCaptchaHistory ? "block" : "none";
@@ -47131,6 +47153,8 @@ async function loadInitialData(options = {}) {
     // ====================================================================
     // 步骤8：返回完整的响应对象
     // ====================================================================
+
+    logMessage_Info("[初始化] 初始数据加载完成:", response);
 
     // 将response返回给调用者
     // 调用者可以从中提取需要的数据（如用户列表、权限信息等）

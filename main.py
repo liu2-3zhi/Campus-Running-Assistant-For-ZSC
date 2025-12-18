@@ -1522,7 +1522,7 @@ PERMISSIONS_FILE = "permissions.json"
 # [任务47新增] 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
-AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config_new.json"
+AUTO_ATTENDANCE_CONFIG_FILE = os.path.join("configs", "auto_attendance_config.json")
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -1728,6 +1728,9 @@ def _save_auto_attendance_config(config):
         # 这是一个安全措施，防止保存不完整的配置
         if "enabled_accounts" not in config:
             config["enabled_accounts"] = {}
+        
+        # 确保logs目录存在
+        os.makedirs(os.path.dirname(AUTO_ATTENDANCE_CONFIG_FILE), exist_ok=True)
         
         # 以UTF-8编码打开配置文件进行写入
         # 使用with语句确保文件正确关闭，即使发生异常
@@ -3887,6 +3890,14 @@ def _read_amap_watermark_config():
     except json.JSONDecodeError as e:
         # JSON 格式错误，记录详细错误信息
         logging.error(f"[水印控制] 配置文件JSON格式错误: {str(e)}")
+        
+        # 调用通用备份函数，备份损坏的文件并重置为默认配置
+        _backup_and_reset_corrupted_file(
+            config_file,
+            _get_default_amap_watermark_config(),
+            "json"
+        )
+        
         # 返回默认配置，确保系统可以正常运行
         return _get_default_amap_watermark_config()
     except Exception as e:
@@ -4173,7 +4184,7 @@ def _create_permissions_json(force=False):
                     "mark_notifications_read": True,
                     "view_user_details": True,
                     "modify_user_settings": True,
-                    "execute_multi_account": True,
+                    "execute_multi_account": False,
                     "use_attendance": True,
                     "view_logs": False,
                     "clear_logs": False,
@@ -4235,6 +4246,7 @@ def _create_permissions_json(force=False):
                     "delete_any_messages": True,
                     "view_captcha_history": True,
                     "modify_config": True,
+                    "manage_system": True,
                 },
             },
             "super_admin": {
@@ -9130,7 +9142,7 @@ class Api:
                         )
                     else:
                         logging.debug(f"普通用户 {auth_username} 还没有任何学校账户")
-                        return []
+                        users = []
             else:
                 users = all_users
                 logging.debug(
@@ -15612,8 +15624,19 @@ def _load_ip_cache():
             with open(IP_CACHE_FILE, "r", encoding="utf-8") as f:
                 ip_location_cache = json.load(f)
             logging.info(f"[IP缓存] 成功加载 {len(ip_location_cache)} 条IP缓存记录")
-        except (json.JSONDecodeError, OSError) as e:
-            logging.warning(f"[IP缓存] 加载缓存文件失败: {e}，将创建新缓存")
+        except json.JSONDecodeError as e:
+            logging.error(f"[IP缓存] 加载缓存文件失败（JSON解析错误）: {e}")
+            
+            # 调用通用备份函数，备份损坏的缓存文件并重置为空字典
+            _backup_and_reset_corrupted_file(
+                IP_CACHE_FILE,
+                {},
+                "json"
+            )
+            
+            ip_location_cache = {}
+        except OSError as e:
+            logging.warning(f"[IP缓存] 加载缓存文件失败（文件操作错误）: {e}，将创建新缓存")
             ip_location_cache = {}
 
 
@@ -26051,8 +26074,23 @@ def start_web_server(args_param):
             if not os.path.exists("logs"):
                 os.makedirs("logs", exist_ok=True)
             if os.path.exists(IP_BANS_FILE):
-                with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
-                    bans = json.load(f)
+                try:
+                    with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
+                        bans = json.load(f)
+                except json.JSONDecodeError as e:
+                    logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
+                    
+                    # 调用通用备份函数，备份损坏的文件并重置为空列表
+                    _backup_and_reset_corrupted_file(
+                        IP_BANS_FILE,
+                        [],
+                        "json"
+                    )
+                    
+                    bans = []
+                except OSError as e:
+                    logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
+                    bans = []
             else:
                 bans = []
 
@@ -26084,8 +26122,23 @@ def start_web_server(args_param):
             if not os.path.exists("logs"):
                 os.makedirs("logs", exist_ok=True)
             if os.path.exists(IP_BANS_FILE):
-                with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
-                    bans = json.load(f)
+                try:
+                    with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
+                        bans = json.load(f)
+                except json.JSONDecodeError as e:
+                    logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
+                    
+                    # 调用通用备份函数，备份损坏的文件并重置为空列表
+                    _backup_and_reset_corrupted_file(
+                        IP_BANS_FILE,
+                        [],
+                        "json"
+                    )
+                    
+                    bans = []
+                except OSError as e:
+                    logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
+                    bans = []
             else:
                 bans = []
             new_ban = {
@@ -26124,8 +26177,24 @@ def start_web_server(args_param):
             if not os.path.exists(IP_BANS_FILE):
                 return jsonify({"success": False, "message": "封禁列表不存在"})
 
-            with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
-                bans = json.load(f)
+            try:
+                with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
+                    bans = json.load(f)
+            except json.JSONDecodeError as e:
+                logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    IP_BANS_FILE,
+                    [],
+                    "json"
+                )
+                
+                return jsonify({"success": False, "message": "封禁列表文件损坏，已备份并重置"}), 500
+            except OSError as e:
+                logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
+                return jsonify({"success": False, "message": "读取封禁列表失败"}), 500
+            
             original_count = len(bans)
             bans = [b for b in bans if b["id"] != ban_id]
 
@@ -29674,8 +29743,21 @@ def start_web_server(args_param):
             try:
                 with open(messages_file, "r", encoding="utf-8") as f:
                     messages = json.load(f)
-            except (json.JSONDecodeError, OSError) as e:
-                logging.error(f"[留言板] 读取留言失败: {e}")
+            except json.JSONDecodeError as e:
+                # JSON解析失败，文件损坏
+                logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的留言文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    messages_file,
+                    [],
+                    "json"
+                )
+                
+                messages = []
+            except OSError as e:
+                # 文件读取失败（权限错误、磁盘错误等）
+                logging.error(f"[留言板] 读取留言失败（文件操作错误）: {e}")
                 messages = []
 
         # --- 实时数据扩充 ---
@@ -30135,8 +30217,21 @@ def start_web_server(args_param):
             try:
                 with open(messages_file, "r", encoding="utf-8") as f:
                     messages = json.load(f)
-            except (json.JSONDecodeError, OSError) as e:
-                logging.error(f"[留言板] 读取留言失败: {e}")
+            except json.JSONDecodeError as e:
+                # JSON解析失败，文件损坏
+                logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的留言文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    messages_file,
+                    [],
+                    "json"
+                )
+                
+                messages = []
+            except OSError as e:
+                # 文件读取失败（权限错误、磁盘错误等）
+                logging.error(f"[留言板] 读取留言失败（文件操作错误）: {e}")
                 messages = []
         messages.append(message)
         try:
@@ -31083,6 +31178,42 @@ def start_web_server(args_param):
     # 用于获取和验证图形验证码，增强系统安全性
     # ============================================================
 
+    # [新增] 验证码请求速率限制
+    # 用于存储每个会话的验证码请求时间戳，防止频繁刷新攻击
+    # 格式: {session_id: [timestamp1, timestamp2, ...]}
+    captcha_request_history = {}
+    CAPTCHA_RATE_LIMIT = 2  # 每秒最多请求2次
+    CAPTCHA_RATE_WINDOW = 1.0  # 时间窗口为1秒
+    CAPTCHA_HISTORY_CLEANUP_INTERVAL = 300  # 5分钟清理一次历史记录
+    _last_captcha_cleanup = [time.time()]  # 使用列表以便在函数内修改
+    
+    def _cleanup_captcha_history():
+        """
+        清理captcha_request_history中的过期会话记录
+        只保留最近5分钟内有请求的会话，避免内存泄漏
+        """
+        current_time = time.time()
+        # 检查是否需要清理（每5分钟清理一次）
+        if current_time - _last_captcha_cleanup[0] < CAPTCHA_HISTORY_CLEANUP_INTERVAL:
+            return
+        
+        _last_captcha_cleanup[0] = current_time
+        sessions_to_remove = []
+        
+        for session_id, timestamps in captcha_request_history.items():
+            # 如果该会话的所有请求都超过了5分钟，标记为待删除
+            if timestamps and all(current_time - t > CAPTCHA_HISTORY_CLEANUP_INTERVAL for t in timestamps):
+                sessions_to_remove.append(session_id)
+        
+        # 删除过期的会话记录
+        for session_id in sessions_to_remove:
+            del captcha_request_history[session_id]
+        
+        if sessions_to_remove:
+            logging.debug(
+                f"[验证码速率限制] 清理了 {len(sessions_to_remove)} 个过期会话记录"
+            )
+
     @app.route("/api/captcha/config", methods=["GET"])
     @admin_required
     def get_captcha_config():
@@ -31195,10 +31326,46 @@ def start_web_server(args_param):
     def get_captcha():
         """
         获取验证码接口 【本地验证码生成器】
+        包含速率限制：每秒最多2次请求
         """
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id:
             return jsonify({"success": False, "message": "缺少会话ID"}), 401
+
+        # [新增] 验证码请求速率限制检查
+        current_time = time.time()
+        
+        # 定期清理过期的会话记录（避免内存泄漏）
+        _cleanup_captcha_history()
+        
+        # 获取当前会话的请求历史
+        if session_id not in captcha_request_history:
+            captcha_request_history[session_id] = []
+        
+        # 清理超过时间窗口的旧请求记录（优化：使用原地过滤）
+        history = captcha_request_history[session_id]
+        # 从后往前遍历，移除过期的时间戳（避免重建整个列表）
+        i = 0
+        while i < len(history):
+            if current_time - history[i] >= CAPTCHA_RATE_WINDOW:
+                history.pop(i)
+            else:
+                i += 1
+        
+        # 检查是否超过速率限制
+        if len(history) >= CAPTCHA_RATE_LIMIT:
+            logging.warning(
+                f"[验证码速率限制] 会话 {session_id[:8]}... 请求过于频繁，"
+                f"已达到限制 ({CAPTCHA_RATE_LIMIT}次/{CAPTCHA_RATE_WINDOW}秒)"
+            )
+            return jsonify({
+                "success": False,
+                "message": "请求过于频繁，请稍后再试",
+                "rate_limit": True
+            }), 429  # 429 Too Many Requests
+        
+        # 记录本次请求时间
+        history.append(current_time)
 
         try:
             config_file = os.path.join(os.path.dirname(__file__), "config.ini")
