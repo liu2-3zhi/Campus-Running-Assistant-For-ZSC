@@ -13773,41 +13773,47 @@ function handleCdnError(resourceName = "未指定") {
 }
 
 function showModalAlert(message, title = "提示", onCloseCallback = null) {
-  const modal = $("alert-modal");
-  const titleEl = $("alert-modal-title");
-  const msgEl = $("alert-modal-message");
-  const closeBtn = $("alert-modal-close-btn");
-
-  if (!modal || !titleEl || !msgEl || !closeBtn) {
-    logMessage_Warning(
-      "Alert modal DOM not found, falling back to native alert."
-    );
-    alert(`${title}:\n${message}`);
-    if (onCloseCallback && typeof onCloseCallback === "function")
-      onCloseCallback();
-    return;
+  // [重构说明] 本函数已从自定义模态框改为使用 SweetAlert2 (Swal.fire)
+  // [参数说明]
+  //   - message: 要显示的消息文本
+  //   - title: 标题文本（默认为"提示"）
+  //   - onCloseCallback: 关闭时的回调函数（SweetAlert2会自动处理，但我们保留以兼容旧代码）
+  
+  // [步骤1] 根据标题文本判断 icon 类型
+  // 通过标题中的关键词来智能选择合适的图标类型
+  let iconType = "info";  // 默认图标类型为 info（信息）
+  
+  if (title && typeof title === "string") {
+    // [icon判断逻辑] 根据标题中的关键词设置图标
+    // - "成功" → success（绿色对勾）
+    // - "错误" 或 "失败" → error（红色叉号）
+    // - "警告" → warning（黄色感叹号）
+    // - 其他 → info（蓝色信息图标）
+    if (title.includes("成功")) {
+      iconType = "success";
+    } else if (title.includes("错误") || title.includes("失败")) {
+      iconType = "error";
+    } else if (title.includes("警告")) {
+      iconType = "warning";
+    }
   }
-
-  titleEl.textContent = title;
-  msgEl.innerHTML = String(message).replace(/\n/g, "<br>");
-
-  if (title.includes("失败") || title.includes("错误")) {
-    titleEl.classList.remove("text-sky-600");
-    titleEl.classList.add("text-red-600");
-  } else {
-    titleEl.classList.remove("text-red-600");
-    titleEl.classList.add("text-sky-600");
-  }
-
-  closeBtn.onclick = () => {
-    closeModalAlert();
-    if (onCloseCallback && typeof onCloseCallback === "function")
+  
+  // [步骤2] 调用 SweetAlert2 显示弹窗
+  // SweetAlert2 是一个现代化的、美观的弹窗库
+  // 相比自定义模态框，它提供更好的用户体验和更多功能
+  Swal.fire({
+    title: title,       // 标题文本
+    text: message,      // 消息文本（SweetAlert2会自动处理换行符）
+    icon: iconType,     // 图标类型（根据标题智能判断）
+    confirmButtonText: "确定",  // 确认按钮的文本
+    confirmButtonColor: "#3b82f6",  // 确认按钮的颜色（蓝色）
+  }).then((result) => {
+    // [步骤3] 如果提供了回调函数，则在用户关闭弹窗后执行
+    // 这样可以兼容旧代码中使用 onCloseCallback 的场景
+    if (onCloseCallback && typeof onCloseCallback === "function") {
       onCloseCallback();
-  };
-
-  modal.classList.remove("hidden");
-  modal.classList.add("flex");
-  document.body.classList.add("modal-visible");
+    }
+  });
 }
 
 function closeModalAlert() {
@@ -29094,80 +29100,256 @@ async function exitMultiMode() {
 }
 
 async function multi_loadAllFromConfig() {
+  // [步骤1] 从后端API加载账号配置（仅包含用户名和标签，不含密码）
   const result = await callPythonAPI("multi_load_accounts_from_config");
 
   if (result && result.accounts) {
+    // [步骤2] 检查会话和用户身份是否有效
     if (sessionUUID && currentAuthUsername) {
       try {
-        const response = await fetch("/auth/get_user_school_accounts", {
-          method: "GET",
-          headers: {
-            "X-Session-ID": sessionUUID,
-          },
+        // [步骤3] 判断当前用户是否是管理员
+        // 从全局对象 currentUserData 获取用户组别信息
+        // 如果 currentUserData 不存在或 group 属性缺失，默认为 "user"（普通用户）
+        const userGroup = currentUserData?.group || "user";
+        
+        // [权限检查] 只有 "admin" 或 "super_admin" 组别才被认为是管理员
+        // 管理员可以加载所有用户的学校账号密码
+        // 普通用户只能加载自己的学校账号密码
+        const isAdmin = userGroup === "admin" || userGroup === "super_admin";
+        
+        // [调试日志] 记录权限检查结果，便于排查权限问题
+        console.log("[多账号-加载全部] 权限检查:", {
+          currentAuthUsername: currentAuthUsername, // 当前登录的用户名
+          userGroup: userGroup,                     // 用户所属的组别
+          isAdmin: isAdmin,                         // 是否拥有管理员权限
+          willLoadAllUsers: isAdmin                 // 是否会加载所有用户的账号
         });
-        if (response.ok) {
-          const schoolAccountsResult = await response.json();
-          if (schoolAccountsResult.success && schoolAccountsResult.accounts) {
-            const accountDataMap = schoolAccountsResult.accounts;
-            let updatedCount = 0;
-            result.accounts.forEach((account) => {
-              // [安全修复] 验证account.username是否为有效字符串，防止原型链污染
-              if (
-                account &&
-                account.username &&
-                typeof account.username === "string" &&
-                account.username.length > 0 &&
-                accountDataMap.hasOwnProperty(account.username)
-              ) {
-                const accountData = accountDataMap[account.username];
-                // [安全修复] 只处理字符串密码，防止XSS和对象注入攻击
-                if (typeof accountData === "string") {
-                  // [安全修复] 使用统一的安全常量验证密码长度
-                  if (accountData.length > 0 && accountData.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
-                    account.password = accountData;
-                    updatedCount++;
+
+        // [步骤4] 根据权限加载学校账号密码
+        let allSchoolAccounts = {};  // 用于存储所有学校账号的密码和UA信息
+        
+        if (isAdmin) {
+          // [管理员模式] 加载所有用户的学校账号密码
+          logMessage_Info("[多账号-加载全部] 管理员权限：正在加载所有用户的学校账号...");
+          
+          try {
+            // [步骤4.1] 调用后端API获取所有用户的学校账号文件列表
+            const listResponse = await fetch("/auth/list_all_user_school_accounts", {
+              method: "GET",
+              headers: {
+                "X-Session-ID": sessionUUID,
+              },
+            });
+            
+            if (listResponse.ok) {
+              const listResult = await listResponse.json();
+              
+              // [步骤4.2] 如果成功获取到用户列表，遍历每个用户的账号文件
+              if (listResult.success && listResult.users && Array.isArray(listResult.users)) {
+                logMessage_Info(`[多账号-加载全部] 发现 ${listResult.users.length} 个用户的账号文件`);
+                
+                // [步骤4.3] 遍历每个用户，获取其学校账号密码
+                for (const username of listResult.users) {
+                  try {
+                    // [安全验证] 确保用户名是有效的字符串
+                    if (!username || typeof username !== "string" || username.length === 0) {
+                      continue;  // 跳过无效的用户名
+                    }
+                    
+                    // [步骤4.4] 为每个用户调用API获取其学校账号密码
+                    const userAccountsResponse = await fetch(
+                      `/auth/get_user_school_accounts?username=${encodeURIComponent(username)}`,
+                      {
+                        method: "GET",
+                        headers: {
+                          "X-Session-ID": sessionUUID,
+                        },
+                      }
+                    );
+                    
+                    if (userAccountsResponse.ok) {
+                      const userAccountsResult = await userAccountsResponse.json();
+                      
+                      // [步骤4.5] 合并该用户的所有学校账号到总集合中
+                      if (userAccountsResult.success && userAccountsResult.accounts) {
+                        // 遍历该用户的每个学校账号
+                        for (const [schoolUsername, accountData] of Object.entries(userAccountsResult.accounts)) {
+                          // [去重策略] 如果学校账号已存在，则跳过（保留第一个遇到的）
+                          // 这样可以避免同一个学校账号被多个用户绑定时的冲突
+                          if (!allSchoolAccounts.hasOwnProperty(schoolUsername)) {
+                            // [过滤逻辑] 只添加包含有效密码的账号
+                            // 验证账号数据的有效性
+                            let hasValidPassword = false;
+                            
+                            if (typeof accountData === "string") {
+                              // [旧格式] accountData 直接是密码字符串
+                              hasValidPassword = accountData.length > 0;
+                            } else if (typeof accountData === "object" && accountData !== null) {
+                              // [新格式] accountData 是对象，包含 password 和 ua 字段
+                              hasValidPassword = 
+                                accountData.hasOwnProperty("password") &&
+                                typeof accountData.password === "string" &&
+                                accountData.password.length > 0;
+                            }
+                            
+                            // [步骤4.6] 如果密码有效，则添加到总集合
+                            if (hasValidPassword) {
+                              allSchoolAccounts[schoolUsername] = accountData;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  } catch (userError) {
+                    // [容错处理] 如果某个用户的账号加载失败，记录警告但继续处理其他用户
+                    logMessage_Warning(
+                      `[多账号-加载全部] 无法加载用户 ${username} 的账号: ${userError.message}`
+                    );
                   }
-                } else if (
-                  typeof accountData === "object" &&
-                  accountData !== null
-                ) {
-                  // [安全修复] 严格验证对象属性，防止注入攻击
-                  if (
-                    accountData.hasOwnProperty("password") &&
-                    typeof accountData.password === "string" &&
-                    accountData.password.length > 0 &&
-                    accountData.password.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH
-                  ) {
-                    account.password = accountData.password;
+                }
+                
+                logMessage_Info(
+                  `[多账号-加载全部] 管理员模式：已合并 ${Object.keys(allSchoolAccounts).length} 个有效学校账号（已去重和过滤）`
+                );
+              } else {
+                // [异常情况] API返回成功但数据格式不正确
+                logMessage_Warning("[多账号-加载全部] 获取用户列表失败或返回数据格式错误");
+              }
+            } else {
+              // [异常情况] API请求失败
+              logMessage_Warning(`[多账号-加载全部] 获取用户列表API失败: ${listResponse.status}`);
+            }
+          } catch (adminError) {
+            // [错误处理] 管理员模式加载失败，记录错误但不中断流程
+            logMessage_Warning(
+              `[多账号-加载全部] 管理员模式加载失败: ${adminError.message}`
+            );
+          }
+        } else {
+          // [普通用户模式] 只加载当前用户自己的学校账号密码
+          logMessage_Info(`[多账号-加载全部] 普通用户模式：正在加载用户 ${currentAuthUsername} 的学校账号...`);
+          
+          try {
+            // [步骤4.7] 调用API获取当前用户的学校账号密码
+            const response = await fetch("/auth/get_user_school_accounts", {
+              method: "GET",
+              headers: {
+                "X-Session-ID": sessionUUID,
+              },
+            });
+            
+            if (response.ok) {
+              const schoolAccountsResult = await response.json();
+              
+              // [步骤4.8] 如果成功获取到账号数据，进行过滤
+              if (schoolAccountsResult.success && schoolAccountsResult.accounts) {
+                // [过滤逻辑] 只保留有密码的账号
+                for (const [schoolUsername, accountData] of Object.entries(schoolAccountsResult.accounts)) {
+                  let hasValidPassword = false;
+                  
+                  if (typeof accountData === "string") {
+                    // [旧格式] 密码直接是字符串
+                    hasValidPassword = accountData.length > 0;
+                  } else if (typeof accountData === "object" && accountData !== null) {
+                    // [新格式] 密码在对象的 password 字段中
+                    hasValidPassword = 
+                      accountData.hasOwnProperty("password") &&
+                      typeof accountData.password === "string" &&
+                      accountData.password.length > 0;
                   }
-                  // [安全修复] 使用统一的安全常量验证User-Agent长度
-                  if (
-                    accountData.hasOwnProperty("ua") &&
-                    typeof accountData.ua === "string" &&
-                    accountData.ua.length > 0 &&
-                    accountData.ua.length <= SECURITY_CONSTRAINTS.MAX_UA_LENGTH
-                  ) {
-                    account.device_ua = accountData.ua;
+                  
+                  // [步骤4.9] 如果密码有效，则添加到集合
+                  if (hasValidPassword) {
+                    allSchoolAccounts[schoolUsername] = accountData;
                   }
+                }
+                
+                logMessage_Info(
+                  `[多账号-加载全部] 普通用户模式：已加载 ${Object.keys(allSchoolAccounts).length} 个有效学校账号（已过滤）`
+                );
+              }
+            }
+          } catch (userError) {
+            // [错误处理] 普通用户模式加载失败
+            logMessage_Warning(
+              `[多账号-加载全部] 普通用户模式加载失败: ${userError.message}`
+            );
+          }
+        }
+        
+        // [步骤5] 将加载的密码和UA信息更新到账号列表中
+        if (Object.keys(allSchoolAccounts).length > 0) {
+          let updatedCount = 0;  // 统计成功更新的账号数量
+          
+          // [步骤5.1] 遍历从后端API加载的账号列表（仅包含用户名和标签）
+          result.accounts.forEach((account) => {
+            // [安全修复] 验证account.username是否为有效字符串，防止原型链污染
+            if (
+              account &&
+              account.username &&
+              typeof account.username === "string" &&
+              account.username.length > 0 &&
+              allSchoolAccounts.hasOwnProperty(account.username)
+            ) {
+              // [步骤5.2] 如果该账号存在于加载的学校账号集合中，则更新其密码和UA
+              const accountData = allSchoolAccounts[account.username];
+              
+              // [安全修复] 只处理字符串密码，防止XSS和对象注入攻击
+              if (typeof accountData === "string") {
+                // [旧格式处理] accountData 直接是密码字符串
+                // [安全修复] 使用统一的安全常量验证密码长度
+                if (accountData.length > 0 && accountData.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
+                  account.password = accountData;
                   updatedCount++;
                 }
+              } else if (
+                typeof accountData === "object" &&
+                accountData !== null
+              ) {
+                // [新格式处理] accountData 是对象，包含 password 和 ua 字段
+                // [安全修复] 严格验证对象属性，防止注入攻击
+                if (
+                  accountData.hasOwnProperty("password") &&
+                  typeof accountData.password === "string" &&
+                  accountData.password.length > 0 &&
+                  accountData.password.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH
+                ) {
+                  account.password = accountData.password;
+                }
+                // [安全修复] 使用统一的安全常量验证User-Agent长度
+                if (
+                  accountData.hasOwnProperty("ua") &&
+                  typeof accountData.ua === "string" &&
+                  accountData.ua.length > 0 &&
+                  accountData.ua.length <= SECURITY_CONSTRAINTS.MAX_UA_LENGTH
+                ) {
+                  account.device_ua = accountData.ua;
+                }
+                updatedCount++;
               }
-            });
-            if (updatedCount > 0) {
-              logMessage_Info(
-                `[多账号-加载全部] 已从 school_accounts 更新 ${updatedCount} 个账号的密码和UA`
-              );
             }
+          });
+          
+          // [步骤5.3] 记录更新结果
+          if (updatedCount > 0) {
+            logMessage_Info(
+              `[多账号-加载全部] 已从 school_accounts 更新 ${updatedCount} 个账号的密码和UA`
+            );
           }
         }
       } catch (error) {
+        // [错误处理] 整个加载流程失败
         logMessage_Warning(
           `[多账号-加载全部] 无法加载 school_accounts: ${error.message}`
         );
       }
     }
+    
+    // [步骤6] 渲染更新后的账号列表到界面
     renderMultiAccountList(result.accounts);
   }
+  
+  // [步骤7] 检查是否有账号缺少密码，如果有则提示用户补全
   if (
     result &&
     result.accounts_missing_password &&
