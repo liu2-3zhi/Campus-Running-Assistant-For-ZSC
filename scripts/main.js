@@ -14753,6 +14753,7 @@ async function checkAuthStatus() {
   try {
     // 调用统一的初始数据加载函数进行认证状态检查
     const result = await loadInitialData();
+    logMessage_Info("[认证状态] 检查结果:", result);
     if (result && result.is_authenticated) {
       return true;
     }
@@ -47152,6 +47153,8 @@ async function loadInitialData(options = {}) {
     // ====================================================================
     // 步骤8：返回完整的响应对象
     // ====================================================================
+
+    logMessage_Info("[初始化] 初始数据加载完成:", response);
 
     // 将response返回给调用者
     // 调用者可以从中提取需要的数据（如用户列表、权限信息等）

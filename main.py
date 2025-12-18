@@ -1522,7 +1522,7 @@ PERMISSIONS_FILE = "permissions.json"
 # [任务47新增] 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
-AUTO_ATTENDANCE_CONFIG_FILE = os.path.join("logs", "auto_attendance_config.json")
+AUTO_ATTENDANCE_CONFIG_FILE = os.path.join("configs", "auto_attendance_config.json")
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -9141,7 +9141,7 @@ class Api:
                         )
                     else:
                         logging.debug(f"普通用户 {auth_username} 还没有任何学校账户")
-                        return []
+                        users = []
             else:
                 users = all_users
                 logging.debug(

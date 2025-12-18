@@ -82,7 +82,7 @@ RUN mkdir -p /app/tokens
 RUN mkdir -p /app/system_accounts
 RUN mkdir -p /app/payment_orders
 RUN touch /app/payment_methods.json
-RUN touch /app/auto_attendance_config_new.json
+RUN mkdir -p /app/configs
 
 
 # 在构建阶段就转换换行符
