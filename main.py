@@ -1522,7 +1522,7 @@ PERMISSIONS_FILE = "permissions.json"
 # [任务47新增] 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
-AUTO_ATTENDANCE_CONFIG_FILE = "auto_attendance_config_new.json"
+AUTO_ATTENDANCE_CONFIG_FILE = os.path.join("logs", "auto_attendance_config.json")
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -1728,6 +1728,9 @@ def _save_auto_attendance_config(config):
         # 这是一个安全措施，防止保存不完整的配置
         if "enabled_accounts" not in config:
             config["enabled_accounts"] = {}
+        
+        # 确保logs目录存在
+        os.makedirs(os.path.dirname(AUTO_ATTENDANCE_CONFIG_FILE), exist_ok=True)
         
         # 以UTF-8编码打开配置文件进行写入
         # 使用with语句确保文件正确关闭，即使发生异常
