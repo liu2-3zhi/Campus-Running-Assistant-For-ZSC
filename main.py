@@ -31115,6 +31115,35 @@ def start_web_server(args_param):
     captcha_request_history = {}
     CAPTCHA_RATE_LIMIT = 2  # 每秒最多请求2次
     CAPTCHA_RATE_WINDOW = 1.0  # 时间窗口为1秒
+    CAPTCHA_HISTORY_CLEANUP_INTERVAL = 300  # 5分钟清理一次历史记录
+    _last_captcha_cleanup = [time.time()]  # 使用列表以便在函数内修改
+    
+    def _cleanup_captcha_history():
+        """
+        清理captcha_request_history中的过期会话记录
+        只保留最近5分钟内有请求的会话，避免内存泄漏
+        """
+        current_time = time.time()
+        # 检查是否需要清理（每5分钟清理一次）
+        if current_time - _last_captcha_cleanup[0] < CAPTCHA_HISTORY_CLEANUP_INTERVAL:
+            return
+        
+        _last_captcha_cleanup[0] = current_time
+        sessions_to_remove = []
+        
+        for session_id, timestamps in captcha_request_history.items():
+            # 如果该会话的所有请求都超过了5分钟，标记为待删除
+            if timestamps and all(current_time - t > CAPTCHA_HISTORY_CLEANUP_INTERVAL for t in timestamps):
+                sessions_to_remove.append(session_id)
+        
+        # 删除过期的会话记录
+        for session_id in sessions_to_remove:
+            del captcha_request_history[session_id]
+        
+        if sessions_to_remove:
+            logging.debug(
+                f"[验证码速率限制] 清理了 {len(sessions_to_remove)} 个过期会话记录"
+            )
 
     @app.route("/api/captcha/config", methods=["GET"])
     @admin_required
@@ -31237,18 +31266,25 @@ def start_web_server(args_param):
         # [新增] 验证码请求速率限制检查
         current_time = time.time()
         
+        # 定期清理过期的会话记录（避免内存泄漏）
+        _cleanup_captcha_history()
+        
         # 获取当前会话的请求历史
         if session_id not in captcha_request_history:
             captcha_request_history[session_id] = []
         
-        # 清理超过时间窗口的旧请求记录
-        captcha_request_history[session_id] = [
-            t for t in captcha_request_history[session_id]
-            if current_time - t < CAPTCHA_RATE_WINDOW
-        ]
+        # 清理超过时间窗口的旧请求记录（优化：使用原地过滤）
+        history = captcha_request_history[session_id]
+        # 从后往前遍历，移除过期的时间戳（避免重建整个列表）
+        i = 0
+        while i < len(history):
+            if current_time - history[i] >= CAPTCHA_RATE_WINDOW:
+                history.pop(i)
+            else:
+                i += 1
         
         # 检查是否超过速率限制
-        if len(captcha_request_history[session_id]) >= CAPTCHA_RATE_LIMIT:
+        if len(history) >= CAPTCHA_RATE_LIMIT:
             logging.warning(
                 f"[验证码速率限制] 会话 {session_id[:8]}... 请求过于频繁，"
                 f"已达到限制 ({CAPTCHA_RATE_LIMIT}次/{CAPTCHA_RATE_WINDOW}秒)"
@@ -31260,7 +31296,7 @@ def start_web_server(args_param):
             }), 429  # 429 Too Many Requests
         
         # 记录本次请求时间
-        captcha_request_history[session_id].append(current_time)
+        history.append(current_time)
 
         try:
             config_file = os.path.join(os.path.dirname(__file__), "config.ini")
