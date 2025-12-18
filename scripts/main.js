@@ -29100,30 +29100,142 @@ async function exitMultiMode() {
 }
 
 async function multi_loadAllFromConfig() {
-  // [步骤1] 从后端API加载账号配置（仅包含用户名和标签，不含密码）
-  const result = await callPythonAPI("multi_load_accounts_from_config");
-
+  // ============================================================
+  // 函数功能：从配置文件批量加载多账号
+  // 
+  // 功能描述：
+  // 1. 调用后端API批量加载账号配置
+  // 2. 显示加载动画和进度提示
+  // 3. 处理加载结果并更新界面
+  // 4. 对于缺少密码的账号，引导用户补全
+  // ============================================================
   
+  // [步骤1] 显示加载中的提示弹窗
+  // 使用SweetAlert2显示一个带有加载动画的弹窗
+  // 这样用户知道系统正在处理，避免重复点击
+  Swal.fire({
+    title: "正在加载账号...",  // 弹窗标题
+    text: "请稍候，正在从配置文件中批量导入账号",  // 提示文本
+    icon: "info",  // 信息图标（蓝色圆圈i）
+    allowOutsideClick: false,  // 不允许点击外部关闭弹窗
+    allowEscapeKey: false,  // 不允许按ESC键关闭弹窗
+    showConfirmButton: false,  // 不显示确认按钮
+    didOpen: () => {
+      // 当弹窗打开时，显示加载动画
+      // Swal.showLoading()会在弹窗中显示一个旋转的加载图标
+      Swal.showLoading();
+    }
+  });
+  
+  // [步骤2] 调用后端API加载账号配置
+  // callPythonAPI是项目中封装的API调用函数
+  // 它会自动处理请求头（如session_id）和错误处理
+  try {
+    // 调用后端的multi_load_accounts_from_config接口
+    // 该接口会从服务器配置文件中读取账号列表并返回
+    const result = await callPythonAPI("multi_load_accounts_from_config");
+    
+    // [步骤3] 关闭加载弹窗
+    // 无论成功还是失败，都需要关闭加载弹窗
+    Swal.close();
+    
+    // [步骤4] 检查API调用是否成功
+    if (!result || !result.success) {
+      // 如果API返回失败，显示错误提示
+      Swal.fire({
+        title: "加载失败",  // 错误标题
+        text: result?.message || "从配置文件加载账号失败，请重试",  // 错误消息
+        icon: "error",  // 错误图标（红色叉号）
+        confirmButtonText: "确定",  // 确认按钮文本
+        confirmButtonColor: "#ef4444"  // 确认按钮颜色（红色）
+      });
+      return;  // 终止函数执行
+    }
+    
+    // [步骤5] 显示加载成功的提示信息
+    // 包含成功添加和失败的账号数量统计
+    const added_count = result.added_count || 0;  // 成功添加的账号数量
+    const failed_count = result.failed_count || 0;  // 失败的账号数量
+    
+    // 构建提示消息
+    let message = `成功加载 ${added_count} 个账号`;
+    if (failed_count > 0) {
+      // 如果有失败的账号，也要告知用户
+      message += `\n${failed_count} 个账号加载失败`;
+    }
+    
+    // 显示成功提示弹窗
+    Swal.fire({
+      title: "加载成功",  // 成功标题
+      text: message,  // 提示消息
+      icon: "success",  // 成功图标（绿色对勾）
+      confirmButtonText: "确定",  // 确认按钮文本
+      confirmButtonColor: "#3b82f6"  // 确认按钮颜色（蓝色）
+    });
     
     // [步骤6] 渲染更新后的账号列表到界面
-    renderMultiAccountList(result.accounts);
-  }
-  
-  // [步骤7] 检查是否有账号缺少密码，如果有则提示用户补全
-  if (
-    result &&
-    result.accounts_missing_password &&
-    result.accounts_missing_password.length > 0
-  ) {
-    const missingAccount = result.accounts_missing_password[0];
-    showModalAlert(
-      `检测到 ${result.accounts_missing_password.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`,
-      "提示"
-    );
-    openMultiAddUserModalForPassword(
-      missingAccount.username,
-      missingAccount.tag
-    );
+    // result.accounts是一个数组，包含所有账号的信息
+    // renderMultiAccountList函数会将这些账号渲染到页面上
+    if (result.accounts && Array.isArray(result.accounts)) {
+      renderMultiAccountList(result.accounts);
+    }
+    
+    // [步骤7] 检查是否有账号缺少密码
+    // 从配置文件加载的账号通常只有用户名，没有密码
+    // 需要用户手动补全密码才能使用
+    if (result.accounts && Array.isArray(result.accounts)) {
+      // 过滤出所有没有密码的账号
+      // has_password字段由后端返回，表示该账号是否已设置密码
+      const accounts_missing_password = result.accounts.filter(
+        acc => !acc.has_password && acc.username
+      );
+      
+      // 如果存在缺少密码的账号
+      if (accounts_missing_password.length > 0) {
+        // 获取第一个缺少密码的账号信息
+        const missingAccount = accounts_missing_password[0];
+        
+        // 显示提示弹窗，告知用户需要补全密码
+        Swal.fire({
+          title: "需要补全密码",  // 提示标题
+          text: `检测到 ${accounts_missing_password.length} 个账号缺少密码。\n请先为账号 ${missingAccount.username} 设置密码`,  // 提示消息
+          icon: "warning",  // 警告图标（黄色感叹号）
+          confirmButtonText: "立即设置",  // 确认按钮文本
+          confirmButtonColor: "#f59e0b"  // 确认按钮颜色（橙色）
+        }).then((result) => {
+          // 当用户点击"立即设置"按钮后
+          if (result.isConfirmed) {
+            // 调用openMultiAddUserModalForPassword函数
+            // 打开密码设置模态框，让用户为该账号设置密码
+            // 传入用户名和标签，预填充到表单中
+            openMultiAddUserModalForPassword(
+              missingAccount.username,
+              missingAccount.tag || ""
+            );
+          }
+        });
+      }
+    }
+    
+  } catch (error) {
+    // [步骤8] 错误处理
+    // 如果在整个过程中发生任何未预期的错误
+    // 记录错误日志并显示友好的错误提示
+    
+    // 关闭加载弹窗（如果还在显示）
+    Swal.close();
+    
+    // 在控制台输出错误日志，便于调试
+    console.error("批量加载账号时发生错误:", error);
+    
+    // 显示错误提示弹窗
+    Swal.fire({
+      title: "加载出错",  // 错误标题
+      text: `批量加载账号时发生错误：${error.message || "未知错误"}`,  // 错误消息
+      icon: "error",  // 错误图标（红色叉号）
+      confirmButtonText: "确定",  // 确认按钮文本
+      confirmButtonColor: "#ef4444"  // 确认按钮颜色（红色）
+    });
   }
 }
 
