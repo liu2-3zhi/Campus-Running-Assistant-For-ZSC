@@ -29510,7 +29510,15 @@ $("newUserCancel").onclick = closeNewUserModal;
 
 function openMultiAddUserModal() {
   if ($("multi-add-username")) $("multi-add-username").value = "";
-  if ($("multi-add-password")) $("multi-add-password").value = "";
+  if ($("multi-add-password")) {
+    $("multi-add-password").value = "";
+    // [新增] 如果从config按钮进入，提示密码可以留空
+    if (window._addFromConfigContext) {
+      $("multi-add-password").placeholder = "请输入密码（可留空，后端会自动查找）";
+    } else {
+      $("multi-add-password").placeholder = "请输入密码";
+    }
+  }
   // 修复：多账号添加模态框中不存在 password-confirm 字段，移除该行以防止报错
   // $("multi-add-password-confirm").value = "";
   if ($("multi-add-tag")) $("multi-add-tag").value = "";
@@ -29540,6 +29548,10 @@ function closeMultiAddUserModal() {
     window._passwordQueueContext = null;
     // 处理下一个账号
     processPasswordQueue(context.accounts, context.currentIndex + 1);
+  } else if (window._addFromConfigContext) {
+    // [新增] 如果从config按钮进入，清除上下文
+    console.log(`[手动添加] 用户取消添加账号`);
+    window._addFromConfigContext = null;
   }
 }
 
@@ -29638,6 +29650,8 @@ async function multi_addFromConfig() {
   const user = $("multi-config-user-select").value;
 
   if (!user) {
+    // [新增] 设置上下文标记，表示从config按钮进入
+    window._addFromConfigContext = true;
     openMultiAddUserModal();
     return;
   }
@@ -29683,7 +29697,12 @@ async function multi_addFromConfig() {
       );
     }
   }
-  const result = await callPythonAPI("multi_add_account", user, passwordToUse);
+  // [修复] 使用对象格式调用API
+  const result = await callPythonAPI("multi_add_account", {
+    username: user,
+    password: passwordToUse,
+    tag: ""
+  });
   if (
     result &&
     result.success === false &&
@@ -29707,9 +29726,19 @@ async function submitMultiAddUser() {
   const passwordVal = inputPassword.value;
   const tagVal = inputTag.value.trim();
   
-  // [安全修复] 基本验证：用户名和密码不能为空
-  if (!usernameVal || !passwordVal) {
-    showModalAlert("账号和密码均不能为空");
+  // [修改] 检查是否从config按钮进入（允许空密码）或从密码队列进入（不允许空密码）
+  const isFromConfig = window._addFromConfigContext;
+  const isFromPasswordQueue = window._passwordQueueContext;
+  
+  // [安全修复] 基本验证：用户名不能为空
+  if (!usernameVal) {
+    showModalAlert("账号不能为空");
+    return;
+  }
+  
+  // [修改] 如果从密码队列进入，密码不能为空；如果从config按钮进入，密码可以为空
+  if (isFromPasswordQueue && !passwordVal) {
+    showModalAlert("密码不能为空");
     return;
   }
   
@@ -29749,18 +29778,30 @@ async function submitMultiAddUser() {
 
     if (result && result.accounts) {
       showModalAlert("账号添加成功", "成功");
-      closeMultiAddUserModal();
       
-      // [新增] 如果在队列模式下，处理下一个账号
+      // [修改] 根据不同的上下文执行不同的处理逻辑
       if (window._passwordQueueContext) {
+        // 场景1：从密码队列进入（批量加载缺少密码的账号）
         const context = window._passwordQueueContext;
         console.log(`[密码队列] 账号 ${usernameVal} 密码设置成功，继续处理下一个`);
         // 清除上下文
         window._passwordQueueContext = null;
+        // 关闭模态框
+        closeMultiAddUserModal();
         // 处理下一个账号
         processPasswordQueue(context.accounts, context.currentIndex + 1);
+      } else if (window._addFromConfigContext) {
+        // 场景2：从config按钮进入（手动添加账号）
+        console.log(`[手动添加] 账号 ${usernameVal} 添加成功`);
+        // 清除上下文
+        window._addFromConfigContext = null;
+        // 关闭模态框
+        closeMultiAddUserModal();
+        // 刷新列表
+        renderMultiAccountList(result.accounts);
       } else {
-        // 非队列模式，正常刷新列表
+        // 场景3：其他方式进入（默认行为）
+        closeMultiAddUserModal();
         renderMultiAccountList(result.accounts);
       }
     } else {
