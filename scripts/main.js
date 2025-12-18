@@ -21061,6 +21061,55 @@ async function showUserSchoolAccounts(username) {
 function closeManageSchoolAccountsModal() {
   hideModal("manage-school-accounts-modal");
 }
+
+/**
+ * 刷新学校账户列表（桌面端）
+ * 
+ * 功能说明：
+ * - 重新加载当前显示的用户的学校账户列表
+ * - 从服务器获取最新数据并更新界面
+ * 
+ * 使用场景：
+ * - 用户点击"刷新"按钮时
+ * - 添加、编辑或删除账户后自动刷新
+ * 
+ * 实现逻辑：
+ * 1. 获取当前模态框中显示的用户名
+ * 2. 调用showUserSchoolAccounts重新加载该用户的账户数据
+ * 3. 自动更新列表和统计信息
+ */
+async function refreshSchoolAccounts() {
+  // 输出日志，标记刷新操作的开始
+  console.log("[学校账户管理] 开始刷新账户列表...");
+
+  // 尝试获取当前显示的用户名
+  // $("school-accounts-username")获取DOM元素
+  // ?.textContent 使用可选链操作符，如果元素不存在则返回undefined
+  // || "" 如果textContent为空或undefined，则使用空字符串作为默认值
+  const currentUsername = $("school-accounts-username")?.textContent || "";
+
+  // 验证用户名是否有效
+  if (!currentUsername) {
+    // 如果用户名为空，输出错误日志
+    console.error("[学校账户管理] 刷新失败：无法获取当前用户名");
+
+    // 使用showModalAlert显示友好的错误提示
+    showModalAlert("刷新失败：无法确定当前用户", "错误");
+
+    // 提前返回，不执行后续的刷新操作
+    return;
+  }
+
+  // 调用showUserSchoolAccounts函数重新加载账户数据
+  // 该函数会自动：
+  // 1. 从服务器获取最新数据
+  // 2. 更新账户列表的HTML
+  // 3. 更新账户统计信息
+  await showUserSchoolAccounts(currentUsername);
+
+  // 输出成功日志
+  console.log("[学校账户管理] 账户列表刷新完成");
+}
 function editSchoolAccount(authUsername, schoolUsername, password, ua) {
   const authUsernameField = $("edit-school-account-auth-username");
   const schoolUsernameField = $("edit-school-account-school-username");
@@ -29152,45 +29201,60 @@ async function multi_loadAllFromConfig() {
       return;  // 终止函数执行
     }
     
-    // [步骤5] 显示加载成功的提示信息
+    // [步骤5] 检查是否有账号缺少密码
+    // 从配置文件加载的账号通常只有用户名，没有密码
+    // 需要用户手动补全密码才能使用
+    // 注意：我们先处理密码问题，然后再渲染列表和显示成功消息
+    let accounts_missing_password = [];
+    if (result.accounts && Array.isArray(result.accounts)) {
+      // 过滤出所有没有密码的账号
+      // has_password字段由后端返回，表示该账号是否已设置密码
+      accounts_missing_password = result.accounts.filter(
+        acc => !acc.has_password && acc.username
+      );
+    }
+    
+    // [步骤6] 只渲染有密码的账号到界面
+    // 没有密码的账号不应该显示在列表中，直到用户设置密码后才显示
+    if (result.accounts && Array.isArray(result.accounts)) {
+      // 只显示已经有密码的账号
+      const accounts_with_password = result.accounts.filter(
+        acc => acc.has_password
+      );
+      renderMultiAccountList(accounts_with_password);
+    }
+    
+    // [步骤7] 显示加载成功的提示信息
     // 包含成功添加和失败的账号数量统计
     const added_count = result.added_count || 0;  // 成功添加的账号数量
     const failed_count = result.failed_count || 0;  // 失败的账号数量
+    const total_accounts = result.accounts ? result.accounts.length : 0;  // 总账号数
     
     // 构建提示消息
-    let message = `成功加载 ${added_count} 个账号`;
+    // 如果added_count为0（表示都是已存在的账号），显示总账号数
+    let message = added_count > 0 
+      ? `成功加载 ${added_count} 个新账号` 
+      : `配置文件中有 ${total_accounts} 个账号`;
+    
     if (failed_count > 0) {
       // 如果有失败的账号，也要告知用户
       message += `\n${failed_count} 个账号加载失败`;
     }
     
-    // 显示成功提示弹窗
-    Swal.fire({
-      title: "加载成功",  // 成功标题
-      text: message,  // 提示消息
-      icon: "success",  // 成功图标（绿色对勾）
-      confirmButtonText: "确定",  // 确认按钮文本
-      confirmButtonColor: "#3b82f6"  // 确认按钮颜色（蓝色）
-    });
-    
-    // [步骤6] 渲染更新后的账号列表到界面
-    // result.accounts是一个数组，包含所有账号的信息
-    // renderMultiAccountList函数会将这些账号渲染到页面上
-    if (result.accounts && Array.isArray(result.accounts)) {
-      renderMultiAccountList(result.accounts);
+    // 如果有缺少密码的账号，在消息中提示
+    if (accounts_missing_password.length > 0) {
+      message += `\n其中 ${accounts_missing_password.length} 个账号需要设置密码`;
     }
     
-    // [步骤7] 检查是否有账号缺少密码
-    // 从配置文件加载的账号通常只有用户名，没有密码
-    // 需要用户手动补全密码才能使用
-    if (result.accounts && Array.isArray(result.accounts)) {
-      // 过滤出所有没有密码的账号
-      // has_password字段由后端返回，表示该账号是否已设置密码
-      const accounts_missing_password = result.accounts.filter(
-        acc => !acc.has_password && acc.username
-      );
-      
-      // 如果存在缺少密码的账号
+    // 显示成功提示弹窗
+    Swal.fire({
+      title: "加载完成",  // 成功标题
+      text: message,  // 提示消息
+      icon: accounts_missing_password.length > 0 ? "warning" : "success",  // 如果有缺少密码的账号，显示警告图标
+      confirmButtonText: "确定",  // 确认按钮文本
+      confirmButtonColor: accounts_missing_password.length > 0 ? "#f59e0b" : "#3b82f6"  // 按钮颜色
+    }).then((swalResult) => {
+      // [步骤8] 在用户确认后，如果有缺少密码的账号，引导用户设置密码
       if (accounts_missing_password.length > 0) {
         // 获取第一个缺少密码的账号信息
         const missingAccount = accounts_missing_password[0];
@@ -29198,9 +29262,11 @@ async function multi_loadAllFromConfig() {
         // 显示提示弹窗，告知用户需要补全密码
         Swal.fire({
           title: "需要补全密码",  // 提示标题
-          text: `检测到 ${accounts_missing_password.length} 个账号缺少密码。\n请先为账号 ${missingAccount.username} 设置密码`,  // 提示消息
+          text: `请为账号 ${missingAccount.username} 设置密码后才能使用`,  // 提示消息
           icon: "warning",  // 警告图标（黄色感叹号）
           confirmButtonText: "立即设置",  // 确认按钮文本
+          cancelButtonText: "稍后设置",  // 取消按钮文本
+          showCancelButton: true,  // 显示取消按钮
           confirmButtonColor: "#f59e0b"  // 确认按钮颜色（橙色）
         }).then((result) => {
           // 当用户点击"立即设置"按钮后
@@ -29215,7 +29281,7 @@ async function multi_loadAllFromConfig() {
           }
         });
       }
-    }
+    });
     
   } catch (error) {
     // [步骤8] 错误处理
