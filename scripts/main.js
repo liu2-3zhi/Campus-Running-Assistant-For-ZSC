@@ -29175,15 +29175,8 @@ async function multi_loadAllFromConfig() {
     result.accounts_missing_password &&
     result.accounts_missing_password.length > 0
   ) {
-    const missingAccount = result.accounts_missing_password[0];
-    showModalAlert(
-      `检测到 ${result.accounts_missing_password.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`,
-      "提示"
-    );
-    openMultiAddUserModalForPassword(
-      missingAccount.username,
-      missingAccount.tag
-    );
+    // 使用缺失密码队列的统一处理：展示带三个按钮的模态框，支持补全/跳过/放弃
+    openMissingPasswordModal(result.accounts_missing_password);
   }
 }
 
@@ -29205,6 +29198,72 @@ function openNewUserModal() {
       $("newUserSmsGroup").style.display = "none";
     }
   };
+}
+
+// ========== 缺失密码队列处理 ===========
+let missingAccountsQueue = [];
+let missingCurrentIndex = 0;
+
+function openMissingPasswordModal(missingList) {
+  missingAccountsQueue = Array.isArray(missingList) ? missingList.slice() : [];
+  missingCurrentIndex = 0;
+  if (!missingAccountsQueue.length) return;
+  showMissingCurrent();
+
+  const modal = $("missing-password-modal");
+  if (!modal) {
+    const missingAccount = missingAccountsQueue[0];
+    showModalAlert(`检测到 ${missingAccountsQueue.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`, "提示");
+    openMultiAddUserModalForPassword(missingAccount.username, missingAccount.tag);
+    return;
+  }
+
+  const btnComplete = $("missing-pass-complete-btn");
+  const btnSkip = $("missing-pass-skip-btn");
+  const btnAbort = $("missing-pass-abort-btn");
+
+  if (btnComplete) btnComplete.onclick = () => {
+    const cur = missingAccountsQueue[missingCurrentIndex];
+    closeMissingPasswordModal();
+    if (cur) openMultiAddUserModalForPassword(cur.username, cur.tag);
+  };
+
+  if (btnSkip) btnSkip.onclick = () => {
+    missingCurrentIndex += 1;
+    if (missingCurrentIndex >= missingAccountsQueue.length) {
+      closeMissingPasswordModal();
+    } else {
+      showMissingCurrent();
+    }
+  };
+
+  if (btnAbort) btnAbort.onclick = () => {
+    missingAccountsQueue = [];
+    missingCurrentIndex = 0;
+    closeMissingPasswordModal();
+  };
+
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+  document.body.classList.add("modal-visible");
+}
+
+function showMissingCurrent() {
+  const cur = missingAccountsQueue[missingCurrentIndex];
+  const total = missingAccountsQueue.length;
+  const msgEl = $("missing-password-message");
+  if (msgEl && cur) {
+    msgEl.innerHTML = `检测到 ${total} 个账号缺少密码。<br>当前 (${missingCurrentIndex + 1}/${total}): <strong>${cur.username}</strong>`;
+  }
+}
+
+function closeMissingPasswordModal() {
+  const modal = $("missing-password-modal");
+  if (modal) {
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+  }
+  document.body.classList.remove("modal-visible");
 }
 
 // ============================================================
@@ -29587,6 +29646,26 @@ async function submitMultiAddUser() {
       showModalAlert("账号添加成功", "成功");
       closeMultiAddUserModal();
       renderMultiAccountList(result.accounts);
+      // 如果正在处理缺失密码队列，提交成功后推进队列并显示下一个
+      if (missingAccountsQueue && missingAccountsQueue.length) {
+        const cur = missingAccountsQueue[missingCurrentIndex];
+        if (cur && cur.username === usernameVal) {
+          missingCurrentIndex += 1;
+        }
+        if (missingCurrentIndex < missingAccountsQueue.length) {
+          setTimeout(() => {
+            showMissingCurrent();
+            const modal = $("missing-password-modal");
+            if (modal) {
+              modal.classList.remove("hidden");
+              modal.classList.add("flex");
+            }
+          }, 300);
+        } else {
+          missingAccountsQueue = [];
+          missingCurrentIndex = 0;
+        }
+      }
     } else {
       showModalAlert(result?.message || "添加失败");
     }

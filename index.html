@@ -6363,6 +6363,24 @@
     </div>
   </div>
 
+  <!-- 缺少密码处理模态框：提供 三个操作按钮 -->
+  <div id="missing-password-modal" class="fixed inset-0 flex items-center justify-center hidden z-[51000]">
+    <div class="absolute inset-0 bg-black/60" onclick="closeMissingPasswordModal()"></div>
+    <div class="panel rounded-2xl p-6 w-11/12 md:w-96 space-y-6 relative">
+      <h3 id="missing-password-modal-title" class="text-xl font-bold text-sky-700 text-center">
+        账号缺少密码
+      </h3>
+      <p id="missing-password-message" class="text-sm text-slate-600 text-center py-4">
+        检测到若干账号缺少密码，请选择操作。
+      </p>
+      <div class="flex flex-col gap-3 pt-4">
+        <button id="missing-pass-complete-btn" class="btn btn-primary">补全当前账号密码</button>
+        <button id="missing-pass-skip-btn" class="btn btn-ghost">跳过当前账号</button>
+        <button id="missing-pass-abort-btn" class="btn btn-ghost">放弃补全</button>
+      </div>
+    </div>
+  </div>
+
 
       <!-- ========================================
          添加/编辑支付方式模态框

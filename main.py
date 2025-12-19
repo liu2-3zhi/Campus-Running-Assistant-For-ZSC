@@ -12139,13 +12139,16 @@ class Api:
         """
         获取所有存在配置文件的用户列表，用于前端便捷添加
         """
-        all_users = sorted(
-            [
-                os.path.splitext(f)[0]
-                for f in os.listdir(self.user_dir)
-                if f.endswith(".ini")
-            ]
-        )
+        # 不再直接遍历旧的 .ini 配置文件以读取 UA 或密码
+        # 改为从 school_accounts 的用户存储中获取已注册的账号列表
+        all_users = []
+        try:
+            if hasattr(self, "auth_username") and self.auth_username:
+                accounts = self._load_user_school_accounts(self.auth_username)
+                if isinstance(accounts, dict):
+                    all_users = sorted(list(accounts.keys()))
+        except Exception:
+            all_users = []
 
         filtered_users = []
 
@@ -12292,23 +12295,12 @@ class Api:
             username, password, self, tag=final_tag
         )
 
-        # 尝试从新路径加载密码和 UA
-        auth_username = getattr(self, "auth_username", None)
-        loaded_password = None
-        loaded_ua = None
-        if auth_username:
-            accounts = self._load_user_school_accounts(auth_username)
-            account_info = accounts.get(username)
-            if account_info:
-                loaded_password = account_info.get("password")
-                loaded_ua = account_info.get("ua")
-
-        if loaded_ua:
-            self.accounts[username].device_ua = loaded_ua
-        elif not self.accounts[username].device_ua:
+        # 不再从旧的配置文件/ini 中自动读取 UA 或密码；只使用调用时提供的密码
+        # 如果没有显式提供 UA，则为会话生成随机 UA
+        if not self.accounts[username].device_ua:
             self.accounts[username].device_ua = ApiClient.generate_random_ua()
 
-        final_password = password or (loaded_password or "")
+        final_password = password or ""
         self.accounts[username].password = final_password
 
         if not final_password:
@@ -12328,12 +12320,10 @@ class Api:
         ini_path = os.path.join(self.user_dir, f"{username}.ini")
         needs_verification = False
 
-        if password and loaded_password and password != loaded_password:
+        # 如果用户提供了密码，则需要进行首次登录验证以确认凭据有效性
+        if password:
             needs_verification = True
-            self.log(f"账号 {username} 密码与配置文件不一致，需要首次登录验证。")
-        elif password and not loaded_password:
-            needs_verification = True
-            self.log(f"账号 {username} 是新添加的账号，需要首次登录验证。")
+            self.log(f"账号 {username} 提供了密码，标记为需要首次登录验证。")
 
         if needs_verification:
             self.accounts[username].is_first_login_verified = False
