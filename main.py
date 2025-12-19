@@ -8886,8 +8886,13 @@ class Api:
                 f"加载全局配置文件 {self.config_path} 失败: {e}", exc_info=True
             )
 
-    def _load_config(self, username):
-        """从.ini文件加载指定用户的配置"""
+    def _load_user_config(self, username):
+        """(已弃用) 从school_accounts加载指定用户的配置。不要调用此方法以获取 UA 或密码。
+
+        说明: 该函数保留以便参考历史实现，但已重命名为 `_load_user_config`，
+        目的在于避免覆盖无参的 `_load_config` 方法。UA 和密码不再应从
+        本地 ini 文件读取；如需生产环境中的凭据，请使用安全存储或环境变量。
+        """
         self.user_config_path = os.path.join(self.user_dir, f"{username}.ini")
         if not os.path.exists(self.user_config_path):
             return None
@@ -8900,27 +8905,8 @@ class Api:
         except Exception as e:
             logging.warning(f"解析用户配置文件 {username} 时出错 (已忽略): {e}")
 
-        password = cfg.get("Config", "Password", fallback="")
-        if not password:
-            try:
-                with open(
-                    self.user_config_path, "r", encoding="utf-8", errors="ignore"
-                ) as rf:
-                    for line in rf:
-                        clean_line = line.strip()
-                        temp_line_for_check = clean_line.lower().replace(" ", "")
-                        if temp_line_for_check.startswith(
-                            "password="
-                        ) or temp_line_for_check.startswith("密码="):
-                            parts = clean_line.split("=", 1)
-                            if len(parts) == 2:
-                                password = parts[1].strip()
-                                if password:
-                                    break
-            except Exception:
-                pass
-
-        ua = None
+        password = ""
+        ua = ""
 
         if hasattr(self, "auth_username") and self.auth_username:
             school_password = self._get_school_account_password(
@@ -8943,8 +8929,6 @@ class Api:
         if self.is_multi_account_mode and username in self.accounts:
             target_params = self.accounts[username].params
 
-        if not ua:
-            ua = cfg.get("System", "UA", fallback="")
         if self.is_multi_account_mode and username in self.accounts:
             self.accounts[username].device_ua = ua
         else:
@@ -9460,11 +9444,21 @@ class Api:
                         f"权限验证通过: 用户 {auth_username} 可以访问其学校账户 {username}"
                     )
 
-        password = self._load_config(username)
+        # 尝试从新路径加载密码和 UA
+        auth_username_local = getattr(self, "auth_username", None)
+        password = None
+        ua = None
+        if auth_username_local:
+            accounts = self._load_user_school_accounts(auth_username_local)
+            account_info = accounts.get(username)
+            if account_info:
+                password = account_info.get("password")
+                ua = account_info.get("ua")
 
+        # 如果没有找到，使用默认值
         if password is None:
-            ua = ""
-        else:
+            password = ""
+        if ua is None:
             ua = self.device_ua or ""
 
         logging.debug(
@@ -12171,30 +12165,33 @@ class Api:
 
         return {"users": filtered_users}
 
-    def multi_load_accounts_from_config(self):
+    def multi_load_accounts_from_config(self,auth_username):
         """模式一：从所有.ini配置文件加载账号"""
         self.log("正在从配置文件加载账号列表...")
-        users = sorted(
-            [
-                os.path.splitext(f)[0]
-                for f in os.listdir(self.user_dir)
-                if f.endswith(".ini")
-            ]
-        )
+        users = self._load_user_school_accounts(auth_username)
         loaded_count = 0
         accounts_missing_password = []
-        for username in users:
+        for username, account_info in users.items():
             if username not in self.accounts:
-                add_result = self.multi_add_account(username, "")
-                if add_result and add_result.get("action") == "request_password":
+                password = account_info.get("password")
+                if password is None or password in ["", "null", "None", "NULL", "undefined"]:
                     accounts_missing_password.append(
                         {
-                            "username": add_result.get("username"),
-                            "tag": add_result.get("tag"),
+                            "username": username,
+                            "tag": account_info.get("tag"),
                         }
                     )
-                elif add_result and add_result.get("success"):
-                    loaded_count += 1
+                else:
+                    add_result = self.multi_add_account(username, password)
+                    if add_result and add_result.get("action") == "request_password":
+                        accounts_missing_password.append(
+                            {
+                                "username": username,
+                                "tag": add_result.get("tag"),
+                            }
+                        )
+                    elif add_result and add_result.get("success"):
+                        loaded_count += 1
         self.log(f"已加载 {loaded_count} 个账号。")
         if accounts_missing_password:
             self.log(
@@ -12254,11 +12251,17 @@ class Api:
 
             if password and acc.password != password:
                 acc.password = password
-                self._save_config(username, password)
                 self.log(f"已更新账号 [{username}] 的密码。")
             else:
                 self.log(f"账号 [{username}] 已存在，正在从配置文件刷新...")
-                reloaded_password = self._load_config(username)
+                # 从新路径加载密码
+                auth_username = getattr(self, "auth_username", None)
+                reloaded_password = None
+                if auth_username:
+                    accounts = self._load_user_school_accounts(auth_username)
+                    account_info = accounts.get(username)
+                    if account_info:
+                        reloaded_password = account_info.get("password")
                 if reloaded_password:
                     acc.password = reloaded_password
 
@@ -12289,9 +12292,20 @@ class Api:
             username, password, self, tag=final_tag
         )
 
-        loaded_password = self._load_config(username)
+        # 尝试从新路径加载密码和 UA
+        auth_username = getattr(self, "auth_username", None)
+        loaded_password = None
+        loaded_ua = None
+        if auth_username:
+            accounts = self._load_user_school_accounts(auth_username)
+            account_info = accounts.get(username)
+            if account_info:
+                loaded_password = account_info.get("password")
+                loaded_ua = account_info.get("ua")
 
-        if not self.accounts[username].device_ua:
+        if loaded_ua:
+            self.accounts[username].device_ua = loaded_ua
+        elif not self.accounts[username].device_ua:
             self.accounts[username].device_ua = ApiClient.generate_random_ua()
 
         final_password = password or (loaded_password or "")
@@ -12325,20 +12339,14 @@ class Api:
             self.accounts[username].is_first_login_verified = False
             self.accounts[username].is_verifying = True
             try:
-                self._save_config(
-                    username, password=None, ua=self.accounts[username].device_ua
-                )
+                pass  # 不再保存到 INI
             except Exception:
                 logging.warning(f"保存配置失败（将继续运行）：{traceback.format_exc()}")
         else:
             self.accounts[username].is_first_login_verified = True
             self.accounts[username].is_verifying = False
             try:
-                self._save_config(
-                    username,
-                    self.accounts[username].password,
-                    self.accounts[username].device_ua,
-                )
+                pass  # 不再保存到 INI
             except Exception:
                 logging.warning(f"保存配置失败（将继续运行）：{traceback.format_exc()}")
 
@@ -12368,6 +12376,16 @@ class Api:
 
         if hasattr(self, "_web_session_id") and self._web_session_id:
             save_session_state(self._web_session_id, self, force_save=True)
+
+        # 保存到新路径
+        auth_username = getattr(self, "auth_username", None)
+        if auth_username:
+            accounts = self._load_user_school_accounts(auth_username)
+            accounts[username] = {
+                "password": self.accounts[username].password,
+                "ua": self.accounts[username].device_ua
+            }
+            self._save_user_school_accounts(auth_username, accounts)
 
         return self.multi_get_all_accounts_status([{"success": True}])
 
@@ -12782,7 +12800,14 @@ class Api:
                         continue
                     seen_usernames.add(username)
 
-                    loaded_password = self._load_config(username)
+                    # 从新路径加载密码
+                    auth_username = getattr(self, "auth_username", None)
+                    loaded_password = None
+                    if auth_username:
+                        accounts = self._load_user_school_accounts(auth_username)
+                        account_info = accounts.get(username)
+                        if account_info:
+                            loaded_password = account_info.get("password")
                     final_password = password or (loaded_password or "")
 
                     if not final_password:
@@ -12813,7 +12838,14 @@ class Api:
                             continue
                         seen_usernames.add(username)
 
-                        loaded_password = self._load_config(username)
+                        # 从新路径加载密码
+                        auth_username = getattr(self, "auth_username", None)
+                        loaded_password = None
+                        if auth_username:
+                            accounts = self._load_user_school_accounts(auth_username)
+                            account_info = accounts.get(username)
+                            if account_info:
+                                loaded_password = account_info.get("password")
                         final_password = password or (loaded_password or "")
                         if not final_password:
                             skipped_no_password.append(username)
@@ -12855,7 +12887,14 @@ class Api:
                             continue
                         seen_usernames.add(username)
 
-                        loaded_password = self._load_config(username)
+                        # 从新路径加载密码
+                        auth_username = getattr(self, "auth_username", None)
+                        loaded_password = None
+                        if auth_username:
+                            accounts = self._load_user_school_accounts(auth_username)
+                            account_info = accounts.get(username)
+                            if account_info:
+                                loaded_password = account_info.get("password")
                         final_password = password or (loaded_password or "")
                         if not final_password:
                             skipped_no_password.append(username)
@@ -16379,8 +16418,14 @@ def restore_session_to_api_instance(api_instance, state):
                     for username, account_state in multi_account_states.items():
                         if username not in api_instance.accounts:
                             try:
-                                loaded_password = api_instance._load_config(
-                                    username)
+                                # 从新路径加载密码
+                                auth_username = getattr(api_instance, "auth_username", None)
+                                loaded_password = None
+                                if auth_username:
+                                    accounts = api_instance._load_user_school_accounts(auth_username)
+                                    account_info = accounts.get(username)
+                                    if account_info:
+                                        loaded_password = account_info.get("password")
                                 loaded_tag = api_instance._load_account_tag(
                                     username)
                                 acc = AccountSession(
@@ -18538,7 +18583,14 @@ def start_background_auto_attendance(args):
                 username = os.path.splitext(filename)[0]
                 try:
                     temp_api = Api(args)
-                    password = temp_api._load_config(username)
+                    # 从新路径加载密码
+                    auth_username = getattr(temp_api, "auth_username", None)
+                    password = None
+                    if auth_username:
+                        accounts = temp_api._load_user_school_accounts(auth_username)
+                        account_info = accounts.get(username)
+                        if account_info:
+                            password = account_info.get("password")
 
                     if not password:
                         logging.debug(

@@ -29090,7 +29090,13 @@ async function exitMultiMode() {
 }
 
 async function multi_loadAllFromConfig() {
-  const result = await callPythonAPI("multi_load_accounts_from_config");
+  // const result = await callPythonAPI("multi_load_accounts_from_config");
+
+  const result = await callPythonAPI_raw(
+            "/api/multi_load_accounts_from_config",
+            "POST", {
+                auth_username: currentAuthUsername
+            })
 
   if (result && result.accounts) {
     if (sessionUUID && currentAuthUsername) {
