@@ -15573,7 +15573,12 @@ async function handleAuthLogin() {
     } else {
       setButtonLoading("auth-login-btn", false);
       showButtonError("auth-login-btn", "登录失败");
-      showModalAlert(result.message || "登录失败", "登录失败");
+      // showModalAlert(result.message || "登录失败", "登录失败");
+      Swal.fire({
+        icon: "error",
+        title: "登录失败",
+        text: result.message || "登录失败",
+      });
 
       refreshCaptcha("login");
       $("auth-login-captcha").value = "";
@@ -20835,6 +20840,7 @@ async function showUserSchoolAccounts(username) {
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10">该用户暂无学校账户</p>';
       console.log("[学校账户管理] 该用户暂无学校账户");
+      showModal("manage-school-accounts-modal");
       return; // 提前返回，不需要后续渲染
     }
     
