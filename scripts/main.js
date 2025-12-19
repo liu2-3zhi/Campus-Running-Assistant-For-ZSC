@@ -20718,7 +20718,7 @@ async function showUserSchoolAccounts(username) {
     // 发送GET请求到后端API
     // 使用encodeURIComponent编码username，防止特殊字符导致URL解析错误
     const response = await fetch(
-      `/auth/get_user_school_accounts?username=${encodeURIComponent(
+      `/auth/get_user_school_accounts_only?username=${encodeURIComponent(
         username
       )}`,
       {
@@ -29466,6 +29466,9 @@ function closeNewUserModal() {
 $("newUserClose").onclick = closeNewUserModal;
 $("newUserCancel").onclick = closeNewUserModal;
 
+// 标记多账号添加弹窗的来源（例如：从配置按钮进入）
+let multiAddModalSource = null;
+
 function openMultiAddUserModal() {
   if ($("multi-add-username")) $("multi-add-username").value = "";
   if ($("multi-add-password")) $("multi-add-password").value = "";
@@ -29474,12 +29477,24 @@ function openMultiAddUserModal() {
   if ($("multi-add-tag")) $("multi-add-tag").value = "";
 
   const modal = $("multi-add-user-modal");
+  const passwordInput = $("multi-add-password");
+  const passwordLabel = document.querySelector('label[for="multi-add-password"]');
+
+  // 如果是从配置按钮进入，密码改为可选并更新占位提示
+  if (multiAddModalSource === "from-config") {
+    if (passwordLabel) passwordLabel.textContent = "密码 (可选)";
+    if (passwordInput) passwordInput.placeholder = "可留空，后端将尝试查找";
+  } else {
+    if (passwordLabel) passwordLabel.textContent = "密码 (必填)";
+    if (passwordInput) passwordInput.placeholder = "请输入密码 (至少6字符)";
+  }
   if (modal) modal.style.display = "flex";
 }
 
 function closeMultiAddUserModal() {
   const usernameInput = $("multi-add-username");
   const passwordInput = $("multi-add-password");
+  const passwordLabel = document.querySelector('label[for="multi-add-password"]');
   if (usernameInput) {
     usernameInput.readOnly = false;
     usernameInput.classList.remove("bg-slate-100", "cursor-not-allowed");
@@ -29487,6 +29502,12 @@ function closeMultiAddUserModal() {
   if (passwordInput) {
     passwordInput.placeholder = "请输入密码 (至少6字符)";
   }
+  if (passwordLabel) {
+    passwordLabel.textContent = "密码 (必填)";
+  }
+
+  // 重置来源标记
+  multiAddModalSource = null;
 
   $("multi-add-user-modal").style.display = "none";
 }
@@ -29536,6 +29557,8 @@ async function multi_addFromConfig() {
   const user = $("multi-config-user-select").value;
 
   if (!user) {
+    // 从配置按钮进入“添加账号”弹窗，允许空密码交由后端查找
+    multiAddModalSource = "from-config";
     openMultiAddUserModal();
     return;
   }
@@ -29604,10 +29627,16 @@ async function submitMultiAddUser() {
   const usernameVal = inputUsername.value.trim();
   const passwordVal = inputPassword.value;
   const tagVal = inputTag.value.trim();
+  const allowEmptyPassword =
+    typeof multiAddModalSource !== "undefined" && multiAddModalSource === "from-config";
   
-  // [安全修复] 基本验证：用户名和密码不能为空
-  if (!usernameVal || !passwordVal) {
-    showModalAlert("账号和密码均不能为空");
+  // 基本验证：用户名不能为空；密码可在特定来源为空
+  if (!usernameVal) {
+    showModalAlert("账号不能为空");
+    return;
+  }
+  if (!allowEmptyPassword && !passwordVal) {
+    showModalAlert("密码不能为空");
     return;
   }
   
@@ -29623,14 +29652,16 @@ async function submitMultiAddUser() {
     return;
   }
   
-  // [安全修复] 使用统一的安全常量验证密码长度范围
-  if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
-    showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`, "错误");
-    return;
-  }
-  if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
-    showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
-    return;
+  // [安全修复] 使用统一的安全常量验证密码长度范围（当密码非空或必须提供时）
+  if (!allowEmptyPassword || passwordVal.length > 0) {
+    if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
+      showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`, "错误");
+      return;
+    }
+    if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
+      showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
+      return;
+    }
   }
   
   // [安全修复] 使用统一的安全常量验证标签长度
@@ -29685,6 +29716,8 @@ async function submitMultiAddUser() {
       inputUsername.classList.remove("bg-slate-100", "cursor-not-allowed");
       $("multi-add-password").placeholder = "请输入密码 (至少6字符)";
     }
+    // 提交结束后重置来源标记，避免影响后续操作
+    multiAddModalSource = null;
   }
 }
 
