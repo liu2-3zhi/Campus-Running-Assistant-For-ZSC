@@ -7854,6 +7854,71 @@ class Api:
             )
             return False
 
+    def _save_school_account_password_to_ini(self, school_username, password, ua=None):
+        """
+        将学校账号的密码和UA信息保存到 INI 文件（作为备份）。
+
+        功能说明：
+            将学校账号登录成功后的密码和 User-Agent 保存到对应的 INI 文件中。
+            采用读取-修改-写入模式，确保不丢失文件中原有的其他配置（如统计数据）。
+
+        参数:
+            school_username (str): 学校账号用户名
+            password (str): 账号密码
+            ua (str): User-Agent（可选）
+
+        返回:
+            bool: 保存成功返回 True，失败返回 False
+        """
+        # 获取该学校账号对应的 INI 文件路径
+        ini_file = os.path.join(self.user_dir, f"{school_username}.ini")
+
+        try:
+            # 创建 RawConfigParser 对象
+            config = configparser.RawConfigParser()
+            config.optionxform = str  # 保持键名大小写敏感
+
+            # 如果文件存在，先读取现有内容以进行合并
+            if os.path.exists(ini_file):
+                try:
+                    config.read(ini_file, encoding='utf-8')
+                except Exception as read_e:
+                    logging.warning(f"[密码备份] 读取现有配置文件出错 (将覆盖): {read_e}")
+
+            # 确保 [Config] 和 [System] 配置节存在
+            if not config.has_section('Config'):
+                config.add_section('Config')
+            if not config.has_section('System'):
+                config.add_section('System')
+
+            # 设置密码信息（仅写入小写格式，与读取逻辑保持一致）
+            if password:
+                config.set('Config', 'password', password)
+                logging.debug(f"[密码备份] 已在 INI 文件中保存密码: {school_username}")
+
+            # 设置 UA 信息（仅写入小写格式，与读取逻辑保持一致）
+            if ua:
+                config.set('System', 'ua', ua)
+                logging.debug(f"[密码备份] 已在 INI 文件中保存UA: {school_username}")
+
+            # 将配置写回文件
+            with open(ini_file, 'w', encoding='utf-8') as f:
+                config.write(f)
+
+            # 记录成功保存的日志
+            logging.info(
+                f"[密码备份] 成功将密码和UA备份到 INI 文件: {school_username}"
+            )
+
+            return True
+
+        except Exception as e:
+            logging.error(
+                f"[密码备份] 保存密码到 INI 文件失败: {school_username}, 错误: {e}",
+                exc_info=True
+            )
+            return False
+
     def _load_user_school_accounts(self, auth_username):
         """
         加载指定认证用户的所有 school_account 账户密码和UA。
@@ -7869,14 +7934,23 @@ class Api:
             return {}
 
         file_path = self._get_user_accounts_file(auth_username)
-        if not os.path.exists(file_path):
-            return {}
+        data = {}
+        
+        # 尝试加载当前用户的JSON文件（如果存在）
+        if os.path.exists(file_path):
+            try:
+                # 步骤1：从 JSON 文件读取账号密码和 UA 信息
+                # JSON 文件只包含账号基本信息，不包含统计数据
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as e:
+                logging.error(f"读取用户 {auth_username} 的 JSON 文件失败: {e}")
+                data = {}
+        else:
+            logging.debug(f"用户 {auth_username} 的 JSON 文件不存在，初始化为空字典")
+            data = {}
 
         try:
-            # 步骤1：从 JSON 文件读取账号密码和 UA 信息
-            # JSON 文件只包含账号基本信息，不包含统计数据
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
 
             # 步骤2：处理并标准化每个账号的数据格式
             # 同时从对应的 INI 文件读取统计数据（overdue_count 和 completed_count）
@@ -7911,21 +7985,23 @@ class Api:
                     }
 
             # 记录加载成功的日志
-            logging.debug(
-                f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户 "
-                f"(从 JSON 加载密码和 UA，从 INI 加载统计数据)"
-            )
+            if data:
+                logging.debug(
+                    f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户 "
+                    f"(从 JSON 加载密码和 UA，从 INI 加载统计数据)"
+                )
 
             # 如果当前用户具有管理权限，则遍历所有用户的 user_accounts
             # 将其它用户的 school_accounts 汇总（排除 password 为空的数据）并去重
             try:
                 # 使用全局 auth_system 进行权限检查，确保管理员可聚合所有用户账号
                 if auth_system.check_permission(auth_username, "manage_users"):
+                    # 使用已有 data 作为基准，优先保留当前用户的数据
+                    aggregated = dict(data)
+                    
+                    # 1. 遍历所有用户的 user_accounts JSON 文件
                     user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
                     if os.path.isdir(user_accounts_dir):
-                        # 使用已有 data 作为基准，优先保留当前用户的数据
-                        aggregated = dict(data)
-
                         for fname in os.listdir(user_accounts_dir):
                             if not fname.endswith('.json'):
                                 continue
@@ -7968,9 +8044,65 @@ class Api:
                                 entry['completed_count'] = stats.get('completed_count', 0)
 
                                 aggregated[school_username] = entry
+                    
+                    # 2. 遍历 school_accounts 根目录下的旧版 INI 文件
+                    if os.path.isdir(SCHOOL_ACCOUNTS_DIR):
+                        for fname in os.listdir(SCHOOL_ACCOUNTS_DIR):
+                            if not fname.endswith('.ini'):
+                                continue
+                            
+                            # 从文件名提取学校账号用户名（去掉 .ini 后缀）
+                            school_username = fname[:-4]
+                            
+                            # 如果已存在于 aggregated 中，跳过以避免覆盖
+                            if school_username in aggregated:
+                                continue
+                            
+                            ini_path = os.path.join(SCHOOL_ACCOUNTS_DIR, fname)
+                            try:
+                                # 从旧版 INI 文件读取账号密码
+                                config = configparser.ConfigParser()
+                                config.read(ini_path, encoding='utf-8')
+                                
+                                # 从 [Config] 或 [System] 节读取密码和UA
+                                password = None
+                                ua = None
+                                
+                                if config.has_section('Config'):
+                                    if config.has_option('Config', 'password'):
+                                        password = config.get('Config', 'password')
+                                    elif config.has_option('Config', 'Password'):
+                                        password = config.get('Config', 'Password')
+                                
+                                if config.has_section('System'):
+                                    if config.has_option('System', 'ua'):
+                                        ua = config.get('System', 'ua')
+                                    elif config.has_option('System', 'UA'):
+                                        ua = config.get('System', 'UA')
+                                
+                                # 排除 password 为空或 None 的记录
+                                if password is None or str(password).strip() == "":
+                                    continue
+                                
+                                # 加载统计数据
+                                stats = self._load_school_account_stats_from_ini(school_username)
+                                
+                                # 添加到聚合结果中
+                                aggregated[school_username] = {
+                                    'password': password,
+                                    'ua': ua,
+                                    'overdue_count': stats.get('overdue_count', 0),
+                                    'completed_count': stats.get('completed_count', 0)
+                                }
+                                
+                                logging.debug(f"从旧版INI加载账号: {school_username}")
+                            except Exception as e:
+                                logging.debug(f"跳过无法读取的 INI 文件: {ini_path}, 错误: {e}")
+                                continue
 
-                        # 替换为汇总后的结果
-                        data = aggregated
+                    # 替换为汇总后的结果
+                    data = aggregated
+                    logging.debug(f"管理员权限聚合完成，总共 {len(data)} 个账户（包含JSON和INI格式）")
             except Exception as e:
                 logging.debug(f"管理员合并 user_accounts 失败: {e}")
 
@@ -8154,6 +8286,86 @@ class Api:
         if isinstance(account_data, dict):
             return account_data.get("ua", "")
         return None
+
+    def _get_auth_user_and_check_admin(self):
+        """
+        获取当前认证用户名并检查其是否为管理员。
+        
+        返回:
+            元组 (auth_username, is_admin)
+            如果无法获取认证用户，返回 (None, False)
+            为了安全，默认不是管理员，只有确认后才给予管理员权限。
+        """
+        auth_username = getattr(self, "auth_username", None)
+        is_admin = False
+        
+        if auth_username and auth_username != "guest":
+            # 使用全局的 auth_system 而不是实例属性
+            try:
+                # 直接引用全局变量 auth_system
+                if 'auth_system' in globals() and auth_system:
+                    user_group = auth_system.get_user_group(auth_username)
+                    is_admin = user_group in ["admin", "super_admin"]
+                    logging.debug(f"用户 {auth_username} 权限组: {user_group}, 是否管理员: {is_admin}")
+                else:
+                    logging.debug(f"全局权限系统未初始化，用户 {auth_username} 默认为非管理员")
+                    is_admin = False
+            except Exception as e:
+                logging.debug(f"检查用户权限失败: {e}，默认为非管理员")
+                is_admin = False
+        
+        return auth_username, is_admin
+
+    def _load_accounts_by_permission(self, auth_username: str) -> dict:
+        """
+        根据用户权限加载账号信息。
+        """
+        if not auth_username or auth_username == "guest":
+            return {}
+        
+        # 检查权限
+        _, is_admin = self._get_auth_user_and_check_admin()
+        
+        try:
+            if is_admin:
+                # 管理员：使用 _load_user_school_accounts，已内置权限聚合逻辑
+                logging.info(f"管理员 {auth_username} 正在加载所有账号信息")
+                accounts = self._load_user_school_accounts(auth_username)
+            else:
+                # 普通用户：仅加载自己的账号
+                logging.info(f"普通用户 {auth_username} 正在加载自己的账号信息")
+                file_path = self._get_user_accounts_file(auth_username)
+                accounts = {}
+                
+                if os.path.exists(file_path):
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        
+                        # 标准化格式：兼容旧版 INI 和新版 JSON
+                        for sch_user, account_info in data.items():
+                            if isinstance(account_info, dict):
+                                # 新格式：直接使用
+                                accounts[sch_user] = account_info
+                            elif isinstance(account_info, str):
+                                # 旧格式兼容：将字符串密码转换为字典
+                                accounts[sch_user] = {
+                                    "password": account_info,
+                                    "ua": None
+                                }
+                        
+                        logging.debug(f"成功加载普通用户 {auth_username} 的账户，共 {len(accounts)} 个")
+                    except Exception as e:
+                        logging.error(f"加载普通用户 {auth_username} 的账户失败: {e}")
+                        accounts = {}
+                else:
+                    logging.debug(f"普通用户 {auth_username} 的账户文件不存在: {file_path}")
+        
+        except Exception as e:
+            logging.error(f"_load_accounts_by_permission 执行失败: {e}")
+            accounts = {}
+        
+        return accounts
 
     def update_school_account_overdue_count(self, auth_username, school_username, new_overdue_count):
         """
@@ -8579,9 +8791,9 @@ class Api:
 
         cfg_to_save.set("Config", "Username", username)
         if password is not None:
-            cfg_to_save.set("Config", "Password", password)
+            cfg_to_save.set("Config", "password", password)
         else:
-            if not cfg_to_save.has_option("Config", "Password"):
+            if not cfg_to_save.has_option("Config", "password"):
                 backup_path = f"{user_ini_path}.bak"
                 if os.path.exists(backup_path):
                     try:
@@ -8599,7 +8811,7 @@ class Api:
                                     recovered_password = parts[1].strip()
                                     if recovered_password:
                                         cfg_to_save.set(
-                                            "Config", "Password", recovered_password
+                                            "Config", "password", recovered_password
                                         )
                                         logging.info(
                                             f"已从备份文件恢复用户 {username} 的密码"
@@ -8611,7 +8823,7 @@ class Api:
                 pass
 
         if ua is not None:
-            cfg_to_save.set("System", "UA", ua)
+            cfg_to_save.set("System", "ua", ua)
         params_to_save = self.params
         if self.is_multi_account_mode and username in self.accounts:
             params_to_save = self.accounts[username].params
@@ -9493,6 +9705,18 @@ class Api:
         except Exception as e:
             logging.error(f"备份 user_info 失败: {e}", exc_info=True)
         self._save_config(ud.username, password, self.device_ua)
+
+        # 将密码和UA备份到旧版 INI 文件（兼容旧版本）
+        try:
+            if ud.username:
+                self._save_school_account_password_to_ini(
+                    ud.username, 
+                    password, 
+                    self.device_ua
+                )
+                logging.info(f"已将登录密码备份到 INI 文件: {ud.username}")
+        except Exception as e:
+            logging.error(f"备份密码到 INI 文件失败: {e}", exc_info=True)
 
         if hasattr(self, "auth_username") and self.auth_username:
             self._update_school_account_password(
@@ -12085,22 +12309,19 @@ class Api:
         return {"users": filtered_users}
 
     def multi_load_accounts_from_config(self, auth_username):
-        """模式一：从配置文件加载账号
-        
-        功能说明：
-            - 如果用户是普通用户（不是管理员），则仅加载 school_accounts\user_accounts\{auth_username}.json
-            - 如果用户是管理员（admin 或 super_admin），则遍历所有 JSON 文件，并兼容旧版 INI 格式
+        """
+        模式一：从配置文件加载账号
         """
         self.log("正在从配置文件加载账号列表...")
         
         # 获取用户权限组，判断是否为管理员
-        if hasattr(self, 'auth_system') and self.auth_system:
-            user_group = self.auth_system.get_user_group(auth_username)
+        if 'auth_system' in globals() and auth_system:
+            user_group = auth_system.get_user_group(auth_username)
             is_admin = user_group in ["admin", "super_admin"]
         else:
             # 如果无法获取权限信息，默认按管理员处理（向后兼容）
             is_admin = True
-        
+        logging.debug(f"multi_load_accounts_from_config: 用户 {auth_username}，管理员权限={is_admin}")
         users = {}
         
         if is_admin:
@@ -12177,11 +12398,9 @@ class Api:
         return final_status
 
     def multi_add_account(self, username, password, tag=None, params=None):
-        """模式二：手动或选择性添加账号
         
-        功能说明：
-            - 如果用户是普通用户，只能从 school_accounts\user_accounts\{auth_username}.json 读取账号
-            - 如果用户是管理员，可以从所有 JSON 文件读取账号，并兼容旧版 INI 格式
+        """
+        模式二：手动或选择性添加账号
         """
         # [安全修复] 验证username输入，防止路径遍历和注入攻击
         if not username or not isinstance(username, str):
@@ -12233,42 +12452,14 @@ class Api:
                 self.log(f"已更新账号 [{username}] 的密码。")
             else:
                 self.log(f"账号 [{username}] 已存在，正在从配置文件刷新...")
-                # 从新路径加载密码，支持权限检查和管理员聚合
-                auth_username = getattr(self, "auth_username", None)
+                # [增强] 使用权限感知的账号加载方法
+                auth_username, is_admin = self._get_auth_user_and_check_admin()
                 reloaded_password = None
                 reloaded_ua = None
                 
                 if auth_username:
-                    # 根据权限获取可访问的账号列表
-                    if hasattr(self, 'auth_system') and self.auth_system:
-                        user_group = self.auth_system.get_user_group(auth_username)
-                        is_admin = user_group in ["admin", "super_admin"]
-                    else:
-                        is_admin = True
-                    
-                    if is_admin:
-                        # 管理员：使用 _load_user_school_accounts，已内置权限聚合逻辑
-                        accounts = self._load_user_school_accounts(auth_username)
-                    else:
-                        # 普通用户：仅加载自己的账号
-                        file_path = self._get_user_accounts_file(auth_username)
-                        accounts = {}
-                        if os.path.exists(file_path):
-                            try:
-                                with open(file_path, "r", encoding="utf-8") as f:
-                                    data = json.load(f)
-                                # 标准化格式：兼容旧版 INI 和新版 JSON
-                                for sch_user, account_info in data.items():
-                                    if isinstance(account_info, dict):
-                                        accounts[sch_user] = account_info
-                                    elif isinstance(account_info, str):
-                                        # 旧格式兼容
-                                        accounts[sch_user] = {
-                                            "password": account_info,
-                                            "ua": None
-                                        }
-                            except Exception as e:
-                                logging.error(f"加载普通用户 {auth_username} 的账户失败: {e}")
+                    # 根据权限加载账号列表（管理员查看所有，普通用户仅查看自己的）
+                    accounts = self._load_accounts_by_permission(auth_username)
                     
                     account_info = accounts.get(username)
                     if account_info:
@@ -12278,11 +12469,17 @@ class Api:
                         else:
                             # 旧格式兼容（直接字符串）
                             reloaded_password = account_info
+                    else:
+                        logging.debug(f"账号 {username} 未在 {('所有' if is_admin else '当前用户的')} 账户列表中找到")
+                else:
+                    logging.debug(f"无法获取认证用户，跳过密码刷新")
                 
                 if reloaded_password:
                     acc.password = reloaded_password
+                    logging.info(f"已从配置文件重新加载账号 {username} 的密码")
                 if reloaded_ua:
                     acc.device_ua = reloaded_ua
+                    logging.info(f"已从配置文件重新加载账号 {username} 的UA")
 
             if tag is not None:
                 acc.tag = str(tag)
@@ -12313,51 +12510,35 @@ class Api:
 
         # 不再从旧的配置文件/ini 中自动读取 UA 或密码；只使用调用时提供的密码
         # 如果没有显式提供 UA，则为会话生成随机 UA
-        # 但支持从 school_accounts 中读取已保存的 UA 和密码（兼容新旧格式）
-        auth_username = getattr(self, "auth_username", None)
+        # 但支持从 school_accounts 中读取已保存的 UA 和密码（兼容新旧格式、权限感知）
         
         # 尝试从 school_accounts 中读取现有账号的 UA 和密码（支持权限检查）
-        if auth_username and not password:
-            # 获取用户权限组
-            if hasattr(self, 'auth_system') and self.auth_system:
-                user_group = self.auth_system.get_user_group(auth_username)
-                is_admin = user_group in ["admin", "super_admin"]
-            else:
-                is_admin = True
+        if not password:
+            # 使用权限感知方法加载账号信息
+            auth_username, is_admin = self._get_auth_user_and_check_admin()
             
-            try:
-                if is_admin:
-                    # 管理员：遍历所有账号列表
-                    accounts = self._load_user_school_accounts(auth_username)
-                else:
-                    # 普通用户：仅读取自己的账号列表
-                    file_path = self._get_user_accounts_file(auth_username)
-                    accounts = {}
-                    if os.path.exists(file_path):
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                        # 标准化格式：兼容旧版 INI 和新版 JSON
-                        for sch_user, account_info in data.items():
-                            if isinstance(account_info, dict):
-                                accounts[sch_user] = account_info
-                            elif isinstance(account_info, str):
-                                # 旧格式兼容
-                                accounts[sch_user] = {
-                                    "password": account_info,
-                                    "ua": None
-                                }
-                
-                account_info = accounts.get(username)
-                if account_info:
-                    if isinstance(account_info, dict):
-                        password = account_info.get("password")
-                        if account_info.get("ua"):
-                            self.accounts[username].device_ua = account_info["ua"]
+            if auth_username:
+                try:
+                    # 根据权限加载账号列表（管理员查看所有，普通用户仅查看自己的）
+                    accounts = self._load_accounts_by_permission(auth_username)
+                    
+                    account_info = accounts.get(username)
+                    if account_info:
+                        if isinstance(account_info, dict):
+                            password = account_info.get("password")
+                            if account_info.get("ua"):
+                                self.accounts[username].device_ua = account_info["ua"]
+                                logging.debug(f"已从配置文件读取账号 {username} 的 UA")
+                        else:
+                            # 旧格式兼容（直接字符串）
+                            password = account_info
+                        
+                        if password:
+                            logging.info(f"已从配置文件读取账号 {username} 的密码 (发起用户: {auth_username}, 是否管理员: {is_admin})")
                     else:
-                        # 旧格式兼容（直接字符串）
-                        password = account_info
-            except Exception as e:
-                logging.debug(f"从 school_accounts 读取账号信息失败: {e}")
+                        logging.debug(f"账号 {username} 未在 {('所有' if is_admin else '当前用户的')} 账户列表中找到")
+                except Exception as e:
+                    logging.debug(f"从 school_accounts 读取账号信息失败: {e}")
         
         if not self.accounts[username].device_ua:
             self.accounts[username].device_ua = ApiClient.generate_random_ua()
@@ -12436,8 +12617,8 @@ class Api:
         auth_username = getattr(self, "auth_username", None)
         if auth_username:
             # 获取用户权限组，确定是否可以保存到聚合账号
-            if hasattr(self, 'auth_system') and self.auth_system:
-                user_group = self.auth_system.get_user_group(auth_username)
+            if 'auth_system' in globals() and auth_system:
+                user_group = auth_system.get_user_group(auth_username)
                 is_admin = user_group in ["admin", "super_admin"]
             else:
                 is_admin = True
@@ -20909,6 +21090,8 @@ def start_web_server(args_param):
             session_limit_info = f"您的账号最多可以同时保持{max_sessions}个活跃会话，超出时将自动清理最旧的会话"
         token = None
         kicked_sessions = []
+        if auth_username is None or auth_username in ["", "null","NULL","undefined"]:
+            auth_username = auth_result.get("auth_username", "unknown_user")
         if not auth_result.get("is_guest", False) and session_id:
             try:
                 token = token_manager.create_token(auth_username, session_id)
