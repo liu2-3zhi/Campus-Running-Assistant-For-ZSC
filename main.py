@@ -40296,20 +40296,31 @@ def start_web_server(args_param):
         # X-Forwarded-For格式：client, proxy1, proxy2
         # 取第一个IP作为原始客户端IP
         forwarded_for = request.headers.get("X-Forwarded-For", "")
+
         if forwarded_for:
-            # 获取第一个部分
-            first_part = forwarded_for.split(",")[0]
+            # 1. 获取第一个部分 (通常是真实客户端IP)
+            first_part = forwarded_for.split(",")[0].strip()
 
-            # 使用正则查找第一个合法的IPv4地址
-            match = re.search(
-                r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', first_part)
+            # 2. 清洗数据：移除首尾的 斜杠(/)、反斜杠(\)、双引号(")、单引号(') 和 空格
+            # 兼容 "/192.168.1.1", "\192.168.1.1", "192.168.1.1\\" 等情况
+            dirty_chars = r"\/\"' " 
+            cleaned_ip_str = first_part.strip(dirty_chars)
 
-            if match:
-                real_ip = match.group(0)
+            try:
+                # 3. 使用 ipaddress 进行解析和验证 (支持 IPv4 和 IPv6)
+                # 如果不是合法的IP地址，这里会抛出 ValueError
+                ip_obj = ipaddress.ip_address(cleaned_ip_str)
+                
+                # 转换回字符串，确保格式标准 (例如把 IPv6 的非压缩格式转为压缩格式)
+                real_ip = str(ip_obj)
+
                 request.environ["REMOTE_ADDR"] = real_ip
                 logging.info(f"真实客户端IP已设置为: {real_ip}")
-            else:
-                logging.warning(f"无法从Header解析出有效IP: {first_part}")
+
+            except ValueError:
+                logging.warning(f"无法从Header解析出有效IP (格式错误): {first_part} -> 清洗后: {cleaned_ip_str}")
+            except Exception as e:
+                logging.error(f"IP解析发生未知错误: {e}")
 
         # 处理HTTPS重定向逻辑
         forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
