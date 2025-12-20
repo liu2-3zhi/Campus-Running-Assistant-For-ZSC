@@ -63,7 +63,7 @@
             "list-ul", "list-ol", "hr", "|",
             "link", "reference-link", "image", "code", "preformatted-text", "code-block", "table", "datetime", "emoji", "html-entities", "pagebreak", "|",
             "goto-line", "watch", "preview", "fullscreen", "clear", "search", "|",
-            "help", "info"
+            "help"
         ],
         simple : [
             "undo", "redo", "|",
@@ -71,12 +71,12 @@
             "h1", "h2", "h3", "h4", "h5", "h6", "|",
             "list-ul", "list-ol", "hr", "|",
             "watch", "preview", "fullscreen", "|",
-            "help", "info"
+            "help"
         ],
         mini : [
             "undo", "redo", "|",
             "watch", "preview", "|",
-            "help", "info"
+            "help"
         ]
     };
 
@@ -163,8 +163,7 @@
         emojiCategories      : [               // Custom Emoji categories
             "github-emoji",
             "twemoji",
-            "font-awesome",
-            "editormd-logo"
+            "font-awesome"
         ],
 
         tex                  : false,          // TeX(LaTeX), based on KaTeX
@@ -3210,7 +3209,7 @@
 
     // Twitter Emoji (Twemoji)  graphics files url path
     editormd.twemoji = {
-        path : "http://twemoji.maxcdn.com/36x36/",
+        path : "./twemoji/assets/72x72/",
         ext  : ".png"
     };
 
