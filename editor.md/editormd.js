@@ -3203,13 +3203,13 @@
 
     // Emoji graphics files url path
     editormd.emoji     = {
-        path  : "./Github_emojis/assets/png/",
+        path  : "/Github_emojis/assets/png/",
         ext   : ".png"
     };
 
     // Twitter Emoji (Twemoji)  graphics files url path
     editormd.twemoji = {
-        path : "./twemoji/assets/72x72/",
+        path : "/twemoji/assets/72x72/",
         ext  : ".png"
     };
 
