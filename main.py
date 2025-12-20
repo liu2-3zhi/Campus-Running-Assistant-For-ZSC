@@ -29283,6 +29283,67 @@ def start_web_server(args_param):
             logging.error(f"Serving style error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
 
+    # ========== 新增路由：Twemoji, Github_emojis, editor.md 静态资源 ==========
+    @app.route("/twemoji/<path:filename>")
+    def serve_twemoji(filename):
+        """
+        服务 ./twemoji 目录下的静态文件（用于 Editor.md 的 Twemoji 图片）
+        """
+        try:
+            base_dir = os.path.dirname(__file__)
+            twemoji_dir = os.path.join(base_dir, "twemoji")
+            if not os.path.exists(twemoji_dir):
+                logging.warning(f"请求 twemoji 文件但目录不存在: {twemoji_dir}")
+                return (
+                    jsonify({"success": False, "message": f"twemoji 文件 {filename} 未找到！"}),
+                    404,
+                )
+
+            return send_from_directory(twemoji_dir, filename)
+        except Exception as e:
+            logging.error(f"Serving twemoji error: {e}")
+            return jsonify({"success": False, "message": "File not found"}), 404
+
+    @app.route("/Github_emojis/<path:filename>")
+    def serve_github_emojis(filename):
+        """
+        服务 ./Github_emojis 目录下的静态文件（用于 Editor.md 的 Github 风格 emoji）
+        """
+        try:
+            base_dir = os.path.dirname(__file__)
+            gh_dir = os.path.join(base_dir, "Github_emojis")
+            if not os.path.exists(gh_dir):
+                logging.warning(f"请求 Github_emojis 文件但目录不存在: {gh_dir}")
+                return (
+                    jsonify({"success": False, "message": f"Github_emojis 文件 {filename} 未找到！"}),
+                    404,
+                )
+
+            return send_from_directory(gh_dir, filename)
+        except Exception as e:
+            logging.error(f"Serving Github_emojis error: {e}")
+            return jsonify({"success": False, "message": "File not found"}), 404
+
+    @app.route("/editor.md/<path:filename>")
+    def serve_editormd(filename):
+        """
+        服务 ./editor.md 目录下的静态文件（Editor.md 相关资源）
+        """
+        try:
+            base_dir = os.path.dirname(__file__)
+            ed_dir = os.path.join(base_dir, "editor.md")
+            if not os.path.exists(ed_dir):
+                logging.warning(f"请求 editor.md 文件但目录不存在: {ed_dir}")
+                return (
+                    jsonify({"success": False, "message": f"editor.md 文件 {filename} 未找到！"}),
+                    404,
+                )
+
+            return send_from_directory(ed_dir, filename)
+        except Exception as e:
+            logging.error(f"Serving editor.md error: {e}")
+            return jsonify({"success": False, "message": "File not found"}), 404
+
     # ========== 新增路由：Favicon ==========
     @app.route("/favicon.ico")
     def favicon():
