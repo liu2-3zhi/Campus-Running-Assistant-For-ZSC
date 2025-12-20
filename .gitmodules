@@ -1,0 +1,3 @@
+[submodule "Github_emojis"]
+	path = Github_emojis
+	url = https://github.com/pranabdas/github-emojis.git

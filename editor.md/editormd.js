@@ -3204,7 +3204,7 @@
 
     // Emoji graphics files url path
     editormd.emoji     = {
-        path  : "./Emoji-PNG/Apple Emoji/PNG/",
+        path  : "./Github_emojis/assets/png/",
         ext   : ".png"
     };
 
