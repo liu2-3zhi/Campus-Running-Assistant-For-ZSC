@@ -21565,7 +21565,7 @@ def start_web_server(args_param):
         removed_permissions = data.get("removed_permissions", {})
 
         if auth_system.get_user_group(g.user) != "super_admin":
-            if auth_system.get_user_group(target_username) == "admin":
+            if auth_system.get_user_group(target_username) in ["super_admin", "admin"]:
                 return jsonify({"success": False, "message": "管理员只能为普通用户设置自定义权限，无法修改管理员用户的权限"})
 
         if added_permissions or removed_permissions:
