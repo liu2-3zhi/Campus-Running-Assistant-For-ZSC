@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="Zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test</title>
+</head>
+
+<body>
+
+    <!-- 引入Editor.md的预览样式 -->
+    <link rel="stylesheet" href="/editor.md/css/editormd.preview.css" />
+    <!-- Markdown内容容器 -->
+    <div id="test-markdown-view">
+        <!-- Server-side output Markdown text -->
+        <!-- 隐藏的textarea包含Markdown文本 -->
+        <!-- <textarea style="display:none;">### Hello world!</textarea> -->
+    </div>
+    <!-- 引入jQuery库，用于DOM操作 -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <!-- 引入Editor.md主文件 -->
+    <script src="/editor.md/editormd.js"></script>
+    <!-- 引入Marked库，用于Markdown解析 -->
+    <script src="/editor.md/lib/marked.min.js"></script>
+    <!-- 引入Prettify库，用于代码高亮 -->
+    <script src="/editor.md/lib/prettify.min.js"></script>
+    <!-- 初始化Editor.md，将Markdown转换为HTML -->
+    <script type="text/javascript">
+        $(function () {
+            // 当文档加载完成后，初始化Markdown到HTML的转换
+            var testView = editormd.markdownToHTML("test-markdown-view", {
+                markdown : "[TOC]\n### 这是原文 \n## 这是一个段落", // 也可以动态设置Markdown文本
+                htmlDecode : true,  // 启用/禁用HTML标签编码
+                htmlDecode : "style,script,iframe",  // 注意：如果启用，应过滤危险的HTML标签以确保网站安全
+            });
+        });
+    </script>
+
+</body>
+
+</html>
