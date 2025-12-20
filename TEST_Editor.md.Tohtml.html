@@ -2,9 +2,9 @@
 <html lang="Zh-CN">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test</title>
 </head>
 
 <body>
@@ -30,9 +30,20 @@
         $(function () {
             // 当文档加载完成后，初始化Markdown到HTML的转换
             var testView = editormd.markdownToHTML("test-markdown-view", {
-                markdown : "[TOC]\n### 这是原文 \n## 这是一个段落", // 也可以动态设置Markdown文本
-                htmlDecode : true,  // 启用/禁用HTML标签编码
-                htmlDecode : "style,script,iframe",  // 注意：如果启用，应过滤危险的HTML标签以确保网站安全
+                markdown: " # A \n ## A",
+                htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
+                htmlDecode: "style,script,iframe",  // 允许解析的 HTML 标签
+                toc: false,             // 是否生成目录
+                tocContainer: "", // 自定义 ToC 容器层
+                gfm             : true,        // 是否使用 GitHub Flavored Markdown
+                tocDropdown     : false,     // 是否启用目录下拉菜单
+                markdownSourceCode: true, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
+                emoji: true,
+                taskList: true,
+                tex: true,  // 默认不解析
+                flowChart: true,  // 默认不解析
+                sequenceDiagram: true,  // 默认不解析
+
             });
         });
     </script>

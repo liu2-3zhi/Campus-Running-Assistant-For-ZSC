@@ -34,6 +34,13 @@
 
   <link rel="stylesheet" href="styles/style.css">
   <script src="scripts/main.js" defer=""></script>
+
+
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="/editor.md/editormd.js"></script>
+  <script type="text/javascript"></script>
+
+
 </head>
 
 <body class="text-slate-800 font-sans h-screen overflow-hidden antialiased">
@@ -7410,7 +7417,8 @@
             </div>
             <div>
               <label class="block text-sm font-semibold text-slate-700 mb-1">留言内容 <span class="text-red-500">*</span></label>
-              <textarea id="message-content" class="input-field" rows="4" placeholder="请输入留言内容（最多1000字）" maxlength="1000"></textarea>
+              <!-- Markdown 编辑器占位，编辑器脚本会在切换到 messages 后动态加载并初始化 -->
+              <div id="message-editor" style="min-height:160px; border-radius:6px; background:#fff; border:1px solid #e6e6e6"></div>
               <div class="text-xs text-slate-500 mt-1 text-right">
                 <span id="message-char-count">0</span> / 1000
               </div>
@@ -7420,7 +7428,7 @@
             </button>
           </div>
 
-          <div id="admin-messages-list_modal" class="space-y-3 max-h-[19vh] overflow-y-auto">
+          <div id="admin-messages-list_modal" class="space-y-3">
             <p class="text-slate-400 text-center py-10">加载中...</p>
           </div>
         </div>
