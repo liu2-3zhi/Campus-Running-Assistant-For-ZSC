@@ -1,0 +1,3 @@
+[submodule "Emoji-PNG"]
+	path = Emoji-PNG
+	url = https://github.com/lzcapp/Emoji-PNG.git
