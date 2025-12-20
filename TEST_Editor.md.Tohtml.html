@@ -9,6 +9,7 @@
 
 <body>
 
+    
     <!-- 引入Editor.md的预览样式 -->
     <link rel="stylesheet" href="/editor.md/css/editormd.preview.css" />
     <!-- Markdown内容容器 -->
@@ -27,9 +28,10 @@
     <script src="/editor.md/lib/prettify.min.js"></script>
     <!-- 初始化Editor.md，将Markdown转换为HTML -->
     <script type="text/javascript">
+        var testView=null;
         $(function () {
             // 当文档加载完成后，初始化Markdown到HTML的转换
-            var testView = editormd.markdownToHTML("test-markdown-view", {
+            testView = editormd.markdownToHTML("test-markdown-view", {
                 markdown: " # A \n ## A",
                 htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
                 htmlDecode: "style,script,iframe",  // 允许解析的 HTML 标签
@@ -45,7 +47,10 @@
                 sequenceDiagram: true,  // 默认不解析
 
             });
+            console.log("testView:", testView);
         });
+
+        console.log("testView:", testView);
     </script>
 
 </body>
