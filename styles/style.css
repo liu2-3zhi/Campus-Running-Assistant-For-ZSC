@@ -9,6 +9,7 @@ body {
 }
 
 .panel {
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   background-color: var(--card-bg);
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -24,6 +25,7 @@ body.theme-anime {
 
 body.theme-anime .panel {
   background-color: rgba(255, 255, 255, 0.65);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.3);
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
@@ -35,6 +37,7 @@ body.theme-minimalist {
 
 body.theme-minimalist .panel {
   background-color: #ffffff;
+  -webkit-backdrop-filter: none;
   backdrop-filter: none;
   border: 1px solid #e9ecef;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
@@ -54,6 +57,7 @@ body.dark-mode {
 
 body.dark-mode .panel {
   background-color: rgba(31, 41, 55, 0.8);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(75, 85, 99, 0.5);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
@@ -530,6 +534,7 @@ body {
 }
 
 .panel {
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   background-color: var(--card-bg);
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -645,6 +650,8 @@ body {
   padding: 0.7rem 0 0.7rem 0.9rem;
   color: #64748b;
   font-weight: 500;
+
+  -webkit-user-select: none;
   user-select: none;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1029,6 +1036,7 @@ body.mobile-mode {
   font-size: 16px;
   color: #64748b;
   font-weight: 500;
+  -webkit-user-select: none;
   user-select: none;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1126,6 +1134,7 @@ body.mobile-mode #session-picker-modal {
   z-index: 1000;
   height: 56px;
   background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   display: flex;
@@ -1162,6 +1171,7 @@ body.mobile-mode #session-picker-modal {
   z-index: 1000;
   height: 64px;
   background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
   display: flex;
@@ -1201,6 +1211,7 @@ body.mobile-mode #session-picker-modal {
 
 .mobile-mode .mobile-card {
   background: rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border-radius: 16px;
   padding: 20px;
@@ -1610,6 +1621,7 @@ body.mobile-mode #session-picker-modal {
   bottom: 0;
   width: 280px;
   background: rgba(255, 255, 255, 0.98);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
   z-index: 9999;
@@ -1787,6 +1799,7 @@ body.mobile-mode #session-picker-modal {
   left: 0;
   right: 0;
   background-color: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   z-index: 50;
   flex-shrink: 0;

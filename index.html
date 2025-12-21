@@ -110,7 +110,7 @@
   <div id="guest_warning_overlay" class="fixed inset-0 bg-black bg-opacity-50 z-[20000] hidden"></div>
 
   <div id="guest-warning-toast" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-11/12 max-w-2xl p-5 z-[20001] rounded-2xl hidden shadow-2xl transition-all duration-300 ease-out border-4 border-red-500" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)">
-    <button id="guest-warning-close-btn" class="absolute top-2 right-2 z-10 flex items-center justify-center text-slate-600 hover:text-red-600 hover:bg-white/80 rounded-full transition-colors duration-200 font-bold text-xl">
+    <button id="guest-warning-close-btn" class="absolute top-2 right-2 z-10 flex items-center justify-center text-slate-600 hover:text-red-600 hover:bg-white/80 rounded-full transition-colors duration-200 font-bold text-xl" title="关闭提示" aria-label="关闭提示">
       <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
         <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
       </svg>
@@ -146,7 +146,7 @@
   </div>
   <div id="newUserModal" class="modal">
     <div class="panel rounded-2xl w-full max-w-md p-6 space-y-4 relative bg-white/95 shadow-xl">
-      <button id="newUserClose" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all">
+      <button id="newUserClose" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all" title="关闭" aria-label="关闭">
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
           <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
         </svg>
@@ -200,7 +200,7 @@
 
   <div id="multi-add-user-modal" class="modal">
     <div class="panel rounded-2xl w-full max-w-md p-6 space-y-4 relative bg-white/95 shadow-xl">
-      <button id="multi-add-user-close" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all">
+      <button id="multi-add-user-close" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all" title="关闭" aria-label="关闭">
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
           <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
         </svg>
@@ -223,7 +223,7 @@
       </div>
       <div class="flex justify-end gap-3 pt-4 border-t border-slate-200">
         <button id="multi-add-user-cancel" class="btn btn-ghost">取消</button>
-        <button id="multi-add-user-confirm" class="btn btn-primary">
+        <button id="multi-add-user-confirm" class="btn btn-primary" title="确认添加" aria-label="确认添加">
           确认添加
         </button>
       </div>
@@ -232,7 +232,7 @@
 
   <div id="school-accounts-modal" class="modal">
     <div class="panel rounded-2xl w-full max-w-4xl p-6 space-y-4 relative bg-white/95 shadow-xl">
-      <button id="school-accounts-close" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all">
+      <button id="school-accounts-close" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all" title="关闭" aria-label="关闭">
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
           <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
         </svg>
@@ -249,7 +249,7 @@
       </div>
 
       <div class="flex justify-end gap-3 pt-4 border-t border-slate-200">
-        <button id="school-accounts-refresh" class="btn btn-ghost">
+        <button id="school-accounts-refresh" class="btn btn-ghost" title="刷新学校账号列表" aria-label="刷新学校账号列表">
           刷新
         </button>
         <button id="school-accounts-ok" class="btn btn-primary">确定</button>
@@ -278,7 +278,7 @@
               编辑 School Account
             </h3>
           </div>
-          <button onclick="closeEditSchoolAccountModal()" class="text-slate-400 hover:text-slate-600 transition">
+          <button onclick="closeEditSchoolAccountModal()" class="text-slate-400 hover:text-slate-600 transition" title="关闭" aria-label="关闭">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
@@ -330,7 +330,7 @@
             </p>
           </div>
 
-          <input type="hidden" id="edit-school-account-original-username" name="original_username">
+          <input type="hidden" id="edit-school-account-original-username" name="original_username" aria-label="edit school account original username" title="edit school account original username" placeholder="edit school account original username">
         </form>
       </div>
 
@@ -375,7 +375,7 @@
             </div>
             <h3 class="text-xl font-bold text-slate-800">安全验证</h3>
           </div>
-          <button onclick="closeCaptchaModal()" class="text-slate-400 hover:text-slate-600 transition">
+          <button onclick="closeCaptchaModal()" class="text-slate-400 hover:text-slate-600 transition" title="关闭" aria-label="关闭">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
@@ -394,7 +394,7 @@
             <div id="captcha-modal-display" class="w-auto h-auto flex items-center justify-center border-2 border-slate-300 rounded-lg bg-white cursor-pointer hover:border-sky-400 transition-colors" onclick="refreshCaptchaModal()" title="点击刷新验证码" style="min-height: 64px">
               <span class="text-slate-400 text-xs">加载中...</span>
             </div>
-            <button onclick="refreshCaptchaModal()" class="absolute top-2 right-2 btn btn-ghost !p-2 text-slate-500 hover:text-sky-600 transition-colors" title="刷新验证码">
+            <button onclick="refreshCaptchaModal()" class="absolute top-2 right-2 btn btn-ghost !p-2 text-slate-500 hover:text-sky-600 transition-colors" title="刷新验证码" aria-label="刷新验证码">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
                 </path>
@@ -410,16 +410,10 @@
       </div>
 
       <div class="p-6 pt-0 flex gap-3">
-        <button onclick="closeCaptchaModal()" class="flex-1 py-3 px-4 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all" style="
-              box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.08),
-                -2px -2px 8px rgba(255, 255, 255, 0.9);
-            ">
+        <button onclick="closeCaptchaModal()" class="flex-1 py-3 px-4 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all" style="" title="取消" aria-label="取消">
           取消
         </button>
-        <button id="captcha-modal-confirm-btn" onclick="confirmCaptchaAndSendSMS()" class="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-gradient-to-br from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 transition-all" style="
-              box-shadow: 4px 4px 12px rgba(56, 189, 248, 0.3),
-                -2px -2px 8px rgba(255, 255, 255, 0.1);
-            ">
+          <button id="captcha-modal-confirm-btn" onclick="confirmCaptchaAndSendSMS()" class="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-gradient-to-br from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 transition-all" style="" title="确认发送" aria-label="确认发送">
           确认发送
         </button>
       </div>
@@ -436,20 +430,20 @@
       </div>
 
       <div class="flex border-b border-slate-200">
-        <button id="auth-tab-login" class="flex-1 py-3 font-semibold text-sky-600 border-b-2 border-sky-600 transition">
+        <button id="auth-tab-login" class="flex-1 py-3 font-semibold text-sky-600 border-b-2 border-sky-600 transition" title="切换到登录" aria-label="切换到登录">
           登录
         </button>
-        <button id="auth-tab-register" class="flex-1 py-3 font-semibold text-slate-400 border-b-2 border-transparent transition hover:text-slate-600">
+        <button id="auth-tab-register" class="flex-1 py-3 font-semibold text-slate-400 border-b-2 border-transparent transition hover:text-slate-600" title="切换到注册" aria-label="切换到注册">
           注册
         </button>
       </div>
 
       <div id="auth-login-form" class="space-y-4 overflow-y-auto max-h-[60vh] p-1">
         <div id="auth-login-type-toggle" class="flex justify-center gap-2 pb-2">
-          <button id="auth-login-username-btn" class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm">
+          <button id="auth-login-username-btn" class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm" title="用户名登录" aria-label="用户名登录">
             用户名登录
           </button>
-          <button id="auth-login-phone-btn" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">
+          <button id="auth-login-phone-btn" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm" title="手机号登录" aria-label="手机号登录">
             手机号登录
           </button>
         </div>
@@ -504,7 +498,7 @@
           </div>
         </div>
 
-        <button id="auth-login-btn" class="btn btn-primary w-full py-3" style="min-height: 44px">
+        <button id="auth-login-btn" class="btn btn-primary w-full py-3" style="min-height: 44px" title="登录" aria-label="登录">
           登录
         </button>
         <div id="guest-login-section" class="text-center hidden">
@@ -513,7 +507,7 @@
             <span class="flex-shrink mx-4 text-slate-400 text-xs">或</span>
             <div class="flex-grow border-t border-slate-200"></div>
           </div>
-          <button id="auth-guest-btn" class="btn btn-ghost w-full">
+          <button id="auth-guest-btn" class="btn btn-ghost w-full" title="游客登录" aria-label="游客登录">
             以游客身份继续
           </button>
           <div class="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-left">
@@ -554,7 +548,7 @@
           <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
           <div class="flex gap-2">
             <input type="text" id="auth-reg-sms-code" class="input-field mt-1 flex-1" placeholder="请输入验证码" maxlength="6" inputmode="numeric" pattern="[0-9]{6}">
-            <button id="auth-reg-send-code-btn" class="btn btn-primary mt-1 whitespace-nowrap" style="min-height: 44px">
+            <button id="auth-reg-send-code-btn" class="btn btn-primary mt-1 whitespace-nowrap" style="min-height: 44px" title="发送验证码" aria-label="发送验证码">
               发送验证码
             </button>
           </div>
@@ -568,8 +562,8 @@
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700">头像</label>
           <div class="flex items-center gap-3 mt-1">
-            <img id="auth-reg-avatar-preview" src="/static/default_avatar.png" class="w-16 h-16 rounded-full object-cover border-2 border-slate-200">
-            <input type="file" id="auth-reg-avatar" accept="image/*" class="hidden">
+            <img id="auth-reg-avatar-preview" src="/static/default_avatar.png" alt="头像预览" class="w-16 h-16 rounded-full object-cover border-2 border-slate-200">
+            <input type="file" id="auth-reg-avatar" accept="image/*" class="hidden" aria-label="auth reg avatar" title="auth reg avatar">
             <button class="btn btn-ghost border border-slate-300 !py-1.5 !px-3 text-sm" onclick="document.getElementById('auth-reg-avatar').click(); return false;">
               <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
@@ -613,7 +607,7 @@
           </p>
         </div>
 
-        <button id="auth-register-btn" class="btn btn-success w-full py-3" style="min-height: 44px">
+        <button id="auth-register-btn" class="btn btn-success w-full py-3" style="min-height: 44px" title="注册" aria-label="注册">
           注册
         </button>
       </div>
@@ -630,10 +624,10 @@
           <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
           <input type="text" id="auth-2fa-code" class="input-field mt-1" placeholder="输入6位验证码" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code">
         </div>
-        <button id="auth-2fa-verify-btn" class="btn btn-primary w-full py-3">
+        <button id="auth-2fa-verify-btn" class="btn btn-primary w-full py-3" title="验证二次认证" aria-label="验证二次认证">
           验证
         </button>
-        <button id="auth-2fa-back-btn" class="btn btn-ghost w-full">
+        <button id="auth-2fa-back-btn" class="btn btn-ghost w-full" title="返回" aria-label="返回">
           返回登录
         </button>
       </div>
@@ -743,7 +737,7 @@
             </p>
           </div>
 
-          <button id="multi-account-btn" class="btn btn-secondary w-full py-3.5 text-lg font-bold shadow-xl shadow-violet-300/40 hover:shadow-2xl hover:shadow-violet-400/50 transition-all duration-300">
+          <button id="multi-account-btn" class="btn btn-secondary w-full py-3.5 text-lg font-bold shadow-xl shadow-violet-300/40 hover:shadow-2xl hover:shadow-violet-400/50 transition-all duration-300" title="多账号" aria-label="多账号">
             <span>进入多账号控制台</span>
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>
@@ -806,7 +800,7 @@
             </div>
           </div>
 
-          <button id="login-button" class="btn btn-primary w-full py-3.5 text-lg font-bold shadow-xl shadow-sky-300/40 hover:shadow-2xl hover:shadow-sky-400/50 transition-all duration-300">
+          <button id="login-button" class="btn btn-primary w-full py-3.5 text-lg font-bold shadow-xl shadow-sky-300/40 hover:shadow-2xl hover:shadow-sky-400/50 transition-all duration-300" title="登录" aria-label="登录">
             <span>立即登录</span>
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>
@@ -819,7 +813,7 @@
             <div class="flex-grow border-t border-slate-300"></div>
           </div>
 
-          <button id="import-button" class="btn btn-success w-full py-3 font-bold shadow-lg shadow-green-300/30 hover:shadow-xl hover:shadow-green-400/40 transition-all duration-300">
+          <button id="import-button" class="btn btn-success w-full py-3 font-bold shadow-lg shadow-green-300/30 hover:shadow-xl hover:shadow-green-400/40 transition-all duration-300" title="导入" aria-label="导入">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
             </svg>
@@ -874,14 +868,14 @@
 
               <div class="flex items-center gap-4">
                 <label id="god-mode-toggle" class="flex items-center gap-2 cursor-pointer bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors" style="display: none">
-                  <input type="checkbox" id="god-mode-checkbox" class="w-4 h-4 accent-red-600 rounded cursor-pointer">
+                  <input type="checkbox" id="god-mode-checkbox" class="w-4 h-4 accent-red-600 rounded cursor-pointer" aria-label="god mode checkbox" title="god mode checkbox">
                   <span class="text-sm font-bold text-red-600">⚠️ 上帝模式</span>
                 </label>
 
                 <div id="admin-session-count-display-inline" class="text-sm font-medium text-slate-600 bg-white/70 px-3 py-1.5 rounded-full border border-slate-200">
                 </div>
 
-                <button id="admin-refresh-sessions-inline" class="btn btn-ghost !py-1.5 !px-3 hover:bg-sky-100 transition-colors">
+                <button id="admin-refresh-sessions-inline" class="btn btn-ghost !py-1.5 !px-3 hover:bg-sky-100 transition-colors" title="刷新会话" aria-label="刷新会话">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
                     </path>
@@ -936,10 +930,10 @@
           <div class="flex justify-between items-center mb-3">
             <h2 class="text-lg font-bold text-slate-800">任务列表</h2>
             <div class="flex gap-2">
-              <button id="show-task-details" class="btn btn-ghost !py-1 !px-3">
+                <button id="show-task-details" class="btn btn-ghost !py-1 !px-3" title="查看任务详情" aria-label="查看任务详情">
                 任务详情
               </button>
-              <button id="refresh-button" class="btn btn-ghost !py-1 !px-3">
+                <button id="refresh-button" class="btn btn-ghost !py-1 !px-3" title="刷新" aria-label="刷新">
                 刷新
               </button>
             </div>
@@ -990,36 +984,36 @@
               </div>
 
               <div class="grid grid-cols-2 gap-3">
-                <button id="start-run-button" class="btn btn-primary">
+                <button id="start-run-button" class="btn btn-primary" title="开始运行" aria-label="开始运行">
                   开始执行
                 </button>
-                <button id="start-all-button" class="btn btn-secondary">
+                <button id="start-all-button" class="btn btn-secondary" title="全部开始" aria-label="全部开始">
                   执行所有
                 </button>
               </div>
 
               <div class="flex items-center justify-center space-x-4 pt-1">
-                <label class="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" id="run-completed-check" class="w-4 h-4 accent-sky-600 rounded"><span class="font-semibold">忽略已完成状态</span></label>
-                <label class="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" id="auto-gen-all-check" class="w-4 h-4 accent-sky-600 rounded"><span class="font-semibold">自动生成路径</span></label>
+                <label class="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" id="run-completed-check" class="w-4 h-4 accent-sky-600 rounded" aria-label="run completed check" title="run completed check"><span class="font-semibold">忽略已完成状态</span></label>
+                <label class="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" id="auto-gen-all-check" class="w-4 h-4 accent-sky-600 rounded" aria-label="auto gen all check" title="auto gen all check"><span class="font-semibold">自动生成路径</span></label>
               </div>
             </div>
             <div id="path-tools-tab" class="hidden pt-4 space-y-3">
               <div class="grid grid-cols-2 gap-3">
-                <button id="record-button" class="btn btn-success">
+                <button id="record-button" class="btn btn-success" title="记录" aria-label="记录">
                   录制路径
                 </button>
-                <button id="auto-gen-button" class="btn btn-secondary">
+                <button id="auto-gen-button" class="btn btn-secondary" title="自动生成" aria-label="自动生成">
                   自动生成
                 </button>
-                <button id="process-button" class="btn btn-primary">
+                <button id="process-button" class="btn btn-primary" title="处理" aria-label="处理">
                   处理路径
                 </button>
-                <button id="clear-button" class="btn btn-warning">
+                <button id="clear-button" class="btn btn-warning" title="清除" aria-label="清除">
                   清除路径
                 </button>
               </div>
               <div class="grid grid-cols-2 gap-3">
-                <button id="export-button" class="btn btn-ghost border border-slate-300 col-span-1">
+                <button id="export-button" class="btn btn-ghost border border-slate-300 col-span-1" title="导出" aria-label="导出">
                   导出
                 </button>
                 <div class="col-span-1"></div>
@@ -1032,7 +1026,7 @@
             <div id="attendance-tab" class="hidden pt-2 space-y-2 h-56 flex flex-col">
               <div class="flex-shrink-0 space-y-2 border-b pb-2">
                 <label class="flex items-center gap-2 cursor-pointer" title="开启后，将在后台自动刷新通知并尝试签到">
-                  <input type="checkbox" id="param-auto_attendance_enabled" data-key="auto_attendance_enabled" class="w-5 h-5 accent-sky-600 rounded cursor-pointer flex-shrink-0">
+                  <input type="checkbox" id="param-auto_attendance_enabled" data-key="auto_attendance_enabled" class="w-5 h-5 accent-sky-600 rounded cursor-pointer flex-shrink-0" aria-label="param auto_attendance_enabled" title="param auto_attendance_enabled">
                   <span class="text-slate-700 font-semibold">开启自动签到</span>
                 </label>
 
@@ -1074,7 +1068,7 @@
             </div>
             <div id="log-tab" class="hidden pt-2">
               <div class="h-48">
-                <textarea id="log-text" readonly="" class="w-full h-full bg-white/80 border border-slate-200 rounded-md p-2 text-xs text-slate-700 resize-none focus:outline-none leading-snug"></textarea>
+                <textarea id="log-text" readonly="" class="w-full h-full bg-white/80 border border-slate-200 rounded-md p-2 text-xs text-slate-700 resize-none focus:outline-none leading-snug" aria-label="log text" title="log text" placeholder="log text"></textarea>
               </div>
             </div>
           </div>
@@ -1084,11 +1078,11 @@
       <div class="lg:col-span-2 xl:col-span-3 flex flex-col gap-4 h-full min-h-0">
         <div id="map-container" class="flex-grow bg-slate-200 rounded-xl relative overflow-hidden border border-slate-200">
           <div class="absolute top-4 right-3 z-10 bg-white/80 backdrop-blur-sm rounded-full shadow-md flex items-center space-x-1 p-1 border border-slate-200">
-            <button id="zoom-in" class="w-9 h-9 font-bold text-xl text-center hover:bg-slate-100 rounded-full text-slate-700">
+            <button id="zoom-in" class="w-9 h-9 font-bold text-xl text-center hover:bg-slate-100 rounded-full text-slate-700" title="放大" aria-label="放大">
               +
             </button>
             <span id="zoom-level" class="text-xs font-mono select-none w-8 text-center">17</span>
-            <button id="zoom-out" class="w-9 h-9 font-bold text-xl text-center hover:bg-slate-100 rounded-full text-slate-700">
+            <button id="zoom-out" class="w-9 h-9 font-bold text-xl text-center hover:bg-slate-100 rounded-full text-slate-700" title="缩小" aria-label="缩小">
               -
             </button>
             <button id="reset-view-btn" class="w-9 h-9 font-bold text-lg flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-700" title="复位视角">
@@ -1161,17 +1155,17 @@
           </div>
           <div class="mt-4 space-y-2 text-sm border-t pt-3">
             <label class="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
-              <input type="checkbox" id="multi-use-delay-check" checked="" class="w-4 h-4 accent-sky-600 rounded">
+              <input type="checkbox" id="multi-use-delay-check" checked="" class="w-4 h-4 accent-sky-600 rounded" aria-label="multi use delay check" title="multi use delay check">
               启用随机启动延迟
               <div class="flex items-center gap-2 pl-6">
-                <input type="number" id="multi-min-delay-input" value="0" class="input-field !py-1 w-20 text-center">
+                <input type="number" id="multi-min-delay-input" value="0" class="input-field !py-1 w-20 text-center" aria-label="multi min delay input" title="multi min delay input" placeholder="multi min delay input">
                 <span>-</span>
-                <input type="number" id="multi-max-delay-input" value="300" class="input-field !py-1 w-20 text-center">
+                <input type="number" id="multi-max-delay-input" value="300" class="input-field !py-1 w-20 text-center" aria-label="multi max delay input" title="multi max delay input" placeholder="multi max delay input">
                 <span>秒</span>
               </div>
             </label>
             <label class="flex items-center gap-2 cursor-pointer font-semibold text-slate-700 mt-2">
-              <input type="checkbox" id="multi-run-only-incomplete-check" checked="" class="w-4 h-4 accent-sky-600 rounded">
+              <input type="checkbox" id="multi-run-only-incomplete-check" checked="" class="w-4 h-4 accent-sky-600 rounded" aria-label="multi run only incomplete check" title="multi run only incomplete check">
               仅执行未完成的任务
             </label>
           </div>
@@ -1233,7 +1227,7 @@
             <p class="text-slate-400 text-center py-10">请先添加或导入账号</p>
           </div>
           <div class="mt-2 border-t pt-3 flex items-center gap-2">
-            <select id="multi-config-user-select" class="select-field !py-1 flex-grow"></select>
+            <select id="multi-config-user-select" class="select-field !py-1 flex-grow" aria-label="从配置添加用户"></select>
             <button id="multi-add-from-config-btn" class="btn btn-ghost !py-1 !px-2 flex-shrink-0">
               添加
             </button>
@@ -1264,7 +1258,7 @@
         </div>
         <div class="panel rounded-xl p-4 h-48 flex flex-col">
           <h3 class="font-bold text-slate-800 mb-2">全局日志</h3>
-          <textarea id="multi-log-text" readonly="" class="w-full flex-grow bg-white/80 border border-slate-200 rounded-md p-2 text-xs text-slate-700 resize-none focus:outline-none leading-snug"></textarea>
+          <textarea id="multi-log-text" readonly="" class="w-full flex-grow bg-white/80 border border-slate-200 rounded-md p-2 text-xs text-slate-700 resize-none focus:outline-none leading-snug" aria-label="multi log text" title="multi log text" placeholder="multi log text"></textarea>
         </div>
       </div>
     </main>
@@ -1277,7 +1271,7 @@
         </h3>
         <p class="text-sm text-slate-600 text-center">
           程序需要一个有效的高德地图JS API Key才能使用地图功能。请前往
-          <a href="https://console.amap.com/dev/key/app" target="_blank" class="text-sky-600 hover:underline">高德开放平台</a>
+          <a href="https://console.amap.com/dev/key/app" target="_blank" rel="noopener noreferrer" class="text-sky-600 hover:underline">高德开放平台</a>
           申请一个Key（类型选择“Web端(JS API)”），然后粘贴到下方。
         </p>
         <div class="space-y-2">
@@ -1301,15 +1295,15 @@
         <div class="space-y-4">
           <div class="flex items-center">
             <label class="w-32 text-slate-700 font-semibold">最短时间(分钟)</label>
-            <input id="min-time-input" type="number" value="20" class="input-field w-full">
+            <input id="min-time-input" type="number" value="20" class="input-field w-full" aria-label="min time input" title="min time input" placeholder="min time input">
           </div>
           <div class="flex items-center">
             <label class="w-32 text-slate-700 font-semibold">最长时间(分钟)</label>
-            <input id="max-time-input" type="number" value="30" class="input-field w-full">
+            <input id="max-time-input" type="number" value="30" class="input-field w-full" aria-label="max time input" title="max time input" placeholder="max time input">
           </div>
           <div class="flex items-center">
             <label class="w-32 text-slate-700 font-semibold">最短距离(米)</label>
-            <input id="min-dist-input" type="number" value="2000" class="input-field w-full">
+            <input id="min-dist-input" type="number" value="2000" class="input-field w-full" aria-label="min dist input" title="min dist input" placeholder="min dist input">
           </div>
         </div>
         <div class="flex justify-end gap-3 pt-4">
@@ -1514,7 +1508,7 @@
               </div>
             </div>
 
-            <button id="mobile-login-btn" class="mobile-primary-btn">
+            <button id="mobile-login-btn" class="mobile-primary-btn" title="登录" aria-label="移动端登录">
               登录
             </button>
 
@@ -1579,8 +1573,8 @@
             <div class="mobile-form-group" id="mobile-reg-avatar-group">
               <label class="mobile-form-label">头像</label>
               <div class="flex items-center gap-3 mt-1">
-                <img id="mobile-reg-avatar-preview" src="/static/default_avatar.png" class="w-16 h-16 rounded-full object-cover border-2 border-slate-200">
-                <input type="file" id="mobile-reg-avatar" accept="image/*" class="hidden">
+                <img id="mobile-reg-avatar-preview" src="/static/default_avatar.png" alt="头像预览" class="w-16 h-16 rounded-full object-cover border-2 border-slate-200">
+                <input type="file" id="mobile-reg-avatar" accept="image/*" class="hidden" aria-label="mobile reg avatar" title="mobile reg avatar">
                 <button class="btn btn-ghost border border-slate-300 !py-1.5 !px-3 text-sm" id="mobile-reg-upload-avatar-btn" onclick="document.getElementById('mobile-reg-avatar').click(); return false;">
                   <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
@@ -1677,7 +1671,7 @@
 
           <div class="mobile-form-group">
             <label class="mobile-form-label">选择用户</label>
-            <select id="mobile-user-combo" class="w-full">
+            <select id="mobile-user-combo" class="w-full" aria-label="选择用户">
               <option value="">请选择用户</option>
             </select>
           </div>
@@ -1706,7 +1700,7 @@
           <!-- ========================================
                【导入离线文件按钮】移动端版本
                ======================================== -->
-          <button id="mobile-import-button" class="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg font-bold shadow-lg transition-all duration-300 flex items-center justify-center gap-2">
+          <button id="mobile-import-button" class="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg font-bold shadow-lg transition-all duration-300 flex items-center justify-center gap-2" title="导入" aria-label="移动端导入">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
             </svg>
@@ -2155,11 +2149,11 @@
           <!-- ========== 执行选项复选框 ========== -->
           <div class="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2" style="display: none">
             <label class="flex items-center gap-2 cursor-pointer p-2 bg-amber-50 rounded-lg hover:bg-amber-100 transition">
-              <input type="checkbox" id="mobile-run-completed-check" class="w-4 h-4 accent-sky-600 rounded flex-shrink-0">
+              <input type="checkbox" id="mobile-run-completed-check" class="w-4 h-4 accent-sky-600 rounded flex-shrink-0" aria-label="mobile run completed check" title="mobile run completed check">
               <span class="text-xs text-slate-700 font-semibold">忽略已完成状态</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer p-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition" style="display: none">
-              <input type="checkbox" id="mobile-auto-gen-all-check" class="w-4 h-4 accent-sky-600 rounded flex-shrink-0" checked="">
+              <input type="checkbox" id="mobile-auto-gen-all-check" class="w-4 h-4 accent-sky-600 rounded flex-shrink-0" checked="" aria-label="mobile auto gen all check" title="mobile auto gen all check">
               <span class="text-xs text-slate-700 font-semibold">自动生成路径</span>
             </label>
           </div>
@@ -2332,7 +2326,7 @@
 
             <div class="space-y-4">
               <label class="flex items-center gap-3 cursor-pointer p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl hover:from-blue-100 hover:to-blue-150 transition-all duration-200 shadow-sm">
-                <input type="checkbox" id="mobile-param-auto_attendance_enabled" data-key="auto_attendance_enabled" class="w-6 h-6 accent-blue-600 rounded-md cursor-pointer flex-shrink-0 shadow-sm">
+                <input type="checkbox" id="mobile-param-auto_attendance_enabled" data-key="auto_attendance_enabled" class="w-6 h-6 accent-blue-600 rounded-md cursor-pointer flex-shrink-0 shadow-sm" aria-label="mobile param auto_attendance_enabled" title="mobile param auto_attendance_enabled">
                 <div class="flex-1">
                   <span class="text-slate-800 font-bold block text-base">🎯 开启自动签到</span>
                   <span class="text-xs text-slate-600 mt-1 block">后台自动刷新通知并尝试签到</span>
@@ -2770,7 +2764,7 @@
               <!-- 控制选项组：日志行数选择和刷新按钮 -->
               <div class="flex gap-2">
                 <!-- 日志行数选择下拉框 -->
-                <select id="mobile-multi-log-limit-select" class="text-xs border border-slate-300 rounded px-2 py-1">
+                <select id="mobile-multi-log-limit-select" class="text-xs border border-slate-300 rounded px-2 py-1" aria-label="移动日志每页限制">
                   <option value="100">每页100行</option>
                   <option value="200">每页200行</option>
                   <option value="500">每页500行</option>
@@ -2796,7 +2790,7 @@
               <!-- 页码选择和总行数显示 -->
               <div class="flex items-center gap-2">
                 <!-- 页码选择下拉框 -->
-                <select id="mobile-multi-log-page-select" class="text-xs border border-slate-300 rounded px-2 py-1">
+                <select id="mobile-multi-log-page-select" class="text-xs border border-slate-300 rounded px-2 py-1" aria-label="移动日志页码">
                   <option value="1">第 1 / 1 页</option>
                 </select>
                 <!-- 总行数显示 -->
@@ -2824,7 +2818,7 @@
                 <!-- 自动刷新开关标签 -->
                 <label class="flex items-center gap-1 cursor-pointer">
                   <!-- 自动刷新复选框 -->
-                  <input type="checkbox" id="mobile-multi-health-auto-refresh-toggle" class="w-3 h-3 accent-sky-600 rounded" checked="">
+                  <input type="checkbox" id="mobile-multi-health-auto-refresh-toggle" class="w-3 h-3 accent-sky-600 rounded" checked="" aria-label="mobile multi health auto refresh toggle" title="mobile multi health auto refresh toggle">
                   <!-- 自动刷新文本和倒计时显示 -->
                   <span class="text-xs text-slate-600">自动刷新
                     <span id="mobile-multi-health-countdown-display" class="font-semibold text-sky-600"></span>
@@ -2873,7 +2867,7 @@
                   <!-- 头像上传控件区域 -->
                   <div class="flex-1">
                     <!-- 隐藏的文件上传input -->
-                    <input type="file" id="mobile-unified-profile-avatar-file" accept="image/*" class="hidden" onchange="handleMobileUnifiedAvatarFile(this.files[0])">
+                    <input type="file" id="mobile-unified-profile-avatar-file" accept="image/*" class="hidden" onchange="handleMobileUnifiedAvatarFile(this.files[0])" aria-label="mobile unified profile avatar file" title="mobile unified profile avatar file">
                     <!-- 选择图片按钮 -->
                     <button id="mobile-unified-avatar-upload-btn" class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs" onclick="document.getElementById('mobile-unified-profile-avatar-file').click();">
                       选择图片
@@ -3018,7 +3012,7 @@
 
                 <div class="space-y-1">
                   <label class="block text-xs font-medium text-slate-600">主题风格</label>
-                  <select id="mobile-unified-theme-select" onchange="updateMobileUnifiedTheme()" class="select-field !text-xs !py-1.5">
+                  <select id="mobile-unified-theme-select" onchange="updateMobileUnifiedTheme()" class="select-field !text-xs !py-1.5" aria-label="移动主题选择">
                     <option value="light">浅色主题</option>
                     <option value="dark">深色主题</option>
                   </select>
@@ -3042,7 +3036,7 @@
                 <div class="space-y-1">
                   <label class="block text-xs font-medium text-slate-600">基础颜色</label>
                   <div class="flex gap-2 items-center">
-                    <input type="color" id="mobile-unified-theme_base_color-picker" value="#7dd3fc" class="w-20 h-20 border border-slate-300 rounded cursor-pointer p-0.5 bg-white shadow-sm" onchange="document.getElementById('mobile-unified-theme_base_color').value = this.value; onColorPicked(this.value); saveUnifiedThemeColor(this.value);">
+                    <input type="color" id="mobile-unified-theme_base_color-picker" value="#7dd3fc" class="w-20 h-20 border border-slate-300 rounded cursor-pointer p-0.5 bg-white shadow-sm" onchange="document.getElementById('mobile-unified-theme_base_color').value = this.value; onColorPicked(this.value); saveUnifiedThemeColor(this.value);" aria-label="mobile unified theme_base_color picker" title="mobile unified theme_base_color picker" placeholder="mobile unified theme_base_color picker">
 
                     <input type="text" id="mobile-unified-theme_base_color" value="#7dd3fc" class="input-field !text-xs !py-1.5 flex-1 font-mono uppercase shadow-inner" placeholder="#7DD3FC" maxlength="7" onchange="if(/^#[0-9A-F]{6}$/i.test(this.value)){ document.getElementById('mobile-unified-theme_base_color-picker').value = this.value; onColorPicked(this.value); saveUnifiedThemeColor(this.value); }">
 
@@ -3067,7 +3061,7 @@
             <div class="flex justify-between items-center">
               <div class="flex items-center gap-2">
                 <div id="mobile-multi-god-mode-toggle" class="items-center gap-1 cursor-pointer flex items-center" style="display: none">
-                  <input type="checkbox" id="mobile-multi-god-mode-checkbox" class="w-3 h-3 accent-red-600 rounded">
+                  <input type="checkbox" id="mobile-multi-god-mode-checkbox" class="w-3 h-3 accent-red-600 rounded" aria-label="mobile multi god mode checkbox" title="mobile multi god mode checkbox">
                   <span class="text-xs font-semibold text-red-600">查看系统中的所有会话</span>
                 </div>
                 <div id="mobile-multi-admin-session-count-display" class="text-xs text-slate-600"></div>
@@ -3205,7 +3199,7 @@
               <div class="space-y-2">
                 <!-- 封禁类型选择下拉框 -->
                 <label class="block text-xs font-medium text-blue-800">封禁类型</label>
-                <select id="mobile-multi-ban-type" class="select-field text-xs" onchange="mobileUpdateBanTargetHint()">
+                <select id="mobile-multi-ban-type" class="select-field text-xs" onchange="mobileUpdateBanTargetHint()" aria-label="封禁类型">
                   <option value="ip">单个IP</option>
                   <option value="range">IP范围</option>
                 </select>
@@ -3219,7 +3213,7 @@
                 <p id="mobile-multi-ban-target-error" class="hidden text-xs text-red-600 font-semibold"></p>
                 <!-- 封禁范围选择下拉框 -->
                 <label class="block text-xs font-medium text-blue-800">封禁范围</label>
-                <select id="mobile-multi-ban-scope" class="select-field text-xs">
+                <select id="mobile-multi-ban-scope" class="select-field text-xs" aria-label="封禁范围">
                   <option value="all">封禁所有功能</option>
                   <option value="messages_only">仅封禁留言板</option>
                 </select>
@@ -3491,7 +3485,7 @@
                 <!-- 切换开关 -->
                 <label class="relative inline-flex items-center cursor-pointer">
                   <!-- 隐藏的checkbox，控制实际状态 -->
-                  <input type="checkbox" id="mobile-cdn-enabled-toggle" class="sr-only peer">
+                  <input type="checkbox" id="mobile-cdn-enabled-toggle" class="sr-only peer" aria-label="mobile cdn enabled toggle" title="mobile cdn enabled toggle">
                   <!-- 开关的视觉表现 -->
                   <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600">
                   </div>
@@ -3771,7 +3765,7 @@
               <!-- 操作类型筛选 -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">操作类型（可选）</label>
-                <select id="payment-logs-action-type" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                <select id="payment-logs-action-type" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="payment logs action type" title="payment logs action type">
                   <option value="">全部操作</option>
                   <option value="create_order">创建订单</option>
                   <option value="query_order">查询订单</option>
@@ -3786,12 +3780,12 @@
                 <!-- 开始日期 -->
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">开始日期</label>
-                  <input type="date" id="payment-logs-start-date" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                  <input type="date" id="payment-logs-start-date" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="payment logs start date" title="payment logs start date" placeholder="payment logs start date">
                 </div>
                 <!-- 结束日期 -->
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">结束日期</label>
-                  <input type="date" id="payment-logs-end-date" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                  <input type="date" id="payment-logs-end-date" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="payment logs end date" title="payment logs end date" placeholder="payment logs end date">
                 </div>
               </div>
 
@@ -3979,7 +3973,7 @@
                     <label class="block text-xs font-semibold text-slate-700 mb-1">订单状态</label>
                     <!-- 下拉选择框：用户可选择不同状态来筛选订单列表 -->
                     <!-- onchange事件：用户更改选择时，立即调用filterPaymentOrders()重新筛选列表 -->
-                    <select id="admin-filter-status" onchange="filterPaymentOrders()" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <select id="admin-filter-status" onchange="filterPaymentOrders()" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="过滤支付订单状态">
                       <!-- 提供所有可能的订单状态选项，空值表示不筛选状态 -->
                       <option value="">全部状态</option>
                       <option value="pending">已创建待支付</option>
@@ -3998,7 +3992,7 @@
                     <!-- 标签：指示用户此控件用于筛选支付方式 -->
                     <label class="block text-xs font-semibold text-slate-700 mb-1">支付方式</label>
                     <!-- 下拉选择框：筛选支付宝、微信支付等不同支付方式的订单 -->
-                    <select id="admin-filter-paytype" onchange="filterPaymentOrders()" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <select id="admin-filter-paytype" onchange="filterPaymentOrders()" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="过滤支付类型">
                       <!-- 提供所有支持的支付方式选项 -->
                       <option value="">全部支付方式</option>
                       <option value="alipay">支付宝</option>
@@ -4251,7 +4245,7 @@
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">支付方式<span class="text-red-500">*</span></label>
                   <!-- 下拉选择框：包含所有支持的支付方式 -->
-                  <select id="test-payment-method" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                  <select id="test-payment-method" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="选择支付方式">
                     <option value="alipay">支付宝</option>
                     <option value="wxpay">微信支付</option>
                     <option value="qqpay">QQ钱包</option>
@@ -4267,7 +4261,7 @@
                   </label>
                   <!-- 下拉选择框：提供多种支付接口类型供测试 -->
                   <!-- onchange事件：当选择改变时，自动显示/隐藏auth_code和jsapi参数输入框 -->
-                  <select id="test-payment-type" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" onchange="toggleAuthCodeFieldMobile()">
+                  <select id="test-payment-type" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" onchange="toggleAuthCodeFieldMobile()" aria-label="支付方式种类">
                     <!-- 选项1：跳转支付 -->
                     <option value="jump">跳转支付 (jump)</option>
                     <!-- 选项2：HTML支付 -->
@@ -4492,7 +4486,7 @@
                     <span class="text-red-500">*</span>
                   </label>
                   <!-- 下拉选择框：从预定义的接口类型中选择 -->
-                  <select id="yipay-payment-method" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                  <select id="yipay-payment-method" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="易支付方式">
                     <!-- 选项1：跳转支付（jump） - 默认选项 -->
                     <option value="jump">跳转支付 (jump)</option>
                     <!-- 选项2：网页支付（web） -->
@@ -4669,7 +4663,7 @@
                 <!-- 开关按钮 -->
                 <label class="relative inline-flex items-center cursor-pointer ml-3">
                   <!-- 隐藏的复选框，实际控制开关状态 -->
-                  <input type="checkbox" id="mobile-pricing-require-payment" class="sr-only peer">
+                  <input type="checkbox" id="mobile-pricing-require-payment" class="sr-only peer" aria-label="mobile pricing require payment" title="mobile pricing require payment">
                   <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
                   <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
                 </label>
@@ -4737,7 +4731,7 @@
                 </div>
                 <!-- 开关按钮 -->
                 <label class="relative inline-flex items-center cursor-pointer ml-2">
-                  <input type="checkbox" id="mobile-pricing-show-available-runs" class="sr-only peer">
+                  <input type="checkbox" id="mobile-pricing-show-available-runs" class="sr-only peer" aria-label="mobile pricing show available runs" title="mobile pricing show available runs">
                   <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
                 </label>
               </div>
@@ -4776,7 +4770,7 @@
                 </div>
                 <!-- 开关按钮 -->
                 <label class="relative inline-flex items-center cursor-pointer ml-2">
-                  <input type="checkbox" id="mobile-pricing-show-register-hint" class="sr-only peer">
+                  <input type="checkbox" id="mobile-pricing-show-register-hint" class="sr-only peer" aria-label="mobile pricing show register hint" title="mobile pricing show register hint">
                   <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
                 </label>
               </div>
@@ -5002,7 +4996,7 @@
               <h4 class="text-base font-bold text-slate-800">➕ 添加账号</h4>
             </div>
 
-            <select id="mobile-multi-config-user-select" class="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all mb-3 shadow-sm">
+            <select id="mobile-multi-config-user-select" class="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all mb-3 shadow-sm" aria-label="从配置添加用户">
               <option value="">-- 请选择配置文件 --</option>
             </select>
 
@@ -5033,7 +5027,7 @@
           <div class="bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl p-4 mb-5 border-2 border-purple-200 shadow-sm">
             <div class="flex items-center justify-between">
               <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" id="mobile-select-all-accounts" class="w-6 h-6 text-purple-600 rounded-md shadow-sm cursor-pointer" onchange="mobileToggleSelectAllAccounts()">
+                <input type="checkbox" id="mobile-select-all-accounts" class="w-6 h-6 text-purple-600 rounded-md shadow-sm cursor-pointer" onchange="mobileToggleSelectAllAccounts()" aria-label="mobile select all accounts" title="mobile select all accounts">
                 <span class="text-sm font-bold text-slate-800">✅ 全选账号</span>
               </label>
               <div class="flex gap-2">
@@ -5249,7 +5243,7 @@
             <!-- ========== 【问题16修复】随机启动延迟配置 ========== -->
             <div class="p-3 bg-blue-50 rounded-lg space-y-2">
               <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="mobile-multi-random-delay-check" checked="" class="w-4 h-4 accent-orange-600 rounded flex-shrink-0">
+                <input type="checkbox" id="mobile-multi-random-delay-check" checked="" class="w-4 h-4 accent-orange-600 rounded flex-shrink-0" aria-label="mobile multi random delay check" title="mobile multi random delay check">
                 <span class="text-sm text-slate-700 font-semibold">启用随机启动延迟</span>
               </label>
 
@@ -5265,12 +5259,12 @@
             </div>
 
             <label class="flex items-center gap-2 cursor-pointer p-2 bg-amber-50 rounded-lg hover:bg-amber-100 transition">
-              <input type="checkbox" id="mobile-multi-only-incomplete-check" checked="" class="w-4 h-4 accent-orange-600 rounded flex-shrink-0">
+              <input type="checkbox" id="mobile-multi-only-incomplete-check" checked="" class="w-4 h-4 accent-orange-600 rounded flex-shrink-0" aria-label="mobile multi only incomplete check" title="mobile multi only incomplete check">
               <span class="text-sm text-slate-700 font-semibold">仅启动未完成任务</span>
             </label>
             <!-- 移动端：添加"忽略任务具体时间"复选框，控制任务筛选时是否忽略时间限制
               <label class="flex items-center gap-2 cursor-pointer p-2 bg-amber-50 rounded-lg hover:bg-amber-100 transition">
-                <input type="checkbox" id="mobile-multi-param-ignore_task_time" checked="" class="w-4 h-4 accent-orange-600 rounded flex-shrink-0">
+                <input type="checkbox" id="mobile-multi-param-ignore_task_time" checked="" class="w-4 h-4 accent-orange-600 rounded flex-shrink-0" aria-label="mobile multi param ignore_task_time" title="mobile multi param ignore_task_time">
                 <span class="text-sm text-slate-700 font-semibold">忽略任务具体时间</span>
               </label> -->
           </div>
@@ -5349,7 +5343,7 @@
               <!-- 滑动开关容器 -->
               <label class="relative inline-flex items-center cursor-pointer">
                 <!-- 隐藏的checkbox，用于存储实际值 -->
-                <input type="checkbox" id="mobile-multi-auto_attendance_enabled" data-key="auto_attendance_enabled" class="sr-only peer">
+                <input type="checkbox" id="mobile-multi-auto_attendance_enabled" data-key="auto_attendance_enabled" class="sr-only peer" aria-label="mobile multi auto_attendance_enabled" title="mobile multi auto_attendance_enabled">
                 <!-- 滑动开关的视觉样式，使用Tailwind的peer修饰符实现状态切换效果 -->
                 <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500">
                 </div>
@@ -5662,11 +5656,11 @@
         <div class="flex gap-2 items-center">
           <div class="flex-1">
             <label class="block text-xs text-slate-500 mb-1">选择日期</label>
-            <input type="date" id="mobile-captcha-history-modal-date" class="input-field text-sm w-full !py-2">
+            <input type="date" id="mobile-captcha-history-modal-date" class="input-field text-sm w-full !py-2" aria-label="mobile captcha history modal date" title="mobile captcha history modal date" placeholder="mobile captcha history modal date">
           </div>
           <div class="flex-1">
             <label class="block text-xs text-slate-500 mb-1">状态筛选</label>
-            <select id="mobile-captcha-history-modal-status" class="select-field text-sm w-full !py-2">
+            <select id="mobile-captcha-history-modal-status" class="select-field text-sm w-full !py-2" aria-label="图形验证码状态">
               <option value="">全部状态</option>
               <option value="verified_success">✅ 验证成功</option>
               <option value="verified_failed">❌ 验证失败</option>
@@ -6279,7 +6273,7 @@
       <div class="space-y-3">
         <div class="flex justify-between items-center">
           <h4 class="font-semibold text-slate-700">现有会话</h4>
-          <button class="p-2 hover:bg-slate-100 rounded-lg transition-colors" onclick="refreshMobileSessionPicker()">
+          <button class="p-2 hover:bg-slate-100 rounded-lg transition-colors" onclick="refreshMobileSessionPicker()" aria-label="按钮">
             <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
               </path>
@@ -6409,7 +6403,7 @@
                 <span id="payment-method-modal-title">添加支付方式</span>
               </h3>
               <!-- 关闭按钮 -->
-              <button onclick="closePaymentMethodModal()" class="text-white hover:text-slate-200 transition-colors">
+              <button onclick="closePaymentMethodModal()" class="text-white hover:text-slate-200 transition-colors" aria-label="按钮">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
@@ -6461,11 +6455,11 @@
               <!-- Logo类型选择 -->
               <div class="flex gap-4 mb-3">
                 <label class="flex items-center cursor-pointer">
-                  <input type="radio" name="logo-type" value="svg" id="logo-type-svg" checked="" class="mr-2" onchange="toggleLogoInput()">
+                  <input type="radio" name="logo-type" value="svg" id="logo-type-svg" checked="" class="mr-2" onchange="toggleLogoInput()" aria-label="logo type svg" title="logo type svg">
                   <span class="text-sm text-slate-700">SVG代码</span>
                 </label>
                 <label class="flex items-center cursor-pointer">
-                  <input type="radio" name="logo-type" value="image" id="logo-type-image" class="mr-2" onchange="toggleLogoInput()">
+                  <input type="radio" name="logo-type" value="image" id="logo-type-image" class="mr-2" onchange="toggleLogoInput()" aria-label="logo type image" title="logo type image">
                   <span class="text-sm text-slate-700">图片URL</span>
                 </label>
               </div>
@@ -6507,7 +6501,7 @@
                 <label class="block text-sm font-semibold text-slate-700">
                   边框颜色
                 </label>
-                <select id="payment-method-border-color" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+                <select id="payment-method-border-color" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm" aria-label="支付方式边框颜色">
                   <option value="hover:border-sky-500">蓝色 (Sky)</option>
                   <option value="hover:border-green-500">绿色 (Green)</option>
                   <option value="hover:border-yellow-500">黄色 (Yellow)</option>
@@ -6524,7 +6518,7 @@
                 <label class="block text-sm font-semibold text-slate-700">
                   文字颜色
                 </label>
-                <select id="payment-method-text-color" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm">
+                <select id="payment-method-text-color" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm" aria-label="支付方式文字颜色">
                   <option value="text-sky-600">蓝色 (Sky)</option>
                   <option value="text-green-600">绿色 (Green)</option>
                   <option value="text-yellow-600">黄色 (Yellow)</option>
@@ -6575,7 +6569,7 @@
                   订单详情
                 </h4>
                 <!-- 关闭按钮 -->
-                <button onclick="closeOrderDetailModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                <button onclick="closeOrderDetailModal()" class="text-slate-400 hover:text-slate-600 transition-colors" aria-label="按钮">
                   <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                   </svg>
@@ -6730,7 +6724,7 @@
               支付日志详情
             </h3>
             <!-- 关闭按钮 -->
-            <button onclick="closePaymentLogDetailModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+            <button onclick="closePaymentLogDetailModal()" class="text-slate-400 hover:text-slate-600 transition-colors" aria-label="按钮">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
               </svg>
@@ -7118,7 +7112,7 @@
           <div class="flex justify-between items-center">
             <h4 class="font-semibold">系统日志</h4>
             <div class="flex gap-2">
-              <select id="log-limit-select_modal" class="text-sm border border-slate-300 rounded px-2 py-1">
+              <select id="log-limit-select_modal" class="text-sm border border-slate-300 rounded px-2 py-1" aria-label="日志每页限制（对话框）">
                 <option value="100">每页100行</option>
                 <option value="200">每页200行</option>
                 <option value="500">每页500行</option>
@@ -7138,7 +7132,7 @@
             </button>
 
             <div class="flex items-center gap-2">
-              <select id="log-page-select" class="text-sm border border-slate-300 rounded px-2 py-1 bg-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none cursor-pointer">
+              <select id="log-page-select" class="text-sm border border-slate-300 rounded px-2 py-1 bg-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none cursor-pointer" aria-label="日志页码">
                 <option value="1">第 1 / 1 页</option>
               </select>
               <span id="log-page-total" class="text-sm text-slate-500 whitespace-nowrap">(共 0 行)</span>
@@ -7155,7 +7149,7 @@
             <h4 class="font-semibold">会话列表</h4>
             <div class="flex items-center gap-3">
               <label id="god-mode-toggle_modal" class="flex items-center gap-2 cursor-pointer" style="display: none">
-                <input type="checkbox" id="god-mode-checkbox_modal" class="w-4 h-4 accent-red-600 rounded cursor-pointer">
+                <input type="checkbox" id="god-mode-checkbox_modal" class="w-4 h-4 accent-red-600 rounded cursor-pointer" aria-label="god mode checkbox_modal" title="god mode checkbox_modal">
                 <span class="text-sm font-semibold text-red-600">查看所有会话</span>
               </label>
               <div id="admin-session-count-display" class="text-sm text-slate-600"></div>
@@ -7174,7 +7168,7 @@
             <h4 class="font-semibold">系统健康状态</h4>
             <div class="flex items-center gap-2">
               <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="health-auto-refresh-toggle" class="w-4 h-4 accent-sky-600 rounded cursor-pointer" checked="">
+                <input type="checkbox" id="health-auto-refresh-toggle" class="w-4 h-4 accent-sky-600 rounded cursor-pointer" checked="" aria-label="health auto refresh toggle" title="health auto refresh toggle">
                 <span class="text-sm text-slate-600">
                   自动刷新(5秒)
                   <span id="health-countdown-display" class="font-semibold text-sky-600"></span>
@@ -7204,7 +7198,7 @@
               <div class="flex items-center gap-4">
                 <img id="profile-avatar-display" src="" alt="用户头像" class="w-20 h-20 rounded-full border-2 border-slate-200" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22%3E%3Crect width=%22100%22 height=%22100%22 fill=%22%23ddd%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2240%22 text-anchor=%22middle%22 dy=%22.3em%22%3E👤%3C/text%3E%3C/svg%3E'">
                 <div class="flex-1 space-y-2">
-                  <input type="file" id="profile-avatar-file" accept="image/*" class="hidden" onchange="previewAvatar(event)">
+                  <input type="file" id="profile-avatar-file" accept="image/*" class="hidden" onchange="previewAvatar(event)" aria-label="profile avatar file" title="profile avatar file">
 
                   <button class="btn btn-ghost border border-slate-300 !py-1.5 !px-3 text-sm" onclick="document.getElementById('profile-avatar-file').click();">
                     <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -7355,7 +7349,7 @@
 
               <div class="space-y-2">
                 <label class="block text-sm font-semibold text-slate-700">主题风格</label>
-                <select id="profile-theme-select" onchange="updateTheme()" class="select-field">
+                <select id="profile-theme-select" onchange="updateTheme()" class="select-field" aria-label="主题选择">
                   <option value="light">浅色主题</option>
                   <option value="dark">深色主题</option>
                 </select>
@@ -7497,7 +7491,7 @@
             <div class="space-y-3">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">🏷️ 封禁类型</label>
-                <select id="ban-type" class="select-field">
+                <select id="ban-type" class="select-field" aria-label="封禁类型">
                   <option value="ip">单个IP</option>
                   <option value="range">IP范围(Range)</option>
                 </select>
@@ -7521,7 +7515,7 @@
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end pt-2 border-t border-blue-100">
                 <div class="md:col-span-2">
                   <label class="block text-sm font-medium text-slate-700 mb-1">🔒 封禁范围</label>
-                  <select id="ban-scope" class="select-field">
+                  <select id="ban-scope" class="select-field" aria-label="封禁范围">
                     <option value="all">封禁所有功能</option>
                     <option value="messages_only">仅封禁留言板</option>
                   </select>
@@ -7552,7 +7546,7 @@
               </div>
 
               <label class="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-                <input type="checkbox" id="sms-enabled" class="w-5 h-5 text-purple-600 rounded focus:ring-purple-500" onchange="handleSmsMainSwitchChange()">
+                <input type="checkbox" id="sms-enabled" class="w-5 h-5 text-purple-600 rounded focus:ring-purple-500" onchange="handleSmsMainSwitchChange()" aria-label="sms enabled" title="sms enabled">
                 <div class="flex-1">
                   <span class="font-semibold text-slate-800 block">启用短信服务</span>
                   <span class="text-xs text-slate-500">关闭此开关将禁用所有短信功能</span>
@@ -7561,7 +7555,7 @@
 
               <div class="ml-8 mt-3 space-y-2 border-l-2 border-purple-200 pl-4">
                 <label class="flex items-center gap-2 cursor-pointer group">
-                  <input type="checkbox" id="sms-enable-phone-modification" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500">
+                  <input type="checkbox" id="sms-enable-phone-modification" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" aria-label="sms enable phone modification" title="sms enable phone modification">
                   <div class="flex-1">
                     <span class="text-sm text-slate-700 group-hover:text-slate-900">允许用户修改手机号</span>
                     <span class="text-xs text-slate-400 block">用户可在个人资料中修改绑定的手机号</span>
@@ -7569,7 +7563,7 @@
                 </label>
 
                 <label class="flex items-center gap-2 cursor-pointer group">
-                  <input type="checkbox" id="sms-enable-phone-login" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500">
+                  <input type="checkbox" id="sms-enable-phone-login" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" aria-label="sms enable phone login" title="sms enable phone login">
                   <div class="flex-1">
                     <span class="text-sm text-slate-700 group-hover:text-slate-900">允许手机号登录</span>
                     <span class="text-xs text-slate-400 block">用户可使用手机号+密码进行登录</span>
@@ -7577,7 +7571,7 @@
                 </label>
 
                 <label class="flex items-center gap-2 cursor-pointer group">
-                  <input type="checkbox" id="sms-enable-phone-registration-verify" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500">
+                  <input type="checkbox" id="sms-enable-phone-registration-verify" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" aria-label="sms enable phone registration verify" title="sms enable phone registration verify">
                   <div class="flex-1">
                     <span class="text-sm text-slate-700 group-hover:text-slate-900">注册时需要短信验证</span>
                     <span class="text-xs text-slate-400 block">用户注册时必须填写手机号并验证</span>
@@ -7724,7 +7718,7 @@
 
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">回调地址</label>
-                <input type="text" id="sms-webhook-url" class="w-full border-2 border-green-200 rounded-lg px-3 py-2 bg-green-50 text-slate-700 font-mono text-sm" readonly="">
+                <input type="text" id="sms-webhook-url" class="w-full border-2 border-green-200 rounded-lg px-3 py-2 bg-green-50 text-slate-700 font-mono text-sm" readonly="" aria-label="sms webhook url" title="sms webhook url" placeholder="sms webhook url">
                 <p class="text-xs text-slate-600 mt-2 flex items-start gap-1">
                   <span>💡</span>
                   <span>将此URL配置到短信宝后台的"短信回复"功能中，即可接收用户回复的短信</span>
@@ -7827,7 +7821,7 @@
               <label for="captcha-length" class="text-sm font-medium text-slate-700 w-32">
                 验证码长度：
               </label>
-              <input type="number" id="captcha-length" min="3" max="6" step="1" value="4" class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500">
+              <input type="number" id="captcha-length" min="3" max="6" step="1" value="4" class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500" aria-label="验证码长度：" title="验证码长度：" placeholder="验证码长度：">
               <span class="text-xs text-slate-500">字符数（3-6），推荐4</span>
             </div>
 
@@ -7835,7 +7829,7 @@
               <label for="captcha-scale-factor" class="text-sm font-medium text-slate-700 w-32">
                 细分倍数：
               </label>
-              <input type="number" id="captcha-scale-factor" min="2" max="4" step="1" value="2" class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500">
+              <input type="number" id="captcha-scale-factor" min="2" max="4" step="1" value="2" class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500" aria-label="细分倍数：" title="细分倍数：" placeholder="细分倍数：">
               <span class="text-xs text-slate-500">像素细分（2-4），推荐2或3</span>
             </div>
 
@@ -7843,7 +7837,7 @@
               <label for="captcha-noise-level" class="text-sm font-medium text-slate-700 w-32">
                 噪点比例：
               </label>
-              <input type="number" id="captcha-noise-level" min="0" max="0.3" step="0.01" value="0.08" class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500">
+              <input type="number" id="captcha-noise-level" min="0" max="0.3" step="0.01" value="0.08" class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500" aria-label="噪点比例：" title="噪点比例：" placeholder="噪点比例：">
               <span class="text-xs text-slate-500">噪点密度（0.0-0.3），推荐0.05-0.15</span>
             </div>
 
@@ -7904,8 +7898,9 @@
               <h4 class="font-semibold text-lg">📜 验证码历史记录</h4>
             </div>
             <div class="flex gap-2 items-center">
-              <input type="date" id="captcha-history-date" class="px-3 py-1 border border-slate-300 rounded-md text-sm" value="">
-              <select id="captcha-history-status" class="px-3 py-1 border border-slate-300 rounded-md text-sm">
+              <label for="captcha-history-date" class="sr-only">选择日期</label>
+              <input type="date" id="captcha-history-date" class="px-3 py-1 border border-slate-300 rounded-md text-sm" value="" placeholder="选择日期" title="选择日期">
+              <select id="captcha-history-status" class="px-3 py-1 border border-slate-300 rounded-md text-sm" aria-label="图形验证码状态">
                 <option value="">全部状态</option>
                 <option value="created">待验证</option>
                 <option value="verified_success">验证成功</option>
@@ -8042,7 +8037,7 @@
                 <div class="text-xs text-slate-500">使用SSL/TLS加密连接</div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="ssl-enabled-toggle" class="sr-only peer">
+                <input type="checkbox" id="ssl-enabled-toggle" class="sr-only peer" aria-label="ssl enabled toggle" title="ssl enabled toggle">
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600">
                 </div>
               </label>
@@ -8056,7 +8051,7 @@
                 </div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="https-only-toggle" class="sr-only peer">
+                <input type="checkbox" id="https-only-toggle" class="sr-only peer" aria-label="https only toggle" title="https only toggle">
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600">
                 </div>
               </label>
@@ -8078,14 +8073,14 @@
                 <label class="block text-sm font-medium text-slate-700 mb-2">
                   证书文件 (.pem, .crt)
                 </label>
-                <input type="file" id="ssl-cert-file-input" accept=".pem,.crt" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer">
+                <input type="file" id="ssl-cert-file-input" accept=".pem,.crt" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer" aria-label="ssl cert file input" title="ssl cert file input">
               </div>
 
               <div class="mb-3">
                 <label class="block text-sm font-medium text-slate-700 mb-2">
                   私钥文件 (.key, .pem)
                 </label>
-                <input type="file" id="ssl-key-file-input" accept=".key,.pem" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer">
+                <input type="file" id="ssl-key-file-input" accept=".key,.pem" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer" aria-label="ssl key file input" title="ssl key file input">
               </div>
 
               <button id="ssl-upload-btn" class="btn btn-primary w-full !py-2" onclick="uploadSSLCertificate()">
@@ -8150,7 +8145,7 @@
               <!-- 切换开关组件：使用peer类实现样式联动 -->
               <label class="relative inline-flex items-center cursor-pointer">
                 <!-- 隐藏的checkbox输入框，实际控制状态 -->
-                <input type="checkbox" id="cdn-enabled-toggle" class="sr-only peer">
+                <input type="checkbox" id="cdn-enabled-toggle" class="sr-only peer" aria-label="cdn enabled toggle" title="cdn enabled toggle">
                 <!-- 开关的视觉表现：背景滑轨和滑块 -->
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600">
                 </div>
@@ -8470,7 +8465,7 @@
           <!-- 操作类型筛选下拉框 -->
           <div>
             <label class="block text-sm font-semibold text-slate-700 mb-2">操作类型（可选）</label>
-            <select id="admin-payment-logs-action-type_modal" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            <select id="admin-payment-logs-action-type_modal" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="操作类型（付款日志）">
               <!-- 默认选项：查询所有类型的操作 -->
               <option value="">全部操作</option>
               <!-- 创建订单：用户发起支付时创建订单的记录 -->
@@ -8493,12 +8488,12 @@
             <!-- 开始日期输入框 -->
             <div>
               <label class="block text-sm font-semibold text-slate-700 mb-2">开始日期（可选）</label>
-              <input type="date" id="admin-payment-logs-start-date_modal" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+              <input type="date" id="admin-payment-logs-start-date_modal" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="admin payment logs start date_modal" title="admin payment logs start date_modal" placeholder="admin payment logs start date_modal">
             </div>
             <!-- 结束日期输入框 -->
             <div>
               <label class="block text-sm font-semibold text-slate-700 mb-2">结束日期（可选）</label>
-              <input type="date" id="admin-payment-logs-end-date_modal" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+              <input type="date" id="admin-payment-logs-end-date_modal" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="admin payment logs end date_modal" title="admin payment logs end date_modal" placeholder="admin payment logs end date_modal">
             </div>
           </div>
 
@@ -8792,7 +8787,7 @@
               <div>
                 <label class="block text-sm font-semibold text-slate-700 mb-2">订单状态</label>
                 <!-- 下拉选择框：用于筛选不同状态的订单 -->
-                <select id="admin-filter-status_modal" onchange="filterPaymentOrders()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                <select id="admin-filter-status_modal" onchange="filterPaymentOrders()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="过滤支付订单状态（对话框）">
                   <!-- 提供所有可能的订单状态选项 -->
                   <option value="">全部状态</option>
                   <option value="pending">已创建待支付</option>
@@ -8810,7 +8805,7 @@
               <div>
                 <label class="block text-sm font-semibold text-slate-700 mb-2">支付方式</label>
                 <!-- 下拉选择框：用于筛选不同支付方式的订单 -->
-                <select id="admin-filter-paytype_modal" onchange="filterPaymentOrders()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                <select id="admin-filter-paytype_modal" onchange="filterPaymentOrders()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none" aria-label="过滤支付类型（对话框）">
                   <!-- 提供所有支持的支付方式选项 -->
                   <option value="">全部支付方式</option>
                   <option value="alipay">支付宝</option>
@@ -9131,7 +9126,7 @@
                 支付方式
                 <span class="text-red-500">*</span>
               </label>
-              <select id="admin-test-payment-method_modal" class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow">
+              <select id="admin-test-payment-method_modal" class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" aria-label="选择支付方式（对话框）">
                 <!-- 支付宝 -->
                 <option value="alipay">支付宝</option>
                 <!-- 微信支付 -->
@@ -9152,7 +9147,7 @@
               </label>
               <!-- 下拉选择框：提供多种支付接口类型供测试 -->
               <!-- onchange事件：当选择改变时，自动显示/隐藏auth_code输入框 -->
-              <select id="admin-test-payment-type_modal" class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" onchange="toggleAuthCodeField()">
+              <select id="admin-test-payment-type_modal" class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow" onchange="toggleAuthCodeField()" aria-label="支付方式种类（对话框）">
                 <!-- 选项1：跳转支付 -->
                 <option value="web">通用网页支付(web)</option>
                 <!-- 选项2：HTML支付 -->
@@ -9353,7 +9348,7 @@
               <h6 class="font-semibold text-sm text-slate-700 mb-2">💳 支付信息 (pay_info)</h6>
               
               <!-- 支付信息显示框 -->
-              <textarea id="admin-test-pay-url_modal" readonly="" rows="4" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-sky-500"></textarea>
+              <textarea id="admin-test-pay-url_modal" readonly="" rows="4" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-sky-500" aria-label="admin test pay url_modal" title="admin test pay url_modal" placeholder="admin test pay url_modal"></textarea>
               
               <!-- 支付信息说明 -->
               <p id="admin-test-pay-info-desc_modal" class="text-xs text-slate-500 italic">
@@ -9720,7 +9715,7 @@
               <!-- 开关按钮 -->
               <label class="relative inline-flex items-center cursor-pointer ml-4">
                 <!-- 隐藏的复选框，实际控制开关状态 -->
-                <input type="checkbox" id="pricing-require-payment_modal" class="sr-only peer">
+                <input type="checkbox" id="pricing-require-payment_modal" class="sr-only peer" aria-label="pricing require payment_modal" title="pricing require payment_modal">
                 <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
               </label>
@@ -9794,7 +9789,7 @@
               <!-- 开关按钮 -->
               <label class="relative inline-flex items-center cursor-pointer ml-4">
                 <!-- 隐藏的复选框，实际控制开关状态 -->
-                <input type="checkbox" id="pricing-show-available-runs_modal" class="sr-only peer">
+                <input type="checkbox" id="pricing-show-available-runs_modal" class="sr-only peer" aria-label="pricing show available runs_modal" title="pricing show available runs_modal">
                 <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
               </label>
@@ -9843,7 +9838,7 @@
               <!-- 开关按钮 -->
               <label class="relative inline-flex items-center cursor-pointer ml-4">
                 <!-- 隐藏的复选框，实际控制开关状态 -->
-                <input type="checkbox" id="pricing-show-register-hint_modal" class="sr-only peer">
+                <input type="checkbox" id="pricing-show-register-hint_modal" class="sr-only peer" aria-label="pricing show register hint_modal" title="pricing show register hint_modal">
                 <!-- 开关的视觉表现（使用Tailwind CSS的peer特性实现状态切换） -->
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
               </label>
@@ -10111,7 +10106,7 @@
       </div>
 
       <div class="space-y-4">
-        <input type="hidden" id="reminder-id-field">
+        <input type="hidden" id="reminder-id-field" aria-label="reminder id field" title="reminder id field" placeholder="reminder id field">
 
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-2">
@@ -10134,7 +10129,7 @@
             <label class="block text-sm font-semibold text-slate-700 mb-2">
               ⏰ 开始时间 <span class="text-red-500">*</span>
             </label>
-            <input type="time" id="reminder-start-time-field" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <input type="time" id="reminder-start-time-field" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" aria-label="reminder start time field" title="reminder start time field" placeholder="reminder start time field">
             <p class="text-xs text-slate-500 mt-1">24小时制（如 19:00）</p>
           </div>
 
@@ -10142,7 +10137,7 @@
             <label class="block text-sm font-semibold text-slate-700 mb-2">
               ⏰ 结束时间 <span class="text-red-500">*</span>
             </label>
-            <input type="time" id="reminder-end-time-field" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <input type="time" id="reminder-end-time-field" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" aria-label="reminder end time field" title="reminder end time field" placeholder="reminder end time field">
             <p class="text-xs text-slate-500 mt-1">24小时制（如 20:00）</p>
           </div>
         </div>
@@ -10157,7 +10152,7 @@
         </div>
 
         <div class="flex items-center gap-2">
-          <input type="checkbox" id="reminder-enabled-field" class="w-4 h-4 text-sky-600 rounded focus:ring-sky-500" checked="">
+          <input type="checkbox" id="reminder-enabled-field" class="w-4 h-4 text-sky-600 rounded focus:ring-sky-500" checked="" aria-label="✅ 启用此提醒（取消勾选则暂时禁用，不会删除数据）" title="✅ 启用此提醒（取消勾选则暂时禁用，不会删除数据）">
           <label for="reminder-enabled-field" class="text-sm font-semibold text-slate-700">
             ✅ 启用此提醒（取消勾选则暂时禁用，不会删除数据）
           </label>
@@ -10307,12 +10302,12 @@
       <div class="space-y-3">
         <div>
           <label class="block text-sm font-semibold text-slate-700">用户名</label>
-          <input type="text" id="admin-modify-nickname-username" class="input-field mt-1" readonly="">
+          <input type="text" id="admin-modify-nickname-username" class="input-field mt-1" readonly="" aria-label="admin modify nickname username" title="admin modify nickname username" placeholder="admin modify nickname username">
         </div>
 
         <div>
           <label class="block text-sm font-semibold text-slate-700">当前昵称</label>
-          <input type="text" id="admin-modify-nickname-current" class="input-field mt-1" readonly="">
+          <input type="text" id="admin-modify-nickname-current" class="input-field mt-1" readonly="" aria-label="admin modify nickname current" title="admin modify nickname current" placeholder="admin modify nickname current">
         </div>
 
         <div>
@@ -10345,14 +10340,14 @@
       <div class="space-y-3">
         <div>
           <label class="block text-sm font-semibold text-slate-700">用户名</label>
-          <input type="text" id="admin-modify-phone-username" class="input-field mt-1" readonly="">
+          <input type="text" id="admin-modify-phone-username" class="input-field mt-1" readonly="" aria-label="admin modify phone username" title="admin modify phone username" placeholder="admin modify phone username">
         </div>
 
         <div>
           <label class="block text-sm font-semibold text-slate-700">当前手机号</label>
           <div class="phone-input-wrapper mt-1">
             <span class="phone-prefix">+86 </span>
-            <input type="tel" id="admin-modify-phone-current" class="input-field" readonly="">
+            <input type="tel" id="admin-modify-phone-current" class="input-field" readonly="" aria-label="admin modify phone current" title="admin modify phone current" placeholder="admin modify phone current">
           </div>
         </div>
 
@@ -10499,7 +10494,7 @@
     <div class="panel rounded-2xl p-6 w-[35rem] space-y-4 relative">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-xl font-bold text-green-600">🧪 短信测试发送</h3>
-        <button onclick="closeSMSTestModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+        <button onclick="closeSMSTestModal()" class="text-slate-400 hover:text-slate-600 transition-colors" aria-label="按钮">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
@@ -10656,7 +10651,7 @@
     <div class="panel rounded-2xl p-6 w-[40rem] max-h-[80vh] overflow-y-auto space-y-4 relative">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-xl font-bold text-blue-600">🔍 验证码详细信息</h3>
-        <button onclick="closeCaptchaDetailModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+        <button onclick="closeCaptchaDetailModal()" class="text-slate-400 hover:text-slate-600 transition-colors" aria-label="按钮">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
@@ -11248,7 +11243,7 @@
     <div class="modal-content" style="max-width: 500px">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-xl font-bold text-slate-800">修改绑定手机号</h3>
-        <button onclick="closeModifyPhoneModal()" class="text-slate-400 hover:text-slate-600">
+        <button onclick="closeModifyPhoneModal()" class="text-slate-400 hover:text-slate-600" aria-label="按钮">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
@@ -11260,7 +11255,7 @@
           <label class="block text-sm font-semibold text-slate-700 mb-2">当前手机号</label>
           <div class="phone-input-wrapper">
             <span class="phone-prefix">+86 </span>
-            <input type="tel" id="modify-phone-current" class="input-field" readonly="">
+            <input type="tel" id="modify-phone-current" class="input-field" readonly="" aria-label="modify phone current" title="modify phone current" placeholder="modify phone current">
           </div>
         </div>
         <div>
@@ -11306,7 +11301,7 @@
     <!-- 弹窗内容容器：使用圆角、内边距、阴影等样式 -->
     <div class="panel rounded-2xl w-full max-w-md p-6 space-y-4 relative bg-white/95 shadow-xl">
       <!-- 关闭按钮：位于右上角，点击关闭弹窗 -->
-      <button id="payment-close-btn" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all">
+      <button id="payment-close-btn" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all" aria-label="payment close btn">
         <!-- SVG 关闭图标 -->
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
           <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
@@ -11378,7 +11373,7 @@
     <!-- 弹窗内容容器：比支付弹窗稍大，用于显示列表 -->
     <div class="panel rounded-2xl w-full max-w-2xl p-6 space-y-4 relative bg-white/95 shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
       <!-- 关闭按钮：位于右上角 -->
-      <button id="orders-close-btn" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all z-10">
+      <button id="orders-close-btn" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all z-10" aria-label="orders close btn">
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
           <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
         </svg>
@@ -11422,19 +11417,89 @@
       </div>
 
       <!-- 分页控制区域 -->
-      <div id="orders-pagination" class="flex justify-between items-center pt-4 border-t border-slate-200">
-        <!-- 上一页按钮 -->
-        <button id="orders-prev-btn" class="btn btn-ghost !py-1 !px-3 text-xs" disabled="">
-          上一页
-        </button>
-        <!-- 页码显示 -->
-        <span id="orders-page-info" class="text-sm text-slate-600">第 1 页</span>
-        <!-- 下一页按钮 -->
-        <button id="orders-next-btn" class="btn btn-ghost !py-1 !px-3 text-xs">
-          下一页
-        </button>
+          <div id="orders-pagination" class="flex justify-between items-center pt-4 border-t border-slate-200">
+            <!-- 上一页按钮 -->
+            <button id="orders-prev-btn" class="btn btn-ghost !py-1 !px-3 text-xs" disabled="">
+              上一页
+            </button>
+            <!-- 页码显示 -->
+            <span id="orders-page-info" class="text-sm text-slate-600">第 1 页</span>
+            <!-- 下一页按钮 -->
+            <button id="orders-next-btn" class="btn btn-ghost !py-1 !px-3 text-xs">
+              下一页
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-</body>
-</html>
+
+      <script>
+        // 自动为缺少可访问名称的表单控件和按钮注入 aria-label/title/placeholder
+        (function(){
+          function getLabelTextFor(element){
+            if(!element) return null;
+            var id = element.id;
+            if(id){
+              var lab = document.querySelector('label[for="'+id+'"]');
+              if(lab && lab.textContent) return lab.textContent.trim();
+            }
+            // 查找最近的前置 label
+            var prev = element.previousElementSibling;
+            if(prev && prev.tagName.toLowerCase()==='label' && prev.textContent) return prev.textContent.trim();
+            // 向上查找祖先中的 label
+            var anc = element.closest('label');
+            if(anc && anc.textContent) return anc.textContent.trim();
+            // 查找同一容器内的 label
+            var parent = element.parentElement;
+            if(parent){
+              var lab2 = parent.querySelector('label');
+              if(lab2 && lab2.textContent) return lab2.textContent.trim();
+            }
+            return null;
+          }
+
+          function ensureAccessibleNames(){
+            var fixed = 0;
+            var controls = Array.prototype.slice.call(document.querySelectorAll('input, textarea, select, button'));
+            controls.forEach(function(el){
+              var tag = el.tagName.toLowerCase();
+              var hasName = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.title || (tag==='button' && el.textContent && el.textContent.trim().length>0) || el.placeholder || (el.getAttribute('role')==='img' && el.alt);
+              if(!hasName){
+                var labelText = getLabelTextFor(el);
+                if(labelText){
+                  // 对于按钮，优先设置可见文字（如果为空则设置 aria-label）
+                  if(tag==='button'){
+                    if(el.textContent.trim().length===0){
+                      el.setAttribute('aria-label', labelText);
+                      fixed++;
+                    }
+                  } else if(tag==='input' || tag==='textarea' || tag==='select'){
+                    // 如果是文件或密码，不设置 placeholder
+                    var type = (el.getAttribute('type')||'').toLowerCase();
+                    if(type!=='file' && type!=='password'){
+                      if(!el.placeholder) el.placeholder = labelText;
+                    }
+                    if(!el.title) el.title = labelText;
+                    if(!el.getAttribute('aria-label')) el.setAttribute('aria-label', labelText);
+                    fixed++;
+                  }
+                } else {
+                  // 若找不到 label 文本，则为按钮等添加通用 aria-label（尽量避免覆盖已有）
+                  if(tag==='button' && !el.getAttribute('aria-label')){
+                    el.setAttribute('aria-label', '按钮');
+                    fixed++;
+                  }
+                }
+              }
+            });
+            if(fixed>0) console.log('Accessibility helper: fixed', fixed, 'elements');
+          }
+
+          if(document.readyState==='loading'){
+            document.addEventListener('DOMContentLoaded', ensureAccessibleNames);
+          } else {
+            ensureAccessibleNames();
+          }
+        })();
+      </script>
+    </body>
+    </html>
