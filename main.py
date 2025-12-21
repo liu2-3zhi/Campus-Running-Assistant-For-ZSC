@@ -19975,7 +19975,7 @@ def start_web_server(args_param):
             return jsonify(success=False, message="文件名不合法"), 400
 
         ext = filename.rsplit('.', 1)[1].lower()
-        if ext not in ALLOWED_EXTENSIONS:
+        if ext.lower() not in [e.lower() for e in ALLOWED_EXTENSIONS]:
             return jsonify(success=False, message="不支持的文件类型"), 400
 
         timestamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
@@ -20059,7 +20059,41 @@ def start_web_server(args_param):
                     except Exception as mv_err:
                         logging.error(f"移动到 refuse 目录失败: {mv_err}")
 
-                    return jsonify(success=False, message="图片审核未通过，已拒绝显示"), 403
+                    # 尝试从返回结果中提取详细原因并返回给客户端
+                    details = None
+                    try:
+                        if isinstance(result, dict):
+                            details = result.get("data") or result
+                    except Exception:
+                        details = result
+
+                    # 聚合 data 中的消息以生成更友好的提示
+                    msgs = []
+                    if isinstance(details, list):
+                        for item in details:
+                            if isinstance(item, dict):
+                                m = item.get("msg") or item.get("message") or item.get("conclusion")
+                                if m:
+                                    msgs.append(str(m))
+                            else:
+                                msgs.append(str(item))
+                    else:
+                        if isinstance(details, dict):
+                            m = details.get("msg") or details.get("message") or details.get("conclusion")
+                            if m:
+                                msgs.append(str(m))
+                        else:
+                            msgs.append(str(details))
+
+                    human_msg = "图片审核未通过，已拒绝显示"
+                    if msgs:
+                        # 限长，避免返回过长信息
+                        joined = "; ".join(msgs)
+                        if len(joined) > 800:
+                            joined = joined[:800] + "..."
+                        human_msg = f"图片审核未通过，已拒绝显示: {joined}"
+
+                    return jsonify(success=False, message=human_msg, details=details or result), 403
 
             except Exception as e:
                 # 审核过程出现异常也将图片视为被拒绝并移动（以保证安全）
