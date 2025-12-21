@@ -37865,6 +37865,23 @@ async function loadSystemConfig() {
       "是否允许未注册用户以游客身份使用系统。"
     );
     html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">帮助配置</h5>';
+    // 新手帮助相关配置
+    html += createInput(
+      "Guest",
+      "show_newbie_help",
+      "显示新手帮助",
+      "boolean",
+      "是否显示新手帮助提示。"
+    );
+    html += createInput(
+      "Guest",
+      "newbie_help_url",
+      "新手帮助链接",
+      "text",
+      "指向新手帮助页面或文档的URL地址。"
+    );
+    html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">系统配置</h5>';
     html += createInput(
       "System",
@@ -40363,7 +40380,10 @@ async function saveSystemConfig() {
   try {
     const configData = {
       Guest: {
-        allow_guest_login: $("config-Guest-allow_guest_login").value === "true",
+        allow_guest_login: $("config-Guest-allow_guest_login").value === "true",},
+      Help:{
+        show_newbie_help: $("config-Guest-show_newbie_help").value === "true",
+        newbie_help_url: $("config-Guest-newbie_help_url").value || "",
       },
       System: {
         session_expiry_days: parseInt(

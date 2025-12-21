@@ -25837,6 +25837,23 @@ def start_web_server(args_param):
                             "Guest", "allow_guest_login", fallback=True
                         ),
                     )
+                    ,
+                    "show_newbie_help": _get_config_value(
+                        config,
+                        "Help",
+                        "show_newbie_help",
+                        fallback=default_config.getboolean(
+                            "Help", "show_newbie_help", fallback=False
+                        ),
+                    ),
+                    "newbie_help_url": _get_config_value(
+                        config,
+                        "Help",
+                        "newbie_help_url",
+                        fallback=default_config.get(
+                            "Help", "newbie_help_url", fallback=""
+                        ),
+                    ),
                 },
                 "System": {
                     "session_expiry_days": _get_config_value(
@@ -26146,6 +26163,21 @@ def start_web_server(args_param):
                     "Guest",
                     "allow_guest_login",
                     str(data["Guest"]["allow_guest_login"]).lower(),
+                )
+            # 处理新手帮助配置保存
+            if "Help" in data and "show_newbie_help" in data["Help"]:
+                ensure_section(config, "Help")
+                config.set(
+                    "Help",
+                    "show_newbie_help",
+                    str(data["Help"]["show_newbie_help"]).lower(),
+                )
+            if "Help" in data and "newbie_help_url" in data["Help"]:
+                ensure_section(config, "Help")
+                config.set(
+                    "Help",
+                    "newbie_help_url",
+                    str(data["Help"]["newbie_help_url"]),
                 )
             if "System" in data:
                 ensure_section(config, "System")

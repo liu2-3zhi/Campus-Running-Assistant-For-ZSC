@@ -47,8 +47,17 @@
   }
   #newbie-help-btn svg{width:18px;height:18px;color:#0f172a;flex:0 0 auto}
   #newbie-help-modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:10000}
-  #newbie-help-modal .modal-backdrop{position:absolute; inset:0; background:rgba(0,0,0,0.45)}
-  #newbie-help-modal .modal-card{position:relative; width:100%; max-width:440px; background:#eef6fb; padding:22px; border-radius:16px; text-align:center; box-shadow:12px 12px 24px rgba(0,0,0,0.08), -8px -8px 16px rgba(255,255,255,0.9); border:1px solid rgba(255,255,255,0.6)}
+  #newbie-help-modal .modal-backdrop{position:absolute; inset:0; background:rgba(2,6,23,0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px)}
+  #newbie-help-modal .modal-card{position:relative; width:100%; max-width:520px; background:linear-gradient(180deg,#ffffff 0%,#eef6fb 100%); padding:20px 22px; border-radius:14px; text-align:left; box-shadow:0 10px 30px rgba(2,6,23,0.15); border:1px solid rgba(15,23,42,0.06); transform:translateY(-6px) scale(.98); transition:transform .22s cubic-bezier(.2,.9,.3,1), opacity .18s}
+  #newbie-help-modal.show .modal-card{transform:translateY(0) scale(1);}
+  #newbie-help-modal .modal-card header{display:flex;align-items:center;gap:12px;padding-bottom:6px}
+  #newbie-help-modal .modal-card header h3{margin:0;font-size:1.125rem;font-weight:700;color:#0f172a}
+  #newbie-help-modal .modal-card .modal-close{position:absolute;right:12px;top:12px;border:none;background:transparent;color:#64748b;font-size:18px;cursor:pointer;padding:6px;border-radius:8px}
+  #newbie-help-modal .modal-card .modal-close:hover{background:rgba(0,0,0,0.04)}
+  #newbie-help-modal .modal-card .url-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+  #newbie-help-modal .modal-card .url-row a{color:#0366d6;text-decoration:underline;word-break:break-all;flex:1}
+  #newbie-help-modal .modal-card .url-row .btn-copy{padding:6px 10px;border-radius:8px;border:none;background:#fff;border:1px solid rgba(15,23,42,0.06);cursor:pointer}
+  #newbie-help-modal .modal-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}
   .btn-neo{padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-weight:600}
   .btn-neo.confirm{background:linear-gradient(180deg,#60a5fa,#2563eb);color:white;box-shadow:4px 4px 8px rgba(37,99,235,0.18), -2px -2px 6px rgba(255,255,255,0.6)}
   .btn-neo.cancel{background:#fff;border:1px solid #d9e6f7;color:#0f172a;box-shadow:inset 2px 2px 6px rgba(0,0,0,0.03), -4px -4px 8px rgba(255,255,255,0.9)}
@@ -81,12 +90,21 @@
   <div id="newbie-help-modal" aria-hidden="true">
     <div class="modal-backdrop" onclick="closeNewbieModal()"></div>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="newbie-help-title">
-      <h3 id="newbie-help-title" style="font-size:1.125rem;font-weight:700;color:#0f172a">即将前往新手帮助</h3>
-      <p id="newbie-help-url" style="color:#0f172a;margin-top:8px;font-size:0.95rem;word-break:break-all"></p>
-      <div class="modal-actions" style="display:flex;gap:12px;justify-content:center;margin-top:18px">
+      <header>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path d="M12 2a9 9 0 100 18 9 9 0 000-18z" fill="#60a5fa" opacity=".15"/><path d="M12 8a1 1 0 100 2 1 1 0 000-2zm0 3.5c-.69 0-1.25.56-1.25 1.25V15h2.5v-2.25c0-.69-.56-1.25-1.25-1.25z" fill="#2563eb"/></svg>
+        <h3 id="newbie-help-title">即将前往新手帮助</h3>
+      </header>
+      <div id="newbie-help-url" style="color:#0f172a;margin-top:10px;font-size:0.95rem;word-break:break-all">
+        <div class="url-row">
+          <a id="newbie-help-link" href="#" target="_blank" rel="noopener noreferrer">--</a>
+          <button id="newbie-help-copy" class="btn-copy" title="复制链接">复制</button>
+        </div>
+      </div>
+      <div class="modal-actions">
         <button class="btn-neo cancel" id="newbie-help-cancel">取消</button>
         <button class="btn-neo confirm" id="newbie-help-confirm">前往</button>
       </div>
+      <button class="modal-close" aria-label="关闭弹窗" onclick="closeNewbieModal()">×</button>
     </div>
   </div>
 
@@ -98,9 +116,13 @@
         var btn = document.getElementById('newbie-help-btn');
         var modal = document.getElementById('newbie-help-modal');
         var urlElem = document.getElementById('newbie-help-url');
+        var linkElem = document.getElementById('newbie-help-link');
+        var copyBtn = document.getElementById('newbie-help-copy');
         if(conf.show_newbie_help){
           btn.style.display = 'flex';
-          urlElem.textContent = conf.newbie_help_url || '';
+          var url = conf.newbie_help_url || '';
+          if(linkElem){ linkElem.textContent = url || '--'; linkElem.href = url || '#'; }
+          if(copyBtn){ copyBtn.style.display = url ? 'inline-block' : 'none'; }
         } else {
           btn.style.display = 'none';
         }
@@ -130,10 +152,27 @@
       var cancel = document.getElementById('newbie-help-cancel');
       var confirm = document.getElementById('newbie-help-confirm');
       if(cancel) cancel.addEventListener('click', window.closeNewbieModal);
+      var copyBtn = document.getElementById('newbie-help-copy');
+      if(copyBtn) copyBtn.addEventListener('click', function(){
+        var url = (window.APP_CONFIG && window.APP_CONFIG.newbie_help_url) || '';
+        if(!url) return;
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(url).then(function(){
+            copyBtn.textContent = '已复制'; setTimeout(function(){ copyBtn.textContent = '复制'; },1500);
+          }).catch(function(){ alert('复制失败，请手动复制链接'); });
+        } else {
+          try{ var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); copyBtn.textContent='已复制'; setTimeout(function(){ copyBtn.textContent='复制'; },1500);
+          }catch(e){ alert('复制失败，请手动复制链接'); }
+        }
+      });
       if(confirm) confirm.addEventListener('click', function(){
         var url = (window.APP_CONFIG && window.APP_CONFIG.newbie_help_url) || '';
         if(!url){ window.closeNewbieModal(); return; }
-        window.location.href = url;
+        try{
+          var newWin = window.open(url, '_blank');
+          if(newWin) try{ newWin.opener = null; }catch(e){}
+        }catch(e){ window.location.href = url; }
+        window.closeNewbieModal();
       });
       document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ window.closeNewbieModal(); } });
     });
