@@ -18137,6 +18137,15 @@ function switchAdminTab(tab) {
       remindersPanel.classList.remove("hidden");
       loadReminders();
       stopHealthAutoRefresh();
+      setTimeout(() => {
+      openReminderEditModal();}, 500);
+      setTimeout(() => {
+      closeReminderEditModal()
+      }, 1000);
+
+
+
+
     }
   } else if (tab === "ssl") {
     const sslTab = $("admin-tab-ssl_modal");
@@ -39107,12 +39116,44 @@ async function openReminderEditModal(reminderId = "") {
     startTimeField.value = "";
     endTimeField.value = "";
     enabledField.checked = true;
+    try {
+      if (typeof window.reminderEditor !== 'undefined' && window.reminderEditor) {
+        if (typeof window.reminderEditor.clear === 'function') {
+          window.reminderEditor.clear();
+        } else if (typeof window.reminderEditor.setMarkdown === 'function') {
+          window.reminderEditor.setMarkdown('');
+        } else if (window.reminderEditor.codeMirror && typeof window.reminderEditor.codeMirror.setValue === 'function') {
+          window.reminderEditor.codeMirror.setValue('');
+        }
+      }
+    } catch (e) {
+      console.warn('清空 reminder 编辑器失败:', e);
+    }
   }
   modal.classList.remove("hidden");
   modal.classList.add("flex");
   // 延迟初始化编辑器以避免每次打开都加载资源
   setTimeout(() => {
-    ensureReminderEditor().then(() => {
+    ensureReminderEditor().then((editor) => {
+      try {
+        if (!reminderId) {
+          const ed = editor || window.reminderEditor;
+          if (ed) {
+            if (typeof ed.clear === 'function') {
+              ed.clear();
+            } else if (typeof ed.setMarkdown === 'function') {
+              ed.setMarkdown('');
+            } else if (ed.codeMirror && typeof ed.codeMirror.setValue === 'function') {
+              ed.codeMirror.setValue('');
+            } else {
+              const msgF = $("reminder-message-field");
+              if (msgF) msgF.value = '';
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('延迟清空 reminder 编辑器失败:', e);
+      }
       titleField.focus();
     });
   }, 50);
