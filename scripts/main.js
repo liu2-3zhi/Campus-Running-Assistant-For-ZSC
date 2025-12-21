@@ -16298,9 +16298,11 @@ if (typeof window !== "undefined") {
         el.style.right = "auto";
         el.style.transition = "none";
         try {
+          if (typeof el._origTouchAction === 'undefined') el._origTouchAction = el.style.touchAction || '';
+          if (typeof el._origUserSelect === 'undefined') el._origUserSelect = el.style.userSelect || '';
           el.style.touchAction = "none";
           el.style.userSelect = "none";
-          el.style.webkitUserSelect = "none";
+          el.style.webkitUserSelect = 'none';
         } catch (ex) {}
       };
 
@@ -16372,6 +16374,13 @@ if (typeof window !== "undefined") {
             isDragging = false;
             el.style.transition = "";
           }
+          try{
+            if (typeof el._origTouchAction !== 'undefined') el.style.touchAction = el._origTouchAction || '';
+            if (typeof el._origUserSelect !== 'undefined') el.style.userSelect = el._origUserSelect || '';
+            el.style.webkitUserSelect = '';
+          }catch(ex){}
+          // 在短时间后清除移动标记，允许用户在拖拽结束后正常点击
+          setTimeout(()=>{ hasMoved = false; }, 300);
           try { if (activePointerId !== null) el.releasePointerCapture(activePointerId); } catch (ex) {}
           activePointerId = null;
         };
@@ -16438,6 +16447,13 @@ if (typeof window !== "undefined") {
             isDragging = false;
             el.style.transition = "";
           }
+          try{
+            if (typeof el._origTouchAction !== 'undefined') el.style.touchAction = el._origTouchAction || '';
+            if (typeof el._origUserSelect !== 'undefined') el.style.userSelect = el._origUserSelect || '';
+            el.style.webkitUserSelect = '';
+          }catch(ex){}
+          // 在短时间后清除移动标记，允许用户在拖拽结束后正常点击
+          setTimeout(()=>{ hasMoved = false; }, 300);
           document.removeEventListener("mousemove", onMove);
           document.removeEventListener("touchmove", onMove);
           document.removeEventListener("mouseup", onEnd);
@@ -40547,10 +40563,18 @@ function escapeHtml(text) {
 // 定时提醒检查器
 // ============================================================================
 function startReminderChecker() {
-  checkAndShowReminders();
-  setInterval(checkAndShowReminders, 60 * 1000);
+  // 首次检查看提醒应在页面完全加载后执行，确保 Markdown 解析器等已就绪
+  const startChecks = () => {
+    try{ checkAndShowReminders(); }catch(e){console.error('[定时提醒] 首次检查失败', e);}
+    setInterval(checkAndShowReminders, 60 * 1000);
+    console.log("[定时提醒] 定时检查已启动，每分钟检查一次");
+  };
 
-  console.log("[定时提醒] 定时检查已启动，每分钟检查一次");
+  if (document.readyState === 'complete') {
+    startChecks();
+  } else {
+    window.addEventListener('load', startChecks, { once: true });
+  }
 }
 async function saveSystemConfig() {
   const btn = $("admin-save-config_modal");
