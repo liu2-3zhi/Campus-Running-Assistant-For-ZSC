@@ -19944,6 +19944,84 @@ def start_web_server(args_param):
     app.config["SESSION_TYPE"] = "filesystem"
     app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(days=7)
 
+    # 用户自定义图片上传目录与路由
+    MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
+    app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE_BYTES
+
+    UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+    @app.route("/upload", methods=["POST"])
+    def upload_image():
+        from flask import request, jsonify, url_for
+        from werkzeug.utils import secure_filename
+
+        ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
+
+        # 简单的大小检查（使用 Content-Length）
+        content_length = request.content_length
+        if content_length is not None and content_length > app.config.get("MAX_CONTENT_LENGTH", MAX_UPLOAD_SIZE_BYTES):
+            return jsonify(success=False, message=f"文件大小超过最大限制 {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB"), 413
+
+        # 支持两种常见字段名：'file' 和 editormd 的 'editormd-image-file'
+        file = request.files.get("file") or request.files.get("editormd-image-file")
+        if not file or not getattr(file, 'filename', None):
+            return jsonify(success=False, message="没有检测到上传文件"), 400
+
+        filename = secure_filename(file.filename)
+        if "." not in filename:
+            return jsonify(success=False, message="文件名不合法"), 400
+
+        ext = filename.rsplit('.', 1)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            return jsonify(success=False, message="不支持的文件类型"), 400
+
+        timestamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        save_name = f"{timestamp}_{filename}"
+        save_path = os.path.join(UPLOADS_DIR, save_name)
+        try:
+            file.save(save_path)
+        except Exception as e:
+            logging.error(f"上传保存失败: {e}")
+            return jsonify(success=False, message="文件保存失败"), 500
+
+        # 二次检查实际保存的文件大小，超出则删除并返回错误
+        try:
+            actual_size = os.path.getsize(save_path)
+            if actual_size > app.config.get("MAX_CONTENT_LENGTH", MAX_UPLOAD_SIZE_BYTES):
+                try:
+                    os.remove(save_path)
+                except Exception:
+                    pass
+                return jsonify(success=False, message=f"文件大小超过最大限制 {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB"), 413
+        except Exception as e:
+            logging.warning(f"无法获取文件大小: {e}")
+
+        file_url = url_for('download_file', filename=save_name, _external=False)
+        return jsonify(success=True, url=file_url, filename=save_name)
+
+    @app.route("/download/<path:filename>", methods=["GET"]) 
+    def download_file(filename: str):
+        from flask import send_from_directory, abort, request
+
+        # 基本安全检查，拒绝路径穿越
+        if ".." in filename or filename.startswith('/'):
+            abort(404)
+
+        file_path = os.path.join(UPLOADS_DIR, filename)
+        if not os.path.exists(file_path):
+            abort(404)
+
+        return send_from_directory(UPLOADS_DIR, filename)
+
+    @app.route("/download", methods=["GET"])
+    def download_query():
+        from flask import request, redirect, abort
+        name = request.args.get('name')
+        if not name:
+            abort(400)
+        return redirect(url_for('download_file', filename=name))
+
     # ===== JS/CSS 文件本地缓存系统 =====
     # 缓存目录配置
     JS_CACHE_DIR = os.path.join(
@@ -19992,6 +20070,11 @@ def start_web_server(args_param):
         "amap-loader": {
             "url": "https://webapi.amap.com/loader.js",
             "filename": "amap-loader.js",
+            "type": "js",
+        },
+        "jquery": {
+            "url": "https://code.jquery.com/jquery-3.7.1.js",
+            "filename": "jquery-3.7.1.js",
             "type": "js",
         },
     }

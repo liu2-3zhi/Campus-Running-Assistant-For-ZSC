@@ -787,15 +787,15 @@ function initMessageMarkdownEditor() {
 
         // ===== 图片上传配置 =====
         // 启用/禁用 上传功能（是否允许上传图片到服务器）
-        imageUpload: false,
+        imageUpload: true,
         // 支持的图片格式（允许上传的图片文件类型数组）
         imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
         // 上传 URL（图片上传的服务器端点地址）
-        imageUploadURL: "",
+        imageUploadURL: "/upload",
         // 启用/禁用 跨域上传（是否支持跨域上传图片）
         crossDomainUpload: false,
         // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
-        uploadCallbackURL: "",
+        // uploadCallbackURL: "",
 
         // ===== 目录和扩展功能配置 =====
         // 启用/禁用 目录功能（是否自动生成文章目录）
@@ -17827,15 +17827,15 @@ function switchAdminTab(tab) {
 
         // ===== 图片上传配置 =====
         // 启用/禁用 上传功能（是否允许上传图片到服务器）
-        imageUpload: false,
+        imageUpload: true,
         // 支持的图片格式（允许上传的图片文件类型数组）
         imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
         // 上传 URL（图片上传的服务器端点地址）
-        imageUploadURL: "",
+        imageUploadURL: "/upload",
         // 启用/禁用 跨域上传（是否支持跨域上传图片）
         crossDomainUpload: false,
         // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
-        uploadCallbackURL: "",
+        // uploadCallbackURL: "",
 
         // ===== 目录和扩展功能配置 =====
         // 启用/禁用 目录功能（是否自动生成文章目录）
@@ -38969,15 +38969,15 @@ async function openReminderEditModal(reminderId = "") {
 
         // ===== 图片上传配置 =====
         // 启用/禁用 上传功能（是否允许上传图片到服务器）
-        imageUpload: false,
+        imageUpload: true,
         // 支持的图片格式（允许上传的图片文件类型数组）
         imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
         // 上传 URL（图片上传的服务器端点地址）
-        imageUploadURL: "",
+        imageUploadURL: "/upload",
         // 启用/禁用 跨域上传（是否支持跨域上传图片）
         crossDomainUpload: false,
         // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
-        uploadCallbackURL: "",
+        // uploadCallbackURL: "",
 
         // ===== 目录和扩展功能配置 =====
         // 启用/禁用 目录功能（是否自动生成文章目录）

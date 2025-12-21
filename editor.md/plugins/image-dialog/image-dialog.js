@@ -43,7 +43,7 @@
 
                 var imageUploadCallback = function (json, dialog) {
                     if (typeof settings.imageUploadCallback === 'function') {
-                        $.proxy(settings.imageUploadCallback, _this)(json, dialog);
+                        settings.imageUploadCallback.call(_this, json, dialog);
                     }
                 };
 
@@ -191,17 +191,21 @@
 
                             if(!settings.crossDomainUpload)
                             {
-                                if (json.success === 1)
+                                if (json && (json.success === 1 || json.success === true))
                                 {
-                                    dialog.find("[data-url]").val(json.url);
+                                    if (json.url) {
+                                        dialog.find("[data-url]").val(json.url);
+                                    } else {
+                                        alert("上传成功，但服务器未返回图片地址。");
+                                    }
                                 }
                                 else
                                 {
-                                    alert(json.message);
+                                    alert((json && json.message) ? json.message : "上传失败。");
                                 }
 
                                 if (typeof settings.imageUploadCallback === 'function') {
-                                    $.proxy(settings.imageUploadCallback, _this)(json, dialog);
+                                    settings.imageUploadCallback.call(_this, json, dialog);
                                 }
                             }
 
