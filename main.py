@@ -6521,7 +6521,8 @@ class AuthSystem:
                 return [], ""
 
             current_count = len(old_sessions)
-            if current_count > max_sessions:
+            # 当已达到或超过最大会话数时，也应该清理最旧会话以为新会话腾出位置
+            if current_count >= max_sessions:
                 sessions_to_remove = old_sessions[:
                                                   current_count - max_sessions + 1]
                 remaining_sessions = old_sessions[current_count -
@@ -30140,8 +30141,24 @@ def start_web_server(args_param):
     #         logging.error(f"加载 HTML 片段时发生错误: {e}", exc_info=True)
     #         return jsonify({"error": "Internal server error"}), 500
 
+    # API 黑名单前缀，使用 startswith 进行匹配。可根据需要在此处添加或修改。
+    API_BLACKLIST_PREFIXES = [
+        "_",
+        "normalize_chinese_config_to_english",
+        
+    ]
+
     @app.route("/api/<path:method>", methods=["GET", "POST"])
     def api_call(method):
+        # 检查黑名单前缀：如果请求的方法以任何黑名单前缀开头，则直接拒绝
+        try:
+            for prefix in API_BLACKLIST_PREFIXES:
+                if method.startswith(prefix):
+                    logging.warning(f"阻止黑名单 API 访问: {method} (前缀: {prefix})")
+                    return jsonify({"success": False, "message": "该 API 被禁止访问"}), 403
+        except Exception:
+            # 如果在检查过程中出现异常，不阻止后续逻辑（以防止意外影响正常 API）
+            logging.exception("检查 API 黑名单时出错")
         """API调用端点：将前端调用转发到Python后端"""
         session_id = request.headers.get("X-Session-ID", "")
 
