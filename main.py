@@ -19950,6 +19950,8 @@ def start_web_server(args_param):
 
     UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
     os.makedirs(UPLOADS_DIR, exist_ok=True)
+    REFUSE_DIR = os.path.join(UPLOADS_DIR, "refuse")
+    os.makedirs(REFUSE_DIR, exist_ok=True)
 
     @app.route("/upload", methods=["POST"])
     def upload_image():
@@ -19997,7 +19999,84 @@ def start_web_server(args_param):
         except Exception as e:
             logging.warning(f"无法获取文件大小: {e}")
 
+        # 默认返回的文件URL（如果审核通过或未启用审核）
         file_url = url_for('download_file', filename=save_name, _external=False)
+
+        # === 内容审核（图片） ===
+        try:
+            config = _read_config_ini("config.ini")
+            enable_review = False
+            if config and config.has_section("Content_Review"):
+                enable_review = config.get(
+                    "Content_Review", "enable_message_review", fallback="false").lower() == "true"
+        except Exception:
+            enable_review = False
+
+        if enable_review:
+            try:
+                # 读取百度云凭证并获取access_token
+                baidu_api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
+                baidu_secret = config.get("baidu_cloud", "secret_key", fallback="").strip()
+                token_res = get_baidu_access_token(baidu_api_key, baidu_secret)
+                access_token = token_res.get("access_token") if token_res else None
+
+                # 如果无法获取token，视为审核失败，移动到 refuse
+                if not access_token:
+                    raise Exception(token_res.get("error") if token_res else "获取access_token失败")
+
+                # 读取文件并进行base64编码
+                import base64 as _base64, requests as _requests
+
+                with open(save_path, "rb") as _f:
+                    img_b64 = _base64.b64encode(_f.read()).decode("utf-8")
+
+                censor_url = f"https://aip.baidubce.com/rest/2.0/solution/v1/img_censor/v2/user_defined?access_token={access_token}"
+                headers = {"content-type": "application/x-www-form-urlencoded"}
+                data = {"image": img_b64}
+                resp = _requests.post(censor_url, data=data, headers=headers, timeout=10)
+                resp.raise_for_status()
+                result = resp.json()
+
+                # API错误或返回中带 error_code，视为审核失败
+                if isinstance(result, dict) and "error_code" in result:
+                    raise Exception(result.get("error_msg", "百度云API返回错误"))
+
+                conclusion_type = int(result.get("conclusionType", 4)) if isinstance(result, dict) else 4
+
+                # 只有 conclusionType == 1 视为通过，其他均视为不通过或疑似 -> 移动到 refuse
+                if conclusion_type != 1:
+                    # 将文件移动到 refuse 目录
+                    try:
+                        import shutil as _shutil
+                        dest = os.path.join(REFUSE_DIR, save_name)
+                        # 如果目标已存在则先移除
+                        if os.path.exists(dest):
+                            try:
+                                os.remove(dest)
+                            except Exception:
+                                pass
+                        _shutil.move(save_path, dest)
+                    except Exception as mv_err:
+                        logging.error(f"移动到 refuse 目录失败: {mv_err}")
+
+                    return jsonify(success=False, message="图片审核未通过，已拒绝显示"), 403
+
+            except Exception as e:
+                # 审核过程出现异常也将图片视为被拒绝并移动（以保证安全）
+                try:
+                    import shutil as _shutil
+                    dest = os.path.join(REFUSE_DIR, save_name)
+                    if os.path.exists(dest):
+                        try:
+                            os.remove(dest)
+                        except Exception:
+                            pass
+                    _shutil.move(save_path, dest)
+                except Exception:
+                    logging.exception("审核失败且移动到 refuse 时发生错误")
+
+                return jsonify(success=False, message=f"图片审核失败: {str(e)}"), 500
+
         return jsonify(success=True, url=file_url, filename=save_name)
 
     @app.route("/download/<path:filename>", methods=["GET"]) 
@@ -20008,9 +20087,30 @@ def start_web_server(args_param):
         if ".." in filename or filename.startswith('/'):
             abort(404)
 
+        # 禁止访问 refuse 目录中的文件
+        # 如果请求的第一级路径是 refuse，则拒绝访问
+        first_segment = filename.replace('\\', '/').split('/')[0]
+        if first_segment == 'refuse':
+            abort(404)
+
         file_path = os.path.join(UPLOADS_DIR, filename)
         if not os.path.exists(file_path):
-            abort(404)
+            # 尝试返回 uploads/picture_refuse.png，如果不存在则返回内置1x1 PNG占位图
+            try:
+                # 优先查找项目内 uploads/picture_refuse.png
+                refuse_static = os.path.join(UPLOADS_DIR, 'picture_refuse.png')
+                if os.path.exists(refuse_static):
+                    return send_from_directory(UPLOADS_DIR, 'picture_refuse.png')
+                # 回退：返回内置透明1x1 PNG
+                from io import BytesIO
+                import base64 as _base64
+                png_b64 = (
+                    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII='
+                )
+                img_bytes = _base64.b64decode(png_b64)
+                return send_file(BytesIO(img_bytes), mimetype='image/png')
+            except Exception:
+                abort(404)
 
         return send_from_directory(UPLOADS_DIR, filename)
 
