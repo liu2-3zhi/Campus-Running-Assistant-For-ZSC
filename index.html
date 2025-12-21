@@ -46,7 +46,7 @@
     touch-action: none; -webkit-user-select: none; -ms-user-select: none; user-select: none;
   }
   #newbie-help-btn svg{width:18px;height:18px;color:#0f172a;flex:0 0 auto}
-  #newbie-help-modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:10000}
+  #newbie-help-modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:10001}
   #newbie-help-modal .modal-backdrop{position:absolute; inset:0; background:rgba(2,6,23,0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px)}
   #newbie-help-modal .modal-card{position:relative; width:100%; max-width:520px; background:linear-gradient(180deg,#ffffff 0%,#eef6fb 100%); padding:20px 22px; border-radius:14px; text-align:left; box-shadow:0 10px 30px rgba(2,6,23,0.15); border:1px solid rgba(15,23,42,0.06); transform:translateY(-6px) scale(.98); transition:transform .22s cubic-bezier(.2,.9,.3,1), opacity .18s}
   #newbie-help-modal.show .modal-card{transform:translateY(0) scale(1);}
@@ -61,6 +61,8 @@
   .btn-neo{padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-weight:600}
   .btn-neo.confirm{background:linear-gradient(180deg,#60a5fa,#2563eb);color:white;box-shadow:4px 4px 8px rgba(37,99,235,0.18), -2px -2px 6px rgba(255,255,255,0.6)}
   .btn-neo.cancel{background:#fff;border:1px solid #d9e6f7;color:#0f172a;box-shadow:inset 2px 2px 6px rgba(0,0,0,0.03), -4px -4px 8px rgba(255,255,255,0.9)}
+  /* 在移动模式下（由脚本设置 body.mobile-mode）强制显示新手帮助按钮 */
+  body.mobile-mode #newbie-help-btn{display:flex!important}
   </style>
 
 
@@ -82,7 +84,7 @@
   </div>
 
   <!-- 新手帮助悬浮按钮（复用退出按钮样式与行为） -->
-  <button id="newbie-help-btn" title="新手帮助" aria-label="新手帮助" style="top:1rem; right:1rem; bottom:auto; left:auto;" class="fixed bottom-4 right-4 z-[9999] btn btn-ghost !py-2 !px-4 bg-white/80 backdrop-blur-sm shadow-lg hover:bg-red-50 hover:text-red-600 transition-all duration-300 rounded-xl border border-slate-200 touch-none select-none">
+  <button id="newbie-help-btn" title="新手帮助" aria-label="新手帮助" style="top:1rem; right:1rem; bottom:auto; left:auto;" class="fixed bottom-4 right-4 z-[10001] btn btn-ghost !py-2 !px-4 bg-white/80 backdrop-blur-sm shadow-lg hover:bg-red-50 hover:text-red-600 transition-all duration-300 rounded-xl border border-slate-200 touch-none select-none">
     <svg class="w-5 h-5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M12 20h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.09 9a3 3 0 115.82 0c0 1.8-2.25 2.25-2.25 3.75"/></svg>
     <span>帮助</span>
   </button>

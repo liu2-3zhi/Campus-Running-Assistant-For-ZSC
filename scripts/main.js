@@ -12733,6 +12733,24 @@ function switchUIContainer() {
       console.log(
         "[UI切换] PC端auth-login-container可见，显示移动端mobile-auth-login-container"
       );
+      try{
+        (function(){
+          var btn = document.getElementById('newbie-help-btn');
+          if(btn){
+            if(!btn._origStyle){
+              btn._origStyle = {top: btn.style.top, right: btn.style.right, bottom: btn.style.bottom, left: btn.style.left, position: btn.style.position, display: btn.style.display};
+            }
+            // 在移动模式下将按钮置于右上角并确保可见与可拖拽
+            btn.style.position = 'fixed';
+            btn.style.top = '1rem';
+            btn.style.right = '1rem';
+            btn.style.bottom = 'auto';
+            btn.style.left = 'auto';
+            btn.style.display = 'flex';
+            try{ if(typeof makeDraggable === 'function'){ makeDraggable('newbie-help-btn'); } }catch(e){}
+          }
+        })();
+      }catch(e){console.error(e)}
     }
 
     const modalElements = ["admin-panel-modal", "session-picker-modal"];
@@ -12765,6 +12783,17 @@ function switchUIContainer() {
     desktopContainer.style.display = "block";
 
     document.body.classList.remove("mobile-mode");
+    try{
+      var btn = document.getElementById('newbie-help-btn');
+      if(btn && btn._origStyle){
+        btn.style.top = btn._origStyle.top || '';
+        btn.style.right = btn._origStyle.right || '';
+        btn.style.bottom = btn._origStyle.bottom || '';
+        btn.style.left = btn._origStyle.left || '';
+        btn.style.position = btn._origStyle.position || '';
+        btn.style.display = btn._origStyle.display || '';
+      }
+    }catch(e){console.error(e)}
 
     const desktopElements = [
       "auth-login-container",
@@ -16237,23 +16266,19 @@ if (typeof window !== "undefined") {
         toggleAdminPanel(true)
       );
 
-    // --- 新增：使元素可拖拽的通用函数（支持鼠标即刻拖拽，触摸长按后进入拖拽） ---
+    // --- 新增：使元素可拖拽的通用函数（优先使用 Pointer Events，回退到鼠标/触摸） ---
     function makeDraggable(elementId) {
       const el = document.getElementById(elementId);
       if (!el) return;
 
       let isDragging = false;
-      let hasMoved = false; // 用于区分点击和拖拽
-      let startX, startY, initialLeft, initialTop;
+      let hasMoved = false;
+      let startX = 0,
+        startY = 0,
+        initialLeft = 0,
+        initialTop = 0;
       let longPressTimer = null;
-      const LONG_PRESS_MS = 260; // 触摸端长按阈值
-
-      // 获取触点或鼠标坐标
-      const getClientXY = (e) => {
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        return { x: clientX, y: clientY };
-      };
+      const LONG_PRESS_MS = 260;
 
       const beginDrag = (x, y) => {
         isDragging = true;
@@ -16272,85 +16297,156 @@ if (typeof window !== "undefined") {
         el.style.bottom = "auto";
         el.style.right = "auto";
         el.style.transition = "none";
-        try{ el.style.touchAction = 'none'; el.style.userSelect = 'none'; el.style.webkitUserSelect = 'none'; }catch(ex){}
+        try {
+          el.style.touchAction = "none";
+          el.style.userSelect = "none";
+          el.style.webkitUserSelect = "none";
+        } catch (ex) {}
       };
 
-      const onStart = (e) => {
-        if (e.type === "mousedown" && e.button !== 0) return; // 仅左键
-
-        const { x, y } = getClientXY(e);
-
-        // 鼠标直接进入拖拽模式
-        if (e.type === 'mousedown') {
-          if (e.cancelable) e.preventDefault();
-          beginDrag(x, y);
-          document.addEventListener("mousemove", onMove, { passive: false });
-          document.addEventListener("mouseup", onEnd);
-          return;
-        }
-
-        // 触摸：先设置长按定时器，只有长按到达阈值才进入拖拽
-        // 但仍监听 move/end 以便在移动或松开时取消长按
-        startX = x; startY = y; hasMoved = false;
-        longPressTimer = setTimeout(() => {
-          // 在长按触发时，阻止默认以避免系统菜单并正式开始拖拽
-          beginDrag(startX, startY);
-          if (e.cancelable) try{ e.preventDefault(); }catch(ex){}
-        }, LONG_PRESS_MS);
-
-        document.addEventListener("touchmove", onMove, { passive: false });
-        document.addEventListener("touchend", onEnd);
+      const clampAndSet = (dx, dy) => {
+        let newLeft = initialLeft + dx;
+        let newTop = initialTop + dy;
+        const maxLeft = window.innerWidth - el.offsetWidth;
+        const maxTop = window.innerHeight - el.offsetHeight;
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+        el.style.left = `${newLeft}px`;
+        el.style.top = `${newTop}px`;
       };
 
-      const onMove = (e) => {
-        const { x, y } = getClientXY(e);
-        const dx = x - startX;
-        const dy = y - startY;
+      if (window.PointerEvent) {
+        // 使用 Pointer Events，兼容鼠标与触摸
+        let activePointerId = null;
 
-        // 如果还未进入拖拽（长按尚未完成），但用户移动了手指，则取消长按
-        if (!isDragging) {
-          if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-            // 视为滑动/取消长按
-            clearTimeout(longPressTimer); longPressTimer = null;
-            // 移除监听，允许页面滚动或其它默认行为
-            document.removeEventListener("touchmove", onMove);
-            document.removeEventListener("touchend", onEnd);
+        const onPointerDown = (e) => {
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          const x = e.clientX,
+            y = e.clientY;
+
+          if (e.pointerType === "touch") {
+            // 触摸使用长按进入拖拽
+            startX = x;
+            startY = y;
+            longPressTimer = setTimeout(() => {
+              beginDrag(startX, startY);
+              try {
+                el.setPointerCapture(e.pointerId);
+                activePointerId = e.pointerId;
+              } catch (ex) {}
+              if (e.cancelable) try { e.preventDefault(); } catch(ex) {}
+            }, LONG_PRESS_MS);
+          } else {
+            // 鼠标或笔：立即拖拽
+            beginDrag(x, y);
+            try {
+              el.setPointerCapture(e.pointerId);
+              activePointerId = e.pointerId;
+            } catch (ex) {}
           }
-          return;
-        }
+        };
 
-        // 拖拽中：阻止默认滚动并更新位置
-        if (isDragging) {
-          if (e.cancelable) e.preventDefault();
+        const onPointerMove = (e) => {
+          const x = e.clientX,
+            y = e.clientY;
+          const dx = x - startX,
+            dy = y - startY;
+
+          if (!isDragging) {
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+              clearTimeout(longPressTimer);
+              longPressTimer = null;
+            }
+            return;
+          }
+
+          if (e.cancelable) try { e.preventDefault(); } catch (ex) {}
           if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
+          clampAndSet(dx, dy);
+        };
 
-          let newLeft = initialLeft + dx;
-          let newTop = initialTop + dy;
+        const onPointerUp = (e) => {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+          if (isDragging) {
+            isDragging = false;
+            el.style.transition = "";
+          }
+          try { if (activePointerId !== null) el.releasePointerCapture(activePointerId); } catch (ex) {}
+          activePointerId = null;
+        };
 
-          const maxLeft = window.innerWidth - el.offsetWidth;
-          const maxTop = window.innerHeight - el.offsetHeight;
-          newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-          newTop = Math.max(0, Math.min(newTop, maxTop));
+        el.addEventListener("pointerdown", onPointerDown, { passive: false });
+        window.addEventListener("pointermove", onPointerMove, { passive: false });
+        window.addEventListener("pointerup", onPointerUp);
+      } else {
+        // 回退到鼠标/触摸事件（旧逻辑）
+        const getClientXY = (e) => {
+          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+          const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+          return { x: clientX, y: clientY };
+        };
 
-          el.style.left = `${newLeft}px`;
-          el.style.top = `${newTop}px`;
-        }
-      };
+        const onStart = (e) => {
+          if (e.type === "mousedown" && e.button !== 0) return;
+          const { x, y } = getClientXY(e);
 
-      const onEnd = () => {
-        clearTimeout(longPressTimer); longPressTimer = null;
-        if (isDragging) {
-          isDragging = false;
-          el.style.transition = ""; // 恢复过渡效果
-        }
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("touchmove", onMove);
-        document.removeEventListener("mouseup", onEnd);
-        document.removeEventListener("touchend", onEnd);
-      };
+          if (e.type === "mousedown") {
+            if (e.cancelable) e.preventDefault();
+            beginDrag(x, y);
+            document.addEventListener("mousemove", onMove, { passive: false });
+            document.addEventListener("mouseup", onEnd);
+            return;
+          }
 
-      el.addEventListener("mousedown", onStart);
-      el.addEventListener("touchstart", onStart, { passive: false });
+          startX = x;
+          startY = y;
+          hasMoved = false;
+          longPressTimer = setTimeout(() => {
+            beginDrag(startX, startY);
+            if (e.cancelable) try { e.preventDefault(); } catch(ex) {}
+          }, LONG_PRESS_MS);
+
+          document.addEventListener("touchmove", onMove, { passive: false });
+          document.addEventListener("touchend", onEnd);
+        };
+
+        const onMove = (e) => {
+          const { x, y } = getClientXY(e);
+          const dx = x - startX;
+          const dy = y - startY;
+
+          if (!isDragging) {
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+              clearTimeout(longPressTimer);
+              longPressTimer = null;
+              document.removeEventListener("touchmove", onMove);
+              document.removeEventListener("touchend", onEnd);
+            }
+            return;
+          }
+
+          if (e.cancelable) try { e.preventDefault(); } catch(ex) {}
+          if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
+          clampAndSet(dx, dy);
+        };
+
+        const onEnd = () => {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+          if (isDragging) {
+            isDragging = false;
+            el.style.transition = "";
+          }
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("touchmove", onMove);
+          document.removeEventListener("mouseup", onEnd);
+          document.removeEventListener("touchend", onEnd);
+        };
+
+        el.addEventListener("mousedown", onStart);
+        el.addEventListener("touchstart", onStart, { passive: false });
+      }
 
       // 暴露状态给外部点击事件使用
       el._hasMoved = () => hasMoved;
