@@ -23965,7 +23965,21 @@ async function postMessage() {
     const result = await response.json();
 
     if (result.success) {
-      contentInput.value = "";
+      try {
+        if (typeof messageEditor !== 'undefined' && messageEditor && typeof messageEditor.clear === 'function') {
+          messageEditor.clear();
+        } else if (contentInput) {
+          contentInput.value = "";
+        }
+        // 兼容性：确保可能存在的 textarea 值也被清空
+        try {
+          const ta = document.querySelector('#message-editor textarea.editormd-markdown-textarea') || document.querySelector('textarea[name="message-content"]');
+          if (ta) ta.value = '';
+        } catch (e) {}
+      } catch (e) {
+        console.warn('清空留言编辑器失败:', e);
+      }
+
       if (nicknameInput) nicknameInput.value = "";
       if (emailInput) emailInput.value = "";
       const charCount = $("message-char-count");
@@ -39178,6 +39192,34 @@ async function saveReminder() {
         "成功",
         "success"
       );
+      // 清空输入（兼容 editormd 编辑器或普通 textarea）
+      try {
+        const idF = $("reminder-id-field");
+        const titleF = $("reminder-title-field");
+        const msgF = $("reminder-message-field");
+        const startF = $("reminder-start-time-field");
+        const endF = $("reminder-end-time-field");
+        const enabledF = $("reminder-enabled-field");
+        if (idF) idF.value = "";
+        if (titleF) titleF.value = "";
+        if (startF) startF.value = "";
+        if (endF) endF.value = "";
+        if (enabledF) enabledF.checked = true;
+        if (typeof window.reminderEditor !== 'undefined' && window.reminderEditor) {
+          if (typeof window.reminderEditor.clear === 'function') {
+            window.reminderEditor.clear();
+          } else if (typeof window.reminderEditor.setMarkdown === 'function') {
+            window.reminderEditor.setMarkdown('');
+          } else if (window.reminderEditor.codeMirror && typeof window.reminderEditor.codeMirror.setValue === 'function') {
+            window.reminderEditor.codeMirror.setValue('');
+          }
+        } else if (msgF) {
+          msgF.value = '';
+        }
+      } catch (e) {
+        console.warn('清空提醒输入失败:', e);
+      }
+
       closeReminderEditModal();
       loadReminders();
     } else {

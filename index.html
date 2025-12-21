@@ -10246,8 +10246,10 @@
           <label class="block text-sm font-semibold text-slate-700 mb-2">
             📝 提醒内容 <span class="text-red-500">*</span>
           </label>
-          <textarea id="reminder-message-field" rows="4" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="例如：学校服务器将于20:00关闭，请各位注意时间" maxlength="500"></textarea>
-          <p class="text-xs text-slate-500 mt-1">最多500个字符</p>
+          <!-- 保留原 textarea 作为无 JS 回退（隐藏），Editor.md 将在下方的容器中初始化 -->
+          <textarea id="reminder-message-field" rows="4" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="例如：学校服务器将于20:00关闭，请各位注意时间" maxlength="500" style="display:none;"></textarea>
+          <div id="reminder-editor" style="min-height:220px;border:1px solid #e2e8f0;border-radius:8px;padding:6px;background:#fff;"></div>
+          <p class="text-xs text-slate-500 mt-1">最多500个字符（支持 Markdown）</p>
         </div>
 
         <div class="grid grid-cols-2 gap-4">

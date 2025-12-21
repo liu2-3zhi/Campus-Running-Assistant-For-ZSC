@@ -24,7 +24,7 @@
         // markdown：标准 Markdown 语法
         mode: "gfm",
         // 表单元素名称，用于提交表单时标识该编辑器
-        name: "editor",
+        name: "editor_md",
         // CodeMirror 的值，如果模式不是 gfm/markdown（通常不需要设置，留空即可）
         value: "",
         // 编辑器主题，可选值：default（默认主题）, dark（暗色主题）
@@ -258,6 +258,28 @@
                               '<h4>HTML Textarea 值：</h4><pre style="background:#eee;padding:5px;">' + escapeHtml(htmlTextarea ? htmlTextarea.value : '未找到或未启用') + '</pre>';
       };
       document.body.appendChild(getValueButton);
+      // 添加清空按钮
+      var clearButton = document.createElement('button');
+      clearButton.textContent = '清空输入';
+      clearButton.style.marginTop = '20px';
+      clearButton.style.marginLeft = '10px';
+      clearButton.onclick = function() {
+        try {
+          if (editor && typeof editor.clear === 'function') {
+            editor.clear();
+          } else {
+            var markdownTextarea = document.querySelector('textarea.editormd-markdown-textarea');
+            var htmlTextarea = document.querySelector('textarea.editormd-html-textarea');
+            if (markdownTextarea) markdownTextarea.value = '';
+            if (htmlTextarea) htmlTextarea.value = '';
+          }
+        } catch (e) {}
+        var resultDiv = document.getElementById('editor-result');
+        if (resultDiv) {
+          resultDiv.parentNode.removeChild(resultDiv);
+        }
+      };
+      document.body.appendChild(clearButton);
     });
   </script>
 
