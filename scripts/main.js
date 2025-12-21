@@ -16237,7 +16237,7 @@ if (typeof window !== "undefined") {
         toggleAdminPanel(true)
       );
 
-    // --- 新增：使元素可拖拽的通用函数 ---
+    // --- 新增：使元素可拖拽的通用函数（支持鼠标即刻拖拽，触摸长按后进入拖拽） ---
     function makeDraggable(elementId) {
       const el = document.getElementById(elementId);
       if (!el) return;
@@ -16245,6 +16245,8 @@ if (typeof window !== "undefined") {
       let isDragging = false;
       let hasMoved = false; // 用于区分点击和拖拽
       let startX, startY, initialLeft, initialTop;
+      let longPressTimer = null;
+      const LONG_PRESS_MS = 260; // 触摸端长按阈值
 
       // 获取触点或鼠标坐标
       const getClientXY = (e) => {
@@ -16253,70 +16255,94 @@ if (typeof window !== "undefined") {
         return { x: clientX, y: clientY };
       };
 
-      const onStart = (e) => {
-        if (e.type === "mousedown" && e.button !== 0) return; // 仅左键
-
+      const beginDrag = (x, y) => {
         isDragging = true;
         hasMoved = false;
-
-        const { x, y } = getClientXY(e);
         startX = x;
         startY = y;
 
-        // 获取当前位置，转换为 fixed 绝对定位数值
         const rect = el.getBoundingClientRect();
         initialLeft = rect.left;
         initialTop = rect.top;
 
-        // 清除定位类，改为直接控制样式
         el.classList.remove("bottom-4", "right-4", "top-4", "left-4");
         el.style.position = "fixed";
         el.style.left = `${initialLeft}px`;
         el.style.top = `${initialTop}px`;
         el.style.bottom = "auto";
         el.style.right = "auto";
-        // 拖拽时增加一点透明度或阴影效果
-        el.style.transition = "none"; // 拖拽时移除过渡效果以保证跟手
+        el.style.transition = "none";
+        try{ el.style.touchAction = 'none'; el.style.userSelect = 'none'; el.style.webkitUserSelect = 'none'; }catch(ex){}
+      };
 
-        document.addEventListener("mousemove", onMove, {
-          passive: false,
-        });
-        document.addEventListener("touchmove", onMove, {
-          passive: false,
-        });
-        document.addEventListener("mouseup", onEnd);
+      const onStart = (e) => {
+        if (e.type === "mousedown" && e.button !== 0) return; // 仅左键
+
+        const { x, y } = getClientXY(e);
+
+        // 鼠标直接进入拖拽模式
+        if (e.type === 'mousedown') {
+          if (e.cancelable) e.preventDefault();
+          beginDrag(x, y);
+          document.addEventListener("mousemove", onMove, { passive: false });
+          document.addEventListener("mouseup", onEnd);
+          return;
+        }
+
+        // 触摸：先设置长按定时器，只有长按到达阈值才进入拖拽
+        // 但仍监听 move/end 以便在移动或松开时取消长按
+        startX = x; startY = y; hasMoved = false;
+        longPressTimer = setTimeout(() => {
+          // 在长按触发时，阻止默认以避免系统菜单并正式开始拖拽
+          beginDrag(startX, startY);
+          if (e.cancelable) try{ e.preventDefault(); }catch(ex){}
+        }, LONG_PRESS_MS);
+
+        document.addEventListener("touchmove", onMove, { passive: false });
         document.addEventListener("touchend", onEnd);
       };
 
       const onMove = (e) => {
-        if (!isDragging) return;
-
         const { x, y } = getClientXY(e);
         const dx = x - startX;
         const dy = y - startY;
 
-        // 移动超过 5px 才视为拖拽
-        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-          hasMoved = true;
-          if (e.cancelable) e.preventDefault(); // 防止滚动
+        // 如果还未进入拖拽（长按尚未完成），但用户移动了手指，则取消长按
+        if (!isDragging) {
+          if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            // 视为滑动/取消长按
+            clearTimeout(longPressTimer); longPressTimer = null;
+            // 移除监听，允许页面滚动或其它默认行为
+            document.removeEventListener("touchmove", onMove);
+            document.removeEventListener("touchend", onEnd);
+          }
+          return;
         }
 
-        let newLeft = initialLeft + dx;
-        let newTop = initialTop + dy;
+        // 拖拽中：阻止默认滚动并更新位置
+        if (isDragging) {
+          if (e.cancelable) e.preventDefault();
+          if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
 
-        // 边界限制
-        const maxLeft = window.innerWidth - el.offsetWidth;
-        const maxTop = window.innerHeight - el.offsetHeight;
-        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-        newTop = Math.max(0, Math.min(newTop, maxTop));
+          let newLeft = initialLeft + dx;
+          let newTop = initialTop + dy;
 
-        el.style.left = `${newLeft}px`;
-        el.style.top = `${newTop}px`;
+          const maxLeft = window.innerWidth - el.offsetWidth;
+          const maxTop = window.innerHeight - el.offsetHeight;
+          newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+          newTop = Math.max(0, Math.min(newTop, maxTop));
+
+          el.style.left = `${newLeft}px`;
+          el.style.top = `${newTop}px`;
+        }
       };
 
       const onEnd = () => {
-        isDragging = false;
-        el.style.transition = ""; // 恢复过渡效果
+        clearTimeout(longPressTimer); longPressTimer = null;
+        if (isDragging) {
+          isDragging = false;
+          el.style.transition = ""; // 恢复过渡效果
+        }
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("touchmove", onMove);
         document.removeEventListener("mouseup", onEnd);
@@ -16330,8 +16356,9 @@ if (typeof window !== "undefined") {
       el._hasMoved = () => hasMoved;
     }
 
-    // 初始化退出按钮的拖拽功能
+    // 初始化退出按钮与新手帮助按钮的拖拽功能
     makeDraggable("exit-app-btn");
+    try{ makeDraggable("newbie-help-btn"); }catch(e){}
 
     const exitAppBtn = $("exit-app-btn");
     if (exitAppBtn) {

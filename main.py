@@ -2481,6 +2481,15 @@ def _get_default_config():
         "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑",
     }
 
+    # 新手帮助配置节：控制桌面端新手帮助按钮显示与跳转
+    config["Help"] = {
+        # 是否在桌面端显示新手帮助悬浮按钮（true/false）
+        # true：显示悬浮按钮并允许跳转；false：不显示
+        "show_newbie_help": "false",
+        # 新手帮助跳转地址（完整URL，留空表示不跳转）
+        "newbie_help_url": "",
+    }
+
     return config
 
 
@@ -2749,6 +2758,18 @@ def _write_config_with_comments(config_obj, filepath):
             f"rate_limit_per_phone_day = {config_obj.get('SMS_Service_SMSBao', 'rate_limit_per_phone_day', fallback='5')}\n\n"
         )
 
+        # [Help] 新手帮助配置节 (用于控制桌面端悬浮按钮显示与跳转)
+        f.write("[Help]\n")
+        f.write("# 是否在桌面端显示新手帮助悬浮按钮（true/false）\n")
+        f.write("# true：在桌面端页面左上角显示悬浮帮助按钮，点击后弹出拟态确认框并可跳转；\n")
+        f.write("# false：不显示悬浮按钮\n")
+        f.write(
+            f"show_newbie_help = {config_obj.get('Help', 'show_newbie_help', fallback='false')}\n"
+        )
+        f.write("# 新手帮助跳转地址（完整URL，留空表示无跳转）\n")
+        f.write(
+            f"newbie_help_url = {config_obj.get('Help', 'newbie_help_url', fallback='')}\n\n"
+        )
         # [SSL] 配置 - 新增SSL配置节的写入逻辑
         f.write("[SSL]\n")
         f.write("# SSL/HTTPS 配置\n")
@@ -28170,10 +28191,27 @@ def start_web_server(args_param):
             == "true"
         )
 
+        # 新手帮助（前端控制）
+        try:
+            show_newbie_help = (
+                config.get("Help", "show_newbie_help", fallback="false")
+                .lower()
+                == "true"
+            )
+        except Exception:
+            show_newbie_help = False
+
+        try:
+            newbie_help_url = config.get("Help", "newbie_help_url", fallback="").strip()
+        except Exception:
+            newbie_help_url = ""
+
         return {
             "sms_enabled": sms_enabled,
             "reg_verify_enabled": reg_verify_enabled,
             "enable_phone_modification": phone_modification_enabled,
+            "show_newbie_help": show_newbie_help,
+            "newbie_help_url": newbie_help_url,
         }
 
     @app.route("/api/payment/yipay_notify", methods=["GET", "POST"])

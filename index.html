@@ -35,6 +35,25 @@
   <link rel="stylesheet" href="styles/style.css">
   <script src="scripts/main.js" defer=""></script>
 
+  <style>
+  @media (max-width: 768px){
+    #newbie-help-btn{display:none!important}
+  }
+  /* 保留最小的布局与交互规则，外观交由按钮类（如 bg-white/80、shadow-lg、border-slate-200）控制 */
+  #newbie-help-btn{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    min-width:64px; height:48px; padding:0 12px; border-radius:12px;
+    touch-action: none; -webkit-user-select: none; -ms-user-select: none; user-select: none;
+  }
+  #newbie-help-btn svg{width:18px;height:18px;color:#0f172a;flex:0 0 auto}
+  #newbie-help-modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:10000}
+  #newbie-help-modal .modal-backdrop{position:absolute; inset:0; background:rgba(0,0,0,0.45)}
+  #newbie-help-modal .modal-card{position:relative; width:100%; max-width:440px; background:#eef6fb; padding:22px; border-radius:16px; text-align:center; box-shadow:12px 12px 24px rgba(0,0,0,0.08), -8px -8px 16px rgba(255,255,255,0.9); border:1px solid rgba(255,255,255,0.6)}
+  .btn-neo{padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-weight:600}
+  .btn-neo.confirm{background:linear-gradient(180deg,#60a5fa,#2563eb);color:white;box-shadow:4px 4px 8px rgba(37,99,235,0.18), -2px -2px 6px rgba(255,255,255,0.6)}
+  .btn-neo.cancel{background:#fff;border:1px solid #d9e6f7;color:#0f172a;box-shadow:inset 2px 2px 6px rgba(0,0,0,0.03), -4px -4px 8px rgba(255,255,255,0.9)}
+  </style>
+
 
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="/editor.md/editormd.js"></script>
@@ -52,6 +71,74 @@
       <span>返回管理员会话</span>
     </button>
   </div>
+
+  <!-- 新手帮助悬浮按钮（复用退出按钮样式与行为） -->
+  <button id="newbie-help-btn" title="新手帮助" aria-label="新手帮助" style="top:1rem; right:1rem; bottom:auto; left:auto;" class="fixed bottom-4 right-4 z-[9999] btn btn-ghost !py-2 !px-4 bg-white/80 backdrop-blur-sm shadow-lg hover:bg-red-50 hover:text-red-600 transition-all duration-300 rounded-xl border border-slate-200 touch-none select-none">
+    <svg class="w-5 h-5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M12 20h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.09 9a3 3 0 115.82 0c0 1.8-2.25 2.25-2.25 3.75"/></svg>
+    <span>帮助</span>
+  </button>
+
+  <div id="newbie-help-modal" aria-hidden="true">
+    <div class="modal-backdrop" onclick="closeNewbieModal()"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="newbie-help-title">
+      <h3 id="newbie-help-title" style="font-size:1.125rem;font-weight:700;color:#0f172a">即将前往新手帮助</h3>
+      <p id="newbie-help-url" style="color:#0f172a;margin-top:8px;font-size:0.95rem;word-break:break-all"></p>
+      <div class="modal-actions" style="display:flex;gap:12px;justify-content:center;margin-top:18px">
+        <button class="btn-neo cancel" id="newbie-help-cancel">取消</button>
+        <button class="btn-neo confirm" id="newbie-help-confirm">前往</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    function applyConfig(){
+      try{
+        var conf = window.APP_CONFIG || {};
+        var btn = document.getElementById('newbie-help-btn');
+        var modal = document.getElementById('newbie-help-modal');
+        var urlElem = document.getElementById('newbie-help-url');
+        if(conf.show_newbie_help){
+          btn.style.display = 'flex';
+          urlElem.textContent = conf.newbie_help_url || '';
+        } else {
+          btn.style.display = 'none';
+        }
+      }catch(e){console.error(e)}
+    }
+
+    function openNewbieModal(){ document.getElementById('newbie-help-modal').style.display='flex'; }
+    window.closeNewbieModal = function(){ document.getElementById('newbie-help-modal').style.display='none'; }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      applyConfig();
+      var btn = document.getElementById('newbie-help-btn');
+      if(btn){
+        // 如果配置允许，则初始化可拖拽并显示
+        if(window.APP_CONFIG && window.APP_CONFIG.show_newbie_help){
+          try{ if(typeof makeDraggable === 'function'){ makeDraggable('newbie-help-btn'); } }catch(e){}
+        }
+
+        btn.addEventListener('click', function(e){
+          // 如果发生了拖拽移动，则阻止点击事件
+          if(btn._hasMoved && btn._hasMoved()){
+            e.preventDefault(); e.stopPropagation(); return;
+          }
+          e.stopPropagation(); openNewbieModal();
+        });
+      }
+      var cancel = document.getElementById('newbie-help-cancel');
+      var confirm = document.getElementById('newbie-help-confirm');
+      if(cancel) cancel.addEventListener('click', window.closeNewbieModal);
+      if(confirm) confirm.addEventListener('click', function(){
+        var url = (window.APP_CONFIG && window.APP_CONFIG.newbie_help_url) || '';
+        if(!url){ window.closeNewbieModal(); return; }
+        window.location.href = url;
+      });
+      document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ window.closeNewbieModal(); } });
+    });
+  })();
+  </script>
 
   <button id="exit-app-btn" class="fixed bottom-4 right-4 z-[9999] btn btn-ghost !py-2 !px-4 bg-white/80 backdrop-blur-sm shadow-lg hover:bg-red-50 hover:text-red-600 transition-all duration-300 rounded-xl border border-slate-200 touch-none select-none" title="退出应用">
     <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
