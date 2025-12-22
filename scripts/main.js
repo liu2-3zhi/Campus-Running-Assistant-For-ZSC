@@ -24569,7 +24569,7 @@ async function loadMessages() {
             editormd.markdownToHTML(id, {
               markdown: m.content || "",
                 htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
-                // htmlDecode: "style,iframe,image,a,p,div",  // 允许解析的 HTML 标签
+                htmlDecode: "style,iframe,image,a,p,div",  // 允许解析的 HTML 标签
                 toc: false,             // 是否生成目录
                 tocContainer: "", // 自定义 ToC 容器层
                 gfm             : true,        // 是否使用 GitHub Flavored Markdown
@@ -40170,7 +40170,7 @@ async function checkAndShowReminders() {
             editormd.markdownToHTML(tmpId, {
               markdown: md,
                 htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
-                // htmlDecode: "style,iframe,image,a,p,div",  // 允许解析的 HTML 标签
+                htmlDecode: "style,iframe,image,a,p,div",  // 允许解析的 HTML 标签
                 toc: false,             // 是否生成目录
                 tocContainer: "", // 自定义 ToC 容器层
                 gfm             : true,        // 是否使用 GitHub Flavored Markdown

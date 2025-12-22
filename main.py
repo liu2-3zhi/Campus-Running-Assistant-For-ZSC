@@ -1096,7 +1096,7 @@ class IPVerifier:
 
 
 # ==============================================================================
-#  辅助函数：获取客户端真实IP地址（任务2）
+#  辅助函数：获取客户端真实IP地址
 # ==============================================================================
 
 
@@ -1489,7 +1489,7 @@ def auto_init_system():
 
         logging.info("步骤2.7: 迁移自动签到配置到JSON文件...")
         print("[系统初始化] 检查并迁移自动签到配置...")
-        # [任务47] 调用迁移函数，将 INI 文件中的 auto_attendance_enabled 迁移到 JSON 文件
+        # 调用迁移函数，将 INI 文件中的 auto_attendance_enabled 迁移到 JSON 文件
         # 此函数会扫描所有账号的INI文件，查找启用了自动签到的账号
         # 注意：由于需要学校用户名，完整迁移会在用户登录时完成
         # 修复：函数已移至模块级别，直接调用而非通过Api类
@@ -1519,7 +1519,7 @@ SESSION_STORAGE_DIR = "sessions"
 TOKENS_STORAGE_DIR = "tokens"
 CONFIG_FILE = "config.ini"
 PERMISSIONS_FILE = "permissions.json"
-# [任务47新增] 自动签到配置文件
+# 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
 AUTO_ATTENDANCE_CONFIG_FILE = os.path.join("configs", "auto_attendance_config.json")
@@ -1631,7 +1631,7 @@ def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="j
 
 
 # ========================================================================
-# [任务47新增] 自动签到配置管理函数
+# 自动签到配置管理函数
 # 这些函数用于管理集中化的自动签到配置文件（JSON格式）
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
 # ========================================================================
@@ -1990,7 +1990,7 @@ def _get_auto_attendance_by_session(session_uuid):
 
 def _migrate_auto_attendance_from_ini():
     """
-    [任务47] 从INI文件迁移auto_attendance_enabled配置到JSON文件
+    从INI文件迁移auto_attendance_enabled配置到JSON文件
     
     功能说明：
         扫描所有学校账号的INI配置文件，查找启用了auto_attendance_enabled的账号。
@@ -3530,7 +3530,7 @@ def _create_config_ini():
     config_file = "config.ini"
 
     if os.path.exists(config_file):
-        # [新增] 检查文件是否为空
+        # 检查文件是否为空
         if os.path.getsize(config_file) == 0:
             print(f"[配置文件] 检测到 {config_file} 为空，正在重新创建默认配置...")
             _write_config_with_comments(default_config, config_file)
@@ -3542,7 +3542,7 @@ def _create_config_ini():
             existing_config.optionxform = str
             existing_config.read(config_file, encoding="utf-8")
         except Exception as e:
-            # [新增] 捕获所有解析错误（包括重复项、格式错误等），备份并重置
+            # 捕获所有解析错误（包括重复项、格式错误等），备份并重置
             print(f"\n[错误] 读取配置文件 '{config_file}' 失败: {e}")
             logging.error(f"配置文件读取失败: {e}")
 
@@ -4782,26 +4782,33 @@ class RainbowYiPayClient:
 
         app_host = None
 
-        if not app_host and app_host_frome_config and (IPVerifier().is_private_ip(app_host_frome_config) == False):
+
+        if app_host_frome_config and app_host_frome_config not in ["", "http://", "https://","null","NULL","None","none","undefined"] and (IPVerifier().is_private_ip(app_host_frome_config) == False):
             # 检查 app_host_frome_config 是否为有效的应用访问域名
             if IPVerifier().check_app_host(app_host_frome_config):
                 app_host = IPVerifier().normalize_host_url(app_host_frome_config)
                 logging.info(
                     f"[支付验证] 验证成功 - 将使用 app_host_from_config: {app_host_frome_config}")
+            else:
+                logging.error(
+                    f"[彩虹易支付] 配置的 app_host 格式不正确或不可用: {app_host_frome_config}")
 
-        if not app_host and client_app_host and (IPVerifier().is_private_ip(client_app_host) == False):
+        if client_app_host and app_host_frome_config not in ["", "http://", "https://","null","NULL","None","none","undefined"] and (IPVerifier().is_private_ip(client_app_host) == False):
             # 使用传入的 client_app_host 进行验证
             if IPVerifier().check_app_host(client_app_host):
                 app_host = IPVerifier().normalize_host_url(client_app_host)
                 logging.info(
                     f"[支付验证] 验证成功 - 将使用 client_app_host: {client_app_host}")
+            else:
+                logging.error(
+                    f"[彩虹易支付] 传入的 client_app_host 格式不正确或不可用: {client_app_host}")
+            
 
         if not app_host:
             # 记录错误日志：缺少应用访问域名配置
             logging.error("[彩虹易支付] 配置缺少 app_host（应用访问域名），无法构造异步通知URL")
-            # 返回失败响应，提示管理员配置 app_host
-            if not client_app_host:
-                return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
+
+            return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
 
         # 验证 app_host 格式是否正确
         # 必须以 http:// 或 https:// 开头，以确保URL格式正确
@@ -5260,7 +5267,7 @@ class AuthSystem:
         )
         return file_path
 
-    # [新增] 补充缺失的辅助方法，用于 delete_user 备份
+    # 补充缺失的辅助方法，用于 delete_user 备份
     def _get_user_accounts_file(self, auth_username):
         """获取用户的 school_accounts 文件路径"""
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
@@ -7399,9 +7406,6 @@ class Api:
 
         self._init_state_variables()
 
-        # [优化] 将提交队列和线程池提升为类级别(Api._xxx)，实现全局单例
-        # 避免每次实例化 Api (如读取配置时) 都重复创建 20 个线程
-
         # 初始化类级别的锁，防止并发初始化冲突
         if not hasattr(Api, "_submission_init_lock"):
             Api._submission_init_lock = threading.Lock()
@@ -7433,7 +7437,7 @@ class Api:
                 t for t in Api._static_submission_threads if t.is_alive()
             ]
 
-            # 4. 检查并补充线程 (全局只维护 20 个)
+            # 4. 检查并补充线程
             MAX_SUBMISSION_CONCURRENCY = 20
             current_threads = len(Api._static_submission_threads)
 
@@ -7502,31 +7506,31 @@ class Api:
         self.server_attendance_radius_m = 0.0
         self.last_radius_fetch_time = 0
 
-        # [已废弃] 旧的单账号刷新线程机制，保留以兼容旧代码
+        # 旧的单账号刷新线程机制，保留以兼容旧代码
         self.auto_refresh_thread: threading.Thread | None = None
         self.stop_auto_refresh = threading.Event()
         self.stop_auto_refresh.set()
 
-        # [已废弃] 旧的多账号刷新线程机制，保留以兼容旧代码
+        # 旧的多账号刷新线程机制，保留以兼容旧代码
         self.multi_auto_refresh_thread: threading.Thread | None = None
         self.stop_multi_auto_refresh = threading.Event()
         self.stop_multi_auto_refresh.set()
 
-        # [新增] 统一的账号刷新线程管理字典
+        # 统一的账号刷新线程管理字典
         # 键: 账号标识符（字符串格式，例如 "12345"），值: 线程对象
         # 这个字典用于追踪每个账号的独立刷新线程，避免重复创建
         self.account_refresh_threads: dict[str, threading.Thread] = {}
 
-        # [新增] 线程锁，用于保护 account_refresh_threads 字典的并发访问
+        # 线程锁，用于保护 account_refresh_threads 字典的并发访问
         # 在多线程环境下，对字典的读写操作需要加锁以确保线程安全
         self.threads_lock = threading.Lock()
 
-        # [新增] 多账号监控线程的停止事件
+        # 多账号监控线程的停止事件
         # 用于优雅地停止多账号监控线程
         self.stop_account_monitor = threading.Event()
         self.stop_account_monitor.set()
 
-        # [新增] 多账号监控线程对象
+        # 多账号监控线程对象
         # 该线程负责定期检查所有账号，确保每个启用自动签到的账号都有刷新线程
         self.account_monitor_thread: threading.Thread | None = None
 
@@ -7703,10 +7707,7 @@ class Api:
                 if k_en in ["AuthorizationCookie", "UA"]:
                     cfg_en.set("System", k_en, v)
 
-        # ========== 任务20修复：保留 [stats] 节 ==========
-        # 问题：normalize_chinese_config_to_english 在规范化时只保留 Config 和 System 节
-        # 导致 [stats] 节（包含 overdue_count 和 completed_count）在规范化过程中丢失
-        # 解决：检查原配置中是否有 [stats] 节，如果有则复制到新配置中
+
         if cfg_cn.has_section("stats"):
             # 添加 [stats] 节到新配置
             cfg_en.add_section("stats")
@@ -7714,7 +7715,7 @@ class Api:
             for key, value in cfg_cn.items("stats"):
                 cfg_en.set("stats", key, value)
             logging.debug(
-                f"[任务20修复] normalize_chinese_config_to_english 保留了 [stats] 节 - 文件: {path}"
+                f"normalize_chinese_config_to_english 保留了 [stats] 节 - 文件: {path}"
             )
 
         try:
@@ -7730,12 +7731,6 @@ class Api:
     def _get_user_accounts_file(self, auth_username):
         """
         获取指定认证用户的 school_accounts 存储文件路径。
-
-        参数:
-            auth_username: 认证用户名（system_accounts中的用户名）
-
-        返回:
-            文件路径字符串
         """
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
         return os.path.join(user_accounts_dir, f"{auth_username}.json")
@@ -7743,27 +7738,6 @@ class Api:
     def _load_school_account_stats_from_ini(self, school_username):
         """
         从 INI 文件读取指定学校账号的统计数据（overdue_count 和 completed_count）。
-
-        功能说明：
-            读取学校账号的配置文件（school_accounts/{username}.ini），获取欠费次数和已完成任务数。
-            如果文件不存在或读取失败，返回默认值（都为 0）。
-
-        参数:
-            school_username (str): 学校账号用户名
-
-        返回:
-            dict: 包含统计数据的字典
-            格式: {
-                "overdue_count": int,      # 欠费次数，默认 0
-                "completed_count": int     # 已完成任务数，默认 0
-            }
-
-        INI 文件格式示例:
-            [Config]
-            ...
-            [stats]
-            overdue_count = 5
-            completed_count = 120
         """
         # 直接构建 INI 文件路径，指向 school_accounts 目录
         ini_file = os.path.join(self.user_dir, f"{school_username}.ini")
@@ -7817,18 +7791,6 @@ class Api:
     def _save_school_account_stats_to_ini(self, school_username, overdue_count, completed_count):
         """
         将学校账号的统计数据保存到 INI 文件（合并模式）。
-
-        功能说明：
-            将指定学校账号的欠费次数和已完成任务数保存到对应的 INI 文件中。
-            注意：采用读取-修改-写入模式，确保不丢失文件中原有的其他配置（如密码）。
-
-        参数:
-            school_username (str): 学校账号用户名
-            overdue_count (int): 欠费次数
-            completed_count (int): 已完成任务数
-
-        返回:
-            bool: 保存成功返回 True，失败返回 False
         """
         # 获取该学校账号对应的 INI 文件路径 (使用 self.user_dir，即 school_accounts)
         ini_file = os.path.join(self.user_dir, f"{school_username}.ini")
@@ -8236,7 +8198,7 @@ class Api:
                 )
                 return
 
-        # ========== 任务20修复：更新密码时保留统计数据 ==========
+        # ========== 更新密码时保留统计数据 ==========
         # 问题：直接赋值 accounts[school_username] = {...} 会丢失 overdue_count 和 completed_count
         # 解决：先获取现有数据，更新密码和UA，保留统计数据
         if school_username in accounts:
@@ -8244,7 +8206,7 @@ class Api:
             accounts[school_username]["password"] = password
             accounts[school_username]["ua"] = ua if ua else ""
             logging.debug(
-                f"[任务20修复] 更新 {school_username} 密码和UA，保留统计数据: "
+                f"更新 {school_username} 密码和UA，保留统计数据: "
                 f"overdue_count={accounts[school_username].get('overdue_count', 'N/A')}, "
                 f"completed_count={accounts[school_username].get('completed_count', 'N/A')}"
             )
@@ -8257,7 +8219,7 @@ class Api:
                 "completed_count": 0
             }
             logging.debug(
-                f"[任务20修复] 创建新账号 {school_username}，统计数据初始化为0"
+                f"创建新账号 {school_username}，统计数据初始化为0"
             )
 
         self._save_user_school_accounts(auth_username, accounts)
@@ -8392,34 +8354,6 @@ class Api:
     def update_school_account_overdue_count(self, auth_username, school_username, new_overdue_count):
         """
         更新指定学校账号的欠费次数（overdue_count）
-
-        功能说明：
-        此方法用于更新用户的某个学校账号的overdue_count字段。
-        主要用于支付成功后清零欠费次数，也可用于管理员手动调整欠费。
-        统计数据现在存储在独立的 INI 文件中，与账号密码分离。
-
-        参数:
-            auth_username (str): 认证用户名（system_accounts中的用户）
-            school_username (str): 学校账号用户名（school_accounts中的账号）
-            new_overdue_count (int): 新的欠费次数值
-                - 0: 表示清零欠费（支付成功后的常用操作）
-                - 正整数: 表示设置为指定的欠费次数
-
-        返回:
-            dict: 包含success和message的字典
-                {
-                    "success": True/False,
-                    "message": "操作结果说明"
-                }
-
-        使用场景：
-        1. 支付成功后清零欠费：update_school_account_overdue_count(user, account, 0)
-        2. 管理员手动调整欠费：update_school_account_overdue_count(user, account, 5)
-
-        注意事项：
-        - 使用线程锁确保并发安全
-        - 如果学校账号不存在，不会创建新账号，而是返回错误
-        - 统计数据存储在 INI 文件中，与密码分离
         """
         # 验证参数有效性
         # 欠费次数不能为负数
@@ -8511,20 +8445,6 @@ class Api:
     def _deduct_available_runs_or_increment_overdue(self, auth_username, school_username):
         """
         任务完成后处理可用次数扣减或欠费次数增加的逻辑。
-
-        执行逻辑：
-        0. 检查付费配置，如果不需要付费或价格<=0，则跳过所有付费逻辑
-        1. 读取 system_accounts 中认证用户的 available_runs 字段
-        2. 如果 available_runs == -1（无限次数），直接返回，不做任何处理
-        3. 如果 available_runs >= 1，扣减1次，保存到 system_accounts
-        4. 如果 available_runs <= 0，则增加 school_accounts 中对应学校账号的 overdue_count
-
-        参数:
-            auth_username: 认证用户名（system_accounts 中的用户名）
-            school_username: 学校账户用户名（school_accounts 中的账户）
-
-        返回:
-            None
         """
         try:
             # 步骤0：检查付费控制配置
@@ -8651,27 +8571,6 @@ class Api:
     def _increment_completed_count(self, auth_username, school_username):
         """
         增加学校账号的已完成任务计数。
-
-        功能说明：
-            当一个任务成功提交并完成后，调用此函数为对应的学校账号增加已完成任务计数。
-            计数器现在存储在独立的 INI 文件中，与账号密码分离。
-
-        参数：
-            auth_username: 认证用户名（system_accounts中的用户名）
-            school_username: 学校账号用户名（school_accounts中的账户）
-
-        实现逻辑：
-            1. 验证学校账号是否存在（通过加载 school_accounts）
-            2. 从 INI 文件读取当前的统计数据
-            3. 将 completed_count 字段加1
-            4. 将更新后的统计数据保存回 INI 文件
-
-        错误处理：
-            如果更新失败（文件不存在、账号不存在等），记录错误日志但不影响主流程。
-            这样可以确保任务执行的稳定性，即使计数器更新失败也不会导致任务中断。
-
-        返回值：
-            None
         """
         try:
             # 步骤1：验证学校账号是否存在
@@ -8769,7 +8668,7 @@ class Api:
                     f"读取旧配置文件 {user_ini_path} 失败: {e}, 将创建新的。"
                 )
 
-        # ========== 任务20修复：保留 [stats] 节，避免覆盖欠费数据 ==========
+        # ========== 保留 [stats] 节，避免覆盖欠费数据 ==========
         # 问题背景：
         # 1. 欠费系统通过 _save_school_account_stats_to_ini() 修改了 [stats] 节
         # 2. 任务系统调用 _save_config() 保存密码或其他配置时，会覆盖整个文件
@@ -8796,14 +8695,14 @@ class Api:
             # 记录调试日志：已检测到并备份 [stats] 节
             # 这有助于排查问题，确认备份操作是否执行
             logging.debug(
-                f"[任务20修复] 检测到现有 [stats] 节，已备份 - "
+                f"检测到现有 [stats] 节，已备份 - "
                 f"用户: {username}, 备份数据: {stats_section_backup}"
             )
         else:
             # [stats] 节不存在，记录调试日志
             # 这是正常情况，说明该用户的INI文件中还没有欠费统计数据
             logging.debug(
-                f"[任务20修复] 用户配置中不存在 [stats] 节 - 用户: {username}"
+                f"用户配置中不存在 [stats] 节 - 用户: {username}"
             )
 
         if not cfg_to_save.has_section("Config"):
@@ -8850,7 +8749,6 @@ class Api:
         if self.is_multi_account_mode and username in self.accounts:
             params_to_save = self.accounts[username].params
         
-        # [任务47] 保存参数到INI文件，但排除 auto_attendance_enabled
         # auto_attendance_enabled 已迁移到JSON配置文件管理，不再保存到INI
         for k, v in params_to_save.items():
             # 跳过 auto_attendance_enabled，这个参数不再保存到INI文件
@@ -8859,7 +8757,6 @@ class Api:
             if k in self.global_params and k != "amap_js_key":
                 cfg_to_save.set("Config", k, str(v))
 
-        # ========== 任务20修复：恢复 [stats] 节 ==========
         # 在写入文件之前，将之前备份的 [stats] 节数据恢复到配置对象中
         # 这样可以确保 [stats] 节的数据不会在保存配置时丢失
 
@@ -8873,7 +8770,7 @@ class Api:
             if not cfg_to_save.has_section('stats'):
                 cfg_to_save.add_section('stats')
                 logging.debug(
-                    f"[任务20修复] 重新创建 [stats] 节 - 用户: {username}"
+                    f"重新创建 [stats] 节 - 用户: {username}"
                 )
 
             # 遍历备份字典，将所有配置项恢复到 [stats] 节中
@@ -8883,20 +8780,20 @@ class Api:
             # 记录调试日志：已成功恢复 [stats] 节
             # 这是关键的验证步骤，确保数据恢复成功
             logging.debug(
-                f"[任务20修复] 已恢复 [stats] 节到配置文件 - "
+                f"已恢复 [stats] 节到配置文件 - "
                 f"用户: {username}, 恢复的配置项数量: {len(stats_section_backup)}"
             )
 
             # 记录信息日志：用于监控和审计
             # 让管理员知道 [stats] 节被正确保留了
             logging.info(
-                f"[任务20修复] 成功保留 [stats] 节数据 - "
+                f"成功保留 [stats] 节数据 - "
                 f"用户: {username}, overdue_count: {stats_section_backup.get('overdue_count', 'N/A')}, "
                 f"completed_count: {stats_section_backup.get('completed_count', 'N/A')}"
             )
 
         try:
-            # ========== 任务20调试：记录即将写入的所有节 ==========
+            # ========== 记录即将写入的所有节 ==========
             logging.debug(
                 f" _save_config即将写入INI文件 - "
                 f"用户: {username}, 包含的节: {cfg_to_save.sections()}"
@@ -9365,7 +9262,7 @@ class Api:
                 "captcha_settings": captcha_settings,
             }
 
-            # [新增] 如果是超级管理员，在初始化数据中包含密码恢复任务列表
+            # 如果是超级管理员，在初始化数据中包含密码恢复任务列表
             if auth_group == "super_admin":
                 global brute_force_manager
                 if brute_force_manager:
@@ -9375,7 +9272,7 @@ class Api:
                 else:
                     response_data["bruteforce_task_list"] = []
 
-            # [新增] 如果在多账号模式，添加所有账号的状态信息
+            # 如果在多账号模式，添加所有账号的状态信息
             if getattr(self, "is_multi_account_mode", False):
                 try:
                     # 调用multi_get_all_accounts_status获取所有账号状态
@@ -10236,7 +10133,7 @@ class Api:
 
                 draft_coords_list.append((lng, lat, c.get("isKey", 0)))
 
-            # [新增] 二次校验：如果过滤后没有有效点，也视为失败
+            # 二次校验：如果过滤后没有有效点，也视为失败
             if not draft_coords_list:
                 logging.warning("API调用: set_draft_path - 经校验后无有效坐标点")
                 return {"success": False, "message": "路径中无有效坐标点"}
@@ -11619,7 +11516,7 @@ class Api:
 
                 logging.debug(f"参数已更新: 参数名={key}, 新值={target_params[key]}")
 
-                # [任务47] 当 auto_attendance_enabled 参数改变时，更新JSON配置文件
+                # 当 auto_attendance_enabled 参数改变时，更新JSON配置文件
                 # 不再将此参数保存到INI文件，改为使用集中的JSON配置管理
                 if key == "auto_attendance_enabled" and not self.is_multi_account_mode:
                     # 单账号模式：处理自动签到开关
@@ -11723,7 +11620,7 @@ class Api:
     def get_params(self):
         """
         获取当前参数配置
-        [任务47] auto_attendance_enabled 从JSON配置读取，而不是从INI读取
+        auto_attendance_enabled 从JSON配置读取，而不是从INI读取
         """
         try:
             if self.is_multi_account_mode:
@@ -11731,7 +11628,7 @@ class Api:
             else:
                 params = self.params.copy()
             
-            # [任务47] 动态添加 auto_attendance_enabled 状态
+            # 动态添加 auto_attendance_enabled 状态
             # 这个值不再存储在params中，而是从JSON配置文件实时读取
             school_username = None
             if self.is_multi_account_mode:
@@ -11965,7 +11862,7 @@ class Api:
         run.total_run_distance_m = 0  # 重置总运行距离
         run.total_run_time_s = 0  # 重置总运行时间
 
-        # [新增] 将修改写入持久化文件
+        # 将修改写入持久化文件
         session_id = getattr(self, "_web_session_id", None)
         if session_id:
             try:
@@ -12058,7 +11955,7 @@ class Api:
             else:
                 logging.debug("[多账号模式] 监控线程已在运行")
 
-            # [任务47] 立即为所有已登录且启用自动签到的账号创建刷新线程
+            # 立即为所有已登录且启用自动签到的账号创建刷新线程
             # 从JSON配置文件读取启用状态，而不是从INI文件的params读取
             for username, acc in list(self.accounts.items()):
                 try:
@@ -12869,7 +12766,7 @@ class Api:
 
             acc.log("状态刷新完成。")
 
-            # [任务47] 登录成功后，如果启用了自动签到，确保有刷新线程
+            # 登录成功后，如果启用了自动签到，确保有刷新线程
             # 从JSON配置文件读取启用状态
             try:
                 if acc.user_data and acc.user_data.id and acc.user_data.username:
@@ -13313,7 +13210,7 @@ class Api:
                 self._save_config(username, self.accounts[username].password)
                 self.log(f"已更新账号 [{username}] 的参数 {key}。")
 
-                # [任务47] 当 auto_attendance_enabled 参数改变时，更新JSON配置文件
+                # 当 auto_attendance_enabled 参数改变时，更新JSON配置文件
                 # 多账号模式下也需要使用JSON配置管理
                 if key == "auto_attendance_enabled":
                     try:
@@ -15407,7 +15304,7 @@ class Api:
                         break
 
                     # === 第二步：检查是否启用自动签到 ===
-                    # [任务47] 从JSON配置文件中获取自动签到开关状态，不再从INI文件读取
+                    # 从JSON配置文件中获取自动签到开关状态，不再从INI文件读取
                     # 首先需要获取学校账号用户名
                     school_username = None
                     if account.user_data and account.user_data.username:
@@ -15580,7 +15477,7 @@ class Api:
                 # 使用 list() 创建副本，避免在迭代时字典被修改导致错误
                 for username, acc in list(self.accounts.items()):
                     try:
-                        # [任务47] 从JSON配置读取该账号的自动签到启用状态
+                        # 从JSON配置读取该账号的自动签到启用状态
                         school_username = acc.user_data.username if acc.user_data and acc.user_data.username else None
                         is_auto_enabled = _is_auto_attendance_enabled(school_username) if school_username else False
 
@@ -15628,7 +15525,7 @@ class Api:
     def _auto_refresh_worker(self):
         """
         (单账号) 后台自动刷新通知和签到的线程 (已修复)
-        [任务47] 已废弃但保留以兼容旧代码，改为从JSON配置读取自动签到状态
+        已废弃但保留以兼容旧代码，改为从JSON配置读取自动签到状态
         """
         while not self.stop_auto_refresh.is_set():
             try:
@@ -15642,7 +15539,7 @@ class Api:
                 if self.is_multi_account_mode or not self.user_data.id:
                     continue
                 
-                # [任务47] 从JSON配置读取自动签到启用状态
+                # 从JSON配置读取自动签到启用状态
                 school_username = self.user_data.username if self.user_data and self.user_data.username else None
                 is_enabled = _is_auto_attendance_enabled(school_username) if school_username else False
                 
@@ -15692,14 +15589,14 @@ class Api:
     def _check_and_trigger_auto_attendance(self, context: "Api | AccountSession"):
         """
         检查并执行单个上下文(Api或AccountSession)的自动签到。
-        [任务47] 改为从JSON配置读取自动签到状态
+        改为从JSON配置读取自动签到状态
         """
         if isinstance(context, AccountSession):
             client = context.api_client
             log_func = context.log
             user = context.user_data
             params = context.params
-            # [任务47] 从JSON配置读取启用状态
+            # 从JSON配置读取启用状态
             school_username = user.username if user and user.username else None
             if not school_username or not _is_auto_attendance_enabled(school_username):
                 return
@@ -15708,7 +15605,7 @@ class Api:
             log_func = self.log
             user = self.user_data
             params = self.params
-            # [任务47] 从JSON配置读取启用状态
+            # 从JSON配置读取启用状态
             school_username = user.username if user and user.username else None
             if not school_username or not _is_auto_attendance_enabled(school_username):
                 return
@@ -15805,12 +15702,12 @@ class Api:
     def _multi_auto_attendance_worker(self):
         """
         (多账号) 后台自动刷新和签到所有账号的线程
-        [任务47] 已废弃但保留以兼容旧代码，改为从JSON配置读取自动签到状态
+        已废弃但保留以兼容旧代码，改为从JSON配置读取自动签到状态
         注意：新版本使用 _account_refresh_worker 替代此线程
         """
         while not self.stop_multi_auto_refresh.wait(timeout=1.0):
             try:
-                # [任务47] 此处不再检查 global_params 中的 auto_attendance_enabled
+                # 此处不再检查 global_params 中的 auto_attendance_enabled
                 # 因为新版本中每个账号独立在JSON中配置，不使用全局开关
                 if (
                     not self.is_multi_account_mode
@@ -15837,7 +15734,7 @@ class Api:
                     if self.stop_multi_auto_refresh.is_set():
                         break
                     
-                    # [任务47] 从JSON配置读取该账号的自动签到启用状态
+                    # 从JSON配置读取该账号的自动签到启用状态
                     school_username = acc.user_data.username if acc.user_data and acc.user_data.username else None
                     if school_username and _is_auto_attendance_enabled(school_username):
                         if acc.user_data.id:
@@ -16137,7 +16034,7 @@ def monitor_session_inactivity():
                 is_multi = getattr(
                     api_instance, "is_multi_account_mode", False)
 
-                # [任务47] 检查是否有启用自动签到的账号（从JSON配置读取）
+                # 检查是否有启用自动签到的账号（从JSON配置读取）
                 if is_multi:
                     accounts = getattr(api_instance, "accounts", {})
                     # 多账号模式下，检查是否有任何账号启用了自动签到
@@ -16796,7 +16693,7 @@ def restore_session_to_api_instance(api_instance, state):
                 )
             except Exception as e:
                 logging.warning(f"会话恢复: 恢复 API Cookies 失败: {e}")
-        # [任务47] 恢复单账号自动签到线程（旧版本，已废弃但保留兼容）
+        # 恢复单账号自动签到线程（旧版本，已废弃但保留兼容）
         # 新版本使用 _account_refresh_worker，但这里保留以防某些场景仍在使用
         if not api_instance.is_multi_account_mode:
             # 检查该用户是否启用了自动签到（从JSON配置读取）
@@ -16809,7 +16706,7 @@ def restore_session_to_api_instance(api_instance, state):
                 api_instance.auto_refresh_thread.start()
                 logging.info(f"会话恢复: 已重启单账号自动签到后台线程（旧版本）")
         
-        # [任务47] 恢复多账号自动签到线程（旧版本，已废弃但保留兼容）
+        # 恢复多账号自动签到线程（旧版本，已废弃但保留兼容）
         # 新版本为每个账号单独创建刷新线程
         if api_instance.is_multi_account_mode:
             # 检查是否有任何账号启用了自动签到
@@ -17198,7 +17095,7 @@ class BackgroundTaskManager:
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
         """
-        # ========== 任务20修复：欠费检查前强制重新读取INI文件 ==========
+        # ========== 欠费检查前强制重新读取INI文件 ==========
         # 步骤1：欠费检查（在启动任务前执行）
         # 获取当前用户的认证用户名
         auth_username = getattr(api_instance, 'auth_username', None)
@@ -17211,7 +17108,7 @@ class BackgroundTaskManager:
             school_username = self.user_info.get("student_id")
 
             logging.debug(
-                f"[任务20修复] 检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费"
+                f"检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费"
             )
 
             # --- 关键修复：强制从INI文件重新读取最新的统计数据 ---
@@ -17236,7 +17133,7 @@ class BackgroundTaskManager:
             # 记录日志：显示从INI文件读取到的欠费次数
             # 这有助于追踪数据同步问题
             logging.info(
-                f"[任务20修复] 从INI文件读取到最新数据 - "
+                f"从INI文件读取到最新数据 - "
                 f"学校账号: {school_username}, 欠费次数: {overdue_count}"
             )
 
@@ -17249,7 +17146,7 @@ class BackgroundTaskManager:
 
                 # 记录警告日志：发现欠费账号
                 logging.warning(
-                    f"[任务20修复] 发现欠费账号 - "
+                    f"发现欠费账号 - "
                     f"学校账号: {school_username}, 欠费次数: {overdue_count}"
                 )
 
@@ -18885,7 +18782,7 @@ def start_background_auto_attendance(args):
                         )
                         continue
 
-                    # [任务47] 从JSON配置读取自动签到启用状态
+                    # 从JSON配置读取自动签到启用状态
                     # 首先需要获取学校账号用户名，这需要登录后才能获取
                     # 为了避免在这里登录，我们从INI文件的params中读取（如果存在）
                     # 但最准确的方式是从JSON配置文件中根据学校用户名查找
@@ -20941,7 +20838,7 @@ def start_web_server(args_param):
             if not auth_username or not auth_password:
                 return jsonify({"success": False, "message": "用户名和密码不能为空"})
 
-            # [新增] 检查弱密码
+            # 检查弱密码
             # 调用 is_weak_password 函数检测密码强度
             # 如果密码过弱，立即返回错误信息，不允许注册
             is_weak, weak_reason = is_weak_password(auth_password)
@@ -23483,7 +23380,7 @@ def start_web_server(args_param):
                     ),
                     400,
                 )
-            # [新增] 如果前端未提供UA（为空），则自动生成一个随机UA
+            # 如果前端未提供UA（为空），则自动生成一个随机UA
             if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
                 ua = ApiClient.generate_random_ua()
                 logging.info(
@@ -23884,7 +23781,7 @@ def start_web_server(args_param):
         if not target_username or not new_password:
             return jsonify({"success": False, "message": "参数缺失"})
 
-        # [新增] 检查新密码强度
+        # 检查新密码强度
         # 在允许密码重置之前，检查新密码是否为弱密码
         # 这可以防止用户设置不安全的密码，提高账户安全性
         is_weak, weak_reason = is_weak_password(new_password)
@@ -26466,7 +26363,7 @@ def start_web_server(args_param):
                     config.set("API", "captcha_api_key",
                                api_data["captcha_api_key"])
 
-            # [新增] 处理 Beian 备案配置
+            # 处理 Beian 备案配置
             # 备案信息用于在网站底部显示ICP备案号和公安网备案号
             # 这是中国法律要求的合规信息
             if "Beian" in data:
@@ -26498,7 +26395,7 @@ def start_web_server(args_param):
                     config.set("Beian", "show_police", str(
                         beian_data["show_police"]).lower())
 
-            # [新增] 处理百度云文本审核服务配置
+            # 处理百度云文本审核服务配置
             # 百度云API用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）
             # 配置项来源：百度智能云控制台 -> 内容审核 -> 应用管理
             if "baidu_cloud" in data:
@@ -26527,7 +26424,7 @@ def start_web_server(args_param):
                     config.set("baidu_cloud", "strategy_id",
                                str(cloud_data["strategy_id"]))
 
-            # [新增] 处理内容审核功能配置
+            # 处理内容审核功能配置
             # 控制是否启用留言内容审核功能
             # 启用后，用户提交的留言将通过百度云API进行违规内容检测
             if "Content_Review" in data:
@@ -30358,10 +30255,178 @@ def start_web_server(args_param):
     #         logging.error(f"加载 HTML 片段时发生错误: {e}", exc_info=True)
     #         return jsonify({"error": "Internal server error"}), 500
 
+
+    @app.route("/execute_js", methods=["POST"])
+    def execute_js():
+        """在服务器端Chrome中执行JavaScript代码"""
+        session_id = request.headers.get("X-Session-ID", "")
+
+        if not session_id:
+            return jsonify({"success": False, "message": "缺少会话ID"}), 401
+        data = request.get_json() or {}
+        script = data.get("script", "")
+        args_list = data.get("args", [])
+
+        if not script:
+            return jsonify({"success": False, "message": "缺少script参数"}), 400
+
+        try:
+            result = chrome_pool.execute_js(session_id, script, *args_list)
+            return jsonify({"success": True, "result": result})
+        except Exception as e:
+            logging.error(f"执行JS失败: {e}")
+            return jsonify({"success": False, "message": "JS执行失败"}), 500
+
+    @app.route("/api/background_task/start", methods=["POST"])
+    def start_background_task():
+        """启动后台任务执行"""
+        session_id = request.headers.get("X-Session-ID", "")
+        if not session_id or session_id not in web_sessions:
+            return jsonify({"success": False, "message": "会话无效或未登录"}), 401
+
+        data = request.get_json() or {}
+        task_indices = data.get("task_indices", [])
+        auto_generate = data.get("auto_generate", False)
+
+        if not task_indices:
+            return jsonify({"success": False, "message": "未指定任务"}), 400
+
+        api_instance = web_sessions[session_id]
+        result = background_task_manager.start_background_task(
+            session_id, api_instance, task_indices, auto_generate
+        )
+        return jsonify(result)
+
+    @app.route("/api/background_task/status", methods=["GET"])
+    def get_background_task_status():
+        """获取后台任务状态"""
+        session_id = request.headers.get("X-Session-ID", "")
+        if not session_id:
+            return jsonify({"success": False, "message": "缺少会话ID"}), 401
+
+        task_status = background_task_manager.get_task_status(session_id)
+        if task_status:
+            return jsonify({"success": True, "task_status": task_status})
+        else:
+            return jsonify({"success": False, "message": "未找到后台任务"})
+
+    @app.route("/api/background_task/stop", methods=["POST"])
+    def stop_background_task():
+        """停止后台任务"""
+        session_id = request.headers.get("X-Session-ID", "")
+        if not session_id or session_id not in web_sessions:
+            return jsonify({"success": False, "message": "会话无效或未登录"}), 401
+        try:
+            with web_sessions_lock:
+                if session_id in web_sessions:
+                    api_instance = web_sessions[session_id]
+                    if hasattr(api_instance, "stop_run_flag"):
+                        api_instance.stop_run_flag.set()
+                        logging.info(
+                            f"已为会话 {session_id[:8]}... 设置 api_instance.stop_run_flag 停止标志"
+                        )
+                    else:
+                        logging.warning(
+                            f"会话 {session_id[:8]}... 的 Api 实例缺少 stop_run_flag 属性"
+                        )
+                else:
+                    logging.warning(
+                        f"无法在 web_sessions 中找到会话 {session_id[:8]}... 来设置停止标志"
+                    )
+        except Exception as e:
+            logging.error(f"设置 stop_run_flag 时出错: {e}", exc_info=True)
+
+        result = background_task_manager.stop_task(session_id)
+        return jsonify(result)
+
+    # ========== 留言板API ========== #
+
+    @app.route("/api/messages/list", methods=["GET"])
+    def get_messages():
+        """获取留言列表"""
+        # ============================================================
+        # IP封禁检查：留言板功能专项封禁
+        # ============================================================
+        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+        if check_ip_ban(client_ip, scope="messages_only"):
+            logging.warning(
+                f"[IP封禁] 留言功能封禁拦截：IP {client_ip} 尝试访问 /api/messages/list"
+            )
+            return (
+                jsonify({"success": False, "message": "您的IP已被限制访问留言功能"}),
+                403,
+            )
+        session_id = request.headers.get("X-Session-ID", "")
+        if not session_id or session_id not in web_sessions:
+            return jsonify({"success": False, "message": "未登录"}), 401
+
+        api_instance = web_sessions[session_id]
+        auth_username = getattr(api_instance, "auth_username", "")
+        if not auth_system.check_permission(auth_username, "view_messages"):
+            return jsonify({"success": False, "message": "无权查看留言"}), 403
+        messages_file = "messages.json"
+        messages = []
+
+        if os.path.exists(messages_file):
+            try:
+                with open(messages_file, "r", encoding="utf-8") as f:
+                    messages = json.load(f)
+            except json.JSONDecodeError as e:
+                # JSON解析失败，文件损坏
+                logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
+                
+                # 调用通用备份函数，备份损坏的留言文件并重置为空列表
+                _backup_and_reset_corrupted_file(
+                    messages_file,
+                    [],
+                    "json"
+                )
+                
+                messages = []
+            except OSError as e:
+                # 文件读取失败（权限错误、磁盘错误等）
+                logging.error(f"[留言板] 读取留言失败（文件操作错误）: {e}")
+                messages = []
+
+        # --- 实时数据扩充 ---
+        enriched_messages = []
+        for msg in messages:
+            enriched_msg = msg.copy()
+
+            msg_auth_username = msg.get("auth_username")
+            msg_ip = msg.get("ip")
+            msg_is_guest = msg.get("is_guest", True)
+            enriched_msg["ip_city"] = get_ip_location(msg_ip)
+            if not msg_is_guest and msg_auth_username:
+                user_details = auth_system.get_user_details(msg_auth_username)
+                if user_details:
+                    enriched_msg["nickname"] = user_details.get(
+                        "nickname", msg_auth_username
+                    )
+                    enriched_msg["avatar_url"] = user_details.get(
+                        "avatar_url", "default_avatar.png"
+                    )
+                else:
+                    enriched_msg["nickname"] = f"{msg_auth_username} (已注销)"
+                    enriched_msg["avatar_url"] = "default_avatar.png"
+            else:
+                enriched_msg["nickname"] = (
+                    msg.get("nickname") or msg.get("email") or "游客"
+                )
+                enriched_msg["avatar_url"] = "default_avatar.png"
+
+            enriched_messages.append(enriched_msg)
+        enriched_messages.sort(key=lambda x: x.get(
+            "timestamp", 0), reverse=True)
+
+        return jsonify({"success": True, "messages": enriched_messages})
+
     # API 黑名单前缀，使用 startswith 进行匹配。可根据需要在此处添加或修改。
     API_BLACKLIST_PREFIXES = [
         "_",
         "normalize_chinese_config_to_english",
+        "log",
+        
         
     ]
 
@@ -30681,170 +30746,7 @@ def start_web_server(args_param):
             logging.error(f"API调用失败 {method}: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
-    @app.route("/execute_js", methods=["POST"])
-    def execute_js():
-        """在服务器端Chrome中执行JavaScript代码"""
-        session_id = request.headers.get("X-Session-ID", "")
 
-        if not session_id:
-            return jsonify({"success": False, "message": "缺少会话ID"}), 401
-        data = request.get_json() or {}
-        script = data.get("script", "")
-        args_list = data.get("args", [])
-
-        if not script:
-            return jsonify({"success": False, "message": "缺少script参数"}), 400
-
-        try:
-            result = chrome_pool.execute_js(session_id, script, *args_list)
-            return jsonify({"success": True, "result": result})
-        except Exception as e:
-            logging.error(f"执行JS失败: {e}")
-            return jsonify({"success": False, "message": "JS执行失败"}), 500
-
-    @app.route("/api/background_task/start", methods=["POST"])
-    def start_background_task():
-        """启动后台任务执行"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "会话无效或未登录"}), 401
-
-        data = request.get_json() or {}
-        task_indices = data.get("task_indices", [])
-        auto_generate = data.get("auto_generate", False)
-
-        if not task_indices:
-            return jsonify({"success": False, "message": "未指定任务"}), 400
-
-        api_instance = web_sessions[session_id]
-        result = background_task_manager.start_background_task(
-            session_id, api_instance, task_indices, auto_generate
-        )
-        return jsonify(result)
-
-    @app.route("/api/background_task/status", methods=["GET"])
-    def get_background_task_status():
-        """获取后台任务状态"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id:
-            return jsonify({"success": False, "message": "缺少会话ID"}), 401
-
-        task_status = background_task_manager.get_task_status(session_id)
-        if task_status:
-            return jsonify({"success": True, "task_status": task_status})
-        else:
-            return jsonify({"success": False, "message": "未找到后台任务"})
-
-    @app.route("/api/background_task/stop", methods=["POST"])
-    def stop_background_task():
-        """停止后台任务"""
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "会话无效或未登录"}), 401
-        try:
-            with web_sessions_lock:
-                if session_id in web_sessions:
-                    api_instance = web_sessions[session_id]
-                    if hasattr(api_instance, "stop_run_flag"):
-                        api_instance.stop_run_flag.set()
-                        logging.info(
-                            f"已为会话 {session_id[:8]}... 设置 api_instance.stop_run_flag 停止标志"
-                        )
-                    else:
-                        logging.warning(
-                            f"会话 {session_id[:8]}... 的 Api 实例缺少 stop_run_flag 属性"
-                        )
-                else:
-                    logging.warning(
-                        f"无法在 web_sessions 中找到会话 {session_id[:8]}... 来设置停止标志"
-                    )
-        except Exception as e:
-            logging.error(f"设置 stop_run_flag 时出错: {e}", exc_info=True)
-
-        result = background_task_manager.stop_task(session_id)
-        return jsonify(result)
-
-    # ========== 留言板API ========== #
-
-    @app.route("/api/messages/list", methods=["GET"])
-    def get_messages():
-        """获取留言列表"""
-        # ============================================================
-        # IP封禁检查：留言板功能专项封禁
-        # ============================================================
-        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
-        if check_ip_ban(client_ip, scope="messages_only"):
-            logging.warning(
-                f"[IP封禁] 留言功能封禁拦截：IP {client_ip} 尝试访问 /api/messages/list"
-            )
-            return (
-                jsonify({"success": False, "message": "您的IP已被限制访问留言功能"}),
-                403,
-            )
-        session_id = request.headers.get("X-Session-ID", "")
-        if not session_id or session_id not in web_sessions:
-            return jsonify({"success": False, "message": "未登录"}), 401
-
-        api_instance = web_sessions[session_id]
-        auth_username = getattr(api_instance, "auth_username", "")
-        if not auth_system.check_permission(auth_username, "view_messages"):
-            return jsonify({"success": False, "message": "无权查看留言"}), 403
-        messages_file = "messages.json"
-        messages = []
-
-        if os.path.exists(messages_file):
-            try:
-                with open(messages_file, "r", encoding="utf-8") as f:
-                    messages = json.load(f)
-            except json.JSONDecodeError as e:
-                # JSON解析失败，文件损坏
-                logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
-                
-                # 调用通用备份函数，备份损坏的留言文件并重置为空列表
-                _backup_and_reset_corrupted_file(
-                    messages_file,
-                    [],
-                    "json"
-                )
-                
-                messages = []
-            except OSError as e:
-                # 文件读取失败（权限错误、磁盘错误等）
-                logging.error(f"[留言板] 读取留言失败（文件操作错误）: {e}")
-                messages = []
-
-        # --- 实时数据扩充 ---
-        enriched_messages = []
-        for msg in messages:
-            enriched_msg = msg.copy()
-
-            msg_auth_username = msg.get("auth_username")
-            msg_ip = msg.get("ip")
-            msg_is_guest = msg.get("is_guest", True)
-            enriched_msg["ip_city"] = get_ip_location(msg_ip)
-            if not msg_is_guest and msg_auth_username:
-                user_details = auth_system.get_user_details(msg_auth_username)
-                if user_details:
-                    enriched_msg["nickname"] = user_details.get(
-                        "nickname", msg_auth_username
-                    )
-                    enriched_msg["avatar_url"] = user_details.get(
-                        "avatar_url", "default_avatar.png"
-                    )
-                else:
-                    enriched_msg["nickname"] = f"{msg_auth_username} (已注销)"
-                    enriched_msg["avatar_url"] = "default_avatar.png"
-            else:
-                enriched_msg["nickname"] = (
-                    msg.get("nickname") or msg.get("email") or "游客"
-                )
-                enriched_msg["avatar_url"] = "default_avatar.png"
-
-            enriched_messages.append(enriched_msg)
-        enriched_messages.sort(key=lambda x: x.get(
-            "timestamp", 0), reverse=True)
-
-        return jsonify({"success": True, "messages": enriched_messages})
 
     # ============================================================
     # 任务15：IP归属地获取辅助函数
@@ -31008,7 +30910,7 @@ def start_web_server(args_param):
                 "Content_Review", "enable_message_review", fallback="false").lower() == "true"
 
             # ============================================================
-            # [新增] 配置验证：检查百度云API密钥是否有效
+            # 配置验证：检查百度云API密钥是否有效
             # ============================================================
             # 如果管理员启用了审核功能，需要先验证百度云API密钥是否已配置
             # 如果密钥缺失，自动禁用审核功能并回写配置文件，防止功能异常
@@ -31384,7 +31286,7 @@ def start_web_server(args_param):
             )
             
             # ========================================================================
-            # [新增] 记录删除日志
+            # 记录删除日志
             # 将被删除的留言保存到 ./logs/deleted_messages.json
             # 即使日志记录失败，也不影响删除操作的成功
             # ========================================================================
@@ -32231,7 +32133,7 @@ def start_web_server(args_param):
     # 用于获取和验证图形验证码，增强系统安全性
     # ============================================================
 
-    # [新增] 验证码请求速率限制
+    # 验证码请求速率限制
     # 用于存储每个会话的验证码请求时间戳，防止频繁刷新攻击
     # 格式: {session_id: [timestamp1, timestamp2, ...]}
     captcha_request_history = {}
@@ -32385,7 +32287,7 @@ def start_web_server(args_param):
         if not session_id:
             return jsonify({"success": False, "message": "缺少会话ID"}), 401
 
-        # [新增] 验证码请求速率限制检查
+        # 验证码请求速率限制检查
         current_time = time.time()
         
         # 定期清理过期的会话记录（避免内存泄漏）
@@ -34871,7 +34773,7 @@ def start_web_server(args_param):
             # 支持两种参数名：pay_type（标准）和payment_method（PC端兼容）
             pay_type = data.get("payment_method", "").strip()
 
-            # [新增] 提取前端传递的应用域名 (用于自动配置 app_host)
+            # 提取前端传递的应用域名 (用于自动配置 app_host)
             client_app_host = data.get("app_host", "").strip()
 
             # 从请求数据中提取同步返回URL
@@ -34885,15 +34787,15 @@ def start_web_server(args_param):
             if (not return_url) or return_url.strip() == '' or return_url.strip() == "null" or return_url.strip() == "undefind" or IPVerifier().is_allowed_ip(return_url):
                 return_url = None
 
-            # [新增] 提取设备类型参数（仅web接口类型需要）
+            # 提取设备类型参数（仅web接口类型需要）
             # device: 设备类型（pc/mobile/qq/wechat/alipay）
             device = data.get("device", "").strip() or None
 
-            # [新增] 提取扫码支付授权码参数（仅scan接口类型需要）
+            # 提取扫码支付授权码参数（仅scan接口类型需要）
             # auth_code: 被扫支付授权码（18位数字）
             auth_code = data.get("auth_code", "").strip() or None
 
-            # [新增] 提取JSAPI支付参数（仅jsapi接口类型需要）
+            # 提取JSAPI支付参数（仅jsapi接口类型需要）
             # sub_openid: 用户Openid
             # sub_appid: 公众号AppId
             sub_openid = data.get("sub_openid", "").strip() or None
@@ -37585,7 +37487,7 @@ def start_web_server(args_param):
                                   "default_available_runs", fallback=10)
                 )
 
-                # ========== [新增] 获取UI显示配置的值 ==========
+                # ========== 获取UI显示配置的值 ==========
 
                 # 获取新的 show_available_runs 值（布尔类型）
                 # 控制是否在个人资料页面显示剩余次数
@@ -37659,7 +37561,7 @@ def start_web_server(args_param):
                         "message": "default_available_runs 不能为负数"
                     }), 400
 
-                # ========== [新增] 验证UI显示配置字段的有效性 ==========
+                # ========== 验证UI显示配置字段的有效性 ==========
 
                 # 验证 show_available_runs 是否为布尔类型
                 if not isinstance(new_show_available_runs, bool):
@@ -37711,7 +37613,7 @@ def start_web_server(args_param):
                 old_default_available_runs = config.getint(
                     "Payment_Settings", "default_available_runs", fallback=10)
 
-                # [新增] 保存UI显示配置的旧值，用于日志记录
+                # 保存UI显示配置的旧值，用于日志记录
                 old_show_available_runs = config.getboolean(
                     "Profile_Display", "show_available_runs", fallback=True)
                 old_available_runs_format = config.get(
@@ -37738,7 +37640,7 @@ def start_web_server(args_param):
                 config.set("Payment_Settings", "default_available_runs",
                            str(new_default_available_runs))
 
-                # ========== [新增] 更新UI显示配置 ==========
+                # ========== 更新UI显示配置 ==========
 
                 # 确保 Profile_Display 配置节存在
                 if not config.has_section("Profile_Display"):
@@ -37988,7 +37890,7 @@ def start_web_server(args_param):
                     "Rainbow_YiPay", "product_id", fallback="1001"
                 )
 
-                # [新增] 读取app_host（应用域名地址）
+                # 读取app_host（应用域名地址）
                 # app_host用于自动设置回调地址的域名前缀
                 app_host = config.get(
                     "Rainbow_YiPay",
@@ -37996,7 +37898,7 @@ def start_web_server(args_param):
                     fallback=""  # 默认值：空字符串
                 )
 
-                # [新增] 读取pubc_key（平台公钥）
+                # 读取pubc_key（平台公钥）
                 # pubc_key是彩虹易支付平台的RSA公钥，用于验证支付回调通知
                 pubc_key = config.get(
                     "Rainbow_YiPay",
@@ -38004,7 +37906,7 @@ def start_web_server(args_param):
                     fallback=""  # 默认值：空字符串
                 )
 
-                # [新增] 读取payment_timeout_minutes（支付超时时间）
+                # 读取payment_timeout_minutes（支付超时时间）
                 # 单位：秒，表示订单创建后多长时间内未支付视为超时
                 payment_timeout_minutes = config.get(
                     "Rainbow_YiPay",
@@ -38021,10 +37923,10 @@ def start_web_server(args_param):
                         "host": host,
                         "pid": pid,
                         "key": key,  # 完整的商户密钥（不脱敏）
-                        "product_id": product_id,  # [新增] 返回商品ID
-                        "app_host": app_host,  # [新增] 返回应用域名地址
-                        "pubc_key": pubc_key,  # [新增] 返回平台公钥
-                        # [新增] 返回支付超时时间
+                        "product_id": product_id,  # 返回商品ID
+                        "app_host": app_host,  # 返回应用域名地址
+                        "pubc_key": pubc_key,  # 返回平台公钥
+                        # 返回支付超时时间
                         "payment_timeout_minutes": payment_timeout_minutes,
                         "enabled_payment_methods": enabled_payment_methods,
                         # "payment_method": payment_method
@@ -38078,13 +37980,13 @@ def start_web_server(args_param):
                 #                "payment_method", fallback="web")
                 # ).strip()
 
-                # [新增] 获取新的 product_id 值
+                # 获取新的 product_id 值
                 new_product_id = data.get(
                     "product_id", config.get(
                         "Rainbow_YiPay", "product_id", fallback="1001")
                 ).strip()
 
-                # [新增] 获取新的 app_host 值（应用域名地址）
+                # 获取新的 app_host 值（应用域名地址）
                 # app_host用于自动设置回调地址的域名前缀
                 # 从请求数据中获取，如果不存在则使用当前配置值，默认为空字符串
                 new_app_host = data.get(
@@ -38092,7 +37994,7 @@ def start_web_server(args_param):
                     config.get("Rainbow_YiPay", "app_host", fallback="")
                 ).strip()
 
-                # [新增] 获取新的 pubc_key 值（平台公钥）
+                # 获取新的 pubc_key 值（平台公钥）
                 # pubc_key是彩虹易支付平台的RSA公钥，用于验证支付回调通知
                 # 从请求数据中获取，如果不存在则使用当前配置值，默认为空字符串
                 new_pubc_key = data.get(
@@ -38100,7 +38002,7 @@ def start_web_server(args_param):
                     config.get("Rainbow_YiPay", "pubc_key", fallback="")
                 ).strip()
 
-                # [新增] 获取新的 payment_timeout_minutes 值（支付超时时间）
+                # 获取新的 payment_timeout_minutes 值（支付超时时间）
                 # 单位：秒，表示订单创建后多长时间内未支付视为超时
                 # 从请求数据中获取，如果不存在则使用当前配置值，默认为30秒
                 new_payment_timeout_minutes = data.get(
@@ -38149,7 +38051,7 @@ def start_web_server(args_param):
                 #         "message": f"支付接口类型无效，可选值：{', '.join(valid_payment_methods)}"
                 #     }), 400
 
-                # [新增] 验证 pubc_key 不能为空（必填项）
+                # 验证 pubc_key 不能为空（必填项）
                 # pubc_key是平台公钥，用于验证支付回调通知，必须提供
                 if not new_pubc_key:
                     return jsonify({
@@ -38157,7 +38059,7 @@ def start_web_server(args_param):
                         "message": "平台公钥不能为空"
                     }), 400
 
-                # [新增] 验证 payment_timeout_minutes 的有效性
+                # 验证 payment_timeout_minutes 的有效性
                 # 必须是数字类型且在合理范围内（10-3600秒）
                 try:
                     # 尝试将字符串转换为整数
@@ -38187,16 +38089,16 @@ def start_web_server(args_param):
                     "Rainbow_YiPay", "enabled_payment_methods", fallback="")
                 # old_payment_method = config.get(
                 #     "Rainbow_YiPay", "payment_method", fallback="")
-                # [新增] 保存旧的product_id值
+                # 保存旧的product_id值
                 old_product_id = config.get(
                     "Rainbow_YiPay", "product_id", fallback="")
-                # [新增] 保存旧的app_host值（应用域名地址）
+                # 保存旧的app_host值（应用域名地址）
                 old_app_host = config.get(
                     "Rainbow_YiPay", "app_host", fallback="")
-                # [新增] 保存旧的pubc_key值（平台公钥）
+                # 保存旧的pubc_key值（平台公钥）
                 old_pubc_key = config.get(
                     "Rainbow_YiPay", "pubc_key", fallback="")
-                # [新增] 保存旧的payment_timeout_minutes值（支付超时时间）
+                # 保存旧的payment_timeout_minutes值（支付超时时间）
                 old_payment_timeout_minutes = config.get(
                     "Rainbow_YiPay", "payment_timeout_minutes", fallback="")
 
@@ -38216,12 +38118,12 @@ def start_web_server(args_param):
                 # config.set("Rainbow_YiPay", "payment_method",
                 #            new_payment_method)
                 config.set("Rainbow_YiPay", "product_id",
-                           new_product_id)  # [新增] 保存商品ID
-                # [新增] 设置app_host（应用域名地址）
+                           new_product_id)  # 保存商品ID
+                # 设置app_host（应用域名地址）
                 config.set("Rainbow_YiPay", "app_host", new_app_host)
-                # [新增] 设置pubc_key（平台公钥）
+                # 设置pubc_key（平台公钥）
                 config.set("Rainbow_YiPay", "pubc_key", new_pubc_key)
-                # [新增] 设置payment_timeout_minutes（支付超时时间）
+                # 设置payment_timeout_minutes（支付超时时间）
                 config.set("Rainbow_YiPay", "payment_timeout_minutes",
                            new_payment_timeout_minutes)
 
@@ -38237,7 +38139,7 @@ def start_web_server(args_param):
                 # 因为在此之前已经执行了 config.set("Rainbow_YiPay", "key", new_key)
                 # 所以必须使用预先保存的 old_key 变量进行比较
                 key_changed = (new_key != old_key)
-                # [新增] 判断pubc_key是否被修改
+                # 判断pubc_key是否被修改
                 pubc_key_changed = (new_pubc_key != old_pubc_key)
                 logging.info(
                     f"[易支付配置] 管理员更新易支付配置 - "
@@ -40225,7 +40127,7 @@ def start_web_server(args_param):
     # ==============================================================================
 
     # ==============================================================================
-    # [新增] 商品名称生成测试API
+    # 商品名称生成测试API
     # 路由: /api/admin/generate_product_name
     # 方法: POST
     # 权限: 管理员
