@@ -14082,62 +14082,34 @@ function handleCdnError(resourceName = "未指定") {
 }
 
 function showModalAlert(message, title = "提示", onCloseCallback = null) {
-  const modal = $("alert-modal");
-  const titleEl = $("alert-modal-title");
-  const msgEl = $("alert-modal-message");
-  const closeBtn = $("alert-modal-close-btn");
+  // 兼容旧调用，但统一使用 SweetAlert2 的 Swal.fire
+  // title: 作为弹窗标题；message: 支持换行
+  try {
+    const icon = (function (t) {
+      if (!t) return undefined;
+      if (t.indexOf("成功") !== -1) return "success";
+      if (t.indexOf("错误") !== -1 || t.indexOf("失败") !== -1) return "error";
+      if (t.indexOf("警告") !== -1) return "warning";
+      return "info";
+    })(String(title));
 
-  if (!modal || !titleEl || !msgEl || !closeBtn) {
-    logMessage_Warning(
-      "Alert modal DOM not found, falling back to native alert."
-    );
+    Swal.fire({
+      title: String(title || "提示"),
+      html: String(message || "").replace(/\n/g, "<br>"),
+      icon: icon,
+    }).then(() => {
+      if (onCloseCallback && typeof onCloseCallback === "function") {
+        try {
+          onCloseCallback();
+        } catch (e) {
+          logMessage_Error("showModalAlert onCloseCallback error: " + e);
+        }
+      }
+    });
+  } catch (e) {
+    // 如果 Swal 不可用，回退到原生 alert
     alert(`${title}:\n${message}`);
-    if (onCloseCallback && typeof onCloseCallback === "function")
-      onCloseCallback();
-    return;
-  }
-
-  titleEl.textContent = title;
-  msgEl.innerHTML = String(message).replace(/\n/g, "<br>");
-
-  if (title.includes("失败") || title.includes("错误")) {
-    titleEl.classList.remove("text-sky-600");
-    titleEl.classList.add("text-red-600");
-  } else {
-    titleEl.classList.remove("text-red-600");
-    titleEl.classList.add("text-sky-600");
-  }
-
-  closeBtn.onclick = () => {
-    closeModalAlert();
-    if (onCloseCallback && typeof onCloseCallback === "function")
-      onCloseCallback();
-  };
-
-  modal.classList.remove("hidden");
-  modal.classList.add("flex");
-  document.body.classList.add("modal-visible");
-}
-
-function closeModalAlert() {
-  const modal = $("alert-modal");
-  if (modal) {
-    modal.classList.add("hidden");
-    modal.classList.remove("flex");
-  }
-  const otherModals = document.querySelectorAll('.modal, [id$="-modal"]');
-  let stillVisible = false;
-  otherModals.forEach((m) => {
-    if (
-      m.id !== "alert-modal" &&
-      !m.classList.contains("hidden") &&
-      (m.classList.contains("flex") || m.style.display === "flex")
-    ) {
-      stillVisible = true;
-    }
-  });
-  if (!stillVisible) {
-    document.body.classList.remove("modal-visible");
+    if (onCloseCallback && typeof onCloseCallback === "function") onCloseCallback();
   }
 }
 
@@ -16101,7 +16073,8 @@ async function handleAuthRegister() {
 
     if (result.success) {
       showButtonSuccess("auth-register-btn", "注册成功");
-      showAuthSuccess("注册成功！请登录");
+      showModalAlert("注册成功！请登录", "注册成功");
+      // showAuthSuccess("注册成功！请登录");
     } else {
       setButtonLoading("auth-register-btn", false);
       showButtonError("auth-register-btn", "注册失败");
@@ -39671,7 +39644,7 @@ async function checkAndShowReminders() {
         title: reminder.title, // 提醒标题
         // 使用 Markdown 渲染为 HTML（优先 marked/editormd），回退为换行处理
         html: swalHtmlContent,
-        icon: "info", // 使用信息图标
+        icon: "warning", // 使用信息图标
         confirmButtonText: "知道了", // 确认按钮文字
         allowOutsideClick: true, // 允许点击弹窗外部关闭
         allowEscapeKey: true, // 允许按 ESC 键关闭

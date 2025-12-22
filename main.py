@@ -20970,7 +20970,7 @@ def start_web_server(args_param):
                     if time.time() > expires_at:
                         del sms_verification_codes[phone]
                         return jsonify(
-                            {"success": False, "message": "验证码已过期，请重新获取"}
+                            {"success": False, "message": "短信验证码已过期，请重新获取"}
                         )
 
                     if stored_code == sms_code:
@@ -20978,7 +20978,7 @@ def start_web_server(args_param):
                         del sms_verification_codes[phone]
 
                 if not code_verified:
-                    return jsonify({"success": False, "message": "验证码错误或已过期"})
+                    return jsonify({"success": False, "message": "短信验证码错误或已过期"})
             avatar_url = "default_avatar.png"
             avatar_file = request.files.get("avatar")
             avatar_sha256_hash = None
@@ -21169,17 +21169,17 @@ def start_web_server(args_param):
             global sms_verification_codes
             stored_code_info = sms_verification_codes.get(auth_phone)
             if not stored_code_info:
-                return jsonify({"success": False, "message": "请先获取验证码"})
+                return jsonify({"success": False, "message": "请先获取短信验证码"})
 
             code_value, expires_at = stored_code_info
             if time.time() > expires_at:
                 del sms_verification_codes[auth_phone]
                 return jsonify(
-                    {"success": False, "message": "验证码已过期，请重新获取"}
+                    {"success": False, "message": "短信验证码已过期，请重新获取"}
                 )
 
             if code_value != sms_code:
-                return jsonify({"success": False, "message": "验证码错误"})
+                return jsonify({"success": False, "message": "短信验证码错误"})
             del sms_verification_codes[auth_phone]
             user_file = auth_system.get_user_file_path(target_username)
             if os.path.exists(user_file):
@@ -22248,13 +22248,13 @@ def start_web_server(args_param):
                 import time
 
                 if stored.get("code") != sms_code:
-                    return jsonify({"success": False, "message": "验证码错误"})
+                    return jsonify({"success": False, "message": "短信验证码错误"})
                 if time.time() > stored.get("expire_at", 0):
-                    return jsonify({"success": False, "message": "验证码已过期"})
+                    return jsonify({"success": False, "message": "短信验证码已过期"})
                 # 验证成功，删除已使用的验证码
                 del auth_system.sms_codes[phone]
             else:
-                return jsonify({"success": False, "message": "验证码不存在或已过期"})
+                return jsonify({"success": False, "message": "短信验证码不存在或已过期"})
 
         result = auth_system.register_user(new_username, password, group)
         if result.get("success"):
@@ -22713,14 +22713,14 @@ def start_web_server(args_param):
             if hasattr(auth_system, "sms_codes") and new_phone in auth_system.sms_codes:
                 stored = auth_system.sms_codes[new_phone]
                 if stored.get("code") != sms_code:
-                    return jsonify({"success": False, "message": "验证码错误"}), 400
+                    return jsonify({"success": False, "message": "短信验证码错误"}), 400
                 if time.time() > stored.get("expire_at", 0):
-                    return jsonify({"success": False, "message": "验证码已过期"}), 400
+                    return jsonify({"success": False, "message": "短信验证码已过期"}), 400
                 # 验证成功，删除已使用的验证码
                 del auth_system.sms_codes[new_phone]
             else:
                 return (
-                    jsonify({"success": False, "message": "验证码不存在或已过期"}),
+                    jsonify({"success": False, "message": "短信验证码不存在或已过期"}),
                     400,
                 )
 
@@ -22743,7 +22743,7 @@ def start_web_server(args_param):
                 current_username,
                 "admin_update_phone",
                 f"管理员 {current_username} 更新了用户 {username} 的手机号为: {new_phone}"
-                + (f" (已验证)" if sms_code else " (未验证)"),
+                + (f" (已通过短信验证码验证)" if sms_code else " (未通过验证码验证)"),
                 ip_address,
                 session_id,
             )
@@ -26949,7 +26949,7 @@ def start_web_server(args_param):
 
             # 检查是否存在该手机号的验证码
             if not stored_code_info:
-                return jsonify({"success": False, "message": "请先获取验证码"})
+                return jsonify({"success": False, "message": "请先获取短信验证码"})
 
             # 解构验证码信息：验证码内容和过期时间
             stored_code, expires_at = stored_code_info
@@ -26959,12 +26959,12 @@ def start_web_server(args_param):
                 # 验证码已过期，删除已过期的验证码
                 del sms_verification_codes[new_phone]
                 return jsonify(
-                    {"success": False, "message": "验证码已过期，请重新获取"}
+                    {"success": False, "message": "短信验证码已过期，请重新获取"}
                 )
 
             # 验证输入的验证码是否正确
             if stored_code != sms_code:
-                return jsonify({"success": False, "message": "验证码错误"})
+                return jsonify({"success": False, "message": "短信验证码错误"})
 
             # ========== 更新手机号 ==========
             # 注意：将验证码删除操作移到所有数据库操作成功之后
