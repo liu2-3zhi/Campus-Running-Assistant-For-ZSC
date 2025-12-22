@@ -24574,11 +24574,11 @@ async function loadMessages() {
                 tocContainer: "", // 自定义 ToC 容器层
                 gfm             : true,        // 是否使用 GitHub Flavored Markdown
                 tocDropdown     : false,     // 是否启用目录下拉菜单
-                markdownSourceCode: true, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
+                markdownSourceCode: false, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
                 emoji: true,
                 taskList: true,
                 tex: true,  // 默认不解析
-                flowChart: true,  // 默认不解析
+                flowChart: false,  // 默认不解析
                 sequenceDiagram: true,  // 默认不解析
             });
             return;
@@ -24589,6 +24589,7 @@ async function loadMessages() {
 
         // 最后回退：以转义文本并保留换行展示
         container.innerHTML = escapeHtml(m.content || "").replace(/\n/g, "<br>");
+
       });
     })(messages);
   } catch (e) {
@@ -40175,11 +40176,11 @@ async function checkAndShowReminders() {
                 tocContainer: "", // 自定义 ToC 容器层
                 gfm             : true,        // 是否使用 GitHub Flavored Markdown
                 tocDropdown     : false,     // 是否启用目录下拉菜单
-                markdownSourceCode: true, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
+                markdownSourceCode: false, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
                 emoji: true,
                 taskList: true,
                 tex: true,  // 默认不解析
-                flowChart: true,  // 默认不解析
+                flowChart: false,  // 默认不解析
                 sequenceDiagram: true,  // 默认不解析
             });
             const html = tmp.innerHTML;

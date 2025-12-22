@@ -31,6 +31,7 @@ services:
       - ./payment_orders:/app/payment_orders
       - ./payment_methods.json:/app/payment_methods.json
       - ./configs:/app/configs
+      - ./uploads:/app/uploads
 
     environment:
       - PYTHONUNBUFFERED=1
