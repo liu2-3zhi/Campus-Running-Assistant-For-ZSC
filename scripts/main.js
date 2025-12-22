@@ -4266,7 +4266,12 @@ async function processRefund() {
       "[退款功能] 验证失败：退款金额必须大于0，当前值：",
       refundAmount
     );
-    showModalAlert("退款金额必须大于0");
+    // showModalAlert("退款金额必须大于0");
+    swal.fire({
+      icon: "warning",
+      title: "警告",
+      text: "退款金额必须大于0",
+    });
     amountInput.focus();
     return;
   }
@@ -4690,7 +4695,12 @@ async function testGenerateProductName() {
 
   // 验证数量是否有效
   if (!quantity || quantity < 1 || quantity > 9999) {
-    showModalAlert("请输入有效的商品数量（1-9999）");
+    // showModalAlert("请输入有效的商品数量（1-9999）");
+    swal.fire({
+      icon: "warning",
+      title: "警告",
+      text: "请输入有效的商品数量（1-9999）",
+    });
     return;
   }
 
@@ -4729,12 +4739,22 @@ async function testGenerateProductName() {
       logMessage_Info("[移动端商品名测试] 生成成功");
     } else {
       // 生成失败：显示错误消息
-      showModalAlert("生成失败：" + (result.message || "未知错误"));
+      // showModalAlert("生成失败：" + (result.message || "未知错误"));
+      swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "生成失败：" + (result.message || "未知错误"),
+      });
     }
   } catch (error) {
     // === 第5步：错误处理 ===
     logMessage_Error("[移动端商品名测试] 请求失败：", error);
-    showModalAlert("网络错误，请稍后重试");
+    // showModalAlert("网络错误，请稍后重试");
+    swal.fire({
+      icon: "error",
+        title: "错误",
+        text: "网络错误，请稍后重试",
+    });
   }
 }
 
@@ -4918,7 +4938,13 @@ async function createTestOrder() {
       openPayBtn: !!openPayBtn,
     });
     // 向用户显示友好的错误提示
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    // 使用Swal替代showModalAlert，提供更好的用户体验
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return; // 终止函数执行
   }
 
@@ -4930,7 +4956,12 @@ async function createTestOrder() {
   // 3.2 验证金额不为空（必填项验证）
   if (!amountStr) {
     logMessage_Info("[测试支付] 验证失败：支付金额为空");
-    showModalAlert("请输入支付金额");
+    // showModalAlert("请输入支付金额");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入支付金额",
+    });
     amountInput.focus();
     return;
   }
@@ -4941,7 +4972,12 @@ async function createTestOrder() {
   // 3.4 验证金额是否为有效数字
   if (isNaN(amount)) {
     logMessage_Info("[测试支付] 验证失败：支付金额不是有效数字");
-    showModalAlert("支付金额必须是有效的数字");
+    // showModalAlert("支付金额必须是有效的数字");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "支付金额必须是有效的数字",
+    });
     amountInput.focus();
     return;
   }
@@ -4949,7 +4985,12 @@ async function createTestOrder() {
   // 3.5 验证金额必须大于0
   if (amount <= 0) {
     logMessage_Error("[测试支付] 验证失败：支付金额必须大于0，当前值：", amount);
-    showModalAlert("支付金额必须大于0");
+    // showModalAlert("支付金额必须大于0");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "支付金额必须大于0",
+    });
     amountInput.focus();
     return;
   }
@@ -4992,7 +5033,12 @@ async function createTestOrder() {
 
     // 验证数量是否有效
     if (!quantity || quantity < 1 || quantity > 9999) {
-      showModalAlert("请输入有效的商品数量（1-9999）");
+      // showModalAlert("请输入有效的商品数量（1-9999）");
+      Swal.fire({
+        icon: "warning",
+        title: "警告",
+        text: "请输入有效的商品数量（1-9999）",
+      });
       if (quantityInput) quantityInput.focus();
       return; // 中断函数执行
     }
@@ -5036,7 +5082,12 @@ async function createTestOrder() {
     } catch (error) {
       // 生成商品名失败，显示错误并中断
       logMessage_Error("[移动端测试支付] 生成商品名失败：", error);
-      showModalAlert(`生成商品名失败：${error.message}`);
+      // showModalAlert(`生成商品名失败：${error.message}`);
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: `生成商品名失败：${error.message}`,
+      });
       return; // 中断函数执行
     }
   }
@@ -5047,7 +5098,12 @@ async function createTestOrder() {
   // 3.8 验证支付方式已选择
   if (!paymentMethod) {
     logMessage_Info("[测试支付] 验证失败：未选择支付方式");
-    showModalAlert("请选择支付方式");
+    // showModalAlert("请选择支付方式");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请选择支付方式",
+    });
     methodSelect.focus();
     return;
   }
@@ -5059,7 +5115,12 @@ async function createTestOrder() {
   // 验证接口类型已选择
   if (!paymentType) {
     logMessage_Info("[测试支付] 验证失败：未选择接口类型");
-    showModalAlert("请选择接口类型");
+    // showModalAlert("请选择接口类型");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请选择接口类型",
+    });
     if (typeSelect) typeSelect.focus();
     return;
   }
@@ -5079,7 +5140,12 @@ async function createTestOrder() {
     // 验证付款码是否为空
     if (!auth_code) {
       logMessage_Error("[移动端测试支付] 验证失败：扫码支付需要提供付款码");
-      showModalAlert("扫码支付需要提供付款码（auth_code）");
+      // showModalAlert("扫码支付需要提供付款码（auth_code）");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "扫码支付需要提供付款码（auth_code）",
+      });
       // 聚焦到付款码输入框，引导用户输入
       if (authCodeInput) authCodeInput.focus();
       return; // 中断函数执行
@@ -5091,7 +5157,12 @@ async function createTestOrder() {
         "[移动端测试支付] 验证失败：付款码格式不正确，当前长度：",
         auth_code.length
       );
-      showModalAlert("付款码格式不正确，应为18位纯数字");
+      // showModalAlert("付款码格式不正确，应为18位纯数字");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "付款码格式不正确，应为18位纯数字",
+      });
       if (authCodeInput) authCodeInput.focus();
       return; // 中断函数执行
     }
@@ -5118,7 +5189,12 @@ async function createTestOrder() {
     // 验证sub_openid是否为空
     if (!subOpenid) {
       logMessage_Error("[移动端测试支付] 验证失败：JSAPI支付需要提供用户Openid");
-      showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
+      // showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "JSAPI支付需要提供用户Openid（sub_openid）",
+      });
       // 聚焦到sub_openid输入框，引导用户输入
       if (subOpenidInput) subOpenidInput.focus();
       return; // 中断函数执行
@@ -5127,7 +5203,12 @@ async function createTestOrder() {
     // 验证sub_appid是否为空
     if (!subAppid) {
       logMessage_Error("[移动端测试支付] 验证失败：JSAPI支付需要提供公众号AppId");
-      showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
+      // showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "JSAPI支付需要提供公众号AppId（sub_appid）",
+      });
       // 聚焦到sub_appid输入框，引导用户输入
       if (subAppidInput) subAppidInput.focus();
       return; // 中断函数执行
@@ -5139,7 +5220,12 @@ async function createTestOrder() {
       logMessage_Warning(
         "[移动端测试支付] 警告：用户Openid格式可能不正确，长度不在合理范围"
       );
-      showModalAlert("用户Openid格式可能不正确，长度应在20-64字符之间");
+      // showModalAlert("用户Openid格式可能不正确，长度应在20-64字符之间");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "用户Openid格式可能不正确，长度应在20-64字符之间",
+      });
       if (subOpenidInput) subOpenidInput.focus();
       return; // 中断函数执行
     }
@@ -5148,7 +5234,12 @@ async function createTestOrder() {
     // 使用宽松验证：长度在10-32字符之间即可
     if (subAppid.length < 10 || subAppid.length > 32) {
       logMessage_Warning("[移动端测试支付] 警告：公众号AppId格式可能不正确");
-      showModalAlert("公众号AppId格式可能不正确，长度应在10-32字符之间");
+      // showModalAlert("公众号AppId格式可能不正确，长度应在10-32字符之间");
+      Swal.fire({
+        icon: "error",  
+        title: "错误",
+        text: "公众号AppId格式可能不正确，长度应在10-32字符之间",
+      });
       if (subAppidInput) subAppidInput.focus();
       return; // 中断函数执行
     }
@@ -5341,6 +5432,11 @@ async function createTestOrder() {
 
     // 7.6 可选：向用户显示成功提示
     // showModalAlert('测试订单创建成功！请点击下方按钮打开支付链接。');
+    swal.fire({
+      icon: "success",
+      title: "成功",
+      text: "测试订单创建成功！请点击下方按钮打开支付链接。",
+    });
   } catch (error) {
     // ========== 错误处理 ==========
     // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
@@ -5349,9 +5445,14 @@ async function createTestOrder() {
     logMessage_Error("[测试支付] 创建订单失败：", error);
 
     // 向用户显示错误提示
-    showModalAlert(
-      `创建订单失败：${error.message || "未知错误，请重试或联系管理员"}`
-    );
+    // showModalAlert(
+    //   `创建订单失败：${error.message || "未知错误，请重试或联系管理员"}`
+    // );
+    swal.fire({
+      icon: "error",
+      title: "错误",
+      text: `创建订单失败：${error.message || "未知错误，请重试或联系管理员"}`,
+    });
 
     // 隐藏订单结果容器（因为没有有效的订单数据）
     resultContainer.classList.add("hidden");
@@ -5388,7 +5489,13 @@ function openTestPayUrl() {
     logMessage_Error(
       "[测试支付] 错误：未找到打开支付链接按钮（ID: open-test-pay-url-btn）"
     );
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    // 使用Swal替代showModalAlert，提供更好的用户体验
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return;
   }
 
@@ -5407,7 +5514,13 @@ function openTestPayUrl() {
   if (!payUrl) {
     // 如果链接不存在，说明订单创建失败或API未返回支付链接
     logMessage_Error("[测试支付] 错误：支付链接不存在");
-    showModalAlert("支付链接不存在，请先创建测试订单。");
+    // showModalAlert("支付链接不存在，请先创建测试订单。");
+    // 使用Swal替代showModalAlert，提供更好的用户体验
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "支付链接不存在，请先创建测试订单。",
+    });
     return;
   }
 
@@ -5433,9 +5546,15 @@ function openTestPayUrl() {
 
       // 向用户显示友好的提示信息
       // 不在alert中直接显示URL，避免安全问题
-      showModalAlert(
-        "浏览器拦截了弹窗，请允许本网站的弹窗权限。\n\n支付链接已复制到输入框中，您可以手动复制后在新标签页打开。"
-      );
+      // showModalAlert(
+      //   "浏览器拦截了弹窗，请允许本网站的弹窗权限。\n\n支付链接已复制到输入框中，您可以手动复制后在新标签页打开。"
+      // );
+      // 使用Swal替代showModalAlert，提供更好的用户体验
+      Swal.fire({
+        icon: "warning",
+        title: "警告",
+        text: "浏览器拦截了弹窗，请允许本网站的弹窗权限。\n\n支付链接已复制到输入框中，您可以手动复制后在新标签页打开。",
+      });
       // 将链接复制到输入框供用户查看
       const urlInput = document.getElementById("test-order-pay-url");
       if (urlInput) {
@@ -5456,11 +5575,17 @@ function openTestPayUrl() {
     logMessage_Error("[测试支付] 打开支付链接时发生错误：", error);
 
     // 向用户显示错误提示
-    showModalAlert(
-      `无法打开支付链接：${
-        error.message || "未知错误"
-      }\n\n支付链接：${payUrl}\n\n请手动复制链接在新标签页打开。`
-    );
+    // showModalAlert(
+    //   `无法打开支付链接：${
+    //     error.message || "未知错误"
+    //   }\n\n支付链接：${payUrl}\n\n请手动复制链接在新标签页打开。`
+    // );
+    // 使用Swal替代showModalAlert，提供更好的用户体验
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: `无法打开支付链接：${error.message || "未知错误"}\n\n支付链接：${payUrl}\n\n请手动复制链接在新标签页打开。`,
+    });
   }
 }
 
@@ -5702,7 +5827,12 @@ async function saveAdminPaymentMethodsConfig() {
 
       // 使用showModalAlert()显示成功提示（绿色样式）
       // 标题设置为"成功"，会触发showModalAlert内部的样式判断，显示为绿色
-      showModalAlert("配置已成功保存", "成功");
+      // showModalAlert("配置已成功保存", "成功");
+      Swal.fire({
+        icon: "success",
+        title: "成功",
+        text: "配置已成功保存",
+      });
 
       // 重新加载配置以确保数据同步
       // 传入false参数，避免loadPaymentMethodsConfig再次显示加载提示框
@@ -5718,8 +5848,14 @@ async function saveAdminPaymentMethodsConfig() {
       logMessage_Error("[PC端支付配置] 保存支付方式配置失败：", errorMessage);
 
       // 使用showModalAlert()显示错误提示（红色样式）
+      // 会使用错误消息作为内容，标题设置为"错误"
       // 标题设置为"错误"或"失败"，会触发showModalAlert内部的样式判断，显示为红色
-      showModalAlert(errorMessage, "错误");
+      // showModalAlert(errorMessage, "错误");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: errorMessage,
+      });
     }
   } catch (error) {
     // === 错误处理 ===
@@ -5731,10 +5867,15 @@ async function saveAdminPaymentMethodsConfig() {
 
     // 使用showModalAlert()显示错误提示
     // 显示用户友好的错误消息
-    showModalAlert(
-      `保存失败：${error.message || "未知错误"}。\n请重试或联系管理员。`,
-      "错误"
-    );
+    // showModalAlert(
+    //   `保存失败：${error.message || "未知错误"}。\n请重试或联系管理员。`,
+    //   "错误"
+    // );
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: `保存失败：${error.message || "未知错误"}。\n请重试或联系管理员。`,
+    });
   }
 }
 
@@ -5803,7 +5944,13 @@ async function queryAdminPaymentOrder() {
   // 防御性检查：确保关键元素存在
   if (!tradeNoInput) {
     logMessage_Error("[PC端订单查询] 错误：找不到订单号输入框");
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    // 使用Swal替代showModalAlert，提供更好的用户体验
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return;
   }
 
@@ -5883,7 +6030,13 @@ async function queryAdminPaymentOrder() {
       }
 
       // 使用showModalAlert显示错误
-      showModalAlert(result.message || "查询订单失败", "查询失败");
+      // showModalAlert(result.message || "查询订单失败", "查询失败");
+      // 使用Swal替代showModalAlert，提供更好的用户体验
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: result.message || "查询订单失败",
+      });
       return;
     }
 
@@ -6617,7 +6770,12 @@ async function queryOrderManually() {
     logMessage_Error(
       "[手动查询] 错误：找不到订单号输入框（桌面端和移动端都不存在）"
     );
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return;
   }
 
@@ -6626,7 +6784,12 @@ async function queryOrderManually() {
 
   // === 第2步：验证订单号是否为空 ===
   if (!orderNo) {
-    showModalAlert("请输入订单号", "提示");
+    // showModalAlert("请输入订单号", "提示");
+    Swal.fire({
+      icon: "warning",
+      title: "提示",
+      text: "请输入订单号",
+    });
     return;
   }
 
@@ -6657,14 +6820,24 @@ async function queryOrderManually() {
 
     // === 第6步：检查业务状态 ===
     if (!result.success) {
-      showModalAlert(result.message || "查询订单失败", "查询失败");
+      // showModalAlert(result.message || "查询订单失败", "查询失败");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: result.message || "查询订单失败",
+      });
       return;
     }
 
     // === 第7步：查询成功，显示提示信息 ===
     const source =
       result.source === "platform" ? "从平台查询并已保存到本地" : "从本地查询";
-    showModalAlert(`订单查询成功（${source}）`, "成功");
+    // showModalAlert(`订单查询成功（${source}）`, "成功");
+    Swal.fire({
+      icon: "success",
+      title: "成功",
+      text: `订单查询成功（${source}）`,
+    });
 
     // === 第8步：清空输入框（同时清空桌面端和移动端）===
     // 【修复】同时清空桌面端和移动端的输入框
@@ -6681,7 +6854,12 @@ async function queryOrderManually() {
   } catch (error) {
     // === 错误处理 ===
     logMessage_Error("[手动查询] 查询订单时发生错误：", error);
-    showModalAlert("查询订单失败，请稍后重试", "错误");
+    // showModalAlert("查询订单失败，请稍后重试", "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "查询订单失败，请稍后重试",
+    });
   }
 }
 
@@ -6715,7 +6893,12 @@ async function fetchOrdersFromPlatform() {
 
   // === 第1步：显示加载提示 ===
   // 使用自定义的模态框提示用户正在拉取订单
-  showModalAlert("正在从平台拉取订单，请稍候...", "提示");
+  // showModalAlert("正在从平台拉取订单，请稍候...", "提示");
+  Swal.fire({
+    icon: "info",
+    title: "提示",
+    text: "正在从平台拉取订单，请稍候...",
+  });
 
   try {
     // === 第2步：发起HTTP POST请求拉取订单 ===
@@ -6743,7 +6926,12 @@ async function fetchOrdersFromPlatform() {
 
     // === 第5步：检查业务状态 ===
     if (!result.success) {
-      showModalAlert(result.message || "从平台拉取订单失败", "拉取失败");
+      // showModalAlert(result.message || "从平台拉取订单失败", "拉取失败");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: result.message || "从平台拉取订单失败",
+      });
       return;
     }
 
@@ -6761,7 +6949,12 @@ async function fetchOrdersFromPlatform() {
       message += `，${failed} 条保存失败`;
     }
 
-    showModalAlert(message, "拉取成功");
+    // showModalAlert(message, "拉取成功");
+    Swal.fire({
+      icon: "success",
+      title: "成功",
+      text: message,
+    });
 
     // === 第7步：刷新订单列表 ===
     // 重新加载订单列表以显示新拉取的订单
@@ -6769,7 +6962,12 @@ async function fetchOrdersFromPlatform() {
   } catch (error) {
     // === 错误处理 ===
     logMessage_Error("[拉取订单] 拉取订单时发生错误：", error);
-    showModalAlert("从平台拉取订单失败，请稍后重试", "错误");
+    // showModalAlert("从平台拉取订单失败，请稍后重试", "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "从平台拉取订单失败，请稍后重试",
+    });
   }
 }
 
@@ -7036,9 +7234,13 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
   // 输出日志：标记本地刷新操作开始
   logMessage_Info("[订单详情] 开始本地刷新订单详情...");
   if (show_Modal_Alert) {
-    showModalAlert("正在本地刷新订单详情，请稍候...", "提示");
+    // showModalAlert("正在本地刷新订单详情，请稍候...", "提示");
+    Swal.fire({
+      icon: "info",
+      title: "提示",
+      text: "正在本地刷新订单详情，请稍候...",
+    });
   }
-
   try {
     // === 第1步：获取当前订单号 ===
 
@@ -7047,7 +7249,13 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
     const currentOrder = window.currentOrderDetail;
     if (!currentOrder || !currentOrder.order_id) {
       // 如果没有当前订单信息，显示错误提示
-      showModalAlert("无法刷新：未找到当前订单信息", "错误");
+      // showModalAlert("无法刷新：未找到当前订单信息", "错误");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "无法刷新：未找到当前订单信息",
+      });
+      logMessage_Error("[订单详情] 无法刷新：未找到当前订单信息");
       return;
     }
 
@@ -7077,7 +7285,12 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
       // 获取失败，显示错误消息
       const errorMessage = result.message || "获取订单数据失败";
       logMessage_Error("[订单详情] 本地刷新失败：", errorMessage);
-      showModalAlert(`本地刷新失败：${errorMessage}`, "错误");
+      // showModalAlert(`本地刷新失败：${errorMessage}`, "错误");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: `本地刷新失败：${errorMessage}`,
+      });
       return;
     }
 
@@ -7089,7 +7302,12 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
     if (!updatedOrder) {
       // 如果没找到订单，显示提示
       logMessage_Warning("[订单详情] 本地未找到该订单");
-      showModalAlert("本地未找到该订单，可能已被删除", "警告");
+      // showModalAlert("本地未找到该订单，可能已被删除", "警告");
+      Swal.fire({
+        icon: "warning",
+        title: "警告",
+        text: "本地未找到该订单，可能已被删除",
+      });
       return;
     }
 
@@ -7106,14 +7324,24 @@ async function refreshOrderDetailLocal(show_Modal_Alert = true) {
 
     // 显示成功提示（短暂显示）
     if (show_Modal_Alert) {
-      showModalAlert("本地刷新成功", "成功");
+      // showModalAlert("本地刷新成功", "成功");
+      Swal.fire({
+        icon: "success",
+        title: "成功",
+        text: "本地刷新成功",
+      });
     }
   } catch (error) {
     // === 错误处理 ===
 
     // 捕获所有可能的错误：网络错误、JSON解析错误等
     logMessage_Error("[订单详情] 本地刷新时发生错误：", error);
-    showModalAlert(`本地刷新失败：${error.message || "未知错误"}`, "错误");
+    // showModalAlert(`本地刷新失败：${error.message || "未知错误"}`, "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: `本地刷新失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -7141,7 +7369,12 @@ async function refreshOrderDetailFromPlatform() {
     const currentOrder = window.currentOrderDetail;
     if (!currentOrder || !currentOrder.order_id) {
       // 如果没有当前订单信息，显示错误提示
-      showModalAlert("无法刷新：未找到当前订单信息", "错误");
+      // showModalAlert("无法刷新：未找到当前订单信息", "错误");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "无法刷新：未找到当前订单信息",
+      });
       return;
     }
 
@@ -7172,7 +7405,12 @@ async function refreshOrderDetailFromPlatform() {
       // 查询失败，显示错误消息
       const errorMessage = result.message || "从平台查询订单失败";
       logMessage_Error("[订单详情] 平台刷新失败：", errorMessage);
-      showModalAlert(`平台刷新失败：${errorMessage}`, "错误");
+      // showModalAlert(`平台刷新失败：${errorMessage}`, "错误");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: `平台刷新失败：${errorMessage}`,
+      });
       return;
     }
 
@@ -7184,7 +7422,12 @@ async function refreshOrderDetailFromPlatform() {
     if (!updatedOrder) {
       // 如果没有返回订单数据，显示提示
       logMessage_Warning("[订单详情] 平台返回数据为空");
-      showModalAlert("平台返回数据为空", "警告");
+      // showModalAlert("平台返回数据为空", "警告");
+      Swal.fire({
+        icon: "warning",
+        title: "警告",
+        text: "平台返回数据为空",
+      });
       return;
     }
 
@@ -7200,13 +7443,23 @@ async function refreshOrderDetailFromPlatform() {
     loadAllPaymentOrders();
 
     // 显示成功提示
-    showModalAlert("平台刷新成功，订单状态已更新", "成功");
+    // showModalAlert("平台刷新成功，订单状态已更新", "成功");
+    Swal.fire({
+      icon: "success",
+      title: "成功",
+      text: "平台刷新成功，订单状态已更新",
+    });
   } catch (error) {
     // === 错误处理 ===
 
     // 捕获所有可能的错误：网络错误、JSON解析错误等
     logMessage_Error("[订单详情] 平台刷新时发生错误：", error);
-    showModalAlert(`平台刷新失败：${error.message || "未知错误"}`, "错误");
+    // showModalAlert(`平台刷新失败：${error.message || "未知错误"}`, "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: `平台刷新失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -7269,14 +7522,24 @@ async function submitAdminPaymentRefund() {
   // 获取原订单号
   const tradeNo = tradeNoInput ? tradeNoInput.value.trim() : "";
   if (!tradeNo) {
-    showModalAlert("请输入原订单号");
+    // showModalAlert("请输入原订单号");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入原订单号",
+    });
     return;
   }
 
   // 获取退款金额
   const amount = amountInput ? parseFloat(amountInput.value) : 0;
   if (!amount || amount <= 0) {
-    showModalAlert("请输入有效的退款金额（大于0）");
+    // showModalAlert("请输入有效的退款金额（大于0）");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入有效的退款金额（大于0）",
+    });
     return;
   }
 
@@ -7293,7 +7556,12 @@ async function submitAdminPaymentRefund() {
     // 如果退款单号仍为空，显示错误提示并终止
     // 这是一个健壮性检查，防止退款单号生成失败导致的问题
     if (!refundNo) {
-      showModalAlert("请先生成退款单号");
+      // showModalAlert("请先生成退款单号");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "请先生成退款单号",
+      });
       logMessage_Error("[PC端退款] 错误：退款单号生成失败");
       return;
     }
@@ -7391,7 +7659,12 @@ async function submitAdminPaymentRefund() {
     // 任务2修改：错误提示继续使用showModalAlert（保持原有行为）
     // 只有成功时才使用Swal.fire，失败时使用原有的错误提示方式
     // 使用showModalAlert显示错误
-    showModalAlert(error.message || "退款失败", "退款失败");
+    // showModalAlert(error.message || "退款失败", "退款失败");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: error.message || "退款失败",
+    });
   }
 }
 
@@ -7595,7 +7868,12 @@ async function testGenerateProductName_modal() {
 
   // 验证数量是否有效
   if (!quantity || quantity < 1 || quantity > 9999) {
-    showModalAlert("请输入有效的商品数量（1-9999）");
+    // showModalAlert("请输入有效的商品数量（1-9999）");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入有效的商品数量（1-9999）",
+    });
     return;
   }
 
@@ -7634,12 +7912,22 @@ async function testGenerateProductName_modal() {
       console.log("[PC端商品名测试] 生成成功");
     } else {
       // 生成失败：显示错误消息
-      showModalAlert("生成失败：" + (result.message || "未知错误"));
+      // showModalAlert("生成失败：" + (result.message || "未知错误"));
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "生成失败：" + (result.message || "未知错误"),
+      });
     }
   } catch (error) {
     // === 第5步：错误处理 ===
     console.error("[PC端商品名测试] 请求失败：", error);
-    showModalAlert("网络错误，请稍后重试");
+    // showModalAlert("网络错误，请稍后重试");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "网络错误，请稍后重试",
+    });
   }
 }
 
@@ -7814,14 +8102,24 @@ async function createAdminTestPayment() {
   // 2.1 获取测试金额
   const amount = amountInput ? parseFloat(amountInput.value) : 0;
   if (!amount || amount <= 0) {
-    showModalAlert("请输入有效的测试金额（大于0）");
+    // showModalAlert("请输入有效的测试金额（大于0）");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入有效的测试金额（大于0）",
+    });
     return;
   }
 
   // 2.2 获取支付方式
   const method = methodSelect ? methodSelect.value : "";
   if (!method) {
-    showModalAlert("请选择支付方式");
+    // showModalAlert("请选择支付方式");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请选择支付方式",
+    });
     return;
   }
 
@@ -7836,14 +8134,25 @@ async function createAdminTestPayment() {
     authCode = authCodeInput ? authCodeInput.value.trim() : "";
     // 验证付款码是否为空
     if (!authCode) {
-      showModalAlert("扫码支付需要提供付款码（auth_code）");
+      // showModalAlert("扫码支付需要提供付款码（auth_code）");
+      // 任务2修改：使用Swal.fire替代模态框显示错误提示
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "扫码支付需要提供付款码（auth_code）",
+      });
       // 聚焦到付款码输入框，引导用户输入
       if (authCodeInput) authCodeInput.focus();
       return; // 中断函数执行
     }
     // 验证付款码长度（通常为18位）
     if (authCode.length !== 18) {
-      showModalAlert("付款码长度不正确，通常为18位数字");
+      // showModalAlert("付款码长度不正确，通常为18位数字");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "付款码长度不正确，通常为18位数字",
+      });
       if (authCodeInput) authCodeInput.focus();
       return;
     }
@@ -7868,7 +8177,13 @@ async function createAdminTestPayment() {
 
     // 验证sub_openid是否为空
     if (!subOpenid) {
-      showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
+      // showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
+      // 任务2修改：使用Swal.fire替代模态框显示错误提示
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "JSAPI支付需要提供用户Openid（sub_openid）",
+      });
       // 聚焦到sub_openid输入框，引导用户输入
       if (subOpenidInput) subOpenidInput.focus();
       return; // 中断函数执行
@@ -7876,7 +8191,13 @@ async function createAdminTestPayment() {
 
     // 验证sub_appid是否为空
     if (!subAppid) {
-      showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
+      // showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
+      // 任务2修改：使用Swal.fire替代模态框显示错误提示
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "JSAPI支付需要提供公众号AppId（sub_appid）",
+      });
       // 聚焦到sub_appid输入框，引导用户输入
       if (subAppidInput) subAppidInput.focus();
       return; // 中断函数执行
@@ -7885,14 +8206,24 @@ async function createAdminTestPayment() {
     // 可选：验证sub_openid的格式（通常以字母o开头，长度约28个字符）
     // 这是一个简单的格式验证，实际的openid格式可能会有所不同
     if (subOpenid.length < 10) {
-      showModalAlert("用户Openid格式可能不正确，长度过短");
+      // showModalAlert("用户Openid格式可能不正确，长度过短");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "用户Openid格式可能不正确，长度过短",
+      });
       if (subOpenidInput) subOpenidInput.focus();
       return;
     }
 
     // 可选：验证sub_appid的格式（通常以wx开头，长度约18个字符）
     if (!subAppid.startsWith("wx") || subAppid.length < 10) {
-      showModalAlert("公众号AppId格式可能不正确（应以wx开头）");
+      // showModalAlert("公众号AppId格式可能不正确（应以wx开头）");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "公众号AppId格式可能不正确（应以wx开头）",
+      });
       if (subAppidInput) subAppidInput.focus();
       return;
     }
@@ -7940,7 +8271,12 @@ async function createAdminTestPayment() {
       productName = productInput.value.trim();
     } else {
       // 如果输入框为空，显示错误提示
-      showModalAlert("请输入商品名称");
+      // showModalAlert("请输入商品名称");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "请输入商品名称",
+      });
       return; // 中断函数执行
     }
     console.log("[PC端测试支付] 手动输入的商品名称：", productName);
@@ -7953,7 +8289,12 @@ async function createAdminTestPayment() {
 
     // 验证数量是否有效
     if (!quantity || quantity < 1 || quantity > 9999) {
-      showModalAlert("请输入有效的商品数量（1-9999）");
+      // showModalAlert("请输入有效的商品数量（1-9999）");
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: "请输入有效的商品数量（1-9999）",
+      });
       return; // 中断函数执行
     }
 
@@ -7996,7 +8337,12 @@ async function createAdminTestPayment() {
     } catch (error) {
       // 生成商品名失败，显示错误并中断
       console.error("[PC端测试支付] 生成商品名失败：", error);
-      showModalAlert(`生成商品名失败：${error.message}`);
+      // showModalAlert(`生成商品名失败：${error.message}`);
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: `生成商品名失败：${error.message}`,
+      });
       return; // 中断函数执行
     }
   }
@@ -8264,7 +8610,12 @@ async function createAdminTestPayment() {
     // 【修改】使用 showModalAlert() 显示错误提示
     // 优点：统一的错误提示样式，用户体验更好
     // 第二个参数传递 "错误" 表示这是一个错误类型的提示
-    showModalAlert(`创建失败：${error.message || "未知错误"}`, "错误");
+    // showModalAlert(`创建失败：${error.message || "未知错误"}`, "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: `创建失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -8285,7 +8636,12 @@ function openAdminPaymentLink() {
   const openBtn = document.getElementById("admin-open-test-pay-url-btn_modal");
   if (!openBtn) {
     console.error("[PC端测试支付] 错误：找不到打开按钮");
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return;
   }
 
@@ -8298,7 +8654,12 @@ function openAdminPaymentLink() {
 
   if (!payUrl) {
     console.error("[PC端测试支付] 错误：支付链接不存在");
-    showModalAlert("支付链接不存在，请先创建测试订单。");
+    // showModalAlert("支付链接不存在，请先创建测试订单。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "支付链接不存在，请先创建测试订单。",
+    });
     return;
   }
 
@@ -8313,20 +8674,30 @@ function openAdminPaymentLink() {
     // 某些浏览器可能会拦截window.open()弹窗
     if (!newWindow) {
       console.warn("[PC端测试支付] 警告：弹窗可能被浏览器拦截");
-      showModalAlert(
-        `无法自动打开支付链接，请手动复制链接后在新标签页打开：\n\n${payUrl}`
-      );
+      // showModalAlert(
+      //   `无法自动打开支付链接，请手动复制链接后在新标签页打开：\n\n${payUrl}`
+      // );
+      Swal.fire({
+        icon: "warning",
+        title: "警告",
+        text: `无法自动打开支付链接，请手动复制链接后在新标签页打开：\n\n${payUrl}`,
+      });
     } else {
       console.log("[PC端测试支付] 支付链接已在新标签页打开");
     }
   } catch (error) {
     // 捕获可能的错误（虽然window.open()通常不会抛出错误）
     console.error("[PC端测试支付] 打开支付链接时发生错误：", error);
-    showModalAlert(
-      `无法打开支付链接：${
-        error.message || "未知错误"
-      }\n\n请手动复制链接后在新标签页打开：\n\n${payUrl}`
-    );
+    // showModalAlert(
+    //   `无法打开支付链接：${
+    //     error.message || "未知错误"
+    //   }\n\n请手动复制链接后在新标签页打开：\n\n${payUrl}`
+    // );
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: `无法打开支付链接：${error.message || "未知错误"}\n\n请手动复制链接后在新标签页打开：\n\n${payUrl}`,
+    });
   }
 }
 
@@ -8347,7 +8718,12 @@ function copyAdminTestPayUrl() {
   const payUrlInput = document.getElementById("admin-test-pay-url_modal");
   if (!payUrlInput) {
     console.error("[PC端测试支付] 错误：找不到支付链接输入框");
-    showModalAlert("页面元素异常，请刷新页面后重试。");
+    // showModalAlert("页面元素异常，请刷新页面后重试。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "页面元素异常，请刷新页面后重试。",
+    });
     return;
   }
 
@@ -8356,7 +8732,12 @@ function copyAdminTestPayUrl() {
 
   if (!payUrl) {
     console.error("[PC端测试支付] 错误：支付链接为空");
-    showModalAlert("支付链接为空，请先创建测试订单。");
+    // showModalAlert("支付链接为空，请先创建测试订单。");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "支付链接为空，请先创建测试订单。",
+    });
     return;
   }
 
@@ -8374,7 +8755,12 @@ function copyAdminTestPayUrl() {
         .writeText(payUrl)
         .then(() => {
           console.log("[PC端测试支付] 支付链接已复制到剪贴板");
-          showModalAlert("✓ 支付链接已复制到剪贴板");
+          // showModalAlert("✓ 支付链接已复制到剪贴板");
+          Swal.fire({
+            icon: "success",
+            title: "成功",
+            text: "✓ 支付链接已复制到剪贴板",
+          });
         })
         .catch((err) => {
           console.error("[PC端测试支付] Clipboard API复制失败：", err);
@@ -8387,9 +8773,14 @@ function copyAdminTestPayUrl() {
     }
   } catch (error) {
     console.error("[PC端测试支付] 复制支付链接时发生错误：", error);
-    showModalAlert(
-      `复制失败：${error.message || "未知错误"}\n\n请手动复制链接。`
-    );
+    // showModalAlert(
+    //   `复制失败：${error.message || "未知错误"}\n\n请手动复制链接。`
+    // );
+    Swal.fire({
+    icon: "error",
+      title: "错误",
+      text: `复制失败：${error.message || "未知错误"}\n\n请手动复制链接。`,
+    });
   }
 
   // 降级复制方法
@@ -8400,13 +8791,23 @@ function copyAdminTestPayUrl() {
         console.log(
           "[PC端测试支付] 支付链接已复制到剪贴板（使用fallback方法）"
         );
-        showModalAlert("✓ 支付链接已复制到剪贴板");
+        // showModalAlert("✓ 支付链接已复制到剪贴板");
+        Swal.fire({
+          icon: "success",
+          title: "成功",
+          text: "✓ 支付链接已复制到剪贴板",
+        });
       } else {
         throw new Error("execCommand复制失败");
       }
     } catch (err) {
       console.error("[PC端测试支付] Fallback复制失败：", err);
-      showModalAlert("复制失败，请手动复制链接。");
+      // showModalAlert("复制失败，请手动复制链接。");
+      Swal.fire({
+      icon: "error",
+        title: "错误",
+        text: "复制失败，请手动复制链接。",
+      });
     }
   }
 }
@@ -8615,11 +9016,17 @@ async function loadAdminYiPayConfig(show_Modal = true) {
                 undefinedMethods
               );
 
-              showModalAlert(
-                '存在未定义的支付方式，请检查配置。以下支付方式未在"支付方式配置"中定义： ' +
-                  undefinedMethods.join(", "),
-                "警告"
-              );
+              // showModalAlert(
+              //   '存在未定义的支付方式，请检查配置。以下支付方式未在"支付方式配置"中定义： ' +
+              //     undefinedMethods.join(", "),
+              //   "警告"
+              // );
+              //   使用Swal代替showModalAlert
+              Swal.fire({
+                icon: "warning",
+                title: "警告",
+                text: `存在未定义的支付方式，请检查配置。以下支付方式未在"支付方式配置"中定义： ${undefinedMethods.join(", ")}`,
+              });
               // // 在结果区域显示警告提示
               // const resultDiv = document.getElementById('admin-yipay-config-result_modal');
               // if (resultDiv) {
@@ -8657,9 +9064,13 @@ async function loadAdminYiPayConfig(show_Modal = true) {
     // === 第7步：显示成功提示（如果没有警告） ===
     // 只有在没有显示警告的情况下，才显示成功提示
     if (show_Modal) {
-      showModalAlert("✓ 配置已加载", "成功");
+      // showModalAlert("✓ 配置已加载", "成功");
+      Swal.fire({
+        icon: "success",
+        title: "成功",
+        text: "✓ 配置已加载",
+      });
     }
-
     // const resultDiv = document.getElementById('admin-yipay-config-result_modal');
     // if (resultDiv) {
     // // 检查resultDiv中是否已经有警告提示
@@ -8717,7 +9128,12 @@ async function loadAdminYiPayConfig(show_Modal = true) {
       }, 8000);
     } else {
       // 如果结果显示区域不存在，使用alert作为备选方案
-      showModalAlert(`加载失败：${error.message || "未知错误"}`);
+      // showModalAlert(`加载失败：${error.message || "未知错误"}`);
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: `加载失败：${error.message || "未知错误"}`,
+      });
     }
   }
 }
@@ -8787,7 +9203,13 @@ async function saveAdminYiPayConfig() {
 
   // 验证host不能为空
   if (!host) {
-    showModalAlert("请输入易支付接口域名");
+    // showModalAlert("请输入易支付接口域名");
+    // 使用Swal代替showModalAlert
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入易支付接口域名",
+    });
     // 聚焦到host输入框，引导用户输入
     if (hostInput) hostInput.focus();
     return; // 中断函数执行
@@ -8796,7 +9218,13 @@ async function saveAdminYiPayConfig() {
   // 2.2 获取pid值并去除首尾空格
   const pid = pidInput ? pidInput.value.trim() : "";
   if (!pid) {
-    showModalAlert("请输入商户ID");
+    // showModalAlert("请输入商户ID");
+    // (使用Swal代替showModalAlert)
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入商户ID",
+    });
     if (pidInput) pidInput.focus();
     return;
   }
@@ -8804,7 +9232,13 @@ async function saveAdminYiPayConfig() {
   // 2.3 获取key值并去除首尾空格
   const key = keyInput ? keyInput.value.trim() : "";
   if (!key) {
-    showModalAlert("请输入商户密钥");
+    // showModalAlert("请输入商户密钥");
+    // 使用Swal代替showModalAlert
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入商户密钥",
+    });
     if (keyInput) keyInput.focus();
     return;
   }
@@ -8824,7 +9258,13 @@ async function saveAdminYiPayConfig() {
   const pubcKey = pubcKeyInput ? pubcKeyInput.value.trim() : "";
   // 验证pubc_key不能为空
   if (!pubcKey) {
-    showModalAlert("请输入平台公钥");
+    // showModalAlert("请输入平台公钥");
+    // 使用Swal代替showModalAlert
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入平台公钥",
+    });
     if (pubcKeyInput) pubcKeyInput.focus();
     return; // 中断函数执行
   }
@@ -8837,13 +9277,25 @@ async function saveAdminYiPayConfig() {
   const timeoutNum = parseInt(paymentTimeoutMinutes, 10);
   // 检查是否为有效数字（NaN表示不是数字）
   if (isNaN(timeoutNum)) {
-    showModalAlert("支付超时时间必须是数字");
+    // showModalAlert("支付超时时间必须是数字");
+    // 使用Swal代替showModalAlert
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "支付超时时间必须是数字",
+    });
     if (timeoutInput) timeoutInput.focus();
     return;
   }
   // 检查数字范围是否在10-3600之间
   if (timeoutNum < 10 || timeoutNum > 3600) {
-    showModalAlert("支付超时时间必须在10-3600秒之间");
+    // showModalAlert("支付超时时间必须在10-3600秒之间");
+    // 使用Swal代替showModalAlert
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "支付超时时间必须在10-3600秒之间",
+    });
     if (timeoutInput) timeoutInput.focus();
     return;
   }
@@ -8926,12 +9378,18 @@ async function saveAdminYiPayConfig() {
             );
 
             // 显示详细的错误提示
-            showModalAlert(
-              `❌ 保存失败\n\n` +
-                `以下支付方式未在"支付方式配置"中定义：\n` +
-                `${undefinedMethods.join(", ")}\n\n` +
-                `请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。`
-            );
+            // showModalAlert(
+            //   `❌ 保存失败\n\n` +
+            //     `以下支付方式未在"支付方式配置"中定义：\n` +
+            //     `${undefinedMethods.join(", ")}\n\n` +
+            //     `请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。`
+            // );
+            // 使用Swal代替showModalAlert
+            Swal.fire({
+              icon: "error",
+              title: "错误",
+              text: `以下支付方式未在"支付方式配置"中定义：\n${undefinedMethods.join(", ")}\n\n请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。`,
+            });
 
             // 聚焦到支付方式输入框，引导用户修改
             if (methodsInput) methodsInput.focus();
@@ -9009,7 +9467,13 @@ async function saveAdminYiPayConfig() {
     // === 第7步：显示成功提示 ===
 
     // 使用showModalAlert显示保存成功提示
-    showModalAlert("易支付配置已成功保存", "保存成功");
+    // showModalAlert("易支付配置已成功保存", "保存成功");
+    // 使用Swal代替showModalAlert
+    Swal.fire({
+      icon: "success",
+      title: "保存成功",
+      text: "易支付配置已成功保存",
+    });
 
     console.log("[PC端易支付配置] 配置保存成功");
   } catch (error) {
@@ -9038,7 +9502,13 @@ async function saveAdminYiPayConfig() {
         resultDiv.classList.add("hidden");
       }, 8000);
     } else {
-      showModalAlert(`保存失败：${error.message || "未知错误"}`);
+      // showModalAlert(`保存失败：${error.message || "未知错误"}`);
+      // 使用Swal代替showModalAlert
+      Swal.fire({
+        icon: "error",
+        title: "保存失败",
+        text: `保存失败：${error.message || "未知错误"}`,
+      });
     }
   }
 }
@@ -9159,7 +9629,12 @@ async function loadMobileYiPayConfig() {
         resultDiv.classList.add("hidden");
       }, 8000);
     } else {
-      showModalAlert(`加载失败：${error.message || "未知错误"}`);
+      // showModalAlert(`加载失败：${error.message || "未知错误"}`);
+      Swal.fire({
+        icon: "error",
+        title: "加载失败",
+        text: `加载失败：${error.message || "未知错误"}`,
+      });
     }
   }
 }
@@ -9188,21 +9663,35 @@ async function saveMobileYiPayConfig() {
 
   const host = hostInput ? hostInput.value.trim() : "";
   if (!host) {
-    showModalAlert("请输入易支付接口域名");
+    // showModalAlert("请输入易支付接口域名");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入易支付接口域名",
+    });
     if (hostInput) hostInput.focus();
     return;
   }
 
   const pid = pidInput ? pidInput.value.trim() : "";
   if (!pid) {
-    showModalAlert("请输入商户ID");
+    // showModalAlert("请输入商户ID");
+    Swal.fire ({
+      icon: "error",
+      title: "错误",
+    });
     if (pidInput) pidInput.focus();
     return;
   }
 
   const key = keyInput ? keyInput.value.trim() : "";
   if (!key) {
-    showModalAlert("请输入商户密钥");
+    // showModalAlert("请输入商户密钥");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "请输入商户密钥",
+    });
     if (keyInput) keyInput.focus();
     return;
   }
@@ -9285,7 +9774,12 @@ async function saveMobileYiPayConfig() {
         resultDiv.classList.add("hidden");
       }, 8000);
     } else {
-      showModalAlert(`保存失败：${error.message || "未知错误"}`);
+      // showModalAlert(`保存失败：${error.message || "未知错误"}`);
+      Swal.fire({
+      icon: "error",
+      title: "保存失败",
+      text: `保存失败：${error.message || "未知错误"}`,
+      });
     }
   }
 }
@@ -9980,7 +10474,12 @@ async function loadPricingConfig() {
 
     // 使用alert提示用户错误信息
     // 在实际生产环境中，建议使用更友好的UI提示（如SweetAlert2）
-    showModalAlert("加载价格配置失败：" + error.message);
+    // showModalAlert("加载价格配置失败：" + error.message);
+    Swal.fire({
+      icon: "error",
+      title: "加载失败",
+      text: `加载失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -10147,14 +10646,24 @@ async function savePricingConfig() {
     // ========== 显示成功提示 ==========
     // 使用alert提示用户保存成功
     // 在实际生产环境中，建议使用更友好的UI提示
-    showModalAlert("价格配置已成功保存！");
+    // showModalAlert("价格配置已成功保存！");
+    Swal.fire({
+      icon: "success",
+      title: "保存成功",
+      text: "价格配置已成功保存！",
+    });
 
     // ========== 记录成功日志 ==========
     console.log("[价格配置] 价格配置保存成功");
   } catch (error) {
     // ========== 错误处理 ==========
     console.error("[价格配置] 保存价格配置失败:", error);
-    showModalAlert("保存价格配置失败：" + error.message);
+    // showModalAlert("保存价格配置失败：" + error.message);
+    Swal.fire({
+      icon: "error",
+      title: "保存失败",
+      text: `保存失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -10287,7 +10796,12 @@ async function loadMobilePricingConfig() {
   } catch (error) {
     // 错误处理
     console.error("[价格配置] 加载价格配置失败（移动端）:", error);
-    showModalAlert("加载价格配置失败：" + error.message);
+    // showModalAlert("加载价格配置失败：" + error.message);
+    Swal.fire({
+      icon: "error",
+      title: "加载失败",
+      text: `加载失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -10416,14 +10930,24 @@ async function saveMobilePricingConfig() {
     }
 
     // 显示成功提示
-    showModalAlert("价格配置已成功保存！");
+    // showModalAlert("价格配置已成功保存！");
+    Swal.fire({
+      icon: "success",
+      title: "保存成功",
+      text: "价格配置已成功保存！",
+    });
 
     // 记录成功日志
     console.log("[价格配置] 价格配置保存成功（移动端）");
   } catch (error) {
     // 错误处理
     console.error("[价格配置] 保存价格配置失败（移动端）:", error);
-    showModalAlert("保存价格配置失败：" + error.message);
+    // showModalAlert("保存价格配置失败：" + error.message);
+    Swal.fire({
+      icon: "error",
+      title: "保存失败",
+      text: `保存失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -10899,7 +11423,12 @@ async function loadWatermarkControlConfig() {
     console.error("[水印控制] 加载配置失败（PC端）:", error);
 
     // 显示错误提示
-    showModalAlert("加载水印控制配置失败：" + error.message);
+    // showModalAlert("加载水印控制配置失败：" + error.message);
+    Swal.fire({
+      icon: "error",
+      title: "加载失败",
+      text: `加载失败：${error.message || "未知错误"}`,
+    });
 
     // 更新UI显示错误状态
     const listContainer = document.getElementById("watermark-users-list_modal");
@@ -10995,14 +11524,24 @@ async function saveWatermarkControlConfig() {
     }
 
     // ========== 步骤7: 显示成功提示 ==========
-    showModalAlert("水印控制配置已成功保存！");
+    // showModalAlert("水印控制配置已成功保存！");
+    Swal.fire({
+      icon: "success",
+      title: "保存成功",
+      text: "水印控制配置已成功保存！",
+    });
 
     // ========== 步骤8: 记录成功日志 ==========
     console.log("[水印控制] 配置保存成功（PC端）");
   } catch (error) {
     // ========== 错误处理 ==========
     console.error("[水印控制] 保存配置失败（PC端）:", error);
-    showModalAlert("保存水印控制配置失败：" + error.message);
+    // showModalAlert("保存水印控制配置失败：" + error.message);
+    Swal.fire({
+      icon: "error",
+      title: "保存失败",
+      text: `保存失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -11110,7 +11649,12 @@ async function deleteWatermarkUser(username) {
     // 检查用户是否存在于配置中
     if (!(username in usersConfig)) {
       console.warn(`[水印控制] 用户"${username}"不在配置中，无需删除`);
-      showModalAlert(`用户"${username}"未在配置中，无需删除`);
+      // showModalAlert(`用户"${username}"未在配置中，无需删除`);
+      Swal.fire({
+        icon: "info",
+        title: "提示",
+        text: `用户"${username}"未在配置中，无需删除`,
+      });
       return;
     }
 
@@ -11138,9 +11682,15 @@ async function deleteWatermarkUser(username) {
     }
 
     // ========== 步骤5: 显示成功提示并刷新列表 ==========
-    showModalAlert(
-      `已成功删除用户"${username}"的自定义配置！\n\n该用户现在将使用系统默认值。`
-    );
+    // showModalAlert(
+    //   `已成功删除用户"${username}"的自定义配置！\n\n该用户现在将使用系统默认值。`
+    // );
+    Swal.fire({
+      icon: "success",
+      title: "删除成功",
+      text: `已成功删除用户"${username}"的自定义配置！\n\n该用户现在将使用系统默认值。`,
+    });
+
     console.log(`[水印控制] 成功删除用户"${username}"的配置`);
 
     // 重新加载配置以刷新显示
@@ -11148,7 +11698,12 @@ async function deleteWatermarkUser(username) {
   } catch (error) {
     // ========== 错误处理 ==========
     console.error(`[水印控制] 删除用户"${username}"的配置失败:`, error);
-    showModalAlert(`删除配置失败：${error.message}`);
+    // showModalAlert(`删除配置失败：${error.message}`);
+    Swal.fire({
+      icon: "error",
+      title: "删除失败",
+      text: `删除失败：${error.message || "未知错误"}`,
+    });
   }
 }
 
@@ -11191,7 +11746,13 @@ async function openAddWatermarkUserModal() {
       const errorMsg = "无法找到添加用户模态框元素，请刷新页面后重试";
       console.error("[水印控制] " + errorMsg);
       // 使用模态框提示用户，让错误更明显
-      showModalAlert(errorMsg, "错误");
+      // showModalAlert(errorMsg, "错误");
+      // 使用Swal.fire替代showModalAlert，提供更好的用户体验
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: errorMsg,
+      });
       return;
     }
 
@@ -11214,7 +11775,13 @@ async function openAddWatermarkUserModal() {
       // 关闭模态框，因为无法显示内容
       modal.classList.add("hidden");
       // 使用模态框提示用户
-      showModalAlert(errorMsg, "错误");
+      // showModalAlert(errorMsg, "错误");
+      // 使用Swal.fire替代showModalAlert，提供更好的用户体验
+      Swal.fire({
+        icon: "error",
+        title: "错误",
+        text: errorMsg,
+      });
       return;
     }
 
@@ -11307,10 +11874,16 @@ async function openAddWatermarkUserModal() {
     console.error("[水印控制] 加载可添加用户列表失败:", error);
 
     // 显示友好的错误提示，包含详细的错误信息
-    showModalAlert(
-      "加载用户列表失败：" + error.message + "\n\n请检查网络连接或刷新页面重试。",
-      "加载失败"
-    );
+    // showModalAlert(
+    //   "加载用户列表失败：" + error.message + "\n\n请检查网络连接或刷新页面重试。",
+    //   "加载失败"
+    // );
+    // 使用Swal.fire替代showModalAlert，提供更好的用户体验
+    Swal.fire({
+      icon:"error",
+      title:"加载失败",
+      text:`加载用户列表失败：${error.message}\n\n请检查网络连接或刷新页面重试。`,
+    });
 
     // 在列表容器中显示错误信息
     const listContainer = document.getElementById(
@@ -11570,7 +12143,12 @@ async function refreshWatermarkUserList() {
     console.error("[水印控制] 刷新用户列表失败:", error);
 
     // 显示错误提示
-    showModalAlert("刷新用户列表失败：" + error.message);
+    // showModalAlert("刷新用户列表失败：" + error.message);
+    Swal.fire({
+      icon: "error",
+      title: "刷新失败",
+      text: `刷新用户列表失败：${error.message}\n\n请检查网络连接或刷新页面重试。`,
+    });
 
     // 在列表容器中显示错误信息
     const listContainer = document.getElementById(
@@ -11660,7 +12238,12 @@ async function addWatermarkUser(username) {
     // [步骤8] 显示成功提示
     // [安全修复] 使用escapeHtml()转义用户名，防止在提示信息中出现XSS漏洞
     const safeUsername = escapeHtml(username);
-    showModalAlert(`用户 "${safeUsername}" 已成功添加到水印控制配置！`);
+    // showModalAlert(`用户 "${safeUsername}" 已成功添加到水印控制配置！`);
+    Swal.fire({
+      icon: "success",
+      title: "添加成功",
+      text: `用户 "${safeUsername}" 已成功添加到水印控制配置！`,
+    });
 
     // [步骤9] 记录成功日志
     console.log(`[水印控制] 用户 "${username}" 添加成功`);
@@ -11669,7 +12252,12 @@ async function addWatermarkUser(username) {
     console.error(`[水印控制] 添加用户 "${username}" 失败:`, error);
 
     // 显示错误提示
-    showModalAlert(`添加用户失败：${error.message}`);
+    // showModalAlert(`添加用户失败：${error.message}`);
+    Swal.fire({
+      icon: "error",
+      title: "添加失败",
+      text: `添加用户失败：${error.message}\n\n请检查网络连接或刷新页面重试。`,
+    });
   }
 }
 
@@ -12851,7 +13439,12 @@ async function saveMobileAttendanceParams() {
   );
 
   if (!enabledInput || !refreshInput || !radiusInput) {
-    showModalAlert("无法获取参数输入框", "错误");
+    // showModalAlert("无法获取参数输入框", "错误");
+    Swal.fire({
+      icon: "error",
+      title: "参数获取失败",
+      text: "无法获取参数输入框，请刷新页面重试。",
+    });
     return;
   }
 
@@ -12860,7 +13453,12 @@ async function saveMobileAttendanceParams() {
   const radius = parseInt(radiusInput.value);
 
   if (isNaN(refresh) || refresh < 15) {
-    showModalAlert("刷新间隔不能小于15秒", "错误");
+    // showModalAlert("刷新间隔不能小于15秒", "错误");
+    Swal.fire({
+      icon: "error",
+      title: "参数错误",
+      text: "刷新间隔不能小于15秒",
+    });
     return;
   }
 
@@ -23971,7 +24569,7 @@ async function loadMessages() {
             editormd.markdownToHTML(id, {
               markdown: m.content || "",
                 htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
-                htmlDecode: "style,script,iframe",  // 允许解析的 HTML 标签
+                // htmlDecode: "style,iframe,image,a,p,div",  // 允许解析的 HTML 标签
                 toc: false,             // 是否生成目录
                 tocContainer: "", // 自定义 ToC 容器层
                 gfm             : true,        // 是否使用 GitHub Flavored Markdown
@@ -39571,12 +40169,18 @@ async function checkAndShowReminders() {
           try {
             editormd.markdownToHTML(tmpId, {
               markdown: md,
-              htmlDecode: false,
-              emoji: true,
-              taskList: true,
-              tex: false,
-              flowChart: false,
-              sequenceDiagram: false,
+                htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
+                // htmlDecode: "style,iframe,image,a,p,div",  // 允许解析的 HTML 标签
+                toc: false,             // 是否生成目录
+                tocContainer: "", // 自定义 ToC 容器层
+                gfm             : true,        // 是否使用 GitHub Flavored Markdown
+                tocDropdown     : false,     // 是否启用目录下拉菜单
+                markdownSourceCode: true, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
+                emoji: true,
+                taskList: true,
+                tex: true,  // 默认不解析
+                flowChart: true,  // 默认不解析
+                sequenceDiagram: true,  // 默认不解析
             });
             const html = tmp.innerHTML;
             console.log("[定时提醒] editormd.markdownToHTML 渲染完成，结果：", html);
