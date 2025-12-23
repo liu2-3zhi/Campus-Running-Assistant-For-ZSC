@@ -15992,8 +15992,26 @@ async function loadCaptcha(formType) {
   displayElement.innerHTML =
     '<span class="text-slate-400 text-xs">加载中...</span>';
 
+  // 自动获取容器宽度
+  let containerWidth = 343;
+  if (formType === "login") {
+    const container = document.getElementById("auth-login-container_panel");
+    if (container) {
+      // 取padding后内容区宽度
+      const style = window.getComputedStyle(container);
+      const paddingLeft = parseFloat(style.paddingLeft) || 0;
+      const paddingRight = parseFloat(style.paddingRight) || 0;
+      containerWidth = container.clientWidth - paddingLeft - paddingRight -200;
+      console.log(`[验证码] 登录表单容器宽度: ${containerWidth}px`);
+      // 限制最大宽度
+      if (containerWidth > 600) containerWidth = 600;
+      if (containerWidth < 200) containerWidth = 200;
+    }
+  }
+
   try {
-    const response = await fetch("/api/captcha/get", {
+    // 传递width参数给后端
+    const response = await fetch(`/api/captcha/get?width=${containerWidth}`, {
       method: "GET",
       headers: {
         "X-Session-ID": sessionUUID,
@@ -16012,7 +16030,7 @@ async function loadCaptcha(formType) {
       }
       captchaIds[formType] = result.captcha_id;
       captchaDimensions[formType] = {
-        width: result.width || 343,
+        width: containerWidth,
         height: result.height || 119,
       };
 
@@ -16020,9 +16038,10 @@ async function loadCaptcha(formType) {
       const captchaWidth = captchaDimensions[formType].width;
       const captchaHeight = captchaDimensions[formType].height;
 
+      // 传递width参数给iframe
       const iframeHtml = `
             <iframe 
-              src="/api/captcha/html/${result.captcha_id}?t=${timestamp}"
+              src="/api/captcha/html/${result.captcha_id}?t=${timestamp}&width=${captchaWidth}"
               style="max-width: ${captchaWidth}px; max-height: ${captchaHeight}px; width: ${captchaWidth}px; height: ${captchaHeight}px; border: none; overflow: hidden; display: block; margin: 0 auto;"
               scrolling="no"
               frameborder="0"
@@ -16033,7 +16052,7 @@ async function loadCaptcha(formType) {
       displayElement.innerHTML = iframeHtml;
 
       console.log(
-        `[验证码] 已加载验证码iframe: ${result.captcha_id} (时间戳: ${timestamp})`
+        `[验证码] 已加载验证码iframe: ${result.captcha_id} (时间戳: ${timestamp}) 宽度: ${captchaWidth}`
       );
 
       loadMobileCaptcha(formType);

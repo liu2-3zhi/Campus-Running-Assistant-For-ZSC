@@ -549,7 +549,7 @@
   </div>
 
   <div id="auth-login-container" class="hidden h-screen w-screen flex items-center justify-center">
-    <div class="panel rounded-2xl w-full max-w-[600px] p-6 space-y-6">
+    <div class="panel rounded-2xl w-full max-w-[600px] p-6 space-y-6" id="auth-login-container_panel">
       <div class="text-center">
         <h2 class="text-3xl font-bold text-sky-700 card-title mb-2">
           跑步助手
@@ -610,6 +610,7 @@
 
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
+          <div id="auth-login-captcha-container_display" class="flex justify-center">
           <div class="flex gap-2 mt-1 items-center">
             <div id="auth-login-captcha-display" class="flex-shrink-0 w-auto h-auto flex items-center justify-center border border-slate-300 rounded bg-white cursor-pointer hover:border-sky-400 transition-colors" title="点击刷新验证码" style="min-height: 64px">
               <span class="text-slate-400 text-xs">加载中...</span>
@@ -620,6 +621,7 @@
                 </path>
               </svg>
             </button>
+          </div>
           </div>
           <div class="mt-2">
             <input type="text" id="auth-login-captcha" class="input-field w-full" placeholder="请输入验证码" maxlength="6" autocomplete="off">

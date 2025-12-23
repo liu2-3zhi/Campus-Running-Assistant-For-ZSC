@@ -32484,13 +32484,31 @@ def start_web_server(args_param):
                 logging.info(
                     f"[本地验证码] 已生成验证码 ID: {captcha_id} 会话: 未知 长度: {length} 尺寸: {captcha_width}x{captcha_height}px"
                 )
+
+            # 支持通过查询参数传入目标宽度（width），按比例计算返回的高度
+            provided_width = request.args.get("width", type=int)
+            out_width = captcha_width
+            out_height = captcha_height
+            if provided_width and isinstance(provided_width, int) and provided_width > 0:
+                try:
+                    if captcha_width and float(captcha_width) > 0:
+                        scale = float(provided_width) / float(captcha_width)
+                        out_height = int(round(float(captcha_height) * scale))
+                        out_width = int(provided_width)
+                    else:
+                        out_width = int(provided_width)
+                        out_height = int(captcha_height)
+                except Exception:
+                    out_width = int(captcha_width)
+                    out_height = int(captcha_height)
+
             return jsonify(
                 {
                     "success": True,
                     "html": captcha_html,
                     "captcha_id": captcha_id,
-                    "width": captcha_width,
-                    "height": captcha_height,
+                    "width": out_width,
+                    "height": out_height,
                 }
             )
 
