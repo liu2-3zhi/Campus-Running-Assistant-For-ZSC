@@ -13473,13 +13473,23 @@ async function saveMobileAttendanceParams() {
       pythonParams["attendance_user_radius_m"] = radius;
     }
 
-    showModalAlert("自动签到配置已保存", "成功");
+    // showModalAlert("自动签到配置已保存", "成功");
+    Swal.fire({
+      icon: "success",
+      title: "配置已保存",
+      text: "自动签到配置已成功保存。",
+    });
 
     if (enabled) {
     }
   } catch (e) {
     console.error("保存签到配置失败:", e);
-    showModalAlert("保存失败: " + e.message, "错误");
+    // showModalAlert("保存失败: " + e.message, "错误");
+    Swal.fire({
+      icon: "error",
+      title: "保存失败",
+      text: "保存失败: " + e.message,
+    });
   }
 }
 
@@ -13662,7 +13672,12 @@ function initializeMobileUI() {
     mobileSendLoginCodeBtn.addEventListener("click", async function () {
       const phone = document.getElementById("mobile-auth-username").value;
       if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
-        showModalAlert("请输入正确的手机号", "错误");
+        // showModalAlert("请输入正确的手机号", "错误");
+        Swal.fire({
+          icon: "error",
+          title: "手机号错误",
+          text: "请输入正确的手机号",
+        });
         return;
       }
 
@@ -13681,7 +13696,12 @@ function initializeMobileUI() {
     mobileSendRegCodeBtn.addEventListener("click", async function () {
       const phone = document.getElementById("mobile-reg-phone").value;
       if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
-        showModalAlert("请输入正确的手机号", "错误");
+        // showModalAlert("请输入正确的手机号", "错误");
+        Swal.fire({
+          icon: "error",
+          title: "手机号错误",
+          text: "请输入正确的手机号",
+        });
         return;
       }
 
@@ -14035,7 +14055,12 @@ function initializeMobileUI() {
 
       const result = await callPythonAPI("enter_multi_account_mode");
       if (!result.success) {
-        showModalAlert("进入多账号模式失败", "错误");
+        // showModalAlert("进入多账号模式失败", "错误");
+        Swal.fire({
+          icon: "error",
+          title: "进入多账号模式失败",
+          text: "进入多账号模式失败",
+        });
         return;
       }
 
@@ -14372,10 +14397,15 @@ async function loadMobileSessionsList() {
           e.preventDefault();
           // 判断是否为当前会话
           if (isCurrent) {
-            showModalAlert(
-              "当前会话处于活动状态，无法删除。\n如需删除，请先切换到其他会话。",
-              "无法删除"
-            );
+            // showModalAlert(
+            //   "当前会话处于活动状态，无法删除。\n如需删除，请先切换到其他会话。",
+            //   "无法删除"
+            // );
+            Swal.fire({
+              icon: "error",
+              title: "无法删除",
+              text: "当前会话处于活动状态，无法删除。\n如需删除，请先切换到其他会话。",
+            });
           } else {
             // 触发删除确认
             showMobileConfirm(
@@ -14632,11 +14662,26 @@ function showMobileMessage(message, type = "info") {
   }
 
   if (type === "error") {
-    showModalAlert(message, "错误");
+    // showModalAlert(message, "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: message,
+    });
   } else if (type === "success") {
-    showModalAlert(message, "成功");
+    // showModalAlert(message, "成功");
+    Swal.fire({
+      icon: "success",
+      title: "成功",
+      text: message,
+    });
   } else {
-    showModalAlert(message, "提示");
+    // showModalAlert(message, "提示");
+    Swal.fire({
+      icon: "info",
+      title: "提示",
+      text: message,
+    });
   }
 }
 document.addEventListener("DOMContentLoaded", function () {
@@ -15248,7 +15293,12 @@ async function callPythonAPI(method, ...args) {
       logMessage_Error(
         `[API调用] ✗ 权限不足 (${method}): ${errorData.message}`
       );
-      showModalAlert(`操作失败: ${errorData.message}`, "权限不足");
+      // showModalAlert(`操作失败: ${errorData.message}`, "权限不足");
+      Swal.fire({
+        icon: "error",
+        title: "权限不足",
+        text: `操作失败: ${errorData.message}`,
+      });
       throw new Error(`权限不足: ${errorData.message}`);
     }
 
@@ -16054,13 +16104,23 @@ function openCaptchaModal(context) {
 
   if (!modal) {
     logMessage_Error("[验证码模态窗] 找不到captcha-verification-modal元素");
-    showModalAlert("验证码模态框加载失败，请刷新页面重试", "错误");
+    // showModalAlert("验证码模态框加载失败，请刷新页面重试", "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "验证码模态框加载失败，请刷新页面重试",
+    });
     return;
   }
 
   if (!input) {
     logMessage_Error("[验证码模态窗] 找不到captcha-modal-input输入框");
-    showModalAlert("验证码输入框加载失败，请刷新页面重试", "错误");
+    // showModalAlert("验证码输入框加载失败，请刷新页面重试", "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "验证码输入框加载失败，请刷新页面重试",
+    });
     return;
   }
 
@@ -16083,7 +16143,12 @@ function openCaptchaModal(context) {
     }, 300);
   } catch (error) {
     logMessage_Error("[验证码模态窗] 打开模态框时发生错误:", error);
-    showModalAlert("打开验证码窗口时出错", "错误");
+    // showModalAlert("打开验证码窗口时出错", "错误");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: "打开验证码窗口时出错",
+    });
   }
 }
 
@@ -16114,7 +16179,11 @@ async function confirmCaptchaAndSendSMS() {
   const captcha = captchaInput.value.trim();
 
   if (!captcha) {
-    showModalAlert("请输入验证码");
+    // showModalAlert("请输入验证码");
+    Swal.fire({
+      icon: "warning",
+      title: "请输入验证码",
+    });
     return;
   }
 
@@ -16179,7 +16248,12 @@ async function sendSMSWithCaptcha(
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("验证码已发送，请查收短信");
+      // showModalAlert("验证码已发送，请查收短信");
+      Swal.fire({
+        icon: "success",
+        title: "提示",
+        text: "验证码已发送，请查收短信",
+      });
 
       let countdown = 60;
       button.disabled = true;
@@ -16199,7 +16273,12 @@ async function sendSMSWithCaptcha(
     }
   } catch (error) {
     console.error("[SMS] 发送异常:", error);
-    showModalAlert(error.message || "发送失败，请重试");
+    // showModalAlert(error.message || "发送失败，请重试");
+    Swal.fire({
+      icon: "error",
+      title: "错误",
+      text: error.message || "发送失败，请重试",
+    });
     throw error;
   }
 }
@@ -16466,7 +16545,12 @@ async function handleAuthLogin() {
     logMessage_Error("登录请求失败:", e);
     setButtonLoading("auth-login-btn", false);
     showButtonError("auth-login-btn", "网络错误");
-    showModalAlert("网络错误，请检查连接后重试", "登录失败");
+    // showModalAlert("网络错误，请检查连接后重试", "登录失败");
+    Swal.fire({
+      icon: "error",
+      title: "网络错误",
+      text: "网络错误，请检查连接后重试",
+    });
 
     refreshCaptcha("login");
     $("auth-login-captcha").value = "";
@@ -16477,12 +16561,20 @@ async function handle2FAVerify() {
   const codeInput = $("auth-2fa-code");
   const code = codeInput ? codeInput.value.trim() : "";
   if (!code || code.length !== 6 || !/^[0-9]{6}$/.test(code)) {
-    showModalAlert("请输入有效的6位数字验证码", "2FA验证失败");
+    // showModalAlert("请输入有效的6位数字验证码", "2FA验证失败");
+    Swal.fire({
+      icon: "warning",
+      title: "请输入有效的6位数字验证码",
+    });
     return;
   }
 
   if (!window.temp2FAUsername) {
-    showModalAlert("会话已过期，请重新登录", "2FA验证失败");
+    // showModalAlert("会话已过期，请重新登录", "2FA验证失败");
+    Swal.fire({
+      icon: "error",
+      title: "会话已过期，请重新登录",
+    });
     const loginForm = $("auth-login-form");
     const tfaForm = $("auth-2fa-form");
     if (loginForm) loginForm.classList.remove("hidden");
@@ -16542,7 +16634,12 @@ async function handle2FAVerify() {
     } else {
       setButtonLoading("auth-2fa-verify-btn", false);
       showButtonError("auth-2fa-verify-btn", "验证失败");
-      showModalAlert(result.message || "验证码错误", "2FA验证失败");
+      // showModalAlert(result.message || "验证码错误", "2FA验证失败");
+      Swal.fire({
+        icon: "error",
+        title: "2FA验证失败",
+        text: result.message || "验证码错误",
+      });
       if (codeInput) {
         codeInput.value = "";
         codeInput.focus();
@@ -16552,7 +16649,12 @@ async function handle2FAVerify() {
     logMessage_Error("2FA验证请求失败:", e);
     setButtonLoading("auth-2fa-verify-btn", false);
     showButtonError("auth-2fa-verify-btn", "网络错误");
-    showModalAlert("网络错误，请检查连接后重试", "2FA验证失败");
+    // showModalAlert("网络错误，请检查连接后重试", "2FA验证失败");
+    Swal.fire({
+      icon: "error",
+      title: "网络错误",
+      text: "网络错误，请检查连接后重试",
+    });
   }
 }
 
@@ -16575,28 +16677,48 @@ async function handleAuthRegister() {
   const passwordConfirm = $("auth-reg-password-confirm").value.trim();
 
   if (!captcha) {
-    showModalAlert("请输入图形验证码", "注册失败");
+    // showModalAlert("请输入图形验证码", "注册失败");
+    Swal.fire({
+      icon: "warning",
+      title: "请输入图形验证码",
+    });
     return;
   }
 
   if (!username || !password || !passwordConfirm) {
-    showModalAlert("请填写所有必填字段（用户名、密码）", "注册失败");
+    // showModalAlert("请填写所有必填字段（用户名、密码）", "注册失败");
+    Swal.fire({
+      icon: "warning",
+      title: "请填写所有必填字段（用户名、密码）",
+    });
     return;
   }
 
   const usernameValidation = validateInput(username, "username");
   if (!usernameValidation.valid) {
-    showModalAlert(usernameValidation.message, "注册失败");
+    // showModalAlert(usernameValidation.message, "注册失败");
+    Swal.fire({
+      icon: "warning",
+      title: usernameValidation.message,
+    });
     return;
   }
   if (/[一-龥]/.test(username)) {
-    showModalAlert("用户名不能包含中文字符", "注册失败");
+    // showModalAlert("用户名不能包含中文字符", "注册失败");
+    Swal.fire({
+      icon: "warning",
+      title: "用户名不能包含中文字符",
+    });
     return;
   }
 
   const passwordValidation = validateInput(password, "password");
   if (!passwordValidation.valid) {
-    showModalAlert(passwordValidation.message, "注册失败");
+    // showModalAlert(passwordValidation.message, "注册失败");
+    Swal.fire({
+      icon: "warning",
+      title: passwordValidation.message,
+    });
     return;
   }
 
