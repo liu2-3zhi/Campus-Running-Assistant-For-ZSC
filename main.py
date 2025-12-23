@@ -3546,7 +3546,7 @@ def _create_config_ini():
             print(f"\n[错误] 读取配置文件 '{config_file}' 失败: {e}")
             logging.error(f"配置文件读取失败: {e}")
 
-            import shutil
+            # import shutil
 
             backup_file = config_file + ".bak"
             try:
@@ -19943,15 +19943,15 @@ def start_web_server(args_param):
                     raise Exception(token_res.get("error") if token_res else "获取access_token失败")
 
                 # 读取文件并进行base64编码
-                import base64 as _base64, requests as _requests
+                # import base64 as _base64, requests as _requests
 
                 with open(save_path, "rb") as _f:
-                    img_b64 = _base64.b64encode(_f.read()).decode("utf-8")
+                    img_b64 = base64.b64encode(_f.read()).decode("utf-8")
 
                 censor_url = f"https://aip.baidubce.com/rest/2.0/solution/v1/img_censor/v2/user_defined?access_token={access_token}"
                 headers = {"content-type": "application/x-www-form-urlencoded"}
                 data = {"image": img_b64}
-                resp = _requests.post(censor_url, data=data, headers=headers, timeout=10)
+                resp = requests.post(censor_url, data=data, headers=headers, timeout=10)
                 resp.raise_for_status()
                 result = resp.json()
 
@@ -19965,7 +19965,7 @@ def start_web_server(args_param):
                 if conclusion_type != 1:
                     # 将文件移动到 refuse 目录
                     try:
-                        import shutil as _shutil
+                        # import shutil as _shutil
                         dest = os.path.join(REFUSE_DIR, save_name)
                         # 如果目标已存在则先移除
                         if os.path.exists(dest):
@@ -19973,7 +19973,7 @@ def start_web_server(args_param):
                                 os.remove(dest)
                             except Exception:
                                 pass
-                        _shutil.move(save_path, dest)
+                        shutil.move(save_path, dest)
                     except Exception as mv_err:
                         logging.error(f"移动到 refuse 目录失败: {mv_err}")
 
@@ -20016,14 +20016,14 @@ def start_web_server(args_param):
             except Exception as e:
                 # 审核过程出现异常也将图片视为被拒绝并移动（以保证安全）
                 try:
-                    import shutil as _shutil
+                    # import shutil as _shutil
                     dest = os.path.join(REFUSE_DIR, save_name)
                     if os.path.exists(dest):
                         try:
                             os.remove(dest)
                         except Exception:
                             pass
-                    _shutil.move(save_path, dest)
+                    shutil.move(save_path, dest)
                 except Exception:
                     logging.exception("审核失败且移动到 refuse 时发生错误")
 
@@ -20037,12 +20037,14 @@ def start_web_server(args_param):
 
         # 基本安全检查，拒绝路径穿越
         if ".." in filename or filename.startswith('/'):
+            logging.warning(f"检测到非法文件路径请求: {filename}")
             abort(404)
 
         # 禁止访问 refuse 目录中的文件
         # 如果请求的第一级路径是 refuse，则拒绝访问
         first_segment = filename.replace('\\', '/').split('/')[0]
         if first_segment == 'refuse':
+            logging.warning(f"尝试访问被拒绝的文件: {filename}")
             abort(404)
 
         file_path = os.path.join(UPLOADS_DIR, filename)
@@ -20050,17 +20052,19 @@ def start_web_server(args_param):
             # 尝试返回 uploads/picture_refuse.png，如果不存在则返回内置1x1 PNG占位图
             try:
                 # 优先查找项目内 uploads/picture_refuse.png
-                refuse_static = os.path.join(UPLOADS_DIR, 'picture_refuse.png')
+                refuse_static = 'picture_refuse.png'
                 if os.path.exists(refuse_static):
-                    return send_from_directory(UPLOADS_DIR, 'picture_refuse.png')
+                    logging.info(f"返回内置拒绝图片: {refuse_static}")
+                    return send_from_directory('', 'picture_refuse.png')
                 # 回退：返回内置透明1x1 PNG
-                from io import BytesIO
-                import base64 as _base64
+                # from io import BytesIO
+                # import base64 as _base64
                 png_b64 = (
                     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII='
                 )
-                img_bytes = _base64.b64decode(png_b64)
-                return send_file(BytesIO(img_bytes), mimetype='image/png')
+                img_bytes = base64.b64decode(png_b64)
+                logging.info("返回内置透明1x1 PNG占位图")
+                return send_file(io.BytesIO(img_bytes), mimetype='image/png')
             except Exception:
                 abort(404)
 
@@ -27731,7 +27735,7 @@ def start_web_server(args_param):
             ssl_dir = os.path.join(os.path.dirname(__file__), "ssl")
             os.makedirs(ssl_dir, exist_ok=True)
             import tempfile
-            import shutil
+            # import shutil
 
             with tempfile.NamedTemporaryFile(
                 mode="wb", delete=False, suffix=".pem"

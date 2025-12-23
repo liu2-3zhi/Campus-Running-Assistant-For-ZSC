@@ -13763,7 +13763,7 @@ function initializeMobileUI() {
             .classList.remove("font-semibold");
         }
 
-        await handleAuthLogin();
+        await handleAuthLogin(true);
 
         const tfaForm = document.getElementById("auth-2fa-form");
         if (tfaForm && !tfaForm.classList.contains("hidden")) {
@@ -13810,7 +13810,7 @@ function initializeMobileUI() {
           document.getElementById("mobile-reg-password-confirm").value;
         document.getElementById("auth-register-captcha").value =
           document.getElementById("mobile-register-captcha").value;
-        await handleAuthRegister();
+        await handleAuthRegister(true);
       } catch (e) {
         console.error("代理[注册]失败:", e);
         showMobileMessage("注册时发生内部错误", "error");
@@ -15971,6 +15971,8 @@ const captchaIds = {
   login: null,
   register: null,
   modal: null,
+  "mobile-login": null,
+  "mobile-register": null,
 };
 
 const captchaDimensions = {
@@ -16426,7 +16428,7 @@ async function sendSMSWithCaptcha(
   }
 }
 
-async function handleAuthLogin() {
+async function handleAuthLogin(isMobile_use = false) {
   const loginBtn = $("auth-login-btn");
   const login_id = $("auth-username").value.trim();
   const password = $("auth-password").value.trim();
@@ -16545,8 +16547,11 @@ async function handleAuthLogin() {
   }
 
   request_body.captcha = captcha;
+  if (isMobile_use) {
+    request_body.captcha_id = captchaIds["mobile-login"];
+  } else {
   request_body.captcha_id = captchaIds.login;
-
+  }
   setButtonLoading("auth-login-btn", true, "登录中...");
 
   try {
@@ -16803,7 +16808,7 @@ async function handle2FAVerify() {
   }
 }
 
-async function handleAuthRegister() {
+async function handleAuthRegister(isMobile_use = false) {
   const username = $("auth-reg-username").value.trim();
   const phone = $("auth-reg-phone").value.trim();
   const smsCode = $("auth-reg-sms-code").value.trim();
@@ -16947,7 +16952,11 @@ async function handleAuthRegister() {
   formData.append("nickname", nickname);
   formData.append("sms_code", smsCode);
   formData.append("captcha", captcha);
+  if (isMobile_use) {
+    formData.append("captcha_id", captchaIds["mobile-register"]);
+  } else {
   formData.append("captcha_id", captchaIds.register);
+}
 
   if (avatarFile) {
     formData.append("avatar", avatarFile, avatarFile.name || "avatar.jpg");
@@ -19161,13 +19170,14 @@ function switchAdminTab(tab) {
       setTimeout(() => {
       document.getElementById("reminder-edit-modal").style.zIndex = "0";
       document.getElementById("reminder-edit-modal").style.display = "hidden";
-      document.getElementById("reminder-edit-modal-backdrop").style.display = "none";
-      openReminderEditModal();}, 500);
+            document.getElementById("reminder-edit-modal_background").style.display = "none";
+      openReminderEditModal("-1")
+      ;}, 500);
       setTimeout(() => {
       closeReminderEditModal()
       document.getElementById("reminder-edit-modal").style.zIndex = "";
       document.getElementById("reminder-edit-modal").style.display = "";
-      document.getElementById("reminder-edit-modal-backdrop").style.display = "";
+      document.getElementById("reminder-edit-modal_background").style.display = "";
       }, 1000);
 
 
@@ -40479,6 +40489,10 @@ async function openReminderEditModal(reminderId = "") {
 
       });
         window._reminderEditorInitialized = true;
+
+        if (reminderId=="-1") {
+          messageField.value = true
+        }
         // 如果之前有值，确保编辑器同步
         if (messageField && messageField.value) {
           try {
@@ -40503,7 +40517,19 @@ async function openReminderEditModal(reminderId = "") {
   const endTimeField = $("reminder-end-time-field");
   const enabledField = $("reminder-enabled-field");
   if (reminderId) {
+    console.log("[定时提醒] 加载提醒数据，ID:", reminderId);
     title.textContent = "✏️ 编辑定时提醒";
+    if (reminderId === "-1") {
+      console.log("[定时提醒] 使用示例数据填充编辑器");
+      idField.value = "example-001";
+      titleField.value = "示例提醒标题";
+      messageField.value = '# 示例提醒内容\n这是一个定时提醒的**示例内容**，支持 _Markdown_ 语法。'
+      startTimeField.value = "00:00";
+      endTimeField.value = "00:00";
+      enabledField.checked = true;
+
+    }
+    else {
     try {
       const response = await fetch("/api/reminders/list", {
         method: "GET",
@@ -40541,7 +40567,7 @@ async function openReminderEditModal(reminderId = "") {
       console.error("[定时提醒] 加载提醒数据失败:", error);
       showModalAlert("加载提醒数据失败", "错误");
       return;
-    }
+    }}
   } else {
     title.textContent = "⏰ 添加定时提醒";
     idField.value = "";
@@ -40886,7 +40912,7 @@ async function checkAndShowReminders() {
       try {
         // editormd 样式与核心脚本
         await loadOnce('/editor.md/css/editormd.css', true).catch(() => {});
-        await loadOnce('/editor.md/editormd.min.js', false).catch(() => {});
+        await loadOnce('/editor.md/editormd.js', false).catch(() => {});
         // editormd 渲染依赖
         await loadOnce('/editor.md/lib/marked.min.js', false).catch(() => {});
         await loadOnce('/editor.md/lib/prettify.min.js', false).catch(() => {});
@@ -40897,8 +40923,8 @@ async function checkAndShowReminders() {
     };
 
     // 尝试预加载（不阻塞太久）并注入样式
-    preloadEditormdDeps();
-    ensureReminderAlertStyles();
+    // preloadEditormdDeps();
+    // ensureReminderAlertStyles();
 
     // Helper: 将 Markdown 转为 HTML（仅使用 editormd.markdownToHTML，若不可用则回退为转义文本）
     const renderMarkdownToHtml = async (md) => {
@@ -40907,6 +40933,35 @@ async function checkAndShowReminders() {
         return "";
       }
 
+    const loadOnce = (url, isCss) => {
+          return new Promise((resolve, reject) => {
+            try {
+              if (document.querySelector(isCss ? `link[href="${url}"]` : `script[src="${url}"]`)) return resolve();
+              const el = isCss ? document.createElement('link') : document.createElement('script');
+              if (isCss) { el.rel = 'stylesheet'; el.href = url; } else { el.src = url; }
+              el.onload = () => resolve();
+              el.onerror = (e) => reject(e);
+              if (isCss) document.head.appendChild(el); else document.body.appendChild(el);
+            } catch (e) { reject(e); }
+          });
+        };
+
+
+      const loadAllDependencies = async () => {
+
+      setTimeout( async () => {
+        await loadOnce('/editor.md/editormd.js', false).catch(() => {console.warn('延迟加载 editormd.js 失败');});
+        await loadOnce('/editor.md/lib/marked.min.js', false).catch(() => {console.warn('延迟加载 marked 失败');});
+        await loadOnce('/editor.md/lib/prettify.min.js', false).catch(() => {console.warn('延迟加载 prettify 失败');});
+        
+        await loadOnce('/editor.md/lib/flowchart.min.js', false).catch(() => {console.warn('延迟加载 flowchart 失败');});
+        await loadOnce('/editor.md/lib/jquery.flowchart.min.js', false).catch(() => {console.warn('延迟加载 jquery.flowchart 失败');});
+        await loadOnce('/editor.md/lib/raphael.min.js', false).catch(() => {console.warn('延迟加载 raphael 失败');});
+        await loadOnce('/editor.md/lib/sequence-diagram.min.js', false).catch(() => {console.warn('延迟加载 sequence-diagram 失败');});
+        await loadOnce('/editor.md/lib/underscore.min.js', false).catch(() => {console.warn('延迟加载 underscore 失败');});
+      }, 500);}
+
+      // await loadAllDependencies();
       
 
       const tryRender = () => {
@@ -40948,23 +41003,15 @@ async function checkAndShowReminders() {
         return null;
       };
 
+
+
+
       try {
         const r = tryRender();
         if (r !== null) return r;
       } catch (err) {
         console.warn('[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容失败，尝试加载依赖并重试:', err);
-        const loadOnce = (url, isCss) => {
-          return new Promise((resolve, reject) => {
-            try {
-              if (document.querySelector(isCss ? `link[href="${url}"]` : `script[src="${url}"]`)) return resolve();
-              const el = isCss ? document.createElement('link') : document.createElement('script');
-              if (isCss) { el.rel = 'stylesheet'; el.href = url; } else { el.src = url; }
-              el.onload = () => resolve();
-              el.onerror = (e) => reject(e);
-              if (isCss) document.head.appendChild(el); else document.body.appendChild(el);
-            } catch (e) { reject(e); }
-          });
-        };
+
 
         try {
           await loadOnce('/editor.md/lib/marked.min.js', false).catch(() => {});

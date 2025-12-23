@@ -83,6 +83,7 @@ RUN mkdir -p /app/system_accounts
 RUN mkdir -p /app/payment_orders
 RUN touch /app/payment_methods.json
 RUN mkdir -p /app/configs
+RUN mkdir -p /app/uploads
 
 
 # 在构建阶段就转换换行符
