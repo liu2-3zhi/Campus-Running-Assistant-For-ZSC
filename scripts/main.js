@@ -3,13 +3,13 @@
 // 这些常量与Python后端保持一致，确保前后端验证规则统一
 // ============================================================
 const SECURITY_CONSTRAINTS = {
-  MAX_USERNAME_LENGTH: 200,  // 用户名最大长度
-  MAX_PASSWORD_LENGTH: 1000,  // 密码最大长度
-  MAX_TAG_LENGTH: 200,  // 标签最大长度
-  MAX_UA_LENGTH: 2000,  // User-Agent最大长度
-  MIN_PASSWORD_LENGTH: 6,  // 密码最小长度
+  MAX_USERNAME_LENGTH: 200, // 用户名最大长度
+  MAX_PASSWORD_LENGTH: 1000, // 密码最大长度
+  MAX_TAG_LENGTH: 200, // 标签最大长度
+  MAX_UA_LENGTH: 2000, // User-Agent最大长度
+  MIN_PASSWORD_LENGTH: 6, // 密码最小长度
   // 用户名格式验证：只允许字母、数字、下划线、连字符、点和@符号
-  USERNAME_PATTERN: /^[a-zA-Z0-9_\-\.@]+$/
+  USERNAME_PATTERN: /^[a-zA-Z0-9_\-\.@]+$/,
 };
 
 function getUUIDFromURL() {
@@ -43,9 +43,7 @@ function openSMSReplyLogsModal() {
   const modal = document.getElementById("sms-reply-logs-modal");
   if (!modal) {
     // console.error('[SMS回复记录] 未找到modal元素');
-    logMessage_Error(
-      "[SMS回复记录] 无法打开回复记录面板，modal元素不存在"
-    );
+    logMessage_Error("[SMS回复记录] 无法打开回复记录面板，modal元素不存在");
     return;
   }
 
@@ -126,9 +124,7 @@ function loadSMSReplyLogs() {
   const listContainer = document.getElementById("sms-reply-logs-list");
   if (!listContainer) {
     // console.error('[SMS回复记录] 未找到列表容器元素');
-    logMessage_Error(
-      "[SMS回复记录] 无法加载回复记录，列表容器元素不存在"
-    );
+    logMessage_Error("[SMS回复记录] 无法加载回复记录，列表容器元素不存在");
     return;
   }
 
@@ -357,9 +353,7 @@ function loadPaymentLogs(page) {
   if (!listContainer) {
     // 防御性检查：如果找不到容器元素，在控制台输出错误并返回
     // console.error('[支付日志] 未找到日志列表容器元素');
-    logMessage_Error(
-      "[支付日志] 无法加载支付日志，列表容器元素不存在"
-    );
+    logMessage_Error("[支付日志] 无法加载支付日志，列表容器元素不存在");
     return;
   }
 
@@ -849,8 +843,6 @@ function loadPaymentLogs(page) {
 //         toolbarCustomIcons: {},
 //         // 工具栏图标文本（自定义工具栏按钮的文本）
 //         toolbarIconTexts: {},
-
-
 
 //       });
 
@@ -2125,7 +2117,7 @@ function switchPaymentSettingsTab(tabName) {
       // ========================================
       // 这是一个关键的初始化逻辑，确保每个标签页在显示时都能加载对应的数据
       // 移动端的实现与PC端保持一致，但使用不同的函数和容器ID
-      
+
       if (tab === "config") {
         // ========================================
         // 【修复移动端支付方式列表无法加载的问题】
@@ -2133,37 +2125,35 @@ function switchPaymentSettingsTab(tabName) {
         // 问题原因：
         // - 移动端之前缺少此逻辑，导致切换到支付配置标签页时，payment-methods-list容器为空
         // - PC端有相同逻辑（switchAdminPaymentSettingsTab函数第5060-5066行），工作正常
-        // 
+        //
         // 修复方案：
         // - 参考PC端实现，在切换到config标签页时自动调用loadPaymentMethodsConfig()
         // - 使用show_Modal_Alert=false参数，避免显示弹窗提示（保持与PC端一致）
-        // 
+        //
         // 函数说明：loadPaymentMethodsConfig(show_Modal_Alert, isMobile)
         // - show_Modal_Alert: 是否显示弹窗提示，移动端和PC端都设置为false
         // - isMobile: （可选）是否为移动端，函数内部会自动检测容器ID
-        // 
+        //
         // 容器区别：
         // - 移动端容器ID: payment-methods-list（第3900行）
         // - PC端容器ID: payment-methods-list_modal（第8698行）
-        // 
+        //
         // 调用时机：
         // - 当用户点击"支付方式"标签页按钮时触发（index.html第3822行）
         // - 通过onclick="switchPaymentSettingsTab('config')"调用此函数
-        // 
+        //
         // 预期效果：
         // - 移动端切换到支付配置标签页时，自动加载并显示所有已配置的支付方式
         // - 每个支付方式显示：Logo、名称、描述、启用开关、编辑按钮、删除按钮
         // - 如果没有配置任何支付方式，显示"暂无支付方式"的占位符提示
         loadPaymentMethodsConfig((show_Modal_Alert = false));
-        
+
         // 在控制台输出日志，方便调试和追踪
         logMessage_Info("[移动端支付设置] 已触发支付方式配置加载");
-        
       } else if (tab === "yipay") {
         // 切换到易支付配置标签页时，加载易支付配置
         // 调用移动端专用的易支付配置加载函数
         loadMobileYiPayConfig();
-        
       } else if (tab === "query") {
         // 【新增】切换到订单查询标签页时，自动加载本地订单列表
         // 这样用户打开标签页就能立即看到订单数据，无需手动点击"加载本地"按钮
@@ -2491,7 +2481,9 @@ async function loadPaymentMethodsConfig(
           Swal.fire({
             icon: "warning",
             title: "警告",
-            text: "获取启用状态失败，默认显示所有支付方式为启用：" + (configData.message || "未知错误"),
+            text:
+              "获取启用状态失败，默认显示所有支付方式为启用：" +
+              (configData.message || "未知错误"),
           });
         }
         return;
@@ -2527,9 +2519,7 @@ async function loadPaymentMethodsConfig(
       listContainer = document.getElementById("payment-methods-list-mobile");
       isModalVersion = false; // 标记为移动端版本
     }
-    logMessage_Info(
-      `[支付配置] 使用'${listContainer.id}'作为支付方式列表容器`
-    );
+    logMessage_Info(`[支付配置] 使用'${listContainer.id}'作为支付方式列表容器`);
 
     if (!listContainer) {
       // console.error('[支付配置] 找不到支付方式列表容器');
@@ -2640,9 +2630,9 @@ async function loadPaymentMethodsConfig(
       // 修复方案：根据isModalVersion标志，为移动端和PC端生成专门优化的HTML结构
       // - 移动端(isModalVersion=false)：单列布局、紧凑间距、小图标、小按钮、小字体
       // - PC端(isModalVersion=true)：保持原有的标准尺寸和间距
-      
+
       let itemHTML;
-      
+
       // 判断是否为移动端版本
       if (!isModalVersion) {
         // === 移动端专用HTML（紧凑布局）===
@@ -3612,7 +3602,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 这可能表示HTML结构有问题或ID名称不匹配
     // console.warn('[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）');
     // logMessage_Warning(
-      // "[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）"
+    // "[支付设置] 警告：未找到保存配置按钮（ID: save-payment-methods-btn）"
     // );
   }
 
@@ -4752,8 +4742,8 @@ async function testGenerateProductName() {
     // showModalAlert("网络错误，请稍后重试");
     swal.fire({
       icon: "error",
-        title: "错误",
-        text: "网络错误，请稍后重试",
+      title: "错误",
+      text: "网络错误，请稍后重试",
     });
   }
 }
@@ -4984,7 +4974,10 @@ async function createTestOrder() {
 
   // 3.5 验证金额必须大于0
   if (amount <= 0) {
-    logMessage_Error("[测试支付] 验证失败：支付金额必须大于0，当前值：", amount);
+    logMessage_Error(
+      "[测试支付] 验证失败：支付金额必须大于0，当前值：",
+      amount
+    );
     // showModalAlert("支付金额必须大于0");
     Swal.fire({
       icon: "error",
@@ -5188,7 +5181,9 @@ async function createTestOrder() {
 
     // 验证sub_openid是否为空
     if (!subOpenid) {
-      logMessage_Error("[移动端测试支付] 验证失败：JSAPI支付需要提供用户Openid");
+      logMessage_Error(
+        "[移动端测试支付] 验证失败：JSAPI支付需要提供用户Openid"
+      );
       // showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
       Swal.fire({
         icon: "error",
@@ -5202,7 +5197,9 @@ async function createTestOrder() {
 
     // 验证sub_appid是否为空
     if (!subAppid) {
-      logMessage_Error("[移动端测试支付] 验证失败：JSAPI支付需要提供公众号AppId");
+      logMessage_Error(
+        "[移动端测试支付] 验证失败：JSAPI支付需要提供公众号AppId"
+      );
       // showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
       Swal.fire({
         icon: "error",
@@ -5236,7 +5233,7 @@ async function createTestOrder() {
       logMessage_Warning("[移动端测试支付] 警告：公众号AppId格式可能不正确");
       // showModalAlert("公众号AppId格式可能不正确，长度应在10-32字符之间");
       Swal.fire({
-        icon: "error",  
+        icon: "error",
         title: "错误",
         text: "公众号AppId格式可能不正确，长度应在10-32字符之间",
       });
@@ -5584,7 +5581,9 @@ function openTestPayUrl() {
     Swal.fire({
       icon: "error",
       title: "错误",
-      text: `无法打开支付链接：${error.message || "未知错误"}\n\n支付链接：${payUrl}\n\n请手动复制链接在新标签页打开。`,
+      text: `无法打开支付链接：${
+        error.message || "未知错误"
+      }\n\n支付链接：${payUrl}\n\n请手动复制链接在新标签页打开。`,
     });
   }
 }
@@ -6281,7 +6280,9 @@ async function loadAllPaymentOrders() {
     // 后端返回的订单列表在 result.orders 中
     allPaymentOrders = result.orders || [];
 
-    logMessage_Info(`[订单列表] 成功加载 ${allPaymentOrders.length} 个本地订单`);
+    logMessage_Info(
+      `[订单列表] 成功加载 ${allPaymentOrders.length} 个本地订单`
+    );
 
     // === 第6步：显示订单列表 ===
     // 调用筛选函数来显示订单（初始状态下不筛选，显示全部）
@@ -6678,7 +6679,9 @@ function renderPaymentOrdersTable() {
             【关键修复点】data-order属性的处理（移动端订单查看按钮）：
             
             问题原因：
-            - 原代码使用 onclick='showOrderDetailModal_form_botton(${JSON.stringify(order)})'
+            - 原代码使用 onclick='showOrderDetailModal_form_botton(${JSON.stringify(
+              order
+            )})'
             - JSON.stringify()生成的JSON字符串包含双引号，与HTML属性的引号冲突
             - 特殊字符（如换行、引号）会破坏HTML解析，导致onclick事件失效
             - 浏览器控制台可能显示语法错误或点击无响应
@@ -7570,7 +7573,12 @@ async function submitAdminPaymentRefund() {
   // 获取退款原因（可选）
   const reason = reasonInput ? reasonInput.value.trim() : "";
 
-  logMessage_Info("[PC端退款] 退款数据：", { tradeNo, amount, refundNo, reason });
+  logMessage_Info("[PC端退款] 退款数据：", {
+    tradeNo,
+    amount,
+    refundNo,
+    reason,
+  });
 
   try {
     // === 第3步：发起HTTP POST请求提交退款 ===
@@ -8696,7 +8704,9 @@ function openAdminPaymentLink() {
     Swal.fire({
       icon: "error",
       title: "错误",
-      text: `无法打开支付链接：${error.message || "未知错误"}\n\n请手动复制链接后在新标签页打开：\n\n${payUrl}`,
+      text: `无法打开支付链接：${
+        error.message || "未知错误"
+      }\n\n请手动复制链接后在新标签页打开：\n\n${payUrl}`,
     });
   }
 }
@@ -8777,7 +8787,7 @@ function copyAdminTestPayUrl() {
     //   `复制失败：${error.message || "未知错误"}\n\n请手动复制链接。`
     // );
     Swal.fire({
-    icon: "error",
+      icon: "error",
       title: "错误",
       text: `复制失败：${error.message || "未知错误"}\n\n请手动复制链接。`,
     });
@@ -8804,7 +8814,7 @@ function copyAdminTestPayUrl() {
       console.error("[PC端测试支付] Fallback复制失败：", err);
       // showModalAlert("复制失败，请手动复制链接。");
       Swal.fire({
-      icon: "error",
+        icon: "error",
         title: "错误",
         text: "复制失败，请手动复制链接。",
       });
@@ -9025,7 +9035,9 @@ async function loadAdminYiPayConfig(show_Modal = true) {
               Swal.fire({
                 icon: "warning",
                 title: "警告",
-                text: `存在未定义的支付方式，请检查配置。以下支付方式未在"支付方式配置"中定义： ${undefinedMethods.join(", ")}`,
+                text: `存在未定义的支付方式，请检查配置。以下支付方式未在"支付方式配置"中定义： ${undefinedMethods.join(
+                  ", "
+                )}`,
               });
               // // 在结果区域显示警告提示
               // const resultDiv = document.getElementById('admin-yipay-config-result_modal');
@@ -9388,7 +9400,9 @@ async function saveAdminYiPayConfig() {
             Swal.fire({
               icon: "error",
               title: "错误",
-              text: `以下支付方式未在"支付方式配置"中定义：\n${undefinedMethods.join(", ")}\n\n请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。`,
+              text: `以下支付方式未在"支付方式配置"中定义：\n${undefinedMethods.join(
+                ", "
+              )}\n\n请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。`,
             });
 
             // 聚焦到支付方式输入框，引导用户修改
@@ -9676,7 +9690,7 @@ async function saveMobileYiPayConfig() {
   const pid = pidInput ? pidInput.value.trim() : "";
   if (!pid) {
     // showModalAlert("请输入商户ID");
-    Swal.fire ({
+    Swal.fire({
       icon: "error",
       title: "错误",
     });
@@ -9776,9 +9790,9 @@ async function saveMobileYiPayConfig() {
     } else {
       // showModalAlert(`保存失败：${error.message || "未知错误"}`);
       Swal.fire({
-      icon: "error",
-      title: "保存失败",
-      text: `保存失败：${error.message || "未知错误"}`,
+        icon: "error",
+        title: "保存失败",
+        text: `保存失败：${error.message || "未知错误"}`,
       });
     }
   }
@@ -11168,23 +11182,23 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
  */
 /**
  * 更新水印默认值标签显示
- * 
+ *
  * 功能说明：
  * 根据系统默认值开关的状态（checked/unchecked），更新标签文本显示为"允许"或"禁止"。
- * 
+ *
  * 支持平台：
  * - PC端：使用ID "watermark-default-value_modal" 和 "watermark-default-label_modal"
  * - 移动端：使用ID "watermark-default-value-mobile" 和 "watermark-default-label-mobile"
- * 
+ *
  * 【问题45修复】此函数现在同时支持PC端和移动端
  * 原问题：只支持PC端
  * 修复方案：检测移动端元素，如果存在则同步更新移动端标签
- * 
+ *
  * 调用时机：
  * 1. 页面加载完成后，初次设置开关状态时
  * 2. 用户手动切换开关时（通过onchange事件触发）
  * 3. 从服务器加载配置后，根据服务器返回的默认值更新显示
- * 
+ *
  * 实现细节：
  * 1. 查找PC端的默认值开关元素（checkbox）
  * 2. 查找PC端的默认值标签元素
@@ -11198,7 +11212,9 @@ function updateWatermarkDefaultLabel() {
     "watermark-default-value_modal"
   );
   // 获取PC端默认值标签元素
-  const defaultLabel_PC = document.getElementById("watermark-default-label_modal");
+  const defaultLabel_PC = document.getElementById(
+    "watermark-default-label_modal"
+  );
 
   // 如果PC端两个元素都存在，则更新标签文本
   if (defaultCheckbox_PC && defaultLabel_PC) {
@@ -11207,7 +11223,7 @@ function updateWatermarkDefaultLabel() {
     // checked=false 表示禁止去水印，显示"禁止"
     defaultLabel_PC.textContent = defaultCheckbox_PC.checked ? "允许" : "禁止";
   }
-  
+
   // ========== 【问题45修复】移动端标签更新 ==========
   // 获取移动端默认值开关元素（checkbox）
   // 使用-mobile后缀以区别于PC端的_modal后缀
@@ -11215,25 +11231,29 @@ function updateWatermarkDefaultLabel() {
     "watermark-default-value-mobile"
   );
   // 获取移动端默认值标签元素
-  const defaultLabel_Mobile = document.getElementById("watermark-default-label-mobile");
+  const defaultLabel_Mobile = document.getElementById(
+    "watermark-default-label-mobile"
+  );
 
   // 如果移动端两个元素都存在，则更新标签文本
   if (defaultCheckbox_Mobile && defaultLabel_Mobile) {
     // 根据checkbox的checked状态设置标签文本（与PC端逻辑相同）
-    defaultLabel_Mobile.textContent = defaultCheckbox_Mobile.checked ? "允许" : "禁止";
+    defaultLabel_Mobile.textContent = defaultCheckbox_Mobile.checked
+      ? "允许"
+      : "禁止";
   }
 }
 
 /**
  * 加载高德地图去水印控制配置
- * 
+ *
  * 功能说明：
  * 从服务器获取水印控制配置，包括系统默认值和所有用户的个性化设置，
  * 并更新UI显示（包括PC端和移动端）。
- * 
+ *
  * API端点：GET /api/amap/watermark_control/config
  * 权限要求：管理员权限 + view_config 权限
- * 
+ *
  * 响应数据格式：
  * {
  *   "success": true,
@@ -11247,16 +11267,16 @@ function updateWatermarkDefaultLabel() {
  *   },
  *   "all_users": ["username1", "username2", ...]  // 系统中所有用户
  * }
- * 
+ *
  * UI更新内容：
  * 1. 更新系统默认值开关状态（PC端和移动端）
  * 2. 更新用户数量显示
  * 3. 生成用户权限列表（只显示已自定义的用户）
- * 
+ *
  * 【问题45修复】此函数现在同时支持PC端和移动端
  * 原问题：只支持PC端（_modal后缀的元素）
  * 修复方案：检测移动端容器，如果存在则同步更新移动端UI
- * 
+ *
  * 错误处理：
  * 1. 网络请求失败：显示错误提示
  * 2. 响应解析失败：显示错误提示
@@ -11269,14 +11289,18 @@ async function loadWatermarkControlConfig() {
     console.log("[水印控制] 正在加载水印控制配置...");
 
     // 更新PC端用户列表容器，显示"加载中..."提示
-    const listContainer_PC = document.getElementById("watermark-users-list_modal");
+    const listContainer_PC = document.getElementById(
+      "watermark-users-list_modal"
+    );
     if (listContainer_PC) {
       listContainer_PC.innerHTML =
         '<p class="text-slate-400 text-center py-10">加载中...</p>';
     }
-    
+
     // 【问题45修复】更新移动端用户列表容器，显示"加载中..."提示
-    const listContainer_Mobile = document.getElementById("watermark-users-list-mobile");
+    const listContainer_Mobile = document.getElementById(
+      "watermark-users-list-mobile"
+    );
     if (listContainer_Mobile) {
       listContainer_Mobile.innerHTML =
         '<p class="text-slate-400 text-center py-6 text-xs">加载中...</p>';
@@ -11318,7 +11342,7 @@ async function loadWatermarkControlConfig() {
       // 设置PC端开关状态（checked表示允许去水印）
       defaultCheckbox_PC.checked = defaultValue;
     }
-    
+
     // 【问题45修复】找到移动端默认值开关元素（checkbox）
     const defaultCheckbox_Mobile = document.getElementById(
       "watermark-default-value-mobile"
@@ -11334,14 +11358,14 @@ async function loadWatermarkControlConfig() {
     // ========== 步骤7: 更新用户数量显示（PC端和移动端）==========
     // 获取已自定义的用户数量（而非系统所有用户数量）
     const customizedUsersCount = Object.keys(usersConfig).length;
-    
+
     const userCountElement_PC = document.getElementById(
       "watermark-user-count_modal"
     );
     if (userCountElement_PC) {
       userCountElement_PC.textContent = `共 ${customizedUsersCount} 个自定义用户`;
     }
-    
+
     // 【问题45修复】更新移动端用户数量显示
     const userCountElement_Mobile = document.getElementById(
       "watermark-user-count-mobile"
@@ -11574,43 +11598,43 @@ async function deleteWatermarkUser(username) {
     // 4. 与项目中其他使用Swal.fire的地方保持一致的交互风格
     const result = await Swal.fire({
       // title: 对话框标题，使用疑问句让用户明确当前操作的性质
-      title: '确认删除用户配置？',
-      
+      title: "确认删除用户配置？",
+
       // html: 对话框的主要内容，使用HTML格式以支持更丰富的文本展示
       // 使用<strong>标签突出显示用户名，让用户清楚知道要删除的是哪个用户
       // 使用<br><br>进行段落分隔，提高可读性
       html: `您即将删除用户 <strong>"${username}"</strong> 的自定义水印配置。<br><br>删除后该用户将使用系统默认值。<br><br>此操作不可撤销，请谨慎操作。`,
-      
+
       // icon: 显示警告图标，提示用户这是一个需要谨慎处理的操作
       // 'warning' 图标会显示为黄色感叹号，符合删除操作的警告性质
-      icon: 'warning',
-      
+      icon: "warning",
+
       // showCancelButton: 显示取消按钮，给用户提供退出的机会，防止误操作
       showCancelButton: true,
-      
+
       // confirmButtonColor: 确认按钮使用红色（#ef4444 是Tailwind的red-500）
       // 红色表示这是一个危险操作，提醒用户三思而后行
-      confirmButtonColor: '#ef4444',
-      
+      confirmButtonColor: "#ef4444",
+
       // cancelButtonColor: 取消按钮使用蓝色（#3085d6 是SweetAlert2的默认蓝色）
       // 蓝色表示安全的、非破坏性的操作
-      cancelButtonColor: '#3085d6',
-      
+      cancelButtonColor: "#3085d6",
+
       // confirmButtonText: 确认按钮的文字，使用明确的动作描述
       // "确定删除"比简单的"确定"更能让用户明白点击后的后果
-      confirmButtonText: '确定删除',
-      
+      confirmButtonText: "确定删除",
+
       // cancelButtonText: 取消按钮的文字，使用简洁的中文表达
-      cancelButtonText: '取消',
-      
+      cancelButtonText: "取消",
+
       // focusCancel: 默认聚焦到取消按钮，而不是确认按钮
       // 这是一个重要的安全设计：防止用户不小心按回车键就执行了删除操作
       // 用户必须主动移动焦点或点击才能确认删除
       focusCancel: true,
-      
+
       // reverseButtons: 反转按钮顺序，让取消按钮显示在左边，确认按钮在右边
       // 这符合常见的UI设计习惯（危险操作按钮通常在右侧）
-      reverseButtons: true
+      reverseButtons: true,
     });
 
     // 处理用户的选择结果
@@ -11736,7 +11760,7 @@ async function deleteWatermarkUser(username) {
 async function openAddWatermarkUserModal() {
   // 【调试日志】记录函数调用，便于排查按钮点击是否生效
   console.log("[水印控制] openAddWatermarkUserModal() 函数被调用");
-  
+
   try {
     // [步骤1] 显示模态框
     // 获取模态框元素
@@ -11880,9 +11904,9 @@ async function openAddWatermarkUserModal() {
     // );
     // 使用Swal.fire替代showModalAlert，提供更好的用户体验
     Swal.fire({
-      icon:"error",
-      title:"加载失败",
-      text:`加载用户列表失败：${error.message}\n\n请检查网络连接或刷新页面重试。`,
+      icon: "error",
+      title: "加载失败",
+      text: `加载用户列表失败：${error.message}\n\n请检查网络连接或刷新页面重试。`,
     });
 
     // 在列表容器中显示错误信息
@@ -11923,14 +11947,14 @@ function closeAddWatermarkUserModal() {
 
 /**
  * 【诊断工具】检查添加水印用户模态框的状态
- * 
+ *
  * 功能说明：
  * 这是一个诊断函数，用于排查"添加用户"按钮点击无效的问题。
  * 该函数会检查所有相关DOM元素是否存在，并输出详细的诊断信息。
- * 
+ *
  * 使用方法：
  * 在浏览器控制台中执行: diagnoseAddWatermarkUserModal()
- * 
+ *
  * 诊断项目：
  * 1. 检查模态框元素是否存在
  * 2. 检查用户列表容器是否存在
@@ -11938,69 +11962,100 @@ function closeAddWatermarkUserModal() {
  * 4. 检查PC端面板是否可见
  * 5. 检查函数是否可访问
  * 6. 尝试手动触发模态框打开
- * 
+ *
  * @returns {Object} 诊断结果对象，包含各项检查的状态
  */
 function diagnoseAddWatermarkUserModal() {
   console.log("========================================");
   console.log("【水印控制诊断工具】开始诊断...");
   console.log("========================================");
-  
+
   // 诊断结果对象
   const diagnosis = {
     timestamp: new Date().toISOString(),
-    checks: {}
+    checks: {},
   };
-  
+
   // 检查1: 模态框元素
   const modal = document.getElementById("add-watermark-user-modal");
   diagnosis.checks.modalExists = !!modal;
-  console.log(`✓ 检查1: 模态框元素 (add-watermark-user-modal)`, 
-    modal ? "✓ 存在" : "✗ 不存在");
+  console.log(
+    `✓ 检查1: 模态框元素 (add-watermark-user-modal)`,
+    modal ? "✓ 存在" : "✗ 不存在"
+  );
   if (modal) {
     diagnosis.checks.modalVisible = !modal.classList.contains("hidden");
-    console.log(`  - 当前状态:`, modal.classList.contains("hidden") ? "隐藏" : "可见");
+    console.log(
+      `  - 当前状态:`,
+      modal.classList.contains("hidden") ? "隐藏" : "可见"
+    );
   }
-  
+
   // 检查2: 用户列表容器
-  const listContainer = document.getElementById("available-watermark-users-list");
+  const listContainer = document.getElementById(
+    "available-watermark-users-list"
+  );
   diagnosis.checks.listContainerExists = !!listContainer;
-  console.log(`✓ 检查2: 用户列表容器 (available-watermark-users-list)`, 
-    listContainer ? "✓ 存在" : "✗ 不存在");
-  
+  console.log(
+    `✓ 检查2: 用户列表容器 (available-watermark-users-list)`,
+    listContainer ? "✓ 存在" : "✗ 不存在"
+  );
+
   // 检查3: 移动端面板
-  const mobilePanel = document.getElementById("mobile-multi-admin-watermark-panel");
+  const mobilePanel = document.getElementById(
+    "mobile-multi-admin-watermark-panel"
+  );
   diagnosis.checks.mobilePanelExists = !!mobilePanel;
-  console.log(`✓ 检查3: 移动端面板 (mobile-multi-admin-watermark-panel)`, 
-    mobilePanel ? "✓ 存在" : "✗ 不存在");
+  console.log(
+    `✓ 检查3: 移动端面板 (mobile-multi-admin-watermark-panel)`,
+    mobilePanel ? "✓ 存在" : "✗ 不存在"
+  );
   if (mobilePanel) {
-    diagnosis.checks.mobilePanelVisible = !mobilePanel.classList.contains("hidden");
-    console.log(`  - 当前状态:`, 
-      mobilePanel.classList.contains("hidden") ? "隐藏 (这是正常的，需要切换到水印控制标签)" : "可见");
+    diagnosis.checks.mobilePanelVisible =
+      !mobilePanel.classList.contains("hidden");
+    console.log(
+      `  - 当前状态:`,
+      mobilePanel.classList.contains("hidden")
+        ? "隐藏 (这是正常的，需要切换到水印控制标签)"
+        : "可见"
+    );
   }
-  
+
   // 检查4: PC端按钮（通过搜索包含onclick属性的按钮）
-  const buttons = document.querySelectorAll('button[onclick*="openAddWatermarkUserModal"]');
+  const buttons = document.querySelectorAll(
+    'button[onclick*="openAddWatermarkUserModal"]'
+  );
   diagnosis.checks.buttonsCount = buttons.length;
   console.log(`✓ 检查4: 找到 ${buttons.length} 个"添加用户"按钮`);
   buttons.forEach((btn, index) => {
-    console.log(`  - 按钮 ${index + 1}:`, 
-      btn.offsetParent === null ? "不可见（父元素隐藏）" : "可见");
+    console.log(
+      `  - 按钮 ${index + 1}:`,
+      btn.offsetParent === null ? "不可见（父元素隐藏）" : "可见"
+    );
   });
-  
+
   // 检查5: 函数可访问性
-  diagnosis.checks.functionAccessible = typeof openAddWatermarkUserModal === "function";
-  console.log(`✓ 检查5: openAddWatermarkUserModal 函数`, 
-    diagnosis.checks.functionAccessible ? "✓ 可访问" : "✗ 不可访问");
-  
+  diagnosis.checks.functionAccessible =
+    typeof openAddWatermarkUserModal === "function";
+  console.log(
+    `✓ 检查5: openAddWatermarkUserModal 函数`,
+    diagnosis.checks.functionAccessible ? "✓ 可访问" : "✗ 不可访问"
+  );
+
   // 检查6: Session UUID（API调用需要）
   diagnosis.checks.sessionUUID = typeof sessionUUID !== "undefined";
-  console.log(`✓ 检查6: sessionUUID`, 
-    diagnosis.checks.sessionUUID ? `✓ 已定义 (${sessionUUID ? "有值" : "为空"})` : "✗ 未定义");
-  
+  console.log(
+    `✓ 检查6: sessionUUID`,
+    diagnosis.checks.sessionUUID
+      ? `✓ 已定义 (${sessionUUID ? "有值" : "为空"})`
+      : "✗ 未定义"
+  );
+
   // 总结
   console.log("========================================");
-  const allChecksPass = Object.values(diagnosis.checks).every(v => v === true || typeof v === "number");
+  const allChecksPass = Object.values(diagnosis.checks).every(
+    (v) => v === true || typeof v === "number"
+  );
   if (allChecksPass) {
     console.log("✓ 所有检查通过！");
     console.log("💡 提示: 如果按钮仍然无效，请确保：");
@@ -12010,7 +12065,7 @@ function diagnoseAddWatermarkUserModal() {
     console.log("✗ 发现问题，请查看上方详细信息");
   }
   console.log("========================================");
-  
+
   // 返回诊断结果
   return diagnosis;
 }
@@ -12415,7 +12470,7 @@ async function loadMobileWatermarkControlConfig() {
 
     // 更新默认值标签显示（会同时更新PC端和移动端）
     updateWatermarkDefaultLabel();
-    
+
     // 【兼容性】同时保留旧的只读显示更新（如果存在）
     // 更新查看面板的默认值显示（旧版，可能在其他地方使用）
     const defaultValueElement = document.getElementById(
@@ -12452,7 +12507,7 @@ async function loadMobileWatermarkControlConfig() {
     // ========== 步骤7: 更新用户数量显示（显示自定义用户数量）==========
     // 获取已自定义的用户数量（而非系统所有用户数量）
     const customizedUsersCount = Object.keys(usersConfig).length;
-    
+
     // 更新查看面板的用户数量
     const userCountElement = document.getElementById(
       "mobile-watermark-user-count"
@@ -12612,7 +12667,7 @@ async function loadMobileWatermarkControlConfig() {
  *
  * 功能说明：
  * 与PC端的 saveWatermarkControlConfig() 功能相同，但操作移动端的表单元素。
- * 
+ *
  * 【问题45修复】现在包含默认值的收集和保存
  * 原问题：移动端只保存用户配置，不保存默认值
  * 修复方案：参考PC端实现，同时收集默认值和用户配置
@@ -13321,24 +13376,37 @@ function switchUIContainer() {
       console.log(
         "[UI切换] PC端auth-login-container可见，显示移动端mobile-auth-login-container"
       );
-      try{
-        (function(){
-          var btn = document.getElementById('newbie-help-btn');
-          if(btn){
-            if(!btn._origStyle){
-              btn._origStyle = {top: btn.style.top, right: btn.style.right, bottom: btn.style.bottom, left: btn.style.left, position: btn.style.position, display: btn.style.display};
+      try {
+        (function () {
+          var btn = document.getElementById("newbie-help-btn");
+          if (btn) {
+            if (!btn._origStyle) {
+              btn._origStyle = {
+                top: btn.style.top,
+                right: btn.style.right,
+                bottom: btn.style.bottom,
+                left: btn.style.left,
+                position: btn.style.position,
+                display: btn.style.display,
+              };
             }
             // 在移动模式下将按钮置于右上角并确保可见与可拖拽
-            btn.style.position = 'fixed';
-            btn.style.top = '1rem';
-            btn.style.right = '1rem';
-            btn.style.bottom = 'auto';
-            btn.style.left = 'auto';
-            btn.style.display = 'flex';
-            try{ if(typeof makeDraggable === 'function'){ makeDraggable('newbie-help-btn'); } }catch(e){}
+            btn.style.position = "fixed";
+            btn.style.top = "1rem";
+            btn.style.right = "1rem";
+            btn.style.bottom = "auto";
+            btn.style.left = "auto";
+            btn.style.display = "flex";
+            try {
+              if (typeof makeDraggable === "function") {
+                makeDraggable("newbie-help-btn");
+              }
+            } catch (e) {}
           }
         })();
-      }catch(e){console.error(e)}
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     const modalElements = ["admin-panel-modal", "session-picker-modal"];
@@ -13371,17 +13439,19 @@ function switchUIContainer() {
     desktopContainer.style.display = "block";
 
     document.body.classList.remove("mobile-mode");
-    try{
-      var btn = document.getElementById('newbie-help-btn');
-      if(btn && btn._origStyle){
-        btn.style.top = btn._origStyle.top || '';
-        btn.style.right = btn._origStyle.right || '';
-        btn.style.bottom = btn._origStyle.bottom || '';
-        btn.style.left = btn._origStyle.left || '';
-        btn.style.position = btn._origStyle.position || '';
-        btn.style.display = btn._origStyle.display || '';
+    try {
+      var btn = document.getElementById("newbie-help-btn");
+      if (btn && btn._origStyle) {
+        btn.style.top = btn._origStyle.top || "";
+        btn.style.right = btn._origStyle.right || "";
+        btn.style.bottom = btn._origStyle.bottom || "";
+        btn.style.left = btn._origStyle.left || "";
+        btn.style.position = btn._origStyle.position || "";
+        btn.style.display = btn._origStyle.display || "";
       }
-    }catch(e){console.error(e)}
+    } catch (e) {
+      console.error(e);
+    }
 
     const desktopElements = [
       "auth-login-container",
@@ -14752,7 +14822,8 @@ function showModalAlert(message, title = "提示", onCloseCallback = null) {
   } catch (e) {
     // 如果 Swal 不可用，回退到原生 alert
     alert(`${title}:\n${message}`);
-    if (onCloseCallback && typeof onCloseCallback === "function") onCloseCallback();
+    if (onCloseCallback && typeof onCloseCallback === "function")
+      onCloseCallback();
   }
 }
 
@@ -14981,7 +15052,7 @@ async function callPythonAPI(method, ...args) {
       icon: "error", // 建议添加图标，增强提示效果
       confirmButtonText: "确定",
       allowOutsideClick: false, // 建议禁止点击背景关闭，强制用户确认
-      allowEscapeKey: false     // 建议禁止按ESC关闭
+      allowEscapeKey: false, // 建议禁止按ESC关闭
     }).then((result) => {
       if (result.isConfirmed) {
         // 原有的回调逻辑放在这里
@@ -15011,8 +15082,6 @@ async function callPythonAPI(method, ...args) {
       }
     });
 
-
-    
     throw networkError;
   }
 
@@ -15306,15 +15375,15 @@ async function callPythonAPI(method, ...args) {
 
         //   logMessage_Info("[移动端] 已切换到登录页面（因need_login）");
         // } else {
-          Swal.fire({
-            icon: "warning",
-            title: "需要重新登录",
-            text: errorMsg,
-            confirmButtonText: "返回登录",
-            allowOutsideClick: false,
-          }).then(() => {
-            window.location.href = "/";
-          });
+        Swal.fire({
+          icon: "warning",
+          title: "需要重新登录",
+          text: errorMsg,
+          confirmButtonText: "返回登录",
+          allowOutsideClick: false,
+        }).then(() => {
+          window.location.href = "/";
+        });
         // }
       }
 
@@ -15984,22 +16053,17 @@ const captchaDimensions = {
 // 当打开短信验证码模态框时，记录请求期望的宽度（以便传给后端并设置iframe）
 let captchaModalRequestedWidth = null;
 async function loadCaptcha(formType) {
-
   let displayId = undefined;
 
   if (formType === "login") {
-  displayId ="auth-login-captcha-display";}
-
-  else if (formType === "register") {
-  displayId = "auth-register-captcha-display";}
-
-  else if (formType === "mobile-login") {
-  displayId = "mobile-login-captcha-display";}
-
-  else if (formType === "mobile-register") {
-  displayId = "mobile-register-captcha-display";}
-
-  else {
+    displayId = "auth-login-captcha-display";
+  } else if (formType === "register") {
+    displayId = "auth-register-captcha-display";
+  } else if (formType === "mobile-login") {
+    displayId = "mobile-login-captcha-display";
+  } else if (formType === "mobile-register") {
+    displayId = "mobile-register-captcha-display";
+  } else {
     console.error(`[验证码] 未知的表单类型: ${formType}`);
     return;
   }
@@ -16015,35 +16079,42 @@ async function loadCaptcha(formType) {
   // 自动获取容器宽度
   // let containerWidth = 343;
   // if (formType === "login") {
-   let container=undefined;
+  let container = undefined;
+  if (formType === "login" || formType === "register") {
+    container = document.getElementById("auth-login-container_panel");
+  } else if (formType === "mobile-login" || formType === "mobile-register") {
+    container = document.getElementById("mobile-auth-login-container-card");
+  } else {
+    console.error(`[验证码] 无法找到容器元素: ${displayId}`);
+    return;
+  }
+  if (container) {
+    // 取padding后内容区宽度
+    const style = window.getComputedStyle(container);
+    console.log("[验证码] 容器计算样式:", style);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
     if (formType === "login" || formType === "register") {
-    container = document.getElementById("auth-login-container_panel");}
-    else if (formType === "mobile-login" || formType === "mobile-register") {
-    container = document.getElementById("mobile-auth-login-container-card");}
-    else {
-      console.error(`[验证码] 无法找到容器元素: ${displayId}`);
+      containerWidth = container.clientWidth - paddingLeft - paddingRight - 200;
+    } else if (formType === "mobile-login" || formType === "mobile-register") {
+      containerWidth = container.clientWidth - paddingLeft - paddingRight - 0;
+    } else {
+      console.error(`[验证码] 无法计算容器宽度: ${displayId}`);
       return;
     }
-    if (container) {
-      // 取padding后内容区宽度
-      const style = window.getComputedStyle(container);
-      console.log("[验证码] 容器计算样式:", style);
-      const paddingLeft = parseFloat(style.paddingLeft) || 0;
-      const paddingRight = parseFloat(style.paddingRight) || 0;
-      if (formType === "login" || formType === "register") {
-      containerWidth = container.clientWidth - paddingLeft - paddingRight -200;}
-      else if (formType === "mobile-login" || formType === "mobile-register") {
-      containerWidth = container.clientWidth - paddingLeft - paddingRight -0;}
-      else {
-        console.error(`[验证码] 无法计算容器宽度: ${displayId}`);
-        return;
-      }
-      console.log("[验证码] 容器宽度计算细节: 背景宽度", container.clientWidth, "减去左内边距", paddingLeft, "减去右内边距", paddingRight);
-      console.log(`[验证码] 登录表单容器宽度: ${containerWidth}px`);
-      // 限制最大宽度
-      if (containerWidth > 600) containerWidth = 600;
-      if (containerWidth < 200) containerWidth = 200;
-    }
+    console.log(
+      "[验证码] 容器宽度计算细节: 背景宽度",
+      container.clientWidth,
+      "减去左内边距",
+      paddingLeft,
+      "减去右内边距",
+      paddingRight
+    );
+    console.log(`[验证码] 登录表单容器宽度: ${containerWidth}px`);
+    // 限制最大宽度
+    if (containerWidth > 600) containerWidth = 600;
+    if (containerWidth < 200) containerWidth = 200;
+  }
   // }
 
   try {
@@ -16131,9 +16202,7 @@ async function loadCaptchaModal(requestedWidth) {
   try {
     // 优先使用调用者传入的宽度，其次使用全局记录的modal请求宽度
     let containerWidth = requestedWidth || captchaModalRequestedWidth || null;
-    console.log(
-      `[验证码模态窗] 请求容器宽度: ${containerWidth || "默认"}`
-    );
+    console.log(`[验证码模态窗] 请求容器宽度: ${containerWidth || "默认"}`);
     const url = containerWidth
       ? `/api/captcha/get?width=${containerWidth}`
       : `/api/captcha/get`;
@@ -16170,16 +16239,22 @@ async function loadCaptchaModal(requestedWidth) {
       displayElement.style.width = `${returnedWidth}px`;
       displayElement.style.height = `${returnedHeight}px`;
 
-      console.log(`[验证码模态窗] 设置显示元素尺寸: ${displayElement.style.width}x${displayElement.style.height}`);
+      console.log(
+        `[验证码模态窗] 设置显示元素尺寸: ${displayElement.style.width}x${displayElement.style.height}`
+      );
 
       const timestamp = Date.now();
       const captchaWidth = returnedWidth;
       const captchaHeight = returnedHeight;
 
-      console.log(`[验证码模态窗] 验证码尺寸: ${captchaWidth}x${captchaHeight}`);
+      console.log(
+        `[验证码模态窗] 验证码尺寸: ${captchaWidth}x${captchaHeight}`
+      );
 
       // 确保在modal中显示容器的宽度与iframe一致
-      const containerElem = document.getElementById("send_sms_code_captcha_container");
+      const containerElem = document.getElementById(
+        "send_sms_code_captcha_container"
+      );
       if (containerElem) {
         containerElem.style.width = `${captchaWidth}px`;
       }
@@ -16252,14 +16327,16 @@ function openCaptchaModal(context) {
     modal.classList.remove("hidden");
     // 计算模态框内部内容包装器的可用宽度，以便传给后端并设置验证码容器宽度
     let requestedWidth = null;
-    const wrapper = document.getElementById("send_sms_code_modal_content_wrapper");
+    const wrapper = document.getElementById(
+      "send_sms_code_modal_content_wrapper"
+    );
     // const containerElem = document.getElementById("send_sms_code_captcha_container");
     if (wrapper) {
       const style = window.getComputedStyle(wrapper);
       const paddingLeft = parseFloat(style.paddingLeft) || 0;
       const paddingRight = parseFloat(style.paddingRight) || 0;
       // 参考 auth-login 计算方式，保留一定内边距
-      requestedWidth = wrapper.clientWidth  - paddingLeft - paddingRight - 200;
+      requestedWidth = wrapper.clientWidth - paddingLeft - paddingRight - 200;
       console.log(`[验证码模态窗] 计算容器宽度: ${requestedWidth}px`);
       if (requestedWidth > 600) requestedWidth = 600;
       if (requestedWidth < 200) requestedWidth = 200;
@@ -16271,7 +16348,6 @@ function openCaptchaModal(context) {
     captchaModalRequestedWidth = requestedWidth;
     console.log(`[验证码模态窗] 计算请求宽度: ${requestedWidth}px`);
 
-   
     modal.style.display = "flex";
     modal.style.zIndex = "20001";
     input.value = "";
@@ -16550,7 +16626,7 @@ async function handleAuthLogin(isMobile_use = false) {
   if (isMobile_use) {
     request_body.captcha_id = captchaIds["mobile-login"];
   } else {
-  request_body.captcha_id = captchaIds.login;
+    request_body.captcha_id = captchaIds.login;
   }
   setButtonLoading("auth-login-btn", true, "登录中...");
 
@@ -16852,7 +16928,7 @@ async function handleAuthRegister(isMobile_use = false) {
     Swal.fire({
       icon: "warning",
       title: "注册失败",
-      text: usernameValidation.message
+      text: usernameValidation.message,
     });
     return;
   }
@@ -16872,7 +16948,7 @@ async function handleAuthRegister(isMobile_use = false) {
     Swal.fire({
       icon: "warning",
       title: "注册失败",
-      text: passwordValidation.message
+      text: passwordValidation.message,
     });
     return;
   }
@@ -16955,8 +17031,8 @@ async function handleAuthRegister(isMobile_use = false) {
   if (isMobile_use) {
     formData.append("captcha_id", captchaIds["mobile-register"]);
   } else {
-  formData.append("captcha_id", captchaIds.register);
-}
+    formData.append("captcha_id", captchaIds.register);
+  }
 
   if (avatarFile) {
     formData.append("avatar", avatarFile, avatarFile.name || "avatar.jpg");
@@ -16985,7 +17061,7 @@ async function handleAuthRegister(isMobile_use = false) {
       // showModalAlert(result.message || "注册失败", "注册失败");
       Swal.fire({
         icon: "error",
-        title:"注册失败",
+        title: "注册失败",
         text: result.message || "注册失败",
       });
 
@@ -17195,11 +17271,13 @@ if (typeof window !== "undefined") {
         el.style.right = "auto";
         el.style.transition = "none";
         try {
-          if (typeof el._origTouchAction === 'undefined') el._origTouchAction = el.style.touchAction || '';
-          if (typeof el._origUserSelect === 'undefined') el._origUserSelect = el.style.userSelect || '';
+          if (typeof el._origTouchAction === "undefined")
+            el._origTouchAction = el.style.touchAction || "";
+          if (typeof el._origUserSelect === "undefined")
+            el._origUserSelect = el.style.userSelect || "";
           el.style.touchAction = "none";
           el.style.userSelect = "none";
-          el.style.webkitUserSelect = 'none';
+          el.style.webkitUserSelect = "none";
         } catch (ex) {}
       };
 
@@ -17233,7 +17311,10 @@ if (typeof window !== "undefined") {
                 el.setPointerCapture(e.pointerId);
                 activePointerId = e.pointerId;
               } catch (ex) {}
-              if (e.cancelable) try { e.preventDefault(); } catch(ex) {}
+              if (e.cancelable)
+                try {
+                  e.preventDefault();
+                } catch (ex) {}
             }, LONG_PRESS_MS);
           } else {
             // 鼠标或笔：立即拖拽
@@ -17259,7 +17340,10 @@ if (typeof window !== "undefined") {
             return;
           }
 
-          if (e.cancelable) try { e.preventDefault(); } catch (ex) {}
+          if (e.cancelable)
+            try {
+              e.preventDefault();
+            } catch (ex) {}
           if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
           clampAndSet(dx, dy);
         };
@@ -17271,19 +17355,28 @@ if (typeof window !== "undefined") {
             isDragging = false;
             el.style.transition = "";
           }
-          try{
-            if (typeof el._origTouchAction !== 'undefined') el.style.touchAction = el._origTouchAction || '';
-            if (typeof el._origUserSelect !== 'undefined') el.style.userSelect = el._origUserSelect || '';
-            el.style.webkitUserSelect = '';
-          }catch(ex){}
+          try {
+            if (typeof el._origTouchAction !== "undefined")
+              el.style.touchAction = el._origTouchAction || "";
+            if (typeof el._origUserSelect !== "undefined")
+              el.style.userSelect = el._origUserSelect || "";
+            el.style.webkitUserSelect = "";
+          } catch (ex) {}
           // 在短时间后清除移动标记，允许用户在拖拽结束后正常点击
-          setTimeout(()=>{ hasMoved = false; }, 300);
-          try { if (activePointerId !== null) el.releasePointerCapture(activePointerId); } catch (ex) {}
+          setTimeout(() => {
+            hasMoved = false;
+          }, 300);
+          try {
+            if (activePointerId !== null)
+              el.releasePointerCapture(activePointerId);
+          } catch (ex) {}
           activePointerId = null;
         };
 
         el.addEventListener("pointerdown", onPointerDown, { passive: false });
-        window.addEventListener("pointermove", onPointerMove, { passive: false });
+        window.addEventListener("pointermove", onPointerMove, {
+          passive: false,
+        });
         window.addEventListener("pointerup", onPointerUp);
       } else {
         // 回退到鼠标/触摸事件（旧逻辑）
@@ -17310,7 +17403,10 @@ if (typeof window !== "undefined") {
           hasMoved = false;
           longPressTimer = setTimeout(() => {
             beginDrag(startX, startY);
-            if (e.cancelable) try { e.preventDefault(); } catch(ex) {}
+            if (e.cancelable)
+              try {
+                e.preventDefault();
+              } catch (ex) {}
           }, LONG_PRESS_MS);
 
           document.addEventListener("touchmove", onMove, { passive: false });
@@ -17332,7 +17428,10 @@ if (typeof window !== "undefined") {
             return;
           }
 
-          if (e.cancelable) try { e.preventDefault(); } catch(ex) {}
+          if (e.cancelable)
+            try {
+              e.preventDefault();
+            } catch (ex) {}
           if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
           clampAndSet(dx, dy);
         };
@@ -17344,13 +17443,17 @@ if (typeof window !== "undefined") {
             isDragging = false;
             el.style.transition = "";
           }
-          try{
-            if (typeof el._origTouchAction !== 'undefined') el.style.touchAction = el._origTouchAction || '';
-            if (typeof el._origUserSelect !== 'undefined') el.style.userSelect = el._origUserSelect || '';
-            el.style.webkitUserSelect = '';
-          }catch(ex){}
+          try {
+            if (typeof el._origTouchAction !== "undefined")
+              el.style.touchAction = el._origTouchAction || "";
+            if (typeof el._origUserSelect !== "undefined")
+              el.style.userSelect = el._origUserSelect || "";
+            el.style.webkitUserSelect = "";
+          } catch (ex) {}
           // 在短时间后清除移动标记，允许用户在拖拽结束后正常点击
-          setTimeout(()=>{ hasMoved = false; }, 300);
+          setTimeout(() => {
+            hasMoved = false;
+          }, 300);
           document.removeEventListener("mousemove", onMove);
           document.removeEventListener("touchmove", onMove);
           document.removeEventListener("mouseup", onEnd);
@@ -17367,7 +17470,9 @@ if (typeof window !== "undefined") {
 
     // 初始化退出按钮与新手帮助按钮的拖拽功能
     makeDraggable("exit-app-btn");
-    try{ makeDraggable("newbie-help-btn"); }catch(e){}
+    try {
+      makeDraggable("newbie-help-btn");
+    } catch (e) {}
 
     const exitAppBtn = $("exit-app-btn");
     if (exitAppBtn) {
@@ -18699,7 +18804,11 @@ function switchAdminTab(tab) {
 
             // 动态加载样式（如果尚未加载）
             try {
-              if (!document.querySelector('link[href="/editor.md/css/editormd.css"]')) {
+              if (
+                !document.querySelector(
+                  'link[href="/editor.md/css/editormd.css"]'
+                )
+              ) {
                 const css = document.createElement("link");
                 css.rel = "stylesheet";
                 css.href = "/editor.md/css/editormd.css";
@@ -18711,7 +18820,8 @@ function switchAdminTab(tab) {
 
             const loadScript = (src) =>
               new Promise((resolve, reject) => {
-                if (document.querySelector(`script[src="${src}"]`)) return resolve();
+                if (document.querySelector(`script[src="${src}"]`))
+                  return resolve();
                 const s = document.createElement("script");
                 s.src = src;
                 s.onload = () => resolve();
@@ -18724,200 +18834,203 @@ function switchAdminTab(tab) {
                 // 如果页面没有 jQuery，则尝试加载本地副本
 
                 // 初始化编辑器，将 name 设为 message-content，以便与现有提交逻辑兼容
-                messageEditor = editormd("message-editor",  {
-        // ===== 基本配置 =====
-        // 编辑器模式：
-        // gfm：GitHub Flavored Markdown，与 Markdown 语法基本相同，但增加了一些扩展语法，如表格、任务列表等
-        // markdown：标准 Markdown 语法
-        mode: "gfm",
-        // 表单元素名称，用于提交表单时标识该编辑器
-        name: "message-content",
-        // CodeMirror 的值，如果模式不是 gfm/markdown（通常不需要设置，留空即可）
-        value: "",
-        // 编辑器主题，可选值：default（默认主题）, dark（暗色主题）
-        theme: "default",
-        // 编辑区域主题（代码编辑区域的样式），可选值包括：
-        // default, 3024-day, 3024-night, ambiance, ambiance-mobile, base16-dark, base16-light,
-        // blackboard, cobalt, eclipse, elegant, erlang-dark, lesser-dark, mbo, mdn-like,
-        // midnight, monokai, neat, neo, night, paraiso-dark, paraiso-light, pastel-on-dark,
-        // rubyblue, solarized, the-matrix, tomorrow-night-eighties, twilight, vibrant-ink,
-        // xq-dark, xq-light
-        editorTheme: "default",
-        // 预览区域主题，默认空表示使用默认主题，可选值：default（默认主题）, dark（暗色主题）
-        previewTheme: "default",
-        // Markdown 源代码（编辑器初始化时显示的内容，可以是预填的 Markdown 文本）
-        markdown: "",
-        // 如果初始化时 textarea 值不为空，则追加 markdown 到 textarea（通常用于追加内容到现有文本）
-        appendMarkdown: "",
-        // 编辑器宽度（支持百分比如"100%"或像素值如"800px"）
-        width: "100%",
-        // 编辑器高度（支持百分比如"100%"或像素值如"600px"）
-        height: "300px",
-        // 依赖模块文件目录（Editor.md 所需的文件路径，通常使用 CDN 地址）
-        path: "/editor.md/lib/",
-        // 插件路径，如果为空，默认使用 settings.path + "../plugins/"（插件存放目录）
-        pluginPath: "/editor.md/plugins/",
-        // 延迟解析 markdown 到 html，单位：毫秒（避免频繁解析，提升性能，默认300ms）
-        delay: 300,
-        // 自动加载依赖模块文件（推荐保持 true，确保所有功能正常工作）
-        autoLoadModules: true,
-        // ===== 编辑器行为配置 =====
-        // 监听模式（是否实时预览，true 为开启监听，false 为手动预览）
-        watch: true,
-        // 占位符文本（当编辑器为空时显示的提示文本，引导用户输入）
-        placeholder: "请输入留言（支持 Markdown）",
-        // 启用/禁用 跳转到行功能（Ctrl+G 快捷键，快速跳转到指定行）
-        gotoLine: true,
-        // 代码折叠（是否允许折叠代码块，方便查看长代码）
-        codeFold: false,
-        // 自动高度（是否根据内容自动调整编辑器高度，true 时高度自适应）
-        autoHeight: false,
-        // 启用/禁用 自动聚焦编辑器左侧输入区域（页面加载后自动聚焦到编辑器）
-        autoFocus: true,
-        // 自动关闭标签（输入 < 时自动补全标签，提高 HTML 编写效率）
-        autoCloseTags: true,
-        // 启用/禁用 搜索和替换功能（CodeMirror 的搜索功能，Ctrl+F 激活）
-        searchReplace: true,
-        // 同步滚动选项：true（同步滚动）| false（不同步）| "single"（单向同步），默认 true
-        syncScrolling: true,
-        // 启用/禁用 只读模式（设为 true 后无法编辑，只能查看）
-        readOnly: false,
-        // 制表符大小（Tab 键缩进的空格数，通常设为 4）
-        tabSize: 4,
-        // 缩进单位（每次缩进的空格数，通常与 tabSize 保持一致）
-        indentUnit: 4,
-        // 显示编辑器行号（左侧显示行号，便于定位代码位置）
-        lineNumbers: true,
-        // 行换行（是否自动换行，true 时长行会自动换行）
-        lineWrapping: true,
-        // 自动关闭括号（输入左括号时自动补全右括号，支持 (), [], {}）
-        autoCloseBrackets: true,
-        // 显示尾随空格（显示行末的空格字符，帮助保持代码整洁）
-        showTrailingSpace: true,
-        // 匹配括号（高亮匹配的括号对，方便检查括号匹配）
-        matchBrackets: true,
-        // 使用制表符缩进（true 使用 Tab 字符，false 使用空格）
-        indentWithTabs: true,
-        // 样式化选中文本（选中的文本是否有特殊样式，如背景色）
-        styleSelectedText: true,
-        // 匹配单词高亮：true（高亮所有相同单词）| false（不高亮）| "onselected"（只在选中时高亮）
-        matchWordHighlight: true,
-        // 高亮当前行（当前行是否有背景色，方便定位）
-        styleActiveLine: true,
-        // ===== 对话框配置 =====
-        // 对话框锁定屏幕（对话框弹出时是否锁定背景，防止误操作）
-        dialogLockScreen: true,
-        // 对话框显示遮罩（是否显示半透明遮罩层）
-        dialogShowMask: true,
-        // 对话框可拖拽（对话框是否可以拖动位置）
-        dialogDraggable: true,
-        // 对话框遮罩背景色（遮罩的颜色，通常使用白色或半透明）
-        dialogMaskBgColor: "#fff",
-        // 对话框遮罩不透明度（0.0 到 1.0，控制遮罩透明度）
-        dialogMaskOpacity: 0.1,
-        // 字体大小（编辑器内文字的大小，影响可读性）
-        fontSize: "13px",
-        // 如果启用，编辑器将创建一个 <textarea> 标签保存 HTML 代码用于表单提交
-        saveHTMLToTextarea: true,
-        // 禁用的键映射（禁用某些快捷键，数组格式，如 ["Ctrl-B", "Ctrl-I"]）
-        disabledKeyMaps: [],
+                messageEditor = editormd("message-editor", {
+                  // ===== 基本配置 =====
+                  // 编辑器模式：
+                  // gfm：GitHub Flavored Markdown，与 Markdown 语法基本相同，但增加了一些扩展语法，如表格、任务列表等
+                  // markdown：标准 Markdown 语法
+                  mode: "gfm",
+                  // 表单元素名称，用于提交表单时标识该编辑器
+                  name: "message-content",
+                  // CodeMirror 的值，如果模式不是 gfm/markdown（通常不需要设置，留空即可）
+                  value: "",
+                  // 编辑器主题，可选值：default（默认主题）, dark（暗色主题）
+                  theme: "default",
+                  // 编辑区域主题（代码编辑区域的样式），可选值包括：
+                  // default, 3024-day, 3024-night, ambiance, ambiance-mobile, base16-dark, base16-light,
+                  // blackboard, cobalt, eclipse, elegant, erlang-dark, lesser-dark, mbo, mdn-like,
+                  // midnight, monokai, neat, neo, night, paraiso-dark, paraiso-light, pastel-on-dark,
+                  // rubyblue, solarized, the-matrix, tomorrow-night-eighties, twilight, vibrant-ink,
+                  // xq-dark, xq-light
+                  editorTheme: "default",
+                  // 预览区域主题，默认空表示使用默认主题，可选值：default（默认主题）, dark（暗色主题）
+                  previewTheme: "default",
+                  // Markdown 源代码（编辑器初始化时显示的内容，可以是预填的 Markdown 文本）
+                  markdown: "",
+                  // 如果初始化时 textarea 值不为空，则追加 markdown 到 textarea（通常用于追加内容到现有文本）
+                  appendMarkdown: "",
+                  // 编辑器宽度（支持百分比如"100%"或像素值如"800px"）
+                  width: "100%",
+                  // 编辑器高度（支持百分比如"100%"或像素值如"600px"）
+                  height: "300px",
+                  // 依赖模块文件目录（Editor.md 所需的文件路径，通常使用 CDN 地址）
+                  path: "/editor.md/lib/",
+                  // 插件路径，如果为空，默认使用 settings.path + "../plugins/"（插件存放目录）
+                  pluginPath: "/editor.md/plugins/",
+                  // 延迟解析 markdown 到 html，单位：毫秒（避免频繁解析，提升性能，默认300ms）
+                  delay: 300,
+                  // 自动加载依赖模块文件（推荐保持 true，确保所有功能正常工作）
+                  autoLoadModules: true,
+                  // ===== 编辑器行为配置 =====
+                  // 监听模式（是否实时预览，true 为开启监听，false 为手动预览）
+                  watch: true,
+                  // 占位符文本（当编辑器为空时显示的提示文本，引导用户输入）
+                  placeholder: "请输入留言（支持 Markdown）",
+                  // 启用/禁用 跳转到行功能（Ctrl+G 快捷键，快速跳转到指定行）
+                  gotoLine: true,
+                  // 代码折叠（是否允许折叠代码块，方便查看长代码）
+                  codeFold: false,
+                  // 自动高度（是否根据内容自动调整编辑器高度，true 时高度自适应）
+                  autoHeight: false,
+                  // 启用/禁用 自动聚焦编辑器左侧输入区域（页面加载后自动聚焦到编辑器）
+                  autoFocus: true,
+                  // 自动关闭标签（输入 < 时自动补全标签，提高 HTML 编写效率）
+                  autoCloseTags: true,
+                  // 启用/禁用 搜索和替换功能（CodeMirror 的搜索功能，Ctrl+F 激活）
+                  searchReplace: true,
+                  // 同步滚动选项：true（同步滚动）| false（不同步）| "single"（单向同步），默认 true
+                  syncScrolling: true,
+                  // 启用/禁用 只读模式（设为 true 后无法编辑，只能查看）
+                  readOnly: false,
+                  // 制表符大小（Tab 键缩进的空格数，通常设为 4）
+                  tabSize: 4,
+                  // 缩进单位（每次缩进的空格数，通常与 tabSize 保持一致）
+                  indentUnit: 4,
+                  // 显示编辑器行号（左侧显示行号，便于定位代码位置）
+                  lineNumbers: true,
+                  // 行换行（是否自动换行，true 时长行会自动换行）
+                  lineWrapping: true,
+                  // 自动关闭括号（输入左括号时自动补全右括号，支持 (), [], {}）
+                  autoCloseBrackets: true,
+                  // 显示尾随空格（显示行末的空格字符，帮助保持代码整洁）
+                  showTrailingSpace: true,
+                  // 匹配括号（高亮匹配的括号对，方便检查括号匹配）
+                  matchBrackets: true,
+                  // 使用制表符缩进（true 使用 Tab 字符，false 使用空格）
+                  indentWithTabs: true,
+                  // 样式化选中文本（选中的文本是否有特殊样式，如背景色）
+                  styleSelectedText: true,
+                  // 匹配单词高亮：true（高亮所有相同单词）| false（不高亮）| "onselected"（只在选中时高亮）
+                  matchWordHighlight: true,
+                  // 高亮当前行（当前行是否有背景色，方便定位）
+                  styleActiveLine: true,
+                  // ===== 对话框配置 =====
+                  // 对话框锁定屏幕（对话框弹出时是否锁定背景，防止误操作）
+                  dialogLockScreen: true,
+                  // 对话框显示遮罩（是否显示半透明遮罩层）
+                  dialogShowMask: true,
+                  // 对话框可拖拽（对话框是否可以拖动位置）
+                  dialogDraggable: true,
+                  // 对话框遮罩背景色（遮罩的颜色，通常使用白色或半透明）
+                  dialogMaskBgColor: "#fff",
+                  // 对话框遮罩不透明度（0.0 到 1.0，控制遮罩透明度）
+                  dialogMaskOpacity: 0.1,
+                  // 字体大小（编辑器内文字的大小，影响可读性）
+                  fontSize: "13px",
+                  // 如果启用，编辑器将创建一个 <textarea> 标签保存 HTML 代码用于表单提交
+                  saveHTMLToTextarea: true,
+                  // 禁用的键映射（禁用某些快捷键，数组格式，如 ["Ctrl-B", "Ctrl-I"]）
+                  disabledKeyMaps: [],
 
-        // ===== 事件回调函数 =====
-        // 加载完成回调（编辑器初始化完成后触发）
-        onload: function () { },
-        // 调整大小回调（编辑器大小改变时触发）
-        onresize: function () { },
-        // 内容改变回调（编辑器内容发生变化时触发）
-        onchange: function () {
-                    logMessage_Info("留言内容已更改, 当前长度: " + this.getMarkdown().length + " 字符");
-                    const countEl = document.getElementById("message-char-count");
-                    if (this && countEl) countEl.textContent = String(this.getMarkdown().length);
+                  // ===== 事件回调函数 =====
+                  // 加载完成回调（编辑器初始化完成后触发）
+                  onload: function () {},
+                  // 调整大小回调（编辑器大小改变时触发）
+                  onresize: function () {},
+                  // 内容改变回调（编辑器内容发生变化时触发）
+                  onchange: function () {
+                    logMessage_Info(
+                      "留言内容已更改, 当前长度: " +
+                        this.getMarkdown().length +
+                        " 字符"
+                    );
+                    const countEl =
+                      document.getElementById("message-char-count");
+                    if (this && countEl)
+                      countEl.textContent = String(this.getMarkdown().length);
                   },
-        // 监听开始回调（开始监听模式时触发）
-        onwatch: null,
-        // 监听结束回调（结束监听模式时触发）
-        onunwatch: null,
-        // 预览中回调（正在生成预览时触发）
-        onpreviewing: function () { },
-        // 预览完成回调（预览生成完成后触发）
-        onpreviewed: function () { },
-        // 全屏回调（进入全屏模式时触发）
-        onfullscreen: function () { },
-        // 退出全屏回调（退出全屏模式时触发）
-        onfullscreenExit: function () { },
-        // 滚动回调（编辑器滚动时触发）
-        onscroll: function () { },
-        // 预览滚动回调（预览区域滚动时触发）
-        onpreviewscroll: function () { },
+                  // 监听开始回调（开始监听模式时触发）
+                  onwatch: null,
+                  // 监听结束回调（结束监听模式时触发）
+                  onunwatch: null,
+                  // 预览中回调（正在生成预览时触发）
+                  onpreviewing: function () {},
+                  // 预览完成回调（预览生成完成后触发）
+                  onpreviewed: function () {},
+                  // 全屏回调（进入全屏模式时触发）
+                  onfullscreen: function () {},
+                  // 退出全屏回调（退出全屏模式时触发）
+                  onfullscreenExit: function () {},
+                  // 滚动回调（编辑器滚动时触发）
+                  onscroll: function () {},
+                  // 预览滚动回调（预览区域滚动时触发）
+                  onpreviewscroll: function () {},
 
-        // ===== 图片上传配置 =====
-        // 启用/禁用 上传功能（是否允许上传图片到服务器）
-        imageUpload: true,
-        // 支持的图片格式（允许上传的图片文件类型数组）
-        imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
-        // 上传 URL（图片上传的服务器端点地址）
-        imageUploadURL: "/upload",
-        // 启用/禁用 跨域上传（是否支持跨域上传图片）
-        crossDomainUpload: false,
-        // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
-        // uploadCallbackURL: "",
+                  // ===== 图片上传配置 =====
+                  // 启用/禁用 上传功能（是否允许上传图片到服务器）
+                  imageUpload: true,
+                  // 支持的图片格式（允许上传的图片文件类型数组）
+                  imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
+                  // 上传 URL（图片上传的服务器端点地址）
+                  imageUploadURL: "/upload",
+                  // 启用/禁用 跨域上传（是否支持跨域上传图片）
+                  crossDomainUpload: false,
+                  // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
+                  // uploadCallbackURL: "",
 
-        // ===== 目录和扩展功能配置 =====
-        // 启用/禁用 目录功能（是否自动生成文章目录）
-        toc: true,
-        // 使用 [TOCM]，自动创建目录下拉菜单（在标题前添加 [TOCM] 标记启用）
-        tocm: false,
-        // 目录下拉菜单按钮标题（下拉菜单的显示文本）
-        tocTitle: "",
-        // 启用/禁用 目录下拉菜单（是否显示目录下拉菜单按钮）
-        tocDropdown: false,
-        // 自定义目录容器选择器（目录插入的 DOM 元素选择器，默认插入编辑器内部）
-        tocContainer: "",
-        // 从 H1 开始创建目录（目录从哪一级标题开始生成，1表示H1，2表示H2）
-        tocStartLevel: 1,
-        // 打开 HTML 标签识别（是否解析和显示 HTML 标签）
-        htmlDecode: true,
-        // 启用解析分页符 [========]（是否支持分页符语法，用于分隔内容）
-        pageBreak: true,
-        // 启用 @链接功能（@用户名 自动转换为链接）
-        atLink: false,
-        // 邮箱地址自动链接（自动识别邮箱地址并转换为可点击链接）
-        emailLink: true,
-        // 启用 GitHub Flavored Markdown 任务列表（支持 - [ ] 任务列表语法）
-        taskList: true,
-        // 启用表情符号支持：
-        // :emoji: 支持 GitHub 表情、Twitter 表情 (Twemoji)
-        // :fa-xxx: 使用 FontAwesome 图标 web 字体
-        // :editormd-logo: :editormd-logo-1x: > 1~8x 支持 Editor.md logo 图标
-        emoji: true,
-        // 启用 TeX(LaTeX) 数学公式支持，基于 KaTeX 库
-        tex: true,
-        // 启用流程图支持（flowChart.js，只支持 IE9+，用于绘制流程图）
-        flowChart: true,
-        // 启用时序图支持（sequenceDiagram.js，只支持 IE9+，用于绘制时序图）
-        sequenceDiagram: true,
-        // 启用/禁用 编辑器预览区域代码高亮（预览区代码是否进行语法高亮）
-        previewCodeHighlight: true,
+                  // ===== 目录和扩展功能配置 =====
+                  // 启用/禁用 目录功能（是否自动生成文章目录）
+                  toc: true,
+                  // 使用 [TOCM]，自动创建目录下拉菜单（在标题前添加 [TOCM] 标记启用）
+                  tocm: false,
+                  // 目录下拉菜单按钮标题（下拉菜单的显示文本）
+                  tocTitle: "",
+                  // 启用/禁用 目录下拉菜单（是否显示目录下拉菜单按钮）
+                  tocDropdown: false,
+                  // 自定义目录容器选择器（目录插入的 DOM 元素选择器，默认插入编辑器内部）
+                  tocContainer: "",
+                  // 从 H1 开始创建目录（目录从哪一级标题开始生成，1表示H1，2表示H2）
+                  tocStartLevel: 1,
+                  // 打开 HTML 标签识别（是否解析和显示 HTML 标签）
+                  htmlDecode: true,
+                  // 启用解析分页符 [========]（是否支持分页符语法，用于分隔内容）
+                  pageBreak: true,
+                  // 启用 @链接功能（@用户名 自动转换为链接）
+                  atLink: false,
+                  // 邮箱地址自动链接（自动识别邮箱地址并转换为可点击链接）
+                  emailLink: true,
+                  // 启用 GitHub Flavored Markdown 任务列表（支持 - [ ] 任务列表语法）
+                  taskList: true,
+                  // 启用表情符号支持：
+                  // :emoji: 支持 GitHub 表情、Twitter 表情 (Twemoji)
+                  // :fa-xxx: 使用 FontAwesome 图标 web 字体
+                  // :editormd-logo: :editormd-logo-1x: > 1~8x 支持 Editor.md logo 图标
+                  emoji: true,
+                  // 启用 TeX(LaTeX) 数学公式支持，基于 KaTeX 库
+                  tex: true,
+                  // 启用流程图支持（flowChart.js，只支持 IE9+，用于绘制流程图）
+                  flowChart: true,
+                  // 启用时序图支持（sequenceDiagram.js，只支持 IE9+，用于绘制时序图）
+                  sequenceDiagram: true,
+                  // 启用/禁用 编辑器预览区域代码高亮（预览区代码是否进行语法高亮）
+                  previewCodeHighlight: true,
 
-        // ===== 工具栏配置 =====
-        // 显示或隐藏工具栏
-        toolbar: true,
-        // 窗口滚动时自动固定工具栏位置
-        toolbarAutoFixed: true,
-        // 工具栏图标模式：full（完整）| simple（简单）| mini（最小），参见 `editormd.toolbarModes` 属性
-        toolbarIcons: "full",
-        // 工具栏标题（自定义工具栏按钮的提示文本）
-        toolbarTitles: {},
-        // 工具栏处理程序（自定义工具栏按钮的点击事件）
-        toolbarHandlers: {},
-        // 使用 HTML 标签创建工具栏图标，未使用默认 <a> 标签（自定义工具栏图标的 HTML）
-        toolbarCustomIcons: {},
-        // 工具栏图标文本（自定义工具栏按钮的文本）
-        toolbarIconTexts: {},
-
-
-
-      });
+                  // ===== 工具栏配置 =====
+                  // 显示或隐藏工具栏
+                  toolbar: true,
+                  // 窗口滚动时自动固定工具栏位置
+                  toolbarAutoFixed: true,
+                  // 工具栏图标模式：full（完整）| simple（简单）| mini（最小），参见 `editormd.toolbarModes` 属性
+                  toolbarIcons: "full",
+                  // 工具栏标题（自定义工具栏按钮的提示文本）
+                  toolbarTitles: {},
+                  // 工具栏处理程序（自定义工具栏按钮的点击事件）
+                  toolbarHandlers: {},
+                  // 使用 HTML 标签创建工具栏图标，未使用默认 <a> 标签（自定义工具栏图标的 HTML）
+                  toolbarCustomIcons: {},
+                  // 工具栏图标文本（自定义工具栏按钮的文本）
+                  toolbarIconTexts: {},
+                });
 
                 // 将编辑器内部生成的对话框（.editormd-dialog）移动到 body，并固定定位，避免被父容器裁剪
                 (function ensureDialogsOnBody() {
@@ -18938,16 +19051,21 @@ function switchAdminTab(tab) {
                       dialog.style.height = h ? h + "px" : "auto";
                       dialog.style.zIndex = 20000;
                       // 遮罩（mask）通常是紧邻的元素，尝试将同一对话框相关的遮罩也移动
-                      const mask = dialog.parentElement && dialog.parentElement.querySelector && dialog.parentElement.querySelector('.editormd-dialog-mask');
+                      const mask =
+                        dialog.parentElement &&
+                        dialog.parentElement.querySelector &&
+                        dialog.parentElement.querySelector(
+                          ".editormd-dialog-mask"
+                        );
                       if (mask) {
                         // 备份原始 display，以便恢复
-                        mask.__orig_display = mask.style.display || '';
+                        mask.__orig_display = mask.style.display || "";
                         document.body.appendChild(mask);
-                        mask.style.position = 'fixed';
-                        mask.style.left = '0';
-                        mask.style.top = '0';
-                        mask.style.width = '100%';
-                        mask.style.height = '100%';
+                        mask.style.position = "fixed";
+                        mask.style.left = "0";
+                        mask.style.top = "0";
+                        mask.style.width = "100%";
+                        mask.style.height = "100%";
                         mask.style.zIndex = 19990;
                         // 建立双向引用，方便后续控制
                         mask.__moved_for_dialog = dialog;
@@ -18962,11 +19080,18 @@ function switchAdminTab(tab) {
                           const curMask = dialog.__moved_mask;
                           if (!curMask) return;
                           const style = window.getComputedStyle(dialog);
-                          const isVisible = style && style.display !== 'none' && style.visibility !== 'hidden' && dialog.offsetParent !== null && dialog.getBoundingClientRect().width > 0 && dialog.getBoundingClientRect().height > 0;
+                          const isVisible =
+                            style &&
+                            style.display !== "none" &&
+                            style.visibility !== "hidden" &&
+                            dialog.offsetParent !== null &&
+                            dialog.getBoundingClientRect().width > 0 &&
+                            dialog.getBoundingClientRect().height > 0;
                           if (isVisible) {
-                            curMask.style.display = curMask.__orig_display || '';
+                            curMask.style.display =
+                              curMask.__orig_display || "";
                           } else {
-                            curMask.style.display = 'none';
+                            curMask.style.display = "none";
                           }
                         } catch (e) {
                           // ignore
@@ -18978,15 +19103,20 @@ function switchAdminTab(tab) {
 
                       // 监听对话框的属性变化（style/class 等）以决定遮罩显示/隐藏
                       try {
-                        const attrObserver = new MutationObserver(() => checkVisibilityAndToggleMask());
-                        attrObserver.observe(dialog, { attributes: true, attributeFilter: ['style', 'class'] });
+                        const attrObserver = new MutationObserver(() =>
+                          checkVisibilityAndToggleMask()
+                        );
+                        attrObserver.observe(dialog, {
+                          attributes: true,
+                          attributeFilter: ["style", "class"],
+                        });
                         // 保存 observer 引用以便未来可清理（如果需要）
                         dialog.__visibilityAttrObserver = attrObserver;
                       } catch (e) {
                         // ignore
                       }
                     } catch (e) {
-                      console.warn('relocate dialog failed', e);
+                      console.warn("relocate dialog failed", e);
                     }
                   };
 
@@ -18995,11 +19125,17 @@ function switchAdminTab(tab) {
                     for (const m of mutations) {
                       for (const node of m.addedNodes) {
                         if (!(node instanceof HTMLElement)) continue;
-                        if (node.classList && node.classList.contains('editormd-dialog')) {
+                        if (
+                          node.classList &&
+                          node.classList.contains("editormd-dialog")
+                        ) {
                           relocate(node);
                         } else {
                           // 也检查子元素
-                          const found = node.querySelector && node.querySelectorAll && node.querySelectorAll('.editormd-dialog');
+                          const found =
+                            node.querySelector &&
+                            node.querySelectorAll &&
+                            node.querySelectorAll(".editormd-dialog");
                           if (found && found.length) {
                             found.forEach((d) => relocate(d));
                           }
@@ -19012,7 +19148,8 @@ function switchAdminTab(tab) {
                   mo.observe(editorRoot, { childList: true, subtree: true });
 
                   // 也立即处理当前已存在的对话框
-                  const existing = editorRoot.querySelectorAll('.editormd-dialog');
+                  const existing =
+                    editorRoot.querySelectorAll(".editormd-dialog");
                   existing.forEach((d) => relocate(d));
                 })();
 
@@ -19035,15 +19172,20 @@ function switchAdminTab(tab) {
                       dialog.style.width = w ? w + "px" : "auto";
                       dialog.style.height = h ? h + "px" : "auto";
                       dialog.style.zIndex = 20000;
-                      const mask = dialog.parentElement && dialog.parentElement.querySelector && dialog.parentElement.querySelector('.editormd-dialog-mask');
+                      const mask =
+                        dialog.parentElement &&
+                        dialog.parentElement.querySelector &&
+                        dialog.parentElement.querySelector(
+                          ".editormd-dialog-mask"
+                        );
                       if (mask) {
-                        mask.__orig_display = mask.style.display || '';
+                        mask.__orig_display = mask.style.display || "";
                         document.body.appendChild(mask);
-                        mask.style.position = 'fixed';
-                        mask.style.left = '0';
-                        mask.style.top = '0';
-                        mask.style.width = '100%';
-                        mask.style.height = '100%';
+                        mask.style.position = "fixed";
+                        mask.style.left = "0";
+                        mask.style.top = "0";
+                        mask.style.width = "100%";
+                        mask.style.height = "100%";
                         mask.style.zIndex = 19990;
                         mask.__moved_for_dialog = dialog;
                         dialog.__moved_mask = mask;
@@ -19056,26 +19198,36 @@ function switchAdminTab(tab) {
                           const curMask = dialog.__moved_mask;
                           if (!curMask) return;
                           const style = window.getComputedStyle(dialog);
-                          const isVisible = style && style.display !== 'none' && style.visibility !== 'hidden' && dialog.offsetParent !== null && dialog.getBoundingClientRect().width > 0 && dialog.getBoundingClientRect().height > 0;
+                          const isVisible =
+                            style &&
+                            style.display !== "none" &&
+                            style.visibility !== "hidden" &&
+                            dialog.offsetParent !== null &&
+                            dialog.getBoundingClientRect().width > 0 &&
+                            dialog.getBoundingClientRect().height > 0;
                           if (isVisible) {
-                            curMask.style.display = curMask.__orig_display || '';
+                            curMask.style.display =
+                              curMask.__orig_display || "";
                           } else {
-                            curMask.style.display = 'none';
+                            curMask.style.display = "none";
                           }
-                        } catch (e) {
-                        }
+                        } catch (e) {}
                       };
 
                       checkVisibilityAndToggleMask();
 
                       try {
-                        const attrObserver = new MutationObserver(() => checkVisibilityAndToggleMask());
-                        attrObserver.observe(dialog, { attributes: true, attributeFilter: ['style', 'class'] });
+                        const attrObserver = new MutationObserver(() =>
+                          checkVisibilityAndToggleMask()
+                        );
+                        attrObserver.observe(dialog, {
+                          attributes: true,
+                          attributeFilter: ["style", "class"],
+                        });
                         dialog.__visibilityAttrObserver = attrObserver;
-                      } catch (e) {
-                      }
+                      } catch (e) {}
                     } catch (e) {
-                      console.warn('relocate dialog failed', e);
+                      console.warn("relocate dialog failed", e);
                     }
                   };
 
@@ -19083,10 +19235,16 @@ function switchAdminTab(tab) {
                     for (const m of mutations) {
                       for (const node of m.addedNodes) {
                         if (!(node instanceof HTMLElement)) continue;
-                        if (node.classList && node.classList.contains('editormd-dialog')) {
+                        if (
+                          node.classList &&
+                          node.classList.contains("editormd-dialog")
+                        ) {
                           relocate(node);
                         } else {
-                          const found = node.querySelector && node.querySelectorAll && node.querySelectorAll('.editormd-dialog');
+                          const found =
+                            node.querySelector &&
+                            node.querySelectorAll &&
+                            node.querySelectorAll(".editormd-dialog");
                           if (found && found.length) {
                             found.forEach((d) => relocate(d));
                           }
@@ -19097,7 +19255,8 @@ function switchAdminTab(tab) {
 
                   mo.observe(editorRoot, { childList: true, subtree: true });
 
-                  const existing = editorRoot.querySelectorAll('.editormd-dialog');
+                  const existing =
+                    editorRoot.querySelectorAll(".editormd-dialog");
                   existing.forEach((d) => relocate(d));
                 })();
               } catch (err) {
@@ -19112,7 +19271,7 @@ function switchAdminTab(tab) {
           Swal.fire({
             icon: "error",
             title: "错误",
-            text: "无法验证访问权限，请稍后重试"
+            text: "无法验证访问权限，请稍后重试",
           });
         });
     }
@@ -19152,7 +19311,7 @@ function switchAdminTab(tab) {
         dateInput.value = today;
       }
 
-      loadCaptchaSettings(ShowSwalFire=false);
+      loadCaptchaSettings((ShowSwalFire = false));
 
       loadCaptchaHistory();
 
@@ -19168,21 +19327,21 @@ function switchAdminTab(tab) {
       loadReminders();
       stopHealthAutoRefresh();
       setTimeout(() => {
-      document.getElementById("reminder-edit-modal").style.zIndex = "0";
-      document.getElementById("reminder-edit-modal").style.display = "hidden";
-            document.getElementById("reminder-edit-modal_background").style.display = "none";
-      openReminderEditModal("-1")
-      ;}, 500);
+        document.getElementById("reminder-edit-modal").style.zIndex = "0";
+        document.getElementById("reminder-edit-modal").style.display = "hidden";
+        document.getElementById(
+          "reminder-edit-modal_background"
+        ).style.display = "none";
+        openReminderEditModal("-1");
+      }, 500);
       setTimeout(() => {
-      closeReminderEditModal()
-      document.getElementById("reminder-edit-modal").style.zIndex = "";
-      document.getElementById("reminder-edit-modal").style.display = "";
-      document.getElementById("reminder-edit-modal_background").style.display = "";
+        closeReminderEditModal();
+        document.getElementById("reminder-edit-modal").style.zIndex = "";
+        document.getElementById("reminder-edit-modal").style.display = "";
+        document.getElementById(
+          "reminder-edit-modal_background"
+        ).style.display = "";
       }, 1000);
-
-
-
-
     }
   } else if (tab === "ssl") {
     const sslTab = $("admin-tab-ssl_modal");
@@ -19928,10 +20087,10 @@ async function loadPersonalInfo() {
     if (!result.success) {
       // showModalAlert(`加载个人信息失败: ${result.message}`, "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: "加载个人信息失败: " + result.message,
-        icon: 'error',
-        confirmButtonText: '确定'
+        icon: "error",
+        confirmButtonText: "确定",
       });
       return;
     }
@@ -20080,9 +20239,9 @@ async function loadPersonalInfo() {
     logMessage_Error("加载个人信息失败:", e);
     // showModalAlert(`加载失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
-      text: "加载失败: " + (e.message || '未知错误'),
-      icon: 'error'
+      title: "错误",
+      text: "加载失败: " + (e.message || "未知错误"),
+      icon: "error",
     });
   }
 }
@@ -20092,9 +20251,9 @@ async function updateAvatar() {
   if (!avatarInput || !avatarInput.value.trim()) {
     // showModalAlert("请输入头像URL", "提示");
     Swal.fire({
-      title: '提示',
-      text: '请输入头像URL',
-      icon: 'info'
+      title: "提示",
+      text: "请输入头像URL",
+      icon: "info",
     });
     return;
   }
@@ -20115,26 +20274,26 @@ async function updateAvatar() {
     if (result.success) {
       // showModalAlert("头像更新成功！", "成功");
       Swal.fire({
-        title: '成功',
-        text: '头像已成功更新',
-        icon: 'success'
-    });
+        title: "成功",
+        text: "头像已成功更新",
+        icon: "success",
+      });
       loadPersonalInfo();
     } else {
       // showModalAlert(`更新失败: ${result.message}`, "错误");
       Swal.fire({
-        title: '错误',
-        text: "更新失败: " + (result.message || '未知错误'),
-        icon: 'error'
+        title: "错误",
+        text: "更新失败: " + (result.message || "未知错误"),
+        icon: "error",
       });
     }
   } catch (e) {
     logMessage_Error("更新头像失败:", e);
     // showModalAlert(`更新失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
-      text: "更新失败: " + (e.message || '未知错误'),
-      icon: 'error'
+      title: "错误",
+      text: "更新失败: " + (e.message || "未知错误"),
+      icon: "error",
     });
   }
 }
@@ -20200,9 +20359,9 @@ function previewAvatar(event) {
   if (!file.type.startsWith("image/")) {
     // showModalAlert("请选择图片文件", "错误");
     Swal.fire({
-      title: '错误',
-      text: '请选择图片文件',
-      icon: 'error'
+      title: "错误",
+      text: "请选择图片文件",
+      icon: "error",
     });
     event.target.value = "";
     return;
@@ -20245,9 +20404,9 @@ function previewAvatarForRegistration(event) {
   if (!file.type.startsWith("image/")) {
     // showModalAlert("请选择图片文件", "错误");
     Swal.fire({
-      title: '错误',
-      text: '请选择图片文件',
-      icon: 'error'
+      title: "错误",
+      text: "请选择图片文件",
+      icon: "error",
     });
     event.target.value = "";
     return;
@@ -20296,9 +20455,9 @@ async function confirmCropForRegistration() {
   if (!avatarCropper) {
     // showModalAlert("裁剪器未初始化", "错误");
     Swal.fire({
-      title: '错误',
-      text: '裁剪器未初始化',
-      icon: 'error'
+      title: "错误",
+      text: "裁剪器未初始化",
+      icon: "error",
     });
     return;
   }
@@ -20310,9 +20469,9 @@ async function confirmCropForRegistration() {
   if (!canvas) {
     // showModalAlert("裁剪失败", "错误");
     Swal.fire({
-      title: '错误',
-      text: '裁剪失败',
-      icon: 'error'
+      title: "错误",
+      text: "裁剪失败",
+      icon: "error",
     });
     return;
   }
@@ -20345,9 +20504,9 @@ async function confirmCropAndUpload() {
     if (!avatarCropper) {
       // showModalAlert("裁剪器未初始化", "错误");
       Swal.fire({
-        title: '错误',
-        text: '裁剪器未初始化',
-        icon: 'error'
+        title: "错误",
+        text: "裁剪器未初始化",
+        icon: "error",
       });
       return;
     }
@@ -20362,9 +20521,9 @@ async function confirmCropAndUpload() {
     if (!canvas) {
       // showModalAlert("裁剪失败", "错误");
       Swal.fire({
-        title: '错误',
-        text: '裁剪失败',
-        icon: 'error'
+        title: "错误",
+        text: "裁剪失败",
+        icon: "error",
       });
       return;
     }
@@ -20393,9 +20552,9 @@ async function confirmCropAndUpload() {
           if (result.success) {
             // showModalAlert("头像上传成功！", "成功");
             showModal.fire({
-              title: '成功',
-              text: '头像上传成功！',
-              icon: 'success'
+              title: "成功",
+              text: "头像上传成功！",
+              icon: "success",
             });
 
             croppedAvatarFile = null;
@@ -20409,9 +20568,9 @@ async function confirmCropAndUpload() {
           } else {
             // showModalAlert(`上传失败: ${result.message}`, "错误");
             Swal.fire({
-              title: '错误',
+              title: "错误",
               text: `上传失败: ${result.message}`,
-              icon: 'error'
+              icon: "error",
             });
           }
         } catch (e) {
@@ -20421,9 +20580,9 @@ async function confirmCropAndUpload() {
           //   "错误"
           // );
           Swal.fire({
-            title: '错误',
+            title: "错误",
             text: `上传失败: ${e.message}\n\n⚠️ 此功能需要后端API /auth/user/upload_avatar 支持`,
-            icon: 'error'
+            icon: "error",
           });
         }
       },
@@ -20441,9 +20600,9 @@ async function uploadAvatar() {
     if (!fileInput || !fileInput.files || !fileInput.files[0]) {
       // showModalAlert("请先选择并裁剪图片文件", "提示");
       Swal.fire({
-      title: '提示',
-        text: '请先选择并裁剪图片文件',
-        icon: 'warning'
+        title: "提示",
+        text: "请先选择并裁剪图片文件",
+        icon: "warning",
       });
       return;
     }
@@ -20466,9 +20625,9 @@ async function uploadAvatar() {
     if (result.success) {
       // showModalAlert("头像上传成功！", "成功");
       Swal.fire({
-        title: '成功',
-        text: '头像上传成功！',
-        icon: 'success'
+        title: "成功",
+        text: "头像上传成功！",
+        icon: "success",
       });
 
       croppedAvatarFile = null;
@@ -20480,18 +20639,18 @@ async function uploadAvatar() {
     } else {
       // showModalAlert(`上传失败: ${result.message}`, "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: `上传失败: ${result.message}`,
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (e) {
     logMessage_Error("上传头像失败:", e);
     // showModalAlert(`上传失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: `上传失败: ${e.message}`,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -20504,9 +20663,9 @@ async function updateBasicInfo() {
   if (!nickname.value.trim()) {
     // showModalAlert("昵称不能为空", "提示");
     Swal.fire({
-      title: '提示',
-      text: '昵称不能为空',
-      icon: 'warning'
+      title: "提示",
+      text: "昵称不能为空",
+      icon: "warning",
     });
     return;
   }
@@ -20514,9 +20673,9 @@ async function updateBasicInfo() {
   if (!currentAuthUsername) {
     // showModalAlert("无法获取当前用户信息，请重新加载", "错误");
     Swal.fire({
-      title: '错误',
-      text: '无法获取当前用户信息，请重新加载',
-      icon: 'error'
+      title: "错误",
+      text: "无法获取当前用户信息，请重新加载",
+      icon: "error",
     });
     return;
   }
@@ -20542,25 +20701,25 @@ async function updateBasicInfo() {
     if (result.success) {
       // showModalAlert("基本信息更新成功", "成功");
       Swal.fire({
-        title: '成功',
-        text: '基本信息更新成功',
-        icon: 'success'
+        title: "成功",
+        text: "基本信息更新成功",
+        icon: "success",
       });
     } else {
       // showModalAlert(result.message || "更新失败", "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: result.message || "更新失败",
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (error) {
     logMessage_Error("更新基本信息失败", error);
     // showModalAlert("网络错误，请稍后重试", "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "网络错误，请稍后重试",
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -20664,9 +20823,9 @@ async function sendPasswordResetSmsCode(platform) {
     if (!response.success) {
       // showModalAlert("获取用户信息失败，请稍后重试", "错误");
       Swal.fire({
-        title: '错误',
-        text: '获取用户信息失败，请稍后重试',
-        icon: 'error'
+        title: "错误",
+        text: "获取用户信息失败，请稍后重试",
+        icon: "error",
       });
       return;
     }
@@ -20678,9 +20837,9 @@ async function sendPasswordResetSmsCode(platform) {
       //   "提示"
       // );
       Swal.fire({
-        title: '提示',
+        title: "提示",
         text: '您尚未绑定手机号，无法使用短信验证。\n请先在"个人信息"中绑定手机号。',
-        icon: 'info'
+        icon: "info",
       });
       return;
     }
@@ -20702,9 +20861,9 @@ async function sendPasswordResetSmsCode(platform) {
     logMessage_Error("[密码修改] 获取手机号失败:", e);
     // showModalAlert("获取手机号失败: " + e.message, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "获取手机号失败: " + e.message,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -20793,9 +20952,9 @@ async function updatePassword() {
       //   "提示"
       // );
       Swal.fire({
-        title: '提示',
+        title: "提示",
         text: '请填写当前密码，或点击"使用短信验证"通过短信验证码修改密码',
-        icon: 'info'
+        icon: "info",
       });
       return;
     }
@@ -20804,9 +20963,9 @@ async function updatePassword() {
     if (!smsCode) {
       // showModalAlert("请填写短信验证码", "提示");
       Swal.fire({
-        title: '提示',
-        text: '请填写短信验证码',
-        icon: 'info'
+        title: "提示",
+        text: "请填写短信验证码",
+        icon: "info",
       });
       return;
     }
@@ -20814,9 +20973,9 @@ async function updatePassword() {
     if (!/^\d{6}$/.test(smsCode)) {
       // showModalAlert("短信验证码格式不正确，请输入6位数字", "提示");
       Swal.fire({
-        title: '提示',
-        text: '短信验证码格式不正确，请输入6位数字',
-        icon: 'info'
+        title: "提示",
+        text: "短信验证码格式不正确，请输入6位数字",
+        icon: "info",
       });
       return;
     }
@@ -20826,9 +20985,9 @@ async function updatePassword() {
   if (!newPassword.value || !confirmPassword.value) {
     // showModalAlert("请填写新密码和确认新密码", "提示");
     Swal.fire({
-      title: '提示',
-      text: '请填写新密码和确认新密码',
-      icon: 'info'
+      title: "提示",
+      text: "请填写新密码和确认新密码",
+      icon: "info",
     });
     return;
   }
@@ -20837,9 +20996,9 @@ async function updatePassword() {
   if (newPassword.value !== confirmPassword.value) {
     // showModalAlert("两次输入的密码不一致", "错误");
     Swal.fire({
-      title: '错误',
-      text: '两次输入的密码不一致',
-      icon: 'error'
+      title: "错误",
+      text: "两次输入的密码不一致",
+      icon: "error",
     });
     return;
   }
@@ -20852,9 +21011,9 @@ async function updatePassword() {
     // 如果新密码过弱，显示具体的错误原因
     // showModalAlert(weakCheck.reason, "密码强度不足");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: weakCheck.reason,
-      icon: 'error'
+      icon: "error",
     });
     return;
   }
@@ -20863,9 +21022,9 @@ async function updatePassword() {
   if (newPassword.value.length < 6) {
     // showModalAlert("密码长度至少为6个字符", "错误");
     Swal.fire({
-      title: '错误',
-      text: '密码长度至少为6个字符',
-      icon: 'error'
+      title: "错误",
+      text: "密码长度至少为6个字符",
+      icon: "error",
     });
     return;
   }
@@ -20874,9 +21033,9 @@ async function updatePassword() {
   if (!currentAuthUsername) {
     // showModalAlert("无法获取当前用户信息，请重新加载个人信息", "错误");
     Swal.fire({
-      title: '错误',
-      text: '无法获取当前用户信息，请重新加载个人信息',
-      icon: 'error'
+      title: "错误",
+      text: "无法获取当前用户信息，请重新加载个人信息",
+      icon: "error",
     });
     return;
   }
@@ -20917,9 +21076,9 @@ async function updatePassword() {
       // 密码修改成功
       // showModalAlert("密码修改成功！", "成功");
       Swal.fire({
-        title: '成功',
-        text: '密码修改成功！',
-        icon: 'success'
+        title: "成功",
+        text: "密码修改成功！",
+        icon: "success",
       });
       // 清空所有输入框
       if (currentPassword) currentPassword.value = "";
@@ -20934,9 +21093,9 @@ async function updatePassword() {
         : result.message || "请检查当前密码是否正确";
       // showModalAlert(`修改失败: ${errorMsg}`, "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: `修改失败: ${errorMsg}`,
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (e) {
@@ -20944,9 +21103,9 @@ async function updatePassword() {
     logMessage_Error("修改密码失败:", e);
     // showModalAlert(`修改失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: `修改失败: ${e.message}`,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -20965,9 +21124,9 @@ async function generate2FA() {
     if (!result.success) {
       // showModalAlert(`生成2FA失败: ${result.message}`, "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: `生成2FA失败: ${result.message}`,
-        icon: 'error'
+        icon: "error",
       });
       return;
     }
@@ -20994,9 +21153,9 @@ async function generate2FA() {
               logMessage_Error("QR Code generation error:", error);
               // showModalAlert("二维码生成失败", "错误");
               Swal.fire({
-                title: '错误',
+                title: "错误",
                 text: "二维码生成失败",
-                icon: 'error'
+                icon: "error",
               });
             } else {
               logMessage_Info("QR Code generated successfully");
@@ -21007,9 +21166,9 @@ async function generate2FA() {
         logMessage_Error("QRCode库未加载");
         // showModalAlert("QRCode库未加载，请刷新页面重试", "错误");
         Swal.fire({
-          title: '错误',
+          title: "错误",
           text: "QRCode库未加载，请刷新页面重试",
-          icon: 'error'
+          icon: "error",
         });
       }
     }
@@ -21017,9 +21176,9 @@ async function generate2FA() {
     logMessage_Error("生成2FA失败:", e);
     // showModalAlert(`生成失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: `生成失败: ${e.message}`,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -21029,9 +21188,9 @@ async function enable2FA() {
   if (!codeInput || !codeInput.value) {
     // showModalAlert("请输入验证码", "提示");
     Swal.fire({
-      title: '提示',
+      title: "提示",
       text: "请输入验证码",
-      icon: 'info'
+      icon: "info",
     });
     return;
   }
@@ -21052,9 +21211,9 @@ async function enable2FA() {
     if (result.success) {
       // showModalAlert("2FA启用成功！", "成功");
       Swal.fire({
-        title: '成功',
+        title: "成功",
         text: "2FA启用成功！",
-        icon: 'success'
+        icon: "success",
       });
       const setupDiv = $("profile-2fa-setup");
       const actionsDiv = $("profile-2fa-actions");
@@ -21064,18 +21223,18 @@ async function enable2FA() {
     } else {
       // showModalAlert(`启用失败: ${result.message}`, "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: `启用失败: ${result.message}`,
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (e) {
     logMessage_Error("启用2FA失败:", e);
     // showModalAlert(`启用失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: `启用失败: ${e.message}`,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -21100,26 +21259,26 @@ async function disable2FA() {
     if (result.success) {
       // showModalAlert("2FA已关闭", "成功");
       Swal.fire({
-        title: '成功',
+        title: "成功",
         text: "2FA已关闭",
-        icon: 'success'
+        icon: "success",
       });
       loadPersonalInfo();
     } else {
       // showModalAlert(`关闭失败: ${result.message}`, "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: `关闭失败: ${result.message}`,
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (e) {
     logMessage_Error("关闭2FA失败:", e);
     // showModalAlert(`关闭失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: `关闭失败: ${e.message}`,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -21152,9 +21311,9 @@ async function test2FA() {
       if (!code || code.length !== 6 || !/^[0-9]{6}$/.test(code)) {
         // showModalAlert("请输入有效的6位数字验证码", "错误");
         Swal.fire({
-          title: '错误',
+          title: "错误",
           text: "请输入有效的6位数字验证码",
-          icon: 'error'
+          icon: "error",
         });
         return;
       }
@@ -21181,25 +21340,25 @@ async function test2FA() {
     if (result.success) {
       // showModalAlert("2FA验证成功！您的双因素认证工作正常。", "成功");
       Swal.fire({
-        title: '成功',
+        title: "成功",
         text: "2FA验证成功！您的双因素认证工作正常。",
-        icon: 'success'
+        icon: "success",
       });
     } else {
       // showModalAlert(`验证失败: ${result.message || "验证码错误"}`, "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: `验证失败: ${result.message || "验证码错误"}`,
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (e) {
     logMessage_Error("测试2FA失败:", e);
     // showModalAlert(`测试失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: `测试失败: ${e.message}`,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -21228,16 +21387,16 @@ async function updateTheme() {
     if (result.success) {
       // showModalAlert("主题更新成功！", "成功");
       Swal.fire({
-        title: '成功',
+        title: "成功",
         text: "主题更新成功！",
-        icon: 'success'
+        icon: "success",
       });
     } else {
       // showModalAlert(`更新失败: ${result.message}`, "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: `更新失败: ${result.message}`,
-        icon: 'error'
+        icon: "error",
       });
       applyAndSaveTheme(selectedTheme === "dark" ? "light" : "dark");
     }
@@ -21245,9 +21404,9 @@ async function updateTheme() {
     logMessage_Error("更新主题失败:", e);
     // showModalAlert(`更新失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: `更新失败: ${e.message}`,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -21288,9 +21447,9 @@ function showCreateUserModal() {
       if (!inputUsername || !inputPassword) {
         // showModalAlert("账号和密码均不能为空");
         Swal.fire({
-          title: '错误',
+          title: "错误",
           text: "账号和密码均不能为空",
-          icon: 'error'
+          icon: "error",
         });
         return;
       }
@@ -21299,9 +21458,9 @@ function showCreateUserModal() {
       if (!inputPassword || inputPassword.length < 6) {
         // showModalAlert("密码长度至少为6个字符", "错误");
         Swal.fire({
-          title: '错误',
+          title: "错误",
           text: "密码长度至少为6个字符",
-          icon: 'error'
+          icon: "error",
         });
         return;
       }
@@ -21310,9 +21469,9 @@ function showCreateUserModal() {
       if (inputPhone && !/^1[3-9]\d{9}$/.test(inputPhone)) {
         // showModalAlert("请输入正确的手机号格式", "错误");
         Swal.fire({
-          title: '错误',
+          title: "错误",
           text: "请输入正确的手机号格式",
-          icon: 'error'
+          icon: "error",
         });
         return;
       }
@@ -21367,9 +21526,9 @@ function showCreateUserModal() {
           // ===== 创建成功 =====
           // showModalAlert("用户创建成功！");
           Swal.fire({
-            title: '成功',
+            title: "成功",
             text: "用户创建成功！",
-            icon: 'success'
+            icon: "success",
           });
 
           // 关闭创建用户模态框
@@ -21410,9 +21569,9 @@ function showCreateUserModal() {
           // ===== 创建失败 =====
           // showModalAlert(`创建失败: ${result.message || "未知错误"}`);
           Swal.fire({
-            title: '错误',
+            title: "错误",
             text: `创建失败: ${result.message || "未知错误"}`,
-            icon: 'error'
+            icon: "error",
           });
         }
       } catch (e) {
@@ -21420,9 +21579,9 @@ function showCreateUserModal() {
         // 捕获网络错误、解析错误等异常
         // showModalAlert(`创建时发生错误: ${e.message}`);
         Swal.fire({
-          title: '错误',
+          title: "错误",
           text: `创建时发生错误: ${e.message}`,
-          icon: 'error'
+          icon: "error",
         });
         logMessage_Error("创建用户时发生错误:", e);
       } finally {
@@ -21738,9 +21897,9 @@ async function submitSchoolAccount() {
   ) {
     // showModalAlert("表单元素不完整，无法提交", "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "表单元素不完整，无法提交",
-      icon: 'error'
+      icon: "error",
     });
     return;
   }
@@ -21753,9 +21912,9 @@ async function submitSchoolAccount() {
   if (!authUsername) {
     // showModalAlert("认证用户名不能为空", "验证失败");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "认证用户名不能为空",
-      icon: 'error'
+      icon: "error",
     });
     return;
   }
@@ -21763,9 +21922,9 @@ async function submitSchoolAccount() {
   if (!schoolUsername) {
     // showModalAlert("学校账号用户名不能为空", "验证失败");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "学校账号用户名不能为空",
-      icon: 'error'
+      icon: "error",
     });
     schoolUsernameInput.focus();
     return;
@@ -21774,9 +21933,9 @@ async function submitSchoolAccount() {
   if (!password) {
     // showModalAlert("密码不能为空", "验证失败");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "密码不能为空",
-      icon: 'error'
+      icon: "error",
     });
     passwordInput.focus();
     return;
@@ -21803,9 +21962,9 @@ async function submitSchoolAccount() {
       //   "成功"
       // );
       Swal.fire({
-        title: '成功',
+        title: "成功",
         text: originalUsername ? "学校账号更新成功" : "学校账号添加成功",
-        icon: 'success'
+        icon: "success",
       });
       closeEditSchoolAccountModal();
 
@@ -21821,18 +21980,18 @@ async function submitSchoolAccount() {
     } else {
       // showModalAlert(result.message || "保存失败", "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: result.message || "保存失败",
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (error) {
     logMessage_Error("保存 School Account 失败:", error);
     // showModalAlert("保存失败，请检查网络连接: " + error.message, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "保存失败，请检查网络连接: " + error.message,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -21858,25 +22017,25 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
     if (result.success) {
       // showModalAlert("学校账号删除成功", "成功");
       Swal.fire({
-        title: '成功',
+        title: "成功",
         text: "学校账号删除成功",
       });
       loadSchoolAccounts();
     } else {
       // showModalAlert(result.message || "删除失败", "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: result.message || "删除失败",
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (error) {
     logMessage_Error("删除 School Account 失败:", error);
     // showModalAlert("删除失败，请检查网络连接: " + error.message, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "删除失败，请检查网络连接: " + error.message,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -21901,9 +22060,9 @@ async function submitCreateGroup() {
   if (!groupKey || !nameInput) {
     // showModalAlert("请填写权限组键名和名称", "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "请填写权限组键名和名称",
-      icon: 'error'
+      icon: "error",
     });
     return;
   }
@@ -21938,26 +22097,26 @@ async function submitCreateGroup() {
     if (result.success) {
       // showModalAlert(`权限组 ${groupName} 创建成功`, "成功");
       Swal.fire({
-        title: '成功',
+        title: "成功",
         text: `权限组 ${groupName} 创建成功`,
-        icon: 'success'
+        icon: "success",
       });
       closeCreateGroupModal();
       loadAdminGroups();
     } else {
       // showModalAlert(result.message || "创建失败", "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: result.message || "创建失败",
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (e) {
     // showModalAlert("操作失败: " + e.message, "错误");
     Swal.fire({
-      title: '错误',
+      title: "错误",
       text: "操作失败: " + e.message,
-      icon: 'error'
+      icon: "error",
     });
   }
 }
@@ -22219,9 +22378,9 @@ async function updateUserGroup(username, newGroup) {
     } else {
       // showModalAlert(`更新失败: ${result.message}`, "操作失败");
       Swal.fire({
-        title: '操作失败',
+        title: "操作失败",
         text: `更新失败: ${result.message}`,
-        icon: 'error'
+        icon: "error",
       });
       // [修正] 等待PC端列表刷新完成后，同步到移动端，实现回退效果
       await loadAdminUsers();
@@ -22233,9 +22392,9 @@ async function updateUserGroup(username, newGroup) {
   } catch (e) {
     // showModalAlert(`更新失败: ${e.message}`, "网络错误");
     Swal.fire({
-      title: '网络失败',
+      title: "网络失败",
       text: `更新失败: ${e.message}`,
-      icon: 'error'
+      icon: "error",
     });
     // [修正] 等待PC端列表刷新完成后，同步到移动端，实现回退效果
     await loadAdminUsers();
@@ -22271,9 +22430,9 @@ async function banUser(username) {
       // showModalAlert(`用户 ${username} 已被封禁`, "成功");
       // showModalAlert(`用户usernameusername} 已被封禁`, "成功");
       Swal.fire({
-        title: '成功',
+        title: "成功",
         text: `用户 ${username} 已被封禁`,
-        icon: 'success'
+        icon: "success",
       });
 
       // [修正] 统一调用一次刷新，避免并发竞争导致头像丢失
@@ -22290,9 +22449,9 @@ async function banUser(username) {
     } else {
       // showModalAlert(result.message || "封禁失败", "错误");
       Swal.fire({
-        title: '错误',
+        title: "错误",
         text: result.message || "封禁失败",
-        icon: 'error'
+        icon: "error",
       });
     }
   } catch (e) {
@@ -22781,25 +22940,25 @@ async function updateAvailableRuns(username, newRuns) {
 
 /**
  * 显示指定用户的学校账户列表（PC端管理界面）
- * 
+ *
  * 功能说明：
  * - 从服务器获取指定认证用户（auth user）的所有学校账号（school accounts）
  * - 在模态框中显示账号列表，包含用户名、密码、User-Agent等信息
  * - 提供编辑、删除、查看详情等操作按钮
- * 
+ *
  * 安全特性：
  * - 输入验证：验证username参数的合法性
  * - XSS防护：使用escapeHtml()转义所有用户输入
  * - 超时控制：设置10秒请求超时，防止无限等待
  * - 错误处理：完整的try-catch处理网络和解析错误
- * 
+ *
  * @param {string} username - 目标认证用户名（auth username）
  * @returns {Promise<void>}
- * 
+ *
  * 调用场景：
  * - 管理员点击"管理学校账户"按钮
  * - 需要查看或管理某个用户的学校账号信息
- * 
+ *
  * 权限要求：
  * - 需要manage_users权限（后端验证）
  * - 会话必须有效（sessionUUID存在且有效）
@@ -22814,14 +22973,17 @@ async function showUserSchoolAccounts(username) {
       showModalAlert("用户名不能为空", "参数错误");
       return;
     }
-    
+
     // 检查2：确保username是字符串类型
     if (typeof username !== "string") {
-      console.error("[学校账户管理] 参数错误：username不是字符串类型", typeof username);
+      console.error(
+        "[学校账户管理] 参数错误：username不是字符串类型",
+        typeof username
+      );
       showModalAlert("用户名格式错误", "参数错误");
       return;
     }
-    
+
     // 检查3：验证username长度（防止超长输入）
     // 与后端MAX_USERNAME_LENGTH保持一致（200字符）
     const MAX_USERNAME_LENGTH = 200;
@@ -22835,42 +22997,38 @@ async function showUserSchoolAccounts(username) {
       );
       return;
     }
-    
+
     // 检查4：验证username格式（只允许字母、数字、下划线、连字符、点和@）
     // 与后端USERNAME_PATTERN正则保持一致
     // 注意：连字符在字符类中需要转义或放在开头/结尾
     const USERNAME_PATTERN = /^[a-zA-Z0-9_\-.@]+$/;
     if (!USERNAME_PATTERN.test(username)) {
-      console.error(
-        "[学校账户管理] 参数错误：username包含非法字符",
-        username
-      );
+      console.error("[学校账户管理] 参数错误：username包含非法字符", username);
       showModalAlert(
         "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号",
         "参数错误"
       );
       return;
     }
-    
+
     // 检查5：验证会话ID是否存在
     if (!sessionUUID) {
       console.error("[学校账户管理] 会话错误：sessionUUID不存在");
       showModalAlert("会话已过期，请重新登录", "会话错误");
       return;
     }
-    
+
     // 输入验证通过，记录调试日志
     console.log(
       `[学校账户管理] 开始加载用户账户：${username}（长度：${username.length}）`
     );
-    
   } catch (validationError) {
     // 输入验证本身发生异常（理论上不应该发生，但做好防护）
     console.error("[学校账户管理] 输入验证异常：", validationError);
     showModalAlert("输入验证失败，请稍后重试", "错误");
     return;
   }
-  
+
   // ========== 步骤2：发起API请求（添加超时控制）==========
   try {
     // 创建AbortController用于实现请求超时
@@ -22880,7 +23038,7 @@ async function showUserSchoolAccounts(username) {
       controller.abort();
       console.warn("[学校账户管理] 请求超时，已自动取消");
     }, 10000); // 10秒超时
-    
+
     // 发送GET请求到后端API
     // 使用encodeURIComponent编码username，防止特殊字符导致URL解析错误
     const response = await fetch(
@@ -22895,10 +23053,10 @@ async function showUserSchoolAccounts(username) {
         signal: controller.signal, // 绑定AbortController，支持超时取消
       }
     );
-    
+
     // 请求成功，清除超时定时器
     clearTimeout(timeoutId);
-    
+
     // 检查HTTP状态码
     // 注意：fetch只在网络错误时抛出异常，HTTP 4xx/5xx不会抛异常
     if (!response.ok) {
@@ -22907,7 +23065,7 @@ async function showUserSchoolAccounts(username) {
         `[学校账户管理] HTTP请求失败：状态码 ${response.status}`,
         response.statusText
       );
-      
+
       // 根据状态码给出更友好的错误提示
       let errorMessage = "加载失败";
       if (response.status === 401) {
@@ -22919,7 +23077,7 @@ async function showUserSchoolAccounts(username) {
       } else if (response.status >= 500) {
         errorMessage = "服务器错误，请稍后重试";
       }
-      
+
       showModalAlert(errorMessage, "错误");
       return;
     }
@@ -22944,7 +23102,7 @@ async function showUserSchoolAccounts(username) {
       showModalAlert("服务器返回了格式错误的数据", "数据错误");
       return;
     }
-    
+
     // 检查操作是否成功
     if (!result.success) {
       // 服务器返回失败状态
@@ -22957,17 +23115,20 @@ async function showUserSchoolAccounts(username) {
     // ========== 步骤5：提取账户数据并验证 ==========
     // 从响应中获取accounts字段，如果不存在则使用空对象
     const accounts = result.accounts || {};
-    
+
     // 验证accounts是否为对象类型
     if (typeof accounts !== "object" || Array.isArray(accounts)) {
-      console.error("[学校账户管理] 数据格式错误：accounts不是对象", typeof accounts);
+      console.error(
+        "[学校账户管理] 数据格式错误：accounts不是对象",
+        typeof accounts
+      );
       showModalAlert("账户数据格式错误", "数据错误");
       return;
     }
-    
+
     // 计算账户数量
     const accountCount = Object.keys(accounts).length;
-    
+
     // 记录成功日志
     console.log(
       `[学校账户管理] 成功加载 ${accountCount} 个学校账户（用户：${username}）`
@@ -22978,28 +23139,28 @@ async function showUserSchoolAccounts(username) {
     // textContent会自动转义HTML标签，安全性更高
     const usernameElement = $("school-accounts-username");
     const countElement = $("school-accounts-count");
-    
+
     // 验证DOM元素是否存在
     if (!usernameElement || !countElement) {
       console.error("[学校账户管理] DOM元素不存在");
       showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
       return;
     }
-    
+
     // 安全地设置用户名和账户数量
     usernameElement.textContent = username;
     countElement.textContent = accountCount;
-    
+
     // ========== 步骤7：渲染账户列表 ==========
     const listContainer = $("school-accounts-list");
-    
+
     // 验证列表容器是否存在
     if (!listContainer) {
       console.error("[学校账户管理] 列表容器元素不存在");
       showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
       return;
     }
-    
+
     // 情况1：没有账户，显示空状态提示
     if (accountCount === 0) {
       // 使用innerHTML是安全的，因为这是静态HTML，不包含用户输入
@@ -23009,10 +23170,10 @@ async function showUserSchoolAccounts(username) {
       showModal("manage-school-accounts-modal");
       return; // 提前返回，不需要后续渲染
     }
-    
+
     // 情况2：有账户，逐个渲染账户卡片
     let html = ""; // 累积HTML字符串
-    
+
     // 遍历所有账户，生成HTML
     for (const [schoolUsername, accountData] of Object.entries(accounts)) {
       // [安全检查] 验证schoolUsername和accountData的有效性
@@ -23021,16 +23182,18 @@ async function showUserSchoolAccounts(username) {
         console.warn("[学校账户管理] 跳过无效的学校账户名：", schoolUsername);
         continue; // 跳过这个无效账户
       }
-      
+
       // ========== 提取账户信息（兼容新旧格式）==========
       let password = "";
       let ua = "";
-      
+
       // 旧格式：accountData是字符串（仅包含密码）
       if (typeof accountData === "string") {
         password = accountData;
-        console.log(`[学校账户管理] 账户 ${schoolUsername} 使用旧格式（仅密码）`);
-      } 
+        console.log(
+          `[学校账户管理] 账户 ${schoolUsername} 使用旧格式（仅密码）`
+        );
+      }
       // 新格式：accountData是对象（包含password和ua字段）
       else if (typeof accountData === "object" && accountData !== null) {
         password = accountData.password || "";
@@ -23038,7 +23201,7 @@ async function showUserSchoolAccounts(username) {
         console.log(
           `[学校账户管理] 账户 ${schoolUsername} 使用新格式（password + ua）`
         );
-      } 
+      }
       // 未知格式：记录警告并跳过
       else {
         console.warn(
@@ -23052,10 +23215,10 @@ async function showUserSchoolAccounts(username) {
       // 将账户数据打包成JSON字符串，用于存储在HTML的data属性中
       // 后续按钮点击时会解析这个JSON并传递给处理函数
       const accountDataJson = JSON.stringify({
-        authUsername: username,        // 认证用户名
+        authUsername: username, // 认证用户名
         schoolUsername: schoolUsername, // 学校账号用户名
-        password: password,             // 密码
-        ua: ua,                         // User-Agent
+        password: password, // 密码
+        ua: ua, // User-Agent
       });
 
       // ========== 生成账户卡片HTML（使用模板字符串）==========
@@ -23187,21 +23350,23 @@ async function showUserSchoolAccounts(username) {
     // 使用innerHTML是必要的，因为需要插入HTML结构
     // 安全性已经通过escapeHtml()确保
     listContainer.innerHTML = html;
-    
+
     // 记录渲染成功日志
     console.log(`[学校账户管理] 成功渲染 ${accountCount} 个账户卡片`);
-    
   } catch (error) {
     // ========== 异常处理（捕获所有未预期的错误）==========
     // 区分不同类型的错误并给出友好提示
     console.error("[学校账户管理] 发生异常：", error);
-    
+
     let errorMessage = "加载失败，请稍后重试";
-    
+
     // 网络错误（无法连接到服务器）
-    if (error.name === "NetworkError" || error.message.includes("Failed to fetch")) {
+    if (
+      error.name === "NetworkError" ||
+      error.message.includes("Failed to fetch")
+    ) {
       errorMessage = "网络连接失败，请检查网络后重试";
-    } 
+    }
     // 请求超时（AbortController触发）
     else if (error.name === "AbortError") {
       errorMessage = "请求超时，请稍后重试";
@@ -23210,10 +23375,10 @@ async function showUserSchoolAccounts(username) {
     else if (error.name === "SyntaxError") {
       errorMessage = "服务器返回了无效的数据格式";
     }
-    
+
     showModalAlert(errorMessage, "错误");
   }
-  
+
   // ========== 最后：显示模态框 ==========
   // 在所有数据加载和渲染完成后，显示包含账户列表的模态框
   // 这样用户看到的是完整渲染好的内容，不会看到加载过程
@@ -23523,19 +23688,19 @@ function closeMobileUserSchoolAccountsModal() {
   // 步骤1：通过DOM API获取模态框元素
   // 使用document.getElementById而不是$()工具函数，确保在任何情况下都能获取到元素
   const modal = document.getElementById("mobile-user-school-accounts-modal");
-  
+
   // 步骤2：检查模态框元素是否存在
   // 如果元素不存在（例如尚未创建或已被删除），直接返回，避免后续操作出错
   if (!modal) {
     console.warn("[移动端学校账户管理] 模态框元素未找到，无法关闭");
     return;
   }
-  
+
   // 步骤3：移除"show"类，触发CSS过渡动画
   // "show"类用于控制模态框的显示状态（通过CSS的opacity和transform属性）
   // 移除该类会触发淡出和下滑动画，提供更好的用户体验
   modal.classList.remove("show");
-  
+
   // 步骤4：延迟添加"hidden"类，等待CSS过渡动画完成
   // 延迟时间300ms与CSS transition的持续时间保持一致
   // 这样可以确保用户看到完整的关闭动画，然后才将模态框从文档流中移除
@@ -23544,12 +23709,12 @@ function closeMobileUserSchoolAccountsModal() {
     // 添加"hidden"类，将模态框的display属性设置为none
     // 这会将模态框从文档流中完全移除，释放页面空间
     modal.classList.add("hidden");
-    
+
     // 输出日志，便于调试和追踪模态框的关闭操作
     // 日志在动画完成后输出，表示模态框已完全关闭
     console.log("[移动端学校账户管理] 模态框已关闭（动画完成）");
   }, 300); // 300ms延迟，与CSS过渡动画时长匹配
-  
+
   // 立即输出日志，表示关闭操作已开始
   console.log("[移动端学校账户管理] 开始关闭模态框（触发动画）");
 }
@@ -23982,7 +24147,10 @@ async function showMobileUserSchoolAccounts(username) {
                     
                       <button 
                         class="py-1 px-2 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[36px]" 
-                        data-account='${accountDataJson.replace(/'/g, "&apos;")}'
+                        data-account='${accountDataJson.replace(
+                          /'/g,
+                          "&apos;"
+                        )}'
                         onclick="(function(btn) { 
                           const data = JSON.parse(btn.getAttribute('data-account')); 
                           mobileEditSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); 
@@ -25295,11 +25463,15 @@ async function loadMessages() {
                 }
               </div>
               <!-- 留言内容 (支持 Markdown 渲染) -->
-              <!-- <div id="message-md-${msg.id}" class="text-slate-700 break-words pl-15 message-markdown">${escapeHtml(
-                // 放一个占位，实际HTML由后续脚本替换
-                msg.content
-              )}</div> -->
-              <div id="message-md-${msg.id}" class="text-slate-700 break-words pl-15 message-markdown" style="padding-top: 0px;margin-top: 0px;"></div>
+              <!-- <div id="message-md-${
+                msg.id
+              }" class="text-slate-700 break-words pl-15 message-markdown">${escapeHtml(
+          // 放一个占位，实际HTML由后续脚本替换
+          msg.content
+        )}</div> -->
+              <div id="message-md-${
+                msg.id
+              }" class="text-slate-700 break-words pl-15 message-markdown" style="padding-top: 0px;margin-top: 0px;"></div>
             </div>
           `;
       })
@@ -25316,24 +25488,25 @@ async function loadMessages() {
         // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
         if (window.editormd && typeof editormd.markdownToHTML === "function") {
           try {
-            id.innerHTML = "<link rel=\"stylesheet\" href=\"/editor.md/css/editormd.css\" /> <link rel=\"stylesheet\" href=\"/editor.md/css/editormd.preview.css\" />";
+            id.innerHTML =
+              '<link rel="stylesheet" href="/editor.md/css/editormd.css" /> <link rel="stylesheet" href="/editor.md/css/editormd.preview.css" />';
             // editormd.markdownToHTML 会替换指定容器内容
             // 我们传入 markdown 字符串并禁止 htmlDecode 以防注入
             editormd.markdownToHTML(id, {
               markdown: m.content || "",
-                htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
-                // htmlDecode: "style,iframe,image,div,p,br,hr,strong,em,span,blockquote,q,cite,code,pre",  // 允许解析的 HTML 标签
-                htmlDecode: "style,iframe,image",
-                toc: false,             // 是否生成目录
-                tocContainer: "", // 自定义 ToC 容器层
-                gfm             : true,        // 是否使用 GitHub Flavored Markdown
-                tocDropdown     : false,     // 是否启用目录下拉菜单
-                markdownSourceCode: false, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
-                emoji: true,
-                taskList: true,
-                tex: true,  // 默认不解析
-                flowChart: false,  // 默认不解析
-                sequenceDiagram: true,  // 默认不解析
+              htmlDecode: true, // 开启 HTML 标签解析，为了安全性，默认不开启
+              // htmlDecode: "style,iframe,image,div,p,br,hr,strong,em,span,blockquote,q,cite,code,pre",  // 允许解析的 HTML 标签
+              htmlDecode: "style,iframe,image",
+              toc: false, // 是否生成目录
+              tocContainer: "", // 自定义 ToC 容器层
+              gfm: true, // 是否使用 GitHub Flavored Markdown
+              tocDropdown: false, // 是否启用目录下拉菜单
+              markdownSourceCode: false, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
+              emoji: true,
+              taskList: true,
+              tex: true, // 默认不解析
+              flowChart: false, // 默认不解析
+              sequenceDiagram: true, // 默认不解析
             });
             return;
           } catch (e) {
@@ -25342,8 +25515,10 @@ async function loadMessages() {
         }
 
         // 最后回退：以转义文本并保留换行展示
-        container.innerHTML = escapeHtml(m.content || "").replace(/\n/g, "<br>");
-
+        container.innerHTML = escapeHtml(m.content || "").replace(
+          /\n/g,
+          "<br>"
+        );
       });
     })(messages);
   } catch (e) {
@@ -25413,18 +25588,25 @@ async function postMessage() {
 
     if (result.success) {
       try {
-        if (typeof messageEditor !== 'undefined' && messageEditor && typeof messageEditor.clear === 'function') {
+        if (
+          typeof messageEditor !== "undefined" &&
+          messageEditor &&
+          typeof messageEditor.clear === "function"
+        ) {
           messageEditor.clear();
         } else if (contentInput) {
           contentInput.value = "";
         }
         // 兼容性：确保可能存在的 textarea 值也被清空
         try {
-          const ta = document.querySelector('#message-editor textarea.editormd-markdown-textarea') || document.querySelector('textarea[name="message-content"]');
-          if (ta) ta.value = '';
+          const ta =
+            document.querySelector(
+              "#message-editor textarea.editormd-markdown-textarea"
+            ) || document.querySelector('textarea[name="message-content"]');
+          if (ta) ta.value = "";
         } catch (e) {}
       } catch (e) {
-        console.warn('清空留言编辑器失败:', e);
+        console.warn("清空留言编辑器失败:", e);
       }
 
       if (nicknameInput) nicknameInput.value = "";
@@ -31323,10 +31505,12 @@ async function multi_loadAllFromConfig() {
   // const result = await callPythonAPI("multi_load_accounts_from_config");
 
   const result = await callPythonAPI_raw(
-            "/api/multi_load_accounts_from_config",
-            "POST", {
-                auth_username: currentAuthUsername
-            })
+    "/api/multi_load_accounts_from_config",
+    "POST",
+    {
+      auth_username: currentAuthUsername,
+    }
+  );
 
   if (result && result.accounts) {
     if (sessionUUID && currentAuthUsername) {
@@ -31355,7 +31539,11 @@ async function multi_loadAllFromConfig() {
                 // [安全修复] 只处理字符串密码，防止XSS和对象注入攻击
                 if (typeof accountData === "string") {
                   // [安全修复] 使用统一的安全常量验证密码长度
-                  if (accountData.length > 0 && accountData.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
+                  if (
+                    accountData.length > 0 &&
+                    accountData.length <=
+                      SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH
+                  ) {
                     account.password = accountData;
                     updatedCount++;
                   }
@@ -31368,7 +31556,8 @@ async function multi_loadAllFromConfig() {
                     accountData.hasOwnProperty("password") &&
                     typeof accountData.password === "string" &&
                     accountData.password.length > 0 &&
-                    accountData.password.length <= SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH
+                    accountData.password.length <=
+                      SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH
                   ) {
                     account.password = accountData.password;
                   }
@@ -31443,8 +31632,14 @@ function openMissingPasswordModal(missingList) {
   const modal = $("missing-password-modal");
   if (!modal) {
     const missingAccount = missingAccountsQueue[0];
-    showModalAlert(`检测到 ${missingAccountsQueue.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`, "提示");
-    openMultiAddUserModalForPassword(missingAccount.username, missingAccount.tag);
+    showModalAlert(
+      `检测到 ${missingAccountsQueue.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`,
+      "提示"
+    );
+    openMultiAddUserModalForPassword(
+      missingAccount.username,
+      missingAccount.tag
+    );
     return;
   }
 
@@ -31452,26 +31647,29 @@ function openMissingPasswordModal(missingList) {
   const btnSkip = $("missing-pass-skip-btn");
   const btnAbort = $("missing-pass-abort-btn");
 
-  if (btnComplete) btnComplete.onclick = () => {
-    const cur = missingAccountsQueue[missingCurrentIndex];
-    closeMissingPasswordModal();
-    if (cur) openMultiAddUserModalForPassword(cur.username, cur.tag);
-  };
-
-  if (btnSkip) btnSkip.onclick = () => {
-    missingCurrentIndex += 1;
-    if (missingCurrentIndex >= missingAccountsQueue.length) {
+  if (btnComplete)
+    btnComplete.onclick = () => {
+      const cur = missingAccountsQueue[missingCurrentIndex];
       closeMissingPasswordModal();
-    } else {
-      showMissingCurrent();
-    }
-  };
+      if (cur) openMultiAddUserModalForPassword(cur.username, cur.tag);
+    };
 
-  if (btnAbort) btnAbort.onclick = () => {
-    missingAccountsQueue = [];
-    missingCurrentIndex = 0;
-    closeMissingPasswordModal();
-  };
+  if (btnSkip)
+    btnSkip.onclick = () => {
+      missingCurrentIndex += 1;
+      if (missingCurrentIndex >= missingAccountsQueue.length) {
+        closeMissingPasswordModal();
+      } else {
+        showMissingCurrent();
+      }
+    };
+
+  if (btnAbort)
+    btnAbort.onclick = () => {
+      missingAccountsQueue = [];
+      missingCurrentIndex = 0;
+      closeMissingPasswordModal();
+    };
 
   modal.classList.remove("hidden");
   modal.classList.add("flex");
@@ -31483,7 +31681,9 @@ function showMissingCurrent() {
   const total = missingAccountsQueue.length;
   const msgEl = $("missing-password-message");
   if (msgEl && cur) {
-    msgEl.innerHTML = `检测到 ${total} 个账号缺少密码。<br>当前 (${missingCurrentIndex + 1}/${total}): <strong>${cur.username}</strong>`;
+    msgEl.innerHTML = `检测到 ${total} 个账号缺少密码。<br>当前 (${
+      missingCurrentIndex + 1
+    }/${total}): <strong>${cur.username}</strong>`;
   }
 }
 
@@ -31702,7 +31902,9 @@ function openMultiAddUserModal() {
 
   const modal = $("multi-add-user-modal");
   const passwordInput = $("multi-add-password");
-  const passwordLabel = document.querySelector('label[for="multi-add-password"]');
+  const passwordLabel = document.querySelector(
+    'label[for="multi-add-password"]'
+  );
 
   // 如果是从配置按钮进入，密码改为可选并更新占位提示
   if (multiAddModalSource === "from-config") {
@@ -31718,7 +31920,9 @@ function openMultiAddUserModal() {
 function closeMultiAddUserModal() {
   const usernameInput = $("multi-add-username");
   const passwordInput = $("multi-add-password");
-  const passwordLabel = document.querySelector('label[for="multi-add-password"]');
+  const passwordLabel = document.querySelector(
+    'label[for="multi-add-password"]'
+  );
   if (usernameInput) {
     usernameInput.readOnly = false;
     usernameInput.classList.remove("bg-slate-100", "cursor-not-allowed");
@@ -31852,8 +32056,9 @@ async function submitMultiAddUser() {
   const passwordVal = inputPassword.value;
   const tagVal = inputTag.value.trim();
   const allowEmptyPassword =
-    typeof multiAddModalSource !== "undefined" && multiAddModalSource === "from-config";
-  
+    typeof multiAddModalSource !== "undefined" &&
+    multiAddModalSource === "from-config";
+
   // 基本验证：用户名不能为空；密码可在特定来源为空
   if (!usernameVal) {
     showModalAlert("账号不能为空");
@@ -31863,37 +32068,52 @@ async function submitMultiAddUser() {
     showModalAlert("密码不能为空");
     return;
   }
-  
+
   // [安全修复] 使用统一的安全常量验证用户名长度
   if (usernameVal.length > SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH) {
-    showModalAlert(`用户名过长（最多${SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH}个字符）`, "错误");
+    showModalAlert(
+      `用户名过长（最多${SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH}个字符）`,
+      "错误"
+    );
     return;
   }
-  
+
   // [安全修复] 使用统一的正则表达式验证用户名格式
   if (!SECURITY_CONSTRAINTS.USERNAME_PATTERN.test(usernameVal)) {
-    showModalAlert("用户名只能包含字母、数字、下划线、连字符、点和@符号", "错误");
+    showModalAlert(
+      "用户名只能包含字母、数字、下划线、连字符、点和@符号",
+      "错误"
+    );
     return;
   }
-  
+
   // [安全修复] 使用统一的安全常量验证密码长度范围（当密码非空或必须提供时）
   if (!allowEmptyPassword || passwordVal.length > 0) {
     if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
-      showModalAlert(`密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`, "错误");
+      showModalAlert(
+        `密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`,
+        "错误"
+      );
       return;
     }
     if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
-      showModalAlert(`密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`, "错误");
+      showModalAlert(
+        `密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`,
+        "错误"
+      );
       return;
     }
   }
-  
+
   // [安全修复] 使用统一的安全常量验证标签长度
   if (tagVal.length > SECURITY_CONSTRAINTS.MAX_TAG_LENGTH) {
-    showModalAlert(`标签过长（最多${SECURITY_CONSTRAINTS.MAX_TAG_LENGTH}个字符）`, "错误");
+    showModalAlert(
+      `标签过长（最多${SECURITY_CONSTRAINTS.MAX_TAG_LENGTH}个字符）`,
+      "错误"
+    );
     return;
   }
-  
+
   setButtonLoading("multi-add-user-confirm", true, "添加中...");
   try {
     const result = await callPythonAPI(
@@ -39587,7 +39807,7 @@ async function loadSystemConfig() {
  *
  * @returns {Promise<void>} 无返回值
  */
-async function loadCaptchaSettings(ShowSwalFire=true) {
+async function loadCaptchaSettings(ShowSwalFire = true) {
   try {
     // 步骤1：记录开始加载的日志，便于调试和追踪
     console.log(
@@ -39650,14 +39870,15 @@ async function loadCaptchaSettings(ShowSwalFire=true) {
 
       // 步骤10：显示成功提示（可选，避免过多打扰用户）
       // 使用Swal.fire显示简短的成功提示，2秒后自动关闭
-      if (ShowSwalFire){
-      Swal.fire({
-        icon: "success", // 成功图标（绿色对号）
-        title: "加载成功", // 标题
-        text: "验证码配置已加载", // 提示文本
-        timer: 1500, // 1.5秒后自动关闭
-        showConfirmButton: false, // 不显示确认按钮，自动关闭
-      });}
+      if (ShowSwalFire) {
+        Swal.fire({
+          icon: "success", // 成功图标（绿色对号）
+          title: "加载成功", // 标题
+          text: "验证码配置已加载", // 提示文本
+          timer: 1500, // 1.5秒后自动关闭
+          showConfirmButton: false, // 不显示确认按钮，自动关闭
+        });
+      }
     } else {
       // 步骤11：处理API返回成功但没有配置数据的情况
       // 这通常表示配置文件不存在或格式错误
@@ -40270,8 +40491,15 @@ async function openReminderEditModal(reminderId = "") {
       // 动态加载 editormd CSS/JS（如果尚未加载）
       const loadOnce = (url, isCss) => {
         return new Promise((resolve, reject) => {
-          if (document.querySelector(isCss ? `link[href="${url}"]` : `script[src="${url}"]`)) return resolve();
-          const el = isCss ? document.createElement("link") : document.createElement("script");
+          if (
+            document.querySelector(
+              isCss ? `link[href="${url}"]` : `script[src="${url}"]`
+            )
+          )
+            return resolve();
+          const el = isCss
+            ? document.createElement("link")
+            : document.createElement("script");
           if (isCss) {
             el.rel = "stylesheet";
             el.href = url;
@@ -40280,7 +40508,8 @@ async function openReminderEditModal(reminderId = "") {
           }
           el.onload = () => resolve();
           el.onerror = (e) => reject(e);
-          if (isCss) document.head.appendChild(el); else document.body.appendChild(el);
+          if (isCss) document.head.appendChild(el);
+          else document.body.appendChild(el);
         });
       };
 
@@ -40293,212 +40522,215 @@ async function openReminderEditModal(reminderId = "") {
 
       if (window.editormd) {
         window.reminderEditor = editormd("reminder-editor", {
-        // ===== 基本配置 =====
-        // 编辑器模式：
-        // gfm：GitHub Flavored Markdown，与 Markdown 语法基本相同，但增加了一些扩展语法，如表格、任务列表等
-        // markdown：标准 Markdown 语法
-        mode: "gfm",
-        // 表单元素名称，用于提交表单时标识该编辑器
-        name: "reminder-message-field",
-        // CodeMirror 的值，如果模式不是 gfm/markdown（通常不需要设置，留空即可）
-        value: "",
-        // 编辑器主题，可选值：default（默认主题）, dark（暗色主题）
-        theme: "default",
-        // 编辑区域主题（代码编辑区域的样式），可选值包括：
-        // default, 3024-day, 3024-night, ambiance, ambiance-mobile, base16-dark, base16-light,
-        // blackboard, cobalt, eclipse, elegant, erlang-dark, lesser-dark, mbo, mdn-like,
-        // midnight, monokai, neat, neo, night, paraiso-dark, paraiso-light, pastel-on-dark,
-        // rubyblue, solarized, the-matrix, tomorrow-night-eighties, twilight, vibrant-ink,
-        // xq-dark, xq-light
-        editorTheme: "default",
-        // 预览区域主题，默认空表示使用默认主题，可选值：default（默认主题）, dark（暗色主题）
-        previewTheme: "default",
-        // Markdown 源代码（编辑器初始化时显示的内容，可以是预填的 Markdown 文本）
-        markdown: "",
-        // 如果初始化时 textarea 值不为空，则追加 markdown 到 textarea（通常用于追加内容到现有文本）
-        appendMarkdown: "",
-        // 编辑器宽度（支持百分比如"100%"或像素值如"800px"）
-        width: "auto",
-        // 编辑器高度（支持百分比如"100%"或像素值如"600px"）
-        height: "400px",
-        // 依赖模块文件目录（Editor.md 所需的文件路径，通常使用 CDN 地址）
-        path: "/editor.md/lib/",
-        // 插件路径，如果为空，默认使用 settings.path + "../plugins/"（插件存放目录）
-        pluginPath: "/editor.md/plugins/",
-        // 延迟解析 markdown 到 html，单位：毫秒（避免频繁解析，提升性能，默认300ms）
-        delay: 300,
-        // 自动加载依赖模块文件（推荐保持 true，确保所有功能正常工作）
-        autoLoadModules: true,
-        // ===== 编辑器行为配置 =====
-        // 监听模式（是否实时预览，true 为开启监听，false 为手动预览）
-        watch: true,
-        // 占位符文本（当编辑器为空时显示的提示文本，引导用户输入）
-        placeholder: "请输入提醒内容（支持 Markdown）",
-        // 启用/禁用 跳转到行功能（Ctrl+G 快捷键，快速跳转到指定行）
-        gotoLine: true,
-        // 代码折叠（是否允许折叠代码块，方便查看长代码）
-        codeFold: false,
-        // 自动高度（是否根据内容自动调整编辑器高度，true 时高度自适应）
-        autoHeight: false,
-        // 启用/禁用 自动聚焦编辑器左侧输入区域（页面加载后自动聚焦到编辑器）
-        autoFocus: true,
-        // 自动关闭标签（输入 < 时自动补全标签，提高 HTML 编写效率）
-        autoCloseTags: true,
-        // 启用/禁用 搜索和替换功能（CodeMirror 的搜索功能，Ctrl+F 激活）
-        searchReplace: true,
-        // 同步滚动选项：true（同步滚动）| false（不同步）| "single"（单向同步），默认 true
-        syncScrolling: true,
-        // 启用/禁用 只读模式（设为 true 后无法编辑，只能查看）
-        readOnly: false,
-        // 制表符大小（Tab 键缩进的空格数，通常设为 4）
-        tabSize: 4,
-        // 缩进单位（每次缩进的空格数，通常与 tabSize 保持一致）
-        indentUnit: 4,
-        // 显示编辑器行号（左侧显示行号，便于定位代码位置）
-        lineNumbers: true,
-        // 行换行（是否自动换行，true 时长行会自动换行）
-        lineWrapping: true,
-        // 自动关闭括号（输入左括号时自动补全右括号，支持 (), [], {}）
-        autoCloseBrackets: true,
-        // 显示尾随空格（显示行末的空格字符，帮助保持代码整洁）
-        showTrailingSpace: true,
-        // 匹配括号（高亮匹配的括号对，方便检查括号匹配）
-        matchBrackets: true,
-        // 使用制表符缩进（true 使用 Tab 字符，false 使用空格）
-        indentWithTabs: true,
-        // 样式化选中文本（选中的文本是否有特殊样式，如背景色）
-        styleSelectedText: true,
-        // 匹配单词高亮：true（高亮所有相同单词）| false（不高亮）| "onselected"（只在选中时高亮）
-        matchWordHighlight: true,
-        // 高亮当前行（当前行是否有背景色，方便定位）
-        styleActiveLine: true,
-        // ===== 对话框配置 =====
-        // 对话框锁定屏幕（对话框弹出时是否锁定背景，防止误操作）
-        dialogLockScreen: true,
-        // 对话框显示遮罩（是否显示半透明遮罩层）
-        dialogShowMask: true,
-        // 对话框可拖拽（对话框是否可以拖动位置）
-        dialogDraggable: true,
-        // 对话框遮罩背景色（遮罩的颜色，通常使用白色或半透明）
-        dialogMaskBgColor: "#fff",
-        // 对话框遮罩不透明度（0.0 到 1.0，控制遮罩透明度）
-        dialogMaskOpacity: 0.1,
-        // 字体大小（编辑器内文字的大小，影响可读性）
-        fontSize: "13px",
-        // 如果启用，编辑器将创建一个 <textarea> 标签保存 HTML 代码用于表单提交
-        saveHTMLToTextarea: true,
-        // 禁用的键映射（禁用某些快捷键，数组格式，如 ["Ctrl-B", "Ctrl-I"]）
-        disabledKeyMaps: [],
+          // ===== 基本配置 =====
+          // 编辑器模式：
+          // gfm：GitHub Flavored Markdown，与 Markdown 语法基本相同，但增加了一些扩展语法，如表格、任务列表等
+          // markdown：标准 Markdown 语法
+          mode: "gfm",
+          // 表单元素名称，用于提交表单时标识该编辑器
+          name: "reminder-message-field",
+          // CodeMirror 的值，如果模式不是 gfm/markdown（通常不需要设置，留空即可）
+          value: "",
+          // 编辑器主题，可选值：default（默认主题）, dark（暗色主题）
+          theme: "default",
+          // 编辑区域主题（代码编辑区域的样式），可选值包括：
+          // default, 3024-day, 3024-night, ambiance, ambiance-mobile, base16-dark, base16-light,
+          // blackboard, cobalt, eclipse, elegant, erlang-dark, lesser-dark, mbo, mdn-like,
+          // midnight, monokai, neat, neo, night, paraiso-dark, paraiso-light, pastel-on-dark,
+          // rubyblue, solarized, the-matrix, tomorrow-night-eighties, twilight, vibrant-ink,
+          // xq-dark, xq-light
+          editorTheme: "default",
+          // 预览区域主题，默认空表示使用默认主题，可选值：default（默认主题）, dark（暗色主题）
+          previewTheme: "default",
+          // Markdown 源代码（编辑器初始化时显示的内容，可以是预填的 Markdown 文本）
+          markdown: "",
+          // 如果初始化时 textarea 值不为空，则追加 markdown 到 textarea（通常用于追加内容到现有文本）
+          appendMarkdown: "",
+          // 编辑器宽度（支持百分比如"100%"或像素值如"800px"）
+          width: "auto",
+          // 编辑器高度（支持百分比如"100%"或像素值如"600px"）
+          height: "400px",
+          // 依赖模块文件目录（Editor.md 所需的文件路径，通常使用 CDN 地址）
+          path: "/editor.md/lib/",
+          // 插件路径，如果为空，默认使用 settings.path + "../plugins/"（插件存放目录）
+          pluginPath: "/editor.md/plugins/",
+          // 延迟解析 markdown 到 html，单位：毫秒（避免频繁解析，提升性能，默认300ms）
+          delay: 300,
+          // 自动加载依赖模块文件（推荐保持 true，确保所有功能正常工作）
+          autoLoadModules: true,
+          // ===== 编辑器行为配置 =====
+          // 监听模式（是否实时预览，true 为开启监听，false 为手动预览）
+          watch: true,
+          // 占位符文本（当编辑器为空时显示的提示文本，引导用户输入）
+          placeholder: "请输入提醒内容（支持 Markdown）",
+          // 启用/禁用 跳转到行功能（Ctrl+G 快捷键，快速跳转到指定行）
+          gotoLine: true,
+          // 代码折叠（是否允许折叠代码块，方便查看长代码）
+          codeFold: false,
+          // 自动高度（是否根据内容自动调整编辑器高度，true 时高度自适应）
+          autoHeight: false,
+          // 启用/禁用 自动聚焦编辑器左侧输入区域（页面加载后自动聚焦到编辑器）
+          autoFocus: true,
+          // 自动关闭标签（输入 < 时自动补全标签，提高 HTML 编写效率）
+          autoCloseTags: true,
+          // 启用/禁用 搜索和替换功能（CodeMirror 的搜索功能，Ctrl+F 激活）
+          searchReplace: true,
+          // 同步滚动选项：true（同步滚动）| false（不同步）| "single"（单向同步），默认 true
+          syncScrolling: true,
+          // 启用/禁用 只读模式（设为 true 后无法编辑，只能查看）
+          readOnly: false,
+          // 制表符大小（Tab 键缩进的空格数，通常设为 4）
+          tabSize: 4,
+          // 缩进单位（每次缩进的空格数，通常与 tabSize 保持一致）
+          indentUnit: 4,
+          // 显示编辑器行号（左侧显示行号，便于定位代码位置）
+          lineNumbers: true,
+          // 行换行（是否自动换行，true 时长行会自动换行）
+          lineWrapping: true,
+          // 自动关闭括号（输入左括号时自动补全右括号，支持 (), [], {}）
+          autoCloseBrackets: true,
+          // 显示尾随空格（显示行末的空格字符，帮助保持代码整洁）
+          showTrailingSpace: true,
+          // 匹配括号（高亮匹配的括号对，方便检查括号匹配）
+          matchBrackets: true,
+          // 使用制表符缩进（true 使用 Tab 字符，false 使用空格）
+          indentWithTabs: true,
+          // 样式化选中文本（选中的文本是否有特殊样式，如背景色）
+          styleSelectedText: true,
+          // 匹配单词高亮：true（高亮所有相同单词）| false（不高亮）| "onselected"（只在选中时高亮）
+          matchWordHighlight: true,
+          // 高亮当前行（当前行是否有背景色，方便定位）
+          styleActiveLine: true,
+          // ===== 对话框配置 =====
+          // 对话框锁定屏幕（对话框弹出时是否锁定背景，防止误操作）
+          dialogLockScreen: true,
+          // 对话框显示遮罩（是否显示半透明遮罩层）
+          dialogShowMask: true,
+          // 对话框可拖拽（对话框是否可以拖动位置）
+          dialogDraggable: true,
+          // 对话框遮罩背景色（遮罩的颜色，通常使用白色或半透明）
+          dialogMaskBgColor: "#fff",
+          // 对话框遮罩不透明度（0.0 到 1.0，控制遮罩透明度）
+          dialogMaskOpacity: 0.1,
+          // 字体大小（编辑器内文字的大小，影响可读性）
+          fontSize: "13px",
+          // 如果启用，编辑器将创建一个 <textarea> 标签保存 HTML 代码用于表单提交
+          saveHTMLToTextarea: true,
+          // 禁用的键映射（禁用某些快捷键，数组格式，如 ["Ctrl-B", "Ctrl-I"]）
+          disabledKeyMaps: [],
 
-        // ===== 事件回调函数 =====
-        // 加载完成回调（编辑器初始化完成后触发）
-        onload: function () { },
-        // 调整大小回调（编辑器大小改变时触发）
-        onresize: function () { },
-        // 内容改变回调（编辑器内容发生变化时触发）
-        onchange: function () { },
-        // 监听开始回调（开始监听模式时触发）
-        onwatch: null,
-        // 监听结束回调（结束监听模式时触发）
-        onunwatch: null,
-        // 预览中回调（正在生成预览时触发）
-        onpreviewing: function () { },
-        // 预览完成回调（预览生成完成后触发）
-        onpreviewed: function () { },
-        // 全屏回调（进入全屏模式时触发）
-        onfullscreen: function () {
-          // const reminder_editor = document.getElementById("reminder-editor");
-          // if (reminder_editor) {
-          //   reminder_editor.style.width = "100vw";
-          //   reminder_editor.style.height = "100vh";
-          // }
-         },
-        // 退出全屏回调（退出全屏模式时触发）
-        onfullscreenExit: function () { },
-        // 滚动回调（编辑器滚动时触发）
-        onscroll: function () { },
-        // 预览滚动回调（预览区域滚动时触发）
-        onpreviewscroll: function () { },
+          // ===== 事件回调函数 =====
+          // 加载完成回调（编辑器初始化完成后触发）
+          onload: function () {},
+          // 调整大小回调（编辑器大小改变时触发）
+          onresize: function () {},
+          // 内容改变回调（编辑器内容发生变化时触发）
+          onchange: function () {},
+          // 监听开始回调（开始监听模式时触发）
+          onwatch: null,
+          // 监听结束回调（结束监听模式时触发）
+          onunwatch: null,
+          // 预览中回调（正在生成预览时触发）
+          onpreviewing: function () {},
+          // 预览完成回调（预览生成完成后触发）
+          onpreviewed: function () {},
+          // 全屏回调（进入全屏模式时触发）
+          onfullscreen: function () {
+            // const reminder_editor = document.getElementById("reminder-editor");
+            // if (reminder_editor) {
+            //   reminder_editor.style.width = "100vw";
+            //   reminder_editor.style.height = "100vh";
+            // }
+          },
+          // 退出全屏回调（退出全屏模式时触发）
+          onfullscreenExit: function () {},
+          // 滚动回调（编辑器滚动时触发）
+          onscroll: function () {},
+          // 预览滚动回调（预览区域滚动时触发）
+          onpreviewscroll: function () {},
 
-        // ===== 图片上传配置 =====
-        // 启用/禁用 上传功能（是否允许上传图片到服务器）
-        imageUpload: true,
-        // 支持的图片格式（允许上传的图片文件类型数组）
-        imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
-        // 上传 URL（图片上传的服务器端点地址）
-        imageUploadURL: "/upload",
-        // 启用/禁用 跨域上传（是否支持跨域上传图片）
-        crossDomainUpload: false,
-        // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
-        // uploadCallbackURL: "",
+          // ===== 图片上传配置 =====
+          // 启用/禁用 上传功能（是否允许上传图片到服务器）
+          imageUpload: true,
+          // 支持的图片格式（允许上传的图片文件类型数组）
+          imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
+          // 上传 URL（图片上传的服务器端点地址）
+          imageUploadURL: "/upload",
+          // 启用/禁用 跨域上传（是否支持跨域上传图片）
+          crossDomainUpload: false,
+          // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
+          // uploadCallbackURL: "",
 
-        // ===== 目录和扩展功能配置 =====
-        // 启用/禁用 目录功能（是否自动生成文章目录）
-        toc: true,
-        // 使用 [TOCM]，自动创建目录下拉菜单（在标题前添加 [TOCM] 标记启用）
-        tocm: false,
-        // 目录下拉菜单按钮标题（下拉菜单的显示文本）
-        tocTitle: "",
-        // 启用/禁用 目录下拉菜单（是否显示目录下拉菜单按钮）
-        tocDropdown: false,
-        // 自定义目录容器选择器（目录插入的 DOM 元素选择器，默认插入编辑器内部）
-        tocContainer: "",
-        // 从 H1 开始创建目录（目录从哪一级标题开始生成，1表示H1，2表示H2）
-        tocStartLevel: 1,
-        // 打开 HTML 标签识别（是否解析和显示 HTML 标签）
-        htmlDecode: true,
-        // 启用解析分页符 [========]（是否支持分页符语法，用于分隔内容）
-        pageBreak: true,
-        // 启用 @链接功能（@用户名 自动转换为链接）
-        atLink: false,
-        // 邮箱地址自动链接（自动识别邮箱地址并转换为可点击链接）
-        emailLink: true,
-        // 启用 GitHub Flavored Markdown 任务列表（支持 - [ ] 任务列表语法）
-        taskList: true,
-        // 启用表情符号支持：
-        // :emoji: 支持 GitHub 表情、Twitter 表情 (Twemoji)
-        // :fa-xxx: 使用 FontAwesome 图标 web 字体
-        // :editormd-logo: :editormd-logo-1x: > 1~8x 支持 Editor.md logo 图标
-        emoji: true,
-        // 启用 TeX(LaTeX) 数学公式支持，基于 KaTeX 库
-        tex: true,
-        // 启用流程图支持（flowChart.js，只支持 IE9+，用于绘制流程图）
-        flowChart: true,
-        // 启用时序图支持（sequenceDiagram.js，只支持 IE9+，用于绘制时序图）
-        sequenceDiagram: true,
-        // 启用/禁用 编辑器预览区域代码高亮（预览区代码是否进行语法高亮）
-        previewCodeHighlight: true,
+          // ===== 目录和扩展功能配置 =====
+          // 启用/禁用 目录功能（是否自动生成文章目录）
+          toc: true,
+          // 使用 [TOCM]，自动创建目录下拉菜单（在标题前添加 [TOCM] 标记启用）
+          tocm: false,
+          // 目录下拉菜单按钮标题（下拉菜单的显示文本）
+          tocTitle: "",
+          // 启用/禁用 目录下拉菜单（是否显示目录下拉菜单按钮）
+          tocDropdown: false,
+          // 自定义目录容器选择器（目录插入的 DOM 元素选择器，默认插入编辑器内部）
+          tocContainer: "",
+          // 从 H1 开始创建目录（目录从哪一级标题开始生成，1表示H1，2表示H2）
+          tocStartLevel: 1,
+          // 打开 HTML 标签识别（是否解析和显示 HTML 标签）
+          htmlDecode: true,
+          // 启用解析分页符 [========]（是否支持分页符语法，用于分隔内容）
+          pageBreak: true,
+          // 启用 @链接功能（@用户名 自动转换为链接）
+          atLink: false,
+          // 邮箱地址自动链接（自动识别邮箱地址并转换为可点击链接）
+          emailLink: true,
+          // 启用 GitHub Flavored Markdown 任务列表（支持 - [ ] 任务列表语法）
+          taskList: true,
+          // 启用表情符号支持：
+          // :emoji: 支持 GitHub 表情、Twitter 表情 (Twemoji)
+          // :fa-xxx: 使用 FontAwesome 图标 web 字体
+          // :editormd-logo: :editormd-logo-1x: > 1~8x 支持 Editor.md logo 图标
+          emoji: true,
+          // 启用 TeX(LaTeX) 数学公式支持，基于 KaTeX 库
+          tex: true,
+          // 启用流程图支持（flowChart.js，只支持 IE9+，用于绘制流程图）
+          flowChart: true,
+          // 启用时序图支持（sequenceDiagram.js，只支持 IE9+，用于绘制时序图）
+          sequenceDiagram: true,
+          // 启用/禁用 编辑器预览区域代码高亮（预览区代码是否进行语法高亮）
+          previewCodeHighlight: true,
 
-        // ===== 工具栏配置 =====
-        // 显示或隐藏工具栏
-        toolbar: true,
-        // 窗口滚动时自动固定工具栏位置
-        toolbarAutoFixed: true,
-        // 工具栏图标模式：full（完整）| simple（简单）| mini（最小），参见 `editormd.toolbarModes` 属性
-        toolbarIcons: "full",
-        // 工具栏标题（自定义工具栏按钮的提示文本）
-        toolbarTitles: {},
-        // 工具栏处理程序（自定义工具栏按钮的点击事件）
-        toolbarHandlers: {},
-        // 使用 HTML 标签创建工具栏图标，未使用默认 <a> 标签（自定义工具栏图标的 HTML）
-        toolbarCustomIcons: {},
-        // 工具栏图标文本（自定义工具栏按钮的文本）
-        toolbarIconTexts: {},
-
-
-
-      });
+          // ===== 工具栏配置 =====
+          // 显示或隐藏工具栏
+          toolbar: true,
+          // 窗口滚动时自动固定工具栏位置
+          toolbarAutoFixed: true,
+          // 工具栏图标模式：full（完整）| simple（简单）| mini（最小），参见 `editormd.toolbarModes` 属性
+          toolbarIcons: "full",
+          // 工具栏标题（自定义工具栏按钮的提示文本）
+          toolbarTitles: {},
+          // 工具栏处理程序（自定义工具栏按钮的点击事件）
+          toolbarHandlers: {},
+          // 使用 HTML 标签创建工具栏图标，未使用默认 <a> 标签（自定义工具栏图标的 HTML）
+          toolbarCustomIcons: {},
+          // 工具栏图标文本（自定义工具栏按钮的文本）
+          toolbarIconTexts: {},
+        });
         window._reminderEditorInitialized = true;
 
-        if (reminderId=="-1") {
-          messageField.value = true
+        if (reminderId == "-1") {
+          messageField.value = true;
         }
         // 如果之前有值，确保编辑器同步
         if (messageField && messageField.value) {
           try {
-            if (window.reminderEditor && typeof window.reminderEditor.setMarkdown === "function") {
+            if (
+              window.reminderEditor &&
+              typeof window.reminderEditor.setMarkdown === "function"
+            ) {
               window.reminderEditor.setMarkdown(messageField.value);
-            } else if (window.reminderEditor && window.reminderEditor.codeMirror) {
+            } else if (
+              window.reminderEditor &&
+              window.reminderEditor.codeMirror
+            ) {
               window.reminderEditor.codeMirror.setValue(messageField.value);
             }
           } catch (e) {
@@ -40523,51 +40755,53 @@ async function openReminderEditModal(reminderId = "") {
       console.log("[定时提醒] 使用示例数据填充编辑器");
       idField.value = "example-001";
       titleField.value = "示例提醒标题";
-      messageField.value = '# 示例提醒内容\n这是一个定时提醒的**示例内容**，支持 _Markdown_ 语法。'
+      messageField.value =
+        "# 示例提醒内容\n这是一个定时提醒的**示例内容**，支持 _Markdown_ 语法。";
       startTimeField.value = "00:00";
       endTimeField.value = "00:00";
       enabledField.checked = true;
-
-    }
-    else {
-    try {
-      const response = await fetch("/api/reminders/list", {
-        method: "GET",
-        headers: { "X-Session-ID": sessionUUID },
-      });
-      const result = await response.json();
-      if (result.success) {
-        const reminder = result.reminders.find((r) => r.id === reminderId);
-        if (reminder) {
-          idField.value = reminder.id;
-          titleField.value = reminder.title;
-          // 如果编辑器已初始化，设置编辑器内容；否则设置隐藏 textarea 值
-          if (window._reminderEditorInitialized && window.reminderEditor) {
-            try {
-              if (typeof window.reminderEditor.setMarkdown === "function") {
-                window.reminderEditor.setMarkdown(reminder.message || "");
-              } else if (window.reminderEditor.codeMirror) {
-                window.reminderEditor.codeMirror.setValue(reminder.message || "");
+    } else {
+      try {
+        const response = await fetch("/api/reminders/list", {
+          method: "GET",
+          headers: { "X-Session-ID": sessionUUID },
+        });
+        const result = await response.json();
+        if (result.success) {
+          const reminder = result.reminders.find((r) => r.id === reminderId);
+          if (reminder) {
+            idField.value = reminder.id;
+            titleField.value = reminder.title;
+            // 如果编辑器已初始化，设置编辑器内容；否则设置隐藏 textarea 值
+            if (window._reminderEditorInitialized && window.reminderEditor) {
+              try {
+                if (typeof window.reminderEditor.setMarkdown === "function") {
+                  window.reminderEditor.setMarkdown(reminder.message || "");
+                } else if (window.reminderEditor.codeMirror) {
+                  window.reminderEditor.codeMirror.setValue(
+                    reminder.message || ""
+                  );
+                }
+              } catch (e) {
+                messageField.value = reminder.message || "";
               }
-            } catch (e) {
+            } else {
               messageField.value = reminder.message || "";
             }
+            startTimeField.value = reminder.start_time;
+            endTimeField.value = reminder.end_time;
+            enabledField.checked = reminder.enabled;
           } else {
-            messageField.value = reminder.message || "";
+            showModalAlert("提醒不存在", "错误");
+            return;
           }
-          startTimeField.value = reminder.start_time;
-          endTimeField.value = reminder.end_time;
-          enabledField.checked = reminder.enabled;
-        } else {
-          showModalAlert("提醒不存在", "错误");
-          return;
         }
+      } catch (error) {
+        console.error("[定时提醒] 加载提醒数据失败:", error);
+        showModalAlert("加载提醒数据失败", "错误");
+        return;
       }
-    } catch (error) {
-      console.error("[定时提醒] 加载提醒数据失败:", error);
-      showModalAlert("加载提醒数据失败", "错误");
-      return;
-    }}
+    }
   } else {
     title.textContent = "⏰ 添加定时提醒";
     idField.value = "";
@@ -40577,17 +40811,23 @@ async function openReminderEditModal(reminderId = "") {
     endTimeField.value = "";
     enabledField.checked = true;
     try {
-      if (typeof window.reminderEditor !== 'undefined' && window.reminderEditor) {
-        if (typeof window.reminderEditor.clear === 'function') {
+      if (
+        typeof window.reminderEditor !== "undefined" &&
+        window.reminderEditor
+      ) {
+        if (typeof window.reminderEditor.clear === "function") {
           window.reminderEditor.clear();
-        } else if (typeof window.reminderEditor.setMarkdown === 'function') {
-          window.reminderEditor.setMarkdown('');
-        } else if (window.reminderEditor.codeMirror && typeof window.reminderEditor.codeMirror.setValue === 'function') {
-          window.reminderEditor.codeMirror.setValue('');
+        } else if (typeof window.reminderEditor.setMarkdown === "function") {
+          window.reminderEditor.setMarkdown("");
+        } else if (
+          window.reminderEditor.codeMirror &&
+          typeof window.reminderEditor.codeMirror.setValue === "function"
+        ) {
+          window.reminderEditor.codeMirror.setValue("");
         }
       }
     } catch (e) {
-      console.warn('清空 reminder 编辑器失败:', e);
+      console.warn("清空 reminder 编辑器失败:", e);
     }
   }
   modal.classList.remove("hidden");
@@ -40599,20 +40839,23 @@ async function openReminderEditModal(reminderId = "") {
         if (!reminderId) {
           const ed = editor || window.reminderEditor;
           if (ed) {
-            if (typeof ed.clear === 'function') {
+            if (typeof ed.clear === "function") {
               ed.clear();
-            } else if (typeof ed.setMarkdown === 'function') {
-              ed.setMarkdown('');
-            } else if (ed.codeMirror && typeof ed.codeMirror.setValue === 'function') {
-              ed.codeMirror.setValue('');
+            } else if (typeof ed.setMarkdown === "function") {
+              ed.setMarkdown("");
+            } else if (
+              ed.codeMirror &&
+              typeof ed.codeMirror.setValue === "function"
+            ) {
+              ed.codeMirror.setValue("");
             } else {
               const msgF = $("reminder-message-field");
-              if (msgF) msgF.value = '';
+              if (msgF) msgF.value = "";
             }
           }
         }
       } catch (e) {
-        console.warn('延迟清空 reminder 编辑器失败:', e);
+        console.warn("延迟清空 reminder 编辑器失败:", e);
       }
       titleField.focus();
     });
@@ -40627,7 +40870,11 @@ async function saveReminder() {
   const id = $("reminder-id-field").value.trim();
   const title = $("reminder-title-field").value.trim();
   let message = "";
-  if (window._reminderEditorInitialized && window.reminderEditor && typeof window.reminderEditor.getMarkdown === 'function') {
+  if (
+    window._reminderEditorInitialized &&
+    window.reminderEditor &&
+    typeof window.reminderEditor.getMarkdown === "function"
+  ) {
     try {
       message = window.reminderEditor.getMarkdown().trim();
     } catch (e) {
@@ -40706,19 +40953,25 @@ async function saveReminder() {
         if (startF) startF.value = "";
         if (endF) endF.value = "";
         if (enabledF) enabledF.checked = true;
-        if (typeof window.reminderEditor !== 'undefined' && window.reminderEditor) {
-          if (typeof window.reminderEditor.clear === 'function') {
+        if (
+          typeof window.reminderEditor !== "undefined" &&
+          window.reminderEditor
+        ) {
+          if (typeof window.reminderEditor.clear === "function") {
             window.reminderEditor.clear();
-          } else if (typeof window.reminderEditor.setMarkdown === 'function') {
-            window.reminderEditor.setMarkdown('');
-          } else if (window.reminderEditor.codeMirror && typeof window.reminderEditor.codeMirror.setValue === 'function') {
-            window.reminderEditor.codeMirror.setValue('');
+          } else if (typeof window.reminderEditor.setMarkdown === "function") {
+            window.reminderEditor.setMarkdown("");
+          } else if (
+            window.reminderEditor.codeMirror &&
+            typeof window.reminderEditor.codeMirror.setValue === "function"
+          ) {
+            window.reminderEditor.codeMirror.setValue("");
           }
         } else if (msgF) {
-          msgF.value = '';
+          msgF.value = "";
         }
       } catch (e) {
-        console.warn('清空提醒输入失败:', e);
+        console.warn("清空提醒输入失败:", e);
       }
 
       closeReminderEditModal();
@@ -40878,9 +41131,9 @@ async function checkAndShowReminders() {
 
     // 注入提醒弹窗专用样式，确保不同标题层级显示区别
     const ensureReminderAlertStyles = () => {
-      if (document.getElementById('reminder-alert-styles')) return;
-      const style = document.createElement('style');
-      style.id = 'reminder-alert-styles';
+      if (document.getElementById("reminder-alert-styles")) return;
+      const style = document.createElement("style");
+      style.id = "reminder-alert-styles";
       style.textContent = `
       .reminder-alert-popup .swal2-title { font-size: 1.25rem; font-weight: 600; }
       .reminder-alert-popup .reminder-alert-content h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
@@ -40899,26 +41152,41 @@ async function checkAndShowReminders() {
       const loadOnce = (url, isCss) => {
         return new Promise((resolve, reject) => {
           try {
-            if (document.querySelector(isCss ? `link[href="${url}"]` : `script[src="${url}"]`)) return resolve();
-            const el = isCss ? document.createElement('link') : document.createElement('script');
-            if (isCss) { el.rel = 'stylesheet'; el.href = url; } else { el.src = url; }
+            if (
+              document.querySelector(
+                isCss ? `link[href="${url}"]` : `script[src="${url}"]`
+              )
+            )
+              return resolve();
+            const el = isCss
+              ? document.createElement("link")
+              : document.createElement("script");
+            if (isCss) {
+              el.rel = "stylesheet";
+              el.href = url;
+            } else {
+              el.src = url;
+            }
             el.onload = () => resolve();
             el.onerror = (e) => reject(e);
-            if (isCss) document.head.appendChild(el); else document.body.appendChild(el);
-          } catch (e) { reject(e); }
+            if (isCss) document.head.appendChild(el);
+            else document.body.appendChild(el);
+          } catch (e) {
+            reject(e);
+          }
         });
       };
 
       try {
         // editormd 样式与核心脚本
-        await loadOnce('/editor.md/css/editormd.css', true).catch(() => {});
-        await loadOnce('/editor.md/editormd.js', false).catch(() => {});
+        await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
+        await loadOnce("/editor.md/editormd.js", false).catch(() => {});
         // editormd 渲染依赖
-        await loadOnce('/editor.md/lib/marked.min.js', false).catch(() => {});
-        await loadOnce('/editor.md/lib/prettify.min.js', false).catch(() => {});
-        console.log('[定时提醒] 预加载 editormd 及依赖完成');
+        await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
+        await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {});
+        console.log("[定时提醒] 预加载 editormd 及依赖完成");
       } catch (e) {
-        console.warn('[定时提醒] 预加载 editormd 及依赖时发生错误:', e);
+        console.warn("[定时提醒] 预加载 editormd 及依赖时发生错误:", e);
       }
     };
 
@@ -40933,67 +41201,113 @@ async function checkAndShowReminders() {
         return "";
       }
 
-    const loadOnce = (url, isCss) => {
-          return new Promise((resolve, reject) => {
-            try {
-              if (document.querySelector(isCss ? `link[href="${url}"]` : `script[src="${url}"]`)) return resolve();
-              const el = isCss ? document.createElement('link') : document.createElement('script');
-              if (isCss) { el.rel = 'stylesheet'; el.href = url; } else { el.src = url; }
-              el.onload = () => resolve();
-              el.onerror = (e) => reject(e);
-              if (isCss) document.head.appendChild(el); else document.body.appendChild(el);
-            } catch (e) { reject(e); }
-          });
-        };
-
+      const loadOnce = (url, isCss) => {
+        return new Promise((resolve, reject) => {
+          try {
+            if (
+              document.querySelector(
+                isCss ? `link[href="${url}"]` : `script[src="${url}"]`
+              )
+            )
+              return resolve();
+            const el = isCss
+              ? document.createElement("link")
+              : document.createElement("script");
+            if (isCss) {
+              el.rel = "stylesheet";
+              el.href = url;
+            } else {
+              el.src = url;
+            }
+            el.onload = () => resolve();
+            el.onerror = (e) => reject(e);
+            if (isCss) document.head.appendChild(el);
+            else document.body.appendChild(el);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      };
 
       const loadAllDependencies = async () => {
+        setTimeout(async () => {
+          await loadOnce("/editor.md/editormd.js", false).catch(() => {
+            console.warn("延迟加载 editormd.js 失败");
+          });
+          await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {
+            console.warn("延迟加载 marked 失败");
+          });
+          await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {
+            console.warn("延迟加载 prettify 失败");
+          });
 
-      setTimeout( async () => {
-        await loadOnce('/editor.md/editormd.js', false).catch(() => {console.warn('延迟加载 editormd.js 失败');});
-        await loadOnce('/editor.md/lib/marked.min.js', false).catch(() => {console.warn('延迟加载 marked 失败');});
-        await loadOnce('/editor.md/lib/prettify.min.js', false).catch(() => {console.warn('延迟加载 prettify 失败');});
-        
-        await loadOnce('/editor.md/lib/flowchart.min.js', false).catch(() => {console.warn('延迟加载 flowchart 失败');});
-        await loadOnce('/editor.md/lib/jquery.flowchart.min.js', false).catch(() => {console.warn('延迟加载 jquery.flowchart 失败');});
-        await loadOnce('/editor.md/lib/raphael.min.js', false).catch(() => {console.warn('延迟加载 raphael 失败');});
-        await loadOnce('/editor.md/lib/sequence-diagram.min.js', false).catch(() => {console.warn('延迟加载 sequence-diagram 失败');});
-        await loadOnce('/editor.md/lib/underscore.min.js', false).catch(() => {console.warn('延迟加载 underscore 失败');});
-      }, 500);}
+          await loadOnce("/editor.md/lib/flowchart.min.js", false).catch(() => {
+            console.warn("延迟加载 flowchart 失败");
+          });
+          await loadOnce("/editor.md/lib/jquery.flowchart.min.js", false).catch(
+            () => {
+              console.warn("延迟加载 jquery.flowchart 失败");
+            }
+          );
+          await loadOnce("/editor.md/lib/raphael.min.js", false).catch(() => {
+            console.warn("延迟加载 raphael 失败");
+          });
+          await loadOnce("/editor.md/lib/sequence-diagram.min.js", false).catch(
+            () => {
+              console.warn("延迟加载 sequence-diagram 失败");
+            }
+          );
+          await loadOnce("/editor.md/lib/underscore.min.js", false).catch(
+            () => {
+              console.warn("延迟加载 underscore 失败");
+            }
+          );
+        }, 500);
+      };
 
       // await loadAllDependencies();
-      
 
       const tryRender = () => {
         if (window.editormd && typeof editormd.markdownToHTML === "function") {
-          const tmpId = "md-to-html-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+          const tmpId =
+            "md-to-html-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
           const tmp = document.createElement("div");
           tmp.id = tmpId;
           tmp.style.display = "none";
-          tmp.innerHTML = "<link rel=\"stylesheet\" href=\"/editor.md/css/editormd.css\" /> <link rel=\"stylesheet\" href=\"/editor.md/css/editormd.preview.css\" />"
-          console.log("[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容: ", md);
+          tmp.innerHTML =
+            '<link rel="stylesheet" href="/editor.md/css/editormd.css" /> <link rel="stylesheet" href="/editor.md/css/editormd.preview.css" />';
+          console.log(
+            "[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容: ",
+            md
+          );
           document.body.appendChild(tmp);
           try {
             editormd.markdownToHTML(tmpId, {
               markdown: md,
-                htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
-                // htmlDecode: "style,iframe,image,div,p,br,hr,strong,em,span,blockquote,q,cite,code,pre",  // 允许解析的 HTML 标签
-                htmlDecode: "style,iframe,image",
-                toc: false,             // 是否生成目录
-                tocContainer: "", // 自定义 ToC 容器层
-                gfm             : true,        // 是否使用 GitHub Flavored Markdown
-                tocDropdown     : false,     // 是否启用目录下拉菜单
-                markdownSourceCode: false, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
-                emoji: true,
-                taskList: true,
-                tex: true,  // 默认不解析
-                flowChart: true,  // 默认不解析
-                sequenceDiagram: true,  // 默认不解析
+              htmlDecode: true, // 开启 HTML 标签解析，为了安全性，默认不开启
+              // htmlDecode: "style,iframe,image,div,p,br,hr,strong,em,span,blockquote,q,cite,code,pre",  // 允许解析的 HTML 标签
+              htmlDecode: "style,iframe,image",
+              toc: false, // 是否生成目录
+              tocContainer: "", // 自定义 ToC 容器层
+              gfm: true, // 是否使用 GitHub Flavored Markdown
+              tocDropdown: false, // 是否启用目录下拉菜单
+              markdownSourceCode: false, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
+              emoji: true,
+              taskList: true,
+              tex: true, // 默认不解析
+              flowChart: true, // 默认不解析
+              sequenceDiagram: true, // 默认不解析
             });
             const html = tmp.innerHTML;
-            console.log("[定时提醒] editormd.markdownToHTML 渲染完成，结果：", html);
+            console.log(
+              "[定时提醒] editormd.markdownToHTML 渲染完成，结果：",
+              html
+            );
             document.body.removeChild(tmp);
-            console.log("[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容成功，内容：", html);
+            console.log(
+              "[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容成功，内容：",
+              html
+            );
             return html;
           } catch (e) {
             document.body.removeChild(tmp);
@@ -41003,28 +41317,32 @@ async function checkAndShowReminders() {
         return null;
       };
 
-
-
-
       try {
         const r = tryRender();
         if (r !== null) return r;
       } catch (err) {
-        console.warn('[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容失败，尝试加载依赖并重试:', err);
-
+        console.warn(
+          "[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容失败，尝试加载依赖并重试:",
+          err
+        );
 
         try {
-          await loadOnce('/editor.md/lib/marked.min.js', false).catch(() => {});
-          await loadOnce('/editor.md/lib/prettify.min.js', false).catch(() => {});
+          await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
+          await loadOnce("/editor.md/lib/prettify.min.js", false).catch(
+            () => {}
+          );
         } catch (e) {
-          console.warn('[定时提醒] 加载 editormd 依赖失败:', e);
+          console.warn("[定时提醒] 加载 editormd 依赖失败:", e);
         }
 
         try {
           const r2 = tryRender();
           if (r2 !== null) return r2;
         } catch (err2) {
-          console.warn('[定时提醒] 重试 editormd.renderMarkdownToHtml 仍然失败，回退为转义文本:', err2);
+          console.warn(
+            "[定时提醒] 重试 editormd.renderMarkdownToHtml 仍然失败，回退为转义文本:",
+            err2
+          );
         }
       }
 
@@ -41041,7 +41359,9 @@ async function checkAndShowReminders() {
 
       let swalHtmlContent = await renderMarkdownToHtml(reminder.message);
 
-      console.log(`[定时提醒] 准备显示单个提醒: ${reminder.title}, 内容： ${swalHtmlContent}`);
+      console.log(
+        `[定时提醒] 准备显示单个提醒: ${reminder.title}, 内容： ${swalHtmlContent}`
+      );
 
       // 使用 SweetAlert2 显示提醒弹窗
       Swal.fire({
@@ -41942,15 +42262,19 @@ function escapeHtml(text) {
 function startReminderChecker() {
   // 首次检查看提醒应在页面完全加载后执行，确保 Markdown 解析器等已就绪
   const startChecks = () => {
-    try{ checkAndShowReminders(); }catch(e){console.error('[定时提醒] 首次检查失败', e);}
+    try {
+      checkAndShowReminders();
+    } catch (e) {
+      console.error("[定时提醒] 首次检查失败", e);
+    }
     setInterval(checkAndShowReminders, 60 * 1000);
     console.log("[定时提醒] 定时检查已启动，每分钟检查一次");
   };
 
-  if (document.readyState === 'complete') {
+  if (document.readyState === "complete") {
     startChecks();
   } else {
-    window.addEventListener('load', startChecks, { once: true });
+    window.addEventListener("load", startChecks, { once: true });
   }
 }
 async function saveSystemConfig() {
@@ -41960,8 +42284,9 @@ async function saveSystemConfig() {
   try {
     const configData = {
       Guest: {
-        allow_guest_login: $("config-Guest-allow_guest_login").value === "true",},
-      Help:{
+        allow_guest_login: $("config-Guest-allow_guest_login").value === "true",
+      },
+      Help: {
         show_newbie_help: $("config-Guest-show_newbie_help").value === "true",
         newbie_help_url: $("config-Guest-newbie_help_url").value || "",
       },
@@ -45997,9 +46322,7 @@ async function showMobileUserSchoolAccounts(username) {
 
   try {
     const response = await fetch(
-      `/auth/get_user_school_accounts?username=${encodeURIComponent(
-        username
-      )}`,
+      `/auth/get_user_school_accounts?username=${encodeURIComponent(username)}`,
       {
         headers: { "X-Session-ID": sessionUUID },
       }
@@ -46861,7 +47184,7 @@ function showMobileResetPassword(username) {
   let modal = document.getElementById("mobile-reset-password-modal");
   if (!modal) {
     let password_input_id = document.getElementById("mobile-new-password_2");
-    if (password_input_id ) {
+    if (password_input_id) {
       password_input_id.value = "";
     }
     modal = document.createElement("div");
@@ -46924,7 +47247,12 @@ async function submitMobileResetPassword() {
   const newPassword = document.getElementById("mobile-new-password_2").value;
 
   if (!newPassword || newPassword.length < 6) {
-    logMessage_Warning("密码长度不足, 当前输入密码：" + newPassword + "， 长度：" + newPassword.length );
+    logMessage_Warning(
+      "密码长度不足, 当前输入密码：" +
+        newPassword +
+        "， 长度：" +
+        newPassword.length
+    );
     showModalAlert("密码长度至少为6个字符", "错误");
     return;
   }
@@ -48952,19 +49280,22 @@ async function mobileTestCaptcha() {
       // 检查后端返回结果是否成功
       if (result && result.success) {
         // 判断后端返回的验证码格式类型
-        Background_width=document.getElementById("mobile-multi-admin-captcha-panel").clientWidth -35;
-        console.log("移动端验证码面板宽度",Background_width)
+        Background_width =
+          document.getElementById("mobile-multi-admin-captcha-panel")
+            .clientWidth - 35;
+        console.log("移动端验证码面板宽度", Background_width);
         if (result.captcha_id) {
           previewDisplay.innerHTML = `<div class="inline-block border border-slate-200 rounded p-1 bg-white">
           
-          <iframe src="/api/captcha/html/${result.captcha_id}?t=${Date.now()}&width=${Background_width}" style=" border: none; overflow: hidden; display: block; margin: 0 auto h-[${Background_width}px];" scrolling="no" frameborder="0" title="验证码预览">
+          <iframe src="/api/captcha/html/${
+            result.captcha_id
+          }?t=${Date.now()}&width=${Background_width}" style=" border: none; overflow: hidden; display: block; margin: 0 auto h-[${Background_width}px];" scrolling="no" frameborder="0" title="验证码预览">
       </iframe>
           
           </div>`;
           // 显示验证码的正确答案，如果没有则显示"未知"
           previewAnswer.textContent = result.code || "未知";
-        }
-        else if (result.html) {
+        } else if (result.html) {
           // 后端返回HTML格式验证码（像素风格）
           // 使用内联块元素包裹HTML验证码，并添加边框和圆角样式
           previewDisplay.innerHTML = `<div class="inline-block border border-slate-200 rounded p-1 bg-white">${result.html}</div>`;

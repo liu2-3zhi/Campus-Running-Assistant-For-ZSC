@@ -19,7 +19,8 @@ MAX_TAG_LENGTH = 200  # 标签最大长度
 MAX_UA_LENGTH = 2000  # User-Agent最大长度
 MAX_PARAMS_COUNT = 100  # 参数字典最大键值对数量
 # 用户名格式验证：只允许字母、数字、下划线、连字符、点和@符号
-USERNAME_PATTERN = re.compile(r'^[a-zA-Z0-9_\-\.@]+$') if 're' in dir() else None
+USERNAME_PATTERN = re.compile(
+    r'^[a-zA-Z0-9_\-\.@]+$') if 're' in dir() else None
 
 
 def _buffer_log(level, message):
@@ -1522,7 +1523,8 @@ PERMISSIONS_FILE = "permissions.json"
 # 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
-AUTO_ATTENDANCE_CONFIG_FILE = os.path.join("configs", "auto_attendance_config.json")
+AUTO_ATTENDANCE_CONFIG_FILE = os.path.join(
+    "configs", "auto_attendance_config.json")
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -1536,14 +1538,14 @@ AUDIT_LOG_FILE = None
 def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="json"):
     """
     备份损坏的文件并用默认内容重置
-    
+
     功能说明：
         当文件读取异常（特别是JSON解析错误）时，此函数会：
         1. 创建 ./logs/backup/ 目录（如果不存在）
         2. 将损坏的文件复制到备份目录，文件名格式为：原文件名_时间戳.backup
         3. 根据文件类型，用默认内容覆写原文件
         4. 记录日志说明已备份和重置
-    
+
     参数:
         file_path (str): 要备份的文件路径（绝对路径或相对路径）
         default_content: 重置后的默认内容
@@ -1551,20 +1553,20 @@ def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="j
             - 对于ini文件：应该是字符串，可以是空字符串或默认配置文本
             - 对于text文件：应该是字符串
         file_type (str): 文件类型，可选值："json", "ini", "text"，默认为"json"
-    
+
     返回值:
         bool: 如果成功备份并重置返回True，否则返回False
-    
+
     异常处理：
         所有异常都会被捕获并记录到日志中，确保不会影响主业务逻辑
-    
+
     示例:
         # JSON文件，默认内容为空字典
         _backup_and_reset_corrupted_file("config.json", {}, "json")
-        
+
         # JSON文件，默认内容为空列表
         _backup_and_reset_corrupted_file("messages.json", [], "json")
-        
+
         # INI文件，默认内容为空字符串
         _backup_and_reset_corrupted_file("config.ini", "", "ini")
     """
@@ -1574,12 +1576,12 @@ def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="j
         if not os.path.exists(file_path):
             logging.warning(f"[文件备份] 文件不存在，无需备份: {file_path}")
             return False
-        
+
         # 创建备份目录：./logs/backup/
         # exist_ok=True 表示如果目录已存在不会报错
         backup_dir = os.path.join("logs", "backup")
         os.makedirs(backup_dir, exist_ok=True)
-        
+
         # 生成备份文件名
         # 格式：原文件名（不含路径）_时间戳.backup
         # 例如：payment_methods_20251217_123045.json.backup
@@ -1587,12 +1589,12 @@ def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="j
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")  # 生成时间戳
         backup_filename = f"{base_name}_{timestamp}.backup"  # 组装备份文件名
         backup_path = os.path.join(backup_dir, backup_filename)  # 完整的备份文件路径
-        
+
         # 使用 shutil.copy2() 复制文件到备份目录
         # copy2() 会同时复制文件内容和元数据（如时间戳、权限等）
         shutil.copy2(file_path, backup_path)
         logging.info(f"[文件备份] 已备份损坏文件: {file_path} -> {backup_path}")
-        
+
         # 根据文件类型，准备要写入的内容
         if file_type == "json":
             # 对于JSON文件，需要将Python对象（dict或list）转换为JSON字符串
@@ -1604,24 +1606,26 @@ def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="j
                 # 是dict或list，需要转换为JSON字符串
                 # indent=2: 使用2个空格缩进，使输出更易读
                 # ensure_ascii=False: 允许中文字符不被转义
-                content_to_write = json.dumps(default_content, indent=2, ensure_ascii=False)
+                content_to_write = json.dumps(
+                    default_content, indent=2, ensure_ascii=False)
         else:
             # 对于ini或text文件，default_content应该已经是字符串
             # 如果不是字符串，强制转换为字符串
-            content_to_write = str(default_content) if not isinstance(default_content, str) else default_content
-        
+            content_to_write = str(default_content) if not isinstance(
+                default_content, str) else default_content
+
         # 用默认内容覆写原文件
         # 使用 'w' 模式会清空原文件内容并写入新内容
         # encoding='utf-8' 确保中文内容正确写入
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content_to_write)
-        
+
         # 记录重置操作的日志
         logging.info(f"[文件备份] 已用默认内容重置文件: {file_path}")
-        
+
         # 操作成功，返回True
         return True
-        
+
     except Exception as e:
         # 捕获所有可能的异常（文件操作失败、权限错误、磁盘空间不足等）
         # 记录错误日志，但不抛出异常，确保不影响主业务逻辑
@@ -1639,11 +1643,11 @@ def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="j
 def _load_auto_attendance_config():
     """
     加载自动签到配置文件
-    
+
     功能说明：
         从JSON文件中读取自动签到配置，包含所有启用自动签到的学校账号信息。
         如果文件不存在或解析失败，返回一个空的配置结构。
-    
+
     返回值:
         dict: 配置字典，结构如下：
             {
@@ -1655,7 +1659,7 @@ def _load_auto_attendance_config():
                     }
                 }
             }
-    
+
     异常处理：
         - JSONDecodeError: 配置文件格式错误时返回空配置
         - 其他异常: 记录错误日志并返回空配置
@@ -1668,12 +1672,12 @@ def _load_auto_attendance_config():
             with open(AUTO_ATTENDANCE_CONFIG_FILE, "r", encoding="utf-8") as f:
                 # 从JSON文件中加载配置数据到Python字典
                 config = json.load(f)
-                
+
                 # 确保配置结构完整，如果缺少enabled_accounts键，则添加空字典
                 # 这是一个防御性编程措施，确保后续代码不会因键不存在而报错
                 if "enabled_accounts" not in config:
                     config["enabled_accounts"] = {}
-                
+
                 # 记录成功加载的日志，显示启用账号的数量
                 logging.info(
                     f"[自动签到配置] 已加载配置，共 {len(config['enabled_accounts'])} 个启用账号"
@@ -1688,7 +1692,7 @@ def _load_auto_attendance_config():
     except json.JSONDecodeError as e:
         # JSON解析失败，可能是文件损坏或格式错误
         logging.error(f"[自动签到配置] 配置文件解析失败: {e}")
-        
+
         # 调用通用备份函数，备份损坏的文件并重置为默认内容
         # 默认内容为空的配置结构：{"enabled_accounts": {}}
         _backup_and_reset_corrupted_file(
@@ -1696,7 +1700,7 @@ def _load_auto_attendance_config():
             {"enabled_accounts": {}},
             "json"
         )
-        
+
         # 返回空配置，避免程序崩溃
         return {"enabled_accounts": {}}
     except Exception as e:
@@ -1709,17 +1713,17 @@ def _load_auto_attendance_config():
 def _save_auto_attendance_config(config):
     """
     保存自动签到配置到文件
-    
+
     功能说明：
         将配置字典序列化为JSON格式并写入文件。
         使用缩进格式化，使配置文件易于人工阅读和调试。
-    
+
     参数:
         config (dict): 要保存的配置字典，应包含enabled_accounts键
-    
+
     返回值:
         bool: True表示保存成功，False表示保存失败
-    
+
     异常处理：
         捕获所有异常并记录日志，返回False表示失败
     """
@@ -1728,10 +1732,11 @@ def _save_auto_attendance_config(config):
         # 这是一个安全措施，防止保存不完整的配置
         if "enabled_accounts" not in config:
             config["enabled_accounts"] = {}
-        
+
         # 确保logs目录存在
-        os.makedirs(os.path.dirname(AUTO_ATTENDANCE_CONFIG_FILE), exist_ok=True)
-        
+        os.makedirs(os.path.dirname(
+            AUTO_ATTENDANCE_CONFIG_FILE), exist_ok=True)
+
         # 以UTF-8编码打开配置文件进行写入
         # 使用with语句确保文件正确关闭，即使发生异常
         with open(AUTO_ATTENDANCE_CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -1739,7 +1744,7 @@ def _save_auto_attendance_config(config):
             # ensure_ascii=False: 允许中文字符直接显示，不转义为\uXXXX
             # indent=2: 使用2个空格缩进，使JSON文件格式化，易于阅读
             json.dump(config, f, ensure_ascii=False, indent=2)
-        
+
         # 记录成功保存的日志，显示启用账号的数量
         logging.info(
             f"[自动签到配置] 配置已保存，共 {len(config['enabled_accounts'])} 个启用账号"
@@ -1756,19 +1761,19 @@ def _save_auto_attendance_config(config):
 def _enable_auto_attendance(school_username, session_uuid, auth_username):
     """
     启用指定学校账号的自动签到功能
-    
+
     功能说明：
         将指定的学校账号添加到自动签到配置中，或更新已存在账号的配置。
         记录启用时间和账号所有者信息。
-    
+
     参数:
         school_username (str): 学校账号的用户名（唯一标识符）
         session_uuid (str): 关联的会话UUID，用于识别登录会话
         auth_username (str): 账号所有者的认证用户名（系统登录用户名）
-    
+
     返回值:
         bool: True表示启用成功，False表示启用失败
-    
+
     流程：
         1. 加载当前配置
         2. 添加或更新账号配置
@@ -1779,7 +1784,7 @@ def _enable_auto_attendance(school_username, session_uuid, auth_username):
         # 加载当前的自动签到配置
         # 这个配置包含所有已启用自动签到的账号信息
         config = _load_auto_attendance_config()
-        
+
         # 添加或更新指定账号的配置信息
         # 使用school_username作为键，存储账号的详细配置
         config["enabled_accounts"][school_username] = {
@@ -1793,7 +1798,7 @@ def _enable_auto_attendance(school_username, session_uuid, auth_username):
             # 记录账号所有者的认证用户名
             "auth_username": auth_username
         }
-        
+
         # 保存更新后的配置到JSON文件
         # 如果保存成功，_save_auto_attendance_config返回True
         if _save_auto_attendance_config(config):
@@ -1821,31 +1826,31 @@ def _enable_auto_attendance(school_username, session_uuid, auth_username):
 def _disable_auto_attendance(school_username):
     """
     禁用指定学校账号的自动签到功能
-    
+
     功能说明：
         从自动签到配置中移除指定的学校账号。
         如果账号不存在，也视为成功（幂等操作）。
-    
+
     参数:
         school_username (str): 学校账号的用户名
-    
+
     返回值:
         bool: True表示禁用成功（包括账号本来就不存在的情况），
               False表示操作失败
-    
+
     幂等性：
         多次调用此函数禁用同一账号不会产生错误，都返回True
     """
     try:
         # 加载当前的自动签到配置
         config = _load_auto_attendance_config()
-        
+
         # 检查指定的学校账号是否在启用账号列表中
         if school_username in config["enabled_accounts"]:
             # 账号存在，从字典中删除该账号的配置
             # 使用del语句直接删除字典中的键值对
             del config["enabled_accounts"][school_username]
-            
+
             # 保存更新后的配置到JSON文件
             if _save_auto_attendance_config(config):
                 # 记录成功禁用的日志
@@ -1877,17 +1882,17 @@ def _disable_auto_attendance(school_username):
 def _is_auto_attendance_enabled(school_username):
     """
     检查指定学校账号是否启用了自动签到
-    
+
     功能说明：
         查询配置文件，判断指定账号是否在启用列表中。
         这是一个简单的查询操作，不修改配置。
-    
+
     参数:
         school_username (str): 学校账号的用户名
-    
+
     返回值:
         bool: True表示已启用自动签到，False表示未启用或查询失败
-    
+
     异常处理：
         如果查询过程中发生异常，返回False（安全默认值）
     """
@@ -1910,18 +1915,18 @@ def _is_auto_attendance_enabled(school_username):
 def _get_auto_attendance_session(school_username):
     """
     获取指定学校账号关联的会话UUID
-    
+
     功能说明：
         从配置中查询指定账号关联的会话UUID。
         会话UUID用于在自动签到时识别用户的登录会话。
-    
+
     参数:
         school_username (str): 学校账号的用户名
-    
+
     返回值:
         str: 会话UUID字符串，如果账号未启用或不存在则返回None
         None: 账号不存在或查询失败
-    
+
     使用场景：
         在执行自动签到任务时，需要获取账号关联的会话UUID，
         以便使用正确的会话上下文执行签到操作。
@@ -1949,17 +1954,17 @@ def _get_auto_attendance_session(school_username):
 def _get_auto_attendance_by_session(session_uuid):
     """
     根据会话UUID获取所有关联的自动签到账号
-    
+
     功能说明：
         反向查询，根据会话UUID找出所有使用该会话的自动签到账号。
         一个会话可能关联多个学校账号（例如用户有多个学校账号）。
-    
+
     参数:
         session_uuid (str): 会话UUID
-    
+
     返回值:
         list: 学校账号用户名列表，如果没有找到或查询失败则返回空列表
-    
+
     使用场景：
         当会话失效或被删除时，需要找出所有关联的自动签到账号，
         以便进行相应的清理或通知操作。
@@ -1991,18 +1996,18 @@ def _get_auto_attendance_by_session(session_uuid):
 def _migrate_auto_attendance_from_ini():
     """
     从INI文件迁移auto_attendance_enabled配置到JSON文件
-    
+
     功能说明：
         扫描所有学校账号的INI配置文件，查找启用了auto_attendance_enabled的账号。
         这是一个向后兼容的迁移功能，用于将旧的分散配置迁移到新的集中配置。
-    
+
     迁移策略：
         由于INI文件中只存储了认证用户名（auth_username），而没有学校用户名，
         因此无法立即完成迁移。采用延迟迁移策略：
         1. 扫描并记录需要迁移的账号
         2. 在用户下次登录并启用自动签到时，自动创建JSON配置
         3. 保留INI文件中的配置，直到确认迁移成功
-    
+
     返回值:
         dict: 迁移统计信息
             {
@@ -2010,21 +2015,21 @@ def _migrate_auto_attendance_from_ini():
                 "migrated": int,   # 成功迁移的账号数（当前实现中为0）
                 "errors": list     # 错误信息列表
             }
-    
+
     执行时机：
         应在程序启动时执行一次，确保向后兼容性
     """
     try:
         # 记录迁移开始的日志
         logging.info("[自动签到配置迁移] 开始扫描INI文件进行配置迁移...")
-        
+
         # 初始化统计信息字典
         stats = {
             "scanned": 0,      # 扫描的INI文件总数
             "migrated": 0,     # 成功迁移的账号数
             "errors": []       # 错误列表，每个元素是错误描述字符串
         }
-        
+
         # 获取学校账号配置文件存储目录的路径
         accounts_dir = SCHOOL_ACCOUNTS_DIR
         # 检查账号目录是否存在
@@ -2033,20 +2038,20 @@ def _migrate_auto_attendance_from_ini():
             logging.info(f"[自动签到配置迁移] 账号目录不存在: {accounts_dir}，跳过迁移")
             # 返回统计信息（全为0）
             return stats
-        
+
         # 遍历账号目录中的所有文件
         for filename in os.listdir(accounts_dir):
             # 只处理.ini扩展名的文件，跳过其他文件
             if not filename.endswith(".ini"):
                 continue
-            
+
             # 增加扫描计数
             stats["scanned"] += 1
             # 从文件名中提取用户名（去掉.ini扩展名）
             ini_username = os.path.splitext(filename)[0]
             # 构造INI文件的完整路径
             ini_path = os.path.join(accounts_dir, filename)
-            
+
             try:
                 # 创建ConfigParser对象，用于读取INI文件
                 cfg = configparser.RawConfigParser()
@@ -2055,23 +2060,23 @@ def _migrate_auto_attendance_from_ini():
                 cfg.optionxform = str
                 # 读取INI文件，使用UTF-8编码
                 cfg.read(ini_path, encoding="utf-8")
-                
+
                 # 检查INI文件中是否存在Config节
                 if not cfg.has_section("Config"):
                     # 没有Config节，跳过此文件
                     continue
-                
+
                 # 检查Config节中是否存在auto_attendance_enabled配置项
                 if not cfg.has_option("Config", "auto_attendance_enabled"):
                     # 没有此配置项，跳过此文件
                     continue
-                
+
                 # 读取auto_attendance_enabled配置项的值（字符串）
                 auto_enabled_str = cfg.get("Config", "auto_attendance_enabled")
                 # 将字符串转换为布尔值
                 # 将字符串转换为小写后，检查是否为true、1、t或yes
                 auto_enabled = auto_enabled_str.lower() in ("true", "1", "t", "yes")
-                
+
                 # 如果未启用自动签到，跳过此文件
                 if not auto_enabled:
                     # 记录调试日志，说明该账号未启用自动签到
@@ -2079,32 +2084,32 @@ def _migrate_auto_attendance_from_ini():
                         f"[自动签到配置迁移] 账号 {ini_username} 未启用自动签到，跳过迁移"
                     )
                     continue
-                
+
                 # 发现启用了自动签到的账号，记录信息日志
                 logging.info(
                     f"[自动签到配置迁移] 发现启用自动签到的账号: {ini_username}，开始迁移..."
                 )
-                
+
                 # 为了迁移，需要学校账号用户名（school_username）
                 # 但INI文件中存储的是认证用户名（ini_username），学校用户名需要登录后才能获取
                 # 因此这里采用一个简化策略：
                 # 1. 暂时不迁移，只记录日志
                 # 2. 当用户下次登录并启用自动签到时，自动创建JSON配置
                 # 3. 这样可以确保数据准确性
-                
+
                 # 由于无法立即获取学校用户名，我们只能在用户登录时迁移
                 # 这里只记录一个待迁移的标记
                 logging.info(
                     f"[自动签到配置迁移] 账号 {ini_username} 需要在下次登录时完成迁移"
                 )
-                
+
                 # 可选：从INI文件中移除 auto_attendance_enabled 配置项
                 # 但为了安全，我们保留它，直到确认迁移成功
                 # 以下代码被注释掉，如果需要立即清理INI文件，可以取消注释
                 # cfg.remove_option("Config", "auto_attendance_enabled")
                 # with open(ini_path, "w", encoding="utf-8") as f:
                 #     cfg.write(f)
-                
+
             except Exception as e:
                 # 处理单个INI文件时发生异常
                 # 构造错误消息字符串
@@ -2113,7 +2118,7 @@ def _migrate_auto_attendance_from_ini():
                 logging.error(f"[自动签到配置迁移] {error_msg}", exc_info=True)
                 # 将错误消息添加到错误列表
                 stats["errors"].append(error_msg)
-        
+
         # 所有INI文件扫描完成，记录迁移结果摘要
         logging.info(
             f"[自动签到配置迁移] 迁移完成 - "
@@ -2121,16 +2126,16 @@ def _migrate_auto_attendance_from_ini():
             f"迁移: {stats['migrated']} 个账号, "
             f"错误: {len(stats['errors'])} 个"
         )
-        
+
         # 如果有错误发生，记录警告日志
         if stats["errors"]:
             logging.warning(
                 f"[自动签到配置迁移] 迁移过程中出现错误: {stats['errors']}"
             )
-        
+
         # 返回迁移统计信息
         return stats
-        
+
     except Exception as e:
         # 整个迁移过程发生异常
         logging.error(f"[自动签到配置迁移] 迁移过程失败: {e}", exc_info=True)
@@ -3622,8 +3627,8 @@ def _get_default_payment_methods_config():
     # 返回默认的支付方式配置字典
     # 此配置包含了系统支持的所有支付方式及其前端显示样式
     return {
-        
-        
+
+
         # 支付宝支付配置
         "alipay": {
             "name": "支付宝支付",  # 显示名称
@@ -3654,8 +3659,8 @@ def _get_default_payment_methods_config():
             "borderColor": "hover:border-blue-500",  # 鼠标悬停时的边框颜色
             "textColor": "text-blue-600"  # 文字颜色
         }
-        
-        
+
+
     }
 
 
@@ -3696,7 +3701,7 @@ def _read_payment_methods_config():
     except json.JSONDecodeError as e:
         # 使用WARNING级别记录日志，因为这不是严重错误，系统可以使用默认配置继续运行
         logging.warning(f"[支付方式配置] 配置文件JSON格式错误，使用默认配置: {str(e)}")
-        
+
         # 调用通用备份函数，备份损坏的文件并重置为默认配置
         # 使用_get_default_payment_methods_config()获取默认配置内容
         _backup_and_reset_corrupted_file(
@@ -3704,7 +3709,7 @@ def _read_payment_methods_config():
             _get_default_payment_methods_config(),
             "json"
         )
-        
+
         # 返回默认配置，确保系统可以正常运行
         return _get_default_payment_methods_config()
     except Exception as e:
@@ -3911,14 +3916,14 @@ def _read_amap_watermark_config():
     except json.JSONDecodeError as e:
         # JSON 格式错误，记录详细错误信息
         logging.error(f"[水印控制] 配置文件JSON格式错误: {str(e)}")
-        
+
         # 调用通用备份函数，备份损坏的文件并重置为默认配置
         _backup_and_reset_corrupted_file(
             config_file,
             _get_default_amap_watermark_config(),
             "json"
         )
-        
+
         # 返回默认配置，确保系统可以正常运行
         return _get_default_amap_watermark_config()
     except Exception as e:
@@ -4781,53 +4786,65 @@ class RainbowYiPayClient:
             "Rainbow_YiPay", "app_host", fallback="").strip()
 
         # 初始化最终结果变量
-        final_app_host = None 
+        final_app_host = None
 
         # 定义无效字符串列表，方便复用
-        invalid_values = ["", "http://", "https://", "null", "NULL", "None", "none", "undefined"]
+        invalid_values = ["", "http://", "https://",
+                          "null", "NULL", "None", "none", "undefined"]
 
         # 1. 优先检查配置文件中的 Host (优先级最高)
         if app_host_frome_config is not None and app_host_frome_config not in invalid_values:
             # 实例化一次即可，避免重复开销
-            verifier = IPVerifier() 
-            
+            verifier = IPVerifier()
+
             if not verifier.is_private_ip(app_host_frome_config):
                 if verifier.check_app_host(app_host_frome_config):
-                    final_app_host = verifier.normalize_host_url(app_host_frome_config)
-                    logging.info(f"[支付验证] 验证成功 - 将优先使用 app_host_from_config: {app_host_frome_config}")
-                    logging.info(f"[彩虹易支付] 配置的 app_host 验证通过: {final_app_host}")
+                    final_app_host = verifier.normalize_host_url(
+                        app_host_frome_config)
+                    logging.info(
+                        f"[支付验证] 验证成功 - 将优先使用 app_host_from_config: {app_host_frome_config}")
+                    logging.info(
+                        f"[彩虹易支付] 配置的 app_host 验证通过: {final_app_host}")
                 else:
-                    logging.error(f"[彩虹易支付] 配置的 app_host 格式不正确或不可用: {app_host_frome_config}")
+                    logging.error(
+                        f"[彩虹易支付] 配置的 app_host 格式不正确或不可用: {app_host_frome_config}")
             else:
-                logging.warning(f"[彩虹易支付] 配置的 app_host 为私有IP，跳过: {app_host_frome_config}")
+                logging.warning(
+                    f"[彩虹易支付] 配置的 app_host 为私有IP，跳过: {app_host_frome_config}")
         else:
             # 只有当 config 为空时才打印这个 warning，或者可以选择不打印，直接进入下一步
             logging.warning(f"[彩虹易支付] 配置的 app_host 为空或无效，尝试使用 client_app_host")
-
 
         # 2. 如果配置文件无效 (final_app_host 仍为 None)，则检查传入的 Client Host (优先级次之)
         if final_app_host is None:
             if client_app_host is not None and client_app_host not in invalid_values:
                 #  - 这里的逻辑是如果上面没拿到值，才走这里
-                verifier = IPVerifier() 
-                
+                verifier = IPVerifier()
+
                 if not verifier.is_private_ip(client_app_host):
                     if verifier.check_app_host(client_app_host):
-                        final_app_host = verifier.normalize_host_url(client_app_host)
-                        logging.info(f"[支付验证] 验证成功 - 使用传入的 client_app_host: {client_app_host}")
-                        logging.info(f"[彩虹易支付] 传入的 client_app_host 验证通过: {final_app_host}")
+                        final_app_host = verifier.normalize_host_url(
+                            client_app_host)
+                        logging.info(
+                            f"[支付验证] 验证成功 - 使用传入的 client_app_host: {client_app_host}")
+                        logging.info(
+                            f"[彩虹易支付] 传入的 client_app_host 验证通过: {final_app_host}")
                     else:
-                        logging.error(f"[彩虹易支付] 传入的 client_app_host 格式不正确或不可用: {client_app_host}")
+                        logging.error(
+                            f"[彩虹易支付] 传入的 client_app_host 格式不正确或不可用: {client_app_host}")
                 else:
-                    logging.warning(f"[彩虹易支付] 传入的 client_app_host 为私有IP: {client_app_host}")
+                    logging.warning(
+                        f"[彩虹易支付] 传入的 client_app_host 为私有IP: {client_app_host}")
             else:
-                logging.warning(f"[彩虹易支付] 传入的 client_app_host 为空或无效: {client_app_host}")
+                logging.warning(
+                    f"[彩虹易支付] 传入的 client_app_host 为空或无效: {client_app_host}")
 
         # 3. 最终结果赋值 (为了兼容你后续代码可能使用的变量名 'app_host')
         app_host = final_app_host
 
         if app_host is None:
-            logging.error(f"[彩虹易支付] 致命错误: 无法获取有效的 app_host (配置和客户端传入均无效)，无法构造回调URL")
+            logging.error(
+                f"[彩虹易支付] 致命错误: 无法获取有效的 app_host (配置和客户端传入均无效)，无法构造回调URL")
 
             return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
 
@@ -7728,7 +7745,6 @@ class Api:
                 if k_en in ["AuthorizationCookie", "UA"]:
                     cfg_en.set("System", k_en, v)
 
-
         if cfg_cn.has_section("stats"):
             # 添加 [stats] 节到新配置
             cfg_en.add_section("stats")
@@ -7940,7 +7956,7 @@ class Api:
 
         file_path = self._get_user_accounts_file(auth_username)
         data = {}
-        
+
         # 尝试加载当前用户的JSON文件（如果存在）
         if os.path.exists(file_path):
             try:
@@ -8003,9 +8019,10 @@ class Api:
                 if auth_system.check_permission(auth_username, "manage_users"):
                     # 使用已有 data 作为基准，优先保留当前用户的数据
                     aggregated = dict(data)
-                    
+
                     # 1. 遍历所有用户的 user_accounts JSON 文件
-                    user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+                    user_accounts_dir = os.path.join(
+                        SCHOOL_ACCOUNTS_DIR, "user_accounts")
                     if os.path.isdir(user_accounts_dir):
                         for fname in os.listdir(user_accounts_dir):
                             if not fname.endswith('.json'):
@@ -8016,7 +8033,8 @@ class Api:
                                 with open(fpath, 'r', encoding='utf-8') as uf:
                                     other = json.load(uf)
                             except Exception:
-                                logging.debug(f"跳过无法读取的 user_accounts 文件: {fpath}")
+                                logging.debug(
+                                    f"跳过无法读取的 user_accounts 文件: {fpath}")
                                 continue
 
                             # 合并 other 中的账号
@@ -8042,56 +8060,63 @@ class Api:
                                         'ua': account_info.get('ua') if 'ua' in account_info else None,
                                     }
                                 else:
-                                    entry = {'password': account_info, 'ua': None}
+                                    entry = {
+                                        'password': account_info, 'ua': None}
 
-                                stats = self._load_school_account_stats_from_ini(school_username)
-                                entry['overdue_count'] = stats.get('overdue_count', 0)
-                                entry['completed_count'] = stats.get('completed_count', 0)
+                                stats = self._load_school_account_stats_from_ini(
+                                    school_username)
+                                entry['overdue_count'] = stats.get(
+                                    'overdue_count', 0)
+                                entry['completed_count'] = stats.get(
+                                    'completed_count', 0)
 
                                 aggregated[school_username] = entry
-                    
+
                     # 2. 遍历 school_accounts 根目录下的旧版 INI 文件
                     if os.path.isdir(SCHOOL_ACCOUNTS_DIR):
                         for fname in os.listdir(SCHOOL_ACCOUNTS_DIR):
                             if not fname.endswith('.ini'):
                                 continue
-                            
+
                             # 从文件名提取学校账号用户名（去掉 .ini 后缀）
                             school_username = fname[:-4]
-                            
+
                             # 如果已存在于 aggregated 中，跳过以避免覆盖
                             if school_username in aggregated:
                                 continue
-                            
+
                             ini_path = os.path.join(SCHOOL_ACCOUNTS_DIR, fname)
                             try:
                                 # 从旧版 INI 文件读取账号密码
                                 config = configparser.ConfigParser()
                                 config.read(ini_path, encoding='utf-8')
-                                
+
                                 # 从 [Config] 或 [System] 节读取密码和UA
                                 password = None
                                 ua = None
-                                
+
                                 if config.has_section('Config'):
                                     if config.has_option('Config', 'password'):
-                                        password = config.get('Config', 'password')
+                                        password = config.get(
+                                            'Config', 'password')
                                     elif config.has_option('Config', 'Password'):
-                                        password = config.get('Config', 'Password')
-                                
+                                        password = config.get(
+                                            'Config', 'Password')
+
                                 if config.has_section('System'):
                                     if config.has_option('System', 'ua'):
                                         ua = config.get('System', 'ua')
                                     elif config.has_option('System', 'UA'):
                                         ua = config.get('System', 'UA')
-                                
+
                                 # 排除 password 为空或 None 的记录
                                 if password is None or str(password).strip() == "":
                                     continue
-                                
+
                                 # 加载统计数据
-                                stats = self._load_school_account_stats_from_ini(school_username)
-                                
+                                stats = self._load_school_account_stats_from_ini(
+                                    school_username)
+
                                 # 添加到聚合结果中
                                 aggregated[school_username] = {
                                     'password': password,
@@ -8099,15 +8124,17 @@ class Api:
                                     'overdue_count': stats.get('overdue_count', 0),
                                     'completed_count': stats.get('completed_count', 0)
                                 }
-                                
+
                                 logging.debug(f"从旧版INI加载账号: {school_username}")
                             except Exception as e:
-                                logging.debug(f"跳过无法读取的 INI 文件: {ini_path}, 错误: {e}")
+                                logging.debug(
+                                    f"跳过无法读取的 INI 文件: {ini_path}, 错误: {e}")
                                 continue
 
                     # 替换为汇总后的结果
                     data = aggregated
-                    logging.debug(f"管理员权限聚合完成，总共 {len(data)} 个账户（包含JSON和INI格式）")
+                    logging.debug(
+                        f"管理员权限聚合完成，总共 {len(data)} 个账户（包含JSON和INI格式）")
             except Exception as e:
                 logging.debug(f"管理员合并 user_accounts 失败: {e}")
 
@@ -8295,7 +8322,7 @@ class Api:
     def _get_auth_user_and_check_admin(self):
         """
         获取当前认证用户名并检查其是否为管理员。
-        
+
         返回:
             元组 (auth_username, is_admin)
             如果无法获取认证用户，返回 (None, False)
@@ -8303,7 +8330,7 @@ class Api:
         """
         auth_username = getattr(self, "auth_username", None)
         is_admin = False
-        
+
         if auth_username and auth_username != "guest":
             # 使用全局的 auth_system 而不是实例属性
             try:
@@ -8311,14 +8338,15 @@ class Api:
                 if 'auth_system' in globals() and auth_system:
                     user_group = auth_system.get_user_group(auth_username)
                     is_admin = user_group in ["admin", "super_admin"]
-                    logging.debug(f"用户 {auth_username} 权限组: {user_group}, 是否管理员: {is_admin}")
+                    logging.debug(
+                        f"用户 {auth_username} 权限组: {user_group}, 是否管理员: {is_admin}")
                 else:
                     logging.debug(f"全局权限系统未初始化，用户 {auth_username} 默认为非管理员")
                     is_admin = False
             except Exception as e:
                 logging.debug(f"检查用户权限失败: {e}，默认为非管理员")
                 is_admin = False
-        
+
         return auth_username, is_admin
 
     def _load_accounts_by_permission(self, auth_username: str) -> dict:
@@ -8327,10 +8355,10 @@ class Api:
         """
         if not auth_username or auth_username == "guest":
             return {}
-        
+
         # 检查权限
         _, is_admin = self._get_auth_user_and_check_admin()
-        
+
         try:
             if is_admin:
                 # 管理员：使用 _load_user_school_accounts，已内置权限聚合逻辑
@@ -8341,12 +8369,12 @@ class Api:
                 logging.info(f"普通用户 {auth_username} 正在加载自己的账号信息")
                 file_path = self._get_user_accounts_file(auth_username)
                 accounts = {}
-                
+
                 if os.path.exists(file_path):
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             data = json.load(f)
-                        
+
                         # 标准化格式：兼容旧版 INI 和新版 JSON
                         for sch_user, account_info in data.items():
                             if isinstance(account_info, dict):
@@ -8358,18 +8386,20 @@ class Api:
                                     "password": account_info,
                                     "ua": None
                                 }
-                        
-                        logging.debug(f"成功加载普通用户 {auth_username} 的账户，共 {len(accounts)} 个")
+
+                        logging.debug(
+                            f"成功加载普通用户 {auth_username} 的账户，共 {len(accounts)} 个")
                     except Exception as e:
                         logging.error(f"加载普通用户 {auth_username} 的账户失败: {e}")
                         accounts = {}
                 else:
-                    logging.debug(f"普通用户 {auth_username} 的账户文件不存在: {file_path}")
-        
+                    logging.debug(
+                        f"普通用户 {auth_username} 的账户文件不存在: {file_path}")
+
         except Exception as e:
             logging.error(f"_load_accounts_by_permission 执行失败: {e}")
             accounts = {}
-        
+
         return accounts
 
     def update_school_account_overdue_count(self, auth_username, school_username, new_overdue_count):
@@ -8769,7 +8799,7 @@ class Api:
         params_to_save = self.params
         if self.is_multi_account_mode and username in self.accounts:
             params_to_save = self.accounts[username].params
-        
+
         # auto_attendance_enabled 已迁移到JSON配置文件管理，不再保存到INI
         for k, v in params_to_save.items():
             # 跳过 auto_attendance_enabled，这个参数不再保存到INI文件
@@ -9650,8 +9680,8 @@ class Api:
         try:
             if ud.username:
                 self._save_school_account_password_to_ini(
-                    ud.username, 
-                    password, 
+                    ud.username,
+                    password,
                     self.device_ua
                 )
                 logging.info(f"已将登录密码备份到 INI 文件: {ud.username}")
@@ -11549,7 +11579,8 @@ class Api:
                             # 获取账号ID（用于管理刷新线程）
                             account_id = str(self.user_data.id)
                             # 获取会话UUID（用于关联会话和配置）
-                            session_uuid = getattr(self, "_web_session_id", None)
+                            session_uuid = getattr(
+                                self, "_web_session_id", None)
                             # 获取认证用户名（用于记录配置所有者）
                             auth_username = username_to_update or school_username
 
@@ -11560,7 +11591,8 @@ class Api:
                                     # 调用JSON配置函数启用自动签到
                                     if _enable_auto_attendance(school_username, session_uuid, auth_username):
                                         # 启用成功后，确保刷新线程正在运行
-                                        self._ensure_account_refresh_thread(account_id)
+                                        self._ensure_account_refresh_thread(
+                                            account_id)
                                         self.log("自动签到已启用，配置已保存到JSON文件。")
                                         logging.info(
                                             f"[参数更新] 已启用自动签到 - "
@@ -11570,7 +11602,8 @@ class Api:
                                         )
                                     else:
                                         # 启用失败，记录错误日志
-                                        logging.error(f"[参数更新] 启用自动签到失败 - 学校账号: {school_username}")
+                                        logging.error(
+                                            f"[参数更新] 启用自动签到失败 - 学校账号: {school_username}")
                                         self.log("自动签到启用失败，请检查日志。")
                                 else:
                                     # 没有会话UUID，无法启用自动签到
@@ -11595,7 +11628,8 @@ class Api:
                                             )
                                 else:
                                     # 禁用失败，记录错误日志
-                                    logging.error(f"[参数更新] 禁用自动签到失败 - 学校账号: {school_username}")
+                                    logging.error(
+                                        f"[参数更新] 禁用自动签到失败 - 学校账号: {school_username}")
                                     self.log("自动签到禁用失败，请检查日志。")
                         else:
                             # 用户未登录，无法更新自动签到配置
@@ -11615,7 +11649,7 @@ class Api:
                         if self.user_data and self.user_data.id and self.user_data.username:
                             school_username = self.user_data.username
                             account_id = str(self.user_data.id)
-                            
+
                             # 检查该账号是否启用了自动签到（从JSON配置读取）
                             if _is_auto_attendance_enabled(school_username):
                                 # 如果启用了自动签到，重启刷新线程以应用新的刷新间隔
@@ -11648,7 +11682,7 @@ class Api:
                 params = self.global_params.copy()
             else:
                 params = self.params.copy()
-            
+
             # 动态添加 auto_attendance_enabled 状态
             # 这个值不再存储在params中，而是从JSON配置文件实时读取
             school_username = None
@@ -11660,11 +11694,12 @@ class Api:
                 # 单账号模式下，从JSON配置读取当前用户的启用状态
                 if self.user_data and self.user_data.username:
                     school_username = self.user_data.username
-                    params["auto_attendance_enabled"] = _is_auto_attendance_enabled(school_username)
+                    params["auto_attendance_enabled"] = _is_auto_attendance_enabled(
+                        school_username)
                 else:
                     # 用户未登录，返回默认值
                     params["auto_attendance_enabled"] = False
-            
+
             return params
         except Exception as e:
             logging.error(f"获取参数失败: {e}", exc_info=True)
@@ -12253,7 +12288,7 @@ class Api:
         模式一：从配置文件加载账号
         """
         self.log("正在从配置文件加载账号列表...")
-        
+
         # 获取用户权限组，判断是否为管理员
         if 'auth_system' in globals() and auth_system:
             user_group = auth_system.get_user_group(auth_username)
@@ -12261,9 +12296,10 @@ class Api:
         else:
             # 如果无法获取权限信息，默认按管理员处理（向后兼容）
             is_admin = True
-        logging.debug(f"multi_load_accounts_from_config: 用户 {auth_username}，管理员权限={is_admin}")
+        logging.debug(
+            f"multi_load_accounts_from_config: 用户 {auth_username}，管理员权限={is_admin}")
         users = {}
-        
+
         if is_admin:
             # 管理员：遍历所有 school_accounts 并兼容 INI 格式
             # 使用 _load_user_school_accounts 的逻辑，它已经处理了管理员权限聚合
@@ -12273,35 +12309,38 @@ class Api:
             # 普通用户：仅加载自己的账号
             self.log(f"检测到普通用户权限，仅加载 {auth_username} 的账号...")
             file_path = self._get_user_accounts_file(auth_username)
-            
+
             if os.path.exists(file_path):
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    
+
                     # 标准化数据格式：兼容旧版 INI 和新版 JSON
                     for school_username, account_info in data.items():
                         if isinstance(account_info, dict):
                             # 新格式：直接使用，并加载统计数据
-                            stats = self._load_school_account_stats_from_ini(school_username)
+                            stats = self._load_school_account_stats_from_ini(
+                                school_username)
                             account_info["overdue_count"] = stats["overdue_count"]
                             account_info["completed_count"] = stats["completed_count"]
                         elif isinstance(account_info, str):
                             # 旧格式：转换为新格式
-                            stats = self._load_school_account_stats_from_ini(school_username)
+                            stats = self._load_school_account_stats_from_ini(
+                                school_username)
                             data[school_username] = {
                                 "password": account_info,
                                 "ua": None,
                                 "overdue_count": stats["overdue_count"],
                                 "completed_count": stats["completed_count"]
                             }
-                    
+
                     users = data
-                    logging.debug(f"成功加载普通用户 {auth_username} 的账户，共 {len(users)} 个")
+                    logging.debug(
+                        f"成功加载普通用户 {auth_username} 的账户，共 {len(users)} 个")
                 except Exception as e:
                     logging.error(f"加载普通用户 {auth_username} 的账户失败: {e}")
                     users = {}
-        
+
         # 将加载的账号添加到系统中
         loaded_count = 0
         accounts_missing_password = []
@@ -12326,7 +12365,7 @@ class Api:
                         )
                     elif add_result and add_result.get("success"):
                         loaded_count += 1
-        
+
         self.log(f"已加载 {loaded_count} 个账号。")
         if accounts_missing_password:
             self.log(
@@ -12338,7 +12377,6 @@ class Api:
         return final_status
 
     def multi_add_account(self, username, password, tag=None, params=None):
-        
         """
         模式二：手动或选择性添加账号
         """
@@ -12346,42 +12384,47 @@ class Api:
         if not username or not isinstance(username, str):
             logging.error("[安全] multi_add_account: username必须是非空字符串")
             return {"success": False, "error": "无效的用户名"}
-        
+
         # [安全修复] 限制username长度，防止DoS攻击
         if len(username) > MAX_USERNAME_LENGTH:
-            logging.error(f"[安全] multi_add_account: username过长(>{MAX_USERNAME_LENGTH})")
+            logging.error(
+                f"[安全] multi_add_account: username过长(>{MAX_USERNAME_LENGTH})")
             return {"success": False, "error": "用户名过长"}
-        
+
         # [安全修复] 验证username格式，只允许安全字符
         # 使用模块级编译的正则表达式，提高性能
         if USERNAME_PATTERN and not USERNAME_PATTERN.match(username):
-            logging.error(f"[安全] multi_add_account: username包含非法字符: {username}")
+            logging.error(
+                f"[安全] multi_add_account: username包含非法字符: {username}")
             return {"success": False, "error": "用户名包含非法字符"}
-        
+
         # [安全修复] 验证password类型和长度
         if password is not None:
             if not isinstance(password, str):
                 logging.error("[安全] multi_add_account: password必须是字符串")
                 return {"success": False, "error": "无效的密码"}
             if len(password) > MAX_PASSWORD_LENGTH:
-                logging.error(f"[安全] multi_add_account: password过长(>{MAX_PASSWORD_LENGTH})")
+                logging.error(
+                    f"[安全] multi_add_account: password过长(>{MAX_PASSWORD_LENGTH})")
                 return {"success": False, "error": "密码过长"}
-        
+
         # [安全修复] 验证tag类型和长度
         if tag is not None:
             if not isinstance(tag, str):
                 tag = str(tag)
             if len(tag) > MAX_TAG_LENGTH:
-                logging.error(f"[安全] multi_add_account: tag过长(>{MAX_TAG_LENGTH})")
+                logging.error(
+                    f"[安全] multi_add_account: tag过长(>{MAX_TAG_LENGTH})")
                 return {"success": False, "error": "标签过长"}
-        
+
         if username in self.accounts:
             acc = self.accounts[username]
 
             if params and isinstance(params, dict):
                 # [安全修复] 限制params中的键值对数量，防止DoS攻击
                 if len(params) > MAX_PARAMS_COUNT:
-                    logging.error(f"[安全] multi_add_account: params包含过多键值对(>{MAX_PARAMS_COUNT})")
+                    logging.error(
+                        f"[安全] multi_add_account: params包含过多键值对(>{MAX_PARAMS_COUNT})")
                     return {"success": False, "error": "参数过多"}
                 for k, v in params.items():
                     if k in acc.params:
@@ -12396,11 +12439,11 @@ class Api:
                 auth_username, is_admin = self._get_auth_user_and_check_admin()
                 reloaded_password = None
                 reloaded_ua = None
-                
+
                 if auth_username:
                     # 根据权限加载账号列表（管理员查看所有，普通用户仅查看自己的）
                     accounts = self._load_accounts_by_permission(auth_username)
-                    
+
                     account_info = accounts.get(username)
                     if account_info:
                         if isinstance(account_info, dict):
@@ -12410,10 +12453,11 @@ class Api:
                             # 旧格式兼容（直接字符串）
                             reloaded_password = account_info
                     else:
-                        logging.debug(f"账号 {username} 未在 {('所有' if is_admin else '当前用户的')} 账户列表中找到")
+                        logging.debug(
+                            f"账号 {username} 未在 {('所有' if is_admin else '当前用户的')} 账户列表中找到")
                 else:
                     logging.debug(f"无法获取认证用户，跳过密码刷新")
-                
+
                 if reloaded_password:
                     acc.password = reloaded_password
                     logging.info(f"已从配置文件重新加载账号 {username} 的密码")
@@ -12451,17 +12495,17 @@ class Api:
         # 不再从旧的配置文件/ini 中自动读取 UA 或密码；只使用调用时提供的密码
         # 如果没有显式提供 UA，则为会话生成随机 UA
         # 但支持从 school_accounts 中读取已保存的 UA 和密码（兼容新旧格式、权限感知）
-        
+
         # 尝试从 school_accounts 中读取现有账号的 UA 和密码（支持权限检查）
         if not password:
             # 使用权限感知方法加载账号信息
             auth_username, is_admin = self._get_auth_user_and_check_admin()
-            
+
             if auth_username:
                 try:
                     # 根据权限加载账号列表（管理员查看所有，普通用户仅查看自己的）
                     accounts = self._load_accounts_by_permission(auth_username)
-                    
+
                     account_info = accounts.get(username)
                     if account_info:
                         if isinstance(account_info, dict):
@@ -12472,14 +12516,16 @@ class Api:
                         else:
                             # 旧格式兼容（直接字符串）
                             password = account_info
-                        
+
                         if password:
-                            logging.info(f"已从配置文件读取账号 {username} 的密码 (发起用户: {auth_username}, 是否管理员: {is_admin})")
+                            logging.info(
+                                f"已从配置文件读取账号 {username} 的密码 (发起用户: {auth_username}, 是否管理员: {is_admin})")
                     else:
-                        logging.debug(f"账号 {username} 未在 {('所有' if is_admin else '当前用户的')} 账户列表中找到")
+                        logging.debug(
+                            f"账号 {username} 未在 {('所有' if is_admin else '当前用户的')} 账户列表中找到")
                 except Exception as e:
                     logging.debug(f"从 school_accounts 读取账号信息失败: {e}")
-        
+
         if not self.accounts[username].device_ua:
             self.accounts[username].device_ua = ApiClient.generate_random_ua()
 
@@ -12562,7 +12608,7 @@ class Api:
                 is_admin = user_group in ["admin", "super_admin"]
             else:
                 is_admin = True
-            
+
             try:
                 if is_admin:
                     # 管理员：使用完整的聚合账号列表
@@ -12583,7 +12629,7 @@ class Api:
                                     "password": account_info,
                                     "ua": None
                                 }
-                
+
                 accounts[username] = {
                     "password": self.accounts[username].password,
                     "ua": self.accounts[username].device_ua
@@ -13009,7 +13055,8 @@ class Api:
                     auth_username = getattr(self, "auth_username", None)
                     loaded_password = None
                     if auth_username:
-                        accounts = self._load_user_school_accounts(auth_username)
+                        accounts = self._load_user_school_accounts(
+                            auth_username)
                         account_info = accounts.get(username)
                         if account_info:
                             loaded_password = account_info.get("password")
@@ -13047,7 +13094,8 @@ class Api:
                         auth_username = getattr(self, "auth_username", None)
                         loaded_password = None
                         if auth_username:
-                            accounts = self._load_user_school_accounts(auth_username)
+                            accounts = self._load_user_school_accounts(
+                                auth_username)
                             account_info = accounts.get(username)
                             if account_info:
                                 loaded_password = account_info.get("password")
@@ -13096,7 +13144,8 @@ class Api:
                         auth_username = getattr(self, "auth_username", None)
                         loaded_password = None
                         if auth_username:
-                            accounts = self._load_user_school_accounts(auth_username)
+                            accounts = self._load_user_school_accounts(
+                                auth_username)
                             account_info = accounts.get(username)
                             if account_info:
                                 loaded_password = account_info.get("password")
@@ -13240,7 +13289,8 @@ class Api:
                             school_username = acc.user_data.username
                             account_id = str(acc.user_data.id)
                             # 获取会话UUID
-                            session_uuid = getattr(self, "_web_session_id", None)
+                            session_uuid = getattr(
+                                self, "_web_session_id", None)
                             # 认证用户名就是当前账号的用户名
                             auth_username = username
 
@@ -13248,7 +13298,8 @@ class Api:
                             if target_params[key]:  # 启用自动签到
                                 if session_uuid:
                                     if _enable_auto_attendance(school_username, session_uuid, auth_username):
-                                        self._ensure_account_refresh_thread(account_id)
+                                        self._ensure_account_refresh_thread(
+                                            account_id)
                                         logging.info(
                                             f"[多账号参数更新] 已启用自动签到 - "
                                             f"账号: {username}, 学校账号: {school_username}, "
@@ -15330,7 +15381,7 @@ class Api:
                     school_username = None
                     if account.user_data and account.user_data.username:
                         school_username = account.user_data.username
-                    
+
                     # 如果无法获取学校账号用户名，无法检查配置，等待后重试
                     if not school_username:
                         logging.debug(
@@ -15339,9 +15390,10 @@ class Api:
                         if stop_event.wait(timeout=30):
                             break
                         continue
-                    
+
                     # 从JSON配置文件读取该账号的自动签到启用状态
-                    is_auto_attendance_enabled = _is_auto_attendance_enabled(school_username)
+                    is_auto_attendance_enabled = _is_auto_attendance_enabled(
+                        school_username)
 
                     if not is_auto_attendance_enabled:
                         # 未启用自动签到，等待30秒后重新检查
@@ -15500,7 +15552,8 @@ class Api:
                     try:
                         # 从JSON配置读取该账号的自动签到启用状态
                         school_username = acc.user_data.username if acc.user_data and acc.user_data.username else None
-                        is_auto_enabled = _is_auto_attendance_enabled(school_username) if school_username else False
+                        is_auto_enabled = _is_auto_attendance_enabled(
+                            school_username) if school_username else False
 
                         # 检查账号是否已登录（有有效的 user_data.id）
                         has_user_id = acc.user_data and acc.user_data.id
@@ -15559,11 +15612,12 @@ class Api:
                 refresh_interval_s = max(15, refresh_interval_s)
                 if self.is_multi_account_mode or not self.user_data.id:
                     continue
-                
+
                 # 从JSON配置读取自动签到启用状态
                 school_username = self.user_data.username if self.user_data and self.user_data.username else None
-                is_enabled = _is_auto_attendance_enabled(school_username) if school_username else False
-                
+                is_enabled = _is_auto_attendance_enabled(
+                    school_username) if school_username else False
+
                 if is_enabled:
                     self.log("(后台) 自动签到已启用，正在检查...")
                     self._check_and_trigger_auto_attendance(self)
@@ -15754,7 +15808,7 @@ class Api:
                 for acc in accounts_to_check:
                     if self.stop_multi_auto_refresh.is_set():
                         break
-                    
+
                     # 从JSON配置读取该账号的自动签到启用状态
                     school_username = acc.user_data.username if acc.user_data and acc.user_data.username else None
                     if school_username and _is_auto_attendance_enabled(school_username):
@@ -15870,14 +15924,14 @@ def _load_ip_cache():
             logging.info(f"[IP缓存] 成功加载 {len(ip_location_cache)} 条IP缓存记录")
         except json.JSONDecodeError as e:
             logging.error(f"[IP缓存] 加载缓存文件失败（JSON解析错误）: {e}")
-            
+
             # 调用通用备份函数，备份损坏的缓存文件并重置为空字典
             _backup_and_reset_corrupted_file(
                 IP_CACHE_FILE,
                 {},
                 "json"
             )
-            
+
             ip_location_cache = {}
         except OSError as e:
             logging.warning(f"[IP缓存] 加载缓存文件失败（文件操作错误）: {e}，将创建新缓存")
@@ -16064,7 +16118,7 @@ def monitor_session_inactivity():
                         if acc.user_data and acc.user_data.username:
                             if _is_auto_attendance_enabled(acc.user_data.username):
                                 auto_attendance_count += 1
-                    
+
                     logging.debug(
                         f"[会话监控] {session_id} 多账号模式，启用自动签到的账号数: {auto_attendance_count}/{len(accounts)}"
                     )
@@ -16076,8 +16130,9 @@ def monitor_session_inactivity():
                     user_data = getattr(api_instance, "user_data", None)
                     auto_attendance = False
                     if user_data and user_data.username:
-                        auto_attendance = _is_auto_attendance_enabled(user_data.username)
-                    
+                        auto_attendance = _is_auto_attendance_enabled(
+                            user_data.username)
+
                     logging.debug(
                         f"[会话监控] {session_id} 单账号模式自动签到状态: {auto_attendance}"
                     )
@@ -16624,13 +16679,16 @@ def restore_session_to_api_instance(api_instance, state):
                         if username not in api_instance.accounts:
                             try:
                                 # 从新路径加载密码
-                                auth_username = getattr(api_instance, "auth_username", None)
+                                auth_username = getattr(
+                                    api_instance, "auth_username", None)
                                 loaded_password = None
                                 if auth_username:
-                                    accounts = api_instance._load_user_school_accounts(auth_username)
+                                    accounts = api_instance._load_user_school_accounts(
+                                        auth_username)
                                     account_info = accounts.get(username)
                                     if account_info:
-                                        loaded_password = account_info.get("password")
+                                        loaded_password = account_info.get(
+                                            "password")
                                 loaded_tag = api_instance._load_account_tag(
                                     username)
                                 acc = AccountSession(
@@ -16726,7 +16784,7 @@ def restore_session_to_api_instance(api_instance, state):
                 )
                 api_instance.auto_refresh_thread.start()
                 logging.info(f"会话恢复: 已重启单账号自动签到后台线程（旧版本）")
-        
+
         # 恢复多账号自动签到线程（旧版本，已废弃但保留兼容）
         # 新版本为每个账号单独创建刷新线程
         if api_instance.is_multi_account_mode:
@@ -16737,7 +16795,7 @@ def restore_session_to_api_instance(api_instance, state):
                     if _is_auto_attendance_enabled(acc.user_data.username):
                         has_auto_attendance = True
                         break
-            
+
             if has_auto_attendance:
                 api_instance.stop_multi_auto_refresh.clear()
             api_instance.multi_auto_refresh_thread = threading.Thread(
@@ -18792,7 +18850,8 @@ def start_background_auto_attendance(args):
                     auth_username = getattr(temp_api, "auth_username", None)
                     password = None
                     if auth_username:
-                        accounts = temp_api._load_user_school_accounts(auth_username)
+                        accounts = temp_api._load_user_school_accounts(
+                            auth_username)
                         account_info = accounts.get(username)
                         if account_info:
                             password = account_info.get("password")
@@ -19607,7 +19666,7 @@ def get_ssl_certificate_info(cert_path):
     """
     if not os.path.isabs(cert_path):
         cert_path = os.path.join(os.path.dirname(__file__), cert_path)
-    
+
     # 在打开文件前检查文件是否存在
     # 如果证书文件不存在，返回友好的错误信息而不记录ERROR日志
     # 这是预期的情况（证书未上传或已被删除），不是系统错误
@@ -19617,7 +19676,7 @@ def get_ssl_certificate_info(cert_path):
             "path": cert_path,
             "message": "请先上传SSL证书"
         }
-    
+
     cert_info = {}
 
     try:
@@ -19866,7 +19925,8 @@ def start_web_server(args_param):
     MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE_BYTES
 
-    UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+    UPLOADS_DIR = os.path.join(os.path.dirname(
+        os.path.abspath(__file__)), "uploads")
     os.makedirs(UPLOADS_DIR, exist_ok=True)
     REFUSE_DIR = os.path.join(UPLOADS_DIR, "refuse")
     os.makedirs(REFUSE_DIR, exist_ok=True)
@@ -19884,7 +19944,8 @@ def start_web_server(args_param):
             return jsonify(success=False, message=f"文件大小超过最大限制 {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB"), 413
 
         # 支持两种常见字段名：'file' 和 editormd 的 'editormd-image-file'
-        file = request.files.get("file") or request.files.get("editormd-image-file")
+        file = request.files.get("file") or request.files.get(
+            "editormd-image-file")
         if not file or not getattr(file, 'filename', None):
             return jsonify(success=False, message="没有检测到上传文件"), 400
 
@@ -19918,7 +19979,8 @@ def start_web_server(args_param):
             logging.warning(f"无法获取文件大小: {e}")
 
         # 默认返回的文件URL（如果审核通过或未启用审核）
-        file_url = url_for('download_file', filename=save_name, _external=False)
+        file_url = url_for(
+            'download_file', filename=save_name, _external=False)
 
         # === 内容审核（图片） ===
         try:
@@ -19933,14 +19995,18 @@ def start_web_server(args_param):
         if enable_review:
             try:
                 # 读取百度云凭证并获取access_token
-                baidu_api_key = config.get("baidu_cloud", "api_key", fallback="").strip()
-                baidu_secret = config.get("baidu_cloud", "secret_key", fallback="").strip()
+                baidu_api_key = config.get(
+                    "baidu_cloud", "api_key", fallback="").strip()
+                baidu_secret = config.get(
+                    "baidu_cloud", "secret_key", fallback="").strip()
                 token_res = get_baidu_access_token(baidu_api_key, baidu_secret)
-                access_token = token_res.get("access_token") if token_res else None
+                access_token = token_res.get(
+                    "access_token") if token_res else None
 
                 # 如果无法获取token，视为审核失败，移动到 refuse
                 if not access_token:
-                    raise Exception(token_res.get("error") if token_res else "获取access_token失败")
+                    raise Exception(token_res.get("error")
+                                    if token_res else "获取access_token失败")
 
                 # 读取文件并进行base64编码
                 # import base64 as _base64, requests as _requests
@@ -19951,7 +20017,8 @@ def start_web_server(args_param):
                 censor_url = f"https://aip.baidubce.com/rest/2.0/solution/v1/img_censor/v2/user_defined?access_token={access_token}"
                 headers = {"content-type": "application/x-www-form-urlencoded"}
                 data = {"image": img_b64}
-                resp = requests.post(censor_url, data=data, headers=headers, timeout=10)
+                resp = requests.post(censor_url, data=data,
+                                     headers=headers, timeout=10)
                 resp.raise_for_status()
                 result = resp.json()
 
@@ -19959,7 +20026,8 @@ def start_web_server(args_param):
                 if isinstance(result, dict) and "error_code" in result:
                     raise Exception(result.get("error_msg", "百度云API返回错误"))
 
-                conclusion_type = int(result.get("conclusionType", 4)) if isinstance(result, dict) else 4
+                conclusion_type = int(result.get("conclusionType", 4)) if isinstance(
+                    result, dict) else 4
 
                 # 只有 conclusionType == 1 视为通过，其他均视为不通过或疑似 -> 移动到 refuse
                 if conclusion_type != 1:
@@ -19990,14 +20058,16 @@ def start_web_server(args_param):
                     if isinstance(details, list):
                         for item in details:
                             if isinstance(item, dict):
-                                m = item.get("msg") or item.get("message") or item.get("conclusion")
+                                m = item.get("msg") or item.get(
+                                    "message") or item.get("conclusion")
                                 if m:
                                     msgs.append(str(m))
                             else:
                                 msgs.append(str(item))
                     else:
                         if isinstance(details, dict):
-                            m = details.get("msg") or details.get("message") or details.get("conclusion")
+                            m = details.get("msg") or details.get(
+                                "message") or details.get("conclusion")
                             if m:
                                 msgs.append(str(m))
                         else:
@@ -20031,7 +20101,7 @@ def start_web_server(args_param):
 
         return jsonify(success=True, url=file_url, filename=save_name)
 
-    @app.route("/download/<path:filename>", methods=["GET"]) 
+    @app.route("/download/<path:filename>", methods=["GET"])
     def download_file(filename: str):
         from flask import send_from_directory, abort, request
 
@@ -21251,7 +21321,7 @@ def start_web_server(args_param):
             session_limit_info = f"您的账号最多可以同时保持{max_sessions}个活跃会话，超出时将自动清理最旧的会话"
         token = None
         kicked_sessions = []
-        if auth_username is None or auth_username in ["", "null","NULL","undefined"]:
+        if auth_username is None or auth_username in ["", "null", "NULL", "undefined"]:
             auth_username = auth_result.get("auth_username", "unknown_user")
         if not auth_result.get("is_guest", False) and session_id:
             try:
@@ -21713,7 +21783,7 @@ def start_web_server(args_param):
         """管理员：为用户设置自定义权限（差分化存储）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = g.user
-        session_id =g.session_id
+        session_id = g.session_id
 
         # 检查细粒度权限：权限管理权限
         # manage_permissions 权限允许为用户设置自定义权限
@@ -22709,25 +22779,25 @@ def start_web_server(args_param):
     def auth_get_user_school_accounts():
         """
         获取指定认证用户的所有 school_account（基于get_initial_data权限过滤）
-        
+
         功能说明：
         - 该接口用于获取认证用户（auth user）关联的学校账号（school accounts）
         - 返回的账号列表会根据当前登录用户的权限进行过滤
         - 使用get_initial_data()的权限逻辑确保用户只能看到授权范围内的账号
-        
+
         权限模型：
         - 仅需要登录即可调用此接口，权限过滤在数据层面实现
         - 普通用户：只能查看自己的学校账号（请求其他用户名时返回空结果）
         - 管理员/有auto_fill_password权限：可以查看所有学校账号
-        
+
         安全机制：
         - get_initial_data权限过滤：根据用户权限自动过滤账号数据
         - 输入验证：对username参数进行安全检查
         - 会话验证：确保请求来自有效的登录会话
-        
+
         请求参数：
         - username (可选): 目标认证用户名，默认为当前登录用户
-        
+
         返回格式：
         {
             "success": true,
@@ -22743,7 +22813,7 @@ def start_web_server(args_param):
             # 从Flask的g对象中获取当前登录的用户名
             # g.user 是在 @login_required 装饰器中设置的全局请求上下文变量
             auth_username = g.user
-            
+
             # 记录API调用日志，用于审计和调试
             # 包含调用者信息，便于追踪安全问题
             logging.info(
@@ -22755,7 +22825,7 @@ def start_web_server(args_param):
             # 从URL查询参数获取目标用户名，如果未指定则默认为当前登录用户
             # 这允许管理员查询其他用户的账号信息
             target_username = request.args.get("username", auth_username)
-            
+
             # [安全加固] 验证target_username参数，防止注入攻击和路径遍历
             # 检查1：确保username不为空且为字符串类型
             if not target_username or not isinstance(target_username, str):
@@ -22766,7 +22836,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "无效的用户名参数"
                 }), 400
-            
+
             # 检查2：验证username长度，防止过长输入导致的DoS攻击
             # 使用全局常量 MAX_USERNAME_LENGTH（定义在文件开头，值为200）
             if len(target_username) > MAX_USERNAME_LENGTH:
@@ -22777,7 +22847,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"用户名长度不能超过{MAX_USERNAME_LENGTH}个字符"
                 }), 400
-            
+
             # 检查3：验证username格式，只允许字母、数字、下划线、连字符、点和@符号
             # 使用全局正则表达式 USERNAME_PATTERN（定义在文件开头）
             # 这可以防止路径遍历攻击（如 ../../../etc/passwd）和特殊字符注入
@@ -22789,7 +22859,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号"
                 }), 400
-            
+
             # 记录目标用户信息，便于审计
             logging.debug(
                 f"[参数验证通过] 目标用户: {target_username}, "
@@ -22800,7 +22870,7 @@ def start_web_server(args_param):
             # 从请求头获取会话ID（Session ID）
             # 会话ID用于标识用户的登录会话，每个会话对应一个api_instance
             session_id = request.headers.get("X-Session-ID", "")
-            
+
             # 验证会话ID是否存在于活跃会话列表中
             # web_sessions 是全局字典，存储所有活跃的用户会话
             if session_id and session_id in web_sessions:
@@ -22856,7 +22926,8 @@ def start_web_server(args_param):
             # 注意：这里加载的是原始的、未经过滤的账号数据
             # 后续会根据allowed_users进行过滤
             try:
-                accounts = api_instance._load_user_school_accounts(target_username)
+                accounts = api_instance._load_user_school_accounts(
+                    target_username)
 
                 # 如果请求者具有 manage_users 权限，则返回所有用户的学校账号
                 # 管理员视图：遍历 school_accounts/user_accounts 目录并汇总所有 JSON
@@ -22864,9 +22935,10 @@ def start_web_server(args_param):
                 try:
                     if auth_system.check_permission(auth_username, "manage_users"):
                         aggregated = {}
-                        
+
                         # 方式1：从 school_accounts/user_accounts 目录读取 JSON 文件
-                        user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+                        user_accounts_dir = os.path.join(
+                            SCHOOL_ACCOUNTS_DIR, "user_accounts")
                         if os.path.isdir(user_accounts_dir):
                             for fname in os.listdir(user_accounts_dir):
                                 if not fname.endswith('.json'):
@@ -22876,13 +22948,15 @@ def start_web_server(args_param):
                                     with open(fpath, 'r', encoding='utf-8') as uf:
                                         other = json.load(uf)
                                 except Exception:
-                                    logging.debug(f"跳过无法读取的 user_accounts 文件: {fpath}")
+                                    logging.debug(
+                                        f"跳过无法读取的 user_accounts 文件: {fpath}")
                                     continue
 
                                 for school_username, account_info in (other or {}).items():
                                     if isinstance(account_info, dict):
                                         pwd = account_info.get('password', '')
-                                        ua = account_info.get('ua') if 'ua' in account_info else None
+                                        ua = account_info.get(
+                                            'ua') if 'ua' in account_info else None
                                     else:
                                         pwd = account_info or ''
                                         ua = None
@@ -22895,12 +22969,15 @@ def start_web_server(args_param):
                                         continue
 
                                     entry = {'password': pwd, 'ua': ua}
-                                    stats = api_instance._load_school_account_stats_from_ini(school_username)
-                                    entry['overdue_count'] = stats.get('overdue_count', 0)
-                                    entry['completed_count'] = stats.get('completed_count', 0)
+                                    stats = api_instance._load_school_account_stats_from_ini(
+                                        school_username)
+                                    entry['overdue_count'] = stats.get(
+                                        'overdue_count', 0)
+                                    entry['completed_count'] = stats.get(
+                                        'completed_count', 0)
 
                                     aggregated[school_username] = entry
-                        
+
                         # 方式2：兼容旧版格式，从 school_accounts 目录直接读取 ini 文件
                         # 这支持管理员访问那些只有 ini 文件（没有对应 JSON 文件）的学校账号
                         try:
@@ -22908,34 +22985,39 @@ def start_web_server(args_param):
                                 # 只处理 .ini 文件，排除子目录和其他文件
                                 if not fname.endswith('.ini'):
                                     continue
-                                
+
                                 school_username = fname[:-4]  # 去除 .ini 扩展名
-                                
+
                                 # 如果已经从 JSON 中读取过，则跳过
                                 if school_username in aggregated:
                                     continue
-                                
+
                                 # 从 ini 文件读取账号配置
-                                ini_path = os.path.join(SCHOOL_ACCOUNTS_DIR, fname)
+                                ini_path = os.path.join(
+                                    SCHOOL_ACCOUNTS_DIR, fname)
                                 try:
                                     config = configparser.RawConfigParser()
                                     config.optionxform = str
                                     config.read(ini_path, encoding='utf-8')
-                                    
+
                                     # 从 [Config] 部分读取密码
-                                    password = config.get('Config', 'Password', fallback='')
-                                    
+                                    password = config.get(
+                                        'Config', 'Password', fallback='')
+
                                     # 排除空密码
                                     if password is None or str(password).strip() == "":
                                         continue
-                                    
+
                                     # 从 [System] 部分读取 UA
-                                    ua = config.get('System', 'UA', fallback=None)
-                                    
+                                    ua = config.get(
+                                        'System', 'UA', fallback=None)
+
                                     # 从 [stats] 部分读取统计数据
-                                    overdue_count = config.getint('stats', 'overdue_count', fallback=0)
-                                    completed_count = config.getint('stats', 'completed_count', fallback=0)
-                                    
+                                    overdue_count = config.getint(
+                                        'stats', 'overdue_count', fallback=0)
+                                    completed_count = config.getint(
+                                        'stats', 'completed_count', fallback=0)
+
                                     # 构建账号条目
                                     entry = {
                                         'password': password,
@@ -22943,14 +23025,16 @@ def start_web_server(args_param):
                                         'overdue_count': overdue_count,
                                         'completed_count': completed_count
                                     }
-                                    
+
                                     aggregated[school_username] = entry
-                                    logging.debug(f"[旧版兼容] 从 ini 文件读取账号: {school_username}")
-                                    
+                                    logging.debug(
+                                        f"[旧版兼容] 从 ini 文件读取账号: {school_username}")
+
                                 except Exception as e:
-                                    logging.debug(f"读取 ini 文件失败 {ini_path}: {e}")
+                                    logging.debug(
+                                        f"读取 ini 文件失败 {ini_path}: {e}")
                                     continue
-                                    
+
                         except Exception as e:
                             logging.debug(f"遍历 school_accounts 目录时出错: {e}")
 
@@ -22981,7 +23065,7 @@ def start_web_server(args_param):
             # 原因：列表的 'in' 操作是 O(n)，集合的 'in' 操作是 O(1)
             # 当账号数量很多时（例如几百个），这个优化能显著提升性能
             allowed_users_set = set(allowed_users)
-            
+
             # 过滤账号：只保留在 allowed_users_set 中的账号
             # 过滤逻辑说明：
             # - allowed_users_set: get_initial_data() 返回的学校账号名称集合
@@ -23017,13 +23101,13 @@ def start_web_server(args_param):
                     for account_name, account_info in accounts.items()
                     if account_name in allowed_users_set
                 }
-            
+
             # 记录过滤结果，用于审计和调试
             logging.info(
                 f"[过滤完成] 用户 {auth_username} 查询 {target_username} 的账号: "
                 f"原始数量={len(accounts)}, 过滤后数量={len(filtered_accounts)}"
             )
-            
+
             # [安全审计] 如果过滤后账号数量为0，记录警告日志
             # 这可能表示：
             # 1. target_username确实没有学校账号（正常）
@@ -23048,7 +23132,7 @@ def start_web_server(args_param):
                 "username": target_username,
                 "accounts": filtered_accounts
             })
-            
+
         except Exception as e:
             # ========== 异常处理（最外层保护）==========
             # 捕获所有未预期的异常，防止敏感信息泄露
@@ -23063,32 +23147,30 @@ def start_web_server(args_param):
                 "message": "服务器内部错误，请稍后重试"
             }), 500
 
-
-
     @app.route("/auth/get_user_school_accounts_only", methods=["GET"])
     @login_required  # 只需要登录即可，权限过滤在数据层通过get_initial_data实现
     def auth_get_user_school_accounts_only():
         """
         获取指定认证用户的所有 school_account（基于get_initial_data权限过滤）
-        
+
         功能说明：
         - 该接口用于获取认证用户（auth user）关联的学校账号（school accounts）
         - 返回的账号列表会根据当前登录用户的权限进行过滤
         - 使用get_initial_data()的权限逻辑确保用户只能看到授权范围内的账号
-        
+
         权限模型：
         - 仅需要登录即可调用此接口，权限过滤在数据层面实现
         - 普通用户：只能查看自己的学校账号（请求其他用户名时返回空结果）
         - 管理员/有auto_fill_password权限：可以查看所有学校账号
-        
+
         安全机制：
         - get_initial_data权限过滤：根据用户权限自动过滤账号数据
         - 输入验证：对username参数进行安全检查
         - 会话验证：确保请求来自有效的登录会话
-        
+
         请求参数：
         - username (可选): 目标认证用户名，默认为当前登录用户
-        
+
         返回格式：
         {
             "success": true,
@@ -23104,7 +23186,7 @@ def start_web_server(args_param):
             # 从Flask的g对象中获取当前登录的用户名
             # g.user 是在 @login_required 装饰器中设置的全局请求上下文变量
             auth_username = g.user
-            
+
             # 记录API调用日志，用于审计和调试
             # 包含调用者信息，便于追踪安全问题
             logging.info(
@@ -23116,7 +23198,7 @@ def start_web_server(args_param):
             # 从URL查询参数获取目标用户名，如果未指定则默认为当前登录用户
             # 这允许管理员查询其他用户的账号信息
             target_username = request.args.get("username", auth_username)
-            
+
             # [安全加固] 验证target_username参数，防止注入攻击和路径遍历
             # 检查1：确保username不为空且为字符串类型
             if not target_username or not isinstance(target_username, str):
@@ -23127,7 +23209,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "无效的用户名参数"
                 }), 400
-            
+
             # 检查2：验证username长度，防止过长输入导致的DoS攻击
             # 使用全局常量 MAX_USERNAME_LENGTH（定义在文件开头，值为200）
             if len(target_username) > MAX_USERNAME_LENGTH:
@@ -23138,7 +23220,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": f"用户名长度不能超过{MAX_USERNAME_LENGTH}个字符"
                 }), 400
-            
+
             # 检查3：验证username格式，只允许字母、数字、下划线、连字符、点和@符号
             # 使用全局正则表达式 USERNAME_PATTERN（定义在文件开头）
             # 这可以防止路径遍历攻击（如 ../../../etc/passwd）和特殊字符注入
@@ -23150,7 +23232,7 @@ def start_web_server(args_param):
                     "success": False,
                     "message": "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号"
                 }), 400
-            
+
             # 记录目标用户信息，便于审计
             logging.debug(
                 f"[参数验证通过] 目标用户: {target_username}, "
@@ -23161,7 +23243,7 @@ def start_web_server(args_param):
             # 从请求头获取会话ID（Session ID）
             # 会话ID用于标识用户的登录会话，每个会话对应一个api_instance
             session_id = request.headers.get("X-Session-ID", "")
-            
+
             # 验证会话ID是否存在于活跃会话列表中
             # web_sessions 是全局字典，存储所有活跃的用户会话
             if session_id and session_id in web_sessions:
@@ -23217,7 +23299,8 @@ def start_web_server(args_param):
             # 注意：这里加载的是原始的、未经过滤的账号数据
             # 后续会根据allowed_users进行过滤
             try:
-                accounts = api_instance._load_user_school_accounts(target_username)
+                accounts = api_instance._load_user_school_accounts(
+                    target_username)
                 logging.debug(
                     f"[加载账号] 为用户 {target_username} 加载了 {len(accounts)} 个学校账号"
                 )
@@ -23238,7 +23321,7 @@ def start_web_server(args_param):
             # 原因：列表的 'in' 操作是 O(n)，集合的 'in' 操作是 O(1)
             # 当账号数量很多时（例如几百个），这个优化能显著提升性能
             allowed_users_set = set(allowed_users)
-            
+
             # 过滤账号：只保留在 allowed_users_set 中的账号
             # 过滤逻辑说明：
             # - allowed_users_set: get_initial_data() 返回的学校账号名称集合
@@ -23274,13 +23357,13 @@ def start_web_server(args_param):
                     for account_name, account_info in accounts.items()
                     if account_name in allowed_users_set
                 }
-            
+
             # 记录过滤结果，用于审计和调试
             logging.info(
                 f"[过滤完成] 用户 {auth_username} 查询 {target_username} 的账号: "
                 f"原始数量={len(accounts)}, 过滤后数量={len(filtered_accounts)}"
             )
-            
+
             # [安全审计] 如果过滤后账号数量为0，记录警告日志
             # 这可能表示：
             # 1. target_username确实没有学校账号（正常）
@@ -23305,7 +23388,7 @@ def start_web_server(args_param):
                 "username": target_username,
                 "accounts": filtered_accounts
             })
-            
+
         except Exception as e:
             # ========== 异常处理（最外层保护）==========
             # 捕获所有未预期的异常，防止敏感信息泄露
@@ -23319,10 +23402,6 @@ def start_web_server(args_param):
                 "success": False,
                 "message": "服务器内部错误，请稍后重试"
             }), 500
-
-
-
-
 
     @app.route("/auth/admin/get_all_users_school_accounts", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
@@ -23414,10 +23493,10 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"解析school_account保存请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400
-        
+
         # [修正] 获取当前用户的权限组，定义 auth_group 变量
         auth_group = auth_system.get_user_group(current_auth_username)
-        
+
         is_admin = auth_group in ["admin", "super_admin"]
         if not is_admin and auth_username != current_auth_username:
             logging.warning(
@@ -23655,10 +23734,10 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"解析school_account更新请求失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "请求数据格式错误"}), 400
-        
+
         # [修正] 获取当前用户的权限组，定义 auth_group 变量
         auth_group = auth_system.get_user_group(current_auth_username)
-        
+
         is_admin = auth_group in ["admin", "super_admin"]
         if not is_admin and auth_username != current_auth_username:
             logging.warning(
@@ -24727,10 +24806,11 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "会话ID缺失"})
         if target_session_id == session_id:
             return jsonify({"success": False, "message": "不能删除当前会话"})
-        
+
         # [任务47新增] 在删除会话前，检查并移除关联的自动签到配置
         # 查找所有使用该会话UUID的自动签到账号
-        auto_attendance_accounts = _get_auto_attendance_by_session(target_session_id)
+        auto_attendance_accounts = _get_auto_attendance_by_session(
+            target_session_id)
         if auto_attendance_accounts:
             logging.info(
                 f"[会话删除] 会话 {target_session_id} 关联了 {len(auto_attendance_accounts)} 个自动签到账号，将一并移除"
@@ -24741,7 +24821,7 @@ def start_web_server(args_param):
                 logging.info(
                     f"[会话删除] 已禁用账号 {school_username} 的自动签到（会话已删除）"
                 )
-        
+
         auth_system.unlink_session_from_user(auth_username, target_session_id)
         session_file = get_session_file_path(target_session_id)
         if os.path.exists(session_file):
@@ -25976,8 +26056,7 @@ def start_web_server(args_param):
                         fallback=default_config.get(
                             "Guest", "allow_guest_login", fallback=True
                         ),
-                    )
-                    ,
+                    ),
                     "show_newbie_help": _get_config_value(
                         config,
                         "Help",
@@ -26960,14 +27039,14 @@ def start_web_server(args_param):
                         bans = json.load(f)
                 except json.JSONDecodeError as e:
                     logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
-                    
+
                     # 调用通用备份函数，备份损坏的文件并重置为空列表
                     _backup_and_reset_corrupted_file(
                         IP_BANS_FILE,
                         [],
                         "json"
                     )
-                    
+
                     bans = []
                 except OSError as e:
                     logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
@@ -27008,14 +27087,14 @@ def start_web_server(args_param):
                         bans = json.load(f)
                 except json.JSONDecodeError as e:
                     logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
-                    
+
                     # 调用通用备份函数，备份损坏的文件并重置为空列表
                     _backup_and_reset_corrupted_file(
                         IP_BANS_FILE,
                         [],
                         "json"
                     )
-                    
+
                     bans = []
                 except OSError as e:
                     logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
@@ -27063,19 +27142,19 @@ def start_web_server(args_param):
                     bans = json.load(f)
             except json.JSONDecodeError as e:
                 logging.error(f"[IP封禁] 读取文件失败（JSON解析错误）: {e}")
-                
+
                 # 调用通用备份函数，备份损坏的文件并重置为空列表
                 _backup_and_reset_corrupted_file(
                     IP_BANS_FILE,
                     [],
                     "json"
                 )
-                
+
                 return jsonify({"success": False, "message": "封禁列表文件损坏，已备份并重置"}), 500
             except OSError as e:
                 logging.error(f"[IP封禁] 读取文件失败（文件操作错误）: {e}")
                 return jsonify({"success": False, "message": "读取封禁列表失败"}), 500
-            
+
             original_count = len(bans)
             bans = [b for b in bans if b["id"] != ban_id]
 
@@ -28374,7 +28453,8 @@ def start_web_server(args_param):
             show_newbie_help = False
 
         try:
-            newbie_help_url = config.get("Help", "newbie_help_url", fallback="").strip()
+            newbie_help_url = config.get(
+                "Help", "newbie_help_url", fallback="").strip()
         except Exception:
             newbie_help_url = ""
 
@@ -28954,8 +29034,9 @@ def start_web_server(args_param):
                             try:
                                 # 调用 _save_order_file_incremental 函数保存订单数据
                                 # 该函数会自动检查文件是否存在，如果存在则合并数据
-                                save_success = _save_order_file_incremental(out_trade_no, order_data)
-                                
+                                save_success = _save_order_file_incremental(
+                                    out_trade_no, order_data)
+
                                 # 检查保存是否成功
                                 if save_success:
                                     logging.info(
@@ -29058,7 +29139,8 @@ def start_web_server(args_param):
                             # [任务3优化] 保存订单数据的更新（使用增量更新模式）
                             # 这里只更新计数和时间，不执行任何业务逻辑
                             # 调用统一的订单文件保存函数，确保不丢失其他字段
-                            _save_order_file_incremental(out_trade_no, order_data)
+                            _save_order_file_incremental(
+                                out_trade_no, order_data)
 
                             # 记录日志：订单已支付，跳过重复处理
                             logging.info(
@@ -29248,7 +29330,8 @@ def start_web_server(args_param):
                             # [任务3优化] 更新订单状态为失败（使用增量更新模式）
                             # 调用统一的订单文件保存函数
                             order_data["status"] = ORDER_STATUS_FAILED
-                            _save_order_file_incremental(out_trade_no, order_data)
+                            _save_order_file_incremental(
+                                out_trade_no, order_data)
 
                         # 异步处理完成
                         return
@@ -29505,7 +29588,8 @@ def start_web_server(args_param):
             if not os.path.exists(twemoji_dir):
                 logging.warning(f"请求 twemoji 文件但目录不存在: {twemoji_dir}")
                 return (
-                    jsonify({"success": False, "message": f"twemoji 文件 {filename} 未找到！"}),
+                    jsonify(
+                        {"success": False, "message": f"twemoji 文件 {filename} 未找到！"}),
                     404,
                 )
 
@@ -29525,7 +29609,8 @@ def start_web_server(args_param):
             if not os.path.exists(gh_dir):
                 logging.warning(f"请求 Github_emojis 文件但目录不存在: {gh_dir}")
                 return (
-                    jsonify({"success": False, "message": f"Github_emojis 文件 {filename} 未找到！"}),
+                    jsonify(
+                        {"success": False, "message": f"Github_emojis 文件 {filename} 未找到！"}),
                     404,
                 )
 
@@ -29545,7 +29630,8 @@ def start_web_server(args_param):
             if not os.path.exists(ed_dir):
                 logging.warning(f"请求 editor.md 文件但目录不存在: {ed_dir}")
                 return (
-                    jsonify({"success": False, "message": f"editor.md 文件 {filename} 未找到！"}),
+                    jsonify(
+                        {"success": False, "message": f"editor.md 文件 {filename} 未找到！"}),
                     404,
                 )
 
@@ -30280,7 +30366,6 @@ def start_web_server(args_param):
     #         logging.error(f"加载 HTML 片段时发生错误: {e}", exc_info=True)
     #         return jsonify({"error": "Internal server error"}), 500
 
-
     @app.route("/execute_js", methods=["POST"])
     def execute_js():
         """在服务器端Chrome中执行JavaScript代码"""
@@ -30399,14 +30484,14 @@ def start_web_server(args_param):
             except json.JSONDecodeError as e:
                 # JSON解析失败，文件损坏
                 logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
-                
+
                 # 调用通用备份函数，备份损坏的留言文件并重置为空列表
                 _backup_and_reset_corrupted_file(
                     messages_file,
                     [],
                     "json"
                 )
-                
+
                 messages = []
             except OSError as e:
                 # 文件读取失败（权限错误、磁盘错误等）
@@ -30768,8 +30853,6 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"API调用失败 {method}: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
-
-
 
     # ============================================================
     # 任务15：IP归属地获取辅助函数
@@ -31198,14 +31281,14 @@ def start_web_server(args_param):
             except json.JSONDecodeError as e:
                 # JSON解析失败，文件损坏
                 logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
-                
+
                 # 调用通用备份函数，备份损坏的留言文件并重置为空列表
                 _backup_and_reset_corrupted_file(
                     messages_file,
                     [],
                     "json"
                 )
-                
+
                 messages = []
             except OSError as e:
                 # 文件读取失败（权限错误、磁盘错误等）
@@ -31255,14 +31338,14 @@ def start_web_server(args_param):
             except json.JSONDecodeError as e:
                 # JSON解析失败，文件损坏
                 logging.error(f"[留言板] 读取留言失败（JSON解析错误）: {e}")
-                
+
                 # 调用通用备份函数，备份损坏的留言文件并重置为空列表
                 _backup_and_reset_corrupted_file(
                     messages_file,
                     [],
                     "json"
                 )
-                
+
                 return jsonify({"success": False, "message": "留言文件损坏，已备份并重置"}), 500
             except OSError as e:
                 # 文件读取失败（权限错误、磁盘错误等）
@@ -31292,11 +31375,11 @@ def start_web_server(args_param):
             pass
         else:
             return jsonify({"success": False, "message": "无权删除此留言"}), 403
-        
+
         # 在删除之前，保存要删除的留言的完整副本
         # 稍后会将这个副本记录到删除日志中
         message_to_delete_copy = message_to_delete.copy()
-        
+
         # 从留言列表中移除要删除的留言
         messages = [msg for msg in messages if msg.get("id") != message_id]
         try:
@@ -31307,7 +31390,7 @@ def start_web_server(args_param):
             logging.info(
                 f"[留言板] 删除留言 --> 操作用户: {auth_username}, 留言ID: {message_id}"
             )
-            
+
             # ========================================================================
             # 记录删除日志
             # 将被删除的留言保存到 ./logs/deleted_messages.json
@@ -31318,18 +31401,20 @@ def start_web_server(args_param):
                 # exist_ok=True 表示如果目录已存在不会报错
                 logs_dir = "logs"
                 os.makedirs(logs_dir, exist_ok=True)
-                
+
                 # 删除日志文件的路径
-                deleted_messages_log_file = os.path.join(logs_dir, "deleted_messages.json")
-                
+                deleted_messages_log_file = os.path.join(
+                    logs_dir, "deleted_messages.json")
+
                 # 准备要记录的删除记录
                 # 包含原留言的所有字段，加上删除相关的元数据
                 deletion_record = message_to_delete_copy.copy()  # 复制原留言的所有字段
-                
+
                 # 添加删除相关的元数据
-                deletion_record["deleted_at"] = datetime.datetime.now().isoformat()  # 删除时间（ISO 8601格式）
+                deletion_record["deleted_at"] = datetime.datetime.now(
+                ).isoformat()  # 删除时间（ISO 8601格式）
                 deletion_record["deleted_by"] = auth_username  # 执行删除操作的用户
-                
+
                 # 【修复】根据实际情况确定删除原因，提供准确的审计跟踪
                 # 如果是留言作者自己删除，标记为"作者自删"；否则标记为"管理员删除"
                 # 这样可以在审计日志中清晰地区分自我删除和管理员删除两种情况
@@ -31337,7 +31422,7 @@ def start_web_server(args_param):
                     deletion_record["deletion_reason"] = "作者自删"
                 else:
                     deletion_record["deletion_reason"] = "管理员删除"
-                
+
                 # 读取现有的删除日志（如果存在）
                 deleted_messages_log = []
                 if os.path.exists(deleted_messages_log_file):
@@ -31352,17 +31437,19 @@ def start_web_server(args_param):
                         # 如果读取失败（文件损坏或格式错误），记录警告并使用空列表
                         logging.warning(f"[留言板] 删除日志文件读取失败，将创建新文件: {read_e}")
                         deleted_messages_log = []
-                
+
                 # 将新的删除记录追加到日志列表中
                 deleted_messages_log.append(deletion_record)
-                
+
                 # 将更新后的删除日志写入文件
                 with open(deleted_messages_log_file, "w", encoding="utf-8") as f:
-                    json.dump(deleted_messages_log, f, indent=2, ensure_ascii=False)
-                
+                    json.dump(deleted_messages_log, f,
+                              indent=2, ensure_ascii=False)
+
                 # 记录成功写入删除日志的信息
-                logging.info(f"[留言板] 已记录删除日志 --> 留言ID: {message_id}, 删除者: {auth_username}")
-                
+                logging.info(
+                    f"[留言板] 已记录删除日志 --> 留言ID: {message_id}, 删除者: {auth_username}")
+
             except Exception as log_e:
                 # 删除日志记录失败，只记录警告，不影响删除操作本身
                 # 这确保即使日志系统出现问题，用户的删除操作仍然可以成功
@@ -31370,7 +31457,7 @@ def start_web_server(args_param):
             # ========================================================================
             # [删除日志记录结束]
             # ========================================================================
-            
+
             return jsonify({"success": True, "message": "留言已删除"})
         except OSError as e:
             logging.error(f"[留言板] 保存留言失败: {e}")
@@ -32164,7 +32251,7 @@ def start_web_server(args_param):
     CAPTCHA_RATE_WINDOW = 1.0  # 时间窗口为1秒
     CAPTCHA_HISTORY_CLEANUP_INTERVAL = 300  # 5分钟清理一次历史记录
     _last_captcha_cleanup = [time.time()]  # 使用列表以便在函数内修改
-    
+
     def _cleanup_captcha_history():
         """
         清理captcha_request_history中的过期会话记录
@@ -32174,19 +32261,19 @@ def start_web_server(args_param):
         # 检查是否需要清理（每5分钟清理一次）
         if current_time - _last_captcha_cleanup[0] < CAPTCHA_HISTORY_CLEANUP_INTERVAL:
             return
-        
+
         _last_captcha_cleanup[0] = current_time
         sessions_to_remove = []
-        
+
         for session_id, timestamps in captcha_request_history.items():
             # 如果该会话的所有请求都超过了5分钟，标记为待删除
             if timestamps and all(current_time - t > CAPTCHA_HISTORY_CLEANUP_INTERVAL for t in timestamps):
                 sessions_to_remove.append(session_id)
-        
+
         # 删除过期的会话记录
         for session_id in sessions_to_remove:
             del captcha_request_history[session_id]
-        
+
         if sessions_to_remove:
             logging.debug(
                 f"[验证码速率限制] 清理了 {len(sessions_to_remove)} 个过期会话记录"
@@ -32312,14 +32399,14 @@ def start_web_server(args_param):
 
         # 验证码请求速率限制检查
         current_time = time.time()
-        
+
         # 定期清理过期的会话记录（避免内存泄漏）
         _cleanup_captcha_history()
-        
+
         # 获取当前会话的请求历史
         if session_id not in captcha_request_history:
             captcha_request_history[session_id] = []
-        
+
         # 清理超过时间窗口的旧请求记录（优化：使用原地过滤）
         history = captcha_request_history[session_id]
         # 从后往前遍历，移除过期的时间戳（避免重建整个列表）
@@ -32329,7 +32416,7 @@ def start_web_server(args_param):
                 history.pop(i)
             else:
                 i += 1
-        
+
         # 检查是否超过速率限制
         if len(history) >= CAPTCHA_RATE_LIMIT:
             logging.warning(
@@ -32341,7 +32428,7 @@ def start_web_server(args_param):
                 "message": "请求过于频繁，请稍后再试",
                 "rate_limit": True
             }), 429  # 429 Too Many Requests
-        
+
         # 记录本次请求时间
         history.append(current_time)
 
@@ -32509,7 +32596,7 @@ def start_web_server(args_param):
                 except Exception:
                     out_width = int(captcha_width)
                     out_height = int(captcha_height)
-                    
+
             logging.debug(
                 f"[本地验证码] 返回验证码尺寸: {out_width}x{out_height}px"
             )
@@ -33359,26 +33446,26 @@ def start_web_server(args_param):
     def _save_order_file_incremental(order_id, order_data):
         """
         [任务3] 增量更新模式保存订单文件
-        
+
         功能说明:
         这是一个统一的订单文件写入函数，用于替代所有直接覆盖写入的代码。
         采用"读取-合并-写入"的增量更新模式，确保不会丢失订单文件中的额外字段。
-        
+
         核心优势:
         1. 保护数据：如果文件已存在，会先读取现有数据，然后合并新数据
         2. 统一格式：所有订单文件使用相同的JSON格式（indent=2, ensure_ascii=False）
         3. 容错性强：读取失败时会记录警告，但仍会创建新文件
         4. 易于维护：所有写入逻辑集中在一处，便于统一修改和优化
-        
+
         参数:
             order_id (str): 订单号，用于构造文件路径（例如："order_123456"）
             order_data (dict): 要保存/更新的订单数据（例如：{"status": "paid", "amount": 100}）
-            
+
         返回:
             bool: 操作是否成功
                 - True: 文件保存成功
                 - False: 文件保存失败（会记录错误日志）
-                
+
         使用示例:
             # 创建新订单
             success = _save_order_file_incremental("order_123", {
@@ -33386,7 +33473,7 @@ def start_web_server(args_param):
                 "status": "pending",
                 "amount": 100
             })
-            
+
             # 更新订单状态（保留其他字段）
             success = _save_order_file_incremental("order_123", {
                 "status": "paid",
@@ -33398,17 +33485,17 @@ def start_web_server(args_param):
             # 使用 PAYMENT_ORDERS_DIR 常量确保所有订单文件存储在统一目录
             # 文件名格式：{订单号}.json（例如：order_123456.json）
             order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
-            
+
             # ========== 步骤2：确保订单目录存在 ==========
             # exist_ok=True 表示目录已存在时不会报错
             # 这一步确保即使是首次写入也不会因为目录不存在而失败
             os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
-            
+
             # ========== 步骤3：读取现有订单数据（如果文件存在）==========
             # 初始化一个空字典用于存储现有订单数据
             # 如果文件不存在，existing_order_data 保持为空，后续直接写入新数据
             existing_order_data = {}
-            
+
             # 检查订单文件是否已经存在
             if os.path.exists(order_file):
                 # --- 文件存在，需要读取现有数据以实现增量更新 ---
@@ -33418,14 +33505,14 @@ def start_web_server(args_param):
                         # 将JSON文件内容解析为Python字典对象
                         # 这个字典包含了文件中所有现有的订单信息
                         existing_order_data = json.load(f)
-                    
+
                     # 记录信息日志：成功读取现有订单文件
                     # 这有助于在日志中追踪订单的更新操作
                     logging.info(
                         f"[订单文件-增量更新] 检测到现有订单文件，将进行数据合并 - "
                         f"订单号: {order_id}"
                     )
-                    
+
                 except json.JSONDecodeError as json_error:
                     # JSON解析失败（文件内容格式错误或损坏）
                     # 记录警告日志，但不中断流程
@@ -33434,7 +33521,7 @@ def start_web_server(args_param):
                         f"[订单文件-增量更新] 现有订单文件JSON格式错误，将创建新文件 - "
                         f"订单号: {order_id}, JSON错误: {str(json_error)}"
                     )
-                    
+
                 except Exception as read_error:
                     # 其他读取错误（例如：权限问题、文件被占用等）
                     # 同样记录警告并继续执行，用新数据创建文件
@@ -33449,10 +33536,10 @@ def start_web_server(args_param):
                     f"[订单文件-增量更新] 订单文件不存在，将创建新文件 - "
                     f"订单号: {order_id}"
                 )
-            
+
             # ========== 步骤4：合并订单数据（实现增量更新的核心）==========
             # 使用字典的 update() 方法将新数据合并到现有数据中
-            # 
+            #
             # 工作原理：
             # - existing_order_data 中存在但 order_data 中不存在的字段：保持不变（保护数据）
             # - existing_order_data 和 order_data 中都存在的字段：使用 order_data 的值（更新数据）
@@ -33464,7 +33551,7 @@ def start_web_server(args_param):
             # 合并后 = {"order_id": "123", "status": "paid", "custom_field": "value", "paid_at": "2024-01-01"}
             #          ↑保留           ↑更新            ↑保留                      ↑新增
             existing_order_data.update(order_data)
-            
+
             # ========== 步骤5：写入合并后的订单数据到文件 ==========
             # 使用写入模式打开文件（'w'模式会覆盖文件原内容）
             # 注意：虽然是覆盖写入，但写入的是合并后的完整数据，所以不会丢失信息
@@ -33475,7 +33562,7 @@ def start_web_server(args_param):
                 # - indent=2: 格式化输出，每层缩进2个空格，提高可读性
                 # - ensure_ascii=False: 保存中文字符为Unicode，不转义为\uXXXX格式
                 json.dump(existing_order_data, f, indent=2, ensure_ascii=False)
-            
+
             # ========== 步骤6：记录成功日志 ==========
             # 使用 debug 级别记录详细的操作信息
             # 生产环境中，debug日志可以被过滤，减少日志量
@@ -33483,10 +33570,10 @@ def start_web_server(args_param):
                 f"[订单文件-增量更新] 订单数据保存成功 - "
                 f"文件: {order_file}, 订单号: {order_id}"
             )
-            
+
             # 返回 True 表示操作成功
             return True
-            
+
         except PermissionError as perm_error:
             # 权限错误：没有写入文件的权限
             # 这通常是由于目录权限配置错误或磁盘保护导致
@@ -33495,7 +33582,7 @@ def start_web_server(args_param):
                 f"订单号: {order_id}, 错误: {str(perm_error)}"
             )
             return False
-            
+
         except OSError as os_error:
             # 操作系统错误：磁盘空间不足、I/O错误等
             logging.error(
@@ -33503,7 +33590,7 @@ def start_web_server(args_param):
                 f"订单号: {order_id}, 错误: {str(os_error)}"
             )
             return False
-            
+
         except Exception as unexpected_error:
             # 捕获所有未预期的异常，确保函数不会导致整个程序崩溃
             # 记录完整的异常堆栈信息，便于调试
@@ -37765,7 +37852,7 @@ def start_web_server(args_param):
                             "old": old_available_runs_format,
                             "new": new_available_runs_format
                         },
-                        "show_available_runs_on_register": { # 是否在注册页显示提示
+                        "show_available_runs_on_register": {  # 是否在注册页显示提示
                             "old": old_show_available_runs_on_register,
                             "new": new_show_available_runs_on_register
                         },
@@ -39345,7 +39432,8 @@ def start_web_server(args_param):
                 try:
                     # [任务3优化] 写入订单文件（使用增量更新模式）
                     # 调用统一的订单文件保存函数
-                    _save_order_file_incremental(out_trade_no, local_order_data)
+                    _save_order_file_incremental(
+                        out_trade_no, local_order_data)
 
                     logging.info(
                         f"[管理员查询订单] 平台订单已保存到本地 - "
@@ -39867,7 +39955,8 @@ def start_web_server(args_param):
 
                     # [任务3优化] 保存订单到本地文件（使用增量更新模式）
                     # 调用统一的订单文件保存函数
-                    _save_order_file_incremental(out_trade_no, local_order_data)
+                    _save_order_file_incremental(
+                        out_trade_no, local_order_data)
 
                     # ========== 处理订单状态变更时的overdue_accounts逻辑 ==========
                     #
@@ -41408,14 +41497,14 @@ def start_web_server(args_param):
 
             # 2. 清洗数据：移除首尾的 斜杠(/)、反斜杠(\)、双引号(")、单引号(') 和 空格
             # 兼容 "/192.168.1.1", "\192.168.1.1", "192.168.1.1\\" 等情况
-            dirty_chars = r"\/\"' " 
+            dirty_chars = r"\/\"' "
             cleaned_ip_str = first_part.strip(dirty_chars)
 
             try:
                 # 3. 使用 ipaddress 进行解析和验证 (支持 IPv4 和 IPv6)
                 # 如果不是合法的IP地址，这里会抛出 ValueError
                 ip_obj = ipaddress.ip_address(cleaned_ip_str)
-                
+
                 # 转换回字符串，确保格式标准 (例如把 IPv6 的非压缩格式转为压缩格式)
                 real_ip = str(ip_obj)
 
@@ -41423,7 +41512,8 @@ def start_web_server(args_param):
                 logging.info(f"真实客户端IP已设置为: {real_ip}")
 
             except ValueError:
-                logging.warning(f"无法从Header解析出有效IP (格式错误): {first_part} -> 清洗后: {cleaned_ip_str}")
+                logging.warning(
+                    f"无法从Header解析出有效IP (格式错误): {first_part} -> 清洗后: {cleaned_ip_str}")
             except Exception as e:
                 logging.error(f"IP解析发生未知错误: {e}")
 
