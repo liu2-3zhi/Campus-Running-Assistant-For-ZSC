@@ -14947,20 +14947,56 @@ async function callPythonAPI(method, ...args) {
       }
     }
 
-    showModalAlert(
-      "无法连接到服务器，请检查您的网络连接或稍后重试。",
-      "网络错误",
-      () => {
+    // showModalAlert(
+    //   "无法连接到服务器，请检查您的网络连接或稍后重试。",
+    //   "网络错误",
+    //   () => {
+    //     if (isInNetworkErrorState) {
+    //       logMessage_Info("[API调用] 用户关闭网络错误弹窗，准备恢复连接");
+    //       isInNetworkErrorState = false;
+
+    //       setTimeout(() => {
+    //         if (!refreshUserListInterval) {
+    //           refreshUserListInterval = setInterval(refreshUserList, 5000);
+    //           logMessage_Info("[API调用] 用户列表刷新定时器已恢复");
+    //         }
+
+    //         if (socket && !socket.connected && sessionUUID) {
+    //           if (socket.io) {
+    //             socket.io.opts.reconnection = true;
+    //           }
+    //           socket.connect();
+    //           logMessage_Info(
+    //             "[API调用] 正在重新连接WebSocket（已重新启用自动重连）"
+    //           );
+    //         }
+    //       }, 1000);
+    //     }
+    //   }
+    // );
+
+    Swal.fire({
+      title: "网络错误",
+      text: "无法连接到服务器，请检查您的网络连接或稍后重试。",
+      icon: "error", // 建议添加图标，增强提示效果
+      confirmButtonText: "确定",
+      allowOutsideClick: false, // 建议禁止点击背景关闭，强制用户确认
+      allowEscapeKey: false     // 建议禁止按ESC关闭
+    }).then((result) => {
+      if (result.isConfirmed) {
+        // 原有的回调逻辑放在这里
         if (isInNetworkErrorState) {
           logMessage_Info("[API调用] 用户关闭网络错误弹窗，准备恢复连接");
           isInNetworkErrorState = false;
 
           setTimeout(() => {
+            // 恢复定时器
             if (!refreshUserListInterval) {
               refreshUserListInterval = setInterval(refreshUserList, 5000);
               logMessage_Info("[API调用] 用户列表刷新定时器已恢复");
             }
 
+            // 恢复 WebSocket
             if (socket && !socket.connected && sessionUUID) {
               if (socket.io) {
                 socket.io.opts.reconnection = true;
@@ -14973,8 +15009,10 @@ async function callPythonAPI(method, ...args) {
           }, 1000);
         }
       }
-    );
+    });
 
+
+    
     throw networkError;
   }
 
