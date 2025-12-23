@@ -4780,33 +4780,54 @@ class RainbowYiPayClient:
         app_host_frome_config = self.config.get(
             "Rainbow_YiPay", "app_host", fallback="").strip()
 
-        app_host = None
+        # 初始化最终结果变量
+        final_app_host = None 
 
+        # 定义无效字符串列表，方便复用
+        invalid_values = ["", "http://", "https://", "null", "NULL", "None", "none", "undefined"]
 
-        if app_host_frome_config and app_host_frome_config not in ["", "http://", "https://","null","NULL","None","none","undefined"] and (IPVerifier().is_private_ip(app_host_frome_config) == False):
-            # 检查 app_host_frome_config 是否为有效的应用访问域名
-            if IPVerifier().check_app_host(app_host_frome_config):
-                app_host = IPVerifier().normalize_host_url(app_host_frome_config)
-                logging.info(
-                    f"[支付验证] 验证成功 - 将使用 app_host_from_config: {app_host_frome_config}")
-            else:
-                logging.error(
-                    f"[彩虹易支付] 配置的 app_host 格式不正确或不可用: {app_host_frome_config}")
-
-        if client_app_host and app_host_frome_config not in ["", "http://", "https://","null","NULL","None","none","undefined"] and (IPVerifier().is_private_ip(client_app_host) == False):
-            # 使用传入的 client_app_host 进行验证
-            if IPVerifier().check_app_host(client_app_host):
-                app_host = IPVerifier().normalize_host_url(client_app_host)
-                logging.info(
-                    f"[支付验证] 验证成功 - 将使用 client_app_host: {client_app_host}")
-            else:
-                logging.error(
-                    f"[彩虹易支付] 传入的 client_app_host 格式不正确或不可用: {client_app_host}")
+        # 1. 优先检查配置文件中的 Host (优先级最高)
+        if app_host_frome_config is not None and app_host_frome_config not in invalid_values:
+            # 实例化一次即可，避免重复开销
+            verifier = IPVerifier() 
             
+            if not verifier.is_private_ip(app_host_frome_config):
+                if verifier.check_app_host(app_host_frome_config):
+                    final_app_host = verifier.normalize_host_url(app_host_frome_config)
+                    logging.info(f"[支付验证] 验证成功 - 将优先使用 app_host_from_config: {app_host_frome_config}")
+                    logging.info(f"[彩虹易支付] 配置的 app_host 验证通过: {final_app_host}")
+                else:
+                    logging.error(f"[彩虹易支付] 配置的 app_host 格式不正确或不可用: {app_host_frome_config}")
+            else:
+                logging.warning(f"[彩虹易支付] 配置的 app_host 为私有IP，跳过: {app_host_frome_config}")
+        else:
+            # 只有当 config 为空时才打印这个 warning，或者可以选择不打印，直接进入下一步
+            logging.warning(f"[彩虹易支付] 配置的 app_host 为空或无效，尝试使用 client_app_host")
 
-        if not app_host:
-            # 记录错误日志：缺少应用访问域名配置
-            logging.error("[彩虹易支付] 配置缺少 app_host（应用访问域名），无法构造异步通知URL")
+
+        # 2. 如果配置文件无效 (final_app_host 仍为 None)，则检查传入的 Client Host (优先级次之)
+        if final_app_host is None:
+            if client_app_host is not None and client_app_host not in invalid_values:
+                #  - 这里的逻辑是如果上面没拿到值，才走这里
+                verifier = IPVerifier() 
+                
+                if not verifier.is_private_ip(client_app_host):
+                    if verifier.check_app_host(client_app_host):
+                        final_app_host = verifier.normalize_host_url(client_app_host)
+                        logging.info(f"[支付验证] 验证成功 - 使用传入的 client_app_host: {client_app_host}")
+                        logging.info(f"[彩虹易支付] 传入的 client_app_host 验证通过: {final_app_host}")
+                    else:
+                        logging.error(f"[彩虹易支付] 传入的 client_app_host 格式不正确或不可用: {client_app_host}")
+                else:
+                    logging.warning(f"[彩虹易支付] 传入的 client_app_host 为私有IP: {client_app_host}")
+            else:
+                logging.warning(f"[彩虹易支付] 传入的 client_app_host 为空或无效: {client_app_host}")
+
+        # 3. 最终结果赋值 (为了兼容你后续代码可能使用的变量名 'app_host')
+        app_host = final_app_host
+
+        if app_host is None:
+            logging.error(f"[彩虹易支付] 致命错误: 无法获取有效的 app_host (配置和客户端传入均无效)，无法构造回调URL")
 
             return {"success": False, "message": "彩虹易支付配置缺少 app_host，请联系管理员"}
 
@@ -30425,9 +30446,7 @@ def start_web_server(args_param):
     API_BLACKLIST_PREFIXES = [
         "_",
         "normalize_chinese_config_to_english",
-        "log",
-        
-        
+        # "log",
     ]
 
     @app.route("/api/<path:method>", methods=["GET", "POST"])
