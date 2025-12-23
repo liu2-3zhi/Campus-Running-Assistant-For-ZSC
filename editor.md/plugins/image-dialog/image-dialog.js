@@ -85,7 +85,7 @@
                                         "<input type=\"text\" value=\"" + selection + "\" data-alt />" +
                                         "<br/>" +
                                         "<label>" + imageLang.link + "</label>" +
-                                        "<input type=\"text\" value=\"http://\" data-link />" +
+                                        "<input type=\"text\" value=\"https://\" data-link />" +
                                         "<br/>" +
                                     ( (settings.imageUpload) ? "</form>" : "</div>");
 
@@ -118,7 +118,7 @@
 
 							var altAttr = (alt !== "") ? " \"" + alt + "\"" : "";
 
-                            if (link === "" || link === "http://")
+                            if (link === "" || link === "https://")
                             {
                                 cm.replaceSelection("![" + alt + "](" + url + altAttr + ")");
                             }
@@ -220,7 +220,7 @@
 			dialog = editor.find("." + dialogName);
 			dialog.find("[type=\"text\"]").val("");
 			dialog.find("[type=\"file\"]").val("");
-			dialog.find("[data-link]").val("http://");
+			dialog.find("[data-link]").val("https://");
 
 			this.dialogShowMask(dialog);
 			this.dialogLockScreen();

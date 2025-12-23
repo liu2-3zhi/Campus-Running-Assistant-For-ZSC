@@ -2523,8 +2523,10 @@
                 $("html,body").css("overflow", "hidden");
 
                 editor.css({
-                    width  : $(window).width(),
-                    height : $(window).height(),
+                    // width  : $(window).width(),
+                    width : "100%vw",
+                    // height : $(window).height(),
+                    height : "100%vh",
                     zIndex : editormd.dialogZindex,
                 }).addClass(fullscreenClass);
 
