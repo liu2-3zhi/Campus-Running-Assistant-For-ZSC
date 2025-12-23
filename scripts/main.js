@@ -20693,34 +20693,59 @@ async function updatePassword() {
   if (!useSmsVerify) {
     // 密码验证模式：检查原密码是否填写
     if (!currentPassword || !currentPassword.value) {
-      showModalAlert(
-        '请填写当前密码，或点击"使用短信验证"通过短信验证码修改密码',
-        "提示"
-      );
+      // showModalAlert(
+      //   '请填写当前密码，或点击"使用短信验证"通过短信验证码修改密码',
+      //   "提示"
+      // );
+      Swal.fire({
+        title: '提示',
+        text: '请填写当前密码，或点击"使用短信验证"通过短信验证码修改密码',
+        icon: 'info'
+      });
       return;
     }
   } else {
     // 短信验证模式：检查验证码是否填写
     if (!smsCode) {
-      showModalAlert("请填写短信验证码", "提示");
+      // showModalAlert("请填写短信验证码", "提示");
+      Swal.fire({
+        title: '提示',
+        text: '请填写短信验证码',
+        icon: 'info'
+      });
       return;
     }
     // 验证码格式校验（6位数字）
     if (!/^\d{6}$/.test(smsCode)) {
-      showModalAlert("短信验证码格式不正确，请输入6位数字", "提示");
+      // showModalAlert("短信验证码格式不正确，请输入6位数字", "提示");
+      Swal.fire({
+        title: '提示',
+        text: '短信验证码格式不正确，请输入6位数字',
+        icon: 'info'
+      });
       return;
     }
   }
 
   // 检查新密码是否填写
   if (!newPassword.value || !confirmPassword.value) {
-    showModalAlert("请填写新密码和确认新密码", "提示");
+    // showModalAlert("请填写新密码和确认新密码", "提示");
+    Swal.fire({
+      title: '提示',
+      text: '请填写新密码和确认新密码',
+      icon: 'info'
+    });
     return;
   }
 
   // 检查两次输入的新密码是否一致
   if (newPassword.value !== confirmPassword.value) {
-    showModalAlert("两次输入的密码不一致", "错误");
+    // showModalAlert("两次输入的密码不一致", "错误");
+    Swal.fire({
+      title: '错误',
+      text: '两次输入的密码不一致',
+      icon: 'error'
+    });
     return;
   }
 
@@ -20730,19 +20755,34 @@ async function updatePassword() {
   var weakCheck = checkWeakPassword(newPassword.value);
   if (weakCheck.isWeak) {
     // 如果新密码过弱，显示具体的错误原因
-    showModalAlert(weakCheck.reason, "密码强度不足");
+    // showModalAlert(weakCheck.reason, "密码强度不足");
+    Swal.fire({
+      title: '错误',
+      text: weakCheck.reason,
+      icon: 'error'
+    });
     return;
   }
 
   // 检查新密码长度是否符合要求（最少6位）
   if (newPassword.value.length < 6) {
-    showModalAlert("密码长度至少为6个字符", "错误");
+    // showModalAlert("密码长度至少为6个字符", "错误");
+    Swal.fire({
+      title: '错误',
+      text: '密码长度至少为6个字符',
+      icon: 'error'
+    });
     return;
   }
 
   // 检查当前用户信息是否可用
   if (!currentAuthUsername) {
-    showModalAlert("无法获取当前用户信息，请重新加载个人信息", "错误");
+    // showModalAlert("无法获取当前用户信息，请重新加载个人信息", "错误");
+    Swal.fire({
+      title: '错误',
+      text: '无法获取当前用户信息，请重新加载个人信息',
+      icon: 'error'
+    });
     return;
   }
 
@@ -20780,7 +20820,12 @@ async function updatePassword() {
 
     if (result.success) {
       // 密码修改成功
-      showModalAlert("密码修改成功！", "成功");
+      // showModalAlert("密码修改成功！", "成功");
+      Swal.fire({
+        title: '成功',
+        text: '密码修改成功！',
+        icon: 'success'
+      });
       // 清空所有输入框
       if (currentPassword) currentPassword.value = "";
       newPassword.value = "";
@@ -20792,12 +20837,22 @@ async function updatePassword() {
       const errorMsg = useSmsVerify
         ? result.message || "请检查短信验证码是否正确"
         : result.message || "请检查当前密码是否正确";
-      showModalAlert(`修改失败: ${errorMsg}`, "错误");
+      // showModalAlert(`修改失败: ${errorMsg}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: `修改失败: ${errorMsg}`,
+        icon: 'error'
+      });
     }
   } catch (e) {
     // 捕获网络错误或其他异常
     logMessage_Error("修改密码失败:", e);
-    showModalAlert(`修改失败: ${e.message}`, "错误");
+    // showModalAlert(`修改失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '错误',
+      text: `修改失败: ${e.message}`,
+      icon: 'error'
+    });
   }
 }
 
@@ -20813,7 +20868,12 @@ async function generate2FA() {
     const result = await response.json();
 
     if (!result.success) {
-      showModalAlert(`生成2FA失败: ${result.message}`, "错误");
+      // showModalAlert(`生成2FA失败: ${result.message}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: `生成2FA失败: ${result.message}`,
+        icon: 'error'
+      });
       return;
     }
     const setupDiv = $("profile-2fa-setup");
@@ -20837,7 +20897,12 @@ async function generate2FA() {
           function (error) {
             if (error) {
               logMessage_Error("QR Code generation error:", error);
-              showModalAlert("二维码生成失败", "错误");
+              // showModalAlert("二维码生成失败", "错误");
+              Swal.fire({
+                title: '错误',
+                text: "二维码生成失败",
+                icon: 'error'
+              });
             } else {
               logMessage_Info("QR Code generated successfully");
             }
@@ -20845,19 +20910,34 @@ async function generate2FA() {
         );
       } else {
         logMessage_Error("QRCode库未加载");
-        showModalAlert("QRCode库未加载，请刷新页面重试", "错误");
+        // showModalAlert("QRCode库未加载，请刷新页面重试", "错误");
+        Swal.fire({
+          title: '错误',
+          text: "QRCode库未加载，请刷新页面重试",
+          icon: 'error'
+        });
       }
     }
   } catch (e) {
     logMessage_Error("生成2FA失败:", e);
-    showModalAlert(`生成失败: ${e.message}`, "错误");
+    // showModalAlert(`生成失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '错误',
+      text: `生成失败: ${e.message}`,
+      icon: 'error'
+    });
   }
 }
 
 async function enable2FA() {
   const codeInput = $("profile-2fa-code");
   if (!codeInput || !codeInput.value) {
-    showModalAlert("请输入验证码", "提示");
+    // showModalAlert("请输入验证码", "提示");
+    Swal.fire({
+      title: '提示',
+      text: "请输入验证码",
+      icon: 'info'
+    });
     return;
   }
 
@@ -20875,18 +20955,33 @@ async function enable2FA() {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("2FA启用成功！", "成功");
+      // showModalAlert("2FA启用成功！", "成功");
+      Swal.fire({
+        title: '成功',
+        text: "2FA启用成功！",
+        icon: 'success'
+      });
       const setupDiv = $("profile-2fa-setup");
       const actionsDiv = $("profile-2fa-actions");
       if (setupDiv) setupDiv.classList.add("hidden");
       if (actionsDiv) actionsDiv.classList.remove("hidden");
       loadPersonalInfo();
     } else {
-      showModalAlert(`启用失败: ${result.message}`, "错误");
+      // showModalAlert(`启用失败: ${result.message}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: `启用失败: ${result.message}`,
+        icon: 'error'
+      });
     }
   } catch (e) {
     logMessage_Error("启用2FA失败:", e);
-    showModalAlert(`启用失败: ${e.message}`, "错误");
+    // showModalAlert(`启用失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '错误',
+      text: `启用失败: ${e.message}`,
+      icon: 'error'
+    });
   }
 }
 
@@ -20908,14 +21003,29 @@ async function disable2FA() {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("2FA已关闭", "成功");
+      // showModalAlert("2FA已关闭", "成功");
+      Swal.fire({
+        title: '成功',
+        text: "2FA已关闭",
+        icon: 'success'
+      });
       loadPersonalInfo();
     } else {
-      showModalAlert(`关闭失败: ${result.message}`, "错误");
+      // showModalAlert(`关闭失败: ${result.message}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: `关闭失败: ${result.message}`,
+        icon: 'error'
+      });
     }
   } catch (e) {
     logMessage_Error("关闭2FA失败:", e);
-    showModalAlert(`关闭失败: ${e.message}`, "错误");
+    // showModalAlert(`关闭失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '错误',
+      text: `关闭失败: ${e.message}`,
+      icon: 'error'
+    });
   }
 }
 
@@ -20945,7 +21055,12 @@ async function test2FA() {
     confirmBtn.onclick = () => {
       const code = codeInput.value;
       if (!code || code.length !== 6 || !/^[0-9]{6}$/.test(code)) {
-        showModalAlert("请输入有效的6位数字验证码", "错误");
+        // showModalAlert("请输入有效的6位数字验证码", "错误");
+        Swal.fire({
+          title: '错误',
+          text: "请输入有效的6位数字验证码",
+          icon: 'error'
+        });
         return;
       }
       modal.remove();
@@ -20969,13 +21084,28 @@ async function test2FA() {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("2FA验证成功！您的双因素认证工作正常。", "成功");
+      // showModalAlert("2FA验证成功！您的双因素认证工作正常。", "成功");
+      Swal.fire({
+        title: '成功',
+        text: "2FA验证成功！您的双因素认证工作正常。",
+        icon: 'success'
+      });
     } else {
-      showModalAlert(`验证失败: ${result.message || "验证码错误"}`, "错误");
+      // showModalAlert(`验证失败: ${result.message || "验证码错误"}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: `验证失败: ${result.message || "验证码错误"}`,
+        icon: 'error'
+      });
     }
   } catch (e) {
     logMessage_Error("测试2FA失败:", e);
-    showModalAlert(`测试失败: ${e.message}`, "错误");
+    // showModalAlert(`测试失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '错误',
+      text: `测试失败: ${e.message}`,
+      icon: 'error'
+    });
   }
 }
 
@@ -21001,14 +21131,29 @@ async function updateTheme() {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("主题更新成功！", "成功");
+      // showModalAlert("主题更新成功！", "成功");
+      Swal.fire({
+        title: '成功',
+        text: "主题更新成功！",
+        icon: 'success'
+      });
     } else {
-      showModalAlert(`更新失败: ${result.message}`, "错误");
+      // showModalAlert(`更新失败: ${result.message}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: `更新失败: ${result.message}`,
+        icon: 'error'
+      });
       applyAndSaveTheme(selectedTheme === "dark" ? "light" : "dark");
     }
   } catch (e) {
     logMessage_Error("更新主题失败:", e);
-    showModalAlert(`更新失败: ${e.message}`, "错误");
+    // showModalAlert(`更新失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '错误',
+      text: `更新失败: ${e.message}`,
+      icon: 'error'
+    });
   }
 }
 
