@@ -15979,11 +15979,29 @@ const captchaDimensions = {
   modal: { width: 343, height: 119 },
 };
 
+// 当打开短信验证码模态框时，记录请求期望的宽度（以便传给后端并设置iframe）
+let captchaModalRequestedWidth = null;
 async function loadCaptcha(formType) {
-  const displayId =
-    formType === "login"
-      ? "auth-login-captcha-display"
-      : "auth-register-captcha-display";
+
+  let displayId = undefined;
+
+  if (formType === "login") {
+  displayId ="auth-login-captcha-display";}
+
+  else if (formType === "register") {
+  displayId = "auth-register-captcha-display";}
+
+  else if (formType === "mobile-login") {
+  displayId = "mobile-login-captcha-display";}
+
+  else if (formType === "mobile-register") {
+  displayId = "mobile-register-captcha-display";}
+
+  else {
+    console.error(`[验证码] 未知的表单类型: ${formType}`);
+    return;
+  }
+
   const displayElement = document.getElementById(displayId);
   if (!displayElement) {
     console.error(`[验证码] 未找到验证码显示元素: ${displayId}`);
@@ -15993,21 +16011,38 @@ async function loadCaptcha(formType) {
     '<span class="text-slate-400 text-xs">加载中...</span>';
 
   // 自动获取容器宽度
-  let containerWidth = 343;
-  if (formType === "login") {
-    const container = document.getElementById("auth-login-container_panel");
+  // let containerWidth = 343;
+  // if (formType === "login") {
+   let container=undefined;
+    if (formType === "login" || formType === "register") {
+    container = document.getElementById("auth-login-container_panel");}
+    else if (formType === "mobile-login" || formType === "mobile-register") {
+    container = document.getElementById("mobile-auth-login-container-card");}
+    else {
+      console.error(`[验证码] 无法找到容器元素: ${displayId}`);
+      return;
+    }
     if (container) {
       // 取padding后内容区宽度
       const style = window.getComputedStyle(container);
+      console.log("[验证码] 容器计算样式:", style);
       const paddingLeft = parseFloat(style.paddingLeft) || 0;
       const paddingRight = parseFloat(style.paddingRight) || 0;
-      containerWidth = container.clientWidth - paddingLeft - paddingRight -200;
+      if (formType === "login" || formType === "register") {
+      containerWidth = container.clientWidth - paddingLeft - paddingRight -200;}
+      else if (formType === "mobile-login" || formType === "mobile-register") {
+      containerWidth = container.clientWidth - paddingLeft - paddingRight -0;}
+      else {
+        console.error(`[验证码] 无法计算容器宽度: ${displayId}`);
+        return;
+      }
+      console.log("[验证码] 容器宽度计算细节: 背景宽度", container.clientWidth, "减去左内边距", paddingLeft, "减去右内边距", paddingRight);
       console.log(`[验证码] 登录表单容器宽度: ${containerWidth}px`);
       // 限制最大宽度
       if (containerWidth > 600) containerWidth = 600;
       if (containerWidth < 200) containerWidth = 200;
     }
-  }
+  // }
 
   try {
     // 传递width参数给后端
@@ -16030,13 +16065,17 @@ async function loadCaptcha(formType) {
       }
       captchaIds[formType] = result.captcha_id;
       captchaDimensions[formType] = {
-        width: containerWidth,
+        width: result.width || 343,
         height: result.height || 119,
       };
+
+      displayId.width = captchaDimensions[formType].width;
+      displayId.height = captchaDimensions[formType].height;
 
       const timestamp = Date.now();
       const captchaWidth = captchaDimensions[formType].width;
       const captchaHeight = captchaDimensions[formType].height;
+      console.log(`[验证码] 验证码尺寸: ${captchaWidth}x${captchaHeight}`);
 
       // 传递width参数给iframe
       const iframeHtml = `
@@ -16055,7 +16094,7 @@ async function loadCaptcha(formType) {
         `[验证码] 已加载验证码iframe: ${result.captcha_id} (时间戳: ${timestamp}) 宽度: ${captchaWidth}`
       );
 
-      loadMobileCaptcha(formType);
+      // loadMobileCaptcha(formType);
     } else {
       displayElement.innerHTML =
         '<span class="text-red-500 text-xs">加载失败</span>';
@@ -16069,14 +16108,14 @@ async function loadCaptcha(formType) {
 }
 
 function refreshCaptcha(formType) {
-  const actualFormType = formType.replace("mobile-", "");
-  console.log(`[验证码] 刷新${actualFormType}表单验证码`);
-  loadCaptcha(actualFormType);
+  // const actualFormType = formType.replace("mobile-", "");
+  console.log(`[验证码] 刷新${formType}表单验证码`);
+  loadCaptcha(formType);
 }
 // ==================== 验证码模态窗相关函数 ====================
 let pendingSMSContext = null;
 
-async function loadCaptchaModal() {
+async function loadCaptchaModal(requestedWidth) {
   const displayElement = document.getElementById("captcha-modal-display");
 
   if (!displayElement) {
@@ -16088,7 +16127,16 @@ async function loadCaptchaModal() {
     '<span class="text-slate-400 text-xs">加载中...</span>';
 
   try {
-    const response = await fetch("/api/captcha/get", {
+    // 优先使用调用者传入的宽度，其次使用全局记录的modal请求宽度
+    let containerWidth = requestedWidth || captchaModalRequestedWidth || null;
+    console.log(
+      `[验证码模态窗] 请求容器宽度: ${containerWidth || "默认"}`
+    );
+    const url = containerWidth
+      ? `/api/captcha/get?width=${containerWidth}`
+      : `/api/captcha/get`;
+
+    const response = await fetch(url, {
       method: "GET",
       headers: {
         "X-Session-ID": sessionUUID,
@@ -16109,18 +16157,34 @@ async function loadCaptchaModal() {
 
       captchaIds.modal = result.captcha_id;
 
-      captchaDimensions.modal = {
-        width: result.width || 343,
-        height: result.height || 119,
-      };
-      const timestamp = Date.now();
+      // 如果后端返回了宽高信息，则以后端优先，否则以请求的containerWidth回退，再以默认值回退
+      const returnedWidth = result.width || containerWidth || 343;
+      const returnedHeight = result.height || 119;
 
-      const captchaWidth = captchaDimensions.modal.width;
-      const captchaHeight = captchaDimensions.modal.height;
+      console.log(
+        `[验证码模态窗] 使用验证码尺寸: ${returnedWidth}x${returnedHeight}`
+      );
+
+      displayElement.style.width = `${returnedWidth}px`;
+      displayElement.style.height = `${returnedHeight}px`;
+
+      console.log(`[验证码模态窗] 设置显示元素尺寸: ${displayElement.style.width}x${displayElement.style.height}`);
+
+      const timestamp = Date.now();
+      const captchaWidth = returnedWidth;
+      const captchaHeight = returnedHeight;
+
+      console.log(`[验证码模态窗] 验证码尺寸: ${captchaWidth}x${captchaHeight}`);
+
+      // 确保在modal中显示容器的宽度与iframe一致
+      const containerElem = document.getElementById("send_sms_code_captcha_container");
+      if (containerElem) {
+        containerElem.style.width = `${captchaWidth}px`;
+      }
 
       const iframeHtml = `
             <iframe 
-              src="/api/captcha/html/${result.captcha_id}?t=${timestamp}"
+              src="/api/captcha/html/${result.captcha_id}?t=${timestamp}&width=${captchaWidth}"
               style="max-width: ${captchaWidth}px; max-height: ${captchaHeight}px; width: ${captchaWidth}px; height: ${captchaHeight}px; border: none; overflow: hidden; display: block; margin: 0 auto;"
               scrolling="no"
               frameborder="0"
@@ -16150,7 +16214,8 @@ async function loadCaptchaModal() {
 
 function refreshCaptchaModal() {
   console.log("[验证码模态窗] 刷新验证码");
-  loadCaptchaModal();
+  // 使用上次打开模态框时记录的宽度（如果有）
+  loadCaptchaModal(captchaModalRequestedWidth);
 }
 
 function openCaptchaModal(context) {
@@ -16183,14 +16248,34 @@ function openCaptchaModal(context) {
 
   try {
     modal.classList.remove("hidden");
+    // 计算模态框内部内容包装器的可用宽度，以便传给后端并设置验证码容器宽度
+    let requestedWidth = null;
+    const wrapper = document.getElementById("send_sms_code_modal_content_wrapper");
+    // const containerElem = document.getElementById("send_sms_code_captcha_container");
+    if (wrapper) {
+      const style = window.getComputedStyle(wrapper);
+      const paddingLeft = parseFloat(style.paddingLeft) || 0;
+      const paddingRight = parseFloat(style.paddingRight) || 0;
+      // 参考 auth-login 计算方式，保留一定内边距
+      requestedWidth = wrapper.clientWidth  - paddingLeft - paddingRight - 200;
+      console.log(`[验证码模态窗] 计算容器宽度: ${requestedWidth}px`);
+      if (requestedWidth > 600) requestedWidth = 600;
+      if (requestedWidth < 200) requestedWidth = 200;
+      // 将计算到的宽度应用到容器（视觉一致）
+      // containerElem.style.width = `${requestedWidth}px`;
+    }
 
+    // 记录为全局请求宽度，供后续刷新使用
+    captchaModalRequestedWidth = requestedWidth;
+    console.log(`[验证码模态窗] 计算请求宽度: ${requestedWidth}px`);
+
+   
     modal.style.display = "flex";
-
     modal.style.zIndex = "20001";
-
     input.value = "";
 
-    loadCaptchaModal();
+    // 加载验证码并传入期望的宽度
+    loadCaptchaModal(requestedWidth);
 
     setTimeout(() => {
       if (input && modal.style.display !== "none") {
@@ -39616,11 +39701,11 @@ async function saveCaptchaSettings() {
       });
       return;
     }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 4) {
+    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 8) {
       Swal.fire({
         icon: "error",
         title: "参数错误",
-        text: "细分倍数必须在2-4之间",
+        text: "细分倍数必须在2-8之间",
       });
       return;
     }
@@ -39693,11 +39778,11 @@ async function testGenerateCaptcha() {
       });
       return;
     }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 4) {
+    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 8) {
       Swal.fire({
         icon: "error",
         title: "参数错误",
-        text: "细分倍数必须在2-4之间",
+        text: "细分倍数必须在2-8之间",
       });
       return;
     }
@@ -48703,8 +48788,8 @@ async function mobileSaveCaptchaSettings() {
       showModalAlert("验证码长度必须在3-6之间", "参数错误");
       return;
     }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 4) {
-      showModalAlert("细分倍数必须在2-4之间", "参数错误");
+    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 8) {
+      showModalAlert("细分倍数必须在2-8之间", "参数错误");
       return;
     }
     if (isNaN(noise_level) || noise_level < 0 || noise_level > 0.3) {
@@ -48759,16 +48844,47 @@ async function mobileTestCaptcha() {
         document.getElementById("mobile-captcha-noise-level")?.value
       ) || 0.08;
 
+    if (isNaN(length) || length < 3 || length > 6) {
+      Swal.fire({
+        icon: "error",
+        title: "参数错误",
+        text: "验证码长度必须在3-6之间",
+      });
+      return;
+    }
+    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 8) {
+      Swal.fire({
+        icon: "error",
+        title: "参数错误",
+        text: "细分倍数必须在2-8之间",
+      });
+      return;
+    }
+    if (isNaN(noise_level) || noise_level < 0 || noise_level > 0.3) {
+      Swal.fire({
+        icon: "error",
+        title: "参数错误",
+        text: "噪点比例必须在0.0-0.3之间",
+      });
+      return;
+    }
+
     // 调用后端API生成验证码 - 使用正确的 API 端点 /api/captcha/test_generate
-    const result = await callPythonAPI_raw(
-      "/api/captcha/test_generate",
-      "POST",
-      {
-        length: length,
-        scale_factor: scale_factor,
-        noise_level: noise_level,
-      }
-    );
+    const response = await fetch("/api/captcha/test_generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-ID": sessionUUID,
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        length,
+        scale_factor,
+        noise_level,
+      }),
+    });
+
+    const result = await response.json();
 
     // 显示预览区域
     const previewContainer = document.getElementById(
@@ -48784,10 +48900,24 @@ async function mobileTestCaptcha() {
     if (previewContainer && previewDisplay && previewAnswer) {
       previewContainer.classList.remove("hidden");
 
+      console.log("[移动端验证码] 后端返回结果", result);
+
       // 检查后端返回结果是否成功
       if (result && result.success) {
         // 判断后端返回的验证码格式类型
-        if (result.html) {
+        Background_width=document.getElementById("mobile-multi-admin-captcha-panel").clientWidth -35;
+        console.log("移动端验证码面板宽度",Background_width)
+        if (result.captcha_id) {
+          previewDisplay.innerHTML = `<div class="inline-block border border-slate-200 rounded p-1 bg-white">
+          
+          <iframe src="/api/captcha/html/${result.captcha_id}?t=${Date.now()}&width=${Background_width}" style=" border: none; overflow: hidden; display: block; margin: 0 auto h-[${Background_width}px];" scrolling="no" frameborder="0" title="验证码预览">
+      </iframe>
+          
+          </div>`;
+          // 显示验证码的正确答案，如果没有则显示"未知"
+          previewAnswer.textContent = result.code || "未知";
+        }
+        else if (result.html) {
           // 后端返回HTML格式验证码（像素风格）
           // 使用内联块元素包裹HTML验证码，并添加边框和圆角样式
           previewDisplay.innerHTML = `<div class="inline-block border border-slate-200 rounded p-1 bg-white">${result.html}</div>`;

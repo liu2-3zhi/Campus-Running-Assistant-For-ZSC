@@ -2273,7 +2273,7 @@ def _get_default_config():
 
     config["Captcha"] = {
         "length": "4",
-        "scale_factor": "2",
+        "scale_factor": "4",
         "noise_level": "0.08",
     }
 
@@ -2682,9 +2682,9 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 验证码字符数（3-6）\n")
         f.write(
             f"length = {config_obj.get('Captcha', 'length', fallback='4')}\n")
-        f.write("# 像素细分倍数（2-4）\n")
+        f.write("# 像素细分倍数（2-8）\n")
         f.write(
-            f"scale_factor = {config_obj.get('Captcha', 'scale_factor', fallback='2')}\n"
+            f"scale_factor = {config_obj.get('Captcha', 'scale_factor', fallback='4')}\n"
         )
         f.write("# 噪点比例（0.0-0.3）\n")
         f.write(
@@ -32156,7 +32156,7 @@ def start_web_server(args_param):
     # 用于存储每个会话的验证码请求时间戳，防止频繁刷新攻击
     # 格式: {session_id: [timestamp1, timestamp2, ...]}
     captcha_request_history = {}
-    CAPTCHA_RATE_LIMIT = 2  # 每秒最多请求2次
+    CAPTCHA_RATE_LIMIT = 5  # 每秒最多请求5次
     CAPTCHA_RATE_WINDOW = 1.0  # 时间窗口为1秒
     CAPTCHA_HISTORY_CLEANUP_INTERVAL = 300  # 5分钟清理一次历史记录
     _last_captcha_cleanup = [time.time()]  # 使用列表以便在函数内修改
@@ -32300,7 +32300,7 @@ def start_web_server(args_param):
     def get_captcha():
         """
         获取验证码接口 【本地验证码生成器】
-        包含速率限制：每秒最多2次请求
+        包含速率限制：每秒最多5次请求
         """
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id:
@@ -32487,6 +32487,10 @@ def start_web_server(args_param):
 
             # 支持通过查询参数传入目标宽度（width），按比例计算返回的高度
             provided_width = request.args.get("width", type=int)
+            if provided_width is not None:
+                logging.debug(
+                    f"[本地验证码] 收到移动端宽度请求参数: width={provided_width}"
+                )
             out_width = captcha_width
             out_height = captcha_height
             if provided_width and isinstance(provided_width, int) and provided_width > 0:
@@ -32501,6 +32505,10 @@ def start_web_server(args_param):
                 except Exception:
                     out_width = int(captcha_width)
                     out_height = int(captcha_height)
+                    
+            logging.debug(
+                f"[本地验证码] 返回验证码尺寸: {out_width}x{out_height}px"
+            )
 
             return jsonify(
                 {
