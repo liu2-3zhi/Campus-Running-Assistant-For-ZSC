@@ -14745,7 +14745,7 @@ function showModalAlert(message, title = "提示", onCloseCallback = null) {
         try {
           onCloseCallback();
         } catch (e) {
-          logMessage_Error("showModalAlert onCloseCallback error: " + e);
+          logMessage_Error("showModalAlert 关闭时回调错误: " + e);
         }
       }
     });
@@ -16240,6 +16240,7 @@ async function confirmCaptchaAndSendSMS() {
     Swal.fire({
       icon: "warning",
       title: "请输入验证码",
+      text: "请输入图形验证码",
     });
     return;
   }
@@ -16360,8 +16361,8 @@ async function handleAuthLogin() {
     // showModalAlert("请输入图形验证码", "登录失败");
     Swal.fire({
       icon: "warning",
-      title: "请输入图形验证码",
-      text: "登录失败",
+      title: "登录失败",
+      text: "请输入图形验证码",
     });
     return;
   }
@@ -16369,8 +16370,8 @@ async function handleAuthLogin() {
     // showModalAlert("请输入用户名或手机号", "登录失败");
     Swal.fire({
       icon: "warning",
-      title: "请输入用户名或手机号",
-      text: "登录失败",
+      title: "登录失败",
+      text: "请输入用户名或手机号",
     });
     return;
   }
@@ -16380,8 +16381,8 @@ async function handleAuthLogin() {
       // showModalAlert("请输入密码", "登录失败");
       Swal.fire({
         icon: "warning",
-        title: "请输入密码",
-        text: "登录失败",
+        title: "登录失败",
+        text: "请输入密码",
       });
       return;
     }
@@ -16389,8 +16390,8 @@ async function handleAuthLogin() {
       // showModalAlert("密码长度至少6个字符", "登录失败");
       Swal.fire({
         icon: "warning",
-        title: "密码长度至少6个字符",
-        text: "登录失败",
+        title: "登录失败",
+        text: "密码长度至少6个字符",
       });
       return;
     }
@@ -16399,8 +16400,8 @@ async function handleAuthLogin() {
       // showModalAlert("手机号格式不正确", "登录失败");
       Swal.fire({
         icon: "warning",
-        title: "手机号格式不正确",
-        text: "登录失败",
+        title: "登录失败",
+        text: "手机号格式不正确",
       });
       return;
     }
@@ -16410,8 +16411,8 @@ async function handleAuthLogin() {
         // showModalAlert("请输入密码", "登录失败");
         Swal.fire({
           icon: "warning",
-          title: "请输入密码",
-          text: "登录失败",
+          title: "登录失败",
+          text: "请输入密码",
         });
         return;
       }
@@ -16419,18 +16420,18 @@ async function handleAuthLogin() {
         // showModalAlert("密码长度至少6个字符", "登录失败");
         Swal.fire({
           icon: "warning",
-          title: "密码长度至少6个字符",
-          text: "登录失败",
+          title: "登录失败",
+          text: "密码长度至少6个字符",
         });
         return;
       }
     } else if (login_verification_method === "sms") {
       if (!sms_code) {
         // showModalAlert("请输入短信验证码", "登录失败");
-        swal.fire({
+        Swal.fire({
           icon: "warning",
-          title: "请输入短信验证码",
-          text: "登录失败",
+          title: "登录失败",
+          text: "请输入短信验证码",
         });
         return;
       }
@@ -16438,8 +16439,8 @@ async function handleAuthLogin() {
         // showModalAlert("短信验证码格式不正确", "登录失败");
         Swal.fire({
           icon: "warning",
-          title: "短信验证码格式不正确",
-          text: "登录失败",
+          title: "登录失败",
+          text: "短信验证码格式不正确",
         });
         return;
       }
@@ -16621,7 +16622,8 @@ async function handle2FAVerify() {
     // showModalAlert("请输入有效的6位数字验证码", "2FA验证失败");
     Swal.fire({
       icon: "warning",
-      title: "请输入有效的6位数字验证码",
+      title: "2FA验证失败",
+      text: "请输入有效的6位数字验证码",
     });
     return;
   }
@@ -16631,6 +16633,7 @@ async function handle2FAVerify() {
     Swal.fire({
       icon: "error",
       title: "会话已过期，请重新登录",
+      text: "2FA验证失败",
     });
     const loginForm = $("auth-login-form");
     const tfaForm = $("auth-2fa-form");
@@ -16737,7 +16740,8 @@ async function handleAuthRegister() {
     // showModalAlert("请输入图形验证码", "注册失败");
     Swal.fire({
       icon: "warning",
-      title: "请输入图形验证码",
+      title: "注册失败",
+      text: "请输入图形验证码",
     });
     return;
   }
@@ -16746,7 +16750,8 @@ async function handleAuthRegister() {
     // showModalAlert("请填写所有必填字段（用户名、密码）", "注册失败");
     Swal.fire({
       icon: "warning",
-      title: "请填写所有必填字段（用户名、密码）",
+      title: "注册失败",
+      text: "请填写所有必填字段（用户名、密码）",
     });
     return;
   }
@@ -16756,7 +16761,8 @@ async function handleAuthRegister() {
     // showModalAlert(usernameValidation.message, "注册失败");
     Swal.fire({
       icon: "warning",
-      title: usernameValidation.message,
+      title: "注册失败",
+      text: usernameValidation.message
     });
     return;
   }
@@ -16764,7 +16770,8 @@ async function handleAuthRegister() {
     // showModalAlert("用户名不能包含中文字符", "注册失败");
     Swal.fire({
       icon: "warning",
-      title: "用户名不能包含中文字符",
+      title: "注册失败",
+      text: "用户名不能包含中文字符",
     });
     return;
   }
@@ -16774,13 +16781,19 @@ async function handleAuthRegister() {
     // showModalAlert(passwordValidation.message, "注册失败");
     Swal.fire({
       icon: "warning",
-      title: passwordValidation.message,
+      title: "注册失败",
+      text: passwordValidation.message
     });
     return;
   }
 
   if (password !== passwordConfirm) {
-    showModalAlert("两次输入的密码不一致", "注册失败");
+    // showModalAlert("两次输入的密码不一致", "注册失败");
+    Swal.fire({
+      icon: "warning",
+      title: "注册失败",
+      text: "两次输入的密码不一致",
+    });
     return;
   }
 
@@ -16790,12 +16803,22 @@ async function handleAuthRegister() {
   var weakCheck = checkWeakPassword(password);
   if (weakCheck.isWeak) {
     // 如果密码过弱，显示具体的错误原因
-    showModalAlert(weakCheck.reason, "密码强度不足");
+    // showModalAlert(weakCheck.reason, "密码强度不足");
+    Swal.fire({
+      icon: "warning",
+      title: "密码强度不足",
+      text: weakCheck.reason,
+    });
     return;
   }
 
   if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
-    showModalAlert("请输入正确的手机号格式", "注册失败");
+    // showModalAlert("请输入正确的手机号格式", "注册失败");
+    Swal.fire({
+      icon: "warning",
+      title: "注册失败",
+      text: "请输入正确的手机号格式",
+    });
     return;
   }
 
@@ -16821,7 +16844,12 @@ async function handleAuthRegister() {
       }
     } catch (e) {
       logMessage_Error("检查手机号绑定失败:", e);
-      showModalAlert(`检查手机号失败: ${e.message}，请稍后重试`, "网络错误");
+      // showModalAlert(`检查手机号失败: ${e.message}，请稍后重试`, "网络错误");
+      Swal.fire({
+        icon: "error",
+        title: "网络错误",
+        text: `检查手机号失败: ${e.message}，请稍后重试`,
+      });
       return;
     }
   }
@@ -16850,12 +16878,22 @@ async function handleAuthRegister() {
 
     if (result.success) {
       showButtonSuccess("auth-register-btn", "注册成功");
-      showModalAlert("注册成功！请登录", "注册成功");
+      // showModalAlert("注册成功！请登录", "注册成功");
+      Swal.fire({
+        icon: "success",
+        title: "注册成功",
+        text: "注册成功！请登录",
+      });
       // showAuthSuccess("注册成功！请登录");
     } else {
       setButtonLoading("auth-register-btn", false);
       showButtonError("auth-register-btn", "注册失败");
-      showModalAlert(result.message || "注册失败", "注册失败");
+      // showModalAlert(result.message || "注册失败", "注册失败");
+      Swal.fire({
+        icon: "error",
+        title:"注册失败",
+        text: result.message || "注册失败",
+      });
 
       refreshCaptcha("register");
       $("auth-register-captcha").value = "";
@@ -16864,7 +16902,12 @@ async function handleAuthRegister() {
     logMessage_Error("注册请求失败:", e);
     setButtonLoading("auth-register-btn", false);
     showButtonError("auth-register-btn", "网络错误");
-    showModalAlert("网络错误，请检查连接后重试", "注册失败");
+    // showModalAlert("网络错误，请检查连接后重试", "注册失败");
+    Swal.fire({
+      icon: "error",
+      title: "注册失败",
+      text: "网络错误，请检查连接后重试",
+    });
 
     refreshCaptcha("register");
     $("auth-register-captcha").value = "";
@@ -16894,10 +16937,20 @@ async function handleGuestLogin() {
         window.location.href = `/uuid=${newUUID}`;
       }, 1000);
     } else {
-      showModalAlert(result.message || "游客登录失败", "登录失败");
+      // showModalAlert(result.message || "游客登录失败", "登录失败");
+      Swal.fire({
+        icon: "error",
+        title: "登录失败",
+        text: result.message || "游客登录失败",
+      });
     }
   } catch (e) {
-    showModalAlert("游客登录请求失败：" + e.message, "登录失败");
+    // showModalAlert("游客登录请求失败：" + e.message, "登录失败");
+    Swal.fire({
+      icon: "error",
+      title: "登录失败",
+      text: "游客登录请求失败：" + e.message,
+    });
   }
 }
 
@@ -17245,13 +17298,23 @@ if (typeof window !== "undefined") {
           // setTimeout(() => {
           //   window.close();
           // }, 1000);
+          Swal.fire({
+            icon: "success",
+            title: "应用即将关闭",
+            text: "应用即将关闭...",
+          });
         } catch (error) {
           console.error("[退出应用] 调用shutdown API失败:", error);
           // 修正：使用 showModalAlert 替代未定义的 jsShowAlert，并将第二个参数改为中文标题以触发红色样式
-          showModalAlert(
-            "退出应用失败: " + (error.message || "未知错误"),
-            "错误"
-          );
+          // showModalAlert(
+          //   "退出应用失败: " + (error.message || "未知错误"),
+          //   "错误"
+          // );
+          Swal.fire({
+            icon: "error",
+            title: "未知错误",
+            text: "退出应用失败: " + (error.message || "未知错误"),
+          });
         }
       });
     }
@@ -18520,7 +18583,13 @@ function switchAdminTab(tab) {
       checkIPBanAndProceed("messages_only")
         .then((isBanned) => {
           if (isBanned) {
-            showModalAlert("您的IP已被限制访问留言功能", "访问被拒绝");
+            // showModalAlert("您的IP已被限制访问留言功能", "访问被拒绝");
+            Swal.fire({
+              icon: "error",
+              title: "访问被拒绝",
+              text: "您的IP已被限制访问留言功能",
+              confirmButtonText: "确定",
+            });
             return;
           }
 
@@ -18945,7 +19014,12 @@ function switchAdminTab(tab) {
         })
         .catch((err) => {
           logMessage_Error("[IP封禁检查] 检查失败:", err);
-          showModalAlert("无法验证访问权限，请稍后重试", "错误");
+          // showModalAlert("无法验证访问权限，请稍后重试", "错误");
+          Swal.fire({
+            icon: "error",
+            title: "错误",
+            text: "无法验证访问权限，请稍后重试"
+          });
         });
     }
   } else if (tab === "ipban") {
@@ -19757,7 +19831,13 @@ async function loadPersonalInfo() {
     });
     const result = await response.json();
     if (!result.success) {
-      showModalAlert(`加载个人信息失败: ${result.message}`, "错误");
+      // showModalAlert(`加载个人信息失败: ${result.message}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: "加载个人信息失败: " + result.message,
+        icon: 'error',
+        confirmButtonText: '确定'
+      });
       return;
     }
     const user = result.user;
@@ -19903,14 +19983,24 @@ async function loadPersonalInfo() {
     }
   } catch (e) {
     logMessage_Error("加载个人信息失败:", e);
-    showModalAlert(`加载失败: ${e.message}`, "错误");
+    // showModalAlert(`加载失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '错误',
+      text: "加载失败: " + (e.message || '未知错误'),
+      icon: 'error'
+    });
   }
 }
 
 async function updateAvatar() {
   const avatarInput = $("profile-avatar-input");
   if (!avatarInput || !avatarInput.value.trim()) {
-    showModalAlert("请输入头像URL", "提示");
+    // showModalAlert("请输入头像URL", "提示");
+    Swal.fire({
+      title: '提示',
+      text: '请输入头像URL',
+      icon: 'info'
+    });
     return;
   }
 
@@ -19928,14 +20018,29 @@ async function updateAvatar() {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("头像更新成功！", "成功");
+      // showModalAlert("头像更新成功！", "成功");
+      Swal.fire({
+        title: '成功',
+        text: '头像已成功更新',
+        icon: 'success'
+    });
       loadPersonalInfo();
     } else {
-      showModalAlert(`更新失败: ${result.message}`, "错误");
+      // showModalAlert(`更新失败: ${result.message}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: "更新失败: " + (result.message || '未知错误'),
+        icon: 'error'
+      });
     }
   } catch (e) {
     logMessage_Error("更新头像失败:", e);
-    showModalAlert(`更新失败: ${e.message}`, "错误");
+    // showModalAlert(`更新失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '更新失败',
+      text: e.message || '未知错误',
+      icon: 'error'
+    });
   }
 }
 
@@ -19998,7 +20103,12 @@ function previewAvatar(event) {
   if (!file) return;
 
   if (!file.type.startsWith("image/")) {
-    showModalAlert("请选择图片文件", "错误");
+    // showModalAlert("请选择图片文件", "错误");
+    Swal.fire({
+      title: '请选择图片文件',
+      text: '请选择图片文件',
+      icon: 'error'
+    });
     event.target.value = "";
     return;
   }
@@ -20038,7 +20148,11 @@ function previewAvatarForRegistration(event) {
   if (!file) return;
 
   if (!file.type.startsWith("image/")) {
-    showModalAlert("请选择图片文件", "错误");
+    // showModalAlert("请选择图片文件", "错误");
+    Swal.fire({
+      title: '请选择图片文件',
+      icon: 'error'
+    });
     event.target.value = "";
     return;
   }
@@ -20084,7 +20198,11 @@ function closeCropModal() {
 }
 async function confirmCropForRegistration() {
   if (!avatarCropper) {
-    showModalAlert("裁剪器未初始化", "错误");
+    // showModalAlert("裁剪器未初始化", "错误");
+    Swal.fire({
+      title: '裁剪器未初始化',
+      icon: 'error'
+    });
     return;
   }
   const canvas = avatarCropper.getCroppedCanvas({
@@ -20093,7 +20211,10 @@ async function confirmCropForRegistration() {
     imageSmoothingQuality: "high",
   });
   if (!canvas) {
-    showModalAlert("裁剪失败", "错误");
+    // showModalAlert("裁剪失败", "错误");
+    Swal.fire({
+      title: '裁剪失败',
+    });
     return;
   }
   canvas.toBlob(
@@ -20123,7 +20244,11 @@ async function confirmCropAndUpload() {
     await confirmCropForRegistration();
   } else {
     if (!avatarCropper) {
-      showModalAlert("裁剪器未初始化", "错误");
+      // showModalAlert("裁剪器未初始化", "错误");
+      Swal.fire({
+        title: '裁剪器未初始化',
+        icon: 'error'
+      });
       return;
     }
 
