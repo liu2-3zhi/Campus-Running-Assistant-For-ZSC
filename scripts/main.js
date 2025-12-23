@@ -20037,8 +20037,8 @@ async function updateAvatar() {
     logMessage_Error("更新头像失败:", e);
     // showModalAlert(`更新失败: ${e.message}`, "错误");
     Swal.fire({
-      title: '更新失败',
-      text: e.message || '未知错误',
+      title: '错误',
+      text: "更新失败: " + (e.message || '未知错误'),
       icon: 'error'
     });
   }
@@ -20105,7 +20105,7 @@ function previewAvatar(event) {
   if (!file.type.startsWith("image/")) {
     // showModalAlert("请选择图片文件", "错误");
     Swal.fire({
-      title: '请选择图片文件',
+      title: '错误',
       text: '请选择图片文件',
       icon: 'error'
     });
@@ -20150,7 +20150,8 @@ function previewAvatarForRegistration(event) {
   if (!file.type.startsWith("image/")) {
     // showModalAlert("请选择图片文件", "错误");
     Swal.fire({
-      title: '请选择图片文件',
+      title: '错误',
+      text: '请选择图片文件',
       icon: 'error'
     });
     event.target.value = "";
@@ -20200,7 +20201,8 @@ async function confirmCropForRegistration() {
   if (!avatarCropper) {
     // showModalAlert("裁剪器未初始化", "错误");
     Swal.fire({
-      title: '裁剪器未初始化',
+      title: '错误',
+      text: '裁剪器未初始化',
       icon: 'error'
     });
     return;
@@ -20213,7 +20215,9 @@ async function confirmCropForRegistration() {
   if (!canvas) {
     // showModalAlert("裁剪失败", "错误");
     Swal.fire({
-      title: '裁剪失败',
+      title: '错误',
+      text: '裁剪失败',
+      icon: 'error'
     });
     return;
   }
@@ -20246,7 +20250,8 @@ async function confirmCropAndUpload() {
     if (!avatarCropper) {
       // showModalAlert("裁剪器未初始化", "错误");
       Swal.fire({
-        title: '裁剪器未初始化',
+        title: '错误',
+        text: '裁剪器未初始化',
         icon: 'error'
       });
       return;
@@ -20260,7 +20265,12 @@ async function confirmCropAndUpload() {
     });
 
     if (!canvas) {
-      showModalAlert("裁剪失败", "错误");
+      // showModalAlert("裁剪失败", "错误");
+      Swal.fire({
+        title: '错误',
+        text: '裁剪失败',
+        icon: 'error'
+      });
       return;
     }
 
@@ -20286,7 +20296,12 @@ async function confirmCropAndUpload() {
           const result = await response.json();
 
           if (result.success) {
-            showModalAlert("头像上传成功！", "成功");
+            // showModalAlert("头像上传成功！", "成功");
+            showModal.fire({
+              title: '成功',
+              text: '头像上传成功！',
+              icon: 'success'
+            });
 
             croppedAvatarFile = null;
 
@@ -20297,14 +20312,24 @@ async function confirmCropAndUpload() {
 
             await loadPersonalInfo();
           } else {
-            showModalAlert(`上传失败: ${result.message}`, "错误");
+            // showModalAlert(`上传失败: ${result.message}`, "错误");
+            Swal.fire({
+              title: '错误',
+              text: `上传失败: ${result.message}`,
+              icon: 'error'
+            });
           }
         } catch (e) {
           logMessage_Error("上传头像失败:", e);
-          showModalAlert(
-            `上传失败: ${e.message}\n\n⚠️ 此功能需要后端API /auth/user/upload_avatar 支持`,
-            "错误"
-          );
+          // showModalAlert(
+          //   `上传失败: ${e.message}\n\n⚠️ 此功能需要后端API /auth/user/upload_avatar 支持`,
+          //   "错误"
+          // );
+          Swal.fire({
+            title: '错误',
+            text: `上传失败: ${e.message}\n\n⚠️ 此功能需要后端API /auth/user/upload_avatar 支持`,
+            icon: 'error'
+          });
         }
       },
       "image/jpeg",
@@ -20319,7 +20344,12 @@ async function uploadAvatar() {
   if (!fileToUpload) {
     const fileInput = $("profile-avatar-file");
     if (!fileInput || !fileInput.files || !fileInput.files[0]) {
-      showModalAlert("请先选择并裁剪图片文件", "提示");
+      // showModalAlert("请先选择并裁剪图片文件", "提示");
+      Swal.fire({
+      title: '提示',
+        text: '请先选择并裁剪图片文件',
+        icon: 'warning'
+      });
       return;
     }
     fileToUpload = fileInput.files[0];
@@ -20339,7 +20369,12 @@ async function uploadAvatar() {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("头像上传成功！", "成功");
+      // showModalAlert("头像上传成功！", "成功");
+      Swal.fire({
+        title: '成功',
+        text: '头像上传成功！',
+        icon: 'success'
+      });
 
       croppedAvatarFile = null;
       const fileInput = $("profile-avatar-file");
@@ -20348,11 +20383,21 @@ async function uploadAvatar() {
       }
       await loadPersonalInfo();
     } else {
-      showModalAlert(`上传失败: ${result.message}`, "错误");
+      // showModalAlert(`上传失败: ${result.message}`, "错误");
+      Swal.fire({
+        title: '错误',
+        text: `上传失败: ${result.message}`,
+        icon: 'error'
+      });
     }
   } catch (e) {
     logMessage_Error("上传头像失败:", e);
-    showModalAlert(`上传失败: ${e.message}`, "错误");
+    // showModalAlert(`上传失败: ${e.message}`, "错误");
+    Swal.fire({
+      title: '错误',
+      text: `上传失败: ${e.message}`,
+      icon: 'error'
+    });
   }
 }
 async function updateBasicInfo() {
@@ -20362,12 +20407,22 @@ async function updateBasicInfo() {
   if (!nickname || !phone) return;
 
   if (!nickname.value.trim()) {
-    showModalAlert("昵称不能为空", "提示");
+    // showModalAlert("昵称不能为空", "提示");
+    Swal.fire({
+      title: '提示',
+      text: '昵称不能为空',
+      icon: 'warning'
+    });
     return;
   }
 
   if (!currentAuthUsername) {
-    showModalAlert("无法获取当前用户信息，请重新加载", "错误");
+    // showModalAlert("无法获取当前用户信息，请重新加载", "错误");
+    Swal.fire({
+      title: '错误',
+      text: '无法获取当前用户信息，请重新加载',
+      icon: 'error'
+    });
     return;
   }
 
@@ -20390,13 +20445,28 @@ async function updateBasicInfo() {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert("基本信息更新成功", "成功");
+      // showModalAlert("基本信息更新成功", "成功");
+      Swal.fire({
+        title: '成功',
+        text: '基本信息更新成功',
+        icon: 'success'
+      });
     } else {
-      showModalAlert(result.message || "更新失败", "错误");
+      // showModalAlert(result.message || "更新失败", "错误");
+      Swal.fire({
+        title: '错误',
+        text: result.message || "更新失败",
+        icon: 'error'
+      });
     }
   } catch (error) {
     logMessage_Error("更新基本信息失败", error);
-    showModalAlert("网络错误，请稍后重试", "错误");
+    // showModalAlert("网络错误，请稍后重试", "错误");
+    Swal.fire({
+      title: '错误',
+      text: "网络错误，请稍后重试",
+      icon: 'error'
+    });
   }
 }
 // ========================================
@@ -20497,16 +20567,26 @@ async function sendPasswordResetSmsCode(platform) {
 
     // 检查API响应是否成功
     if (!response.success) {
-      showModalAlert("获取用户信息失败，请稍后重试", "错误");
+      // showModalAlert("获取用户信息失败，请稍后重试", "错误");
+      Swal.fire({
+        title: '错误',
+        text: '获取用户信息失败，请稍后重试',
+        icon: 'error'
+      });
       return;
     }
 
     // 检查用户是否已绑定手机号
     if (!response.phone) {
-      showModalAlert(
-        '您尚未绑定手机号，无法使用短信验证。\n请先在"安全设置"中绑定手机号。',
-        "提示"
-      );
+      // showModalAlert(
+      //   '您尚未绑定手机号，无法使用短信验证。\n请先在"安全设置"中绑定手机号。',
+      //   "提示"
+      // );
+      Swal.fire({
+        title: '提示',
+        text: '您尚未绑定手机号，无法使用短信验证。\n请先在"个人信息"中绑定手机号。',
+        icon: 'info'
+      });
       return;
     }
 
@@ -20520,15 +20600,17 @@ async function sendPasswordResetSmsCode(platform) {
     });
 
     logMessage_Info(
-      `[密码修改] ${platform}端请求发送短信验证码到手机: ${response.phone.replace(
-        /(\d{3})\d{4}(\d{4})/,
-        "$1****$2"
-      )}`
+      `[密码修改] ${platform}端请求发送短信验证码到手机: ${response.phone}`
     );
   } catch (e) {
     // 捕获网络错误或其他异常
     logMessage_Error("[密码修改] 获取手机号失败:", e);
-    showModalAlert("获取手机号失败: " + e.message, "错误");
+    // showModalAlert("获取手机号失败: " + e.message, "错误");
+    Swal.fire({
+      title: '错误',
+      text: "获取手机号失败: " + e.message,
+      icon: 'error'
+    });
   }
 }
 
