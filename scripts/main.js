@@ -40320,11 +40320,11 @@ async function saveCaptchaSettings() {
       });
       return;
     }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 8) {
+    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 32) {
       Swal.fire({
         icon: "error",
         title: "参数错误",
-        text: "细分倍数必须在2-8之间",
+        text: "细分倍数必须在2-32之间",
       });
       return;
     }
@@ -40397,11 +40397,11 @@ async function testGenerateCaptcha() {
       });
       return;
     }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 8) {
+    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 32) {
       Swal.fire({
         icon: "error",
         title: "参数错误",
-        text: "细分倍数必须在2-8之间",
+        text: "细分倍数必须在2-32之间",
       });
       return;
     }
@@ -49551,8 +49551,8 @@ async function mobileSaveCaptchaSettings() {
       showModalAlert("验证码长度必须在3-6之间", "参数错误");
       return;
     }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 8) {
-      showModalAlert("细分倍数必须在2-8之间", "参数错误");
+    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 32) {
+      showModalAlert("细分倍数必须在2-32之间", "参数错误");
       return;
     }
     if (isNaN(noise_level) || noise_level < 0 || noise_level > 0.3) {
@@ -49615,11 +49615,11 @@ async function mobileTestCaptcha() {
       });
       return;
     }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 8) {
+    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 32) {
       Swal.fire({
         icon: "error",
         title: "参数错误",
-        text: "细分倍数必须在2-8之间",
+        text: "细分倍数必须在2-32之间",
       });
       return;
     }

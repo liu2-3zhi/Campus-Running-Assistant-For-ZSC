@@ -2278,7 +2278,7 @@ def _get_default_config():
 
     config["Captcha"] = {
         "length": "4",
-        "scale_factor": "4",
+        "scale_factor": "16",
         "noise_level": "0.08",
     }
 
@@ -2687,7 +2687,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 验证码字符数（3-6）\n")
         f.write(
             f"length = {config_obj.get('Captcha', 'length', fallback='4')}\n")
-        f.write("# 像素细分倍数（2-8）\n")
+        f.write("# 像素细分倍数（2-32）\n")
         f.write(
             f"scale_factor = {config_obj.get('Captcha', 'scale_factor', fallback='4')}\n"
         )
@@ -16872,6 +16872,122 @@ def get_captcha_original_width(html_content):
         logging.error(f"[get_captcha_original_width] 解析失败: {e}")
         return None
 
+def get_captcha_dimensions(html_content):
+    """
+    解析像素验证码 HTML，计算其在浏览器中渲染的实际宽度和高度。
+    
+    计算公式:
+    Width  = (Cols * CellW) + ((Cols - 1) * Gap) + Padding*2 + Border*2
+    Height = (Rows * CellH) + ((Rows - 1) * Gap) + Padding*2 + Border*2
+    
+    Returns:
+        tuple: (width, height) 浮点数。如果解析失败返回 (0.0, 0.0)
+    """
+    try:
+        soup = BeautifulSoup(html_content, "html.parser")
+        
+        # 1. 获取容器和基本信息
+        container = soup.find("div")
+        if not container:
+            logging.warning("[get_dimensions] 无法找到容器 div")
+            return 0.0, 0.0
+
+        container_class = container.get("class")[0] if container.get("class") else None
+        if not container_class:
+            return 0.0, 0.0
+
+        style_tag = soup.find("style")
+        if not style_tag:
+            return 0.0, 0.0
+
+        css_text = style_tag.string
+        
+        # 2. 正则提取 CSS 参数 (复用原有逻辑)
+        num_cols = 0
+        pixel_w = 0.0
+        pixel_h = 0.0
+        gap = 0.0
+        padding_w = 0.0
+        border_w = 0.0
+
+        # 提取列数和单格宽度
+        grid_match = re.search(
+            r"grid-template-columns\s*:\s*repeat\(\s*(\d+)\s*,\s*(\d+(?:\.\d+)?)\s*px\s*\)",
+            css_text,
+            re.IGNORECASE,
+        )
+        if grid_match:
+            num_cols = int(grid_match.group(1))
+            pixel_w = float(grid_match.group(2))
+        else:
+            logging.warning("[get_dimensions] 无法解析 grid-template-columns")
+            return 0.0, 0.0
+
+        # 提取 Gap
+        gap_match = re.search(
+            rf"\.{container_class}\s*\{{.*?\bgap\s*:\s*(\d+(?:\.\d+)?)px",
+            css_text,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if gap_match:
+            gap = float(gap_match.group(1))
+
+        # 提取高度 (如果没定义高度，默认是正方形，即高度=宽度)
+        h_match = re.search(
+            rf"\.{container_class}\s+span[^}}]*?height\s*:\s*(\d+(\.\d+)?)px",
+            css_text,
+            re.IGNORECASE,
+        )
+        if h_match:
+            pixel_h = float(h_match.group(1))
+        else:
+            pixel_h = pixel_w
+
+        # 提取 Padding (左右/上下一致)
+        pad_match = re.search(
+            rf"\.{container_class}\s*\{{.*?\bpadding\s*:\s*(\d+(?:\.\d+)?)px",
+            css_text,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if pad_match:
+            padding_val = float(pad_match.group(1))
+            padding_w = padding_val * 2 # 左右
+            # padding_h = padding_val * 2 # 上下 (通常 CSS padding: 10px 意味着四边都是 10)
+
+        # 提取 Border
+        bor_match = re.search(
+            rf"\.{container_class}\s*\{{.*?\bborder\s*:\s*(\d+(?:\.\d+)?)px",
+            css_text,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if bor_match:
+            border_val = float(bor_match.group(1))
+            border_w = border_val * 2
+        
+        # 3. 计算行数 (Rows) - 新增逻辑
+        # 通过统计 span 标签的总数来倒推行数
+        spans = container.find_all("span")
+        total_cells = len(spans)
+        num_rows = 0
+        if num_cols > 0:
+            num_rows = math.ceil(total_cells / num_cols)
+        
+        # 4. 计算最终宽高
+        # 宽度 = (列数 * 单宽) + (列间隙数 * Gap) + Padding + Border
+        final_width = (num_cols * pixel_w) + ((num_cols - 1) * gap) + padding_w + border_w
+        
+        # 高度 = (行数 * 单高) + (行间隙数 * Gap) + Padding + Border
+        # 注意：行间隙数量通常也是 rows - 1
+        final_height = (num_rows * pixel_h) + ((num_rows - 1) * gap) + padding_w + border_w
+
+        logging.info(f"[get_dimensions] Grid: {num_cols}x{num_rows} | Cell: {pixel_w}x{pixel_h} | Gap: {gap} | Pad/Bor: {padding_w/2}/{border_w/2}")
+        
+        return final_width, final_height
+
+    except Exception as e:
+        logging.error(f"[get_dimensions] 计算出错: {e}", exc_info=True)
+        return 0.0, 0.0
+
 
 def resize_captcha_html(html_content, target_width):
     """
@@ -29345,8 +29461,6 @@ def start_web_server(args_param):
 
             # ========== 启动异步线程处理订单逻辑 ==========
 
-            # 导入threading模块（用于创建后台线程）
-            import threading
 
             # 创建后台线程，执行process_payment_notify_async函数
             # daemon=True: 设置为守护线程，当主程序退出时，守护线程会自动结束
@@ -32523,7 +32637,6 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"[验证码历史] 记录历史失败: {e}", exc_info=True)
 
-            import threading
 
             # 使用统一函数获取客户端真实IP（任务2）
             client_ip_data = request.environ.get(
@@ -32563,7 +32676,7 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"[验证码清理] 清理过期验证码失败: {e}")
 
-            import threading
+
 
             threading.Thread(target=cleanup_expired_captchas,
                              daemon=True).start()
@@ -32582,24 +32695,45 @@ def start_web_server(args_param):
                 logging.debug(
                     f"[本地验证码] 收到移动端宽度请求参数: width={provided_width}"
                 )
+                
+            if provided_width is not None:
+                if provided_width <= 0:
+                    logging.warning(
+                        f"[移动端验证码缩放] 无效的width参数: {provided_width} (必须 > 0)，使用原始HTML"
+                    )
+                    provided_width = None
+                elif provided_width < 100:
+                    logging.warning(
+                        f"[移动端验证码缩放] width参数过小: {provided_width} (建议 >= 100)，使用原始HTML"
+                    )
+                    provided_width = None
+                    
+            target_width= provided_width
+            
             out_width = captcha_width
             out_height = captcha_height
-            if provided_width and isinstance(provided_width, int) and provided_width > 0:
-                try:
-                    if captcha_width and float(captcha_width) > 0:
-                        scale = float(provided_width) / float(captcha_width)
-                        out_height = int(round(float(captcha_height) * scale))
-                        out_width = int(provided_width)
-                    else:
-                        out_width = int(provided_width)
-                        out_height = int(captcha_height)
-                except Exception:
-                    out_width = int(captcha_width)
-                    out_height = int(captcha_height)
+            
+            if target_width is not None and captcha_html is not None and captcha_html not in ("", "NULL", "null", "undefined"):
+                captcha_html = resize_captcha_html(
+                        captcha_html, target_width
+                    )
+            
+            if captcha_html is not None and captcha_html not in ("", "NULL", "null", "undefined"):
+                raw_w, raw_h = get_captcha_dimensions(captcha_html)
 
-            logging.debug(
-                f"[本地验证码] 返回验证码尺寸: {out_width}x{out_height}px"
-            )
+                # 在这里进行向上取整
+                out_width = int(math.ceil(raw_w))
+                out_height = int(math.ceil(raw_h))
+                
+                logging.debug(
+                    f"[本地验证码] 返回验证码尺寸: {out_width}x{out_height}px"
+                )
+            else:
+                logging.error(
+                    f"[本地验证码] 验证码HTML内容无效，无法获取尺寸"
+                )
+
+
 
             return jsonify(
                 {
@@ -32702,7 +32836,7 @@ def start_web_server(args_param):
                 )
                 return get_full_html_for_error("验证码内容不可用"), 404
 
-            if target_width is not None:
+            if target_width is not None and captcha_html_content is not None and captcha_html_content not in ("", "NULL", "null", "undefined"):
                 captcha_html_content = resize_captcha_html(
                     captcha_html_content, target_width
                 )
@@ -32857,7 +32991,7 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"[验证码历史] 更新验证结果失败: {e}", exc_info=True)
 
-            import threading
+            
 
             threading.Thread(target=update_captcha_history,
                              daemon=True).start()
@@ -33043,7 +33177,7 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"[验证码历史] 更新过期验证码状态失败: {e}")
 
-            import threading
+            
 
             threading.Thread(
                 target=update_expired_captchas_in_history, daemon=True
@@ -33189,9 +33323,9 @@ def start_web_server(args_param):
                     400,
                 )
 
-            if not (2 <= scale_factor <= 4):
+            if not (2 <= scale_factor <= 32):
                 return (
-                    jsonify({"success": False, "message": "细分倍数必须在2-4之间"}),
+                    jsonify({"success": False, "message": "细分倍数必须在2-32之间"}),
                     400,
                 )
 
@@ -33291,9 +33425,9 @@ def start_web_server(args_param):
                     400,
                 )
 
-            if not (2 <= scale_factor <= 4):
+            if not (2 <= scale_factor <= 32):
                 return (
-                    jsonify({"success": False, "message": "细分倍数必须在2-4之间"}),
+                    jsonify({"success": False, "message": "细分倍数必须在2-32之间"}),
                     400,
                 )
 
