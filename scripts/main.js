@@ -16624,9 +16624,9 @@ async function handleAuthLogin(isMobile_use = false) {
 
   request_body.captcha = captcha;
   if (isMobile_use) {
-    request_body.captcha_id = captchaIds.login;
-  } else {
     request_body.captcha_id = captchaIds["mobile-login"];
+  } else {
+    request_body.captcha_id = captchaIds.login;
   }
   setButtonLoading("auth-login-btn", true, "登录中...");
 
