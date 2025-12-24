@@ -145,6 +145,7 @@ def import_standard_libraries():
         # ("ipaddress", "import ipaddress"),
         ("string", "import string"),
         ("shutil", "import shutil"),
+        ("concurrent.futures", "import concurrent.futures"),
     ]
 
     failed_imports = []
@@ -32732,6 +32733,11 @@ def start_web_server(args_param):
                 logging.error(
                     f"[本地验证码] 验证码HTML内容无效，无法获取尺寸"
                 )
+                
+            if out_width is None or out_width <= 0:
+                out_width= captcha_width
+            if out_height is None or out_height <= 0:
+                out_height= captcha_height
 
 
 
@@ -33019,10 +33025,12 @@ def start_web_server(args_param):
             logging.error(f"[验证码] 验证过程出错: {e}", exc_info=True)
             return False, "验证码验证失败"
 
+    GLOBAL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+
     @app.route("/api/captcha/history", methods=["GET"])
     def get_captcha_history():
         """
-        获取验证码请求历史记录
+        获取验证码请求历史记录 (多线程优化版)
         """
         session_id = request.headers.get("X-Session-ID", "")
         if not session_id or session_id not in web_sessions:
@@ -33053,7 +33061,6 @@ def start_web_server(args_param):
             logging.debug(f"[验证码历史] 正在读取文件: {history_file}")
 
             if not os.path.exists(history_file):
-                logging.info(f"[验证码历史] 文件不存在: {history_file}")
                 return jsonify(
                     {
                         "success": True,
@@ -33062,13 +33069,14 @@ def start_web_server(args_param):
                         "message": "该日期没有验证码历史记录",
                     }
                 )
-            records = []
+
+            # ==========================================
+            # 多线程处理逻辑开始
+            # ==========================================
+            
+            # 预处理筛选条件
             current_time = time.time()
             expiry_threshold = 30 * 60
-
-            line_count = 0
-            parse_error_count = 0
-            total_matched = 0
             target_status = status_filter
             if status_filter == "pending":
                 target_status = "created"
@@ -33076,98 +33084,190 @@ def start_web_server(args_param):
                 target_status = "verified_success"
             elif status_filter == "failed":
                 target_status = "verified_failed"
-            with open(history_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line_count += 1
-                    line = line.strip()
-                    if not line:
-                        continue
 
-                    try:
-                        record = json.loads(line)
-                        if record.get("status") == "created":
-                            timestamp = record.get("timestamp", 0)
-                            if current_time - timestamp > expiry_threshold:
-                                record["status"] = "expired"
-                                record["expired_at"] = timestamp + \
-                                    expiry_threshold
-                                record["expired_at_readable"] = (
-                                    datetime.datetime.fromtimestamp(
-                                        timestamp + expiry_threshold
-                                    ).strftime("%Y-%m-%d %H:%M:%S")
-                                )
-                        if status_filter and status_filter != "all":
-                            if record.get("status") != target_status:
+            # 定义单个线程的处理函数
+            def process_file_chunk(start_byte, end_byte, file_path):
+                """
+                读取文件的一个分块并解析
+                """
+                local_records = []
+                local_count = 0
+                
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        f.seek(start_byte)
+                        
+                        # 如果不是从文件头开始，先丢弃第一行（因为它可能是不完整的，或者是上一块处理过的）
+                        if start_byte != 0:
+                            f.readline()
+                        
+                        while True:
+                            # 检查当前指针位置
+                            curr_pos = f.tell()
+                            # 如果当前位置已经超过了结束位置，停止读取
+                            if curr_pos >= end_byte:
+                                break
+                            
+                            line = f.readline()
+                            if not line: 
+                                break # 文件结束
+                                
+                            line = line.strip()
+                            if not line:
                                 continue
 
-                        total_matched += 1
-                        record.pop("session_id", None)
-                        records.append(record)
+                            try:
+                                record = json.loads(line)
+                                
+                                # 处理过期逻辑
+                                if record.get("status") == "created":
+                                    timestamp = record.get("timestamp", 0)
+                                    if current_time - timestamp > expiry_threshold:
+                                        record["status"] = "expired"
+                                        record["expired_at"] = timestamp + expiry_threshold
+                                        record["expired_at_readable"] = (
+                                            datetime.datetime.fromtimestamp(
+                                                timestamp + expiry_threshold
+                                            ).strftime("%Y-%m-%d %H:%M:%S")
+                                        )
+                                
+                                # 处理筛选逻辑
+                                if status_filter and status_filter != "all":
+                                    if record.get("status") != target_status:
+                                        continue
+                                        
+                                record.pop("session_id", None)
+                                local_records.append(record)
+                                local_count += 1
+                                
+                            except (json.JSONDecodeError, Exception):
+                                # 忽略解析错误的行
+                                continue
+                                
+                except Exception as e:
+                    logging.error(f"[验证码历史] 线程读取分块失败: {e}")
+                    
+                return local_records
+
+            # 计算分块
+            file_size = os.path.getsize(history_file)
+            thread_count = 10  # 用户要求的10线程
+            chunk_size = file_size // thread_count
+            
+            futures = []
+            all_records = []
+
+            # 使用线程池并发读取
+            with concurrent.futures.ThreadPoolExecutor(max_workers=thread_count) as executor:
+                for i in range(thread_count):
+                    start = i * chunk_size
+                    # 最后一个线程负责读到文件末尾
+                    end = (i + 1) * chunk_size if i < thread_count - 1 else file_size
+                    
+                    # 提交任务
+                    futures.append(executor.submit(process_file_chunk, start, end, history_file))
+                
+                # 收集结果
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        res = future.result()
+                        all_records.extend(res)
                     except Exception as e:
-                        logging.warning(f"[验证码历史] 解析记录失败: {e}")
-                        continue
-            if len(records) > limit * 2:
+                        logging.error(f"[验证码历史] 线程执行异常: {e}")
+
+            # ==========================================
+            # 多线程处理逻辑结束，开始聚合处理
+            # ==========================================
+
+            total_matched = len(all_records)
+            
+            # 排序和分页
+            # 使用 heapq 在大数据量下通常比 sort 更快，特别是只需要 top N 时
+            if len(all_records) > limit * 2:
                 records = heapq.nlargest(
-                    limit * 2, records, key=lambda x: x.get("timestamp", 0)
+                    limit * 2, all_records, key=lambda x: x.get("timestamp", 0)
                 )
             else:
-                records.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
-            total = total_matched
+                all_records.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+                records = all_records
+
             records = records[:limit]
-            # 调试日志：检查返回记录中是否包含 code 字段
-            # 这有助于排查"验证码内容不显示"的问题
-            # 仅在 DEBUG 级别日志启用时执行统计，避免影响生产环境性能
+            
+            # 读取请求参数 weight (图片缩放)
+            # 注意：缩放操作非常耗时，务必只对最终要返回的 limit 条数据进行操作
+            target_width_str = request.args.get("weight")
+            
+            if target_width_str:
+                try:
+                    target_width = int(target_width_str)
+                    logging.debug(f"[验证码历史] 收到移动端宽度请求参数: weight={target_width}")
+                    for record in records:
+                        if "html" in record and record["html"]:
+                            try:
+                                record["html"] = resize_captcha_html(
+                                    record["html"], target_width
+                                )
+                            except Exception:
+                                pass # 忽略单个图片处理失败
+                except ValueError:
+                    logging.warning(f"[验证码历史] 无效的 weight 参数: {target_width_str}")
+                except Exception as e:
+                    logging.error(f"[验证码历史] 处理 weight 参数时出错: {e}", exc_info=True)
+            
+            # 调试日志
             if records and logging.getLogger().isEnabledFor(logging.DEBUG):
-                # 统计有 code 字段的记录数量
-                # 使用 'code' in r 检查字段是否存在，而不是检查值是否为真
-                records_with_code = sum(
-                    1 for r in records if "code" in r and r["code"])
-                # 统计 code 字段为空或不存在的记录数量
+                records_with_code = sum(1 for r in records if "code" in r and r["code"])
                 records_without_code = len(records) - records_with_code
-                # 输出调试信息
                 logging.debug(
                     f"[验证码历史] 字段检查: 有code={records_with_code}, 无code={records_without_code}"
                 )
-                # 如果存在没有 code 字段的记录，输出警告
                 if records_without_code > 0:
                     logging.warning(
                         f"[验证码历史] 发现 {records_without_code} 条记录缺少code字段"
                     )
+                    
             logging.info(
-                f"[验证码历史] 管理员 {username} 查询验证码历史: 日期={date_str}, 返回={len(records)}条 (总计={total}条)"
+                f"[验证码历史] 管理员 {username} 查询验证码历史(多线程): 日期={date_str}, 返回={len(records)}条 (总计={total_matched}条)"
             )
 
+            # ---------------------------------------------------------
+            # 后台任务：更新文件中的过期状态
+            # 注意：由于多线程写文件风险大且加锁复杂，这里保持原逻辑
+            # 即：单独起一个线程，从头读一遍写一遍，不影响主请求的返回速度
+            # ---------------------------------------------------------
             def update_expired_captchas_in_history():
                 try:
                     if not os.path.exists(history_file):
                         return
                     lines = []
                     updated_count = 0
-                    current_time = time.time()
-                    expiry_threshold = 30 * 60
+                    _current_time = time.time()
+                    _expiry = 30 * 60
+                    
+                    # 这里为了数据安全，依然使用单线程顺序读写
                     with open(history_file, "r", encoding="utf-8") as f:
                         for line in f:
                             try:
-                                record = json.loads(line.strip())
-                                if record.get("status") == "created":
-                                    timestamp = record.get("timestamp", 0)
-                                    if current_time - timestamp > expiry_threshold:
-                                        record["status"] = "expired"
-                                        record["expired_at"] = (
-                                            timestamp + expiry_threshold
-                                        )
-                                        record["expired_at_readable"] = (
-                                            datetime.datetime.fromtimestamp(
-                                                timestamp + expiry_threshold
-                                            ).strftime("%Y-%m-%d %H:%M:%S")
-                                        )
-                                        updated_count += 1
-                                lines.append(
-                                    json.dumps(
-                                        record, ensure_ascii=False) + "\n"
-                                )
+                                # 简单的字符串查找比 json loads 快，先预判
+                                if '"status": "created"' in line: 
+                                    record = json.loads(line.strip())
+                                    if record.get("status") == "created":
+                                        ts = record.get("timestamp", 0)
+                                        if _current_time - ts > _expiry:
+                                            record["status"] = "expired"
+                                            record["expired_at"] = ts + _expiry
+                                            record["expired_at_readable"] = (
+                                                datetime.datetime.fromtimestamp(
+                                                    ts + _expiry
+                                                ).strftime("%Y-%m-%d %H:%M:%S")
+                                            )
+                                            updated_count += 1
+                                            lines.append(json.dumps(record, ensure_ascii=False) + "\n")
+                                            continue
+                                lines.append(line)
                             except:
                                 lines.append(line)
+                                
                     if updated_count > 0:
                         with open(history_file, "w", encoding="utf-8") as f:
                             f.writelines(lines)
@@ -33177,8 +33277,6 @@ def start_web_server(args_param):
                 except Exception as e:
                     logging.error(f"[验证码历史] 更新过期验证码状态失败: {e}")
 
-            
-
             threading.Thread(
                 target=update_expired_captchas_in_history, daemon=True
             ).start()
@@ -33187,7 +33285,7 @@ def start_web_server(args_param):
                 {
                     "success": True,
                     "data": records,
-                    "total": total,
+                    "total": total_matched,
                     "date": date_str,
                 }
             )
@@ -33195,7 +33293,8 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[验证码历史] 获取历史记录失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "获取验证码历史失败"}), 500
-
+        
+    
     # ============================================================
     # 验证码详情API
     # ============================================================
@@ -33513,14 +33612,57 @@ def start_web_server(args_param):
             # ========================================
             # 6. 返回成功响应
             # ========================================
+            
+            need_weight=None
+            need_weight_frome_data=None
+            captcha_html=None
+            out_width=None
+            out_height=None
+            
+            
+            need_weight_frome_data=data.get("weight")
+            if need_weight_frome_data is not None and need_weight_frome_data not in ['',"NULL","null","undefined"]:
+                need_weight=(int)(need_weight_frome_data)
+                
+            
+            if need_weight is None or need_weight in ['',"NULL","null","undefined"]:
+                need_weight=None
+            else:
+                logging.debug(f"【本地验证码】测试生成收到weight参数: {need_weight}")
+                captcha_html = resize_captcha_html(html, need_weight)
+                
+            if captcha_html is not None and captcha_html not in ("", "NULL", "null", "undefined"):
+                raw_w, raw_h = get_captcha_dimensions(captcha_html)
+
+                # 在这里进行向上取整
+                out_width = int(math.ceil(raw_w))
+                out_height = int(math.ceil(raw_h))
+                
+                logging.debug(
+                    f"[本地验证码] 返回验证码尺寸: {out_width}x{out_height}px"
+                )
+            else:
+                logging.error(
+                    f"[本地验证码] 验证码HTML内容无效，无法获取尺寸"
+                )
+                
+            if out_width is None or out_width <= 0:
+                out_width= width
+            if out_height is None or out_height <= 0:
+                out_height= height
+                
+            if captcha_html is None:
+                captcha_html=html
+            
+            
             return jsonify(
                 {
                     "success": True,
                     "code": code,
-                    "html": html,
+                    "html": captcha_html,
                     "captcha_id": captcha_id,
-                    "width": width,
-                    "height": height,
+                    "width": out_width,
+                    "height": out_height,
                     "message": "验证码生成成功",
                 }
             )

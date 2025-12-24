@@ -399,6 +399,7 @@ select.select-field {
   pointer-events: auto;
 }
 
+
 .modal-content h3 {
   margin-top: 0;
   text-align: center;
@@ -2009,3 +2010,24 @@ body.mobile-mode #session-picker-modal {
   /* 轻微缩小 */
   transform: translateY(0) scale(0.98) !important;
 }
+
+
+/* 按钮加载态反馈 */
+.btn-loading {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.85;
+}
+.btn-loading::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0,0,0,0.15);
+  border-top-color: rgba(0,0,0,0.6);
+  border-radius: 50%;
+  margin-left: 8px;
+  vertical-align: middle;
+  animation: cr-spin 0.8s linear infinite;
+}
+@keyframes cr-spin { to { transform: rotate(360deg); } }

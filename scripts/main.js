@@ -19313,7 +19313,10 @@ function switchAdminTab(tab) {
 
       loadCaptchaSettings((ShowSwalFire = false));
 
-      loadCaptchaHistory();
+      need_weight=document.getElementById("admin-captcha-panel_modal").clientWidth;
+
+      // 不需要预加载历史记录，改为用户点击按钮之后再加载
+      // loadCaptchaHistory(need_weight);
 
       stopHealthAutoRefresh();
     }
@@ -40694,6 +40697,18 @@ async function saveCaptchaSettings() {
   }
 }
 async function testGenerateCaptcha() {
+
+    // UI反馈：禁用按钮并显示加载状态
+    try {
+      const testCaptchaBtnEl = $("test-captcha-btn");
+      if (testCaptchaBtnEl) {
+        testCaptchaBtnEl.classList.add("btn-loading");
+        testCaptchaBtnEl.setAttribute("disabled", "disabled");
+      }
+    } catch (e) {
+      console.error("设置测试按钮加载状态失败:", e);
+    }
+
   try {
     console.log("[验证码设置] 开始测试生成验证码...");
     const length = parseInt($("captcha-length").value);
@@ -40723,6 +40738,27 @@ async function testGenerateCaptcha() {
       });
       return;
     }
+
+
+    // if (!need_weight || (need_weight == '' || need_weight == "NULL" || need_weight == "null" || need_weight == "undefined")) {
+      try {
+        need_weight = document.getElementById("admin-captcha-panel_modal").clientWidth -400 ;
+        console.log("获取验证码历史面板宽度：", need_weight);
+      }
+      catch (e) {
+        console.error("获取验证码历史面板宽度失败:", e);
+      }
+    // }
+
+
+    if (need_weight !== '' && need_weight !== "NULL" && need_weight !== "null" && need_weight !== "undefined") {
+      if (need_weight > 1000) need_weight = 1000;
+      if (need_weight < 200) need_weight = 200;
+      console.log("验证码显示区域宽度：", need_weight);
+    }
+
+
+
     const response = await fetch("/api/captcha/test_generate", {
       method: "POST",
       headers: {
@@ -40734,6 +40770,7 @@ async function testGenerateCaptcha() {
         length,
         scale_factor,
         noise_level,
+        weight: need_weight,
       }),
     });
     const result = await response.json();
@@ -40748,8 +40785,8 @@ async function testGenerateCaptcha() {
 
       const iframeHtml = `
       <iframe 
-        src="/api/captcha/html/${result.captcha_id}?t=${timestamp}"
-        style="max-width: ${captchaWidth}px; max-height: ${captchaHeight}px; width: 100%; height: ${captchaHeight}px; border: none; overflow: hidden; display: block; margin: 0 auto;"
+        src="/api/captcha/html/${result.captcha_id}?t=${timestamp}&width=${captchaWidth}"
+        style="max-width: ${captchaWidth}px; max-height: ${captchaHeight}px; width: ${captchaWidth}px; height: ${captchaHeight}px; border: none; overflow: hidden; display: block; margin: 0 auto;"
         scrolling="no"
         frameborder="0"
         title="验证码预览">
@@ -40768,6 +40805,16 @@ async function testGenerateCaptcha() {
       title: "生成失败",
       text: error.message || "无法生成测试验证码",
     });
+  } finally {
+    try {
+      const testCaptchaBtnEl = $("test-captcha-btn");
+      if (testCaptchaBtnEl) {
+        testCaptchaBtnEl.classList.remove("btn-loading");
+        testCaptchaBtnEl.removeAttribute("disabled");
+      }
+    } catch (e) {
+      console.error("恢复测试按钮状态失败:", e);
+    }
   }
 }
 document.addEventListener("DOMContentLoaded", function () {
@@ -40787,7 +40834,7 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("[验证码历史] 已注册刷新按钮事件");
   }
 });
-async function loadCaptchaHistory() {
+async function loadCaptchaHistory(need_weight='') {
   const listContainer = $("admin-captcha-list_modal");
   if (!listContainer) {
     console.error("找不到容器 admin-captcha-list_modal");
@@ -40806,9 +40853,42 @@ async function loadCaptchaHistory() {
     if (status) {
       params.append("status", status);
     }
-    const response = await fetch(`/api/captcha/history?${params}`, {
+
+    if (!need_weight || (need_weight == '' || need_weight == "NULL" || need_weight == "null" || need_weight == "undefined")) {
+      try {
+        need_weight = document.getElementById("admin-captcha-history-panel_modal").clientWidth -200 ;
+        console.log("获取验证码历史面板宽度：", need_weight);
+      }
+      catch (e) {
+        console.error("获取验证码历史面板宽度失败:", e);
+      }
+    }
+
+
+    if (need_weight !== '' && need_weight !== "NULL" && need_weight !== "null" && need_weight !== "undefined") {
+      if (need_weight > 1000) need_weight = 1000;
+      if (need_weight < 200) need_weight = 200;
+      console.log("验证码显示区域宽度：", need_weight);
+    }
+
+    let response;
+
+    if (need_weight !== '' && need_weight !== "NULL" && need_weight !== "null" && need_weight !== "undefined") {
+
+    response = await fetch(`/api/captcha/history?${params}&weight=${need_weight}`, {
       headers: { "X-Session-ID": sessionUUID },
     });
+  
+    }
+
+    else {
+
+      response = await fetch(`/api/captcha/history?${params}`, {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+
+    }
+
     const result = await response.json();
     if (!result.success) {
       listContainer.innerHTML = `<p class="text-red-500 text-center py-10">${result.message}</p>`;
@@ -49903,6 +49983,19 @@ async function mobileSaveCaptchaSettings() {
  * 移动端测试验证码生成
  */
 async function mobileTestCaptcha() {
+
+
+      // UI反馈：禁用按钮并显示加载状态
+    try {
+      const testCaptchaBtnEl = $("mobile-test-captcha-btn");
+      if (testCaptchaBtnEl) {
+        testCaptchaBtnEl.classList.add("btn-loading");
+        testCaptchaBtnEl.setAttribute("disabled", "disabled");
+      }
+    } catch (e) {
+      console.error("设置测试按钮加载状态失败:", e);
+    }
+
   try {
     console.log("[移动端验证码] 测试生成验证码...");
 
@@ -49942,6 +50035,10 @@ async function mobileTestCaptcha() {
       return;
     }
 
+    Background_width =
+          document.getElementById("mobile-multi-admin-captcha-panel")
+            .clientWidth - 35;
+
     // 调用后端API生成验证码 - 使用正确的 API 端点 /api/captcha/test_generate
     const response = await fetch("/api/captcha/test_generate", {
       method: "POST",
@@ -49954,6 +50051,7 @@ async function mobileTestCaptcha() {
         length,
         scale_factor,
         noise_level,
+        weight:Background_width
       }),
     });
 
@@ -49978,16 +50076,16 @@ async function mobileTestCaptcha() {
       // 检查后端返回结果是否成功
       if (result && result.success) {
         // 判断后端返回的验证码格式类型
-        Background_width =
-          document.getElementById("mobile-multi-admin-captcha-panel")
-            .clientWidth - 35;
+        captchaWidth=result.width || 343;
+        captchaHeight=result.height || 119;
+
         console.log("移动端验证码面板宽度", Background_width);
         if (result.captcha_id) {
           previewDisplay.innerHTML = `<div class="inline-block border border-slate-200 rounded p-1 bg-white">
           
           <iframe src="/api/captcha/html/${
             result.captcha_id
-          }?t=${Date.now()}&width=${Background_width}" style=" border: none; overflow: hidden; display: block; margin: 0 auto h-[${Background_width}px];" scrolling="no" frameborder="0" title="验证码预览">
+          }?t=${Date.now()}&width=${Background_width}" style=" border: none; overflow: hidden; display: block; margin: 0 auto max-width: ${captchaWidth}px; max-height: ${captchaHeight}px; width: ${captchaWidth}px; height: ${captchaHeight}px;" scrolling="no" frameborder="0" title="验证码预览">
       </iframe>
           
           </div>`;
@@ -50022,6 +50120,16 @@ async function mobileTestCaptcha() {
   } catch (error) {
     console.error("[移动端验证码] 测试失败:", error);
     showModalAlert("生成验证码失败: " + error.message, "错误");
+  } finally {
+    try {
+      const testCaptchaBtnEl = $("mobile-test-captcha-btn");
+      if (testCaptchaBtnEl) {
+        testCaptchaBtnEl.classList.remove("btn-loading");
+        testCaptchaBtnEl.removeAttribute("disabled");
+      }
+    } catch (e) {
+      console.error("恢复测试按钮状态失败:", e);
+    }
   }
 }
 
@@ -50237,6 +50345,9 @@ async function loadMobileCaptchaHistoryModal() {
   listContainer.innerHTML =
     '<p class="text-slate-400 text-center py-10 text-sm">⏳ 加载中...</p>';
 
+  const need_weight= document.getElementById("mobile-captcha-history-modal-list").clientWidth -  document.getElementById("mobile-captcha-history-modal-list").offsetLeft -50;
+  console.log("移动端验证码历史模态框宽度:", need_weight);
+
   try {
     // 获取日期值并转换为后端需要的格式（YYYYMMDD）
     const date = dateInput.value.replace(/-/g, "");
@@ -50250,7 +50361,7 @@ async function loadMobileCaptchaHistoryModal() {
     }
 
     // 调用后端API获取验证码历史记录
-    const response = await fetch(`/api/captcha/history?${params}`, {
+    const response = await fetch(`/api/captcha/history?${params}&weight=${need_weight}`, {
       method: "GET",
       headers: { "X-Session-ID": sessionUUID },
     });
@@ -50283,74 +50394,85 @@ async function loadMobileCaptchaHistoryModal() {
       console.log("[移动端验证码历史] code字段值:", records[0].code);
     }
 
-    // 渲染历史记录列表
-    listContainer.innerHTML = records
-      .map((record) => {
-        // 根据状态设置不同的样式类
-        // 每种状态对应不同的背景色和文字颜色
-        const statusClass =
-          {
-            created: "bg-yellow-100 text-yellow-800", // 待验证 - 黄色
-            verified_success: "bg-green-100 text-green-800", // 成功 - 绿色
-            verified_failed: "bg-red-100 text-red-800", // 失败 - 红色
-            expired: "bg-gray-100 text-gray-800", // 过期 - 灰色
-            test_generated: "bg-blue-100 text-blue-800", // 测试 - 蓝色
-          }[record.status] || "bg-gray-100 text-gray-800";
 
-        // 根据状态设置显示文本和图标
-        // 每种状态对应不同的 emoji 和中文描述
-        const statusText =
-          {
-            created: "⏳ 待验证",
-            verified_success: "✅ 成功",
-            verified_failed: "❌ 失败",
-            expired: "⏰ 过期",
-            test_generated: "🧪 测试",
-          }[record.status] || record.status;
+    // 更新统计数据（若模态框中存在对应元素）
+    const total = records.length;
+    const success = records.filter((r) => r.status === "verified_success").length;
+    const failed = records.filter((r) => r.status === "verified_failed").length;
+    const pending = records.filter((r) => r.status === "created").length;
+    const expired = records.filter((r) => r.status === "expired").length;
+    const testGenerated = records.filter((r) => r.status === "test_generated").length;
+    const statTotal = document.getElementById("mobile-captcha-stat-total");
+    const statSuccess = document.getElementById("mobile-captcha-stat-success");
+    const statFailed = document.getElementById("mobile-captcha-stat-failed");
+    const statPending = document.getElementById("mobile-captcha-stat-pending");
+    const statExpired = document.getElementById("mobile-captcha-stat-expired");
+    const statTest = document.getElementById("mobile-captcha-stat-test");
+    if (statTotal) statTotal.textContent = total;
+    if (statSuccess) statSuccess.textContent = success;
+    if (statFailed) statFailed.textContent = failed;
+    if (statPending) statPending.textContent = pending;
+    if (statExpired) statExpired.textContent = expired;
+    if (statTest) statTest.textContent = testGenerated;
 
-        // 获取验证码显示值
-        // 优先使用 code 字段，其次尝试 captcha_code（兼容旧数据），最后显示 "N/A"
-        const captchaCode = record.code || record.captcha_code || "N/A";
+    // 渲染历史记录列表，包含详情按钮和图片（如有）
+    listContainer.innerHTML = "";
+    records.forEach((record) => {
+      const statusClass =
+        {
+          created: "bg-yellow-100 text-yellow-800",
+          verified_success: "bg-green-100 text-green-800",
+          verified_failed: "bg-red-100 text-red-800",
+          expired: "bg-gray-100 text-gray-800",
+          test_generated: "bg-blue-100 text-blue-800",
+        }[record.status] || "bg-gray-100 text-gray-800";
 
-        // 返回单条记录的HTML
-        return `
-        <div class="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
-          <div class="flex justify-between items-start mb-2">
-            <div class="flex items-center gap-2">
-              <span class="font-mono font-bold text-lg text-slate-700">${captchaCode}</span>
-              <span class="text-xs px-2 py-1 rounded-full ${statusClass}">${statusText}</span>
-            </div>
-            <span class="text-xs text-slate-400">${
-              record.timestamp_readable
-                ? record.timestamp_readable.split(" ")[1]
-                : "N/A"
-            }</span>
+      const statusText =
+        {
+          created: "⏳ 待验证",
+          verified_success: "✅ 成功",
+          verified_failed: "❌ 失败",
+          expired: "⏰ 过期",
+          test_generated: "🧪 测试",
+        }[record.status] || record.status;
+
+      const captchaCode = record.code || record.captcha_code || "N/A";
+
+      const itemDiv = document.createElement("div");
+      itemDiv.className = "bg-white border border-slate-200 rounded-lg p-3 shadow-sm mb-2";
+      itemDiv.innerHTML = `
+        <div class="flex justify-between items-start mb-2">
+          <div class="flex items-center gap-2">
+            <span class="font-mono font-bold text-lg text-slate-700">${captchaCode}</span>
+            <span class="text-xs px-2 py-1 rounded-full ${statusClass}">${statusText}</span>
           </div>
-          <div class="text-xs text-slate-500 flex flex-col gap-1">
-            <div class="flex justify-between">
-              <span>🌐 IP: ${record.client_ip || "N/A"}</span>
-              ${
-                record.verified_input
-                  ? `<span class="${
-                      record.status === "verified_success"
-                        ? "text-green-600"
-                        : "text-red-600"
-                    }">📝 输入: ${record.verified_input}</span>`
-                  : ""
-              }
-            </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">${
+              record.timestamp_readable ? record.timestamp_readable.split(" ")[1] : "N/A"
+            }</span>
+            <button class="btn btn-ghost btn-sm !py-1 !px-2 text-xs" onclick="showCaptchaDetail('${record.captcha_id}')">详情</button>
+          </div>
+        </div>
+        <div class="text-xs text-slate-500 flex flex-col gap-1">
+          <div class="flex justify-between">
+            <span>🌐 IP: ${record.client_ip || "N/A"}</span>
             ${
-              record.timestamp_readable
-                ? `<span class="text-slate-400">📅 ${record.timestamp_readable}</span>`
+              record.verified_input
+                ? `<span class="${record.status === "verified_success" ? "text-green-600" : "text-red-600"}">📝 输入: ${record.verified_input}</span>`
                 : ""
             }
           </div>
+          ${record.timestamp_readable ? `<span class="text-slate-400">📅 ${record.timestamp_readable}</span>` : ""}
+          ${
+            record.html
+              ? `<div class="mt-2 pt-2 border-t border-slate-100 rounded overflow-hidden bg-slate-50 p-2"><div class="scale-75 origin-center">${record.html}</div></div>`
+              : ""
+          }
         </div>
       `;
-      })
-      .join("");
+      listContainer.appendChild(itemDiv);
+    });
 
-    // 输出加载完成的日志
     console.log(`[移动端验证码历史] 加载完成，共 ${records.length} 条记录`);
   } catch (error) {
     // 捕获并处理异常
