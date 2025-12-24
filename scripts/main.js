@@ -25072,13 +25072,28 @@ async function deleteGroup(groupKey) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`权限组 ${groupKey} 已删除`, "成功");
+      // showModalAlert(`权限组 ${groupKey} 已删除`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `权限组 ${groupKey} 已删除`,
+        icon: "success",
+      });
       loadAdminGroups();
     } else {
-      showModalAlert(result.message || "删除失败", "错误");
+      // showModalAlert(result.message || "删除失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "删除失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -25086,7 +25101,12 @@ async function editGroupPermissions(groupKey) {
   currentEditGroupKey = groupKey;
   if (groupKey === null || groupKey === undefined) return;
   if (groupKey === "super_admin") {
-    showModalAlert("无法编辑超级管理员权限组", "错误");
+    // showModalAlert("无法编辑超级管理员权限组", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "无法编辑超级管理员权限组",
+      icon: "error",
+    });
     return;
   }
   const modal = $("edit-group-permissions-modal");
@@ -25099,7 +25119,12 @@ async function editGroupPermissions(groupKey) {
     const result = await response.json();
 
     if (!result.success || !result.groups || !result.groups[groupKey]) {
-      showModalAlert("无法加载权限组信息", "错误");
+      // showModalAlert("无法加载权限组信息", "错误");
+      Swal.fire({
+      title: "错误",
+        text: "无法加载权限组信息",
+        icon: "error",
+      });
       return;
     }
 
@@ -25130,7 +25155,12 @@ async function editGroupPermissions(groupKey) {
     modal.classList.remove("hidden");
     modal.classList.add("flex");
   } catch (e) {
-    showModalAlert("加载失败: " + e.message, "错误");
+    // showModalAlert("加载失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "加载失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -25173,14 +25203,29 @@ async function submitEditGroupPermissions() {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`权限组 ${currentEditGroupKey} 已更新`, "成功");
+      // showModalAlert(`权限组 ${currentEditGroupKey} 已更新`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `权限组 ${currentEditGroupKey} 已更新`,
+        icon: "success",
+      });
       closeEditGroupPermissionsModal();
       loadAdminGroups();
     } else {
-      showModalAlert(result.message || "更新失败", "错误");
+      // showModalAlert(result.message || "更新失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "更新失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -25267,7 +25312,12 @@ async function loadAdminSessions() {
     logMessage_Error(
       "loadAdminSessions: 无法找到会话列表容器 'admin-sessions-list_modal'。"
     );
-    showModalAlert("无法加载会话列表：界面元素丢失。", "错误");
+    // showModalAlert("无法加载会话列表：界面元素丢失。", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "无法加载会话列表：界面元素丢失。",
+      icon: "error",
+    });
     return;
   }
 
@@ -25662,10 +25712,15 @@ async function loadMobileAdminSessionsList() {
         if (isLongPress) {
           e.preventDefault();
           if (isCurrent) {
-            showModalAlert(
-              "当前会话处于活动状态，无法删除。\n如需删除，请先切换到其他会话。",
-              "操作受限"
-            );
+            // showModalAlert(
+            //   "当前会话处于活动状态，无法删除。\n如需删除，请先切换到其他会话。",
+            //   "操作受限"
+            // );
+            Swal.fire({
+              title: "操作受限",
+              text: "当前会话处于活动状态，无法删除。如需删除，请先切换到其他会话。",
+              icon: "warning",
+            });
           } else {
             const confirmText = isGodMode
               ? `确定要销毁此会话吗？\nUUID: ${fullSessionId}\n(上帝模式强制销毁)`
@@ -25921,7 +25976,12 @@ async function postMessage() {
   // ============================================================
   const isBanned = await checkIPBanAndProceed("messages_only");
   if (isBanned) {
-    showModalAlert("您的IP已被限制访问留言功能", "访问被拒绝");
+    // showModalAlert("您的IP已被限制访问留言功能", "访问被拒绝");
+    Swal.fire({
+      title: "访问被拒绝",
+      text: "您的IP已被限制访问留言功能",
+      icon: "error",
+    });
     return;
   }
 
@@ -25938,7 +25998,12 @@ async function postMessage() {
   const email = emailInput ? emailInput.value.trim() : "";
 
   if (!content) {
-    showModalAlert("请输入留言内容", "提示");
+    // showModalAlert("请输入留言内容", "提示");
+    Swal.fire({
+      title: "提示",
+      text: "请输入留言内容",
+      icon: "warning",
+    });
     return;
   }
 
@@ -25946,11 +26011,21 @@ async function postMessage() {
 
   if (isGuest) {
     if (!nickname) {
-      showModalAlert("游客必须填写昵称", "提示");
+      // showModalAlert("游客必须填写昵称", "提示");
+      Swal.fire({
+        title: "提示",
+        text: "游客必须填写昵称",
+        icon: "warning",
+      });
       return;
     }
     if (!email) {
-      showModalAlert("游客必须填写邮箱", "提示");
+      // showModalAlert("游客必须填写邮箱", "提示");
+      Swal.fire({
+        title: "提示",
+        text: "游客必须填写邮箱",
+        icon: "warning",
+      });
       return;
     }
   }
@@ -26002,14 +26077,29 @@ async function postMessage() {
       const charCount = $("message-char-count");
       if (charCount) charCount.textContent = "0";
 
-      showModalAlert("留言发表成功", "成功");
+      // showModalAlert("留言发表成功", "成功");
+      Swal.fire({
+        title: "成功",
+        text: "留言发表成功",
+        icon: "success",
+      });
       await loadMessages();
     } else {
-      showModalAlert(result.message || "发表留言失败", "错误");
+      // showModalAlert(result.message || "发表留言失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "发表留言失败",
+        icon: "error",
+      });
     }
   } catch (e) {
     logMessage_Error("发表留言失败:", e);
-    showModalAlert("发表留言失败: " + e.message, "错误");
+    // showModalAlert("发表留言失败: " + e.message, "错误");
+      Swal.fire({
+        title: "错误",
+        text: "发表留言失败: " + e.message,
+        icon: "error",
+      });
   } finally {
     postBtn.disabled = false;
     postBtn.textContent = "发表留言";
@@ -26037,7 +26127,12 @@ async function deleteMessage(messageId) {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("留言已删除", "成功");
+      // showModalAlert("留言已删除", "成功");
+      Swal.fire({
+        title: "成功",
+        text: "留言已删除",
+        icon: "success",
+      });
       await loadMessages();
 
       // [修复] 增加延时确保PC端列表DOM渲染完成后再同步到移动端
@@ -26061,11 +26156,21 @@ async function deleteMessage(messageId) {
         }
       }, 100); // 给予100ms缓冲时间
     } else {
-      showModalAlert(result.message || "删除留言失败", "错误");
+      // showModalAlert(result.message || "删除留言失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "删除留言失败",
+        icon: "error",
+      });
     }
   } catch (e) {
     logMessage_Error("删除留言失败:", e);
-    showModalAlert("删除留言失败: " + e.message, "错误");
+    // showModalAlert("删除留言失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "删除留言失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -26409,7 +26514,11 @@ async function loadIPBans() {
       listEl.innerHTML = '<p class="text-center py-4">暂无封禁规则</p>';
     }
   } catch (e) {
-    showModalAlert("加载失败: " + e.message);
+    // showModalAlert("加载失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "加载失败: " + e.message,
+    });
   }
 }
 // ====================
@@ -26490,7 +26599,12 @@ function validateIPBanTarget() {
 
 async function addIPBan() {
   if (!validateIPBanTarget()) {
-    showModalAlert("输入格式不正确，请检查红色提示", "添加失败");
+    // showModalAlert("输入格式不正确，请检查红色提示", "添加失败");
+    Swal.fire({
+      title: "添加失败",
+      text: "输入格式不正确，请检查红色提示",
+      icon: "error",
+    });
     return;
   }
   const target = $("ban-target").value.trim();
@@ -26509,7 +26623,13 @@ async function addIPBan() {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert("封禁规则已添加");
+      // showModalAlert("封禁规则已添加");
+      // 清空输入框
+      Swal.fire({
+        title: "成功",
+        text: "封禁规则已添加",
+        icon: "success",
+      });
       $("ban-target").value = "";
 
       const banTargetError = $("ban-target-error");
@@ -26521,10 +26641,20 @@ async function addIPBan() {
       banTargetInput.classList.remove("border-red-500");
       loadIPBans();
     } else {
-      showModalAlert(result.message || "添加失败");
+      // showModalAlert(result.message || "添加失败");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "添加失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message);
+    // showModalAlert("操作失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -26540,16 +26670,31 @@ async function removeIPBan(banId) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert("封禁规则已删除");
+      // showModalAlert("封禁规则已删除");
+      Swal.fire({
+        title: "成功",
+        text: "封禁规则已删除",
+        icon: "success",
+      });
       // 刷新PC端列表
       loadIPBans();
       // 【修复】同时刷新移动端IP封禁列表
       mobileRefreshIPBanList();
     } else {
-      showModalAlert(result.message || "删除失败");
+      // showModalAlert(result.message || "删除失败");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "删除失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message);
+    // showModalAlert("操作失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -26584,7 +26729,12 @@ async function loadSMSConfig() {
       ).value = `${window.location.origin}/sms-reply-webhook`;
     }
   } catch (e) {
-    showModalAlert("加载配置失败: " + e.message);
+    // showModalAlert("加载配置失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "加载配置失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 async function saveSMSConfig() {
@@ -26615,12 +26765,27 @@ async function saveSMSConfig() {
     });
     const result = await response.json();
     if (result.success) {
-      showModalAlert("配置已保存");
+      // showModalAlert("配置已保存");
+      Swal.fire({
+        title: "成功",
+        text: "配置已保存",
+        icon: "success",
+      });
     } else {
-      showModalAlert(result.message || "保存失败");
+      // showModalAlert(result.message || "保存失败");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "保存失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message);
+    // showModalAlert("操作失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 function handleSmsMainSwitchChange() {
@@ -26668,10 +26833,20 @@ async function checkSMSBalance() {
 
       openSMSBalanceModal();
     } else {
-      showModalAlert(result.message || "查询失败");
+      // showModalAlert(result.message || "查询失败");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "查询失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message);
+    // showModalAlert("操作失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -26772,7 +26947,12 @@ async function loadSMSHistory() {
         '<p class="text-slate-400 text-center py-10">暂无记录</p>';
     }
   } catch (e) {
-    showModalAlert("加载历史记录失败: " + e.message);
+    // showModalAlert("加载历史记录失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "加载历史记录失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -26823,7 +27003,12 @@ async function sendTestSMS() {
   const phoneDisplay = $("sms-test-phone-display");
 
   if (!phoneInput || !sendBtn) {
-    showModalAlert("界面元素未找到，请刷新页面重试");
+    // showModalAlert("界面元素未找到，请刷新页面重试");
+    Swal.fire({
+      title: "错误",
+      text: "界面元素未找到，请刷新页面重试",
+      icon: "error",
+    });
     return;
   }
 
@@ -26831,19 +27016,34 @@ async function sendTestSMS() {
   const customCode = codeInput ? codeInput.value.trim() : "";
 
   if (!phone) {
-    showModalAlert("请输入手机号");
+    // showModalAlert("请输入手机号");
+    Swal.fire({
+      title: "错误",
+      text: "请输入手机号",
+      icon: "error",
+    });
     phoneInput.focus();
     return;
   }
 
   if (!/^1[3-9]\d{9}$/.test(phone)) {
-    showModalAlert("手机号格式不正确，请输入11位有效手机号");
+    // showModalAlert("手机号格式不正确，请输入11位有效手机号");
+    Swal.fire({
+      title: "错误",
+      text: "手机号格式不正确，请输入11位有效手机号",
+      icon: "error",
+    });
     phoneInput.focus();
     return;
   }
 
   if (customCode && !/^\d{4,8}$/.test(customCode)) {
-    showModalAlert("自定义验证码格式不正确，仅支持4-8位数字");
+    // showModalAlert("自定义验证码格式不正确，仅支持4-8位数字");
+    Swal.fire({
+      title: "错误",
+      text: "自定义验证码格式不正确，仅支持4-8位数字",
+      icon: "error",
+    });
     if (codeInput) codeInput.focus();
     return;
   }
@@ -26887,7 +27087,12 @@ async function sendTestSMS() {
       if (resultDiv) {
         resultDiv.classList.remove("hidden");
       }
-      showModalAlert("测试短信发送成功！请检查手机是否收到", "成功");
+      // showModalAlert("测试短信发送成功！请检查手机是否收到", "成功");
+      Swal.fire({
+        title: "成功",
+        text: "测试短信发送成功！请检查手机是否收到",
+        icon: "success",
+      });
       sendBtn.innerHTML = `
             <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -26908,7 +27113,12 @@ async function sendTestSMS() {
         }
       }, 5000);
     } else {
-      showModalAlert(result.message || "发送失败，请检查配置和余额");
+      // showModalAlert(result.message || "发送失败，请检查配置和余额");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "发送失败，请检查配置和余额",
+        icon: "error",
+      });
       sendBtn.disabled = false;
       sendBtn.innerHTML = `
             <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -26921,7 +27131,12 @@ async function sendTestSMS() {
   } catch (error) {
     // console.error("[短信测试] 发送失败:", error);
     logMessage_Error("[短信测试] 发送失败:" + error);
-    showModalAlert("网络错误：" + error.message);
+    // showModalAlert("网络错误：" + error.message);
+    Swal.fire({
+      title: "错误",
+      text: "网络错误：" + error.message,
+      icon: "error",
+    });
     sendBtn.disabled = false;
     sendBtn.innerHTML = `
           <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -27329,7 +27544,12 @@ async function loadVerificationCodes() {
 
     startVerificationCodesCountdown();
   } catch (e) {
-    showModalAlert("加载验证码列表失败: " + e.message);
+    // showModalAlert("加载验证码列表失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "加载验证码列表失败: " + e.message,
+      icon: "error",
+    });
     stopVerificationCodesCountdown();
   }
 }
@@ -27354,13 +27574,28 @@ async function invalidateVerificationCode(phone) {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("验证码已失效", "成功");
+      // showModalAlert("验证码已失效", "成功");
+      Swal.fire({
+        title: "成功",
+        text: "验证码已失效",
+        icon: "success",
+      });
       loadVerificationCodes();
     } else {
-      showModalAlert(result.message || "操作失败");
+      // showModalAlert(result.message || "操作失败");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "操作失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message);
+    // showModalAlert("操作失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 async function addManualVerificationCode() {
@@ -27370,11 +27605,21 @@ async function addManualVerificationCode() {
     code = Math.floor(100000 + Math.random() * 900000).toString();
     $("manual-code-value").value = code;
   } else if (!/^\d{6}$/.test(code)) {
-    showModalAlert("验证码必须是6位数字");
+    // showModalAlert("验证码必须是6位数字");
+    Swal.fire({
+      title: "错误",
+      text: "验证码必须是6位数字",
+      icon: "error",
+    });
     return;
   }
   if (!code || !/^\d{6}$/.test(code)) {
-    showModalAlert("请输入6位数字验证码");
+    // showModalAlert("请输入6位数字验证码");
+    Swal.fire({
+      title: "错误",
+      text: "请输入6位数字验证码",
+      icon: "error",
+    });
     return;
   }
 
@@ -27393,15 +27638,30 @@ async function addManualVerificationCode() {
     const result = await response.json();
 
     if (result.success) {
-      showModalAlert("验证码已添加", "成功");
+      // showModalAlert("验证码已添加", "成功");
+      Swal.fire({
+        title: "成功",
+        text: "验证码已添加",
+        icon: "success",
+      });
       $("manual-code-phone").value = "";
       $("manual-code-value").value = "";
       loadVerificationCodes();
     } else {
-      showModalAlert(result.message || "添加失败");
+      // showModalAlert(result.message || "添加失败");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "添加失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message);
+    // showModalAlert("操作失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -27670,7 +27930,12 @@ async function loadMobileVerificationCodes() {
   } catch (e) {
     // 错误处理：显示错误提示
     console.error("[移动端验证码管理] 加载失败:", e);
-    showModalAlert("加载验证码列表失败: " + e.message);
+    // showModalAlert("加载验证码列表失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "加载验证码列表失败: " + e.message,
+      icon: "error",
+    });
     // 停止倒计时
     stopMobileVerificationCodesCountdown();
   }
@@ -27706,16 +27971,31 @@ async function invalidateMobileVerificationCode(phone) {
 
     // 根据结果显示相应提示
     if (result.success) {
-      showModalAlert("验证码已失效", "成功");
+      // showModalAlert("验证码已失效", "成功");
+      Swal.fire({
+        title: "成功",
+        text: "验证码已失效",
+        icon: "success",
+      });
       // 重新加载验证码列表
       loadMobileVerificationCodes();
     } else {
-      showModalAlert(result.message || "操作失败");
+      // showModalAlert(result.message || "操作失败");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "操作失败",
+        icon: "error",
+      });
     }
   } catch (e) {
     // 错误处理
     console.error("[移动端验证码管理] 使验证码失效失败:", e);
-    showModalAlert("操作失败: " + e.message);
+    // showModalAlert("操作失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -27737,13 +28017,23 @@ async function addMobileManualVerificationCode() {
     document.getElementById("mobile-manual-code-value").value = code;
   } else if (!/^\d{6}$/.test(code)) {
     // 验证码格式校验：必须是6位数字
-    showModalAlert("验证码必须是6位数字");
+    // showModalAlert("验证码必须是6位数字");
+    Swal.fire({
+      title: "错误",
+      text: "验证码必须是6位数字",
+      icon: "error",
+    });
     return;
   }
 
   // 再次校验验证码格式（防止自动生成的也出问题）
   if (!code || !/^\d{6}$/.test(code)) {
-    showModalAlert("请输入6位数字验证码");
+    // showModalAlert("请输入6位数字验证码");
+    Swal.fire({
+      title: "错误",
+      text: "请输入6位数字验证码",
+      icon: "error",
+    });
     return;
   }
 
@@ -27765,19 +28055,34 @@ async function addMobileManualVerificationCode() {
 
     // 根据结果显示相应提示
     if (result.success) {
-      showModalAlert("验证码已添加", "成功");
+      // showModalAlert("验证码已添加", "成功");
+      Swal.fire({
+        title: "成功",
+        text: "验证码已添加",
+        icon: "success",
+      });
       // 清空输入框
       document.getElementById("mobile-manual-code-phone").value = "";
       document.getElementById("mobile-manual-code-value").value = "";
       // 重新加载验证码列表
       loadMobileVerificationCodes();
     } else {
-      showModalAlert(result.message || "添加失败");
+      // showModalAlert(result.message || "添加失败");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "添加失败",
+        icon: "error",
+      });
     }
   } catch (e) {
     // 错误处理
     console.error("[移动端验证码管理] 添加验证码失败:", e);
-    showModalAlert("操作失败: " + e.message);
+    // showModalAlert("操作失败: " + e.message);
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -27795,10 +28100,15 @@ function escapeHtml(unsafe) {
 async function checkButtonPermission(buttonId, permissionName) {
   const hasPermission = await checkAdminPermission(permissionName);
   if (!hasPermission) {
-    showModalAlert(
-      `您没有权限使用此功能，缺少 ${permissionName} 权限。`,
-      "权限不足"
-    );
+    // showModalAlert(
+    //   `您没有权限使用此功能，缺少 ${permissionName} 权限。`,
+    //   "权限不足"
+    // );
+    Swal.fire({
+      title:"错误",
+      text:"您没有权限使用此功能，缺少 ${permissionName} 权限。",
+      icon:"error",
+    })
     return false;
   }
   return true;
