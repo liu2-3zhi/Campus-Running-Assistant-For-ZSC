@@ -22455,7 +22455,12 @@ async function banUser(username) {
       });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -22478,7 +22483,12 @@ async function unbanUser(username) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`用户 ${username} 已解封`, "成功");
+      // showModalAlert(`用户 ${username} 已解封`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `用户 ${username} 已解封`,
+        icon: "success",
+      });
 
       // [修正] 统一调用一次刷新，避免并发竞争导致头像丢失
       loadAdminUsers().then(() => {
@@ -22492,10 +22502,20 @@ async function unbanUser(username) {
         }
       });
     } else {
-      showModalAlert(result.message || "解封失败", "错误");
+      // showModalAlert(result.message || "解封失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "解封失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -22520,7 +22540,13 @@ async function forceDisable2FA(username) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`用户 ${username} 的2FA已关闭`, "成功");
+      // showModalAlert(`用户 ${username} 的2FA已关闭`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `用户 ${username} 的2FA已关闭`,
+        icon: "success",
+      });
+      // [修正] 统一调用一次刷新，避免并发竞争导致头像丢失
       loadAdminUsers().then(() => {
         if (typeof copyAdminContentToMultiPanel === "function") {
           copyAdminContentToMultiPanel("users");
@@ -22530,10 +22556,20 @@ async function forceDisable2FA(username) {
         }
       });
     } else {
-      showModalAlert(result.message || "操作失败", "错误");
+      // showModalAlert(result.message || "操作失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "操作失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -22563,7 +22599,12 @@ async function resetUserPassword(username) {
     confirmBtn.onclick = () => {
       const password = passwordInput.value;
       if (!password || password.length < 6) {
-        showModalAlert("密码长度至少为6个字符", "错误");
+        // showModalAlert("密码长度至少为6个字符", "错误");
+        Swal.fire({
+          title: "错误",
+          text: "密码长度至少为6个字符",
+          icon: "error",
+        });
         return;
       }
       modal.remove();
@@ -22588,12 +22629,27 @@ async function resetUserPassword(username) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`用户 ${username} 的密码已重置`, "成功");
+      // showModalAlert(`用户 ${username} 的密码已重置`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `用户 ${username} 的密码已重置`,
+        icon: "success",
+      });
     } else {
-      showModalAlert(result.message || "重置失败", "错误");
+      // showModalAlert(result.message || "重置失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "重置失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -22616,7 +22672,12 @@ async function deleteUser(username) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`用户 ${username} 已删除`, "成功");
+      // showModalAlert(`用户 ${username} 已删除`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `用户 ${username} 已删除`,
+        icon: "success",
+      });
 
       // [修正] 删除成功后重新加载数据，并强制同步UI到移动端面板
       // 按照要求执行 loadAdminUsers().then(...) 链式调用
@@ -22632,10 +22693,20 @@ async function deleteUser(username) {
         }
       });
     } else {
-      showModalAlert(result.message || "删除失败", "错误");
+      // showModalAlert(result.message || "删除失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "删除失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -22661,14 +22732,29 @@ async function forceLogoutUser(username) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(result.message || "用户已强制登出", "成功", "success");
+      // showModalAlert(result.message || "用户已强制登出", "成功", "success");
+      Swal.fire({
+        title: "成功",
+        text: result.message || "用户已强制登出",
+        icon: "success",
+      });
       loadAdminUsers(); // 刷新列表以更新状态（虽然登出不会立即改变列表显示，但刷新是个好习惯）
     } else {
-      showModalAlert(result.message || "操作失败", "错误");
+      // showModalAlert(result.message || "操作失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "操作失败",
+        icon: "error",
+      });
     }
   } catch (e) {
     console.error("强制登出失败:", e);
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
