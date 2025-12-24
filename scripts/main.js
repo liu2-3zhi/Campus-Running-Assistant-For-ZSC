@@ -22809,13 +22809,28 @@ async function clearUserAvatar(username) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`已清除用户 ${username} 的头像`, "成功");
+      // showModalAlert(`已清除用户 ${username} 的头像`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `已清除用户 ${username} 的头像`,
+        icon: "success",
+      });
       loadUserAvatar(username);
     } else {
-      showModalAlert(result.message || "清除失败", "错误");
+      // showModalAlert(result.message || "清除失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "清除失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -22834,7 +22849,12 @@ async function submitSetMaxSessions() {
   const newMax = parseInt(newMaxInput.value);
 
   if (isNaN(newMax) || newMax < 0) {
-    showModalAlert("请输入有效的数字（0或更大）", "错误");
+    // showModalAlert("请输入有效的数字（0或更大）", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "请输入有效的数字（0或更大）",
+      icon: "error",
+    });
     return;
   }
 
@@ -22852,19 +22872,36 @@ async function submitSetMaxSessions() {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(
-        `已更新用户 ${username} 的最大会话数为: ${
+      // showModalAlert(
+      //   `已更新用户 ${username} 的最大会话数为: ${
+      //     maxSessions === -1 ? "无限制" : maxSessions
+      //   }`,
+      //   "成功"
+      // );
+      Swal.fire({
+        title: "成功",
+        text: `已更新用户 ${username} 的最大会话数为: ${
           maxSessions === -1 ? "无限制" : maxSessions
         }`,
-        "成功"
-      );
+        icon: "success",
+      });
       hideModal("set-max-sessions-modal");
       loadAdminUsers();
     } else {
-      showModalAlert(result.message || "更新失败", "错误");
+      // showModalAlert(result.message || "更新失败", "错误");
+      Swal.fire({ 
+        title: "错误",
+        text: result.message || "更新失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -23056,7 +23093,12 @@ async function showUserSchoolAccounts(username) {
     // 检查1：确保username不为空
     if (!username) {
       console.error("[学校账户管理] 参数错误：username为空");
-      showModalAlert("用户名不能为空", "参数错误");
+      // showModalAlert("用户名不能为空", "参数错误");
+      Swal.fire({
+        title: "参数错误",
+        text: "用户名不能为空",
+        icon: "error",
+      });
       return;
     }
 
@@ -23066,7 +23108,12 @@ async function showUserSchoolAccounts(username) {
         "[学校账户管理] 参数错误：username不是字符串类型",
         typeof username
       );
-      showModalAlert("用户名格式错误", "参数错误");
+      // showModalAlert("用户名格式错误", "参数错误");
+      Swal.fire({
+        title: "参数错误",
+        text: "用户名格式错误",
+        icon: "error",
+      });
       return;
     }
 
@@ -23077,10 +23124,15 @@ async function showUserSchoolAccounts(username) {
       console.error(
         `[学校账户管理] 参数错误：username过长 (${username.length} > ${MAX_USERNAME_LENGTH})`
       );
-      showModalAlert(
-        `用户名长度不能超过${MAX_USERNAME_LENGTH}个字符`,
-        "参数错误"
-      );
+      // showModalAlert(
+      //   `用户名长度不能超过${MAX_USERNAME_LENGTH}个字符`,
+      //   "参数错误"
+      // );
+      Swal.fire({
+        title: "参数错误",
+        text: `用户名长度不能超过${MAX_USERNAME_LENGTH}个字符`,
+        icon: "error",
+      });
       return;
     }
 
@@ -23090,17 +23142,27 @@ async function showUserSchoolAccounts(username) {
     const USERNAME_PATTERN = /^[a-zA-Z0-9_\-.@]+$/;
     if (!USERNAME_PATTERN.test(username)) {
       console.error("[学校账户管理] 参数错误：username包含非法字符", username);
-      showModalAlert(
-        "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号",
-        "参数错误"
-      );
+      // showModalAlert(
+      //   "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号",
+      //   "参数错误"
+      // );
+      Swal.fire({
+        title: "参数错误",
+        text: "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号",
+        icon: "error",
+      });
       return;
     }
 
     // 检查5：验证会话ID是否存在
     if (!sessionUUID) {
       console.error("[学校账户管理] 会话错误：sessionUUID不存在");
-      showModalAlert("会话已过期，请重新登录", "会话错误");
+      // showModalAlert("会话已过期，请重新登录", "会话错误");
+      Swal.fire({
+        title: "会话错误",
+        text: "会话已过期，请重新登录",
+        icon: "error",
+      });
       return;
     }
 
@@ -23111,7 +23173,12 @@ async function showUserSchoolAccounts(username) {
   } catch (validationError) {
     // 输入验证本身发生异常（理论上不应该发生，但做好防护）
     console.error("[学校账户管理] 输入验证异常：", validationError);
-    showModalAlert("输入验证失败，请稍后重试", "错误");
+    // showModalAlert("输入验证失败，请稍后重试", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "输入验证失败，请稍后重试",
+      icon: "error",
+    });
     return;
   }
 
@@ -23164,7 +23231,12 @@ async function showUserSchoolAccounts(username) {
         errorMessage = "服务器错误，请稍后重试";
       }
 
-      showModalAlert(errorMessage, "错误");
+      // showModalAlert(errorMessage, "错误");
+      Swal.fire({
+        title: "错误",
+        text: errorMessage,
+        icon: "error",
+      });
       return;
     }
 
@@ -23177,7 +23249,12 @@ async function showUserSchoolAccounts(username) {
       // JSON解析失败，说明响应内容不是有效的JSON
       console.error("[学校账户管理] JSON解析失败：", jsonError);
       console.error("响应内容：", await response.text());
-      showModalAlert("服务器返回了无效的数据格式", "解析错误");
+      // showModalAlert("服务器返回了无效的数据格式", "解析错误");
+      Swal.fire({
+        title: "解析错误",
+        text: "服务器返回了无效的数据格式",
+        icon: "error",
+      });
       return;
     }
 
@@ -23185,7 +23262,12 @@ async function showUserSchoolAccounts(username) {
     // 检查响应是否包含success字段
     if (typeof result.success === "undefined") {
       console.error("[学校账户管理] 响应数据格式错误：缺少success字段", result);
-      showModalAlert("服务器返回了格式错误的数据", "数据错误");
+      // showModalAlert("服务器返回了格式错误的数据", "数据错误");
+      Swal.fire({
+        title: "数据错误",
+        text: "服务器返回了格式错误的数据",
+        icon: "error",
+      });
       return;
     }
 
@@ -23194,7 +23276,12 @@ async function showUserSchoolAccounts(username) {
       // 服务器返回失败状态
       const errorMessage = result.message || "加载失败";
       console.warn(`[学校账户管理] 操作失败：${errorMessage}`);
-      showModalAlert(errorMessage, "错误");
+      // showModalAlert(errorMessage, "错误");
+      Swal.fire({
+        title: "错误",
+        text: errorMessage,
+        icon: "error",
+      });
       return;
     }
 
@@ -23208,7 +23295,12 @@ async function showUserSchoolAccounts(username) {
         "[学校账户管理] 数据格式错误：accounts不是对象",
         typeof accounts
       );
-      showModalAlert("账户数据格式错误", "数据错误");
+      // showModalAlert("账户数据格式错误", "数据错误");
+      Swal.fire({
+        title: "数据错误",
+        text: "账户数据格式错误",
+        icon: "error",
+      });
       return;
     }
 
@@ -23229,7 +23321,12 @@ async function showUserSchoolAccounts(username) {
     // 验证DOM元素是否存在
     if (!usernameElement || !countElement) {
       console.error("[学校账户管理] DOM元素不存在");
-      showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
+      // showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
+      Swal.fire({
+        title: "界面错误",
+        text: "界面加载失败，请刷新页面重试",
+        icon: "error",
+      });
       return;
     }
 
@@ -23243,7 +23340,12 @@ async function showUserSchoolAccounts(username) {
     // 验证列表容器是否存在
     if (!listContainer) {
       console.error("[学校账户管理] 列表容器元素不存在");
-      showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
+      // showModalAlert("界面加载失败，请刷新页面重试", "界面错误");
+      Swal.fire({
+        title: "界面错误",
+        text: "界面加载失败，请刷新页面重试",
+        icon: "error",
+      });
       return;
     }
 
@@ -23462,9 +23564,13 @@ async function showUserSchoolAccounts(username) {
       errorMessage = "服务器返回了无效的数据格式";
     }
 
-    showModalAlert(errorMessage, "错误");
+    // showModalAlert(errorMessage, "错误");
+    Swal.fire({
+      title: "错误",
+      text: errorMessage,
+      icon: "error",
+    });
   }
-
   // ========== 最后：显示模态框 ==========
   // 在所有数据加载和渲染完成后，显示包含账户列表的模态框
   // 这样用户看到的是完整渲染好的内容，不会看到加载过程
@@ -23579,14 +23685,24 @@ async function generateRandomUAForSchoolAccount() {
     const result = await callPythonAPI("generate_new_ua");
     if (!result) {
       console.error("[学校账户管理] 生成UA失败：API返回空结果");
-      showModalAlert("生成失败：无法连接到服务器", "错误");
+      // showModalAlert("生成失败：无法连接到服务器", "错误");
+      Swal.fire({
+        title: "错误",
+        text: "生成失败：无法连接到服务器",
+        icon: "error",
+      });
       return;
     }
     const newUA = typeof result === "string" ? result : result.ua;
 
     if (!newUA) {
       console.error("[学校账户管理] 生成UA失败：返回的UA为空");
-      showModalAlert("生成失败：返回的User-Agent为空", "错误");
+      // showModalAlert("生成失败：返回的User-Agent为空", "错误");
+      Swal.fire({
+        title: "错误",
+        text: "生成失败：返回的User-Agent为空",
+        icon: "error",
+      });
       return;
     }
     const uaField = $("edit-school-account-ua");
@@ -23601,10 +23717,20 @@ async function generateRandomUAForSchoolAccount() {
     if (uaTextarea) {
       uaTextarea.value = newUA;
     }
-    showModalAlert("已生成随机User-Agent", "成功");
+    // showModalAlert("已生成随机User-Agent", "成功");
+    Swal.fire({
+      title: "成功",
+      text: "已生成随机User-Agent",
+      icon: "success",
+    });
   } catch (error) {
     console.error("[学校账户管理] 生成UA时发生错误:", error);
-    showModalAlert("生成失败: " + error.message, "错误");
+    // showModalAlert("生成失败: " + error.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "生成失败: " + error.message,
+      icon: "error",
+    });
   }
 }
 function closeEditSchoolAccountModal() {
@@ -23630,7 +23756,12 @@ async function submitEditSchoolAccount() {
 
   // 验证密码不能为空
   if (!password) {
-    showModalAlert("密码不能为空", "错误");
+    // showModalAlert("密码不能为空", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "密码不能为空",
+      icon: "error",
+    });
     return;
   }
 
@@ -23655,7 +23786,12 @@ async function submitEditSchoolAccount() {
 
     if (result.success) {
       // 更新成功，显示成功提示
-      showModalAlert(result.message || "更新成功", "成功");
+      // showModalAlert(result.message || "更新成功", "成功");
+      Swal.fire({
+        title: "成功",
+        text: result.message || "更新成功",
+        icon: "success",
+      });
 
       // 关闭编辑模态框
       closeEditSchoolAccountModal();
@@ -23675,12 +23811,22 @@ async function submitEditSchoolAccount() {
       }
     } else {
       // 更新失败，显示错误提示
-      showModalAlert(result.message || "更新失败", "错误");
+      // showModalAlert(result.message || "更新失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "更新失败",
+        icon: "error",
+      });
     }
   } catch (error) {
     // 捕获网络错误或其他异常
     console.error("submitEditSchoolAccount error:", error);
-    showModalAlert("更新失败: " + error.message, "错误");
+    // showModalAlert("更新失败: " + error.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "更新失败: " + error.message,
+      icon: "error",
+    });
   }
 }
 
@@ -23716,7 +23862,12 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
 
     if (result.success) {
       // 删除成功，显示成功提示
-      showModalAlert(result.message || "删除成功", "成功");
+      // showModalAlert(result.message || "删除成功", "成功");
+      Swal.fire({
+        title: "成功",
+        text: result.message || "删除成功",
+        icon: "success",
+      });
 
       // 判断当前是在PC端还是移动端模态框中
       // 通过检查移动端模态框是否显示来判断
@@ -23733,12 +23884,22 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
       }
     } else {
       // 删除失败，显示错误提示
-      showModalAlert(result.message || "删除失败", "错误");
+      // showModalAlert(result.message || "删除失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "删除失败",
+        icon: "error",
+      });
     }
   } catch (error) {
     // 捕获网络错误或其他异常
     console.error("deleteSchoolAccount error:", error);
-    showModalAlert("删除失败: " + error.message, "错误");
+    // showModalAlert("删除失败: " + error.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "删除失败: " + error.message,
+      icon: "error",
+    });
   }
 }
 
@@ -23840,7 +24001,12 @@ async function mobileRefreshSchoolAccounts() {
     console.error("[移动端学校账户管理] 刷新失败：无法获取当前用户名");
 
     // 使用showModalAlert显示友好的错误提示
-    showModalAlert("刷新失败：无法确定当前用户", "错误");
+    // showModalAlert("刷新失败：无法确定当前用户", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "刷新失败：无法确定当前用户",
+      icon: "error",
+    });
 
     // 提前返回，不执行后续的刷新操作
     return;
@@ -23898,7 +24064,12 @@ function mobileAddNewSchoolAccount() {
     console.error("[移动端学校账户管理] 打开新增表单失败：无法获取当前用户名");
 
     // 显示友好的错误提示
-    showModalAlert("无法打开新增表单：用户名无效", "错误");
+    // showModalAlert("无法打开新增表单：用户名无效", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "无法打开新增表单：用户名无效",
+      icon: "error",
+    });
 
     // 提前返回，不执行后续操作
     return;
@@ -24116,7 +24287,12 @@ async function showMobileUserSchoolAccounts(username) {
       // 如果失败，显示服务器返回的错误消息
       // result.message包含服务器提供的错误描述
       // 如果message不存在，使用默认文本"加载失败"
-      showModalAlert(result.message || "加载失败", "错误");
+      // showModalAlert(result.message || "加载失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "加载失败",
+        icon: "error",
+      });
 
       // 输出错误日志，便于调试
       console.error("[移动端学校账户管理] 加载失败：", result.message);
@@ -24349,7 +24525,12 @@ async function showMobileUserSchoolAccounts(username) {
 
     // 显示友好的错误提示给用户
     // error.message包含错误的具体描述
-    showModalAlert("加载失败: " + error.message, "错误");
+    // showModalAlert("加载失败: " + error.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "加载失败: " + error.message,
+      icon: "error",
+    });
   }
 }
 // ==================== 移动端学校账户管理功能 END ====================
@@ -24371,7 +24552,12 @@ async function manageUserPermissions(username) {
     const result = await response.json();
 
     if (!result.success) {
-      showModalAlert("无法加载用户权限信息", "错误");
+      // showModalAlert("无法加载用户权限信息", "错误");
+      Swal.fire({
+        title: "错误",
+        text: "无法加载用户权限信息",
+        icon: "error",
+      });
       return;
     }
 
@@ -24381,7 +24567,13 @@ async function manageUserPermissions(username) {
     if (groupEl) groupEl.textContent = result.group || "guest";
 
     if (groupEl === "super_admin") {
-      showModalAlert("无法修改超级管理员的权限", "错误");
+      // showModalAlert("无法修改超级管理员的权限", "错误");
+      Swal.fire({
+        title: "错误",
+        text: "无法修改超级管理员的权限",
+        icon: "error",
+      });
+      return;
     }
     const permissionsContainer = $("manage-user-permissions-list");
     if (permissionsContainer && result.all_permissions) {
@@ -24430,7 +24622,12 @@ async function manageUserPermissions(username) {
     modal.classList.remove("hidden");
     modal.classList.add("flex");
   } catch (e) {
-    showModalAlert("加载失败: " + e.message, "错误");
+    // showModalAlert("加载失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "加载失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -24485,14 +24682,29 @@ async function submitManageUserPermissions() {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`用户 ${currentManageUsername} 的权限已更新`, "成功");
+      // showModalAlert(`用户 ${currentManageUsername} 的权限已更新`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `用户 ${currentManageUsername} 的权限已更新`,
+        icon: "success",
+      });
       closeManageUserPermissionsModal();
       loadAdminUsers();
     } else {
-      showModalAlert(result.message || "更新失败", "错误");
+      // showModalAlert(result.message || "更新失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "更新失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -24509,17 +24721,32 @@ async function submitResetUserPassword() {
   const confirmPassword = $("reset-confirm-password").value;
 
   if (!newPassword || !confirmPassword) {
-    showModalAlert("请填写所有密码字段", "提示");
+    // showModalAlert("请填写所有密码字段", "提示");
+    Swal.fire({
+      title: "提示",
+      text: "请填写所有密码字段",
+      icon: "warning",
+    });
     return;
   }
 
   if (newPassword.length < 6) {
-    showModalAlert("密码长度至少为6个字符", "错误");
+    // showModalAlert("密码长度至少为6个字符", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "密码长度至少为6个字符",
+      icon: "error",
+    });
     return;
   }
 
   if (newPassword !== confirmPassword) {
-    showModalAlert("两次输入的密码不一致", "错误");
+    // showModalAlert("两次输入的密码不一致", "错误");
+    Swal.fire({
+      title: "错误",
+      text: "两次输入的密码不一致",
+      icon: "error",
+    });
     return;
   }
 
@@ -24538,13 +24765,28 @@ async function submitResetUserPassword() {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`用户 ${username} 的密码已重置`, "成功");
+      // showModalAlert(`用户 ${username} 的密码已重置`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `用户 ${username} 的密码已重置`,
+        icon: "success",
+      });
       hideModal("reset-user-password-modal");
     } else {
-      showModalAlert(result.message || "密码重置失败", "错误");
+      // showModalAlert(result.message || "密码重置失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "密码重置失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -24579,7 +24821,12 @@ function closeAdminModifyPhoneModal() {
 async function sendAdminModifyPhoneCode() {
   const newPhone = $("admin-modify-phone-new").value.trim();
   if (!newPhone || !/^1[3-9]\d{9}$/.test(newPhone)) {
-    showModalAlert("请输入正确的手机号");
+    // showModalAlert("请输入正确的手机号");
+    Swal.fire({
+      title: "错误",
+      text: "请输入正确的手机号",
+      icon: "error",
+    });
     return;
   }
 
@@ -24602,12 +24849,22 @@ async function submitAdminModifyPhone() {
   const code = $("admin-modify-phone-code").value.trim();
 
   if (!newPhone) {
-    showModalAlert("请输入新手机号");
+    // showModalAlert("请输入新手机号");
+    Swal.fire({
+      title: "错误",
+      text: "请输入新手机号",
+      icon: "error",
+    });
     return;
   }
 
   if (!/^1[3-9]\d{9}$/.test(newPhone)) {
-    showModalAlert("请输入正确的手机号格式");
+    // showModalAlert("请输入正确的手机号格式");
+    Swal.fire({
+      title: "错误",
+      text: "请输入正确的手机号格式",
+      icon: "error",
+    });
     return;
   }
   try {
@@ -24638,13 +24895,23 @@ async function submitAdminModifyPhone() {
       bindResult.is_bound &&
       bindResult.bound_to_user === username
     ) {
-      showModalAlert("此手机号已绑定到该用户。", "提示");
+      // showModalAlert("此手机号已绑定到该用户。", "提示");
+      Swal.fire({
+        title: "提示",
+        text: "此手机号已绑定到该用户。",
+        icon: "info",
+      });
       closeAdminModifyPhoneModal();
       return;
     }
   } catch (e) {
     logMessage_Error("检查手机号绑定失败:", e);
-    showModalAlert(`检查手机号失败: ${e.message}，请稍后重试`, "网络错误");
+    // showModalAlert(`检查手机号失败: ${e.message}，请稍后重试`, "网络错误");
+    Swal.fire({
+      title: "网络错误",
+      text: `检查手机号失败: ${e.message}，请稍后重试`,
+      icon: "error",
+    });
     return;
   }
 
@@ -24664,14 +24931,29 @@ async function submitAdminModifyPhone() {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`用户 ${username} 的手机号已更新`, "成功");
+      // showModalAlert(`用户 ${username} 的手机号已更新`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `用户 ${username} 的手机号已更新`,
+        icon: "success",
+      });
       closeAdminModifyPhoneModal();
       loadAdminUsers();
     } else {
-      showModalAlert(result.message || "更新失败", "错误");
+      // showModalAlert(result.message || "更新失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "更新失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -24691,7 +24973,12 @@ async function submitAdminModifyNickname() {
   const newNickname = $("admin-modify-nickname-new").value.trim();
 
   if (!newNickname) {
-    showModalAlert("请输入新昵称");
+    // showModalAlert("请输入新昵称");
+    Swal.fire({
+      title: "错误",
+      text: "请输入新昵称",
+      icon: "error",
+    });
     return;
   }
 
@@ -24710,14 +24997,29 @@ async function submitAdminModifyNickname() {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`用户 ${username} 的昵称已更新`, "成功");
+      // showModalAlert(`用户 ${username} 的昵称已更新`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `用户 ${username} 的昵称已更新`,
+        icon: "success",
+      });
       closeAdminModifyNicknameModal();
       loadAdminUsers();
     } else {
-      showModalAlert(result.message || "更新失败", "错误");
+      // showModalAlert(result.message || "更新失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "更新失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
