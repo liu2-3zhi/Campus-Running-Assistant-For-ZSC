@@ -2279,7 +2279,7 @@ def _get_default_config():
 
     config["Captcha"] = {
         "length": "4",
-        "scale_factor": "16",
+        "scale_factor": "2",
         "noise_level": "0.08",
     }
 
@@ -2690,7 +2690,7 @@ def _write_config_with_comments(config_obj, filepath):
             f"length = {config_obj.get('Captcha', 'length', fallback='4')}\n")
         f.write("# 像素细分倍数（2-32）\n")
         f.write(
-            f"scale_factor = {config_obj.get('Captcha', 'scale_factor', fallback='4')}\n"
+            f"scale_factor = {config_obj.get('Captcha', 'scale_factor', fallback='2')}\n"
         )
         f.write("# 噪点比例（0.0-0.3）\n")
         f.write(
