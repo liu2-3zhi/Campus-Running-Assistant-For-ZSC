@@ -19051,25 +19051,44 @@ function switchAdminTab(tab) {
                       dialog.style.height = h ? h + "px" : "auto";
                       dialog.style.zIndex = 20000;
                       // 遮罩（mask）通常是紧邻的元素，尝试将同一对话框相关的遮罩也移动
-                      const mask =
+                      const origMask =
                         dialog.parentElement &&
                         dialog.parentElement.querySelector &&
                         dialog.parentElement.querySelector(
                           ".editormd-dialog-mask"
                         );
-                      if (mask) {
-                        // 备份原始 display，以便恢复
-                        mask.__orig_display = mask.style.display || "";
-                        document.body.appendChild(mask);
-                        mask.style.position = "fixed";
-                        mask.style.left = "0";
-                        mask.style.top = "0";
-                        mask.style.width = "100%";
-                        mask.style.height = "100%";
-                        mask.style.zIndex = 19990;
-                        // 建立双向引用，方便后续控制
-                        mask.__moved_for_dialog = dialog;
-                        dialog.__moved_mask = mask;
+                      if (origMask) {
+                        // 尝试克隆遮罩并将克隆放到 body 中，避免受原父容器的 overflow/clipping 限制
+                        try {
+                          const clone = origMask.cloneNode(true);
+                          clone.__orig_display = origMask.style.display || "";
+                          clone.style.position = "fixed";
+                          clone.style.left = "0";
+                          clone.style.top = "0";
+                          clone.style.width = "100%";
+                          clone.style.height = "100%";
+                          clone.style.zIndex = 19990;
+                          clone.classList.add("editormd-dialog-mask");
+                          document.body.appendChild(clone);
+                          // 隐藏原遮罩，保留其原始 display 以便未来恢复
+                          origMask.__orig_display = origMask.style.display || "";
+                          origMask.style.display = "none";
+                          clone.__moved_for_dialog = dialog;
+                          dialog.__moved_mask = clone;
+                          dialog.__orig_mask = origMask;
+                        } catch (e) {
+                          // 克隆失败则回退为直接移动原始遮罩
+                          origMask.__orig_display = origMask.style.display || "";
+                          document.body.appendChild(origMask);
+                          origMask.style.position = "fixed";
+                          origMask.style.left = "0";
+                          origMask.style.top = "0";
+                          origMask.style.width = "100%";
+                          origMask.style.height = "100%";
+                          origMask.style.zIndex = 19990;
+                          origMask.__moved_for_dialog = dialog;
+                          dialog.__moved_mask = origMask;
+                        }
                       }
                       document.body.appendChild(dialog);
                       dialog.__moved_to_body = true;
@@ -19172,23 +19191,41 @@ function switchAdminTab(tab) {
                       dialog.style.width = w ? w + "px" : "auto";
                       dialog.style.height = h ? h + "px" : "auto";
                       dialog.style.zIndex = 20000;
-                      const mask =
+                      const origMask =
                         dialog.parentElement &&
                         dialog.parentElement.querySelector &&
                         dialog.parentElement.querySelector(
                           ".editormd-dialog-mask"
                         );
-                      if (mask) {
-                        mask.__orig_display = mask.style.display || "";
-                        document.body.appendChild(mask);
-                        mask.style.position = "fixed";
-                        mask.style.left = "0";
-                        mask.style.top = "0";
-                        mask.style.width = "100%";
-                        mask.style.height = "100%";
-                        mask.style.zIndex = 19990;
-                        mask.__moved_for_dialog = dialog;
-                        dialog.__moved_mask = mask;
+                      if (origMask) {
+                        try {
+                          const clone = origMask.cloneNode(true);
+                          clone.__orig_display = origMask.style.display || "";
+                          clone.style.position = "fixed";
+                          clone.style.left = "0";
+                          clone.style.top = "0";
+                          clone.style.width = "100%";
+                          clone.style.height = "100%";
+                          clone.style.zIndex = 19990;
+                          clone.classList.add("editormd-dialog-mask");
+                          document.body.appendChild(clone);
+                          origMask.__orig_display = origMask.style.display || "";
+                          origMask.style.display = "none";
+                          clone.__moved_for_dialog = dialog;
+                          dialog.__moved_mask = clone;
+                          dialog.__orig_mask = origMask;
+                        } catch (e) {
+                          origMask.__orig_display = origMask.style.display || "";
+                          document.body.appendChild(origMask);
+                          origMask.style.position = "fixed";
+                          origMask.style.left = "0";
+                          origMask.style.top = "0";
+                          origMask.style.width = "100%";
+                          origMask.style.height = "100%";
+                          origMask.style.zIndex = 19990;
+                          origMask.__moved_for_dialog = dialog;
+                          dialog.__moved_mask = origMask;
+                        }
                       }
                       document.body.appendChild(dialog);
                       dialog.__moved_to_body = true;
@@ -19329,22 +19366,96 @@ function switchAdminTab(tab) {
       remindersPanel.classList.remove("hidden");
       loadReminders();
       stopHealthAutoRefresh();
-      setTimeout(() => {
-        document.getElementById("reminder-edit-modal").style.zIndex = "0";
-        document.getElementById("reminder-edit-modal").style.display = "hidden";
-        document.getElementById(
-          "reminder-edit-modal_background"
-        ).style.display = "none";
-        openReminderEditModal("-1");
-      }, 500);
-      setTimeout(() => {
-        closeReminderEditModal();
-        document.getElementById("reminder-edit-modal").style.zIndex = "";
-        document.getElementById("reminder-edit-modal").style.display = "";
-        document.getElementById(
-          "reminder-edit-modal_background"
-        ).style.display = "";
-      }, 1000);
+        // 预加载 Editor.md 的资源以避免首次打开编辑模态时渲染问题
+        // 注意：这里只加载资源，不实例化编辑器（按需实例化在 openReminderEditModal 中完成）
+        if (!window._reminderEditorResourcesLoaded) {
+          window._reminderEditorResourcesLoaded = true;
+          const loadOnce = (url, isCss) =>
+            new Promise((resolve, reject) => {
+              try {
+                if (document.querySelector(isCss ? `link[href="${url}"]` : `script[src="${url}"]`)) return resolve();
+                const el = isCss ? document.createElement("link") : document.createElement("script");
+                if (isCss) {
+                  el.rel = "stylesheet";
+                  el.href = url;
+                  document.head.appendChild(el);
+                } else {
+                  el.src = url;
+                  document.body.appendChild(el);
+                }
+                el.onload = () => resolve();
+                el.onerror = (e) => reject(e);
+              } catch (e) {
+                resolve();
+              }
+            });
+
+          (async () => {
+            try {
+              await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
+              // 先加载依赖库，再加载 editormd 本体，减少 race condition
+              await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
+              await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {});
+              await loadOnce("/editor.md/editormd.js", false).catch(() => {});
+              // 尝试在资源加载后触发已存在实例的刷新（若实例已存在）
+              setTimeout(() => {
+                try {
+                  if (window.reminderEditor && typeof window.reminderEditor.recreate === "function") {
+                    window.reminderEditor.recreate();
+                  } else if (
+                    window.reminderEditor &&
+                    window.reminderEditor.codeMirror &&
+                    typeof window.reminderEditor.codeMirror.refresh === "function"
+                  ) {
+                    window.reminderEditor.codeMirror.refresh();
+                  }
+                } catch (e) {}
+              }, 50);
+            } catch (e) {}
+          })();
+        }
+          // 如果还未初始化编辑器，使用一次性打开-关闭模态来强制初始化（使用示例数据）
+          if (!window._reminderEditorInitialized) {
+            try {
+              const modalEl = document.getElementById("reminder-edit-modal");
+              // 尽量避免可见闪烁：临时隐藏 modal
+              let origOpacity, origPointer;
+              if (modalEl) {
+                origOpacity = modalEl.style.opacity || "";
+                origPointer = modalEl.style.pointerEvents || "";
+                modalEl.style.opacity = "0";
+                modalEl.style.pointerEvents = "none";
+              }
+              // 打开示例编辑器初始化
+              openReminderEditModal("-1");
+              // 等待足够时间让编辑器完成实例化，然后关闭并恢复样式
+              setTimeout(() => {
+                try {
+                  closeReminderEditModal();
+                  if (modalEl) {
+                    modalEl.style.opacity = origOpacity;
+                    modalEl.style.pointerEvents = origPointer;
+                  }
+                } catch (e) {}
+              }, 700);
+            } catch (e) {}
+          }
+      // setTimeout(() => {
+      //   document.getElementById("reminder-edit-modal").style.zIndex = "0";
+      //   document.getElementById("reminder-edit-modal").style.display = "hidden";
+      //   document.getElementById(
+      //     "reminder-edit-modal_background"
+      //   ).style.display = "none";
+      //   openReminderEditModal("-1");
+      // }, 500);
+      // setTimeout(() => {
+      //   closeReminderEditModal();
+      //   document.getElementById("reminder-edit-modal").style.zIndex = "";
+      //   document.getElementById("reminder-edit-modal").style.display = "";
+      //   document.getElementById(
+      //     "reminder-edit-modal_background"
+      //   ).style.display = "";
+      // }, 1000);
     }
   } else if (tab === "ssl") {
     const sslTab = $("admin-tab-ssl_modal");
@@ -41290,15 +41401,31 @@ async function openReminderEditModal(reminderId = "") {
           else document.body.appendChild(el);
         });
       };
-
       // 这里使用相对路径，项目中已有 editor.md 资源（若使用 CDN，请替换为 CDN 地址）
       await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
-      await loadOnce("/editor.md/editormd.js", false).catch(() => {});
-      // editormd 渲染依赖，预先加载以避免初始化后缺少 marked/prettify 导致渲染异常
+      // 先加载 editormd 依赖库，再加载主体脚本，减少 race condition
       await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
       await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {});
+      await loadOnce("/editor.md/editormd.js", false).catch(() => {});
 
-      if (window.editormd) {
+      // 等待 window.editormd 可用（轮询），最长等待1500ms
+      const waitForGlobal = (name, timeout = 1500) =>
+        new Promise((resolve) => {
+          const start = Date.now();
+          const iv = setInterval(() => {
+            if (window[name]) {
+              clearInterval(iv);
+              return resolve(true);
+            }
+            if (Date.now() - start > timeout) {
+              clearInterval(iv);
+              return resolve(false);
+            }
+          }, 50);
+        });
+
+      const ready = await waitForGlobal("editormd", 1500).catch(() => false);
+      if (ready && window.editormd) {
         window.reminderEditor = editormd("reminder-editor", {
           // ===== 基本配置 =====
           // 编辑器模式：
@@ -41493,6 +41620,24 @@ async function openReminderEditModal(reminderId = "") {
           toolbarIconTexts: {},
         });
         window._reminderEditorInitialized = true;
+        // 在初始化完成后，短延迟刷新编辑器以确保首次打开时预览/渲染正常
+        setTimeout(() => {
+          try {
+            if (
+              window.reminderEditor &&
+              window.reminderEditor.codeMirror &&
+              typeof window.reminderEditor.codeMirror.refresh === "function"
+            ) {
+              window.reminderEditor.codeMirror.refresh();
+            }
+            if (window.reminderEditor && typeof window.reminderEditor.recreate === "function") {
+              try { window.reminderEditor.recreate(); } catch (e) {}
+            }
+            if (window.reminderEditor && typeof window.reminderEditor.previewing === "function") {
+              try { window.reminderEditor.previewing(); } catch (e) {}
+            }
+          } catch (e) {}
+        }, 60);
 
         if (reminderId == "-1") {
           messageField.value = true;

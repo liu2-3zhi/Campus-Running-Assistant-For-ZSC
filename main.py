@@ -21237,13 +21237,13 @@ def start_web_server(args_param):
         config.read(CONFIG_FILE, encoding="utf-8")
 
         data = request.get_json() or {}
-        auth_phone = data.get("auth_phone", "").strip()
-        auth_username = data.get("auth_username", "").strip()
-        auth_password = data.get("auth_password", "").strip()
-        sms_code = data.get("auth_sms_code", "").strip()
-        two_fa_code = data.get("two_fa_code", "").strip()
-        captcha_input = data.get("captcha", "").strip()
-        captcha_id = data.get("captcha_id", "").strip()
+        auth_phone = (data.get("auth_phone") or "").strip()
+        auth_username = (data.get("auth_username") or "").strip()
+        auth_password = (data.get("auth_password") or "").strip()
+        sms_code = (data.get("auth_sms_code") or "").strip()
+        two_fa_code = (data.get("two_fa_code") or "").strip()
+        captcha_input = (data.get("captcha") or "").strip()
+        captcha_id = (data.get("captcha_id") or "").strip()
         is_captcha_valid, captcha_error_msg = verify_captcha(
             captcha_id, captcha_input)
         if not is_captcha_valid:
