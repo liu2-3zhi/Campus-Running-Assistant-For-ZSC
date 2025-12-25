@@ -6278,7 +6278,25 @@ async function loadAllPaymentOrders() {
 
     // === 第5步：提取订单数据并存储到全局变量 ===
     // 后端返回的订单列表在 result.orders 中
-    allPaymentOrders = result.orders || [];
+    // 按创建时间 created_at 排序，默认把最新的放在最前面（降序）
+    allPaymentOrders = (result.orders || []).slice();
+    try {
+      allPaymentOrders.sort((a, b) => {
+        const ta = Date.parse(a && a.created_at);
+        const tb = Date.parse(b && b.created_at);
+        if (!isNaN(ta) && !isNaN(tb)) return tb - ta; // 新的在前
+
+        // 退化处理：有时 created_at 可能是时间戳字符串或数字
+        const na = Number(a && a.created_at);
+        const nb = Number(b && b.created_at);
+        if (!isNaN(na) && !isNaN(nb)) return nb - na;
+
+        return 0;
+      });
+      logMessage_Info('[订单列表] 已按 created_at 排序（最新优先）');
+    } catch (e) {
+      logMessage_Warn('[订单列表] 排序时发生异常，保持原始顺序：', e);
+    }
 
     logMessage_Info(
       `[订单列表] 成功加载 ${allPaymentOrders.length} 个本地订单`
@@ -16623,12 +16641,22 @@ async function handleAuthLogin(isMobile_use = false) {
   }
 
   request_body.captcha = captcha;
+
   if (isMobile_use) {
     request_body.captcha_id = captchaIds["mobile-login"];
   } else {
     request_body.captcha_id = captchaIds.login;
   }
-  setButtonLoading("auth-login-btn", true, "登录中...");
+
+  if(request_body.captcha_id===null || request_body.captcha_id===undefined || request_body.captcha_id==="" || request_body.captcha_id=="null" || request_body.captcha_id=="undefined" || request_body.captcha_id=="NULL"){
+    // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
+    Swal.fire({
+      icon: "warning",
+      title: "登录失败",
+      text: "验证码未加载或已过期，请刷新后重试",
+    });
+    return;
+  }setButtonLoading("auth-login-btn", true, "登录中...");
 
   try {
     const headers = {
