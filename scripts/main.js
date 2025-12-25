@@ -16466,6 +16466,18 @@ async function sendSMSWithCaptcha(
   originalText,
   scene = null
 ) {
+  if(captchaIds.modal===null || captchaIds.modal===undefined || captchaIds.modal==="" || captchaIds.modal=="null" || captchaIds.modal=="undefined" || captchaIds.modal=="NULL"){
+    // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
+    Swal.fire({
+      icon: "warning",
+      title: "发生失败",
+      text: "验证码未加载或已过期，请刷新后重试",
+      
+    });
+
+    document.getElementById("modal-login-captcha-refresh").click();
+    return;
+  }
   try {
     const requestBody = {
       phone: phone,
@@ -16654,9 +16666,15 @@ async function handleAuthLogin(isMobile_use = false) {
       icon: "warning",
       title: "登录失败",
       text: "验证码未加载或已过期，请刷新后重试",
+      
     });
+
+    document.getElementById("auth-login-captcha-refresh").click();
+    document.getElementById("mobile-login-captcha-refresh").click();
+
     return;
-  }setButtonLoading("auth-login-btn", true, "登录中...");
+  }
+  setButtonLoading("auth-login-btn", true, "登录中...");
 
   try {
     const headers = {
@@ -17047,7 +17065,7 @@ async function handleAuthRegister(isMobile_use = false) {
       return;
     }
   }
-  setButtonLoading("auth-register-btn", true, "注册中...");
+
 
   const formData = new FormData();
   formData.append("auth_username", username);
@@ -17065,6 +17083,21 @@ async function handleAuthRegister(isMobile_use = false) {
   if (avatarFile) {
     formData.append("avatar", avatarFile, avatarFile.name || "avatar.jpg");
   }
+
+  if(formData.captcha_id===null || formData.captcha_id===undefined || formData.captcha_id==="" || formData.captcha_id=="null" || formData.captcha_id=="undefined" || formData.captcha_id=="NULL"){
+    Swal.fire({
+      icon: "warning",
+      title: "注册失败",
+      text: "验证码未加载或已过期，请刷新后重试",
+      
+    });
+
+    document.getElementById("auth-register-btn").click();
+    document.getElementById("mobile-register-captcha-refresh").click();
+
+    return;
+  }
+    setButtonLoading("auth-register-btn", true, "注册中...");
 
   try {
     const response = await fetch("/auth/register", {
@@ -48073,7 +48106,7 @@ async function sendMobileAdminPhoneCode() {
   const sendBtn = document.getElementById("mobile-admin-phone-send-btn");
   const originalText = "发送"; // 或者 sendBtn.textContent
 
-  // 【修正点】：不再直接 fetch，而是打开图形验证码模态框
+  // 不再直接 fetch，而是打开图形验证码模态框
   // 模态框确认后会自动调用后端接口，并携带 captcha_id 和 code
   openCaptchaModal({
     phone: newPhone,

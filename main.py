@@ -109,12 +109,11 @@ def import_standard_libraries():
     logging.info("开始检查并导入 Python 标准库...")
     logging.info("[依赖检查] 正在导入 Python 标准库...")
 
-    # global ssl, eventlet, argparse, base64, bisect, collections, configparser, copy, csv, datetime, hashlib, json, math, pickle, queue, random, re, secrets, socket, threading, time, traceback, urllib, uuid, warnings, atexit, io, zipfile, functools, ipaddress, string, shutil
 
     std_libs = [
         ("ssl", "import ssl"),
         ("eventlet", "import eventlet"),
-        ("eventlet.wsgi", "import eventlet.wsgi"),
+        # ("eventlet.wsgi", "import eventlet.wsgi"),
         ("argparse", "import argparse"),
         ("base64", "import base64"),
         ("bisect", "import bisect"),
@@ -135,7 +134,7 @@ def import_standard_libraries():
         ("threading", "import threading"),
         ("time", "import time"),
         ("traceback", "import traceback"),
-        ("urllib", "import urllib.parse"),
+        ("urllib", "import urllib"),
         ("uuid", "import uuid"),
         ("warnings", "import warnings"),
         ("atexit", "import atexit"),
@@ -146,6 +145,8 @@ def import_standard_libraries():
         ("string", "import string"),
         ("shutil", "import shutil"),
         ("concurrent.futures", "import concurrent.futures"),
+        ("tempfile", "import tempfile"),
+        ("os", "import os")
     ]
 
     failed_imports = []
@@ -161,6 +162,9 @@ def import_standard_libraries():
             logging.error(f"  ✗ {name} 导入失败: {e}")
             logging.error(f"✗ ({e})")
             failed_imports.append({"name": name, "error": str(e)})
+            
+    global ssl, eventlet, argparse, base64, bisect, collections, configparser, copy, csv, datetime, hashlib, json, math, pickle, queue, random, re, secrets, socket, threading, time, traceback, urllib, uuid, warnings, atexit, io, zipfile, functools, ipaddress, string, shutil,concurrent
+
 
     if sys.platform != "win32":
         try:
@@ -318,7 +322,7 @@ def check_and_import_dependencies():
     dependencies = [
         (
             "Flask Web框架",
-            "from flask import Flask, render_template_string, session, redirect, url_for, request, jsonify, make_response, g, send_file, send_from_directory, Response",
+            "from flask import Flask, render_template_string, session, redirect, url_for, request, jsonify, make_response, g, send_file, send_from_directory, Response , abort",
             "Flask",
         ),
         ("Flask CORS", "from flask_cors import CORS", "flask-cors"),
@@ -339,6 +343,7 @@ def check_and_import_dependencies():
         ("BeautifulSoup (HTML解析)", "from bs4 import BeautifulSoup", "beautifulsoup4"),
         ("typing (类型提示)", "import typing", "typing"),
         ("urllib.parse (URL处理)", "import urllib.parse", "urllib3"),
+        ("werkzeug (WSGI工具)", "import werkzeug", "werkzeug"),
     ]
 
     failed_imports = []
@@ -1425,9 +1430,9 @@ def setup_logging():
     # [核心修复] 将所有日志处理器的锁替换为原生锁
     # 解决 ChromeBrowserPool(原生线程) 调用 logging 时因持有 Eventlet 锁导致的崩溃
     try:
-        from eventlet import patcher
+        # from eventlet import patcher
         # 获取未被 monkey_patch 的原生 threading 模块
-        native_threading = patcher.original("threading")
+        native_threading = eventlet.patcher.original("threading")
         # 遍历所有已添加的 Handler (FileHandler, StreamHandler等)
         for handler in logger.handlers:
             # 强制替换为原生可重入锁
@@ -13757,9 +13762,9 @@ class Api:
                 )
 
                 try:
-                    from eventlet import patcher
+                    # from eventlet import patcher
 
-                    native_threading = patcher.original("threading")
+                    native_threading = eventlet.patcher.original("threading")
                     self.multi_login_lock = native_threading.Semaphore(1)
                     logging.info(
                         "[Lock Repair] 已将 multi_login_lock 重置为原生 Semaphore"
@@ -18290,12 +18295,12 @@ class ChromeBrowserPool:
 
         # 导入 eventlet.patcher 获取未被 monkey patch 的原生模块
         # 这是关键：必须使用原生的 threading 和 queue 模块，而不是被 eventlet 修改过的版本
-        from eventlet import patcher
+        # from eventlet import patcher
 
         # 获取原生的 threading 模块，用于创建真正的系统线程
-        self._native_threading = patcher.original("threading")
+        self._native_threading = eventlet.patcher.original("threading")
         # 获取原生的 queue 模块，用于线程间通信
-        self._native_queue = patcher.original("queue")
+        self._native_queue = eventlet.patcher.original("queue")
 
         # 创建请求队列：用于从 eventlet greenlet 发送操作请求到专用线程
         # 使用原生 queue.Queue 确保线程安全，且不受 eventlet 影响
@@ -18728,7 +18733,7 @@ class ChromeBrowserPool:
 
         # 导入 eventlet.tpool 用于在真实线程中等待结果
         # 这避免了阻塞 eventlet 的协作式调度器
-        import eventlet.tpool
+        # import eventlet.tpool
 
         # 定义等待函数，在 tpool 线程中执行
         def _wait_for_result(event, timeout_sec):
@@ -19763,7 +19768,7 @@ def validate_ssl_certificate(cert_path, key_path):
         "message": "证书文件格式验证通过",
     }
     try:
-        import ssl
+        # import ssl
 
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(cert_path, key_path)
@@ -19797,15 +19802,15 @@ def get_ssl_certificate_info(cert_path):
     cert_info = {}
 
     try:
-        import ssl
-        from datetime import datetime
+        # import ssl
+        # from datetime import datetime
 
         with open(cert_path, "rb") as f:
             cert_data = f.read()
-        from cryptography import x509
-        from cryptography.hazmat.backends import default_backend
+        # from cryptography import x509
+        # from cryptography.hazmat.backends import default_backend
 
-        cert = x509.load_pem_x509_certificate(cert_data, default_backend())
+        cert = cryptography.x509.load_pem_x509_certificate(cert_data, cryptography.hazmat.backends.default_backend())
         cert_info = {
             "subject": cert.subject.rfc4514_string(),
             "issuer": cert.issuer.rfc4514_string(),
@@ -19813,7 +19818,7 @@ def get_ssl_certificate_info(cert_path):
             "serial_number": str(cert.serial_number),
             "not_before": cert.not_valid_before_utc.isoformat(),
             "not_after": cert.not_valid_after_utc.isoformat(),
-            "is_expired": datetime.now()
+            "is_expired": datetime.datetime.now()
             > cert.not_valid_after_utc.replace(tzinfo=None),
         }
         try:
@@ -19855,8 +19860,8 @@ def _send_startup_notification_to_log_forwarder(host, port):
         host (str): Flask服务器地址
         port (int): Flask服务器端口
     """
-    import socket
-    import time
+    # import socket
+    # import time
 
     # 声明使用全局 requests 变量
     # requests 已在 check_and_import_dependencies() 中导入
@@ -20050,8 +20055,8 @@ def start_web_server(args_param):
 
     @app.route("/upload", methods=["POST"])
     def upload_image():
-        from flask import request, jsonify, url_for
-        from werkzeug.utils import secure_filename
+        # from flask import request, jsonify, url_for
+        # from werkzeug.utils import secure_filename
 
         ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
 
@@ -20066,7 +20071,7 @@ def start_web_server(args_param):
         if not file or not getattr(file, 'filename', None):
             return jsonify(success=False, message="没有检测到上传文件"), 400
 
-        filename = secure_filename(file.filename)
+        filename = werkzeug.utils.secure_filename(file.filename)
         if "." not in filename:
             return jsonify(success=False, message="文件名不合法"), 400
 
@@ -20220,7 +20225,7 @@ def start_web_server(args_param):
 
     @app.route("/download/<path:filename>", methods=["GET"])
     def download_file(filename: str):
-        from flask import send_from_directory, abort, request
+        # from flask import send_from_directory, abort, request
 
         # 基本安全检查，拒绝路径穿越
         if ".." in filename or filename.startswith('/'):
@@ -20259,7 +20264,7 @@ def start_web_server(args_param):
 
     @app.route("/download", methods=["GET"])
     def download_query():
-        from flask import request, redirect, abort
+        # from flask import request, redirect, abort
         name = request.args.get('name')
         if not name:
             abort(400)
@@ -20473,7 +20478,7 @@ def start_web_server(args_param):
         返回:
             字体URL列表 [(url, font_name), ...]
         """
-        import re
+        # import re
 
         # 匹配 url(https://...) 格式的链接
         pattern = r"url\((https://fonts\.gstatic\.com/[^)]+)\)"
@@ -20506,7 +20511,7 @@ def start_web_server(args_param):
         返回:
             处理后的CSS内容（URL已替换为本地API地址）
         """
-        import re
+        # import re
 
         # 解析CSS中的字体URL
         font_urls = parse_google_fonts_css(css_content)
@@ -22344,7 +22349,7 @@ def start_web_server(args_param):
 
         # 如果填写了手机号，验证格式
         if phone:
-            import re
+            # import re
 
             if not re.match(r"^1[3-9]\d{9}$", phone):
                 return jsonify({"success": False, "message": "手机号格式不正确"})
@@ -22354,7 +22359,7 @@ def start_web_server(args_param):
             # 调用短信验证码校验逻辑
             if hasattr(auth_system, "sms_codes") and phone in auth_system.sms_codes:
                 stored = auth_system.sms_codes[phone]
-                import time
+                # import time
 
                 if stored.get("code") != sms_code:
                     return jsonify({"success": False, "message": "短信验证码错误"})
@@ -22810,14 +22815,14 @@ def start_web_server(args_param):
 
         if not new_phone:
             return jsonify({"success": False, "message": "新手机号不能为空"}), 400
-        import re
+        # import re
 
         if not re.match(r"^1[3-9]\d{9}$", new_phone):
             return jsonify({"success": False, "message": "手机号格式不正确"}), 400
 
         # 如果填写了验证码，进行校验（验证码非空时必须校验）
         if sms_code:
-            import time
+            # import time
 
             if hasattr(auth_system, "sms_codes") and new_phone in auth_system.sms_codes:
                 stored = auth_system.sms_codes[new_phone]
@@ -24261,7 +24266,7 @@ def start_web_server(args_param):
         为 default_avatar.png 提供根路径和 /static 路径的访问。
         """
         try:
-            import os
+            # import os
 
             base_dir = os.path.dirname(__file__)
             default_avatar_path = os.path.join(base_dir, "default_avatar.png")
@@ -25422,8 +25427,8 @@ def start_web_server(args_param):
             content = signature + template.replace("{code}", code).replace(
                 "{minutes}", str(code_expire_minutes)
             )
-            import urllib.parse
-            import urllib.request
+            # import urllib.parse
+            # import urllib.request
 
             url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
 
@@ -25601,7 +25606,7 @@ def start_web_server(args_param):
 
             try:
                 # 导入 urllib.parse 模块，用于URL解码
-                import urllib.parse
+                # import urllib.parse
 
                 # 对内容参数进行 UTF-8 URL 解码
                 # 为什么需要解码？
@@ -25643,7 +25648,7 @@ def start_web_server(args_param):
             log_file = os.path.join(log_dir, "sms_replies.json")
 
             # 导入 json 模块，用于将Python字典序列化为JSON格式
-            import json
+            # import json
 
             # ========== 第五步：构建日志条目 ==========
 
@@ -25740,7 +25745,7 @@ def start_web_server(args_param):
             # g.user 由 @login_required 装饰器设置，包含已验证的用户身份
             current_user = g.user
 
-            # [修复] 使用用户组别判断而非权限判断
+            # 使用用户组别判断而非权限判断
             #
             # 修复原因：
             # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
@@ -25770,7 +25775,7 @@ def start_web_server(args_param):
                     ),
                     403,
                 )
-            # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
+            # 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
             config = configparser.ConfigParser(strict=False)
             config.optionxform = str
             config.read("config.ini", encoding="utf-8")
@@ -25797,7 +25802,7 @@ def start_web_server(args_param):
                     )
                 code = custom_code
             else:
-                import random
+                # import random
 
                 code = "".join([str(random.randint(0, 9)) for _ in range(6)])
             username = config.get("SMS_Service_SMSBao",
@@ -25822,8 +25827,8 @@ def start_web_server(args_param):
                 signature
                 + f"【测试短信】您的验证码是：{code}，{code_expire_minutes}分钟内有效。这是一条测试短信。"
             )
-            import urllib.parse
-            import urllib.request
+            # import urllib.parse
+            # import urllib.request
 
             url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
 
@@ -27930,7 +27935,7 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "文件名不能为空"}), 400
             ssl_dir = os.path.join(os.path.dirname(__file__), "ssl")
             os.makedirs(ssl_dir, exist_ok=True)
-            import tempfile
+            # import tempfile
             # import shutil
 
             with tempfile.NamedTemporaryFile(
@@ -32289,9 +32294,9 @@ def start_web_server(args_param):
         检查当前时间是否有需要显示的提醒
         """
         try:
-            from datetime import datetime
+            # from datetime import datetime
 
-            current_time_str = datetime.now().strftime("%H:%M")
+            current_time_str = datetime.datetime.now().strftime("%H:%M")
             reminders_file = "reminders.json"
             if not os.path.exists(reminders_file):
                 return jsonify({"success": True, "reminders": []})
@@ -32583,7 +32588,7 @@ def start_web_server(args_param):
                     f"[本地验证码] 生成数据不完整: html={bool(captcha_html)}, code={bool(captcha_code)}"
                 )
                 return jsonify({"success": False, "message": "验证码生成失败"}), 500
-            import uuid
+            # import uuid
 
             captcha_id = str(uuid.uuid4())
             captchas_dir = os.path.join(LOGIN_LOGS_DIR, "captchas")
@@ -33554,9 +33559,9 @@ def start_web_server(args_param):
             )
 
             # ========================================
-            # 5.1 保存到文件及历史记录 (新增逻辑)
+            # 5.1 保存到文件及历史记录
             # ========================================
-            import uuid
+            # import uuid
 
             captcha_id = str(uuid.uuid4())
 
@@ -36970,7 +36975,7 @@ def start_web_server(args_param):
             # string.ascii_letters 包含所有大小写字母（a-z, A-Z，共52个字符）
             # string.digits 包含所有数字（0-9，共10个字符）
             # 总共62个字符的字符集，2048位随机字符串的组合数为 62^2048
-            import string
+            # import string
             # random.choices() 从给定字符集中随机选择k个字符
             # k=2048 表示生成2048位验证码，提供极高的安全强度
             # ''.join() 将字符列表拼接成字符串
@@ -37443,7 +37448,7 @@ def start_web_server(args_param):
                 }), 400
 
             # 验证代码格式：只允许字母、数字和下划线
-            import re
+            # import re
             if not re.match(r'^[a-zA-Z0-9_]+$', code):
                 return jsonify({
                     "success": False,
@@ -38793,8 +38798,8 @@ def start_web_server(args_param):
                 try:
                     # 将日期字符串转换为时间戳
                     # 格式：YYYY-MM-DD -> Unix时间戳（当天00:00:00）
-                    from datetime import datetime
-                    start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+                    # from datetime import datetime
+                    start_dt = datetime.datetime.strptime(start_date_str, "%Y-%m-%d")
                     start_timestamp = start_dt.timestamp()
                 except ValueError:
                     # 日期格式不正确，忽略此筛选条件
@@ -38804,8 +38809,8 @@ def start_web_server(args_param):
                 try:
                     # 将日期字符串转换为时间戳
                     # 格式：YYYY-MM-DD -> Unix时间戳（当天23:59:59）
-                    from datetime import datetime
-                    end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
+                    # from datetime import datetime
+                    end_dt = datetime.datetime.strptime(end_date_str, "%Y-%m-%d")
                     # 加上一天的秒数，使其包含整个结束日期
                     end_timestamp = end_dt.timestamp() + 86400 - 1
                 except ValueError:
@@ -39002,8 +39007,8 @@ def start_web_server(args_param):
                 try:
                     # 将日期字符串转换为时间戳
                     # 格式：YYYY-MM-DD -> Unix时间戳（当天00:00:00）
-                    from datetime import datetime
-                    start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+                    # from datetime import datetime
+                    start_dt = datetime.datetime.strptime(start_date_str, "%Y-%m-%d")
                     start_timestamp = start_dt.timestamp()
                 except ValueError:
                     # 日期格式不正确，忽略此筛选条件
@@ -39013,8 +39018,8 @@ def start_web_server(args_param):
                 try:
                     # 将日期字符串转换为时间戳
                     # 格式：YYYY-MM-DD -> Unix时间戳（当天23:59:59）
-                    from datetime import datetime
-                    end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
+                    # from datetime import datetime
+                    end_dt = datetime.datetime.strptime(end_date_str, "%Y-%m-%d")
                     # 加上一天的秒数，使其包含整个结束日期
                     end_timestamp = end_dt.timestamp() + 86400 - 1
                 except ValueError:
@@ -41700,10 +41705,10 @@ def start_web_server(args_param):
         # 只有当验证通过且配置仍然启用时，才尝试创建上下文
         if ssl_config["ssl_enabled"]:
             try:
-                import ssl as ssl_module
+                # import ssl as ssl_module
 
-                ssl_context = ssl_module.SSLContext(
-                    ssl_module.PROTOCOL_TLS_SERVER)
+                ssl_context = ssl.SSLContext(
+                    ssl.PROTOCOL_TLS_SERVER)
                 cert_path = ssl_config["ssl_cert_path"]
                 key_path = ssl_config["ssl_key_path"]
 
@@ -41714,8 +41719,8 @@ def start_web_server(args_param):
                     key_path = os.path.join(
                         os.path.dirname(__file__), key_path)
                 ssl_context.load_cert_chain(cert_path, key_path)
-                ssl_context.options |= ssl_module.OP_NO_SSLv2
-                ssl_context.options |= ssl_module.OP_NO_SSLv3
+                ssl_context.options |= ssl.OP_NO_SSLv2
+                ssl_context.options |= ssl.OP_NO_SSLv3
                 logging.info(f"SSL上下文创建成功，使用证书: {cert_path}")
                 print(f"✓ SSL/HTTPS 已启用")
                 print(f"  证书文件: {cert_path}")
@@ -41810,7 +41815,7 @@ def start_web_server(args_param):
                 if should_redirect:
                     url = request.url.replace("http://", "https://", 1)
                     logging.info(f"HTTP请求被重定向到HTTPS: {request.url} -> {url}")
-                    from flask import redirect
+                    # from flask import redirect
 
                     return redirect(url, code=301)
                     return redirect(url, code=301)
