@@ -235,6 +235,7 @@ def import_core_third_party():
             "Flask-SocketIO",
         ),
         ("eventlet", "import eventlet", "eventlet"),
+        ("eventlet.tpool", "import eventlet.tpool", "eventlet"),
     ]
 
     failed_imports = []
@@ -344,6 +345,7 @@ def check_and_import_dependencies():
         ("typing (类型提示)", "import typing", "typing"),
         ("urllib.parse (URL处理)", "import urllib.parse", "urllib3"),
         ("werkzeug (WSGI工具)", "import werkzeug", "werkzeug"),
+        ("cryptography.x509 (证书处理)", "import cryptography.x509", "cryptography"),
     ]
 
     failed_imports = []
@@ -19807,7 +19809,7 @@ def get_ssl_certificate_info(cert_path):
 
         with open(cert_path, "rb") as f:
             cert_data = f.read()
-        # from cryptography import x509
+
         # from cryptography.hazmat.backends import default_backend
 
         cert = cryptography.x509.load_pem_x509_certificate(cert_data, cryptography.hazmat.backends.default_backend())
@@ -19823,20 +19825,20 @@ def get_ssl_certificate_info(cert_path):
         }
         try:
             san_ext = cert.extensions.get_extension_for_class(
-                x509.SubjectAlternativeName
+                cryptography.x509.SubjectAlternativeName
             )
             cert_info["san"] = [name.value for name in san_ext.value]
-        except x509.ExtensionNotFound:
+        except cryptography.x509.ExtensionNotFound:
             cert_info["san"] = []
 
         logging.info(f"成功获取证书信息: {cert_path}")
 
-    except ImportError:
-        logging.warning("cryptography库不可用，无法获取详细的证书信息")
-        cert_info = {
-            "error": "需要安装cryptography库才能查看详细证书信息",
-            "install_hint": "pip install cryptography",
-        }
+    # except ImportError:
+    #     logging.warning("cryptography库不可用，无法获取详细的证书信息")
+    #     cert_info = {
+    #         "error": "需要安装cryptography库才能查看详细证书信息",
+    #         "install_hint": "pip install cryptography",
+    #     }
     except Exception as e:
         # 只在真正的异常情况下（如证书格式错误、读取权限问题等）记录ERROR日志
         logging.error(f"获取证书信息时发生错误: {e}")

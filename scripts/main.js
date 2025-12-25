@@ -21735,9 +21735,9 @@ function showCreateUserModal() {
               singleAdminModal &&
               !singleAdminModal.classList.contains("hidden")
             ) {
-              if (typeof copyAdminContentToPanelVersion === "function") {
-                copyAdminContentToPanelVersion("users");
-              }
+              // if (typeof copyAdminContentToPanelVersion === "function") {
+              //   copyAdminContentToPanelVersion("users");
+              // }
             }
           }
         } else {
@@ -42551,7 +42551,7 @@ async function loadSSLInfo() {
             )}</p>`;
           } else {
             certInfoContent.innerHTML =
-              '<p class="text-slate-400 text-center py-4">HTTPS/SSL 未启用</p>';
+              '<p class="text-slate-400 text-center py-4">HTTPS/SSL 证书未上传</p>';
           }
         }
       }
@@ -45646,10 +45646,10 @@ function copyAdminContentToMobile(tabType, mobileContentId) {
 }
 function copyAdminContentToPanelVersion(tabType) {
   const pcToMobileMap = {
-    users: {
-      pc: "admin-users-list_modal",
-      mobile: "mobile-admin-users-list-panel",
-    },
+    // users: {
+    //   pc: "admin-users-list_modal",
+    //   mobile: "mobile-admin-users-list-panel",
+    // },
     groups: {
       pc: "admin-groups-list_modal",
       mobile: "mobile-admin-groups-list-panel",
