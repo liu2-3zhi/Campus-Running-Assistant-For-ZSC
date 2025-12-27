@@ -38237,6 +38237,48 @@ async function exitMobileSingleAccount() {
     showModalAlert("退出时发生错误: " + error.message, "错误");
   }
 }
+async function exitMobileSingleAccountSafe() {
+  try {
+    const statusRes = await callPythonAPI_raw(
+      "/api/background_task/status",
+      "GET",
+      null
+    );
+    const isTaskRunning =
+      statusRes.success &&
+      statusRes.task_status &&
+      statusRes.task_status.status === "running";
+    if (isTaskRunning || mobileTaskRunning) {
+      showMobileConfirm(
+        "警告：任务正在运行",
+        "检测到有跑步任务正在执行中。退出单账号模式将停止当前任务，可能导致数据不完整。\n\n确定要继续退出吗？",
+        async () => {
+          try {
+            await callPythonAPI_raw("/api/background_task/stop", "POST", {});
+            stopBackgroundTaskPolling();
+            updateMobileTaskUI("已停止", "任务已停止（退出单账号模式）");
+            mobileTaskRunning = false;
+            mobileTaskPaused = false;
+            await exitMobileSingleAccount();
+          } catch (error) {
+            console.error("[移动端] 停止任务失败:", error);
+            showModalAlert("停止任务时出错，但仍将退出单账号模式", "警告");
+            await exitMobileSingleAccount();
+          }
+        },
+        () => {
+          showModalAlert("已取消退出单账号模式", "提示");
+        }
+      );
+      return;
+    }
+    await exitMobileSingleAccount();
+  } catch (error) {
+    console.error("[移动端] 检查任务状态失败:", error);
+    showModalAlert("无法检查任务状态，将继续退出", "警告");
+    await exitMobileSingleAccount();
+  }
+}
 async function exitMobileMultiAccountToSessions() {
   try {
     console.log("[移动端] 开始退出多账号模式...");

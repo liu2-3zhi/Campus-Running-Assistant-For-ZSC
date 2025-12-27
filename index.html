@@ -6245,7 +6245,7 @@
           <span>我的</span>
         </a>
 
-        <a href="#" class="mobile-sidebar-item danger" onclick="closeMobileSidebar();showMobileConfirm('退出单账号模式', '确定要退出并返回会话选择吗？', async () => { await exitMobileSingleAccount(); closeMobileSidebar(); }); return false;">
+        <a href="#" class="mobile-sidebar-item danger" onclick="closeMobileSidebar(); exitMobileSingleAccountSafe(); return false;">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
           </svg>
@@ -6312,7 +6312,7 @@
           <span>日志</span>
         </a>
 
-        <a href="#" class="mobile-sidebar-item danger" onclick="closeMobileSidebar(); showMobileConfirm('退出多账号模式', '确定要退出多账号模式并返回会话选择吗？', async () => { await exitMobileMultiAccountToSessions(); closeMobileSidebar(); }); return false;">
+        <a href="#" class="mobile-sidebar-item danger" onclick="closeMobileSidebar(); exitMobileMultiAccount(); return false;">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
           </svg>
