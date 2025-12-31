@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 可配置变量
 IMAGE_NAME="python_runing-python-running-helper"
-REGISTRY_PREFIX="hongkong.zelly.cn/python_runing-python-running-helper"
+REGISTRY_PREFIX="docker.zelly.cn/python_runing-python-running-helper"
 TAG="${REGISTRY_PREFIX}/${IMAGE_NAME}:latest"
 TEMP_TAG="${IMAGE_NAME}:build-temp"
 
