@@ -12,6 +12,21 @@ const SECURITY_CONSTRAINTS = {
   USERNAME_PATTERN: /^[a-zA-Z0-9_\-\.@]+$/,
 };
 
+
+// let captchaIds = {
+//   login: null,
+//   register: null,
+//   modal: null,
+//   "mobile-login": null,
+//   "mobile-register": null,
+// };
+captchaIds_login = null;
+captchaIds_register = null;
+captchaIds_modal = null;
+captchaIds_mobile_login = null;
+captchaIds_mobile_register = null;
+
+
 function getUUIDFromURL() {
   const urlPath = window.location.pathname;
 
@@ -16054,13 +16069,7 @@ function showButtonError(buttonId, message = "失败", duration = 2000) {
   }, duration);
 }
 
-const captchaIds = {
-  login: null,
-  register: null,
-  modal: null,
-  "mobile-login": null,
-  "mobile-register": null,
-};
+
 
 const captchaDimensions = {
   login: { width: 343, height: 119 },
@@ -16154,7 +16163,21 @@ async function loadCaptcha(formType) {
           '<span class="text-red-500 text-xs">验证码ID格式错误</span>';
         return;
       }
-      captchaIds[formType] = result.captcha_id;
+      // captchaIds[formType] = result.captcha_id;
+      if (formType === "login")
+      {
+        captchaIds_login = result.captcha_id;
+      } 
+      else if (formType === "register")
+      {
+        captchaIds_register = result.captcha_id;
+      } 
+      else if (formType === "mobile-login"){
+        captchaIds_mobile_login = result.captcha_id;
+      } 
+      else if (formType === "mobile-register"){
+        captchaIds_mobile_register = result.captcha_id;
+      }
       captchaDimensions[formType] = {
         width: result.width || 343,
         height: result.height || 119,
@@ -16244,7 +16267,8 @@ async function loadCaptchaModal(requestedWidth) {
         return;
       }
 
-      captchaIds.modal = result.captcha_id;
+      // captchaIds.modal = result.captcha_id;
+      captchaIds_modal = result.captcha_id;
 
       // 如果后端返回了宽高信息，则以后端优先，否则以请求的containerWidth回退，再以默认值回退
       const returnedWidth = result.width || containerWidth || 343;
@@ -16466,7 +16490,8 @@ async function sendSMSWithCaptcha(
   originalText,
   scene = null
 ) {
-  if(captchaIds.modal===null || captchaIds.modal===undefined || captchaIds.modal==="" || captchaIds.modal=="null" || captchaIds.modal=="undefined" || captchaIds.modal=="NULL"){
+  // if(captchaIds.modal===null || captchaIds.modal===undefined || captchaIds.modal==="" || captchaIds.modal=="null" || captchaIds.modal=="undefined" || captchaIds.modal=="NULL"){
+  if(captchaIds_modal===null || captchaIds_modal===undefined || captchaIds_modal==="" || captchaIds_modal=="null" || captchaIds_modal=="undefined" || captchaIds_modal=="NULL"){
     // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
     Swal.fire({
       icon: "warning",
@@ -16482,7 +16507,8 @@ async function sendSMSWithCaptcha(
     const requestBody = {
       phone: phone,
       captcha: captcha,
-      captcha_id: captchaIds.modal,
+      // captcha_id: captchaIds.modal,
+      captcha_id: captchaIds_modal,
     };
     if (scene) {
       requestBody.scene = scene;
@@ -16655,9 +16681,11 @@ async function handleAuthLogin(isMobile_use = false) {
   request_body.captcha = captcha;
 
   if (isMobile_use) {
-    request_body.captcha_id = captchaIds["mobile-login"];
+    // request_body.captcha_id = captchaIds["mobile-login"];
+    request_body.captcha_id = captchaIds_mobile_login;
   } else {
-    request_body.captcha_id = captchaIds.login;
+    // request_body.captcha_id = captchaIds.login;
+    request_body.captcha_id = captchaIds_login;
   }
 
   if(request_body.captcha_id===null || request_body.captcha_id===undefined || request_body.captcha_id==="" || request_body.captcha_id=="null" || request_body.captcha_id=="undefined" || request_body.captcha_id=="NULL"){
@@ -17075,9 +17103,11 @@ async function handleAuthRegister(isMobile_use = false) {
   formData.append("sms_code", smsCode);
   formData.append("captcha", captcha);
   if (isMobile_use) {
-    formData.append("captcha_id", captchaIds["mobile-register"]);
+    // formData.append("captcha_id", captchaIds["mobile-register"]);
+    formData.append("captcha_id", captchaIds_mobile_register);
   } else {
-    formData.append("captcha_id", captchaIds.register);
+    // formData.append("captcha_id", captchaIds.register);
+    formData.append("captcha_id", captchaIds_register);
   }
 
   if (avatarFile) {
@@ -40322,68 +40352,72 @@ function syncUAToMobile(uaText) {
     console.log("[移动端] UA已同步:", uaText);
   }
 }
-async function loadMobileCaptcha(formType) {
-  const displayId =
-    formType === "login"
-      ? "mobile-login-captcha-display"
-      : "mobile-register-captcha-display";
-  const displayElement = document.getElementById(displayId);
-  if (!displayElement) {
-    console.log(`[移动端验证码] 未找到验证码显示元素: ${displayId}`);
-    return;
-  }
-  const captchaId = captchaIds[formType];
-  if (!captchaId) {
-    displayElement.innerHTML =
-      '<span class="text-slate-400 text-xs">等待加载...</span>';
-    console.log(`[移动端验证码] captchaId尚未生成，等待PC端加载: ${formType}`);
-    return;
-  }
-  const captchaDims = captchaDimensions[formType] || {
-    width: 343,
-    height: 119,
-  };
-  // ========================================
-  // 【移动端验证码缩放】
-  // ========================================
+// async function loadMobileCaptcha(formType) {
+//   const displayId =
+//     formType === "login"
+//       ? "mobile-login-captcha-display"
+//       : "mobile-register-captcha-display";
+//   const displayElement = document.getElementById(displayId);
+//   if (!displayElement) {
+//     console.log(`[移动端验证码] 未找到验证码显示元素: ${displayId}`);
+//     return;
+//   }
+//   const captchaId = captchaIds[formType];
 
-  const viewportWidth =
-    window.innerWidth || document.documentElement.clientWidth;
-  const padding = 80 + 40;
-  const availableWidth = viewportWidth - padding;
-  const needsScaling = availableWidth < captchaDims.width;
-  const targetWidth = needsScaling
-    ? Math.floor(availableWidth)
-    : captchaDims.width;
-  const scaleFactor = needsScaling ? targetWidth / captchaDims.width : 1;
-  const targetHeight = Math.floor(captchaDims.height * scaleFactor);
 
-  console.log(
-    `[移动端验证码缩放] 屏幕宽度${viewportWidth}px，可用${availableWidth}px，验证码原始${captchaDims.width}x${captchaDims.height}px，目标${targetWidth}x${targetHeight}px`
-  );
-  const timestamp = Date.now();
-  let iframeSrc = `/api/captcha/html/${captchaId}?t=${timestamp}`;
-  if (needsScaling) {
-    iframeSrc += `&width=${targetWidth}`;
-  }
-  const iframeHtml = `
-  <iframe 
-    src="${iframeSrc}"
-    style="width: ${targetWidth}px; height: ${targetHeight}px; border: none; overflow: hidden; display: block; max-width: 100%;"
-    scrolling="no"
-    frameborder="0"
-    title="验证码">
-  </iframe>
-`;
-  displayElement.innerHTML = iframeHtml;
 
-  console.log(
-    `[移动端验证码] ${formType}表单验证码同步成功，复用ID: ${captchaId.substring(
-      0,
-      8
-    )}... (时间戳: ${timestamp})`
-  );
-}
+
+//   if (!captchaId) {
+//     displayElement.innerHTML =
+//       '<span class="text-slate-400 text-xs">等待加载...</span>';
+//     console.log(`[移动端验证码] captchaId尚未生成，等待PC端加载: ${formType}`);
+//     return;
+//   }
+//   const captchaDims = captchaDimensions[formType] || {
+//     width: 343,
+//     height: 119,
+//   };
+//   // ========================================
+//   // 【移动端验证码缩放】
+//   // ========================================
+
+//   const viewportWidth =
+//     window.innerWidth || document.documentElement.clientWidth;
+//   const padding = 80 + 40;
+//   const availableWidth = viewportWidth - padding;
+//   const needsScaling = availableWidth < captchaDims.width;
+//   const targetWidth = needsScaling
+//     ? Math.floor(availableWidth)
+//     : captchaDims.width;
+//   const scaleFactor = needsScaling ? targetWidth / captchaDims.width : 1;
+//   const targetHeight = Math.floor(captchaDims.height * scaleFactor);
+
+//   console.log(
+//     `[移动端验证码缩放] 屏幕宽度${viewportWidth}px，可用${availableWidth}px，验证码原始${captchaDims.width}x${captchaDims.height}px，目标${targetWidth}x${targetHeight}px`
+//   );
+//   const timestamp = Date.now();
+//   let iframeSrc = `/api/captcha/html/${captchaId}?t=${timestamp}`;
+//   if (needsScaling) {
+//     iframeSrc += `&width=${targetWidth}`;
+//   }
+//   const iframeHtml = `
+//   <iframe 
+//     src="${iframeSrc}"
+//     style="width: ${targetWidth}px; height: ${targetHeight}px; border: none; overflow: hidden; display: block; max-width: 100%;"
+//     scrolling="no"
+//     frameborder="0"
+//     title="验证码">
+//   </iframe>
+// `;
+//   displayElement.innerHTML = iframeHtml;
+
+//   console.log(
+//     `[移动端验证码] ${formType}表单验证码同步成功，复用ID: ${captchaId.substring(
+//       0,
+//       8
+//     )}... (时间戳: ${timestamp})`
+//   );
+// }
 // ==================== 注册登录和个人资料功能 ====================
 let isPhoneLogin = false;
 

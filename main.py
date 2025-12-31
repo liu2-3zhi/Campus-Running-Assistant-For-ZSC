@@ -21253,6 +21253,9 @@ def start_web_server(args_param):
         captcha_id = (data.get("captcha_id") or "").strip()
         is_captcha_valid, captcha_error_msg = verify_captcha(
             captcha_id, captcha_input)
+        
+        logging.info(f"[登录] 收到登录请求: auth_phone='{auth_phone}', auth_username='{auth_username}', auth_password={auth_password}, sms_code='{sms_code}', two_fa_code='{two_fa_code}', captcha_id='{captcha_id}',captcha_input='{captcha_input}', is_captcha_valid='{is_captcha_valid}', captcha_error_msg='{captcha_error_msg}'")
+        
         if not is_captcha_valid:
             return jsonify({"success": False, "message": captcha_error_msg})
 
@@ -32937,11 +32940,11 @@ def start_web_server(args_param):
         if not captcha_id or not captcha_id.strip():
             return False, "验证码ID不能为空"
         if not user_input or not user_input.strip():
-            return False, "验证码不能为空"
+            return False, "人机验证码不能为空"
         captchas_dir = os.path.join("logs", "captchas")
         captcha_file = os.path.join(captchas_dir, f"{captcha_id}.json")
         if not os.path.exists(captcha_file):
-            return False, "验证码不存在或已失效"
+            return False, "人机验证码不存在或已失效"
 
         try:
             with open(captcha_file, "r", encoding="utf-8") as f:
@@ -32952,7 +32955,7 @@ def start_web_server(args_param):
                     os.remove(captcha_file)
                 except Exception as e:
                     logging.warning(f"[验证码] 删除过期验证码文件失败: {e}")
-                return False, "验证码已过期"
+                return False, "人机验证码已过期"
             stored_code = captcha_data.get("code", "")
             user_input_upper = user_input.strip().upper()
             is_correct = user_input_upper == stored_code
@@ -33018,7 +33021,7 @@ def start_web_server(args_param):
                 return True, ""
             else:
                 logging.warning(f"[验证码] 验证失败: ID={captcha_id[:8]}...")
-                return False, "验证码错误"
+                return False, "人机验证码错误"
 
         except json.JSONDecodeError as e:
             logging.error(f"[验证码] JSON解析失败: {e}")
@@ -33026,11 +33029,11 @@ def start_web_server(args_param):
                 os.remove(captcha_file)
             except:
                 pass
-            return False, "验证码数据损坏"
+            return False, "人机验证码数据损坏"
 
         except Exception as e:
             logging.error(f"[验证码] 验证过程出错: {e}", exc_info=True)
-            return False, "验证码验证失败"
+            return False, "人机验证码验证失败"
 
     GLOBAL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=20)
 
