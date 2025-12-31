@@ -9957,6 +9957,14 @@ async function initRegisterAvailableRunsHint() {
 
     // ========== 步骤2：检查是否需要显示提示 ==========
 
+    // 如果配置标记不需要支付功能，则不显示注册提示
+    if (config.require_payment === "false" || config.require_payment === false) {
+      console.log(
+        "[注册提示] 配置为无需付费（require_payment = false），不显示注册次数提示"
+      );
+      return;
+    }
+
     // 从配置中读取 show_available_runs_on_register 字段
     // 注意：配置值是字符串 "true" 或 "false"，不是布尔值
     // 使用 === 'true' 进行严格比较，转换为布尔值
@@ -9981,7 +9989,23 @@ async function initRegisterAvailableRunsHint() {
       // 第一个参数是要查找的字符串（占位符）
       // 第二个参数是替换后的字符串（实际次数）
       // 例如："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
-      const hintText = hintTemplate.replace("{available_runs}", defaultRuns);
+      // 当默认次数等于 -1 时，显示为“无限制”。优先替换带单位的模板片段
+      let runsReplacement = defaultRuns;
+      if (Number(defaultRuns) === -1) {
+        runsReplacement = "无限制";
+      }
+
+      let hintText = hintTemplate;
+      if (runsReplacement === "无限制") {
+        // 尝试替换常见的 "{available_runs} 次" 模板为 "无限制"
+        if (hintTemplate.indexOf("{available_runs} 次") !== -1) {
+          hintText = hintTemplate.replace("{available_runs} 次", runsReplacement);
+        } else {
+          hintText = hintTemplate.replace("{available_runs}", runsReplacement);
+        }
+      } else {
+        hintText = hintTemplate.replace("{available_runs}", runsReplacement);
+      }
 
       // ========== 步骤5：更新PC端的提示元素 ==========
 
@@ -10164,6 +10188,14 @@ async function updateProfileAvailableRuns(userData) {
 
     // ========== 步骤3：检查是否需要显示available_runs ==========
 
+    // 如果配置标记不需要支付功能，则不显示available_runs
+    if (config.require_payment === "false" || config.require_payment === false) {
+      console.log(
+        "[个人资料] 配置为无需付费（require_payment = false），不显示available_runs"
+      );
+      return;
+    }
+
     // 从配置中读取 show_available_runs 字段
     // 配置值是字符串 "true" 或 "false"
     if (config.show_available_runs === "true") {
@@ -10173,7 +10205,7 @@ async function updateProfileAvailableRuns(userData) {
 
       // 从userData对象中提取available_runs字段
       // 使用 || 0 确保如果字段不存在，默认为0
-      const availableRuns = userData.available_runs || 0;
+      let availableRuns = userData.available_runs || 0;
 
       // 在控制台输出用户的剩余次数
       console.log("[个人资料] 用户剩余次数:", availableRuns);
@@ -10184,12 +10216,22 @@ async function updateProfileAvailableRuns(userData) {
       // 例如："剩余免费次数：{available_runs} 次"
       const formatTemplate = config.available_runs_format;
 
-      // 使用String.replace()方法替换占位符
-      // 例如："剩余免费次数：{available_runs} 次" -> "剩余免费次数：5 次"
-      const displayText = formatTemplate.replace(
-        "{available_runs}",
-        availableRuns
-      );
+        // 当次数为 -1 时显示为“无限制”，优先替换常见带单位的片段
+      let replacement = availableRuns;
+      if (Number(availableRuns) === -1) {
+        replacement = "无限制";
+      }
+
+      let displayText = formatTemplate;
+      if (replacement === "无限制") {
+        if (formatTemplate.indexOf("{available_runs} 次") !== -1) {
+          displayText = formatTemplate.replace("{available_runs} 次", replacement);
+        } else {
+          displayText = formatTemplate.replace("{available_runs}", replacement);
+        }
+      } else {
+        displayText = formatTemplate.replace("{available_runs}", replacement);
+      }
 
       // ========== 步骤6：更新PC端的显示元素 ==========
 

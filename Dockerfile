@@ -41,6 +41,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
 RUN playwright install-deps chromium
 
+RUN apt-get update && apt-get install -y dos2unix parallel
+
 # 复制应用程序文件
 COPY . .
 
@@ -62,7 +64,7 @@ RUN chmod -R 777 .
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-RUN apt-get update && apt-get install -y dos2unix parallel
+
 
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
