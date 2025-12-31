@@ -32917,7 +32917,12 @@ async function submitMobileCreateUser() {
     // ========== 异常处理 ==========
     // 捕获网络错误、解析错误等异常
     console.error("创建用户失败:", e);
-    showModalAlert(`请求出错: ${e.message}`, "错误");
+    // showModalAlert(`请求出错: ${e.message}`, "错误");
+    swal.fire({
+      title: "错误",
+      text: `请求出错: ${e.message}`,
+      icon: "error",
+    });
   } finally {
     // ========== 恢复按钮状态 ==========
     // 无论成功或失败，都要恢复按钮的正常状态
@@ -33009,7 +33014,12 @@ function openMultiAddUserModalForPassword(username, tag) {
 $("newUserSendCode").onclick = async function () {
   const phone = $("newUserPhone").value.trim();
   if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
-    showModalAlert("请输入正确的手机号");
+    // showModalAlert("请输入正确的手机号");
+    swal.fire({
+      title: "提示",
+      text: "请输入正确的手机号格式",
+      icon: "warning",
+    });
     return;
   }
 
@@ -33082,10 +33092,15 @@ async function multi_addFromConfig() {
     result.success === false &&
     result.action === "request_password"
   ) {
-    showModalAlert(
-      `账号 ${result.username} 缺少密码，请在弹窗中补全。`,
-      "缺少密码"
-    );
+    // showModalAlert(
+    //   `账号 ${result.username} 缺少密码，请在弹窗中补全。`,
+    //   "缺少密码"
+    // );
+    swal.fire({
+      title: "缺少密码",
+      text: `账号 ${result.username} 缺少密码，请在弹窗中补全。`,
+      icon: "warning",
+    });
     openMultiAddUserModalForPassword(result.username, result.tag);
   } else if (result && result.accounts) {
     renderMultiAccountList(result.accounts);
@@ -33105,56 +33120,91 @@ async function submitMultiAddUser() {
 
   // 基本验证：用户名不能为空；密码可在特定来源为空
   if (!usernameVal) {
-    showModalAlert("账号不能为空");
+    // showModalAlert("账号不能为空");
+    swal.fire({
+      title: "提示",
+      text: "账号不能为空",
+      icon: "warning",
+    });
     return;
   }
   if (!allowEmptyPassword && !passwordVal) {
-    showModalAlert("密码不能为空");
+    // showModalAlert("密码不能为空");
+    swal.fire({
+      title: "提示",
+      text: "密码不能为空",
+      icon: "warning",
+    });
     return;
   }
 
   // [安全修复] 使用统一的安全常量验证用户名长度
   if (usernameVal.length > SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH) {
-    showModalAlert(
-      `用户名过长（最多${SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH}个字符）`,
-      "错误"
-    );
+    // showModalAlert(
+    //   `用户名过长（最多${SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH}个字符）`,
+    //   "错误"
+    // );
+    swal.fire({
+      title: "错误",
+      text: `用户名过长（最多${SECURITY_CONSTRAINTS.MAX_USERNAME_LENGTH}个字符）`,
+      icon: "error",
+    });
     return;
   }
 
   // [安全修复] 使用统一的正则表达式验证用户名格式
   if (!SECURITY_CONSTRAINTS.USERNAME_PATTERN.test(usernameVal)) {
-    showModalAlert(
-      "用户名只能包含字母、数字、下划线、连字符、点和@符号",
-      "错误"
-    );
+    // showModalAlert(
+    //   "用户名只能包含字母、数字、下划线、连字符、点和@符号",
+    //   "错误"
+    // );
+    swal.fire({
+      title: "错误",
+      text: "用户名只能包含字母、数字、下划线、连字符、点和@符号",
+      icon: "error",
+    });
     return;
   }
 
   // [安全修复] 使用统一的安全常量验证密码长度范围（当密码非空或必须提供时）
   if (!allowEmptyPassword || passwordVal.length > 0) {
     if (passwordVal.length < SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH) {
-      showModalAlert(
-        `密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`,
-        "错误"
-      );
+      // showModalAlert(
+      //   `密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`,
+      //   "错误"
+      // );
+      swal.fire({
+        title: "错误",
+        text: `密码长度至少为${SECURITY_CONSTRAINTS.MIN_PASSWORD_LENGTH}个字符`,
+        icon: "error",
+      });
       return;
     }
     if (passwordVal.length > SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH) {
-      showModalAlert(
-        `密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`,
-        "错误"
-      );
+      // showModalAlert(
+      //   `密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`,
+      //   "错误"
+      // );
+      swal.fire({
+        title: "错误",
+        text: `密码过长（最多${SECURITY_CONSTRAINTS.MAX_PASSWORD_LENGTH}个字符）`,
+        icon: "error",
+      });
       return;
     }
   }
 
   // [安全修复] 使用统一的安全常量验证标签长度
   if (tagVal.length > SECURITY_CONSTRAINTS.MAX_TAG_LENGTH) {
-    showModalAlert(
-      `标签过长（最多${SECURITY_CONSTRAINTS.MAX_TAG_LENGTH}个字符）`,
-      "错误"
-    );
+    // showModalAlert(
+    //   `标签过长（最多${SECURITY_CONSTRAINTS.MAX_TAG_LENGTH}个字符）`,
+    //   "错误"
+    // );
+    swal.fire({
+      title: "错误",
+      text: `标签过长（最多${SECURITY_CONSTRAINTS.MAX_TAG_LENGTH}个字符）`,
+      icon: "error",
+    });
     return;
   }
 
@@ -33168,7 +33218,12 @@ async function submitMultiAddUser() {
     );
 
     if (result && result.accounts) {
-      showModalAlert("账号添加成功", "成功");
+      // showModalAlert("账号添加成功", "成功");
+      swal.fire({
+        text: "账号添加成功",
+        title: "成功",
+        icon: "success",
+      });
       closeMultiAddUserModal();
       renderMultiAccountList(result.accounts);
       // 如果正在处理缺失密码队列，提交成功后推进队列并显示下一个
@@ -33192,10 +33247,20 @@ async function submitMultiAddUser() {
         }
       }
     } else {
-      showModalAlert(result?.message || "添加失败");
+      // showModalAlert(result?.message || "添加失败");
+      swal.fire({
+        title: "错误",
+        text: result?.message || "添加失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert(`添加时发生错误: ${e.message}`);
+    // showModalAlert(`添加时发生错误: ${e.message}`);
+    swal.fire({
+      title: "错误",
+      text: `添加时发生错误: ${e.message}`,
+      icon: "error",
+    });
     logMessage_Error("添加新账号时发生错误:", e);
   } finally {
     setButtonLoading("multi-add-user-confirm", false, "确认添加");
@@ -33224,7 +33289,12 @@ async function multi_importFromExcel() {
     const fileName = file.name;
     const fileExt = fileName.split(".").pop().toLowerCase();
     if (!["xlsx", "xls", "csv"].includes(fileExt)) {
-      showModalAlert("文件格式不支持，请选择 .xlsx, .xls, 或 .csv 文件。");
+      // showModalAlert("文件格式不支持，请选择 .xlsx, .xls, 或 .csv 文件。");
+      swal.fire({
+        title: "错误",
+        text: "文件格式不支持，请选择 .xlsx, .xls, 或 .csv 文件。",
+        icon: "error",
+      });
       return;
     }
 
@@ -33244,26 +33314,46 @@ async function multi_importFromExcel() {
         if (result && result.success) {
           logMessage_Info(`成功导入 ${result.imported_count || 0} 个账号。`);
           if (result.skipped_count > 0) {
-            showModalAlert(
-              `导入完成：\n成功 ${result.imported_count} 个。\n跳过 ${result.skipped_count} 个（缺少密码）。\n\n详情：${result.message}`,
-              "导入提示"
-            );
+            // showModalAlert(
+            //   `导入完成：\n成功 ${result.imported_count} 个。\n跳过 ${result.skipped_count} 个（缺少密码）。\n\n详情：${result.message}`,
+            //   "导入提示"
+            // );
+            swal.fire({
+              title: "导入提示",
+              text: `导入完成：\n成功 ${result.imported_count} 个。\n跳过 ${result.skipped_count} 个（缺少密码）。\n\n详情：${result.message}`,
+              icon: "info",
+            });
           }
           if (result.accounts) {
             renderMultiAccountList(result.accounts);
           }
         } else {
-          showModalAlert(`导入失败: ${result.message || "未知错误"}`);
+          // showModalAlert(`导入失败: ${result.message || "未知错误"}`);
+          swal.fire({
+            title: "错误",
+            text: `导入失败: ${result.message || "未知错误"}`,
+            icon: "error",
+          });
         }
       } catch (err) {
         logMessage_Error("导入文件时出错:", err);
-        showModalAlert(`导入失败: ${err.message}`);
+        // showModalAlert(`导入失败: ${err.message}`);
+        swal.fire({
+          title: "错误",
+          text: `导入失败: ${err.message}`,
+          icon: "error",
+        });
       }
     };
 
     reader.onerror = () => {
       logMessage_Error("读取文件失败。");
-      showModalAlert("读取文件失败。");
+      // showModalAlert("读取文件失败。");
+      swal.fire({
+        title: "错误",
+        text: "读取文件失败。",
+        icon: "error",
+      });
     };
   };
   input.click();
@@ -33272,7 +33362,12 @@ async function multi_importFromExcel() {
 async function multi_exportToExcel() {
   const result = await callPythonAPI("multi_export_accounts_summary");
   if (!result || !result.success) {
-    showModalAlert(result?.message || "导出失败");
+    // showModalAlert(result?.message || "导出失败");
+    swal.fire({
+      title: "错误",
+      text: result?.message || "导出失败",
+      icon: "error",
+    });
     return;
   }
   if (result.content && result.filename) {
@@ -33301,7 +33396,12 @@ async function multi_startAll() {
   const count = parseInt($("multi-account-count").textContent || "0", 10);
   if (!count || count <= 0) {
     // 如果账号列表为空，提示用户并退出
-    showModalAlert("账号列表为空，无法开始。请先添加账号。");
+    // showModalAlert("账号列表为空，无法开始。请先添加账号。");
+    swal.fire({
+      title: "提示",
+      text: "账号列表为空，无法开始。请先添加账号。",
+      icon: "info",
+    });
     return;
   }
 
@@ -33369,7 +33469,8 @@ async function multi_startAll() {
     const message = `检测到以下账号存在欠费：\n\n${overdueList}\n\n请先完成缴费后再执行任务。`;
 
     // 显示友好的弹窗提示
-    showModalAlert(message, "欠费提示");
+    // showModalAlert(message, "欠费提示");
+
 
     // 可选：自动跳转到缴费页面（如果需要的话）
     // switchToTab('tab4'); // 取消注释此行以启用自动跳转
@@ -33380,8 +33481,12 @@ async function multi_startAll() {
 
   if (!result || !result.success) {
     // 其他错误（非欠费），显示标准错误消息
-    showModalAlert(result?.message || "无法开始全部账号任务。");
-
+    // showModalAlert(result?.message || "无法开始全部账号任务。");
+    swal.fire({
+      title: "错误",
+      text: result?.message || "无法开始全部账号任务。",
+      icon: "error",
+    });
     return;
   }
 }
@@ -33729,7 +33834,12 @@ function renderMultiAccountList(accounts) {
         }
         const result = await callPythonAPI("multi_refresh_single_status", u);
         if (!result || !result.success) {
-          showModalAlert(result?.message || "刷新失败");
+          // showModalAlert(result?.message || "刷新失败");
+          swal.fire({
+            title: "错误",
+            text: result?.message || "刷新失败",
+            icon: "error",
+          });
         }
       };
     });
@@ -33823,7 +33933,12 @@ async function multi_removeSelected(confirm = false) {
     container.querySelectorAll(".account-checkbox:checked")
   ).map((cb) => cb.closest("[data-username]").dataset.username);
   if (selectedUsernames.length === 0) {
-    showModalAlert("请至少选择一个要移除的账号。", "提示");
+    // showModalAlert("请至少选择一个要移除的账号。", "提示");
+    swal.fire({
+      title: "提示",
+      text: "请至少选择一个要移除的账号。",
+      icon: "info",
+    });
     return;
   }
   let isConfirmed = false;
@@ -33866,7 +33981,12 @@ async function multi_startSelected() {
   // ========== 步骤2：验证是否选择了账号 ==========
   if (usernames.length === 0) {
     // 如果没有选中任何账号，提示用户并退出
-    showModalAlert('请至少选择一个账号再执行"开始选中"。');
+    // showModalAlert('请至少选择一个账号再执行"开始选中"。');
+    swal.fire({
+      title: "提示",
+      text: "请至少选择一个账号再执行“开始选中”。",
+      icon: "info",
+    });
     return;
   }
 
@@ -33920,7 +34040,12 @@ async function multi_startSelected() {
         const message = `检测到以下账号存在欠费：\n\n${overdueList}\n\n请先完成缴费后再执行任务。`;
 
         // 显示友好的弹窗提示
-        showModalAlert(message, "欠费提示");
+        // showModalAlert(message, "欠费提示");
+        swal.fire({
+          title: "欠费提示",
+          text: message,
+          icon: "warning",
+        });
 
         // 可选：自动跳转到缴费页面
         // switchToTab('tab4'); // 取消注释此行以启用自动跳转
@@ -33937,7 +34062,12 @@ async function multi_startSelected() {
 async function multi_stopSelected() {
   const usernames = multi_getSelectedUsernames();
   if (usernames.length === 0) {
-    showModalAlert("请至少选择一个账号再执行“停止选中”。");
+    // showModalAlert("请至少选择一个账号再执行“停止选中”。");
+    swal.fire({
+      title: "提示",
+      text: "请至少选择一个账号再执行“停止选中”。",
+      icon: "info",
+    });
     return;
   }
   for (const u of usernames) {
@@ -33952,7 +34082,12 @@ async function multi_stopSelected() {
 async function multi_refreshSelected() {
   const usernames = multi_getSelectedUsernames();
   if (usernames.length === 0) {
-    showModalAlert("请至少选择一个账号再执行“刷新选中”。");
+    // showModalAlert("请至少选择一个账号再执行“刷新选中”。");
+    swal.fire({
+      title: "提示",
+      text: "请至少选择一个账号再执行“刷新选中”。",
+      icon: "info",
+    });
     return;
   }
   for (const u of usernames) {
@@ -34910,7 +35045,12 @@ async function toggleRecordMode() {
   isDrawing = !isDrawing;
   if (isDrawing) {
     if (selectedTaskIndex === -1) {
-      showModalAlert("请先选择一个任务！");
+      // showModalAlert("请先选择一个任务！");
+      swal.fire({
+        title: "请先选择一个任务！",
+        icon: "info",
+        text: "在录制路径前，需要先从任务列表中选择一个任务。",
+      });
       isDrawing = false;
       return;
     }
