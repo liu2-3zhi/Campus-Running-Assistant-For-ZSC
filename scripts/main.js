@@ -28335,14 +28335,29 @@ async function destroySession(sessionId, confirm = true) {
 
     const result = await response.json();
     if (result.success) {
-      showModalAlert(`会话 ${sessionId} 已销毁`, "成功");
+      // showModalAlert(`会话 ${sessionId} 已销毁`, "成功");
+      Swal.fire({
+        title: "成功",
+        text: `会话 ${sessionId} 已销毁`,
+        icon: "success",
+      });
       loadAdminSessions();
       loadAdminSessions_inline();
     } else {
-      showModalAlert(result.message || "销毁失败", "错误");
+      // showModalAlert(result.message || "销毁失败", "错误");
+      Swal.fire({
+        title: "错误",
+        text: result.message || "销毁失败",
+        icon: "error",
+      });
     }
   } catch (e) {
-    showModalAlert("操作失败: " + e.message, "错误");
+    // showModalAlert("操作失败: " + e.message, "错误");
+    Swal.fire({
+      title: "错误",
+      text: "操作失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -28756,7 +28771,12 @@ async function selectSessionFromPicker(sessionId) {
       window.location.href = `/uuid=${sessionId}`;
     } else {
       logMessage_Info(`[错误] 无法切换会话: ${result.message}`);
-      showModalAlert(`无法切换会话: ${result.message}`, "切换失败");
+      // showModalAlert(`无法切换会话: ${result.message}`, "切换失败");
+      Swal.fire({
+        icon: "error",
+        title: "切换失败",
+        text: result.message || "无法更新认证信息，请稍后重试。", 
+      });
       if (result.need_login) {
         Swal.fire({
           icon: "warning",
@@ -28772,7 +28792,12 @@ async function selectSessionFromPicker(sessionId) {
   } catch (e) {
     logMessage_Error("切换会话失败:", e);
     logMessage_Info(`[错误] 切换会话时发生网络或脚本错误: ${e.message}`);
-    showModalAlert(`切换会话时发生网络或脚本错误: ${e.message}`, "切换失败");
+    // showModalAlert(`切换会话时发生网络或脚本错误: ${e.message}`, "切换失败");
+    Swal.fire({
+      icon: "error",
+      title: "切换失败",
+      text: `切换会话时发生网络或脚本错误: ${e.message}`,
+    });
   }
 }
 
@@ -28820,16 +28845,26 @@ async function createNewSessionFromPicker() {
       logMessage_Info(
         `[会话创建] 警告: 获取最新会话信息失败: ${result.message}`
       );
-      showModalAlert("无法获取最新的会话限制信息，将继续尝试创建。", "警告");
+      // showModalAlert("无法获取最新的会话限制信息，将继续尝试创建。", "警告");
+      Swal.fire({
+        title: "警告",
+        text: "无法获取最新的会话限制信息，将继续尝试创建。",
+        icon: "warning",
+      });
     }
   } catch (error) {
     logMessage_Info(
       `[会话创建] 错误: 获取最新会话信息时发生网络错误: ${error}`
     );
-    showModalAlert(
-      `获取最新的会话限制信息时发生网络错误: ${error.message}，将继续尝试创建。`,
-      "网络错误"
-    );
+    // showModalAlert(
+    //   `获取最新的会话限制信息时发生网络错误: ${error.message}，将继续尝试创建。`,
+    //   "网络错误"
+    // );
+    Swal.fire({
+      title: "网络错误",
+      text: `获取最新的会话限制信息时发生网络错误: ${error.message}，将继续尝试创建。`,
+      icon: "error",
+    });
   }
   if (
     currentSessionInfo.maxSessions !== -1 &&
@@ -28963,7 +28998,12 @@ async function createNewSessionFromPicker() {
     } else {
       logMessage_Info(`创建会话失败: ${result.message}`);
       if (isMobileMode) {
-        showModalAlert(result.message, "创建失败");
+        // showModalAlert(result.message, "创建失败");
+        Swal.fire({
+          icon: "error",
+          title: "创建失败",
+          text: 创建会话失败,
+        });
         if (mobileButton) {
           mobileButton.disabled = false;
           mobileButton.innerHTML = `
@@ -28996,7 +29036,12 @@ async function createNewSessionFromPicker() {
     } else {
       Swal.close();
     }
-    showModalAlert(`创建会话失败: ${e.message}`, "创建失败");
+    // showModalAlert(`创建会话失败: ${e.message}`, "创建失败");
+    Swal.fire({
+      icon: "error",
+      title: "创建失败",
+      text: `创建会话失败: ${e.message}`,
+    });
   }
 }
 
@@ -29034,7 +29079,12 @@ async function deleteSessionFromPicker(sessionId, confirm = true) {
     Swal.close();
 
     if (result.success) {
-      showModalAlert("会话已删除", "成功");
+      // showModalAlert("会话已删除", "成功");
+      Swal.fire({
+        icon: "success",
+        title: "删除成功",
+        text: "会话已删除",
+      });
       const mobilePicker = $("mobile-session-picker-modal");
       const desktopPicker = $("session-picker-modal");
 
@@ -29060,11 +29110,21 @@ async function deleteSessionFromPicker(sessionId, confirm = true) {
         loadMobileSessionsList();
       }
     } else {
-      showModalAlert("删除失败: " + result.message, "错误");
+      // showModalAlert("删除失败: " + result.message, "错误");
+      Swal.fire({
+        icon: "error",
+        title: "删除失败",
+        text: "删除失败: " + result.message,
+      });
     }
   } catch (e) {
     Swal.close();
-    showModalAlert("删除失败: " + e.message, "错误");
+    // showModalAlert("删除失败: " + e.message, "错误");
+    Swal.fire({
+      icon: "error",
+      title: "删除失败",
+      text: "删除失败: " + e.message,
+    });
   }
 }
 function validateInput(input, type) {
@@ -30116,7 +30176,12 @@ async function initializeApp() {
     checkAdminReturnState();
   } catch (err) {
     hideLoadingOverlays();
-    showModalAlert("服务器无法连接，请检查网络或稍后重试。", "网络错误");
+    // showModalAlert("服务器无法连接，请检查网络或稍后重试。", "网络错误");
+    Swal.fire({
+      title: "网络错误",
+      text: "服务器无法连接，请检查网络或稍后重试。",
+      icon: "warning",
+    });
     IS_OFFLINE = true;
   }
 }
@@ -30602,13 +30667,19 @@ async function refreshMobileSettings() {
       logMessage_Info("[移动端单账号] 参数已刷新");
     } else {
       // 未获取到数据，显示错误提示
-      showModalAlert("刷新失败：未获取到数据", "错误");
+      // showModalAlert("刷新失败：未获取到数据", "错误");
+      logMessage_Error("[移动端单账号] 刷新失败：未获取到数据");
     }
   } catch (e) {
     // 捕获刷新过程中的错误
     console.error("[移动端单账号] 刷新参数失败:", e);
     // 显示错误提示
-    showModalAlert("刷新失败", "错误");
+    // showModalAlert("刷新失败", "错误");
+    swal.fire({
+      title: "错误",
+      text: "刷新失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 /**
@@ -30635,7 +30706,12 @@ async function saveMobileSettings() {
   if (!container) return;
 
   // 显示正在保存的提示信息
-  showModalAlert("正在保存设置...", "提示");
+  // showModalAlert("正在保存设置...", "提示");
+  swal.fire({
+    title: "提示",
+    text: "正在保存设置...",
+    icon: "info",
+  });
 
   // 记录日志：开始保存单账号模式参数
   console.log("[移动端单账号] 开始保存设置面板参数，目标: params (单账号模式)");
@@ -30691,12 +30767,22 @@ async function saveMobileSettings() {
     );
 
     // 显示保存成功提示
-    showModalAlert("设置已保存", "成功");
+    // showModalAlert("设置已保存", "成功");
+    swal.fire({
+      title: "成功",
+      text: "设置已保存",
+      icon: "success",
+    });
   } catch (e) {
     // 捕获保存过程中的错误
     console.error("[移动端单账号] 保存参数失败:", e);
     // 显示错误提示，包含错误信息
-    showModalAlert("保存失败: " + e.message, "错误");
+    // showModalAlert("保存失败: " + e.message, "错误");
+    swal.fire({
+      title: "错误",
+      text: "保存失败: " + e.message,
+      icon: "error",
+    });
   }
 }
 
@@ -31133,7 +31219,12 @@ async function onConfirmAmapKey() {
   const input = $("amap-key-input");
   const newKey = input.value.trim();
   if (!newKey) {
-    showModalAlert("API Key 不能为空！");
+    // showModalAlert("API Key 不能为空！");
+    swal.fire({
+      title: "错误",
+      text: "API Key 不能为空！",
+      icon: "error",
+    });
     return;
   }
 
@@ -31164,11 +31255,21 @@ async function onConfirmAmapKey() {
         document.body.classList.add("modal-visible");
       }
     } else {
-      showModalAlert(`保存失败: ${result.message}`);
+      // showModalAlert(`保存失败: ${result.message}`);
+      swal.fire({
+        title: "错误",
+        text: `保存失败: ${result.message}`,
+        icon: "error",
+      });
     }
   } catch (e) {
     logMessage_Error("保存API Key时发生网络错误:", e);
-    showModalAlert(`保存失败: ${e.message}`);
+    // showModalAlert(`保存失败: ${e.message}`);
+    swal.fire({
+      title: "错误",
+      text: `保存失败: ${e.message}`,
+      icon: "error",
+    });
   } finally {
     btn.disabled = false;
     btn.innerHTML = originalText;
@@ -31201,7 +31302,12 @@ function bindImmediateRefreshForUserSelects() {
 async function multi_downloadTemplate() {
   const result = await callPythonAPI("multi_download_import_template");
   if (!result || !result.success) {
-    showModalAlert(result?.message || "模板下载失败");
+    // showModalAlert(result?.message || "模板下载失败");
+    swal.fire({
+      title: "错误",
+      text: result?.message || "模板下载失败",
+      icon: "error",
+    });
     return;
   }
   if (result.content && result.filename) {
@@ -31374,7 +31480,12 @@ async function onLogin() {
   logMessage_Info(`[前端-登录] 用户名: ${user}`);
   if (!user) {
     logMessage_Info("[前端-登录] 错误: 用户名为空");
-    showModalAlert("请输入用户名");
+    // showModalAlert("请输入用户名");
+    swal.fire({
+      title: "错误",
+      text: "请输入用户名",
+      icon: "error",
+    });
     return;
   }
 
@@ -31472,7 +31583,12 @@ async function onLogin() {
     logMessage_Info(`[前端-登录] ✗ 登录失败: ${result.message}`);
     setButtonLoading("login-button", false);
     showButtonError("login-button", "登录失败");
-    showModalAlert(result.message, "登录失败");
+    // showModalAlert(result.message, "登录失败");
+    swal.fire({
+      title: "错误",
+      text: result.message,
+      icon: "error",
+    });
     return false;
   }
 }
@@ -31691,7 +31807,12 @@ function renderMobileTaskList() {
         statusRes.task_status.status === "running";
 
       if (isBackendRunning) {
-        showModalAlert("任务正在运行中，禁止切换任务！", "错误");
+        // showModalAlert("任务正在运行中，禁止切换任务！", "错误");
+        swal.fire({
+          title: "错误",
+          text: "任务正在运行中，禁止切换任务！",
+          icon: "error",
+        });
         mobileTaskRunning = true;
         updateMobileTaskUI("运行中", "任务执行中");
         return;
@@ -31718,7 +31839,12 @@ function renderMobileCheckpointsList() {
     if (taskInfoDiv) {
       if (selectedTaskIndex === -1) {
         taskInfoDiv.textContent = "请先选择一个任务以查看打卡点";
-        showModalAlert("请先在任务列表中选择一个任务", "警告");
+        // showModalAlert("请先在任务列表中选择一个任务", "警告");
+        swal.fire({
+          title: "警告",
+          text: "请先在任务列表中选择一个任务",
+          icon: "warning",
+        });
       } else {
         taskInfoDiv.textContent = "当前任务没有打卡点";
       }
@@ -31827,7 +31953,12 @@ async function selectTask(index, Update_Dashboard = true) {
   logMessage_Info(`[前端-任务选择] 选择任务 #${index}`);
   if (backgroundTaskPollInterval && selectedTaskIndex !== index) {
     logMessage_Warning("任务执行中，无法切换任务！请先停止当前任务。");
-    showModalAlert("任务执行中，无法切换任务！请先停止当前任务。");
+    // showModalAlert("任务执行中，无法切换任务！请先停止当前任务。");
+    swal.fire({
+      title: "错误",
+      text: "任务执行中，无法切换任务！请先停止当前任务。",
+      icon: "error",
+    });
     return;
   }
 
@@ -32505,10 +32636,15 @@ function openMissingPasswordModal(missingList) {
   const modal = $("missing-password-modal");
   if (!modal) {
     const missingAccount = missingAccountsQueue[0];
-    showModalAlert(
-      `检测到 ${missingAccountsQueue.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`,
-      "提示"
-    );
+    // showModalAlert(
+    //   `检测到 ${missingAccountsQueue.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`,
+    //   "提示"
+    // );
+    swal.fire({
+      title: "提示",
+      text: `检测到 ${missingAccountsQueue.length} 个账号缺少密码。\n请先为以下账号补全密码： ${missingAccount.username}`,
+      icon: "info",
+    });
     openMultiAddUserModalForPassword(
       missingAccount.username,
       missingAccount.tag
@@ -32611,13 +32747,23 @@ function openMobileCreateUserModal() {
 let mobileNewUserCodeCooldown = 0;
 async function sendMobileNewUserCode() {
   if (mobileNewUserCodeCooldown > 0) {
-    showModalAlert(`请等待 ${mobileNewUserCodeCooldown} 秒后再发送`, "提示");
+    // showModalAlert(`请等待 ${mobileNewUserCodeCooldown} 秒后再发送`, "提示");
+    swal.fire({
+      title: "提示",
+      text: `请等待 ${mobileNewUserCodeCooldown} 秒后再发送`,
+      icon: "info",
+    });
     return;
   }
 
   const phone = document.getElementById("mobile-new-phone").value.trim();
   if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
-    showModalAlert("请输入正确的手机号", "提示");
+    // showModalAlert("请输入正确的手机号", "提示");
+    swal.fire({
+      title: "提示",
+      text: "请输入正确的手机号",
+      icon: "info",
+    });
     return;
   }
 
@@ -32657,19 +32803,34 @@ async function submitMobileCreateUser() {
 
   // 验证账号和密码是否为空
   if (!username || !password) {
-    showModalAlert("账号和密码为必填项", "错误");
+    // showModalAlert("账号和密码为必填项", "错误");
+    swal.fire({
+      title: "错误",
+      text: "账号和密码为必填项",
+      icon: "error",
+    });
     return;
   }
 
   // 验证密码长度（至少6个字符）
   if (password.length < 6) {
-    showModalAlert("密码长度至少为6个字符", "错误");
+    // showModalAlert("密码长度至少为6个字符", "错误");
+    swal.fire({
+      title: "错误",
+      text: "密码长度至少为6个字符",
+      icon: "error",
+    });
     return;
   }
 
   // 如果填写了手机号，验证格式（中国大陆手机号：1开头的11位数字）
   if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
-    showModalAlert("请输入正确的手机号格式", "错误");
+    // showModalAlert("请输入正确的手机号格式", "错误");
+    swal.fire({
+      title: "错误",
+      text: "请输入正确的手机号格式",
+      icon: "error",
+    });
     return;
   }
 
@@ -32723,7 +32884,12 @@ async function submitMobileCreateUser() {
     // ========== 处理创建结果 ==========
     if (result.success) {
       // ===== 创建成功 =====
-      showModalAlert("用户创建成功！", "成功");
+      // showModalAlert("用户创建成功！", "成功");
+      swal.fire({
+        title: "成功",
+        text: "用户创建成功！",
+        icon: "success",
+      });
       closeMobileCreateUserModal();
 
       // 刷新用户列表，显示新创建的用户
@@ -32740,7 +32906,12 @@ async function submitMobileCreateUser() {
       }
     } else {
       // ===== 创建失败 =====
-      showModalAlert(`创建失败: ${result.message || "未知错误"}`, "错误");
+      // showModalAlert(`创建失败: ${result.message || "未知错误"}`, "错误");
+      swal.fire({
+        title: "错误",
+        text: `创建失败: ${result.message || "未知错误"}`,
+        icon: "error",
+      });
     }
   } catch (e) {
     // ========== 异常处理 ==========
