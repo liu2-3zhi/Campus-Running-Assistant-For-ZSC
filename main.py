@@ -20881,6 +20881,7 @@ def start_web_server(args_param):
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <link rel="icon" href="/static/favicon.ico">
                 <title>访问被拒绝</title>
                 <style>
                     body {
@@ -20935,6 +20936,152 @@ def start_web_server(args_param):
             """
             )
             return make_response(banned_html, 403)
+
+        return None
+    
+    @app.before_request
+    def check_account_ban_before_request():
+        """
+        全局账号封禁检查拦截器
+        """
+        logging.debug(f"[账号封禁] 检查请求路径: {request.path}")
+        # 静态资源与健康检查直接放行，避免不必要的文件读取
+        if (
+            request.path.startswith("/static/")
+            or request.path.startswith("/css/")
+            or request.path.startswith("/js/")
+            or request.path == "/health"
+            or request.path.endswith(".png")
+            or request.path.endswith(".jpg")
+            or request.path.endswith(".ico")
+            or request.path == "/"
+            or request.path.startswith("/api/captcha")
+        ):
+            return None
+
+        session_id = request.headers.get("X-Session-ID", "")
+        logging.debug(f"[账号封禁] 获取到的 Session ID: {session_id}")
+        if not session_id:
+            logging.debug(f"[账号封禁] 未提供 Session ID，跳过封禁检查")
+            return None
+
+        # 提前获取当前会话关联的用户
+        with web_sessions_lock:
+            api_instance = web_sessions.get(session_id)
+            if not api_instance:
+                logging.debug(f"[账号封禁] 会话 ID 无效，跳过封禁检查")
+                return None
+            auth_username = getattr(api_instance, "auth_username", None)
+            is_authenticated = getattr(api_instance, "is_authenticated", False)
+            is_guest = getattr(api_instance, "is_guest", False)
+        logging.debug(f"[账号封禁] 会话用户: {auth_username}, 已认证: {is_authenticated}, 游客: {is_guest}")
+
+        if not is_authenticated or not auth_username or is_guest:
+            logging.debug(f"[账号封禁] 用户未认证或为游客，跳过封禁检查")
+            return None
+
+        try:
+            user_file = auth_system.get_user_file_path(auth_username)
+            logging.debug(f"[账号封禁] 用户文件路径: {user_file}")
+            if not os.path.exists(user_file):
+                logging.debug(f"[账号封禁] 找不到用户文件，跳过封禁检查")
+                logging.warning(
+                    f"[账号封禁] 找不到用户文件，{auth_username} ({session_id}... )"
+                )
+                return None
+
+            with auth_system.lock:
+                with open(user_file, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+            logging.debug(f"[账号封禁] 读取用户数据: {user_data}")
+            if user_data.get("banned", False):
+                logging.warning(
+                    f"[账号封禁] 封禁拦截：用户 {auth_username} 尝试访问 {request.path}"
+                )
+                # token_manager.invalidate_token(auth_username, session_id)
+                # cleanup_session(session_id, "account_banned")
+                
+                
+                banned_html = (
+                    """
+                <!DOCTYPE html>
+                <html lang="zh-CN">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <link rel="icon" href="/static/favicon.ico">
+                    <title>账号已被封禁</title>
+                    <style>
+                        body {
+                            font-family: 'Microsoft YaHei', Arial, sans-serif;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            height: 100vh;
+                            margin: 0;
+                            color: #333;
+                        }
+                        .container {
+                            background: white;
+                            padding: 40px;
+                            border-radius: 15px;
+                            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                            text-align: center;
+                            max-width: 520px;
+                        }
+                        h1 {
+                            color: #e74c3c;
+                            font-size: 44px;
+                            margin: 0 0 18px 0;
+                        }
+                        p {
+                            font-size: 18px;
+                            color: #555;
+                            line-height: 1.6;
+                            margin: 8px 0;
+                        }
+                        .actions {
+                            margin-top: 22px;
+                        }
+                        .btn {
+                            display: inline-block;
+                            padding: 12px 22px;
+                            background: #4f46e5;
+                            color: #fff;
+                            border-radius: 8px;
+                            text-decoration: none;
+                            font-weight: 600;
+                            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.3);
+                            transition: transform 0.1s ease, box-shadow 0.1s ease;
+                        }
+                        .btn:hover {
+                            transform: translateY(-1px);
+                            box-shadow: 0 10px 24px rgba(79, 70, 229, 0.35);
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🚫 账号被封禁</h1>
+                        <p>当前账号已被系统封禁，暂无法继续访问。</p>
+                        <p>如有疑问，请联系系统管理员。</p>
+                        <div class="actions">
+                            <a class="btn" href="/">返回登录页</a>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                )
+                
+                
+                if request.path.startswith("/api/"):
+                    return jsonify({"success": False, "message": "账号已被封禁"}), 403
+                else:
+                    return make_response(banned_html, 403)
+        except Exception as e:
+            logging.error(f"[账号封禁] 检查失败: {e}")
 
         return None
 
@@ -32937,6 +33084,7 @@ def start_web_server(args_param):
         """
         验证验证码辅助函数
         """
+        logging.debug(f"[验证码] 开始验证: ID={captcha_id}..., 用户输入='{user_input}'")
         if not captcha_id or not captcha_id.strip():
             return False, "验证码ID不能为空"
         if not user_input or not user_input.strip():
@@ -32944,6 +33092,7 @@ def start_web_server(args_param):
         captchas_dir = os.path.join("logs", "captchas")
         captcha_file = os.path.join(captchas_dir, f"{captcha_id}.json")
         if not os.path.exists(captcha_file):
+            logging.warning(f"[验证码] 验证码文件不存在: ID={captcha_id}...")
             return False, "人机验证码不存在或已失效"
 
         try:

@@ -15171,7 +15171,124 @@ async function callPythonAPI(method, ...args) {
       logMessage_Warning("[API调用] ✗ 无法解析错误响应体为 JSON:", parseError);
     }
 
-    if (
+
+    if (response.status === 403 &&
+      errorData &&
+      errorData.message &&
+      errorData.message.includes("账号已被封禁")) {
+      logMessage_Error("[API调用] ✗ 账号已被封禁！");
+      
+      if (!isInNetworkErrorState) {
+        isInNetworkErrorState = true;
+        logMessage_Info(
+          "[API调用] 进入网络错误状态，停止后端日志发送和WebSocket"
+        );
+
+        if (refreshUserListInterval) {
+          logMessage_Info("[API调用] 停止用户列表刷新定时器 (因网络错误)");
+          clearInterval(refreshUserListInterval);
+          refreshUserListInterval = null;
+        }
+
+        if (socket) {
+          if (socket.io) {
+            socket.io.opts.reconnection = false;
+          }
+          if (socket.connected) {
+            socket.disconnect();
+          }
+          logMessage_Info(
+            "[API调用] 已断开WebSocket连接并禁用自动重连 (因网络错误)"
+          );
+        }
+      }
+      
+      // 检查遮罩是否已存在，防止重复创建
+      if (!document.getElementById("account-banned-overlay")) {
+        const bannedOverlay = document.createElement("div");
+        bannedOverlay.id = "account-banned-overlay";
+        bannedOverlay.style.cssText = `
+          position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+          background: rgba(0, 0, 0, 0.85); z-index: 9999;
+          display: flex; align-items: center; justify-content: center;
+        `;
+
+        const modalContent = document.createElement("div");
+        modalContent.style.cssText = `
+          background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+          padding: 40px;
+          border-radius: 20px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          max-width: 500px;
+          width: 90%;
+          text-align: center;
+          color: white;
+          animation: slideIn 0.3s ease-out;
+        `;
+
+        const icon = document.createElement("div");
+        icon.innerHTML = `
+          <svg style="width: 80px; height: 80px; margin: 0 auto 20px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"/>
+          </svg>
+        `;
+
+        const title = document.createElement("h2");
+        title.textContent = "账号已被封禁";
+        title.style.cssText = `
+          font-size: 28px; 
+          font-weight: bold; 
+          margin: 0 0 20px 0;
+          text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        `;
+
+        const text = document.createElement("p");
+        text.textContent = "您的账号已被管理员封禁，无法继续使用该服务。如有疑问，请联系管理员。";
+        text.style.cssText = `
+          font-size: 16px; 
+          line-height: 1.8; 
+          margin: 0 0 30px 0; 
+          opacity: 0.95;
+        `;
+
+        const button = document.createElement("button");
+        button.textContent = "返回登录页面";
+        button.style.cssText = `
+          background: white; 
+          color: #f5576c; 
+          border: none; 
+          padding: 14px 36px;
+          border-radius: 25px; 
+          font-size: 16px; 
+          font-weight: bold; 
+          cursor: pointer; 
+          transition: all 0.3s;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        `;
+        button.onmouseover = () => {
+          button.style.transform = "translateY(-2px) scale(1.05)";
+          button.style.boxShadow = "0 6px 20px rgba(255, 255, 255, 0.4)";
+        };
+        button.onmouseout = () => {
+          button.style.transform = "translateY(0) scale(1)";
+          button.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+        };
+        button.onclick = () => {
+          window.location.href = "/";
+        };
+
+        modalContent.appendChild(icon);
+        modalContent.appendChild(title);
+        modalContent.appendChild(text);
+        modalContent.appendChild(button);
+        bannedOverlay.appendChild(modalContent);
+        document.body.appendChild(bannedOverlay);
+      }
+
+      throw new Error("账号已被封禁。");
+      }
+
+    else if (
       response.status === 401 &&
       errorData &&
       errorData.message &&
@@ -15299,6 +15416,7 @@ async function callPythonAPI(method, ...args) {
       }
 
       throw new Error("会话已过期或无效");
+      return;
     }
     if (errorData && errorData.need_login) {
       let errorMsg = errorData.message || "API调用失败";
@@ -16542,7 +16660,8 @@ async function sendSMSWithCaptcha(
       
     });
 
-    document.getElementById("modal-login-captcha-refresh").click();
+    // document.getElementById("modal-login-captcha-refresh").click();
+    loadCaptcha("register");
     return;
   }
   try {
@@ -16722,13 +16841,18 @@ async function handleAuthLogin(isMobile_use = false) {
 
   request_body.captcha = captcha;
 
-  if (isMobile_use) {
+  console.log("[登录] isMobile_use:", isMobile_use);
+  console.log("[登录] captchaIds_login:", captchaIds_login);
+  console.log("[登录] captchaIds_mobile_login:", captchaIds_mobile_login);
+  if (isMobile_use === true ) {
     // request_body.captcha_id = captchaIds["mobile-login"];
     request_body.captcha_id = captchaIds_mobile_login;
   } else {
     // request_body.captcha_id = captchaIds.login;
     request_body.captcha_id = captchaIds_login;
   }
+  console.log("[登录] 使用的验证码ID:", request_body.captcha_id);
+
 
   if(request_body.captcha_id===null || request_body.captcha_id===undefined || request_body.captcha_id==="" || request_body.captcha_id=="null" || request_body.captcha_id=="undefined" || request_body.captcha_id=="NULL"){
     // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
@@ -16739,8 +16863,11 @@ async function handleAuthLogin(isMobile_use = false) {
       
     });
 
-    document.getElementById("auth-login-captcha-refresh").click();
-    document.getElementById("mobile-login-captcha-refresh").click();
+    // document.getElementById("auth-login-captcha-refresh").click();
+    // document.getElementById("mobile-login-captcha-refresh").click();
+
+    refreshCaptcha("login");
+    refreshCaptcha("mobile-login");
 
     return;
   }
@@ -17144,19 +17271,24 @@ async function handleAuthRegister(isMobile_use = false) {
   formData.append("nickname", nickname);
   formData.append("sms_code", smsCode);
   formData.append("captcha", captcha);
-  if (isMobile_use) {
+  console.log("isMobile_use:", isMobile_use);
+  if (isMobile_use === true) {
     // formData.append("captcha_id", captchaIds["mobile-register"]);
     formData.append("captcha_id", captchaIds_mobile_register);
+    console.log("获取注册验证码ID（移动端）:", captchaIds_mobile_register);
+    console.log("获取注册验证码ID（移动端）:", formData.get("captcha_id"));
   } else {
     // formData.append("captcha_id", captchaIds.register);
     formData.append("captcha_id", captchaIds_register);
+    console.log("获取注册验证码ID（桌面端）:", captchaIds_register);
+    console.log("获取注册验证码ID（桌面端）:", formData.get("captcha_id"));
   }
 
   if (avatarFile) {
     formData.append("avatar", avatarFile, avatarFile.name || "avatar.jpg");
   }
 
-  if(formData.captcha_id===null || formData.captcha_id===undefined || formData.captcha_id==="" || formData.captcha_id=="null" || formData.captcha_id=="undefined" || formData.captcha_id=="NULL"){
+  if(formData.get("captcha_id")===null || formData.get("captcha_id")===undefined || formData.get("captcha_id")==="" || formData.get("captcha_id")=="null" || formData.get("captcha_id")=="undefined" || formData.get("captcha_id")=="NULL"){
     Swal.fire({
       icon: "warning",
       title: "注册失败",
@@ -17164,8 +17296,10 @@ async function handleAuthRegister(isMobile_use = false) {
       
     });
 
-    document.getElementById("auth-register-btn").click();
-    document.getElementById("mobile-register-captcha-refresh").click();
+    // document.getElementById("auth-register-btn").click();
+    // document.getElementById("mobile-register-captcha-refresh").click();
+    refreshCaptcha("register");
+    refreshCaptcha("mobile-register");
 
     return;
   }
@@ -17187,6 +17321,36 @@ async function handleAuthRegister(isMobile_use = false) {
         title: "注册成功",
         text: "注册成功！请登录",
       });
+      if (isMobile_use === false) {
+      document.getElementById("auth-reg-username").value = "";
+      document.getElementById("auth-reg-phone").value = "";
+      document.getElementById("auth-reg-sms-code").value = "";
+      document.getElementById("auth-reg-nickname").value = "";
+      document.getElementById("auth-reg-password").value = "";
+      document.getElementById("auth-reg-password-confirm").value = "";
+      document.getElementById("auth-register-captcha").value = "";
+      document.getElementById("auth-reg-avatar-preview").src =
+        "/static/images/default_avatar.png";}
+      else {
+        document.getElementById("mobile-reg-username").value = "";
+        document.getElementById("mobile-reg-phone").value = "";
+        document.getElementById("mobile-reg-sms-code").value = "";
+        document.getElementById("mobile-reg-nickname").value = "";
+        document.getElementById("mobile-reg-avatar-preview").src =
+        "/static/images/default_avatar.png";
+        document.getElementById("mobile-reg-password").value = "";
+        document.getElementById("mobile-reg-password-confirm").value = "";
+        document.getElementById("mobile-register-captcha").value = "";
+
+      }
+      setTimeout(() => {
+        if (isMobile_use === true) {
+          refreshCaptcha('mobile-register');
+        } else {
+        refreshCaptcha("register");
+      }
+      }, 500);
+
       // showAuthSuccess("注册成功！请登录");
     } else {
       setButtonLoading("auth-register-btn", false);
