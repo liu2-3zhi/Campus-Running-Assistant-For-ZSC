@@ -183,12 +183,26 @@ def import_standard_libraries():
         logging.warning("  -> fcntl 模块在 Windows 平台不可用，已跳过。")
         logging.info("[依赖检查]   -> fcntl (Windows平台跳过)")
     if "eventlet" in globals():
+        # [重要修复] 只 monkey patch socket，不影响 threading、queue 等模块
+        # 这样既能让 eventlet 的 WSGI 服务器工作，又不会导致跨线程的 greenlet 错误
         try:
-            logging.info("  -> 正在应用 eventlet.monkey_patch()...")
-            logging.info("[依赖检查]   -> eventlet.monkey_patch()...")
-            eventlet.monkey_patch()
-            logging.info("  ✓ eventlet.monkey_patch() 应用成功")
+            logging.info("  -> 正在应用 eventlet.monkey_patch(socket=True, ...)...")
+            logging.info("[依赖检查]   -> eventlet.monkey_patch(选择性)...")
+            logging.warning("[Eventlet] 注意: 只 patch socket 模块，保持 threading/queue 等模块不变")
+            
+            # 只 patch socket，不 patch threading、time、os 等会导致问题的模块
+            eventlet.monkey_patch(
+                socket=True,      # 需要 patch socket 以支持 eventlet WSGI
+                select=True,      # select 也需要 patch
+                thread=False,     # 不 patch threading，避免与标准线程冲突
+                time=False,       # 不 patch time，避免影响其他库
+                os=False,         # 不 patch os
+                psycopg=False,    # 不 patch psycopg
+                MySQLdb=False     # 不 patch MySQLdb
+            )
+            logging.info("  ✓ eventlet 选择性 monkey_patch 应用成功")
             logging.info("✓")
+            logging.info(f"[Eventlet] 已 patch: socket, select | 未 patch: thread, time, os")
         except Exception as e:
             logging.error(f"  ✗ eventlet.monkey_patch() 应用失败: {e}")
             logging.error(f"✗ ({e})")
@@ -7491,6 +7505,16 @@ class Api:
                 threads_to_start = MAX_SUBMISSION_CONCURRENCY - current_threads
                 # 仅在确实需要启动新线程时才记录日志，避免刷屏
                 if threads_to_start > 0:
+                    current_thread = threading.current_thread()
+                    logging.info(
+                        f"[线程创建] 正在从 Thread[{current_thread.name}, id={current_thread.ident}] 创建 {threads_to_start} 个 SubmissionWorker 线程"
+                    )
+                    logging.warning(
+                        "[Eventlet 警告] SubmissionWorker 线程在 eventlet.monkey_patch 之后创建 - 注意：这些线程可能导致 greenlet 冲突！"
+                    )
+                    logging.warning(
+                        "[Eventlet 警告] 这些 worker 线程使用 threading.Thread，与 eventlet 的基于 greenlet 的并发机制不兼容"
+                    )
                     for i in range(threads_to_start):
                         t = threading.Thread(
                             # [修正] 使用静态方法，不绑定self
@@ -7504,6 +7528,7 @@ class Api:
                         )
                         t.start()
                         Api._static_submission_threads.append(t)
+                        logging.debug(f"[线程创建] SubmissionWorker 已启动: {t.name} (id={t.ident})")
                     logging.info(
                         f"已启动 {threads_to_start} 个数据提交工作线程 (全局池共 {len(Api._static_submission_threads)} 个)"
                     )
@@ -7597,6 +7622,43 @@ class Api:
         self._load_tasks_inflight = False
         self.multi_run_only_incomplete = True
 
+    def _safe_socketio_emit(self, event_name, data, room=None):
+        """
+        安全的 socketio emit 方法，带有详细的线程和 greenlet 诊断日志
+        用于从多线程环境中安全地发送 SocketIO 事件
+        """
+        if not socketio:
+            logging.debug(f"[SocketIO] SocketIO not available, skipping emit: {event_name}")
+            return False
+        
+        current_thread = threading.current_thread()
+        thread_info = f"Thread[name={current_thread.name}, id={current_thread.ident}]"
+        
+        # 获取 greenlet 信息（如果可用）
+        try:
+            import greenlet
+            current_greenlet = greenlet.getcurrent()
+            greenlet_info = f"Greenlet[id={id(current_greenlet)}, parent={id(current_greenlet.parent) if current_greenlet.parent else 'None'}]"
+        except:
+            greenlet_info = "Greenlet info unavailable"
+        
+        logging.debug(f"[SocketIO Emit] Event: {event_name}, From: {thread_info}, {greenlet_info}")
+        
+        try:
+            if room:
+                socketio.emit(event_name, data, room=room)
+            else:
+                socketio.emit(event_name, data)
+            logging.debug(f"[SocketIO Emit] Success: {event_name}")
+            return True
+        except Exception as e:
+            logging.error(f"[SocketIO Emit] Failed: {event_name} from {thread_info}")
+            logging.error(f"[SocketIO Emit] Error type: {type(e).__name__}")
+            logging.error(f"[SocketIO Emit] Error message: {e}")
+            import traceback
+            logging.error(f"[SocketIO Emit] Traceback:\n{traceback.format_exc()}")
+            return False
+
     def set_multi_run_only_incomplete(self, flag: bool):
         """
         设置多账号模式下“仅执行未完成”的全局开关，并立即刷新全局按钮。
@@ -7614,12 +7676,22 @@ class Api:
         logging.info(message)
         if session_id and socketio:
             try:
+                # 添加线程诊断日志
+                current_thread = threading.current_thread()
+                thread_info = f"Thread[name={current_thread.name}, id={current_thread.ident}]"
+                logging.debug(f"[SocketIO Emit] Attempting emit from {thread_info}")
+                
                 socketio.emit("log_message", {
                               "msg": str(message)}, room=session_id)
+                logging.debug(f"[SocketIO Emit] Success from {thread_info}")
             except Exception as e:
+                current_thread = threading.current_thread()
                 logging.error(
-                    f"WebSocket emit log failed for session {session_id[:8]}: {e}"
+                    f"WebSocket emit log failed for session {session_id[:8]} from Thread[{current_thread.name}]: {e}"
                 )
+                logging.error(f"Error details: {type(e).__name__}: {e}")
+                import traceback
+                logging.error(f"Traceback: {traceback.format_exc()}")
         else:
             logging.debug(
                 f"[Log Emission Skipped] Session ID or SocketIO missing. Message: {message}"
@@ -10530,11 +10602,14 @@ class Api:
         self._first_center_done = False
 
         logging.info(f"正在启动单任务执行: 任务名称={run_data.run_name}")
-        threading.Thread(
+        submission_thread = threading.Thread(
             target=self._run_submission_thread,
             args=(run_data, self.current_run_idx, self.api_client, False),
             daemon=True,
-        ).start()
+        )
+        logging.info(f"[Thread Creation] Starting submission thread: {submission_thread.name}")
+        submission_thread.start()
+        logging.info(f"[Thread Creation] Submission thread started: {submission_thread.name} (id={submission_thread.ident})")
         return {"success": True}
 
     def stop_run(self):
@@ -10681,6 +10756,13 @@ class Api:
     @staticmethod
     def _submission_worker_static(submission_queue, stop_event):
         """后台工作线程：从队列取出提交任务并串行执行。(静态方法，防止绑定实例)"""
+        current_thread = threading.current_thread()
+        logging.info(
+            f"[SubmissionWorker] Worker 在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]"
+        )
+        logging.warning(
+            "[SubmissionWorker] 此 worker 运行在 threading.Thread 中，而非 eventlet greenlet"
+        )
         logging.debug(
             "[SubmissionWorker] 提交队列工作线程已启动"
         )  # [修正] 改为DEBUG级别，防止启动时刷屏
@@ -10841,14 +10923,21 @@ class Api:
                     session_id = getattr(self, "_web_session_id", None)
                     if socketio and session_id and task_index != -1:
                         try:
+                            current_thread = threading.current_thread()
+                            logging.info(f"[SocketIO Emit] Sending 'task_completed' from Thread[{current_thread.name}, id={current_thread.ident}]")
                             socketio.emit(
                                 "task_completed",
                                 {"task_index": task_index},
                                 room=session_id,
                             )
+                            logging.info(f"[SocketIO Emit] 'task_completed' sent successfully")
                         except Exception as e:
+                            current_thread = threading.current_thread()
                             logging.error(
-                                f"SocketIO发送'task_completed'事件失败: {e}")
+                                f"SocketIO发送'task_completed'事件失败 from Thread[{current_thread.name}]: {e}")
+                            logging.error(f"Error type: {type(e).__name__}")
+                            import traceback
+                            logging.error(f"Full traceback: {traceback.format_exc()}")
                     return
             time.sleep(1)
         log_func("暂未确认完成，请稍后刷新。")
@@ -10863,6 +10952,10 @@ class Api:
         finished_event: threading.Event | None = None,
     ):
         """模拟跑步和提交数据的主线程函数"""
+        # 记录线程信息
+        current_thread = threading.current_thread()
+        logging.info(f"[Thread Entry] _run_submission_thread started in Thread[{current_thread.name}, id={current_thread.ident}]")
+        
         log_func = (
             client.app.log if hasattr(
                 client.app, "log") else client.app.api_bridge.log
@@ -10878,13 +10971,15 @@ class Api:
         )
 
         sio = globals().get("socketio") if "socketio" not in globals() else socketio
+        logging.info(f"[SocketIO Check] SocketIO object available: {sio is not None}")
 
         session_id = getattr(self, "_web_session_id", None)
+        logging.info(f"[Session Check] Session ID: {session_id}")
         last_auto_save_time = time.time()
 
         try:
             log_func("开始执行任务。")
-            logging.info(f"任务提交线程已启动: 任务名称={run_data.run_name}")
+            logging.info(f"任务提交线程已启动: 任务名称={run_data.run_name} in Thread[{current_thread.name}]")
 
             run_data.trid = f"{user_data.student_id}{int(time.time() * 1000)}"
             start_time_ms = str(int(time.time() * 1000))
@@ -11027,9 +11122,16 @@ class Api:
                 session_id = getattr(self, "_web_session_id", None)
                 if sio and session_id:
                     try:
+                        current_thread = threading.current_thread()
+                        logging.info(f"[SocketIO Emit] Sending 'run_stopped' from Thread[{current_thread.name}, id={current_thread.ident}]")
                         sio.emit("run_stopped", {}, room=session_id)
+                        logging.info(f"[SocketIO Emit] 'run_stopped' sent successfully")
                     except Exception as e:
-                        logging.error(f"SocketIO发送'run_stopped'运行停止事件失败: {e}")
+                        current_thread = threading.current_thread()
+                        logging.error(f"SocketIO发送'run_stopped'运行停止事件失败 from Thread[{current_thread.name}]: {e}")
+                        logging.error(f"Error type: {type(e).__name__}")
+                        import traceback
+                        logging.error(f"Full traceback: {traceback.format_exc()}")
 
             if finished_event:
                 finished_event.set()
@@ -11287,10 +11389,13 @@ class Api:
         logging.info(
             f"Starting 'run all' process. Queue={list(queue)}, auto-generate={auto_generate}"
         )
-        threading.Thread(
+        run_all_thread = threading.Thread(
             target=self._run_all_tasks_manager, args=(
                 queue, auto_generate), daemon=True
-        ).start()
+        )
+        logging.info(f"[Thread Creation] Starting run_all thread: {run_all_thread.name}")
+        run_all_thread.start()
+        logging.info(f"[Thread Creation] Run_all thread started: {run_all_thread.name} (id={run_all_thread.ident})")
         return {"success": True}
 
     def _run_all_tasks_manager(self, queue: collections.deque, auto_gen_enabled: bool):
@@ -11973,6 +12078,8 @@ class Api:
         session_id = getattr(self, "_web_session_id", None)
         if session_id and socketio:
             try:
+                current_thread = threading.current_thread()
+                logging.info(f"[SocketIO Emit] Preparing 'accounts_updated' from Thread[{current_thread.name}, id={current_thread.ident}]")
                 accounts_data = []
                 for username, acc in self.accounts.items():
                     accounts_data.append(
@@ -11986,12 +12093,18 @@ class Api:
                             "params": acc.params,
                         }
                     )
+                logging.info(f"[SocketIO Emit] Sending 'accounts_updated' to session {session_id[:8]}...")
                 socketio.emit(
                     "accounts_updated", {"accounts": accounts_data}, room=session_id
                 )
+                logging.info(f"[SocketIO Emit] 'accounts_updated' sent successfully")
             except Exception as e:
+                current_thread = threading.current_thread()
                 logging.error(
-                    f"Failed to emit accounts_updated on mode entry: {e}")
+                    f"Failed to emit accounts_updated on mode entry from Thread[{current_thread.name}]: {e}")
+                logging.error(f"Error type: {type(e).__name__}")
+                import traceback
+                logging.error(f"Full traceback: {traceback.format_exc()}")
 
         # [新版] 使用统一的多账号监控线程机制
         # 不再使用旧的 multi_auto_refresh_thread，而是启动监控线程
@@ -12014,8 +12127,10 @@ class Api:
                     daemon=True,
                     name="MultiAccountMonitor"
                 )
+                current_thread = threading.current_thread()
+                logging.info(f"[Thread Creation] Creating account monitor thread from Thread[{current_thread.name}, id={current_thread.ident}]")
                 self.account_monitor_thread.start()
-                logging.info("[多账号模式] 已启动账号监控线程")
+                logging.info(f"[多账号模式] 已启动账号监控线程: {self.account_monitor_thread.name} (id={self.account_monitor_thread.ident})")
             else:
                 logging.debug("[多账号模式] 监控线程已在运行")
 
@@ -12586,14 +12701,22 @@ class Api:
         session_id = getattr(self, "_web_session_id", None)
         if session_id and socketio:
             try:
+                current_thread = threading.current_thread()
+                logging.info(f"[SocketIO Emit] Preparing 'accounts_updated' after account add from Thread[{current_thread.name}, id={current_thread.ident}]")
                 current_accounts = self.multi_get_all_accounts_status().get(
                     "accounts", []
                 )
+                logging.info(f"[SocketIO Emit] Sending 'accounts_updated' to session {session_id[:8]}...")
                 socketio.emit(
                     "accounts_updated", {"accounts": current_accounts}, room=session_id
                 )
+                logging.info(f"[SocketIO Emit] 'accounts_updated' sent successfully")
             except Exception as e:
-                logging.error(f"SocketIO emit 'accounts_updated' failed: {e}")
+                current_thread = threading.current_thread()
+                logging.error(f"SocketIO emit 'accounts_updated' failed from Thread[{current_thread.name}]: {e}")
+                logging.error(f"Error type: {type(e).__name__}")
+                import traceback
+                logging.error(f"Full traceback: {traceback.format_exc()}")
 
         try:
             threading.Thread(
@@ -19862,6 +19985,9 @@ def _send_startup_notification_to_log_forwarder(host, port):
         host (str): Flask服务器地址
         port (int): Flask服务器端口
     """
+    current_thread = threading.current_thread()
+    logging.info(f"[UDP 通知] 函数在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]")
+    
     # import socket
     # import time
 
@@ -20057,7 +20183,14 @@ def start_web_server(args_param):
     app.secret_key = secrets.token_hex(32)
     CORS(app)
     global socketio
-    socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
+    logging.info("[SocketIO] 正在初始化 SocketIO，使用 async_mode='threading'")
+    logging.warning("[SocketIO] 重要：已将 async_mode 从 'eventlet' 改为 'threading' 以修复 greenlet 跨线程错误")
+    logging.warning("[SocketIO] 这解决了由 SubmissionWorker 线程引起的 'Cannot switch to a different thread' 错误")
+    current_thread = threading.current_thread()
+    logging.info(f"[SocketIO] 初始化线程: Thread[{current_thread.name}, id={current_thread.ident}]")
+    socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+    logging.info("[SocketIO] SocketIO 初始化成功，使用 threading 模式")
+    logging.info("[SocketIO] 在 threading 模式下，socketio.emit() 可以从任何线程安全调用")
     app.config["SESSION_TYPE"] = "filesystem"
     app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(days=7)
 
@@ -20761,6 +20894,9 @@ def start_web_server(args_param):
         """
         CDN缓存定时更新工作线程（每小时检查一次）
         """
+        current_thread = threading.current_thread()
+        logging.info(f"[CDN Worker] 已在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]")
+        logging.warning("[Eventlet 警告] CDN worker 运行在独立线程中 - 避免使用 eventlet 操作")
         UPDATE_INTERVAL = 3600  # 1小时
 
         while True:
@@ -20776,9 +20912,12 @@ def start_web_server(args_param):
 
     # 启动CDN缓存定时更新线程
     cdn_update_thread = threading.Thread(
-        target=cdn_cache_update_worker, daemon=True)
+        target=cdn_cache_update_worker, daemon=True, name="CDN_Update_Worker")
+    current_thread = threading.current_thread()
+    logging.info(f"[线程创建] 正在从 Thread[{current_thread.name}, id={current_thread.ident}] 创建 CDN 更新线程")
+    logging.warning("[Eventlet 警告] CDN 更新线程在 eventlet.monkey_patch 之后创建 - 可能导致 greenlet 冲突")
     cdn_update_thread.start()
-    logging.info("[CDN缓存] 定时更新线程已启动（每小时检查一次）")
+    logging.info(f"[CDN缓存] 定时更新线程已启动: {cdn_update_thread.name} (id={cdn_update_thread.ident})（每小时检查一次）")
 
     # ===== 登录验证装饰器 =====
     def login_required(f):
@@ -41763,6 +41902,9 @@ def start_web_server(args_param):
 
     def cleanup_sessions():
         """定期清理超过24小时无活动的会话，并强制执行内存会话数量限制"""
+        current_thread = threading.current_thread()
+        logging.info(f"[会话清理 Worker] 已在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]")
+        logging.warning("[Eventlet 警告] 会话清理 worker 运行在独立线程中 - 避免使用 eventlet 操作")
         while True:
             time.sleep(3600)
             try:
@@ -41825,8 +41967,12 @@ def start_web_server(args_param):
             except Exception as e:
                 logging.error(f"[会话清理] 清理过程出错: {e}", exc_info=True)
 
-    cleanup_thread = threading.Thread(target=cleanup_sessions, daemon=True)
+    cleanup_thread = threading.Thread(target=cleanup_sessions, daemon=True, name="Session_Cleanup_Worker")
+    current_thread = threading.current_thread()
+    logging.info(f"[线程创建] 正在从 Thread[{current_thread.name}, id={current_thread.ident}] 创建会话清理线程")
+    logging.warning("[Eventlet 警告] 会话清理线程在 eventlet.monkey_patch 之后创建 - 可能导致 greenlet 冲突")
     cleanup_thread.start()
+    logging.info(f"[线程创建] 会话清理线程已启动: {cleanup_thread.name} (id={cleanup_thread.ident})")
     logging.info("正在加载持久化会话...")
     load_all_sessions(args)
     logging.info("正在启动会话监控...")
@@ -42125,13 +42271,19 @@ def start_web_server(args_param):
     def trigger_udp_notification():
         # 直接调用具备重试逻辑的发送函数
         # 函数内部已有30秒的健康检查轮询，无需额外封装
+        current_thread = threading.current_thread()
+        logging.info(f"[UDP 通知 Worker] 已在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]")
+        logging.warning("[Eventlet 警告] UDP 通知 worker 运行在独立线程中 - 避免使用 eventlet 操作")
         _send_startup_notification_to_log_forwarder(args.host, args.port)
 
+    current_thread = threading.current_thread()
+    logging.info(f"[线程创建] 正在从 Thread[{current_thread.name}, id={current_thread.ident}] 创建 UDP 通知线程")
+    logging.warning("[Eventlet 警告] UDP 通知线程在 eventlet.monkey_patch 之后创建 - 可能导致 greenlet 冲突")
     udp_notification_thread = threading.Thread(
         target=trigger_udp_notification, daemon=True, name="UDP_Startup_Notification"
     )
     udp_notification_thread.start()
-    logging.info("[系统启动] UDP通知服务线程已启动")
+    logging.info(f"[系统启动] UDP通知服务线程已启动: {udp_notification_thread.name} (id={udp_notification_thread.ident})")
 
     try:
         if ssl_context:
@@ -42253,6 +42405,15 @@ def start_web_server(args_param):
                 raise
         else:
             logging.info(f"正在启动带有 WebSocket 支持的 Web 服务器于 {server_url}")
+            current_thread = threading.current_thread()
+            logging.info(f"[SocketIO 运行] 准备从 Thread[{current_thread.name}, id={current_thread.ident}] 运行")
+            
+            # 获取并记录当前所有活动线程
+            all_threads = threading.enumerate()
+            logging.info(f"[线程状态] socketio.run 之前的活动线程数: {len(all_threads)}")
+            for t in all_threads:
+                logging.info(f"[线程状态]   - Thread[name={t.name}, id={t.ident}, daemon={t.daemon}, alive={t.is_alive()}]")
+            
             try:
                 # 因为上方已经统一启动了 udp_notification_thread
 
@@ -42262,10 +42423,13 @@ def start_web_server(args_param):
                     if not hasattr(on_first_connect, "notified"):
                         on_first_connect.notified = True
                         # 仅记录日志，主要通知任务交由主线程启动的 trigger_udp_notification 处理
-                        logging.debug("[SocketIO] 客户端首次连接确认")
+                        current_thread = threading.current_thread()
+                        logging.debug(f"[SocketIO] 客户端首次连接确认，来自 Thread[{current_thread.name}, id={current_thread.ident}]")
 
                 # 启动SocketIO服务器（阻塞调用）
+                logging.info("[SocketIO 运行] 正在调用 socketio.run() - 这将阻塞主线程...")
                 socketio.run(app, host=args.host, port=args.port, debug=False)
+                logging.info("[SocketIO 运行] socketio.run() 已返回")
             except KeyboardInterrupt:
                 raise
 
