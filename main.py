@@ -19989,6 +19989,22 @@ def start_web_server(args_param):
     session_file_locks_lock = threading.Lock()
     session_activity = {}
     session_activity_lock = threading.Lock()
+    
+    # 用户封禁状态缓存（避免频繁文件读取导致的 greenlet 线程问题）
+    global user_ban_cache
+    global user_ban_cache_lock
+    user_ban_cache = {}  # {username: {'banned': bool, 'last_check': timestamp}}
+    user_ban_cache_lock = threading.Lock()
+    USER_BAN_CACHE_TTL = 5  # 缓存有效期：5秒
+    
+    # IP封禁列表缓存（避免频繁文件读取导致的 greenlet 线程问题）
+    global ip_ban_list_cache
+    global ip_ban_cache_lock
+    ip_ban_list_cache = None  # 缓存的封禁列表
+    ip_ban_cache_timestamp = 0  # 上次加载时间
+    ip_ban_cache_lock = threading.Lock()
+    IP_BAN_CACHE_TTL = 10  # 缓存有效期：10秒
+    
     logging.info("内存锁和会话状态已重置。")
     try:
         chrome_pool = ChromeBrowserPool(
@@ -20939,13 +20955,63 @@ def start_web_server(args_param):
 
         return None
     
+    def is_user_banned_cached(username):
+        """
+        检查用户是否被封禁（带缓存，避免频繁文件 I/O）
+        
+        参数:
+            username: 用户名
+            
+        返回:
+            bool: True=已封禁, False=未封禁
+        """
+        current_time = time.time()
+        
+        # 检查缓存是否有效
+        with user_ban_cache_lock:
+            if username in user_ban_cache:
+                cache_entry = user_ban_cache[username]
+                if current_time - cache_entry['last_check'] < USER_BAN_CACHE_TTL:
+                    return cache_entry['banned']
+        
+        # 缓存过期或不存在，读取文件
+        try:
+            user_file = auth_system.get_user_file_path(username)
+            if not os.path.exists(user_file):
+                # 用户文件不存在，视为未封禁
+                with user_ban_cache_lock:
+                    user_ban_cache[username] = {
+                        'banned': False,
+                        'last_check': current_time
+                    }
+                return False
+            
+            # 读取用户数据（使用 eventlet 安全的方式）
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+            
+            is_banned = user_data.get("banned", False)
+            
+            # 更新缓存
+            with user_ban_cache_lock:
+                user_ban_cache[username] = {
+                    'banned': is_banned,
+                    'last_check': current_time
+                }
+            
+            return is_banned
+            
+        except Exception as e:
+            logging.error(f"[账号封禁缓存] 读取用户文件失败: {e}")
+            # 发生错误时，假设未封禁（保守策略）
+            return False
+    
     @app.before_request
     def check_account_ban_before_request():
         """
-        全局账号封禁检查拦截器
+        全局账号封禁检查拦截器（优化版：减少锁使用，避免 greenlet 线程问题）
         """
-        logging.debug(f"[账号封禁] 检查请求路径: {request.path}")
-        # 静态资源与健康检查直接放行，避免不必要的文件读取
+        # 静态资源与健康检查直接放行，避免不必要的检查
         if (
             request.path.startswith("/static/")
             or request.path.startswith("/css/")
@@ -20960,41 +21026,25 @@ def start_web_server(args_param):
             return None
 
         session_id = request.headers.get("X-Session-ID", "")
-        logging.debug(f"[账号封禁] 获取到的 Session ID: {session_id}")
         if not session_id:
-            logging.debug(f"[账号封禁] 未提供 Session ID，跳过封禁检查")
             return None
 
-        # 提前获取当前会话关联的用户
-        with web_sessions_lock:
-            api_instance = web_sessions.get(session_id)
-            if not api_instance:
-                logging.debug(f"[账号封禁] 会话 ID 无效，跳过封禁检查")
-                return None
-            auth_username = getattr(api_instance, "auth_username", None)
-            is_authenticated = getattr(api_instance, "is_authenticated", False)
-            is_guest = getattr(api_instance, "is_guest", False)
-        logging.debug(f"[账号封禁] 会话用户: {auth_username}, 已认证: {is_authenticated}, 游客: {is_guest}")
+        # 快速获取会话信息（使用 get 避免异常）
+        api_instance = web_sessions.get(session_id)
+        if not api_instance:
+            return None
+        
+        # 直接读取属性，避免使用锁
+        auth_username = getattr(api_instance, "auth_username", None)
+        is_authenticated = getattr(api_instance, "is_authenticated", False)
+        is_guest = getattr(api_instance, "is_guest", False)
 
         if not is_authenticated or not auth_username or is_guest:
-            logging.debug(f"[账号封禁] 用户未认证或为游客，跳过封禁检查")
             return None
 
+        # 使用缓存检查封禁状态（避免频繁文件 I/O）
         try:
-            user_file = auth_system.get_user_file_path(auth_username)
-            logging.debug(f"[账号封禁] 用户文件路径: {user_file}")
-            if not os.path.exists(user_file):
-                logging.debug(f"[账号封禁] 找不到用户文件，跳过封禁检查")
-                logging.warning(
-                    f"[账号封禁] 找不到用户文件，{auth_username} ({session_id}... )"
-                )
-                return None
-
-            with auth_system.lock:
-                with open(user_file, "r", encoding="utf-8") as f:
-                    user_data = json.load(f)
-            logging.debug(f"[账号封禁] 读取用户数据: {user_data}")
-            if user_data.get("banned", False):
+            if is_user_banned_cached(auth_username):
                 logging.warning(
                     f"[账号封禁] 封禁拦截：用户 {auth_username} 尝试访问 {request.path}"
                 )
@@ -21084,6 +21134,28 @@ def start_web_server(args_param):
             logging.error(f"[账号封禁] 检查失败: {e}")
 
         return None
+    
+    def invalidate_user_ban_cache(username):
+        """
+        使指定用户的封禁状态缓存失效（用于封禁/解封操作后立即生效）
+        
+        参数:
+            username: 用户名
+        """
+        with user_ban_cache_lock:
+            if username in user_ban_cache:
+                del user_ban_cache[username]
+                logging.info(f"[账号封禁缓存] 已清除用户 {username} 的缓存")
+    
+    def invalidate_ip_ban_cache():
+        """
+        使 IP 封禁列表缓存失效（用于添加/删除 IP 封禁后立即生效）
+        """
+        global ip_ban_list_cache, ip_ban_cache_timestamp
+        with ip_ban_cache_lock:
+            ip_ban_list_cache = None
+            ip_ban_cache_timestamp = 0
+            logging.info(f"[IP封禁缓存] 已清除 IP 封禁列表缓存")
 
     # ====================
     # 认证相关API路由
@@ -22572,6 +22644,9 @@ def start_web_server(args_param):
 
         result = auth_system.ban_user(target_username)
         if result.get("success"):
+            # 使缓存失效，确保封禁立即生效
+            invalidate_user_ban_cache(target_username)
+            
             # 使用统一函数获取客户端真实IP（任务2）
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
@@ -22604,6 +22679,9 @@ def start_web_server(args_param):
 
         result = auth_system.unban_user(target_username)
         if result.get("success"):
+            # 使缓存失效，确保解封立即生效
+            invalidate_user_ban_cache(target_username)
+            
             # 使用统一函数获取客户端真实IP（任务2）
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
@@ -27387,6 +27465,9 @@ def start_web_server(args_param):
             os.makedirs(os.path.dirname(IP_BANS_FILE), exist_ok=True)
             with open(IP_BANS_FILE, "w", encoding="utf-8") as f:
                 json.dump(bans, f, indent=2, ensure_ascii=False)
+            
+            # 使缓存失效，确保新规则立即生效
+            invalidate_ip_ban_cache()
 
             app.logger.info(
                 f"[IP封禁] {g.user} 添加封禁规则：{target} ({ban_type}, {scope})"
@@ -27437,6 +27518,9 @@ def start_web_server(args_param):
 
             with open(IP_BANS_FILE, "w", encoding="utf-8") as f:
                 json.dump(bans, f, indent=2, ensure_ascii=False)
+            
+            # 使缓存失效，确保删除立即生效
+            invalidate_ip_ban_cache()
 
             app.logger.info(f"[IP封禁] {g.user} 删除封禁规则：{ban_id}")
             return jsonify({"success": True, "message": "封禁规则已删除"})
@@ -27478,15 +27562,43 @@ def start_web_server(args_param):
 
     def check_ip_ban(ip_address, scope="all"):
         """
-        检查IP是否被封禁
+        检查IP是否被封禁（带缓存，避免频繁文件 I/O）
+        
+        参数:
+            ip_address: 要检查的IP地址
+            scope: 封禁范围 ("all" 或其他特定范围)
+            
+        返回:
+            bool: True=已封禁, False=未封禁
         """
-        if not os.path.exists(IP_BANS_FILE):
-            return False
-
+        global ip_ban_list_cache, ip_ban_cache_timestamp
+        
+        current_time = time.time()
+        
+        # 检查缓存是否有效
+        with ip_ban_cache_lock:
+            if ip_ban_list_cache is not None and (current_time - ip_ban_cache_timestamp) < IP_BAN_CACHE_TTL:
+                # 使用缓存数据
+                bans = ip_ban_list_cache
+            else:
+                # 缓存过期或不存在，重新加载
+                if not os.path.exists(IP_BANS_FILE):
+                    ip_ban_list_cache = []
+                    ip_ban_cache_timestamp = current_time
+                    return False
+                
+                try:
+                    with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
+                        bans = json.load(f)
+                    # 更新缓存
+                    ip_ban_list_cache = bans
+                    ip_ban_cache_timestamp = current_time
+                except Exception as e:
+                    logging.error(f"[IP封禁缓存] 加载封禁列表失败: {e}")
+                    return False
+        
+        # 在锁外执行IP检查逻辑（避免长时间持锁）
         try:
-            with open(IP_BANS_FILE, "r", encoding="utf-8") as f:
-                bans = json.load(f)
-
             for ban in bans:
                 if ban["scope"] != "all" and ban["scope"] != scope:
                     continue
@@ -27497,14 +27609,13 @@ def start_web_server(args_param):
                 elif ban["type"] == "range":
                     try:
                         start_ip_str, end_ip_str = ban["target"].split("-")
-                        start_ip = int(ipaddress.ip_address(
-                            start_ip_str.strip()))
+                        start_ip = int(ipaddress.ip_address(start_ip_str.strip()))
                         end_ip = int(ipaddress.ip_address(end_ip_str.strip()))
                         current_ip = int(ipaddress.ip_address(ip_address))
                         if start_ip <= current_ip <= end_ip:
                             return True
                     except (ValueError, TypeError) as e:
-                        app.logger.warning(
+                        logging.warning(
                             f"[IP封禁] 解析IP范围失败: {ban['target']}, 错误: {e}"
                         )
                         pass
@@ -27513,7 +27624,7 @@ def start_web_server(args_param):
 
             return False
         except Exception as e:
-            app.logger.error(f"[IP封禁] 检查失败：{str(e)}")
+            logging.error(f"[IP封禁] 检查失败：{str(e)}")
             return False
 
     # ====================
