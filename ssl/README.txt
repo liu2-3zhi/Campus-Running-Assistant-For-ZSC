@@ -17,7 +17,7 @@ SSL证书目录
    从DigiCert、GlobalSign等机构购买商业SSL证书
 
 3. 自签名证书（仅用于测试）：
-   openssl req -x509 -newkey rsa:4096 -keyout privkey.key -out fullchain.pem -days 365 -nodes
+   openssl req -x509 -newkey rsa:4096 -keyout ssl/privkey.key -out ssl/fullchain.pem -days 365 -nodes
 
 配置说明：
 ----------
@@ -32,7 +32,7 @@ https_only = false                    # 是否仅允许HTTPS访问
 安全提示：
 ----------
 ⚠️ 私钥文件(privkey.key)包含敏感信息，请妥善保管
-⚠️ 确保证书文件权限设置正确（建议：600或400）
+⚠️ 确保文件权限设置正确（私钥建议：600或400；证书建议：644）
 ⚠️ 定期检查证书有效期，及时续期
 ⚠️ 不要将私钥文件提交到版本控制系统
 ⚠️ 生产环境请使用受信任CA签发的证书，避免使用自签名证书
