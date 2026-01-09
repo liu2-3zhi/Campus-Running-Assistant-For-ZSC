@@ -20962,7 +20962,7 @@ async function confirmCropAndUpload() {
 
           if (result.success) {
             // showModalAlert("头像上传成功！", "成功");
-            showModal.fire({
+            Swal.fire({
               title: "成功",
               text: "头像上传成功！",
               icon: "success",
