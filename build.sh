@@ -24,7 +24,7 @@ if [ -z "${PUSHED_ID}" ]; then
 fi
 
 # 收集与本项目镜像名称相关的所有 image id（去重），移除除 PUSHED_ID 之外的镜像
-mapfile -t IDS < <(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | awk '/python_runing-python-running-helper/ {print $2}' | sort -u)
+mapfile -t IDS < <(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | awk -v name="$IMAGE_NAME" '$1 ~ name {print $2}' | sort -u)
 for id in "${IDS[@]}"; do
 	if [ "${id}" != "${PUSHED_ID}" ]; then
 		echo "移除镜像 ${id}..."
