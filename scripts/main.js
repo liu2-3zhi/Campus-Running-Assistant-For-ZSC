@@ -26148,9 +26148,15 @@ async function loadMobileAdminSessionsList() {
             });
           }
         } else {
-          // 短按切换
+          // 短按切换：添加二次确认
           if (!isCurrent) {
-            selectSessionFromPicker(session.session_id);
+            showMobileConfirm(
+              "切换会话",
+              `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
+              () => {
+                selectSessionFromPicker(session.session_id);
+              }
+            );
           }
         }
         isLongPress = false;
@@ -41136,13 +41142,6 @@ async function loadSystemConfig() {
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
-    html += createInput(
-      "API",
-      "ip_api_key",
-      "IP定位 API Key",
-      "text",
-      "IP地理位置查询API密钥（可选，留空使用免费接口）。"
-    );
     // ==================== 网站备案信息配置 ====================
     // 添加网站备案（Beian）相关配置项，包括ICP备案号和公安网备案号
     // 这些配置项用于在网站底部显示合规信息，满足中国大陆网站的备案要求
@@ -43907,9 +43906,6 @@ async function saveSystemConfig() {
       },
       Map: {
         amap_js_key: $("config-Map-amap_js_key").value,
-      },
-      API: {
-        ip_api_key: $("config-API-ip_api_key").value,
       },
       // ==================== 网站备案信息配置保存 ====================
       // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中
@@ -55554,6 +55550,59 @@ async function adminAddOverdue() {
       icon: "error",
       confirmButtonText: "确定",
     });
+  }
+}
+
+async function mobileAdminAddOverdue() {
+  const schoolUsername = (
+    document.getElementById("mobile-add-overdue-school-username")?.value || ""
+  ).trim();
+  const overdueCount = parseInt(
+    document.getElementById("mobile-add-overdue-count")?.value || ""
+  );
+
+  if (!schoolUsername) {
+    await Swal.fire({ title: "输入错误", text: "请输入学校账号", icon: "warning", confirmButtonText: "确定" });
+    return;
+  }
+  if (!overdueCount || overdueCount < 1) {
+    await Swal.fire({ title: "输入错误", text: "请输入有效的欠费次数（大于0）", icon: "warning", confirmButtonText: "确定" });
+    return;
+  }
+
+  const confirmResult = await Swal.fire({
+    title: "确认添加欠费",
+    html: `<p>学校账号：<strong>${escapeHtml(schoolUsername)}</strong></p><p>欠费次数：<strong>${overdueCount}</strong></p>`,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "确认添加",
+    cancelButtonText: "取消",
+  });
+  if (!confirmResult.isConfirmed) return;
+
+  Swal.fire({ title: "正在处理...", text: "请稍候", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+  try {
+    const response = await fetch("/api/admin/clear_overdue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Session-ID": sessionUUID },
+      body: JSON.stringify({ school_username: schoolUsername, auth_username: "", new_overdue_count: overdueCount }),
+    });
+    const result = await response.json();
+
+    if (result.success) {
+      await Swal.fire({ title: "添加成功", text: `已为账号 ${schoolUsername} 添加 ${overdueCount} 次欠费`, icon: "success", confirmButtonText: "确定" });
+      const usernameEl = document.getElementById("mobile-add-overdue-school-username");
+      const countEl = document.getElementById("mobile-add-overdue-count");
+      if (usernameEl) usernameEl.value = "";
+      if (countEl) countEl.value = "";
+      await loadOverdueAccounts();
+    } else {
+      await Swal.fire({ title: "添加失败", text: result.message || "未知错误", icon: "error", confirmButtonText: "确定" });
+    }
+  } catch (error) {
+    console.error("移动端添加欠费失败:", error);
+    await Swal.fire({ title: "添加失败", text: "网络错误或服务器异常", icon: "error", confirmButtonText: "确定" });
   }
 }
 

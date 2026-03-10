@@ -31533,6 +31533,7 @@ def start_web_server(args_param):
     def get_ip_location(ip_address):
         """
         获取IP地址的地理位置信息 (带1天缓存)
+        使用 pconline whois 接口
         """
         if not ip_address:
             return "未知"
@@ -31550,53 +31551,15 @@ def start_web_server(args_param):
             else:
                 logging.debug(f"[IP缓存] 过期: ip={ip_address}")
         try:
-            config_file = os.path.join(os.path.dirname(__file__), "config.ini")
-            api_key = ""
-            if os.path.exists(config_file):
-                try:
-                    cfg = configparser.ConfigParser()
-                    cfg.read(config_file, encoding="utf-8")
-                    api_key = cfg.get("API", "ip_api_key", fallback="")
-                except Exception as e:
-                    logging.debug(f"[IP定位] 读取配置文件失败: {e}")
-
-            if api_key and api_key != "your_api_key_here" and api_key.strip() != "":
-                api_url = (
-                    f"https://api.vore.top/api/IPdata?key={api_key}&ip={ip_address}"
-                )
-            else:
-                api_url = f"https://api.vore.top/api/IPdata?ip={ip_address}"
+            api_url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip_address}&json=true"
             response = requests.get(api_url, timeout=5)
+            response.encoding = "gbk"
             data = response.json()
 
-            code = data.get("code")
-            msg = data.get("msg", "")
+            addr = data.get("addr", "").strip()
 
-            if code != 200:
-                logging.warning(
-                    f"[IP定位] API返回错误码: code={code}, msg={msg}, ip={ip_address}"
-                )
-                return "未知"
-
-            ipdata = data.get("ipdata", {})
-
-            info1 = ipdata.get("info1", "").strip()
-            info2 = ipdata.get("info2", "").strip()
-            info3 = ipdata.get("info3", "").strip()
-            isp = ipdata.get("isp", "").strip()
-
-            location_parts = [info1, info2, info3, isp]
-
-            seen = {}
-            unique_parts = []
-
-            for part in location_parts:
-                if part and part not in seen:
-                    seen[part] = True
-                    unique_parts.append(part)
-
-            if unique_parts:
-                location_str = " ".join(unique_parts)
+            if addr:
+                location_str = addr
                 logging.debug(
                     f"[IP定位] 成功获取: ip={ip_address}, 位置={location_str}"
                 )
@@ -31606,7 +31569,6 @@ def start_web_server(args_param):
                         "timestamp": current_time,
                     }
                 _save_ip_cache()
-
                 return location_str
             else:
                 logging.warning(f"[IP定位] API返回空数据: ip={ip_address}")
