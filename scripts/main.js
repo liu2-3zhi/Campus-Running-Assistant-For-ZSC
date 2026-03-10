@@ -22532,6 +22532,174 @@ async function submitCreateGroup() {
   }
 }
 
+// ========== 用户列表排序 ==========
+let _adminUsersCacheData = null; // 缓存用户列表数据 { users, groups }
+let _adminUsersSortField = "created_at"; // 当前排序字段
+let _adminUsersSortDir = "desc"; // 当前排序方向: "asc" | "desc"
+
+function _sortAdminUsersArray(users, field, dir) {
+  const sorted = [...users];
+  sorted.sort((a, b) => {
+    let va, vb;
+    if (field === "tfa") {
+      va = (a["2fa_enabled"] || a["tfa_enabled"]) ? 1 : 0;
+      vb = (b["2fa_enabled"] || b["tfa_enabled"]) ? 1 : 0;
+    } else if (field === "auth_username" || field === "nickname") {
+      va = (a[field] || "").toLowerCase();
+      vb = (b[field] || "").toLowerCase();
+    } else if (field === "max_sessions") {
+      // -1 means unlimited, treat as very large for sorting
+      va = a[field] === -1 ? Infinity : (a[field] ?? 0);
+      vb = b[field] === -1 ? Infinity : (b[field] ?? 0);
+    } else if (field === "available_runs") {
+      va = a[field] === -1 ? Infinity : (a[field] ?? 0);
+      vb = b[field] === -1 ? Infinity : (b[field] ?? 0);
+    } else {
+      // numeric fields: created_at, last_login
+      va = a[field] ?? 0;
+      vb = b[field] ?? 0;
+    }
+    if (va < vb) return dir === "asc" ? -1 : 1;
+    if (va > vb) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+  return sorted;
+}
+
+function _syncAdminUsersSortUI() {
+  const dirLabel = _adminUsersSortDir === "asc" ? "↑ 升序" : "↓ 降序";
+  ["admin-users-sort-dir_modal", "mobile-admin-users-sort-dir"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      btn.textContent = dirLabel;
+      btn.dataset.dir = _adminUsersSortDir;
+    }
+  });
+  ["admin-users-sort-field_modal", "mobile-admin-users-sort-field"].forEach((id) => {
+    const sel = document.getElementById(id);
+    if (sel) sel.value = _adminUsersSortField;
+  });
+}
+
+function resortAdminUsers() {
+  // read sort field from whichever control triggered the change
+  const pcField = document.getElementById("admin-users-sort-field_modal");
+  const mobileField = document.getElementById("mobile-admin-users-sort-field");
+  // use the one that is visible / last changed
+  if (document.activeElement && document.activeElement.id === "mobile-admin-users-sort-field" && mobileField) {
+    _adminUsersSortField = mobileField.value;
+  } else if (pcField) {
+    _adminUsersSortField = pcField.value;
+  } else if (mobileField) {
+    _adminUsersSortField = mobileField.value;
+  }
+  _rerenderAdminUsersList();
+}
+
+function toggleAdminUsersSort() {
+  _adminUsersSortDir = _adminUsersSortDir === "desc" ? "asc" : "desc";
+  _rerenderAdminUsersList();
+}
+
+function _rerenderAdminUsersList() {
+  if (!_adminUsersCacheData) return;
+  const { users, groups } = _adminUsersCacheData;
+  const sorted = _sortAdminUsersArray(users, _adminUsersSortField, _adminUsersSortDir);
+  _syncAdminUsersSortUI();
+
+  const groupSelect = (user) => `
+    <select class="text-sm border border-slate-300 rounded px-2 py-1" onchange="updateUserGroup('${
+      user.auth_username
+    }', this.value)">
+      ${groups.map((g) => `<option value="${g}" ${g === user.group ? "selected" : ""}>${g}</option>`).join("")}
+    </select>`;
+
+  const listHtml = sorted.map((user) => {
+    const createdDate = new Date(user.created_at * 1000).toLocaleString();
+    const lastLoginDate = user.last_login
+      ? new Date(user.last_login * 1000).toLocaleString()
+      : "从未登录";
+    const isBanned = user.banned || false;
+    const bannedBadge = isBanned
+      ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full ml-2">已封禁</span>'
+      : "";
+    return `
+      <div class="border border-slate-200 rounded-lg p-3 mb-2">
+        <div class="flex flex-col md:flex-row justify-between items-start gap-3">
+          <div class="flex items-start gap-3 flex-1 w-full md:w-auto">
+            <div id="avatar-${user.auth_username}" class="flex-shrink-0 w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden border-2 border-slate-300">
+              <span class="text-2xl text-slate-400">👤</span>
+            </div>
+            <div class="flex-1">
+              <p class="font-semibold text-slate-800">${user.auth_username}${bannedBadge}</p>
+              <p class="text-xs text-slate-500">昵称: ${user.nickname || "未设置"}</p>
+              <p class="text-xs text-slate-500">手机号: ${user.phone || "未绑定"}</p>
+              <p class="text-xs text-slate-500">创建时间: ${createdDate}</p>
+              <p class="text-xs text-slate-500">最后登录: ${lastLoginDate}</p>
+              <p class="text-xs text-slate-500">登录IP: ${user.last_login_ip || "无记录"} (${user.last_login_city || "未知"})</p>
+              <p class="text-xs text-slate-500">会话限制: ${user.max_sessions === -1 ? "无限制" : user.max_sessions + "个"}</p>
+              <p class="text-xs text-slate-500">
+                可用次数:
+                <span id="available-runs-${user.auth_username}" class="${
+      user.available_runs === -1
+        ? "text-green-600 font-semibold"
+        : user.available_runs === 0
+        ? "text-red-600 font-semibold"
+        : "text-blue-600 font-semibold"
+    }">
+                  ${user.available_runs === -1 ? "无限制" : user.available_runs + "次"}
+                </span>
+              </p>
+              <p class="text-xs ${user["2fa_enabled"] || user.tfa_enabled ? "text-green-600" : "text-slate-400"}">2FA: ${user["2fa_enabled"] || user.tfa_enabled ? "已启用" : "未启用"}</p>
+            </div>
+          </div>
+          <div class="flex flex-col md:items-end gap-1 w-full md:w-auto mt-2 md:mt-0">
+            <div class="flex justify-between md:justify-end items-center w-full">
+              <span class="text-xs text-slate-600 mr-2">权限组:</span>
+              ${groupSelect(user)}
+            </div>
+            <div class="flex flex-col gap-1.5 mt-2 w-full" id="user-actions-${user.auth_username}">
+              <div class="grid grid-cols-3 md:grid-cols-6 gap-2 w-full p-2 bg-base-100 rounded-xl border border-base-200 shadow-sm">
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-100 border" onclick="showUserSchoolAccounts('${user.auth_username}')">账户密码</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" onclick="showUserLogs('${user.auth_username}')">查看日志</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" onclick="setUserMaxSessions('${user.auth_username}', ${user.max_sessions || 1})">会话管理</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border-cyan-100 border" onclick="editAvailableRuns('${user.auth_username}', ${user.available_runs !== undefined ? user.available_runs : 0})">修改次数</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100 border" onclick="manageUserPermissions('${user.auth_username}')">权限设置</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" onclick="modifyUserNickname('${user.auth_username}', '${escapeHtml(user.nickname || "")}')">修改昵称</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" onclick="modifyUserPhone('${user.auth_username}', '${user.phone || ""}')">修改手机</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-purple-50 text-purple-600 hover:bg-purple-100 border-purple-100 border" onclick="resetUserPassword('${user.auth_username}')">重置密码</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-100 border" onclick="forceLogoutUser('${user.auth_username}')">强制登出</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100 border" onclick="clearUserAvatar('${user.auth_username}')">清除头像</button>
+                ${
+                  user["2fa_enabled"] || user.tfa_enabled
+                    ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-100 border" onclick="forceDisable2FA('${user.auth_username}')">关闭2FA</button>`
+                    : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-slate-50 text-slate-300 border-slate-200 border cursor-not-allowed" disabled onclick="forceDisable2FA('${user.auth_username}')">2FA未启用</button>`
+                }
+                ${
+                  isBanned
+                    ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-green-100 text-green-700 hover:bg-green-200 border-green-200 border font-bold" onclick="unbanUser('${user.auth_username}')">解封用户</button>`
+                    : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-100 text-red-700 hover:bg-red-200 border-red-200 border font-bold" onclick="banUser('${user.auth_username}')">封禁用户</button>`
+                }
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-600 text-white hover:bg-red-700 border-red-600 border shadow-md" onclick="deleteUser('${user.auth_username}')">彻底删除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+
+  const listEl = $("admin-users-list_modal");
+  if (listEl) listEl.innerHTML = listHtml;
+
+  // Re-copy to mobile and re-apply mobile button handlers
+  if (typeof copyAdminContentToMultiPanel === "function") {
+    copyAdminContentToMultiPanel("users");
+  }
+
+  // Reload avatars
+  sorted.forEach((user) => loadUserAvatar(user.auth_username));
+}
+
 async function loadAdminUsers() {
   try {
     const response = await fetch("/auth/admin/list_users", {
@@ -22564,204 +22732,9 @@ async function loadAdminUsers() {
       ? Object.keys(groupsData.groups)
       : ["guest", "user", "admin"];
 
-    listEl.innerHTML = result.users
-      .map((user) => {
-        const createdDate = new Date(user.created_at * 1000).toLocaleString();
-        const lastLoginDate = user.last_login
-          ? new Date(user.last_login * 1000).toLocaleString()
-          : "从未登录";
-        const isBanned = user.banned || false;
-        const bannedBadge = isBanned
-          ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full ml-2">已封禁</span>'
-          : "";
-
-        const groupSelect = `
-        <select class="text-sm border border-slate-300 rounded px-2 py-1" onchange="updateUserGroup('${
-          user.auth_username
-        }', this.value)">
-          ${groups
-            .map(
-              (g) =>
-                `<option value="${g}" ${
-                  g === user.group ? "selected" : ""
-                }>${g}</option>`
-            )
-            .join("")}
-        </select>
-      `;
-
-        return `
-        <div class="border border-slate-200 rounded-lg p-3 mb-2">
-          <div class="flex flex-col md:flex-row justify-between items-start gap-3">
-            <div class="flex items-start gap-3 flex-1 w-full md:w-auto">
-              <div id="avatar-${
-                user.auth_username
-              }" class="flex-shrink-0 w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden border-2 border-slate-300">
-                <span class="text-2xl text-slate-400">👤</span>
-              </div>
-              <div class="flex-1">
-                <p class="font-semibold text-slate-800">${
-                  user.auth_username
-                }${bannedBadge}</p>
-                <p class="text-xs text-slate-500">昵称: ${
-                  user.nickname || "未设置"
-                }</p>
-                <p class="text-xs text-slate-500">手机号: ${
-                  user.phone || "未绑定"
-                }</p>
-                <p class="text-xs text-slate-500">创建时间: ${createdDate}</p>
-                <p class="text-xs text-slate-500">最后登录: ${lastLoginDate}</p>
-                <p class="text-xs text-slate-500">登录IP: ${
-                  user.last_login_ip || "无记录"
-                } (${user.last_login_city || "未知"})</p>
-                <p class="text-xs text-slate-500">会话限制: ${
-                  user.max_sessions === -1 ? "无限制" : user.max_sessions + "个"
-                }</p>
-                <p class="text-xs text-slate-500">
-                  可用次数: 
-                  <span id="available-runs-${user.auth_username}" class="${
-          user.available_runs === -1
-            ? "text-green-600 font-semibold"
-            : user.available_runs === 0
-            ? "text-red-600 font-semibold"
-            : "text-blue-600 font-semibold"
-        }">
-                    ${
-                      user.available_runs === -1
-                        ? "无限制"
-                        : user.available_runs + "次"
-                    }
-                  </span>
-                </p>
-                <p class="text-xs ${
-                  user["2fa_enabled"] || user.tfa_enabled
-                    ? "text-green-600"
-                    : "text-slate-400"
-                }">2FA: ${
-          user["2fa_enabled"] || user.tfa_enabled ? "已启用" : "未启用"
-        }</p>
-              </div>
-            </div>
-            
-            <div class="flex flex-col md:items-end gap-1 w-full md:w-auto mt-2 md:mt-0">
-              <div class="flex justify-between md:justify-end items-center w-full">
-                 <span class="text-xs text-slate-600 mr-2">权限组:</span>
-                 ${groupSelect}
-              </div>
-
-              <div class="flex flex-col gap-1.5 mt-2 w-full" id="user-actions-${
-                user.auth_username
-              }">
-                <div class="grid grid-cols-3 md:grid-cols-6 gap-2 w-full p-2 bg-base-100 rounded-xl border border-base-200 shadow-sm">
-                  
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-100 border" 
-                          onclick="showUserSchoolAccounts('${
-                            user.auth_username
-                          }')">
-                    账户密码
-                  </button>
-                  
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" 
-                          onclick="showUserLogs('${user.auth_username}')">
-                    查看日志
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" 
-                          onclick="setUserMaxSessions('${
-                            user.auth_username
-                          }', ${user.max_sessions || 1})">
-                    会话管理
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border-cyan-100 border" 
-                          onclick="editAvailableRuns('${user.auth_username}', ${
-          user.available_runs !== undefined ? user.available_runs : 0
-        })">
-                    修改次数
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100 border" 
-                          onclick="manageUserPermissions('${
-                            user.auth_username
-                          }')">
-                    权限设置
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" 
-                          onclick="modifyUserNickname('${
-                            user.auth_username
-                          }', '${escapeHtml(user.nickname || "")}')">
-                    修改昵称
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" 
-                          onclick="modifyUserPhone('${user.auth_username}', '${
-          user.phone || ""
-        }')">
-                    修改手机
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-purple-50 text-purple-600 hover:bg-purple-100 border-purple-100 border" 
-                          onclick="resetUserPassword('${user.auth_username}')">
-                    重置密码
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-100 border" 
-                          onclick="forceLogoutUser('${user.auth_username}')">
-                    强制登出
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100 border" 
-                          onclick="clearUserAvatar('${user.auth_username}')">
-                    清除头像
-                  </button>
-
-                  ${
-                    user["2fa_enabled"] || user.tfa_enabled
-                      ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-100 border" 
-                            onclick="forceDisable2FA('${user.auth_username}')">
-                      关闭2FA
-                    </button>`
-                      : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-slate-50 text-slate-300 border-slate-200 border cursor-not-allowed" disabled
-                        onclick="forceDisable2FA('${user.auth_username}')"
-                      >
-                      2FA未启用
-                    </button>`
-                  }
-
-                  ${
-                    isBanned
-                      ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-green-100 text-green-700 hover:bg-green-200 border-green-200 border font-bold" 
-                            onclick="unbanUser('${user.auth_username}')">
-                      解封用户
-                    </button>`
-                      : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-100 text-red-700 hover:bg-red-200 border-red-200 border font-bold" 
-                            onclick="banUser('${user.auth_username}')">
-                      封禁用户
-                    </button>`
-                  }
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-600 text-white hover:bg-red-700 border-red-600 border shadow-md" 
-                          onclick="deleteUser('${user.auth_username}')">
-                    彻底删除
-                  </button>
-
-                </div>
-              </div>
-          </div>
-        </div>
-      </div>
-      `;
-      })
-      .join("");
-
-    // [修复] 使用 Promise.all 等待所有头像加载完成
-    // 这样确保 loadAdminUsers 返回时，DOM 中的头像 img 标签已经生成
-    // 后续的 copyAdminContentToMultiPanel 才能复制到正确的图片，而不是占位符
-    const avatarPromises = result.users.map((user) =>
-      loadUserAvatar(user.auth_username)
-    );
-    await Promise.all(avatarPromises);
+    // 缓存数据并使用排序渲染
+    _adminUsersCacheData = { users: result.users, groups };
+    _rerenderAdminUsersList();
   } catch (e) {
     $(
       "admin-users-list"

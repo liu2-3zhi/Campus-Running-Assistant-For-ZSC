@@ -2851,6 +2851,20 @@
                 </button>
               </div>
             </div>
+            <!-- 移动端排序控件 -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs text-slate-500">排序：</span>
+              <select id="mobile-admin-users-sort-field" class="text-xs border border-slate-300 rounded px-2 py-1" onchange="resortAdminUsers()" aria-label="移动端用户列表排序字段">
+                <option value="created_at">创建时间</option>
+                <option value="auth_username">用户名</option>
+                <option value="nickname">昵称</option>
+                <option value="last_login">最后登录时间</option>
+                <option value="max_sessions">会话限制数量</option>
+                <option value="available_runs">可用次数</option>
+                <option value="tfa">2FA</option>
+              </select>
+              <button id="mobile-admin-users-sort-dir" class="btn btn-ghost !py-0.5 !px-2 text-xs border border-slate-300" onclick="toggleAdminUsersSort()" title="切换排序方向" data-dir="desc">↓ 降序</button>
+            </div>
             <!-- 用户列表容器：限制最大高度并支持滚动 -->
             <div id="mobile-multi-admin-users-list" class="space-y-2 max-h-auto overflow-y-auto">
               <!-- 加载占位提示 -->
@@ -7253,6 +7267,20 @@
                 刷新
               </button>
             </div>
+          </div>
+          <!-- 排序控件 -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs text-slate-500">排序：</span>
+            <select id="admin-users-sort-field_modal" class="text-xs border border-slate-300 rounded px-2 py-1" onchange="resortAdminUsers()" aria-label="用户列表排序字段">
+              <option value="created_at">创建时间</option>
+              <option value="auth_username">用户名</option>
+              <option value="nickname">昵称</option>
+              <option value="last_login">最后登录时间</option>
+              <option value="max_sessions">会话限制数量</option>
+              <option value="available_runs">可用次数</option>
+              <option value="tfa">2FA</option>
+            </select>
+            <button id="admin-users-sort-dir_modal" class="btn btn-ghost !py-0.5 !px-2 text-xs border border-slate-300" onclick="toggleAdminUsersSort()" title="切换排序方向" data-dir="desc">↓ 降序</button>
           </div>
           <div id="admin-users-list_modal" class="space-y-2 max-h-[50vh] overflow-y-auto -mr-2 pr-2">
             <p class="text-slate-400 text-center py-10">加载中...</p>
