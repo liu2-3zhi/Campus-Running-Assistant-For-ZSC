@@ -1008,8 +1008,6 @@ body.mobile-mode {
   -ms-text-size-adjust: 100%;
   text-size-adjust: 100%;
   overflow-x: hidden;
-  user-select: none;
-  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
   touch-action: pan-y;
 }
