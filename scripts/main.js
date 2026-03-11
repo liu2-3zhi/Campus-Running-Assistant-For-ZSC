@@ -16748,14 +16748,6 @@ async function handleAuthLogin(isMobile_use = false) {
   if (!$("auth-sms-section").classList.contains("hidden")) {
     login_verification_method = "sms";
   }
-  // 当登录类型切换按钮被隐藏时（enable_phone_login=false），自动识别手机号
-  if (login_mode === "username" && /^1[3-9]\d{9}$/.test(login_id)) {
-    login_mode = "phone";
-  }
-  // enable_phone_login=false 时手机号只支持密码登录（不允许验证码登录）
-  if (login_mode === "phone" && !(window.APP_CONFIG && window.APP_CONFIG.enable_phone_login)) {
-    login_verification_method = "password";
-  }
   if (!captcha) {
     // showModalAlert("请输入图形验证码", "登录失败");
     Swal.fire({
