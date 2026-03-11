@@ -20618,6 +20618,10 @@ async function loadPersonalInfo() {
       if (phoneHint) phoneHint.style.display = "none";
       if (phoneInput) phoneInput.readOnly = true;
     }
+    const pcForgotPasswordHint = $("pc-forgot-password-hint");
+    if (pcForgotPasswordHint) {
+      pcForgotPasswordHint.style.display = config.enable_phone_modification ? "" : "none";
+    }
     const avatarDisplay = $("profile-avatar-display");
     const avatarInput = $("profile-avatar-input");
     if (avatarDisplay) {
@@ -47105,6 +47109,10 @@ async function loadMobileUnifiedProfile() {
         } else {
           if (modifyPhoneBtn) modifyPhoneBtn.style.display = "";
           if (modifyPhoneHint) modifyPhoneHint.style.display = "";
+        }
+        const mobileForgotPasswordHint = document.getElementById("mobile-forgot-password-hint");
+        if (mobileForgotPasswordHint) {
+          mobileForgotPasswordHint.style.display = appConfig.enable_phone_modification ? "" : "none";
         }
         // --- 新增：更新 2FA 状态 ---
         const tfaStatus = document.getElementById("mobile-unified-2fa-status");
