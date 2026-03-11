@@ -29123,6 +29123,13 @@ def start_web_server(args_param):
             == "true"
         )
 
+        phone_login_enabled = (
+            config.get(
+                "Features", "enable_phone_login", fallback="false"
+            ).lower()
+            == "true"
+        )
+
         # 新手帮助（前端控制）
         try:
             show_newbie_help = (
@@ -29143,6 +29150,7 @@ def start_web_server(args_param):
             "sms_enabled": sms_enabled,
             "reg_verify_enabled": reg_verify_enabled,
             "enable_phone_modification": phone_modification_enabled,
+            "enable_phone_login": phone_login_enabled,
             "show_newbie_help": show_newbie_help,
             "newbie_help_url": newbie_help_url,
         }

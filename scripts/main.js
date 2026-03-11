@@ -16748,6 +16748,14 @@ async function handleAuthLogin(isMobile_use = false) {
   if (!$("auth-sms-section").classList.contains("hidden")) {
     login_verification_method = "sms";
   }
+  // 当登录类型切换按钮被隐藏时（enable_phone_login=false），自动识别手机号
+  if (login_mode === "username" && /^1[3-9]\d{9}$/.test(login_id)) {
+    login_mode = "phone";
+  }
+  // enable_phone_login=false 时手机号只支持密码登录（不允许验证码登录）
+  if (login_mode === "phone" && !(window.APP_CONFIG && window.APP_CONFIG.enable_phone_login)) {
+    login_verification_method = "password";
+  }
   if (!captcha) {
     // showModalAlert("请输入图形验证码", "登录失败");
     Swal.fire({
@@ -44099,12 +44107,31 @@ document.addEventListener("DOMContentLoaded", function () {
     if (regPhoneDiv) regPhoneDiv.style.display = "none";
     const regSmsDiv = document.getElementById("auth-reg-sms-wrapper");
     if (regSmsDiv) regSmsDiv.style.display = "none";
+    // 移动端注册表单：隐藏手机号和短信验证码区域
+    const mobileRegPhoneDiv = document.getElementById("mobile-reg-phone-wrapper");
+    if (mobileRegPhoneDiv) mobileRegPhoneDiv.style.display = "none";
+    const mobileRegSmsDiv = document.getElementById("mobile-reg-sms-wrapper");
+    if (mobileRegSmsDiv) mobileRegSmsDiv.style.display = "none";
     const profileModifyBtn = document.getElementById(
       "profile-modify-phone-btn",
     );
     if (profileModifyBtn) profileModifyBtn.style.display = "none";
     const profilePhoneHint = document.getElementById("profile-phone-hint");
     if (profilePhoneHint) profilePhoneHint.style.display = "none";
+  }
+  if (!config.enable_phone_login) {
+    console.log("手机号验证码登录已禁用，隐藏登录类型切换按钮并启用手机号自动识别...");
+    // 隐藏 PC 端登录类型切换按钮组
+    const loginTypeToggle = document.getElementById("auth-login-type-toggle");
+    if (loginTypeToggle) loginTypeToggle.style.display = "none";
+    // 隐藏移动端登录类型切换按钮组
+    const mobileLoginTypeToggle = document.getElementById("mobile-login-type-toggle");
+    if (mobileLoginTypeToggle) mobileLoginTypeToggle.style.display = "none";
+    // 隐藏"使用验证码登录"入口（PC 和移动端）
+    const switchToSmsBtn = document.getElementById("auth-switch-to-sms");
+    if (switchToSmsBtn) switchToSmsBtn.style.display = "none";
+    const mobileSwitchToSms = document.getElementById("mobile-switch-to-sms");
+    if (mobileSwitchToSms) mobileSwitchToSms.style.display = "none";
   }
   console.log("[定时提醒] 正在启动定时提醒检查器...");
   startReminderChecker();
@@ -47075,6 +47102,18 @@ async function loadMobileUnifiedProfile() {
           }
           phoneWrapper.classList.toggle("prefix-hidden", isUnbound);
         }
+        // 根据 enable_phone_modification 配置控制修改手机号按钮和提示的显示
+        const appConfig = window.APP_CONFIG || {};
+        const modifyPhoneBtn = document.getElementById("mobile-unified-modify-phone-btn");
+        const modifyPhoneHint = document.getElementById("mobile-unified-modify-phone-hint");
+        if (!appConfig.enable_phone_modification) {
+          if (modifyPhoneBtn) modifyPhoneBtn.style.display = "none";
+          if (modifyPhoneHint) modifyPhoneHint.style.display = "none";
+          if (phoneInput) phoneInput.readOnly = true;
+        } else {
+          if (modifyPhoneBtn) modifyPhoneBtn.style.display = "";
+          if (modifyPhoneHint) modifyPhoneHint.style.display = "";
+        }
         // --- 新增：更新 2FA 状态 ---
         const tfaStatus = document.getElementById("mobile-unified-2fa-status");
         const tfaActions = document.getElementById(
@@ -47321,7 +47360,7 @@ function showMobileUnifiedModifyPhoneModal() {
       if (e.target === modal) closeMobileUnifiedModifyPhoneModal();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileUnifiedModifyPhoneModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
         <div class="flex justify-center mb-2">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>

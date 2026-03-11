@@ -1584,7 +1584,7 @@
           </div>
 
           <div id="mobile-login-form" class="space-y-4">
-            <div class="flex justify-center gap-2 pb-2">
+            <div id="mobile-login-type-toggle" class="flex justify-center gap-2 pb-2">
               <button id="mobile-login-username-btn" class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm">
                 用户名登录
               </button>
@@ -1684,7 +1684,7 @@
               <input type="text" id="mobile-reg-username" class="w-full" placeholder="3-20字符，不含中文" autocomplete="username">
             </div>
 
-            <div class="mobile-form-group">
+            <div class="mobile-form-group" id="mobile-reg-phone-wrapper">
               <label class="mobile-form-label">手机号</label>
               <div class="phone-input-wrapper mt-1">
                 <span class="phone-prefix">+86 </span>
@@ -1692,7 +1692,7 @@
               </div>
             </div>
 
-            <div class="mobile-form-group">
+            <div class="mobile-form-group" id="mobile-reg-sms-wrapper">
               <label class="mobile-form-label">验证码</label>
               <div class="flex gap-2">
                 <input type="text" id="mobile-reg-sms-code" class="w-full flex-1" placeholder="6位验证码" maxlength="6" inputmode="numeric">
@@ -3065,7 +3065,7 @@
                       修改手机号
                     </button>
                   </div>
-                  <p class="text-xs text-slate-500 mt-1">
+                  <p class="text-xs text-slate-500 mt-1" id="mobile-unified-modify-phone-hint">
                     💡 修改手机号需要短信验证
                   </p>
                 </div>
@@ -11150,10 +11150,10 @@
     <!-- rounded-t-3xl: 顶部大圆角（3xl=24px），符合现代移动端UI设计趋势 -->
     <!-- p-6: 内边距为1.5rem（24px），提供舒适的视觉空间 -->
     <!-- space-y-4: 子元素之间垂直间距为1rem（16px） -->
-    <!-- max-h-[85vh]: 最大高度为视口高度的85%，确保在小屏幕上不会溢出 -->
+    <!-- max-h-[75vh]: 最大高度为视口高度的75%，留出更多顶部空白区域方便点击关闭 -->
     <!-- overflow-y-auto: 内容超出时显示垂直滚动条 -->
     <!-- onclick="event.stopPropagation()": 阻止事件冒泡，点击内容区域不会触发关闭 -->
-    <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+    <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[75vh] overflow-y-auto" onclick="event.stopPropagation()">
       
       <!-- 顶部拖动指示器 -->
       <!-- 这是移动端模态框的标准设计元素，暗示用户可以向下滑动关闭 -->
