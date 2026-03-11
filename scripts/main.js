@@ -17373,7 +17373,7 @@ async function handleAuthRegister(isMobile_use = false) {
         icon: "success",
         title: "注册成功！",
         // text: "已自动填写登录信息，请直接点击「登录」按钮登录。",
-        text: "注册成功！请直接点击[登录]按钮登录。",
+        text: "注册成功！请点击[登录]按钮进行登录。",
       });
     } else {
       setButtonLoading("auth-register-btn", false);
