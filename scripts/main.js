@@ -9990,25 +9990,12 @@ async function initRegisterAvailableRunsHint() {
       // 第一个参数是要查找的字符串（占位符）
       // 第二个参数是替换后的字符串（实际次数）
       // 例如："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
-      // 当默认次数等于 -1 时，显示为“无限制”。优先替换带单位的模板片段
-      let runsReplacement = defaultRuns;
+      // 当默认次数等于 -1 时直接显示"无限制"，不套用格式模板，避免出现占位符残留
+      let hintText;
       if (Number(defaultRuns) === -1) {
-        runsReplacement = "无限制";
-      }
-
-      let hintText = hintTemplate;
-      if (runsReplacement === "无限制") {
-        // 尝试替换常见的 "{available_runs} 次" 模板为 "无限制"
-        if (hintTemplate.indexOf("{available_runs} 次") !== -1) {
-          hintText = hintTemplate.replace(
-            "{available_runs} 次",
-            runsReplacement,
-          );
-        } else {
-          hintText = hintTemplate.replace("{available_runs}", runsReplacement);
-        }
+        hintText = hintTemplate.replace("{available_runs} 次", "无限制").replace("{available_runs}", "无限制");
       } else {
-        hintText = hintTemplate.replace("{available_runs}", runsReplacement);
+        hintText = hintTemplate.replace("{available_runs}", defaultRuns);
       }
 
       // ========== 步骤5：更新PC端的提示元素 ==========
@@ -10223,24 +10210,12 @@ async function updateProfileAvailableRuns(userData) {
       // 例如："剩余免费次数：{available_runs} 次"
       const formatTemplate = config.available_runs_format;
 
-      // 当次数为 -1 时显示为“无限制”，优先替换常见带单位的片段
-      let replacement = availableRuns;
+      // 当次数为 -1 时直接显示"无限制"，不套用格式模板，避免出现占位符残留
+      let displayText;
       if (Number(availableRuns) === -1) {
-        replacement = "无限制";
-      }
-
-      let displayText = formatTemplate;
-      if (replacement === "无限制") {
-        if (formatTemplate.indexOf("{available_runs} 次") !== -1) {
-          displayText = formatTemplate.replace(
-            "{available_runs} 次",
-            replacement,
-          );
-        } else {
-          displayText = formatTemplate.replace("{available_runs}", replacement);
-        }
+        displayText = "无限制";
       } else {
-        displayText = formatTemplate.replace("{available_runs}", replacement);
+        displayText = formatTemplate.replace("{available_runs}", availableRuns);
       }
 
       // ========== 步骤6：更新PC端的显示元素 ==========
