@@ -26188,8 +26188,17 @@ async function loadMobileAdminSessionsList() {
               }
             });
           }
-        } else {
-          // 短按切换：添加二次确认
+        }
+        isLongPress = false;
+      };
+
+      // 双击/双指轻触切换会话
+      let lastTapTime = 0;
+      const handleDoubleTap = (e) => {
+        if (isLongPress) return;
+        const now = Date.now();
+        if (now - lastTapTime < 350) {
+          // 两次点击间隔小于 350ms 视为双击
           if (!isCurrent) {
             showMobileConfirm(
               "切换会话",
@@ -26199,8 +26208,10 @@ async function loadMobileAdminSessionsList() {
               },
             );
           }
+          lastTapTime = 0;
+        } else {
+          lastTapTime = now;
         }
-        isLongPress = false;
       };
 
       itemDiv.addEventListener("touchstart", startPress, {
@@ -26208,8 +26219,20 @@ async function loadMobileAdminSessionsList() {
       });
       itemDiv.addEventListener("touchmove", movePress, { passive: true });
       itemDiv.addEventListener("touchend", endPress);
+      itemDiv.addEventListener("touchend", handleDoubleTap);
       itemDiv.addEventListener("mousedown", startPress);
       itemDiv.addEventListener("mouseup", endPress);
+      itemDiv.addEventListener("dblclick", () => {
+        if (!isCurrent) {
+          showMobileConfirm(
+            "切换会话",
+            `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
+            () => {
+              selectSessionFromPicker(session.session_id);
+            },
+          );
+        }
+      });
 
       activeContainer.appendChild(itemDiv);
     });
