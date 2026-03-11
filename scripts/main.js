@@ -17128,12 +17128,14 @@ async function handle2FAVerify() {
 }
 
 async function handleAuthRegister(isMobile_use = false) {
+  // ── 读取注册表单字段（PC 端与移动端共用同一组字段 ID）──
   const username = $("auth-reg-username").value.trim();
   const phone = $("auth-reg-phone").value.trim();
   const smsCode = $("auth-reg-sms-code").value.trim();
   const nickname_Raw = $("auth-reg-nickname").value.trim();
   const captcha = $("auth-register-captcha").value.trim();
 
+  // 昵称为空时默认使用用户名
   let nickname;
   if (nickname_Raw === "" || nickname_Raw === null) {
     nickname = username;
@@ -17315,43 +17317,53 @@ async function handleAuthRegister(isMobile_use = false) {
 
     if (result.success) {
       showButtonSuccess("auth-register-btn", "注册成功");
-      // showModalAlert("注册成功！请登录", "注册成功");
-      Swal.fire({
-        icon: "success",
-        title: "注册成功",
-        text: "注册成功！请登录",
-      });
+
       if (isMobile_use === false) {
-      document.getElementById("auth-reg-username").value = "";
-      document.getElementById("auth-reg-phone").value = "";
-      document.getElementById("auth-reg-sms-code").value = "";
-      document.getElementById("auth-reg-nickname").value = "";
-      document.getElementById("auth-reg-password").value = "";
-      document.getElementById("auth-reg-password-confirm").value = "";
-      document.getElementById("auth-register-captcha").value = "";
-      document.getElementById("auth-reg-avatar-preview").src =
-        "/static/images/default_avatar.png";}
-      else {
+        // ── PC 端：清空注册表单 ──
+        document.getElementById("auth-reg-username").value = "";
+        document.getElementById("auth-reg-phone").value = "";
+        document.getElementById("auth-reg-sms-code").value = "";
+        document.getElementById("auth-reg-nickname").value = "";
+        document.getElementById("auth-reg-password").value = "";
+        document.getElementById("auth-reg-password-confirm").value = "";
+        document.getElementById("auth-register-captcha").value = "";
+        document.getElementById("auth-reg-avatar-preview").src =
+          "/static/images/default_avatar.png";
+
+        // 切换回登录 Tab，并预填注册时使用的用户名 / 密码
+        switchAuthTab("login");
+        document.getElementById("auth-username").value = username;
+        document.getElementById("auth-password").value = password;
+      } else {
+        // ── 移动端：清空注册表单 ──
         document.getElementById("mobile-reg-username").value = "";
         document.getElementById("mobile-reg-phone").value = "";
         document.getElementById("mobile-reg-sms-code").value = "";
         document.getElementById("mobile-reg-nickname").value = "";
         document.getElementById("mobile-reg-avatar-preview").src =
-        "/static/images/default_avatar.png";
+          "/static/images/default_avatar.png";
         document.getElementById("mobile-reg-password").value = "";
         document.getElementById("mobile-reg-password-confirm").value = "";
         document.getElementById("mobile-register-captcha").value = "";
 
+        // 切换回登录 Tab，并预填注册时使用的用户名 / 密码
+        const mobileLoginTab = document.getElementById("mobile-auth-tab-login");
+        if (mobileLoginTab) mobileLoginTab.click();
+        document.getElementById("mobile-auth-username").value = username;
+        document.getElementById("mobile-auth-password").value = password;
       }
+
+      // 刷新注册验证码（以备用户下次再打开注册表单）
       setTimeout(() => {
-        if (isMobile_use === true) {
-          refreshCaptcha('mobile-register');
-        } else {
-        refreshCaptcha("register");
-      }
+        refreshCaptcha(isMobile_use ? "mobile-register" : "register");
       }, 500);
 
-      // showAuthSuccess("注册成功！请登录");
+      // 通知用户注册成功，并告知凭据已自动填入登录框
+      Swal.fire({
+        icon: "success",
+        title: "注册成功！",
+        text: "已自动填写登录信息，请直接点击「登录」按钮登录。",
+      });
     } else {
       setButtonLoading("auth-register-btn", false);
       showButtonError("auth-register-btn", "注册失败");
