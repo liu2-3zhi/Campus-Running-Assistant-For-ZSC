@@ -7548,9 +7548,6 @@ async function submitAdminPaymentRefund() {
   const amountInput = document.getElementById("admin-refund-amount_modal");
   const refundNoInput = document.getElementById("admin-refund-no_modal");
   const reasonInput = document.getElementById("admin-refund-reason_modal");
-  // 任务2修改：移除对 successDiv 的引用，改用Swal.fire显示退款结果
-  // const successDiv = document.getElementById('admin-refund-result-container_modal');
-
   // === 第2步：获取并验证输入 ===
 
   // 获取原订单号
@@ -7647,8 +7644,6 @@ async function submitAdminPaymentRefund() {
     }
 
     // === 第7步：显示成功提示 ===
-    // 任务2修改：使用Swal.fire替代模态框显示退款结果
-    // 优势：更现代化的UI，更好的用户体验，无需手动管理DOM元素
 
     // 构建退款成功的详细信息HTML
     // 使用HTML格式可以更灵活地展示多行信息和格式化内容
@@ -7687,18 +7682,11 @@ async function submitAdminPaymentRefund() {
     if (reasonInput) reasonInput.value = "";
 
     logMessage_Info("[PC端退款] 退款成功，已显示Swal弹窗");
-
-    // 注意：任务2已移除对 successDiv 的操作
-    // 原有的5秒自动隐藏逻辑已删除，改用Swal弹窗（用户手动点击"确定"关闭）
   } catch (error) {
     // === 错误处理 ===
 
     logMessage_Error("[PC端退款] 退款时发生错误：", error);
 
-    // 任务2修改：错误提示继续使用showModalAlert（保持原有行为）
-    // 只有成功时才使用Swal.fire，失败时使用原有的错误提示方式
-    // 使用showModalAlert显示错误
-    // showModalAlert(error.message || "退款失败", "退款失败");
     Swal.fire({
       icon: "error",
       title: "错误",
@@ -8173,8 +8161,6 @@ async function createAdminTestPayment() {
     authCode = authCodeInput ? authCodeInput.value.trim() : "";
     // 验证付款码是否为空
     if (!authCode) {
-      // showModalAlert("扫码支付需要提供付款码（auth_code）");
-      // 任务2修改：使用Swal.fire替代模态框显示错误提示
       Swal.fire({
         icon: "error",
         title: "错误",
@@ -8216,8 +8202,6 @@ async function createAdminTestPayment() {
 
     // 验证sub_openid是否为空
     if (!subOpenid) {
-      // showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
-      // 任务2修改：使用Swal.fire替代模态框显示错误提示
       Swal.fire({
         icon: "error",
         title: "错误",
@@ -8230,8 +8214,6 @@ async function createAdminTestPayment() {
 
     // 验证sub_appid是否为空
     if (!subAppid) {
-      // showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
-      // 任务2修改：使用Swal.fire替代模态框显示错误提示
       Swal.fire({
         icon: "error",
         title: "错误",
@@ -10381,7 +10363,7 @@ document.addEventListener("DOMContentLoaded", function () {
  */
 
 // ============================================================
-// 价格配置管理相关函数（任务1）
+// 价格配置管理相关函数
 // ============================================================
 
 /**
@@ -16029,7 +16011,7 @@ function onColorPicked(val) {
 }
 
 /**
- * 【任务7】统一管理面板主题颜色保存函数
+ * 统一管理面板主题颜色保存函数
  * 该函数用于处理 mobile-admin-panel-unified 中的主题颜色保存
  *
  * @description
@@ -18701,7 +18683,7 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
       );
     }
 
-    // ========== [任务3修复] 添加4个新标签的显示控制逻辑（支付日志标签需根据require_payment配置） ==========
+    // ========== 添加4个新标签的显示控制逻辑（支付日志标签需根据require_payment配置） ==========
     // 这4个标签分别是：欠费查询、支付日志、支付设置、价格设置
     // 其中：
     // - 欠费查询、支付设置、价格设置：仅对admin和super_admin用户组可见
@@ -18799,7 +18781,7 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
       );
     }
 
-    // 步骤6：【核心逻辑 - 任务3】设置"支付日志"标签的显示状态
+    // 步骤6：设置"支付日志"标签的显示状态
     // ========================================================================
     // 【业务需求说明】
     // 支付历史标签的显示需要根据 config.ini 中的 [Payment_Settings].require_payment 配置：
@@ -18887,7 +18869,7 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         "[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素",
       );
     }
-    // ========== [任务3修复结束] 4个新标签的显示控制逻辑添加完成 ==========
+    
 
     // 步骤9：设置"水印控制"标签的显示状态
     // 逻辑：仅管理员可见（用于配置用户的高德地图去水印权限）
@@ -27182,7 +27164,7 @@ async function removeIPBan(banId) {
 }
 
 // ====================
-// 任务20：短信服务配置函数
+// 短信服务配置函数
 // ====================
 async function loadSMSConfig() {
   try {
@@ -30915,7 +30897,7 @@ function forceProjectionRefresh() {
   }
 }
 /**
- * 【任务9】移动端单账号设置面板参数刷新函数
+ * 移动端单账号设置面板参数刷新函数
  *
  * @description
  *   此函数用于从后端刷新 mobile-settings-panel 中的参数配置
@@ -30992,7 +30974,7 @@ async function refreshMobileSettings() {
   }
 }
 /**
- * 【任务9】移动端单账号设置面板参数保存函数
+ * 移动端单账号设置面板参数保存函数
  *
  * @description
  *   此函数用于保存 mobile-settings-panel 中的所有参数配置
@@ -39894,7 +39876,7 @@ async function loadMobileTaskHistoryPanel() {
 }
 
 /**
- * 【任务7】打开统一的移动端管理面板
+ * 打开统一的移动端管理面板
  * 该函数用于统一处理单账号和多账号模式下的管理面板打开逻辑
  *
  * @description
@@ -39934,7 +39916,7 @@ function openMobileAdminPanelUnified(mode) {
 }
 
 function switchMobileSinglePanel(panelId, showalert = true) {
-  // 【任务7修复】单账号模式面板数组，添加 mobile-admin-panel-unified 以支持复用多账号管理面板
+  // 单账号模式面板数组，添加 mobile-admin-panel-unified 以支持复用多账号管理面板
   const singleModePanels = [
     "mobile-control-panel",
     "mobile-map-panel",
@@ -39945,7 +39927,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
     "mobile-checkpoints-panel",
     "mobile-attendance-panel",
     "mobile-admin-panel",
-    "mobile-admin-panel-unified", // 【任务7】新增：统一管理面板（单账号模式复用）
+    "mobile-admin-panel-unified", // 统一管理面板（单账号模式复用）
     "mobile-settings-panel",
     "mobile-profile-panel",
     "mobile-task-history-panel",
@@ -40115,7 +40097,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
       }
     }
 
-    // 【任务7】统一管理面板（mobile-admin-panel-unified）在单账号模式下的激活处理
+    // 统一管理面板（mobile-admin-panel-unified）在单账号模式下的激活处理
     // 单账号模式复用多账号管理面板，但需要设置正确的模式标识
     if (panelId === "mobile-admin-panel-unified") {
       logMessage_Info(
@@ -40347,7 +40329,7 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
     }
     if (panelId === "mobile-admin-panel-unified") {
       console.log("[移动端] 激活多账号管理面板，开始初始化...");
-      // 【任务7】设置当前模式为多账号，供主题保存等功能判断
+      // 设置当前模式为多账号，供主题保存等功能判断
       window.mobileAdminPanelMode = "multi";
       // 更新面板状态显示为多账号管理
       const statusEl = document.getElementById(
@@ -40394,7 +40376,7 @@ function updateMobileNavActiveState(activeSectionId) {
     "mobile-attendance-panel": "attendance",
     "mobile-settings-panel": "settings",
     "mobile-admin-panel": "admin",
-    "mobile-admin-panel-unified": "admin", // 【任务7】添加统一管理面板的导航映射
+    "mobile-admin-panel-unified": "admin", // 统一管理面板的导航映射
     "mobile-multi-account-panel": "accounts",
     "mobile-multi-control-panel": "control",
     "mobile-multi-map-panel": "map",
@@ -40443,7 +40425,7 @@ function updateMobileSidebarActive(panelId) {
     });
     return;
   }
-  // 【修复任务10】判断应该更新哪个侧边栏的高亮状态
+  // 判断应该更新哪个侧边栏的高亮状态
   // 原逻辑仅通过 panelId.includes("multi") 判断，但 mobile-admin-panel-unified 不包含 "multi"
   // 因此需要额外处理：当面板是 mobile-admin-panel-unified 时，根据 window.mobileAdminPanelMode 判断
   let targetSidebar;
@@ -55953,10 +55935,6 @@ async function View_details_of_users_with_outstanding_payments(
                         </div>
                     </div>
 
-                    <!-- ========== 任务10：合并学校信息和账号详情为统一表单格式 ========== -->
-                    <!-- 原设计：学校信息和账号详情分为两个独立卡片 -->
-                    <!-- 新设计：合并为一个统一的表单卡片，所有信息在同一个表单中展示 -->
-                    <!-- 优点：减少视觉分隔，提高信息的整体性和可读性 -->
                     <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
                         <!-- 表单标题栏 - 使用渐变背景和图标 -->
                         <div class="bg-gradient-to-r from-blue-50 via-purple-50 to-white px-3 py-2 border-b border-blue-100 flex items-center gap-2">
@@ -56077,7 +56055,6 @@ async function View_details_of_users_with_outstanding_payments(
                             </div>
                         </div>
                     </div>
-                    <!-- ========== 任务10修改完成 ========== -->
 
                     <div class="border border-slate-200 rounded-lg overflow-hidden">
                         <button onclick="const el = this.nextElementSibling; el.classList.toggle('hidden'); this.querySelector('svg').style.transform = el.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';" 
@@ -56425,13 +56402,8 @@ async function fetchOrderAmountAndFill(tradeNo) {
   }
 
   // ========== 步骤2：调用后端API查询订单信息 ==========
-  // 任务1优化：使用新的通过订单号直接查询API，无需遍历所有订单
-  // 优势：性能更优，减少网络传输数据量，提升响应速度
-
   try {
-    // 构建API请求URL
-    // 任务1新增的接口：/api/payment/order_by_tradeno
-    // 直接通过订单号查询单个订单，避免查询所有订单后再遍历查找
+    // 构建API请求URL，通过订单号直接查询单个订单，避免查询所有订单后再遍历查找
     const url = `/api/payment/order_by_tradeno?trade_no=${encodeURIComponent(
       tradeNo,
     )}`;

@@ -8939,7 +8939,7 @@ class Api:
         if os.path.exists(user_ini_path):
             try:
                 cfg_to_save.read(user_ini_path, encoding="utf-8")
-                # ========== 任务20调试：记录读取到的所有节 ==========
+                # 记录读取到的所有节
                 logging.debug(
                     f" _save_config读取INI文件 - "
                     f"用户: {username}, 包含的节: {cfg_to_save.sections()}"
@@ -21168,7 +21168,7 @@ def start_web_server(args_param):
         """
         全局IP封禁检查拦截器
         """
-        # 使用统一函数获取客户端真实IP（任务2）
+        # 使用统一函数获取客户端真实IP
         client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
         if (
             request.path.startswith("/static/")
@@ -21668,7 +21668,7 @@ def start_web_server(args_param):
                                 "files": {},
                             }
 
-                        # 使用统一函数获取客户端真实IP（任务2）
+                        # 使用统一函数获取客户端真实IP
                         ip_address = request.environ.get(
                             "REMOTE_ADDR") or request.remote_addr
                         index_data["files"][filename] = {
@@ -21775,7 +21775,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": captcha_error_msg})
 
         session_id = request.headers.get("X-Session-ID", "")
-        # 使用统一函数获取客户端真实IP（任务2）
+        # 使用统一函数获取客户端真实IP
         ip_address = request.environ.get(
             "REMOTE_ADDR") or request.remote_addr or ""
         user_agent = request.headers.get("User-Agent", "")
@@ -22452,7 +22452,7 @@ def start_web_server(args_param):
                 }
 
                 auth_system._save_permissions()
-                # 使用统一函数获取客户端真实IP（任务2）
+                # 使用统一函数获取客户端真实IP
                 ip_address = request.environ.get(
                     "REMOTE_ADDR") or request.remote_addr
                 auth_system.log_audit(
@@ -22488,7 +22488,7 @@ def start_web_server(args_param):
 
                     auth_system._save_permissions()
 
-                    # 使用统一函数获取客户端真实IP（任务2）
+                    # 使用统一函数获取客户端真实IP
                     ip_address = request.environ.get(
                         "REMOTE_ADDR") or request.remote_addr
                     auth_system.log_audit(
@@ -22512,7 +22512,7 @@ def start_web_server(args_param):
                 target_username, permission, grant
             )
 
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -22892,7 +22892,7 @@ def start_web_server(args_param):
 
         result = auth_system.register_user(new_username, password, group)
         if result.get("success"):
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
 
@@ -22943,7 +22943,7 @@ def start_web_server(args_param):
             # 使缓存失效，确保封禁立即生效
             invalidate_user_ban_cache(target_username)
             
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -22978,7 +22978,7 @@ def start_web_server(args_param):
             # 使缓存失效，确保解封立即生效
             invalidate_user_ban_cache(target_username)
             
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -23010,7 +23010,7 @@ def start_web_server(args_param):
 
         result = auth_system.delete_user(target_username)
         if result.get("success"):
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -23052,7 +23052,7 @@ def start_web_server(args_param):
         result = auth_system.force_disable_2fa(target_username)
 
         if result.get("success"):
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -23130,7 +23130,7 @@ def start_web_server(args_param):
             logging.error(f"强制登出清理用户文件失败: {e}")
 
         # 5. 记录审计日志
-        # 使用统一函数获取客户端真实IP（任务2）
+        # 使用统一函数获取客户端真实IP
         ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
             auth_username,
@@ -23172,7 +23172,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "缺少用户名或新密码"}), 400
         result = auth_system.reset_user_password(target_username, new_password)
         if result.get("success"):
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -23218,7 +23218,7 @@ def start_web_server(args_param):
             user_data["nickname"] = nickname
             with open(user_file_path, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -23281,7 +23281,7 @@ def start_web_server(args_param):
 
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -23376,7 +23376,7 @@ def start_web_server(args_param):
                 user_data["phone"] = new_phone
                 with open(user_file_path, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -24738,7 +24738,7 @@ def start_web_server(args_param):
                         "description": "用户头像索引文件，记录每个文件的上传信息",
                         "files": {},
                     }
-                # 使用统一函数获取客户端真实IP（任务2）
+                # 使用统一函数获取客户端真实IP
                 ip_address = request.environ.get(
                     "REMOTE_ADDR") or request.remote_addr
                 index_data["files"][filename] = {
@@ -24927,7 +24927,7 @@ def start_web_server(args_param):
 
                 except Exception as e:
                     logging.error(f"清除头像文件时出错: {e}", exc_info=True)
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -25185,7 +25185,7 @@ def start_web_server(args_param):
             )
 
         result = auth_system.update_max_sessions(target_username, max_sessions)
-        # 使用统一函数获取客户端真实IP（任务2）
+        # 使用统一函数获取客户端真实IP
         ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
             auth_username,
@@ -25455,7 +25455,7 @@ def start_web_server(args_param):
         if target_session_id == session_id:
             return jsonify({"success": False, "message": "不能删除当前会话"})
 
-        # [任务47新增] 在删除会话前，检查并移除关联的自动签到配置
+        # 在删除会话前，检查并移除关联的自动签到配置
         # 查找所有使用该会话UUID的自动签到账号
         auto_attendance_accounts = _get_auto_attendance_by_session(
             target_session_id)
@@ -25561,7 +25561,7 @@ def start_web_server(args_param):
                 )
                 cleanup_thread.start()
             auth_system.link_session_to_user(auth_username, new_session_id)
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             audit_details = f"创建新会话持久化文件，会话ID: {new_session_id}"
@@ -25814,7 +25814,7 @@ def start_web_server(args_param):
         with web_sessions_lock:
             if target_session_id in web_sessions:
                 del web_sessions[target_session_id]
-        # 使用统一函数获取客户端真实IP（任务2）
+        # 使用统一函数获取客户端真实IP
         ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
             auth_username,
@@ -27217,7 +27217,7 @@ def start_web_server(args_param):
             auth_system.reload_config()
             logging.info("[配置保存] 配置已重新加载，内存缓存已更新")
 
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             auth_system.log_audit(
@@ -27247,7 +27247,7 @@ def start_web_server(args_param):
 
             # 获取公共信息
             session_id = request.headers.get("X-Session-ID", "UnknownSession")
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             username = "Guest/Unknown"
@@ -27305,7 +27305,7 @@ def start_web_server(args_param):
         except Exception as e:
             session_id_err = request.headers.get(
                 "X-Session-ID", "UnknownSession")
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address_err = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             logging.error(
@@ -27642,7 +27642,7 @@ def start_web_server(args_param):
             # 如果前面的操作失败，验证码仍然有效，用户可以重试
             del sms_verification_codes[new_phone]
 
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             ip_address = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr
             # 记录审计日志
@@ -27924,7 +27924,7 @@ def start_web_server(args_param):
             return False
 
     # ====================
-    # 任务20：短信服务配置API
+    # 短信服务配置API
     # ====================
 
     @app.route("/api/admin/sms/config", methods=["GET"])
@@ -28375,7 +28375,7 @@ def start_web_server(args_param):
                     if hasattr(g, "api_instance")
                     else None
                 )
-                # 使用统一函数获取客户端真实IP（任务2）
+                # 使用统一函数获取客户端真实IP
                 client_ip = request.environ.get(
                     "REMOTE_ADDR") or request.remote_addr
                 content = f"管理员 {g.user} 手动添加的验证码: {code}，{code_expire_minutes}分钟内有效。"
@@ -29718,7 +29718,7 @@ def start_web_server(args_param):
                                     order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
 
                             # 保存订单文件（使用增量更新模式）
-                            # [任务3优化] 调用统一的订单文件保存函数
+                            # 调用统一的订单文件保存函数
                             # 即使是首次创建订单，也使用增量更新模式，以防文件已存在
                             try:
                                 # 调用 _save_order_file_incremental 函数保存订单数据
@@ -29825,7 +29825,7 @@ def start_web_server(args_param):
                             order_data["last_notify_time"] = time.strftime(
                                 "%Y-%m-%d %H:%M:%S")
 
-                            # [任务3优化] 保存订单数据的更新（使用增量更新模式）
+                            # 保存订单数据的更新（使用增量更新模式）
                             # 这里只更新计数和时间，不执行任何业务逻辑
                             # 调用统一的订单文件保存函数，确保不丢失其他字段
                             _save_order_file_incremental(
@@ -29887,7 +29887,7 @@ def start_web_server(args_param):
                         # notify_count: 通知计数，初始值为1（表示这是第一次处理）
                         order_data["notify_count"] = 1
 
-                        # [任务3优化] 保存更新后的订单数据（使用增量更新模式）
+                        # 保存更新后的订单数据（使用增量更新模式）
                         # 调用统一的订单文件保存函数
                         _save_order_file_incremental(out_trade_no, order_data)
 
@@ -30016,7 +30016,7 @@ def start_web_server(args_param):
 
                         # 可以根据状态更新订单状态
                         if trade_status == "TRADE_CLOSED":
-                            # [任务3优化] 更新订单状态为失败（使用增量更新模式）
+                            # 更新订单状态为失败（使用增量更新模式）
                             # 调用统一的订单文件保存函数
                             order_data["status"] = ORDER_STATUS_FAILED
                             _save_order_file_incremental(
@@ -31555,7 +31555,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
     # ============================================================
-    # 任务15：IP归属地获取辅助函数
+    # IP归属地获取辅助函数
     # ============================================================
     global get_ip_location
 
@@ -31624,7 +31624,7 @@ def start_web_server(args_param):
         # ============================================================
         # IP封禁检查：留言板功能专项封禁
         # ============================================================
-        # 使用统一函数获取客户端真实IP（任务2）
+        # 使用统一函数获取客户端真实IP
         client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
 
         if check_ip_ban(client_ip, scope="messages_only"):
@@ -31898,10 +31898,10 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "邮箱格式不正确"})
 
         # ============================================================
-        # 任务15：获取用户信息（昵称、头像）和IP归属地
+        # 获取用户信息（昵称、头像）和IP归属地
         # 为留言添加更丰富的用户信息和位置信息
         # ============================================================
-        # 使用统一函数获取客户端真实IP（任务2）
+        # 使用统一函数获取客户端真实IP
         client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
         ip_city = get_ip_location(client_ip)
         user_nickname = nickname
@@ -32126,7 +32126,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "保存留言失败"}), 500
 
     # ============================================================
-    # 任务22：高德地图Key验证API
+    # 高德地图Key验证API
     # 用于验证用户输入的高德地图API Key是否有效
     # ============================================================
     @app.route("/api/validate_amap_key", methods=["POST"])
@@ -33186,7 +33186,7 @@ def start_web_server(args_param):
                     logging.error(f"[验证码历史] 记录历史失败: {e}", exc_info=True)
 
 
-            # 使用统一函数获取客户端真实IP（任务2）
+            # 使用统一函数获取客户端真实IP
             client_ip_data = request.environ.get(
                 "REMOTE_ADDR") or request.remote_addr or "unknown"
             user_agent_data = request.headers.get("User-Agent", "unknown")
@@ -34138,7 +34138,7 @@ def start_web_server(args_param):
                     "code": code.upper(),
                     "html": html,
                     "session_id": request.headers.get("X-Session-ID", "unknown"),
-                    # 使用统一函数获取客户端真实IP（任务2）
+                    # 使用统一函数获取客户端真实IP
                     "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                     "user_agent": request.headers.get("User-Agent", "unknown"),
                     "timestamp": time.time(),
@@ -34270,7 +34270,7 @@ def start_web_server(args_param):
 
     def _save_order_file_incremental(order_id, order_data):
         """
-        [任务3] 增量更新模式保存订单文件
+        增量更新模式保存订单文件
 
         功能说明:
         这是一个统一的订单文件写入函数，用于替代所有直接覆盖写入的代码。
@@ -34498,7 +34498,7 @@ def start_web_server(args_param):
             # 所有日志文件统一存放在 PAYMENT_LOGS_DIR 目录下，不再按用户分子目录
             log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
 
-            # ========== 任务4增强：准备更详细的支付日志数据 ==========
+            # ========== 准备支付日志数据 ==========
             # 合并基础信息和传入的自定义数据，形成完整的日志记录
             # 新增字段：referer、request_method、request_path、session_id等
             full_log_data = {
@@ -34542,7 +34542,7 @@ def start_web_server(args_param):
                 **log_data
             }
 
-            # ========== 任务4增强：写入日志文件并检查日志目录大小 ==========
+            # ========== 写入日志文件并检查日志目录大小 ==========
 
             # --- 步骤1：写入日志文件 ---
             # 将日志数据序列化为JSON格式并写入文件
@@ -35351,7 +35351,7 @@ def start_web_server(args_param):
                         else:
                             order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
 
-                        # [任务3优化] 保存更新后的订单（使用增量更新模式）
+                        # 保存更新后的订单（使用增量更新模式）
                         # 调用统一的订单文件保存函数
                         _save_order_file_incremental(trade_no, order_data)
 
@@ -35629,7 +35629,7 @@ def start_web_server(args_param):
                 order_data["refund_count"] = 1
                 logging.info(f"[退款请求] 退款次数已更新为：1")
 
-                # [任务3优化] 保存更新后的订单数据到文件（使用增量更新模式）
+                # 保存更新后的订单数据到文件（使用增量更新模式）
                 # 调用统一的订单文件保存函数，确保不丢失其他字段
                 _save_order_file_incremental(trade_no, order_data)
 
@@ -35923,7 +35923,7 @@ def start_web_server(args_param):
                 order_file = os.path.join(
                     PAYMENT_ORDERS_DIR, f"{order_id}.json")
 
-                # [任务3优化] 将订单数据写入JSON文件（使用增量更新模式）
+                # 将订单数据写入JSON文件（使用增量更新模式）
                 # 调用统一的订单文件保存函数
                 _save_order_file_incremental(order_id, order_data)
 
@@ -36105,11 +36105,11 @@ def start_web_server(args_param):
                     order_data["paid_time"] = time.strftime(
                         "%Y-%m-%d %H:%M:%S")
 
-                    # ========== 任务3优化：使用增量更新模式保存订单 ==========
+                    # ========== 使用增量更新模式保存订单 ==========
                     # 原因：避免覆盖订单文件中可能存在的其他字段
                     # 例如：退款信息、管理员备注等
 
-                    # [任务3优化] 使用统一的增量更新函数保存订单数据
+                    # 使用统一的增量更新函数保存订单数据
                     # 替换原来的手动增量更新逻辑
                     _save_order_file_incremental(order_id, order_data)
 
@@ -36632,7 +36632,7 @@ def start_web_server(args_param):
                 "device": device,  # 设备类型
             }
 
-            # [任务3优化] 使用统一的增量更新函数写入订单文件
+            # 使用统一的增量更新函数写入订单文件
             # 替换原来的手动增量更新逻辑，使用统一的 _save_order_file_incremental 函数
             # 该函数会自动处理：目录创建、文件读取、数据合并、文件写入、异常处理
             _save_order_file_incremental(out_trade_no, order_data)
@@ -37255,14 +37255,14 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": f"查询失败: {str(e)}"}), 500
 
     # ==============================================================================
-    # 任务1新增：通过订单号直接查询订单接口（无需遍历所有订单，性能更优）
+    # 通过订单号直接查询订单接口（无需遍历所有订单，性能更优）
     # ==============================================================================
 
     @app.route("/api/payment/order_by_tradeno", methods=["GET"])
     @login_required
     def payment_get_order_by_tradeno():
         """
-        通过订单号直接查询单个订单接口（任务1新增）
+        通过订单号直接查询单个订单接口
 
         请求方法：GET
         权限要求：需要登录
@@ -37390,12 +37390,12 @@ def start_web_server(args_param):
 
             # ========== 步骤6：返回订单数据 ==========
 
-            # 任务4增强：记录订单查询操作日志
+            # 记录订单查询操作日志
             # 记录成功的订单查询，用于审计和安全监控
             _write_payment_log(
                 user_id=g.user,                     # 查询用户
                 order_id=trade_no,                  # 订单号
-                action="query_order_by_tradeno",   # 操作类型：通过订单号查询订单（任务1新增接口）
+                action="query_order_by_tradeno",   # 操作类型：通过订单号查询订单
                 log_data={
                     "query_method": "direct",       # 查询方式：直接查询（区别于列表查询）
                     "order_status": order_data.get("status"),  # 订单状态
@@ -39043,7 +39043,7 @@ def start_web_server(args_param):
                 # 这样才能正确比较新旧值，记录准确的变更日志
                 old_host = config.get("Rainbow_YiPay", "host", fallback="")
                 old_pid = config.get("Rainbow_YiPay", "pid", fallback="")
-                # 【任务1修复】保存旧的密钥值，用于后续判断密钥是否被修改
+                # 保存旧的密钥值，用于后续判断密钥是否被修改
                 # 必须在 config.set("Rainbow_YiPay", "key", new_key) 之前获取
                 old_key = config.get("Rainbow_YiPay", "key", fallback="")
                 old_enabled_payment_methods = config.get(
@@ -39096,7 +39096,7 @@ def start_web_server(args_param):
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
                 # 注意：不记录完整的密钥和公钥，只记录是否修改了它们
-                # 【任务1修复】使用 old_key 与 new_key 比较，而不是从已更新的config中读取
+                # 使用 old_key 与 new_key 比较，而不是从已更新的config中读取
                 # 因为在此之前已经执行了 config.set("Rainbow_YiPay", "key", new_key)
                 # 所以必须使用预先保存的 old_key 变量进行比较
                 key_changed = (new_key != old_key)
@@ -39189,7 +39189,7 @@ def start_web_server(args_param):
         请求方法：GET
         权限要求：登录用户（login_required装饰器）
 
-        权限说明（任务5新增）：
+        权限说明：
         1. 如果用户是管理员（admin/super_admin）：可以访问，返回自己的日志
            （管理员查看所有用户日志请使用 /api/admin/payment_logs 接口）
         2. 如果用户不是管理员：
@@ -39254,7 +39254,7 @@ def start_web_server(args_param):
                     f"组别: {user_group}, 是否管理员: {is_admin}"
                 )
 
-            # ========== 步骤2：权限控制检查（任务5核心逻辑） ==========
+            # ========== 步骤2：权限控制检查 ==========
             # 如果用户不是管理员，需要额外检查系统是否启用了付费功能
             # 只有在启用付费功能时，普通用户才被允许查看自己的支付日志
             if not is_admin:
@@ -40255,7 +40255,7 @@ def start_web_server(args_param):
 
                 local_order_data = order_data  # 使用更新后的订单数据
                 try:
-                    # [任务3优化] 写入订单文件（使用增量更新模式）
+                    # 写入订单文件（使用增量更新模式）
                     # 调用统一的订单文件保存函数
                     _save_order_file_incremental(
                         out_trade_no, local_order_data)
@@ -40778,7 +40778,7 @@ def start_web_server(args_param):
                             logging.warning(
                                 f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, 错误: {str(e)}")
 
-                    # [任务3优化] 保存订单到本地文件（使用增量更新模式）
+                    # 保存订单到本地文件（使用增量更新模式）
                     # 调用统一的订单文件保存函数
                     _save_order_file_incremental(
                         out_trade_no, local_order_data)
