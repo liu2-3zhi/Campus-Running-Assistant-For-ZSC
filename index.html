@@ -573,7 +573,7 @@
         </button>
       </div>
 
-      <div id="auth-login-form" class="space-y-4 overflow-y-auto max-h-[60vh] p-1">
+      <form id="auth-login-form" class="space-y-4 overflow-y-auto max-h-[60vh] p-1" autocomplete="on" onsubmit="return false;">
         <div id="auth-login-type-toggle" class="flex justify-center gap-2 pb-2">
           <button id="auth-login-username-btn" class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm" title="用户名登录" aria-label="用户名登录">
             用户名登录
@@ -586,7 +586,7 @@
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700" id="auth-login-label">用户名</label>
           <div id="auth-username-container">
-            <input type="text" id="auth-username" class="input-field mt-1" placeholder="请输入用户名" autocomplete="username">
+            <input type="text" id="auth-username" name="username" class="input-field mt-1" placeholder="请输入用户名" autocomplete="username">
           </div>
         </div>
 
@@ -597,7 +597,7 @@
               使用验证码登录
             </button>
           </div>
-          <input type="password" id="auth-password" class="input-field mt-1" placeholder="请输入密码" autocomplete="current-password">
+          <input type="password" id="auth-password" name="password" class="input-field mt-1" placeholder="请输入密码" autocomplete="current-password">
         </div>
 
         <div id="auth-sms-section" class="hidden">
@@ -665,12 +665,12 @@
             </div>
           </div>
         </div>
-      </div>
+      </form>
 
-      <div id="auth-register-form" class="hidden space-y-4 overflow-y-auto max-h-[60vh] p-1">
+      <form id="auth-register-form" class="hidden space-y-4 overflow-y-auto max-h-[60vh] p-1" autocomplete="on" onsubmit="return false;">
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700">用户名</label>
-          <input type="text" id="auth-reg-username" class="input-field mt-1" placeholder="请输入用户名（3-20字符，不含中文）" autocomplete="username">
+          <input type="text" id="auth-reg-username" name="username" class="input-field mt-1" placeholder="请输入用户名（3-20字符，不含中文）" autocomplete="username">
         </div>
 
         <div id="auth-reg-phone-wrapper">
@@ -712,11 +712,11 @@
 
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700">密码</label>
-          <input type="password" id="auth-reg-password" class="input-field mt-1" placeholder="请输入密码（至少6字符）" autocomplete="new-password">
+          <input type="password" id="auth-reg-password" name="new-password" class="input-field mt-1" placeholder="请输入密码（至少6字符）" autocomplete="new-password">
         </div>
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700">确认密码</label>
-          <input type="password" id="auth-reg-password-confirm" class="input-field mt-1" placeholder="请再次输入密码" autocomplete="new-password">
+          <input type="password" id="auth-reg-password-confirm" name="new-password-confirm" class="input-field mt-1" placeholder="请再次输入密码" autocomplete="new-password">
         </div>
 
         <div>
@@ -747,7 +747,7 @@
         <button id="auth-register-btn" class="btn btn-success w-full py-3" style="min-height: 44px" title="注册" aria-label="注册">
           注册
         </button>
-      </div>
+      </form>
 
       <div id="auth-2fa-form" class="hidden space-y-4">
         <div class="text-center mb-4">
@@ -1583,7 +1583,7 @@
             </button>
           </div>
 
-          <div id="mobile-login-form" class="space-y-4">
+          <form id="mobile-login-form" class="space-y-4" autocomplete="on" onsubmit="return false;">
             <div id="mobile-login-type-toggle" class="flex justify-center gap-2 pb-2">
               <button id="mobile-login-username-btn" class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm">
                 用户名登录
@@ -1596,7 +1596,7 @@
             <div class="mobile-form-group">
               <label class="mobile-form-label" id="mobile-login-label">用户名</label>
               <div id="mobile-username-container" class="mt-1">
-                <input type="text" id="mobile-auth-username" class="w-full" placeholder="请输入用户名" autocomplete="username">
+                <input type="text" id="mobile-auth-username" name="username" class="w-full" placeholder="请输入用户名" autocomplete="username">
               </div>
             </div>
 
@@ -1607,7 +1607,7 @@
                   使用验证码
                 </button>
               </div>
-              <input type="password" id="mobile-auth-password" class="w-full" placeholder="请输入密码" autocomplete="current-password">
+              <input type="password" id="mobile-auth-password" name="password" class="w-full" placeholder="请输入密码" autocomplete="current-password">
             </div>
 
             <div id="mobile-sms-section" class="mobile-form-group hidden">
@@ -1676,12 +1676,12 @@
                 </div>
               </div>
             </div>
-          </div>
+          </form>
 
-          <div id="mobile-register-form" class="space-y-4 hidden">
+          <form id="mobile-register-form" class="space-y-4 hidden" autocomplete="on" onsubmit="return false;">
             <div class="mobile-form-group">
               <label class="mobile-form-label">用户名</label>
-              <input type="text" id="mobile-reg-username" class="w-full" placeholder="3-20字符，不含中文" autocomplete="username">
+              <input type="text" id="mobile-reg-username" name="username" class="w-full" placeholder="3-20字符，不含中文" autocomplete="username">
             </div>
 
             <div class="mobile-form-group" id="mobile-reg-phone-wrapper">
@@ -1726,12 +1726,12 @@
 
             <div class="mobile-form-group">
               <label class="mobile-form-label">密码</label>
-              <input type="password" id="mobile-reg-password" class="w-full" placeholder="请输入密码（至少6字符）" autocomplete="new-password">
+              <input type="password" id="mobile-reg-password" name="new-password" class="w-full" placeholder="请输入密码（至少6字符）" autocomplete="new-password">
             </div>
 
             <div class="mobile-form-group">
               <label class="mobile-form-label">确认密码</label>
-              <input type="password" id="mobile-reg-password-confirm" class="w-full" placeholder="请再次输入密码" autocomplete="new-password">
+              <input type="password" id="mobile-reg-password-confirm" name="new-password-confirm" class="w-full" placeholder="请再次输入密码" autocomplete="new-password">
             </div>
 
             <!-- ========================================
@@ -1767,7 +1767,7 @@
                 ">
               注册
             </button>
-          </div>
+          </form>
 
           <div id="mobile-auth-2fa-form" class="space-y-4 hidden">
             <div class="text-center mb-4">
