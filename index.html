@@ -573,7 +573,7 @@
         </button>
       </div>
 
-      <div id="auth-login-form" class="space-y-4 overflow-y-auto max-h-[60vh] p-1">
+      <form id="auth-login-form" class="space-y-4 overflow-y-auto max-h-[60vh] p-1" autocomplete="on" onsubmit="return false;">
         <div id="auth-login-type-toggle" class="flex justify-center gap-2 pb-2">
           <button id="auth-login-username-btn" class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm" title="用户名登录" aria-label="用户名登录">
             用户名登录
@@ -586,7 +586,7 @@
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700" id="auth-login-label">用户名</label>
           <div id="auth-username-container">
-            <input type="text" id="auth-username" class="input-field mt-1" placeholder="请输入用户名" autocomplete="username">
+            <input type="text" id="auth-username" name="username" class="input-field mt-1" placeholder="请输入用户名" autocomplete="username">
           </div>
         </div>
 
@@ -597,7 +597,7 @@
               使用验证码登录
             </button>
           </div>
-          <input type="password" id="auth-password" class="input-field mt-1" placeholder="请输入密码" autocomplete="current-password">
+          <input type="password" id="auth-password" name="password" class="input-field mt-1" placeholder="请输入密码" autocomplete="current-password">
         </div>
 
         <div id="auth-sms-section" class="hidden">
@@ -665,12 +665,12 @@
             </div>
           </div>
         </div>
-      </div>
+      </form>
 
-      <div id="auth-register-form" class="hidden space-y-4 overflow-y-auto max-h-[60vh] p-1">
+      <form id="auth-register-form" class="hidden space-y-4 overflow-y-auto max-h-[60vh] p-1" autocomplete="on" onsubmit="return false;">
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700">用户名</label>
-          <input type="text" id="auth-reg-username" class="input-field mt-1" placeholder="请输入用户名（3-20字符，不含中文）" autocomplete="username">
+          <input type="text" id="auth-reg-username" name="username" class="input-field mt-1" placeholder="请输入用户名（3-20字符，不含中文）" autocomplete="username">
         </div>
 
         <div id="auth-reg-phone-wrapper">
@@ -712,11 +712,11 @@
 
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700">密码</label>
-          <input type="password" id="auth-reg-password" class="input-field mt-1" placeholder="请输入密码（至少6字符）" autocomplete="new-password">
+          <input type="password" id="auth-reg-password" name="new-password" class="input-field mt-1" placeholder="请输入密码（至少6字符）" autocomplete="new-password">
         </div>
         <div>
           <label class="block text-sm font-semibold leading-6 text-slate-700">确认密码</label>
-          <input type="password" id="auth-reg-password-confirm" class="input-field mt-1" placeholder="请再次输入密码" autocomplete="new-password">
+          <input type="password" id="auth-reg-password-confirm" name="new-password-confirm" class="input-field mt-1" placeholder="请再次输入密码" autocomplete="new-password">
         </div>
 
         <div>
@@ -747,7 +747,7 @@
         <button id="auth-register-btn" class="btn btn-success w-full py-3" style="min-height: 44px" title="注册" aria-label="注册">
           注册
         </button>
-      </div>
+      </form>
 
       <div id="auth-2fa-form" class="hidden space-y-4">
         <div class="text-center mb-4">
@@ -1583,8 +1583,8 @@
             </button>
           </div>
 
-          <div id="mobile-login-form" class="space-y-4">
-            <div class="flex justify-center gap-2 pb-2">
+          <form id="mobile-login-form" class="space-y-4" autocomplete="on" onsubmit="return false;">
+            <div id="mobile-login-type-toggle" class="flex justify-center gap-2 pb-2">
               <button id="mobile-login-username-btn" class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm">
                 用户名登录
               </button>
@@ -1596,7 +1596,7 @@
             <div class="mobile-form-group">
               <label class="mobile-form-label" id="mobile-login-label">用户名</label>
               <div id="mobile-username-container" class="mt-1">
-                <input type="text" id="mobile-auth-username" class="w-full" placeholder="请输入用户名" autocomplete="username">
+                <input type="text" id="mobile-auth-username" name="username" class="w-full" placeholder="请输入用户名" autocomplete="username">
               </div>
             </div>
 
@@ -1607,7 +1607,7 @@
                   使用验证码
                 </button>
               </div>
-              <input type="password" id="mobile-auth-password" class="w-full" placeholder="请输入密码" autocomplete="current-password">
+              <input type="password" id="mobile-auth-password" name="password" class="w-full" placeholder="请输入密码" autocomplete="current-password">
             </div>
 
             <div id="mobile-sms-section" class="mobile-form-group hidden">
@@ -1676,15 +1676,15 @@
                 </div>
               </div>
             </div>
-          </div>
+          </form>
 
-          <div id="mobile-register-form" class="space-y-4 hidden">
+          <form id="mobile-register-form" class="space-y-4 hidden" autocomplete="on" onsubmit="return false;">
             <div class="mobile-form-group">
               <label class="mobile-form-label">用户名</label>
-              <input type="text" id="mobile-reg-username" class="w-full" placeholder="3-20字符，不含中文" autocomplete="username">
+              <input type="text" id="mobile-reg-username" name="username" class="w-full" placeholder="3-20字符，不含中文" autocomplete="username">
             </div>
 
-            <div class="mobile-form-group">
+            <div class="mobile-form-group" id="mobile-reg-phone-wrapper">
               <label class="mobile-form-label">手机号</label>
               <div class="phone-input-wrapper mt-1">
                 <span class="phone-prefix">+86 </span>
@@ -1692,7 +1692,7 @@
               </div>
             </div>
 
-            <div class="mobile-form-group">
+            <div class="mobile-form-group" id="mobile-reg-sms-wrapper">
               <label class="mobile-form-label">验证码</label>
               <div class="flex gap-2">
                 <input type="text" id="mobile-reg-sms-code" class="w-full flex-1" placeholder="6位验证码" maxlength="6" inputmode="numeric">
@@ -1726,12 +1726,12 @@
 
             <div class="mobile-form-group">
               <label class="mobile-form-label">密码</label>
-              <input type="password" id="mobile-reg-password" class="w-full" placeholder="请输入密码（至少6字符）" autocomplete="new-password">
+              <input type="password" id="mobile-reg-password" name="new-password" class="w-full" placeholder="请输入密码（至少6字符）" autocomplete="new-password">
             </div>
 
             <div class="mobile-form-group">
               <label class="mobile-form-label">确认密码</label>
-              <input type="password" id="mobile-reg-password-confirm" class="w-full" placeholder="请再次输入密码" autocomplete="new-password">
+              <input type="password" id="mobile-reg-password-confirm" name="new-password-confirm" class="w-full" placeholder="请再次输入密码" autocomplete="new-password">
             </div>
 
             <!-- ========================================
@@ -1767,7 +1767,7 @@
                 ">
               注册
             </button>
-          </div>
+          </form>
 
           <div id="mobile-auth-2fa-form" class="space-y-4 hidden">
             <div class="text-center mb-4">
@@ -2851,6 +2851,20 @@
                 </button>
               </div>
             </div>
+            <!-- 移动端排序控件 -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs text-slate-500">排序：</span>
+              <select id="mobile-admin-users-sort-field" class="text-xs border border-slate-300 rounded px-2 py-1" onchange="resortAdminUsers()" aria-label="移动端用户列表排序字段">
+                <option value="created_at">创建时间</option>
+                <option value="auth_username">用户名</option>
+                <option value="nickname">昵称</option>
+                <option value="last_login">最后登录时间</option>
+                <option value="max_sessions">会话限制数量</option>
+                <option value="available_runs">可用次数</option>
+                <option value="tfa">2FA</option>
+              </select>
+              <button id="mobile-admin-users-sort-dir" class="btn btn-ghost !py-0.5 !px-2 text-xs border border-slate-300" onclick="toggleAdminUsersSort()" title="切换排序方向" data-dir="desc">↓ 降序</button>
+            </div>
             <!-- 用户列表容器：限制最大高度并支持滚动 -->
             <div id="mobile-multi-admin-users-list" class="space-y-2 max-h-auto overflow-y-auto">
               <!-- 加载占位提示 -->
@@ -3051,7 +3065,7 @@
                       修改手机号
                     </button>
                   </div>
-                  <p class="text-xs text-slate-500 mt-1">
+                  <p class="text-xs text-slate-500 mt-1" id="mobile-unified-modify-phone-hint">
                     💡 修改手机号需要短信验证
                   </p>
                 </div>
@@ -3065,7 +3079,7 @@
                     <label class="block text-xs font-medium text-slate-600 mb-1">当前密码</label>
                     <input type="password" id="mobile-unified-current-password" class="input-field !text-xs !py-1.5" placeholder="输入当前密码">
                     <!-- 提示用户可以使用短信验证 -->
-                    <p class="text-xs text-slate-500 mt-1">
+                    <p id="mobile-forgot-password-hint" class="text-xs text-slate-500 mt-1">
                       忘记原密码？<button type="button" onclick="toggleSmsVerifyMode('mobile')" class="text-sky-600 hover:underline" id="mobile-sms-toggle-btn">
                         使用短信验证
                       </button>
@@ -3221,18 +3235,18 @@
               </button>
             </div>
 
-            <div id="mobile-multi-admin-sessions-list" class="space-y-2 max-h-auto overflow-y-auto">
-              <p class="text-slate-400 text-center py-10 text-xs">
-                加载中...
-              </p>
-            </div>
-
-            <div class="mt-2 pt-3 border-t border-slate-100 text-center">
+            <div class="py-2 px-3 bg-slate-50 border border-slate-100 rounded-lg text-center">
               <p class="text-[10px] text-slate-400 flex items-center justify-center gap-1">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
-                长按会话可删除，点击即可切换
+                长按会话可删除，双击即可切换
+              </p>
+            </div>
+
+            <div id="mobile-multi-admin-sessions-list" class="space-y-2 max-h-auto overflow-y-auto">
+              <p class="text-slate-400 text-center py-10 text-xs">
+                加载中...
               </p>
             </div>
           </div>
@@ -3720,6 +3734,33 @@
               </p>
             </div>
             
+            <!-- 添加欠费功能区域 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3 mb-3">
+              <!-- 区域标题 -->
+              <h4 class="text-sm font-semibold text-slate-700 mb-2">
+                <svg class="w-4 h-4 inline mr-1 text-red-500" aria-label="添加欠费图标" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                添加欠费
+              </h4>
+              <div class="space-y-2">
+                <!-- 学校账号输入框 -->
+                <div>
+                  <label for="mobile-add-overdue-school-username" class="block text-xs font-medium text-slate-700 mb-1">学校账号</label>
+                  <input type="text" id="mobile-add-overdue-school-username" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入学校账号">
+                </div>
+                <!-- 欠费次数输入框 -->
+                <div>
+                  <label for="mobile-add-overdue-count" class="block text-xs font-medium text-slate-700 mb-1">欠费次数</label>
+                  <input type="number" id="mobile-add-overdue-count" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入欠费次数">
+                </div>
+                <!-- 添加按钮 -->
+                <button onclick="mobileAdminAddOverdue()" class="w-full py-2 bg-red-500 text-white rounded-md text-sm font-medium hover:bg-red-600 active:bg-red-700 transition-colors min-h-[40px]">
+                  添加欠费
+                </button>
+              </div>
+            </div>
+
             <!-- 欠费账号列表容器 -->
             <div id="mobile-overdue-accounts-list" class="space-y-2">
               <!-- 动态加载欠费账号列表 -->
@@ -7227,6 +7268,20 @@
               </button>
             </div>
           </div>
+          <!-- 排序控件 -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs text-slate-500">排序：</span>
+            <select id="admin-users-sort-field_modal" class="text-xs border border-slate-300 rounded px-2 py-1" onchange="resortAdminUsers()" aria-label="用户列表排序字段">
+              <option value="created_at">创建时间</option>
+              <option value="auth_username">用户名</option>
+              <option value="nickname">昵称</option>
+              <option value="last_login">最后登录时间</option>
+              <option value="max_sessions">会话限制数量</option>
+              <option value="available_runs">可用次数</option>
+              <option value="tfa">2FA</option>
+            </select>
+            <button id="admin-users-sort-dir_modal" class="btn btn-ghost !py-0.5 !px-2 text-xs border border-slate-300" onclick="toggleAdminUsersSort()" title="切换排序方向" data-dir="desc">↓ 降序</button>
+          </div>
           <div id="admin-users-list_modal" class="space-y-2 max-h-[50vh] overflow-y-auto -mr-2 pr-2">
             <p class="text-slate-400 text-center py-10">加载中...</p>
           </div>
@@ -7400,7 +7455,7 @@
                   <label class="block text-sm font-semibold text-slate-700 mb-1">当前密码</label>
                   <input type="password" id="profile-current-password" class="input-field" placeholder="输入当前密码">
                   <!-- 提示用户可以使用短信验证 -->
-                  <p class="text-xs text-slate-500 mt-1">
+                  <p id="pc-forgot-password-hint" class="text-xs text-slate-500 mt-1">
                     忘记原密码？<button type="button" onclick="toggleSmsVerifyMode('pc')" class="text-sky-600 hover:underline" id="pc-sms-toggle-btn">
                       使用短信验证
                     </button>
@@ -11095,10 +11150,10 @@
     <!-- rounded-t-3xl: 顶部大圆角（3xl=24px），符合现代移动端UI设计趋势 -->
     <!-- p-6: 内边距为1.5rem（24px），提供舒适的视觉空间 -->
     <!-- space-y-4: 子元素之间垂直间距为1rem（16px） -->
-    <!-- max-h-[85vh]: 最大高度为视口高度的85%，确保在小屏幕上不会溢出 -->
+    <!-- max-h-[75vh]: 最大高度为视口高度的75%，留出更多顶部空白区域方便点击关闭 -->
     <!-- overflow-y-auto: 内容超出时显示垂直滚动条 -->
     <!-- onclick="event.stopPropagation()": 阻止事件冒泡，点击内容区域不会触发关闭 -->
-    <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+    <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[75vh] overflow-y-auto" onclick="event.stopPropagation()">
       
       <!-- 顶部拖动指示器 -->
       <!-- 这是移动端模态框的标准设计元素，暗示用户可以向下滑动关闭 -->

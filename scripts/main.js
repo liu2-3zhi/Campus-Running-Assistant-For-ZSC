@@ -12,7 +12,6 @@ const SECURITY_CONSTRAINTS = {
   USERNAME_PATTERN: /^[a-zA-Z0-9_\-\.@]+$/,
 };
 
-
 // let captchaIds = {
 //   login: null,
 //   register: null,
@@ -26,12 +25,11 @@ captchaIds_modal = null;
 captchaIds_mobile_login = null;
 captchaIds_mobile_register = null;
 
-
 function getUUIDFromURL() {
   const urlPath = window.location.pathname;
 
   const match = urlPath.match(
-    /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i
+    /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i,
   );
 
   if (match && match[1]) {
@@ -232,10 +230,10 @@ function loadSMSReplyLogs() {
                 <span class="text-2xl">📱</span>
                 <div>
                   <div class="font-semibold text-slate-800">${escapeHTML(
-                    log.phone || "未知号码"
+                    log.phone || "未知号码",
                   )}</div>
                   <div class="text-xs text-slate-500">${escapeHTML(
-                    log.datetime || ""
+                    log.datetime || "",
                   )}</div>
                 </div>
               </div>
@@ -363,7 +361,7 @@ function loadPaymentLogs(page) {
   // 获取日志列表容器元素的DOM引用
   // 这个容器用于显示支付日志列表
   const listContainer = document.getElementById(
-    "mobile-multi-admin-payment-logs-list"
+    "mobile-multi-admin-payment-logs-list",
   );
   if (!listContainer) {
     // 防御性检查：如果找不到容器元素，在控制台输出错误并返回
@@ -526,7 +524,7 @@ function loadPaymentLogs(page) {
             // 如果日志中包含金额信息，格式化为货币格式（保留2位小数）
             const amountHTML = log.amount
               ? `<div class="text-xs text-slate-600">金额: <span class="font-semibold text-green-600">¥${parseFloat(
-                  log.amount
+                  log.amount,
                 ).toFixed(2)}</span></div>`
               : "";
 
@@ -609,7 +607,7 @@ function loadPaymentLogs(page) {
       // 在控制台输出成功信息，方便调试
       // console.log(`[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
       logMessage_Info(
-        `[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`
+        `[支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`,
       );
     })
     .catch((error) => {
@@ -1038,7 +1036,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // 绑定"刷新"按钮的点击事件
   // 点击后重新加载当前页的数据
   const refreshBtn = document.getElementById(
-    "mobile-multi-admin-refresh-payment-logs"
+    "mobile-multi-admin-refresh-payment-logs",
   );
   if (refreshBtn) {
     refreshBtn.addEventListener("click", function () {
@@ -1176,7 +1174,7 @@ function loadAdminPaymentLogs(page) {
   // 获取日志列表容器元素的DOM引用
   // 这个容器用于显示支付日志列表
   const listContainer = document.getElementById(
-    "admin-payment-logs-list_modal"
+    "admin-payment-logs-list_modal",
   );
   if (!listContainer) {
     // 防御性检查：如果找不到容器元素，输出错误信息并返回
@@ -1208,7 +1206,7 @@ function loadAdminPaymentLogs(page) {
   // 从下拉选择框获取用户选择的操作类型（如：create_order, payment_success等）
   // 使用trim()去除首尾空格，确保数据的干净性
   const actionTypeSelect = document.getElementById(
-    "admin-payment-logs-action-type_modal"
+    "admin-payment-logs-action-type_modal",
   );
   const actionType = actionTypeSelect ? actionTypeSelect.value.trim() : "";
 
@@ -1216,14 +1214,14 @@ function loadAdminPaymentLogs(page) {
   // 开始日期：用户可以选择查询从某个日期开始的日志
   // 日期格式：YYYY-MM-DD（HTML5 date input的标准格式）
   const startDateInput = document.getElementById(
-    "admin-payment-logs-start-date_modal"
+    "admin-payment-logs-start-date_modal",
   );
   const startDate = startDateInput ? startDateInput.value.trim() : "";
 
   // 结束日期：用户可以选择查询到某个日期结束的日志
   // 日期格式：YYYY-MM-DD（与开始日期格式一致）
   const endDateInput = document.getElementById(
-    "admin-payment-logs-end-date_modal"
+    "admin-payment-logs-end-date_modal",
   );
   const endDate = endDateInput ? endDateInput.value.trim() : "";
 
@@ -1323,7 +1321,7 @@ function loadAdminPaymentLogs(page) {
       // Math.ceil向上取整，确保即使最后一页不满也算一页
       // 例如：23条记录，每页20条，总页数为Math.ceil(23/20)=2页
       adminPaymentLogsState.totalPages = Math.ceil(
-        total / adminPaymentLogsState.perPage
+        total / adminPaymentLogsState.perPage,
       );
 
       // ========== 渲染日志列表 ==========
@@ -1386,7 +1384,7 @@ function loadAdminPaymentLogs(page) {
             // 三元运算符：如果log.amount存在则显示金额，否则返回空字符串
             const amountHTML = log.amount
               ? `<div class="text-sm text-slate-600">金额: <span class="font-semibold text-green-600">¥${parseFloat(
-                  log.amount
+                  log.amount,
                 ).toFixed(2)}</span></div>`
               : "";
 
@@ -1498,7 +1496,7 @@ function loadAdminPaymentLogs(page) {
       // 显示当前页码、本页记录数、总记录数
       // console.log(`[PC端支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`);
       logMessage_Info(
-        `[PC端支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`
+        `[PC端支付日志] 成功加载第${page}页，共${logs.length}条记录，总计${total}条`,
       );
     })
     .catch((error) => {
@@ -1558,7 +1556,7 @@ function updateAdminPaymentLogsPagination() {
 
   // 获取页码显示元素
   const pageInfo = document.getElementById(
-    "admin-payment-logs-page-info_modal"
+    "admin-payment-logs-page-info_modal",
   );
   // 获取上一页按钮
   const prevBtn = document.getElementById("admin-payment-logs-prev-btn_modal");
@@ -1829,7 +1827,7 @@ async function showPaymentLogDetail(logId) {
 
     // 在模态框中显示错误信息
     const errorMessageElem = document.getElementById(
-      "log-detail-error-message"
+      "log-detail-error-message",
     );
     if (errorMessageElem) {
       errorMessageElem.textContent = error.message || "未知错误";
@@ -2014,14 +2012,14 @@ document.addEventListener("DOMContentLoaded", function loadBeianInfo() {
             // 元素ID格式：prefix + "police-beian-link"
             // 例如：auth-police-beian-link, pc-police-beian-link, mobile-police-beian-link
             const policeLink = document.getElementById(
-              prefix + "police-beian-link"
+              prefix + "police-beian-link",
             );
 
             // 获取公安备案文本span元素的DOM引用
             // 这个span用于显示实际的公安备案号文字
             // 元素ID格式：prefix + "police-beian-text"
             const policeText = document.getElementById(
-              prefix + "police-beian-text"
+              prefix + "police-beian-text",
             );
 
             // 确保两个元素都存在，才进行后续操作
@@ -2122,7 +2120,7 @@ function switchPaymentSettingsTab(tabName) {
     const tabButton = document.getElementById(`payment-settings-tab-${tab}`);
     // 获取标签页内容区域元素
     const tabContent = document.getElementById(
-      `payment-settings-content-${tab}`
+      `payment-settings-content-${tab}`,
     );
 
     // 检查当前遍历的标签页是否是要显示的目标标签页
@@ -2190,7 +2188,7 @@ function switchPaymentSettingsTab(tabName) {
         "text-sky-600",
         "border-b-2",
         "border-sky-600",
-        "font-semibold"
+        "font-semibold",
       );
 
       // 2. 移除标签页按钮的非激活状态样式
@@ -2210,7 +2208,7 @@ function switchPaymentSettingsTab(tabName) {
         "text-sky-600",
         "border-b-2",
         "border-sky-600",
-        "font-semibold"
+        "font-semibold",
       );
 
       // 2. 为其他标签页按钮添加非激活状态样式
@@ -2399,7 +2397,7 @@ function sanitizeSVG(svgString) {
  */
 async function loadPaymentMethodsConfig(
   show_Modal_Alert = true,
-  DOMContentLoaded_Event = false
+  DOMContentLoaded_Event = false,
 ) {
   // 输出日志，便于调试和追踪函数执行
   // console.log('[支付配置] 开始加载支付方式配置...');
@@ -2440,7 +2438,7 @@ async function loadPaymentMethodsConfig(
       // console.error('[支付配置] 获取支付方式定义失败：', methodsData.message || '未知错误');
       logMessage_Error(
         "[支付配置] 获取支付方式定义失败：" +
-          (methodsData.message || "未知错误")
+          (methodsData.message || "未知错误"),
       );
       if (!DOMContentLoaded_Event) {
         // showModalAlert(
@@ -2509,7 +2507,7 @@ async function loadPaymentMethodsConfig(
       // 获取启用状态失败，默认显示所有支付方式为启用
       // console.warn('[支付配置] 获取启用状态时出错，默认显示所有支付方式：', configError);
       logMessage_Warning(
-        "[支付配置] 获取启用状态时出错，默认显示所有支付方式：" + configError
+        "[支付配置] 获取启用状态时出错，默认显示所有支付方式：" + configError,
       );
       if (!DOMContentLoaded_Event) {
         // showModalAlert(
@@ -2627,7 +2625,7 @@ async function loadPaymentMethodsConfig(
         ? escapeHtml(method.description)
         : "";
       const safeBorderColor = escapeHtml(
-        method.borderColor || "hover:border-sky-500"
+        method.borderColor || "hover:border-sky-500",
       );
 
       // === 【安全修复】使用安全的支付方式代码标识符 ===
@@ -2680,8 +2678,8 @@ async function loadPaymentMethodsConfig(
               <!-- 启用/禁用开关 - 移动端使用更小的开关 -->
               <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
                 <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
-          isEnabled ? "checked" : ""
-        }>
+                  isEnabled ? "checked" : ""
+                }>
                 <!-- 移动端开关：w-9 h-5（比PC端的w-11 h-6小）-->
                 <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
               </label>
@@ -2735,8 +2733,8 @@ async function loadPaymentMethodsConfig(
               <!-- 启用/禁用开关 -->
               <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
                 <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
-          isEnabled ? "checked" : ""
-        }>
+                  isEnabled ? "checked" : ""
+                }>
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
               </label>
               
@@ -2828,7 +2826,7 @@ async function loadPaymentMethodsConfig(
 
     // 第1步：获取测试支付方式下拉框DOM元素
     const testPaymentMethodSelect = document.getElementById(
-      "admin-test-payment-method_modal"
+      "admin-test-payment-method_modal",
     );
 
     // 第2步：防御性检查 - 确保下拉框元素存在
@@ -2841,7 +2839,7 @@ async function loadPaymentMethodsConfig(
       const currentSelectedValue = testPaymentMethodSelect.value;
       // console.log('[支付配置] 当前选中的支付方式：', currentSelectedValue || '无');
       logMessage_Info(
-        "[支付配置] 当前选中的支付方式：" + (currentSelectedValue || "无")
+        "[支付配置] 当前选中的支付方式：" + (currentSelectedValue || "无"),
       );
 
       // 第4步：清空现有的所有选项
@@ -2884,7 +2882,7 @@ async function loadPaymentMethodsConfig(
             "[支付配置] 添加测试支付选项：" +
               code +
               " - " +
-              (method.name || code)
+              (method.name || code),
           );
         }
       }
@@ -2894,13 +2892,13 @@ async function loadPaymentMethodsConfig(
         testPaymentMethodSelect.value = currentSelectedValue;
         // console.log('[支付配置] 已恢复之前选中的支付方式：', currentSelectedValue);
         logMessage_Info(
-          "[支付配置] 已恢复之前选中的支付方式：" + currentSelectedValue
+          "[支付配置] 已恢复之前选中的支付方式：" + currentSelectedValue,
         );
       } else if (optionAdded) {
         // 如果之前的选中值不可用，但至少有一个选项，则选中第一个
         // console.log('[支付配置] 之前选中的支付方式不可用，已自动选中第一个可用选项');
         logMessage_Info(
-          "[支付配置] 之前选中的支付方式不可用，已自动选中第一个可用选项"
+          "[支付配置] 之前选中的支付方式不可用，已自动选中第一个可用选项",
         );
       }
 
@@ -2913,7 +2911,7 @@ async function loadPaymentMethodsConfig(
         testPaymentMethodSelect.appendChild(emptyOption);
         // console.warn('[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框');
         logMessage_Warning(
-          "[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框"
+          "[支付配置] 警告：没有已启用的支付方式可添加到测试支付下拉框",
         );
       }
 
@@ -2922,7 +2920,7 @@ async function loadPaymentMethodsConfig(
       // 如果找不到测试支付方式下拉框元素，输出警告日志
       // console.warn('[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）');
       logMessage_Warning(
-        "[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）"
+        "[支付配置] 警告：找不到测试支付方式下拉框元素（admin-test-payment-method_modal）",
       );
     }
   } catch (error) {
@@ -2993,15 +2991,15 @@ async function savePaymentMethodsConfig() {
     if (isModalVersion) {
       // PC端：查找以 _modal 结尾的checkbox
       checkboxes = listContainer.querySelectorAll(
-        'input[type="checkbox"][id^="payment-method-"][id$="_modal"]'
+        'input[type="checkbox"][id^="payment-method-"][id$="_modal"]',
       );
     } else {
       // 移动端：查找所有以 payment-method- 开头的checkbox，但不以 _modal 结尾
       // 使用更通用的选择器，然后在遍历时过滤
       checkboxes = Array.from(
         listContainer.querySelectorAll(
-          'input[type="checkbox"][id^="payment-method-"]'
-        )
+          'input[type="checkbox"][id^="payment-method-"]',
+        ),
       ).filter((cb) => !cb.id.endsWith("_modal"));
     }
 
@@ -3052,7 +3050,7 @@ async function savePaymentMethodsConfig() {
       // 如果服务器返回错误状态码，抛出错误
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.message || `保存配置失败：HTTP状态码 ${response.status}`
+        errorData.message || `保存配置失败：HTTP状态码 ${response.status}`,
       );
     }
 
@@ -3089,7 +3087,7 @@ async function savePaymentMethodsConfig() {
     // 这样用户无需手动打开选择器，系统会自动维护两边的一致性
 
     const yipayMethodsInput = document.getElementById(
-      "admin-yipay-enabled-methods_modal"
+      "admin-yipay-enabled-methods_modal",
     );
     if (yipayMethodsInput) {
       // 将启用的支付方式数组转换为逗号分隔的字符串
@@ -3121,7 +3119,7 @@ async function savePaymentMethodsConfig() {
       logMessage_Info("[支付配置] 同步的支付方式代码：" + methodsString);
       // console.log('[支付配置] 同步的支付方式数量：', enabledMethods.length);
       logMessage_Info(
-        "[支付配置] 同步的支付方式数量：" + enabledMethods.length
+        "[支付配置] 同步的支付方式数量：" + enabledMethods.length,
       );
       // console.log('[支付配置] 输入框当前值：', yipayMethodsInput.value);
       logMessage_Info("[支付配置] 输入框当前值：" + yipayMethodsInput.value);
@@ -3130,7 +3128,7 @@ async function savePaymentMethodsConfig() {
       // 使用 ✗ 符号标记失败操作，并提供详细的调试信息
       // console.warn('[支付配置] ✗ 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）');
       logMessage_Warning(
-        "[支付配置] 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）"
+        "[支付配置] 未找到易支付启用方式输入框元素（ID: admin-yipay-enabled-methods_modal）",
       );
       // console.warn('[支付配置] 请检查HTML中是否存在此元素');
       logMessage_Warning("[支付配置] 请检查HTML中是否存在此元素");
@@ -3412,10 +3410,10 @@ async function savePaymentMethod() {
       .getElementById("payment-method-description")
       .value.trim();
     const borderColor = document.getElementById(
-      "payment-method-border-color"
+      "payment-method-border-color",
     ).value;
     const textColor = document.getElementById(
-      "payment-method-text-color"
+      "payment-method-text-color",
     ).value;
 
     // === 第2步：构建请求数据 ===
@@ -3463,7 +3461,7 @@ async function savePaymentMethod() {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.message || `保存失败：HTTP状态码 ${response.status}`
+        errorData.message || `保存失败：HTTP状态码 ${response.status}`,
       );
     }
 
@@ -3540,7 +3538,7 @@ async function deletePaymentMethod(code) {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.message || `删除失败：HTTP状态码 ${response.status}`
+        errorData.message || `删除失败：HTTP状态码 ${response.status}`,
       );
     }
 
@@ -3628,7 +3626,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // 注意：这个调用不会等待完成就继续执行（异步调用）
   loadPaymentMethodsConfig(
     (show_Modal_Alert = false),
-    (DOMContentLoaded_Event = true)
+    (DOMContentLoaded_Event = true),
   );
 
   // ========== Tab 3: 绑定"处理退款"按钮的点击事件 ==========
@@ -3658,7 +3656,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 这可能表示HTML结构有问题或ID名称不匹配
     // console.warn('[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）');
     logMessage_Warning(
-      "[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）"
+      "[退款功能] 警告：未找到处理退款按钮（ID: process-refund-btn）",
     );
   }
 
@@ -3688,7 +3686,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 如果按钮不存在，输出警告日志
     // console.warn('[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）');
     logMessage_Warning(
-      "[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）"
+      "[测试支付] 警告：未找到创建测试订单按钮（ID: create-test-order-btn）",
     );
   }
 
@@ -3718,7 +3716,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 如果按钮不存在，输出警告日志
     // console.warn('[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）');
     logMessage_Warning(
-      "[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）"
+      "[测试支付] 警告：未找到打开支付链接按钮（ID: open-test-pay-url-btn）",
     );
   }
 
@@ -3789,7 +3787,7 @@ async function queryOrder() {
     // 如果找不到输入框元素，在控制台输出错误并提示用户
     // console.error('[订单查询] 错误：未找到订单号输入框（ID: query-order-trade-no）');
     logMessage_Error(
-      "[订单查询] 错误：未找到订单号输入框（ID: query-order-trade-no）"
+      "[订单查询] 错误：未找到订单号输入框（ID: query-order-trade-no）",
     );
     // showModalAlert("页面元素异常，请刷新页面后重试。");
     Swal.fire({
@@ -4269,7 +4267,7 @@ async function processRefund() {
   if (refundAmount <= 0) {
     logMessage_Error(
       "[退款功能] 验证失败：退款金额必须大于0，当前值：",
-      refundAmount
+      refundAmount,
     );
     // showModalAlert("退款金额必须大于0");
     swal.fire({
@@ -4539,7 +4537,7 @@ function toggleProductNameInputMethod() {
 
   // === 第2步：获取两个容器的DOM元素 ===
   const manualContainer = document.getElementById(
-    "manual-product-name-container"
+    "manual-product-name-container",
   );
   const autoContainer = document.getElementById("auto-product-name-container");
 
@@ -4600,7 +4598,7 @@ function toggleAuthCodeFieldMobile() {
   const authCodeContainer = document.getElementById("test-auth-code-container");
   // 获取JSAPI支付参数容器元素
   const jsapiParamsContainer = document.getElementById(
-    "test-jsapi-params-container"
+    "test-jsapi-params-container",
   );
 
   // === 第2步：防御性检查 ===
@@ -4828,7 +4826,7 @@ async function batchTestProductNames() {
           byteLength: result.byte_length,
         });
         logMessage_Info(
-          `[移动端商品名测试] 数量${quantity}：${result.product_name}`
+          `[移动端商品名测试] 数量${quantity}：${result.product_name}`,
         );
       }
     } catch (error) {
@@ -4881,7 +4879,7 @@ async function batchTestProductNames() {
 
   batchListContainer.innerHTML = html;
   logMessage_Info(
-    `[移动端商品名测试] 批量测试完成，成功生成${results.length}个示例`
+    `[移动端商品名测试] 批量测试完成，成功生成${results.length}个示例`,
   );
 }
 
@@ -4902,7 +4900,7 @@ async function createTestOrder() {
 
   // 1.4 获取订单结果显示容器
   const resultContainer = document.getElementById(
-    "test-order-result-container"
+    "test-order-result-container",
   );
 
   // 1.5 获取订单号显示元素
@@ -4991,7 +4989,7 @@ async function createTestOrder() {
   if (amount <= 0) {
     logMessage_Error(
       "[测试支付] 验证失败：支付金额必须大于0，当前值：",
-      amount
+      amount,
     );
     // showModalAlert("支付金额必须大于0");
     Swal.fire({
@@ -5054,7 +5052,7 @@ async function createTestOrder() {
     logMessage_Info(
       "[移动端测试支付] 商品数量：",
       quantity,
-      "，正在调用生成器API..."
+      "，正在调用生成器API...",
     );
 
     try {
@@ -5163,7 +5161,7 @@ async function createTestOrder() {
     if (auth_code.length !== 18 || !/^\d+$/.test(auth_code)) {
       logMessage_Error(
         "[移动端测试支付] 验证失败：付款码格式不正确，当前长度：",
-        auth_code.length
+        auth_code.length,
       );
       // showModalAlert("付款码格式不正确，应为18位纯数字");
       Swal.fire({
@@ -5197,7 +5195,7 @@ async function createTestOrder() {
     // 验证sub_openid是否为空
     if (!subOpenid) {
       logMessage_Error(
-        "[移动端测试支付] 验证失败：JSAPI支付需要提供用户Openid"
+        "[移动端测试支付] 验证失败：JSAPI支付需要提供用户Openid",
       );
       // showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
       Swal.fire({
@@ -5213,7 +5211,7 @@ async function createTestOrder() {
     // 验证sub_appid是否为空
     if (!subAppid) {
       logMessage_Error(
-        "[移动端测试支付] 验证失败：JSAPI支付需要提供公众号AppId"
+        "[移动端测试支付] 验证失败：JSAPI支付需要提供公众号AppId",
       );
       // showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
       Swal.fire({
@@ -5230,7 +5228,7 @@ async function createTestOrder() {
     // 这里使用宽松的验证规则，确保长度合理即可
     if (subOpenid.length < 20 || subOpenid.length > 64) {
       logMessage_Warning(
-        "[移动端测试支付] 警告：用户Openid格式可能不正确，长度不在合理范围"
+        "[移动端测试支付] 警告：用户Openid格式可能不正确，长度不在合理范围",
       );
       // showModalAlert("用户Openid格式可能不正确，长度应在20-64字符之间");
       Swal.fire({
@@ -5257,7 +5255,7 @@ async function createTestOrder() {
     }
 
     logMessage_Info(
-      "[移动端测试支付] JSAPI参数已提供：sub_openid和sub_appid（已隐藏显示）"
+      "[移动端测试支付] JSAPI参数已提供：sub_openid和sub_appid（已隐藏显示）",
     );
   }
 
@@ -5499,7 +5497,7 @@ function openTestPayUrl() {
   // 防御性检查：确保按钮元素存在
   if (!openPayBtn) {
     logMessage_Error(
-      "[测试支付] 错误：未找到打开支付链接按钮（ID: open-test-pay-url-btn）"
+      "[测试支付] 错误：未找到打开支付链接按钮（ID: open-test-pay-url-btn）",
     );
     // showModalAlert("页面元素异常，请刷新页面后重试。");
     // 使用Swal替代showModalAlert，提供更好的用户体验
@@ -5653,13 +5651,13 @@ function switchAdminPaymentSettingsTab(tabName) {
     // 获取标签页按钮元素
     // 命名规则：admin-payment-settings-tab-{tab}_modal
     const tabButton = document.getElementById(
-      `admin-payment-settings-tab-${tab}_modal`
+      `admin-payment-settings-tab-${tab}_modal`,
     );
 
     // 获取标签页内容区域元素
     // 命名规则：admin-payment-settings-content-{tab}_modal
     const tabContent = document.getElementById(
-      `admin-payment-settings-content-${tab}_modal`
+      `admin-payment-settings-content-${tab}_modal`,
     );
 
     // 防御性检查：确保DOM元素存在
@@ -5686,7 +5684,7 @@ function switchAdminPaymentSettingsTab(tabName) {
         "text-sky-600",
         "border-b-2",
         "border-sky-600",
-        "font-semibold"
+        "font-semibold",
       );
 
       // 步骤2：移除标签页按钮的非激活状态样式
@@ -5735,7 +5733,7 @@ function switchAdminPaymentSettingsTab(tabName) {
         "text-sky-600",
         "border-b-2",
         "border-sky-600",
-        "font-semibold"
+        "font-semibold",
       );
 
       // 步骤2：为其他标签页按钮添加非激活状态样式
@@ -5772,7 +5770,7 @@ async function saveAdminPaymentMethodsConfig() {
     // 含义：查找所有type为checkbox且id以"payment-method-"开头的input元素
     // 这样可以动态获取所有支付方式的checkbox，无需硬编码每个支付方式的ID
     const checkboxes = listContainer.querySelectorAll(
-      'input[type="checkbox"][id^="payment-method-"]'
+      'input[type="checkbox"][id^="payment-method-"]',
     );
 
     // 1.3 构建启用的支付方式列表
@@ -5946,11 +5944,11 @@ async function queryAdminPaymentOrder() {
 
   // 获取订单号输入框元素
   const tradeNoInput = document.getElementById(
-    "admin-query-order-trade-no_modal"
+    "admin-query-order-trade-no_modal",
   );
   // 获取订单详情显示容器
   const detailContainer = document.getElementById(
-    "admin-order-detail-container_modal"
+    "admin-order-detail-container_modal",
   );
   // 获取查询结果提示区域
   const resultDiv = document.getElementById("admin-query-order-result_modal");
@@ -6064,7 +6062,7 @@ async function queryAdminPaymentOrder() {
 
     // 7.1 填充订单号
     const tradeNoElem = document.getElementById(
-      "admin-order-detail-trade-no_modal"
+      "admin-order-detail-trade-no_modal",
     );
     if (tradeNoElem) {
       tradeNoElem.textContent = order.trade_no || "-";
@@ -6072,7 +6070,7 @@ async function queryAdminPaymentOrder() {
 
     // 7.2 填充订单状态（使用彩色标签）
     const statusElem = document.getElementById(
-      "admin-order-detail-status_modal"
+      "admin-order-detail-status_modal",
     );
     if (statusElem) {
       // 根据不同的订单状态显示不同颜色的标签
@@ -6123,7 +6121,7 @@ async function queryAdminPaymentOrder() {
 
     // 7.3 填充订单金额
     const amountElem = document.getElementById(
-      "admin-order-detail-amount_modal"
+      "admin-order-detail-amount_modal",
     );
     if (amountElem) {
       amountElem.textContent = order.amount
@@ -6133,7 +6131,7 @@ async function queryAdminPaymentOrder() {
 
     // 7.4 填充支付方式
     const methodElem = document.getElementById(
-      "admin-order-detail-method_modal"
+      "admin-order-detail-method_modal",
     );
     if (methodElem) {
       let methodText = "";
@@ -6158,7 +6156,7 @@ async function queryAdminPaymentOrder() {
 
     // 7.5 填充创建时间
     const createTimeElem = document.getElementById(
-      "admin-order-detail-create-time_modal"
+      "admin-order-detail-create-time_modal",
     );
     if (createTimeElem) {
       createTimeElem.textContent = order.created_at || "-";
@@ -6166,7 +6164,7 @@ async function queryAdminPaymentOrder() {
 
     // 7.6 填充支付时间
     const payTimeElem = document.getElementById(
-      "admin-order-detail-pay-time_modal"
+      "admin-order-detail-pay-time_modal",
     );
     if (payTimeElem) {
       payTimeElem.textContent = order.paid_at || "-";
@@ -6174,7 +6172,7 @@ async function queryAdminPaymentOrder() {
 
     // 7.7 填充商品名称/备注
     const productElem = document.getElementById(
-      "admin-order-detail-product_modal"
+      "admin-order-detail-product_modal",
     );
     if (productElem) {
       productElem.textContent = order.product_name || order.description || "-";
@@ -6308,13 +6306,13 @@ async function loadAllPaymentOrders() {
 
         return 0;
       });
-      logMessage_Info('[订单列表] 已按 created_at 排序（最新优先）');
+      logMessage_Info("[订单列表] 已按 created_at 排序（最新优先）");
     } catch (e) {
-      logMessage_Warn('[订单列表] 排序时发生异常，保持原始顺序：', e);
+      logMessage_Warn("[订单列表] 排序时发生异常，保持原始顺序：", e);
     }
 
     logMessage_Info(
-      `[订单列表] 成功加载 ${allPaymentOrders.length} 个本地订单`
+      `[订单列表] 成功加载 ${allPaymentOrders.length} 个本地订单`,
     );
 
     // === 第6步：显示订单列表 ===
@@ -6339,7 +6337,7 @@ async function loadAllPaymentOrders() {
 
     // 尝试在桌面端容器中显示错误
     const cardsContainerDesktop = document.getElementById(
-      "admin-orders-table-body_modal"
+      "admin-orders-table-body_modal",
     );
     if (cardsContainerDesktop) {
       cardsContainerDesktop.innerHTML = errorHTML;
@@ -6347,7 +6345,7 @@ async function loadAllPaymentOrders() {
 
     // 尝试在移动端容器中显示错误
     const cardsContainerMobile = document.getElementById(
-      "admin-orders-table-body"
+      "admin-orders-table-body",
     );
     if (cardsContainerMobile) {
       cardsContainerMobile.innerHTML = errorHTML;
@@ -6355,7 +6353,7 @@ async function loadAllPaymentOrders() {
 
     // 更新订单计数显示（桌面端）
     const countElemDesktop = document.getElementById(
-      "admin-orders-count_modal"
+      "admin-orders-count_modal",
     );
     if (countElemDesktop) {
       countElemDesktop.textContent = "(加载失败)";
@@ -6398,7 +6396,7 @@ function filterPaymentOrders() {
   // 获取状态筛选下拉框的值
   // 先尝试桌面端，再尝试移动端
   const statusFilterDesktop = document.getElementById(
-    "admin-filter-status_modal"
+    "admin-filter-status_modal",
   );
   const statusFilterMobile = document.getElementById("admin-filter-status");
   const statusFilter =
@@ -6406,7 +6404,7 @@ function filterPaymentOrders() {
 
   // 获取支付方式筛选下拉框的值
   const payTypeFilterDesktop = document.getElementById(
-    "admin-filter-paytype_modal"
+    "admin-filter-paytype_modal",
   );
   const payTypeFilterMobile = document.getElementById("admin-filter-paytype");
   const payTypeFilter =
@@ -6414,7 +6412,7 @@ function filterPaymentOrders() {
 
   // 获取用户名搜索输入框的值（转换为小写，便于不区分大小写匹配）
   const usernameFilterDesktop = document.getElementById(
-    "admin-filter-username_modal"
+    "admin-filter-username_modal",
   );
   const usernameFilterMobile = document.getElementById("admin-filter-username");
   const usernameFilter = (
@@ -6423,7 +6421,7 @@ function filterPaymentOrders() {
 
   // 获取订单号搜索输入框的值（转换为小写，便于不区分大小写匹配）
   const orderNoFilterDesktop = document.getElementById(
-    "admin-filter-orderno_modal"
+    "admin-filter-orderno_modal",
   );
   const orderNoFilterMobile = document.getElementById("admin-filter-orderno");
   const orderNoFilter = (
@@ -6484,7 +6482,7 @@ function filterPaymentOrders() {
   });
 
   logMessage_Info(
-    `[订单筛选] 筛选结果：${filteredPaymentOrders.length} / ${allPaymentOrders.length} 个订单`
+    `[订单筛选] 筛选结果：${filteredPaymentOrders.length} / ${allPaymentOrders.length} 个订单`,
   );
 
   // === 第3步：更新表格显示 ===
@@ -6515,10 +6513,10 @@ function renderPaymentOrdersTable() {
   // === 第1步：获取容器元素（同时获取桌面端和移动端容器）===
   // 【修复】同时支持桌面端(_modal后缀)和移动端(无后缀)的订单表格容器
   const cardsContainerDesktop = document.getElementById(
-    "admin-orders-table-body_modal"
+    "admin-orders-table-body_modal",
   );
   const cardsContainerMobile = document.getElementById(
-    "admin-orders-table-body"
+    "admin-orders-table-body",
   );
 
   // 获取订单计数显示元素（同时获取桌面端和移动端）
@@ -6529,7 +6527,7 @@ function renderPaymentOrdersTable() {
   // 如果两个容器都不存在，则记录错误并返回
   if (!cardsContainerDesktop && !cardsContainerMobile) {
     logMessage_Error(
-      "[订单卡片] 错误：找不到任何容器元素（桌面端和移动端都不存在）"
+      "[订单卡片] 错误：找不到任何容器元素（桌面端和移动端都不存在）",
     );
     return;
   }
@@ -6650,7 +6648,7 @@ function renderPaymentOrdersTable() {
           break;
         default:
           statusHtml = `<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded text-xs font-semibold">${escapeHtml(
-            order.status || "-"
+            order.status || "-",
           )}</span>`;
       }
 
@@ -6713,7 +6711,7 @@ function renderPaymentOrdersTable() {
             
             问题原因：
             - 原代码使用 onclick='showOrderDetailModal_form_botton(${JSON.stringify(
-              order
+              order,
             )})'
             - JSON.stringify()生成的JSON字符串包含双引号，与HTML属性的引号冲突
             - 特殊字符（如换行、引号）会破坏HTML解析，导致onclick事件失效
@@ -6794,17 +6792,17 @@ async function queryOrderManually() {
   // === 第1步：获取订单号输入框的值（同时支持桌面端和移动端）===
   // 【修复】优先获取桌面端输入框，如果不存在则获取移动端输入框
   const orderNoInputDesktop = document.getElementById(
-    "admin-manual-query-order-no_modal"
+    "admin-manual-query-order-no_modal",
   );
   const orderNoInputMobile = document.getElementById(
-    "admin-manual-query-order-no"
+    "admin-manual-query-order-no",
   );
   const orderNoInput = orderNoInputDesktop || orderNoInputMobile;
 
   // 防御性检查：确保至少有一个输入框元素存在
   if (!orderNoInput) {
     logMessage_Error(
-      "[手动查询] 错误：找不到订单号输入框（桌面端和移动端都不存在）"
+      "[手动查询] 错误：找不到订单号输入框（桌面端和移动端都不存在）",
     );
     // showModalAlert("页面元素异常，请刷新页面后重试。");
     Swal.fire({
@@ -7051,7 +7049,7 @@ function showOrderDetailModal(order) {
 
   // 1.3 接口订单号
   const apiTradeNoElem = document.getElementById(
-    "admin-detail-api-trade-no_modal"
+    "admin-detail-api-trade-no_modal",
   );
   if (apiTradeNoElem) {
     apiTradeNoElem.textContent = order.api_trade_no || "-";
@@ -7096,7 +7094,7 @@ function showOrderDetailModal(order) {
         break;
       default:
         statusHtml = `<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded text-xs font-semibold">${escapeHtml(
-          order.status || "-"
+          order.status || "-",
         )}</span>`;
     }
     statusElem.innerHTML = statusHtml;
@@ -7147,7 +7145,7 @@ function showOrderDetailModal(order) {
 
   // 1.9 商品名称
   const productNameElem = document.getElementById(
-    "admin-detail-product-name_modal"
+    "admin-detail-product-name_modal",
   );
   if (productNameElem) {
     productNameElem.textContent = order.product_name || "-";
@@ -7155,7 +7153,7 @@ function showOrderDetailModal(order) {
 
   // 1.10 创建时间
   const createdAtElem = document.getElementById(
-    "admin-detail-created-at_modal"
+    "admin-detail-created-at_modal",
   );
   if (createdAtElem) {
     createdAtElem.textContent = order.created_at || "-";
@@ -7175,7 +7173,7 @@ function showOrderDetailModal(order) {
 
   // 1.13 已退款金额
   const refundMoneyElem = document.getElementById(
-    "admin-detail-refundmoney_modal"
+    "admin-detail-refundmoney_modal",
   );
   if (refundMoneyElem) {
     const refundMoney = parseFloat(order.refundmoney || 0);
@@ -7192,7 +7190,7 @@ function showOrderDetailModal(order) {
   // 1.15 数据来源（是否从平台同步）
   // synced_from_platform字段表示订单数据是否从支付平台同步而来
   const syncedFromPlatformElem = document.getElementById(
-    "admin-detail-synced-from-platform_modal"
+    "admin-detail-synced-from-platform_modal",
   );
   if (syncedFromPlatformElem) {
     // 根据synced_from_platform字段的值显示不同的文本
@@ -7210,7 +7208,7 @@ function showOrderDetailModal(order) {
   // 1.16 同步时间
   // synced_time字段记录订单从平台同步的时间
   const syncedTimeElem = document.getElementById(
-    "admin-detail-synced-time_modal"
+    "admin-detail-synced-time_modal",
   );
   if (syncedTimeElem) {
     // 如果存在synced_time字段且不为空，显示该时间
@@ -7220,7 +7218,7 @@ function showOrderDetailModal(order) {
 
   // === 第2步：显示弹窗 ===
   const modalOverlay = document.getElementById(
-    "admin-order-detail-modal_overlay"
+    "admin-order-detail-modal_overlay",
   );
   if (modalOverlay) {
     modalOverlay.classList.remove("hidden");
@@ -7245,7 +7243,7 @@ function closeOrderDetailModal(event) {
 
   // 隐藏弹窗
   const modalOverlay = document.getElementById(
-    "admin-order-detail-modal_overlay"
+    "admin-order-detail-modal_overlay",
   );
   if (modalOverlay) {
     modalOverlay.classList.add("hidden");
@@ -7521,7 +7519,7 @@ function generateAdminRefundOrderNo() {
   // 生成6位随机数
   const randomNum = String(Math.floor(Math.random() * 1000000)).padStart(
     6,
-    "0"
+    "0",
   );
 
   // 拼接退款单号
@@ -7545,14 +7543,11 @@ async function submitAdminPaymentRefund() {
   // === 第1步：获取DOM元素 ===
 
   const tradeNoInput = document.getElementById(
-    "admin-refund-order-trade-no_modal"
+    "admin-refund-order-trade-no_modal",
   );
   const amountInput = document.getElementById("admin-refund-amount_modal");
   const refundNoInput = document.getElementById("admin-refund-no_modal");
   const reasonInput = document.getElementById("admin-refund-reason_modal");
-  // 任务2修改：移除对 successDiv 的引用，改用Swal.fire显示退款结果
-  // const successDiv = document.getElementById('admin-refund-result-container_modal');
-
   // === 第2步：获取并验证输入 ===
 
   // 获取原订单号
@@ -7649,8 +7644,6 @@ async function submitAdminPaymentRefund() {
     }
 
     // === 第7步：显示成功提示 ===
-    // 任务2修改：使用Swal.fire替代模态框显示退款结果
-    // 优势：更现代化的UI，更好的用户体验，无需手动管理DOM元素
 
     // 构建退款成功的详细信息HTML
     // 使用HTML格式可以更灵活地展示多行信息和格式化内容
@@ -7660,7 +7653,7 @@ async function submitAdminPaymentRefund() {
           result.refund_no || refundNo
         }</p>
         <p style="margin: 8px 0;"><strong>退款金额：</strong>¥${parseFloat(
-          result.refund_amount || amount
+          result.refund_amount || amount,
         ).toFixed(2)}</p>
         <p style="margin: 8px 0;"><strong>原订单号：</strong>${tradeNo}</p>
         ${
@@ -7689,18 +7682,11 @@ async function submitAdminPaymentRefund() {
     if (reasonInput) reasonInput.value = "";
 
     logMessage_Info("[PC端退款] 退款成功，已显示Swal弹窗");
-
-    // 注意：任务2已移除对 successDiv 的操作
-    // 原有的5秒自动隐藏逻辑已删除，改用Swal弹窗（用户手动点击"确定"关闭）
   } catch (error) {
     // === 错误处理 ===
 
     logMessage_Error("[PC端退款] 退款时发生错误：", error);
 
-    // 任务2修改：错误提示继续使用showModalAlert（保持原有行为）
-    // 只有成功时才使用Swal.fire，失败时使用原有的错误提示方式
-    // 使用showModalAlert显示错误
-    // showModalAlert(error.message || "退款失败", "退款失败");
     Swal.fire({
       icon: "error",
       title: "错误",
@@ -7719,11 +7705,11 @@ function toggleAuthCodeField() {
   const typeSelect = document.getElementById("admin-test-payment-type_modal");
   // 获取付款码输入框的容器元素（扫码支付专用）
   const authCodeContainer = document.getElementById(
-    "admin-test-auth-code-container_modal"
+    "admin-test-auth-code-container_modal",
   );
   // 【新增】获取JSAPI支付参数容器元素
   const jsapiParamsContainer = document.getElementById(
-    "admin-test-jsapi-params-container_modal"
+    "admin-test-jsapi-params-container_modal",
   );
 
   // === 第2步：防御性检查 ===
@@ -7751,10 +7737,10 @@ function toggleAuthCodeField() {
       jsapiParamsContainer.classList.add("hidden");
       // 清空JSAPI参数输入框的值
       const subOpenidInput = document.getElementById(
-        "admin-test-sub-openid_modal"
+        "admin-test-sub-openid_modal",
       );
       const subAppidInput = document.getElementById(
-        "admin-test-sub-appid_modal"
+        "admin-test-sub-appid_modal",
       );
       if (subOpenidInput) subOpenidInput.value = "";
       if (subAppidInput) subAppidInput.value = "";
@@ -7792,10 +7778,10 @@ function toggleAuthCodeField() {
       jsapiParamsContainer.classList.add("hidden");
       // 清空JSAPI参数输入框的值
       const subOpenidInput = document.getElementById(
-        "admin-test-sub-openid_modal"
+        "admin-test-sub-openid_modal",
       );
       const subAppidInput = document.getElementById(
-        "admin-test-sub-appid_modal"
+        "admin-test-sub-appid_modal",
       );
       if (subOpenidInput) subOpenidInput.value = "";
       if (subAppidInput) subAppidInput.value = "";
@@ -7826,7 +7812,7 @@ function toggleProductNameInputMethod_modal() {
   // === 第1步：获取选中的单选按钮值 ===
   // 获取所有name为"product-name-input-method_modal"的单选按钮
   const radioButtons = document.getElementsByName(
-    "product-name-input-method_modal"
+    "product-name-input-method_modal",
   );
   // 变量用于存储选中的值
   let selectedMethod = "manual"; // 默认为手动输入
@@ -7843,10 +7829,10 @@ function toggleProductNameInputMethod_modal() {
 
   // === 第2步：获取两个容器的DOM元素 ===
   const manualContainer = document.getElementById(
-    "manual-product-name-container_modal"
+    "manual-product-name-container_modal",
   );
   const autoContainer = document.getElementById(
-    "auto-product-name-container_modal"
+    "auto-product-name-container_modal",
   );
 
   // === 第3步：防御性检查，确保元素存在 ===
@@ -7901,7 +7887,7 @@ async function testGenerateProductName_modal() {
   const resultContainer = document.getElementById("product-test-result_modal");
   const productNameDisplay = document.getElementById("product-test-name_modal");
   const byteLengthDisplay = document.getElementById(
-    "product-test-length_modal"
+    "product-test-length_modal",
   );
 
   // === 第2步：验证输入 ===
@@ -7989,7 +7975,7 @@ async function batchTestProductNames_modal() {
 
   // === 第1步：获取容器元素 ===
   const batchResultsContainer = document.getElementById(
-    "batch-test-results_modal"
+    "batch-test-results_modal",
   );
   const batchListContainer = document.getElementById("batch-test-list_modal");
 
@@ -8124,15 +8110,15 @@ async function createAdminTestPayment() {
   // === 第1步：获取DOM元素 ===
 
   const amountInput = document.getElementById(
-    "admin-test-payment-amount_modal"
+    "admin-test-payment-amount_modal",
   );
   const methodSelect = document.getElementById(
-    "admin-test-payment-method_modal"
+    "admin-test-payment-method_modal",
   );
   const typeSelect = document.getElementById("admin-test-payment-type_modal"); // 新增：支付接口类型选择框
   const authCodeInput = document.getElementById("admin-test-auth-code_modal"); // 新增：付款码输入框
   const linkContainer = document.getElementById(
-    "admin-test-payment-link-container_modal"
+    "admin-test-payment-link-container_modal",
   );
   const payUrlInput = document.getElementById("admin-test-pay-url_modal");
   const openBtn = document.getElementById("admin-open-test-pay-url-btn_modal");
@@ -8175,8 +8161,6 @@ async function createAdminTestPayment() {
     authCode = authCodeInput ? authCodeInput.value.trim() : "";
     // 验证付款码是否为空
     if (!authCode) {
-      // showModalAlert("扫码支付需要提供付款码（auth_code）");
-      // 任务2修改：使用Swal.fire替代模态框显示错误提示
       Swal.fire({
         icon: "error",
         title: "错误",
@@ -8206,7 +8190,7 @@ async function createAdminTestPayment() {
   if (paymentType === "jsapi") {
     // 获取sub_openid输入框元素
     const subOpenidInput = document.getElementById(
-      "admin-test-sub-openid_modal"
+      "admin-test-sub-openid_modal",
     );
     // 获取sub_appid输入框元素
     const subAppidInput = document.getElementById("admin-test-sub-appid_modal");
@@ -8218,8 +8202,6 @@ async function createAdminTestPayment() {
 
     // 验证sub_openid是否为空
     if (!subOpenid) {
-      // showModalAlert("JSAPI支付需要提供用户Openid（sub_openid）");
-      // 任务2修改：使用Swal.fire替代模态框显示错误提示
       Swal.fire({
         icon: "error",
         title: "错误",
@@ -8232,8 +8214,6 @@ async function createAdminTestPayment() {
 
     // 验证sub_appid是否为空
     if (!subAppid) {
-      // showModalAlert("JSAPI支付需要提供公众号AppId（sub_appid）");
-      // 任务2修改：使用Swal.fire替代模态框显示错误提示
       Swal.fire({
         icon: "error",
         title: "错误",
@@ -8288,7 +8268,7 @@ async function createAdminTestPayment() {
 
   // 2.5.1 获取用户选择的输入方式
   const radioButtons = document.getElementsByName(
-    "product-name-input-method_modal"
+    "product-name-input-method_modal",
   );
   let inputMethod = "manual"; // 默认为手动输入
 
@@ -8306,7 +8286,7 @@ async function createAdminTestPayment() {
   if (inputMethod === "manual") {
     // 手动输入模式：从文本输入框获取
     const productInput = document.getElementById(
-      "admin-test-payment-product_modal"
+      "admin-test-payment-product_modal",
     );
     if (productInput && productInput.value.trim()) {
       productName = productInput.value.trim();
@@ -8324,7 +8304,7 @@ async function createAdminTestPayment() {
   } else if (inputMethod === "auto") {
     // 自动生成模式：从数量输入框获取数值，然后调用后端API生成商品名
     const quantityInput = document.getElementById(
-      "admin-test-payment-quantity_modal"
+      "admin-test-payment-quantity_modal",
     );
     const quantity = quantityInput ? parseInt(quantityInput.value) : 0;
 
@@ -8342,7 +8322,7 @@ async function createAdminTestPayment() {
     console.log(
       "[PC端测试支付] 商品数量：",
       quantity,
-      "，正在调用生成器API..."
+      "，正在调用生成器API...",
     );
 
     try {
@@ -8413,7 +8393,7 @@ async function createAdminTestPayment() {
 
     logMessage_Info(
       "[PC端测试支付] 发送创建订单请求，API：/api/payment/create 数据：" +
-        JSON.stringify(requestData)
+        JSON.stringify(requestData),
     );
 
     const response = await fetch("/api/payment/create", {
@@ -8460,14 +8440,14 @@ async function createAdminTestPayment() {
     const tradeNoElem = document.getElementById("admin-test-trade-no_modal");
     const amountElem = document.getElementById("admin-test-amount_modal");
     const payMethodElem = document.getElementById(
-      "admin-test-pay-method_modal"
+      "admin-test-pay-method_modal",
     );
     const methodTypeElem = document.getElementById(
-      "admin-test-method-type_modal"
+      "admin-test-method-type_modal",
     );
     const payTypeElem = document.getElementById("admin-test-pay-type_modal");
     const payInfoDescElem = document.getElementById(
-      "admin-test-pay-info-desc_modal"
+      "admin-test-pay-info-desc_modal",
     );
 
     // 填充商户订单号
@@ -8537,7 +8517,7 @@ async function createAdminTestPayment() {
         // [新增] 生成二维码显示
         // 获取二维码容器（假设在admin-test-auth-code-container_modal中添加一个二维码显示区域）
         const qrcodeContainer = document.getElementById(
-          "admin-test-qrcode-display_modal"
+          "admin-test-qrcode-display_modal",
         );
         if (qrcodeContainer && typeof QRCode !== "undefined") {
           // 清空之前的二维码
@@ -8571,7 +8551,7 @@ async function createAdminTestPayment() {
                   // 显示二维码容器
                   qrcodeContainer.classList.remove("hidden");
                 }
-              }
+              },
             );
           } catch (error) {
             console.error("[PC端测试支付] 二维码生成出错：", error);
@@ -8636,7 +8616,7 @@ async function createAdminTestPayment() {
       "[PC端测试支付] 测试订单创建成功，支付类型：",
       payType,
       "，支付信息：",
-      payInfo
+      payInfo,
     );
   } catch (error) {
     // === 错误处理 ===
@@ -8832,7 +8812,7 @@ function copyAdminTestPayUrl() {
       const successful = document.execCommand("copy");
       if (successful) {
         console.log(
-          "[PC端测试支付] 支付链接已复制到剪贴板（使用fallback方法）"
+          "[PC端测试支付] 支付链接已复制到剪贴板（使用fallback方法）",
         );
         // showModalAlert("✓ 支付链接已复制到剪贴板");
         Swal.fire({
@@ -8953,7 +8933,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
 
     // [新增] 5.3.5 填充product_id字段
     const productIdInput = document.getElementById(
-      "admin-yipay-product-id_modal"
+      "admin-yipay-product-id_modal",
     );
     if (productIdInput) {
       productIdInput.value = config.product_id || "1001";
@@ -8985,7 +8965,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
 
     // 5.4 填充enabled_payment_methods字段（启用的支付方式）
     const methodsInput = document.getElementById(
-      "admin-yipay-enabled-methods_modal"
+      "admin-yipay-enabled-methods_modal",
     );
     if (methodsInput) {
       // 支付方式以逗号分隔的字符串形式存储，如 "alipay,wxpay"
@@ -9012,7 +8992,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
         sessionUUID === ""
       ) {
         console.error(
-          "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式"
+          "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式",
         );
         sessionUUID = getUUIDFromURL();
       }
@@ -9029,7 +9009,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
               // 添加Session ID请求头（如果存在）
               "X-Session-ID": sessionUUID,
             },
-          }
+          },
         );
 
         // 检查响应状态
@@ -9043,20 +9023,20 @@ async function loadAdminYiPayConfig(show_Modal = true) {
 
             console.log(
               "[PC端易支付配置] 已定义的支付方式：",
-              definedMethodCodes
+              definedMethodCodes,
             );
 
             // 6.3 检查是否有未定义的支付方式
             // 遍历启用的支付方式，检查每个是否在已定义的列表中
             const undefinedMethods = enabledMethodsArray.filter(
-              (method) => !definedMethodCodes.includes(method)
+              (method) => !definedMethodCodes.includes(method),
             );
 
             if (undefinedMethods.length > 0) {
               // 发现有未定义的支付方式，显示警告
               console.warn(
                 "[PC端易支付配置] 发现未定义的支付方式：",
-                undefinedMethods
+                undefinedMethods,
               );
 
               // showModalAlert(
@@ -9069,7 +9049,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
                 icon: "warning",
                 title: "警告",
                 text: `存在未定义的支付方式，请检查配置。以下支付方式未在"支付方式配置"中定义： ${undefinedMethods.join(
-                  ", "
+                  ", ",
                 )}`,
               });
               // // 在结果区域显示警告提示
@@ -9091,7 +9071,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
             } else {
               // 所有启用的支付方式都已定义，验证通过
               console.log(
-                "[PC端易支付配置] 所有启用的支付方式都已定义，验证通过"
+                "[PC端易支付配置] 所有启用的支付方式都已定义，验证通过",
               );
             }
           }
@@ -9100,7 +9080,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
         // 验证过程中发生错误（如网络问题），只记录日志，不影响主流程
         console.error(
           "[PC端易支付配置] 验证支付方式时发生错误：",
-          validationError
+          validationError,
         );
         // 不显示错误提示，避免干扰用户
       }
@@ -9153,7 +9133,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
 
     // 显示错误提示
     const resultDiv = document.getElementById(
-      "admin-yipay-config-result_modal"
+      "admin-yipay-config-result_modal",
     );
     if (resultDiv) {
       resultDiv.innerHTML = `
@@ -9213,7 +9193,7 @@ async function saveAdminYiPayConfig() {
   const keyInput = document.getElementById("admin-yipay-key_modal");
   // [新增] 获取product_id输入框
   const productIdInput = document.getElementById(
-    "admin-yipay-product-id_modal"
+    "admin-yipay-product-id_modal",
   );
   // [新增] 获取app_host输入框（应用域名地址）
   const appHostInput = document.getElementById("admin-yipay-app-host_modal");
@@ -9222,7 +9202,7 @@ async function saveAdminYiPayConfig() {
   // [新增] 获取payment_timeout_minutes输入框（支付超时时间）
   const timeoutInput = document.getElementById("admin-yipay-timeout_modal");
   const methodsInput = document.getElementById(
-    "admin-yipay-enabled-methods_modal"
+    "admin-yipay-enabled-methods_modal",
   );
 
   // === 第2步：获取并验证输入值 ===
@@ -9381,7 +9361,7 @@ async function saveAdminYiPayConfig() {
       sessionUUID === ""
     ) {
       console.error(
-        "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式"
+        "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式",
       );
       sessionUUID = getUUIDFromURL();
     }
@@ -9407,19 +9387,19 @@ async function saveAdminYiPayConfig() {
 
           console.log(
             "[PC端易支付配置] 已定义的支付方式：",
-            definedMethodCodes
+            definedMethodCodes,
           );
 
           // 检查是否有未定义的支付方式
           const undefinedMethods = enabledMethodsArray.filter(
-            (method) => !definedMethodCodes.includes(method)
+            (method) => !definedMethodCodes.includes(method),
           );
 
           if (undefinedMethods.length > 0) {
             // 发现有未定义的支付方式，阻止保存操作
             console.error(
               "[PC端易支付配置] 发现未定义的支付方式，阻止保存：",
-              undefinedMethods
+              undefinedMethods,
             );
 
             // 显示详细的错误提示
@@ -9434,7 +9414,7 @@ async function saveAdminYiPayConfig() {
               icon: "error",
               title: "错误",
               text: `以下支付方式未在"支付方式配置"中定义：\n${undefinedMethods.join(
-                ", "
+                ", ",
               )}\n\n请先在"支付方式配置"中添加这些支付方式，或从启用列表中移除。`,
             });
 
@@ -9446,7 +9426,7 @@ async function saveAdminYiPayConfig() {
           } else {
             // 所有启用的支付方式都已定义，验证通过
             console.log(
-              "[PC端易支付配置] 所有启用的支付方式都已定义，验证通过"
+              "[PC端易支付配置] 所有启用的支付方式都已定义，验证通过",
             );
           }
         }
@@ -9459,7 +9439,7 @@ async function saveAdminYiPayConfig() {
       // 验证过程中发生错误，记录日志但不阻止保存
       console.error(
         "[PC端易支付配置] 验证支付方式时发生错误：",
-        validationError
+        validationError,
       );
       // 不阻止保存，让管理员可以继续操作
     }
@@ -9530,7 +9510,7 @@ async function saveAdminYiPayConfig() {
 
     // 显示错误提示
     const resultDiv = document.getElementById(
-      "admin-yipay-config-result_modal"
+      "admin-yipay-config-result_modal",
     );
     if (resultDiv) {
       resultDiv.innerHTML = `
@@ -9855,7 +9835,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // === Tab 1: 绑定保存配置按钮 ===
 
   const saveBtn = document.getElementById(
-    "admin-save-payment-methods-btn_modal"
+    "admin-save-payment-methods-btn_modal",
   );
   if (saveBtn) {
     saveBtn.addEventListener("click", function () {
@@ -9873,7 +9853,7 @@ document.addEventListener("DOMContentLoaded", function () {
   setTimeout(() => {
     loadPaymentMethodsConfig(
       (show_Modal_Alert = false),
-      (DOMContentLoaded_Event = true)
+      (DOMContentLoaded_Event = true),
     );
   }, 100);
 
@@ -9925,7 +9905,7 @@ async function initRegisterAvailableRunsHint() {
       sessionUUID === ""
     ) {
       console.error(
-        "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式"
+        "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式",
       );
       sessionUUID = getUUIDFromURL();
     }
@@ -9958,9 +9938,12 @@ async function initRegisterAvailableRunsHint() {
     // ========== 步骤2：检查是否需要显示提示 ==========
 
     // 如果配置标记不需要支付功能，则不显示注册提示
-    if (config.require_payment === "false" || config.require_payment === false) {
+    if (
+      config.require_payment === "false" ||
+      config.require_payment === false
+    ) {
       console.log(
-        "[注册提示] 配置为无需付费（require_payment = false），不显示注册次数提示"
+        "[注册提示] 配置为无需付费（require_payment = false），不显示注册次数提示",
       );
       return;
     }
@@ -9989,22 +9972,12 @@ async function initRegisterAvailableRunsHint() {
       // 第一个参数是要查找的字符串（占位符）
       // 第二个参数是替换后的字符串（实际次数）
       // 例如："注册即可得 {available_runs} 次校园跑" -> "注册即可得 10 次校园跑"
-      // 当默认次数等于 -1 时，显示为“无限制”。优先替换带单位的模板片段
-      let runsReplacement = defaultRuns;
+      // 当默认次数等于 -1 时直接显示"无限制"，不套用格式模板，避免出现占位符残留
+      let hintText;
       if (Number(defaultRuns) === -1) {
-        runsReplacement = "无限制";
-      }
-
-      let hintText = hintTemplate;
-      if (runsReplacement === "无限制") {
-        // 尝试替换常见的 "{available_runs} 次" 模板为 "无限制"
-        if (hintTemplate.indexOf("{available_runs} 次") !== -1) {
-          hintText = hintTemplate.replace("{available_runs} 次", runsReplacement);
-        } else {
-          hintText = hintTemplate.replace("{available_runs}", runsReplacement);
-        }
+        hintText = hintTemplate.replace("{available_runs} 次", "无限制").replace("{available_runs}", "无限制");
       } else {
-        hintText = hintTemplate.replace("{available_runs}", runsReplacement);
+        hintText = hintTemplate.replace("{available_runs}", defaultRuns);
       }
 
       // ========== 步骤5：更新PC端的提示元素 ==========
@@ -10021,13 +9994,13 @@ async function initRegisterAvailableRunsHint() {
       } else {
         // 如果元素不存在，输出警告日志
         console.warn(
-          "[注册提示] 警告：找不到PC端提示文本元素 #auth-register-runs-text"
+          "[注册提示] 警告：找不到PC端提示文本元素 #auth-register-runs-text",
         );
       }
 
       // 获取PC端提示容器元素
       const pcContainerElement = document.getElementById(
-        "auth-register-available-runs-hint"
+        "auth-register-available-runs-hint",
       );
       if (pcContainerElement) {
         // 移除hidden类，显示提示容器
@@ -10039,7 +10012,7 @@ async function initRegisterAvailableRunsHint() {
       } else {
         // 如果元素不存在，输出警告日志
         console.warn(
-          "[注册提示] 警告：找不到PC端提示容器元素 #auth-register-available-runs-hint"
+          "[注册提示] 警告：找不到PC端提示容器元素 #auth-register-available-runs-hint",
         );
       }
 
@@ -10047,7 +10020,7 @@ async function initRegisterAvailableRunsHint() {
 
       // 获取移动端提示文本元素
       const mobileTextElement = document.getElementById(
-        "mobile-register-runs-text"
+        "mobile-register-runs-text",
       );
       if (mobileTextElement) {
         // 如果元素存在，更新其文本内容
@@ -10058,13 +10031,13 @@ async function initRegisterAvailableRunsHint() {
       } else {
         // 如果元素不存在，输出警告日志
         console.warn(
-          "[注册提示] 警告：找不到移动端提示文本元素 #mobile-register-runs-text"
+          "[注册提示] 警告：找不到移动端提示文本元素 #mobile-register-runs-text",
         );
       }
 
       // 获取移动端提示容器元素
       const mobileContainerElement = document.getElementById(
-        "mobile-register-available-runs-hint"
+        "mobile-register-available-runs-hint",
       );
       if (mobileContainerElement) {
         // 移除hidden类，显示提示容器
@@ -10075,7 +10048,7 @@ async function initRegisterAvailableRunsHint() {
       } else {
         // 如果元素不存在，输出警告日志
         console.warn(
-          "[注册提示] 警告：找不到移动端提示容器元素 #mobile-register-available-runs-hint"
+          "[注册提示] 警告：找不到移动端提示容器元素 #mobile-register-available-runs-hint",
         );
       }
 
@@ -10084,7 +10057,7 @@ async function initRegisterAvailableRunsHint() {
     } else {
       // 配置为不显示提示
       console.log(
-        "[注册提示] 配置为不显示注册提示（show_available_runs_on_register = false）"
+        "[注册提示] 配置为不显示注册提示（show_available_runs_on_register = false）",
       );
     }
   } catch (error) {
@@ -10146,7 +10119,7 @@ async function updateProfileAvailableRuns(userData) {
     if (!userData) {
       // 如果参数为null或undefined，输出警告并退出
       console.warn(
-        "[个人资料] 警告：userData参数为空，无法更新available_runs显示"
+        "[个人资料] 警告：userData参数为空，无法更新available_runs显示",
       );
       return;
     }
@@ -10159,7 +10132,7 @@ async function updateProfileAvailableRuns(userData) {
       sessionUUID === ""
     ) {
       console.error(
-        "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式"
+        "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式",
       );
       sessionUUID = getUUIDFromURL();
     }
@@ -10189,9 +10162,12 @@ async function updateProfileAvailableRuns(userData) {
     // ========== 步骤3：检查是否需要显示available_runs ==========
 
     // 如果配置标记不需要支付功能，则不显示available_runs
-    if (config.require_payment === "false" || config.require_payment === false) {
+    if (
+      config.require_payment === "false" ||
+      config.require_payment === false
+    ) {
       console.log(
-        "[个人资料] 配置为无需付费（require_payment = false），不显示available_runs"
+        "[个人资料] 配置为无需付费（require_payment = false），不显示available_runs",
       );
       return;
     }
@@ -10216,28 +10192,19 @@ async function updateProfileAvailableRuns(userData) {
       // 例如："剩余免费次数：{available_runs} 次"
       const formatTemplate = config.available_runs_format;
 
-        // 当次数为 -1 时显示为“无限制”，优先替换常见带单位的片段
-      let replacement = availableRuns;
+      // 当次数为 -1 时直接显示"无限制"，不套用格式模板，避免出现占位符残留
+      let displayText;
       if (Number(availableRuns) === -1) {
-        replacement = "无限制";
-      }
-
-      let displayText = formatTemplate;
-      if (replacement === "无限制") {
-        if (formatTemplate.indexOf("{available_runs} 次") !== -1) {
-          displayText = formatTemplate.replace("{available_runs} 次", replacement);
-        } else {
-          displayText = formatTemplate.replace("{available_runs}", replacement);
-        }
+        displayText = "无限制";
       } else {
-        displayText = formatTemplate.replace("{available_runs}", replacement);
+        displayText = formatTemplate.replace("{available_runs}", availableRuns);
       }
 
       // ========== 步骤6：更新PC端的显示元素 ==========
 
       // 获取PC端显示文本元素
       const pcTextElement = document.getElementById(
-        "admin-profile-available-runs-text"
+        "admin-profile-available-runs-text",
       );
       if (pcTextElement) {
         // 如果元素存在，更新其文本内容
@@ -10249,13 +10216,13 @@ async function updateProfileAvailableRuns(userData) {
       } else {
         // 如果元素不存在，输出警告
         console.warn(
-          "[个人资料] 警告：找不到PC端显示文本元素 #admin-profile-available-runs-text"
+          "[个人资料] 警告：找不到PC端显示文本元素 #admin-profile-available-runs-text",
         );
       }
 
       // 获取PC端显示容器元素
       const pcContainerElement = document.getElementById(
-        "admin-profile-available-runs-container"
+        "admin-profile-available-runs-container",
       );
       if (pcContainerElement) {
         // 移除hidden类，显示容器
@@ -10266,7 +10233,7 @@ async function updateProfileAvailableRuns(userData) {
       } else {
         // 如果元素不存在，输出警告
         console.warn(
-          "[个人资料] 警告：找不到PC端显示容器元素 #admin-profile-available-runs-container"
+          "[个人资料] 警告：找不到PC端显示容器元素 #admin-profile-available-runs-container",
         );
       }
 
@@ -10274,7 +10241,7 @@ async function updateProfileAvailableRuns(userData) {
 
       // 获取移动端显示文本元素
       const mobileTextElement = document.getElementById(
-        "mobile-profile-available-runs-text"
+        "mobile-profile-available-runs-text",
       );
       if (mobileTextElement) {
         // 如果元素存在，更新其文本内容
@@ -10285,13 +10252,13 @@ async function updateProfileAvailableRuns(userData) {
       } else {
         // 如果元素不存在，输出警告
         console.warn(
-          "[个人资料] 警告：找不到移动端显示文本元素 #mobile-profile-available-runs-text"
+          "[个人资料] 警告：找不到移动端显示文本元素 #mobile-profile-available-runs-text",
         );
       }
 
       // 获取移动端显示容器元素
       const mobileContainerElement = document.getElementById(
-        "mobile-profile-available-runs-container"
+        "mobile-profile-available-runs-container",
       );
       if (mobileContainerElement) {
         // 移除hidden类，显示容器
@@ -10302,7 +10269,7 @@ async function updateProfileAvailableRuns(userData) {
       } else {
         // 如果元素不存在，输出警告
         console.warn(
-          "[个人资料] 警告：找不到移动端显示容器元素 #mobile-profile-available-runs-container"
+          "[个人资料] 警告：找不到移动端显示容器元素 #mobile-profile-available-runs-container",
         );
       }
 
@@ -10311,7 +10278,7 @@ async function updateProfileAvailableRuns(userData) {
     } else {
       // 配置为不显示available_runs
       console.log(
-        "[个人资料] 配置为不显示available_runs（show_available_runs = false）"
+        "[个人资料] 配置为不显示available_runs（show_available_runs = false）",
       );
     }
   } catch (error) {
@@ -10396,7 +10363,7 @@ document.addEventListener("DOMContentLoaded", function () {
  */
 
 // ============================================================
-// 价格配置管理相关函数（任务1）
+// 价格配置管理相关函数
 // ============================================================
 
 /**
@@ -10452,7 +10419,7 @@ async function loadPricingConfig() {
     // 填充"是否需要付费"复选框
     // 获取复选框元素
     const requirePaymentCheckbox = document.getElementById(
-      "pricing-require-payment_modal"
+      "pricing-require-payment_modal",
     );
     if (requirePaymentCheckbox) {
       // 设置复选框的选中状态
@@ -10461,13 +10428,13 @@ async function loadPricingConfig() {
     } else {
       // 如果找不到元素，记录警告日志
       console.warn(
-        "[价格配置] 警告：找不到元素 #pricing-require-payment_modal"
+        "[价格配置] 警告：找不到元素 #pricing-require-payment_modal",
       );
     }
 
     // 填充"单次跑步费用"输入框
     const perRunCostInput = document.getElementById(
-      "pricing-per-run-cost_modal"
+      "pricing-per-run-cost_modal",
     );
     if (perRunCostInput) {
       // 设置输入框的值
@@ -10479,7 +10446,7 @@ async function loadPricingConfig() {
 
     // 填充"新用户默认免费次数"输入框
     const defaultRunsInput = document.getElementById(
-      "pricing-default-runs_modal"
+      "pricing-default-runs_modal",
     );
     if (defaultRunsInput) {
       // 设置输入框的值
@@ -10494,7 +10461,7 @@ async function loadPricingConfig() {
     // 填充"个人资料页显示剩余次数"复选框
     // 从后端API返回的config对象中获取show_available_runs字段
     const showAvailableRunsCheckbox = document.getElementById(
-      "pricing-show-available-runs_modal"
+      "pricing-show-available-runs_modal",
     );
     if (showAvailableRunsCheckbox) {
       // 设置复选框的选中状态
@@ -10503,14 +10470,14 @@ async function loadPricingConfig() {
     } else {
       // 如果找不到元素，记录警告日志
       console.warn(
-        "[价格配置] 警告：找不到元素 #pricing-show-available-runs_modal"
+        "[价格配置] 警告：找不到元素 #pricing-show-available-runs_modal",
       );
     }
 
     // 填充"剩余次数显示格式"输入框
     // 这是一个文本模板，包含{available_runs}占位符
     const availableRunsFormatInput = document.getElementById(
-      "pricing-available-runs-format_modal"
+      "pricing-available-runs-format_modal",
     );
     if (availableRunsFormatInput) {
       // 设置输入框的值
@@ -10519,28 +10486,28 @@ async function loadPricingConfig() {
         config.available_runs_format || "剩余免费次数：{available_runs} 次";
     } else {
       console.warn(
-        "[价格配置] 警告：找不到元素 #pricing-available-runs-format_modal"
+        "[价格配置] 警告：找不到元素 #pricing-available-runs-format_modal",
       );
     }
 
     // 填充"注册页显示免费次数提示"复选框
     // 控制是否在用户注册页面显示提示信息
     const showRegisterHintCheckbox = document.getElementById(
-      "pricing-show-register-hint_modal"
+      "pricing-show-register-hint_modal",
     );
     if (showRegisterHintCheckbox) {
       // 设置复选框的选中状态
       showRegisterHintCheckbox.checked = config.show_available_runs_on_register;
     } else {
       console.warn(
-        "[价格配置] 警告：找不到元素 #pricing-show-register-hint_modal"
+        "[价格配置] 警告：找不到元素 #pricing-show-register-hint_modal",
       );
     }
 
     // 填充"注册页提示文本"输入框
     // 这是注册页面显示的提示文本模板
     const registerHintTextInput = document.getElementById(
-      "pricing-register-hint-text_modal"
+      "pricing-register-hint-text_modal",
     );
     if (registerHintTextInput) {
       // 设置输入框的值
@@ -10550,7 +10517,7 @@ async function loadPricingConfig() {
         "注册即可得 {available_runs} 次校园跑";
     } else {
       console.warn(
-        "[价格配置] 警告：找不到元素 #pricing-register-hint-text_modal"
+        "[价格配置] 警告：找不到元素 #pricing-register-hint-text_modal",
       );
     }
 
@@ -10594,33 +10561,33 @@ async function savePricingConfig() {
 
     // 获取"是否需要付费"复选框
     const requirePaymentCheckbox = document.getElementById(
-      "pricing-require-payment_modal"
+      "pricing-require-payment_modal",
     );
     // 获取"单次跑步费用"输入框
     const perRunCostInput = document.getElementById(
-      "pricing-per-run-cost_modal"
+      "pricing-per-run-cost_modal",
     );
     // 获取"新用户默认免费次数"输入框
     const defaultRunsInput = document.getElementById(
-      "pricing-default-runs_modal"
+      "pricing-default-runs_modal",
     );
 
     // [新增] 获取UI显示配置的表单元素
     // 获取"个人资料页显示剩余次数"复选框
     const showAvailableRunsCheckbox = document.getElementById(
-      "pricing-show-available-runs_modal"
+      "pricing-show-available-runs_modal",
     );
     // 获取"剩余次数显示格式"输入框
     const availableRunsFormatInput = document.getElementById(
-      "pricing-available-runs-format_modal"
+      "pricing-available-runs-format_modal",
     );
     // 获取"注册页显示免费次数提示"复选框
     const showRegisterHintCheckbox = document.getElementById(
-      "pricing-show-register-hint_modal"
+      "pricing-show-register-hint_modal",
     );
     // 获取"注册页提示文本"输入框
     const registerHintTextInput = document.getElementById(
-      "pricing-register-hint-text_modal"
+      "pricing-register-hint-text_modal",
     );
 
     // ========== 验证表单元素是否存在 ==========
@@ -10797,19 +10764,19 @@ async function loadMobilePricingConfig() {
 
     // 填充"是否需要付费"复选框
     const requirePaymentCheckbox = document.getElementById(
-      "mobile-pricing-require-payment"
+      "mobile-pricing-require-payment",
     );
     if (requirePaymentCheckbox) {
       requirePaymentCheckbox.checked = config.require_payment;
     } else {
       console.warn(
-        "[价格配置] 警告：找不到元素 #mobile-pricing-require-payment"
+        "[价格配置] 警告：找不到元素 #mobile-pricing-require-payment",
       );
     }
 
     // 填充"单次跑步费用"输入框
     const perRunCostInput = document.getElementById(
-      "mobile-pricing-per-run-cost"
+      "mobile-pricing-per-run-cost",
     );
     if (perRunCostInput) {
       perRunCostInput.value = config.per_run_cost.toFixed(2);
@@ -10819,7 +10786,7 @@ async function loadMobilePricingConfig() {
 
     // 填充"新用户默认免费次数"输入框
     const defaultRunsInput = document.getElementById(
-      "mobile-pricing-default-runs"
+      "mobile-pricing-default-runs",
     );
     if (defaultRunsInput) {
       defaultRunsInput.value = config.default_available_runs;
@@ -10831,44 +10798,44 @@ async function loadMobilePricingConfig() {
 
     // 填充"个人资料页显示剩余次数"复选框
     const showAvailableRunsCheckbox = document.getElementById(
-      "mobile-pricing-show-available-runs"
+      "mobile-pricing-show-available-runs",
     );
     if (showAvailableRunsCheckbox) {
       showAvailableRunsCheckbox.checked = config.show_available_runs;
     } else {
       console.warn(
-        "[价格配置] 警告：找不到元素 #mobile-pricing-show-available-runs"
+        "[价格配置] 警告：找不到元素 #mobile-pricing-show-available-runs",
       );
     }
 
     // 填充"剩余次数显示格式"输入框
     const availableRunsFormatInput = document.getElementById(
-      "mobile-pricing-available-runs-format"
+      "mobile-pricing-available-runs-format",
     );
     if (availableRunsFormatInput) {
       availableRunsFormatInput.value =
         config.available_runs_format || "剩余免费次数：{available_runs} 次";
     } else {
       console.warn(
-        "[价格配置] 警告：找不到元素 #mobile-pricing-available-runs-format"
+        "[价格配置] 警告：找不到元素 #mobile-pricing-available-runs-format",
       );
     }
 
     // 填充"注册页显示免费次数提示"复选框
     const showRegisterHintCheckbox = document.getElementById(
-      "mobile-pricing-show-register-hint"
+      "mobile-pricing-show-register-hint",
     );
     if (showRegisterHintCheckbox) {
       showRegisterHintCheckbox.checked = config.show_available_runs_on_register;
     } else {
       console.warn(
-        "[价格配置] 警告：找不到元素 #mobile-pricing-show-register-hint"
+        "[价格配置] 警告：找不到元素 #mobile-pricing-show-register-hint",
       );
     }
 
     // 填充"注册页提示文本"输入框
     const registerHintTextInput = document.getElementById(
-      "mobile-pricing-register-hint-text"
+      "mobile-pricing-register-hint-text",
     );
     if (registerHintTextInput) {
       registerHintTextInput.value =
@@ -10876,7 +10843,7 @@ async function loadMobilePricingConfig() {
         "注册即可得 {available_runs} 次校园跑";
     } else {
       console.warn(
-        "[价格配置] 警告：找不到元素 #mobile-pricing-register-hint-text"
+        "[价格配置] 警告：找不到元素 #mobile-pricing-register-hint-text",
       );
     }
 
@@ -10904,27 +10871,27 @@ async function saveMobilePricingConfig() {
   try {
     // 获取表单元素
     const requirePaymentCheckbox = document.getElementById(
-      "mobile-pricing-require-payment"
+      "mobile-pricing-require-payment",
     );
     const perRunCostInput = document.getElementById(
-      "mobile-pricing-per-run-cost"
+      "mobile-pricing-per-run-cost",
     );
     const defaultRunsInput = document.getElementById(
-      "mobile-pricing-default-runs"
+      "mobile-pricing-default-runs",
     );
 
     // [新增] 获取UI显示配置的表单元素（移动端）
     const showAvailableRunsCheckbox = document.getElementById(
-      "mobile-pricing-show-available-runs"
+      "mobile-pricing-show-available-runs",
     );
     const availableRunsFormatInput = document.getElementById(
-      "mobile-pricing-available-runs-format"
+      "mobile-pricing-available-runs-format",
     );
     const showRegisterHintCheckbox = document.getElementById(
-      "mobile-pricing-show-register-hint"
+      "mobile-pricing-show-register-hint",
     );
     const registerHintTextInput = document.getElementById(
-      "mobile-pricing-register-hint-text"
+      "mobile-pricing-register-hint-text",
     );
 
     // 验证表单元素是否存在
@@ -10994,7 +10961,7 @@ async function saveMobilePricingConfig() {
       sessionUUID === ""
     ) {
       console.error(
-        "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式"
+        "[PC端易支付配置] 错误：sessionUUID未定义，无法验证支付方式",
       );
       sessionUUID = getUUIDFromURL();
     }
@@ -11074,7 +11041,7 @@ async function saveMobilePricingConfig() {
   var extractedSessionUUID = null;
   var urlPath = window.location.pathname;
   var uuidMatch = urlPath.match(
-    /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i
+    /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i,
   );
   if (uuidMatch && uuidMatch[1]) {
     extractedSessionUUID = uuidMatch[1]; // 提取到的 UUID
@@ -11284,11 +11251,11 @@ function updateWatermarkDefaultLabel() {
   // ========== PC端标签更新 ==========
   // 获取PC端默认值开关元素（checkbox）
   const defaultCheckbox_PC = document.getElementById(
-    "watermark-default-value_modal"
+    "watermark-default-value_modal",
   );
   // 获取PC端默认值标签元素
   const defaultLabel_PC = document.getElementById(
-    "watermark-default-label_modal"
+    "watermark-default-label_modal",
   );
 
   // 如果PC端两个元素都存在，则更新标签文本
@@ -11303,11 +11270,11 @@ function updateWatermarkDefaultLabel() {
   // 获取移动端默认值开关元素（checkbox）
   // 使用-mobile后缀以区别于PC端的_modal后缀
   const defaultCheckbox_Mobile = document.getElementById(
-    "watermark-default-value-mobile"
+    "watermark-default-value-mobile",
   );
   // 获取移动端默认值标签元素
   const defaultLabel_Mobile = document.getElementById(
-    "watermark-default-label-mobile"
+    "watermark-default-label-mobile",
   );
 
   // 如果移动端两个元素都存在，则更新标签文本
@@ -11365,7 +11332,7 @@ async function loadWatermarkControlConfig() {
 
     // 更新PC端用户列表容器，显示"加载中..."提示
     const listContainer_PC = document.getElementById(
-      "watermark-users-list_modal"
+      "watermark-users-list_modal",
     );
     if (listContainer_PC) {
       listContainer_PC.innerHTML =
@@ -11374,7 +11341,7 @@ async function loadWatermarkControlConfig() {
 
     // 【问题45修复】更新移动端用户列表容器，显示"加载中..."提示
     const listContainer_Mobile = document.getElementById(
-      "watermark-users-list-mobile"
+      "watermark-users-list-mobile",
     );
     if (listContainer_Mobile) {
       listContainer_Mobile.innerHTML =
@@ -11411,7 +11378,7 @@ async function loadWatermarkControlConfig() {
     // ========== 步骤6: 更新默认值开关（PC端和移动端）==========
     // 找到PC端默认值开关元素（checkbox）
     const defaultCheckbox_PC = document.getElementById(
-      "watermark-default-value_modal"
+      "watermark-default-value_modal",
     );
     if (defaultCheckbox_PC) {
       // 设置PC端开关状态（checked表示允许去水印）
@@ -11420,7 +11387,7 @@ async function loadWatermarkControlConfig() {
 
     // 【问题45修复】找到移动端默认值开关元素（checkbox）
     const defaultCheckbox_Mobile = document.getElementById(
-      "watermark-default-value-mobile"
+      "watermark-default-value-mobile",
     );
     if (defaultCheckbox_Mobile) {
       // 设置移动端开关状态（checked表示允许去水印）
@@ -11435,7 +11402,7 @@ async function loadWatermarkControlConfig() {
     const customizedUsersCount = Object.keys(usersConfig).length;
 
     const userCountElement_PC = document.getElementById(
-      "watermark-user-count_modal"
+      "watermark-user-count_modal",
     );
     if (userCountElement_PC) {
       userCountElement_PC.textContent = `共 ${customizedUsersCount} 个自定义用户`;
@@ -11443,7 +11410,7 @@ async function loadWatermarkControlConfig() {
 
     // 【问题45修复】更新移动端用户数量显示
     const userCountElement_Mobile = document.getElementById(
-      "watermark-user-count-mobile"
+      "watermark-user-count-mobile",
     );
     if (userCountElement_Mobile) {
       userCountElement_Mobile.textContent = `共 ${customizedUsersCount} 个自定义用户`;
@@ -11572,7 +11539,7 @@ async function saveWatermarkControlConfig() {
 
     // 获取默认值开关的状态
     const defaultCheckbox = document.getElementById(
-      "watermark-default-value_modal"
+      "watermark-default-value_modal",
     );
     const defaultValue = defaultCheckbox ? defaultCheckbox.checked : true;
 
@@ -11865,7 +11832,7 @@ async function openAddWatermarkUserModal() {
 
     // 获取用户列表容器元素
     const listContainer = document.getElementById(
-      "available-watermark-users-list"
+      "available-watermark-users-list",
     );
     if (!listContainer) {
       // 如果列表容器不存在，记录错误并通过弹窗提示用户
@@ -11918,7 +11885,7 @@ async function openAddWatermarkUserModal() {
     // [步骤6] 筛选出未配置的用户
     // 只显示那些尚未在水印控制配置中的用户
     const availableUsers = allUsers.filter(
-      (username) => !(username in configuredUsers)
+      (username) => !(username in configuredUsers),
     );
 
     // [步骤7] 生成用户列表HTML
@@ -11965,7 +11932,7 @@ async function openAddWatermarkUserModal() {
 
     // [步骤8] 记录成功日志
     console.log(
-      `[水印控制] ✓ 可添加用户列表加载完成，共 ${availableUsers.length} 个用户可添加`
+      `[水印控制] ✓ 可添加用户列表加载完成，共 ${availableUsers.length} 个用户可添加`,
     );
     console.log("[水印控制] ✓ 模态框已成功打开并显示用户列表");
   } catch (error) {
@@ -11986,7 +11953,7 @@ async function openAddWatermarkUserModal() {
 
     // 在列表容器中显示错误信息
     const listContainer = document.getElementById(
-      "available-watermark-users-list"
+      "available-watermark-users-list",
     );
     if (listContainer) {
       listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-sm">加载失败：${error.message}</p>`;
@@ -12056,34 +12023,34 @@ function diagnoseAddWatermarkUserModal() {
   diagnosis.checks.modalExists = !!modal;
   console.log(
     `✓ 检查1: 模态框元素 (add-watermark-user-modal)`,
-    modal ? "✓ 存在" : "✗ 不存在"
+    modal ? "✓ 存在" : "✗ 不存在",
   );
   if (modal) {
     diagnosis.checks.modalVisible = !modal.classList.contains("hidden");
     console.log(
       `  - 当前状态:`,
-      modal.classList.contains("hidden") ? "隐藏" : "可见"
+      modal.classList.contains("hidden") ? "隐藏" : "可见",
     );
   }
 
   // 检查2: 用户列表容器
   const listContainer = document.getElementById(
-    "available-watermark-users-list"
+    "available-watermark-users-list",
   );
   diagnosis.checks.listContainerExists = !!listContainer;
   console.log(
     `✓ 检查2: 用户列表容器 (available-watermark-users-list)`,
-    listContainer ? "✓ 存在" : "✗ 不存在"
+    listContainer ? "✓ 存在" : "✗ 不存在",
   );
 
   // 检查3: 移动端面板
   const mobilePanel = document.getElementById(
-    "mobile-multi-admin-watermark-panel"
+    "mobile-multi-admin-watermark-panel",
   );
   diagnosis.checks.mobilePanelExists = !!mobilePanel;
   console.log(
     `✓ 检查3: 移动端面板 (mobile-multi-admin-watermark-panel)`,
-    mobilePanel ? "✓ 存在" : "✗ 不存在"
+    mobilePanel ? "✓ 存在" : "✗ 不存在",
   );
   if (mobilePanel) {
     diagnosis.checks.mobilePanelVisible =
@@ -12092,20 +12059,20 @@ function diagnoseAddWatermarkUserModal() {
       `  - 当前状态:`,
       mobilePanel.classList.contains("hidden")
         ? "隐藏 (这是正常的，需要切换到水印控制标签)"
-        : "可见"
+        : "可见",
     );
   }
 
   // 检查4: PC端按钮（通过搜索包含onclick属性的按钮）
   const buttons = document.querySelectorAll(
-    'button[onclick*="openAddWatermarkUserModal"]'
+    'button[onclick*="openAddWatermarkUserModal"]',
   );
   diagnosis.checks.buttonsCount = buttons.length;
   console.log(`✓ 检查4: 找到 ${buttons.length} 个"添加用户"按钮`);
   buttons.forEach((btn, index) => {
     console.log(
       `  - 按钮 ${index + 1}:`,
-      btn.offsetParent === null ? "不可见（父元素隐藏）" : "可见"
+      btn.offsetParent === null ? "不可见（父元素隐藏）" : "可见",
     );
   });
 
@@ -12114,7 +12081,7 @@ function diagnoseAddWatermarkUserModal() {
     typeof openAddWatermarkUserModal === "function";
   console.log(
     `✓ 检查5: openAddWatermarkUserModal 函数`,
-    diagnosis.checks.functionAccessible ? "✓ 可访问" : "✗ 不可访问"
+    diagnosis.checks.functionAccessible ? "✓ 可访问" : "✗ 不可访问",
   );
 
   // 检查6: Session UUID（API调用需要）
@@ -12123,13 +12090,13 @@ function diagnoseAddWatermarkUserModal() {
     `✓ 检查6: sessionUUID`,
     diagnosis.checks.sessionUUID
       ? `✓ 已定义 (${sessionUUID ? "有值" : "为空"})`
-      : "✗ 未定义"
+      : "✗ 未定义",
   );
 
   // 总结
   console.log("========================================");
   const allChecksPass = Object.values(diagnosis.checks).every(
-    (v) => v === true || typeof v === "number"
+    (v) => v === true || typeof v === "number",
   );
   if (allChecksPass) {
     console.log("✓ 所有检查通过！");
@@ -12170,7 +12137,7 @@ async function refreshWatermarkUserList() {
 
     // 获取用户列表容器元素
     const listContainer = document.getElementById(
-      "available-watermark-users-list"
+      "available-watermark-users-list",
     );
     if (!listContainer) {
       console.error("[水印控制] 无法找到用户列表容器元素");
@@ -12210,7 +12177,7 @@ async function refreshWatermarkUserList() {
 
     // [步骤5] 筛选出未配置的用户
     const availableUsers = allUsers.filter(
-      (username) => !(username in configuredUsers)
+      (username) => !(username in configuredUsers),
     );
 
     // [步骤6] 生成用户列表HTML
@@ -12255,7 +12222,7 @@ async function refreshWatermarkUserList() {
 
     // [步骤7] 记录成功日志
     console.log(
-      `[水印控制] 用户列表刷新完成，共 ${availableUsers.length} 个可添加用户`
+      `[水印控制] 用户列表刷新完成，共 ${availableUsers.length} 个可添加用户`,
     );
 
     // [步骤8] 显示成功提示（可选，避免过多打扰）
@@ -12282,7 +12249,7 @@ async function refreshWatermarkUserList() {
 
     // 在列表容器中显示错误信息
     const listContainer = document.getElementById(
-      "available-watermark-users-list"
+      "available-watermark-users-list",
     );
     if (listContainer) {
       listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-sm">刷新失败：${error.message}</p>`;
@@ -12417,7 +12384,7 @@ function filterWatermarkUsers() {
 
   // [步骤2] 获取所有用户项元素
   const listContainer = document.getElementById(
-    "available-watermark-users-list"
+    "available-watermark-users-list",
   );
   if (!listContainer) {
     return;
@@ -12469,7 +12436,7 @@ function filterWatermarkUsers() {
 
   // [步骤5] 记录调试日志
   console.log(
-    `[水印控制] 搜索关键词: "${keyword}", 匹配用户数: ${visibleCount}`
+    `[水印控制] 搜索关键词: "${keyword}", 匹配用户数: ${visibleCount}`,
   );
 }
 
@@ -12494,10 +12461,10 @@ async function loadMobileWatermarkControlConfig() {
 
     // 获取两个可能的列表容器（查看面板和配置面板）
     const listContainer = document.getElementById(
-      "mobile-watermark-users-list"
+      "mobile-watermark-users-list",
     );
     const listContainerCtrl = document.getElementById(
-      "mobile-watermark-users-list-ctrl"
+      "mobile-watermark-users-list-ctrl",
     );
 
     // 为两个容器显示加载状态
@@ -12536,7 +12503,7 @@ async function loadMobileWatermarkControlConfig() {
     // ========== 步骤6: 更新默认值开关（移动端）==========
     // 【问题45修复】找到移动端默认值开关元素（checkbox）
     const defaultCheckbox_Mobile = document.getElementById(
-      "watermark-default-value-mobile"
+      "watermark-default-value-mobile",
     );
     if (defaultCheckbox_Mobile) {
       // 设置移动端开关状态（checked表示允许去水印）
@@ -12549,7 +12516,7 @@ async function loadMobileWatermarkControlConfig() {
     // 【兼容性】同时保留旧的只读显示更新（如果存在）
     // 更新查看面板的默认值显示（旧版，可能在其他地方使用）
     const defaultValueElement = document.getElementById(
-      "mobile-watermark-default-value"
+      "mobile-watermark-default-value",
     );
     if (defaultValueElement) {
       defaultValueElement.textContent = defaultValue
@@ -12565,7 +12532,7 @@ async function loadMobileWatermarkControlConfig() {
 
     // 更新配置面板的默认值显示（旧版，可能在其他地方使用）
     const defaultValueElementCtrl = document.getElementById(
-      "mobile-watermark-default-value-ctrl"
+      "mobile-watermark-default-value-ctrl",
     );
     if (defaultValueElementCtrl) {
       defaultValueElementCtrl.textContent = defaultValue
@@ -12585,7 +12552,7 @@ async function loadMobileWatermarkControlConfig() {
 
     // 更新查看面板的用户数量
     const userCountElement = document.getElementById(
-      "mobile-watermark-user-count"
+      "mobile-watermark-user-count",
     );
     if (userCountElement) {
       userCountElement.textContent = `共 ${customizedUsersCount} 个自定义用户`;
@@ -12593,7 +12560,7 @@ async function loadMobileWatermarkControlConfig() {
 
     // 更新配置面板的用户数量
     const userCountElementCtrl = document.getElementById(
-      "mobile-watermark-user-count-ctrl"
+      "mobile-watermark-user-count-ctrl",
     );
     if (userCountElementCtrl) {
       userCountElementCtrl.textContent = `共 ${customizedUsersCount} 个自定义用户`;
@@ -12716,7 +12683,7 @@ async function loadMobileWatermarkControlConfig() {
 
     // 在两个容器中显示错误信息
     const listContainer = document.getElementById(
-      "mobile-watermark-users-list"
+      "mobile-watermark-users-list",
     );
     if (listContainer) {
       listContainer.innerHTML =
@@ -12726,7 +12693,7 @@ async function loadMobileWatermarkControlConfig() {
     }
 
     const listContainerCtrl = document.getElementById(
-      "mobile-watermark-users-list-ctrl"
+      "mobile-watermark-users-list-ctrl",
     );
     if (listContainerCtrl) {
       listContainerCtrl.innerHTML =
@@ -12754,7 +12721,7 @@ async function saveMobileWatermarkControlConfig() {
 
     // 【问题45修复】获取移动端默认值开关的状态
     const defaultCheckbox = document.getElementById(
-      "watermark-default-value-mobile"
+      "watermark-default-value-mobile",
     );
     const defaultValue = defaultCheckbox ? defaultCheckbox.checked : true;
 
@@ -12763,7 +12730,7 @@ async function saveMobileWatermarkControlConfig() {
 
     // 查找移动端的所有用户权限复选框
     const checkboxes = document.querySelectorAll(
-      ".mobile-watermark-user-checkbox"
+      ".mobile-watermark-user-checkbox",
     );
 
     checkboxes.forEach((checkbox) => {
@@ -12834,7 +12801,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // 这是异步操作，会在后台执行，不阻塞其他初始化逻辑
   loadPaymentMethodsConfig(
     (show_Modal_Alert = false),
-    (DOMContentLoaded_Event = true)
+    (DOMContentLoaded_Event = true),
   );
 });
 
@@ -12842,7 +12809,7 @@ function handleCdnError(resourceName) {
   resourceName = resourceName || "未指定";
   cdnErrorCount++;
   console.warn(
-    "CDN资源[" + resourceName + "]加载失败 (" + cdnErrorCount + "/3)"
+    "CDN资源[" + resourceName + "]加载失败 (" + cdnErrorCount + "/3)",
   );
 
   if (cdnErrorTimer) {
@@ -12972,7 +12939,7 @@ function checkAdminReturnState() {
   const overlay = document.getElementById("admin-return-overlay");
 
   logMessage_Info(
-    "[上帝模式] 检查管理员返回按钮显示状态，来源会话UUID：" + originSession
+    "[上帝模式] 检查管理员返回按钮显示状态，来源会话UUID：" + originSession,
   );
   logMessage_Info("[上帝模式] 当前页面URL：" + window.location.pathname);
 
@@ -13137,7 +13104,7 @@ async function loadMobileSessionPickerList() {
   const listEl = $("mobile-session-picker-list");
   if (!listEl) {
     logMessage_Error(
-      "loadMobileSessionPickerList: 无法找到 'mobile-session-picker-list' 容器。"
+      "loadMobileSessionPickerList: 无法找到 'mobile-session-picker-list' 容器。",
     );
     return;
   }
@@ -13164,7 +13131,7 @@ async function loadMobileSessionPickerList() {
       (session) =>
         session.session_id &&
         session.session_id !== "null" &&
-        session.session_id.trim() !== ""
+        session.session_id.trim() !== "",
     );
     currentSessionInfo.currentCount = validSessions.length;
 
@@ -13373,7 +13340,7 @@ function switchUIContainer() {
     const desktopLoginVisible =
       !$("login-container").classList.contains("hidden");
     const desktopAuthVisible = !$("auth-login-container").classList.contains(
-      "hidden"
+      "hidden",
     );
     const desktopMainAppVisible = !$("main-app").classList.contains("hidden");
     const desktopMultiAccountVisible =
@@ -13409,7 +13376,7 @@ function switchUIContainer() {
       }
 
       const mobileLoadingOverlay = document.getElementById(
-        "mobile-loading-overlay"
+        "mobile-loading-overlay",
       );
       if (mobileLoadingOverlay) {
         mobileLoadingOverlay.classList.remove("hidden");
@@ -13435,7 +13402,7 @@ function switchUIContainer() {
       $("mobile-multi-account-app").classList.remove("hidden");
       updateMobileNavVisibility(true, "multi");
       console.log(
-        "[UI切换] PC端multi-account-app可见，显示移动端mobile-multi-account-app"
+        "[UI切换] PC端multi-account-app可见，显示移动端mobile-multi-account-app",
       );
       switchMobilePanel("mobile-multi-control-panel", "multi");
       console.log("[UI切换] 已默认激活mobile-multi-control-panel");
@@ -13443,13 +13410,13 @@ function switchUIContainer() {
       $("mobile-login-container").classList.remove("hidden");
       updateMobileNavVisibility(false);
       console.log(
-        "[UI切换] PC端login-container可见，显示移动端mobile-login-container"
+        "[UI切换] PC端login-container可见，显示移动端mobile-login-container",
       );
     } else if (desktopAuthVisible) {
       $("mobile-auth-login-container").classList.remove("hidden");
       updateMobileNavVisibility(false);
       console.log(
-        "[UI切换] PC端auth-login-container可见，显示移动端mobile-auth-login-container"
+        "[UI切换] PC端auth-login-container可见，显示移动端mobile-auth-login-container",
       );
       try {
         (function () {
@@ -13499,15 +13466,15 @@ function switchUIContainer() {
     console.log("[UI切换] 切换到桌面端模式");
 
     const mobileLoginVisible = !$("mobile-login-container").classList.contains(
-      "hidden"
+      "hidden",
     );
     const mobileAuthVisible = !$(
-      "mobile-auth-login-container"
+      "mobile-auth-login-container",
     ).classList.contains("hidden");
     const mobileMainAppVisible =
       !$("mobile-main-app").classList.contains("hidden");
     const mobileMultiAccountVisible = !$(
-      "mobile-multi-account-app"
+      "mobile-multi-account-app",
     ).classList.contains("hidden");
 
     mobileContainer.style.display = "none";
@@ -13556,17 +13523,17 @@ function switchUIContainer() {
       $("multi-account-app").classList.remove("hidden");
       $("multi-account-app").classList.add("grid");
       console.log(
-        "[UI切换] 移动端mobile-multi-account-app可见，显示PC端multi-account-app"
+        "[UI切换] 移动端mobile-multi-account-app可见，显示PC端multi-account-app",
       );
     } else if (mobileLoginVisible) {
       $("login-container").classList.remove("hidden");
       console.log(
-        "[UI切换] 移动端mobile-login-container可见，显示PC端login-container"
+        "[UI切换] 移动端mobile-login-container可见，显示PC端login-container",
       );
     } else if (mobileAuthVisible) {
       $("auth-login-container").classList.remove("hidden");
       console.log(
-        "[UI切换] 移动端mobile-auth-login-container可见，显示PC端auth-login-container"
+        "[UI切换] 移动端mobile-auth-login-container可见，显示PC端auth-login-container",
       );
     }
   }
@@ -13574,13 +13541,13 @@ function switchUIContainer() {
 
 async function saveMobileAttendanceParams() {
   const enabledInput = document.getElementById(
-    "mobile-param-auto_attendance_enabled"
+    "mobile-param-auto_attendance_enabled",
   );
   const refreshInput = document.getElementById(
-    "mobile-param-auto_attendance_refresh_s"
+    "mobile-param-auto_attendance_refresh_s",
   );
   const radiusInput = document.getElementById(
-    "mobile-param-attendance_user_radius_m"
+    "mobile-param-attendance_user_radius_m",
   );
 
   if (!enabledInput || !refreshInput || !radiusInput) {
@@ -13730,15 +13697,15 @@ function initializeMobileUI() {
     loginTabBtn.addEventListener("click", () => showMobileAuthForm("login"));
   if (registerTabBtn)
     registerTabBtn.addEventListener("click", () =>
-      showMobileAuthForm("register")
+      showMobileAuthForm("register"),
     );
 
   const mobileUsernameBtn = document.getElementById(
-    "mobile-login-username-btn"
+    "mobile-login-username-btn",
   );
   const mobilePhoneBtn = document.getElementById("mobile-login-phone-btn");
   const mobileAuthInputContainer = document.getElementById(
-    "mobile-username-container"
+    "mobile-username-container",
   );
   const mobileAuthLabel = document.getElementById("mobile-login-label");
   const mobileSwitchToSms = document.getElementById("mobile-switch-to-sms");
@@ -13794,7 +13761,7 @@ function initializeMobileUI() {
 
   const mobileSwitchToSmsBtn = document.getElementById("mobile-switch-to-sms");
   const mobileSwitchToPassBtn = document.getElementById(
-    "mobile-switch-to-password"
+    "mobile-switch-to-password",
   );
   const mobilePassSection = document.getElementById("mobile-password-section");
   const mobileSmsSection = document.getElementById("mobile-sms-section");
@@ -13811,7 +13778,7 @@ function initializeMobileUI() {
     });
 
   const mobileSendLoginCodeBtn = document.getElementById(
-    "mobile-auth-send-login-code"
+    "mobile-auth-send-login-code",
   );
   if (mobileSendLoginCodeBtn) {
     mobileSendLoginCodeBtn.addEventListener("click", async function () {
@@ -13835,7 +13802,7 @@ function initializeMobileUI() {
   }
 
   const mobileSendRegCodeBtn = document.getElementById(
-    "mobile-reg-send-code-btn"
+    "mobile-reg-send-code-btn",
   );
   if (mobileSendRegCodeBtn) {
     mobileSendRegCodeBtn.addEventListener("click", async function () {
@@ -14001,7 +13968,7 @@ function initializeMobileUI() {
   }
 
   const mobileGuestSection = document.getElementById(
-    "mobile-guest-login-section"
+    "mobile-guest-login-section",
   );
   if (mobileGuestSection) {
     // 修正：独立获取配置，不依赖桌面端 DOM 状态
@@ -14031,13 +13998,13 @@ function initializeMobileUI() {
   }
 
   const mobileSingleLoginBtn = document.getElementById(
-    "mobile-single-login-btn"
+    "mobile-single-login-btn",
   );
   if (mobileSingleLoginBtn) {
     mobileSingleLoginBtn.addEventListener("click", async function () {
       // 获取加载遮罩元素
       const mobileLoadingOverlay = document.getElementById(
-        "mobile-loading-overlay"
+        "mobile-loading-overlay",
       );
 
       try {
@@ -14140,12 +14107,12 @@ function initializeMobileUI() {
     mobileUsernameEntry.addEventListener("input", async function () {
       const username = this.value.trim();
       const exists = [...mobileUserCombo.options].some(
-        (o) => o.value === username
+        (o) => o.value === username,
       );
       mobileUserCombo.value = exists ? username : "";
 
       const mobilePasswordEntry = document.getElementById(
-        "mobile-password-entry"
+        "mobile-password-entry",
       );
       if (mobilePasswordEntry) mobilePasswordEntry.value = "";
 
@@ -14192,7 +14159,7 @@ function initializeMobileUI() {
   }
 
   const mobileMultiAccountBtn = document.getElementById(
-    "mobile-multi-account-btn"
+    "mobile-multi-account-btn",
   );
   if (mobileMultiAccountBtn) {
     mobileMultiAccountBtn.addEventListener("click", async function () {
@@ -14212,10 +14179,10 @@ function initializeMobileUI() {
       console.log("[移动端UI] 进入多账号模式成功");
 
       const mobileLoginContainer = document.getElementById(
-        "mobile-login-container"
+        "mobile-login-container",
       );
       const mobileMultiApp = document.getElementById(
-        "mobile-multi-account-app"
+        "mobile-multi-account-app",
       );
       if (mobileLoginContainer) mobileLoginContainer.classList.add("hidden");
       if (mobileMultiApp) {
@@ -14229,7 +14196,7 @@ function initializeMobileUI() {
   }
 
   const mobileRefreshSessionsBtn = document.getElementById(
-    "mobile-refresh-sessions-btn"
+    "mobile-refresh-sessions-btn",
   );
   if (mobileRefreshSessionsBtn) {
     mobileRefreshSessionsBtn.addEventListener("click", async function () {
@@ -14242,7 +14209,7 @@ function initializeMobileUI() {
   // [修复] 为移动端上帝模式复选框绑定事件
   // ========================================
   const mobileMultiGodCheck = document.getElementById(
-    "mobile-multi-god-mode-checkbox"
+    "mobile-multi-god-mode-checkbox",
   );
   if (mobileMultiGodCheck) {
     mobileMultiGodCheck.addEventListener("change", function () {
@@ -14252,7 +14219,7 @@ function initializeMobileUI() {
   }
 
   const mobileSingleGodCheck = document.getElementById(
-    "mobile-god-mode-checkbox-panel"
+    "mobile-god-mode-checkbox-panel",
   );
   if (mobileSingleGodCheck) {
     mobileSingleGodCheck.addEventListener("change", function () {
@@ -14312,7 +14279,7 @@ async function loadMobileSessionsList() {
       (session) =>
         session.session_id &&
         session.session_id !== "null" &&
-        session.session_id.trim() !== ""
+        session.session_id.trim() !== "",
     );
 
     // 更新计数器显示
@@ -14465,8 +14432,10 @@ async function loadMobileSessionsList() {
                         <div class="w-14 h-14 ${
                           isCurrent ? "bg-slate-500" : "bg-red-500"
                         } rounded-full flex items-center justify-center mb-2 shadow-lg ${
-        isCurrent ? "shadow-slate-500/30" : "shadow-red-500/30"
-      } animate-pulse">
+                          isCurrent
+                            ? "shadow-slate-500/30"
+                            : "shadow-red-500/30"
+                        } animate-pulse">
                             ${
                               isCurrent
                                 ? '<svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>'
@@ -14556,7 +14525,7 @@ async function loadMobileSessionsList() {
             showMobileConfirm(
               "删除会话",
               `确定要删除此会话（会话 UUID：${fullSessionId}）吗？\n`,
-              () => deleteSessionFromPicker(session.session_id, false)
+              () => deleteSessionFromPicker(session.session_id, false),
             );
           }
         } else {
@@ -14668,7 +14637,7 @@ async function onMobileUserChange() {
 function toggleMobileSidebar() {
   const backdrop = document.getElementById("mobile-sidebar-backdrop");
   const sidebarSingle = document.getElementById(
-    "mobile-sidebar-single-account"
+    "mobile-sidebar-single-account",
   );
   const sidebarMulti = document.getElementById("mobile-sidebar-multi-account");
 
@@ -14706,7 +14675,7 @@ function toggleMobileSidebar() {
 function closeMobileSidebar() {
   const backdrop = document.getElementById("mobile-sidebar-backdrop");
   const sidebarSingle = document.getElementById(
-    "mobile-sidebar-single-account"
+    "mobile-sidebar-single-account",
   );
   const sidebarMulti = document.getElementById("mobile-sidebar-multi-account");
 
@@ -14733,7 +14702,7 @@ function updateMobileNavVisibility(show, mode = "single") {
   const mobileMenuBtn = document.getElementById("mobile-menu-btn");
   const mobileHeader = document.getElementById("mobile-header");
   const sidebarSingle = document.getElementById(
-    "mobile-sidebar-single-account"
+    "mobile-sidebar-single-account",
   );
   const sidebarMulti = document.getElementById("mobile-sidebar-multi-account");
 
@@ -14769,10 +14738,10 @@ function updateMobileNavVisibility(show, mode = "single") {
   }
 
   const mobileBottomNavSingle = document.getElementById(
-    "mobile-bottom-nav-single-account"
+    "mobile-bottom-nav-single-account",
   );
   const mobileBottomNavMulti = document.getElementById(
-    "mobile-bottom-nav-multi-account"
+    "mobile-bottom-nav-multi-account",
   );
 
   if (show) {
@@ -14835,7 +14804,7 @@ document.addEventListener("DOMContentLoaded", function () {
   switchUIContainer();
 
   console.log(
-    "[页面加载] 移动端检测和UI切换完成（基于User-Agent，不监听窗口变化）"
+    "[页面加载] 移动端检测和UI切换完成（基于User-Agent，不监听窗口变化）",
   );
 });
 
@@ -14844,7 +14813,7 @@ document.addEventListener("DOMContentLoaded", function () {
 function handleCdnError(resourceName = "未指定") {
   cdnErrorCount++;
   logMessage_Warning(
-    `CDN资源[${resourceName}]加载失败 (${cdnErrorCount}/3)，等待应用初始化...`
+    `CDN资源[${resourceName}]加载失败 (${cdnErrorCount}/3)，等待应用初始化...`,
   );
 
   if (cdnErrorTimer) {
@@ -14862,7 +14831,7 @@ function handleCdnError(resourceName = "未指定") {
         }
         errorOverlay.classList.remove("hidden");
         logMessage_Error(
-          `应用初始化超时，CDN资源加载失败 (${cdnErrorCount}个资源)`
+          `应用初始化超时，CDN资源加载失败 (${cdnErrorCount}个资源)`,
         );
       }
     }
@@ -14944,7 +14913,7 @@ function jsShowConfirm(title, message) {
 
     if (!modal || !titleEl || !msgEl || !okBtn || !cancelBtn) {
       logMessage_Error(
-        "Confirm modal DOM not found. Falling back to native confirm."
+        "Confirm modal DOM not found. Falling back to native confirm.",
       );
       resolve(confirm(`${title}:\n${message}`));
       return;
@@ -15007,7 +14976,7 @@ function getUUIDFromURL() {
   const urlPath = window.location.pathname;
 
   const match = urlPath.match(
-    /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i
+    /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i,
   );
 
   if (match && match[1]) {
@@ -15033,7 +15002,7 @@ async function callPythonAPI(method, ...args) {
     logMessage_Info(`[API调用] 会话ID: ${sessionUUID}`);
   } else {
     logMessage_Warning(
-      `[API调用] 警告: sessionUUID为空，可能导致会话无效错误，尝试从URL提取...`
+      `[API调用] 警告: sessionUUID为空，可能导致会话无效错误，尝试从URL提取...`,
     );
     sessionUUID = getUUIDFromURL();
     if (
@@ -15062,7 +15031,7 @@ async function callPythonAPI(method, ...args) {
           args[0] !== null &&
           !Array.isArray(args[0])
           ? args[0]
-          : args
+          : args,
       ),
     });
   } catch (networkError) {
@@ -15071,7 +15040,7 @@ async function callPythonAPI(method, ...args) {
     if (!isInNetworkErrorState) {
       isInNetworkErrorState = true;
       logMessage_Info(
-        "[API调用] 进入网络错误状态，停止后端日志发送和WebSocket"
+        "[API调用] 进入网络错误状态，停止后端日志发送和WebSocket",
       );
 
       if (refreshUserListInterval) {
@@ -15088,7 +15057,7 @@ async function callPythonAPI(method, ...args) {
           socket.disconnect();
         }
         logMessage_Info(
-          "[API调用] 已断开WebSocket连接并禁用自动重连 (因网络错误)"
+          "[API调用] 已断开WebSocket连接并禁用自动重连 (因网络错误)",
         );
       }
     }
@@ -15149,7 +15118,7 @@ async function callPythonAPI(method, ...args) {
               }
               socket.connect();
               logMessage_Info(
-                "[API调用] 正在重新连接WebSocket（已重新启用自动重连）"
+                "[API调用] 正在重新连接WebSocket（已重新启用自动重连）",
               );
             }
           }, 1000);
@@ -15162,7 +15131,7 @@ async function callPythonAPI(method, ...args) {
 
   if (!response.ok) {
     logMessage_Info(
-      `[API调用] ✗ 响应错误: ${response.status} ${response.statusText}`
+      `[API调用] ✗ 响应错误: ${response.status} ${response.statusText}`,
     );
     let errorData = null;
     try {
@@ -15171,17 +15140,18 @@ async function callPythonAPI(method, ...args) {
       logMessage_Warning("[API调用] ✗ 无法解析错误响应体为 JSON:", parseError);
     }
 
-
-    if (response.status === 403 &&
+    if (
+      response.status === 403 &&
       errorData &&
       errorData.message &&
-      errorData.message.includes("账号已被封禁")) {
+      errorData.message.includes("账号已被封禁")
+    ) {
       logMessage_Error("[API调用] ✗ 账号已被封禁！");
-      
+
       if (!isInNetworkErrorState) {
         isInNetworkErrorState = true;
         logMessage_Info(
-          "[API调用] 进入网络错误状态，停止后端日志发送和WebSocket"
+          "[API调用] 进入网络错误状态，停止后端日志发送和WebSocket",
         );
 
         if (refreshUserListInterval) {
@@ -15198,11 +15168,11 @@ async function callPythonAPI(method, ...args) {
             socket.disconnect();
           }
           logMessage_Info(
-            "[API调用] 已断开WebSocket连接并禁用自动重连 (因网络错误)"
+            "[API调用] 已断开WebSocket连接并禁用自动重连 (因网络错误)",
           );
         }
       }
-      
+
       // 检查遮罩是否已存在，防止重复创建
       if (!document.getElementById("account-banned-overlay")) {
         const bannedOverlay = document.createElement("div");
@@ -15243,7 +15213,8 @@ async function callPythonAPI(method, ...args) {
         `;
 
         const text = document.createElement("p");
-        text.textContent = "您的账号已被管理员封禁，无法继续使用该服务。如有疑问，请联系管理员。";
+        text.textContent =
+          "您的账号已被管理员封禁，无法继续使用该服务。如有疑问，请联系管理员。";
         text.style.cssText = `
           font-size: 16px; 
           line-height: 1.8; 
@@ -15286,9 +15257,7 @@ async function callPythonAPI(method, ...args) {
       }
 
       throw new Error("账号已被封禁。");
-      }
-
-    else if (
+    } else if (
       response.status === 401 &&
       errorData &&
       errorData.message &&
@@ -15308,10 +15277,10 @@ async function callPythonAPI(method, ...args) {
 
         const mobileMainApp = document.getElementById("mobile-main-app");
         const mobileMultiApp = document.getElementById(
-          "mobile-multi-account-app"
+          "mobile-multi-account-app",
         );
         const mobileLoginContainer = document.getElementById(
-          "mobile-login-container"
+          "mobile-login-container",
         );
 
         if (mobileMainApp) mobileMainApp.classList.add("hidden");
@@ -15591,7 +15560,7 @@ async function callPythonAPI(method, ...args) {
 
     if (response.status === 403 && errorData && errorData.message) {
       logMessage_Error(
-        `[API调用] ✗ 权限不足 (${method}): ${errorData.message}`
+        `[API调用] ✗ 权限不足 (${method}): ${errorData.message}`,
       );
       // showModalAlert(`操作失败: ${errorData.message}`, "权限不足");
       Swal.fire({
@@ -15605,7 +15574,7 @@ async function callPythonAPI(method, ...args) {
     const genericErrorMessage =
       errorData && errorData.message ? errorData.message : response.statusText;
     logMessage_Error(
-      `[API调用] ✗ 未处理的错误 (${method}): ${genericErrorMessage}`
+      `[API调用] ✗ 未处理的错误 (${method}): ${genericErrorMessage}`,
     );
     throw new Error(`API调用失败 (${response.status}): ${genericErrorMessage}`);
   }
@@ -15614,7 +15583,7 @@ async function callPythonAPI(method, ...args) {
   const result = await response.json();
   logMessage_Info(
     `[API调用] ✓ 返回结果 (${method}):`,
-    result.success ? "成功" : "失败"
+    result.success ? "成功" : "失败",
   );
   return result;
 }
@@ -15959,7 +15928,7 @@ function setThemeStyle(styleName, save = true) {
   }
 
   const themeButtons = document.querySelectorAll(
-    '#admin-profile-panel_modal button[onclick^="setThemeStyle"]'
+    '#admin-profile-panel_modal button[onclick^="setThemeStyle"]',
   );
   themeButtons.forEach((btn) => {
     const onclickValue = btn.getAttribute("onclick");
@@ -16042,7 +16011,7 @@ function onColorPicked(val) {
 }
 
 /**
- * 【任务7】统一管理面板主题颜色保存函数
+ * 统一管理面板主题颜色保存函数
  * 该函数用于处理 mobile-admin-panel-unified 中的主题颜色保存
  *
  * @description
@@ -16071,7 +16040,7 @@ function saveUnifiedThemeColor(value) {
 
   // 同时更新颜色选择器和输入框的同步
   const colorPicker = document.getElementById(
-    "mobile-unified-theme_base_color-picker"
+    "mobile-unified-theme_base_color-picker",
   );
   const colorInput = document.getElementById("mobile-unified-theme_base_color");
   if (colorPicker) colorPicker.value = value;
@@ -16229,8 +16198,6 @@ function showButtonError(buttonId, message = "失败", duration = 2000) {
   }, duration);
 }
 
-
-
 const captchaDimensions = {
   login: { width: 343, height: 119 },
   register: { width: 343, height: 119 },
@@ -16295,7 +16262,7 @@ async function loadCaptcha(formType) {
       "减去左内边距",
       paddingLeft,
       "减去右内边距",
-      paddingRight
+      paddingRight,
     );
     console.log(`[验证码] 登录表单容器宽度: ${containerWidth}px`);
     // 限制最大宽度
@@ -16324,18 +16291,13 @@ async function loadCaptcha(formType) {
         return;
       }
       // captchaIds[formType] = result.captcha_id;
-      if (formType === "login")
-      {
+      if (formType === "login") {
         captchaIds_login = result.captcha_id;
-      } 
-      else if (formType === "register")
-      {
+      } else if (formType === "register") {
         captchaIds_register = result.captcha_id;
-      } 
-      else if (formType === "mobile-login"){
+      } else if (formType === "mobile-login") {
         captchaIds_mobile_login = result.captcha_id;
-      } 
-      else if (formType === "mobile-register"){
+      } else if (formType === "mobile-register") {
         captchaIds_mobile_register = result.captcha_id;
       }
       captchaDimensions[formType] = {
@@ -16365,7 +16327,7 @@ async function loadCaptcha(formType) {
       displayElement.innerHTML = iframeHtml;
 
       console.log(
-        `[验证码] 已加载验证码iframe: ${result.captcha_id} (时间戳: ${timestamp}) 宽度: ${captchaWidth}`
+        `[验证码] 已加载验证码iframe: ${result.captcha_id} (时间戳: ${timestamp}) 宽度: ${captchaWidth}`,
       );
 
       // loadMobileCaptcha(formType);
@@ -16435,14 +16397,14 @@ async function loadCaptchaModal(requestedWidth) {
       const returnedHeight = result.height || 119;
 
       console.log(
-        `[验证码模态窗] 使用验证码尺寸: ${returnedWidth}x${returnedHeight}`
+        `[验证码模态窗] 使用验证码尺寸: ${returnedWidth}x${returnedHeight}`,
       );
 
       displayElement.style.width = `${returnedWidth}px`;
       displayElement.style.height = `${returnedHeight}px`;
 
       console.log(
-        `[验证码模态窗] 设置显示元素尺寸: ${displayElement.style.width}x${displayElement.style.height}`
+        `[验证码模态窗] 设置显示元素尺寸: ${displayElement.style.width}x${displayElement.style.height}`,
       );
 
       const timestamp = Date.now();
@@ -16450,12 +16412,12 @@ async function loadCaptchaModal(requestedWidth) {
       const captchaHeight = returnedHeight;
 
       console.log(
-        `[验证码模态窗] 验证码尺寸: ${captchaWidth}x${captchaHeight}`
+        `[验证码模态窗] 验证码尺寸: ${captchaWidth}x${captchaHeight}`,
       );
 
       // 确保在modal中显示容器的宽度与iframe一致
       const containerElem = document.getElementById(
-        "send_sms_code_captcha_container"
+        "send_sms_code_captcha_container",
       );
       if (containerElem) {
         containerElem.style.width = `${captchaWidth}px`;
@@ -16476,8 +16438,8 @@ async function loadCaptchaModal(requestedWidth) {
       console.log(
         `[验证码模态窗] 验证码加载成功，ID: ${result.captcha_id.substring(
           0,
-          8
-        )}... (时间戳: ${timestamp})`
+          8,
+        )}... (时间戳: ${timestamp})`,
       );
     } else {
       displayElement.innerHTML =
@@ -16530,7 +16492,7 @@ function openCaptchaModal(context) {
     // 计算模态框内部内容包装器的可用宽度，以便传给后端并设置验证码容器宽度
     let requestedWidth = null;
     const wrapper = document.getElementById(
-      "send_sms_code_modal_content_wrapper"
+      "send_sms_code_modal_content_wrapper",
     );
     // const containerElem = document.getElementById("send_sms_code_captcha_container");
     if (wrapper) {
@@ -16627,7 +16589,7 @@ async function confirmCaptchaAndSendSMS() {
       captcha,
       pendingSMSContext.button,
       pendingSMSContext.originalText,
-      pendingSMSContext.scene
+      pendingSMSContext.scene,
     );
 
     // 修复：发送成功后清除上下文，防止 closeCaptchaModal 错误地重置倒计时按钮
@@ -16648,16 +16610,22 @@ async function sendSMSWithCaptcha(
   captcha,
   button,
   originalText,
-  scene = null
+  scene = null,
 ) {
   // if(captchaIds.modal===null || captchaIds.modal===undefined || captchaIds.modal==="" || captchaIds.modal=="null" || captchaIds.modal=="undefined" || captchaIds.modal=="NULL"){
-  if(captchaIds_modal===null || captchaIds_modal===undefined || captchaIds_modal==="" || captchaIds_modal=="null" || captchaIds_modal=="undefined" || captchaIds_modal=="NULL"){
+  if (
+    captchaIds_modal === null ||
+    captchaIds_modal === undefined ||
+    captchaIds_modal === "" ||
+    captchaIds_modal == "null" ||
+    captchaIds_modal == "undefined" ||
+    captchaIds_modal == "NULL"
+  ) {
     // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
     Swal.fire({
       icon: "warning",
       title: "发生失败",
       text: "验证码未加载或已过期，请刷新后重试",
-      
     });
 
     // document.getElementById("modal-login-captcha-refresh").click();
@@ -16844,7 +16812,7 @@ async function handleAuthLogin(isMobile_use = false) {
   console.log("[登录] isMobile_use:", isMobile_use);
   console.log("[登录] captchaIds_login:", captchaIds_login);
   console.log("[登录] captchaIds_mobile_login:", captchaIds_mobile_login);
-  if (isMobile_use === true ) {
+  if (isMobile_use === true) {
     // request_body.captcha_id = captchaIds["mobile-login"];
     request_body.captcha_id = captchaIds_mobile_login;
   } else {
@@ -16853,21 +16821,29 @@ async function handleAuthLogin(isMobile_use = false) {
   }
   console.log("[登录] 使用的验证码ID:", request_body.captcha_id);
 
-
-  if(request_body.captcha_id===null || request_body.captcha_id===undefined || request_body.captcha_id==="" || request_body.captcha_id=="null" || request_body.captcha_id=="undefined" || request_body.captcha_id=="NULL"){
+  if (
+    request_body.captcha_id === null ||
+    request_body.captcha_id === undefined ||
+    request_body.captcha_id === "" ||
+    request_body.captcha_id == "null" ||
+    request_body.captcha_id == "undefined" ||
+    request_body.captcha_id == "NULL"
+  ) {
     // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
     Swal.fire({
       icon: "warning",
       title: "登录失败",
       text: "验证码未加载或已过期，请刷新后重试",
-      
     });
 
     // document.getElementById("auth-login-captcha-refresh").click();
     // document.getElementById("mobile-login-captcha-refresh").click();
 
-    refreshCaptcha("login");
-    refreshCaptcha("mobile-login");
+    if (isMobile_use === false) {
+      refreshCaptcha("login");
+    } else {
+      refreshCaptcha("mobile-login");
+    }
 
     return;
   }
@@ -16913,7 +16889,7 @@ async function handleAuthLogin(isMobile_use = false) {
         sessionUUID = result.session_id;
         logMessage_Info(
           "[登录成功] 会话ID已设置:",
-          sessionUUID.substring(0, 16) + "..."
+          sessionUUID.substring(0, 16) + "...",
         );
       }
 
@@ -16958,7 +16934,7 @@ async function handleAuthLogin(isMobile_use = false) {
 
           if (result.kicked_sessions_count > 0) {
             logMessage_Info(
-              `[多设备检测] 已自动登出该账号在其他 ${result.kicked_sessions_count} 个设备上的会话`
+              `[多设备检测] 已自动登出该账号在其他 ${result.kicked_sessions_count} 个设备上的会话`,
             );
           }
         }, 1000);
@@ -16984,14 +16960,14 @@ async function handleAuthLogin(isMobile_use = false) {
 
         if (result.is_guest) {
           logMessage_Info(
-            "[游客模式] 部分功能受限：无法标记通知已读、无法使用签到功能、无法执行多账号任务"
+            "[游客模式] 部分功能受限：无法标记通知已读、无法使用签到功能、无法执行多账号任务",
           );
           logMessage_Info(
-            "[游客提示] 请保存当前地址，丢失后无法恢复您的数据！5分钟不活跃会话将被清理。"
+            "[游客提示] 请保存当前地址，丢失后无法恢复您的数据！5分钟不活跃会话将被清理。",
           );
         } else {
           logMessage_Info(
-            "[注册用户] 您的状态已关联到账号，可在任何设备登录恢复。"
+            "[注册用户] 您的状态已关联到账号，可在任何设备登录恢复。",
           );
         }
       }, 1000);
@@ -17005,7 +16981,11 @@ async function handleAuthLogin(isMobile_use = false) {
         text: result.message || "登录失败",
       });
 
-      refreshCaptcha("login");
+      if (isMobile_use === false) {
+        refreshCaptcha("login");
+      } else {
+        refreshCaptcha("mobile-login");
+      }
       $("auth-login-captcha").value = "";
     }
   } catch (e) {
@@ -17019,7 +16999,11 @@ async function handleAuthLogin(isMobile_use = false) {
       text: "网络错误，请检查连接后重试",
     });
 
-    refreshCaptcha("login");
+    if (isMobile_use === false) {
+      refreshCaptcha("login");
+    } else {
+      refreshCaptcha("mobile-login");
+    }
     $("auth-login-captcha").value = "";
   }
 }
@@ -17076,7 +17060,7 @@ async function handle2FAVerify() {
         sessionUUID = result.session_id;
         logMessage_Info(
           "[2FA验证成功] 会话ID已设置:",
-          sessionUUID.substring(0, 16) + "..."
+          sessionUUID.substring(0, 16) + "...",
         );
       }
 
@@ -17128,12 +17112,14 @@ async function handle2FAVerify() {
 }
 
 async function handleAuthRegister(isMobile_use = false) {
+  // ── 读取注册表单字段（PC 端与移动端共用同一组字段 ID）──
   const username = $("auth-reg-username").value.trim();
   const phone = $("auth-reg-phone").value.trim();
   const smsCode = $("auth-reg-sms-code").value.trim();
   const nickname_Raw = $("auth-reg-nickname").value.trim();
   const captcha = $("auth-register-captcha").value.trim();
 
+  // 昵称为空时默认使用用户名
   let nickname;
   if (nickname_Raw === "" || nickname_Raw === null) {
     nickname = username;
@@ -17236,13 +17222,13 @@ async function handleAuthRegister(isMobile_use = false) {
       const bindResult = await callPythonAPI_raw(
         "/api/auth/check_phone",
         "POST",
-        { phone: phone }
+        { phone: phone },
       );
 
       if (bindResult && bindResult.is_bound) {
         const confirmed = await jsShowConfirm(
           "手机号已被绑定",
-          `您输入的手机号 ${phone} 已被用户 ${bindResult.bound_to_user} 绑定。\n\n是否继续注册？\n\n如果继续，该手机号将从原账号上强制解绑。`
+          `您输入的手机号 ${phone} 已被用户 ${bindResult.bound_to_user} 绑定。\n\n是否继续注册？\n\n如果继续，该手机号将从原账号上强制解绑。`,
         );
 
         if (!confirmed) {
@@ -17262,7 +17248,6 @@ async function handleAuthRegister(isMobile_use = false) {
       return;
     }
   }
-
 
   const formData = new FormData();
   formData.append("auth_username", username);
@@ -17288,22 +17273,31 @@ async function handleAuthRegister(isMobile_use = false) {
     formData.append("avatar", avatarFile, avatarFile.name || "avatar.jpg");
   }
 
-  if(formData.get("captcha_id")===null || formData.get("captcha_id")===undefined || formData.get("captcha_id")==="" || formData.get("captcha_id")=="null" || formData.get("captcha_id")=="undefined" || formData.get("captcha_id")=="NULL"){
+  if (
+    formData.get("captcha_id") === null ||
+    formData.get("captcha_id") === undefined ||
+    formData.get("captcha_id") === "" ||
+    formData.get("captcha_id") == "null" ||
+    formData.get("captcha_id") == "undefined" ||
+    formData.get("captcha_id") == "NULL"
+  ) {
     Swal.fire({
       icon: "warning",
       title: "注册失败",
       text: "验证码未加载或已过期，请刷新后重试",
-      
     });
 
     // document.getElementById("auth-register-btn").click();
     // document.getElementById("mobile-register-captcha-refresh").click();
-    refreshCaptcha("register");
-    refreshCaptcha("mobile-register");
+    if (isMobile_use === false) {
+      refreshCaptcha("register");
+    } else {
+      refreshCaptcha("mobile-register");
+    }
 
     return;
   }
-    setButtonLoading("auth-register-btn", true, "注册中...");
+  setButtonLoading("auth-register-btn", true, "注册中...");
 
   try {
     const response = await fetch("/auth/register", {
@@ -17315,43 +17309,54 @@ async function handleAuthRegister(isMobile_use = false) {
 
     if (result.success) {
       showButtonSuccess("auth-register-btn", "注册成功");
-      // showModalAlert("注册成功！请登录", "注册成功");
-      Swal.fire({
-        icon: "success",
-        title: "注册成功",
-        text: "注册成功！请登录",
-      });
+
       if (isMobile_use === false) {
-      document.getElementById("auth-reg-username").value = "";
-      document.getElementById("auth-reg-phone").value = "";
-      document.getElementById("auth-reg-sms-code").value = "";
-      document.getElementById("auth-reg-nickname").value = "";
-      document.getElementById("auth-reg-password").value = "";
-      document.getElementById("auth-reg-password-confirm").value = "";
-      document.getElementById("auth-register-captcha").value = "";
-      document.getElementById("auth-reg-avatar-preview").src =
-        "/static/images/default_avatar.png";}
-      else {
+        // ── PC 端：清空注册表单 ──
+        document.getElementById("auth-reg-username").value = "";
+        document.getElementById("auth-reg-phone").value = "";
+        document.getElementById("auth-reg-sms-code").value = "";
+        document.getElementById("auth-reg-nickname").value = "";
+        document.getElementById("auth-reg-password").value = "";
+        document.getElementById("auth-reg-password-confirm").value = "";
+        document.getElementById("auth-register-captcha").value = "";
+        document.getElementById("auth-reg-avatar-preview").src =
+          "/static/images/default_avatar.png";
+
+        // 切换回登录 Tab，并预填注册时使用的用户名 / 密码
+        switchAuthTab("login");
+        document.getElementById("auth-username").value = username;
+        document.getElementById("auth-password").value = password;
+      } else {
+        // ── 移动端：清空注册表单 ──
         document.getElementById("mobile-reg-username").value = "";
         document.getElementById("mobile-reg-phone").value = "";
         document.getElementById("mobile-reg-sms-code").value = "";
         document.getElementById("mobile-reg-nickname").value = "";
         document.getElementById("mobile-reg-avatar-preview").src =
-        "/static/images/default_avatar.png";
+          "/static/images/default_avatar.png";
         document.getElementById("mobile-reg-password").value = "";
         document.getElementById("mobile-reg-password-confirm").value = "";
         document.getElementById("mobile-register-captcha").value = "";
 
+        // 切换回登录 Tab，并预填注册时使用的用户名 / 密码
+        const mobileLoginTab = document.getElementById("mobile-auth-tab-login");
+        if (mobileLoginTab) mobileLoginTab.click();
+        document.getElementById("mobile-auth-username").value = username;
+        document.getElementById("mobile-auth-password").value = password;
       }
+
+      // 刷新注册验证码（以备用户下次再打开注册表单）
       setTimeout(() => {
-        if (isMobile_use === true) {
-          refreshCaptcha('mobile-register');
-        } else {
-        refreshCaptcha("register");
-      }
+        refreshCaptcha(isMobile_use ? "mobile-register" : "register");
       }, 500);
 
-      // showAuthSuccess("注册成功！请登录");
+      // 通知用户注册成功，并告知凭据已自动填入登录框
+      Swal.fire({
+        icon: "success",
+        title: "注册成功！",
+        // text: "已自动填写登录信息，请直接点击「登录」按钮登录。",
+        text: "注册成功！请点击[登录]按钮进行登录。",
+      });
     } else {
       setButtonLoading("auth-register-btn", false);
       showButtonError("auth-register-btn", "注册失败");
@@ -17362,7 +17367,11 @@ async function handleAuthRegister(isMobile_use = false) {
         text: result.message || "注册失败",
       });
 
-      refreshCaptcha("register");
+      if (isMobile_use === false) {
+        refreshCaptcha("register");
+      } else {
+        refreshCaptcha("mobile-register");
+      }
       $("auth-register-captcha").value = "";
     }
   } catch (e) {
@@ -17376,7 +17385,11 @@ async function handleAuthRegister(isMobile_use = false) {
       text: "网络错误，请检查连接后重试",
     });
 
-    refreshCaptcha("register");
+    if (isMobile_use === false) {
+      refreshCaptcha("register");
+    } else {
+      refreshCaptcha("mobile-register");
+    }
     $("auth-register-captcha").value = "";
   } finally {
     registrationCroppedAvatarBlob = null;
@@ -17527,13 +17540,13 @@ if (typeof window !== "undefined") {
     const adminPanelBtnLogin = $("show-admin-panel-login");
     if (adminPanelBtnLogin)
       adminPanelBtnLogin.addEventListener("click", () =>
-        toggleAdminPanel(true)
+        toggleAdminPanel(true),
       );
 
     const adminPanelBtnMulti = $("show-admin-panel-multi");
     if (adminPanelBtnMulti)
       adminPanelBtnMulti.addEventListener("click", () =>
-        toggleAdminPanel(true)
+        toggleAdminPanel(true),
       );
 
     // --- 新增：使元素可拖拽的通用函数（优先使用 Pointer Events，回退到鼠标/触摸） ---
@@ -17783,7 +17796,7 @@ if (typeof window !== "undefined") {
 
         const confirmed = await jsShowConfirm(
           "退出应用",
-          "您确定要退出跑步助手应用吗？"
+          "您确定要退出跑步助手应用吗？",
         );
         if (!confirmed) return;
 
@@ -17834,25 +17847,25 @@ if (typeof window !== "undefined") {
         modalUsersTab.addEventListener("click", () => switchAdminTab("users"));
       if (modalGroupsTab)
         modalGroupsTab.addEventListener("click", () =>
-          switchAdminTab("groups")
+          switchAdminTab("groups"),
         );
       if (modalLogsTab)
         modalLogsTab.addEventListener("click", () => switchAdminTab("logs"));
       if (modalHealthTab)
         modalHealthTab.addEventListener("click", () =>
-          switchAdminTab("health")
+          switchAdminTab("health"),
         );
       if (modalProfileTab)
         modalProfileTab.addEventListener("click", () =>
-          switchAdminTab("profile")
+          switchAdminTab("profile"),
         );
       if (modalSessionsTab)
         modalSessionsTab.addEventListener("click", () =>
-          switchAdminTab("sessions")
+          switchAdminTab("sessions"),
         );
       if (modalMessagesTab)
         modalMessagesTab.addEventListener("click", () =>
-          switchAdminTab("messages")
+          switchAdminTab("messages"),
         );
       if (modalIpbanTab)
         modalIpbanTab.addEventListener("click", () => switchAdminTab("ipban"));
@@ -17860,15 +17873,15 @@ if (typeof window !== "undefined") {
         modalSmsTab.addEventListener("click", () => switchAdminTab("sms"));
       if (modalConfigTab)
         modalConfigTab.addEventListener("click", () =>
-          switchAdminTab("config")
+          switchAdminTab("config"),
         );
       if (modalCaptchaTab)
         modalCaptchaTab.addEventListener("click", () =>
-          switchAdminTab("captcha")
+          switchAdminTab("captcha"),
         );
       if (modalRemindersTab)
         modalRemindersTab.addEventListener("click", () =>
-          switchAdminTab("reminders")
+          switchAdminTab("reminders"),
         );
       const modalSslTab = $("admin-tab-ssl_modal");
       if (modalSslTab)
@@ -17897,7 +17910,7 @@ if (typeof window !== "undefined") {
         // [警告] 如果找不到CDN标签元素，记录警告信息
         // 这可能意味着HTML结构有变化或元素ID不匹配
         console.warn(
-          "[事件绑定警告] 未找到CDN标签元素 (ID: admin-tab-cdn_modal)"
+          "[事件绑定警告] 未找到CDN标签元素 (ID: admin-tab-cdn_modal)",
         );
       }
 
@@ -17907,7 +17920,7 @@ if (typeof window !== "undefined") {
         // 添加点击事件监听器
         // 当用户点击密码恢复标签时，调用switchAdminTab("bruteforce")切换到密码恢复面板
         modalBruteforceTab.addEventListener("click", () =>
-          switchAdminTab("bruteforce")
+          switchAdminTab("bruteforce"),
         );
         // [调试日志] 记录事件绑定成功
         console.log("[事件绑定] 密码恢复标签点击事件已绑定");
@@ -17918,12 +17931,12 @@ if (typeof window !== "undefined") {
         // 2. 元素尚未加载到DOM中
         // 3. 元素被移除或修改
         console.warn(
-          "[事件绑定警告] 未找到密码恢复标签元素 (ID: admin-tab-bruteforce_modal)"
+          "[事件绑定警告] 未找到密码恢复标签元素 (ID: admin-tab-bruteforce_modal)",
         );
       }
 
       const tabsContainer = modalAdminPanel.querySelector(
-        ".flex.border-b-2.border-slate-200"
+        ".flex.border-b-2.border-slate-200",
       );
       if (tabsContainer) {
         tabsContainer.addEventListener(
@@ -17932,7 +17945,7 @@ if (typeof window !== "undefined") {
             event.preventDefault();
             tabsContainer.scrollLeft += event.deltaY;
           },
-          { passive: false }
+          { passive: false },
         );
 
         logMessage_Info("[标签页导航] 已添加滚轮水平滚动支持");
@@ -17966,11 +17979,11 @@ if (typeof window !== "undefined") {
       }
 
       logMessage_Info(
-        "Admin Panel Modal Tabs event listeners bound (using _modal IDs)."
+        "Admin Panel Modal Tabs event listeners bound (using _modal IDs).",
       );
     } else {
       logMessage_Error(
-        "Could not find admin panel modal element to bind tab events."
+        "Could not find admin panel modal element to bind tab events.",
       );
     }
 
@@ -18029,7 +18042,7 @@ if (typeof window !== "undefined") {
     if (refreshSessionsBtnModal)
       refreshSessionsBtnModal.addEventListener("click", loadAdminSessions);
     logMessage_Info(
-      "Admin Panel Modal Refresh Buttons event listeners bound (using _modal IDs)."
+      "Admin Panel Modal Refresh Buttons event listeners bound (using _modal IDs).",
     );
 
     const banTypeSelect = $("ban-type");
@@ -18085,7 +18098,7 @@ if (typeof window !== "undefined") {
     if (refreshSessionsInlineBtn)
       refreshSessionsInlineBtn.addEventListener(
         "click",
-        loadAdminSessions_inline
+        loadAdminSessions_inline,
       );
 
     const createUserModalBtn = $("admin-create-user_modal");
@@ -18113,11 +18126,11 @@ if (typeof window !== "undefined") {
     const godModeCheckboxModal = $("god-mode-checkbox_modal");
     if (godModeCheckbox)
       godModeCheckbox.addEventListener("change", () =>
-        loadAdminSessions_inline()
+        loadAdminSessions_inline(),
       );
     if (godModeCheckboxModal)
       godModeCheckboxModal.addEventListener("change", () =>
-        loadAdminSessions()
+        loadAdminSessions(),
       );
 
     const healthAutoRefreshToggle = $("health-auto-refresh-toggle");
@@ -18163,14 +18176,14 @@ if (typeof window !== "undefined") {
       // 修改：绑定到新的移动端专用模态框函数，而不是 PC 端的 showCreateUserModal
       mobileMultiCreateUserBtn.addEventListener(
         "click",
-        openMobileCreateUserModal
+        openMobileCreateUserModal,
       );
     }
 
     if (mobileSingleCreateUserBtn) {
       mobileSingleCreateUserBtn.addEventListener(
         "click",
-        openMobileCreateUserModal
+        openMobileCreateUserModal,
       );
     }
 
@@ -18196,7 +18209,7 @@ if (typeof window !== "undefined") {
     if (mobileSingleCreateGroupBtn) {
       mobileSingleCreateGroupBtn.addEventListener(
         "click",
-        showCreateGroupModal
+        showCreateGroupModal,
       );
     }
 
@@ -18419,7 +18432,7 @@ async function checkAdminPermission(permissionName) {
     console.log(
       `[权限检查] 开始检查权限: ${permissionName}, sessionUUID: ${
         sessionUUID ? "已设置" : "未设置"
-      }`
+      }`,
     );
 
     // 向后端发送POST请求，检查指定权限
@@ -18659,18 +18672,18 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
             parentDisplay: bruteforceTab.parentElement
               ? window.getComputedStyle(bruteforceTab.parentElement).display
               : null, // 父元素显示状态
-          }
+          },
         );
       }
     } else {
       // [错误日志] 如果找不到按钮元素，记录错误
       // 这表示HTML结构可能有问题，或者元素ID不匹配
       console.error(
-        "[密码恢复Tab错误] 未找到ID为'admin-tab-bruteforce_modal'的元素"
+        "[密码恢复Tab错误] 未找到ID为'admin-tab-bruteforce_modal'的元素",
       );
     }
 
-    // ========== [任务3修复] 添加4个新标签的显示控制逻辑（支付日志标签需根据require_payment配置） ==========
+    // ========== 添加4个新标签的显示控制逻辑（支付日志标签需根据require_payment配置） ==========
     // 这4个标签分别是：欠费查询、支付日志、支付设置、价格设置
     // 其中：
     // - 欠费查询、支付设置、价格设置：仅对admin和super_admin用户组可见
@@ -18731,7 +18744,7 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
             success: pricingConfigData.success, // API调用是否成功
             hasConfig: !!pricingConfigData.config, // 是否包含config字段
             response: pricingConfigData, // 完整响应（用于调试）
-          }
+          },
         );
       }
     } catch (error) {
@@ -18764,11 +18777,11 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
       // [错误日志] 如果找不到欠费查询标签元素，记录警告
       // 这可能表示HTML结构中缺少对应的元素，或ID不匹配
       console.warn(
-        "[欠费查询Tab警告] 未找到ID为'admin-tab-overdue_modal'的元素"
+        "[欠费查询Tab警告] 未找到ID为'admin-tab-overdue_modal'的元素",
       );
     }
 
-    // 步骤6：【核心逻辑 - 任务3】设置"支付日志"标签的显示状态
+    // 步骤6：设置"支付日志"标签的显示状态
     // ========================================================================
     // 【业务需求说明】
     // 支付历史标签的显示需要根据 config.ini 中的 [Payment_Settings].require_payment 配置：
@@ -18809,13 +18822,13 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         决策说明: isAdmin
           ? "管理员：始终显示"
           : requirePayment
-          ? "普通用户：系统启用付费，显示支付历史"
-          : "普通用户：系统未启用付费，隐藏支付历史",
+            ? "普通用户：系统启用付费，显示支付历史"
+            : "普通用户：系统未启用付费，隐藏支付历史",
       });
     } else {
       // [错误日志] 如果找不到支付日志标签元素，记录警告
       console.warn(
-        "[支付日志Tab警告] 未找到ID为'admin-tab-payment-logs_modal'的元素"
+        "[支付日志Tab警告] 未找到ID为'admin-tab-payment-logs_modal'的元素",
       );
     }
 
@@ -18834,7 +18847,7 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
     } else {
       // [错误日志] 如果找不到支付设置标签元素，记录警告
       console.warn(
-        "[支付设置Tab警告] 未找到ID为'admin-tab-payment-settings_modal'的元素"
+        "[支付设置Tab警告] 未找到ID为'admin-tab-payment-settings_modal'的元素",
       );
     }
 
@@ -18853,10 +18866,10 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
     } else {
       // [错误日志] 如果找不到价格设置标签元素，记录警告
       console.warn(
-        "[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素"
+        "[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素",
       );
     }
-    // ========== [任务3修复结束] 4个新标签的显示控制逻辑添加完成 ==========
+    
 
     // 步骤9：设置"水印控制"标签的显示状态
     // 逻辑：仅管理员可见（用于配置用户的高德地图去水印权限）
@@ -18873,7 +18886,7 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
     } else {
       // [错误日志] 如果找不到水印控制标签元素，记录警告
       console.warn(
-        "[水印控制Tab警告] 未找到ID为'admin-tab-watermark-control_modal'的元素"
+        "[水印控制Tab警告] 未找到ID为'admin-tab-watermark-control_modal'的元素",
       );
     }
 
@@ -19103,7 +19116,7 @@ function switchAdminTab(tab) {
             try {
               if (
                 !document.querySelector(
-                  'link[href="/editor.md/css/editormd.css"]'
+                  'link[href="/editor.md/css/editormd.css"]',
                 )
               ) {
                 const css = document.createElement("link");
@@ -19239,7 +19252,7 @@ function switchAdminTab(tab) {
                     logMessage_Info(
                       "留言内容已更改, 当前长度: " +
                         this.getMarkdown().length +
-                        " 字符"
+                        " 字符",
                     );
                     const countEl =
                       document.getElementById("message-char-count");
@@ -19352,7 +19365,7 @@ function switchAdminTab(tab) {
                         dialog.parentElement &&
                         dialog.parentElement.querySelector &&
                         dialog.parentElement.querySelector(
-                          ".editormd-dialog-mask"
+                          ".editormd-dialog-mask",
                         );
                       if (origMask) {
                         // 尝试克隆遮罩并将克隆放到 body 中，避免受原父容器的 overflow/clipping 限制
@@ -19368,14 +19381,16 @@ function switchAdminTab(tab) {
                           clone.classList.add("editormd-dialog-mask");
                           document.body.appendChild(clone);
                           // 隐藏原遮罩，保留其原始 display 以便未来恢复
-                          origMask.__orig_display = origMask.style.display || "";
+                          origMask.__orig_display =
+                            origMask.style.display || "";
                           origMask.style.display = "none";
                           clone.__moved_for_dialog = dialog;
                           dialog.__moved_mask = clone;
                           dialog.__orig_mask = origMask;
                         } catch (e) {
                           // 克隆失败则回退为直接移动原始遮罩
-                          origMask.__orig_display = origMask.style.display || "";
+                          origMask.__orig_display =
+                            origMask.style.display || "";
                           document.body.appendChild(origMask);
                           origMask.style.position = "fixed";
                           origMask.style.left = "0";
@@ -19420,7 +19435,7 @@ function switchAdminTab(tab) {
                       // 监听对话框的属性变化（style/class 等）以决定遮罩显示/隐藏
                       try {
                         const attrObserver = new MutationObserver(() =>
-                          checkVisibilityAndToggleMask()
+                          checkVisibilityAndToggleMask(),
                         );
                         attrObserver.observe(dialog, {
                           attributes: true,
@@ -19492,7 +19507,7 @@ function switchAdminTab(tab) {
                         dialog.parentElement &&
                         dialog.parentElement.querySelector &&
                         dialog.parentElement.querySelector(
-                          ".editormd-dialog-mask"
+                          ".editormd-dialog-mask",
                         );
                       if (origMask) {
                         try {
@@ -19506,13 +19521,15 @@ function switchAdminTab(tab) {
                           clone.style.zIndex = 19990;
                           clone.classList.add("editormd-dialog-mask");
                           document.body.appendChild(clone);
-                          origMask.__orig_display = origMask.style.display || "";
+                          origMask.__orig_display =
+                            origMask.style.display || "";
                           origMask.style.display = "none";
                           clone.__moved_for_dialog = dialog;
                           dialog.__moved_mask = clone;
                           dialog.__orig_mask = origMask;
                         } catch (e) {
-                          origMask.__orig_display = origMask.style.display || "";
+                          origMask.__orig_display =
+                            origMask.style.display || "";
                           document.body.appendChild(origMask);
                           origMask.style.position = "fixed";
                           origMask.style.left = "0";
@@ -19552,7 +19569,7 @@ function switchAdminTab(tab) {
 
                       try {
                         const attrObserver = new MutationObserver(() =>
-                          checkVisibilityAndToggleMask()
+                          checkVisibilityAndToggleMask(),
                         );
                         attrObserver.observe(dialog, {
                           attributes: true,
@@ -19647,7 +19664,9 @@ function switchAdminTab(tab) {
 
       loadCaptchaSettings((ShowSwalFire = false));
 
-      need_weight=document.getElementById("admin-captcha-panel_modal").clientWidth;
+      need_weight = document.getElementById(
+        "admin-captcha-panel_modal",
+      ).clientWidth;
 
       // 不需要预加载历史记录，改为用户点击按钮之后再加载
       // loadCaptchaHistory(need_weight);
@@ -19663,80 +19682,94 @@ function switchAdminTab(tab) {
       remindersPanel.classList.remove("hidden");
       loadReminders();
       stopHealthAutoRefresh();
-        // 预加载 Editor.md 的资源以避免首次打开编辑模态时渲染问题
-        // 注意：这里只加载资源，不实例化编辑器（按需实例化在 openReminderEditModal 中完成）
-        if (!window._reminderEditorResourcesLoaded) {
-          window._reminderEditorResourcesLoaded = true;
-          const loadOnce = (url, isCss) =>
-            new Promise((resolve, reject) => {
-              try {
-                if (document.querySelector(isCss ? `link[href="${url}"]` : `script[src="${url}"]`)) return resolve();
-                const el = isCss ? document.createElement("link") : document.createElement("script");
-                if (isCss) {
-                  el.rel = "stylesheet";
-                  el.href = url;
-                  document.head.appendChild(el);
-                } else {
-                  el.src = url;
-                  document.body.appendChild(el);
-                }
-                el.onload = () => resolve();
-                el.onerror = (e) => reject(e);
-              } catch (e) {
-                resolve();
+      // 预加载 Editor.md 的资源以避免首次打开编辑模态时渲染问题
+      // 注意：这里只加载资源，不实例化编辑器（按需实例化在 openReminderEditModal 中完成）
+      if (!window._reminderEditorResourcesLoaded) {
+        window._reminderEditorResourcesLoaded = true;
+        const loadOnce = (url, isCss) =>
+          new Promise((resolve, reject) => {
+            try {
+              if (
+                document.querySelector(
+                  isCss ? `link[href="${url}"]` : `script[src="${url}"]`,
+                )
+              )
+                return resolve();
+              const el = isCss
+                ? document.createElement("link")
+                : document.createElement("script");
+              if (isCss) {
+                el.rel = "stylesheet";
+                el.href = url;
+                document.head.appendChild(el);
+              } else {
+                el.src = url;
+                document.body.appendChild(el);
               }
-            });
+              el.onload = () => resolve();
+              el.onerror = (e) => reject(e);
+            } catch (e) {
+              resolve();
+            }
+          });
 
-          (async () => {
-            try {
-              await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
-              // 先加载依赖库，再加载 editormd 本体，减少 race condition
-              await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
-              await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {});
-              await loadOnce("/editor.md/editormd.js", false).catch(() => {});
-              // 尝试在资源加载后触发已存在实例的刷新（若实例已存在）
-              setTimeout(() => {
-                try {
-                  if (window.reminderEditor && typeof window.reminderEditor.recreate === "function") {
-                    window.reminderEditor.recreate();
-                  } else if (
-                    window.reminderEditor &&
-                    window.reminderEditor.codeMirror &&
-                    typeof window.reminderEditor.codeMirror.refresh === "function"
-                  ) {
-                    window.reminderEditor.codeMirror.refresh();
-                  }
-                } catch (e) {}
-              }, 50);
-            } catch (e) {}
-          })();
-        }
-          // 如果还未初始化编辑器，使用一次性打开-关闭模态来强制初始化（使用示例数据）
-          if (!window._reminderEditorInitialized) {
-            try {
-              const modalEl = document.getElementById("reminder-edit-modal");
-              // 尽量避免可见闪烁：临时隐藏 modal
-              let origOpacity, origPointer;
-              if (modalEl) {
-                origOpacity = modalEl.style.opacity || "";
-                origPointer = modalEl.style.pointerEvents || "";
-                modalEl.style.opacity = "0";
-                modalEl.style.pointerEvents = "none";
-              }
-              // 打开示例编辑器初始化
-              openReminderEditModal("-1");
-              // 等待足够时间让编辑器完成实例化，然后关闭并恢复样式
-              setTimeout(() => {
-                try {
-                  closeReminderEditModal();
-                  if (modalEl) {
-                    modalEl.style.opacity = origOpacity;
-                    modalEl.style.pointerEvents = origPointer;
-                  }
-                } catch (e) {}
-              }, 700);
-            } catch (e) {}
+        (async () => {
+          try {
+            await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
+            // 先加载依赖库，再加载 editormd 本体，减少 race condition
+            await loadOnce("/editor.md/lib/marked.min.js", false).catch(
+              () => {},
+            );
+            await loadOnce("/editor.md/lib/prettify.min.js", false).catch(
+              () => {},
+            );
+            await loadOnce("/editor.md/editormd.js", false).catch(() => {});
+            // 尝试在资源加载后触发已存在实例的刷新（若实例已存在）
+            setTimeout(() => {
+              try {
+                if (
+                  window.reminderEditor &&
+                  typeof window.reminderEditor.recreate === "function"
+                ) {
+                  window.reminderEditor.recreate();
+                } else if (
+                  window.reminderEditor &&
+                  window.reminderEditor.codeMirror &&
+                  typeof window.reminderEditor.codeMirror.refresh === "function"
+                ) {
+                  window.reminderEditor.codeMirror.refresh();
+                }
+              } catch (e) {}
+            }, 50);
+          } catch (e) {}
+        })();
+      }
+      // 如果还未初始化编辑器，使用一次性打开-关闭模态来强制初始化（使用示例数据）
+      if (!window._reminderEditorInitialized) {
+        try {
+          const modalEl = document.getElementById("reminder-edit-modal");
+          // 尽量避免可见闪烁：临时隐藏 modal
+          let origOpacity, origPointer;
+          if (modalEl) {
+            origOpacity = modalEl.style.opacity || "";
+            origPointer = modalEl.style.pointerEvents || "";
+            modalEl.style.opacity = "0";
+            modalEl.style.pointerEvents = "none";
           }
+          // 打开示例编辑器初始化
+          openReminderEditModal("-1");
+          // 等待足够时间让编辑器完成实例化，然后关闭并恢复样式
+          setTimeout(() => {
+            try {
+              closeReminderEditModal();
+              if (modalEl) {
+                modalEl.style.opacity = origOpacity;
+                modalEl.style.pointerEvents = origPointer;
+              }
+            } catch (e) {}
+          }, 700);
+        } catch (e) {}
+      }
       // setTimeout(() => {
       //   document.getElementById("reminder-edit-modal").style.zIndex = "0";
       //   document.getElementById("reminder-edit-modal").style.display = "hidden";
@@ -19845,8 +19878,8 @@ function switchAdminTab(tab) {
         missingElement: !bruteforceTab
           ? "admin-tab-bruteforce_modal"
           : !bruteforcePanel
-          ? "admin-bruteforce-panel_modal"
-          : "未知",
+            ? "admin-bruteforce-panel_modal"
+            : "未知",
       });
     }
   } else if (tab === "overdue") {
@@ -19892,8 +19925,8 @@ function switchAdminTab(tab) {
         missingElement: !overdueTab
           ? "admin-tab-overdue_modal"
           : !overduePanel
-          ? "admin-overdue-panel_modal"
-          : "未知",
+            ? "admin-overdue-panel_modal"
+            : "未知",
       });
     }
   } else if (tab === "payment-logs") {
@@ -19941,8 +19974,8 @@ function switchAdminTab(tab) {
         missingElement: !paymentLogsTab
           ? "admin-tab-payment-logs_modal"
           : !paymentLogsPanel
-          ? "admin-payment-logs-panel_modal"
-          : "未知",
+            ? "admin-payment-logs-panel_modal"
+            : "未知",
       });
     }
   } else if (tab === "payment-settings") {
@@ -19966,7 +19999,7 @@ function switchAdminTab(tab) {
       // border-transparent: 移除透明边框（未选中状态）
       paymentSettingsTab.classList.remove(
         "text-slate-400",
-        "border-transparent"
+        "border-transparent",
       );
 
       // [显示面板] 移除hidden类，使支付设置面板可见
@@ -19991,8 +20024,8 @@ function switchAdminTab(tab) {
         missingElement: !paymentSettingsTab
           ? "admin-tab-payment-settings_modal"
           : !paymentSettingsPanel
-          ? "admin-payment-settings-panel_modal"
-          : "未知",
+            ? "admin-payment-settings-panel_modal"
+            : "未知",
       });
     }
   } else if (tab === "pricing") {
@@ -20040,8 +20073,8 @@ function switchAdminTab(tab) {
         missingElement: !pricingTab
           ? "admin-tab-pricing_modal"
           : !pricingPanel
-          ? "admin-pricing-panel_modal"
-          : "未知",
+            ? "admin-pricing-panel_modal"
+            : "未知",
       });
     }
   } else if (tab === "watermark-control") {
@@ -20065,7 +20098,7 @@ function switchAdminTab(tab) {
       // border-transparent: 移除透明边框（未选中状态）
       watermarkControlTab.classList.remove(
         "text-slate-400",
-        "border-transparent"
+        "border-transparent",
       );
 
       // [显示面板] 移除hidden类，使水印控制面板可见
@@ -20092,8 +20125,8 @@ function switchAdminTab(tab) {
         missingElement: !watermarkControlTab
           ? "admin-tab-watermark-control_modal"
           : !watermarkControlPanel
-          ? "admin-watermark-control-panel_modal"
-          : "未知",
+            ? "admin-watermark-control-panel_modal"
+            : "未知",
       });
     }
   } else {
@@ -20111,7 +20144,7 @@ async function loadAdminSessions_inline() {
 
   if (!listEl) {
     logMessage_Error(
-      "loadAdminSessions_inline: 无法找到会话列表容器 'admin-sessions-list-inline'。"
+      "loadAdminSessions_inline: 无法找到会话列表容器 'admin-sessions-list-inline'。",
     );
     return;
   }
@@ -20163,10 +20196,10 @@ async function loadAdminSessions_inline() {
       (session) =>
         session.session_id &&
         session.session_id !== "null" &&
-        session.session_id.trim() !== ""
+        session.session_id.trim() !== "",
     );
     if (isGodMode) {
-      updateAdminSessionCountDisplayInline(validSessions.length, -1);
+      updateAdminSessionCountDisplayInline(validSessions.length, -1, true);
     } else {
       updateAdminSessionCountDisplayInline(validSessions.length, maxSessions);
     }
@@ -20232,8 +20265,8 @@ async function loadAdminSessions_inline() {
                                   ? '<span class="font-semibold text-green-600">已登录</span>'
                                   : '<span class="font-semibold ">未登录</span>'
                                 : session.login_success
-                                ? '<span class="font-semibold text-green-600">已登录</span>'
-                                : "未登录"
+                                  ? '<span class="font-semibold text-green-600">已登录</span>'
+                                  : "未登录"
                             }</p>
                             ${ownerInfo}
                           </div>
@@ -20266,11 +20299,13 @@ async function loadAdminSessions_inline() {
   }
 }
 
-function updateAdminSessionCountDisplayInline(currentCount, maxSessions) {
+function updateAdminSessionCountDisplayInline(currentCount, maxSessions, isGodMode = false) {
   const countEl = $("admin-session-count-display-inline");
   if (!countEl) return;
 
-  if (currentUserIsGuest) {
+  if (isGodMode) {
+    countEl.innerHTML = `<span class="text-purple-600">系统总会话数: ${currentCount}</span>`;
+  } else if (currentUserIsGuest) {
     countEl.innerHTML = `<span class="text-blue-600">会话数: 1 / 游客仅限单会话</span>`;
   } else {
     if (maxSessions === -1) {
@@ -20281,8 +20316,8 @@ function updateAdminSessionCountDisplayInline(currentCount, maxSessions) {
       const colorClass = isAtLimit
         ? "text-red-600"
         : isNearLimit
-        ? "text-amber-600"
-        : "text-slate-600";
+          ? "text-amber-600"
+          : "text-slate-600";
       countEl.innerHTML = `<span class="${colorClass}">会话数: ${currentCount} / ${maxSessions}</span>`;
     }
   }
@@ -20326,7 +20361,7 @@ async function loadAdminLogs(newPage = 1) {
         headers: {
           "X-Session-ID": sessionUUID,
         },
-      }
+      },
     );
     const result = await response.json();
 
@@ -20410,7 +20445,7 @@ async function loadHealthStatus() {
             <pre class="text-xs text-slate-600 whitespace-pre-wrap">${JSON.stringify(
               result,
               null,
-              2
+              2,
             )}</pre>
           </div>
         `;
@@ -20542,6 +20577,10 @@ async function loadPersonalInfo() {
       if (phoneHint) phoneHint.style.display = "none";
       if (phoneInput) phoneInput.readOnly = true;
     }
+    const pcForgotPasswordHint = $("pc-forgot-password-hint");
+    if (pcForgotPasswordHint) {
+      pcForgotPasswordHint.style.display = config.enable_phone_modification ? "" : "none";
+    }
     const avatarDisplay = $("profile-avatar-display");
     const avatarInput = $("profile-avatar-input");
     if (avatarDisplay) {
@@ -20571,7 +20610,7 @@ async function loadPersonalInfo() {
 
         logMessage_Info(
           "[loadPersonalInfo] Setting avatar display src to:",
-          urlWithTimestamp
+          urlWithTimestamp,
         );
         avatarDisplay.src = urlWithTimestamp;
       } else {
@@ -20717,7 +20756,7 @@ async function loadAvatarWithAuth(avatarUrl, imgElement, retryCount = 0) {
     logMessage_Info(
       `[loadAvatarWithAuth] Fetching avatar (Attempt ${
         retryCount + 1
-      }): ${avatarUrl}`
+      }): ${avatarUrl}`,
     );
 
     // 增加时间戳防止缓存
@@ -20753,9 +20792,12 @@ async function loadAvatarWithAuth(avatarUrl, imgElement, retryCount = 0) {
 
     // 重试机制：最多重试2次
     if (retryCount < 2) {
-      setTimeout(() => {
-        loadAvatarWithAuth(avatarUrl, imgElement, retryCount + 1);
-      }, 1000 * (retryCount + 1)); // 延迟 1s, 2s
+      setTimeout(
+        () => {
+          loadAvatarWithAuth(avatarUrl, imgElement, retryCount + 1);
+        },
+        1000 * (retryCount + 1),
+      ); // 延迟 1s, 2s
     } else {
       imgElement.src = defaultSvg;
     }
@@ -20898,13 +20940,13 @@ async function confirmCropForRegistration() {
       const mobilePreviewImg = $("mobile-reg-avatar-preview");
       if (mobilePreviewImg) {
         mobilePreviewImg.src = URL.createObjectURL(
-          registrationCroppedAvatarBlob
+          registrationCroppedAvatarBlob,
         );
       }
       closeCropModal();
     },
     "image/jpeg",
-    0.9
+    0.9,
   );
 }
 
@@ -20998,7 +21040,7 @@ async function confirmCropAndUpload() {
         }
       },
       "image/jpeg",
-      0.9
+      0.9,
     );
   }
 }
@@ -21105,7 +21147,7 @@ async function updateBasicInfo() {
         body: JSON.stringify({
           nickname: nickname.value.trim(),
         }),
-      }
+      },
     );
 
     const result = await response.json();
@@ -21155,7 +21197,7 @@ function toggleSmsVerifyMode(platform) {
   if (platform === "pc") {
     // 获取PC端的密码输入区域
     const passwordSection = document.getElementById(
-      "pc-password-verify-section"
+      "pc-password-verify-section",
     );
     // 获取PC端的短信验证区域
     const smsSection = document.getElementById("pc-sms-verify-section");
@@ -21184,7 +21226,7 @@ function toggleSmsVerifyMode(platform) {
   } else if (platform === "mobile") {
     // 获取移动端的密码输入区域
     const passwordSection = document.getElementById(
-      "mobile-password-verify-section"
+      "mobile-password-verify-section",
     );
     // 获取移动端的短信验证区域
     const smsSection = document.getElementById("mobile-sms-verify-section");
@@ -21222,7 +21264,7 @@ function toggleSmsVerifyMode(platform) {
 async function sendPasswordResetSmsCode(platform) {
   // 根据平台获取对应的发送按钮
   const btn = document.getElementById(
-    platform === "pc" ? "pc-send-sms-btn" : "mobile-send-sms-btn"
+    platform === "pc" ? "pc-send-sms-btn" : "mobile-send-sms-btn",
   );
 
   try {
@@ -21265,7 +21307,7 @@ async function sendPasswordResetSmsCode(platform) {
     });
 
     logMessage_Info(
-      `[密码修改] ${platform}端请求发送短信验证码到手机: ${response.phone}`
+      `[密码修改] ${platform}端请求发送短信验证码到手机: ${response.phone}`,
     );
   } catch (e) {
     // 捕获网络错误或其他异常
@@ -21290,7 +21332,7 @@ function resetPasswordVerifyMode(platform) {
   if (platform === "pc" || platform === "all") {
     pcPasswordVerifyMode = "password";
     const pcPasswordSection = document.getElementById(
-      "pc-password-verify-section"
+      "pc-password-verify-section",
     );
     const pcSmsSection = document.getElementById("pc-sms-verify-section");
     const pcToggleBtn = document.getElementById("pc-sms-toggle-btn");
@@ -21306,14 +21348,14 @@ function resetPasswordVerifyMode(platform) {
   if (platform === "mobile" || platform === "all") {
     mobilePasswordVerifyMode = "password";
     const mobilePasswordSection = document.getElementById(
-      "mobile-password-verify-section"
+      "mobile-password-verify-section",
     );
     const mobileSmsSection = document.getElementById(
-      "mobile-sms-verify-section"
+      "mobile-sms-verify-section",
     );
     const mobileToggleBtn = document.getElementById("mobile-sms-toggle-btn");
     const mobileSmsCodeInput = document.getElementById(
-      "mobile-password-sms-code"
+      "mobile-password-sms-code",
     );
 
     if (mobilePasswordSection) mobilePasswordSection.classList.remove("hidden");
@@ -21331,7 +21373,7 @@ async function updatePassword() {
   // 弹出确认对话框，询问用户是否确认修改密码
   const confirmed = await jsShowConfirm(
     "确认修改密码",
-    "您确定要修改您的登录密码吗？\n\n修改后需要使用新密码重新登录。"
+    "您确定要修改您的登录密码吗？\n\n修改后需要使用新密码重新登录。",
   );
   // 如果用户取消操作，则直接返回
   if (!confirmed) {
@@ -21571,7 +21613,7 @@ async function generate2FA() {
             } else {
               logMessage_Info("QR Code generated successfully");
             }
-          }
+          },
         );
       } else {
         logMessage_Error("QRCode库未加载");
@@ -21653,7 +21695,7 @@ async function enable2FA() {
 async function disable2FA() {
   const confirmed = await jsShowConfirm(
     "确认关闭2FA",
-    "关闭双因素认证后，账号安全性将降低。确定要继续吗？"
+    "关闭双因素认证后，账号安全性将降低。确定要继续吗？",
   );
   if (!confirmed) return;
 
@@ -21965,7 +22007,7 @@ function showCreateUserModal() {
 
             // 同步到移动端单账号面板
             const singleAdminModal = document.getElementById(
-              "mobile-admin-panel-modal"
+              "mobile-admin-panel-modal",
             );
             if (
               singleAdminModal &&
@@ -22032,10 +22074,10 @@ async function showCreateGroupModal() {
                 <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
                   <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}">
                   <span class="text-sm text-slate-700">${translatePermission(
-                    perm
+                    perm,
                   )}</span>
                 </label>
-              `
+              `,
             )
             .join("");
         }
@@ -22103,7 +22145,7 @@ async function loadSchoolAccounts() {
                 <!-- "添加 School Account" 按钮 - 使用拟态风格 -->
                 <button 
                   onclick="openSchoolAccountModal('${escapeHtml(
-                    authUsername
+                    authUsername,
                   )}')"
                   class="px-4 py-2 rounded-lg text-sm font-medium text-sky-600 bg-white border border-sky-300 hover:bg-sky-50 hover:border-sky-400 transition-all flex items-center gap-2"
                   style="box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1), -1px -1px 2px rgba(255, 255, 255, 0.8);"
@@ -22139,7 +22181,7 @@ async function loadSchoolAccounts() {
                   <!-- 顶部行：学校用户名 + 编辑和删除按钮 -->
                   <div class="flex justify-between items-center">
                     <span class="font-medium text-slate-700">${escapeHtml(
-                      schoolUsername
+                      schoolUsername,
                     )}</span>
                     
                     <!-- 操作按钮组 -->
@@ -22147,10 +22189,10 @@ async function loadSchoolAccounts() {
                       <!-- 编辑按钮 - 拟态风格 -->
                       <button 
                         onclick="openSchoolAccountModal('${escapeHtml(
-                          authUsername
+                          authUsername,
                         )}', '${escapeHtml(schoolUsername)}', '${escapeHtml(
-            password
-          )}', '${escapeHtml(ua)}')"
+                          password,
+                        )}', '${escapeHtml(ua)}')"
                         class="px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 bg-white border border-blue-300 hover:bg-blue-50 hover:border-blue-400 transition-all flex items-center gap-1"
                         style="box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.08), -0.5px -0.5px 1px rgba(255, 255, 255, 0.8);"
                         title="编辑此学校账号">
@@ -22163,7 +22205,7 @@ async function loadSchoolAccounts() {
                       <!-- 删除按钮 - 拟态风格 -->
                       <button 
                         onclick="deleteSchoolAccount('${escapeHtml(
-                          authUsername
+                          authUsername,
                         )}', '${escapeHtml(schoolUsername)}')"
                         class="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-white border border-red-300 hover:bg-red-50 hover:border-red-400 transition-all flex items-center gap-1"
                         style="box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.08), -0.5px -0.5px 1px rgba(255, 255, 255, 0.8);"
@@ -22180,7 +22222,7 @@ async function loadSchoolAccounts() {
                   <div class="text-sm">
                     <span class="text-slate-500">密码:</span>
                     <span class="font-mono text-slate-600 ml-2">${escapeHtml(
-                      password
+                      password,
                     )}</span>
                   </div>
                   
@@ -22191,7 +22233,7 @@ async function loadSchoolAccounts() {
                   <div class="text-sm">
                     <span class="text-slate-500">UA:</span>
                     <span class="font-mono text-xs text-slate-600 ml-2 break-all">${escapeHtml(
-                      ua
+                      ua,
                     )}</span>
                   </div>
                   `
@@ -22220,7 +22262,7 @@ function openSchoolAccountModal(
   authUsername,
   schoolUsername = "",
   password = "",
-  ua = ""
+  ua = "",
 ) {
   const modal = $("edit-school-account-modal");
   if (!modal) {
@@ -22365,7 +22407,7 @@ async function submitSchoolAccount() {
     const result = await callPythonAPI_raw(
       "/api/admin/school_account/save",
       "POST",
-      data
+      data,
     );
     if (result.success) {
       // showModalAlert(
@@ -22409,7 +22451,7 @@ async function submitSchoolAccount() {
 async function deleteSchoolAccount(authUsername, schoolUsername) {
   const confirmed = await jsShowConfirm(
     "确认删除",
-    `您确定要删除学校账号 "${schoolUsername}" 吗？\n此操作不可恢复。`
+    `您确定要删除学校账号 "${schoolUsername}" 吗？\n此操作不可恢复。`,
   );
   if (!confirmed) {
     return;
@@ -22422,7 +22464,7 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
       {
         auth_username: authUsername,
         school_username: schoolUsername,
-      }
+      },
     );
 
     if (result.success) {
@@ -22483,7 +22525,7 @@ async function submitCreateGroup() {
 
   const permissions = {};
   const checkboxes = permissionsContainer.querySelectorAll(
-    'input[type="checkbox"]'
+    'input[type="checkbox"]',
   );
   checkboxes.forEach((cb) => {
     const perm = cb.getAttribute("data-permission");
@@ -22532,6 +22574,188 @@ async function submitCreateGroup() {
   }
 }
 
+// ========== 用户列表排序 ==========
+let _adminUsersCacheData = null; // 缓存用户列表数据 { users, groups }
+let _adminUsersSortField = "created_at"; // 当前排序字段
+let _adminUsersSortDir = "desc"; // 当前排序方向: "asc" | "desc"
+
+function _sortAdminUsersArray(users, field, dir) {
+  const sorted = [...users];
+  sorted.sort((a, b) => {
+    let va, vb;
+    if (field === "tfa") {
+      va = a["2fa_enabled"] || a["tfa_enabled"] ? 1 : 0;
+      vb = b["2fa_enabled"] || b["tfa_enabled"] ? 1 : 0;
+    } else if (field === "auth_username" || field === "nickname") {
+      va = (a[field] || "").toLowerCase();
+      vb = (b[field] || "").toLowerCase();
+    } else if (field === "max_sessions") {
+      // -1 means unlimited, treat as very large for sorting
+      va = a[field] === -1 ? Infinity : (a[field] ?? 0);
+      vb = b[field] === -1 ? Infinity : (b[field] ?? 0);
+    } else if (field === "available_runs") {
+      va = a[field] === -1 ? Infinity : (a[field] ?? 0);
+      vb = b[field] === -1 ? Infinity : (b[field] ?? 0);
+    } else {
+      // numeric fields: created_at, last_login
+      va = a[field] ?? 0;
+      vb = b[field] ?? 0;
+    }
+    if (va < vb) return dir === "asc" ? -1 : 1;
+    if (va > vb) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+  return sorted;
+}
+
+function _syncAdminUsersSortUI() {
+  const dirLabel = _adminUsersSortDir === "asc" ? "↑ 升序" : "↓ 降序";
+  ["admin-users-sort-dir_modal", "mobile-admin-users-sort-dir"].forEach(
+    (id) => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.textContent = dirLabel;
+        btn.dataset.dir = _adminUsersSortDir;
+      }
+    },
+  );
+  ["admin-users-sort-field_modal", "mobile-admin-users-sort-field"].forEach(
+    (id) => {
+      const sel = document.getElementById(id);
+      if (sel) sel.value = _adminUsersSortField;
+    },
+  );
+}
+
+function resortAdminUsers() {
+  // read sort field from whichever control triggered the change
+  const pcField = document.getElementById("admin-users-sort-field_modal");
+  const mobileField = document.getElementById("mobile-admin-users-sort-field");
+  // use the one that is visible / last changed
+  if (
+    document.activeElement &&
+    document.activeElement.id === "mobile-admin-users-sort-field" &&
+    mobileField
+  ) {
+    _adminUsersSortField = mobileField.value;
+  } else if (pcField) {
+    _adminUsersSortField = pcField.value;
+  } else if (mobileField) {
+    _adminUsersSortField = mobileField.value;
+  }
+  _rerenderAdminUsersList();
+}
+
+function toggleAdminUsersSort() {
+  _adminUsersSortDir = _adminUsersSortDir === "desc" ? "asc" : "desc";
+  _rerenderAdminUsersList();
+}
+
+function _rerenderAdminUsersList() {
+  if (!_adminUsersCacheData) return;
+  const { users, groups } = _adminUsersCacheData;
+  const sorted = _sortAdminUsersArray(
+    users,
+    _adminUsersSortField,
+    _adminUsersSortDir,
+  );
+  _syncAdminUsersSortUI();
+
+  const groupSelect = (user) => `
+    <select class="text-sm border border-slate-300 rounded px-2 py-1" onchange="updateUserGroup('${
+      user.auth_username
+    }', this.value)">
+      ${groups.map((g) => `<option value="${g}" ${g === user.group ? "selected" : ""}>${g}</option>`).join("")}
+    </select>`;
+
+  const listHtml = sorted
+    .map((user) => {
+      const createdDate = new Date(user.created_at * 1000).toLocaleString();
+      const lastLoginDate = user.last_login
+        ? new Date(user.last_login * 1000).toLocaleString()
+        : "从未登录";
+      const isBanned = user.banned || false;
+      const bannedBadge = isBanned
+        ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full ml-2">已封禁</span>'
+        : "";
+      return `
+      <div class="border border-slate-200 rounded-lg p-3 mb-2">
+        <div class="flex flex-col md:flex-row justify-between items-start gap-3">
+          <div class="flex items-start gap-3 flex-1 w-full md:w-auto">
+            <div id="avatar-${user.auth_username}" class="flex-shrink-0 w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden border-2 border-slate-300">
+              <span class="text-2xl text-slate-400">👤</span>
+            </div>
+            <div class="flex-1">
+              <p class="font-semibold text-slate-800">${user.auth_username}${bannedBadge}</p>
+              <p class="text-xs text-slate-500">昵称: ${user.nickname || "未设置"}</p>
+              <p class="text-xs text-slate-500">手机号: ${user.phone || "未绑定"}</p>
+              <p class="text-xs text-slate-500">创建时间: ${createdDate}</p>
+              <p class="text-xs text-slate-500">最后登录: ${lastLoginDate}</p>
+              <p class="text-xs text-slate-500">登录IP: ${user.last_login_ip || "无记录"} (${user.last_login_city || "未知"})</p>
+              <p class="text-xs text-slate-500">会话限制: ${user.max_sessions === -1 ? "无限制" : user.max_sessions + "个"}</p>
+              <p class="text-xs text-slate-500">
+                可用次数:
+                <span id="available-runs-${user.auth_username}" class="${
+                  user.available_runs === -1
+                    ? "text-green-600 font-semibold"
+                    : user.available_runs === 0
+                      ? "text-red-600 font-semibold"
+                      : "text-blue-600 font-semibold"
+                }">
+                  ${user.available_runs === -1 ? "无限制" : user.available_runs + "次"}
+                </span>
+              </p>
+              <p class="text-xs ${user["2fa_enabled"] || user.tfa_enabled ? "text-green-600" : "text-slate-400"}">2FA: ${user["2fa_enabled"] || user.tfa_enabled ? "已启用" : "未启用"}</p>
+            </div>
+          </div>
+          <div class="flex flex-col md:items-end gap-1 w-full md:w-auto mt-2 md:mt-0">
+            <div class="flex justify-between md:justify-end items-center w-full">
+              <span class="text-xs text-slate-600 mr-2">权限组:</span>
+              ${groupSelect(user)}
+            </div>
+            <div class="flex flex-col gap-1.5 mt-2 w-full" id="user-actions-${user.auth_username}">
+              <div class="grid grid-cols-3 md:grid-cols-6 gap-2 w-full p-2 bg-base-100 rounded-xl border border-base-200 shadow-sm">
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-100 border" onclick="showUserSchoolAccounts('${user.auth_username}')">账户密码</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" onclick="showUserLogs('${user.auth_username}')">查看日志</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" onclick="setUserMaxSessions('${user.auth_username}', ${user.max_sessions || 1})">会话管理</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border-cyan-100 border" onclick="editAvailableRuns('${user.auth_username}', ${user.available_runs !== undefined ? user.available_runs : 0})">修改次数</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100 border" onclick="manageUserPermissions('${user.auth_username}')">权限设置</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" onclick="modifyUserNickname('${user.auth_username}', '${escapeHtml(user.nickname || "")}')">修改昵称</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" onclick="modifyUserPhone('${user.auth_username}', '${user.phone || ""}')">修改手机</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-purple-50 text-purple-600 hover:bg-purple-100 border-purple-100 border" onclick="resetUserPassword('${user.auth_username}')">重置密码</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-100 border" onclick="forceLogoutUser('${user.auth_username}')">强制登出</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100 border" onclick="clearUserAvatar('${user.auth_username}')">清除头像</button>
+                ${
+                  user["2fa_enabled"] || user.tfa_enabled
+                    ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-100 border" onclick="forceDisable2FA('${user.auth_username}')">关闭2FA</button>`
+                    : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-slate-50 text-slate-300 border-slate-200 border cursor-not-allowed" disabled onclick="forceDisable2FA('${user.auth_username}')">2FA未启用</button>`
+                }
+                ${
+                  isBanned
+                    ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-green-100 text-green-700 hover:bg-green-200 border-green-200 border font-bold" onclick="unbanUser('${user.auth_username}')">解封用户</button>`
+                    : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-100 text-red-700 hover:bg-red-200 border-red-200 border font-bold" onclick="banUser('${user.auth_username}')">封禁用户</button>`
+                }
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-600 text-white hover:bg-red-700 border-red-600 border shadow-md" onclick="deleteUser('${user.auth_username}')">彻底删除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  const listEl = $("admin-users-list_modal");
+  if (listEl) listEl.innerHTML = listHtml;
+
+  // Re-copy to mobile and re-apply mobile button handlers
+  if (typeof copyAdminContentToMultiPanel === "function") {
+    copyAdminContentToMultiPanel("users");
+  }
+
+  // Reload avatars
+  sorted.forEach((user) => loadUserAvatar(user.auth_username));
+}
+
 async function loadAdminUsers() {
   try {
     const response = await fetch("/auth/admin/list_users", {
@@ -22542,9 +22766,8 @@ async function loadAdminUsers() {
     const result = await response.json();
 
     if (!result.success) {
-      $(
-        "admin-users-list"
-      ).innerHTML = `<p class="text-red-500 text-center py-10">${result.message}</p>`;
+      $("admin-users-list").innerHTML =
+        `<p class="text-red-500 text-center py-10">${result.message}</p>`;
       return;
     }
 
@@ -22564,208 +22787,12 @@ async function loadAdminUsers() {
       ? Object.keys(groupsData.groups)
       : ["guest", "user", "admin"];
 
-    listEl.innerHTML = result.users
-      .map((user) => {
-        const createdDate = new Date(user.created_at * 1000).toLocaleString();
-        const lastLoginDate = user.last_login
-          ? new Date(user.last_login * 1000).toLocaleString()
-          : "从未登录";
-        const isBanned = user.banned || false;
-        const bannedBadge = isBanned
-          ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full ml-2">已封禁</span>'
-          : "";
-
-        const groupSelect = `
-        <select class="text-sm border border-slate-300 rounded px-2 py-1" onchange="updateUserGroup('${
-          user.auth_username
-        }', this.value)">
-          ${groups
-            .map(
-              (g) =>
-                `<option value="${g}" ${
-                  g === user.group ? "selected" : ""
-                }>${g}</option>`
-            )
-            .join("")}
-        </select>
-      `;
-
-        return `
-        <div class="border border-slate-200 rounded-lg p-3 mb-2">
-          <div class="flex flex-col md:flex-row justify-between items-start gap-3">
-            <div class="flex items-start gap-3 flex-1 w-full md:w-auto">
-              <div id="avatar-${
-                user.auth_username
-              }" class="flex-shrink-0 w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden border-2 border-slate-300">
-                <span class="text-2xl text-slate-400">👤</span>
-              </div>
-              <div class="flex-1">
-                <p class="font-semibold text-slate-800">${
-                  user.auth_username
-                }${bannedBadge}</p>
-                <p class="text-xs text-slate-500">昵称: ${
-                  user.nickname || "未设置"
-                }</p>
-                <p class="text-xs text-slate-500">手机号: ${
-                  user.phone || "未绑定"
-                }</p>
-                <p class="text-xs text-slate-500">创建时间: ${createdDate}</p>
-                <p class="text-xs text-slate-500">最后登录: ${lastLoginDate}</p>
-                <p class="text-xs text-slate-500">登录IP: ${
-                  user.last_login_ip || "无记录"
-                } (${user.last_login_city || "未知"})</p>
-                <p class="text-xs text-slate-500">会话限制: ${
-                  user.max_sessions === -1 ? "无限制" : user.max_sessions + "个"
-                }</p>
-                <p class="text-xs text-slate-500">
-                  可用次数: 
-                  <span id="available-runs-${user.auth_username}" class="${
-          user.available_runs === -1
-            ? "text-green-600 font-semibold"
-            : user.available_runs === 0
-            ? "text-red-600 font-semibold"
-            : "text-blue-600 font-semibold"
-        }">
-                    ${
-                      user.available_runs === -1
-                        ? "无限制"
-                        : user.available_runs + "次"
-                    }
-                  </span>
-                </p>
-                <p class="text-xs ${
-                  user["2fa_enabled"] || user.tfa_enabled
-                    ? "text-green-600"
-                    : "text-slate-400"
-                }">2FA: ${
-          user["2fa_enabled"] || user.tfa_enabled ? "已启用" : "未启用"
-        }</p>
-              </div>
-            </div>
-            
-            <div class="flex flex-col md:items-end gap-1 w-full md:w-auto mt-2 md:mt-0">
-              <div class="flex justify-between md:justify-end items-center w-full">
-                 <span class="text-xs text-slate-600 mr-2">权限组:</span>
-                 ${groupSelect}
-              </div>
-
-              <div class="flex flex-col gap-1.5 mt-2 w-full" id="user-actions-${
-                user.auth_username
-              }">
-                <div class="grid grid-cols-3 md:grid-cols-6 gap-2 w-full p-2 bg-base-100 rounded-xl border border-base-200 shadow-sm">
-                  
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-100 border" 
-                          onclick="showUserSchoolAccounts('${
-                            user.auth_username
-                          }')">
-                    账户密码
-                  </button>
-                  
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" 
-                          onclick="showUserLogs('${user.auth_username}')">
-                    查看日志
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" 
-                          onclick="setUserMaxSessions('${
-                            user.auth_username
-                          }', ${user.max_sessions || 1})">
-                    会话管理
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border-cyan-100 border" 
-                          onclick="editAvailableRuns('${user.auth_username}', ${
-          user.available_runs !== undefined ? user.available_runs : 0
-        })">
-                    修改次数
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100 border" 
-                          onclick="manageUserPermissions('${
-                            user.auth_username
-                          }')">
-                    权限设置
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" 
-                          onclick="modifyUserNickname('${
-                            user.auth_username
-                          }', '${escapeHtml(user.nickname || "")}')">
-                    修改昵称
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" 
-                          onclick="modifyUserPhone('${user.auth_username}', '${
-          user.phone || ""
-        }')">
-                    修改手机
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-purple-50 text-purple-600 hover:bg-purple-100 border-purple-100 border" 
-                          onclick="resetUserPassword('${user.auth_username}')">
-                    重置密码
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-100 border" 
-                          onclick="forceLogoutUser('${user.auth_username}')">
-                    强制登出
-                  </button>
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100 border" 
-                          onclick="clearUserAvatar('${user.auth_username}')">
-                    清除头像
-                  </button>
-
-                  ${
-                    user["2fa_enabled"] || user.tfa_enabled
-                      ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-100 border" 
-                            onclick="forceDisable2FA('${user.auth_username}')">
-                      关闭2FA
-                    </button>`
-                      : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-slate-50 text-slate-300 border-slate-200 border cursor-not-allowed" disabled
-                        onclick="forceDisable2FA('${user.auth_username}')"
-                      >
-                      2FA未启用
-                    </button>`
-                  }
-
-                  ${
-                    isBanned
-                      ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-green-100 text-green-700 hover:bg-green-200 border-green-200 border font-bold" 
-                            onclick="unbanUser('${user.auth_username}')">
-                      解封用户
-                    </button>`
-                      : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-100 text-red-700 hover:bg-red-200 border-red-200 border font-bold" 
-                            onclick="banUser('${user.auth_username}')">
-                      封禁用户
-                    </button>`
-                  }
-
-                  <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-600 text-white hover:bg-red-700 border-red-600 border shadow-md" 
-                          onclick="deleteUser('${user.auth_username}')">
-                    彻底删除
-                  </button>
-
-                </div>
-              </div>
-          </div>
-        </div>
-      </div>
-      `;
-      })
-      .join("");
-
-    // [修复] 使用 Promise.all 等待所有头像加载完成
-    // 这样确保 loadAdminUsers 返回时，DOM 中的头像 img 标签已经生成
-    // 后续的 copyAdminContentToMultiPanel 才能复制到正确的图片，而不是占位符
-    const avatarPromises = result.users.map((user) =>
-      loadUserAvatar(user.auth_username)
-    );
-    await Promise.all(avatarPromises);
+    // 缓存数据并使用排序渲染
+    _adminUsersCacheData = { users: result.users, groups };
+    _rerenderAdminUsersList();
   } catch (e) {
-    $(
-      "admin-users-list"
-    ).innerHTML = `<p class="text-red-500 text-center py-10">加载失败: ${e.message}</p>`;
+    $("admin-users-list").innerHTML =
+      `<p class="text-red-500 text-center py-10">加载失败: ${e.message}</p>`;
   }
 }
 
@@ -22822,7 +22849,7 @@ async function updateUserGroup(username, newGroup) {
 async function banUser(username) {
   const confirmed = await jsShowConfirm(
     "确认封禁",
-    `确定要封禁用户 ${username} 吗？`
+    `确定要封禁用户 ${username} 吗？`,
   );
   if (!confirmed) return;
 
@@ -22878,7 +22905,7 @@ async function banUser(username) {
 async function unbanUser(username) {
   const confirmed = await jsShowConfirm(
     "确认解封",
-    `确定要解封用户 ${username} 吗？`
+    `确定要解封用户 ${username} 吗？`,
   );
   if (!confirmed) return;
 
@@ -22933,7 +22960,7 @@ async function unbanUser(username) {
 async function forceDisable2FA(username) {
   const confirmed = await jsShowConfirm(
     "强制关闭2FA",
-    `确定要为用户 ${username} 关闭双因素认证吗？`
+    `确定要为用户 ${username} 关闭双因素认证吗？`,
   );
   if (!confirmed) return;
 
@@ -23067,7 +23094,7 @@ async function resetUserPassword(username) {
 async function deleteUser(username) {
   const confirmed = await jsShowConfirm(
     "确认删除",
-    `确定要删除用户 ${username} 吗？\n此操作不可恢复！`
+    `确定要删除用户 ${username} 吗？\n此操作不可恢复！`,
   );
   if (!confirmed) return;
 
@@ -23127,7 +23154,7 @@ async function deleteUser(username) {
 async function forceLogoutUser(username) {
   const confirmed = await jsShowConfirm(
     "确认强制登出",
-    `确定要强制登出用户 <strong>${username}</strong> 吗？<br>该用户的所有活跃会话将被立即销毁。`
+    `确定要强制登出用户 <strong>${username}</strong> 吗？<br>该用户的所有活跃会话将被立即销毁。`,
   );
   if (!confirmed) return;
 
@@ -23177,7 +23204,7 @@ async function loadUserAvatar(username) {
         headers: {
           "X-Session-ID": sessionUUID,
         },
-      }
+      },
     );
 
     const result = await response.json();
@@ -23204,7 +23231,7 @@ async function loadUserAvatar(username) {
 async function clearUserAvatar(username) {
   const confirmed = await jsShowConfirm(
     "确认清除头像",
-    `确定要清除用户 ${username} 的头像吗？`
+    `确定要清除用户 ${username} 的头像吗？`,
   );
   if (!confirmed) return;
 
@@ -23300,7 +23327,7 @@ async function submitSetMaxSessions() {
       loadAdminUsers();
     } else {
       // showModalAlert(result.message || "更新失败", "错误");
-      Swal.fire({ 
+      Swal.fire({
         title: "错误",
         text: result.message || "更新失败",
         icon: "error",
@@ -23517,7 +23544,7 @@ async function showUserSchoolAccounts(username) {
     if (typeof username !== "string") {
       console.error(
         "[学校账户管理] 参数错误：username不是字符串类型",
-        typeof username
+        typeof username,
       );
       // showModalAlert("用户名格式错误", "参数错误");
       Swal.fire({
@@ -23533,7 +23560,7 @@ async function showUserSchoolAccounts(username) {
     const MAX_USERNAME_LENGTH = 200;
     if (username.length > MAX_USERNAME_LENGTH) {
       console.error(
-        `[学校账户管理] 参数错误：username过长 (${username.length} > ${MAX_USERNAME_LENGTH})`
+        `[学校账户管理] 参数错误：username过长 (${username.length} > ${MAX_USERNAME_LENGTH})`,
       );
       // showModalAlert(
       //   `用户名长度不能超过${MAX_USERNAME_LENGTH}个字符`,
@@ -23579,7 +23606,7 @@ async function showUserSchoolAccounts(username) {
 
     // 输入验证通过，记录调试日志
     console.log(
-      `[学校账户管理] 开始加载用户账户：${username}（长度：${username.length}）`
+      `[学校账户管理] 开始加载用户账户：${username}（长度：${username.length}）`,
     );
   } catch (validationError) {
     // 输入验证本身发生异常（理论上不应该发生，但做好防护）
@@ -23607,7 +23634,7 @@ async function showUserSchoolAccounts(username) {
     // 使用encodeURIComponent编码username，防止特殊字符导致URL解析错误
     const response = await fetch(
       `/auth/get_user_school_accounts_only?username=${encodeURIComponent(
-        username
+        username,
       )}`,
       {
         method: "GET", // 明确指定请求方法
@@ -23615,7 +23642,7 @@ async function showUserSchoolAccounts(username) {
           "X-Session-ID": sessionUUID, // 会话ID，用于后端身份验证
         },
         signal: controller.signal, // 绑定AbortController，支持超时取消
-      }
+      },
     );
 
     // 请求成功，清除超时定时器
@@ -23627,7 +23654,7 @@ async function showUserSchoolAccounts(username) {
       // HTTP状态码不是2xx
       console.error(
         `[学校账户管理] HTTP请求失败：状态码 ${response.status}`,
-        response.statusText
+        response.statusText,
       );
 
       // 根据状态码给出更友好的错误提示
@@ -23704,7 +23731,7 @@ async function showUserSchoolAccounts(username) {
     if (typeof accounts !== "object" || Array.isArray(accounts)) {
       console.error(
         "[学校账户管理] 数据格式错误：accounts不是对象",
-        typeof accounts
+        typeof accounts,
       );
       // showModalAlert("账户数据格式错误", "数据错误");
       Swal.fire({
@@ -23720,7 +23747,7 @@ async function showUserSchoolAccounts(username) {
 
     // 记录成功日志
     console.log(
-      `[学校账户管理] 成功加载 ${accountCount} 个学校账户（用户：${username}）`
+      `[学校账户管理] 成功加载 ${accountCount} 个学校账户（用户：${username}）`,
     );
 
     // ========== 步骤6：更新UI显示用户名和统计信息 ==========
@@ -23790,7 +23817,7 @@ async function showUserSchoolAccounts(username) {
       if (typeof accountData === "string") {
         password = accountData;
         console.log(
-          `[学校账户管理] 账户 ${schoolUsername} 使用旧格式（仅密码）`
+          `[学校账户管理] 账户 ${schoolUsername} 使用旧格式（仅密码）`,
         );
       }
       // 新格式：accountData是对象（包含password和ua字段）
@@ -23798,14 +23825,14 @@ async function showUserSchoolAccounts(username) {
         password = accountData.password || "";
         ua = accountData.ua || "";
         console.log(
-          `[学校账户管理] 账户 ${schoolUsername} 使用新格式（password + ua）`
+          `[学校账户管理] 账户 ${schoolUsername} 使用新格式（password + ua）`,
         );
       }
       // 未知格式：记录警告并跳过
       else {
         console.warn(
           `[学校账户管理] 账户 ${schoolUsername} 数据格式未知：`,
-          typeof accountData
+          typeof accountData,
         );
         continue;
       }
@@ -23828,7 +23855,7 @@ async function showUserSchoolAccounts(username) {
               <div class="flex items-center justify-between">
                 <!-- 用户名显示：使用escapeHtml()转义，防止XSS -->
                 <div class="font-semibold text-slate-800 text-lg">${escapeHtml(
-                  schoolUsername
+                  schoolUsername,
                 )}</div>
                 
                 <!-- 操作按钮组：包含编辑、删除、查看详情三个按钮 -->
@@ -23901,7 +23928,7 @@ async function showUserSchoolAccounts(username) {
                   <button 
                     class="btn btn-sm !py-1 !px-3 !text-xs bg-sky-500 text-white hover:bg-sky-600 border-sky-500" 
                     onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
-                      schoolUsername
+                      schoolUsername,
                     )}')"
                     title="查看此账户的详细信息">
                     查看详情
@@ -23918,7 +23945,7 @@ async function showUserSchoolAccounts(username) {
               <div class="text-sm">
                 <span class="text-slate-500">密码:</span>
                 <span class="font-mono text-slate-700 ml-2 select-all">${escapeHtml(
-                  password
+                  password,
                 )}</span>
               </div>
               
@@ -23935,7 +23962,7 @@ async function showUserSchoolAccounts(username) {
               <div class="text-sm">
                 <span class="text-slate-500">User-Agent:</span>
                 <div class="font-mono text-xs text-slate-600 mt-1 p-2 bg-white rounded break-all select-all">${escapeHtml(
-                  ua
+                  ua,
                 )}</div>
               </div>
               `
@@ -24121,7 +24148,7 @@ async function generateRandomUAForSchoolAccount() {
       uaField.value = newUA;
       console.log(
         "[学校账户管理] 已生成并填充随机UA:",
-        newUA.substring(0, 50) + "..."
+        newUA.substring(0, 50) + "...",
       );
     }
     const uaTextarea = $("edit-school-ua");
@@ -24247,8 +24274,8 @@ async function deleteSchoolAccount(authUsername, schoolUsername) {
   const confirmed = await jsShowConfirm(
     "确认删除",
     `确定要删除学校账户 <strong>${escapeHtml(
-      schoolUsername
-    )}</strong> 吗？此操作不可恢复。`
+      schoolUsername,
+    )}</strong> 吗？此操作不可恢复。`,
   );
 
   // 如果用户点击取消，则提前返回，不执行删除操作
@@ -24573,7 +24600,7 @@ function mobileAddNewSchoolAccount() {
 function mobileEditSchoolAccount(authUsername, schoolUsername, password, ua) {
   // 输出日志，标记编辑操作的开始，包含账户标识信息
   console.log(
-    `[移动端学校账户管理] 打开编辑表单：${authUsername} - ${schoolUsername}`
+    `[移动端学校账户管理] 打开编辑表单：${authUsername} - ${schoolUsername}`,
   );
 
   // ========== 填充表单字段 ==========
@@ -24676,8 +24703,8 @@ async function showMobileUserSchoolAccounts(username) {
   try {
     // ========== 发送HTTP请求获取账户数据 ==========
     // 构建API端点URL，使用encodeURIComponent编码用户名，避免特殊字符导致的问题
-    const apiUrl = `/auth/get_user_school_accounts?username=${encodeURIComponent(
-      username
+    const apiUrl = `/auth/get_user_school_accounts_only?username=${encodeURIComponent(
+      username,
     )}`;
 
     // 发送GET请求到服务器
@@ -24822,7 +24849,7 @@ async function showMobileUserSchoolAccounts(username) {
                         class="py-1 px-2 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[36px]" 
                         data-account='${accountDataJson.replace(
                           /'/g,
-                          "&apos;"
+                          "&apos;",
                         )}'
                         onclick="(function(btn) { 
                           const data = JSON.parse(btn.getAttribute('data-account')); 
@@ -24861,7 +24888,7 @@ async function showMobileUserSchoolAccounts(username) {
                       <button 
                         class="py-1 px-2 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[36px]" 
                         onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
-                          schoolUsername
+                          schoolUsername,
                         )}')"
                         title="查看此账户的详细信息">
                         详情
@@ -25012,10 +25039,10 @@ async function manageUserPermissions(username) {
           return `
               <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer border ${statusClass}">
                 <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" data-group-value="${groupHas}" ${
-            currentValue ? "checked" : ""
-          }>
+                  currentValue ? "checked" : ""
+                }>
                 <span class="text-sm text-slate-700 flex-1">${translatePermission(
-                  perm
+                  perm,
                 )}</span>
                 ${
                   statusText
@@ -25061,7 +25088,7 @@ async function submitManageUserPermissions() {
   const removedPermissions = {};
 
   const checkboxes = permissionsContainer.querySelectorAll(
-    'input[type="checkbox"]'
+    'input[type="checkbox"]',
   );
   checkboxes.forEach((cb) => {
     const perm = cb.getAttribute("data-permission");
@@ -25282,7 +25309,7 @@ async function submitAdminModifyPhone() {
     const bindResult = await callPythonAPI_raw(
       "/api/auth/check_phone",
       "POST",
-      { phone: newPhone }
+      { phone: newPhone },
     );
     if (
       bindResult &&
@@ -25291,12 +25318,12 @@ async function submitAdminModifyPhone() {
     ) {
       const confirmed = await jsShowConfirm(
         "手机号已被绑定",
-        `您输入的新手机号 ${newPhone} 已被用户 ${bindResult.bound_to_user} 绑定。\n\n是否继续？\n\n如果继续，该手机号将从原账号上强制解绑并绑定到 ${username} 账号上。`
+        `您输入的新手机号 ${newPhone} 已被用户 ${bindResult.bound_to_user} 绑定。\n\n是否继续？\n\n如果继续，该手机号将从原账号上强制解绑并绑定到 ${username} 账号上。`,
       );
 
       if (!confirmed) {
         logMessage_Info(
-          "[管理员修改手机号] 用户取消操作，因为手机号已被绑定。"
+          "[管理员修改手机号] 用户取消操作，因为手机号已被绑定。",
         );
         return;
       }
@@ -25467,7 +25494,7 @@ function Get_YiPAi_device() {
 async function deleteGroup(groupKey) {
   const confirmed = await jsShowConfirm(
     "确认删除",
-    `确定要删除权限组 ${groupKey} 吗？\n此操作不可恢复！`
+    `确定要删除权限组 ${groupKey} 吗？\n此操作不可恢复！`,
   );
   if (!confirmed) return;
 
@@ -25532,7 +25559,7 @@ async function editGroupPermissions(groupKey) {
     if (!result.success || !result.groups || !result.groups[groupKey]) {
       // showModalAlert("无法加载权限组信息", "错误");
       Swal.fire({
-      title: "错误",
+        title: "错误",
         text: "无法加载权限组信息",
         icon: "error",
       });
@@ -25552,13 +25579,13 @@ async function editGroupPermissions(groupKey) {
           (perm) => `
             <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
               <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" ${
-            group.permissions[perm] ? "checked" : ""
-          }>
+                group.permissions[perm] ? "checked" : ""
+              }>
               <span class="text-sm text-slate-700">${translatePermission(
-                perm
+                perm,
               )}</span>
             </label>
-          `
+          `,
         )
         .join("");
     }
@@ -25592,7 +25619,7 @@ async function submitEditGroupPermissions() {
 
   const permissions = {};
   const checkboxes = permissionsContainer.querySelectorAll(
-    'input[type="checkbox"]'
+    'input[type="checkbox"]',
   );
   checkboxes.forEach((cb) => {
     const perm = cb.getAttribute("data-permission");
@@ -25650,9 +25677,8 @@ async function loadAdminGroups() {
     const result = await response.json();
 
     if (!result.success) {
-      $(
-        "admin-groups-list"
-      ).innerHTML = `<p class="text-red-500 text-center py-10">${result.message}</p>`;
+      $("admin-groups-list").innerHTML =
+        `<p class="text-red-500 text-center py-10">${result.message}</p>`;
       return;
     }
 
@@ -25701,7 +25727,7 @@ async function loadAdminGroups() {
                 }">${perms[perm] ? "✓" : "✗"}</span>
                 <span class="text-slate-600">${translatePermission(perm)}</span>
               </div>
-            `
+            `,
               )
               .join("")}
           </div>
@@ -25710,9 +25736,8 @@ async function loadAdminGroups() {
       })
       .join("");
   } catch (e) {
-    $(
-      "admin-groups-list"
-    ).innerHTML = `<p class="text-red-500 text-center py-10">加载失败: ${e.message}</p>`;
+    $("admin-groups-list").innerHTML =
+      `<p class="text-red-500 text-center py-10">加载失败: ${e.message}</p>`;
   }
 }
 
@@ -25721,7 +25746,7 @@ async function loadAdminSessions() {
 
   if (!listEl) {
     logMessage_Error(
-      "loadAdminSessions: 无法找到会话列表容器 'admin-sessions-list_modal'。"
+      "loadAdminSessions: 无法找到会话列表容器 'admin-sessions-list_modal'。",
     );
     // showModalAlert("无法加载会话列表：界面元素丢失。", "错误");
     Swal.fire({
@@ -25767,10 +25792,10 @@ async function loadAdminSessions() {
       (session) =>
         session.session_id &&
         session.session_id !== "null" &&
-        session.session_id.trim() !== ""
+        session.session_id.trim() !== "",
     );
     if (isGodMode) {
-      updateAdminSessionCountDisplay(validSessions.length, -1);
+      updateAdminSessionCountDisplay(validSessions.length, -1, true);
     } else {
       updateAdminSessionCountDisplay(validSessions.length, maxSessions);
     }
@@ -25837,8 +25862,8 @@ async function loadAdminSessions() {
                       ? '<span class="font-semibold text-green-600">已登录</span>'
                       : '<span class="font-semibold ">未登录</span>'
                     : session.login_success
-                    ? '<span class="font-semibold text-green-600">已登录</span>'
-                    : "未登录"
+                      ? '<span class="font-semibold text-green-600">已登录</span>'
+                      : "未登录"
                 }</p>
                 ${ownerInfo}
               </div>
@@ -25886,10 +25911,10 @@ async function loadMobileAdminSessionsList() {
   try {
     // 检查上帝模式复选框 (兼容多账号面板和单账号面板的ID)
     const godChkMulti = document.getElementById(
-      "mobile-multi-god-mode-checkbox"
+      "mobile-multi-god-mode-checkbox",
     );
     const godChkSingle = document.getElementById(
-      "mobile-god-mode-checkbox-panel"
+      "mobile-god-mode-checkbox-panel",
     );
 
     // 判断哪个复选框是可见的/有效的
@@ -25922,20 +25947,20 @@ async function loadMobileAdminSessionsList() {
     // 过滤无效会话
     const validSessions = sessions.filter(
       (s) =>
-        s.session_id && s.session_id !== "null" && s.session_id.trim() !== ""
+        s.session_id && s.session_id !== "null" && s.session_id.trim() !== "",
     );
 
     // 更新计数显示
     const countElMulti = document.getElementById(
-      "mobile-multi-admin-session-count-display"
+      "mobile-multi-admin-session-count-display",
     );
     const countElSingle = document.getElementById(
-      "mobile-admin-session-count-display-panel"
+      "mobile-admin-session-count-display-panel",
     );
 
     // 新增：处理创建按钮显示状态
     const createContainerMulti = document.getElementById(
-      "mobile-multi-admin-create-session-container"
+      "mobile-multi-admin-create-session-container",
     );
 
     // 计算显示文本
@@ -26005,7 +26030,7 @@ async function loadMobileAdminSessionsList() {
       let ownerBadge = "";
       if (session.username) {
         ownerBadge = `<div class="flex items-center gap-1 text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full"><span class="font-bold">👤</span> ${escapeHtml(
-          session.username
+          session.username,
         )}</div>`;
       } else {
         ownerBadge = `<div class="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">👤 游客</div>`;
@@ -26147,13 +26172,30 @@ async function loadMobileAdminSessionsList() {
               }
             });
           }
-        } else {
-          // 短按切换
-          if (!isCurrent) {
-            selectSessionFromPicker(session.session_id);
-          }
         }
         isLongPress = false;
+      };
+
+      // 双击/双指轻触切换会话
+      let lastTapTime = 0;
+      const handleDoubleTap = (e) => {
+        if (isLongPress) return;
+        const now = Date.now();
+        if (now - lastTapTime < 350) {
+          // 两次点击间隔小于 350ms 视为双击
+          if (!isCurrent) {
+            showMobileConfirm(
+              "切换会话",
+              `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
+              () => {
+                selectSessionFromPicker(session.session_id);
+              },
+            );
+          }
+          lastTapTime = 0;
+        } else {
+          lastTapTime = now;
+        }
       };
 
       itemDiv.addEventListener("touchstart", startPress, {
@@ -26161,8 +26203,20 @@ async function loadMobileAdminSessionsList() {
       });
       itemDiv.addEventListener("touchmove", movePress, { passive: true });
       itemDiv.addEventListener("touchend", endPress);
+      itemDiv.addEventListener("touchend", handleDoubleTap);
       itemDiv.addEventListener("mousedown", startPress);
       itemDiv.addEventListener("mouseup", endPress);
+      itemDiv.addEventListener("dblclick", () => {
+        if (!isCurrent) {
+          showMobileConfirm(
+            "切换会话",
+            `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
+            () => {
+              selectSessionFromPicker(session.session_id);
+            },
+          );
+        }
+      });
 
       activeContainer.appendChild(itemDiv);
     });
@@ -26281,7 +26335,7 @@ async function loadMessages() {
                   <div class="flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="font-semibold text-slate-700">${escapeHtml(
-                        displayName
+                        displayName,
                       )}</span>
                       ${
                         msg.is_guest
@@ -26291,7 +26345,7 @@ async function loadMessages() {
                       ${
                         ipCity
                           ? `<span class="text-xs text-slate-500">来自 ${escapeHtml(
-                              ipCity
+                              ipCity,
                             )}</span>`
                           : ""
                       }
@@ -26299,7 +26353,7 @@ async function loadMessages() {
                     ${
                       msg.email
                         ? `<p class="text-xs text-slate-500">${escapeHtml(
-                            msg.email
+                            msg.email,
                           )}</p>`
                         : ""
                     }
@@ -26320,9 +26374,9 @@ async function loadMessages() {
               <!-- <div id="message-md-${
                 msg.id
               }" class="text-slate-700 break-words pl-15 message-markdown">${escapeHtml(
-          // 放一个占位，实际HTML由后续脚本替换
-          msg.content
-        )}</div> -->
+                // 放一个占位，实际HTML由后续脚本替换
+                msg.content,
+              )}</div> -->
               <div id="message-md-${
                 msg.id
               }" class="text-slate-700 break-words pl-15 message-markdown" style="padding-top: 0px;margin-top: 0px;"></div>
@@ -26371,7 +26425,7 @@ async function loadMessages() {
         // 最后回退：以转义文本并保留换行展示
         container.innerHTML = escapeHtml(m.content || "").replace(
           /\n/g,
-          "<br>"
+          "<br>",
         );
       });
     })(messages);
@@ -26475,7 +26529,7 @@ async function postMessage() {
         try {
           const ta =
             document.querySelector(
-              "#message-editor textarea.editormd-markdown-textarea"
+              "#message-editor textarea.editormd-markdown-textarea",
             ) || document.querySelector('textarea[name="message-content"]');
           if (ta) ta.value = "";
         } catch (e) {}
@@ -26506,11 +26560,11 @@ async function postMessage() {
   } catch (e) {
     logMessage_Error("发表留言失败:", e);
     // showModalAlert("发表留言失败: " + e.message, "错误");
-      Swal.fire({
-        title: "错误",
-        text: "发表留言失败: " + e.message,
-        icon: "error",
-      });
+    Swal.fire({
+      title: "错误",
+      text: "发表留言失败: " + e.message,
+      icon: "error",
+    });
   } finally {
     postBtn.disabled = false;
     postBtn.textContent = "发表留言";
@@ -26680,7 +26734,7 @@ async function loadUserLoginLogsSecondary(username) {
         headers: {
           "X-Session-ID": sessionUUID,
         },
-      }
+      },
     );
 
     const data = await response.json();
@@ -26712,7 +26766,7 @@ async function loadUserLoginLogsSecondary(username) {
                 </div>
               </div>
             </div>
-          `
+          `,
         )
         .join("");
     } else {
@@ -26737,7 +26791,7 @@ async function loadUserAuditLogsSecondary(username) {
         headers: {
           "X-Session-ID": sessionUUID,
         },
-      }
+      },
     );
 
     const data = await response.json();
@@ -26764,7 +26818,7 @@ async function loadUserAuditLogsSecondary(username) {
                 </div>
               </div>
             </div>
-          `
+          `,
         )
         .join("");
     } else {
@@ -26788,7 +26842,7 @@ async function loadUserLoginLogs(username) {
         headers: {
           "X-Session-ID": sessionUUID,
         },
-      }
+      },
     );
 
     const data = await response.json();
@@ -26820,7 +26874,7 @@ async function loadUserLoginLogs(username) {
                 </div>
               </div>
             </div>
-          `
+          `,
         )
         .join("");
     } else {
@@ -26845,7 +26899,7 @@ async function loadUserAuditLogs(username) {
         headers: {
           "X-Session-ID": sessionUUID,
         },
-      }
+      },
     );
 
     const data = await response.json();
@@ -26874,7 +26928,7 @@ async function loadUserAuditLogs(username) {
                       : ""
                   }
                 </div>
-          `
+          `,
         )
         .join("");
     } else {
@@ -26918,7 +26972,7 @@ async function loadIPBans() {
                 ban.id
               }')" class="btn btn-danger !py-1 !px-2 !text-xs min-h-[44px]">删除</button>
             </div>
-          `
+          `,
         )
         .join("");
     } else {
@@ -27110,7 +27164,7 @@ async function removeIPBan(banId) {
 }
 
 // ====================
-// 任务20：短信服务配置函数
+// 短信服务配置函数
 // ====================
 async function loadSMSConfig() {
   try {
@@ -27135,9 +27189,8 @@ async function loadSMSConfig() {
         result.config.rate_limit_per_account_day || 10;
       $("sms-limit-ip").value = result.config.rate_limit_per_ip_day || 20;
       $("sms-limit-phone").value = result.config.rate_limit_per_phone_day || 5;
-      $(
-        "sms-webhook-url"
-      ).value = `${window.location.origin}/sms-reply-webhook`;
+      $("sms-webhook-url").value =
+        `${window.location.origin}/sms-reply-webhook`;
     }
   } catch (e) {
     // showModalAlert("加载配置失败: " + e.message);
@@ -27296,7 +27349,7 @@ async function loadSMSHistory() {
       `/api/admin/sms/history?${params.toString()}`,
       {
         headers: { "X-Session-ID": sessionUUID },
-      }
+      },
     );
     const result = await response.json();
 
@@ -27333,7 +27386,7 @@ async function loadSMSHistory() {
                 <div class="md:col-span-2">
                   <span class="text-xs text-slate-500">💬 短信内容</span>
                   <p class="text-sm text-slate-600 bg-slate-50 p-2 rounded mt-1">${escapeHtml(
-                    record.content || ""
+                    record.content || "",
                   )}</p>
                 </div>
                 ${
@@ -27350,7 +27403,7 @@ async function loadSMSHistory() {
                 }
               </div>
             </div>
-          `
+          `,
         )
         .join("");
     } else {
@@ -27788,8 +27841,8 @@ async function openSMSReplyLogsModal() {
                    - text-center: 居中对齐
               -->
               共 ${result.total || logs.length} 条记录，显示最近 ${
-      logs.length
-    } 条
+                logs.length
+              } 条
               <!-- 显示总记录数和当前显示数量
                    - result.total: 后端返回的总记录数
                    - logs.length: 当前显示的记录数（受limit参数限制）
@@ -27843,7 +27896,7 @@ let verificationCodesCountdownInterval = null;
 
 function updateVerificationCodeCountdowns() {
   const countdownElements = document.querySelectorAll(
-    ".verification-code-countdown"
+    ".verification-code-countdown",
   );
   if (countdownElements.length === 0) {
     stopVerificationCodesCountdown();
@@ -27880,7 +27933,7 @@ function startVerificationCodesCountdown() {
   updateVerificationCodeCountdowns();
   verificationCodesCountdownInterval = setInterval(
     updateVerificationCodeCountdowns,
-    1000
+    1000,
   );
 }
 function stopVerificationCodesCountdown() {
@@ -27967,7 +28020,7 @@ async function loadVerificationCodes() {
 async function invalidateVerificationCode(phone) {
   const confirmed = await jsShowConfirm(
     "确认失效",
-    `确定要使手机号 +86 ${phone} 的验证码失效吗？`
+    `确定要使手机号 +86 ${phone} 的验证码失效吗？`,
   );
   if (!confirmed) {
     return;
@@ -28088,7 +28141,7 @@ let mobileVerificationCodesCountdownInterval = null;
 function updateMobileVerificationCodeCountdowns() {
   // 获取所有移动端验证码倒计时元素
   const countdownElements = document.querySelectorAll(
-    ".mobile-verification-code-countdown"
+    ".mobile-verification-code-countdown",
   );
   // 如果没有任何倒计时元素，停止定时器以节省资源
   if (countdownElements.length === 0) {
@@ -28143,7 +28196,7 @@ function startMobileVerificationCodesCountdown() {
   // 设置每秒更新一次的定时器
   mobileVerificationCodesCountdownInterval = setInterval(
     updateMobileVerificationCodeCountdowns,
-    1000
+    1000,
   );
 }
 
@@ -28270,7 +28323,7 @@ async function loadMobileVerificationCodes() {
 
     // 获取验证码列表容器元素
     const listContainer = document.getElementById(
-      "mobile-verification-codes-list"
+      "mobile-verification-codes-list",
     );
 
     // 检查请求是否成功且有数据
@@ -28336,7 +28389,7 @@ async function loadMobileVerificationCodes() {
     console.log(
       "[移动端验证码管理] 验证码列表已加载，共",
       result.codes?.length || 0,
-      "条"
+      "条",
     );
   } catch (e) {
     // 错误处理：显示错误提示
@@ -28360,7 +28413,7 @@ async function invalidateMobileVerificationCode(phone) {
   // 弹出确认对话框
   const confirmed = await jsShowConfirm(
     "确认失效",
-    `确定要使手机号 +86 ${phone} 的验证码失效吗？`
+    `确定要使手机号 +86 ${phone} 的验证码失效吗？`,
   );
   // 用户取消则直接返回
   if (!confirmed) {
@@ -28516,20 +28569,22 @@ async function checkButtonPermission(buttonId, permissionName) {
     //   "权限不足"
     // );
     Swal.fire({
-      title:"错误",
-      text:"您没有权限使用此功能，缺少 ${permissionName} 权限。",
-      icon:"error",
-    })
+      title: "错误",
+      text: `您没有权限使用此功能，缺少 ${permissionName} 权限。`,
+      icon: "error",
+    });
     return false;
   }
   return true;
 }
 
-function updateAdminSessionCountDisplay(currentCount, maxSessions) {
+function updateAdminSessionCountDisplay(currentCount, maxSessions, isGodMode = false) {
   const countEl = $("admin-session-count-display");
   if (!countEl) return;
 
-  if (currentUserIsGuest) {
+  if (isGodMode) {
+    countEl.innerHTML = `<span class="text-purple-600">系统总会话数: ${currentCount}</span>`;
+  } else if (currentUserIsGuest) {
     countEl.innerHTML = `<span class="text-blue-600">会话数: 1 / 游客仅限单会话</span>`;
   } else if (maxSessions === -1) {
     countEl.innerHTML = `<span class="text-green-600">会话数: ${currentCount} / 无限制</span>`;
@@ -28539,8 +28594,8 @@ function updateAdminSessionCountDisplay(currentCount, maxSessions) {
     const colorClass = isAtLimit
       ? "text-red-600"
       : isNearLimit
-      ? "text-amber-600"
-      : "text-slate-600";
+        ? "text-amber-600"
+        : "text-slate-600";
     countEl.innerHTML = `<span class="${colorClass}">会话数: ${currentCount} / ${maxSessions}</span>`;
   }
 }
@@ -28554,7 +28609,7 @@ async function destroySession(sessionId, confirm = true) {
   if (confirm) {
     const confirmed = await jsShowConfirm(
       "确认销毁",
-      `确定要销毁会话\n${sessionHash}...\n吗？\n此操作将强制终止该会话！`
+      `确定要销毁会话\n${sessionHash}...\n吗？\n此操作将强制终止该会话！`,
     );
     if (!confirmed) return;
   }
@@ -28600,7 +28655,7 @@ async function destroySession(sessionId, confirm = true) {
 async function selectSession(sessionId) {
   const confirmed = await jsShowConfirm(
     "确认切换",
-    `确定要切换到会话\n ${sessionId} \n吗？`
+    `确定要切换到会话\n ${sessionId} \n吗？`,
   );
 
   if (!confirmed) {
@@ -28663,8 +28718,8 @@ async function selectSession(sessionId) {
       logMessage_Info(
         `[会话切换] ✓ 认证信息更新成功，准备跳转到 ${sessionId.substring(
           0,
-          16
-        )}...`
+          16,
+        )}...`,
       );
       Swal.fire({
         icon: "success",
@@ -28710,7 +28765,7 @@ async function deleteSession(sessionId, confirm = true) {
   if (confirm) {
     const confirmed = await jsShowConfirm(
       "确认删除",
-      `确定要删除会话\n ${sessionId} \n吗？\n此操作不可恢复！`
+      `确定要删除会话\n ${sessionId} \n吗？\n此操作不可恢复！`,
     );
 
     if (!confirmed) {
@@ -28718,7 +28773,7 @@ async function deleteSession(sessionId, confirm = true) {
       return;
     }
   }
-  title: "正在删除会话...",
+  title: ("正在删除会话...",
     Swal.fire({
       title: "正在删除会话...",
       text: "请稍候",
@@ -28726,7 +28781,7 @@ async function deleteSession(sessionId, confirm = true) {
       didOpen: () => {
         Swal.showLoading();
       },
-    });
+    }));
 
   logMessage_Info(`[会话删除] 准备删除会话 ${sessionId}...`);
 
@@ -28838,7 +28893,7 @@ async function loadSessionPickerList() {
       (session) =>
         session.session_id &&
         session.session_id !== "null" &&
-        session.session_id.trim() !== ""
+        session.session_id.trim() !== "",
     );
 
     currentSessionInfo.currentCount = validSessions.length;
@@ -28896,8 +28951,8 @@ async function loadSessionPickerList() {
                           ? "bg-green-100 text-green-700"
                           : "bg-gray-100 text-gray-700"
                         : session.login_success
-                        ? "bg-green-100 text-green-700"
-                        : "bg-gray-100 text-gray-700"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-gray-100 text-gray-700"
                     }">
                       ${
                         session.is_multi_account_mode
@@ -28905,8 +28960,8 @@ async function loadSessionPickerList() {
                             ? "✓ 已登录"
                             : "○ 未登录"
                           : session.login_success
-                          ? "✓ 已登录"
-                          : "○ 未登录"
+                            ? "✓ 已登录"
+                            : "○ 未登录"
                       }
                     </span>
                   </p>
@@ -28960,8 +29015,8 @@ function updateSessionCountDisplay() {
     const colorClass = isAtLimit
       ? "text-red-600"
       : isNearLimit
-      ? "text-amber-600"
-      : "text-slate-600";
+        ? "text-amber-600"
+        : "text-slate-600";
     countEl.innerHTML = `<span class="${colorClass}">会话数: ${currentCount} / ${maxSessions}</span>`;
   }
 }
@@ -28973,7 +29028,7 @@ async function selectSessionFromPicker(sessionId) {
   // ========== 修改开始：上帝模式直接跳转 ==========
   if (currentUserData && currentUserData.group === "super_admin") {
     logMessage_Info(
-      "[上帝模式-移动端] 识别到管理员身份，保留Token并直接跳转..."
+      "[上帝模式-移动端] 识别到管理员身份，保留Token并直接跳转...",
     );
     if (!localStorage.getItem("admin_return_origin")) {
       localStorage.setItem("admin_return_origin", sessionUUID);
@@ -28985,7 +29040,7 @@ async function selectSessionFromPicker(sessionId) {
 
   try {
     logMessage_Info(
-      `正在为目标会话 ${sessionId.substring(0, 16)} 刷新认证令牌...`
+      `正在为目标会话 ${sessionId.substring(0, 16)} 刷新认证令牌...`,
     );
 
     const response = await fetch("/auth/switch_session", {
@@ -29002,7 +29057,7 @@ async function selectSessionFromPicker(sessionId) {
     const result = await response.json();
     if (response.ok && result.success) {
       logMessage_Info(
-        `令牌更新成功，正在跳转到会话 ${sessionId.substring(0, 16)}...`
+        `令牌更新成功，正在跳转到会话 ${sessionId.substring(0, 16)}...`,
       );
       window.location.href = `/uuid=${sessionId}`;
     } else {
@@ -29011,7 +29066,7 @@ async function selectSessionFromPicker(sessionId) {
       Swal.fire({
         icon: "error",
         title: "切换失败",
-        text: result.message || "无法更新认证信息，请稍后重试。", 
+        text: result.message || "无法更新认证信息，请稍后重试。",
       });
       if (result.need_login) {
         Swal.fire({
@@ -29056,7 +29111,7 @@ async function createNewSessionFromPicker() {
         (session) =>
           session.session_id &&
           session.session_id !== "null" &&
-          session.session_id.trim() !== ""
+          session.session_id.trim() !== "",
       );
       currentSessionInfo.currentCount = validSessions.length;
       logMessage_Info(
@@ -29066,20 +29121,20 @@ async function createNewSessionFromPicker() {
           currentSessionInfo.maxSessions === -1
             ? "无限制"
             : currentSessionInfo.maxSessions
-        }`
+        }`,
       );
       updateSessionCountDisplay();
       updateAdminSessionCountDisplay(
         currentSessionInfo.currentCount,
-        currentSessionInfo.maxSessions
+        currentSessionInfo.maxSessions,
       );
       updateAdminSessionCountDisplayInline(
         currentSessionInfo.currentCount,
-        currentSessionInfo.maxSessions
+        currentSessionInfo.maxSessions,
       );
     } else {
       logMessage_Info(
-        `[会话创建] 警告: 获取最新会话信息失败: ${result.message}`
+        `[会话创建] 警告: 获取最新会话信息失败: ${result.message}`,
       );
       // showModalAlert("无法获取最新的会话限制信息，将继续尝试创建。", "警告");
       Swal.fire({
@@ -29090,7 +29145,7 @@ async function createNewSessionFromPicker() {
     }
   } catch (error) {
     logMessage_Info(
-      `[会话创建] 错误: 获取最新会话信息时发生网络错误: ${error}`
+      `[会话创建] 错误: 获取最新会话信息时发生网络错误: ${error}`,
     );
     // showModalAlert(
     //   `获取最新的会话限制信息时发生网络错误: ${error.message}，将继续尝试创建。`,
@@ -29137,20 +29192,20 @@ async function createNewSessionFromPicker() {
             s.session_id &&
             s.session_id !== "null" &&
             s.session_id.trim() !== "" &&
-            s.session_id !== sessionUUID
+            s.session_id !== sessionUUID,
         );
 
         if (validSessions.length > 0) {
           validSessions.sort(
-            (a, b) => (a.created_at || 0) - (b.created_at || 0)
+            (a, b) => (a.created_at || 0) - (b.created_at || 0),
           );
           const oldestSession = validSessions[0];
 
           logMessage_Info(
             `[会话管理] 正在删除最旧的会话: ${oldestSession.session_id.substring(
               0,
-              16
-            )}...`
+              16,
+            )}...`,
           );
           const deleteResponse = await fetch("/auth/user/delete_session", {
             method: "POST",
@@ -29180,7 +29235,7 @@ async function createNewSessionFromPicker() {
   logMessage_Info(`正在创建新会话 ${newUUID}`);
   const confirmed = await jsShowConfirm(
     "确认操作",
-    "您确定要创建一个新的会话吗？"
+    "您确定要创建一个新的会话吗？",
   );
 
   if (!confirmed) {
@@ -29286,7 +29341,7 @@ async function deleteSessionFromPicker(sessionId, confirm = true) {
   if (confirm) {
     const confirmed = await jsShowConfirm(
       "确认删除",
-      "确定要删除此会话吗？<br>此操作不可恢复！"
+      "确定要删除此会话吗？<br>此操作不可恢复！",
     );
     if (!confirmed) return;
   }
@@ -29530,7 +29585,7 @@ function startSessionValidityCheck() {
   checkSessionValidity();
   sessionValidityCheckInterval = setInterval(
     checkSessionValidity,
-    5 * 60 * 1000
+    5 * 60 * 1000,
   );
 }
 async function initializeApp() {
@@ -29567,7 +29622,7 @@ async function initializeApp() {
     }
     function showMobileLoadingOverlay() {
       const mobileLoadingOverlay = document.getElementById(
-        "mobile-loading-overlay"
+        "mobile-loading-overlay",
       );
       if (mobileLoadingOverlay) {
         mobileLoadingOverlay.classList.remove("hidden");
@@ -29576,7 +29631,7 @@ async function initializeApp() {
     }
     function hideMobileLoadingOverlay() {
       const mobileLoadingOverlay = document.getElementById(
-        "mobile-loading-overlay"
+        "mobile-loading-overlay",
       );
       if (mobileLoadingOverlay) {
         mobileLoadingOverlay.classList.add("hidden");
@@ -29603,7 +29658,7 @@ async function initializeApp() {
     }
     const urlPath = window.location.pathname;
     const match = urlPath.match(
-      /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i
+      /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i,
     );
 
     ShowLoadingOverlay();
@@ -29659,7 +29714,7 @@ async function initializeApp() {
               confirmButtonText: "确定",
             }).then(() => {
               logMessage_Info(
-                "用户确认检查UUID失败弹窗，正在跳转到登录页面..."
+                "用户确认检查UUID失败弹窗，正在跳转到登录页面...",
               );
               window.location.href = "/";
             });
@@ -29679,7 +29734,7 @@ async function initializeApp() {
               if (isMobileMode) {
                 const mobileHeader = document.getElementById("mobile-header");
                 const mobileBottomNavSingle = document.getElementById(
-                  "mobile-bottom-nav-single-account"
+                  "mobile-bottom-nav-single-account",
                 );
                 if (mobileHeader) {
                   mobileHeader.classList.remove("hidden");
@@ -29697,13 +29752,13 @@ async function initializeApp() {
           } else if (result.uuid_type === "system_account") {
             try {
               logMessage_Info(
-                "检测到系统账号UUID，允许访问（后端将验证token）"
+                "检测到系统账号UUID，允许访问（后端将验证token）",
               );
               hideLoadingOverlays();
               if (isMobileMode) {
                 const mobileHeader = document.getElementById("mobile-header");
                 const mobileBottomNavSingle = document.getElementById(
-                  "mobile-bottom-nav-single-account"
+                  "mobile-bottom-nav-single-account",
                 );
                 if (mobileHeader) {
                   mobileHeader.classList.remove("hidden");
@@ -29726,7 +29781,7 @@ async function initializeApp() {
               const mainApp = document.getElementById("main-app");
               const multiApp = document.getElementById("multi-account-app");
               const authContainer = document.getElementById(
-                "auth-login-container"
+                "auth-login-container",
               );
 
               if (loginContainer) loginContainer.classList.add("hidden");
@@ -29741,12 +29796,12 @@ async function initializeApp() {
                   "inset-0",
                   "flex",
                   "items-center",
-                  "justify-center"
+                  "justify-center",
                 );
               }
 
               const mobileAuthContainer = document.getElementById(
-                "mobile-auth-container"
+                "mobile-auth-container",
               );
               if (mobileAuthContainer) {
                 mobileAuthContainer.classList.remove("hidden");
@@ -29923,7 +29978,7 @@ async function initializeApp() {
           confirmButtonText: "确定",
         }).then(() => {
           logMessage_Info(
-            "用户确认检查UUID类型失败弹窗，正在跳转到登录页面..."
+            "用户确认检查UUID类型失败弹窗，正在跳转到登录页面...",
           );
           window.location.href = "/";
         });
@@ -29985,7 +30040,7 @@ async function initializeApp() {
     currentUserIsGuest = initialData.is_guest || false;
     currentAuthUsername = initialData.auth_username || null;
     logMessage_Info(
-      `initializeApp: currentUserIsGuest = ${currentUserIsGuest}, auth_username = ${currentAuthUsername}`
+      `initializeApp: currentUserIsGuest = ${currentUserIsGuest}, auth_username = ${currentAuthUsername}`,
     );
 
     const userCombo = $("user-combo");
@@ -30016,7 +30071,7 @@ async function initializeApp() {
       populateUserSelect(mobileMultiConfigUserSelect, initialData.users);
 
     logMessage_Info(
-      `[初始化] multi-config-user-select 已更新，用户数: ${initialData.users.length}`
+      `[初始化] multi-config-user-select 已更新，用户数: ${initialData.users.length}`,
     );
 
     createParamInputs($("params-container"), "param", onParamChange);
@@ -30039,7 +30094,7 @@ async function initializeApp() {
         confirmButtonText: "确定",
       }).then(() => {
         logMessage_Info(
-          "用户确认获取会话模式信息失败弹窗，正在跳转到登录页面..."
+          "用户确认获取会话模式信息失败弹窗，正在跳转到登录页面...",
         );
         window.location.href = "/";
       });
@@ -30083,13 +30138,13 @@ async function initializeApp() {
       ShowMobileLoadingOverlay();
       if (isMobileMode) {
         const mobileMultiApp = document.getElementById(
-          "mobile-multi-account-app"
+          "mobile-multi-account-app",
         );
         const mobileLoginContainer = document.getElementById(
-          "mobile-login-container"
+          "mobile-login-container",
         );
         const mobileAuthContainer = document.getElementById(
-          "mobile-auth-login-container"
+          "mobile-auth-login-container",
         );
         if (mobileMultiApp) {
           mobileMultiApp.classList.remove("hidden");
@@ -30183,7 +30238,7 @@ async function initializeApp() {
         updateMultiGlobalButtons(true, true);
         await callPythonAPI(
           "set_multi_run_only_incomplete",
-          document.getElementById("multi-run-only-incomplete-check").checked
+          document.getElementById("multi-run-only-incomplete-check").checked,
         );
       } catch (e) {
         logMessage_Error("绑定多账号UI事件失败:", e);
@@ -30194,7 +30249,7 @@ async function initializeApp() {
         if (initialData && initialData.accounts) {
           renderMultiAccountList(initialData.accounts);
           logMessage_Info(
-            `已恢复多账号模式，当前有 ${initialData.accounts.length} 个账号`
+            `已恢复多账号模式，当前有 ${initialData.accounts.length} 个账号`,
           );
         } else {
           logMessage_Info(`已恢复多账号模式，当前有 0 个账号`);
@@ -30204,7 +30259,7 @@ async function initializeApp() {
         logMessage_Info(
           `已恢复多账号模式，当前有 ${
             sessionModeInfo.multi_account_count || 0
-          } 个账号（列表加载失败）`
+          } 个账号（列表加载失败）`,
         );
       }
       setTimeout(async () => {
@@ -30239,8 +30294,8 @@ async function initializeApp() {
         logMessage_Info(
           `[会话恢复] 成功恢复 User-Agent: ${currentSessionUA.substring(
             0,
-            50
-          )}...`
+            50,
+          )}...`,
         );
       } else {
         logMessage_Warning("[会话恢复] 未能从 initialData 中恢复 User-Agent。");
@@ -30298,7 +30353,7 @@ async function initializeApp() {
     } else if (hasSystemAuth || isGuestMode) {
       currentUserData.group = initialData.auth_group || "guest";
       logMessage_Info(
-        `[Auth Restore] 恢复系统权限组: ${currentUserData.group}`
+        `[Auth Restore] 恢复系统权限组: ${currentUserData.group}`,
       );
 
       $("loading-overlay").classList.remove("hidden");
@@ -30428,7 +30483,7 @@ async function restoreMobileTaskState() {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
 
     if (statusRes.success && statusRes.task_status) {
@@ -30442,7 +30497,7 @@ async function restoreMobileTaskState() {
             const global_task_index = task_list[current_list_index];
             selectedTaskIndex = global_task_index;
             logMessage_Info(
-              `[移动端状态恢复] 恢复任务索引: ${selectedTaskIndex}`
+              `[移动端状态恢复] 恢复任务索引: ${selectedTaskIndex}`,
             );
 
             if (currentTasks && currentTasks[selectedTaskIndex]) {
@@ -30533,7 +30588,7 @@ function connectWebSocket() {
       logMessage(
         `[Socket] 收到账号列表更新，共 ${data.accounts.length} 个账号`,
         "INFO",
-        "Socket"
+        "Socket",
       );
       onAccountsUpdated(data.accounts);
     }
@@ -30561,7 +30616,7 @@ function connectWebSocket() {
         data.username,
         data.lon,
         data.lat,
-        data.name || data.username
+        data.name || data.username,
       );
     }
   });
@@ -30585,10 +30640,10 @@ function connectWebSocket() {
         data.distance,
         data.target_sequence,
         data.duration,
-        data.center_now
+        data.center_now,
       );
       logMessage_Debug(
-        `[Socket] 收到当前位置更新: lon=${data.lon}, lat=${data.lat}`
+        `[Socket] 收到当前位置更新: lon=${data.lon}, lat=${data.lat}`,
       );
     }
   });
@@ -30829,7 +30884,7 @@ function forceProjectionRefresh() {
         currentRunData.target_points.length > 0
       ) {
         const pts = currentRunData.target_points.map(
-          (p) => new AMapInstance.LngLat(p[0], p[1])
+          (p) => new AMapInstance.LngLat(p[0], p[1]),
         );
         map.setFitView(pts, false, [60, 60, 60, 60]);
       } else {
@@ -30842,7 +30897,7 @@ function forceProjectionRefresh() {
   }
 }
 /**
- * 【任务9】移动端单账号设置面板参数刷新函数
+ * 移动端单账号设置面板参数刷新函数
  *
  * @description
  *   此函数用于从后端刷新 mobile-settings-panel 中的参数配置
@@ -30919,7 +30974,7 @@ async function refreshMobileSettings() {
   }
 }
 /**
- * 【任务9】移动端单账号设置面板参数保存函数
+ * 移动端单账号设置面板参数保存函数
  *
  * @description
  *   此函数用于保存 mobile-settings-panel 中的所有参数配置
@@ -30999,7 +31054,7 @@ async function saveMobileSettings() {
 
     // 记录保存完成日志
     console.log(
-      `[移动端单账号] 设置保存完成，共保存 ${savedCount} 个参数到 params`
+      `[移动端单账号] 设置保存完成，共保存 ${savedCount} 个参数到 params`,
     );
 
     // 显示保存成功提示
@@ -31196,10 +31251,10 @@ function showMainApp() {
   if (isMobileMode) {
     const mobileMainApp = document.getElementById("mobile-main-app");
     const mobileLoginContainer = document.getElementById(
-      "mobile-login-container"
+      "mobile-login-container",
     );
     const mobileAuthContainer = document.getElementById(
-      "mobile-auth-login-container"
+      "mobile-auth-login-container",
     );
     const mobileMultiApp = document.getElementById("mobile-multi-account-app");
 
@@ -31444,12 +31499,12 @@ $("show-notifications-btn").addEventListener("click", (e) => {
 
 $("mark-all-read-btn").addEventListener("click", markAllAsRead);
 $("refresh-notifications-btn").addEventListener("click", () =>
-  refreshNotificationsUI(true, true)
+  refreshNotificationsUI(true, true),
 );
 
 $("multi-download-template-btn").addEventListener(
   "click",
-  multi_downloadTemplate
+  multi_downloadTemplate,
 );
 async function onConfirmAmapKey() {
   const input = $("amap-key-input");
@@ -31484,7 +31539,7 @@ async function onConfirmAmapKey() {
       } catch (e) {
         logMessage_Error("保存Key后加载AMap SDK失败", e);
         logMessage_Info(
-          "[错误] 新的API Key似乎无效，地图加载失败。请检查后重试。"
+          "[错误] 新的API Key似乎无效，地图加载失败。请检查后重试。",
         );
         modal.classList.remove("hidden");
         modal.classList.add("flex");
@@ -31585,7 +31640,7 @@ async function refreshUserList() {
     const select = document.getElementById("user-combo");
     const multiSelect = document.getElementById("multi-config-user-select");
     const mobileMultiSelect = document.getElementById(
-      "mobile-multi-config-user-select"
+      "mobile-multi-config-user-select",
     );
     function updateSelect(selectElem, users) {
       if (!selectElem) return;
@@ -31682,7 +31737,7 @@ async function onUserChange() {
               $("password-entry").value = password;
 
               logMessage_Info(
-                `[用户选择] 已从 school_accounts 加载用户 ${username} 的密码`
+                `[用户选择] 已从 school_accounts 加载用户 ${username} 的密码`,
               );
             }
 
@@ -31690,14 +31745,14 @@ async function onUserChange() {
               $("ua-label").textContent = ua;
               syncUAToMobile(ua);
               logMessage_Info(
-                `[用户选择] 已从 school_accounts 加载用户 ${username} 的UA`
+                `[用户选择] 已从 school_accounts 加载用户 ${username} 的UA`,
               );
             }
           }
         }
       } catch (error) {
         logMessage_Warning(
-          `[用户选择] 无法加载 school_accounts: ${error.message}`
+          `[用户选择] 无法加载 school_accounts: ${error.message}`,
         );
       }
     }
@@ -31773,7 +31828,7 @@ async function onLogin() {
     $("user-name-label").textContent = `姓名: ${name}`;
     $("user-id-label").textContent = `学号: ${currentUserData.student_id}`;
     logMessage_Info(
-      `[前端-登录] 用户信息已更新: ${name} (${currentUserData.student_id})`
+      `[前端-登录] 用户信息已更新: ${name} (${currentUserData.student_id})`,
     );
 
     logMessage_Info("[前端-登录] 更新仪表盘...");
@@ -31792,7 +31847,7 @@ async function onLogin() {
       result.cached_notifications.notices.length > 0
     ) {
       logMessage_Info(
-        `使用登录时预加载的 ${result.cached_notifications.notices.length} 条通知`
+        `使用登录时预加载的 ${result.cached_notifications.notices.length} 条通知`,
       );
       if (result.cached_notifications.unreadCount > 0) {
         notificationBadge.textContent =
@@ -31890,8 +31945,8 @@ function renderTaskList() {
       task.run_coords?.length > 0
         ? "已生成"
         : task.draft_coords?.length > 0
-        ? "草稿"
-        : "无路径";
+          ? "草稿"
+          : "无路径";
     let statusClass = "text-amber-600",
       statusText = "未完成",
       statusIcon = "🕒";
@@ -32035,7 +32090,7 @@ function renderMobileTaskList() {
       const statusRes = await callPythonAPI_raw(
         "/api/background_task/status",
         "GET",
-        null
+        null,
       );
       const isBackendRunning =
         statusRes.success &&
@@ -32133,15 +32188,15 @@ function renderMobileCheckpointsList() {
                 isCurrent
                   ? "text-blue-600"
                   : isReached
-                  ? "text-green-600"
-                  : "text-slate-400"
+                    ? "text-green-600"
+                    : "text-slate-400"
               }">
                 ${seq}
               </span>
               <div class="flex-1">
                 <p class="font-semibold text-slate-800 text-sm">${name}</p>
                 <p class="text-xs text-slate-500 mt-1">坐标: ${lat.toFixed(
-                  6
+                  6,
                 )}, ${lon.toFixed(6)}</p>
               </div>
             </div>
@@ -32213,7 +32268,7 @@ async function selectTask(index, Update_Dashboard = true) {
     taskListDiv.children[selectedTaskIndex].classList.remove("selected");
     logMessage_Info(
       `[任务选择] 取消选中上一个任务: ${selectedTaskIndex}`,
-      "DEBUG"
+      "DEBUG",
     );
   }
 
@@ -32242,7 +32297,7 @@ async function selectTask(index, Update_Dashboard = true) {
     updateSingleProgress(0, "0 / " + singleTotalPoints + " 点");
     logMessage_Info(
       `[任务选择] ✓ 离线任务加载完成，总点数: ${singleTotalPoints}`,
-      "INFO"
+      "INFO",
     );
   } else {
     logMessage_Info(`[任务选择] 在线模式，从后端获取任务详情...`, "INFO");
@@ -32256,7 +32311,7 @@ async function selectTask(index, Update_Dashboard = true) {
       drawOnMap();
       if (isMobileMode && window.mobile_map_panel_initialize_mark) {
         logMessage_Info(
-          "[移动端] 地图面板已初始化，正在将任务打卡点绘制到地图上..."
+          "[移动端] 地图面板已初始化，正在将任务打卡点绘制到地图上...",
         );
 
         switchMobileSinglePanel("mobile-map-panel");
@@ -32277,12 +32332,12 @@ async function selectTask(index, Update_Dashboard = true) {
       updateSingleProgress(0, "0 / " + singleTotalPoints + " 点");
       logMessage_Info(
         `[任务选择] ✓ 在线任务加载完成，总点数: ${singleTotalPoints}`,
-        "INFO"
+        "INFO",
       );
     } else {
       logMessage_Info(
         `[任务选择] ✗ 获取任务详情失败: ${result.message}`,
-        "ERROR"
+        "ERROR",
       );
       logMessage_Info(result.message);
     }
@@ -32293,7 +32348,7 @@ $("multi-account-btn").addEventListener("click", async (e) => {
   if (
     !(await checkButtonPermission(
       "multi-account-btn",
-      "use_multi_account_button"
+      "use_multi_account_button",
     ))
   ) {
     return;
@@ -32305,7 +32360,7 @@ $("multi-start-all-btn").addEventListener("click", multi_startAll);
 $("multi-stop-all-btn").addEventListener("click", multi_stopAll);
 $("multi-load-all-from-config-btn").addEventListener(
   "click",
-  multi_loadAllFromConfig
+  multi_loadAllFromConfig,
 );
 $("multi-add-from-config-btn").addEventListener("click", multi_addFromConfig);
 $("multi-import-excel-btn").addEventListener("click", multi_importFromExcel);
@@ -32318,35 +32373,35 @@ $("multi-start-selected-btn").addEventListener("click", multi_startSelected);
 $("multi-stop-selected-btn").addEventListener("click", multi_stopSelected);
 $("multi-refresh-selected-btn").addEventListener(
   "click",
-  multi_refreshSelected
+  multi_refreshSelected,
 );
 
 $("admin-tab-users_modal")?.addEventListener("click", () =>
-  switchAdminTab("users")
+  switchAdminTab("users"),
 );
 $("admin-tab-groups_modal")?.addEventListener("click", () =>
-  switchAdminTab("groups")
+  switchAdminTab("groups"),
 );
 $("admin-tab-logs_modal")?.addEventListener("click", () =>
-  switchAdminTab("logs")
+  switchAdminTab("logs"),
 );
 $("admin-tab-health_modal")?.addEventListener("click", () =>
-  switchAdminTab("health")
+  switchAdminTab("health"),
 );
 $("admin-tab-profile_modal")?.addEventListener("click", () =>
-  switchAdminTab("profile")
+  switchAdminTab("profile"),
 );
 $("admin-tab-sessions_modal")?.addEventListener("click", () =>
-  switchAdminTab("sessions")
+  switchAdminTab("sessions"),
 );
 $("admin-tab-messages_modal")?.addEventListener("click", () =>
-  switchAdminTab("messages")
+  switchAdminTab("messages"),
 );
 $("admin-tab-ipban_modal")?.addEventListener("click", () =>
-  switchAdminTab("ipban")
+  switchAdminTab("ipban"),
 );
 $("admin-tab-sms_modal")?.addEventListener("click", () =>
-  switchAdminTab("sms")
+  switchAdminTab("sms"),
 );
 
 const loginTabBtn = $("log-tab-login");
@@ -32431,7 +32486,7 @@ async function switchToMultiMode() {
       console.log("[切换模式] 移动端：已销毁单账号地图");
     }
     const mobileLoginContainer = document.getElementById(
-      "mobile-login-container"
+      "mobile-login-container",
     );
     const mobileMultiApp = document.getElementById("mobile-multi-account-app");
     const mobileMainApp = document.getElementById("mobile-main-app");
@@ -32533,14 +32588,14 @@ async function switchToMultiMode() {
 
   await callPythonAPI(
     "set_multi_run_only_incomplete",
-    document.getElementById("multi-run-only-incomplete-check").checked
+    document.getElementById("multi-run-only-incomplete-check").checked,
   );
   bindImmediateRefreshForUserSelects();
 
   updateMultiGlobalButtons(true, true);
 
   const desktopCheckbox = document.getElementById(
-    "multi-run-only-incomplete-check"
+    "multi-run-only-incomplete-check",
   );
   if (desktopCheckbox) {
     desktopCheckbox.removeEventListener("change", updateAllAccountsStatusText);
@@ -32548,11 +32603,11 @@ async function switchToMultiMode() {
     console.log('[事件监听器] 已为桌面端"仅执行未完成"复选框绑定change事件');
   } else {
     console.warn(
-      '[事件监听器] 未找到桌面端"仅执行未完成"复选框 (multi-run-only-incomplete-check)'
+      '[事件监听器] 未找到桌面端"仅执行未完成"复选框 (multi-run-only-incomplete-check)',
     );
   }
   const mobileCheckbox = document.getElementById(
-    "mobile-multi-only-incomplete-check"
+    "mobile-multi-only-incomplete-check",
   );
   if (mobileCheckbox) {
     mobileCheckbox.removeEventListener("change", updateAllAccountsStatusText);
@@ -32561,7 +32616,7 @@ async function switchToMultiMode() {
     console.log('[事件监听器] 已为移动端"仅执行未完成"复选框绑定change事件');
   } else {
     console.warn(
-      '[事件监听器] 未找到移动端"仅执行未完成"复选框 (mobile-multi-only-incomplete-check)'
+      '[事件监听器] 未找到移动端"仅执行未完成"复选框 (mobile-multi-only-incomplete-check)',
     );
   }
   const pcCheck = document.getElementById("multi-run-only-incomplete-check");
@@ -32583,7 +32638,7 @@ async function switchToMultiMode() {
       console.log(`[设置同步] 正在同步 '仅执行未完成' 设置: ${isChecked}`);
       // 仅同步设置，不触发全量刷新，前端状态 updateAllAccountsStatusText 已基于缓存处理
       callPythonAPI("set_multi_run_only_incomplete", isChecked).catch((e) =>
-        console.error("同步设置后台失败", e)
+        console.error("同步设置后台失败", e),
       );
     } catch (err) {
       console.error("[设置同步] 同步失败:", err);
@@ -32607,7 +32662,7 @@ async function switchToMultiMode() {
   // ========== 处理 "忽略任务具体时间" 复选框变化 ==========
   // 获取桌面端和移动端的 ignore_task_time 复选框元素
   const pcIgnoreTimeCheck = document.getElementById(
-    "multi-param-ignore_task_time"
+    "multi-param-ignore_task_time",
   );
   // const mobileIgnoreTimeCheck = document.getElementById("mobile-multi-param-ignore_task_time");
 
@@ -32633,11 +32688,11 @@ async function switchToMultiMode() {
     // 绑定新的监听器
     pcIgnoreTimeCheck.addEventListener("change", handleIgnoreTimeChange);
     console.log(
-      '[事件监听器] 已为桌面端"忽略任务具体时间"复选框绑定change事件'
+      '[事件监听器] 已为桌面端"忽略任务具体时间"复选框绑定change事件',
     );
   } else {
     console.warn(
-      '[事件监听器] 未找到桌面端"忽略任务具体时间"复选框 (multi-param-ignore_task_time)'
+      '[事件监听器] 未找到桌面端"忽略任务具体时间"复选框 (multi-param-ignore_task_time)',
     );
   }
 
@@ -32661,7 +32716,7 @@ async function switchToMultiMode() {
     if (initialData && initialData.accounts) {
       renderMultiAccountList(initialData.accounts);
       console.log(
-        `[多账号模式] 初始加载完成，当前有 ${initialData.accounts.length} 个账号`
+        `[多账号模式] 初始加载完成，当前有 ${initialData.accounts.length} 个账号`,
       );
     } else {
       console.log("[多账号模式] 初始加载完成，当前有 0 个账号");
@@ -32689,7 +32744,7 @@ async function exitMultiMode() {
     }
     const mobileMultiApp = document.getElementById("mobile-multi-account-app");
     const mobileLoginContainer = document.getElementById(
-      "mobile-login-container"
+      "mobile-login-container",
     );
 
     if (mobileMultiApp) mobileMultiApp.classList.add("hidden");
@@ -32697,14 +32752,14 @@ async function exitMultiMode() {
     updateMobileNavVisibility(false);
 
     console.log(
-      "[退出多账号] 移动端：隐藏 mobile-multi-account-app，显示 mobile-login-container"
+      "[退出多账号] 移动端：隐藏 mobile-multi-account-app，显示 mobile-login-container",
     );
   } else {
     $("multi-account-app").classList.add("hidden");
     $("multi-account-app").classList.remove("grid");
     $("login-container").classList.remove("hidden");
     console.log(
-      "[退出多账号] 桌面端：隐藏 multi-account-app，显示 login-container"
+      "[退出多账号] 桌面端：隐藏 multi-account-app，显示 login-container",
     );
   }
 
@@ -32749,7 +32804,7 @@ async function multi_loadAllFromConfig() {
     "POST",
     {
       auth_username: currentAuthUsername,
-    }
+    },
   );
 
   if (result && result.accounts) {
@@ -32816,14 +32871,14 @@ async function multi_loadAllFromConfig() {
             });
             if (updatedCount > 0) {
               logMessage_Info(
-                `[多账号-加载全部] 已从 school_accounts 更新 ${updatedCount} 个账号的密码和UA`
+                `[多账号-加载全部] 已从 school_accounts 更新 ${updatedCount} 个账号的密码和UA`,
               );
             }
           }
         }
       } catch (error) {
         logMessage_Warning(
-          `[多账号-加载全部] 无法加载 school_accounts: ${error.message}`
+          `[多账号-加载全部] 无法加载 school_accounts: ${error.message}`,
         );
       }
     }
@@ -32883,7 +32938,7 @@ function openMissingPasswordModal(missingList) {
     });
     openMultiAddUserModalForPassword(
       missingAccount.username,
-      missingAccount.tag
+      missingAccount.tag,
     );
     return;
   }
@@ -33188,7 +33243,7 @@ function openMultiAddUserModal() {
   const modal = $("multi-add-user-modal");
   const passwordInput = $("multi-add-password");
   const passwordLabel = document.querySelector(
-    'label[for="multi-add-password"]'
+    'label[for="multi-add-password"]',
   );
 
   // 如果是从配置按钮进入，密码改为可选并更新占位提示
@@ -33206,7 +33261,7 @@ function closeMultiAddUserModal() {
   const usernameInput = $("multi-add-username");
   const passwordInput = $("multi-add-password");
   const passwordLabel = document.querySelector(
-    'label[for="multi-add-password"]'
+    'label[for="multi-add-password"]',
   );
   if (usernameInput) {
     usernameInput.readOnly = false;
@@ -33301,7 +33356,7 @@ async function multi_addFromConfig() {
             if (typeof accountData === "string") {
               passwordToUse = accountData;
               logMessage_Info(
-                `[多账号-添加] 已从 school_accounts 加载用户 ${user} 的密码（旧格式）`
+                `[多账号-添加] 已从 school_accounts 加载用户 ${user} 的密码（旧格式）`,
               );
             } else if (
               typeof accountData === "object" &&
@@ -33310,7 +33365,7 @@ async function multi_addFromConfig() {
               passwordToUse = accountData.password || "";
               uaToUse = accountData.ua || "";
               logMessage_Info(
-                `[多账号-添加] 已从 school_accounts 加载用户 ${user} 的密码和UA`
+                `[多账号-添加] 已从 school_accounts 加载用户 ${user} 的密码和UA`,
               );
             }
           }
@@ -33318,7 +33373,7 @@ async function multi_addFromConfig() {
       }
     } catch (error) {
       logMessage_Warning(
-        `[多账号-添加] 无法加载 school_accounts: ${error.message}`
+        `[多账号-添加] 无法加载 school_accounts: ${error.message}`,
       );
     }
   }
@@ -33450,7 +33505,7 @@ async function submitMultiAddUser() {
       "multi_add_account",
       usernameVal,
       passwordVal,
-      tagVal
+      tagVal,
     );
 
     if (result && result.accounts) {
@@ -33544,7 +33599,7 @@ async function multi_importFromExcel() {
         const result = await callPythonAPI(
           "multi_import_accounts",
           fileName,
-          base64Content
+          base64Content,
         );
 
         if (result && result.success) {
@@ -33667,7 +33722,7 @@ async function multi_startAll() {
   // 【重要】这里传入已添加的账号列表，只检查这些账号的欠费情况
   // 如果addedUsernames为空数组，checkOverdueBeforeStart会检查所有账号（回退到原有行为）
   const canStart = await checkOverdueBeforeStart(
-    addedUsernames.length > 0 ? addedUsernames : null
+    addedUsernames.length > 0 ? addedUsernames : null,
   );
   if (!canStart) {
     // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
@@ -33685,7 +33740,7 @@ async function multi_startAll() {
     min_delay,
     max_delay,
     use_delay,
-    run_only_incomplete
+    run_only_incomplete,
   );
 
   // 检查是否是欠费错误
@@ -33706,7 +33761,6 @@ async function multi_startAll() {
 
     // 显示友好的弹窗提示
     // showModalAlert(message, "欠费提示");
-
 
     // 可选：自动跳转到缴费页面（如果需要的话）
     // switchToTab('tab4'); // 取消注释此行以启用自动跳转
@@ -33742,7 +33796,7 @@ function onAccountsUpdated(accounts) {
 function calculateStatusText(
   account,
   onlyIncomplete = false,
-  ignoreTaskTime = false
+  ignoreTaskTime = false,
 ) {
   if (!account || !account.tasks || !Array.isArray(account.tasks)) {
     return "无任务数据";
@@ -33772,7 +33826,7 @@ function calculateStatusText(
         const startDate = new Date(
           startTime.getFullYear(),
           startTime.getMonth(),
-          startTime.getDate()
+          startTime.getDate(),
         );
         if (today < startDate) isNotStarted = true;
       }
@@ -33780,7 +33834,7 @@ function calculateStatusText(
         const endDate = new Date(
           endTime.getFullYear(),
           endTime.getMonth(),
-          endTime.getDate()
+          endTime.getDate(),
         );
         if (today > endDate) isExpired = true;
       }
@@ -33829,7 +33883,7 @@ function updateAllAccountsStatusText() {
     // const mbIgnoreTimeChk = document.getElementById("mobile-multi-param-ignore_task_time");
     // 获取桌面端（PC端）的 ignore_task_time 复选框元素
     const pcIgnoreTimeChk = document.getElementById(
-      "multi-param-ignore_task_time"
+      "multi-param-ignore_task_time",
     );
 
     // 根据当前运行模式（移动端/桌面端）读取对应复选框的状态
@@ -33866,7 +33920,7 @@ function updateAllAccountsStatusText() {
         newStatusText = calculateStatusText(
           account,
           onlyIncomplete,
-          ignoreTaskTime
+          ignoreTaskTime,
         );
       }
 
@@ -33890,7 +33944,7 @@ function updateAllAccountsStatusText() {
         }
       }
       const mobileItem = document.getElementById(
-        `mobile-multi-acc-${account.username}`
+        `mobile-multi-acc-${account.username}`,
       );
       if (mobileItem) {
         const statusEl = mobileItem.querySelector(".status-text");
@@ -33911,7 +33965,7 @@ function updateAllAccountsStatusText() {
       }
     });
     console.log(
-      `[状态刷新] 根据本地缓存已更新 ${updatedCount} 个账号状态 (OnlyIncomplete: ${onlyIncomplete}, IgnoreTime: ${ignoreTaskTime})`
+      `[状态刷新] 根据本地缓存已更新 ${updatedCount} 个账号状态 (OnlyIncomplete: ${onlyIncomplete}, IgnoreTime: ${ignoreTaskTime})`,
     );
   } catch (error) {
     console.error("[更新账号状态] 更新状态文本时发生错误:", error);
@@ -34045,7 +34099,7 @@ function renderMultiAccountList(accounts) {
             : "multi-run-only-incomplete-check";
           const runOnly = document.getElementById(checkboxId)?.checked ?? true;
           callPythonAPI("multi_start_single_account", username, runOnly);
-        })
+        }),
     );
 
     listDiv
@@ -34055,8 +34109,8 @@ function renderMultiAccountList(accounts) {
           (b.onclick = (e) =>
             callPythonAPI(
               "multi_stop_single_account",
-              e.target.dataset.username
-            ))
+              e.target.dataset.username,
+            )),
       );
 
     listDiv.querySelectorAll(".btn-account-refresh").forEach((b) => {
@@ -34117,7 +34171,7 @@ function updateSelectAllCheckboxState() {
 
   const allCheckboxes = container.querySelectorAll(".account-checkbox");
   const checkedCount = container.querySelectorAll(
-    ".account-checkbox:checked"
+    ".account-checkbox:checked",
   ).length;
   const selectAllCheckbox = $("multi-select-all-check");
   if (allCheckboxes.length > 0) {
@@ -34146,7 +34200,7 @@ async function multi_removeAll(confirm = false) {
     logMessage_Info("准备移除列表中的所有账号");
     isConfirmed = await jsShowConfirm(
       "确认移除全部",
-      "确定要移除列表中的<span style='color:red;font-weight:bold;'>所有账号</span>吗？<br>此操作<span style='color:red;'>不可撤销</span>，所有账号数据将丢失！"
+      "确定要移除列表中的<span style='color:red;font-weight:bold;'>所有账号</span>吗？<br>此操作<span style='color:red;'>不可撤销</span>，所有账号数据将丢失！",
     );
   } else {
     logMessage_Info("移除列表中的所有账号");
@@ -34166,7 +34220,7 @@ async function multi_removeSelected(confirm = false) {
   if (!container) return;
 
   const selectedUsernames = Array.from(
-    container.querySelectorAll(".account-checkbox:checked")
+    container.querySelectorAll(".account-checkbox:checked"),
   ).map((cb) => cb.closest("[data-username]").dataset.username);
   if (selectedUsernames.length === 0) {
     // showModalAlert("请至少选择一个要移除的账号。", "提示");
@@ -34185,7 +34239,7 @@ async function multi_removeSelected(confirm = false) {
       "确认移除选中",
       `确定要移除选中的 <span style='color:red;font-weight:bold;'>${
         selectedUsernames.length
-      }</span> 个账号吗？<br>账号: ${selectedUsernames.join(", ")}`
+      }</span> 个账号吗？<br>账号: ${selectedUsernames.join(", ")}`,
     );
   } else {
     logMessage_Info(`移除选中的账号: ${selectedUsernames.join(", ")}`);
@@ -34194,7 +34248,7 @@ async function multi_removeSelected(confirm = false) {
   if (isConfirmed) {
     const result = await callPythonAPI(
       "multi_remove_selected_accounts",
-      selectedUsernames
+      selectedUsernames,
     );
     if (result && result.accounts) renderMultiAccountList(result.accounts);
   }
@@ -34253,7 +34307,7 @@ async function multi_startSelected() {
       const result = await callPythonAPI(
         "multi_start_single_account",
         u,
-        run_only_incomplete
+        run_only_incomplete,
       );
 
       // 检查是否是欠费错误
@@ -34368,7 +34422,7 @@ function startMultiAccountAutoRefresh(interval = 500) {
       // 检查界面可见性
       const pcMultiApp = document.getElementById("multi-account-app");
       const mobileMultiApp = document.getElementById(
-        "mobile-multi-account-app"
+        "mobile-multi-account-app",
       );
       const isVisible =
         (pcMultiApp && !pcMultiApp.classList.contains("hidden")) ||
@@ -34442,19 +34496,19 @@ function startMultiAccountAutoRefresh(interval = 500) {
               acc.username,
               acc.current_position.lon,
               acc.current_position.lat,
-              acc.name || acc.username
+              acc.name || acc.username,
             );
           }
         });
 
         // --- [新增] 更新移动端全局状态面板 ---
         const mobileRunEl = document.getElementById(
-          "mobile-multi-running-count"
+          "mobile-multi-running-count",
         );
         if (mobileRunEl) mobileRunEl.textContent = runningCount;
 
         const mobilePauseEl = document.getElementById(
-          "mobile-multi-paused-count"
+          "mobile-multi-paused-count",
         );
         if (mobilePauseEl) mobilePauseEl.textContent = pausedCount;
         // 如果有暂停的任务，显示暂停面板（原本是 display:none）
@@ -34467,12 +34521,12 @@ function startMultiAccountAutoRefresh(interval = 500) {
         }
 
         const mobileStopEl = document.getElementById(
-          "mobile-multi-stopped-count"
+          "mobile-multi-stopped-count",
         );
         if (mobileStopEl) mobileStopEl.textContent = stoppedCount;
 
         const mobileGlobalStatusEl = document.getElementById(
-          "mobile-multi-global-status"
+          "mobile-multi-global-status",
         );
         if (mobileGlobalStatusEl) {
           if (runningCount > 0) {
@@ -34518,7 +34572,7 @@ function startMultiAccountAutoRefresh(interval = 500) {
   // 启动第一次执行
   refreshLoop();
   console.log(
-    `[多账号自动刷新] 已启动 (间隔: ${interval}ms, 错误退避: 5000ms)`
+    `[多账号自动刷新] 已启动 (间隔: ${interval}ms, 错误退避: 5000ms)`,
   );
 }
 
@@ -34539,7 +34593,7 @@ async function process_path_queue() {
     logMessage_Info(`[JS-Queue] 开始处理 ${username} 的路径规划...`);
     const path = await getWalkingPath(waypoints);
     logMessage_Info(
-      `[JS-Queue] 路径规划成功 for ${username}, 返回 ${path.length} 点给Python。`
+      `[JS-Queue] 路径规划成功 for ${username}, 返回 ${path.length} 点给Python。`,
     );
     callPythonAPI("multi_path_generation_callback", username, true, path);
   } catch (error) {
@@ -34548,7 +34602,7 @@ async function process_path_queue() {
       "multi_path_generation_callback",
       username,
       false,
-      String(error)
+      String(error),
     );
   } finally {
     is_planning_path = false;
@@ -34567,10 +34621,10 @@ function updateMobileSelectAllCheckboxState() {
 
   const allCheckboxes = container.querySelectorAll(".account-checkbox");
   const checkedCount = container.querySelectorAll(
-    ".account-checkbox:checked"
+    ".account-checkbox:checked",
   ).length;
   const selectAllCheckbox = document.getElementById(
-    "mobile-select-all-accounts"
+    "mobile-select-all-accounts",
   );
 
   if (selectAllCheckbox) {
@@ -34613,12 +34667,12 @@ function multi_updateAccountStatus(username, data) {
           let onlyIncomplete = true;
           if (isMobile) {
             const mobileCheck = document.getElementById(
-              "mobile-multi-only-incomplete-check"
+              "mobile-multi-only-incomplete-check",
             );
             onlyIncomplete = mobileCheck ? mobileCheck.checked : true;
           } else {
             const pcCheck = document.getElementById(
-              "multi-run-only-incomplete-check"
+              "multi-run-only-incomplete-check",
             );
             onlyIncomplete = pcCheck ? pcCheck.checked : true;
           }
@@ -34772,20 +34826,18 @@ function updateDashboard() {
     const drawKm = (draftTotalDist / 1000).toFixed(2);
     const avgSpeed = pythonParams.speed_mps || 1.5;
     const estMin = avgSpeed > 0 ? draftTotalDist / avgSpeed / 60 : 0;
-    $(
-      "run-stats-block"
-    ).innerHTML = `<p class="text-sm text-slate-500">当前绘制</p><p class="font-bold text-2xl text-emerald-600">${drawKm} km / ~${estMin.toFixed(
-      1
-    )} min</p>`;
+    $("run-stats-block").innerHTML =
+      `<p class="text-sm text-slate-500">当前绘制</p><p class="font-bold text-2xl text-emerald-600">${drawKm} km / ~${estMin.toFixed(
+        1,
+      )} min</p>`;
   } else {
     const dist = ((currentRunData.total_run_distance_m || 0) / 1000).toFixed(2);
     const timeMin = Math.floor((currentRunData.total_run_time_s || 0) / 60);
     const timeSec = Math.floor((currentRunData.total_run_time_s || 0) % 60);
-    $(
-      "run-stats-block"
-    ).innerHTML = `<p class="text-sm text-slate-500">已选任务总览</p><p id="run-stats-label" class="font-bold text-2xl text-sky-600">${dist} km / ${String(
-      timeMin
-    ).padStart(2, "0")}:${String(timeSec).padStart(2, "0")}</p>`;
+    $("run-stats-block").innerHTML =
+      `<p class="text-sm text-slate-500">已选任务总览</p><p id="run-stats-label" class="font-bold text-2xl text-sky-600">${dist} km / ${String(
+        timeMin,
+      ).padStart(2, "0")}:${String(timeSec).padStart(2, "0")}</p>`;
   }
   const liveKm = ((currentRunData.distance_covered_m || 0) / 1000).toFixed(2);
   const liveMs = runAccumulatedMs || 0;
@@ -34802,7 +34854,7 @@ function updateDashboard() {
   const totalTimeSec = Math.floor((currentRunData.total_run_time_s || 0) % 60);
   $("total-time-label").textContent = `${String(totalTimeMin).padStart(
     2,
-    "0"
+    "0",
   )}:${String(totalTimeSec).padStart(2, "0")}`;
 
   const targetDiv = $("target-points-text");
@@ -34836,29 +34888,29 @@ function updateDashboard() {
       const avgSpeed = pythonParams.speed_mps || 1.5;
       const estMin = avgSpeed > 0 ? draftTotalDist / avgSpeed / 60 : 0;
       mobileRunStatsLabel.textContent = `${drawKm} km / ~${estMin.toFixed(
-        1
+        1,
       )} min`;
     } else {
       const dist = ((currentRunData.total_run_distance_m || 0) / 1000).toFixed(
-        2
+        2,
       );
       const timeMin = Math.floor((currentRunData.total_run_time_s || 0) / 60);
       const timeSec = Math.floor((currentRunData.total_run_time_s || 0) % 60);
       mobileRunStatsLabel.textContent = `${dist} km / ${String(
-        timeMin
+        timeMin,
       ).padStart(2, "0")}:${String(timeSec).padStart(2, "0")}`;
     }
   }
   const mobileLiveDistLabel = document.getElementById("mobile-live-dist-label");
   const mobileLiveTimeLabel = document.getElementById("mobile-live-time-label");
   const mobileTotalDistLabel = document.getElementById(
-    "mobile-total-dist-label"
+    "mobile-total-dist-label",
   );
   const mobileTotalTimeLabel = document.getElementById(
-    "mobile-total-time-label"
+    "mobile-total-time-label",
   );
   const mobileCurrentLocationLabel = document.getElementById(
-    "mobile-current-location-label"
+    "mobile-current-location-label",
   );
 
   if (mobileLiveDistLabel) {
@@ -34872,24 +34924,24 @@ function updateDashboard() {
   }
   if (mobileTotalTimeLabel) {
     const totalTimeMin = Math.floor(
-      (currentRunData.total_run_time_s || 0) / 60
+      (currentRunData.total_run_time_s || 0) / 60,
     );
     const totalTimeSec = Math.floor(
-      (currentRunData.total_run_time_s || 0) % 60
+      (currentRunData.total_run_time_s || 0) % 60,
     );
     mobileTotalTimeLabel.textContent = `${String(totalTimeMin).padStart(
       2,
-      "0"
+      "0",
     )}:${String(totalTimeSec).padStart(2, "0")}`;
   }
   if (mobileCurrentLocationLabel && currentRunData) {
     const currentLocationLabel = document.getElementById(
-      "current-location-label"
+      "current-location-label",
     );
     if (currentLocationLabel) {
       const coordsText = currentLocationLabel.textContent.replace(
         "当前位置GPS坐标: ",
-        ""
+        "",
       );
       mobileCurrentLocationLabel.textContent = `当前位置: ${coordsText}`;
     }
@@ -34902,7 +34954,7 @@ function centerTargetList(sequence) {
     return;
   const idx = Math.max(
     0,
-    Math.min(targetDiv.children.length - 1, (sequence || 1) - 1)
+    Math.min(targetDiv.children.length - 1, (sequence || 1) - 1),
   );
   const child = targetDiv.children[idx];
   if (child && typeof child.scrollIntoView === "function") {
@@ -34922,7 +34974,7 @@ function resetMapView() {
     map.setFitView(overlays, false, [60, 60, 60, 60]);
   } else if (currentRunData && currentRunData.target_points?.length > 0) {
     const targetLngLats = currentRunData.target_points.map(
-      (p) => new AMapInstance.LngLat(p[0], p[1])
+      (p) => new AMapInstance.LngLat(p[0], p[1]),
     );
     map.setFitView(targetLngLats, false, [60, 60, 60, 60]);
   } else {
@@ -34948,7 +35000,7 @@ function forceProjectionRefresh() {
         currentRunData.target_points.length > 0
       ) {
         const pts = currentRunData.target_points.map(
-          (p) => new AMapInstance.LngLat(p[0], p[1])
+          (p) => new AMapInstance.LngLat(p[0], p[1]),
         );
         map.setFitView(pts, false, [60, 60, 60, 60]);
       } else {
@@ -34978,7 +35030,7 @@ function forceProjectionRefresh() {
         currentRunData.target_points.length > 0
       ) {
         const pts = currentRunData.target_points.map(
-          (p) => new AMapInstance.LngLat(p[0], p[1])
+          (p) => new AMapInstance.LngLat(p[0], p[1]),
         );
         map.setFitView(pts, false, [60, 60, 60, 60]);
       } else {
@@ -35010,7 +35062,7 @@ function drawOnMap_signature() {
               lineCap: "round",
               strokeOpacity: 0.6,
               zIndex: 40,
-            })
+            }),
           );
         segment = [];
       } else {
@@ -35026,7 +35078,7 @@ function drawOnMap_signature() {
           lineCap: "round",
           strokeOpacity: 0.6,
           zIndex: 40,
-        })
+        }),
       );
     map.add(polylines.recommended);
   }
@@ -35086,7 +35138,7 @@ function drawMarkers() {
     const pointName = names[i] || `点 ${i + 1}`;
     const markerContent = `<div class="relative flex flex-col items-center pointer-events-none"><div class="${pulseClass} text-xs font-bold whitespace-nowrap px-2 py-1 rounded-full shadow-lg ${bgColor} ${textColor}">${pointName}</div><div class="w-0 h-0 border-x-4 border-x-transparent border-t-4 ${bgColor.replace(
       "bg-",
-      "border-t-"
+      "border-t-",
     )}"></div></div>`;
     const marker = new AMapInstance.Marker({
       position: new AMapInstance.LngLat(p[0], p[1]),
@@ -35110,7 +35162,7 @@ const MIN_DRAW_DISTANCE_M = 12;
 function fastDistanceMeters(lon1, lat1, lon2, lat2) {
   return Math.sqrt(
     Math.pow((lon1 - lon2) * 102834.74, 2) +
-      Math.pow((lat1 - lat2) * 111712.69, 2)
+      Math.pow((lat1 - lat2) * 111712.69, 2),
   );
 }
 
@@ -35130,7 +35182,7 @@ function scheduleUpdate() {
             prev.lng,
             prev.lat,
             pt.lng,
-            pt.lat
+            pt.lat,
           );
         }
         checkTargetReachedOnDraw(lngLat, pt.isKey === 1);
@@ -35213,7 +35265,7 @@ function checkTargetReachedOnDraw(currentLngLat, isForcedKeyPoint = false) {
     currentLngLat.lng,
     currentLngLat.lat,
     tarLon,
-    tarLat
+    tarLat,
   );
   const range = currentRunData.target_range_m || 0.0;
   if (dist <= range && !currentRunData.isInTargetZone) {
@@ -35268,7 +35320,7 @@ function updateDrawingInfo(lnglat) {
     map.add(drawingInfoMarker);
   }
   drawingInfoMarker.setText(
-    `距离: ${draftTotalDist.toFixed(0)} m | 预估: ~${timeStr}`
+    `距离: ${draftTotalDist.toFixed(0)} m | 预估: ~${timeStr}`,
   );
   drawingInfoMarker.setPosition(lnglat);
   drawingInfoMarker.show();
@@ -35317,11 +35369,11 @@ async function toggleRecordMode() {
       showModalAlert(
         "路径过长（>" +
           (draftTotalDist / 1000).toFixed(2) +
-          "km > 50km），请重新录制"
+          "km > 50km），请重新录制",
       );
       discardBlackDraftPolyline();
       logMessage_Warning(
-        `路径录制失败：距离${(draftTotalDist / 1000).toFixed(2)}km超过50km限制`
+        `路径录制失败：距离${(draftTotalDist / 1000).toFixed(2)}km超过50km限制`,
       );
       currentRunData.target_sequence = 0;
       draftTotalDist = 0;
@@ -35372,7 +35424,7 @@ async function clearCurrentPath(confirm = true, showAlert = true) {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status", // 使用完整的API路径
       "GET", // HTTP GET 请求
-      null // 无请求体
+      null, // 无请求体
     );
     // 如果任务状态为 "running"，说明任务正在执行，无法清除路径
     if (statusRes?.success && statusRes?.task_status?.status === "running") {
@@ -35389,7 +35441,7 @@ async function clearCurrentPath(confirm = true, showAlert = true) {
   if (confirm) {
     const userConfirmed = await jsShowConfirm(
       "确认操作",
-      "确认清除当前任务已生成的路径吗？"
+      "确认清除当前任务已生成的路径吗？",
     );
     if (!userConfirmed) return; // 用户取消操作，提前返回
   }
@@ -35508,7 +35560,7 @@ async function toggleRun() {
     // 在开始任务前，检查当前学校账号是否有欠费
     // 如果有欠费，会显示弹窗并返回 false，阻止任务启动
     const canStart = await checkOverdueBeforeStart(
-      String(currentUserData.student_id)
+      String(currentUserData.student_id),
     );
     if (!canStart) {
       // 欠费检查未通过，直接返回不启动任务
@@ -35533,7 +35585,7 @@ async function toggleRun() {
       {
         task_indices: [selectedTaskIndex],
         auto_generate: autoGen,
-      }
+      },
     );
 
     // 检查是否是欠费错误
@@ -35627,7 +35679,7 @@ async function toggleAllRuns() {
       {
         task_indices: taskIndices,
         auto_generate: autoGen,
-      }
+      },
     );
     if (result.success) {
       btn.textContent = "全部停止";
@@ -35670,7 +35722,7 @@ async function pollBackgroundTaskStatus() {
     const result = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
     if (result.success && result.task_status) {
       const status = result.task_status;
@@ -35706,7 +35758,7 @@ async function pollBackgroundTaskStatus() {
         singleTotalPoints = status.singleTotalPoints;
         singleProcessedPoints = status.singleProcessedPoints;
         pct = Math.floor(
-          (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints)
+          (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints),
         );
         displayText = `${singleProcessedPoints} / ${singleTotalPoints} 点`;
       } else if (
@@ -35720,16 +35772,16 @@ async function pollBackgroundTaskStatus() {
           const currentPointIndex = status.current_position.point_index || 0;
           singleProcessedPoints = Math.min(
             currentPointIndex,
-            singleTotalPoints
+            singleTotalPoints,
           );
         } else {
           singleProcessedPoints = Math.floor(
-            (currentTaskProgress / 100) * singleTotalPoints
+            (currentTaskProgress / 100) * singleTotalPoints,
           );
         }
 
         pct = Math.floor(
-          (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints)
+          (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints),
         );
         displayText = `${singleProcessedPoints} / ${singleTotalPoints} 点`;
       } else {
@@ -35751,7 +35803,7 @@ async function pollBackgroundTaskStatus() {
             (currentRunData && currentRunData.task_index !== global_task_index)
           ) {
             logMessage_Info(
-              `[Polling] 检测到任务切换: ${selectedTaskIndex} -> ${global_task_index}`
+              `[Polling] 检测到任务切换: ${selectedTaskIndex} -> ${global_task_index}`,
             );
             selectedTaskIndex = global_task_index;
             renderTaskList();
@@ -35779,7 +35831,7 @@ async function pollBackgroundTaskStatus() {
           pos.distance || 0,
           pos.target_sequence || 0,
           0,
-          false
+          false,
         );
       }
       const taskStartTime = (status.start_time || 0) * 1000;
@@ -35827,7 +35879,7 @@ async function checkBackgroundTaskOnLoad() {
     const result = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
 
     if (result.success && result.task_status) {
@@ -35851,7 +35903,7 @@ async function checkBackgroundTaskOnLoad() {
           const global_task_index = task_list[current_list_index];
 
           logMessage_Info(
-            `正在恢复运行中的任务 (索引: ${global_task_index}) 的地图数据...`
+            `正在恢复运行中的任务 (索引: ${global_task_index}) 的地图数据...`,
           );
 
           if (status.run_coords && status.run_coords.length > 0) {
@@ -35881,7 +35933,7 @@ async function checkBackgroundTaskOnLoad() {
 
             logMessage_Info(
               `任务数据已从API响应恢复，总点数: ${currentRunData.run_coords.length}`,
-              "INFO"
+              "INFO",
             );
           } else {
             await selectTask(global_task_index);
@@ -35901,7 +35953,7 @@ async function checkBackgroundTaskOnLoad() {
           singleTotalPoints = status.singleTotalPoints;
           singleProcessedPoints = status.singleProcessedPoints;
           pct = Math.floor(
-            (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints)
+            (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints),
           );
           displayText = `${singleProcessedPoints} / ${singleTotalPoints} 点`;
         } else if (
@@ -35915,16 +35967,16 @@ async function checkBackgroundTaskOnLoad() {
             const currentPointIndex = status.current_position.point_index || 0;
             singleProcessedPoints = Math.min(
               currentPointIndex,
-              singleTotalPoints
+              singleTotalPoints,
             );
           } else {
             singleProcessedPoints = Math.floor(
-              (currentTaskProgress / 100) * singleTotalPoints
+              (currentTaskProgress / 100) * singleTotalPoints,
             );
           }
 
           pct = Math.floor(
-            (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints)
+            (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints),
           );
           displayText = `${singleProcessedPoints} / ${singleTotalPoints} 点`;
         } else {
@@ -35953,7 +36005,7 @@ async function checkBackgroundTaskOnLoad() {
             pos.distance || 0,
             pos.target_sequence || 0,
             0,
-            true
+            true,
           );
         }
 
@@ -35985,7 +36037,7 @@ function updateRunnerPosition(
   distance,
   targetSequence,
   duration,
-  centerNow = false
+  centerNow = false,
 ) {
   ensureRunnerMarker();
   const pos = new AMapInstance.LngLat(lon, lat);
@@ -35994,15 +36046,15 @@ function updateRunnerPosition(
   runAccumulatedMs += duration || 0;
   currentRunData.distance_covered_m = distance || 0;
   $("current-location-label").textContent = `当前位置GPS坐标: ${(+lon).toFixed(
-    4
+    4,
   )}, ${(+lat).toFixed(4)}`;
 
   const mobileCurrentLocationLabel = document.getElementById(
-    "mobile-current-location-label"
+    "mobile-current-location-label",
   );
   if (mobileCurrentLocationLabel) {
     mobileCurrentLocationLabel.textContent = `当前位置: ${(+lon).toFixed(
-      4
+      4,
     )}, ${(+lat).toFixed(4)}`;
   }
   const jsTargetSequence = targetSequence + 1;
@@ -36018,14 +36070,14 @@ function updateRunnerPosition(
     singleTotalPoints = currentRunData.run_coords.length;
     singleProcessedPoints = Math.min(
       singleProcessedPoints + 1,
-      singleTotalPoints
+      singleTotalPoints,
     );
     const pct = Math.floor(
-      (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints)
+      (singleProcessedPoints * 100) / Math.max(1, singleTotalPoints),
     );
     updateSingleProgress(
       pct,
-      `${singleProcessedPoints} / ${singleTotalPoints} 点`
+      `${singleProcessedPoints} / ${singleTotalPoints} 点`,
     );
   }
 }
@@ -36130,7 +36182,7 @@ async function getWalkingPath(waypoints) {
   callPythonAPI(
     "js_log",
     "INFO",
-    `开始路径规划: 重试=${maxRetries}次, 延迟=${retryDelayMs}ms, 备用直线=${useFallback}`
+    `开始路径规划: 重试=${maxRetries}次, 延迟=${retryDelayMs}ms, 备用直线=${useFallback}`,
   );
   const all_path = [];
   const areCoordsEqual = (c1, c2) =>
@@ -36140,7 +36192,7 @@ async function getWalkingPath(waypoints) {
       callPythonAPI(
         "js_log",
         "DEBUG",
-        `AMap API请求 --> 步行路径: ${start.toString()} 至 ${end.toString()}`
+        `AMap API请求 --> 步行路径: ${start.toString()} 至 ${end.toString()}`,
       );
       new AMap.Walking({
         map: null,
@@ -36150,12 +36202,12 @@ async function getWalkingPath(waypoints) {
         if (status === "complete" && result.routes?.length > 0) {
           const p = [];
           result.routes[0].steps.forEach((s) =>
-            s.path.forEach((pt) => p.push({ lng: pt.lng, lat: pt.lat }))
+            s.path.forEach((pt) => p.push({ lng: pt.lng, lat: pt.lat })),
           );
           callPythonAPI(
             "js_log",
             "DEBUG",
-            `AMap API响应 <-- 成功，点数: ${p.length}`
+            `AMap API响应 <-- 成功，点数: ${p.length}`,
           );
           resolve(p);
         } else {
@@ -36163,7 +36215,7 @@ async function getWalkingPath(waypoints) {
           callPythonAPI(
             "js_log",
             "ERROR",
-            `AMap API响应 <-- 失败. 状态: ${status}, 结果: ${info}`
+            `AMap API响应 <-- 失败. 状态: ${status}, 结果: ${info}`,
           );
           resolve([]);
         }
@@ -36178,7 +36230,7 @@ async function getWalkingPath(waypoints) {
     while (attempts <= maxRetries) {
       if (attempts > 0) {
         logMessage_Info(
-          `第 ${i + 1} 段路径规划失败，${retryDelayMs / 1000}秒后重试...`
+          `第 ${i + 1} 段路径规划失败，${retryDelayMs / 1000}秒后重试...`,
         );
         await new Promise((res) => setTimeout(res, retryDelayMs));
       }
@@ -36237,18 +36289,18 @@ async function onConfirmAutoGenerate() {
   logMessage_Info("正在调用高德地图API进行路径规划...");
   try {
     const waypoints = currentRunData.target_points.map(
-      (p) => new AMapInstance.LngLat(p[0], p[1])
+      (p) => new AMapInstance.LngLat(p[0], p[1]),
     );
     const apiPath = await getWalkingPath(waypoints);
     logMessage_Info(
-      `路径规划成功，共 ${apiPath.length} 个坐标点。正在生成模拟数据...`
+      `路径规划成功，共 ${apiPath.length} 个坐标点。正在生成模拟数据...`,
     );
     const result = await callPythonAPI(
       "auto_generate_path_with_api",
       apiPath,
       minTime,
       maxTime,
-      minDist
+      minDist,
     );
     if (result.success) {
       currentRunData.run_coords = result.run_coords;
@@ -36300,7 +36352,7 @@ async function showHistoricalTrack(trid) {
     logMessage_Info(
       `[历史轨迹] API返回数据 - coords长度: ${
         result.coords?.length || 0
-      }, target_points长度: ${result.target_points?.length || 0}`
+      }, target_points长度: ${result.target_points?.length || 0}`,
     );
 
     if (isMobileMode) {
@@ -36312,7 +36364,7 @@ async function showHistoricalTrack(trid) {
         await initMobileTrackMap();
         clearMobileTrackMap();
         const path = result.coords.map(
-          (p) => new AMapInstance.LngLat(p[0], p[1])
+          (p) => new AMapInstance.LngLat(p[0], p[1]),
         );
 
         if (path.length > 0) {
@@ -36376,12 +36428,12 @@ async function showHistoricalTrack(trid) {
           }
 
           logMessage_Info(
-            `[历史轨迹] 摘要信息已更新 - 距离: ${distance} km, 时长: ${duration}, 打卡点: ${checkpoints}`
+            `[历史轨迹] 摘要信息已更新 - 距离: ${distance} km, 时长: ${duration}, 打卡点: ${checkpoints}`,
           );
           logMessage_Info(
             `[历史轨迹] 检查打卡点数据 - target_points存在: ${!!result.target_points}, 长度: ${
               result.target_points?.length || 0
-            }`
+            }`,
           );
           if (result.target_points && result.target_points.length > 0) {
             const targetNames = result.target_point_names
@@ -36404,7 +36456,7 @@ async function showHistoricalTrack(trid) {
               mobileTrackMarkers.push(checkpointMarker);
             });
             logMessage_Info(
-              `[历史轨迹] 已绘制 ${result.target_points.length} 个打卡点`
+              `[历史轨迹] 已绘制 ${result.target_points.length} 个打卡点`,
             );
           }
           mobileTrackMapInstance.setFitView();
@@ -36463,7 +36515,7 @@ function getCallerInfo(linesToSkip = null) {
     }
     callerLine = callerLine.trim();
     let match = callerLine.match(
-      /at\s+(?:(.+)\s+\()?(?:.+\/)?([^:]+:\d+:\d+)\)?/
+      /at\s+(?:(.+)\s+\()?(?:.+\/)?([^:]+:\d+:\d+)\)?/,
     );
     if (match) {
       const functionName = match[1] || "anonymous";
@@ -36595,7 +36647,7 @@ window.addEventListener("beforeunload", () => {
       if (!isInNetworkErrorState && sessionUUID) {
         const now = new Date();
         const timestamp = `${String(now.getHours()).padStart(2, "0")}:${String(
-          now.getMinutes()
+          now.getMinutes(),
         ).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
 
         // 使用队列逻辑
@@ -36817,7 +36869,7 @@ function showTab(tabName, element) {
   ].forEach((name) => {
     $(`${name}-tab`).classList.add("hidden");
     const b = document.querySelector(
-      `button[onclick="showTab('${name}', this)"]`
+      `button[onclick="showTab('${name}', this)"]`,
     );
     if (b) b.classList.remove("active");
   });
@@ -36831,7 +36883,7 @@ function showTab(tabName, element) {
     refreshNotificationsUI(
       (useCache = true),
       (isManual = false),
-      (show_Modal = false)
+      (show_Modal = false),
     ); // 切换tab视为自动刷新，将开启定时刷新
   }
 }
@@ -36858,7 +36910,7 @@ function createParamInputs(
   container,
   prefix,
   changeHandler,
-  excludeGroups = []
+  excludeGroups = [],
 ) {
   container.innerHTML = "";
   let finalExclude = [...excludeGroups];
@@ -36950,7 +37002,7 @@ function createParamInputs(
           input.addEventListener("change", (e) => {
             const hexColor = e.target.value;
             const colorPicker = document.getElementById(
-              `${prefix}-${key}-picker`
+              `${prefix}-${key}-picker`,
             );
             if (colorPicker) colorPicker.value = hexColor;
             setBaseColor(hexColor, hexColor);
@@ -37263,7 +37315,7 @@ let notificationAutoRefreshTimer = null;
 async function refreshNotificationsUI(
   useCache = true,
   isManual = false,
-  show_Modal = true
+  show_Modal = true,
 ) {
   if (isRefreshingNotifications) {
     logMessage_Info("通知刷新已在进行中，跳过本次请求");
@@ -37309,7 +37361,7 @@ async function refreshNotificationsUI(
             badge.classList.add("hidden");
           }
           const hasUnread = cachedResult.notices.some(
-            (n) => n.isRead == 0 || n.isRead === false
+            (n) => n.isRead == 0 || n.isRead === false,
           );
           if (markReadBtn) markReadBtn.disabled = !hasUnread;
           const refreshingIndicator = document.createElement("div");
@@ -37344,7 +37396,7 @@ async function refreshNotificationsUI(
           : 300;
         if (refreshInterval > 0) {
           logMessage_Info(
-            `[自动刷新] (加载完成) 将在 ${refreshInterval} 秒后自动刷新通知`
+            `[自动刷新] (加载完成) 将在 ${refreshInterval} 秒后自动刷新通知`,
           );
           notificationAutoRefreshTimer = setTimeout(() => {
             logMessage_Info("[自动刷新] 正在自动刷新通知...");
@@ -37363,7 +37415,7 @@ async function refreshNotificationsUI(
         return;
       }
       logMessage_Info(
-        `正在加载通知：offset=${currentOffset}, limit=${batchSize}`
+        `正在加载通知：offset=${currentOffset}, limit=${batchSize}`,
       );
       const result = await fetchNotifications(batchSize, currentOffset);
       if (firstLoad) {
@@ -37384,7 +37436,7 @@ async function refreshNotificationsUI(
         logMessage_Info(
           `首批新通知加载完成，${
             cachedDisplayed ? "已替换" : "正在显示"
-          }缓存数据`
+          }缓存数据`,
         );
       }
 
@@ -37402,12 +37454,12 @@ async function refreshNotificationsUI(
         logMessage_Info(
           `第${Math.floor(currentOffset / batchSize) + 1}批加载完成：显示 ${
             notices.length
-          } 条通知`
+          } 条通知`,
         );
         renderNotificationBatch(notices, content);
         const allNotices = window.currentNotifications || [];
         const hasUnread = allNotices.some(
-          (n) => n.isRead == 0 || n.isRead === false
+          (n) => n.isRead == 0 || n.isRead === false,
         );
         if (markReadBtn) markReadBtn.disabled = !hasUnread;
       }
@@ -37570,7 +37622,7 @@ function onNotificationsUpdated(result) {
   }
 
   logMessage_Info(
-    `[后台刷新] 收到 ${result.unreadCount} 未读, ${result.notices.length} 总数`
+    `[后台刷新] 收到 ${result.unreadCount} 未读, ${result.notices.length} 总数`,
   );
   const badge = $("notification-badge");
   if (result.unreadCount > 0) {
@@ -37583,7 +37635,7 @@ function onNotificationsUpdated(result) {
   if (attList) {
     attList.innerHTML = "";
     const attendanceNotices = (window.currentNotifications || []).filter(
-      (n) => n.image === "attendance" || (n.title && n.title.includes("签到"))
+      (n) => n.image === "attendance" || (n.title && n.title.includes("签到")),
     );
     if (attendanceNotices.length === 0) {
       attList.innerHTML =
@@ -37689,7 +37741,7 @@ async function handleAttendance(event, rollCallId, targetCoords) {
     targetCoords,
     "random",
     null,
-    false
+    false,
   );
   if (result.success) {
     logMessage_Info(`签到成功: ${result.message}`);
@@ -37784,15 +37836,15 @@ async function handleManualAttendance(event, rollCallId, targetCoords) {
       clickedLngLat.lng,
       clickedLngLat.lat,
       targetCoords[0],
-      targetCoords[1]
+      targetCoords[1],
     );
     if (distance > radius) {
       logMessage_Info(
-        `选点失败：距离 ${distance.toFixed(1)}m > ${radius.toFixed(1)}m`
+        `选点失败：距离 ${distance.toFixed(1)}m > ${radius.toFixed(1)}m`,
       );
       showModalAlert(
         "您选择的点不在签到范围内，请重新在地图上单击选点。",
-        "选点无效"
+        "选点无效",
       );
       map.add(infoMarker);
       map.on("click", onMapClick);
@@ -37800,8 +37852,8 @@ async function handleManualAttendance(event, rollCallId, targetCoords) {
     }
     logMessage_Info(
       `已选择签到点: ${specificCoords.join(", ")} (距离 ${distance.toFixed(
-        1
-      )}m)`
+        1,
+      )}m)`,
     );
     try {
       const result = await callPythonAPI(
@@ -37810,7 +37862,7 @@ async function handleManualAttendance(event, rollCallId, targetCoords) {
         targetCoords,
         "specific",
         specificCoords,
-        false
+        false,
       );
       if (result.success) {
         logMessage_Info(`签到成功: ${result.message}`);
@@ -37854,7 +37906,7 @@ async function handleMakeupAttendance(event, rollCallId, targetCoords) {
     targetCoords,
     "random",
     null,
-    true
+    true,
   );
   if (result.success) {
     logMessage_Info(`补签成功: ${result.message}`);
@@ -37886,7 +37938,7 @@ async function handleManualMakeupAttendance(event, rollCallId, targetCoords) {
       : 0.0;
   const position = new AMapInstance.LngLat(targetCoords[0], targetCoords[1]);
   logMessage_Info(
-    `系统签到点: ${targetCoords[0]}, ${targetCoords[1]} (半径: ${radius}米)`
+    `系统签到点: ${targetCoords[0]}, ${targetCoords[1]} (半径: ${radius}米)`,
   );
   tempAttendanceMarker = new AMapInstance.Marker({
     position: position,
@@ -37935,15 +37987,15 @@ async function handleManualMakeupAttendance(event, rollCallId, targetCoords) {
       clickedLngLat.lng,
       clickedLngLat.lat,
       targetCoords[0],
-      targetCoords[1]
+      targetCoords[1],
     );
     if (distance > radius) {
       logMessage_Info(
-        `[补签] 选点失败：距离 ${distance.toFixed(1)}m > ${radius.toFixed(1)}m`
+        `[补签] 选点失败：距离 ${distance.toFixed(1)}m > ${radius.toFixed(1)}m`,
       );
       showModalAlert(
         "您选择的点不在签到范围内，请重新在地图上单击选点。",
-        "选点无效"
+        "选点无效",
       );
       map.add(infoMarker);
       map.on("click", onMapClick);
@@ -37951,8 +38003,8 @@ async function handleManualMakeupAttendance(event, rollCallId, targetCoords) {
     }
     logMessage_Info(
       `已选择 [补签] 点: ${specificCoords.join(", ")} (距离 ${distance.toFixed(
-        1
-      )}m)`
+        1,
+      )}m)`,
     );
 
     try {
@@ -37962,7 +38014,7 @@ async function handleManualMakeupAttendance(event, rollCallId, targetCoords) {
         targetCoords,
         "specific",
         specificCoords,
-        true
+        true,
       );
       if (result.success) {
         logMessage_Info(`补签成功: ${result.message}`);
@@ -38024,7 +38076,7 @@ async function markAllAsRead() {
   btn.disabled = true;
   btn.textContent = "处理中...";
   const unreadNotices = (window.currentNotifications || []).filter(
-    (n) => !n.isRead
+    (n) => !n.isRead,
   );
   if (unreadNotices.length === 0) {
     btn.textContent = "一键已读";
@@ -38032,7 +38084,7 @@ async function markAllAsRead() {
   }
   try {
     const promises = unreadNotices.map((n) =>
-      callPythonAPI("mark_notification_read", n.id)
+      callPythonAPI("mark_notification_read", n.id),
     );
     await Promise.all(promises);
     logMessage_Info(`“一键已读”操作完成，共处理 ${unreadNotices.length} 条。`);
@@ -38055,7 +38107,7 @@ $("multi-start-selected-btn").addEventListener("click", multi_startSelected);
 $("multi-stop-selected-btn").addEventListener("click", multi_stopSelected);
 $("multi-refresh-selected-btn").addEventListener(
   "click",
-  multi_refreshSelected
+  multi_refreshSelected,
 );
 
 // --- Next Script Block ---
@@ -38072,7 +38124,7 @@ function switchMobileNotifTab(tabName) {
   const attTab = document.getElementById("mobile-notif-tab-attendance");
   const allList = document.getElementById("mobile-all-notifications-list");
   const attList = document.getElementById(
-    "mobile-attendance-notifications-list"
+    "mobile-attendance-notifications-list",
   );
   if (tabName === "all") {
     allTab.className =
@@ -38132,7 +38184,7 @@ function updateMobileNotificationUI() {
     }
   }
   const attendanceNotices = notifications.filter(
-    (n) => n.image === "attendance" || (n.title && n.title.includes("签到"))
+    (n) => n.image === "attendance" || (n.title && n.title.includes("签到")),
   );
   const regularNotices = notifications;
   const allList = document.getElementById("mobile-all-notifications-list");
@@ -38150,10 +38202,10 @@ function updateMobileNotificationUI() {
         <div class="flex-1">
           <div class="flex items-center justify-between mb-1">
             <span class="text-sm font-semibold text-slate-800">${escapeHtml(
-              notice.title
+              notice.title,
             )}</span>
             <span class="text-xs text-slate-400">${escapeHtml(
-              notice.createtime
+              notice.createtime,
             )}</span>
           </div>
           <p class="text-xs text-slate-600">${escapeHtml(notice.content)}</p>
@@ -38165,7 +38217,7 @@ function updateMobileNotificationUI() {
         }
       `;
         item.addEventListener("click", () =>
-          markMobileNotificationRead(notice.id)
+          markMobileNotificationRead(notice.id),
         );
         allList.appendChild(item);
       });
@@ -38173,7 +38225,7 @@ function updateMobileNotificationUI() {
   }
 
   const attList = document.getElementById(
-    "mobile-attendance-notifications-list"
+    "mobile-attendance-notifications-list",
   );
   if (attList) {
     if (attendanceNotices.length === 0) {
@@ -38207,16 +38259,16 @@ function updateMobileNotificationUI() {
         <div class="flex-1">
           <div class="flex items-center justify-between mb-1">
             <span class="text-sm font-semibold text-slate-800">${escapeHtml(
-              notice.title
+              notice.title,
             )}</span>
             ${statusBadge}
           </div>
           <div class="flex items-center justify-between">
             <span class="text-xs text-slate-600">${escapeHtml(
-              notice.content
+              notice.content,
             )}</span>
             <span class="text-xs text-slate-400 ml-2">${escapeHtml(
-              notice.createtime
+              notice.createtime,
             )}</span>
           </div>
         </div>
@@ -38232,7 +38284,7 @@ function syncMobileAttendanceList() {
   if (!mobileAttList) return;
   const notifications = window.currentNotifications || [];
   const attendanceNotices = notifications.filter(
-    (n) => n.image === "attendance" || (n.title && n.title.includes("签到"))
+    (n) => n.image === "attendance" || (n.title && n.title.includes("签到")),
   );
   mobileAttList.innerHTML = "";
   if (attendanceNotices.length === 0) {
@@ -38345,7 +38397,7 @@ async function mobileMarkAllAsRead() {
   }
   try {
     const promises = unreadNotices.map((n) =>
-      callPythonAPI("mark_notification_read", n.id)
+      callPythonAPI("mark_notification_read", n.id),
     );
     await Promise.all(promises);
 
@@ -38381,7 +38433,7 @@ async function mobileHandleAttendance(rollCallId) {
       targetCoords,
       "random",
       null,
-      false
+      false,
     );
     if (result.success) {
       showModalAlert("签到成功！", "成功");
@@ -38488,7 +38540,7 @@ async function mobileStartTask() {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
     const isBackendRunning =
       statusRes.success &&
@@ -38519,7 +38571,7 @@ async function mobileStartTask() {
       {
         task_indices: [selectedTaskIndex],
         auto_generate: true,
-      }
+      },
     );
     if (result && result.success) {
       mobileTaskRunning = true;
@@ -38549,7 +38601,7 @@ async function syncMobileBtnStateFromBackend() {
     const res = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
     if (
       res.success &&
@@ -38575,7 +38627,7 @@ async function mobileStopTask() {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
     const isBackendRunning =
       statusRes.success &&
@@ -38594,7 +38646,7 @@ async function mobileStopTask() {
     const result = await callPythonAPI_raw(
       "/api/background_task/stop",
       "POST",
-      {}
+      {},
     );
 
     if (result && result.success) {
@@ -38684,7 +38736,7 @@ async function mobileResetTask() {
         } else {
           showModalAlert(result?.message || "重置失败", "错误");
         }
-      }
+      },
     );
   } catch (error) {
     console.error("[移动端] 重置任务失败:", error);
@@ -38696,7 +38748,7 @@ async function exitMobileMultiAccount() {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
     const isTaskRunning =
       statusRes.success &&
@@ -38722,7 +38774,7 @@ async function exitMobileMultiAccount() {
         },
         () => {
           showModalAlert("已取消退出多账号模式", "提示");
-        }
+        },
       );
       return;
     }
@@ -38749,7 +38801,7 @@ async function exitMobileSingleAccount() {
     if (!result || !result.success) {
       console.error(
         "[移动端] 退出单账号模式失败:",
-        result?.message || "未知错误"
+        result?.message || "未知错误",
       );
       showModalAlert("退出失败: " + (result?.message || "未知错误"), "错误");
       return;
@@ -38789,7 +38841,7 @@ async function exitMobileSingleAccountSafe() {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
     const isTaskRunning =
       statusRes.success &&
@@ -38815,7 +38867,7 @@ async function exitMobileSingleAccountSafe() {
         },
         () => {
           showModalAlert("已取消退出单账号模式", "提示");
-        }
+        },
       );
       return;
     }
@@ -38837,7 +38889,7 @@ async function exitMobileMultiAccountToSessions() {
     if (!result || !result.success) {
       console.error(
         "[移动端] 退出多账号模式失败:",
-        result?.message || "未知错误"
+        result?.message || "未知错误",
       );
       showModalAlert("退出失败: " + (result?.message || "未知错误"), "错误");
       return;
@@ -38872,7 +38924,7 @@ async function exitMobileMultiAccountToSessions() {
 function mobileToggleSelectAllAccounts() {
   const checkbox = document.getElementById("mobile-select-all-accounts");
   const accountCheckboxes = document.querySelectorAll(
-    '#mobile-multi-account-list input[type="checkbox"]'
+    '#mobile-multi-account-list input[type="checkbox"]',
   );
   accountCheckboxes.forEach((cb) => {
     cb.checked = checkbox.checked;
@@ -38883,7 +38935,7 @@ async function mobileStartSelectedAccounts() {
     // ========== 步骤1：获取选中的账号复选框 ==========
     // 在移动端多账号列表中查找所有被勾选的账号复选框
     const selected = document.querySelectorAll(
-      '#mobile-multi-account-list input[type="checkbox"]:checked'
+      '#mobile-multi-account-list input[type="checkbox"]:checked',
     );
 
     // ========== 步骤2：验证是否选择了账号 ==========
@@ -38925,7 +38977,7 @@ async function mobileStartSelectedAccounts() {
 async function mobileStopSelectedAccounts() {
   try {
     const selected = document.querySelectorAll(
-      '#mobile-multi-account-list input[type="checkbox"]:checked'
+      '#mobile-multi-account-list input[type="checkbox"]:checked',
     );
     if (selected.length === 0) {
       showModalAlert("请先选择要停止的账号", "错误");
@@ -38994,7 +39046,7 @@ async function mobileStartAllAccounts() {
     // 【重要】传入已添加的账号列表，只检查这些账号的欠费情况
     // 如果addedUsernames为空数组，则传null检查所有账号（回退到原有行为）
     const canStart = await checkOverdueBeforeStart(
-      addedUsernames.length > 0 ? addedUsernames : null
+      addedUsernames.length > 0 ? addedUsernames : null,
     );
     if (!canStart) {
       // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
@@ -39004,10 +39056,10 @@ async function mobileStartAllAccounts() {
 
     // ========== 步骤5：读取启动配置 ==========
     const randomDelayCheck = document.getElementById(
-      "mobile-multi-random-delay-check"
+      "mobile-multi-random-delay-check",
     );
     const onlyIncompleteCheck = document.getElementById(
-      "mobile-multi-only-incomplete-check"
+      "mobile-multi-only-incomplete-check",
     );
     const use_delay = randomDelayCheck ? randomDelayCheck.checked : true;
     const min_delay = 0;
@@ -39023,7 +39075,7 @@ async function mobileStartAllAccounts() {
       min_delay,
       max_delay,
       use_delay,
-      run_only_incomplete
+      run_only_incomplete,
     );
 
     // ========== 步骤7：处理返回结果 ==========
@@ -39060,7 +39112,7 @@ async function mobileRefreshAllAccounts() {
 async function mobileRemoveSelectedAccounts() {
   try {
     const selected = document.querySelectorAll(
-      '#mobile-multi-account-list input[type="checkbox"]:checked'
+      '#mobile-multi-account-list input[type="checkbox"]:checked',
     );
     if (selected.length === 0) {
       showModalAlert("请先选择要删除的账号", "错误");
@@ -39072,7 +39124,7 @@ async function mobileRemoveSelectedAccounts() {
       async () => {
         await multi_removeSelected();
         showModalAlert(`已删除 ${selected.length} 个账号`, "成功");
-      }
+      },
     );
   } catch (error) {
     console.error("[移动端] 删除选中账号失败:", error);
@@ -39191,7 +39243,7 @@ async function mobileLogout() {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
-      null
+      null,
     );
     const isTaskRunning =
       statusRes.success &&
@@ -39217,7 +39269,7 @@ async function mobileLogout() {
         },
         () => {
           showModalAlert("已取消退出登录", "提示");
-        }
+        },
       );
       return;
     }
@@ -39303,7 +39355,7 @@ async function loadMobileUserDetails() {
       });
     }
     const schoolList = document.getElementById(
-      "mobile-user-details-school-list"
+      "mobile-user-details-school-list",
     );
     if (schoolList) {
       schoolList.innerHTML = "";
@@ -39447,7 +39499,7 @@ function loadMobileTaskDetails() {
     }
   }
   const historyList = document.getElementById(
-    "mobile-task-details-history-list"
+    "mobile-task-details-history-list",
   );
   if (historyList) {
     historyList.innerHTML = "";
@@ -39502,7 +39554,7 @@ function destroyMobileMultiMap() {
 async function initMobileMap(
   containerId,
   isMultiAccount = false,
-  retryCount = 0
+  retryCount = 0,
 ) {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 1000;
@@ -39513,7 +39565,7 @@ async function initMobileMap(
       logMessage_Info(
         `[移动端地图] 将在 ${RETRY_DELAY}ms 后重试 (${
           retryCount + 1
-        }/${MAX_RETRIES})`
+        }/${MAX_RETRIES})`,
       );
       setTimeout(() => {
         initMobileMap(containerId, isMultiAccount, retryCount + 1);
@@ -39531,13 +39583,13 @@ async function initMobileMap(
     containerStyle.display === "none"
   ) {
     logMessage_Warning(
-      `[移动端地图] 容器 ${containerId} 不可见或尺寸为0 (${containerWidth}x${containerHeight})`
+      `[移动端地图] 容器 ${containerId} 不可见或尺寸为0 (${containerWidth}x${containerHeight})`,
     );
     if (retryCount < MAX_RETRIES) {
       logMessage_Info(
         `[移动端地图] 将在 ${RETRY_DELAY}ms 后重试 (${
           retryCount + 1
-        }/${MAX_RETRIES})`
+        }/${MAX_RETRIES})`,
       );
       setTimeout(() => {
         initMobileMap(containerId, isMultiAccount, retryCount + 1);
@@ -39563,7 +39615,7 @@ async function initMobileMap(
       logMessage_Info(
         `[移动端地图] 将在 ${RETRY_DELAY}ms 后重试加载 (${
           retryCount + 1
-        }/${MAX_RETRIES})`
+        }/${MAX_RETRIES})`,
       );
       setTimeout(() => {
         initMobileMap(containerId, isMultiAccount, retryCount + 1);
@@ -39587,7 +39639,7 @@ async function initMobileMap(
       const currentContainer = multiAccountMap.getContainer();
       if (currentContainer && currentContainer.id === containerId) {
         logMessage_Info(
-          "[移动端地图] 多账号地图已初始化且容器匹配，执行Resize刷新"
+          "[移动端地图] 多账号地图已初始化且容器匹配，执行Resize刷新",
         );
         container.innerHTML = "";
         setTimeout(() => {
@@ -39596,7 +39648,7 @@ async function initMobileMap(
         return true;
       } else {
         logMessage_Info(
-          `[移动端地图] 多账号地图容器不匹配 (旧: ${currentContainer?.id}, 新: ${containerId})，正在销毁旧实例...`
+          `[移动端地图] 多账号地图容器不匹配 (旧: ${currentContainer?.id}, 新: ${containerId})，正在销毁旧实例...`,
         );
         try {
           multiAccountMap.destroy();
@@ -39655,7 +39707,7 @@ async function initMobileMap(
         logMessage_Info(
           `[移动端地图] 将在 ${RETRY_DELAY}ms 后重试 (${
             retryCount + 1
-          }/${MAX_RETRIES})`
+          }/${MAX_RETRIES})`,
         );
         setTimeout(() => {
           initMobileMap(containerId, isMultiAccount, retryCount + 1);
@@ -39668,7 +39720,7 @@ async function initMobileMap(
       const currentContainer = map.getContainer();
       if (currentContainer && currentContainer.id === containerId) {
         logMessage_Info(
-          "[移动端地图] 单账号地图已初始化且容器匹配，执行Resize刷新"
+          "[移动端地图] 单账号地图已初始化且容器匹配，执行Resize刷新",
         );
         container.innerHTML = "";
         setTimeout(() => {
@@ -39679,7 +39731,7 @@ async function initMobileMap(
         return true;
       } else {
         logMessage_Info(
-          `[移动端地图] 单账号地图容器不匹配 (旧: ${currentContainer?.id}, 新: ${containerId})，正在销毁旧实例...`
+          `[移动端地图] 单账号地图容器不匹配 (旧: ${currentContainer?.id}, 新: ${containerId})，正在销毁旧实例...`,
         );
         try {
           if (runnerMarker) runnerMarker = null;
@@ -39704,7 +39756,7 @@ async function initMobileMap(
       if (runnerMarker) {
         runnerMarker = null;
         logMessage_Info(
-          "[移动端地图] 已清除旧的runner marker，准备为新地图创建"
+          "[移动端地图] 已清除旧的runner marker，准备为新地图创建",
         );
       }
       map = new AMapInstance.Map(containerId, {
@@ -39751,7 +39803,7 @@ async function initMobileMap(
         logMessage_Info(
           `[移动端地图] 将在 ${RETRY_DELAY}ms 后重试 (${
             retryCount + 1
-          }/${MAX_RETRIES})`
+          }/${MAX_RETRIES})`,
         );
         setTimeout(() => {
           initMobileMap(containerId, isMultiAccount, retryCount + 1);
@@ -39824,7 +39876,7 @@ async function loadMobileTaskHistoryPanel() {
 }
 
 /**
- * 【任务7】打开统一的移动端管理面板
+ * 打开统一的移动端管理面板
  * 该函数用于统一处理单账号和多账号模式下的管理面板打开逻辑
  *
  * @description
@@ -39864,7 +39916,7 @@ function openMobileAdminPanelUnified(mode) {
 }
 
 function switchMobileSinglePanel(panelId, showalert = true) {
-  // 【任务7修复】单账号模式面板数组，添加 mobile-admin-panel-unified 以支持复用多账号管理面板
+  // 单账号模式面板数组，添加 mobile-admin-panel-unified 以支持复用多账号管理面板
   const singleModePanels = [
     "mobile-control-panel",
     "mobile-map-panel",
@@ -39875,7 +39927,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
     "mobile-checkpoints-panel",
     "mobile-attendance-panel",
     "mobile-admin-panel",
-    "mobile-admin-panel-unified", // 【任务7】新增：统一管理面板（单账号模式复用）
+    "mobile-admin-panel-unified", // 统一管理面板（单账号模式复用）
     "mobile-settings-panel",
     "mobile-profile-panel",
     "mobile-task-history-panel",
@@ -39914,7 +39966,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
     if (panelId === "mobile-settings-panel") {
       logMessage_Info("[移动端单账号] 激活设置面板，开始加载配置...");
       const mobileParamsContainer = document.getElementById(
-        "mobile-params-container"
+        "mobile-params-container",
       );
       if (
         mobileParamsContainer &&
@@ -39956,22 +40008,22 @@ function switchMobileSinglePanel(panelId, showalert = true) {
       logMessage_Info("[移动端单账号] 激活签到面板，开始加载配置...");
       setTimeout(() => {
         const attendanceEnabled = document.getElementById(
-          "mobile-attendance-enabled"
+          "mobile-attendance-enabled",
         );
         if (attendanceEnabled && typeof pythonParams !== "undefined") {
           attendanceEnabled.checked = pythonParams.attendance_enabled !== false;
         }
         const attendanceTime = document.getElementById(
-          "mobile-attendance-time"
+          "mobile-attendance-time",
         );
         if (attendanceTime && typeof pythonParams !== "undefined") {
           attendanceTime.value = pythonParams.attendance_time || "08:00";
         }
         const attendanceDelayMin = document.getElementById(
-          "mobile-attendance-delay-min"
+          "mobile-attendance-delay-min",
         );
         const attendanceDelayMax = document.getElementById(
-          "mobile-attendance-delay-max"
+          "mobile-attendance-delay-max",
         );
         if (
           attendanceDelayMin &&
@@ -39982,7 +40034,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
           attendanceDelayMax.value = pythonParams.attendance_delay_max || 300;
         }
         const autoRefreshInterval = document.getElementById(
-          "mobile-param-auto_attendance_refresh_s"
+          "mobile-param-auto_attendance_refresh_s",
         );
         if (autoRefreshInterval && typeof pythonParams !== "undefined") {
           autoRefreshInterval.value =
@@ -39990,18 +40042,18 @@ function switchMobileSinglePanel(panelId, showalert = true) {
           logMessage_Info(
             "[移动端单账号] 自动刷新间隔已加载:",
             autoRefreshInterval.value,
-            "秒"
+            "秒",
           );
         }
         const userRadius = document.getElementById(
-          "mobile-param-attendance_user_radius_m"
+          "mobile-param-attendance_user_radius_m",
         );
         if (userRadius && typeof pythonParams !== "undefined") {
           userRadius.value = pythonParams.attendance_user_radius_m || 0;
           logMessage_Info(
             "[移动端单账号] 签到随机半径已加载:",
             userRadius.value,
-            "米"
+            "米",
           );
         }
         logMessage_Info("[移动端单账号] 签到面板配置已自动加载");
@@ -40045,17 +40097,17 @@ function switchMobileSinglePanel(panelId, showalert = true) {
       }
     }
 
-    // 【任务7】统一管理面板（mobile-admin-panel-unified）在单账号模式下的激活处理
+    // 统一管理面板（mobile-admin-panel-unified）在单账号模式下的激活处理
     // 单账号模式复用多账号管理面板，但需要设置正确的模式标识
     if (panelId === "mobile-admin-panel-unified") {
       logMessage_Info(
-        "[移动端单账号] 激活统一管理面板（复用多账号面板），开始初始化..."
+        "[移动端单账号] 激活统一管理面板（复用多账号面板），开始初始化...",
       );
       // 设置当前模式为单账号，供主题保存等功能判断
       window.mobileAdminPanelMode = "single";
       // 更新面板状态显示为单账号管理
       const statusEl = document.getElementById(
-        "mobile-admin-panel-unified-status"
+        "mobile-admin-panel-unified-status",
       );
       if (statusEl) {
         statusEl.textContent = "单账号管理";
@@ -40105,7 +40157,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
           logMessage_Info("[移动端单账号] 打卡点列表已自动渲染");
         } else {
           logMessage_Warning(
-            "[移动端单账号] renderMobileCheckpointsList函数未定义"
+            "[移动端单账号] renderMobileCheckpointsList函数未定义",
           );
         }
       }, 50);
@@ -40190,7 +40242,7 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
     if (panelId === "mobile-settings-panel") {
       console.log("[移动端] 激活设置面板，开始加载配置...");
       const mobileParamsContainer = document.getElementById(
-        "mobile-params-container"
+        "mobile-params-container",
       );
       if (
         mobileParamsContainer &&
@@ -40207,7 +40259,7 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
       console.log("[移动端] 激活多账号全局设置面板，开始加载配置...");
       // 获取全局参数容器元素
       const mobileMultiParamsContainer = document.getElementById(
-        "mobile-multi-global-params-container"
+        "mobile-multi-global-params-container",
       );
       // 检查必要的容器和函数是否存在
       if (
@@ -40219,7 +40271,7 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
         updateParamInputs(
           mobileMultiParamsContainer,
           "mobile-multi-param",
-          pythonParams
+          pythonParams,
         );
         console.log("[移动端] 多账号全局设置面板配置已自动加载");
       }
@@ -40232,7 +40284,7 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
       if (typeof pythonParams !== "undefined") {
         // 初始化自动签到开关 (checkbox)
         const autoAttendanceEnabled = document.getElementById(
-          "mobile-multi-auto_attendance_enabled"
+          "mobile-multi-auto_attendance_enabled",
         );
         if (autoAttendanceEnabled) {
           // 设置 checked 状态为 pythonParams 中的值，默认为 false
@@ -40242,7 +40294,7 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
 
         // 初始化刷新间隔输入框 (number)
         const autoAttendanceRefresh = document.getElementById(
-          "mobile-multi-auto_attendance_refresh_s"
+          "mobile-multi-auto_attendance_refresh_s",
         );
         if (autoAttendanceRefresh) {
           // 设置值为 pythonParams 中的值，默认为空字符串
@@ -40252,7 +40304,7 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
 
         // 初始化随机半径输入框 (number)
         const attendanceRadius = document.getElementById(
-          "mobile-multi-attendance_user_radius_m"
+          "mobile-multi-attendance_user_radius_m",
         );
         if (attendanceRadius) {
           // 设置值为 pythonParams 中的值，默认为空字符串
@@ -40277,11 +40329,11 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
     }
     if (panelId === "mobile-admin-panel-unified") {
       console.log("[移动端] 激活多账号管理面板，开始初始化...");
-      // 【任务7】设置当前模式为多账号，供主题保存等功能判断
+      // 设置当前模式为多账号，供主题保存等功能判断
       window.mobileAdminPanelMode = "multi";
       // 更新面板状态显示为多账号管理
       const statusEl = document.getElementById(
-        "mobile-admin-panel-unified-status"
+        "mobile-admin-panel-unified-status",
       );
       if (statusEl) {
         statusEl.textContent = "多账号管理";
@@ -40324,7 +40376,7 @@ function updateMobileNavActiveState(activeSectionId) {
     "mobile-attendance-panel": "attendance",
     "mobile-settings-panel": "settings",
     "mobile-admin-panel": "admin",
-    "mobile-admin-panel-unified": "admin", // 【任务7】添加统一管理面板的导航映射
+    "mobile-admin-panel-unified": "admin", // 统一管理面板的导航映射
     "mobile-multi-account-panel": "accounts",
     "mobile-multi-control-panel": "control",
     "mobile-multi-map-panel": "map",
@@ -40373,7 +40425,7 @@ function updateMobileSidebarActive(panelId) {
     });
     return;
   }
-  // 【修复任务10】判断应该更新哪个侧边栏的高亮状态
+  // 判断应该更新哪个侧边栏的高亮状态
   // 原逻辑仅通过 panelId.includes("multi") 判断，但 mobile-admin-panel-unified 不包含 "multi"
   // 因此需要额外处理：当面板是 mobile-admin-panel-unified 时，根据 window.mobileAdminPanelMode 判断
   let targetSidebar;
@@ -40415,7 +40467,7 @@ function updateMobileSidebarActive(panelId) {
   });
 
   console.log(
-    `[侧边栏active] 已更新active状态: ${targetMenuText} (面板: ${panelId})`
+    `[侧边栏active] 已更新active状态: ${targetMenuText} (面板: ${panelId})`,
   );
 }
 async function openMobileAccountParams(username) {
@@ -40454,7 +40506,7 @@ async function openMobileAccountParams(username) {
               "multi_update_account_param",
               username,
               key,
-              value
+              value,
             );
           }
           showModalAlert("设置已保存", "成功");
@@ -40530,7 +40582,7 @@ function resetMultiMapView() {
       multiAccountMap.setCenter(defaultCenter);
       multiAccountMap.setZoom(defaultZoom);
       console.log(
-        "[多账号地图] 复位视角：重置到指定位置 [113.390342, 22.527403]"
+        "[多账号地图] 复位视角：重置到指定位置 [113.390342, 22.527403]",
       );
     }
   } else {
@@ -40570,9 +40622,6 @@ function syncUAToMobile(uaText) {
 //   }
 //   const captchaId = captchaIds[formType];
 
-
-
-
 //   if (!captchaId) {
 //     displayElement.innerHTML =
 //       '<span class="text-slate-400 text-xs">等待加载...</span>';
@@ -40607,7 +40656,7 @@ function syncUAToMobile(uaText) {
 //     iframeSrc += `&width=${targetWidth}`;
 //   }
 //   const iframeHtml = `
-//   <iframe 
+//   <iframe
 //     src="${iframeSrc}"
 //     style="width: ${targetWidth}px; height: ${targetHeight}px; border: none; overflow: hidden; display: block; max-width: 100%;"
 //     scrolling="no"
@@ -40633,7 +40682,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const authInput = document.getElementById("auth-username");
   const authLabel = document.getElementById("auth-login-label");
   const authUsernameContainer = document.getElementById(
-    "auth-username-container"
+    "auth-username-container",
   );
   if (usernameBtn && phoneBtn) {
     usernameBtn.addEventListener("click", function () {
@@ -40767,7 +40816,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // 验证码相关事件监听器
   // ============================================================
   const loginCaptchaRefreshBtn = document.getElementById(
-    "auth-login-captcha-refresh"
+    "auth-login-captcha-refresh",
   );
   if (loginCaptchaRefreshBtn) {
     loginCaptchaRefreshBtn.addEventListener("click", function (e) {
@@ -40776,7 +40825,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   const loginCaptchaDisplay = document.getElementById(
-    "auth-login-captcha-display"
+    "auth-login-captcha-display",
   );
   if (loginCaptchaDisplay) {
     loginCaptchaDisplay.addEventListener("click", function () {
@@ -40784,7 +40833,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   const registerCaptchaRefreshBtn = document.getElementById(
-    "auth-register-captcha-refresh"
+    "auth-register-captcha-refresh",
   );
   if (registerCaptchaRefreshBtn) {
     registerCaptchaRefreshBtn.addEventListener("click", function (e) {
@@ -40793,7 +40842,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   const registerCaptchaDisplay = document.getElementById(
-    "auth-register-captcha-display"
+    "auth-register-captcha-display",
   );
   if (registerCaptchaDisplay) {
     registerCaptchaDisplay.addEventListener("click", function () {
@@ -40869,7 +40918,7 @@ async function confirmModifyPhone() {
     const bindResult = await callPythonAPI_raw(
       "/api/auth/check_phone",
       "POST",
-      { phone: newPhone }
+      { phone: newPhone },
     );
     if (
       bindResult &&
@@ -40878,7 +40927,7 @@ async function confirmModifyPhone() {
     ) {
       const confirmed = await jsShowConfirm(
         "手机号已被绑定",
-        `您输入的新手机号 ${newPhone} 已被用户 ${bindResult.bound_to_user} 绑定。\n\n是否继续？\n\n如果继续，该手机号将从原账号上强制解绑并绑定到您的账号上。`
+        `您输入的新手机号 ${newPhone} 已被用户 ${bindResult.bound_to_user} 绑定。\n\n是否继续？\n\n如果继续，该手机号将从原账号上强制解绑并绑定到您的账号上。`,
       );
       if (!confirmed) {
         logMessage_Info("[修改手机号] 用户取消操作，因为手机号已被绑定。");
@@ -41009,7 +41058,7 @@ async function loadSystemConfig() {
       "allow_guest_login",
       "允许游客登录",
       "boolean",
-      "是否允许未注册用户以游客身份使用系统。"
+      "是否允许未注册用户以游客身份使用系统。",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">帮助配置</h5>';
@@ -41019,14 +41068,14 @@ async function loadSystemConfig() {
       "show_newbie_help",
       "显示新手帮助",
       "boolean",
-      "是否显示新手帮助提示。"
+      "是否显示新手帮助提示。",
     );
     html += createInput(
       "Guest",
       "newbie_help_url",
       "新手帮助链接",
       "text",
-      "指向新手帮助页面或文档的URL地址。"
+      "指向新手帮助页面或文档的URL地址。",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">系统配置</h5>';
@@ -41035,42 +41084,42 @@ async function loadSystemConfig() {
       "session_expiry_days",
       "会话过期时间 (天)",
       "number",
-      "超过此时间未访问的会话将被自动清理。"
+      "超过此时间未访问的会话将被自动清理。",
     );
     html += createInput(
       "System",
       "school_accounts_dir",
       "学校账号目录",
       "text",
-      "存储 school_accounts/*.ini 文件的目录。"
+      "存储 school_accounts/*.ini 文件的目录。",
     );
     html += createInput(
       "System",
       "system_accounts_dir",
       "系统账号目录",
       "text",
-      "存储 system_accounts/*.json 文件的目录。"
+      "存储 system_accounts/*.json 文件的目录。",
     );
     html += createInput(
       "System",
       "permissions_file",
       "权限文件名",
       "text",
-      "存储权限配置的JSON文件名。"
+      "存储权限配置的JSON文件名。",
     );
     html += createInput(
       "System",
       "session_monitor_check_interval",
       "会话监控间隔 (秒)",
       "number",
-      "系统检查会话活跃状态的间隔。"
+      "系统检查会话活跃状态的间隔。",
     );
     html += createInput(
       "System",
       "session_inactivity_timeout",
       "会话不活跃超时 (秒)",
       "number",
-      "会话无活动超过此时间将被清理。"
+      "会话无活动超过此时间将被清理。",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">日志配置</h5>';
@@ -41079,28 +41128,28 @@ async function loadSystemConfig() {
       "log_rotation_size_mb",
       "日志轮转大小 (MB)",
       "number",
-      "单个日志文件最大大小。"
+      "单个日志文件最大大小。",
     );
     html += createInput(
       "Logging",
       "archive_max_size_mb",
       "归档目录最大 (MB)",
       "number",
-      "归档目录总大小限制，0为不限制。"
+      "归档目录总大小限制，0为不限制。",
     );
     html += createInput(
       "Logging",
       "log_dir",
       "日志目录",
       "text",
-      "存储 zx-slm-tool.log 文件的目录。"
+      "存储 zx-slm-tool.log 文件的目录。",
     );
     html += createInput(
       "Logging",
       "archive_dir",
       "归档目录",
       "text",
-      "存储压缩日志 (logs/archive) 的目录。"
+      "存储压缩日志 (logs/archive) 的目录。",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">安全配置</h5>';
@@ -41109,21 +41158,21 @@ async function loadSystemConfig() {
       "password_storage",
       "密码存储方式",
       "password_storage",
-      "修改此项可能导致旧密码失效。"
+      "修改此项可能导致旧密码失效。",
     );
     html += createInput(
       "Security",
       "brute_force_protection",
       "启用暴力破解防护",
       "boolean",
-      "限制登录尝试次数。"
+      "限制登录尝试次数。",
     );
     html += createInput(
       "Security",
       "login_log_retention_days",
       "登录日志保留 (天)",
       "number",
-      "登录审计日志的保留天数。"
+      "登录审计日志的保留天数。",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">地图配置</h5>';
@@ -41132,17 +41181,10 @@ async function loadSystemConfig() {
       "amap_js_key",
       "高德地图 API Key",
       "text",
-      "用于前端地图显示的JS API Key。"
+      "用于前端地图显示的JS API Key。",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
-    html += createInput(
-      "API",
-      "ip_api_key",
-      "IP定位 API Key",
-      "text",
-      "IP地理位置查询API密钥（可选，留空使用免费接口）。"
-    );
     // ==================== 网站备案信息配置 ====================
     // 添加网站备案（Beian）相关配置项，包括ICP备案号和公安网备案号
     // 这些配置项用于在网站底部显示合规信息，满足中国大陆网站的备案要求
@@ -41155,7 +41197,7 @@ async function loadSystemConfig() {
       "icp_number",
       "ICP备案号",
       "text",
-      "工信部ICP备案号，如：京ICP备12345678号"
+      "工信部ICP备案号，如：京ICP备12345678号",
     );
     // 是否显示ICP备案信息的开关
     // 管理员可以选择是否在页面底部展示ICP备案号
@@ -41164,7 +41206,7 @@ async function loadSystemConfig() {
       "show_icp",
       "显示ICP备案",
       "boolean",
-      "是否在页面底部显示ICP备案信息"
+      "是否在页面底部显示ICP备案信息",
     );
     // 公安网备案号配置项
     // 用于显示公安部网络安全备案号，例如：京公网安备 11010802012345号
@@ -41173,7 +41215,7 @@ async function loadSystemConfig() {
       "police_number",
       "公安网备案号",
       "text",
-      "公安部网络安全备案号，如：京公网安备 11010802012345号"
+      "公安部网络安全备案号，如：京公网安备 11010802012345号",
     );
     // 是否显示公安网备案信息的开关
     // 管理员可以选择是否在页面底部展示公安网备案号
@@ -41182,7 +41224,7 @@ async function loadSystemConfig() {
       "show_police",
       "显示公安备案",
       "boolean",
-      "是否在页面底部显示公安网备案信息"
+      "是否在页面底部显示公安网备案信息",
     );
 
     // ==================== 百度云审核服务配置 ====================
@@ -41203,7 +41245,7 @@ async function loadSystemConfig() {
       "api_key",
       "API Key",
       "text",
-      "在百度云控制台创建应用后获取的API密钥"
+      "在百度云控制台创建应用后获取的API密钥",
     );
 
     // Secret Key 配置项
@@ -41216,7 +41258,7 @@ async function loadSystemConfig() {
       "secret_key",
       "Secret Key",
       "text",
-      "在百度云控制台创建应用后获取的密钥"
+      "在百度云控制台创建应用后获取的密钥",
     );
 
     // 策略ID 配置项（可选）
@@ -41227,7 +41269,7 @@ async function loadSystemConfig() {
       "strategy_id",
       "策略ID（可选）",
       "text",
-      "自定义审核策略的ID，留空则使用百度云默认审核策略"
+      "自定义审核策略的ID，留空则使用百度云默认审核策略",
     );
 
     // ==================== 留言内容审核功能配置 ====================
@@ -41249,7 +41291,7 @@ async function loadSystemConfig() {
       "enable_message_review",
       "启用留言审核",
       "boolean",
-      "启用后，留言将通过百度云文本审核服务检测后才能发布"
+      "启用后，留言将通过百度云文本审核服务检测后才能发布",
     );
 
     formContainer.innerHTML = html;
@@ -41277,7 +41319,7 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
   try {
     // 步骤1：记录开始加载的日志，便于调试和追踪
     console.log(
-      "[验证码设置] 开始从 /api/captcha/config 加载验证码配置参数..."
+      "[验证码设置] 开始从 /api/captcha/config 加载验证码配置参数...",
     );
 
     // 步骤2：调用后端API获取验证码配置
@@ -41331,7 +41373,7 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
       // 步骤9：记录成功加载的日志，包含实际加载的配置值
       console.log(
         "[验证码设置] 成功从 /api/captcha/config 加载配置:",
-        settings
+        settings,
       );
 
       // 步骤10：显示成功提示（可选，避免过多打扰用户）
@@ -41462,17 +41504,16 @@ async function saveCaptchaSettings() {
   }
 }
 async function testGenerateCaptcha() {
-
-    // UI反馈：禁用按钮并显示加载状态
-    try {
-      const testCaptchaBtnEl = $("test-captcha-btn");
-      if (testCaptchaBtnEl) {
-        testCaptchaBtnEl.classList.add("btn-loading");
-        testCaptchaBtnEl.setAttribute("disabled", "disabled");
-      }
-    } catch (e) {
-      console.error("设置测试按钮加载状态失败:", e);
+  // UI反馈：禁用按钮并显示加载状态
+  try {
+    const testCaptchaBtnEl = $("test-captcha-btn");
+    if (testCaptchaBtnEl) {
+      testCaptchaBtnEl.classList.add("btn-loading");
+      testCaptchaBtnEl.setAttribute("disabled", "disabled");
     }
+  } catch (e) {
+    console.error("设置测试按钮加载状态失败:", e);
+  }
 
   try {
     console.log("[验证码设置] 开始测试生成验证码...");
@@ -41504,25 +41545,26 @@ async function testGenerateCaptcha() {
       return;
     }
 
-
     // if (!need_weight || (need_weight == '' || need_weight == "NULL" || need_weight == "null" || need_weight == "undefined")) {
-      try {
-        need_weight = document.getElementById("admin-captcha-panel_modal").clientWidth -400 ;
-        console.log("获取验证码历史面板宽度：", need_weight);
-      }
-      catch (e) {
-        console.error("获取验证码历史面板宽度失败:", e);
-      }
+    try {
+      need_weight =
+        document.getElementById("admin-captcha-panel_modal").clientWidth - 400;
+      console.log("获取验证码历史面板宽度：", need_weight);
+    } catch (e) {
+      console.error("获取验证码历史面板宽度失败:", e);
+    }
     // }
 
-
-    if (need_weight !== '' && need_weight !== "NULL" && need_weight !== "null" && need_weight !== "undefined") {
+    if (
+      need_weight !== "" &&
+      need_weight !== "NULL" &&
+      need_weight !== "null" &&
+      need_weight !== "undefined"
+    ) {
       if (need_weight > 1000) need_weight = 1000;
       if (need_weight < 200) need_weight = 200;
       console.log("验证码显示区域宽度：", need_weight);
     }
-
-
 
     const response = await fetch("/api/captcha/test_generate", {
       method: "POST",
@@ -41599,7 +41641,7 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("[验证码历史] 已注册刷新按钮事件");
   }
 });
-async function loadCaptchaHistory(need_weight='') {
+async function loadCaptchaHistory(need_weight = "") {
   const listContainer = $("admin-captcha-list_modal");
   if (!listContainer) {
     console.error("找不到容器 admin-captcha-list_modal");
@@ -41619,18 +41661,29 @@ async function loadCaptchaHistory(need_weight='') {
       params.append("status", status);
     }
 
-    if (!need_weight || (need_weight == '' || need_weight == "NULL" || need_weight == "null" || need_weight == "undefined")) {
+    if (
+      !need_weight ||
+      need_weight == "" ||
+      need_weight == "NULL" ||
+      need_weight == "null" ||
+      need_weight == "undefined"
+    ) {
       try {
-        need_weight = document.getElementById("admin-captcha-history-panel_modal").clientWidth -200 ;
+        need_weight =
+          document.getElementById("admin-captcha-history-panel_modal")
+            .clientWidth - 200;
         console.log("获取验证码历史面板宽度：", need_weight);
-      }
-      catch (e) {
+      } catch (e) {
         console.error("获取验证码历史面板宽度失败:", e);
       }
     }
 
-
-    if (need_weight !== '' && need_weight !== "NULL" && need_weight !== "null" && need_weight !== "undefined") {
+    if (
+      need_weight !== "" &&
+      need_weight !== "NULL" &&
+      need_weight !== "null" &&
+      need_weight !== "undefined"
+    ) {
       if (need_weight > 1000) need_weight = 1000;
       if (need_weight < 200) need_weight = 200;
       console.log("验证码显示区域宽度：", need_weight);
@@ -41638,20 +41691,22 @@ async function loadCaptchaHistory(need_weight='') {
 
     let response;
 
-    if (need_weight !== '' && need_weight !== "NULL" && need_weight !== "null" && need_weight !== "undefined") {
-
-    response = await fetch(`/api/captcha/history?${params}&weight=${need_weight}`, {
-      headers: { "X-Session-ID": sessionUUID },
-    });
-  
-    }
-
-    else {
-
+    if (
+      need_weight !== "" &&
+      need_weight !== "NULL" &&
+      need_weight !== "null" &&
+      need_weight !== "undefined"
+    ) {
+      response = await fetch(
+        `/api/captcha/history?${params}&weight=${need_weight}`,
+        {
+          headers: { "X-Session-ID": sessionUUID },
+        },
+      );
+    } else {
       response = await fetch(`/api/captcha/history?${params}`, {
-      headers: { "X-Session-ID": sessionUUID },
-    });
-
+        headers: { "X-Session-ID": sessionUUID },
+      });
     }
 
     const result = await response.json();
@@ -41662,13 +41717,13 @@ async function loadCaptchaHistory(need_weight='') {
     const records = result.data || [];
     const total = records.length;
     const success = records.filter(
-      (r) => r.status === "verified_success"
+      (r) => r.status === "verified_success",
     ).length;
     const failed = records.filter((r) => r.status === "verified_failed").length;
     const pending = records.filter((r) => r.status === "created").length;
     const expired = records.filter((r) => r.status === "expired").length;
     const testGenerated = records.filter(
-      (r) => r.status === "test_generated"
+      (r) => r.status === "test_generated",
     ).length;
     const statTotal = $("captcha-stat-total");
     const statSuccess = $("captcha-stat-success");
@@ -41931,7 +41986,7 @@ async function loadReminders() {
           <!-- 标题和状态标签 -->
           <div class="flex items-center gap-2 mb-2">
             <h5 class="font-semibold text-slate-800 text-base">${escapeHtml(
-              reminder.title
+              reminder.title,
             )}</h5>
             ${
               reminder.enabled
@@ -41941,7 +41996,7 @@ async function loadReminders() {
           </div>
           <!-- 提醒内容 -->
           <p class="text-sm text-slate-600 mb-3 line-clamp-2">${escapeHtml(
-            reminder.message
+            reminder.message,
           )}</p>
           <!-- 时间范围 -->
           <div class="flex items-center gap-2 text-sm ${timeRangeClass}">
@@ -41950,8 +42005,8 @@ async function loadReminders() {
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
             <span>${timeRangeIcon} ${reminder.start_time} - ${
-        reminder.end_time
-      } ${timeRangeHint}</span>
+              reminder.end_time
+            } ${timeRangeHint}</span>
           </div>
           <!-- 创建和更新时间 -->
           <div class="mt-2 text-xs text-slate-400 space-y-0.5">
@@ -41998,8 +42053,8 @@ async function loadReminders() {
 
           <!-- 删除按钮 -->
           <button onclick="deleteReminder('${reminder.id}', '${escapeHtml(
-        reminder.title
-      )}')" 
+            reminder.title,
+          )}')" 
             class="btn btn-ghost !py-1 !px-3 text-xs whitespace-nowrap hover:bg-red-50 hover:text-red-600"
             title="删除提醒">
             <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -42036,7 +42091,7 @@ async function openReminderEditModal(reminderId = "") {
         return new Promise((resolve, reject) => {
           if (
             document.querySelector(
-              isCss ? `link[href="${url}"]` : `script[src="${url}"]`
+              isCss ? `link[href="${url}"]` : `script[src="${url}"]`,
             )
           )
             return resolve();
@@ -42284,11 +42339,21 @@ async function openReminderEditModal(reminderId = "") {
             ) {
               window.reminderEditor.codeMirror.refresh();
             }
-            if (window.reminderEditor && typeof window.reminderEditor.recreate === "function") {
-              try { window.reminderEditor.recreate(); } catch (e) {}
+            if (
+              window.reminderEditor &&
+              typeof window.reminderEditor.recreate === "function"
+            ) {
+              try {
+                window.reminderEditor.recreate();
+              } catch (e) {}
             }
-            if (window.reminderEditor && typeof window.reminderEditor.previewing === "function") {
-              try { window.reminderEditor.previewing(); } catch (e) {}
+            if (
+              window.reminderEditor &&
+              typeof window.reminderEditor.previewing === "function"
+            ) {
+              try {
+                window.reminderEditor.previewing();
+              } catch (e) {}
             }
           } catch (e) {}
         }, 60);
@@ -42356,7 +42421,7 @@ async function openReminderEditModal(reminderId = "") {
                   window.reminderEditor.setMarkdown(reminder.message || "");
                 } else if (window.reminderEditor.codeMirror) {
                   window.reminderEditor.codeMirror.setValue(
-                    reminder.message || ""
+                    reminder.message || "",
                   );
                 }
               } catch (e) {
@@ -42515,7 +42580,7 @@ async function saveReminder() {
       showModalAlert(
         isUpdate ? "提醒更新成功" : "提醒添加成功",
         "成功",
-        "success"
+        "success",
       );
       // 清空输入（兼容 editormd 编辑器或普通 textarea）
       try {
@@ -42579,7 +42644,7 @@ async function toggleReminderEnabled(reminderId, newEnabledState) {
 
     if (result.success) {
       console.log(
-        `[定时提醒] 提醒状态已更新: ID=${reminderId}, enabled=${newEnabledState}`
+        `[定时提醒] 提醒状态已更新: ID=${reminderId}, enabled=${newEnabledState}`,
       );
       loadReminders();
     } else {
@@ -42594,7 +42659,7 @@ async function deleteReminder(reminderId, reminderTitle) {
   const confirmed = await Swal.fire({
     title: "确认删除？",
     html: `确定要删除提醒 <strong>${escapeHtml(
-      reminderTitle
+      reminderTitle,
     )}</strong> 吗？<br><span class="text-sm text-slate-500">此操作不可恢复</span>`,
     icon: "warning",
     showCancelButton: true,
@@ -42731,7 +42796,7 @@ async function checkAndShowReminders() {
           try {
             if (
               document.querySelector(
-                isCss ? `link[href="${url}"]` : `script[src="${url}"]`
+                isCss ? `link[href="${url}"]` : `script[src="${url}"]`,
               )
             )
               return resolve();
@@ -42783,7 +42848,7 @@ async function checkAndShowReminders() {
           try {
             if (
               document.querySelector(
-                isCss ? `link[href="${url}"]` : `script[src="${url}"]`
+                isCss ? `link[href="${url}"]` : `script[src="${url}"]`,
               )
             )
               return resolve();
@@ -42824,7 +42889,7 @@ async function checkAndShowReminders() {
           await loadOnce("/editor.md/lib/jquery.flowchart.min.js", false).catch(
             () => {
               console.warn("延迟加载 jquery.flowchart 失败");
-            }
+            },
           );
           await loadOnce("/editor.md/lib/raphael.min.js", false).catch(() => {
             console.warn("延迟加载 raphael 失败");
@@ -42832,12 +42897,12 @@ async function checkAndShowReminders() {
           await loadOnce("/editor.md/lib/sequence-diagram.min.js", false).catch(
             () => {
               console.warn("延迟加载 sequence-diagram 失败");
-            }
+            },
           );
           await loadOnce("/editor.md/lib/underscore.min.js", false).catch(
             () => {
               console.warn("延迟加载 underscore 失败");
-            }
+            },
           );
         }, 500);
       };
@@ -42855,7 +42920,7 @@ async function checkAndShowReminders() {
             '<link rel="stylesheet" href="/editor.md/css/editormd.css" /> <link rel="stylesheet" href="/editor.md/css/editormd.preview.css" />';
           console.log(
             "[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容: ",
-            md
+            md,
           );
           document.body.appendChild(tmp);
           try {
@@ -42878,12 +42943,12 @@ async function checkAndShowReminders() {
             const html = tmp.innerHTML;
             console.log(
               "[定时提醒] editormd.markdownToHTML 渲染完成，结果：",
-              html
+              html,
             );
             document.body.removeChild(tmp);
             console.log(
               "[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容成功，内容：",
-              html
+              html,
             );
             return html;
           } catch (e) {
@@ -42900,13 +42965,13 @@ async function checkAndShowReminders() {
       } catch (err) {
         console.warn(
           "[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容失败，尝试加载依赖并重试:",
-          err
+          err,
         );
 
         try {
           await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
           await loadOnce("/editor.md/lib/prettify.min.js", false).catch(
-            () => {}
+            () => {},
           );
         } catch (e) {
           console.warn("[定时提醒] 加载 editormd 依赖失败:", e);
@@ -42918,7 +42983,7 @@ async function checkAndShowReminders() {
         } catch (err2) {
           console.warn(
             "[定时提醒] 重试 editormd.renderMarkdownToHtml 仍然失败，回退为转义文本:",
-            err2
+            err2,
           );
         }
       }
@@ -42937,7 +43002,7 @@ async function checkAndShowReminders() {
       let swalHtmlContent = await renderMarkdownToHtml(reminder.message);
 
       console.log(
-        `[定时提醒] 准备显示单个提醒: ${reminder.title}, 内容： ${swalHtmlContent}`
+        `[定时提醒] 准备显示单个提醒: ${reminder.title}, 内容： ${swalHtmlContent}`,
       );
 
       // 使用 SweetAlert2 显示提醒弹窗
@@ -43013,7 +43078,7 @@ async function checkAndShowReminders() {
           console.log(
             `[定时提醒] 已显示第 ${i + 1}/${newReminders.length} 条提醒: ${
               reminder.title
-            }`
+            }`,
           );
 
           // 如果不是最后一个提醒，添加一个延迟
@@ -43080,7 +43145,7 @@ async function loadSSLInfo() {
               html += `<div class="flex justify-between">
               <span class="text-slate-600">主题 (Subject):</span>
               <span class="font-mono text-sm">${escapeHtml(
-                data.cert_info.subject
+                data.cert_info.subject,
               )}</span>
             </div>`;
             }
@@ -43089,7 +43154,7 @@ async function loadSSLInfo() {
               html += `<div class="flex justify-between">
               <span class="text-slate-600">颁发者 (Issuer):</span>
               <span class="font-mono text-sm">${escapeHtml(
-                data.cert_info.issuer
+                data.cert_info.issuer,
               )}</span>
             </div>`;
             }
@@ -43098,7 +43163,7 @@ async function loadSSLInfo() {
               html += `<div class="flex justify-between">
               <span class="text-slate-600">生效日期:</span>
               <span class="text-sm">${formatDate(
-                data.cert_info.not_before
+                data.cert_info.not_before,
               )}</span>
             </div>`;
             }
@@ -43109,7 +43174,7 @@ async function loadSSLInfo() {
               html += `<div class="flex justify-between">
               <span class="text-slate-600">过期日期:</span>
               <span class="text-sm ${expiryClass}">${formatDate(
-                data.cert_info.not_after
+                data.cert_info.not_after,
               )}</span>
             </div>`;
 
@@ -43124,7 +43189,7 @@ async function loadSSLInfo() {
               <div class="mt-1 flex flex-wrap gap-1">`;
               data.cert_info.san.forEach((domain) => {
                 html += `<span class="px-2 py-1 bg-slate-100 rounded text-xs">${escapeHtml(
-                  domain
+                  domain,
                 )}</span>`;
               });
               html += `</div></div>`;
@@ -43140,7 +43205,7 @@ async function loadSSLInfo() {
               errorMsg = `SSL已启用，但证书加载失败: ${data.cert_info.error}`;
             }
             certInfoContent.innerHTML = `<p class="text-amber-600 text-center py-4">${escapeHtml(
-              errorMsg
+              errorMsg,
             )}</p>`;
           } else {
             certInfoContent.innerHTML =
@@ -43555,15 +43620,15 @@ async function loadBruteforceStatus() {
                 <div class="flex-1">
                   <div class="font-semibold text-sm">
                     ${statusIcon} 账号：<span class="font-mono">${escapeHtml(
-            task.account
-          )}</span>
+                      task.account,
+                    )}</span>
                   </div>
                   <div class="text-xs mt-1">状态：${statusText}</div>
                 </div>
                 ${
                   task.status === "running"
                     ? `<button class="btn btn-sm btn-secondary !py-1 !px-2 text-xs" onclick="stopBruteforce('${escapeHtml(
-                        task.account
+                        task.account,
                       )}')">停止</button>`
                     : ""
                 }
@@ -43575,7 +43640,7 @@ async function loadBruteforceStatus() {
                 ${
                   task.status === "success" && task.password
                     ? `<div class="font-semibold text-green-900">密码：<span class="font-mono bg-white px-2 py-1 rounded">${escapeHtml(
-                        task.password
+                        task.password,
                       )}</span></div>`
                     : ""
                 }
@@ -43700,7 +43765,7 @@ async function startBruteforce() {
       // 显示成功消息
       showModalAlert(
         `已成功启动 ${accounts.length} 个账号的密码恢复任务`,
-        "启动成功"
+        "启动成功",
       );
 
       // 清空输入框
@@ -43870,28 +43935,28 @@ async function saveSystemConfig() {
       System: {
         session_expiry_days: parseInt(
           $("config-System-session_expiry_days").value,
-          10
+          10,
         ),
         school_accounts_dir: $("config-System-school_accounts_dir").value,
         system_accounts_dir: $("config-System-system_accounts_dir").value,
         permissions_file: $("config-System-permissions_file").value,
         session_monitor_check_interval: parseInt(
           $("config-System-session_monitor_check_interval").value,
-          10
+          10,
         ),
         session_inactivity_timeout: parseInt(
           $("config-System-session_inactivity_timeout").value,
-          10
+          10,
         ),
       },
       Logging: {
         log_rotation_size_mb: parseInt(
           $("config-Logging-log_rotation_size_mb").value,
-          10
+          10,
         ),
         archive_max_size_mb: parseInt(
           $("config-Logging-archive_max_size_mb").value,
-          10
+          10,
         ),
         log_dir: $("config-Logging-log_dir").value,
         archive_dir: $("config-Logging-archive_dir").value,
@@ -43902,14 +43967,11 @@ async function saveSystemConfig() {
           $("config-Security-brute_force_protection").value === "true",
         login_log_retention_days: parseInt(
           $("config-Security-login_log_retention_days").value,
-          10
+          10,
         ),
       },
       Map: {
         amap_js_key: $("config-Map-amap_js_key").value,
-      },
-      API: {
-        ip_api_key: $("config-API-ip_api_key").value,
       },
       // ==================== 网站备案信息配置保存 ====================
       // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中
@@ -43967,7 +44029,7 @@ async function saveSystemConfig() {
     if (result.success) {
       showModalAlert(
         "配置已保存。请注意，部分配置（如路径）需要重启程序才能生效。",
-        "保存成功"
+        "保存成功",
       );
       showButtonSuccess(btn, "保存成功", 2000);
     } else {
@@ -44013,7 +44075,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const smsSection = document.getElementById("auth-sms-section");
     if (smsSection) smsSection.style.display = "none";
     const adminModifySmsGroup = document.getElementById(
-      "admin-modify-phone-sms-group"
+      "admin-modify-phone-sms-group",
     );
     if (adminModifySmsGroup) adminModifySmsGroup.style.display = "none";
     const newUserSmsGroup = document.getElementById("newUserSmsGroup");
@@ -44025,12 +44087,31 @@ document.addEventListener("DOMContentLoaded", function () {
     if (regPhoneDiv) regPhoneDiv.style.display = "none";
     const regSmsDiv = document.getElementById("auth-reg-sms-wrapper");
     if (regSmsDiv) regSmsDiv.style.display = "none";
+    // 移动端注册表单：隐藏手机号和短信验证码区域
+    const mobileRegPhoneDiv = document.getElementById("mobile-reg-phone-wrapper");
+    if (mobileRegPhoneDiv) mobileRegPhoneDiv.style.display = "none";
+    const mobileRegSmsDiv = document.getElementById("mobile-reg-sms-wrapper");
+    if (mobileRegSmsDiv) mobileRegSmsDiv.style.display = "none";
     const profileModifyBtn = document.getElementById(
-      "profile-modify-phone-btn"
+      "profile-modify-phone-btn",
     );
     if (profileModifyBtn) profileModifyBtn.style.display = "none";
     const profilePhoneHint = document.getElementById("profile-phone-hint");
     if (profilePhoneHint) profilePhoneHint.style.display = "none";
+  }
+  if (!config.enable_phone_login) {
+    console.log("手机号验证码登录已禁用，隐藏登录类型切换按钮并启用手机号自动识别...");
+    // 隐藏 PC 端登录类型切换按钮组
+    const loginTypeToggle = document.getElementById("auth-login-type-toggle");
+    if (loginTypeToggle) loginTypeToggle.style.display = "none";
+    // 隐藏移动端登录类型切换按钮组
+    const mobileLoginTypeToggle = document.getElementById("mobile-login-type-toggle");
+    if (mobileLoginTypeToggle) mobileLoginTypeToggle.style.display = "none";
+    // 隐藏"使用验证码登录"入口（PC 和移动端）
+    const switchToSmsBtn = document.getElementById("auth-switch-to-sms");
+    if (switchToSmsBtn) switchToSmsBtn.style.display = "none";
+    const mobileSwitchToSms = document.getElementById("mobile-switch-to-sms");
+    if (mobileSwitchToSms) mobileSwitchToSms.style.display = "none";
   }
   console.log("[定时提醒] 正在启动定时提醒检查器...");
   startReminderChecker();
@@ -44066,7 +44147,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (
           !(await checkButtonPermission(
             "mobile-import-button",
-            "use_import_button"
+            "use_import_button",
           ))
         ) {
           return;
@@ -44085,7 +44166,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // 【移动端参数设置面板】
   // ========================================
   const mobileParamsContainer = document.getElementById(
-    "mobile-params-container"
+    "mobile-params-container",
   );
   if (mobileParamsContainer && typeof createParamInputs === "function") {
     const excludeGroups = ["主题设置", "自动签到"];
@@ -44108,7 +44189,7 @@ document.addEventListener("DOMContentLoaded", function () {
           console.log(`[移动端] 参数已更新: ${key} = ${value}`);
         }
       },
-      excludeGroups
+      excludeGroups,
     );
     console.log("[移动端] 参数设置面板已初始化");
   }
@@ -44118,7 +44199,7 @@ document.addEventListener("DOMContentLoaded", function () {
   console.log("[移动端] 开始初始化Phase 4d全局设置面板...");
   // 获取多账号全局参数容器元素
   const mobileMultiGlobalParamsContainer = document.getElementById(
-    "mobile-multi-global-params-container"
+    "mobile-multi-global-params-container",
   );
   // 检查容器和创建函数是否存在
   if (
@@ -44151,7 +44232,7 @@ document.addEventListener("DOMContentLoaded", function () {
           console.log(`[移动端多账号] 全局参数已更新: ${key} = ${value}`);
         }
       },
-      excludeGroups
+      excludeGroups,
     );
     // 检查是否可以自动填充配置值
     if (
@@ -44162,12 +44243,12 @@ document.addEventListener("DOMContentLoaded", function () {
       updateParamInputs(
         mobileMultiGlobalParamsContainer,
         "mobile-multi-param",
-        pythonParams
+        pythonParams,
       );
       console.log("[移动端] 多账号全局参数已自动填充配置数值");
     } else {
       console.warn(
-        "[移动端] pythonParams或updateParamInputs未定义，无法自动填充配置"
+        "[移动端] pythonParams或updateParamInputs未定义，无法自动填充配置",
       );
     }
 
@@ -44182,7 +44263,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (typeof pythonParams !== "undefined") {
     // 初始化自动签到开关的值
     const autoAttendanceEnabled = document.getElementById(
-      "mobile-multi-auto_attendance_enabled"
+      "mobile-multi-auto_attendance_enabled",
     );
     if (autoAttendanceEnabled) {
       // 设置复选框的选中状态
@@ -44194,7 +44275,7 @@ document.addEventListener("DOMContentLoaded", function () {
           callPythonAPI(
             "update_param",
             "auto_attendance_enabled",
-            this.checked
+            this.checked,
           );
           console.log(`[移动端多账号] 自动签到开关已更新: ${this.checked}`);
         }
@@ -44203,7 +44284,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // 初始化刷新间隔输入框的值
     const autoAttendanceRefresh = document.getElementById(
-      "mobile-multi-auto_attendance_refresh_s"
+      "mobile-multi-auto_attendance_refresh_s",
     );
     if (autoAttendanceRefresh) {
       // 设置输入框的值
@@ -44221,7 +44302,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // 初始化随机半径输入框的值
     const attendanceRadius = document.getElementById(
-      "mobile-multi-attendance_user_radius_m"
+      "mobile-multi-attendance_user_radius_m",
     );
     if (attendanceRadius) {
       // 设置输入框的值
@@ -44241,7 +44322,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // 获取配置文件选择器元素
   const configSelect = document.getElementById(
-    "mobile-multi-config-user-select"
+    "mobile-multi-config-user-select",
   );
   if (configSelect) {
     if (!configSelect._refreshBound) {
@@ -44326,7 +44407,7 @@ async function initMobileAdminPanel(prefix) {
         {
           success: pricingConfigData.success, // API调用是否成功
           hasConfig: !!pricingConfigData.config, // 是否包含config字段
-        }
+        },
       );
     }
   } catch (error) {
@@ -44589,8 +44670,8 @@ async function initMobileAdminPanel(prefix) {
         决策说明: isAdmin
           ? "管理员：始终显示"
           : requirePayment
-          ? "普通用户：系统启用付费，显示支付历史"
-          : "普通用户：系统未启用付费，隐藏支付历史",
+            ? "普通用户：系统启用付费，显示支付历史"
+            : "普通用户：系统未启用付费，隐藏支付历史",
       });
 
       return shouldShowPaymentLogs;
@@ -44635,7 +44716,7 @@ function initMobileMultiAdminButtonEvents() {
   // ========== 权限组管理相关按钮 ==========
   // 新增权限组按钮
   const createGroupBtn = document.getElementById(
-    "mobile-multi-admin-create-group"
+    "mobile-multi-admin-create-group",
   );
   if (createGroupBtn) {
     createGroupBtn.onclick = function () {
@@ -44645,7 +44726,7 @@ function initMobileMultiAdminButtonEvents() {
 
   // 刷新权限组按钮
   const refreshGroupsBtn = document.getElementById(
-    "mobile-multi-admin-refresh-groups"
+    "mobile-multi-admin-refresh-groups",
   );
   if (refreshGroupsBtn) {
     refreshGroupsBtn.onclick = function () {
@@ -44656,7 +44737,7 @@ function initMobileMultiAdminButtonEvents() {
   // ========== 日志查看相关控件 ==========
   // 日志行数选择变化时重新加载
   const logLimitSelect = document.getElementById(
-    "mobile-multi-log-limit-select"
+    "mobile-multi-log-limit-select",
   );
   if (logLimitSelect) {
     logLimitSelect.onchange = function () {
@@ -44677,7 +44758,7 @@ function initMobileMultiAdminButtonEvents() {
 
   // 日志刷新按钮
   const refreshLogsBtn = document.getElementById(
-    "mobile-multi-admin-refresh-logs"
+    "mobile-multi-admin-refresh-logs",
   );
   if (refreshLogsBtn) {
     refreshLogsBtn.onclick = function () {
@@ -44690,7 +44771,7 @@ function initMobileMultiAdminButtonEvents() {
   if (logPrevBtn) {
     logPrevBtn.onclick = function () {
       const pageSelect = document.getElementById(
-        "mobile-multi-log-page-select"
+        "mobile-multi-log-page-select",
       );
       const currentPage = pageSelect ? parseInt(pageSelect.value, 10) : 1;
       if (currentPage > 1) {
@@ -44703,7 +44784,7 @@ function initMobileMultiAdminButtonEvents() {
   if (logNextBtn) {
     logNextBtn.onclick = function () {
       const pageSelect = document.getElementById(
-        "mobile-multi-log-page-select"
+        "mobile-multi-log-page-select",
       );
       const totalPages = parseInt(pageSelect?.dataset.totalPages || "1", 10);
       const currentPage = pageSelect ? parseInt(pageSelect.value, 10) : 1;
@@ -44716,7 +44797,7 @@ function initMobileMultiAdminButtonEvents() {
   // ========== 健康状态相关控件 ==========
   // 自动刷新开关
   const healthAutoRefreshToggle = document.getElementById(
-    "mobile-multi-health-auto-refresh-toggle"
+    "mobile-multi-health-auto-refresh-toggle",
   );
   if (healthAutoRefreshToggle) {
     healthAutoRefreshToggle.onchange = function () {
@@ -44734,7 +44815,7 @@ function initMobileMultiAdminButtonEvents() {
 
   // 手动刷新按钮
   const refreshHealthBtn = document.getElementById(
-    "mobile-multi-admin-refresh-health"
+    "mobile-multi-admin-refresh-health",
   );
   if (refreshHealthBtn) {
     refreshHealthBtn.onclick = function () {
@@ -44745,7 +44826,7 @@ function initMobileMultiAdminButtonEvents() {
   // ========== 留言板相关 ==========
   // 刷新留言按钮
   const refreshMessagesBtn = document.getElementById(
-    "mobile-multi-admin-refresh-messages"
+    "mobile-multi-admin-refresh-messages",
   );
   if (refreshMessagesBtn) {
     refreshMessagesBtn.onclick = function () {
@@ -44755,7 +44836,7 @@ function initMobileMultiAdminButtonEvents() {
 
   // 发送留言按钮
   const sendMessageBtn = document.getElementById(
-    "mobile-multi-post-message-btn"
+    "mobile-multi-post-message-btn",
   );
   if (sendMessageBtn) {
     sendMessageBtn.onclick = function () {
@@ -44765,10 +44846,10 @@ function initMobileMultiAdminButtonEvents() {
 
   // 留言内容字符计数
   const messageContentInput = document.getElementById(
-    "mobile-multi-message-content"
+    "mobile-multi-message-content",
   );
   const charCountDisplay = document.getElementById(
-    "mobile-multi-message-char-count"
+    "mobile-multi-message-char-count",
   );
   if (messageContentInput && charCountDisplay) {
     messageContentInput.oninput = function () {
@@ -44778,7 +44859,7 @@ function initMobileMultiAdminButtonEvents() {
 
   // ========== 验证码管理相关 (修复无法点击问题) ==========
   const saveCaptchaBtn = document.getElementById(
-    "mobile-save-captcha-settings-btn"
+    "mobile-save-captcha-settings-btn",
   );
   if (saveCaptchaBtn) {
     saveCaptchaBtn.onclick = function () {
@@ -44887,7 +44968,7 @@ function startMobileMultiHealthAutoRefresh() {
   stopMobileMultiHealthAutoRefresh();
 
   const autoRefreshToggle = document.getElementById(
-    "mobile-multi-health-auto-refresh-toggle"
+    "mobile-multi-health-auto-refresh-toggle",
   );
   if (!autoRefreshToggle || !autoRefreshToggle.checked) {
     return;
@@ -44909,7 +44990,7 @@ function startMobileMultiHealthAutoRefresh() {
   // 自动刷新
   mobileMultiHealthAutoRefreshInterval = setInterval(() => {
     const toggle = document.getElementById(
-      "mobile-multi-health-auto-refresh-toggle"
+      "mobile-multi-health-auto-refresh-toggle",
     );
     if (toggle && toggle.checked) {
       loadMobileMultiHealthStatus();
@@ -44922,7 +45003,7 @@ function startMobileMultiHealthAutoRefresh() {
 
 function updateMobileMultiHealthCountdown() {
   const countdownDisplay = document.getElementById(
-    "mobile-multi-health-countdown-display"
+    "mobile-multi-health-countdown-display",
   );
   if (countdownDisplay) {
     if (mobileMultiHealthCountdownSeconds > 0) {
@@ -44943,7 +45024,7 @@ function stopMobileMultiHealthAutoRefresh() {
     mobileMultiHealthCountdownInterval = null;
   }
   const countdownDisplay = document.getElementById(
-    "mobile-multi-health-countdown-display"
+    "mobile-multi-health-countdown-display",
   );
   if (countdownDisplay) {
     countdownDisplay.textContent = "";
@@ -44952,7 +45033,7 @@ function stopMobileMultiHealthAutoRefresh() {
 
 async function loadMobileMultiHealthStatus() {
   const contentEl = document.getElementById(
-    "mobile-multi-admin-health-content"
+    "mobile-multi-admin-health-content",
   );
 
   if (!contentEl) {
@@ -44988,7 +45069,7 @@ async function loadMobileMultiHealthStatus() {
         <pre class="text-[10px] text-slate-600 whitespace-pre-wrap font-mono overflow-x-auto">${JSON.stringify(
           result,
           null,
-          2
+          2,
         )}</pre>
       </div>
     `;
@@ -45005,7 +45086,7 @@ async function loadMobileMultiMessages() {
   const listEl = document.getElementById("mobile-multi-admin-messages-list");
   // [新增] 获取游客输入框容器
   const guestFields = document.getElementById(
-    "mobile-multi-message-guest-fields"
+    "mobile-multi-message-guest-fields",
   );
 
   if (!listEl) {
@@ -45019,7 +45100,8 @@ async function loadMobileMultiMessages() {
     const isGuest =
       typeof currentUserIsGuest !== "undefined" ? currentUserIsGuest : true;
     guestFields.style.display = isGuest ? "block" : "none";
-    if (!isGuest) guestFields.classList.add("hidden"); // 确保样式一致性
+    if (!isGuest)
+      guestFields.classList.add("hidden"); // 确保样式一致性
     else guestFields.classList.remove("hidden");
   }
 
@@ -45081,7 +45163,7 @@ async function loadMobileMultiMessages() {
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap mb-1">
                   <span class="font-bold text-slate-800 text-base truncate">${escapeHtml(
-                    displayName
+                    displayName,
                   )}</span>
                   ${
                     msg.is_guest
@@ -45091,7 +45173,7 @@ async function loadMobileMultiMessages() {
                   ${
                     ipCity
                       ? `<span class="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded-full flex-shrink-0">📍 ${escapeHtml(
-                          ipCity
+                          ipCity,
                         )}</span>`
                       : ""
                   }
@@ -45099,7 +45181,7 @@ async function loadMobileMultiMessages() {
                 ${
                   msg.email
                     ? `<p class="text-xs text-slate-600 truncate mb-1">${escapeHtml(
-                        msg.email
+                        msg.email,
                       )}</p>`
                     : ""
                 }
@@ -45118,7 +45200,7 @@ async function loadMobileMultiMessages() {
           </div>
           <div class="pt-2 border-t border-slate-100">
               <p class="text-base text-slate-800 whitespace-pre-wrap break-words leading-relaxed">${escapeHtml(
-                msg.content
+                msg.content,
               )}</p>
           </div>
         </div>
@@ -45137,7 +45219,7 @@ async function submitMobileMultiMessage() {
   // 1. 获取DOM元素
   const contentInput = document.getElementById("mobile-multi-message-content");
   const nicknameInput = document.getElementById(
-    "mobile-multi-message-nickname"
+    "mobile-multi-message-nickname",
   );
   const emailInput = document.getElementById("mobile-multi-message-email");
   const postBtn = document.getElementById("mobile-multi-post-message-btn");
@@ -45464,7 +45546,7 @@ async function showMobileCreateGroupModal() {
       const firstGroup = Object.values(result.groups)[0];
       if (firstGroup && firstGroup.permissions) {
         const permissionsContainer = document.getElementById(
-          "mobile-create-group-permissions"
+          "mobile-create-group-permissions",
         );
         if (permissionsContainer) {
           permissionsContainer.innerHTML = Object.keys(firstGroup.permissions)
@@ -45473,10 +45555,10 @@ async function showMobileCreateGroupModal() {
             <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
               <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}">
               <span class="text-sm text-slate-700">${translatePermission(
-                perm
+                perm,
               )}</span>
             </label>
-          `
+          `,
             )
             .join("");
         }
@@ -45507,7 +45589,7 @@ async function submitMobileCreateGroup() {
   const keyInput = document.getElementById("mobile-new-group-key");
   const nameInput = document.getElementById("mobile-new-group-name");
   const permissionsContainer = document.getElementById(
-    "mobile-create-group-permissions"
+    "mobile-create-group-permissions",
   );
 
   const groupKey = keyInput ? keyInput.value.trim() : "";
@@ -45521,7 +45603,7 @@ async function submitMobileCreateGroup() {
   const permissions = {};
   if (permissionsContainer) {
     const checkboxes = permissionsContainer.querySelectorAll(
-      'input[type="checkbox"]'
+      'input[type="checkbox"]',
     );
     checkboxes.forEach((cb) => {
       const perm = cb.getAttribute("data-permission");
@@ -45615,14 +45697,14 @@ async function showMobileEditGroupModal(groupKey) {
     const group = result.groups[groupKey];
 
     const nameDisplay = document.getElementById(
-      "mobile-edit-group-name-display"
+      "mobile-edit-group-name-display",
     );
     if (nameDisplay) {
       nameDisplay.textContent = `${group.name} (${groupKey})`;
     }
 
     const permissionsContainer = document.getElementById(
-      "mobile-edit-group-permissions"
+      "mobile-edit-group-permissions",
     );
     if (permissionsContainer && group.permissions) {
       permissionsContainer.innerHTML = Object.keys(group.permissions)
@@ -45630,13 +45712,13 @@ async function showMobileEditGroupModal(groupKey) {
           (perm) => `
               <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
                 <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" ${
-            group.permissions[perm] ? "checked" : ""
-          }>
+                  group.permissions[perm] ? "checked" : ""
+                }>
                 <span class="text-sm text-slate-700">${translatePermission(
-                  perm
+                  perm,
                 )}</span>
               </label>
-            `
+            `,
         )
         .join("");
     }
@@ -45668,13 +45750,13 @@ async function submitMobileEditGroup() {
   if (!mobileCurrentEditGroupKey) return;
 
   const permissionsContainer = document.getElementById(
-    "mobile-edit-group-permissions"
+    "mobile-edit-group-permissions",
   );
   if (!permissionsContainer) return;
 
   const permissions = {};
   const checkboxes = permissionsContainer.querySelectorAll(
-    'input[type="checkbox"]'
+    'input[type="checkbox"]',
   );
   checkboxes.forEach((cb) => {
     const perm = cb.getAttribute("data-permission");
@@ -45760,7 +45842,7 @@ function switchMobileAdminTab(tabId, prefix) {
 
   if (!tabsNav || !content) {
     console.error(
-      `[移动端管理面板] 找不到容器元素: tabsNavId=${tabsNavId}, contentId=${contentId}`
+      `[移动端管理面板] 找不到容器元素: tabsNavId=${tabsNavId}, contentId=${contentId}`,
     );
     return;
   }
@@ -45825,7 +45907,7 @@ function switchMobileAdminTab(tabId, prefix) {
       if (panel) panel.classList.add("hidden");
     });
     const captchaHistoryPanelMobile = document.getElementById(
-      "admin-captcha-history-panel_modal"
+      "admin-captcha-history-panel_modal",
     );
     if (captchaHistoryPanelMobile)
       captchaHistoryPanelMobile.classList.add("hidden");
@@ -45865,7 +45947,7 @@ function switchMobileAdminTab(tabId, prefix) {
         // 【修正】单账号面板：检查上帝模式权限
         checkAdminPermission("god_mode").then((hasPermission) => {
           const singleGodToggle = document.getElementById(
-            "mobile-god-mode-toggle-panel"
+            "mobile-god-mode-toggle-panel",
           );
           if (singleGodToggle) {
             singleGodToggle.style.display = hasPermission ? "flex" : "none";
@@ -45960,7 +46042,7 @@ function switchMobileAdminTab(tabId, prefix) {
     } else {
       // 如果找不到目标面板，输出警告日志便于调试
       console.warn(
-        `[移动端多账号管理面板] 找不到目标面板: ${targetMultiPanelId}`
+        `[移动端多账号管理面板] 找不到目标面板: ${targetMultiPanelId}`,
       );
     }
 
@@ -45986,7 +46068,7 @@ function switchMobileAdminTab(tabId, prefix) {
         loadMobileMultiHealthStatus();
         // 检查是否需要启动自动刷新
         const healthToggle = document.getElementById(
-          "mobile-multi-health-auto-refresh-toggle"
+          "mobile-multi-health-auto-refresh-toggle",
         );
         if (healthToggle && healthToggle.checked) {
           startMobileMultiHealthAutoRefresh();
@@ -46000,7 +46082,7 @@ function switchMobileAdminTab(tabId, prefix) {
         // 【修正】检查上帝模式权限并控制开关显示
         checkAdminPermission("god_mode").then((hasPermission) => {
           const godToggle = document.getElementById(
-            "mobile-multi-god-mode-toggle"
+            "mobile-multi-god-mode-toggle",
           );
           if (godToggle) {
             godToggle.style.display = hasPermission ? "flex" : "none";
@@ -46223,7 +46305,7 @@ function copyAdminContentToMobile(tabType, mobileContentId) {
 
   if (!pcContainer || !mobileContainer) {
     console.error(
-      `[移动端管理面板] 找不到容器: PC=${pcContainerId}, Mobile=${mobileContentId}`
+      `[移动端管理面板] 找不到容器: PC=${pcContainerId}, Mobile=${mobileContentId}`,
     );
     mobileContainer.innerHTML =
       '<p class="text-red-500 text-center py-10 text-sm">加载失败</p>';
@@ -46299,7 +46381,7 @@ function copyAdminContentToPanelVersion(tabType) {
 
   if (!pcContainer || !mobileContainer) {
     logMessage_Error(
-      `[移动端管理面板] 找不到容器: PC=${mapping.pc}, Mobile=${mapping.mobile}`
+      `[移动端管理面板] 找不到容器: PC=${mapping.pc}, Mobile=${mapping.mobile}`,
     );
     if (mobileContainer) {
       mobileContainer.innerHTML =
@@ -46401,7 +46483,7 @@ function copyAdminContentToMultiPanel(tabType) {
   if (!pcContainer || !mobileContainer) {
     // 输出错误日志，便于调试
     logMessage_Error(
-      `[多账号移动端管理面板] 找不到容器: PC=${mapping.pc}, Mobile=${mapping.mobile}`
+      `[多账号移动端管理面板] 找不到容器: PC=${mapping.pc}, Mobile=${mapping.mobile}`,
     );
     // 如果移动端容器存在但PC端不存在，显示加载失败提示
     if (mobileContainer) {
@@ -46424,12 +46506,12 @@ function copyAdminContentToMultiPanel(tabType) {
 
       // 账户密码查看
       let match = onclickAttr.match(
-        /showUserSchoolAccounts\(['"]([^'"]+)['"]\)/
+        /showUserSchoolAccounts\(['"]([^'"]+)['"]\)/,
       );
       if (match) {
         btn.setAttribute(
           "onclick",
-          `showMobileUserSchoolAccounts('${match[1]}')`
+          `showMobileUserSchoolAccounts('${match[1]}')`,
         );
         return;
       }
@@ -46443,12 +46525,12 @@ function copyAdminContentToMultiPanel(tabType) {
 
       // 会话管理
       match = onclickAttr.match(
-        /setUserMaxSessions\(['"]([^'"]+)['"],\s*(-?\d+)\)/
+        /setUserMaxSessions\(['"]([^'"]+)['"],\s*(-?\d+)\)/,
       );
       if (match) {
         btn.setAttribute(
           "onclick",
-          `showMobileUserSessions('${match[1]}', ${match[2]})`
+          `showMobileUserSessions('${match[1]}', ${match[2]})`,
         );
         return;
       }
@@ -46462,24 +46544,24 @@ function copyAdminContentToMultiPanel(tabType) {
 
       // 修改昵称
       match = onclickAttr.match(
-        /modifyUserNickname\(['"]([^'"]+)['"],\s*['"]([^'"]*)['"]\)/
+        /modifyUserNickname\(['"]([^'"]+)['"],\s*['"]([^'"]*)['"]\)/,
       );
       if (match) {
         btn.setAttribute(
           "onclick",
-          `showMobileModifyNickname('${match[1]}', '${match[2]}')`
+          `showMobileModifyNickname('${match[1]}', '${match[2]}')`,
         );
         return;
       }
 
       // 修改手机
       match = onclickAttr.match(
-        /modifyUserPhone\(['"]([^'"]+)['"],\s*['"]([^'"]*)['"]\)/
+        /modifyUserPhone\(['"]([^'"]+)['"],\s*['"]([^'"]*)['"]\)/,
       );
       if (match) {
         btn.setAttribute(
           "onclick",
-          `showMobileAdminModifyPhone('${match[1]}', '${match[2]}')`
+          `showMobileAdminModifyPhone('${match[1]}', '${match[2]}')`,
         );
         return;
       }
@@ -46518,7 +46600,7 @@ function copyAdminContentToMultiPanel(tabType) {
     // 2. 【修复】手动查找并绑定 "新增权限组" 和 "刷新" 按钮
     // 这些按钮从PC端复制过来后失去了事件监听器，需要重新绑定
     const createGroupBtn = mobileContainer.querySelector(
-      '[id="admin-create-group_modal"]'
+      '[id="admin-create-group_modal"]',
     );
     if (createGroupBtn) {
       // 移除可能存在的旧ID避免冲突（可选），并绑定移动端新增函数
@@ -46526,13 +46608,13 @@ function copyAdminContentToMultiPanel(tabType) {
     }
 
     const refreshGroupBtn = mobileContainer.querySelector(
-      '[id="admin-refresh-groups_modal"]'
+      '[id="admin-refresh-groups_modal"]',
     );
     if (refreshGroupBtn) {
       // 绑定刷新逻辑：加载数据 -> 再次同步到移动端
       refreshGroupBtn.setAttribute(
         "onclick",
-        "loadAdminGroups().then(() => copyAdminContentToMultiPanel('groups'))"
+        "loadAdminGroups().then(() => copyAdminContentToMultiPanel('groups'))",
       );
     }
   }
@@ -46728,7 +46810,7 @@ async function confirmMobileAvatarCrop() {
           closeMobileAvatarCropModal();
           // 刷新个人信息
           loadPersonalInfo().then(() =>
-            copyAdminContentToMultiPanel("profile")
+            copyAdminContentToMultiPanel("profile"),
           );
         } else {
           showModalAlert(result.message || "上传失败", "错误");
@@ -46739,7 +46821,7 @@ async function confirmMobileAvatarCrop() {
       }
     },
     "image/png",
-    0.9
+    0.9,
   );
 }
 
@@ -46801,7 +46883,7 @@ function showMobileModifyPhoneModal() {
 
   // 填入当前手机号
   const currentPhoneInput = document.getElementById(
-    "mobile-modify-phone-current"
+    "mobile-modify-phone-current",
   );
   if (currentPhoneInput && currentUserData && currentUserData.phone) {
     currentPhoneInput.value = currentUserData.phone;
@@ -46955,7 +47037,7 @@ async function loadMobileUnifiedProfile() {
 
       // 更新头像
       const avatarDisplay = document.getElementById(
-        "mobile-unified-profile-avatar-display"
+        "mobile-unified-profile-avatar-display",
       );
       if (avatarDisplay) {
         let avatarUrl = data.avatar_url || "default_avatar.png";
@@ -46978,7 +47060,7 @@ async function loadMobileUnifiedProfile() {
 
       // 更新昵称
       const nicknameInput = document.getElementById(
-        "mobile-unified-profile-nickname"
+        "mobile-unified-profile-nickname",
       );
       if (nicknameInput) {
         nicknameInput.value = data.nickname || "";
@@ -46986,7 +47068,7 @@ async function loadMobileUnifiedProfile() {
 
       // 更新手机号
       const phoneInput = document.getElementById(
-        "mobile-unified-profile-phone"
+        "mobile-unified-profile-phone",
       );
       if (phoneInput) {
         phoneInput.value = data.phone || "未绑定";
@@ -47000,13 +47082,29 @@ async function loadMobileUnifiedProfile() {
           }
           phoneWrapper.classList.toggle("prefix-hidden", isUnbound);
         }
+        // 根据 enable_phone_modification 配置控制修改手机号按钮和提示的显示
+        const appConfig = window.APP_CONFIG || {};
+        const modifyPhoneBtn = document.getElementById("mobile-unified-modify-phone-btn");
+        const modifyPhoneHint = document.getElementById("mobile-unified-modify-phone-hint");
+        if (!appConfig.enable_phone_modification) {
+          if (modifyPhoneBtn) modifyPhoneBtn.style.display = "none";
+          if (modifyPhoneHint) modifyPhoneHint.style.display = "none";
+          if (phoneInput) phoneInput.readOnly = true;
+        } else {
+          if (modifyPhoneBtn) modifyPhoneBtn.style.display = "";
+          if (modifyPhoneHint) modifyPhoneHint.style.display = "";
+        }
+        const mobileForgotPasswordHint = document.getElementById("mobile-forgot-password-hint");
+        if (mobileForgotPasswordHint) {
+          mobileForgotPasswordHint.style.display = appConfig.enable_phone_modification ? "" : "none";
+        }
         // --- 新增：更新 2FA 状态 ---
         const tfaStatus = document.getElementById("mobile-unified-2fa-status");
         const tfaActions = document.getElementById(
-          "mobile-unified-2fa-actions"
+          "mobile-unified-2fa-actions",
         );
         const tfaEnabledActions = document.getElementById(
-          "mobile-unified-2fa-enabled-actions"
+          "mobile-unified-2fa-enabled-actions",
         );
         const tfaSetup = document.getElementById("mobile-unified-2fa-setup");
 
@@ -47031,7 +47129,7 @@ async function loadMobileUnifiedProfile() {
 
         // --- 新增：更新主题设置 ---
         const themeSelect = document.getElementById(
-          "mobile-unified-theme-select"
+          "mobile-unified-theme-select",
         );
         if (themeSelect && data.theme) {
           themeSelect.value = data.theme;
@@ -47044,10 +47142,10 @@ async function loadMobileUnifiedProfile() {
             if (paramsResult.theme_base_color) {
               // 修正：同步更新取色器和文本框，使用新ID
               const colorPicker = document.getElementById(
-                "mobile-unified-theme_base_color-picker"
+                "mobile-unified-theme_base_color-picker",
               );
               const colorText = document.getElementById(
-                "mobile-unified-theme_base_color"
+                "mobile-unified-theme_base_color",
               );
               if (colorPicker)
                 colorPicker.value = paramsResult.theme_base_color;
@@ -47077,7 +47175,7 @@ async function loadMobileUnifiedProfile() {
           // 这是一个增强功能，即使失败也不应该阻断个人信息的加载
           console.warn(
             "[移动端统一面板-个人信息] 更新 available_runs 显示失败:",
-            e
+            e,
           );
         }
       }
@@ -47231,7 +47329,7 @@ async function confirmMobileUnifiedAvatarCrop() {
       }
     },
     "image/png",
-    0.9
+    0.9,
   );
 }
 
@@ -47246,7 +47344,7 @@ function showMobileUnifiedModifyPhoneModal() {
       if (e.target === modal) closeMobileUnifiedModifyPhoneModal();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileUnifiedModifyPhoneModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
         <div class="flex justify-center mb-2">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
@@ -47327,7 +47425,7 @@ function showMobileUnifiedModifyPhoneModal() {
   // 填充当前手机号
   const currentPhone = document.getElementById("mobile-unified-profile-phone");
   const currentPhoneModal = document.getElementById(
-    "mobile-unified-modify-phone-current"
+    "mobile-unified-modify-phone-current",
   );
   if (currentPhoneModal && currentPhone) {
     currentPhoneModal.value = currentPhone.value || "";
@@ -47345,7 +47443,7 @@ function showMobileUnifiedModifyPhoneModal() {
 
   // 清空新手机号和验证码
   const newPhoneInput = document.getElementById(
-    "mobile-unified-modify-phone-new"
+    "mobile-unified-modify-phone-new",
   );
   const codeInput = document.getElementById("mobile-unified-modify-phone-code");
   if (newPhoneInput) newPhoneInput.value = "";
@@ -47375,13 +47473,13 @@ async function sendMobileUnifiedModifyPhoneCode() {
   if (mobileUnifiedModifyPhoneCooldown > 0) {
     showModalAlert(
       `请等待 ${mobileUnifiedModifyPhoneCooldown} 秒后再发送`,
-      "提示"
+      "提示",
     );
     return;
   }
 
   const newPhoneInput = document.getElementById(
-    "mobile-unified-modify-phone-new"
+    "mobile-unified-modify-phone-new",
   );
   const phone = newPhoneInput ? newPhoneInput.value.trim() : "";
 
@@ -47391,7 +47489,7 @@ async function sendMobileUnifiedModifyPhoneCode() {
   }
 
   const sendBtn = document.getElementById(
-    "mobile-unified-modify-phone-send-code"
+    "mobile-unified-modify-phone-send-code",
   );
   if (sendBtn) sendBtn.disabled = true;
 
@@ -47486,7 +47584,7 @@ async function updateMobileUnifiedBasicInfo() {
           "X-Session-ID": sessionUUID,
         },
         body: JSON.stringify({ nickname: nickname }),
-      }
+      },
     );
 
     const result = await response.json();
@@ -47509,15 +47607,15 @@ async function updateMobileUnifiedBasicInfo() {
 async function updateMobileUnifiedPassword() {
   // 获取当前密码输入框DOM元素
   const currentPasswordInput = document.getElementById(
-    "mobile-unified-current-password"
+    "mobile-unified-current-password",
   );
   // 获取新密码输入框DOM元素
   const newPasswordInput = document.getElementById(
-    "mobile-unified-new-password"
+    "mobile-unified-new-password",
   );
   // 获取确认新密码输入框DOM元素
   const confirmPasswordInput = document.getElementById(
-    "mobile-unified-confirm-password"
+    "mobile-unified-confirm-password",
   );
 
   // 获取输入框的值
@@ -47548,7 +47646,7 @@ async function updateMobileUnifiedPassword() {
     if (!currentPassword) {
       showModalAlert(
         '请输入当前密码，或点击"使用短信验证"通过短信验证码修改密码',
-        "提示"
+        "提示",
       );
       return;
     }
@@ -47698,7 +47796,7 @@ async function generateMobileUnified2FA() {
               console.error("QR Code generation error:", error);
               showModalAlert("二维码生成失败", "错误");
             }
-          }
+          },
         );
       } else {
         showModalAlert("QRCode库未加载，请刷新页面重试", "错误");
@@ -47748,7 +47846,7 @@ async function enableMobileUnified2FA() {
 async function disableMobileUnified2FA() {
   const confirmed = await jsShowConfirm(
     "确认关闭2FA",
-    "关闭双因素认证后，账号安全性将降低。确定要继续吗？"
+    "关闭双因素认证后，账号安全性将降低。确定要继续吗？",
   );
   if (!confirmed) return;
 
@@ -47813,7 +47911,7 @@ function setMobileUnifiedThemeStyle(styleName) {
   // 更新移动端面板内的按钮高亮状态
   // 修正：直接定位到样式预设的容器 ID
   const container = document.getElementById(
-    "mobile-unified-theme-style-presets"
+    "mobile-unified-theme-style-presets",
   );
   if (container) {
     const buttons = container.querySelectorAll("button");
@@ -47828,7 +47926,7 @@ function setMobileUnifiedThemeStyle(styleName) {
           "text-sky-600",
           "font-bold",
           "text-xs",
-          "shadow-sm"
+          "shadow-sm",
         );
       } else {
         // 未选中状态：恢复默认灰边
@@ -47838,7 +47936,7 @@ function setMobileUnifiedThemeStyle(styleName) {
           "text-sky-600",
           "font-bold",
           "text-xs",
-          "shadow-sm"
+          "shadow-sm",
         );
         btn.classList.add("border-slate-300", "text-[10px]");
       }
@@ -47885,9 +47983,8 @@ async function showMobileUserSchoolAccounts(username) {
     document.body.appendChild(modal);
   }
 
-  document.getElementById(
-    "mobile-school-accounts-username"
-  ).textContent = `用户: ${username}`;
+  document.getElementById("mobile-school-accounts-username").textContent =
+    `用户: ${username}`;
   document.getElementById("mobile-school-accounts-list").innerHTML =
     '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
 
@@ -47899,19 +47996,18 @@ async function showMobileUserSchoolAccounts(username) {
 
   try {
     const response = await fetch(
-      `/auth/get_user_school_accounts?username=${encodeURIComponent(username)}`,
+      `/auth/get_user_school_accounts_only?username=${encodeURIComponent(username)}`,
       {
         headers: { "X-Session-ID": sessionUUID },
-      }
+      },
     );
     const result = await response.json();
 
     if (!result.success) {
-      document.getElementById(
-        "mobile-school-accounts-list"
-      ).innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${
-        result.message || "加载失败"
-      }</p>`;
+      document.getElementById("mobile-school-accounts-list").innerHTML =
+        `<p class="text-red-500 text-center py-10 text-xs">${
+          result.message || "加载失败"
+        }</p>`;
       return;
     }
 
@@ -47941,7 +48037,7 @@ async function showMobileUserSchoolAccounts(username) {
             <div class="flex-1 min-w-0">
               <div class="text-xs text-slate-500 font-medium">学校账号</div>
               <div class="font-semibold text-slate-800 text-sm truncate">${escapeHtml(
-                schoolUsername
+                schoolUsername,
               )}</div>
             </div>
           </div>
@@ -47952,7 +48048,7 @@ async function showMobileUserSchoolAccounts(username) {
             <div class="flex-1 min-w-0">
               <div class="text-xs text-slate-500 font-medium">密码</div>
               <div class="font-mono text-xs text-slate-700 select-all bg-white px-3 py-1 rounded-md border border-slate-300 shadow-sm">${escapeHtml(
-                password
+                password,
               )}</div>
             </div>
           </div>
@@ -47966,7 +48062,7 @@ async function showMobileUserSchoolAccounts(username) {
             ${
               ua
                 ? `<div class="text-xs text-slate-600 break-words bg-slate-100 px-3 py-2 rounded-md border max-h-auto overflow-y-hidden">${escapeHtml(
-                    ua
+                    ua,
                   )}</div>`
                 : '<div class="text-xs text-slate-400 italic text-center py-2">无UA信息</div>'
             }
@@ -47995,7 +48091,7 @@ async function showMobileUserSchoolAccounts(username) {
             <button 
               class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors max-h-[36px] flex items-center justify-center gap-2"
               onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
-                schoolUsername
+                schoolUsername,
               )}')"
               title="查看此账户的详细信息（备份数据、欠费次数等）">
               <!-- 眼睛图标 -->
@@ -48028,9 +48124,8 @@ async function showMobileUserSchoolAccounts(username) {
 
     document.getElementById("mobile-school-accounts-list").innerHTML = html;
   } catch (e) {
-    document.getElementById(
-      "mobile-school-accounts-list"
-    ).innerHTML = `<p class="text-red-500 text-center py-10 text-xs">加载失败: ${e.message}</p>`;
+    document.getElementById("mobile-school-accounts-list").innerHTML =
+      `<p class="text-red-500 text-center py-10 text-xs">加载失败: ${e.message}</p>`;
   }
 }
 
@@ -48084,9 +48179,8 @@ async function showMobileUserLogs(username) {
   }
 
   window.currentMobileLogUsername = username;
-  document.getElementById(
-    "mobile-user-logs-username"
-  ).textContent = `用户: ${username}`;
+  document.getElementById("mobile-user-logs-username").textContent =
+    `用户: ${username}`;
 
   // [修正] 添加 show 类以触发显示动画
   modal.classList.remove("hidden");
@@ -48140,7 +48234,7 @@ async function loadMobileUserLoginLogs(username) {
       `/api/admin/logs/login_history?username=${encodeURIComponent(username)}`,
       {
         headers: { "X-Session-ID": sessionUUID },
-      }
+      },
     );
     const data = await response.json();
 
@@ -48168,7 +48262,7 @@ async function loadMobileUserLoginLogs(username) {
               : ""
           }
         </div>
-      `
+      `,
         )
         .join("");
     } else {
@@ -48190,7 +48284,7 @@ async function loadMobileUserAuditLogs(username) {
       `/api/admin/logs/audit?username=${encodeURIComponent(username)}`,
       {
         headers: { "X-Session-ID": sessionUUID },
-      }
+      },
     );
     const data = await response.json();
 
@@ -48209,7 +48303,7 @@ async function loadMobileUserAuditLogs(username) {
           </div>
           <div class="text-xs text-slate-600">${log.details || "无详情"}</div>
         </div>
-      `
+      `,
         )
         .join("");
     } else {
@@ -48289,7 +48383,7 @@ function closeMobileUserSessions() {
 async function submitMobileUserSessions() {
   const username = window.currentMobileSessionsUsername;
   const newMax = parseInt(
-    document.getElementById("mobile-new-max-sessions").value
+    document.getElementById("mobile-new-max-sessions").value,
   );
 
   if (isNaN(newMax) || newMax < 0) {
@@ -48315,7 +48409,7 @@ async function submitMobileUserSessions() {
         `已更新用户 ${username} 的最大会话数为: ${
           maxSessions === -1 ? "无限制" : maxSessions
         }`,
-        "成功"
+        "成功",
       );
       closeMobileUserSessions();
       loadAdminUsers().then(() => copyAdminContentToMultiPanel("users"));
@@ -48415,10 +48509,10 @@ async function showMobileUserPermissions(username) {
           return `
           <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer border ${statusClass}">
             <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" data-group-value="${groupValue}" ${
-            currentValue ? "checked" : ""
-          }>
+              currentValue ? "checked" : ""
+            }>
             <span class="text-xs text-slate-700 flex-1">${translatePermission(
-              perm
+              perm,
             )}</span>
             ${
               isAdded
@@ -48828,7 +48922,7 @@ async function submitMobileResetPassword() {
       "密码长度不足, 当前输入密码：" +
         newPassword +
         "， 长度：" +
-        newPassword.length
+        newPassword.length,
     );
     showModalAlert("密码长度至少为6个字符", "错误");
     return;
@@ -48903,7 +48997,7 @@ async function addMobileSelectedConfig() {
       }
     } catch (error) {
       console.warn(
-        `[移动端-添加配置] 无法加载 school_accounts: ${error.message}`
+        `[移动端-添加配置] 无法加载 school_accounts: ${error.message}`,
       );
     }
   }
@@ -48912,7 +49006,7 @@ async function addMobileSelectedConfig() {
     const result = await callPythonAPI(
       "multi_add_account",
       user,
-      passwordToUse
+      passwordToUse,
     );
 
     if (
@@ -48922,7 +49016,7 @@ async function addMobileSelectedConfig() {
     ) {
       showModalAlert(
         `账号 ${result.username} 缺少密码，请在弹窗中补全。`,
-        "缺少密码"
+        "缺少密码",
       );
       // 打开手动添加模态框并预填用户名
       openManualAccountModal();
@@ -48991,14 +49085,14 @@ async function addMobileAllConfigs() {
               });
               if (updatedCount > 0) {
                 console.log(
-                  `[移动端-批量添加] 已从 school_accounts 更新 ${updatedCount} 个账号的密码和UA`
+                  `[移动端-批量添加] 已从 school_accounts 更新 ${updatedCount} 个账号的密码和UA`,
                 );
               }
             }
           }
         } catch (error) {
           console.warn(
-            `[移动端-批量添加] 无法加载 school_accounts: ${error.message}`
+            `[移动端-批量添加] 无法加载 school_accounts: ${error.message}`,
           );
         }
       }
@@ -49014,7 +49108,7 @@ async function addMobileAllConfigs() {
       const firstMissing = result.accounts_missing_password[0].username;
       showModalAlert(
         `批量添加完成。\n但有 ${missingCount} 个账号缺少密码（如 ${firstMissing}）。\n请使用"手动添加"功能补全密码。`,
-        "提示"
+        "提示",
       );
     } else {
       showModalAlert("批量添加配置成功", "成功");
@@ -49148,7 +49242,7 @@ async function mobileRefreshSelectedAccounts() {
   try {
     // 1. 查找移动端账号列表中所有被选中的复选框
     const selected = document.querySelectorAll(
-      '#mobile-multi-account-list input[type="checkbox"]:checked'
+      '#mobile-multi-account-list input[type="checkbox"]:checked',
     );
 
     // 2. 检查是否有选中的账号，如果没有则提示用户并退出
@@ -49206,7 +49300,7 @@ async function deleteMobileSelectedAccounts() {
     if (!container) return;
 
     const selectedCheckboxes = container.querySelectorAll(
-      'input[type="checkbox"]:checked'
+      'input[type="checkbox"]:checked',
     );
 
     if (selectedCheckboxes.length === 0) {
@@ -49216,7 +49310,7 @@ async function deleteMobileSelectedAccounts() {
 
     // 2. 提取选中的用户名
     const selectedUsernames = Array.from(selectedCheckboxes).map(
-      (cb) => cb.closest("[data-username]").dataset.username
+      (cb) => cb.closest("[data-username]").dataset.username,
     );
 
     showMobileConfirm(
@@ -49227,7 +49321,7 @@ async function deleteMobileSelectedAccounts() {
           // 3. 直接调用后端API，不再通过 multi_removeSelected 代理
           const result = await callPythonAPI(
             "multi_remove_selected_accounts",
-            selectedUsernames
+            selectedUsernames,
           );
 
           if (result && result.success) {
@@ -49245,7 +49339,7 @@ async function deleteMobileSelectedAccounts() {
           console.error("[移动端] 删除选中账号失败:", error);
           showModalAlert("删除失败", "错误");
         }
-      }
+      },
     );
   } catch (error) {
     console.error("[移动端] 删除选中账号失败:", error);
@@ -49270,7 +49364,7 @@ async function deleteMobileAllAccounts() {
           console.error("[移动端] 删除所有账号失败:", error);
           showModalAlert("删除失败", "错误");
         }
-      }
+      },
     );
   } catch (error) {
     console.error("[移动端] 删除所有账号失败:", error);
@@ -49290,11 +49384,11 @@ function saveMobileMultiGlobalSettings() {
   try {
     // 获取整个设置面板容器，以便收集所有参数（包括自动签到设置区域）
     const settingsPanel = document.getElementById(
-      "mobile-multi-settings-panel"
+      "mobile-multi-settings-panel",
     );
     // 同时获取原有的全局参数容器，用于向后兼容
     const container = document.getElementById(
-      "mobile-multi-global-params-container"
+      "mobile-multi-global-params-container",
     );
 
     // 如果两个容器都不存在，则显示错误提示并返回
@@ -49446,7 +49540,7 @@ async function openMobileHistoryModal(taskId, taskName) {
         const minutes = Math.floor(record.duration / 60);
         const seconds = record.duration % 60;
         const durationStr = `${String(minutes).padStart(2, "0")}:${String(
-          seconds
+          seconds,
         ).padStart(2, "0")}`;
         const statusColors = {
           completed: "green",
@@ -49526,7 +49620,7 @@ async function openMobileTrackModal(recordId, taskId) {
           "Content-Type": "application/json",
           "X-Session-ID": sessionUUID,
         },
-      }
+      },
     );
     if (!response.ok) {
       throw new Error("获取路径数据失败");
@@ -49547,7 +49641,7 @@ async function openMobileTrackModal(recordId, taskId) {
       const min = Math.floor(data.duration / 60);
       const sec = data.duration % 60;
       durEl.textContent = `${String(min).padStart(2, "0")}:${String(
-        sec
+        sec,
       ).padStart(2, "0")}`;
     }
     if (paceEl && data.pace) {
@@ -49570,7 +49664,7 @@ async function openMobileTrackModal(recordId, taskId) {
             image:
               "data:image/svg+xml;base64," +
               btoa(
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#22c55e" width="32" height="32"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold">起</text></svg>'
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#22c55e" width="32" height="32"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold">起</text></svg>',
               ),
             size: new AMapInstance.Size(32, 32),
           }),
@@ -49585,7 +49679,7 @@ async function openMobileTrackModal(recordId, taskId) {
             image:
               "data:image/svg+xml;base64," +
               btoa(
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ef4444" width="32" height="32"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold">终</text></svg>'
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ef4444" width="32" height="32"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold">终</text></svg>',
               ),
             size: new AMapInstance.Size(32, 32),
           }),
@@ -49603,7 +49697,7 @@ async function openMobileTrackModal(recordId, taskId) {
                 btoa(
                   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#f59e0b" width="28" height="28"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><text x="12" y="12" text-anchor="middle" fill="white" font-size="8" font-weight="bold">${
                     idx + 1
-                  }</text></svg>`
+                  }</text></svg>`,
                 ),
               size: new AMapInstance.Size(28, 28),
             }),
@@ -49632,7 +49726,7 @@ async function initMobileTrackMap() {
         viewMode: "2D",
         zoom: 15,
         center: [113.390342, 22.527403],
-      }
+      },
     );
   } catch (error) {
     console.error("初始化路径地图失败:", error);
@@ -49697,7 +49791,7 @@ async function openMobileMapAttendanceModal(noticeId, targetCoords) {
   modal.classList.remove("hidden");
   const coordsDisplay = document.getElementById("mobile-map-attendance-coords");
   const confirmBtn = document.getElementById(
-    "mobile-map-attendance-confirm-btn"
+    "mobile-map-attendance-confirm-btn",
   );
   if (coordsDisplay) coordsDisplay.textContent = "未选择";
   if (confirmBtn) confirmBtn.disabled = true;
@@ -49732,7 +49826,7 @@ async function initMobileMapAttendance(targetCoords) {
         mapStyle: "amap://styles/normal",
         showLabel: true,
         viewMode: "2D",
-      }
+      },
     );
     console.log("[地图选点] 地图实例创建成功");
     const targetMarker = new AMap.Marker({
@@ -49759,13 +49853,13 @@ async function initMobileMapAttendance(targetCoords) {
       console.log("[地图选点] 用户点击位置", { lng, lat });
       mobileMapAttendanceSelected = [lng, lat];
       const coordsDisplay = document.getElementById(
-        "mobile-map-attendance-coords"
+        "mobile-map-attendance-coords",
       );
       if (coordsDisplay) {
         coordsDisplay.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
       }
       const confirmBtn = document.getElementById(
-        "mobile-map-attendance-confirm-btn"
+        "mobile-map-attendance-confirm-btn",
       );
       if (confirmBtn) {
         confirmBtn.disabled = false;
@@ -49809,7 +49903,7 @@ async function confirmMobileMapAttendance() {
     return;
   }
   const confirmBtn = document.getElementById(
-    "mobile-map-attendance-confirm-btn"
+    "mobile-map-attendance-confirm-btn",
   );
   if (confirmBtn) {
     confirmBtn.disabled = true;
@@ -50032,7 +50126,7 @@ function mobileValidateIPBanTarget() {
   const banTypeSelect = document.getElementById("mobile-multi-ban-type");
   const banTargetInput = document.getElementById("mobile-multi-ban-target");
   const banTargetError = document.getElementById(
-    "mobile-multi-ban-target-error"
+    "mobile-multi-ban-target-error",
   );
 
   // 如果元素不存在则返回false
@@ -50130,7 +50224,7 @@ async function mobileAddIPBan() {
 
       // 清除错误提示状态
       const banTargetError = document.getElementById(
-        "mobile-multi-ban-target-error"
+        "mobile-multi-ban-target-error",
       );
       const banTargetInput = document.getElementById("mobile-multi-ban-target");
       if (banTargetError) banTargetError.classList.add("hidden");
@@ -50179,7 +50273,7 @@ async function mobileRefreshIPBanList() {
             <div class="bg-white border border-slate-200 rounded-lg p-3 flex justify-between items-center">
               <div class="flex-1">
                 <span class="font-semibold text-sm text-slate-800">${escapeHtml(
-                  ban.target
+                  ban.target,
                 )}</span>
                 <div class="flex gap-2 mt-1">
                   <span class="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">${
@@ -50197,7 +50291,7 @@ async function mobileRefreshIPBanList() {
                 删除
               </button>
             </div>
-          `
+          `,
         )
         .join("");
     } else {
@@ -50460,11 +50554,11 @@ function mobileHandleSmsMainSwitch() {
   // 如果主开关关闭，同时关闭所有子功能
   if (!mainSwitch.checked) {
     const phoneModification = document.getElementById(
-      "mobile-sms-enable-phone-modification"
+      "mobile-sms-enable-phone-modification",
     );
     const phoneLogin = document.getElementById("mobile-sms-enable-phone-login");
     const phoneRegistrationVerify = document.getElementById(
-      "mobile-sms-enable-phone-registration-verify"
+      "mobile-sms-enable-phone-registration-verify",
     );
 
     if (phoneModification) phoneModification.checked = false;
@@ -50620,7 +50714,7 @@ async function mobileLoadCaptchaSettings() {
       // 步骤7：记录成功加载的日志，包含实际加载的配置值
       console.log(
         "[移动端验证码] 成功从 /api/captcha/config 加载配置:",
-        settings
+        settings,
       );
 
       // 步骤8：显示成功提示（使用移动端专用的提示函数）
@@ -50726,13 +50820,13 @@ async function mobileSaveCaptchaSettings() {
 
     // 获取表单数据
     const length = parseInt(
-      document.getElementById("mobile-captcha-length")?.value
+      document.getElementById("mobile-captcha-length")?.value,
     );
     const scale_factor = parseInt(
-      document.getElementById("mobile-captcha-scale-factor")?.value
+      document.getElementById("mobile-captcha-scale-factor")?.value,
     );
     const noise_level = parseFloat(
-      document.getElementById("mobile-captcha-noise-level")?.value
+      document.getElementById("mobile-captcha-noise-level")?.value,
     );
 
     // 参数验证
@@ -50757,7 +50851,7 @@ async function mobileSaveCaptchaSettings() {
         length: length,
         scale_factor: scale_factor,
         noise_level: noise_level,
-      }
+      },
     );
 
     if (result && result.success) {
@@ -50782,18 +50876,16 @@ async function mobileSaveCaptchaSettings() {
  * 移动端测试验证码生成
  */
 async function mobileTestCaptcha() {
-
-
-      // UI反馈：禁用按钮并显示加载状态
-    try {
-      const testCaptchaBtnEl = $("mobile-test-captcha-btn");
-      if (testCaptchaBtnEl) {
-        testCaptchaBtnEl.classList.add("btn-loading");
-        testCaptchaBtnEl.setAttribute("disabled", "disabled");
-      }
-    } catch (e) {
-      console.error("设置测试按钮加载状态失败:", e);
+  // UI反馈：禁用按钮并显示加载状态
+  try {
+    const testCaptchaBtnEl = $("mobile-test-captcha-btn");
+    if (testCaptchaBtnEl) {
+      testCaptchaBtnEl.classList.add("btn-loading");
+      testCaptchaBtnEl.setAttribute("disabled", "disabled");
     }
+  } catch (e) {
+    console.error("设置测试按钮加载状态失败:", e);
+  }
 
   try {
     console.log("[移动端验证码] 测试生成验证码...");
@@ -50806,7 +50898,7 @@ async function mobileTestCaptcha() {
       2;
     const noise_level =
       parseFloat(
-        document.getElementById("mobile-captcha-noise-level")?.value
+        document.getElementById("mobile-captcha-noise-level")?.value,
       ) || 0.08;
 
     if (isNaN(length) || length < 3 || length > 6) {
@@ -50835,8 +50927,8 @@ async function mobileTestCaptcha() {
     }
 
     Background_width =
-          document.getElementById("mobile-multi-admin-captcha-panel")
-            .clientWidth - 35;
+      document.getElementById("mobile-multi-admin-captcha-panel").clientWidth -
+      35;
 
     // 调用后端API生成验证码 - 使用正确的 API 端点 /api/captcha/test_generate
     const response = await fetch("/api/captcha/test_generate", {
@@ -50850,7 +50942,7 @@ async function mobileTestCaptcha() {
         length,
         scale_factor,
         noise_level,
-        weight:Background_width
+        weight: Background_width,
       }),
     });
 
@@ -50858,13 +50950,13 @@ async function mobileTestCaptcha() {
 
     // 显示预览区域
     const previewContainer = document.getElementById(
-      "mobile-captcha-test-preview"
+      "mobile-captcha-test-preview",
     );
     const previewDisplay = document.getElementById(
-      "mobile-captcha-preview-display"
+      "mobile-captcha-preview-display",
     );
     const previewAnswer = document.getElementById(
-      "mobile-captcha-preview-answer"
+      "mobile-captcha-preview-answer",
     );
 
     if (previewContainer && previewDisplay && previewAnswer) {
@@ -50875,8 +50967,8 @@ async function mobileTestCaptcha() {
       // 检查后端返回结果是否成功
       if (result && result.success) {
         // 判断后端返回的验证码格式类型
-        captchaWidth=result.width || 343;
-        captchaHeight=result.height || 119;
+        captchaWidth = result.width || 343;
+        captchaHeight = result.height || 119;
 
         console.log("移动端验证码面板宽度", Background_width);
         if (result.captcha_id) {
@@ -51069,7 +51161,7 @@ function openMobileCaptchaHistoryModal() {
 
   // 初始化日期选择器为当天日期
   const dateInput = document.getElementById(
-    "mobile-captcha-history-modal-date"
+    "mobile-captcha-history-modal-date",
   );
   if (dateInput && !dateInput.value) {
     // 设置日期为今天，格式为 YYYY-MM-DD
@@ -51078,7 +51170,7 @@ function openMobileCaptchaHistoryModal() {
 
   // 重置状态筛选为全部
   const statusSelect = document.getElementById(
-    "mobile-captcha-history-modal-status"
+    "mobile-captcha-history-modal-status",
   );
   if (statusSelect) {
     statusSelect.value = "";
@@ -51123,15 +51215,15 @@ function closeMobileCaptchaHistoryModal() {
 async function loadMobileCaptchaHistoryModal() {
   // 获取列表容器元素
   const listContainer = document.getElementById(
-    "mobile-captcha-history-modal-list"
+    "mobile-captcha-history-modal-list",
   );
   // 获取日期输入框
   const dateInput = document.getElementById(
-    "mobile-captcha-history-modal-date"
+    "mobile-captcha-history-modal-date",
   );
   // 获取状态筛选下拉框
   const statusSelect = document.getElementById(
-    "mobile-captcha-history-modal-status"
+    "mobile-captcha-history-modal-status",
   );
 
   // 检查必要元素是否存在
@@ -51144,7 +51236,10 @@ async function loadMobileCaptchaHistoryModal() {
   listContainer.innerHTML =
     '<p class="text-slate-400 text-center py-10 text-sm">⏳ 加载中...</p>';
 
-  const need_weight= document.getElementById("mobile-captcha-history-modal-list").clientWidth -  document.getElementById("mobile-captcha-history-modal-list").offsetLeft -50;
+  const need_weight =
+    document.getElementById("mobile-captcha-history-modal-list").clientWidth -
+    document.getElementById("mobile-captcha-history-modal-list").offsetLeft -
+    50;
   console.log("移动端验证码历史模态框宽度:", need_weight);
 
   try {
@@ -51160,10 +51255,13 @@ async function loadMobileCaptchaHistoryModal() {
     }
 
     // 调用后端API获取验证码历史记录
-    const response = await fetch(`/api/captcha/history?${params}&weight=${need_weight}`, {
-      method: "GET",
-      headers: { "X-Session-ID": sessionUUID },
-    });
+    const response = await fetch(
+      `/api/captcha/history?${params}&weight=${need_weight}`,
+      {
+        method: "GET",
+        headers: { "X-Session-ID": sessionUUID },
+      },
+    );
     const result = await response.json();
 
     // 检查请求是否成功
@@ -51193,14 +51291,17 @@ async function loadMobileCaptchaHistoryModal() {
       console.log("[移动端验证码历史] code字段值:", records[0].code);
     }
 
-
     // 更新统计数据（若模态框中存在对应元素）
     const total = records.length;
-    const success = records.filter((r) => r.status === "verified_success").length;
+    const success = records.filter(
+      (r) => r.status === "verified_success",
+    ).length;
     const failed = records.filter((r) => r.status === "verified_failed").length;
     const pending = records.filter((r) => r.status === "created").length;
     const expired = records.filter((r) => r.status === "expired").length;
-    const testGenerated = records.filter((r) => r.status === "test_generated").length;
+    const testGenerated = records.filter(
+      (r) => r.status === "test_generated",
+    ).length;
     const statTotal = document.getElementById("mobile-captcha-stat-total");
     const statSuccess = document.getElementById("mobile-captcha-stat-success");
     const statFailed = document.getElementById("mobile-captcha-stat-failed");
@@ -51238,7 +51339,8 @@ async function loadMobileCaptchaHistoryModal() {
       const captchaCode = record.code || record.captcha_code || "N/A";
 
       const itemDiv = document.createElement("div");
-      itemDiv.className = "bg-white border border-slate-200 rounded-lg p-3 shadow-sm mb-2";
+      itemDiv.className =
+        "bg-white border border-slate-200 rounded-lg p-3 shadow-sm mb-2";
       itemDiv.innerHTML = `
         <div class="flex justify-between items-start mb-2">
           <div class="flex items-center gap-2">
@@ -51247,7 +51349,9 @@ async function loadMobileCaptchaHistoryModal() {
           </div>
           <div class="flex items-center gap-2">
             <span class="text-xs text-slate-400">${
-              record.timestamp_readable ? record.timestamp_readable.split(" ")[1] : "N/A"
+              record.timestamp_readable
+                ? record.timestamp_readable.split(" ")[1]
+                : "N/A"
             }</span>
             <button class="btn btn-ghost btn-sm !py-1 !px-2 text-xs" onclick="showCaptchaDetail('${record.captcha_id}')">详情</button>
           </div>
@@ -51290,7 +51394,7 @@ async function loadMobileCaptchaHistoryModal() {
 async function mobileRefreshReminders() {
   // 获取移动端提醒列表容器
   const listContainer = document.getElementById(
-    "mobile-multi-admin-reminders-content"
+    "mobile-multi-admin-reminders-content",
   );
   if (!listContainer) {
     console.error("[移动端提醒] 找不到列表容器");
@@ -51325,7 +51429,7 @@ async function mobileRefreshReminders() {
     const statTotal = document.getElementById("mobile-reminder-stat-total");
     const statEnabled = document.getElementById("mobile-reminder-stat-enabled");
     const statDisabled = document.getElementById(
-      "mobile-reminder-stat-disabled"
+      "mobile-reminder-stat-disabled",
     );
     if (statTotal) statTotal.textContent = total;
     if (statEnabled) statEnabled.textContent = enabled;
@@ -51353,7 +51457,7 @@ async function mobileRefreshReminders() {
             <!-- 标题和状态 -->
             <div class="flex items-center gap-2 mb-1">
               <h5 class="font-semibold text-sm text-slate-800 truncate">${escapeHtml(
-                reminder.title
+                reminder.title,
               )}</h5>
               <span class="text-xs px-1.5 py-0.5 rounded ${
                 reminder.enabled
@@ -51363,15 +51467,15 @@ async function mobileRefreshReminders() {
             </div>
             <!-- 提醒内容 -->
             <p class="text-xs text-slate-600 mb-2 line-clamp-2">${escapeHtml(
-              reminder.message
+              reminder.message,
             )}</p>
             <!-- 时间范围 -->
             <div class="flex items-center gap-1 text-xs ${
               isCrossDay ? "text-purple-600" : "text-blue-600"
             }">
               <span>${timeIcon} ${reminder.start_time} - ${
-        reminder.end_time
-      } ${timeHint}</span>
+                reminder.end_time
+              } ${timeHint}</span>
             </div>
           </div>
           <!-- 操作按钮 -->
@@ -51384,15 +51488,15 @@ async function mobileRefreshReminders() {
             <button onclick="mobileToggleReminderEnabled('${
               reminder.id
             }', ${!reminder.enabled})" class="btn btn-ghost !py-1 !px-2 text-xs min-h-[32px] ${
-        reminder.enabled ? "text-yellow-600" : "text-green-600"
-      }">
+              reminder.enabled ? "text-yellow-600" : "text-green-600"
+            }">
               ${reminder.enabled ? "禁用" : "启用"}
             </button>
             <button onclick="deleteMobileReminder('${
               reminder.id
             }', '${escapeHtml(
-        reminder.title
-      )}')" class="btn btn-ghost !py-1 !px-2 text-xs min-h-[32px] text-red-600">
+              reminder.title,
+            )}')" class="btn btn-ghost !py-1 !px-2 text-xs min-h-[32px] text-red-600">
               删除
             </button>
           </div>
@@ -51485,10 +51589,10 @@ async function openMobileReminderEditModal(reminderId = "") {
   const titleField = document.getElementById("mobile-reminder-title-field");
   const messageField = document.getElementById("mobile-reminder-message-field");
   const startTimeField = document.getElementById(
-    "mobile-reminder-start-time-field"
+    "mobile-reminder-start-time-field",
   );
   const endTimeField = document.getElementById(
-    "mobile-reminder-end-time-field"
+    "mobile-reminder-end-time-field",
   );
   const enabledField = document.getElementById("mobile-reminder-enabled-field");
 
@@ -51666,7 +51770,7 @@ async function mobileToggleReminderEnabled(reminderId, newEnabledState) {
 
     if (result.success) {
       console.log(
-        `[移动端提醒] 提醒状态已更新: ID=${reminderId}, enabled=${newEnabledState}`
+        `[移动端提醒] 提醒状态已更新: ID=${reminderId}, enabled=${newEnabledState}`,
       );
       // 刷新移动端和PC端提醒列表
       mobileRefreshReminders();
@@ -51691,7 +51795,7 @@ async function deleteMobileReminder(reminderId, reminderTitle) {
   // 显示确认对话框
   const confirmed = await showMobileConfirmAsync(
     "确认删除",
-    `确定要删除提醒「${reminderTitle}」吗？此操作不可恢复。`
+    `确定要删除提醒「${reminderTitle}」吗？此操作不可恢复。`,
   );
   if (!confirmed) return;
 
@@ -52064,7 +52168,7 @@ async function loadInitialData(options = {}) {
     ) {
       // 记录日志：请求被限流
       console.log(
-        `[初始化] 请求被限流，返回缓存数据（距上次请求 ${timeSinceLastRequest}ms）`
+        `[初始化] 请求被限流，返回缓存数据（距上次请求 ${timeSinceLastRequest}ms）`,
       );
 
       // 直接返回缓存的响应数据
@@ -52084,7 +52188,7 @@ async function loadInitialData(options = {}) {
       params.frontend_logs = options.frontend_logs;
       console.log(
         "[初始化] 携带前端日志数据，数量:",
-        Array.isArray(options.frontend_logs) ? options.frontend_logs.length : 1
+        Array.isArray(options.frontend_logs) ? options.frontend_logs.length : 1,
       );
     }
 
@@ -52140,7 +52244,7 @@ async function loadInitialData(options = {}) {
         // 日志记录：帮助开发者调试，了解任务列表更新的触发情况
         console.log(
           "[初始化] 已自动更新密码恢复任务列表，任务数量:",
-          response.bruteforce_task_list.length
+          response.bruteforce_task_list.length,
         );
       }
       // 如果bruteforce_task_list不存在，说明：
@@ -52159,7 +52263,7 @@ async function loadInitialData(options = {}) {
         // 日志记录：记录获取到的账号数量
         console.log(
           "[初始化] 已自动获取多账号状态，账号数量:",
-          response.accounts.length
+          response.accounts.length,
         );
 
         // 注意：accounts数据已经在response中
@@ -52369,8 +52473,8 @@ async function openPaymentModal() {
                         <!-- 单选按钮：name属性保证同组单选，value属性用于提交数据 -->
                         <input type="radio" name="payment-method" value="${method}" 
                             class="w-4 h-4 ${config.textColor}" ${
-          index === 0 ? "checked" : ""
-        } />
+                              index === 0 ? "checked" : ""
+                            } />
                         <!-- 支付方式图标：SVG或emoji，根据配置动态生成 -->
                         <span class="ml-3 flex items-center gap-2">
                             ${iconHtml}
@@ -52476,7 +52580,7 @@ async function createPaymentOrder() {
   // 步骤2：获取选中的支付方式
   // querySelector获取被选中的单选按钮的value属性
   const payType = document.querySelector(
-    'input[name="payment-method"]:checked'
+    'input[name="payment-method"]:checked',
   )?.value;
 
   // 步骤3：获取商品名称
@@ -52547,7 +52651,7 @@ async function createPaymentOrder() {
       // 使用showModalAlert显示域名验证失败的错误信息
       showModalAlert(
         verifyResult.message || "当前域名未授权，无法创建订单",
-        "验证失败"
+        "验证失败",
       );
       console.error("[支付] app_host验证失败:", verifyResult.message);
       return;
@@ -52583,7 +52687,7 @@ async function createPaymentOrder() {
       // 使用showModalAlert显示创建失败的错误信息
       showModalAlert(
         createResult.message || "创建订单时出错，请稍后重试",
-        "创建订单失败"
+        "创建订单失败",
       );
       console.error("[支付] 创建订单失败:", createResult.message);
       return;
@@ -52607,7 +52711,7 @@ async function createPaymentOrder() {
     // 使用showModalAlert提示用户订单已创建，请在新页面完成支付
     showModalAlert(
       "请在新打开的页面完成支付，支付完成后会自动刷新订单状态",
-      "订单已创建"
+      "订单已创建",
     );
 
     // 步骤17：启动订单状态轮询
@@ -53100,8 +53204,8 @@ function createOrderCard(order) {
   // 使用模板字符串，支持变量插值和换行
   return `
         <div class="border-2 ${statusConfig.borderColor} ${
-    statusConfig.bgColor
-  } rounded-xl p-4 space-y-3">
+          statusConfig.bgColor
+        } rounded-xl p-4 space-y-3">
             <!-- 订单头部：订单号和状态 -->
             <div class="flex justify-between items-start">
                 <!-- 订单号：使用等宽字体显示，便于复制 -->
@@ -53113,8 +53217,8 @@ function createOrderCard(order) {
                 </div>
                 <!-- 订单状态徽章 -->
                 <span class="px-3 py-1 ${statusConfig.bgColor} ${
-    statusConfig.textColor
-  } rounded-full text-xs font-semibold border ${statusConfig.borderColor}">
+                  statusConfig.textColor
+                } rounded-full text-xs font-semibold border ${statusConfig.borderColor}">
                     ${statusConfig.text}
                 </span>
             </div>
@@ -53125,7 +53229,7 @@ function createOrderCard(order) {
                 <div class="flex justify-between">
                     <span class="text-slate-600">支付金额</span>
                     <span class="font-bold text-lg text-sky-600">¥${parseFloat(
-                      order.amount
+                      order.amount,
                     ).toFixed(2)}</span>
                 </div>
                 <!-- 支付方式 -->
@@ -53545,7 +53649,7 @@ async function loadPaymentConfig() {
     // 步骤5：动态生成支付方式配置复选框
     // 获取配置内容容器
     const configContent = document.getElementById(
-      "mobile-multi-admin-payment-config-content"
+      "mobile-multi-admin-payment-config-content",
     );
 
     // 检查容器是否存在
@@ -53801,7 +53905,7 @@ async function loadPaymentLogs(page) {
 
   // 步骤2：获取日志列表容器DOM元素
   const container = document.getElementById(
-    "mobile-multi-admin-payment-logs-list"
+    "mobile-multi-admin-payment-logs-list",
   );
 
   // 步骤3：检查容器是否存在
@@ -54104,14 +54208,14 @@ function createPaymentLogCard(log) {
   // 步骤4：拼接完整的日志卡片HTML
   return `
         <div class="border-2 ${actionConfig.borderColor} ${
-    actionConfig.bgColor
-  } rounded-lg p-3 space-y-2">
+          actionConfig.bgColor
+        } rounded-lg p-3 space-y-2">
             <!-- 日志头部：操作类型和时间 -->
             <div class="flex justify-between items-start">
                 <!-- 操作类型徽章 -->
                 <span class="px-2 py-1 ${actionConfig.bgColor} ${
-    actionConfig.textColor
-  } rounded text-xs font-semibold border ${actionConfig.borderColor}">
+                  actionConfig.textColor
+                } rounded text-xs font-semibold border ${actionConfig.borderColor}">
                     ${actionConfig.text}
                 </span>
                 <!-- 时间 -->
@@ -54205,7 +54309,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // 绑定刷新支付配置按钮点击事件
   const refreshPaymentConfigBtn = document.getElementById(
-    "mobile-multi-admin-refresh-payment-config"
+    "mobile-multi-admin-refresh-payment-config",
   );
   if (refreshPaymentConfigBtn) {
     refreshPaymentConfigBtn.addEventListener("click", function () {
@@ -54216,7 +54320,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // 绑定保存支付配置按钮点击事件
   const savePaymentConfigBtn = document.getElementById(
-    "save-payment-config-btn"
+    "save-payment-config-btn",
   );
   if (savePaymentConfigBtn) {
     savePaymentConfigBtn.addEventListener("click", function () {
@@ -54229,7 +54333,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // 绑定刷新支付日志按钮点击事件
   const refreshPaymentLogsBtn = document.getElementById(
-    "mobile-multi-admin-refresh-payment-logs"
+    "mobile-multi-admin-refresh-payment-logs",
   );
   if (refreshPaymentLogsBtn) {
     refreshPaymentLogsBtn.addEventListener("click", function () {
@@ -54240,7 +54344,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // 绑定查询支付日志按钮点击事件
   const searchPaymentLogsBtn = document.getElementById(
-    "search-payment-logs-btn"
+    "search-payment-logs-btn",
   );
   if (searchPaymentLogsBtn) {
     searchPaymentLogsBtn.addEventListener("click", function () {
@@ -54430,7 +54534,7 @@ async function showOverduePaymentModal(overdueAccounts) {
       // 使用 escapeHtml 防止XSS攻击
       // 如果账号名称中包含 <script> 等恶意代码，会被转义为 &lt;script&gt;
       const displayName = escapeHtml(
-        acc.name || acc.username || acc.school_username
+        acc.name || acc.username || acc.school_username,
       );
       const schoolUsername = escapeHtml(acc.school_username || acc.username);
 
@@ -54495,7 +54599,7 @@ async function showOverduePaymentModal(overdueAccounts) {
                         ¥${(
                           overdueAccounts.reduce(
                             (sum, acc) => sum + acc.overdue_count,
-                            0
+                            0,
                           ) * singleRunCost
                         ).toFixed(2)}
                     </div>
@@ -54614,7 +54718,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
       // 输出日志，便于调试
       console.log(
         "[欠费支付] 成功获取启用的支付方式列表:",
-        enabledPaymentMethods
+        enabledPaymentMethods,
       );
     }
 
@@ -54642,7 +54746,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
       // 输出日志，便于调试
       console.log(
         "[欠费支付] 成功获取支付方式完整配置:",
-        Object.keys(paymentMethodsFullConfig)
+        Object.keys(paymentMethodsFullConfig),
       );
     }
   } catch (e) {
@@ -54768,7 +54872,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
     preConfirm: () => {
       // 在用户点击"确认支付"时，验证是否选择了支付方式
       const selectedMethod = document.querySelector(
-        'input[name="payment-method"]:checked'
+        'input[name="payment-method"]:checked',
       );
       if (!selectedMethod) {
         Swal.showValidationMessage("请选择一种支付方式");
@@ -54780,7 +54884,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
       // 绑定点击事件，点击整个div时选中对应的radio按钮
       window.selectPaymentMethod = (method) => {
         const radio = document.querySelector(
-          `input[name="payment-method"][value="${method}"]`
+          `input[name="payment-method"][value="${method}"]`,
         );
         if (radio) {
           radio.checked = true;
@@ -54832,7 +54936,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
           sub_appid: subAppid,
           auth_code: auth_code,
         }),
-      }
+      },
     );
 
     const orderResult = await createOrderResponse.json();
@@ -54855,7 +54959,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
       payUrl,
       totalAmount,
       selectedPaymentMethod,
-      pay_type
+      pay_type,
     );
   } catch (error) {
     // 捕获创建订单过程中的所有错误
@@ -54880,7 +54984,7 @@ async function showPaymentPageWithPolling(
   payUrl,
   totalAmount,
   paymentMethod,
-  pay_type
+  pay_type,
 ) {
   // ========== 动态获取支付方式名称映射 ==========
   // 初始化支付方式名称映射对象，用于将后端的支付方式代码（如'alipay'）转换为用户友好的显示名称（如'支付宝'）
@@ -55116,7 +55220,7 @@ async function showPaymentPageWithPolling(
             // 1. HTML模板中的条件判断错误，canvas元素未生成
             // 2. QRCode库的CDN加载失败
             console.warn(
-              "[支付二维码] 无法生成二维码：canvas元素不存在或QRCode库未加载"
+              "[支付二维码] 无法生成二维码：canvas元素不存在或QRCode库未加载",
             );
           }
         } catch (error) {
@@ -55300,6 +55404,31 @@ async function loadOverdueAccounts() {
     // ========== 获取欠费账号列表数据 ==========
     const accounts = result.accounts || [];
 
+    // ========== 按 school_username 合并同一学校账号在多个所属账号下的重复条目 ==========
+    // 同一 school_username 可能属于多个 auth_username，需要合并显示
+    const mergedMap = new Map();
+    accounts.forEach((account) => {
+      const key = account.school_username;
+      if (mergedMap.has(key)) {
+        const existing = mergedMap.get(key);
+        // 追加所属账号（去重），同时记录该账号是否为管理员
+        if (!existing.auth_usernames.find((u) => u.name === account.auth_username)) {
+          existing.auth_usernames.push({
+            name: account.auth_username,
+            is_admin: !!account.is_admin,
+          });
+        }
+        // has_backup 取任意一个有备份的即可
+        if (account.has_backup) existing.has_backup = true;
+      } else {
+        mergedMap.set(key, {
+          ...account,
+          auth_usernames: [{ name: account.auth_username, is_admin: !!account.is_admin }],
+        });
+      }
+    });
+    const mergedAccounts = Array.from(mergedMap.values());
+
     // ========== 获取PC端和移动端的列表容器元素 ==========
     // PC端列表容器
     const pcList = document.getElementById("overdue-accounts-list");
@@ -55310,43 +55439,47 @@ async function loadOverdueAccounts() {
     let html = "";
 
     // 检查是否有欠费账号
-    if (accounts.length === 0) {
+    if (mergedAccounts.length === 0) {
       // 没有欠费账号，显示提示信息
       html = '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
     } else {
       // 有欠费账号，遍历生成每个账号的卡片
-      accounts.forEach((account) => {
+      mergedAccounts.forEach((account) => {
+        // 优先显示非管理员账号；若全部为管理员则显示为"(管理员)"
+        const nonAdminOwners = account.auth_usernames
+          .filter((u) => !u.is_admin)
+          .map((u) => u.name);
+        const ownersHtml =
+          nonAdminOwners.length > 0
+            ? escapeHtml(nonAdminOwners.join("、"))
+            : "(管理员)";
         // 为每个欠费账号生成一个卡片
         html += `
                     <div class="p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition">
                         <div class="flex justify-between items-start">
                             <!-- 左侧：账号信息 -->
-                            <div class="flex-1">
+                            <div class="flex-1 min-w-0">
                                 <!-- 账号姓名和欠费标签 -->
                                 <div class="flex items-center gap-2">
                                     <!-- 姓名（加粗显示） -->
                                     <h4 class="font-bold text-slate-800">${escapeHtml(
-                                      account.name
+                                      account.name,
                                     )}</h4>
                                     <!-- 欠费次数标签（红色背景） -->
                                     <span class="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
                                         欠费 ${account.overdue_count} 次
                                     </span>
                                 </div>
-                                <!-- 详细信息：学号 -->
-                                <p class="text-sm text-slate-600 mt-1">
-                                    学号：${escapeHtml(
-                                      account.student_id
-                                    )} | 所属账号：${escapeHtml(
-          account.auth_username
-        )}
+                                <!-- 详细信息：学号 + 所属账号（多个时合并，换行不超出） -->
+                                <p class="text-sm text-slate-600 mt-1 break-all">
+                                    学号：${escapeHtml(account.student_id)} | 所属账号：${ownersHtml}
                                 </p>
                             </div>
                             <!-- 右侧：操作按钮组 -->
-                            <div class="flex gap-2">
+                            <div class="flex gap-2 ml-2 flex-shrink-0">
                                 <!-- 查看详情按钮：只有在有备份数据时才启用 -->
                                 <button onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
-                                  account.school_username
+                                  account.school_username,
                                 )}')" 
                                         class="btn btn-sm btn-primary"
                                         ${
@@ -55358,7 +55491,7 @@ async function loadOverdueAccounts() {
                                 <!-- 使用 escapeHtml() 防止XSS攻击 -->
                                 <!-- auth_username传空字符串，让后端自动查找该学校账号所属的用户 -->
                                 <button onclick="adminClearOverdue(school_username=${escapeHtml(
-                                  account.school_username
+                                  account.school_username,
                                 )},auth_username='',is_detail_view=false)" 
                                         class="px-3 py-1.5 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition-colors">
                                     结算
@@ -55421,7 +55554,7 @@ async function adminAddOverdue() {
     // 获取输入框中的欠费次数，并转换为整数
     // parseInt() 将字符串转换为整数，如果转换失败返回 NaN
     const overdueCount = parseInt(
-      document.getElementById("admin-add-overdue-count").value
+      document.getElementById("admin-add-overdue-count").value,
     );
 
     // ========== 验证学校账号是否为空 ==========
@@ -55557,12 +55690,104 @@ async function adminAddOverdue() {
   }
 }
 
+async function mobileAdminAddOverdue() {
+  const schoolUsername = (
+    document.getElementById("mobile-add-overdue-school-username")?.value || ""
+  ).trim();
+  const overdueCount = parseInt(
+    document.getElementById("mobile-add-overdue-count")?.value || "",
+  );
+
+  if (!schoolUsername) {
+    await Swal.fire({
+      title: "输入错误",
+      text: "请输入学校账号",
+      icon: "warning",
+      confirmButtonText: "确定",
+    });
+    return;
+  }
+  if (!overdueCount || overdueCount < 1) {
+    await Swal.fire({
+      title: "输入错误",
+      text: "请输入有效的欠费次数（大于0）",
+      icon: "warning",
+      confirmButtonText: "确定",
+    });
+    return;
+  }
+
+  const confirmResult = await Swal.fire({
+    title: "确认添加欠费",
+    html: `<p>学校账号：<strong>${escapeHtml(schoolUsername)}</strong></p><p>欠费次数：<strong>${overdueCount}</strong></p>`,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "确认添加",
+    cancelButtonText: "取消",
+  });
+  if (!confirmResult.isConfirmed) return;
+
+  Swal.fire({
+    title: "正在处理...",
+    text: "请稍候",
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading(),
+  });
+
+  try {
+    const response = await fetch("/api/admin/clear_overdue", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-ID": sessionUUID,
+      },
+      body: JSON.stringify({
+        school_username: schoolUsername,
+        auth_username: "",
+        new_overdue_count: overdueCount,
+      }),
+    });
+    const result = await response.json();
+
+    if (result.success) {
+      await Swal.fire({
+        title: "添加成功",
+        text: `已为账号 ${schoolUsername} 添加 ${overdueCount} 次欠费`,
+        icon: "success",
+        confirmButtonText: "确定",
+      });
+      const usernameEl = document.getElementById(
+        "mobile-add-overdue-school-username",
+      );
+      const countEl = document.getElementById("mobile-add-overdue-count");
+      if (usernameEl) usernameEl.value = "";
+      if (countEl) countEl.value = "";
+      await loadOverdueAccounts();
+    } else {
+      await Swal.fire({
+        title: "添加失败",
+        text: result.message || "未知错误",
+        icon: "error",
+        confirmButtonText: "确定",
+      });
+    }
+  } catch (error) {
+    console.error("移动端添加欠费失败:", error);
+    await Swal.fire({
+      title: "添加失败",
+      text: "网络错误或服务器异常",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
+  }
+}
+
 /**
  * 查看账号备份详情（美化版）
  * 解析后端返回的 JSON 数据并友好展示
  */
 async function View_details_of_users_with_outstanding_payments(
-  school_username
+  school_username,
 ) {
   // 显示加载动画
   Swal.fire({
@@ -55577,14 +55802,14 @@ async function View_details_of_users_with_outstanding_payments(
   try {
     const response = await fetch(
       `/api/admin/backup-info?school_username=${encodeURIComponent(
-        school_username
+        school_username,
       )}`,
       {
         method: "GET",
         headers: {
           "X-Session-ID": sessionUUID,
         },
-      }
+      },
     );
     const result = await response.json();
 
@@ -55620,13 +55845,13 @@ async function View_details_of_users_with_outstanding_payments(
             data.completed_count = statsResult.data.completed_count;
           }
           console.log(
-            `[View_details_of_users_with_outstanding_payments] 已更新 ${school_username} 的实时统计: 欠费=${data.overdue_count}, 完成=${data.completed_count}`
+            `[View_details_of_users_with_outstanding_payments] 已更新 ${school_username} 的实时统计: 欠费=${data.overdue_count}, 完成=${data.completed_count}`,
           );
         }
       } catch (e) {
         console.warn(
           "[View_details_of_users_with_outstanding_payments] 获取实时统计失败，将显示备份中的旧数据:",
-          e
+          e,
         );
       }
 
@@ -55700,7 +55925,7 @@ async function View_details_of_users_with_outstanding_payments(
                               data.overdue_count > 0
                                 ? `
                                 <button onclick="adminClearOverdue('${escapeHtml(
-                                  school_username
+                                  school_username,
                                 )}', '${escapeHtml(user.username || "")}')" 
                                     class="ml-3 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-xs font-bold rounded-lg hover:from-emerald-600 hover:to-green-600 active:from-emerald-700 active:to-green-700 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
                                     title="管理员：清除此账号的欠费">
@@ -55719,10 +55944,6 @@ async function View_details_of_users_with_outstanding_payments(
                         </div>
                     </div>
 
-                    <!-- ========== 任务10：合并学校信息和账号详情为统一表单格式 ========== -->
-                    <!-- 原设计：学校信息和账号详情分为两个独立卡片 -->
-                    <!-- 新设计：合并为一个统一的表单卡片，所有信息在同一个表单中展示 -->
-                    <!-- 优点：减少视觉分隔，提高信息的整体性和可读性 -->
                     <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
                         <!-- 表单标题栏 - 使用渐变背景和图标 -->
                         <div class="bg-gradient-to-r from-blue-50 via-purple-50 to-white px-3 py-2 border-b border-blue-100 flex items-center gap-2">
@@ -55751,7 +55972,7 @@ async function View_details_of_users_with_outstanding_payments(
                                 <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">姓名</span>
                                 <!-- 字段值：中等字重，使用safeStr确保安全显示 -->
                                 <span class="font-medium">${safeStr(
-                                  dept.name
+                                  dept.name,
                                 )}</span>
                             </div>
                             
@@ -55760,7 +55981,7 @@ async function View_details_of_users_with_outstanding_payments(
                                 <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学号</span>
                                 <!-- 学号使用等宽字体，背景高亮显示 -->
                                 <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">${safeStr(
-                                  dept.studentNum || dept.account
+                                  dept.studentNum || dept.account,
                                 )}</span>
                             </div>
                             
@@ -55770,7 +55991,7 @@ async function View_details_of_users_with_outstanding_payments(
                             <div class="col-span-2 border-t border-dashed border-slate-100 pt-2">
                                 <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">学校</span>
                                 <span class="font-medium">${safeStr(
-                                  dept.schoolName
+                                  dept.schoolName,
                                 )}</span>
                             </div>
                             
@@ -55808,7 +56029,7 @@ async function View_details_of_users_with_outstanding_payments(
                             <div class="col-span-2">
                                 <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">注册时间</span>
                                 <span class="text-xs text-slate-600">${safeStr(
-                                  user.createtime
+                                  user.createtime,
                                 )}</span>
                             </div>
                             
@@ -55816,7 +56037,7 @@ async function View_details_of_users_with_outstanding_payments(
                             <div class="col-span-2">
                                 <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">首次登录</span>
                                 <span class="text-xs text-slate-600">${safeStr(
-                                  user.firstlogin
+                                  user.firstlogin,
                                 )}</span>
                             </div>
                             
@@ -55824,7 +56045,7 @@ async function View_details_of_users_with_outstanding_payments(
                             <div class="col-span-2">
                                 <span class="text-slate-400 text-[10px] block mb-0.5 uppercase tracking-wide">最近登录 (APP)</span>
                                 <span class="text-xs text-slate-600">${safeStr(
-                                  dept.logintime
+                                  dept.logintime,
                                 )}</span>
                             </div>
                             
@@ -55835,7 +56056,7 @@ async function View_details_of_users_with_outstanding_payments(
                                 <div class="flex items-center gap-2">
                                     <!-- 密码文本：使用等宽字体，可全选，背景和边框高亮 -->
                                     <span class="font-mono bg-slate-100 border border-slate-200 px-2 py-1 rounded text-slate-600 select-all">${safeStr(
-                                      user.text_password
+                                      user.text_password,
                                     )}</span>
                                     <!-- "明文"标签：提示用户这是明文密码 -->
                                     <span class="text-[10px] text-slate-400">(明文)</span>
@@ -55843,7 +56064,6 @@ async function View_details_of_users_with_outstanding_payments(
                             </div>
                         </div>
                     </div>
-                    <!-- ========== 任务10修改完成 ========== -->
 
                     <div class="border border-slate-200 rounded-lg overflow-hidden">
                         <button onclick="const el = this.nextElementSibling; el.classList.toggle('hidden'); this.querySelector('svg').style.transform = el.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';" 
@@ -55855,7 +56075,7 @@ async function View_details_of_users_with_outstanding_payments(
                             <pre class="text-[10px] text-green-400 font-mono whitespace-pre-wrap break-all p-3 max-h-40 overflow-auto">${JSON.stringify(
                               data,
                               null,
-                              2
+                              2,
                             )}</pre>
                         </div>
                     </div>
@@ -55921,7 +56141,7 @@ async function View_details_of_users_with_outstanding_payments(
 async function adminClearOverdue(
   school_username,
   auth_username = "",
-  is_detail_view = true
+  is_detail_view = true,
 ) {
   try {
     // ========== 步骤1：显示输入对话框 ==========
@@ -55935,10 +56155,10 @@ async function adminClearOverdue(
       // 这里显示学校账号、所属用户信息，以及输入框
       html: `
                 <p class="text-sm text-slate-600 mb-3">学校账号：<span class="font-semibold">${escapeHtml(
-                  school_username
+                  school_username,
                 )}</span></p>
                 <!-- <p class="text-sm text-slate-600 mb-3">所属用户：<span class="font-semibold">${escapeHtml(
-                  auth_username
+                  auth_username,
                 )}</span></p> -->
                 <input id="new-overdue-count" type="number" min="0" value="0" 
                     class="swal2-input" placeholder="输入新的欠费次数（0表示清零）">
@@ -56088,7 +56308,7 @@ async function adminClearOverdue(
 function initOrderNumberAutoFill() {
   // 获取订单号输入框DOM元素
   const tradeNoInput = document.getElementById(
-    "admin-refund-order-trade-no_modal"
+    "admin-refund-order-trade-no_modal",
   );
 
   // 如果输入框不存在，记录错误并退出
@@ -56191,15 +56411,10 @@ async function fetchOrderAmountAndFill(tradeNo) {
   }
 
   // ========== 步骤2：调用后端API查询订单信息 ==========
-  // 任务1优化：使用新的通过订单号直接查询API，无需遍历所有订单
-  // 优势：性能更优，减少网络传输数据量，提升响应速度
-
   try {
-    // 构建API请求URL
-    // 任务1新增的接口：/api/payment/order_by_tradeno
-    // 直接通过订单号查询单个订单，避免查询所有订单后再遍历查找
+    // 构建API请求URL，通过订单号直接查询单个订单，避免查询所有订单后再遍历查找
     const url = `/api/payment/order_by_tradeno?trade_no=${encodeURIComponent(
-      tradeNo
+      tradeNo,
     )}`;
 
     console.log("[订单号自动填充] 调用新API直接查询订单:", url);
@@ -56227,12 +56442,12 @@ async function fetchOrderAmountAndFill(tradeNo) {
         console.warn("[订单号自动填充] 订单不存在:", tradeNo);
         showModalAlert(
           result.message || "未找到该订单号对应的订单记录",
-          "订单不存在"
+          "订单不存在",
         );
 
         // 清空退款金额输入框
         const amountInput = document.getElementById(
-          "admin-refund-amount_modal"
+          "admin-refund-amount_modal",
         );
         if (amountInput) {
           amountInput.value = "";
