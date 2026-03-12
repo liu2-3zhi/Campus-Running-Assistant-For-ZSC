@@ -42528,7 +42528,8 @@ def start_web_server(args_param):
                     https_only=ssl_config.get("https_only", False),
                 )
                 try:
-                    eventlet.wsgi.server(dual_socket, socketio, log_output=False)
+                    from eventlet import wsgi
+                    wsgi.server(dual_socket, app, log_output=False)
                 except KeyboardInterrupt:
                     raise
                 except Exception as runtime_e:
@@ -42578,7 +42579,7 @@ def start_web_server(args_param):
 
                 # 启动SocketIO服务器（阻塞调用）
                 logging.info("[SocketIO 运行] 正在调用 socketio.run() - 这将阻塞主线程...")
-                socketio.run(app, host=args.host, port=args.port, debug=False)
+                socketio.run(app, host=args.host, port=args.port, debug=False, allow_unsafe_werkzeug=True)
                 logging.info("[SocketIO 运行] socketio.run() 已返回")
             except KeyboardInterrupt:
                 raise
