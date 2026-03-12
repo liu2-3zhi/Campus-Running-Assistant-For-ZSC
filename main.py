@@ -249,6 +249,7 @@ def import_core_third_party():
             "Flask-SocketIO",
         ),
         ("eventlet", "import eventlet", "eventlet"),
+        ("eventlet.wsgi", "import eventlet.wsgi", "eventlet"),
         ("eventlet.tpool", "import eventlet.tpool", "eventlet"),
     ]
 
