@@ -23447,6 +23447,9 @@ def start_web_server(args_param):
                 "school_account_2": {"password": "yyy", "ua": "yyy", ...}
             }
         }
+        
+        传入 username 之后返回参数异常，只作为返回当前账号的接口，如果需要查询其他账号，请使用 /auth/get_user_school_accounts_only 
+        
         """
         try:
             # ========== 步骤1：获取当前登录用户信息 ==========
