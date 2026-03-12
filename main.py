@@ -42528,7 +42528,7 @@ def start_web_server(args_param):
                     https_only=ssl_config.get("https_only", False),
                 )
                 try:
-                    eventlet.wsgi.server(dual_socket, app, log_output=False)
+                    eventlet.wsgi.server(dual_socket, socketio, log_output=False)
                 except KeyboardInterrupt:
                     raise
                 except Exception as runtime_e:
