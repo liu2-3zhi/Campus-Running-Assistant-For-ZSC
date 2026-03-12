@@ -20217,7 +20217,7 @@ async function loadAdminSessions_inline() {
         session.session_id.trim() !== "",
     );
     if (isGodMode) {
-      updateAdminSessionCountDisplayInline(validSessions.length, -1);
+      updateAdminSessionCountDisplayInline(validSessions.length, -1, true);
     } else {
       updateAdminSessionCountDisplayInline(validSessions.length, maxSessions);
     }
@@ -20317,11 +20317,13 @@ async function loadAdminSessions_inline() {
   }
 }
 
-function updateAdminSessionCountDisplayInline(currentCount, maxSessions) {
+function updateAdminSessionCountDisplayInline(currentCount, maxSessions, isGodMode = false) {
   const countEl = $("admin-session-count-display-inline");
   if (!countEl) return;
 
-  if (currentUserIsGuest) {
+  if (isGodMode) {
+    countEl.innerHTML = `<span class="text-purple-600">系统总会话数: ${currentCount}</span>`;
+  } else if (currentUserIsGuest) {
     countEl.innerHTML = `<span class="text-blue-600">会话数: 1 / 游客仅限单会话</span>`;
   } else {
     if (maxSessions === -1) {
@@ -25811,7 +25813,7 @@ async function loadAdminSessions() {
         session.session_id.trim() !== "",
     );
     if (isGodMode) {
-      updateAdminSessionCountDisplay(validSessions.length, -1);
+      updateAdminSessionCountDisplay(validSessions.length, -1, true);
     } else {
       updateAdminSessionCountDisplay(validSessions.length, maxSessions);
     }
@@ -28594,11 +28596,13 @@ async function checkButtonPermission(buttonId, permissionName) {
   return true;
 }
 
-function updateAdminSessionCountDisplay(currentCount, maxSessions) {
+function updateAdminSessionCountDisplay(currentCount, maxSessions, isGodMode = false) {
   const countEl = $("admin-session-count-display");
   if (!countEl) return;
 
-  if (currentUserIsGuest) {
+  if (isGodMode) {
+    countEl.innerHTML = `<span class="text-purple-600">系统总会话数: ${currentCount}</span>`;
+  } else if (currentUserIsGuest) {
     countEl.innerHTML = `<span class="text-blue-600">会话数: 1 / 游客仅限单会话</span>`;
   } else if (maxSessions === -1) {
     countEl.innerHTML = `<span class="text-green-600">会话数: ${currentCount} / 无限制</span>`;
