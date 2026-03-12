@@ -55404,28 +55404,6 @@ async function loadOverdueAccounts() {
     // ========== 获取欠费账号列表数据 ==========
     const accounts = result.accounts || [];
 
-    // ========== 按 school_username 合并同一学校账号在多个所属账号下的重复条目 ==========
-    // 同一 school_username 可能属于多个 auth_username，需要合并显示
-    const mergedMap = new Map();
-    accounts.forEach((account) => {
-      const key = account.school_username;
-      if (mergedMap.has(key)) {
-        const existing = mergedMap.get(key);
-        // 追加所属账号（去重）
-        if (!existing.auth_usernames.includes(account.auth_username)) {
-          existing.auth_usernames.push(account.auth_username);
-        }
-        // has_backup 取任意一个有备份的即可
-        if (account.has_backup) existing.has_backup = true;
-      } else {
-        mergedMap.set(key, {
-          ...account,
-          auth_usernames: [account.auth_username],
-        });
-      }
-    });
-    const mergedAccounts = Array.from(mergedMap.values());
-
     // ========== 获取PC端和移动端的列表容器元素 ==========
     // PC端列表容器
     const pcList = document.getElementById("overdue-accounts-list");
@@ -55436,20 +55414,18 @@ async function loadOverdueAccounts() {
     let html = "";
 
     // 检查是否有欠费账号
-    if (mergedAccounts.length === 0) {
+    if (accounts.length === 0) {
       // 没有欠费账号，显示提示信息
       html = '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
     } else {
       // 有欠费账号，遍历生成每个账号的卡片
-      mergedAccounts.forEach((account) => {
-        // 将所有所属账号用顿号拼接（多个账号时合并显示，避免重复卡片）
-        const ownersHtml = escapeHtml(account.auth_usernames.join("、"));
+      accounts.forEach((account) => {
         // 为每个欠费账号生成一个卡片
         html += `
                     <div class="p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition">
                         <div class="flex justify-between items-start">
                             <!-- 左侧：账号信息 -->
-                            <div class="flex-1 min-w-0">
+                            <div class="flex-1">
                                 <!-- 账号姓名和欠费标签 -->
                                 <div class="flex items-center gap-2">
                                     <!-- 姓名（加粗显示） -->
@@ -55461,13 +55437,17 @@ async function loadOverdueAccounts() {
                                         欠费 ${account.overdue_count} 次
                                     </span>
                                 </div>
-                                <!-- 详细信息：学号 + 所属账号（多个时合并，换行不超出） -->
-                                <p class="text-sm text-slate-600 mt-1 break-all">
-                                    学号：${escapeHtml(account.student_id)} | 所属账号：${ownersHtml}
+                                <!-- 详细信息：学号 -->
+                                <p class="text-sm text-slate-600 mt-1">
+                                    学号：${escapeHtml(
+                                      account.student_id
+                                    )} | 所属账号：${escapeHtml(
+          account.auth_username
+        )}
                                 </p>
                             </div>
                             <!-- 右侧：操作按钮组 -->
-                            <div class="flex gap-2 ml-2 flex-shrink-0">
+                            <div class="flex gap-2">
                                 <!-- 查看详情按钮：只有在有备份数据时才启用 -->
                                 <button onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
                                   account.school_username,
