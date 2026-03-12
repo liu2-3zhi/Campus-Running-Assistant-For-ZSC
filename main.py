@@ -41610,11 +41610,6 @@ def start_web_server(args_param):
                                         f"[欠费查询] 读取备份文件失败 {backup_file}: {e}"
                                     )
 
-                            # 判断该 auth_username 是否为管理员（具有 auto_fill_password 权限）
-                            is_admin = auth_system.check_permission(
-                                auth_username, "auto_fill_password"
-                            )
-
                             # ========== 将欠费账号信息添加到结果列表 ==========
                             overdue_accounts.append({
                                 "auth_username": auth_username,  # 认证系统用户名
@@ -41622,8 +41617,7 @@ def start_web_server(args_param):
                                 "overdue_count": overdue_count,  # 欠费次数
                                 "name": name,  # 姓名
                                 "student_id": student_id,  # 学号
-                                "has_backup": has_backup,  # 是否有备份文件
-                                "is_admin": is_admin  # 是否为管理员账号
+                                "has_backup": has_backup  # 是否有备份文件
                             })
 
                 except Exception as e:

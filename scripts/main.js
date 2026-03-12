@@ -55411,19 +55411,16 @@ async function loadOverdueAccounts() {
       const key = account.school_username;
       if (mergedMap.has(key)) {
         const existing = mergedMap.get(key);
-        // 追加所属账号（去重），同时记录该账号是否为管理员
-        if (!existing.auth_usernames.find((u) => u.name === account.auth_username)) {
-          existing.auth_usernames.push({
-            name: account.auth_username,
-            is_admin: !!account.is_admin,
-          });
+        // 追加所属账号（去重）
+        if (!existing.auth_usernames.includes(account.auth_username)) {
+          existing.auth_usernames.push(account.auth_username);
         }
         // has_backup 取任意一个有备份的即可
         if (account.has_backup) existing.has_backup = true;
       } else {
         mergedMap.set(key, {
           ...account,
-          auth_usernames: [{ name: account.auth_username, is_admin: !!account.is_admin }],
+          auth_usernames: [account.auth_username],
         });
       }
     });
@@ -55445,14 +55442,8 @@ async function loadOverdueAccounts() {
     } else {
       // 有欠费账号，遍历生成每个账号的卡片
       mergedAccounts.forEach((account) => {
-        // 优先显示非管理员账号；若全部为管理员则显示为"(管理员)"
-        const nonAdminOwners = account.auth_usernames
-          .filter((u) => !u.is_admin)
-          .map((u) => u.name);
-        const ownersHtml =
-          nonAdminOwners.length > 0
-            ? escapeHtml(nonAdminOwners.join("、"))
-            : "(管理员)";
+        // 将所有所属账号用顿号拼接（多个账号时合并显示，避免重复卡片）
+        const ownersHtml = escapeHtml(account.auth_usernames.join("、"));
         // 为每个欠费账号生成一个卡片
         html += `
                     <div class="p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition">
