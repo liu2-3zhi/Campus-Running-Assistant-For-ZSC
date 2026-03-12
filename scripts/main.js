@@ -28586,7 +28586,7 @@ async function checkButtonPermission(buttonId, permissionName) {
     // );
     Swal.fire({
       title: "错误",
-      text: "您没有权限使用此功能，缺少 ${permissionName} 权限。",
+      text: `您没有权限使用此功能，缺少 ${permissionName} 权限。`,
       icon: "error",
     });
     return false;
