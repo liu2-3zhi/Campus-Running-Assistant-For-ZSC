@@ -6189,47 +6189,55 @@ class AuthSystem:
             return {"success": True, "message": "权限组已删除"}
 
     def list_users(self):
-        """列出所有用户"""
-        users = []
+        """列出所有用户（多线程并行查询IP归属地）"""
+        user_data_list = []
         for filename in os.listdir(SYSTEM_ACCOUNTS_DIR):
             if filename.endswith(".json"):
                 user_file = os.path.join(SYSTEM_ACCOUNTS_DIR, filename)
                 try:
                     with open(user_file, "r", encoding="utf-8") as f:
                         user_data = json.load(f)
-
-                    last_ip = user_data.get("last_login_ip", None)
-                    last_city = None
-                    if last_ip:
-                        try:
-                            last_city = get_ip_location(last_ip)
-                        except Exception as ip_e:
-                            logging.warning(f"查询IP归属地失败 {last_ip}: {ip_e}")
-                            last_city = "查询失败"
-
-                    users.append(
-                        {
-                            "auth_username": user_data["auth_username"],
-                            "nickname": user_data.get("nickname", ""),
-                            "phone": user_data.get("phone", ""),
-                            "group": user_data.get("group", "user"),
-                            "created_at": user_data.get("created_at"),
-                            "last_login": user_data.get("last_login"),
-                            "last_login_ip": last_ip,
-                            "last_login_city": last_city,
-                            "2fa_enabled": user_data.get("2fa_enabled", False),
-                            "banned": user_data.get("banned", False),
-                            "max_sessions": user_data.get("max_sessions", 1),
-                            # 添加可用执行次数字段：从用户数据中获取 available_runs，默认值为0
-                            # -1 表示无限次数，0表示无剩余次数，正数表示剩余次数
-                            "available_runs": user_data.get("available_runs", 0),
-                        }
-                    )
+                    user_data_list.append(user_data)
                 except Exception as e:
                     logging.error(
                         f"[用户管理] 读取用户文件失败 --> 文件名: {filename}, 文件路径: {user_file}, 错误类型: {type(e).__name__}, 错误详情: {e}, 可能原因: 文件损坏、JSON格式错误或权限不足",
                         exc_info=True,
                     )
+
+        # 使用多线程并行查询所有用户的IP归属地
+        ips = [ud.get("last_login_ip") for ud in user_data_list]
+
+        def _lookup(ip):
+            if not ip:
+                return None
+            try:
+                return get_ip_location(ip)
+            except Exception as ip_e:
+                logging.warning(f"查询IP归属地失败 {ip}: {ip_e}")
+                return "查询失败"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(ips) or 1)) as executor:
+            cities = list(executor.map(_lookup, ips))
+
+        users = []
+        for user_data, last_city in zip(user_data_list, cities):
+            last_ip = user_data.get("last_login_ip", None)
+            users.append(
+                {
+                    "auth_username": user_data["auth_username"],
+                    "nickname": user_data.get("nickname", ""),
+                    "phone": user_data.get("phone", ""),
+                    "group": user_data.get("group", "user"),
+                    "created_at": user_data.get("created_at"),
+                    "last_login": user_data.get("last_login"),
+                    "last_login_ip": last_ip,
+                    "last_login_city": last_city,
+                    "2fa_enabled": user_data.get("2fa_enabled", False),
+                    "banned": user_data.get("banned", False),
+                    "max_sessions": user_data.get("max_sessions", 1),
+                    "available_runs": user_data.get("available_runs", 0),
+                }
+            )
         return users
 
     def get_all_groups(self):
