@@ -42429,42 +42429,72 @@ def start_web_server(args_param):
 
             try:
 
-                logging.info(f"Eventlet 将使用 SSLContext 启动服务器...")
+                logging.info(f"Werkzeug 线程服务器将使用 SSLContext 启动...")
                 logging.info(f"  证书文件: {cert_path}")
                 logging.info(f"  密钥文件: {key_path}")
 
                 # ============================================================
                 # 【SSL 智能兼容层】
+                # 使用 Werkzeug ThreadedWSGIServer 代替 eventlet.wsgi.server，
+                # 以兼容 async_mode="threading" 的 SocketIO。
+                # eventlet.wsgi 使用 greenlet，而 threading 模式的 SocketIO 使用
+                # threading.Event.wait() 进行长轮询保持，在 greenlet 上下文中会
+                # 阻塞整个事件循环（即出现约 25 秒卡顿）并导致 "Invalid transport"。
                 # ============================================================
-                class DualProtocolSocket(object):
-                    def __init__(self, raw_socket, ssl_ctx, https_only=False):
-                        self.sock = raw_socket
-                        self.ssl_ctx = ssl_ctx
-                        self.https_only = https_only
+                from werkzeug.serving import ThreadedWSGIServer, WSGIRequestHandler
 
-                    def __getattr__(self, name):
-                        return getattr(self.sock, name)
+                _ssl_ctx_ref = ssl_context
+                _https_only_ref = ssl_config.get("https_only", False)
 
-                    def accept(self):
+                class _DualProtocolRequestHandler(WSGIRequestHandler):
+                    """为双协议连接正确设置 wsgi.url_scheme。"""
+                    def make_environ(self):
+                        environ = super().make_environ()
+                        if isinstance(self.connection, ssl.SSLSocket):
+                            environ['wsgi.url_scheme'] = 'https'
+                        return environ
+
+                    def log_message(self, format, *args):
+                        pass  # 抑制 Werkzeug 访问日志（与 Nginx 日志重复）
+
+                class DualProtocolWSGIServer(ThreadedWSGIServer):
+                    """支持在同一端口同时处理 HTTP 和 HTTPS 的 Werkzeug 线程服务器。"""
+
+                    def __init__(self, host, port, app):
+                        super().__init__(
+                            host, port, app,
+                            handler=_DualProtocolRequestHandler,
+                            ssl_context=None,  # 我们在 get_request() 中自行处理 SSL
+                        )
+
+                    def get_request(self):
+                        """嗅探首字节，决定是否进行 TLS 握手或 HTTPS 重定向。"""
                         while True:
                             try:
-                                client, addr = self.sock.accept()
+                                client, addr = self.socket.accept()
                                 try:
                                     client.settimeout(1.0)
                                     first_byte = client.recv(
                                         1, socket.MSG_PEEK)
                                     client.settimeout(None)
 
-                                    if len(first_byte) == 0:
+                                    if not first_byte:
                                         client.close()
                                         continue
-                                    if first_byte[0] == 22:
-                                        secure_client = self.ssl_ctx.wrap_socket(
-                                            client, server_side=True
-                                        )
-                                        return secure_client, addr
+                                    if first_byte[0] == 22:  # TLS ClientHello
+                                        try:
+                                            secure_client = _ssl_ctx_ref.wrap_socket(
+                                                client, server_side=True
+                                            )
+                                            return secure_client, addr
+                                        except (ssl.SSLError, socket.error):
+                                            try:
+                                                client.close()
+                                            except Exception:
+                                                pass
+                                            continue
                                     else:
-                                        if self.https_only:
+                                        if _https_only_ref:
                                             logging.info(
                                                 f"检测到 HTTP 请求 (来自 {addr[0]})，发送 HTTPS 跳转指令..."
                                             )
@@ -42492,52 +42522,35 @@ def start_web_server(args_param):
                                         else:
                                             return client, addr
 
-                                except (socket.error, ssl.SSLError) as e:
+                                except (socket.error, ssl.SSLError):
                                     try:
                                         client.close()
-                                    except:
+                                    except Exception:
                                         pass
                                     continue
 
                             except Exception as e:
                                 logging.error(
-                                    f"DualProtocolSocket accept error: {e}")
-                                time.sleep(
-                                    0.1
-                                )  # [修正] 添加延时，防止错误死循环导致CPU占用100%和服务器卡死
+                                    f"DualProtocolWSGIServer accept error: {e}")
+                                time.sleep(0.1)
                                 continue
 
-                server_socket = eventlet.listen((args.host, args.port))
-                dual_socket = DualProtocolSocket(
-                    server_socket,
-                    ssl_context,
-                    https_only=ssl_config.get("https_only", False),
-                )
+                srv = DualProtocolWSGIServer(args.host, args.port, socketio)
                 try:
-                    from eventlet import wsgi
-                    wsgi.server(dual_socket, app, log_output=False)
+                    logging.info(
+                        f"[SSL服务器] DualProtocolWSGIServer 已在 {args.host}:{args.port} 启动，等待连接...")
+                    srv.serve_forever()
                 except KeyboardInterrupt:
                     raise
-                except Exception as runtime_e:
-                    logging.error(
-                        f"HTTPS 服务器运行时错误: {runtime_e}", exc_info=True)
-                    try:
-                        server_socket.close()
-                    except:
-                        pass
-                    raise
-            except ImportError:
-                logging.error(
-                    "Eventlet 模块未找到，无法启动HTTPS服务器。请运行 'pip install eventlet'"
-                )
-                raise
+                finally:
+                    srv.server_close()
             except KeyboardInterrupt:
                 raise
             except Exception as ssl_e:
                 logging.error(
-                    f"使用 Eventlet 启动 SSL 服务器失败: {ssl_e}", exc_info=True
+                    f"启动 SSL 服务器失败: {ssl_e}", exc_info=True
                 )
-                print(f"\n[错误] 无法使用 eventlet 启动 HTTPS 服务器: {ssl_e}")
+                print(f"\n[错误] 无法启动 HTTPS 服务器: {ssl_e}")
                 print("请检查证书文件路径和权限是否正确。")
                 raise
         else:
