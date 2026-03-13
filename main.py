@@ -41309,41 +41309,49 @@ def start_web_server(args_param):
                 # 如果转换失败，返回400错误
                 return jsonify({"success": False, "message": "欠费次数必须是整数"}), 400
 
-            # ========== 步骤4：直接修改INI文件 (不查找用户) ==========
+            # ========== 步骤4：通过 auth_system 安全地修改 INI 文件中的统计数据 ==========
+            # 使用已有的 _load_school_account_stats_from_ini / _save_school_account_stats_to_ini
+            # 方法，而不是直接操作文件。这样可以：
+            # 1. 自动调用 normalize_chinese_config_to_english，正确处理 GBK/UTF-8-BOM 等编码
+            # 2. 只修改 [stats] 节，不触碰 [Config] / [System] 节，避免配置丢失
+            # 3. 与其他修改 stats 的代码路径保持一致
             try:
-                # 构造INI文件路径 (全局变量 SCHOOL_ACCOUNTS_DIR 指向 school_accounts 目录)
+                # 检查INI文件是否存在（通过路径验证）
                 ini_file = os.path.join(
                     SCHOOL_ACCOUNTS_DIR, f"{school_username}.ini")
-
-                # 检查文件是否存在
                 if not os.path.exists(ini_file):
                     return jsonify({
                         "success": False,
                         "message": f"学校账号配置文件不存在: {school_username}"
                     }), 404
 
-                # 读取配置文件
-                config = configparser.RawConfigParser()
-                config.optionxform = str
-                config.read(ini_file, encoding='utf-8')
+                # 步骤4-a：读取当前统计数据（overdue_count、completed_count）
+                stats = auth_system._load_school_account_stats_from_ini(school_username)
+                current_completed_count = stats["completed_count"]
 
-                # 确保 [stats] 节存在
-                if not config.has_section('stats'):
-                    config.add_section('stats')
-
-                # 计算最终欠费次数：叠加模式则累加，否则直接覆盖
+                # 步骤4-b：计算最终欠费次数
                 if add_mode:
-                    current_overdue = config.getint('stats', 'overdue_count', fallback=0)
-                    final_overdue_count = current_overdue + new_overdue_count
+                    # 叠加模式：在现有次数上累加
+                    final_overdue_count = stats["overdue_count"] + new_overdue_count
                 else:
+                    # 覆盖模式：直接设置为指定值
                     final_overdue_count = new_overdue_count
 
-                # 更新欠费次数
-                config.set('stats', 'overdue_count', str(final_overdue_count))
+                # 步骤4-c：保存更新后的统计数据
+                # _save_school_account_stats_to_ini 会先调用 normalize_chinese_config_to_english
+                # 处理编码问题，再以"读取全部节 → 修改 [stats] → 写回全部节"方式安全写入，
+                # 确保 [Config] / [System] 等节的配置不会丢失
+                success = auth_system._save_school_account_stats_to_ini(
+                    school_username,
+                    final_overdue_count,
+                    current_completed_count
+                )
 
-                # 保存文件
-                with open(ini_file, 'w', encoding='utf-8') as f:
-                    config.write(f)
+                if not success:
+                    return jsonify({
+                        "success": False,
+                        "message": "保存统计数据到 INI 文件失败"
+                    }), 500
 
                 # 获取当前登录管理员（用于日志）
                 admin_username = g.user if hasattr(g, 'user') else "unknown"
@@ -41360,7 +41368,7 @@ def start_web_server(args_param):
                     )
                 else:
                     logging.info(
-                        f"[管理员操作] {admin_username} 已直接修改INI文件 - "
+                        f"[管理员操作] {admin_username} 已修改欠费次数 - "
                         f"学校账号: {school_username}, 新欠费次数: {final_overdue_count}"
                     )
 
@@ -41382,7 +41390,7 @@ def start_web_server(args_param):
                 })
 
             except Exception as e:
-                logging.error(f"[管理员操作] 修改INI文件失败: {str(e)}", exc_info=True)
+                logging.error(f"[管理员操作] 修改欠费次数失败: {str(e)}", exc_info=True)
                 return jsonify({
                     "success": False,
                     "message": f"操作失败: {str(e)}"
