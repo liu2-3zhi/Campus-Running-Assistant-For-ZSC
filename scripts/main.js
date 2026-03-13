@@ -24703,8 +24703,8 @@ async function showMobileUserSchoolAccounts(username) {
   try {
     // ========== 发送HTTP请求获取账户数据 ==========
     // 构建API端点URL，使用encodeURIComponent编码用户名，避免特殊字符导致的问题
-    const apiUrl = `/auth/get_user_school_accounts_only?username=${encodeURIComponent(
-      username,
+    const apiUrl = `/auth/get_user_school_accounts?username=${encodeURIComponent(
+      username
     )}`;
 
     // 发送GET请求到服务器
@@ -47996,7 +47996,7 @@ async function showMobileUserSchoolAccounts(username) {
 
   try {
     const response = await fetch(
-      `/auth/get_user_school_accounts_only?username=${encodeURIComponent(username)}`,
+      `/auth/get_user_school_accounts?username=${encodeURIComponent(username)}`,
       {
         headers: { "X-Session-ID": sessionUUID },
       },
