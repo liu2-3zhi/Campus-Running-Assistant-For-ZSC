@@ -31531,6 +31531,7 @@ def start_web_server(args_param):
         """
         获取IP地址的地理位置信息 (带1天缓存)
         使用 pconline whois 接口
+        当API返回非字典类型数据时，自动重试最多2次
         """
         if not ip_address:
             return "未知"
@@ -31547,50 +31548,58 @@ def start_web_server(args_param):
                 return location
             else:
                 logging.debug(f"[IP缓存] 过期: ip={ip_address}")
-        try:
-            api_url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip_address}&json=true"
-            response = requests.get(api_url, timeout=5)
-            response.encoding = "gbk"
-            data = response.json()
 
-            if not isinstance(data, dict):
-                logging.warning(
-                    f"[IP定位] API返回非字典类型数据: ip={ip_address}, 类型={type(data).__name__}, 数据={data}"
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                api_url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip_address}&json=true"
+                response = requests.get(api_url, timeout=5)
+                response.encoding = "gbk"
+                data = response.json()
+
+                if not isinstance(data, dict):
+                    logging.warning(
+                        f"[IP定位] API返回非字典类型数据: ip={ip_address}, 类型={type(data).__name__}, "
+                        f"数据={data}, 尝试次数={attempt + 1}/{max_retries + 1}"
+                    )
+                    if attempt < max_retries:
+                        continue
+                    return "未知"
+
+                addr = data.get("addr", "").strip()
+
+                if addr:
+                    location_str = addr
+                    logging.debug(
+                        f"[IP定位] 成功获取: ip={ip_address}, 位置={location_str}"
+                    )
+                    with ip_cache_lock:
+                        ip_location_cache[ip_address] = {
+                            "location": location_str,
+                            "timestamp": current_time,
+                        }
+                    _save_ip_cache()
+                    return location_str
+                else:
+                    logging.warning(f"[IP定位] API返回空数据: ip={ip_address}")
+                    return "未知"
+
+            except requests.exceptions.Timeout:
+                logging.warning(f"[IP定位] 请求超时: ip={ip_address}")
+                return "未知"
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"[IP定位] 网络请求失败: ip={ip_address}, 错误={str(e)}")
+                return "未知"
+            except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
+                logging.warning(f"[IP定位] 数据解析失败: ip={ip_address}, 错误={str(e)}")
+                return "未知"
+            except Exception as e:
+                logging.error(
+                    f"[IP定位] 未知错误: ip={ip_address}, 错误={str(e)}", exc_info=True
                 )
                 return "未知"
 
-            addr = data.get("addr", "").strip()
-
-            if addr:
-                location_str = addr
-                logging.debug(
-                    f"[IP定位] 成功获取: ip={ip_address}, 位置={location_str}"
-                )
-                with ip_cache_lock:
-                    ip_location_cache[ip_address] = {
-                        "location": location_str,
-                        "timestamp": current_time,
-                    }
-                _save_ip_cache()
-                return location_str
-            else:
-                logging.warning(f"[IP定位] API返回空数据: ip={ip_address}")
-                return "未知"
-
-        except requests.exceptions.Timeout:
-            logging.warning(f"[IP定位] 请求超时: ip={ip_address}")
-            return "未知"
-        except requests.exceptions.RequestException as e:
-            logging.warning(f"[IP定位] 网络请求失败: ip={ip_address}, 错误={str(e)}")
-            return "未知"
-        except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
-            logging.warning(f"[IP定位] 数据解析失败: ip={ip_address}, 错误={str(e)}")
-            return "未知"
-        except Exception as e:
-            logging.error(
-                f"[IP定位] 未知错误: ip={ip_address}, 错误={str(e)}", exc_info=True
-            )
-            return "未知"
+        return "未知"
 
     @app.route("/api/messages/post", methods=["POST"])
     def post_message():
@@ -41212,27 +41221,29 @@ def start_web_server(args_param):
     @admin_required
     def admin_clear_overdue():
         """
-        管理员清除/修改学校账号欠费次数
+        管理员清除/修改/添加学校账号欠费次数
 
         功能说明：
         此接口允许管理员直接修改指定用户的指定学校账号的欠费次数。
-        主要用于帮助用户结清欠费、纠正错误的欠费记录，或进行其他管理操作。
+        支持两种模式：覆盖模式（直接设置为指定值）和叠加模式（在现有次数上累加）。
+        主要用于帮助用户结清欠费、纠正错误的欠费记录，或手动添加欠费记录。
 
         权限要求：管理员（admin或super_admin）
         请求方法：POST
 
         请求参数（JSON格式）：
         {
-            "auth_username": "user123",        // 用户名（账号所属用户）
-            "school_username": "2021001",      // 学校账号用户名
-            "new_overdue_count": 0             // 新的欠费次数（默认0，表示清零）
+            "auth_username": "user123",        // 用户名（账号所属用户，可为空）
+            "school_username": "2021001",      // 学校账号用户名（必填）
+            "new_overdue_count": 0,            // 欠费次数
+            "add_mode": false                  // 叠加模式（true=累加，false=覆盖，默认false）
         }
 
         返回数据（JSON格式）：
         成功时：
         {
             "success": true,
-            "message": "欠费次数已更新为 0"
+            "message": "欠费次数已更新为 X"
         }
 
         失败时：
@@ -41242,14 +41253,14 @@ def start_web_server(args_param):
         }
 
         使用场景：
-        1. 用户完成线下支付后，管理员手动清零欠费
-        2. 系统误判导致欠费次数错误，管理员纠正数据
-        3. 特殊情况下需要重置或调整欠费次数
+        1. 用户完成线下支付后，管理员手动清零欠费（add_mode=false, new_overdue_count=0）
+        2. 系统误判导致欠费次数错误，管理员纠正数据（add_mode=false）
+        3. 管理员手动添加欠费次数（add_mode=true，叠加到已有次数上）
 
         安全机制：
         1. 必须有管理员权限（@admin_required装饰器）
-        2. 参数验证：用户名、学校账号不能为空
-        3. 参数验证：欠费次数必须是非负整数
+        2. 参数验证：学校账号不能为空
+        3. 参数验证：覆盖模式下欠费次数必须是非负整数；叠加模式下必须大于0
         4. 记录详细的管理员操作日志，便于审计追溯
         """
         try:
@@ -41270,6 +41281,10 @@ def start_web_server(args_param):
             # new_overdue_count: 新的欠费次数，默认为0（清零）
             new_overdue_count = data.get("new_overdue_count", 0)
 
+            # add_mode: 叠加模式。True 表示将 new_overdue_count 累加到现有欠费次数；
+            # False（默认）表示直接覆盖为 new_overdue_count。
+            add_mode = bool(data.get("add_mode", False))
+
             # ========== 步骤2：基本参数验证 ==========
 
             # 验证学校账号不能为空（这是必须的）
@@ -41285,8 +41300,10 @@ def start_web_server(args_param):
             # ========== 步骤3：验证欠费次数参数 ==========
             try:
                 new_overdue_count = int(new_overdue_count)
-                # 验证欠费次数不能为负数
-                if new_overdue_count < 0:
+                # 叠加模式要求次数大于0；覆盖模式允许0（用于清零）
+                if add_mode and new_overdue_count < 1:
+                    return jsonify({"success": False, "message": "添加的欠费次数必须大于0"}), 400
+                elif not add_mode and new_overdue_count < 0:
                     return jsonify({"success": False, "message": "欠费次数不能为负数"}), 400
             except (ValueError, TypeError):
                 # 如果转换失败，返回400错误
@@ -41314,8 +41331,15 @@ def start_web_server(args_param):
                 if not config.has_section('stats'):
                     config.add_section('stats')
 
+                # 计算最终欠费次数：叠加模式则累加，否则直接覆盖
+                if add_mode:
+                    current_overdue = config.getint('stats', 'overdue_count', fallback=0)
+                    final_overdue_count = current_overdue + new_overdue_count
+                else:
+                    final_overdue_count = new_overdue_count
+
                 # 更新欠费次数
-                config.set('stats', 'overdue_count', str(new_overdue_count))
+                config.set('stats', 'overdue_count', str(final_overdue_count))
 
                 # 保存文件
                 with open(ini_file, 'w', encoding='utf-8') as f:
@@ -41328,10 +41352,17 @@ def start_web_server(args_param):
                     admin_username = admin_username.get(
                         "auth_username", "unknown")
 
-                logging.info(
-                    f"[管理员操作] {admin_username} 已直接修改INI文件 - "
-                    f"学校账号: {school_username}, 新欠费次数: {new_overdue_count}"
-                )
+                if add_mode:
+                    logging.info(
+                        f"[管理员操作] {admin_username} 手动添加欠费（叠加模式）- "
+                        f"学校账号: {school_username}, 增加: {new_overdue_count}, "
+                        f"最终欠费次数: {final_overdue_count}"
+                    )
+                else:
+                    logging.info(
+                        f"[管理员操作] {admin_username} 已直接修改INI文件 - "
+                        f"学校账号: {school_username}, 新欠费次数: {final_overdue_count}"
+                    )
 
                 _write_payment_log(
                     user_id=admin_username,
@@ -41340,13 +41371,14 @@ def start_web_server(args_param):
                     log_data={
                         "target_user": auth_username,
                         "school_username": school_username,
-                        "new_overdue_count": new_overdue_count
+                        "new_overdue_count": final_overdue_count,
+                        "add_mode": add_mode
                     }
                 )
 
                 return jsonify({
                     "success": True,
-                    "message": f"已将学校账号 {school_username} 的欠费次数更新为 {new_overdue_count}"
+                    "message": f"已将学校账号 {school_username} 的欠费次数更新为 {final_overdue_count}"
                 })
 
             except Exception as e:

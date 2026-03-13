@@ -55580,7 +55580,7 @@ async function loadOverdueAccounts() {
  * - 添加二次确认对话框，防止误操作
  *
  * 【注意事项】
- * - new_overdue_count 为正数表示添加欠费
+ * - add_mode=true 表示叠加模式：将输入的次数累加到已有欠费次数上，而非覆盖
  * - auth_username 传空字符串，让后端自动查找该学校账号所属的用户
  *
  * @returns {Promise<void>}
@@ -55677,7 +55677,8 @@ async function adminAddOverdue() {
       body: JSON.stringify({
         school_username: schoolUsername, // 学校账号
         auth_username: "", // 空字符串，让后端自动查找该学校账号所属的用户
-        new_overdue_count: overdueCount, // 欠费次数（正数表示添加欠费）
+        new_overdue_count: overdueCount, // 欠费次数（叠加到已有欠费次数上）
+        add_mode: true, // 叠加模式：累加而非覆盖
       }),
     });
 
@@ -55788,6 +55789,7 @@ async function mobileAdminAddOverdue() {
         school_username: schoolUsername,
         auth_username: "",
         new_overdue_count: overdueCount,
+        add_mode: true, // 叠加模式：累加而非覆盖
       }),
     });
     const result = await response.json();
