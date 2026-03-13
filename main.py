@@ -18525,397 +18525,384 @@ class PlaywrightContextProxy:
         self._browser_pool.close_context(self._session_id)
 
 
-class _PlaywrightWorker:
+class ChromeBrowserPool:
     """
-    Chrome线程池中的单个工作线程。
+    管理服务器端Chrome浏览器实例，用于执行JS计算 (专用线程模式)
 
-    每个工作线程拥有独立的 Playwright 实例、Chrome 浏览器和上下文字典，
-    互不干扰。同一 session_id 的所有操作始终路由到同一个工作线程
-    （会话亲和性），以确保浏览器上下文状态一致。
+    注意：由于应用使用了 eventlet.monkey_patch()，Playwright 的同步 API 无法直接在
+    eventlet 的 greenlet 协作式调度环境中运行。之前使用 eventlet.tpool.execute() 的方案
+    会导致 "Cannot switch to a different thread" 错误，因为 tpool 每次可能使用不同的线程，
+    而 Playwright 对象是线程绑定的。
 
-    若单次操作超过 ChromeBrowserPool.OPERATION_TIMEOUT_SEC 秒，
-    ChromeBrowserPool 的看门狗会调用 force_kill() 强制终止本线程。
+    解决方案：创建一个专用的持久化原生线程来运行所有 Playwright 操作。
+    使用队列机制将操作请求发送到这个专用线程，并等待结果返回。
     """
 
-    def __init__(self, worker_id, headless, native_threading, native_queue_module):
-        self.worker_id = worker_id
+    # 队列轮询超时时间（秒）：工作线程从队列获取请求时的等待时间
+    QUEUE_POLL_TIMEOUT_SEC = 1
+    # 线程关闭超时时间（秒）：等待工作线程退出的最大时间
+    THREAD_SHUTDOWN_TIMEOUT_SEC = 10
+    # 默认操作超时时间（秒）：等待 Playwright 操作完成的默认超时时间
+    DEFAULT_OPERATION_TIMEOUT_SEC = 60
+
+    def __init__(self, headless=True, max_instances=5):
+        """
+        初始化 ChromeBrowserPool 实例。
+
+        参数:
+            headless: 是否以无头模式运行浏览器（无图形界面）
+            max_instances: 最大浏览器实例数量限制（保留参数以兼容现有接口，当前实现使用单一实例）
+        """
+        # 是否以无头模式运行浏览器（无图形界面）
         self.headless = headless
-        self._threading = native_threading
-        self._queue_mod = native_queue_module
+        # 最大浏览器实例数量限制（保留以兼容现有接口，当前实现使用单一浏览器实例配合多上下文）
+        self.max_instances = max_instances
 
-        # Playwright state – only accessed from the worker thread
-        self._playwright = None
-        self._browser = None
-        self._contexts = {}   # session_id -> {"context": ..., "page": ...}
+        # 导入 eventlet.patcher 获取未被 monkey patch 的原生模块
+        # 这是关键：必须使用原生的 threading 和 queue 模块，而不是被 eventlet 修改过的版本
+        # from eventlet import patcher
+
+        # 获取原生的 threading 模块，用于创建真正的系统线程
+        self._native_threading = eventlet.patcher.original("threading")
+        # 获取原生的 queue 模块，用于线程间通信
+        self._native_queue = eventlet.patcher.original("queue")
+
+        # 创建请求队列：用于从 eventlet greenlet 发送操作请求到专用线程
+        # 使用原生 queue.Queue 确保线程安全，且不受 eventlet 影响
+        self._request_queue = self._native_queue.Queue()
+
+        # 创建专用线程的停止标志，用于优雅关闭
+        self._stop_flag = self._native_threading.Event()
+
+        # 在专用线程中维护的 Playwright 相关对象引用
+        # 这些对象只在专用线程中创建和使用
+        self._playwright = None  # Playwright 实例
+        self._browser = None  # Browser 浏览器实例
+        self._contexts = {}  # 会话ID到浏览器上下文的映射字典
+
+        # 记录专用线程是否已初始化的标志
         self._initialized = False
 
-        # Thread communication
-        self._request_queue = native_queue_module.Queue()
-        self._stop_flag = native_threading.Event()
-
-        # Idle tracking (True when the worker is between requests)
-        self._idle_event = native_threading.Event()
-        self._idle_event.set()   # starts in idle state
-
-        # Current operation timing (protected by _op_lock)
-        self._op_lock = native_threading.Lock()
-        self._op_start_time = None   # float or None
-        self._op_name = None         # str  or None
-
-        self._alive = True
-
-        # Daemon thread so the process can exit even if a thread is stuck
-        self._thread = native_threading.Thread(
-            target=self._worker_loop,
-            name=f"PlaywrightWorker-{worker_id}",
-            daemon=True,
+        # 创建并启动专用的原生线程
+        # 不使用 daemon=True，以确保程序退出时能够正确清理 Playwright 资源
+        # 需要通过 shutdown() 方法显式停止线程
+        self._worker_thread = self._native_threading.Thread(
+            target=self._worker_loop,  # 线程的主循环函数
+            name="PlaywrightWorkerThread",  # 线程名称，便于调试
         )
-        self._thread.start()
-        logging.info(f"[ChromePool] Worker-{worker_id} 已启动")
-
-    # ------------------------------------------------------------------ #
-    # Public API  (called from the pool / caller threads)
-    # ------------------------------------------------------------------ #
-
-    def is_idle(self):
-        """True when the worker is alive and its request queue is empty."""
-        return (
-            self._alive
-            and self._idle_event.is_set()
-            and self._request_queue.empty()
-        )
-
-    def is_alive(self):
-        return self._alive
-
-    def current_op_age_s(self):
-        """Seconds since the current operation started; 0 if idle."""
-        with self._op_lock:
-            if self._op_start_time is None:
-                return 0.0
-            return time.time() - self._op_start_time
-
-    def submit(self, request):
-        """
-        Put *request* in this worker's queue.
-        Returns True on success, False if the worker is dead.
-        """
-        if not self._alive:
-            return False
-        self._idle_event.clear()
-        self._request_queue.put(request)
-        return True
-
-    def stop(self):
-        """Signal the worker to exit gracefully after finishing its current request."""
-        self._stop_flag.set()
-        self._alive = False
-        try:
-            self._request_queue.put(
-                {"operation": "_shutdown", "args": {},
-                 "result_event": None, "result_container": None}
-            )
-        except Exception:
-            pass
-
-    def force_kill(self):
-        """
-        Force-terminate this worker when it has exceeded the operation timeout.
-
-        Strategy
-        --------
-        1. Mark as dead so no new requests are submitted.
-        2. Close the Playwright browser – this unblocks any blocking Playwright
-           calls (page.goto, page.evaluate, etc.) in the worker thread.
-        3. Inject SystemExit into the worker thread via ctypes as a best-effort
-           measure for any remaining Python-level blocking.
-        4. Drain the request queue and fail all pending requests immediately.
-        """
-        logging.warning(
-            f"[ChromePool] Worker-{self.worker_id} 正在强制终止 "
-            f"(当前操作: {self._op_name})"
-        )
-        self._alive = False
-        self._stop_flag.set()
-
-        # 1 & 2 – close browser/playwright to unblock stuck calls
-        try:
-            if self._browser:
-                self._browser.close()
-                self._browser = None
-        except Exception:
-            pass
-        try:
-            if self._playwright:
-                self._playwright.stop()
-                self._playwright = None
-        except Exception:
-            pass
-
-        # 3 – inject SystemExit
-        try:
-            import ctypes
-            tid = self._thread.ident
-            if tid:
-                ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                    ctypes.c_ulong(tid),
-                    ctypes.py_object(SystemExit),
-                )
-        except Exception:
-            pass
-
-        # 4 – drain queue
-        self._drain_queue_with_error("Worker force-killed (operation timeout)")
-
-    def _drain_queue_with_error(self, error_msg):
-        """Drain the request queue, unblocking every pending caller with an error."""
-        try:
-            while True:
-                req = self._request_queue.get_nowait()
-                rc = req.get("result_container")
-                re_ = req.get("result_event")
-                if rc is not None:
-                    rc["result"] = {"success": False, "error": error_msg}
-                if re_ is not None:
-                    re_.set()
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------------ #
-    # Worker thread main loop
-    # ------------------------------------------------------------------ #
+        # 启动专用线程
+        self._worker_thread.start()
+        # 记录线程启动日志
+        logging.info(f"Playwright 专用工作线程已启动 (headless={self.headless})")
 
     def _worker_loop(self):
-        try:
-            while not self._stop_flag.is_set():
-                try:
-                    request = self._request_queue.get(timeout=1)
-                except self._queue_mod.Empty:
-                    self._idle_event.set()
-                    continue
+        """
+        专用线程的主循环函数。
 
-                op = request.get("operation")
-                if op == "_shutdown":
-                    break
+        这个函数在专用线程中持续运行，从请求队列中获取操作请求，
+        执行相应的 Playwright 操作，并将结果返回给调用者。
+        """
+        # 持续运行直到收到停止信号
+        while not self._stop_flag.is_set():
+            try:
+                # 从请求队列获取操作请求，设置超时避免无限阻塞
+                # 使用 QUEUE_POLL_TIMEOUT_SEC 常量控制轮询间隔
+                request = self._request_queue.get(
+                    timeout=self.QUEUE_POLL_TIMEOUT_SEC)
+            except self._native_queue.Empty:
+                # 队列为空且超时，继续循环检查停止标志
+                continue
 
-                # Record operation start time for watchdog
-                with self._op_lock:
-                    self._op_start_time = time.time()
-                    self._op_name = op
+            # 解析请求：操作类型、参数、用于返回结果的事件和结果容器
+            operation = request.get("operation")  # 操作类型字符串
+            args = request.get("args", {})  # 操作参数字典
+            result_event = request.get("result_event")  # 用于通知完成的事件
+            result_container = request.get("result_container")  # 用于存储结果的容器
 
-                args = request.get("args", {})
-                result_event = request.get("result_event")
-                result_container = request.get("result_container")
+            # 检查是否是关闭信号（不需要返回结果）
+            if operation == "_shutdown":
+                continue
 
-                try:
-                    result = self._dispatch(op, args)
-                except SystemExit:
-                    logging.warning(
-                        f"[ChromePool] Worker-{self.worker_id} "
-                        f"在操作 {op} 中收到强制终止信号"
+            try:
+                # 根据操作类型执行相应的 Playwright 操作
+                if operation == "initialize":
+                    # 初始化 Playwright 和浏览器
+                    result = self._do_initialize()
+                elif operation == "get_context":
+                    # 获取或创建浏览器上下文
+                    result = self._do_get_context(args.get("session_id"))
+                elif operation == "execute_js":
+                    # 执行 JavaScript 代码
+                    result = self._do_execute_js(
+                        args.get("session_id"),
+                        args.get("script"),
+                        args.get("js_args", []),
                     )
-                    result = {
-                        "success": False,
-                        "error": "Worker force-killed (operation timeout)",
-                    }
-                    if result_container is not None:
-                        result_container["result"] = result
-                    if result_event is not None:
-                        result_event.set()
-                    break   # exit the loop
-                except Exception as e:
-                    logging.error(
-                        f"[ChromePool] Worker-{self.worker_id} op={op} 异常: {e}",
-                        exc_info=True,
+                elif operation == "close_context":
+                    # 关闭指定会话的上下文
+                    result = self._do_close_context(args.get("session_id"))
+                elif operation == "cleanup":
+                    # 清理所有资源
+                    result = self._do_cleanup()
+                elif operation == "cleanup_context":
+                    # 清理指定会话的上下文（别名，与 close_context 功能相同）
+                    result = self._do_close_context(args.get("session_id"))
+                elif operation == "page_goto":
+                    # 导航到指定 URL
+                    result = self._do_page_goto(
+                        args.get("session_id"), args.get(
+                            "url"), args.get("options", {})
                     )
-                    result = {"success": False, "error": str(e)}
+                elif operation == "page_set_content":
+                    # 设置页面 HTML 内容
+                    result = self._do_page_set_content(
+                        args.get("session_id"),
+                        args.get("html"),
+                        args.get("options", {}),
+                    )
+                elif operation == "page_wait_for_function":
+                    # 等待 JavaScript 函数返回真值
+                    result = self._do_page_wait_for_function(
+                        args.get("session_id"),
+                        args.get("expression"),
+                        args.get("options", {}),
+                    )
+                else:
+                    # 未知操作类型，返回错误
+                    result = {"success": False, "error": f"未知操作: {operation}"}
 
-                # Clear timing
-                with self._op_lock:
-                    self._op_start_time = None
-                    self._op_name = None
+            except Exception as e:
+                # 捕获操作执行过程中的任何异常
+                logging.error(
+                    f"Playwright 操作 {operation} 失败: {e}", exc_info=True)
+                result = {"success": False, "error": str(e)}
 
-                # Return result to caller
-                if result_container is not None:
-                    result_container["result"] = result
-                if result_event is not None:
-                    result_event.set()
+            # 将结果存入结果容器并通知等待的调用者
+            if result_container is not None:
+                result_container["result"] = result
+            if result_event is not None:
+                result_event.set()  # 触发事件，通知调用者操作已完成
 
-                self._idle_event.set()
-
-        finally:
-            self._alive = False
-            self._idle_event.set()
-            self._do_cleanup()
-            logging.info(f"[ChromePool] Worker-{self.worker_id} 线程已退出")
-
-    # ------------------------------------------------------------------ #
-    # Playwright operations  (all run inside the worker thread)
-    # ------------------------------------------------------------------ #
-
-    def _dispatch(self, operation, args):
-        if operation == "initialize":
-            return self._do_initialize()
-        elif operation == "get_context":
-            return self._do_get_context(args.get("session_id"))
-        elif operation in ("close_context", "cleanup_context"):
-            return self._do_close_context(args.get("session_id"))
-        elif operation == "execute_js":
-            return self._do_execute_js(
-                args.get("session_id"),
-                args.get("script"),
-                args.get("js_args", []),
-            )
-        elif operation == "cleanup":
-            return self._do_cleanup()
-        elif operation == "page_goto":
-            return self._do_page_goto(
-                args.get("session_id"),
-                args.get("url"),
-                args.get("options", {}),
-            )
-        elif operation == "page_set_content":
-            return self._do_page_set_content(
-                args.get("session_id"),
-                args.get("html"),
-                args.get("options", {}),
-            )
-        elif operation == "page_wait_for_function":
-            return self._do_page_wait_for_function(
-                args.get("session_id"),
-                args.get("expression"),
-                args.get("options", {}),
-            )
-        else:
-            return {"success": False, "error": f"未知操作: {operation}"}
+        # 线程退出前的清理工作
+        logging.info("Playwright 专用工作线程正在退出...")
+        self._do_cleanup()
 
     def _do_initialize(self):
+        """
+        在专用线程中初始化 Playwright 和浏览器。
+
+        此方法只在专用线程中被调用，确保 Playwright 对象在正确的线程中创建。
+
+        返回:
+            dict: 包含 success 标志的结果字典
+        """
+        # 检查是否已经初始化过
         if self._initialized:
             return {"success": True, "message": "已经初始化"}
+
         try:
-            logging.info(
-                f"[ChromePool] Worker-{self.worker_id} 正在初始化 Playwright..."
-            )
+            # 记录初始化日志
+            logging.info("正在专用线程中初始化 Playwright...")
+
+            # 启动 Playwright，这会返回一个 Playwright 实例
             self._playwright = sync_playwright().start()
+
+            # 使用 Playwright 启动 Chromium 浏览器
+            # --no-sandbox: 在 Docker/Linux 环境中必需
+            # --disable-setuid-sandbox: 在某些 Linux 环境中必需
             self._browser = self._playwright.chromium.launch(
                 headless=self.headless,
                 args=["--no-sandbox", "--disable-setuid-sandbox"],
             )
+
+            # 初始化上下文字典
             self._contexts = {}
+            # 标记为已初始化
             self._initialized = True
+
             logging.info(
-                f"[ChromePool] Worker-{self.worker_id} "
                 f"Playwright 和 Chrome 浏览器初始化成功 (headless={self.headless})"
             )
             return {"success": True}
+
         except Exception as e:
-            logging.error(
-                f"[ChromePool] Worker-{self.worker_id} 初始化失败: {e}",
-                exc_info=True,
-            )
+            # 初始化失败，记录错误并返回失败结果
+            logging.error(f"初始化 Playwright 失败: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _do_get_context(self, session_id):
+        """
+        在专用线程中获取或创建指定会话的浏览器上下文。
+
+        参数:
+            session_id: 会话标识符
+
+        返回:
+            dict: 包含 success 标志和上下文信息的结果字典
+        """
+        # 确保已初始化
         if not self._initialized:
-            r = self._do_initialize()
-            if not r.get("success"):
-                return r
+            init_result = self._do_initialize()
+            if not init_result.get("success"):
+                return init_result
+
+        # 检查会话是否已有上下文
         if session_id not in self._contexts:
             try:
+                # 创建新的浏览器上下文
+                # viewport: 设置视口大小为 1920x1080，模拟标准桌面分辨率
+                # user_agent: 设置用户代理字符串
                 context = self._browser.new_context(
                     viewport={"width": 1920, "height": 1080},
-                    user_agent=(
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36"
-                    ),
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 )
+                # 在上下文中创建新页面（标签页）
                 page = context.new_page()
+                # 存储上下文和页面到字典中
                 self._contexts[session_id] = {"context": context, "page": page}
-                logging.info(
-                    f"[ChromePool] Worker-{self.worker_id} "
-                    f"为会话 {session_id} 创建了新的 Chrome 上下文"
-                )
+                logging.info(f"为会话 {session_id} 创建了新的 Chrome 上下文")
             except Exception as e:
-                logging.error(
-                    f"[ChromePool] Worker-{self.worker_id} 创建上下文失败: {e}",
-                    exc_info=True,
-                )
+                logging.error(f"创建上下文失败: {e}", exc_info=True)
                 return {"success": False, "error": str(e)}
+
         return {"success": True, "session_id": session_id}
 
     def _do_execute_js(self, session_id, script, js_args):
-        r = self._do_get_context(session_id)
-        if not r.get("success"):
-            return r
+        """
+        在专用线程中执行 JavaScript 代码。
+
+        参数:
+            session_id: 会话标识符
+            script: 要执行的 JavaScript 代码字符串
+            js_args: 传递给 JavaScript 的参数列表
+
+        返回:
+            dict: 包含 success 标志和执行结果的结果字典
+        """
+        # 确保上下文存在
+        ctx_result = self._do_get_context(session_id)
+        if not ctx_result.get("success"):
+            return ctx_result
+
         try:
+            # 获取页面对象
             page = self._contexts[session_id]["page"]
+            # 执行 JavaScript 代码
             result = page.evaluate(script, js_args)
             return {"success": True, "result": result}
         except Exception as e:
             logging.error(
-                f"[ChromePool] Worker-{self.worker_id} 执行JS失败: {e}",
-                exc_info=True,
-            )
+                f"执行 JS 失败 (session={session_id}): {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _do_close_context(self, session_id):
+        """
+        在专用线程中关闭指定会话的浏览器上下文。
+
+        参数:
+            session_id: 要关闭的会话标识符
+
+        返回:
+            dict: 包含 success 标志的结果字典
+        """
+        # 检查会话是否存在
         if session_id not in self._contexts:
             return {"success": True, "message": "上下文不存在，无需关闭"}
+
         try:
-            ctx = self._contexts.pop(session_id)
+            # 获取并关闭上下文
+            ctx = self._contexts[session_id]
             ctx["context"].close()
-            logging.info(
-                f"[ChromePool] Worker-{self.worker_id} "
-                f"已关闭会话 {session_id} 的 Chrome 上下文"
-            )
+            # 从字典中删除引用
+            del self._contexts[session_id]
+            logging.info(f"已关闭会话 {session_id} 的 Chrome 上下文")
             return {"success": True}
         except Exception as e:
-            logging.error(
-                f"[ChromePool] Worker-{self.worker_id} 关闭上下文失败: {e}",
-                exc_info=True,
-            )
+            logging.error(f"关闭上下文失败: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _do_page_goto(self, session_id, url, options):
-        r = self._do_get_context(session_id)
-        if not r.get("success"):
-            return r
+        """
+        在专用线程中执行页面导航操作。
+
+        参数:
+            session_id: 会话标识符
+            url: 目标 URL
+            options: 导航选项字典
+
+        返回:
+            dict: 包含 success 标志和导航结果的字典
+        """
+        # 确保上下文存在
+        ctx_result = self._do_get_context(session_id)
+        if not ctx_result.get("success"):
+            return ctx_result
+
         try:
+            # 获取页面对象
             page = self._contexts[session_id]["page"]
+            # 执行导航操作
             result = page.goto(url, **options) if options else page.goto(url)
             return {"success": True, "result": result}
         except Exception as e:
             logging.error(
-                f"[ChromePool] Worker-{self.worker_id} 页面导航失败: {e}",
-                exc_info=True,
+                f"页面导航失败 (session={session_id}, url={url}): {e}", exc_info=True
             )
             return {"success": False, "error": str(e)}
 
     def _do_page_set_content(self, session_id, html, options):
-        r = self._do_get_context(session_id)
-        if not r.get("success"):
-            return r
+        """
+        在专用线程中设置页面 HTML 内容。
+
+        参数:
+            session_id: 会话标识符
+            html: HTML 内容字符串
+            options: 设置选项字典
+
+        返回:
+            dict: 包含 success 标志的结果字典
+        """
+        # 确保上下文存在
+        ctx_result = self._do_get_context(session_id)
+        if not ctx_result.get("success"):
+            return ctx_result
+
         try:
+            # 获取页面对象
             page = self._contexts[session_id]["page"]
+            # 设置页面内容
             result = (
-                page.set_content(html, **options)
-                if options
-                else page.set_content(html)
+                page.set_content(
+                    html, **options) if options else page.set_content(html)
             )
             return {"success": True, "result": result}
         except Exception as e:
             logging.error(
-                f"[ChromePool] Worker-{self.worker_id} 设置页面内容失败: {e}",
-                exc_info=True,
+                f"设置页面内容失败 (session={session_id}): {e}", exc_info=True
             )
             return {"success": False, "error": str(e)}
 
     def _do_page_wait_for_function(self, session_id, expression, options):
-        r = self._do_get_context(session_id)
-        if not r.get("success"):
-            return r
+        """
+        在专用线程中等待 JavaScript 函数返回真值。
+
+        参数:
+            session_id: 会话标识符
+            expression: JavaScript 表达式
+            options: 等待选项字典
+
+        返回:
+            dict: 包含 success 标志的结果字典
+        """
+        # 确保上下文存在
+        ctx_result = self._do_get_context(session_id)
+        if not ctx_result.get("success"):
+            return ctx_result
+
         try:
+            # 获取页面对象
             page = self._contexts[session_id]["page"]
+            # 等待函数
             result = (
                 page.wait_for_function(expression, **options)
                 if options
@@ -18923,218 +18910,82 @@ class _PlaywrightWorker:
             )
             return {"success": True, "result": result}
         except Exception as e:
-            logging.error(
-                f"[ChromePool] Worker-{self.worker_id} 等待函数失败: {e}",
-                exc_info=True,
-            )
+            logging.error(f"等待函数失败 (session={session_id}): {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _do_cleanup(self):
+        """
+        在专用线程中清理所有 Playwright 资源。
+
+        返回:
+            dict: 包含 success 标志的结果字典
+        """
         try:
-            for sid, ctx in list(self._contexts.items()):
+            logging.info("正在清理 Playwright 资源...")
+
+            # 关闭所有上下文
+            for session_id, ctx in list(self._contexts.items()):
                 try:
                     ctx["context"].close()
-                except Exception:
-                    pass
+                    logging.debug(f"已关闭会话 {session_id} 的上下文")
+                except Exception as e:
+                    logging.warning(f"关闭会话 {session_id} 上下文失败: {e}")
             self._contexts.clear()
+
+            # 关闭浏览器
             if self._browser:
                 try:
                     self._browser.close()
-                except Exception:
-                    pass
+                    logging.debug("浏览器已关闭")
+                except Exception as e:
+                    logging.warning(f"关闭浏览器失败: {e}")
                 self._browser = None
+
+            # 停止 Playwright
             if self._playwright:
                 try:
                     self._playwright.stop()
-                except Exception:
-                    pass
+                    logging.debug("Playwright 已停止")
+                except Exception as e:
+                    logging.warning(f"停止 Playwright 失败: {e}")
                 self._playwright = None
+
             self._initialized = False
-            logging.info(
-                f"[ChromePool] Worker-{self.worker_id} Playwright 资源清理完毕"
-            )
+            logging.info("Playwright 资源清理完毕")
             return {"success": True}
+
         except Exception as e:
-            logging.error(
-                f"[ChromePool] Worker-{self.worker_id} 清理资源失败: {e}",
-                exc_info=True,
-            )
+            logging.error(f"清理 Playwright 资源时出错: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
-
-
-class ChromeBrowserPool:
-    """
-    Chrome 浏览器线程池（多线程版本）。
-
-    使用最多 MAX_WORKERS 个独立工作线程（_PlaywrightWorker），每个线程拥有
-    独立的 Playwright 实例和 Chrome 浏览器，完全互不阻塞。
-
-    会话亲和性
-    ----------
-    同一 session_id 的所有操作始终路由到同一个工作线程，保证浏览器上下文的
-    状态在多次调用之间保持一致。close_context() 会解除会话与工作线程的绑定，
-    下次请求将自动分配到空闲线程。
-
-    超时保护
-    --------
-    内置看门狗线程（PlaywrightWatchdog）每 WATCHDOG_INTERVAL_SEC 秒检查一次
-    所有工作线程的当前操作耗时。若超过 OPERATION_TIMEOUT_SEC 秒，则调用
-    force_kill() 强制终止该线程：
-      1. 关闭 Playwright 浏览器（解除任何阻塞的页面调用）
-      2. 通过 ctypes 向线程注入 SystemExit
-      3. 排空请求队列，立即向所有等待的调用者返回错误
-    被终止的线程会在下次请求时自动重建。
-
-    注意：由于 eventlet.monkey_patch()，必须使用原生 threading/queue 模块。
-    """
-
-    MAX_WORKERS = 10                # 最大工作线程数
-    OPERATION_TIMEOUT_SEC = 300     # 单次操作超时（秒）
-    WATCHDOG_INTERVAL_SEC = 5       # 看门狗检查间隔（秒）
-
-    def __init__(self, headless=True, max_instances=10):
-        self.headless = headless
-        self.max_workers = min(max(1, max_instances), self.MAX_WORKERS)
-
-        # Must use the original (non-monkey-patched) modules
-        self._native_threading = eventlet.patcher.original("threading")
-        self._native_queue = eventlet.patcher.original("queue")
-
-        # Pool state (all guarded by _pool_lock)
-        self._pool_lock = self._native_threading.Lock()
-        self._workers = []               # list[_PlaywrightWorker]
-        self._session_worker = {}        # session_id -> worker_id (int)
-        self._next_worker_id = 0
-
-        # Global stop flag for watchdog
-        self._stop_flag = self._native_threading.Event()
-
-        # Start watchdog thread
-        self._watchdog_thread = self._native_threading.Thread(
-            target=self._watchdog_loop,
-            name="PlaywrightWatchdog",
-            daemon=True,
-        )
-        self._watchdog_thread.start()
-
-        logging.info(
-            f"[ChromePool] 线程池已初始化 "
-            f"(max_workers={self.max_workers}, "
-            f"timeout={self.OPERATION_TIMEOUT_SEC}s)"
-        )
-
-    # ------------------------------------------------------------------ #
-    # Internal pool management
-    # ------------------------------------------------------------------ #
-
-    def _create_worker(self):
-        """Create a new _PlaywrightWorker and add it to the pool.
-        Must be called with _pool_lock held."""
-        wid = self._next_worker_id
-        self._next_worker_id += 1
-        worker = _PlaywrightWorker(
-            wid, self.headless,
-            self._native_threading,
-            self._native_queue,
-        )
-        self._workers.append(worker)
-        return worker
-
-    def _prune_dead_workers(self):
-        """Remove dead workers and clean up their session mappings.
-        Must be called with _pool_lock held."""
-        dead_ids = {w.worker_id for w in self._workers if not w.is_alive()}
-        if dead_ids:
-            self._workers = [w for w in self._workers if w.is_alive()]
-            self._session_worker = {
-                sid: wid
-                for sid, wid in self._session_worker.items()
-                if wid not in dead_ids
-            }
-
-    def _resolve_worker(self, session_id):
-        """
-        Return the worker assigned to *session_id*, assigning/creating one
-        if needed.  Returns None if the pool is full and all workers are busy.
-        """
-        with self._pool_lock:
-            self._prune_dead_workers()
-
-            # Re-use existing assignment if the worker is still alive
-            if session_id in self._session_worker:
-                wid = self._session_worker[session_id]
-                for w in self._workers:
-                    if w.worker_id == wid:
-                        return w
-                # Assigned worker died; fall through and re-assign
-                del self._session_worker[session_id]
-
-            # Prefer an existing idle worker
-            for w in self._workers:
-                if w.is_idle():
-                    self._session_worker[session_id] = w.worker_id
-                    return w
-
-            # Create a new worker if under the limit
-            if len(self._workers) < self.max_workers:
-                w = self._create_worker()
-                self._session_worker[session_id] = w.worker_id
-                return w
-
-            # Pool full, all workers busy
-            return None
-
-    def _get_any_worker(self):
-        """Return any idle worker (for ops without a session_id)."""
-        with self._pool_lock:
-            self._prune_dead_workers()
-            for w in self._workers:
-                if w.is_idle():
-                    return w
-            if len(self._workers) < self.max_workers:
-                return self._create_worker()
-            return None
-
-    def _watchdog_loop(self):
-        """Background thread: kill workers that exceed the operation timeout."""
-        while not self._stop_flag.is_set():
-            time.sleep(self.WATCHDOG_INTERVAL_SEC)
-            try:
-                with self._pool_lock:
-                    workers_snapshot = list(self._workers)
-                for worker in workers_snapshot:
-                    age = worker.current_op_age_s()
-                    if age > self.OPERATION_TIMEOUT_SEC:
-                        logging.warning(
-                            f"[ChromePool] Worker-{worker.worker_id} 操作超时 "
-                            f"({age:.0f}s > {self.OPERATION_TIMEOUT_SEC}s), "
-                            "强制终止"
-                        )
-                        worker.force_kill()
-                        # Worker marks itself dead; pruned on next _prune_dead_workers()
-            except Exception as e:
-                logging.error(f"[ChromePool] Watchdog 异常: {e}", exc_info=True)
-
-    # ------------------------------------------------------------------ #
-    # Core request dispatch
-    # ------------------------------------------------------------------ #
 
     def _send_request(self, operation, args=None, timeout=None):
         """
-        Route *operation* to the appropriate worker and block until it
-        completes (or times out).
+        向专用线程发送操作请求并等待结果。
 
-        For session-specific operations, the same worker is reused for all
-        calls with the same session_id (session affinity).  If no idle worker
-        is available, waits up to 30 s before giving up.
+        这是从 eventlet greenlet 调用的方法，它将操作请求发送到专用线程的队列，
+        然后等待操作完成并返回结果。
+
+        使用 eventlet.tpool.execute() 包装 Event.wait() 调用，避免阻塞 eventlet 调度器。
+
+        参数:
+            operation: 操作类型字符串 (如 "initialize", "get_context", "execute_js" 等)
+            args: 操作参数字典（可选）
+            timeout: 等待结果的超时时间（秒），默认使用 DEFAULT_OPERATION_TIMEOUT_SEC
+
+        返回:
+            dict: 操作结果字典，包含 success 标志和其他结果数据
         """
+        # 如果未指定超时时间，使用默认值
         if timeout is None:
-            timeout = self.OPERATION_TIMEOUT_SEC
+            timeout = self.DEFAULT_OPERATION_TIMEOUT_SEC
 
-        session_id = (args or {}).get("session_id")
-
+        # 使用原生 threading.Event 作为同步机制
+        # 这确保在 eventlet 环境中也能正确等待
         result_event = self._native_threading.Event()
+        # 结果容器，用于存储操作结果
         result_container = {}
+
+        # 构建请求对象
         request = {
             "operation": operation,
             "args": args or {},
@@ -19142,78 +18993,94 @@ class ChromeBrowserPool:
             "result_container": result_container,
         }
 
-        # Wait up to 30 s for an available worker
-        worker_wait_deadline = time.time() + 30
-        worker = None
-        while time.time() < worker_wait_deadline:
-            if session_id:
-                w = self._resolve_worker(session_id)
-            else:
-                w = self._get_any_worker()
-            if w is not None and w.submit(request):
-                worker = w
-                break
-            # All workers busy; yield briefly and retry
-            time.sleep(0.05)
+        # 将请求放入队列
+        self._request_queue.put(request)
 
-        if worker is None:
-            logging.error(
-                f"[ChromePool] 无可用工作线程 "
-                f"(op={operation}, session={session_id})"
-            )
-            return {
-                "success": False,
-                "error": "Chrome线程池已满，30秒内无可用工作线程",
-            }
+        # 导入 eventlet.tpool 用于在真实线程中等待结果
+        # 这避免了阻塞 eventlet 的协作式调度器
+        # import eventlet.tpool
 
-        # Wait for result via tpool to avoid blocking eventlet's scheduler
-        def _wait(event, t):
-            return event.wait(timeout=t)
+        # 定义等待函数，在 tpool 线程中执行
+        def _wait_for_result(event, timeout_sec):
+            # 使用原生 Event.wait() 等待结果
+            return event.wait(timeout=timeout_sec)
 
+        # 通过 tpool.execute() 在真实线程中等待，保持 eventlet 调度器响应
         try:
-            wait_result = eventlet.tpool.execute(_wait, result_event, timeout)
-        except Exception as e:
-            logging.error(
-                f"[ChromePool] 等待操作结果异常: {e}", exc_info=True
+            wait_result = eventlet.tpool.execute(
+                _wait_for_result, result_event, timeout
             )
+        except Exception as e:
+            # 如果 tpool 执行失败，记录错误并返回
+            logging.error(f"等待 Playwright 操作结果时出错: {e}", exc_info=True)
             return {"success": False, "error": f"等待结果失败: {str(e)}"}
 
         if wait_result:
-            return result_container.get(
-                "result", {"success": False, "error": "无结果"}
-            )
+            # 操作完成，返回结果
+            return result_container.get("result", {"success": False, "error": "无结果"})
         else:
-            logging.error(
-                f"[ChromePool] 操作 {operation} 超时 (>{timeout}s)"
-            )
+            # 超时，返回错误
+            logging.error(f"Playwright 操作 {operation} 超时 (>{timeout}秒)")
             return {"success": False, "error": f"操作超时 (>{timeout}秒)"}
 
-    # ------------------------------------------------------------------ #
-    # Public API  (same interface as the previous single-thread version)
-    # ------------------------------------------------------------------ #
+    def _initialize_for_thread(self):
+        """
+        初始化 Playwright 和浏览器（通过专用线程执行）。
+
+        此方法保留原有接口，内部实现改为向专用线程发送初始化请求。
+        这确保了与现有代码的兼容性。
+        """
+        # 向专用线程发送初始化请求
+        result = self._send_request("initialize")
+        if not result.get("success"):
+            error_msg = result.get("error", "未知错误")
+            logging.error(f"初始化 Playwright 失败: {error_msg}")
+            raise RuntimeError(f"初始化 Playwright 失败: {error_msg}")
 
     def get_context(self, session_id):
         """
-        Get (or create) a browser context for *session_id*.
+        获取或创建指定会话的浏览器上下文（通过专用线程执行）。
 
-        Returns a dict with 'context' and 'page' proxy objects.
+        参数:
+            session_id: 会话标识符，用于区分不同用户/会话的浏览器上下文
+
+        返回:
+            dict: 包含 'context' 和 'page' 键的字典
+                  - context: PlaywrightContextProxy 代理对象
+                  - page: PlaywrightPageProxy 代理对象
+
+        说明:
+            返回的 context 和 page 是代理对象，它们会将所有操作路由到专用线程执行。
+            调用代码可以像使用普通 Playwright 对象一样使用它们。
         """
+        # 向专用线程发送获取上下文请求
         result = self._send_request("get_context", {"session_id": session_id})
         if not result.get("success"):
             error_msg = result.get("error", "未知错误")
-            logging.error(
-                f"[ChromePool] 获取上下文失败 "
-                f"(session={session_id[:8]}...): {error_msg}"
-            )
+            logging.error(f"获取上下文失败 (session={session_id}): {error_msg}")
             raise RuntimeError(f"获取上下文失败: {error_msg}")
+
+        # 返回代理对象，而不是实际的 Playwright 对象
+        # 代理对象会将所有方法调用路由到专用线程执行
         return {
             "context": PlaywrightContextProxy(session_id, self),
             "page": PlaywrightPageProxy(session_id, self),
         }
 
     def execute_js(self, session_id, script, *args):
-        """Execute *script* in the browser context for *session_id*."""
+        """
+        在指定会话的Chrome中执行JavaScript代码（通过专用线程执行）。
+
+        参数:
+            session_id: 会话标识符
+            script: 要执行的 JavaScript 代码字符串
+            *args: 传递给 JavaScript 代码的参数
+
+        返回:
+            JavaScript 代码的执行结果，如果执行失败则返回 None
+        """
         try:
+            # 向专用线程发送执行 JS 请求
             result = self._send_request(
                 "execute_js",
                 {
@@ -19222,96 +19089,106 @@ class ChromeBrowserPool:
                     "js_args": list(args),
                 },
             )
+
             if result.get("success"):
                 return result.get("result")
-            error_msg = result.get("error", "未知错误")
-            logging.error(
-                f"[ChromePool] 执行JS失败 "
-                f"(session={session_id[:8]}...): {error_msg}"
-            )
-            return None
+            else:
+                error_msg = result.get("error", "未知错误")
+                logging.error(f"执行 JS 失败 (session={session_id}): {error_msg}")
+                return None
+
         except Exception as e:
-            logging.error(f"[ChromePool] 执行JS异常: {e}", exc_info=True)
+            logging.error(
+                f"执行 JS 异常 (session={session_id}): {e}", exc_info=True)
             return None
 
     def close_context(self, session_id):
-        """Close the browser context for *session_id* and release its worker slot."""
+        """
+        关闭指定会话的浏览器上下文（通过专用线程执行）。
+
+        参数:
+            session_id: 要关闭的会话标识符
+        """
         try:
+            # 向专用线程发送关闭上下文请求
             result = self._send_request(
-                "close_context", {"session_id": session_id}
-            )
-            # Remove session-worker binding so the next request gets a fresh worker
-            with self._pool_lock:
-                self._session_worker.pop(session_id, None)
+                "close_context", {"session_id": session_id})
             if not result.get("success"):
                 error_msg = result.get("error", "未知错误")
-                logging.error(
-                    f"[ChromePool] 关闭上下文失败 "
-                    f"(session={session_id[:8]}...): {error_msg}"
-                )
+                logging.error(f"关闭上下文失败 (session={session_id}): {error_msg}")
         except Exception as e:
-            logging.error(f"[ChromePool] 关闭上下文异常: {e}", exc_info=True)
+            logging.error(f"关闭上下文异常: {e}", exc_info=True)
 
     def cleanup_context(self, session_id):
-        """Alias for close_context (backward compatibility)."""
+        """
+        清理指定会话的浏览器上下文（通过专用线程执行）。
+
+        此方法是 close_context 的别名，用于兼容现有代码。
+
+        参数:
+            session_id: 要清理的会话标识符
+        """
         self.close_context(session_id)
 
     def cleanup_thread(self):
-        """Stop all worker threads (called before shutdown)."""
+        """
+        清理所有 Playwright 资源（通过专用线程执行）。
+
+        此方法应在程序退出前调用，以确保正确释放所有浏览器资源。
+        """
         try:
-            with self._pool_lock:
-                workers_snapshot = list(self._workers)
-            for w in workers_snapshot:
-                try:
-                    w.stop()
-                except Exception:
-                    pass
-            logging.info("[ChromePool] 所有工作线程已收到停止信号")
+            # 向专用线程发送清理请求
+            result = self._send_request("cleanup", timeout=30)
+            if not result.get("success"):
+                error_msg = result.get("error", "未知错误")
+                logging.error(f"清理资源失败: {error_msg}")
         except Exception as e:
-            logging.error(f"[ChromePool] cleanup_thread 异常: {e}", exc_info=True)
+            logging.error(f"清理资源异常: {e}", exc_info=True)
 
     def shutdown(self):
-        """Stop the watchdog and all worker threads, then wait for them to exit."""
-        logging.info("[ChromePool] 正在关闭线程池...")
+        """
+        关闭专用线程并清理所有资源。
+
+        此方法设置停止标志，通知专用线程退出，并等待线程结束。
+        如果线程未能在超时时间内退出，会记录警告日志。
+
+        注意：由于 Python 的 GIL 和线程模型限制，无法强制终止一个正在运行的线程。
+        如果线程卡在某个 Playwright 操作中，可能需要等待该操作完成才能退出。
+        """
+        logging.info("正在关闭 Playwright 专用工作线程...")
+        # 设置停止标志，通知工作线程退出循环
         self._stop_flag.set()
+
+        # 向队列发送一个空请求，确保工作线程能从 queue.get() 中唤醒
+        # 这是因为工作线程可能正在 queue.get(timeout=QUEUE_POLL_TIMEOUT_SEC) 中等待
         try:
-            with self._pool_lock:
-                workers_snapshot = list(self._workers)
-            for w in workers_snapshot:
-                try:
-                    w.stop()
-                    w._thread.join(timeout=5)
-                except Exception:
-                    pass
-        except Exception as e:
-            logging.error(f"[ChromePool] shutdown 异常: {e}", exc_info=True)
-        logging.info("[ChromePool] 线程池已关闭")
-
-    def _initialize_for_thread(self):
-        """Initialize Playwright on a worker (backward-compatibility shim)."""
-        result = self._send_request("initialize", {})
-        if not result.get("success"):
-            raise RuntimeError(
-                f"初始化失败: {result.get('error', '未知错误')}"
+            self._request_queue.put(
+                {
+                    "operation": "_shutdown",
+                    "args": {},
+                    "result_event": None,
+                    "result_container": None,
+                }
             )
+        except Exception:
+            pass  # 忽略队列操作失败
 
-    def get_worker_count(self):
-        """Return the number of currently active worker threads (for monitoring)."""
-        with self._pool_lock:
-            self._prune_dead_workers()
-            return len(self._workers)
-
-    def get_contexts_count(self):
-        """Return the total number of open browser contexts across all workers."""
-        with self._pool_lock:
-            workers_snapshot = list(self._workers)
-        total = 0
-        for w in workers_snapshot:
-            try:
-                total += len(w._contexts)
-            except Exception:
-                pass
-        return total
+        # 等待线程结束，使用 THREAD_SHUTDOWN_TIMEOUT_SEC 常量控制超时时间
+        if self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=self.THREAD_SHUTDOWN_TIMEOUT_SEC)
+            if self._worker_thread.is_alive():
+                # 线程未能在超时时间内退出
+                # 由于 Python 不支持强制终止线程，只能记录警告
+                # 线程将在其当前操作完成后自然退出
+                logging.warning(
+                    f"Playwright 工作线程未能在 {self.THREAD_SHUTDOWN_TIMEOUT_SEC} 秒内退出。"
+                    "线程可能正在执行长时间操作，将在操作完成后退出。"
+                    "如果程序正在关闭，线程将随进程终止。"
+                )
+            else:
+                logging.info("Playwright 工作线程已正常退出")
+        else:
+            logging.info("Playwright 工作线程已结束")
 
 
 def _cleanup_playwright():
@@ -42079,11 +41956,9 @@ def start_web_server(args_param):
                 active_tasks = len(background_task_manager.tasks)
         # ========== 获取Chrome上下文数（线程安全） ==========
         contexts_count = 0
-        if chrome_pool:
-            try:
-                contexts_count = chrome_pool.get_contexts_count()
-            except Exception:
-                pass
+        if chrome_pool and hasattr(chrome_pool, "_contexts"):
+            # 使用新的专用线程模式中的 _contexts 属性
+            contexts_count = len(getattr(chrome_pool, "_contexts", {}))
         # ========== 获取CDN缓存状态 ==========
         cdn_cache_status = {}
         try:
