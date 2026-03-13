@@ -1,6 +1,6 @@
 # Dockerfile for Python Running Helper
 # 使用官方Python 3.11镜像作为基础镜像
-FROM python
+FROM python:3.11
 
 # 设置工作目录
 WORKDIR /app
