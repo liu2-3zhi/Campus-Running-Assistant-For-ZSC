@@ -5603,12 +5603,12 @@
          ======================================== -->
 
     <div id="mobile-user-details-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="toggleMobileUserDetails(false)">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="toggleMobileUserDetails(false)"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="toggleMobileUserDetails(false)">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="toggleMobileUserDetails(false)">
           <h3 class="text-xl font-bold text-sky-600 text-center">用户详情</h3>
         </div>
         <div id="mobile-user-details-content" class="text-sm space-y-1 max-h-[60vh] overflow-y-auto"></div>
@@ -5628,12 +5628,12 @@
     </div>
 
     <div id="mobile-task-details-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="toggleMobileTaskDetails(false)">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="toggleMobileTaskDetails(false)"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="toggleMobileTaskDetails(false)">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="toggleMobileTaskDetails(false)">
           <h3 class="text-xl font-bold text-sky-600 text-center">任务详情</h3>
         </div>
         <div id="mobile-task-details-content" class="text-sm space-y-1 max-h-[60vh] overflow-y-auto"></div>
@@ -5649,9 +5649,9 @@
          【移动端历史记录模态框】
          ======================================== -->
     <div id="mobile-history-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="closeMobileHistoryModal()">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileHistoryModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileHistoryModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -5673,9 +5673,9 @@
          【移动端路径显示模态框】
          ======================================== -->
     <div id="mobile-track-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="closeMobileTrackModal()">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileTrackModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileTrackModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -5742,7 +5742,7 @@
       <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
 
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[90vh] flex flex-col shadow-2xl" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileMapAttendanceModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
 
@@ -5819,11 +5819,11 @@
          ======================================== -->
     <div id="mobile-captcha-history-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="closeMobileCaptchaHistoryModal()">
       <!-- 半透明背景遮罩 -->
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileCaptchaHistoryModal()"></div>
       <!-- 模态框内容区域 -->
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" id="mobile-captcha-history-modal-content" onclick="event.stopPropagation()">
         <!-- 顶部拖动指示器 -->
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileCaptchaHistoryModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <!-- 标题栏 -->
@@ -5867,12 +5867,12 @@
     </div>
 
     <div id="mobile-notifications-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="toggleMobileNotifications(false)">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="toggleMobileNotifications(false)"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="toggleMobileNotifications(false)">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileCaptchaHistoryModal()">
           <h3 class="text-xl font-bold text-sky-600 text-center">通知中心</h3>
         </div>
         <div id="mobile-notifications-content" class="text-sm space-y-2 max-h-[60vh] overflow-y-auto pr-2">
@@ -5895,12 +5895,12 @@
     </div>
 
     <div id="mobile-admin-panel-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="toggleMobileAdminPanel(false)">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="toggleMobileAdminPanel(false)"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="toggleMobileAdminPanel(false)">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="toggleMobileNotifications(false)">
           <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
             </path>
@@ -5922,12 +5922,12 @@
     </div>
 
     <div id="mobile-account-params-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="closeMobileAccountParams()">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileAccountParams()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileAccountParams()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="toggleMobileAdminPanel(false)">
           <h3 id="mobile-account-params-title" class="text-xl font-bold text-sky-600 text-center">
             账号参数设置
           </h3>
@@ -5947,12 +5947,12 @@
 
 
     <div id="mobile-manual-account-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="closeManualAccountModal()">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeManualAccountModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeManualAccountModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileAccountParams()">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
             </path>
@@ -5992,12 +5992,12 @@
     </div>
 
     <div id="mobile-create-user-modal" class="fixed inset-0 hidden mobile-modal z-[60]" onclick="closeMobileCreateUserModal()">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileCreateUserModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileCreateUserModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeManualAccountModal()">
           <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
           </svg>
@@ -6058,12 +6058,12 @@
     </div>
 
     <div id="mobile-more-menu-modal" class="fixed inset-0 hidden mobile-modal z-50" onclick="toggleMobileMoreMenu(false)">
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="toggleMobileMoreMenu(false)"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="toggleMobileMoreMenu(false)">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileCreateUserModal()">
           <h3 class="text-xl font-bold text-slate-700">更多功能</h3>
         </div>
         <div class="space-y-2">
@@ -6432,7 +6432,7 @@
   <!-- <div id="mobile-session-picker-modal" class="fixed inset-0 hidden mobile-modal" onclick="closeMobileSessionPicker()"> -->
       <div id="mobile-session-picker-modal" class="fixed inset-0 hidden mobile-modal" onclick="window.location.reload()">
     <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-      <div class="flex justify-center mb-2">
+      <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileSessionPicker()">
         <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
       </div>
 
@@ -11157,7 +11157,7 @@
       
       <!-- 顶部拖动指示器 -->
       <!-- 这是移动端模态框的标准设计元素，暗示用户可以向下滑动关闭 -->
-      <div class="flex justify-center mb-2">
+      <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUserSchoolAccountsModal()">
         <!-- w-12: 宽度为3rem（48px） -->
         <!-- h-1.5: 高度为0.375rem（6px） -->
         <!-- bg-slate-300: 灰色背景，低调但可见 -->
@@ -11170,7 +11170,7 @@
       <!-- gap-2: 子元素之间间距为0.5rem（8px） -->
       <!-- pb-3: 底部内边距为0.75rem（12px） -->
       <!-- border-b border-slate-200: 底部边框，使用浅灰色分隔标题和内容 -->
-      <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+      <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserSchoolAccountsModal()">
         <!-- text-lg: 字体大小为1.125rem（18px），移动端适中的标题大小 -->
         <!-- font-bold: 字体加粗，突出标题的重要性 -->
         <!-- text-sky-600: 天蓝色文字，与整体配色方案保持一致 -->

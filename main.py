@@ -25673,6 +25673,14 @@ def start_web_server(args_param):
         session_ids_in_memory = set()
         with web_sessions_lock:
             for sid, api in web_sessions.items():
+                is_multi = getattr(api, "is_multi_account_mode", False)
+                login_success = getattr(api, "login_success", False)
+                if is_multi:
+                    accounts = getattr(api, "accounts", {})
+                    login_success = any(
+                        getattr(acc, "login_success", False)
+                        for acc in accounts.values()
+                    )
                 session_info = {
                     "session_id": sid,
                     "session_hash": hashlib.sha256(sid.encode()).hexdigest()[:16],
@@ -25681,7 +25689,8 @@ def start_web_server(args_param):
                     "is_authenticated": getattr(api, "is_authenticated", False),
                     "is_guest": getattr(api, "is_guest", False),
                     "created_at": getattr(api, "_session_created_at", 0),
-                    "login_success": getattr(api, "login_success", False),
+                    "login_success": login_success,
+                    "is_multi_account_mode": is_multi,
                     "user_info": getattr(api, "user_info", {}),
                     "is_current": sid == session_id,
                     "username": getattr(api, "auth_username", None),

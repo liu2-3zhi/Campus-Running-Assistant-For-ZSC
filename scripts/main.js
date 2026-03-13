@@ -28232,11 +28232,11 @@ function openMobileVerificationCodesModal() {
     // 设置模态框的HTML内容
     modal.innerHTML = `
             <!-- 半透明黑色背景遮罩 -->
-            <div class="absolute inset-0 bg-black/40"></div>
+            <div class="absolute inset-0 bg-black/40" onclick="closeMobileVerificationCodesModal()"></div>
             <!-- 模态框内容区域，底部弹出样式 -->
             <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
               <!-- 拖拽手柄，符合移动端设计规范 -->
-              <div class="flex justify-center mb-2">
+              <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileVerificationCodesModal()">
                 <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
               </div>
               <!-- 模态框标题区域 -->
@@ -45495,12 +45495,12 @@ async function showMobileCreateGroupModal() {
       if (e.target === modal) closeMobileCreateGroupModal();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileCreateGroupModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileCreateGroupModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileCreateGroupModal()">
           <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
           </svg>
@@ -45658,12 +45658,12 @@ async function showMobileEditGroupModal(groupKey) {
       if (e.target === modal) closeMobileEditGroupModal();
     };
     modal.innerHTML = `
-        <div class="absolute inset-0 bg-black/40"></div>
+        <div class="absolute inset-0 bg-black/40" onclick="closeMobileEditGroupModal()"></div>
         <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-          <div class="flex justify-center mb-2">
+          <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileEditGroupModal()">
             <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
           </div>
-          <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+          <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileEditGroupModal()">
             <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
             </svg>
@@ -46701,9 +46701,9 @@ function showMobileAvatarCropModal(file) {
       if (e.target === modal) closeMobileAvatarCropModal();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/80"></div>
+      <div class="absolute inset-0 bg-black/80" onclick="closeMobileAvatarCropModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileAvatarCropModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <h3 class="text-xl font-bold text-sky-600 text-center">裁剪头像</h3>
@@ -46838,12 +46838,12 @@ function showMobileModifyPhoneModal() {
       if (e.target === modal) closeMobileModifyPhoneModal();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileModifyPhoneModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileModifyPhoneModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileModifyPhoneModal()">
           <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
           </svg>
@@ -47212,9 +47212,9 @@ function showMobileUnifiedAvatarCropModal(file) {
       if (e.target === modal) closeMobileUnifiedAvatarCropModal();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/80"></div>
+      <div class="absolute inset-0 bg-black/80" onclick="closeMobileUnifiedAvatarCropModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUnifiedAvatarCropModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <h3 class="text-xl font-bold text-sky-600 text-center">裁剪头像</h3>
@@ -47346,10 +47346,10 @@ function showMobileUnifiedModifyPhoneModal() {
     modal.innerHTML = `
       <div class="absolute inset-0 bg-black/40" onclick="closeMobileUnifiedModifyPhoneModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUnifiedModifyPhoneModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUnifiedModifyPhoneModal()">
           <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
           </svg>
@@ -47960,12 +47960,12 @@ async function showMobileUserSchoolAccounts(username) {
       if (e.target === modal) closeMobileUserSchoolAccounts();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileUserSchoolAccounts()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUserSchoolAccounts()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserSchoolAccounts()">
           <svg class="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
           </svg>
@@ -48013,6 +48013,12 @@ async function showMobileUserSchoolAccounts(username) {
 
     const accounts = result.accounts || {};
     const accountCount = Object.keys(accounts).length;
+
+    // Update account count display
+    const countEl = document.getElementById("mobile-school-accounts-count");
+    if (countEl) {
+      countEl.textContent = accountCount.toString();
+    }
 
     if (accountCount === 0) {
       document.getElementById("mobile-school-accounts-list").innerHTML =
@@ -48151,12 +48157,12 @@ async function showMobileUserLogs(username) {
       if (e.target === modal) closeMobileUserLogs();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileUserLogs()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUserLogs()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserLogs()">
           <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
           </svg>
@@ -48326,12 +48332,12 @@ function showMobileUserSessions(username, currentMax) {
       if (e.target === modal) closeMobileUserSessions();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileUserSessions()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUserSessions()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserSessions()">
           <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
@@ -48432,12 +48438,12 @@ async function showMobileUserPermissions(username) {
       if (e.target === modal) closeMobileUserPermissions();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileUserPermissions()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUserPermissions()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserPermissions()">
           <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
           </svg>
@@ -48604,12 +48610,12 @@ function showMobileModifyNickname(username, currentNickname) {
       if (e.target === modal) closeMobileModifyNickname();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileModifyNickname()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileModifyNickname()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileModifyNickname()">
           <svg class="w-6 h-6 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
           </svg>
@@ -48711,12 +48717,12 @@ function showMobileAdminModifyPhone(username, currentPhone) {
       if (e.target === modal) closeMobileAdminModifyPhone();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileAdminModifyPhone()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileAdminModifyPhone()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileAdminModifyPhone()">
           <svg class="w-6 h-6 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
           </svg>
@@ -48865,12 +48871,12 @@ function showMobileResetPassword(username) {
       if (e.target === modal) closeMobileResetPassword();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileResetPassword()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileResetPassword()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileResetPassword()">
           <svg class="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
           </svg>
@@ -51528,14 +51534,14 @@ async function openMobileReminderEditModal(reminderId = "") {
       if (e.target === modal) closeMobileReminderEditModal();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileReminderEditModal()"></div>
       <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
         <!-- 拖拽手柄 -->
-        <div class="flex justify-center mb-2">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileReminderEditModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <!-- 模态框标题 -->
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileReminderEditModal()">
           <svg class="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
@@ -55436,12 +55442,14 @@ async function loadOverdueAccounts() {
     const mobileList = document.getElementById("mobile-overdue-accounts-list");
 
     // ========== 构建HTML内容 ==========
-    let html = "";
+    let pcHtml = "";
+    let mobileHtml = "";
 
     // 检查是否有欠费账号
     if (mergedAccounts.length === 0) {
       // 没有欠费账号，显示提示信息
-      html = '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
+      pcHtml = '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
+      mobileHtml = pcHtml;
     } else {
       // 有欠费账号，遍历生成每个账号的卡片
       mergedAccounts.forEach((account) => {
@@ -55453,8 +55461,8 @@ async function loadOverdueAccounts() {
           nonAdminOwners.length > 0
             ? escapeHtml(nonAdminOwners.join("、"))
             : "(管理员)";
-        // 为每个欠费账号生成一个卡片
-        html += `
+        // PC端卡片：按钮与账号信息同行
+        pcHtml += `
                     <div class="p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition">
                         <div class="flex justify-between items-start">
                             <!-- 左侧：账号信息 -->
@@ -55500,14 +55508,49 @@ async function loadOverdueAccounts() {
                         </div>
                     </div>
                 `;
+        // 移动端卡片：按钮独占一行，避免压缩文字
+        mobileHtml += `
+                    <div class="p-3 bg-white border border-slate-200 rounded-lg">
+                        <!-- 账号信息 -->
+                        <div class="mb-2">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <h4 class="font-bold text-slate-800 text-sm">${escapeHtml(
+                                  account.name,
+                                )}</h4>
+                                <span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded">
+                                    欠费 ${account.overdue_count} 次
+                                </span>
+                            </div>
+                            <p class="text-xs text-slate-600 mt-1 break-all">
+                                学号：${escapeHtml(account.student_id)}<br>所属账号：${ownersHtml}
+                            </p>
+                        </div>
+                        <!-- 操作按钮独占一行 -->
+                        <div class="flex gap-2">
+                            <button onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
+                              account.school_username,
+                            )}')"
+                                    class="flex-1 py-2 px-3 bg-sky-500 text-white text-xs rounded-lg hover:bg-sky-600 active:bg-sky-700 transition-colors font-medium"
+                                    ${!account.has_backup ? "disabled" : ""}>
+                                查看详情
+                            </button>
+                            <button onclick="adminClearOverdue(school_username=${escapeHtml(
+                              account.school_username,
+                            )},auth_username='',is_detail_view=false)"
+                                    class="flex-1 py-2 px-3 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 active:bg-emerald-700 transition-colors font-medium">
+                                结算
+                            </button>
+                        </div>
+                    </div>
+                `;
       });
     }
 
     // ========== 更新页面显示 ==========
     // 更新PC端列表（如果容器存在）
-    if (pcList) pcList.innerHTML = html;
+    if (pcList) pcList.innerHTML = pcHtml;
     // 更新移动端列表（如果容器存在）
-    if (mobileList) mobileList.innerHTML = html;
+    if (mobileList) mobileList.innerHTML = mobileHtml;
   } catch (error) {
     // ========== 异常处理 ==========
     // 捕获网络错误等异常
