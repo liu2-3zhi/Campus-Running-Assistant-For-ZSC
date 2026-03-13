@@ -9256,7 +9256,7 @@ class Api:
     #                         target_params[k] = original_type(val_str)
     #             except ValueError:
     #                 logging.warning(
-    #                     f"Could not parse config value for '{k}' for user {username}. Using default."
+    #                     f"无法解析用户 {username} 的配置项 '{k}'，将使用默认值。"
     #                 )
     #                 pass
     #     logging.debug(f"已成功加载用户配置: {username}")

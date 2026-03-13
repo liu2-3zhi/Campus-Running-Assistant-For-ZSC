@@ -19425,7 +19425,7 @@ function switchAdminTab(tab) {
                             curMask.style.display = "none";
                           }
                         } catch (e) {
-                          // ignore
+                          // 忽略
                         }
                       };
 
@@ -19444,7 +19444,7 @@ function switchAdminTab(tab) {
                         // 保存 observer 引用以便未来可清理（如果需要）
                         dialog.__visibilityAttrObserver = attrObserver;
                       } catch (e) {
-                        // ignore
+                        // 忽略
                       }
                     } catch (e) {
                       console.warn("relocate dialog failed", e);
@@ -22590,14 +22590,14 @@ function _sortAdminUsersArray(users, field, dir) {
       va = (a[field] || "").toLowerCase();
       vb = (b[field] || "").toLowerCase();
     } else if (field === "max_sessions") {
-      // -1 means unlimited, treat as very large for sorting
+      // -1 表示无限制，排序时视为极大值
       va = a[field] === -1 ? Infinity : (a[field] ?? 0);
       vb = b[field] === -1 ? Infinity : (b[field] ?? 0);
     } else if (field === "available_runs") {
       va = a[field] === -1 ? Infinity : (a[field] ?? 0);
       vb = b[field] === -1 ? Infinity : (b[field] ?? 0);
     } else {
-      // numeric fields: created_at, last_login
+      // 数值型字段：created_at、last_login
       va = a[field] ?? 0;
       vb = b[field] ?? 0;
     }
@@ -22628,10 +22628,10 @@ function _syncAdminUsersSortUI() {
 }
 
 function resortAdminUsers() {
-  // read sort field from whichever control triggered the change
+  // 从触发变更的控件读取排序字段
   const pcField = document.getElementById("admin-users-sort-field_modal");
   const mobileField = document.getElementById("mobile-admin-users-sort-field");
-  // use the one that is visible / last changed
+  // 使用当前可见或最近修改的控件值
   if (
     document.activeElement &&
     document.activeElement.id === "mobile-admin-users-sort-field" &&
@@ -22747,12 +22747,12 @@ function _rerenderAdminUsersList() {
   const listEl = $("admin-users-list_modal");
   if (listEl) listEl.innerHTML = listHtml;
 
-  // Re-copy to mobile and re-apply mobile button handlers
+  // 重新同步到移动端并重新绑定移动端按钮事件处理器
   if (typeof copyAdminContentToMultiPanel === "function") {
     copyAdminContentToMultiPanel("users");
   }
 
-  // Reload avatars
+  // 重新加载用户头像
   sorted.forEach((user) => loadUserAvatar(user.auth_username));
 }
 
@@ -48014,7 +48014,7 @@ async function showMobileUserSchoolAccounts(username) {
     const accounts = result.accounts || {};
     const accountCount = Object.keys(accounts).length;
 
-    // Update account count display
+    // 更新账户总数显示
     const countEl = document.getElementById("mobile-school-accounts-count");
     if (countEl) {
       countEl.textContent = accountCount.toString();
