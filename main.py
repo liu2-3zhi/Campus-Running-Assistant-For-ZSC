@@ -14589,7 +14589,7 @@ class Api:
                         logging.debug(f"检查AMap SDK时出错（可能尚未加载）: {e}")
 
                     if not amap_loaded:
-                        page.goto("about:blank", wait_until="commit")
+                        page.goto("about:blank")
                         page.set_content(
                             """
                         <!DOCTYPE html>
@@ -14600,8 +14600,7 @@ class Api:
                         </head>
                         <body></body>
                         </html>
-                        """,
-                            wait_until="domcontentloaded",
+                        """
                         )
 
                         try:
@@ -17778,7 +17777,7 @@ class BackgroundTaskManager:
                                 page = ctx["page"]
                                 logging.info("Chrome浏览器上下文获取成功")
                                 logging.info("正在向Chrome页面加载高德地图SDK...")
-                                page.goto("about:blank", wait_until="commit")
+                                page.goto("about:blank")
                                 page.set_content(
                                     """
                                 <!DOCTYPE html>
@@ -17789,21 +17788,14 @@ class BackgroundTaskManager:
                                 </head>
                                 <body></body>
                                 </html>
-                                """,
-                                    wait_until="domcontentloaded",
+                                """
                                 )
                                 logging.info(
                                     "等待高德地图加载器(AMapLoader)加载完成..."
                                 )
-                                try:
-                                    page.wait_for_function(
-                                        "typeof AMapLoader !== 'undefined'", timeout=10000
-                                    )
-                                except Exception as e:
-                                    logging.error(
-                                        f"加载高德地图SDK超时或失败: {e}"
-                                    )
-                                    continue
+                                page.wait_for_function(
+                                    "typeof AMapLoader !== 'undefined'", timeout=10000
+                                )
                                 logging.info("高德地图加载器在Chrome上下文中加载成功")
                                 logging.info(
                                     f"正在Chrome浏览器中执行路径规划JavaScript代码..."
@@ -18057,11 +18049,6 @@ class BackgroundTaskManager:
                                     exc_info=True,
                                 )
                                 continue
-                            finally:
-                                try:
-                                    chrome_pool.close_context(session_id)
-                                except Exception:
-                                    pass
                         else:
                             logging.error("Chrome浏览器池不可用，无法进行路径规划")
                             continue
