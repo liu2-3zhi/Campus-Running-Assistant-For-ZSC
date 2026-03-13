@@ -183,36 +183,13 @@ def import_standard_libraries():
         logging.warning("  -> fcntl 模块在 Windows 平台不可用，已跳过。")
         logging.info("[依赖检查]   -> fcntl (Windows平台跳过)")
     if "eventlet" in globals():
-        # [重要修复] 只 monkey patch socket，不影响 threading、queue 等模块
-        # 这样既能让 eventlet 的 WSGI 服务器工作，又不会导致跨线程的 greenlet 错误
-        try:
-            logging.info("  -> 正在应用 eventlet.monkey_patch(socket=True, ...)...")
-            logging.info("[依赖检查]   -> eventlet.monkey_patch(选择性)...")
-            logging.warning("[Eventlet] 注意: 只 patch socket 模块，保持 threading/queue 等模块不变")
-            
-            # 只 patch socket，不 patch threading、time、os 等会导致问题的模块
-            eventlet.monkey_patch(
-                socket=True,      # 需要 patch socket 以支持 eventlet WSGI
-                select=True,      # select 也需要 patch
-                thread=False,     # 不 patch threading，避免与标准线程冲突
-                time=False,       # 不 patch time，避免影响其他库
-                os=False,         # 不 patch os
-                psycopg=False,    # 不 patch psycopg
-                MySQLdb=False     # 不 patch MySQLdb
-            )
-            logging.info("  ✓ eventlet 选择性 monkey_patch 应用成功")
-            logging.info("✓")
-            logging.info(f"[Eventlet] 已 patch: socket, select | 未 patch: thread, time, os")
-        except Exception as e:
-            logging.error(f"  ✗ eventlet.monkey_patch() 应用失败: {e}")
-            logging.error(f"✗ ({e})")
-            failed_imports.append(
-                {
-                    "name": "eventlet.monkey_patch()",
-                    "pip_name": "eventlet",
-                    "error": str(e),
-                }
-            )
+        # [修复] 服务器使用 socketio.run() + async_mode="threading"（werkzeug 线程模式），
+        # 不再使用 eventlet WSGI 服务器，因此无需调用 monkey_patch。
+        # 调用 eventlet.monkey_patch(select=True, socket=True) 会把标准 select 模块
+        # 替换为 eventlet 的实现，而 werkzeug 的 worker 线程（非 greenlet）调用它时
+        # 会触发 eventlet 为每个线程创建一个新的 epoll hub，导致 epoll fd 泄漏，
+        # 最终耗尽文件描述符（OSError: [Errno 24] Too many open files）。
+        logging.info("[Eventlet] async_mode=threading 模式下跳过 monkey_patch，避免 epoll fd 泄漏")
 
     if failed_imports:
         logging.critical(f"标准库导入失败，共 {len(failed_imports)} 个模块")
