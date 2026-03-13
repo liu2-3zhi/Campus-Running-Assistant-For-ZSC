@@ -42535,7 +42535,7 @@ def start_web_server(args_param):
                                 time.sleep(0.1)
                                 continue
 
-                srv = DualProtocolWSGIServer(args.host, args.port, socketio)
+                srv = DualProtocolWSGIServer(args.host, args.port, app)
                 try:
                     logging.info(
                         f"[SSL服务器] DualProtocolWSGIServer 已在 {args.host}:{args.port} 启动，等待连接...")
