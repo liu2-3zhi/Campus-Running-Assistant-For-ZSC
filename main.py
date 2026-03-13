@@ -42218,81 +42218,9 @@ def start_web_server(args_param):
             logging.info(
                 f"已清空后台任务管理器的内存状态（清理了 {initial_task_count} 个任务记录）。"
             )
-    # ============================================================================
-    # SSL/HTTPS 配置加载和验证
-    # 在启动服务器之前，加载SSL配置并验证证书（如果启用了SSL）
-    # ============================================================================
-    ssl_config = load_ssl_config()
-    ssl_context = None
-    cert_path = None
-    key_path = None
-    if ssl_config["ssl_enabled"]:
-        logging.info("检测到SSL已启用，正在验证证书文件...")
-        is_valid, error_msg, cert_info = validate_ssl_certificate(
-            ssl_config["ssl_cert_path"], ssl_config["ssl_key_path"]
-        )
-
-        if not is_valid:
-            print(f"\n{'='*60}")
-            print(f"警告: SSL证书验证失败")
-            print(f"")
-            print(f"原因: {error_msg}")
-            print(f"")
-            print(f"系统将自动禁用SSL并切换回HTTP模式运行，以免影响服务使用。")
-            print(f"配置文件 config.ini 中的 ssl_enabled 已被自动关闭。")
-            print(f"{'='*60}\n")
-            logging.error(f"SSL证书验证失败: {error_msg}")
-            logging.info("正在自动关闭SSL配置并切换到HTTP模式...")
-
-            # 自动关闭SSL
-            ssl_config["ssl_enabled"] = False
-            ssl_config["https_only"] = False
-            save_ssl_config(ssl_config)
-
-        # 只有当验证通过且配置仍然启用时，才尝试创建上下文
-        if ssl_config["ssl_enabled"]:
-            try:
-                # import ssl as ssl_module
-
-                ssl_context = ssl.SSLContext(
-                    ssl.PROTOCOL_TLS_SERVER)
-                cert_path = ssl_config["ssl_cert_path"]
-                key_path = ssl_config["ssl_key_path"]
-
-                if not os.path.isabs(cert_path):
-                    cert_path = os.path.join(
-                        os.path.dirname(__file__), cert_path)
-                if not os.path.isabs(key_path):
-                    key_path = os.path.join(
-                        os.path.dirname(__file__), key_path)
-                ssl_context.load_cert_chain(cert_path, key_path)
-                ssl_context.options |= ssl.OP_NO_SSLv2
-                ssl_context.options |= ssl.OP_NO_SSLv3
-                logging.info(f"SSL上下文创建成功，使用证书: {cert_path}")
-                print(f"✓ SSL/HTTPS 已启用")
-                print(f"  证书文件: {cert_path}")
-                print(f"  密钥文件: {key_path}")
-                if ssl_config["https_only"]:
-                    print(f"  ⚠ 仅HTTPS模式: 已启用（HTTP请求将被重定向）")
-            except Exception as e:
-                print(f"\n{'='*60}")
-                print(f"警告: 创建SSL上下文失败")
-                print(f"")
-                print(f"详细信息: {e}")
-                print(f"")
-                print(f"系统将自动禁用SSL并切换回HTTP模式运行。")
-                print(f"{'='*60}\n")
-                logging.error(f"创建SSL上下文失败: {e}", exc_info=True)
-
-                # 自动关闭SSL
-                ssl_config["ssl_enabled"] = False
-                ssl_config["https_only"] = False
-                save_ssl_config(ssl_config)
-                ssl_context = None
-
-    # 二次检查：如果刚才因为错误禁用了SSL，这里会打印日志
-    if not ssl_config.get("ssl_enabled", False):
-        logging.info("SSL未启用（或已自动禁用），服务器将以HTTP模式运行")
+    # SSL/HTTPS 由 nginx 在容器入口处处理（见 docker-entrypoint.sh）。
+    # Flask 后端只以纯 HTTP 方式监听 127.0.0.1:5000，不再自行处理 TLS。
+    logging.info("SSL/HTTPS 由 nginx 负责，Flask 后端以 HTTP 模式运行")
 
     # ============================================================================
     # 添加请求钩子：处理X-Forwarded-*头和HTTPS重定向
@@ -42301,22 +42229,16 @@ def start_web_server(args_param):
     @app.before_request
     def handle_forwarded_proto():
         """
-        处理反向代理（如Nginx）转发的请求头。
+        处理反向代理（nginx）转发的请求头。
 
         功能说明：
         1. 从X-Forwarded-For头获取真实客户端IP
         2. 检查X-Forwarded-Proto头，识别原始请求是HTTP还是HTTPS
-        3. 如果启用了https_only模式且检测到HTTP请求，重定向到HTTPS
 
-        这个函数在每个请求处理之前自动执行。
-
-        注意：X-Forwarded-For的值已由nginx智能设置：
-        - 如果CDN传来自定义头（如X-RealIP-Form），nginx会使用它作为X-Forwarded-For
-        - 否则nginx使用标准的$proxy_add_x_forwarded_for
+        注意：HTTPS重定向已交由nginx处理（见docker-entrypoint.sh），
+        此处只做IP解析。
         """
         # 从X-Forwarded-For获取真实客户端IP
-        # X-Forwarded-For格式：client, proxy1, proxy2
-        # 取第一个IP作为原始客户端IP
         forwarded_for = request.headers.get("X-Forwarded-For", "")
 
         if forwarded_for:
@@ -42324,18 +42246,13 @@ def start_web_server(args_param):
             first_part = forwarded_for.split(",")[0].strip()
 
             # 2. 清洗数据：移除首尾的 斜杠(/)、反斜杠(\)、双引号(")、单引号(') 和 空格
-            # 兼容 "/192.168.1.1", "\192.168.1.1", "192.168.1.1\\" 等情况
             dirty_chars = r"\/\"' "
             cleaned_ip_str = first_part.strip(dirty_chars)
 
             try:
                 # 3. 使用 ipaddress 进行解析和验证 (支持 IPv4 和 IPv6)
-                # 如果不是合法的IP地址，这里会抛出 ValueError
                 ip_obj = ipaddress.ip_address(cleaned_ip_str)
-
-                # 转换回字符串，确保格式标准 (例如把 IPv6 的非压缩格式转为压缩格式)
                 real_ip = str(ip_obj)
-
                 request.environ["REMOTE_ADDR"] = real_ip
                 logging.info(f"真实客户端IP已设置为: {real_ip}")
 
@@ -42345,37 +42262,11 @@ def start_web_server(args_param):
             except Exception as e:
                 logging.error(f"IP解析发生未知错误: {e}")
 
-        # 处理HTTPS重定向逻辑
-        forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
-        if ssl_config.get("https_only", False) and ssl_config.get("ssl_enabled", False):
-            if not forwarded_proto:
-                is_https = True
-            else:
-                is_https = request.is_secure or forwarded_proto.lower() == "https"
-            if not is_https:
-                excluded_paths = ["/health", "/api/health", "/socket.io"]
-                should_redirect = True
-                for path in excluded_paths:
-                    if request.path.startswith(path):
-                        should_redirect = False
-                        break
-                if should_redirect:
-                    url = request.url.replace("http://", "https://", 1)
-                    logging.info(f"HTTP请求被重定向到HTTPS: {request.url} -> {url}")
-                    # from flask import redirect
-
-                    return redirect(url, code=301)
-                    return redirect(url, code=301)
-
     @app.after_request
     def add_security_headers(response):
         """
         为所有响应添加安全相关的HTTP头。
         """
-        if ssl_config.get("ssl_enabled", False):
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains; preload"
-            )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -42386,17 +42277,11 @@ def start_web_server(args_param):
     # 启动服务器
     # 根据SSL配置选择HTTP或HTTPS模式
     # ============================================================================
-    protocol = "https" if ssl_config.get("ssl_enabled", False) else "http"
-    server_url = f"{protocol}://{args.host}:{args.port}"
+    server_url = f"http://{args.host}:{args.port}"
     print(f"\n{'='*60}")
     print(f"  跑步助手 Web 版本已启动")
     print(f"  访问地址: {server_url}")
-    if ssl_config.get("ssl_enabled", False):
-        print(f"  SSL/HTTPS: 已启用 ✓")
-        if ssl_config.get("https_only", False):
-            print(f"  仅HTTPS模式: 已启用 ⚠")
-    else:
-        print(f"  SSL/HTTPS: 未启用（使用HTTP）")
+    print(f"  SSL/HTTPS: 由 nginx 负责（见 docker-entrypoint.sh）")
     print(f"  会话持久化已启用（服务器重启后保留登录状态）")
     print(f"  JS计算在服务器端Chrome中执行，提升安全性")
     print(f"  会话监控已启用（5分钟不活跃自动清理）")
@@ -42422,166 +42307,28 @@ def start_web_server(args_param):
     logging.info(f"[系统启动] UDP通知服务线程已启动: {udp_notification_thread.name} (id={udp_notification_thread.ident})")
 
     try:
-        if ssl_context:
-            logging.info(
-                f"正在启动带有 WebSocket 和 SSL(HTTPS) 支持的 Web 服务器于 {server_url}"
-            )
+        logging.info(f"正在启动带有 WebSocket 支持的 Web 服务器于 {server_url}")
+        current_thread = threading.current_thread()
+        logging.info(f"[SocketIO 运行] 准备从 Thread[{current_thread.name}, id={current_thread.ident}] 运行")
 
-            try:
+        # 获取并记录当前所有活动线程
+        all_threads = threading.enumerate()
+        logging.info(f"[线程状态] socketio.run 之前的活动线程数: {len(all_threads)}")
+        for t in all_threads:
+            logging.info(f"[线程状态]   - Thread[name={t.name}, id={t.ident}, daemon={t.daemon}, alive={t.is_alive()}]")
 
-                logging.info(f"Werkzeug 线程服务器将使用 SSLContext 启动...")
-                logging.info(f"  证书文件: {cert_path}")
-                logging.info(f"  密钥文件: {key_path}")
+        @socketio.on("connect", namespace="/")
+        def on_first_connect():
+            """首次连接时触发UDP通知（仅执行一次，作为健康检查的补充）"""
+            if not hasattr(on_first_connect, "notified"):
+                on_first_connect.notified = True
+                current_thread = threading.current_thread()
+                logging.debug(f"[SocketIO] 客户端首次连接确认，来自 Thread[{current_thread.name}, id={current_thread.ident}]")
 
-                # ============================================================
-                # 【SSL 智能兼容层】
-                # 使用 Werkzeug ThreadedWSGIServer 代替 eventlet.wsgi.server，
-                # 以兼容 async_mode="threading" 的 SocketIO。
-                # eventlet.wsgi 使用 greenlet，而 threading 模式的 SocketIO 使用
-                # threading.Event.wait() 进行长轮询保持，在 greenlet 上下文中会
-                # 阻塞整个事件循环（即出现约 25 秒卡顿）并导致 "Invalid transport"。
-                # ============================================================
-                from werkzeug.serving import ThreadedWSGIServer, WSGIRequestHandler
-
-                _ssl_ctx_ref = ssl_context
-                _https_only_ref = ssl_config.get("https_only", False)
-
-                class _DualProtocolRequestHandler(WSGIRequestHandler):
-                    """为双协议连接正确设置 wsgi.url_scheme。"""
-                    def make_environ(self):
-                        environ = super().make_environ()
-                        if isinstance(self.connection, ssl.SSLSocket):
-                            environ['wsgi.url_scheme'] = 'https'
-                        return environ
-
-                    def log_message(self, format, *args):
-                        pass  # 抑制 Werkzeug 访问日志（与 Nginx 日志重复）
-
-                class DualProtocolWSGIServer(ThreadedWSGIServer):
-                    """支持在同一端口同时处理 HTTP 和 HTTPS 的 Werkzeug 线程服务器。"""
-
-                    def __init__(self, host, port, app):
-                        super().__init__(
-                            host, port, app,
-                            handler=_DualProtocolRequestHandler,
-                            ssl_context=None,  # 我们在 get_request() 中自行处理 SSL
-                        )
-
-                    def get_request(self):
-                        """嗅探首字节，决定是否进行 TLS 握手或 HTTPS 重定向。"""
-                        while True:
-                            try:
-                                client, addr = self.socket.accept()
-                                try:
-                                    client.settimeout(1.0)
-                                    first_byte = client.recv(
-                                        1, socket.MSG_PEEK)
-                                    client.settimeout(None)
-
-                                    if not first_byte:
-                                        client.close()
-                                        continue
-                                    if first_byte[0] == 22:  # TLS ClientHello
-                                        try:
-                                            secure_client = _ssl_ctx_ref.wrap_socket(
-                                                client, server_side=True
-                                            )
-                                            return secure_client, addr
-                                        except (ssl.SSLError, socket.error):
-                                            try:
-                                                client.close()
-                                            except Exception:
-                                                pass
-                                            continue
-                                    else:
-                                        if _https_only_ref:
-                                            logging.info(
-                                                f"检测到 HTTP 请求 (来自 {addr[0]})，发送 HTTPS 跳转指令..."
-                                            )
-                                            try:
-                                                client.settimeout(0.1)
-                                                client.recv(4096)
-                                            except Exception:
-                                                pass
-                                            response = (
-                                                "HTTP/1.1 200 OK\r\n"
-                                                "Content-Type: text/html\r\n"
-                                                "Connection: close\r\n\r\n"
-                                                '<html><head><title>正在重定向到 HTTPS...</title><link rel="icon" href="/favicon.ico" type="image/x-icon" /></head>'
-                                                "<body><script>window.location.protocol = 'https:';</script>"
-                                                "Please wait, redirecting to HTTPS...</body></html>"
-                                            )
-                                            try:
-                                                client.sendall(
-                                                    response.encode("utf-8"))
-                                            except Exception:
-                                                pass
-                                            finally:
-                                                client.close()
-                                            continue
-                                        else:
-                                            return client, addr
-
-                                except (socket.error, ssl.SSLError):
-                                    try:
-                                        client.close()
-                                    except Exception:
-                                        pass
-                                    continue
-
-                            except Exception as e:
-                                logging.error(
-                                    f"DualProtocolWSGIServer accept error: {e}")
-                                time.sleep(0.1)
-                                continue
-
-                srv = DualProtocolWSGIServer(args.host, args.port, app)
-                try:
-                    logging.info(
-                        f"[SSL服务器] DualProtocolWSGIServer 已在 {args.host}:{args.port} 启动，等待连接...")
-                    srv.serve_forever()
-                except KeyboardInterrupt:
-                    raise
-                finally:
-                    srv.server_close()
-            except KeyboardInterrupt:
-                raise
-            except Exception as ssl_e:
-                logging.error(
-                    f"启动 SSL 服务器失败: {ssl_e}", exc_info=True
-                )
-                print(f"\n[错误] 无法启动 HTTPS 服务器: {ssl_e}")
-                print("请检查证书文件路径和权限是否正确。")
-                raise
-        else:
-            logging.info(f"正在启动带有 WebSocket 支持的 Web 服务器于 {server_url}")
-            current_thread = threading.current_thread()
-            logging.info(f"[SocketIO 运行] 准备从 Thread[{current_thread.name}, id={current_thread.ident}] 运行")
-            
-            # 获取并记录当前所有活动线程
-            all_threads = threading.enumerate()
-            logging.info(f"[线程状态] socketio.run 之前的活动线程数: {len(all_threads)}")
-            for t in all_threads:
-                logging.info(f"[线程状态]   - Thread[name={t.name}, id={t.ident}, daemon={t.daemon}, alive={t.is_alive()}]")
-            
-            try:
-                # 因为上方已经统一启动了 udp_notification_thread
-
-                @socketio.on("connect", namespace="/")
-                def on_first_connect():
-                    """首次连接时触发UDP通知（仅执行一次，作为健康检查的补充）"""
-                    if not hasattr(on_first_connect, "notified"):
-                        on_first_connect.notified = True
-                        # 仅记录日志，主要通知任务交由主线程启动的 trigger_udp_notification 处理
-                        current_thread = threading.current_thread()
-                        logging.debug(f"[SocketIO] 客户端首次连接确认，来自 Thread[{current_thread.name}, id={current_thread.ident}]")
-
-                # 启动SocketIO服务器（阻塞调用）
-                logging.info("[SocketIO 运行] 正在调用 socketio.run() - 这将阻塞主线程...")
-                socketio.run(app, host=args.host, port=args.port, debug=False, allow_unsafe_werkzeug=True)
-                logging.info("[SocketIO 运行] socketio.run() 已返回")
-            except KeyboardInterrupt:
-                raise
+        # 启动SocketIO服务器（阻塞调用），SSL/HTTPS 由 nginx 处理
+        logging.info("[SocketIO 运行] 正在调用 socketio.run() - 这将阻塞主线程...")
+        socketio.run(app, host=args.host, port=args.port, debug=False, allow_unsafe_werkzeug=True)
+        logging.info("[SocketIO 运行] socketio.run() 已返回")
 
     except KeyboardInterrupt:
         print(f"\n{'='*60}")
