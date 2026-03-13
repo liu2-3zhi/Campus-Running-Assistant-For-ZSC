@@ -31567,6 +31567,12 @@ def start_web_server(args_param):
             response.encoding = "gbk"
             data = response.json()
 
+            if not isinstance(data, dict):
+                logging.warning(
+                    f"[IP定位] API返回非字典类型数据: ip={ip_address}, 类型={type(data).__name__}, 数据={data}"
+                )
+                return "未知"
+
             addr = data.get("addr", "").strip()
 
             if addr:
