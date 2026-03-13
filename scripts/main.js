@@ -37400,7 +37400,7 @@ async function refreshNotificationsUI(
           );
           notificationAutoRefreshTimer = setTimeout(() => {
             logMessage_Info("[自动刷新] 正在自动刷新通知...");
-            refreshNotificationsUI(true, false);
+            refreshNotificationsUI(true, false, false);
           }, refreshInterval * 1000);
         }
       }
