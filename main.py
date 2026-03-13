@@ -18516,13 +18516,13 @@ class ChromeBrowserPool:
     """
     管理服务器端Chrome浏览器实例，用于执行JS计算 (专用线程模式)
 
-    注意：由于应用使用了 eventlet.monkey_patch()，Playwright 的同步 API 无法直接在
-    eventlet 的 greenlet 协作式调度环境中运行。之前使用 eventlet.tpool.execute() 的方案
-    会导致 "Cannot switch to a different thread" 错误，因为 tpool 每次可能使用不同的线程，
-    而 Playwright 对象是线程绑定的。
+    注意：应用使用 async_mode='threading' 且未调用 eventlet.monkey_patch()，
+    所有调用方均运行在普通 OS 线程中。Playwright 的同步 API 是线程绑定的，
+    因此所有 Playwright 操作必须在同一个专用线程中执行。
 
     解决方案：创建一个专用的持久化原生线程来运行所有 Playwright 操作。
-    使用队列机制将操作请求发送到这个专用线程，并等待结果返回。
+    使用队列机制将操作请求发送到这个专用线程，调用方通过原生
+    threading.Event.wait() 阻塞等待结果返回。
     """
 
     # 队列轮询超时时间（秒）：工作线程从队列获取请求时的等待时间
@@ -18949,10 +18949,9 @@ class ChromeBrowserPool:
         """
         向专用线程发送操作请求并等待结果。
 
-        这是从 eventlet greenlet 调用的方法，它将操作请求发送到专用线程的队列，
-        然后等待操作完成并返回结果。
-
-        使用 eventlet.tpool.execute() 包装 Event.wait() 调用，避免阻塞 eventlet 调度器。
+        此方法运行在普通 OS 线程（非 eventlet greenlet）中，因为应用使用
+        async_mode='threading' 且未调用 eventlet.monkey_patch()。
+        直接调用原生 threading.Event.wait() 阻塞当前线程直到工作线程完成操作。
 
         参数:
             operation: 操作类型字符串 (如 "initialize", "get_context", "execute_js" 等)
@@ -18967,7 +18966,6 @@ class ChromeBrowserPool:
             timeout = self.DEFAULT_OPERATION_TIMEOUT_SEC
 
         # 使用原生 threading.Event 作为同步机制
-        # 这确保在 eventlet 环境中也能正确等待
         result_event = self._native_threading.Event()
         # 结果容器，用于存储操作结果
         result_container = {}
@@ -18983,24 +18981,12 @@ class ChromeBrowserPool:
         # 将请求放入队列
         self._request_queue.put(request)
 
-        # 导入 eventlet.tpool 用于在真实线程中等待结果
-        # 这避免了阻塞 eventlet 的协作式调度器
-        # import eventlet.tpool
-
-        # 定义等待函数，在 tpool 线程中执行
-        def _wait_for_result(event, timeout_sec):
-            # 使用原生 Event.wait() 等待结果
-            return event.wait(timeout=timeout_sec)
-
-        # 通过 tpool.execute() 在真实线程中等待，保持 eventlet 调度器响应
-        try:
-            wait_result = eventlet.tpool.execute(
-                _wait_for_result, result_event, timeout
-            )
-        except Exception as e:
-            # 如果 tpool 执行失败，记录错误并返回
-            logging.error(f"等待 Playwright 操作结果时出错: {e}", exc_info=True)
-            return {"success": False, "error": f"等待结果失败: {str(e)}"}
+        # 直接在当前线程中等待结果。
+        # 应用使用 async_mode='threading'（非 eventlet greenlet 模式），
+        # 不调用 eventlet.monkey_patch()，所有后台任务均运行在普通 OS 线程中。
+        # 因此无需通过 eventlet.tpool.execute() 转发等待调用——直接阻塞即可，
+        # 且 tpool.execute() 在非 greenlet 线程中调用会导致内部 hub 通知机制失效而挂起。
+        wait_result = result_event.wait(timeout=timeout)
 
         if wait_result:
             # 操作完成，返回结果
