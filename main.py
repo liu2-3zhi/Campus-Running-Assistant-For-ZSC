@@ -2790,18 +2790,18 @@ def _write_config_with_comments(config_obj, filepath):
         # ========================================
         # [API] 第三方API配置
         # ========================================
-        # f.write("# ========================================\n")
-        # f.write("# [API] 第三方API配置\n")
-        # f.write("# ========================================\n")
-        # f.write("[API]\n")
-        # f.write("# IP地理位置查询API密钥（可选）\n")
-        # f.write("# 用于获取用户登录IP的地理位置信息\n")
-        # f.write("# 留空则使用免费接口（有频率限制）\n")
-        # f.write(
-        #     f"ip_api_key = {config_obj.get('API', 'ip_api_key', fallback='')}\n")
-        # f.write(
-        #     "# 注意：验证码已改用本地生成器（见[Captcha]节），不再需要第三方API密钥\n\n"
-        # )
+        f.write("# ========================================\n")
+        f.write("# [API] 第三方API配置\n")
+        f.write("# ========================================\n")
+        f.write("[API]\n")
+        f.write("# IP地理位置查询API密钥（可选）\n")
+        f.write("# 用于获取用户登录IP的地理位置信息\n")
+        f.write("# 留空则使用免费接口（有频率限制）\n")
+        f.write(
+            f"ip_api_key = {config_obj.get('API', 'ip_api_key', fallback='')}\n")
+        f.write(
+            "# 注意：验证码已改用本地生成器（见[Captcha]节），不再需要第三方API密钥\n\n"
+        )
 
         # ========================================
         # [CDN] CDN缓存配置
