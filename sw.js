@@ -1,5 +1,5 @@
 // Service Worker for 跑步助手 PWA
-const CACHE_NAME = 'paobuzs-v1';
+const CACHE_NAME = 'paobuzs-v2';
 const STATIC_ASSETS = [
   '/',
   '/styles/style.css',
