@@ -1,7 +1,7 @@
 {
   "name": "跑步助手",
   "short_name": "跑步",
-  "description": "模拟跑步任务执行助手",
+  "description": "帮助你完成跑步任务。",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -9,15 +9,8 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/favicon.ico",
+      "type": "image/x-icon",
       "purpose": "any maskable"
     }
   ]
