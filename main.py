@@ -2421,10 +2421,6 @@ def _get_default_config():
         "amap_js_key": "",
     }
 
-    config["API"] = {
-        "ip_api_key": "",
-    }
-
     config["Captcha"] = {
         "length": "4",
         "scale_factor": "2",
@@ -2785,22 +2781,6 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 申请类型：Web端(JS API)，服务平台：Web端\n")
         f.write(
             f"amap_js_key = {config_obj.get('Map', 'amap_js_key', fallback='')}\n\n"
-        )
-
-        # ========================================
-        # [API] 第三方API配置
-        # ========================================
-        f.write("# ========================================\n")
-        f.write("# [API] 第三方API配置\n")
-        f.write("# ========================================\n")
-        f.write("[API]\n")
-        f.write("# IP地理位置查询API密钥（可选）\n")
-        f.write("# 用于获取用户登录IP的地理位置信息\n")
-        f.write("# 留空则使用免费接口（有频率限制）\n")
-        f.write(
-            f"ip_api_key = {config_obj.get('API', 'ip_api_key', fallback='')}\n")
-        f.write(
-            "# 注意：验证码已改用本地生成器（见[Captcha]节），不再需要第三方API密钥\n\n"
         )
 
         # ========================================
@@ -26810,13 +26790,6 @@ def start_web_server(args_param):
                     )
                 },
                 "API": {
-                    "ip_api_key": _get_config_value(
-                        config,
-                        "API",
-                        "ip_api_key",
-                        fallback=default_config.get(
-                            "API", "ip_api_key", fallback=""),
-                    ),
                     "captcha_api_key": _get_config_value(
                         config,
                         "API",
@@ -27077,8 +27050,6 @@ def start_web_server(args_param):
             if "API" in data:
                 ensure_section(config, "API")
                 api_data = data["API"]
-                if "ip_api_key" in api_data:
-                    config.set("API", "ip_api_key", api_data["ip_api_key"])
                 if "captcha_api_key" in api_data:
                     config.set("API", "captcha_api_key",
                                api_data["captcha_api_key"])
