@@ -9,6 +9,14 @@
   <meta charset="UTF-8">
   <title>跑步助手</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <!-- PWA 支持 -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="跑步助手">
+  <link rel="apple-touch-icon" href="/icon-192x192.png">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- TailwindCSS - 使用本地缓存 -->
   <script src="/api/cdn/tailwindcss" onerror="this.src='https://cdn.tailwindcss.com'"></script>
@@ -78,6 +86,20 @@
   <script src="/editor.md/lib/sequence-diagram.min.js"></script>
   <script src="/editor.md/lib/underscore.min.js"></script>
 
+  <!-- PWA Service Worker 注册 -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(function(registration) {
+            console.log('[PWA] Service Worker 注册成功，作用域：', registration.scope);
+          })
+          .catch(function(error) {
+            console.warn('[PWA] Service Worker 注册失败：', error);
+          });
+      });
+    }
+  </script>
 </head>
 
 <body class="text-slate-800 font-sans h-screen overflow-hidden antialiased">

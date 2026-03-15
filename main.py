@@ -30283,6 +30283,61 @@ def start_web_server(args_param):
             logging.error(f"返回 favicon.ico 时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
+    # ========== PWA 支持路由 ==========
+    @app.route("/manifest.json")
+    def pwa_manifest():
+        """
+        返回 PWA Web App Manifest 文件。
+        """
+        try:
+            root_dir = os.path.dirname(__file__)
+            manifest_path = os.path.join(root_dir, "manifest.json")
+            if not os.path.exists(manifest_path):
+                logging.warning(f"manifest.json 文件不存在: {manifest_path}")
+                return jsonify({"success": False, "message": "manifest.json 文件未找到"}), 404
+            return send_file(manifest_path, mimetype="application/manifest+json")
+        except Exception as e:
+            logging.error(f"返回 manifest.json 时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/sw.js")
+    def pwa_service_worker():
+        """
+        返回 PWA Service Worker 文件。
+        Service Worker 必须从根路径提供，以确保其作用域覆盖整个应用。
+        """
+        try:
+            root_dir = os.path.dirname(__file__)
+            sw_path = os.path.join(root_dir, "sw.js")
+            if not os.path.exists(sw_path):
+                logging.warning(f"sw.js 文件不存在: {sw_path}")
+                return jsonify({"success": False, "message": "sw.js 文件未找到"}), 404
+            response = send_file(sw_path, mimetype="application/javascript")
+            response.headers["Service-Worker-Allowed"] = "/"
+            response.headers["Cache-Control"] = "no-cache"
+            return response
+        except Exception as e:
+            logging.error(f"返回 sw.js 时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/icon-<int:size>x<int:size2>.png")
+    def pwa_icon(size, size2):
+        """
+        返回 PWA 应用图标文件。
+        """
+        try:
+            if size != size2 or size not in (192, 512):
+                return jsonify({"success": False, "message": "图标尺寸不支持"}), 404
+            root_dir = os.path.dirname(__file__)
+            icon_path = os.path.join(root_dir, f"icon-{size}x{size}.png")
+            if not os.path.exists(icon_path):
+                logging.warning(f"图标文件不存在: {icon_path}")
+                return jsonify({"success": False, "message": "图标文件未找到"}), 404
+            return send_file(icon_path, mimetype="image/png")
+        except Exception as e:
+            logging.error(f"返回 PWA 图标时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
     # ========== 新增路由：应用退出API ==========
     @app.route("/api/shutdown", methods=["POST"])
     def api_logout():
