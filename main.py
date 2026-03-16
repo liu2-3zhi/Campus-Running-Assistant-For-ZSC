@@ -7676,7 +7676,7 @@ class Api:
             "max_time_m": 30,
             "min_dist_m": 2000,
             "auto_attendance_enabled": False,
-            "auto_attendance_refresh_s": 30,
+            "auto_attendance_refresh_s": 15,
             "attendance_user_radius_m": 40,
             "amap_js_key": "",
         }
@@ -11928,7 +11928,7 @@ class Api:
                 "theme_base_color": "#7dd3fc",
                 "theme_style": "default",
                 "auto_attendance_enabled": False,
-                "auto_attendance_refresh_s": 30,
+                "auto_attendance_refresh_s": 15,
                 "attendance_user_radius_m": 40,
             }
 
@@ -15657,9 +15657,9 @@ class Api:
                     # === 第四步：获取刷新间隔 ===
                     # 从账号参数中获取刷新间隔（秒）
                     refresh_interval_s = account.params.get(
-                        "auto_attendance_refresh_s", 30)
-                    # 确保刷新间隔不小于15秒（防止过于频繁的请求）
-                    refresh_interval_s = max(15, refresh_interval_s)
+                        "auto_attendance_refresh_s", 15)
+                    # 确保刷新间隔不小于10秒（防止过于频繁的请求）
+                    refresh_interval_s = max(10, refresh_interval_s)
 
                     # === 第五步：执行自动签到检查 ===
                     logging.info(f"[账号刷新线程] 账号 {account_id} 开始自动签到检查")
@@ -15846,8 +15846,8 @@ class Api:
                         break
                     continue
                 refresh_interval_s = self.params.get(
-                    "auto_attendance_refresh_s", 30)
-                refresh_interval_s = max(15, refresh_interval_s)
+                    "auto_attendance_refresh_s", 15)
+                refresh_interval_s = max(10, refresh_interval_s)
                 if self.is_multi_account_mode or not self.user_data.id:
                     continue
 
@@ -16030,7 +16030,7 @@ class Api:
                     continue
 
                 refresh_interval_s = self.global_params.get(
-                    "auto_attendance_refresh_s", 30)
+                    "auto_attendance_refresh_s", 15)
 
                 self.log(f"(多账号) 自动签到: 等待 {refresh_interval_s} 秒...")
                 if self.stop_multi_auto_refresh.wait(timeout=refresh_interval_s):
