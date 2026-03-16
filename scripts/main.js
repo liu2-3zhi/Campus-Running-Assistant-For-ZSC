@@ -13564,12 +13564,12 @@ async function saveMobileAttendanceParams() {
   const refresh = parseInt(refreshInput.value);
   const radius = parseInt(radiusInput.value);
 
-  if (isNaN(refresh) || refresh < 15) {
-    // showModalAlert("刷新间隔不能小于15秒", "错误");
+  if (isNaN(refresh) || refresh < 10) {
+    // showModalAlert("刷新间隔不能小于10秒", "错误");
     Swal.fire({
       icon: "error",
       title: "参数错误",
-      text: "刷新间隔不能小于15秒",
+      text: "刷新间隔不能小于10秒",
     });
     return;
   }
@@ -15808,7 +15808,7 @@ const paramDefs = {
   auto_attendance_refresh_s: {
     label: "刷新间隔",
     unit: "秒",
-    help: "自动刷新通知的间隔时间（秒），建议不低于60",
+    help: "自动刷新通知的间隔时间（秒），最小10秒",
   },
   attendance_user_radius_m: {
     label: "随机半径",
@@ -40038,7 +40038,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
         );
         if (autoRefreshInterval && typeof pythonParams !== "undefined") {
           autoRefreshInterval.value =
-            pythonParams.auto_attendance_refresh_s || 60;
+            pythonParams.auto_attendance_refresh_s || 15;
           logMessage_Info(
             "[移动端单账号] 自动刷新间隔已加载:",
             autoRefreshInterval.value,

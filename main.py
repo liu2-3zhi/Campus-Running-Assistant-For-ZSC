@@ -7676,7 +7676,7 @@ class Api:
             "max_time_m": 30,
             "min_dist_m": 2000,
             "auto_attendance_enabled": False,
-            "auto_attendance_refresh_s": 30,
+            "auto_attendance_refresh_s": 15,
             "attendance_user_radius_m": 40,
             "amap_js_key": "",
         }
@@ -11928,7 +11928,7 @@ class Api:
                 "theme_base_color": "#7dd3fc",
                 "theme_style": "default",
                 "auto_attendance_enabled": False,
-                "auto_attendance_refresh_s": 30,
+                "auto_attendance_refresh_s": 15,
                 "attendance_user_radius_m": 40,
             }
 
@@ -15657,9 +15657,9 @@ class Api:
                     # === 第四步：获取刷新间隔 ===
                     # 从账号参数中获取刷新间隔（秒）
                     refresh_interval_s = account.params.get(
-                        "auto_attendance_refresh_s", 30)
-                    # 确保刷新间隔不小于15秒（防止过于频繁的请求）
-                    refresh_interval_s = max(15, refresh_interval_s)
+                        "auto_attendance_refresh_s", 15)
+                    # 确保刷新间隔不小于10秒（防止过于频繁的请求）
+                    refresh_interval_s = max(10, refresh_interval_s)
 
                     # === 第五步：执行自动签到检查 ===
                     logging.info(f"[账号刷新线程] 账号 {account_id} 开始自动签到检查")
@@ -15846,8 +15846,8 @@ class Api:
                         break
                     continue
                 refresh_interval_s = self.params.get(
-                    "auto_attendance_refresh_s", 30)
-                refresh_interval_s = max(15, refresh_interval_s)
+                    "auto_attendance_refresh_s", 15)
+                refresh_interval_s = max(10, refresh_interval_s)
                 if self.is_multi_account_mode or not self.user_data.id:
                     continue
 
@@ -16030,7 +16030,7 @@ class Api:
                     continue
 
                 refresh_interval_s = self.global_params.get(
-                    "auto_attendance_refresh_s", 30)
+                    "auto_attendance_refresh_s", 15)
 
                 self.log(f"(多账号) 自动签到: 等待 {refresh_interval_s} 秒...")
                 if self.stop_multi_auto_refresh.wait(timeout=refresh_interval_s):
@@ -30281,6 +30281,61 @@ def start_web_server(args_param):
             return send_file(favicon_path, mimetype="image/vnd.microsoft.icon")
         except Exception as e:
             logging.error(f"返回 favicon.ico 时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    # ========== PWA 支持路由 ==========
+    @app.route("/manifest.json")
+    def pwa_manifest():
+        """
+        返回 PWA Web App Manifest 文件。
+        """
+        try:
+            root_dir = os.path.dirname(__file__)
+            manifest_path = os.path.join(root_dir, "manifest.json")
+            if not os.path.exists(manifest_path):
+                logging.warning(f"manifest.json 文件不存在: {manifest_path}")
+                return jsonify({"success": False, "message": "manifest.json 文件未找到"}), 404
+            return send_file(manifest_path, mimetype="application/manifest+json")
+        except Exception as e:
+            logging.error(f"返回 manifest.json 时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/sw.js")
+    def pwa_service_worker():
+        """
+        返回 PWA Service Worker 文件。
+        Service Worker 必须从根路径提供，以确保其作用域覆盖整个应用。
+        """
+        try:
+            root_dir = os.path.dirname(__file__)
+            sw_path = os.path.join(root_dir, "sw.js")
+            if not os.path.exists(sw_path):
+                logging.warning(f"sw.js 文件不存在: {sw_path}")
+                return jsonify({"success": False, "message": "sw.js 文件未找到"}), 404
+            response = send_file(sw_path, mimetype="application/javascript")
+            response.headers["Service-Worker-Allowed"] = "/"
+            response.headers["Cache-Control"] = "no-cache"
+            return response
+        except Exception as e:
+            logging.error(f"返回 sw.js 时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/icon-<int:size>x<int:size2>.png")
+    def pwa_icon(size, size2):
+        """
+        返回 PWA 应用图标文件。
+        """
+        try:
+            if size != size2 or size not in (192, 512):
+                return jsonify({"success": False, "message": "图标尺寸不支持"}), 404
+            root_dir = os.path.dirname(__file__)
+            icon_path = os.path.join(root_dir, f"icon-{size}x{size}.png")
+            if not os.path.exists(icon_path):
+                logging.warning(f"图标文件不存在: {icon_path}")
+                return jsonify({"success": False, "message": "图标文件未找到"}), 404
+            return send_file(icon_path, mimetype="image/png")
+        except Exception as e:
+            logging.error(f"返回 PWA 图标时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
     # ========== 新增路由：应用退出API ==========
