@@ -15132,7 +15132,7 @@ class Api:
         acc: AccountSession | None = None,
     ):
         """
-        (已重构) 触发签到流程。
+        触发签到流程。
         - acc: (可选) 在多账号模式下传入 AccountSession。
 
         Args:
@@ -15250,7 +15250,7 @@ class Api:
                 "signCode": sign_code,
                 "reason": "补签",
             }
-            log_func("使用[补签]负载提交...")
+            log_func("正在构建签到信息，检测到是补签任务")
         else:
             payload = {
                 "rollCallId": roll_call_id,
@@ -15261,7 +15261,7 @@ class Api:
                 "signCode": sign_code,
                 "reason": "",
             }
-            log_func("使用[正常签到]负载提交...")
+            log_func("正在构建签到信息，检测到是正常签到任务")
 
         try:
             log_func("正在提交签到...")
@@ -15949,35 +15949,49 @@ class Api:
                 log_func("(后台) 通知列表为空。")
                 return
 
+            log_func(f"(后台) 获取到 {len(notices)} 条通知，正在检查签到任务...")
+            logging.debug(f"(后台) 通知列表原始数据: {notices}")
+            logging.debug(f"(后台) 通知列表: {[notice.get('title') + ' - ' + notice.get('image') for notice in notices]}")
+            
             triggered_count = 0
             for notice in notices:
-                is_attendance = notice.get(
-                    "image"
-                ) == "attendance" or "签到" in notice.get("title", "")
+                is_attendance = notice.get("image") == "attendance" or "签到" in notice.get("title", "")
                 if not (is_attendance and notice.get("id")):
                     continue
+                
+                if is_attendance:
+                    logging.debug(f"(后台) 发现签到通知: {notice.get('title')} (ID: {notice.get('id')})")
 
                 roll_call_id = notice["id"]
                 info_resp = client.get_roll_call_info(roll_call_id, user.id)
-
-                status = -2
+                logging.debug(f"(后台) 获取签到信息响应: {info_resp}")
+                status = -1
                 finished = 0
                 if info_resp and info_resp.get("success"):
                     data = info_resp.get("data", {})
                     roll_call_info = data.get("rollCallInfo", {})
-                    status = roll_call_info.get("status")
-                    finished = data.get("attendFinish")
-                if (status != -1 and status != "-1") and not ((finished == 1 or finished == "1") or finished is True):
+                    status = roll_call_info.get("status")  # 签到状态 -1为已过期
+                    finished = data.get("attendFinish")    # 签到是否完成 1为完成
+                    
+                    # 判断 status 和 finished 是否为字符串 "1" 或数字 1，如果是数字则转换为数字
+                    status = int(status) if isinstance(status, str) and status.isdigit() else status
+                    finished = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
+
+                logging.debug(f"(后台) 签到任务状态: {status}, 完成状态: {finished}")
+                    
+                if (status != -1) and not ((finished == 1)):
                     log_func(
                         f"检测到待签到任务 '{notice.get('title')}'，正在自动签到..."
                     )
-                    coords_str = notice.get("updateBy", "").split(",")
+                    coords_str = notice.get("updateBy", "").split(",")   # 获取签到坐标字符串并拆分为经纬度
                     if len(coords_str) == 2:
                         try:
                             target_lat, target_lon = float(coords_str[0]), float(
                                 coords_str[1]
                             )
                             target_coords = (target_lon, target_lat)
+                            logging.debug(f"(后台) 解析签到坐标: {target_coords}")
+                            logging.debug(f"(后台) 执行自动签到，参数 - roll_call_id: {roll_call_id}, target_coords: {target_coords}")
                             auto_result = self.trigger_attendance(
                                 roll_call_id,
                                 target_coords,
