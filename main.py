@@ -7147,6 +7147,8 @@ class ApiClient:
     def __init__(self, owner_instance):
         self.session = requests.Session()
         self.app = owner_instance
+        self._roll_call_info_cache: dict = {}  # {roll_call_id: (timestamp, result)}
+        self._ROLL_CALL_CACHE_TTL = 60  # 缓存有效期（秒）
         logging.debug("ApiClient已初始化，创建了新的requests.Session会话实例")
 
     def _get_headers(self) -> dict:
@@ -7507,10 +7509,19 @@ class ApiClient:
         return f"Mozilla/5.0 (Linux; Android {android_version}; {random.choice(phone_models)} Build/{random_build}; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 {chrome_version} Mobile Safari/537.36"
 
     def get_roll_call_info(self, roll_call_id, user_id):
-        """获取指定签到活动的信息"""
+        """获取指定签到活动的信息（结果在短时间内缓存，避免重复请求）"""
+        cache_key = str(roll_call_id)
+        now = time.time()
+        cached = self._roll_call_info_cache.get(cache_key)
+        if cached is not None:
+            cached_time, cached_result = cached
+            if now - cached_time < self._ROLL_CALL_CACHE_TTL:
+                logging.debug(f"[get_roll_call_info] 命中缓存，跳过请求 (roll_call_id={roll_call_id})")
+                return cached_result
+
         params = {"id": roll_call_id, "userId": user_id,
                   "appVersion": self.API_VERSION}
-        return self._json(
+        result = self._json(
             self._request(
                 "POST",
                 f"{self.BASE_URL}:9097/run/attendanceRecord/getAttendanceByRollCallId",
@@ -7520,6 +7531,8 @@ class ApiClient:
                 force_content_type="application/json;charset=UTF-8",
             )
         )
+        self._roll_call_info_cache[cache_key] = (now, result)
+        return result
 
     def submit_attendance(self, payload: dict):
         """提交签到记录"""
