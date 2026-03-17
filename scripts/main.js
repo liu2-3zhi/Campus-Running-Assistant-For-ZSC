@@ -14528,13 +14528,29 @@ async function loadMobileSessionsList() {
               () => deleteSessionFromPicker(session.session_id, false),
             );
           }
-        } else {
-          // 短按：切换会话
-          if (!isCurrent && !isLongPress) {
-            selectSessionFromPicker(session.session_id);
-          }
         }
         isLongPress = false;
+      };
+
+      // 双击/双指轻触切换会话
+      let lastTapTime = 0;
+      const handleDoubleTap = (e) => {
+        if (isLongPress) return;
+        const now = Date.now();
+        if (now - lastTapTime < 350) {
+          if (!isCurrent) {
+            showMobileConfirm(
+              "切换会话",
+              `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
+              () => {
+                selectSessionFromPicker(session.session_id);
+              },
+            );
+          }
+          lastTapTime = 0;
+        } else {
+          lastTapTime = now;
+        }
       };
 
       itemDiv.addEventListener("touchstart", startPress, {
@@ -14542,8 +14558,20 @@ async function loadMobileSessionsList() {
       });
       itemDiv.addEventListener("touchmove", movePress, { passive: true });
       itemDiv.addEventListener("touchend", endPress);
+      itemDiv.addEventListener("touchend", handleDoubleTap);
       itemDiv.addEventListener("mousedown", startPress); // 兼容鼠标
       itemDiv.addEventListener("mouseup", endPress);
+      itemDiv.addEventListener("dblclick", () => {
+        if (!isCurrent) {
+          showMobileConfirm(
+            "切换会话",
+            `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
+            () => {
+              selectSessionFromPicker(session.session_id);
+            },
+          );
+        }
+      });
 
       listEl.appendChild(itemDiv);
     });
@@ -26798,6 +26826,8 @@ async function loadUserAuditLogsSecondary(username) {
 
     if (data.success && data.logs && data.logs.length > 0) {
       content.innerHTML = data.logs
+        .slice()
+        .reverse()
         .map(
           (log) => `
             <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
@@ -26906,6 +26936,8 @@ async function loadUserAuditLogs(username) {
 
     if (data.success && data.logs && data.logs.length > 0) {
       content.innerHTML = data.logs
+        .slice()
+        .reverse()
         .map(
           (log) => `
             <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
@@ -38787,6 +38819,8 @@ async function exitMobileMultiAccount() {
 async function performExitMobileMultiAccount() {
   stopMultiAccountAutoRefresh();
   await callPythonAPI("exit_multi_account_mode");
+  const adminPanel = document.getElementById("mobile-admin-panel-unified");
+  if (adminPanel) adminPanel.classList.add("hidden");
   document.getElementById("mobile-multi-account-app").classList.add("hidden");
   document.getElementById("mobile-login-container").classList.remove("hidden");
   updateMobileNavVisibility(false);
@@ -48296,6 +48330,8 @@ async function loadMobileUserAuditLogs(username) {
 
     if (data.success && data.logs && data.logs.length > 0) {
       content.innerHTML = data.logs
+        .slice()
+        .reverse()
         .map(
           (log) => `
         <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
