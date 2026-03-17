@@ -15955,7 +15955,7 @@ class Api:
             
             triggered_count = 0
             for notice in notices:
-                is_attendance = notice.get("image") == "attendance" or "签到" in notice.get("title", "")
+                is_attendance = (notice.get("image") == "attendance" )or ("签到" in notice.get("title", "")) or ("签到" in notice.get("content",""))
                 if not (is_attendance and notice.get("id")):
                     continue
                 
