@@ -38789,6 +38789,11 @@ async function mobileResetTask() {
   }
 }
 async function exitMobileMultiAccount() {
+  const adminPanelEl = document.getElementById("mobile-admin-panel-unified");
+  if (adminPanelEl) {
+    adminPanelEl.style.display = "none";
+    adminPanelEl.classList.add("hidden");
+  }
   try {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
@@ -38818,6 +38823,10 @@ async function exitMobileMultiAccount() {
           }
         },
         () => {
+          if (adminPanelEl) {
+            adminPanelEl.style.display = "";
+            adminPanelEl.classList.remove("hidden");
+          }
           showModalAlert("已取消退出多账号模式", "提示");
         },
       );
@@ -38831,12 +38840,12 @@ async function exitMobileMultiAccount() {
 }
 async function performExitMobileMultiAccount() {
   stopMultiAccountAutoRefresh();
-  await callPythonAPI("exit_multi_account_mode");
   const adminPanel = document.getElementById("mobile-admin-panel-unified");
   if (adminPanel) {
     adminPanel.style.display = "none";
     adminPanel.classList.add("hidden");
   }
+  await callPythonAPI("exit_multi_account_mode");
   document.getElementById("mobile-multi-account-app").classList.add("hidden");
   document.getElementById("mobile-login-container").classList.remove("hidden");
   updateMobileNavVisibility(false);
@@ -38889,6 +38898,11 @@ async function exitMobileSingleAccount() {
   }
 }
 async function exitMobileSingleAccountSafe() {
+  const adminPanelEl = document.getElementById("mobile-admin-panel-unified");
+  if (adminPanelEl) {
+    adminPanelEl.style.display = "none";
+    adminPanelEl.classList.add("hidden");
+  }
   try {
     const statusRes = await callPythonAPI_raw(
       "/api/background_task/status",
@@ -38918,6 +38932,10 @@ async function exitMobileSingleAccountSafe() {
           }
         },
         () => {
+          if (adminPanelEl) {
+            adminPanelEl.style.display = "";
+            adminPanelEl.classList.remove("hidden");
+          }
           showModalAlert("已取消退出单账号模式", "提示");
         },
       );
