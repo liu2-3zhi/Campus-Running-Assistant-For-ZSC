@@ -38833,7 +38833,10 @@ async function performExitMobileMultiAccount() {
   stopMultiAccountAutoRefresh();
   await callPythonAPI("exit_multi_account_mode");
   const adminPanel = document.getElementById("mobile-admin-panel-unified");
-  if (adminPanel) adminPanel.classList.add("hidden");
+  if (adminPanel) {
+    adminPanel.style.display = "none";
+    adminPanel.classList.add("hidden");
+  }
   document.getElementById("mobile-multi-account-app").classList.add("hidden");
   document.getElementById("mobile-login-container").classList.remove("hidden");
   updateMobileNavVisibility(false);
@@ -38841,9 +38844,11 @@ async function performExitMobileMultiAccount() {
 async function exitMobileSingleAccount() {
   try {
     console.log("[移动端] 开始退出单账号模式...");
-    document
-      .getElementById("mobile-admin-panel-unified")
-      .classList.add("hidden");
+    const adminPanelEl = document.getElementById("mobile-admin-panel-unified");
+    if (adminPanelEl) {
+      adminPanelEl.style.display = "none";
+      adminPanelEl.classList.add("hidden");
+    }
     const result = await callPythonAPI("logout");
     if (!result || !result.success) {
       console.error(
@@ -38929,9 +38934,11 @@ async function exitMobileMultiAccountToSessions() {
   try {
     console.log("[移动端] 开始退出多账号模式...");
     stopMultiAccountAutoRefresh();
-    document
-      .getElementById("mobile-admin-panel-unified")
-      .classList.add("hidden");
+    const adminPanelEl2 = document.getElementById("mobile-admin-panel-unified");
+    if (adminPanelEl2) {
+      adminPanelEl2.style.display = "none";
+      adminPanelEl2.classList.add("hidden");
+    }
     const result = await callPythonAPI("exit_multi_account_mode");
     if (!result || !result.success) {
       console.error(
@@ -40146,9 +40153,11 @@ function switchMobileSinglePanel(panelId, showalert = true) {
 
     // 统一管理面板（mobile-admin-panel-unified）在单账号模式下的激活处理
     // 单账号模式复用多账号管理面板，但需要设置正确的模式标识
+    // [修正] initMobileAdminPanel 由 openMobileAdminPanelUnified 通过 setTimeout 统一调用，
+    //        此处不再重复调用，避免产生竞态条件导致面板隐藏失败
     if (panelId === "mobile-admin-panel-unified") {
       logMessage_Info(
-        "[移动端单账号] 激活统一管理面板（复用多账号面板），开始初始化...",
+        "[移动端单账号] 激活统一管理面板（复用多账号面板）",
       );
       // 设置当前模式为单账号，供主题保存等功能判断
       window.mobileAdminPanelMode = "single";
@@ -40158,12 +40167,6 @@ function switchMobileSinglePanel(panelId, showalert = true) {
       );
       if (statusEl) {
         statusEl.textContent = "单账号管理";
-      }
-      // 调用 initMobileAdminPanel 函数初始化管理面板
-      if (typeof initMobileAdminPanel === "function") {
-        initMobileAdminPanel("mobile-admin-panel-unified");
-      } else {
-        logMessage_Warning("[移动端单账号] initMobileAdminPanel函数未定义");
       }
     }
 
@@ -40375,8 +40378,10 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
       }
     }
     if (panelId === "mobile-admin-panel-unified") {
-      console.log("[移动端] 激活多账号管理面板，开始初始化...");
+      console.log("[移动端] 激活多账号管理面板");
       // 设置当前模式为多账号，供主题保存等功能判断
+      // [修正] initMobileAdminPanel 由 openMobileAdminPanelUnified 通过 setTimeout 统一调用，
+      //        此处不再重复调用，避免产生竞态条件导致面板隐藏失败
       window.mobileAdminPanelMode = "multi";
       // 更新面板状态显示为多账号管理
       const statusEl = document.getElementById(
@@ -40384,11 +40389,6 @@ function switchMobileMulitPanel(panelId, mode = "multi") {
       );
       if (statusEl) {
         statusEl.textContent = "多账号管理";
-      }
-      if (typeof initMobileAdminPanel === "function") {
-        initMobileAdminPanel("mobile-admin-panel-unified");
-      } else {
-        console.warn("[移动端] initMobileAdminPanel函数未定义");
       }
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
