@@ -16627,6 +16627,11 @@ async function confirmCaptchaAndSendSMS() {
   } catch (error) {
     console.error("[验证码模态窗] 发送SMS失败:", error);
     refreshCaptchaModal();
+    const captchaModalInput = document.getElementById("captcha-modal-input");
+    if (captchaModalInput) {
+      captchaModalInput.value = "";
+      captchaModalInput.focus();
+    }
   } finally {
     confirmBtn.disabled = false;
     confirmBtn.textContent = originalText;
@@ -17015,6 +17020,8 @@ async function handleAuthLogin(isMobile_use = false) {
         refreshCaptcha("mobile-login");
       }
       $("auth-login-captcha").value = "";
+      const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+      if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
     }
   } catch (e) {
     logMessage_Error("登录请求失败:", e);
@@ -17033,6 +17040,8 @@ async function handleAuthLogin(isMobile_use = false) {
       refreshCaptcha("mobile-login");
     }
     $("auth-login-captcha").value = "";
+    const mobileLoginCaptchaErr = document.getElementById("mobile-login-captcha");
+    if (mobileLoginCaptchaErr) mobileLoginCaptchaErr.value = "";
   }
 }
 
@@ -17401,6 +17410,8 @@ async function handleAuthRegister(isMobile_use = false) {
         refreshCaptcha("mobile-register");
       }
       $("auth-register-captcha").value = "";
+      const mobileRegCaptcha = document.getElementById("mobile-register-captcha");
+      if (mobileRegCaptcha) mobileRegCaptcha.value = "";
     }
   } catch (e) {
     logMessage_Error("注册请求失败:", e);
@@ -17419,6 +17430,8 @@ async function handleAuthRegister(isMobile_use = false) {
       refreshCaptcha("mobile-register");
     }
     $("auth-register-captcha").value = "";
+    const mobileRegCaptchaErr = document.getElementById("mobile-register-captcha");
+    if (mobileRegCaptchaErr) mobileRegCaptchaErr.value = "";
   } finally {
     registrationCroppedAvatarBlob = null;
     setButtonLoading("auth-register-btn", false);
