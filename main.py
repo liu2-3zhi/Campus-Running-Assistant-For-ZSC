@@ -27899,46 +27899,6 @@ def start_web_server(args_param):
             # 读取配置文件
             config = configparser.ConfigParser()
             config.read("config.ini", encoding="utf-8")
-            if "Features" not in config:
-                config.add_section("Features")
-            if "SMS_Service_SMSBao" not in config:
-                config.add_section("SMS_Service_SMSBao")
-            if not config.has_option("Features", "enable_sms_service"):
-                config.set("Features", "enable_sms_service", "false")
-            if not config.has_option("Features", "enable_phone_modification"):
-                config.set("Features", "enable_phone_modification", "false")
-            if not config.has_option("Features", "enable_phone_login"):
-                config.set("Features", "enable_phone_login", "false")
-            if not config.has_option("Features", "enable_phone_registration_verify"):
-                config.set(
-                    "Features", "enable_phone_registration_verify", "false")
-            if not config.has_option("SMS_Service_SMSBao", "username"):
-                config.set("SMS_Service_SMSBao", "username", "")
-            if not config.has_option("SMS_Service_SMSBao", "api_key"):
-                config.set("SMS_Service_SMSBao", "api_key", "")
-            if not config.has_option("SMS_Service_SMSBao", "signature"):
-                config.set("SMS_Service_SMSBao", "signature", "")
-            if not config.has_option("SMS_Service_SMSBao", "template_register"):
-                config.set("SMS_Service_SMSBao", "template_register", "")
-            if not config.has_option("SMS_Service_SMSBao", "code_expire_minutes"):
-                config.set("SMS_Service_SMSBao", "code_expire_minutes", "5")
-            if not config.has_option(
-                "SMS_Service_SMSBao", "rate_limit_per_account_day"
-            ):
-                config.set("SMS_Service_SMSBao",
-                           "rate_limit_per_account_day", "10")
-            if not config.has_option("SMS_Service_SMSBao", "rate_limit_per_ip_day"):
-                config.set("SMS_Service_SMSBao", "rate_limit_per_ip_day", "20")
-            if not config.has_option("SMS_Service_SMSBao", "rate_limit_per_phone_day"):
-                config.set("SMS_Service_SMSBao",
-                           "rate_limit_per_phone_day", "5")
-
-            # 使用 _write_config_with_comments() 函数写入配置文件
-            # 这个函数的作用是：在写入配置的同时保留config.ini中的注释内容
-            # 原因：config.write() 会丢失配置文件中的所有注释，导致配置文件可读性变差
-            # _write_config_with_comments() 会先读取原文件的注释，然后在写入新配置时保留这些注释
-            # 这对于维护配置文件的可读性和文档性非常重要
-            _write_config_with_comments(config, "config.ini")
             sms_config = {
                 "enable_sms_service": config.getboolean(
                     "Features", "enable_sms_service", fallback=False
