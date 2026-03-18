@@ -9130,12 +9130,15 @@ class Api:
                     if not cfg.has_section("Map"):
                         cfg.add_section("Map")
                     cfg.set("Map", "amap_js_key", amap_key)
-                    # 使用 _write_config_with_comments() 函数写入配置文件
-                    # 原因：标准的 config.write() 方法会丢失 config.ini 中的所有注释内容
-                    # _write_config_with_comments() 函数会保留配置文件中的注释，保持可读性
-                    # 这对于维护配置文件的可读性和文档性非常重要
-                    _write_config_with_comments(cfg, self.config_path)
-                    logging.info("已将AmapJsKey从旧版[System]迁移到新版[Map]")
+                    # 将 AmapJsKey 从旧版 [System] 迁移到新版 [Map] 节（尽力写入）
+                    # 如果配置文件只读，写入失败不影响 amap_key 已加载到内存中的值
+                    try:
+                        _write_config_with_comments(cfg, self.config_path)
+                        logging.info("已将AmapJsKey从旧版[System]迁移到新版[Map]")
+                    except Exception as write_err:
+                        logging.warning(
+                            f"迁移AmapJsKey时写入配置文件失败（可忽略，键已加载到内存）: {write_err}"
+                        )
 
             self.global_params["amap_js_key"] = amap_key
 
