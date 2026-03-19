@@ -35492,7 +35492,22 @@ async function clearCurrentPath(confirm = true, showAlert = true) {
   }
 
   // 步骤4: 调用后端API清除当前任务的草稿数据
-  await callPythonAPI("clear_current_task_draft");
+  const clearResult = await callPythonAPI("clear_current_task_draft");
+  if (!clearResult?.success) {
+    if (confirm) {
+      // 用户主动确认清除时，若后端失败则中止并提示，避免前后端数据不一致
+      showModalAlert(
+        "清除路径失败: " + (clearResult?.message || "未知错误"),
+        "错误",
+      );
+      return;
+    }
+    // 非交互模式（如录制路径前重置）记录警告后继续执行本地清除
+    logMessage_Warning(
+      "后端清除路径失败，继续清除本地状态: " +
+        (clearResult?.message || "未知错误"),
+    );
+  }
 
   // 步骤5: 清除地图上的各种折线图层
   if (polylines.draft) {
