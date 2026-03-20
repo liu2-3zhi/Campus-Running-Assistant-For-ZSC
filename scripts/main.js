@@ -45371,9 +45371,9 @@ async function loadMobileMultiMessages() {
             }
           </div>
           <div class="pt-2 border-t border-slate-100">
-              <p class="text-base text-slate-800 whitespace-pre-wrap break-words leading-relaxed">${escapeHtml(
-                msg.content,
-              )}</p>
+              <div id="mobile-message-md-${
+                msg.id
+              }" class="text-base text-slate-800 whitespace-pre-wrap break-words leading-relaxed message-markdown"></div>
           </div>
         </div>
       `;
@@ -45381,6 +45381,40 @@ async function loadMobileMultiMessages() {
       .join("");
 
     listEl.innerHTML = html;
+    // 尝试将每条留言的 Markdown 转换为 HTML（移动端多账号）
+    (function renderMobileMessagesMarkdown(msgs) {
+      if (!msgs || !msgs.length) return;
+      msgs.forEach((m) => {
+        const id = `mobile-message-md-${m.id}`;
+        const container = document.getElementById(id);
+        if (!container) return;
+
+        if (window.editormd && typeof editormd.markdownToHTML === "function") {
+          try {
+            editormd.markdownToHTML(id, {
+              markdown: m.content || "",
+              htmlDecode: true,
+              htmlDecode: "style,iframe,image",
+              toc: false,
+              tocContainer: "",
+              gfm: true,
+              tocDropdown: false,
+              markdownSourceCode: false,
+              emoji: true,
+              taskList: true,
+              tex: true,
+              flowChart: false,
+              sequenceDiagram: true,
+            });
+            return;
+          } catch (e) {
+            console.warn("移动端留言 Markdown 渲染失败，回退为纯文本显示", e);
+          }
+        }
+
+        container.innerHTML = escapeHtml(m.content || "").replace(/\n/g, "<br>");
+      });
+    })(messages);
   } catch (e) {
     console.error("[移动端留言板] 加载失败:", e);
     listEl.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">加载失败: ${e.message}</p>`;
