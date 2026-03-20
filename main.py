@@ -2649,6 +2649,19 @@ def _write_config_with_comments(config_obj, filepath):
 
     由于ConfigParser不保留注释，这个函数手动写入带注释的配置文件。
     """
+    try:
+        existing_config = configparser.ConfigParser()
+        if os.path.exists(filepath):
+            existing_config.read(filepath, encoding="utf-8")
+            for section in existing_config.sections():
+                if not config_obj.has_section(section):
+                    config_obj.add_section(section)
+                for key, value in existing_config.items(section, raw=True):
+                    if not config_obj.has_option(section, key):
+                        config_obj.set(section, key, value)
+    except Exception as e:
+        logging.warning(f"读取配置文件用于补全缺失项失败: {e}")
+
     with open(filepath, "w", encoding="utf-8") as f:
         f.write("# ========================================\n")
         f.write("# 跑步工具配置文件\n")

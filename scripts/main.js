@@ -25,6 +25,29 @@ captchaIds_modal = null;
 captchaIds_mobile_login = null;
 captchaIds_mobile_register = null;
 
+const configLoadState = {
+  sms: false,
+  system: false,
+  captcha: false,
+  ssl: false,
+  cdn: false,
+  yipay: false,
+  pricing: false,
+  watermark: false,
+};
+
+function ensureConfigLoaded(key, label) {
+  if (configLoadState[key]) {
+    return true;
+  }
+  Swal.fire({
+    icon: "warning",
+    title: "配置未加载",
+    text: `${label}配置尚未加载，请先点击刷新或等待加载完成`,
+  });
+  return false;
+}
+
 function getUUIDFromURL() {
   const urlPath = window.location.pathname;
 
@@ -8868,6 +8891,7 @@ function copyAdminTestPayUrl() {
 async function loadAdminYiPayConfig(show_Modal = true) {
   // 在控制台输出日志，记录函数调用
   console.log("[PC端易支付配置] 开始加载易支付配置...");
+  configLoadState.yipay = false;
 
   try {
     // === 第1步：发起HTTP GET请求获取配置数据 ===
@@ -9125,7 +9149,9 @@ async function loadAdminYiPayConfig(show_Modal = true) {
     // }
 
     console.log("[PC端易支付配置] 配置已成功填充到表单");
+    configLoadState.yipay = true;
   } catch (error) {
+    configLoadState.yipay = false;
     // === 错误处理 ===
     // 当任何步骤发生错误时（网络失败、JSON解析失败、服务器错误等）
     // 都会被捕获到这里
@@ -9183,6 +9209,9 @@ async function loadAdminYiPayConfig(show_Modal = true) {
  * }
  */
 async function saveAdminYiPayConfig() {
+  if (!ensureConfigLoaded("yipay", "易支付")) {
+    return;
+  }
   // 在控制台输出日志，记录函数调用
   console.log("[PC端易支付配置] 开始保存易支付配置...");
 
@@ -10384,6 +10413,7 @@ document.addEventListener("DOMContentLoaded", function () {
  * - pricing-default-runs_modal：新用户默认免费次数（数字输入框）
  */
 async function loadPricingConfig() {
+  configLoadState.pricing = false;
   try {
     // ========== 显示加载状态 ==========
     // 为了提升用户体验，在数据加载期间显示加载提示
@@ -10523,7 +10553,9 @@ async function loadPricingConfig() {
 
     // ========== 记录成功日志 ==========
     console.log("[价格配置] 价格配置加载成功", config);
+    configLoadState.pricing = true;
   } catch (error) {
+    configLoadState.pricing = false;
     // ========== 错误处理 ==========
     // 捕获加载过程中的任何错误
     console.error("[价格配置] 加载价格配置失败:", error);
@@ -10556,6 +10588,9 @@ async function loadPricingConfig() {
  * 3. default_available_runs：必须为非负整数
  */
 async function savePricingConfig() {
+  if (!ensureConfigLoaded("pricing", "价格")) {
+    return;
+  }
   try {
     // ========== 获取表单元素 ==========
 
@@ -11325,6 +11360,7 @@ function updateWatermarkDefaultLabel() {
  * 3. 服务器返回失败：显示错误消息
  */
 async function loadWatermarkControlConfig() {
+  configLoadState.watermark = false;
   try {
     // ========== 步骤1: 显示加载状态 ==========
     // 记录日志，便于调试
@@ -11483,7 +11519,9 @@ async function loadWatermarkControlConfig() {
 
     // ========== 步骤9: 记录成功日志 ==========
     console.log("[水印控制] 配置加载成功（PC端）");
+    configLoadState.watermark = true;
   } catch (error) {
+    configLoadState.watermark = false;
     // ========== 错误处理 ==========
     // 捕获所有可能的错误（网络错误、解析错误、服务器错误等）
     console.error("[水印控制] 加载配置失败（PC端）:", error);
@@ -11533,6 +11571,9 @@ async function loadWatermarkControlConfig() {
  * }
  */
 async function saveWatermarkControlConfig() {
+  if (!ensureConfigLoaded("watermark", "水印控制")) {
+    return;
+  }
   try {
     // ========== 步骤1: 收集默认值配置 ==========
     console.log("[水印控制] 正在收集配置数据（PC端）...");
@@ -16654,6 +16695,11 @@ async function sendSMSWithCaptcha(
     captchaIds_modal == "undefined" ||
     captchaIds_modal == "NULL"
   ) {
+    const modalInput = document.getElementById("captcha-modal-input");
+    if (modalInput) {
+      modalInput.value = "";
+      modalInput.focus();
+    }
     // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
     Swal.fire({
       icon: "warning",
@@ -16708,6 +16754,11 @@ async function sendSMSWithCaptcha(
         }
       }, 1000);
     } else {
+      const modalInput = document.getElementById("captcha-modal-input");
+      if (modalInput) {
+        modalInput.value = "";
+        modalInput.focus();
+      }
       throw new Error(result.message || "发送失败，请重试");
     }
   } catch (error) {
@@ -27212,6 +27263,7 @@ async function removeIPBan(banId) {
 // 短信服务配置函数
 // ====================
 async function loadSMSConfig() {
+  configLoadState.sms = false;
   try {
     const response = await fetch("/api/admin/sms/config", {
       headers: { "X-Session-ID": sessionUUID },
@@ -27236,8 +27288,17 @@ async function loadSMSConfig() {
       $("sms-limit-phone").value = result.config.rate_limit_per_phone_day || 5;
       $("sms-webhook-url").value =
         `${window.location.origin}/sms-reply-webhook`;
+      configLoadState.sms = true;
+    } else {
+      configLoadState.sms = false;
+      Swal.fire({
+        title: "错误",
+        text: result.message || "加载配置失败",
+        icon: "error",
+      });
     }
   } catch (e) {
+    configLoadState.sms = false;
     // showModalAlert("加载配置失败: " + e.message);
     Swal.fire({
       title: "错误",
@@ -27247,6 +27308,9 @@ async function loadSMSConfig() {
   }
 }
 async function saveSMSConfig() {
+  if (!ensureConfigLoaded("sms", "短信服务")) {
+    return;
+  }
   const config = {
     enable_sms_service: $("sms-enabled").checked,
     enable_phone_modification: $("sms-enable-phone-modification").checked,
@@ -41050,6 +41114,7 @@ async function confirmModifyPhone() {
   }
 }
 async function loadSystemConfig() {
+  configLoadState.system = false;
   const formContainer = $("admin-config-form");
   formContainer.innerHTML =
     '<p class="text-slate-400 text-center py-10">加载中...</p>';
@@ -41062,6 +41127,7 @@ async function loadSystemConfig() {
 
     if (!result.success) {
       formContainer.innerHTML = `<p class="text-red-500 text-center py-10">加载配置失败: ${result.message}</p>`;
+      configLoadState.system = false;
       return;
     }
 
@@ -41375,7 +41441,9 @@ async function loadSystemConfig() {
     );
 
     formContainer.innerHTML = html;
+    configLoadState.system = true;
   } catch (e) {
+    configLoadState.system = false;
     formContainer.innerHTML = `<p class="text-red-500 text-center py-10">加载配置时发生错误: ${e.message}</p>`;
   }
 }
@@ -41396,6 +41464,7 @@ async function loadSystemConfig() {
  * @returns {Promise<void>} 无返回值
  */
 async function loadCaptchaSettings(ShowSwalFire = true) {
+  configLoadState.captcha = false;
   try {
     // 步骤1：记录开始加载的日志，便于调试和追踪
     console.log(
@@ -41467,6 +41536,7 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
           showConfirmButton: false, // 不显示确认按钮，自动关闭
         });
       }
+      configLoadState.captcha = true;
     } else {
       // 步骤11：处理API返回成功但没有配置数据的情况
       // 这通常表示配置文件不存在或格式错误
@@ -41485,8 +41555,10 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
         timer: 2000, // 2秒后自动关闭
         showConfirmButton: false, // 不显示确认按钮
       });
+      configLoadState.captcha = true;
     }
   } catch (error) {
+    configLoadState.captcha = false;
     // 步骤14：捕获并处理所有可能的异常（网络错误、解析错误等）
     // 记录详细的错误日志，包含错误对象的完整信息
     console.error("[验证码设置] 从 /api/captcha/config 加载配置失败:", error);
@@ -41507,6 +41579,9 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
   }
 }
 async function saveCaptchaSettings() {
+  if (!ensureConfigLoaded("captcha", "验证码")) {
+    return;
+  }
   try {
     console.log("[验证码设置] 开始保存验证码配置...");
     const length = parseInt($("captcha-length").value);
@@ -43183,6 +43258,7 @@ async function checkAndShowReminders() {
   }
 }
 async function loadSSLInfo() {
+  configLoadState.ssl = false;
   try {
     const response = await fetch("/api/admin/ssl/info", {
       method: "GET",
@@ -43294,10 +43370,13 @@ async function loadSSLInfo() {
         }
       }
       console.log("[SSL管理] SSL信息加载成功");
+      configLoadState.ssl = true;
     } else {
+      configLoadState.ssl = false;
       showModalAlert(data.message || "SSL信息加载失败", "错误");
     }
   } catch (error) {
+    configLoadState.ssl = false;
     console.error("[SSL管理] 加载SSL信息失败:", error);
     showModalAlert("加载SSL信息失败", "错误");
   }
@@ -43357,6 +43436,9 @@ async function uploadSSLCertificate() {
   }
 }
 async function saveSSLConfig() {
+  if (!ensureConfigLoaded("ssl", "SSL")) {
+    return;
+  }
   const saveBtn = $("ssl-save-config-btn");
   const sslEnabledToggle = $("ssl-enabled-toggle");
   const httpsOnlyToggle = $("https-only-toggle");
@@ -43405,6 +43487,7 @@ async function saveSSLConfig() {
  * 4. 处理可能出现的错误情况
  */
 async function loadCDNConfig() {
+  configLoadState.cdn = false;
   try {
     // 向服务器发送GET请求，获取CDN配置信息
     // 使用fetch API进行异步HTTP请求
@@ -43459,11 +43542,14 @@ async function loadCDNConfig() {
 
       // 在控制台输出日志，方便调试
       console.log("[CDN配置] 配置加载成功:", data.config);
+      configLoadState.cdn = true;
     } else {
+      configLoadState.cdn = false;
       // 如果服务器返回success: false，显示错误消息
       showModalAlert(data.message || "加载CDN配置失败", "加载失败");
     }
   } catch (error) {
+    configLoadState.cdn = false;
     // 捕获网络错误或其他异常
     console.error("[CDN配置] 加载配置失败:", error);
     showModalAlert("加载失败: " + error.message, "网络错误");
@@ -43482,6 +43568,9 @@ async function loadCDNConfig() {
  * 5. 更新按钮状态（加载中/正常）
  */
 async function saveCDNConfig() {
+  if (!ensureConfigLoaded("cdn", "CDN")) {
+    return;
+  }
   // 获取保存按钮元素，用于后续更新其状态
   const saveBtn = $("cdn-save-config-btn");
 
@@ -44000,6 +44089,9 @@ function startReminderChecker() {
   }
 }
 async function saveSystemConfig() {
+  if (!ensureConfigLoaded("system", "系统")) {
+    return;
+  }
   const btn = $("admin-save-config_modal");
   setButtonLoading(btn, true, "保存中...");
 
