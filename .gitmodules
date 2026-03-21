@@ -1,0 +1,6 @@
+[submodule "Github_emojis"]
+	path = Github_emojis
+	url = https://github.com/pranabdas/github-emojis.git
+[submodule "twemoji"]
+	path = twemoji
+	url = https://github.com/twitter/twemoji.git

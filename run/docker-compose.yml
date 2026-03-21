@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  python-running-helper:
+    image: hongkong.zelly.cn/python_runing-python-running-helper/python_runing-python-running-helper:latest
+    container_name: python-running-helper
+    ports:
+      # HTTP端口映射
+      - "80:80"
+      # HTTPS端口映射
+      - "443:443"
+      # - "5000:5000"
+    volumes:
+      # SSL证书目录挂载（将宿主机的证书挂载到容器内）。
+      # 注意：此挂载未使用 :ro，保持读写是为了支持应用在运行时上传/更新 SSL 证书
+      #（例如修复跨文件系统操作、自动续期等）。如果不需要写入，请改为使用 :ro 以提高安全性。
+      - ./ssl:/app/ssl
+      # 配置文件挂载
+      - ./config.ini:/app/config.ini
+      # 数据持久化目录
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+      - ./messages.json:/app/messages.json
+      - ./permissions.json:/app/permissions.json
+      - ./reminders.json:/app/reminders.json
+      - ./background_tasks:/app/background_tasks
+      - ./school_accounts:/app/school_accounts
+      - ./sessions:/app/sessions
+      - ./tokens:/app/tokens
+      - ./system_accounts:/app/system_accounts
+      - ./payment_orders:/app/payment_orders
+      - ./payment_methods.json:/app/payment_methods.json
+      - ./configs:/app/configs
+      - ./uploads:/app/uploads
+
+
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    
+    # 限制Docker容器日志大小
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"  # 单个日志文件最大10MB
+        max-file: "3"    # 最多保留3个日志文件
+        
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
