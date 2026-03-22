@@ -41046,13 +41046,19 @@ def start_web_server(args_param):
             if auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
                 user_school_accounts = g.api_instance._load_user_school_accounts(
                     g.user)
-                missing_school_acount = [
-                    u for u in (school_username_input or []) if u not in user_school_accounts]
-                if missing_school_acount:
-                    return jsonify({
-                        "success": False,
-                        "message": f"以下学校账号不存在或不属于当前用户：{', '.join(missing_school_acount)}"
-                    }), 404
+                if school_username_input:
+                    # 用户指定了账号：只保留有权限的账号，若全部无权限才返回错误
+                    allowed = [u for u in school_username_input if u in user_school_accounts]
+                    if not allowed:
+                        return jsonify({
+                            "success": False,
+                            "message": f"以下学校账号不存在或不属于当前用户：{', '.join(school_username_input)}"
+                        }), 404
+                    # 将目标账号限制为有权限的子集
+                    target_usernames = set(allowed)
+                else:
+                    # 用户未指定账号：只返回其自己权限范围内的账号数据
+                    target_usernames = set(user_school_accounts.keys())
 
             # 获取该认证用户的所有学校账号配置
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
