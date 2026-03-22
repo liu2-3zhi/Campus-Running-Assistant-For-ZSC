@@ -20407,6 +20407,15 @@ def start_web_server(args_param):
     REFUSE_DIR = os.path.join(UPLOADS_DIR, "refuse")
     os.makedirs(REFUSE_DIR, exist_ok=True)
 
+    @app.route("/api/version.json", methods=["GET"])
+    def get_version():
+        if os.path.exists("version.json"):
+            try:
+                return send_from_directory("", "version.json")
+            except Exception as e:
+                logging.error(f"无法发送版本文件: {e}")
+        return jsonify({"error": "无法获取版本信息"}), 404
+
     @app.route("/upload", methods=["POST"])
     def upload_image():
         # from flask import request, jsonify, url_for
