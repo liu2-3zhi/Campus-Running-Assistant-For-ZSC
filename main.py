@@ -20411,10 +20411,21 @@ def start_web_server(args_param):
     def get_version():
         if os.path.exists("version.json"):
             try:
-                return send_from_directory("", "version.json")
+                # 获取文件并创建响应，添加不缓存头部信息
+                response = send_from_directory("", "version.json")
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+                return response
             except Exception as e:
                 logging.error(f"无法发送版本文件: {e}")
-        return jsonify({"error": "无法获取版本信息"}), 404
+        
+        # 错误响应也添加不缓存头部信息
+        response = jsonify({"error": "无法获取版本信息"})
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response, 404
 
     @app.route("/upload", methods=["POST"])
     def upload_image():
