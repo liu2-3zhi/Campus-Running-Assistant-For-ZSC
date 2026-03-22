@@ -45255,6 +45255,7 @@ async function loadMobileMultiHealthStatus() {
 // 【移动端多账号】留言板功能
 // ========================================
 async function loadMobileMultiMessages() {
+  console.log("[移动端留言板] 加载留言列表");
   const listEl = document.getElementById("mobile-multi-admin-messages-list");
   // [新增] 获取游客输入框容器
   const guestFields = document.getElementById(
@@ -45324,6 +45325,7 @@ async function loadMobileMultiMessages() {
             : `?session_id=${sessionUUID}`;
         }
 
+        console.log(`[移动端留言板] 渲染留言 ID: ${msg.id}, 昵称: ${displayName}, IP城市: ${ipCity}, 是否游客: ${msg.is_guest}, 可删除: ${canDelete}`);
         return `
         <div class="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-5 space-y-3 shadow-lg hover:shadow-xl transition-shadow duration-200 ease-in-out">
           <div class="flex justify-between items-start gap-4">
@@ -45391,6 +45393,7 @@ async function loadMobileMultiMessages() {
 
         if (window.editormd && typeof editormd.markdownToHTML === "function") {
           try {
+            console.log(`[移动端留言板] 渲染 Markdown 留言 ID: ${m.id}`);
             editormd.markdownToHTML(id, {
               markdown: m.content || "",
               htmlDecode: true,
@@ -45410,6 +45413,8 @@ async function loadMobileMultiMessages() {
           } catch (e) {
             console.warn("移动端留言 Markdown 渲染失败，回退为纯文本显示", e);
           }
+        } else {
+          console.warn(`[移动端留言板] editormd 未加载，无法渲染 Markdown 留言 ID: ${m.id}`);
         }
 
         container.innerHTML = escapeHtml(m.content || "").replace(/\n/g, "<br>");
@@ -46165,6 +46170,7 @@ function switchMobileAdminTab(tabId, prefix) {
       case "messages":
         loadMessages();
         setTimeout(() => copyAdminContentToPanelVersion("messages"), 600);
+
         break;
       case "ipban":
         loadIPBans();
