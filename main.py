@@ -1479,7 +1479,7 @@ def setup_logging():
 
     try:
         if os.path.exists("config.ini"):
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
             if "Logging" in config:
                 log_rotation_size_mb = config.getint(
@@ -2311,7 +2311,7 @@ def _create_directories():
     config_file = os.path.join(os.path.dirname(__file__), "config.ini")
     if os.path.exists(config_file):
         try:
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read(config_file, encoding="utf-8")
 
             if config.has_section("System"):
@@ -2387,7 +2387,7 @@ def _get_default_config():
     """
     获取默认配置项字典。
     """
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(strict=False)
 
     config["Admin"] = {"super_admin": "admin"}
 
@@ -2801,7 +2801,7 @@ def _write_config_with_comments(config_obj, filepath):
         # [CDN] CDN缓存配置
         # ========================================
         f.write("# ========================================\n")
-        f.write("# [CDN] CDN缓存配置\n")
+        f.write("# CDN缓存配置\n")
         f.write("# ========================================\n")
         f.write("[CDN]\n")
         f.write("# 是否启用CDN缓存（true/false）\n")
@@ -2821,7 +2821,7 @@ def _write_config_with_comments(config_obj, filepath):
         # [Captcha] 本地验证码生成器配置
         # ========================================
         f.write("# ========================================\n")
-        f.write("# [Captcha] 本地验证码生成器配置\n")
+        f.write("# 本地验证码生成器配置\n")
         f.write("# ========================================\n")
         f.write("# 使用MicroPixelCaptcha生成黑白像素风格验证码\n")
         f.write("# 无需第三方API，更稳定、更安全、响应更快\n")
@@ -3017,7 +3017,7 @@ def _write_config_with_comments(config_obj, filepath):
         # 适用于需要集成在线支付功能的网站或应用
         # 官方文档：请参考您的彩虹易支付服务商提供的API文档
         f.write("# ============================================================\n")
-        f.write("# [Rainbow_YiPay] 彩虹易支付V2配置\n")
+        f.write("# 彩虹易支付V2配置\n")
         f.write("# ============================================================\n")
         f.write("# 彩虹易支付是第三方支付聚合平台，支持支付宝、微信支付等多种支付方式\n")
         f.write("# 使用前需要：\n")
@@ -3102,7 +3102,7 @@ def _write_config_with_comments(config_obj, filepath):
         # [Payment_Settings] 支付费用配置
         # ============================================================
         f.write("# ============================================================\n")
-        f.write("# [Payment_Settings] 支付费用配置\n")
+        f.write("# 支付费用配置\n")
         f.write("# ============================================================\n")
         f.write("# 此配置节用于设置跑步任务的费用标准和新用户初始免费次数\n")
         f.write("# 当用户欠费时，系统将根据此配置计算需要缴纳的金额\n")
@@ -3148,7 +3148,7 @@ def _write_config_with_comments(config_obj, filepath):
         # [Profile_Display] 个人资料显示配置
         # ============================================================
         f.write("# ============================================================\n")
-        f.write("# [Profile_Display] 个人资料显示配置\n")
+        f.write("# 个人资料显示配置\n")
         f.write("# ============================================================\n")
         f.write("# 此配置节用于控制个人资料页面中available_runs（剩余免费次数）的显示行为\n")
         f.write("# ============================================================\n\n")
@@ -3173,7 +3173,7 @@ def _write_config_with_comments(config_obj, filepath):
         # [Registration_Display] 注册页面显示配置
         # ============================================================
         f.write("# ============================================================\n")
-        f.write("# [Registration_Display] 注册页面显示配置\n")
+        f.write("# 注册页面显示配置\n")
         f.write("# ============================================================\n")
         f.write("# 此配置节用于控制注册页面中关于available_runs（初始免费次数）的提示信息\n")
         f.write("# ============================================================\n\n")
@@ -3686,7 +3686,7 @@ def _create_config_ini():
             return
 
         print("[配置文件] config.ini 已存在，检查是否需要更新...")
-        existing_config = configparser.ConfigParser()
+        existing_config = configparser.ConfigParser(strict=False)
         try:
             existing_config.optionxform = str
             existing_config.read(config_file, encoding="utf-8")
@@ -3933,7 +3933,7 @@ def _migrate_payment_methods_to_json():
     # JSON 文件不存在，尝试从 config.ini 迁移旧配置
     try:
         # 创建 ConfigParser 对象用于读取 INI 文件
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(strict=False)
         # 读取 config.ini 文件，使用 utf-8 编码
         config.read("config.ini", encoding="utf-8")
 
@@ -4209,7 +4209,7 @@ def _get_watermark_removal_default():
     """
     try:
         # 创建 ConfigParser 对象用于读取 INI 文件
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(strict=False)
 
         # 读取 config.ini 文件，使用 utf-8 编码
         config.read("config.ini", encoding="utf-8")
@@ -5240,7 +5240,7 @@ class AuthSystem:
             )
             sys.exit(1)
 
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(strict=False)
         config.optionxform = str
         try:
             config.read(CONFIG_FILE, encoding="utf-8")
@@ -8368,7 +8368,7 @@ class Api:
                             ini_path = os.path.join(SCHOOL_ACCOUNTS_DIR, fname)
                             try:
                                 # 从旧版 INI 文件读取账号密码
-                                config = configparser.ConfigParser()
+                                config = configparser.ConfigParser(strict=False)
                                 config.read(ini_path, encoding='utf-8')
 
                                 # 从 [Config] 或 [System] 节读取密码和UA
@@ -8781,7 +8781,7 @@ class Api:
             # 步骤0：检查付费控制配置
             # 从配置文件中读取 require_payment（是否需要付费）和 single_run_cost（单次费用）
             # 如果不需要付费或价格为0/负数，则跳过所有付费相关逻辑（不扣除次数、不产生欠费）
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
             # 读取 require_payment 配置项，默认值为 true（需要付费）
             # 如果配置为 false，表示系统运行在免费模式下
@@ -9368,7 +9368,7 @@ class Api:
         if not os.path.exists(user_ini_path):
             return None
 
-        cfg = configparser.ConfigParser()
+        cfg = configparser.ConfigParser(strict=False)
         try:
             cfg.read(user_ini_path, encoding="utf-8")
             if cfg.has_option("Account", "Tag"):
@@ -11873,7 +11873,7 @@ class Api:
                                 self._save_config(acc.username)
 
                 if not username_to_update:
-                    cfg = configparser.ConfigParser()
+                    cfg = configparser.ConfigParser(strict=False)
                     cfg.read(self.config_path, encoding="utf-8")
                     username_to_update = cfg.get(
                         "Config", "LastUser", fallback=None)
@@ -14642,7 +14642,7 @@ class Api:
                         continue
 
                     if not hasattr(self, "_amap_key_cached"):
-                        config = configparser.ConfigParser()
+                        config = configparser.ConfigParser(strict=False)
                         config.read(CONFIG_FILE, encoding="utf-8")
                         self._amap_key_cached = config.get(
                             "Map", "amap_js_key", fallback=""
@@ -16348,7 +16348,7 @@ def cleanup_inactive_session(session_id):
                     try:
                         timeout = 300
                         if os.path.exists(CONFIG_FILE):
-                            cfg = configparser.ConfigParser()
+                            cfg = configparser.ConfigParser(strict=False)
                             cfg.read(CONFIG_FILE, encoding="utf-8")
                             timeout = cfg.getint(
                                 "System", "session_inactivity_timeout", fallback=300
@@ -16410,7 +16410,7 @@ def monitor_session_inactivity():
 
     try:
         if os.path.exists("config.ini"):
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
             if config.has_section("System"):
                 check_interval = config.getint(
@@ -17818,7 +17818,7 @@ class BackgroundTaskManager:
                         amap_key = ""
                         try:
                             if os.path.exists(CONFIG_FILE):
-                                cfg = configparser.ConfigParser()
+                                cfg = configparser.ConfigParser(strict=False)
                                 cfg.read(CONFIG_FILE, encoding="utf-8")
                                 amap_key = cfg.get(
                                     "Map", "amap_js_key", fallback="")
@@ -19421,7 +19421,7 @@ def load_ssl_config():
     从config.ini文件加载SSL配置。
     """
     config_file = os.path.join(os.path.dirname(__file__), "config.ini")
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(strict=False)
     default_config = {
         "ssl_enabled": False,
         "ssl_cert_path": "ssl/fullchain.pem",
@@ -19473,7 +19473,7 @@ def save_ssl_config(ssl_config):
         bool: 保存成功返回True，失败返回False
     """
     config_file = os.path.join(os.path.dirname(__file__), "config.ini")
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(strict=False)
 
     try:
         if os.path.exists(config_file):
@@ -26748,7 +26748,7 @@ def start_web_server(args_param):
 
             # 获取默认配置
             default_config = _get_default_config()
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             if os.path.exists(CONFIG_FILE):
                 config.read(CONFIG_FILE, encoding="utf-8")
             else:
@@ -27064,7 +27064,7 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "权限不足，需要修改配置权限（modify_config）"}), 403
 
             data = request.get_json() or {}
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.optionxform = str
             if os.path.exists(CONFIG_FILE):
                 config.read(CONFIG_FILE, encoding="utf-8")
@@ -27472,7 +27472,7 @@ def start_web_server(args_param):
         """
         try:
             # 创建一个 ConfigParser 对象，用于读取 INI 格式的配置文件
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
 
             # 定义配置文件的路径（config.ini 位于项目根目录）
             config_file = "config.ini"
@@ -27582,7 +27582,7 @@ def start_web_server(args_param):
         """
         try:
             # 读取系统配置文件
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read(CONFIG_FILE, encoding="utf-8")
             # 检查系统是否开启了手机号修改功能
             if (
@@ -27993,7 +27993,7 @@ def start_web_server(args_param):
                 }), 403
 
             # 读取配置文件
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
             sms_config = {
                 "enable_sms_service": config.getboolean(
@@ -28051,7 +28051,7 @@ def start_web_server(args_param):
 
             # 获取请求数据
             data = request.get_json() or {}
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
             if "Features" not in config:
                 config.add_section("Features")
@@ -28361,7 +28361,7 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "手机号格式不正确"})
             if not code or not re.match(r"^\d{6}$", code):
                 return jsonify({"success": False, "message": "验证码必须是6位数字"})
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
             code_expire_minutes = int(
                 config.get("SMS_Service_SMSBao",
@@ -28727,7 +28727,7 @@ def start_web_server(args_param):
                 }), 403
 
             # 创建ConfigParser对象读取配置文件
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
 
             # 检查配置文件是否存在
             if not os.path.exists(CONFIG_FILE):
@@ -28815,7 +28815,7 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "请求数据为空"}), 400
 
             # 创建ConfigParser对象读取现有配置
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
 
             # 检查配置文件是否存在
             if os.path.exists(CONFIG_FILE):
@@ -29481,7 +29481,7 @@ def start_web_server(args_param):
             # ========== 验证签名 ==========
 
             # 读取配置文件以获取密钥和公钥信息
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
 
             # 获取平台公钥（用于RSA签名验证）
@@ -33058,7 +33058,7 @@ def start_web_server(args_param):
             if os.path.exists(config_file):
                 try:
                     # 创建ConfigParser对象用于解析INI格式的配置文件
-                    cfg = configparser.ConfigParser()
+                    cfg = configparser.ConfigParser(strict=False)
 
                     # 读取配置文件，指定UTF-8编码以支持中文等多字节字符
                     cfg.read(config_file, encoding="utf-8")
@@ -33181,7 +33181,7 @@ def start_web_server(args_param):
 
             if os.path.exists(config_file):
                 try:
-                    cfg = configparser.ConfigParser()
+                    cfg = configparser.ConfigParser(strict=False)
                     cfg.read(config_file, encoding="utf-8")
                     length = int(cfg.get("Captcha", "length", fallback="4"))
                     scale_factor = int(
@@ -34069,7 +34069,7 @@ def start_web_server(args_param):
             # 4. 读取现有配置文件
             # ========================================
             config_file = "config.ini"
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             if os.path.exists(config_file):
                 config.read(config_file, encoding="utf-8")
             # ========================================
@@ -34774,7 +34774,7 @@ def start_web_server(args_param):
             # ========== 第2步：读取配置 ==========
 
             # 读取易支付配置文件
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
 
             # 从配置文件中获取易支付平台参数
@@ -34984,7 +34984,7 @@ def start_web_server(args_param):
             # ========== 第2步：读取配置 ==========
 
             # 读取易支付配置文件
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
 
             # 从配置文件中获取易支付平台参数
@@ -35185,7 +35185,7 @@ def start_web_server(args_param):
             # 配置格式为逗号分隔的字符串，例如："alipay,wxpay"
 
             # 创建配置解析器对象
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
 
             # 读取配置文件
             # encoding="utf-8" 确保正确读取中文内容
@@ -35543,7 +35543,7 @@ def start_web_server(args_param):
 
             # 读取配置文件
             # 配置文件包含易支付平台的商户信息（host, pid, key等）
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
 
             # 从配置文件读取易支付平台配置
@@ -35858,7 +35858,7 @@ def start_web_server(args_param):
             # 从配置文件读取启用的支付方式列表
             # 配置格式为逗号分隔的字符串，例如："alipay,wxpay,bank"
             # 需要实时读取配置，支持管理员动态修改而无需重启服务
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
 
             # 获取启用的支付方式配置
@@ -36352,7 +36352,7 @@ def start_web_server(args_param):
             try:
                 # 创建配置解析器对象
                 # ConfigParser 是 Python 标准库中用于读取 INI 格式配置文件的类
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
 
                 # 读取配置文件
                 # encoding="utf-8" 确保正确读取中文内容
@@ -37855,7 +37855,7 @@ def start_web_server(args_param):
 
                 # 读取配置文件
                 # ConfigParser 用于读取 INI 格式的配置文件
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
                 config.read("config.ini", encoding="utf-8")
 
                 # 获取当前启用的支付方式
@@ -37930,7 +37930,7 @@ def start_web_server(args_param):
                 # === 改造：验证每个支付方式是否在 payment_methods_config 中定义 ===
 
                 # 读取当前配置（用于后续保存 enabled_payment_methods）
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
                 config.read("config.ini", encoding="utf-8")
 
                 # 从 payment_methods.json 文件获取所有已定义的支付方式
@@ -38308,7 +38308,7 @@ def start_web_server(args_param):
                 # 同时从 enabled_payment_methods 中移除该支付方式
                 # 避免启用列表中包含已删除的支付方式
                 # 这需要读取和修改 config.ini 文件
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
                 config.read("config.ini", encoding="utf-8")
 
                 # 读取当前启用的支付方式列表
@@ -38408,7 +38408,7 @@ def start_web_server(args_param):
 
                 # 读取配置文件
                 # 使用 configparser 从 config.ini 文件读取配置项
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
                 config.read("config.ini", encoding="utf-8")
 
                 # 从 Payment_Settings 节读取价格相关配置
@@ -38503,7 +38503,7 @@ def start_web_server(args_param):
                 # 使用 .get() 方法获取参数，如果参数不存在则使用当前配置值作为默认值
 
                 # 读取当前配置作为默认值
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
                 config.read("config.ini", encoding="utf-8")
 
                 # 获取新的 require_payment 值（布尔类型）
@@ -38884,7 +38884,7 @@ def start_web_server(args_param):
 
                 # 读取配置文件
                 # 使用 configparser 从 config.ini 文件读取配置项
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
                 config.read("config.ini", encoding="utf-8")
 
                 # 从 Rainbow_YiPay 节读取易支付相关配置
@@ -38981,7 +38981,7 @@ def start_web_server(args_param):
                 data = request.get_json() or {}
 
                 # 读取当前配置作为默认值
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
                 config.read("config.ini", encoding="utf-8")
 
                 # 提取新的配置值
@@ -39340,7 +39340,7 @@ def start_web_server(args_param):
                 # 读取配置文件中的 require_payment 配置项
                 # getboolean() 方法会自动将字符串 "true"/"false" 转换为 Python 的 bool 类型
                 # fallback=True 表示如果配置项不存在，默认值为 True（需要付费）
-                config = configparser.ConfigParser()
+                config = configparser.ConfigParser(strict=False)
                 config.read("config.ini", encoding="utf-8")
                 require_payment = config.getboolean(
                     "Payment_Settings", "require_payment", fallback=True)
@@ -40967,10 +40967,17 @@ def start_web_server(args_param):
         检查学校账号是否有欠费
         """
         try:
+            logging.info(f"[欠费检查] 收到请求 - 用户: {g.user}")
+            logging.info(f"[欠费检查] 请求Headers: {dict(request.headers)}")
+            logging.info(f"[欠费检查] 请求体: {request.get_json()}")
+        except Exception as e:
+            logging.error(f"[欠费检查] 解析请求数据失败: {str(e)}")
+            
+        try:
             # ========== 步骤1：检查付费控制配置 ==========
             # 从配置文件中读取付费相关配置
             # 如果系统运行在免费模式下，直接返回无欠费状态，无需继续检查
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
             # 读取 require_payment 配置项，默认值为 true（需要付费）
             require_payment = config.getboolean(
@@ -41545,7 +41552,7 @@ def start_web_server(args_param):
             # ========== 步骤1：读取配置文件 ==========
             # 使用 _get_config() 函数获取配置对象
             # 该函数会自动处理配置文件不存在的情况，返回默认配置
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
 
             # ========== 步骤2：提取付费相关配置项 ==========
@@ -41763,7 +41770,7 @@ def start_web_server(args_param):
         """
         try:
             # 读取配置文件
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(strict=False)
             config.read("config.ini", encoding="utf-8")
 
             # 从 Payment_Settings 节读取 single_run_cost
