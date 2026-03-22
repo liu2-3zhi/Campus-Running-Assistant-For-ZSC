@@ -41027,8 +41027,8 @@ def start_web_server(args_param):
                 school_username_input = normalize_input(
                     school_username_input_before2)
 
-            # 处理筛选逻辑：将输入统一转换为集合
-            target_usernames = set(school_username_input)
+            # 处理筛选逻辑：将输入统一转换为集合（若未指定则为空集合，表示不过滤）
+            target_usernames = set(school_username_input) if school_username_input is not None else set()
 
             # 获取当前认证用户名
             auth_username = g.user
@@ -41037,7 +41037,7 @@ def start_web_server(args_param):
                 user_school_accounts = g.api_instance._load_user_school_accounts(
                     g.user)
                 missing_school_acount = [
-                    u for u in school_username_input if u not in user_school_accounts]
+                    u for u in (school_username_input or []) if u not in user_school_accounts]
                 if missing_school_acount:
                     return jsonify({
                         "success": False,
