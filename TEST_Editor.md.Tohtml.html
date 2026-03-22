@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="Zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test</title>
+</head>
+
+<body>
+
+    
+    <!-- 引入Editor.md的预览样式 -->
+    <link rel="stylesheet" href="/editor.md/css/editormd.preview.css" />
+    <!-- Markdown内容容器 -->
+    <div id="test-markdown-view">
+        <!-- Server-side output Markdown text -->
+        <!-- 隐藏的textarea包含Markdown文本 -->
+        <!-- <textarea style="display:none;">### Hello world!</textarea> -->
+    </div>
+    <!-- 引入jQuery库，用于DOM操作 -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <!-- 引入Editor.md主文件 -->
+    <script src="/editor.md/editormd.js"></script>
+    <!-- 引入Marked库，用于Markdown解析 -->
+    <script src="/editor.md/lib/marked.min.js"></script>
+    <!-- 引入Prettify库，用于代码高亮 -->
+    <script src="/editor.md/lib/prettify.min.js"></script>
+    <!-- 初始化Editor.md，将Markdown转换为HTML -->
+    <script type="text/javascript">
+        var testView=null;
+        $(function () {
+            // 当文档加载完成后，初始化Markdown到HTML的转换
+            testView = editormd.markdownToHTML("test-markdown-view", {
+                markdown: " # A \n ## A",
+                htmlDecode: true,       // 开启 HTML 标签解析，为了安全性，默认不开启
+                htmlDecode: "style,script,iframe",  // 允许解析的 HTML 标签
+                toc: false,             // 是否生成目录
+                tocContainer: "", // 自定义 ToC 容器层
+                gfm             : true,        // 是否使用 GitHub Flavored Markdown
+                tocDropdown     : false,     // 是否启用目录下拉菜单
+                markdownSourceCode: true, // 是否保留 Markdown 源码，即是否删除保存源码的 Textarea 标签
+                emoji: true,
+                taskList: true,
+                tex: true,  // 默认不解析
+                flowChart: true,  // 默认不解析
+                sequenceDiagram: true,  // 默认不解析
+
+            });
+            console.log("testView:", testView);
+        });
+
+        console.log("testView:", testView);
+    </script>
+
+</body>
+
+</html>

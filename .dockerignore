@@ -1,0 +1,73 @@
+# Git相关
+.git
+.github
+.gitignore
+
+# Python相关
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist
+build
+*.egg
+.pytest_cache
+.coverage
+
+# 虚拟环境
+venv
+env
+ENV
+zs_campus_run_helper_venv
+
+# IDE相关
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# 日志和缓存
+
+*.log
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# 数据文件
+data/
+*.db
+*.sqlite
+
+# Windows相关
+Thumbs.db
+desktop.ini
+*.bat
+
+# MacOS相关
+.DS_Store
+
+# 文档文件（保留在容器中供参考）
+# *.md  # 不要排除所有markdown文件
+
+/sessions/
+/school_accounts/
+/logs/
+/.history/
+/system_accounts
+/tokens
+/config.ini
+/permissions.json
+/background_tasks/
+messages.json
+/.vscode
+reminders.json
+/ssl
+/cache/
+python_runing-python-running-helper.tar
+payment_methods.json
+/payment_orders

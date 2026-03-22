@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>验证码生成器</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* 改为从顶部开始，防止内容过高超出屏幕 */
+            padding-top: 50px;
+            min-height: 100vh;
+            margin: 0;
+            box-sizing: border-box;
+        }
+
+        .container {
+            background-color: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            min-width: 380px; /* 稍微加宽一点以容纳更多选项 */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        h2 {
+            margin: 0 0 10px 0;
+            color: #333;
+            text-align: center;
+            font-size: 1.5rem;
+        }
+
+        /* 表单区域样式 */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-group label {
+            font-size: 0.9rem;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"], 
+        input[type="number"] {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus {
+            border-color: #007bff;
+        }
+
+        /* 专门针对 apiKey 的样式 */
+        #apiKey {
+            flex-grow: 1;
+        }
+
+        /* 按钮样式 */
+        button {
+            padding: 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-top: 5px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #a0cfff;
+            cursor: not-allowed;
+        }
+
+        /* 结果区域样式 - 自适应核心 */
+        .result-area {
+            background-color: #fafafa;
+            border: 1px dashed #ccc;
+            border-radius: 8px;
+            
+            /* 关键：使用 padding 撑开，高度设为 auto */
+            padding: 15px;
+            height: auto;
+            min-height: 50px; /* 仅保留最小高度给提示文字 */
+            
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease; /* 增加平滑过渡效果 */
+        }
+
+        /* 提示文字 */
+        .placeholder-text {
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        /* SVG 容器 */
+        #code-visual {
+            /* 确保容器没有多余的外边距 */
+            margin: 0;
+            padding: 0;
+            line-height: 0; /* 防止图片底部出现幽灵空白 */
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* 强制 SVG 自适应 */
+        #code-visual svg {
+            max-width: 100%;
+            height: auto; /* 高度随宽度等比缩放 */
+            display: block;
+        }
+
+        /* 验证码文本显示 */
+        .code-text-display {
+            margin-top: 15px; /* 图片和文字的间距 */
+            font-family: monospace;
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #333;
+            background: #e9ecef;
+            padding: 5px 15px;
+            border-radius: 4px;
+        }
+
+        .error-msg {
+            color: #dc3545;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>验证码测试</h2>
+
+    <div class="form-group">
+        <label>参数配置</label>
+        <div class="input-row">
+            <input type="number" id="length" placeholder="长度" value="4" min="2" max="32" style="width: 80px;">
+            <input type="text" id="apiKey" placeholder="apiKey (选填)">
+        </div>
+    </div>
+
+    <button id="generateBtn" onclick="fetchVerifyCode()">生成验证码</button>
+
+    <div class="result-area" id="resultArea">
+        <span class="placeholder-text">验证码将显示在这里</span>
+    </div>
+</div>
+
+<script>
+    async function fetchVerifyCode() {
+        const lengthInput = document.getElementById('length');
+        const apiKeyInput = document.getElementById('apiKey');
+        const resultArea = document.getElementById('resultArea');
+        const btn = document.getElementById('generateBtn');
+        
+        // 1. 获取并处理参数
+        let length = parseInt(lengthInput.value);
+        let apiKey = apiKeyInput.value.trim();
+
+        if (isNaN(length) || length < 2 || length > 32) {
+            alert('验证码长度必须在 2 到 32 之间');
+            return;
+        }
+
+        // 2. 使用 URLSearchParams 构建 URL (更安全规范)
+        const params = new URLSearchParams();
+        params.append('length', length);
+        if (apiKey) {
+            params.append('apiKey', apiKey);
+        }
+
+        const apiUrl = `https://api.vore.top/api/VerifyCode?${params.toString()}`;
+
+        // 3. UI 状态更新
+        btn.disabled = true;
+        btn.textContent = '请求中...';
+        // 清空内容并显示加载状态，保留容器的基本padding
+        resultArea.innerHTML = '<span class="placeholder-text">加载中...</span>';
+
+        try {
+            const response = await fetch(apiUrl);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const resJson = await response.json();
+
+            if (resJson.code === 200) {
+                const visualHtml = resJson.data.html;
+                const textCode = resJson.data.code;
+
+                // 4. 渲染结果
+                // 注意：这里没有设置固定高度，HTML内容进去后容器会自动撑开
+                resultArea.innerHTML = `
+                    <div id="code-visual">${visualHtml}</div>
+                    <div class="code-text-display">${textCode}</div>
+                `;
+            } else {
+                resultArea.innerHTML = `<div class="error-msg">API 错误: ${resJson.msg}</div>`;
+            }
+
+        } catch (error) {
+            console.error(error);
+            resultArea.innerHTML = `<div class="error-msg">请求失败，请检查网络。</div>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '生成验证码';
+        }
+    }
+</script>
+
+</body>
+</html>
