@@ -7155,7 +7155,8 @@ class ApiClient:
     """处理与后端服务器网络请求的类"""
 
     BASE_URL = "https://zslf.zsc.edu.cn"
-    API_VERSION = 66
+    API_VERSION = 66    # 该变量已被弃用，不再使用
+    NEW_APP_VERSION = "1.0.79"  # 新版本APP的版本号
 
     def __init__(self, owner_instance):
         self.session = requests.Session()
@@ -7172,6 +7173,13 @@ class ApiClient:
             "User-Agent": self.app.device_ua,
         }
         try:
+            logging.debug(f"当前Session的Cookies: {self.session.cookies.get_dict()}")
+        except requests.cookies.CookieConflictError:
+            logging.warning(
+                "CookieConflictError 即使在使用 get_dict() 时也发送。获取原始cookie列表进行失败....")
+        
+        try:
+            logging.debug(f"尝试获取shiroCookie。")
             auth_token = self.session.cookies.get_dict().get("shiroCookie")
         except requests.cookies.CookieConflictError:
             logging.warning(
@@ -7192,6 +7200,59 @@ class ApiClient:
             headers["Authorization"] = auth_token
         else:
             logging.debug("未找到shiroCookie认证令牌，将不会设置Authorization请求头")
+            
+        # try:
+        #     logging.debug(f"尝试获取JSESSIONID。")
+        #     JSESSIONID = self.session.cookies.get_dict().get("JSESSIONID")
+        # except requests.cookies.CookieConflictError:
+        #     logging.warning(
+        #         "CookieConflictError 即使在使用 get_dict() 时也发生，尝试手动查找..."            )
+        #     JSESSIONID = None
+        #     for cookie in self.session.cookies:
+        #         if cookie.name == "JSESSIONID":
+        #             JSESSIONID = cookie.value
+        #             logging.warning(
+        #                 f"手动查找到 'JSESSIONID': {JSESSIONID[:10]}..."
+        #             )
+        #             break
+        # if JSESSIONID:
+        #     logging.debug(
+        #         f"找到cookie['JSESSIONID']: {JSESSIONID}"
+        #     )
+        # else:
+        #     logging.debug("未找到JSESSIONID cookie")
+        
+        # try:
+        #     logging.debug(f"尝试获取SESSION。")
+        #     SESSION= self.session.cookies.get_dict().get("SESSION")
+        # except requests.cookies.CookieConflictError:
+        #     logging.warning(
+        #         "CookieConflictError 即使在使用 get_dict() 时也发生，尝试手动查找..."            )
+        #     SESSION = None
+        #     for cookie in self.session.cookies:
+        #         if cookie.name == "SESSION":
+        #             SESSION = cookie.value
+        #             logging.warning(
+        #                 f"手动查找到 'SESSION': {SESSION[:10]}..."
+        #             )
+        #             break
+        # if SESSION:
+        #     logging.debug(
+        #         f"找到cookie['SESSION']: {SESSION}"
+        #     )
+        # else:
+        #     logging.debug("未找到SESSION cookie")
+        # cookie_parts = []
+        # if auth_token:
+        #     cookie_parts.append(f"shiroCookie={auth_token}")
+        # if JSESSIONID:
+        #     cookie_parts.append(f"JSESSIONID={JSESSIONID}")
+        # if SESSION:
+        #     cookie_parts.append(f"SESSION={SESSION}")
+        # headers["Cookie"] = "; ".join(cookie_parts) if cookie_parts else ""
+
+        if self.NEW_APP_VERSION:
+            headers["appVersion"] = self.NEW_APP_VERSION
         return headers
 
     def _request(
@@ -7263,7 +7324,13 @@ class ApiClient:
                         post_data_bytes = urllib.parse.urlencode(data or {}).encode(
                             "utf-8"
                         )
+                    
+                        
+                        
 
+                    logging.debug(
+                        f"[网络请求] 发起POST请求 --> URL: {url}, 请求头: {headers}, 请求体字节长度: {len(post_data_bytes)} 字节, 请求体: {post_data_bytes}\n"
+                    )
                     resp = self.session.post(
                         url,
                         data=post_data_bytes,
@@ -7281,6 +7348,9 @@ class ApiClient:
 
                 logging.debug(
                     f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} ({resp.reason}), 来源URL: {url}, 响应头: {dict(resp.headers)}, 响应内容长度: {len(resp.content)} 字节"
+                )
+                logging.debug(
+                    f"[网络请求] 响应内容: {resp.text}\n"
                 )
                 resp.raise_for_status()
                 return resp
@@ -7370,55 +7440,60 @@ class ApiClient:
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}/app/login",
-                {
-                    "username": username,
-                    "password": password,
-                    "appVersion": self.API_VERSION,
-                },
+                f"{self.BASE_URL}/app/login?username={username}&password={password}",
+                # {
+                #     "username": username,
+                #     "password": password,
+                #     "appVersion": self.API_VERSION,
+                # },
+                data="",
             )
         )
 
     def get_run_list(self, user_id, offset=0):
         return self._json(
             self._request(
-                "GET",
-                f"{self.BASE_URL}:9097/run/errand/getErrandList",
-                {
-                    "userId": user_id,
-                    "offset": offset,
-                    "limit": 10,
-                    "appVersion": self.API_VERSION,
-                },
+                "POST",
+                # TODO:合并isFinish=0和isFinish=1的接口，减少请求次数
+                f"{self.BASE_URL}:9097/run/errand/getErrandList?userId={user_id}&offset={offset}&limit=10&isFinjsh=0",
+                # {
+                #     "userId": user_id,
+                #     "offset": offset,
+                #     "limit": 10,
+                #     "appVersion": self.API_VERSION,
+                # },
+                data="",
             )
         )
 
     def get_run_details(self, errand_id, user_id, errand_schedule_id):
         return self._json(
             self._request(
-                "GET",
-                f"{self.BASE_URL}:9097/run/errand/getErrandDetail",
-                {
-                    "errandId": errand_id,
-                    "userId": user_id,
-                    "errandScheduleId": errand_schedule_id,
-                    "appVersion": self.API_VERSION,
-                },
+                "POST",
+                f"{self.BASE_URL}:9097/run/errand/getErrandDetail?errandId={errand_id}&userId={user_id}&errandScheduleId={errand_schedule_id}",
+                # {
+                #     "errandId": errand_id,
+                #     "userId": user_id,
+                #     "errandScheduleId": errand_schedule_id,
+                #     "appVersion": self.API_VERSION,
+                # },
+                data="",
             )
         )
 
     def get_run_history_list(self, user_id, errand_schedule_id):
         return self._json(
             self._request(
-                "GET",
-                f"{self.BASE_URL}:9097/run/errand/getUserErrandTrackRecord",
-                {
-                    "errandScheduleId": errand_schedule_id,
-                    "userId": user_id,
-                    "offset": 0,
-                    "limit": 20,
-                    "appVersion": self.API_VERSION,
-                },
+                "POST",
+                f"{self.BASE_URL}:9097/run/errand/getUserErrandTrackRecord?errandScheduleId={errand_schedule_id}&userId={user_id}&offset=0&limit=20",
+                # {
+                #     "errandScheduleId": errand_schedule_id,
+                #     "userId": user_id,
+                #     "offset": 0,
+                #     "limit": 20,
+                #     "appVersion": self.API_VERSION,
+                # },
+                data="",
             )
         )
 
@@ -7426,8 +7501,9 @@ class ApiClient:
         return self._json(
             self._request(
                 "GET",
-                f"{self.BASE_URL}:9097/run/errand/getTrackByTrid",
-                {"trid": trid, "appVersion": self.API_VERSION},
+                f"{self.BASE_URL}:9097/run/errand/getTrackByTrid?trid={trid}",
+                # {"trid": trid, "appVersion": self.API_VERSION},
+                data="",
             )
         )
 
@@ -7444,9 +7520,10 @@ class ApiClient:
     def get_run_info_by_trid(self, trid):
         return self._json(
             self._request(
-                "GET",
-                f"{self.BASE_URL}:9097/run/errand/getTrackRecordByTrid",
-                {"trid": trid, "appVersion": self.API_VERSION},
+                "POST",
+                f"{self.BASE_URL}:9097/run/errand/getTrackRecordByTrid?trid={trid}",
+                # {"trid": trid, "appVersion": self.API_VERSION},
+                data="",
             )
         )
 
