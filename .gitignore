@@ -15,7 +15,8 @@ messages.json
 /.vscode
 /zs_campus_run_helper_venv
 reminders.json
-/ssl
+ssl/*.pem
+ssl/*.key
 /cache/
 python_runing-python-running-helper.tar
 payment_methods.json
@@ -23,3 +24,4 @@ payment_methods.json
 amap_watermark_control.json
 auto_attendance_config.json
 /uploads
+/configs

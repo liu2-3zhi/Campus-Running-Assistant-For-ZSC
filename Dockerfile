@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制requirements.txt并安装Python依赖
-COPY requirements.txt .
+COPY ./ssl/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 安装Playwright浏览器

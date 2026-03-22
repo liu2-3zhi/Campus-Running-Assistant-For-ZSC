@@ -66,7 +66,8 @@ desktop.ini
 messages.json
 /.vscode
 reminders.json
-/ssl
+ssl/*.pem
+ssl/*.key
 /cache/
 python_runing-python-running-helper.tar
 payment_methods.json
