@@ -2650,7 +2650,8 @@ def _write_config_with_comments(config_obj, filepath):
     由于ConfigParser不保留注释，这个函数手动写入带注释的配置文件。
     """
     try:
-        existing_config = configparser.ConfigParser()
+        # strict=False：允许读取包含重复节的配置文件，避免因config.ini历史原因存在重复节时抛出DuplicateSectionError
+        existing_config = configparser.ConfigParser(strict=False)
         if os.path.exists(filepath):
             existing_config.read(filepath, encoding="utf-8")
             for section in existing_config.sections():
@@ -3651,7 +3652,8 @@ def _read_config_ini(config_file="config.ini"):
     try:
         # 创建RawConfigParser对象，它不会对配置值进行插值处理
         # 这确保了配置值中的特殊字符（如%）不会被误解释
-        config = configparser.RawConfigParser()
+        # strict=False：允许读取包含重复节/键的配置文件（如config.ini因历史原因存在重复节时不抛出异常）
+        config = configparser.RawConfigParser(strict=False)
 
         # 保持键名的原始大小写（默认会转换为小写）
         # 这对于区分大小写敏感的配置项很重要
