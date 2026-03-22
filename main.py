@@ -7454,8 +7454,9 @@ class ApiClient:
         return self._json(
             self._request(
                 "POST",
-                # TODO:合并isFinish=0和isFinish=1的接口，减少请求次数
-                f"{self.BASE_URL}:9097/run/errand/getErrandList?userId={user_id}&offset={offset}&limit=10&isFinjsh=0",
+                # 原方案:合并isFinish=0和isFinish=1的接口，减少请求次数
+                # 现方案:不传入isFinish参数，后端默认返回所有状态的跑腿列表，前端根据status字段进行分类统计和显示
+                f"{self.BASE_URL}:9097/run/errand/getErrandList?userId={user_id}&offset={offset}&limit=10",
                 # {
                 #     "userId": user_id,
                 #     "offset": offset,
