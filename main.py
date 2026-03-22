@@ -183,7 +183,7 @@ def import_standard_libraries():
         logging.warning("  -> fcntl 模块在 Windows 平台不可用，已跳过。")
         logging.info("[依赖检查]   -> fcntl (Windows平台跳过)")
     if "eventlet" in globals():
-        # [修复] 服务器使用 socketio.run() + async_mode="threading"（werkzeug 线程模式），
+        # 服务器使用 socketio.run() + async_mode="threading"（werkzeug 线程模式），
         # 不再使用 eventlet WSGI 服务器，因此无需调用 monkey_patch。
         # 调用 eventlet.monkey_patch(select=True, socket=True) 会把标准 select 模块
         # 替换为 eventlet 的实现，而 werkzeug 的 worker 线程（非 greenlet）调用它时
@@ -2670,7 +2670,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 说明：修改配置后需要重启程序生效\n")
         f.write("# ========================================\n\n")
 
-        # [修复] 写入 [Config] 节，确保 theme_style 等全局参数被持久化
+        # 写入 [Config] 节，确保 theme_style 等全局参数被持久化
         if config_obj.has_section("Config") or config_obj.has_option(
             "Config", "theme_style"
         ):
@@ -10426,12 +10426,12 @@ class Api:
     def set_draft_path(self, coords):
         """接收前端手动绘制的草稿路径"""
 
-        # [修改] 严格校验：拒绝 None, [], [[]] 或非列表类型
+        # 严格校验：拒绝 None, [], [[]] 或非列表类型
         if not coords or not isinstance(coords, list):
             logging.warning(f"API调用: set_draft_path - 拒绝空路径或非列表格式")
             return {"success": False, "message": "路径数据不能为空"}
 
-        # [修改] 深度校验：确保列表中至少包含一个有效的字典元素，排除 [[]] 这种情况
+        # 深度校验：确保列表中至少包含一个有效的字典元素，排除 [[]] 这种情况
         has_valid_item = any(isinstance(c, dict) and c for c in coords)
         if not has_valid_item:
             logging.warning(f"API调用: set_draft_path - 拒绝无效路径结构: {coords}")
@@ -19793,7 +19793,7 @@ class BruteForceTaskManager:
                 def __init__(self):
                     self.device_ua = ApiClient.generate_random_ua()
                     self.log = lambda msg: logging.debug(f"[密码恢复临时登录] {msg}")
-                    # [修复] 补充缺失属性，防止 ApiClient._request 报错
+                    # 补充缺失属性，防止 ApiClient._request 报错
                     self.is_offline_mode = False
                     # ApiClient 会先检查 is_offline_mode，有了上面这行通常不需要 api_bridge，但为了保险起见设为 None 或 self
                     self.api_bridge = None
@@ -24514,7 +24514,7 @@ def start_web_server(args_param):
         auth_group = getattr(api_instance, "auth_group", "guest")
         if auth_group not in ["admin", "super_admin"]:
             return jsonify({"success": False, "message": "权限不足"}), 403
-        # --- [修复] 分页参数 ---
+        # --- 分页参数 ---
         try:
             page = int(request.args.get("page", 1))
             limit = int(request.args.get("limit", 100))
@@ -26551,7 +26551,7 @@ def start_web_server(args_param):
             # 3. 用户身份已认证（第15726-15727行）
             current_user = g.user
 
-            # [修复] 使用用户组别判断而非权限判断
+            # 使用用户组别判断而非权限判断
             #
             # 修复原因：
             # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
@@ -32307,7 +32307,7 @@ def start_web_server(args_param):
             # 首先尝试从JSON配置文件中读取default字段
             default_allowed_raw = config.get("default")
 
-            # [修复] 使用标准化函数尝试将default值转换为布尔类型
+            # 使用标准化函数尝试将default值转换为布尔类型
             # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
             default_allowed = _normalize_watermark_default_value(
                 default_allowed_raw)
@@ -32341,7 +32341,7 @@ def start_web_server(args_param):
         if session_id in web_sessions:
             api_instance = web_sessions[session_id]
         else:
-            # [修复] 内存中不存在，尝试从持久化文件加载
+            # 内存中不存在，尝试从持久化文件加载
             # 这解决了服务器重启后，前端持有旧SessionID导致权限检查失败的问题
             state = load_session_state(session_id)
             if state:
@@ -32456,7 +32456,7 @@ def start_web_server(args_param):
             # 首先尝试从JSON配置文件的default字段读取
             default_value_raw = config.get("default")
 
-            # [修复] 使用标准化函数尝试将default值转换为布尔类型
+            # 使用标准化函数尝试将default值转换为布尔类型
             # 这样可以兼容字符串"true"/"false"、数字1/0等各种格式
             default_value = _normalize_watermark_default_value(
                 default_value_raw)
@@ -38458,7 +38458,7 @@ def start_web_server(args_param):
                     fallback=10  # 默认值：10次
                 )
 
-                # ========== [修复] 读取UI显示配置字段 ==========
+                # ========== 读取UI显示配置字段 ==========
                 # 这4个配置项之前在GET响应中缺失，导致前端无法正确加载配置
 
                 # 从 Profile_Display 节读取"是否在个人资料页显示剩余次数"配置（布尔值）
@@ -38495,7 +38495,7 @@ def start_web_server(args_param):
 
                 # 构造返回数据
                 # 将读取到的配置以 JSON 格式返回给前端
-                # [修复] 添加了4个UI显示配置字段，确保前端能正确加载所有配置
+                # 添加了4个UI显示配置字段，确保前端能正确加载所有配置
                 return jsonify({
                     "success": True,
                     "config": {

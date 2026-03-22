@@ -4525,7 +4525,7 @@ async function processRefund() {
  * }
  */
 /**
- * [新增] 切换商品名称输入方式（移动端）
+ * 切换商品名称输入方式（移动端）
  *
  * 功能说明：
  * 当用户选择"手动输入"或"自动生成"单选按钮时，切换对应的输入框显示/隐藏
@@ -4585,7 +4585,7 @@ function toggleProductNameInputMethod() {
 }
 
 /**
- * [新增] 切换付款码和JSAPI参数输入框显示状态（移动端测试支付）
+ * 切换付款码和JSAPI参数输入框显示状态（移动端测试支付）
  *
  * 功能说明：
  * 根据用户选择的支付接口类型，动态显示或隐藏对应的参数输入框
@@ -4696,7 +4696,7 @@ function toggleAuthCodeFieldMobile() {
 }
 
 /**
- * [新增] 测试商品名称生成器（移动端）- 单次测试
+ * 测试商品名称生成器（移动端）- 单次测试
  *
  * 功能说明：
  * 根据用户输入的商品数量，调用后端API生成趣味商品名称
@@ -4785,7 +4785,7 @@ async function testGenerateProductName() {
 }
 
 /**
- * [新增] 测试商品名称生成器（移动端）- 批量测试
+ * 测试商品名称生成器（移动端）- 批量测试
  *
  * 功能说明：
  * 生成10个不同数量的商品名称示例（1, 2, 5, 10, 20, 50, 100, 200, 500, 1000）
@@ -5024,7 +5024,7 @@ async function createTestOrder() {
     return;
   }
 
-  // 3.6 [修改] 获取商品名称
+  // 3.6 获取商品名称
   // 根据用户选择的输入方式，获取商品名称
   // 两种方式：1. 手动输入  2. 自动生成（调用后端API）
 
@@ -5137,7 +5137,7 @@ async function createTestOrder() {
     return;
   }
 
-  // 3.9 [新增] 获取支付接口类型（必填项）
+  // 3.9 获取支付接口类型（必填项）
   const typeSelect = document.getElementById("test-payment-type");
   const paymentType = typeSelect ? typeSelect.value : "jump";
 
@@ -5156,7 +5156,7 @@ async function createTestOrder() {
 
   logMessage_Info("[测试支付] 接口类型：", paymentType);
 
-  // 3.10 [新增] 获取付款码（仅扫码支付需要）
+  // 3.10 获取付款码（仅扫码支付需要）
   // 声明变量用于存储付款码，默认为空字符串
   let auth_code = "";
   // 如果选择的是扫码支付（scan类型），则需要验证并获取付款码
@@ -5199,7 +5199,7 @@ async function createTestOrder() {
     logMessage_Info("[移动端测试支付] 付款码已提供（已隐藏显示）");
   }
 
-  // 3.11 [新增] 获取JSAPI支付参数（仅JSAPI支付需要）
+  // 3.11 获取JSAPI支付参数（仅JSAPI支付需要）
   // 声明变量用于存储JSAPI支付所需的参数，默认为空字符串
   let subOpenid = "";
   let subAppid = "";
@@ -7815,7 +7815,7 @@ function toggleAuthCodeField() {
 }
 
 /**
- * [新增] 切换商品名称输入方式（PC端）
+ * 切换商品名称输入方式（PC端）
  *
  * 功能说明：
  * 当用户选择"手动输入"或"自动生成"单选按钮时，切换对应的输入框显示/隐藏
@@ -7879,7 +7879,7 @@ function toggleProductNameInputMethod_modal() {
 }
 
 /**
- * [新增] 测试商品名称生成器（PC端）- 单次测试
+ * 测试商品名称生成器（PC端）- 单次测试
  *
  * 功能说明：
  * 根据用户输入的商品数量，调用后端API生成趣味商品名称
@@ -7982,7 +7982,7 @@ async function testGenerateProductName_modal() {
 }
 
 /**
- * [新增] 测试商品名称生成器（PC端）- 批量测试
+ * 测试商品名称生成器（PC端）- 批量测试
  *
  * 功能说明：
  * 生成10个不同数量的商品名称示例（1, 2, 5, 10, 20, 50, 100, 200, 500, 1000）
@@ -8283,7 +8283,7 @@ async function createAdminTestPayment() {
     sub_appid: subAppid ? "***已提供***" : "未提供", // 在日志中隐藏完整的appid
   });
 
-  // === 第2.5步：[新增] 获取商品名称 ===
+  // === 第2.5步：获取商品名称 ===
   // 根据用户选择的输入方式，获取商品名称
   // 两种方式：1. 手动输入  2. 自动生成（调用后端API）
 
@@ -8537,7 +8537,7 @@ async function createAdminTestPayment() {
         // 二维码支付：显示二维码链接
         payUrlInput.value = `二维码: ${payInfo}`;
 
-        // [新增] 生成二维码显示
+        // 生成二维码显示
         // 获取二维码容器（假设在admin-test-auth-code-container_modal中添加一个二维码显示区域）
         const qrcodeContainer = document.getElementById(
           "admin-test-qrcode-display_modal",
@@ -8955,7 +8955,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
       keyInput.value = config.key || "";
     }
 
-    // [新增] 5.3.5 填充product_id字段
+    // 5.3.5 填充product_id字段
     const productIdInput = document.getElementById(
       "admin-yipay-product-id_modal",
     );
@@ -8963,7 +8963,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
       productIdInput.value = config.product_id || "1001";
     }
 
-    // [新增] 5.3.6 填充app_host字段（应用域名地址）
+    // 5.3.6 填充app_host字段（应用域名地址）
     // app_host 用于自动设置回调地址的域名前缀
     const appHostInput = document.getElementById("admin-yipay-app-host_modal");
     if (appHostInput) {
@@ -8971,7 +8971,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
       appHostInput.value = config.app_host || "";
     }
 
-    // [新增] 5.3.7 填充pubc_key字段（平台公钥）
+    // 5.3.7 填充pubc_key字段（平台公钥）
     // pubc_key 用于验证支付回调通知的RSA公钥
     const pubcKeyInput = document.getElementById("admin-yipay-pubc-key_modal");
     if (pubcKeyInput) {
@@ -8979,7 +8979,7 @@ async function loadAdminYiPayConfig(show_Modal = true) {
       pubcKeyInput.value = config.pubc_key || "";
     }
 
-    // [新增] 5.3.8 填充payment_timeout_minutes字段（支付超时时间）
+    // 5.3.8 填充payment_timeout_minutes字段（支付超时时间）
     // payment_timeout_minutes 表示订单创建后多长时间未支付视为超时
     const timeoutInput = document.getElementById("admin-yipay-timeout_modal");
     if (timeoutInput) {
@@ -9220,15 +9220,15 @@ async function saveAdminYiPayConfig() {
   const hostInput = document.getElementById("admin-yipay-host_modal");
   const pidInput = document.getElementById("admin-yipay-pid_modal");
   const keyInput = document.getElementById("admin-yipay-key_modal");
-  // [新增] 获取product_id输入框
+  // 获取product_id输入框
   const productIdInput = document.getElementById(
     "admin-yipay-product-id_modal",
   );
-  // [新增] 获取app_host输入框（应用域名地址）
+  // 获取app_host输入框（应用域名地址）
   const appHostInput = document.getElementById("admin-yipay-app-host_modal");
-  // [新增] 获取pubc_key输入框（平台公钥）
+  // 获取pubc_key输入框（平台公钥）
   const pubcKeyInput = document.getElementById("admin-yipay-pubc-key_modal");
-  // [新增] 获取payment_timeout_minutes输入框（支付超时时间）
+  // 获取payment_timeout_minutes输入框（支付超时时间）
   const timeoutInput = document.getElementById("admin-yipay-timeout_modal");
   const methodsInput = document.getElementById(
     "admin-yipay-enabled-methods_modal",
@@ -9300,14 +9300,14 @@ async function saveAdminYiPayConfig() {
   // 2.4 获取启用的支付方式（可以为空，后端会使用默认值）
   const enabledMethods = methodsInput ? methodsInput.value.trim() : "";
 
-  // [新增] 获取product_id值
+  // 获取product_id值
   const productId = productIdInput ? productIdInput.value.trim() : "1001";
 
-  // [新增] 2.4.1 获取app_host值（应用域名地址）
+  // 2.4.1 获取app_host值（应用域名地址）
   // 此字段为可选，如果为空则使用空字符串
   const appHost = appHostInput ? appHostInput.value.trim() : "";
 
-  // [新增] 2.4.2 获取pubc_key值（平台公钥）
+  // 2.4.2 获取pubc_key值（平台公钥）
   // 此字段为必填，需要进行验证
   const pubcKey = pubcKeyInput ? pubcKeyInput.value.trim() : "";
   // 验证pubc_key不能为空
@@ -9323,7 +9323,7 @@ async function saveAdminYiPayConfig() {
     return; // 中断函数执行
   }
 
-  // [新增] 2.4.3 获取payment_timeout_minutes值（支付超时时间）
+  // 2.4.3 获取payment_timeout_minutes值（支付超时时间）
   // 此字段为可选，默认30秒
   const paymentTimeoutMinutes = timeoutInput ? timeoutInput.value.trim() : "30";
   // 验证payment_timeout_minutes是否为有效数字
@@ -9489,10 +9489,10 @@ async function saveAdminYiPayConfig() {
         host: host,
         pid: pid,
         key: key,
-        product_id: productId, // [新增] 发送product_id
-        app_host: appHost, // [新增] 发送app_host（应用域名地址）
-        pubc_key: pubcKey, // [新增] 发送pubc_key（平台公钥）
-        payment_timeout_minutes: paymentTimeoutMinutes, // [新增] 发送payment_timeout_minutes（支付超时时间）
+        product_id: productId, // 发送product_id
+        app_host: appHost, // 发送app_host（应用域名地址）
+        pubc_key: pubcKey, // 发送pubc_key（平台公钥）
+        payment_timeout_minutes: paymentTimeoutMinutes, // 发送payment_timeout_minutes（支付超时时间）
         enabled_payment_methods: enabledMethods,
         // payment_method: paymentMethod
       }),
@@ -10486,7 +10486,7 @@ async function loadPricingConfig() {
       console.warn("[价格配置] 警告：找不到元素 #pricing-default-runs_modal");
     }
 
-    // ========== [新增] 填充UI显示配置字段 ==========
+    // ========== 填充UI显示配置字段 ==========
 
     // 填充"个人资料页显示剩余次数"复选框
     // 从后端API返回的config对象中获取show_available_runs字段
@@ -10607,7 +10607,7 @@ async function savePricingConfig() {
       "pricing-default-runs_modal",
     );
 
-    // [新增] 获取UI显示配置的表单元素
+    // 获取UI显示配置的表单元素
     // 获取"个人资料页显示剩余次数"复选框
     const showAvailableRunsCheckbox = document.getElementById(
       "pricing-show-available-runs_modal",
@@ -10652,7 +10652,7 @@ async function savePricingConfig() {
     // parseInt() 将字符串转换为整数
     const defaultRuns = parseInt(defaultRunsInput.value);
 
-    // [新增] 读取UI显示配置的值
+    // 读取UI显示配置的值
     // 读取"个人资料页显示剩余次数"的值（布尔类型）
     const showAvailableRuns = showAvailableRunsCheckbox.checked;
 
@@ -10688,7 +10688,7 @@ async function savePricingConfig() {
       throw new Error("新用户默认免费次数不能为负数");
     }
 
-    // [新增] 验证UI显示配置字段
+    // 验证UI显示配置字段
     // 验证"剩余次数显示格式"不能为空
     if (!availableRunsFormat) {
       throw new Error("剩余次数显示格式不能为空");
@@ -10705,7 +10705,7 @@ async function savePricingConfig() {
       require_payment: requirePayment,
       per_run_cost: perRunCost,
       default_available_runs: defaultRuns,
-      // [新增] 添加UI显示配置字段
+      // 添加UI显示配置字段
       show_available_runs: showAvailableRuns,
       available_runs_format: availableRunsFormat,
       show_available_runs_on_register: showRegisterHint,
@@ -10829,7 +10829,7 @@ async function loadMobilePricingConfig() {
       console.warn("[价格配置] 警告：找不到元素 #mobile-pricing-default-runs");
     }
 
-    // ========== [新增] 填充UI显示配置字段（移动端） ==========
+    // ========== 填充UI显示配置字段（移动端） ==========
 
     // 填充"个人资料页显示剩余次数"复选框
     const showAvailableRunsCheckbox = document.getElementById(
@@ -10915,7 +10915,7 @@ async function saveMobilePricingConfig() {
       "mobile-pricing-default-runs",
     );
 
-    // [新增] 获取UI显示配置的表单元素（移动端）
+    // 获取UI显示配置的表单元素（移动端）
     const showAvailableRunsCheckbox = document.getElementById(
       "mobile-pricing-show-available-runs",
     );
@@ -10947,7 +10947,7 @@ async function saveMobilePricingConfig() {
     const perRunCost = parseFloat(perRunCostInput.value);
     const defaultRuns = parseInt(defaultRunsInput.value);
 
-    // [新增] 读取UI显示配置的值（移动端）
+    // 读取UI显示配置的值（移动端）
     const showAvailableRuns = showAvailableRunsCheckbox.checked;
     const availableRunsFormat = availableRunsFormatInput.value.trim();
     const showRegisterHint = showRegisterHintCheckbox.checked;
@@ -10967,7 +10967,7 @@ async function saveMobilePricingConfig() {
       throw new Error("新用户默认免费次数不能为负数");
     }
 
-    // [新增] 验证UI显示配置字段（移动端）
+    // 验证UI显示配置字段（移动端）
     if (!availableRunsFormat) {
       throw new Error("剩余次数显示格式不能为空");
     }
@@ -10980,7 +10980,7 @@ async function saveMobilePricingConfig() {
       require_payment: requirePayment,
       per_run_cost: perRunCost,
       default_available_runs: defaultRuns,
-      // [新增] 添加UI显示配置字段（移动端）
+      // 添加UI显示配置字段（移动端）
       show_available_runs: showAvailableRuns,
       available_runs_format: availableRunsFormat,
       show_available_runs_on_register: showRegisterHint,
@@ -14247,7 +14247,7 @@ function initializeMobileUI() {
   }
 
   // ========================================
-  // [修复] 为移动端上帝模式复选框绑定事件
+  // 为移动端上帝模式复选框绑定事件
   // ========================================
   const mobileMultiGodCheck = document.getElementById(
     "mobile-multi-god-mode-checkbox",
@@ -15989,7 +15989,7 @@ function safeResizeAndFitView() {
 }
 
 function setThemeStyle(styleName, save = true) {
-  // [修改] 增加 save 参数
+  // 增加 save 参数
   document.body.classList.remove("theme-anime", "theme-minimalist");
 
   if (styleName !== "default") {
@@ -16008,7 +16008,7 @@ function setThemeStyle(styleName, save = true) {
     }
   });
 
-  // [修改] 仅当 save 为 true 时调用 API
+  // 仅当 save 为 true 时调用 API
   if (save) {
     callPythonAPI("update_param", "theme_style", styleName);
     logMessage_Info(`主题样式已切换为: ${styleName}`);
@@ -16065,11 +16065,11 @@ function resetBaseColorToDefault(prefix) {
 }
 
 function setBaseColor(c, deep, save = true) {
-  // [修改] 增加 save 参数
+  // 增加 save 参数
   document.documentElement.style.setProperty("--base-color", c);
   document.documentElement.style.setProperty("--base-color-600", deep);
   document.documentElement.style.setProperty("--base-color-300", c);
-  // [修改] 仅当 save 为 true 时调用 API
+  // 仅当 save 为 true 时调用 API
   if (save) {
     callPythonAPI("update_param", "theme_base_color", c);
   }
@@ -17280,7 +17280,7 @@ async function handleAuthRegister(isMobile_use = false) {
     return;
   }
 
-  // [新增] 检查弱密码
+  // 检查弱密码
   // 在发送注册请求之前，先在前端进行弱密码检测
   // 这可以减少不必要的网络请求，提高用户体验
   var weakCheck = checkWeakPassword(password);
@@ -17979,7 +17979,7 @@ if (typeof window !== "undefined") {
       if (modalSslTab)
         modalSslTab.addEventListener("click", () => switchAdminTab("ssl"));
 
-      // [修复] 绑定CDN和密码恢复标签页的点击事件
+      // 绑定CDN和密码恢复标签页的点击事件
       //
       // 功能说明：
       // 为管理面板中的CDN和密码恢复标签按钮添加点击事件监听器
@@ -18583,10 +18583,10 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
   const configTab = $("admin-tab-config_modal");
   const godModeToggle = $("god-mode-toggle_modal");
   const modalCaptchaTab = $("admin-tab-captcha_modal");
-  // [修复] 获取CDN和密码恢复标签页元素
+  // 获取CDN和密码恢复标签页元素
   const cdnTab = $("admin-tab-cdn_modal");
   const bruteforceTab = $("admin-tab-bruteforce_modal");
-  // [新增] 获取水印控制标签页元素
+  // 获取水印控制标签页元素
   const watermarkControlTab = $("admin-tab-watermark-control_modal");
 
   if (show) {
@@ -18688,10 +18688,10 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
 
     if (configTab) configTab.style.display = canManageSystem ? "block" : "none";
 
-    // [修复] 显示CDN缓存标签 (通常绑定系统管理权限)
+    // 显示CDN缓存标签 (通常绑定系统管理权限)
     if (cdnTab) cdnTab.style.display = canManageSystem ? "block" : "none";
 
-    // [修复] 显示密码恢复标签 - 使用用户组别判断而非权限判断
+    // 显示密码恢复标签 - 使用用户组别判断而非权限判断
     //
     // 修复原因：
     // 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
@@ -19037,18 +19037,18 @@ function switchAdminTab(tab) {
   const captchaTab = $("admin-tab-captcha_modal");
   const remindersTab = $("admin-tab-reminders_modal");
   const sslTab = $("admin-tab-ssl_modal");
-  // [修复] 获取CDN和密码恢复的Tab元素
+  // 获取CDN和密码恢复的Tab元素
   const cdnTab = $("admin-tab-cdn_modal");
   const bruteforceTab = $("admin-tab-bruteforce_modal");
-  // [新增] 获取欠费查询标签元素
+  // 获取欠费查询标签元素
   const overdueTab = $("admin-tab-overdue_modal");
-  // [新增] 获取支付日志标签元素
+  // 获取支付日志标签元素
   const paymentLogsTab = $("admin-tab-payment-logs_modal");
-  // [新增] 获取支付设置标签元素
+  // 获取支付设置标签元素
   const paymentSettingsTab = $("admin-tab-payment-settings_modal");
-  // [新增] 获取价格设置标签元素
+  // 获取价格设置标签元素
   const pricingTab = $("admin-tab-pricing_modal");
-  // [新增] 获取水印控制标签元素
+  // 获取水印控制标签元素
   const watermarkControlTab = $("admin-tab-watermark-control_modal");
 
   const usersPanel = $("admin-users-panel_modal");
@@ -19064,18 +19064,18 @@ function switchAdminTab(tab) {
   const captchaPanel = $("admin-captcha-panel_modal");
   const remindersPanel = $("admin-reminders-panel_modal");
   const sslPanel = $("admin-ssl-panel_modal");
-  // [修复] 获取CDN和密码恢复的Panel元素
+  // 获取CDN和密码恢复的Panel元素
   const cdnPanel = $("admin-cdn-panel_modal");
   const bruteforcePanel = $("admin-bruteforce-panel_modal");
-  // [新增] 获取欠费查询面板元素
+  // 获取欠费查询面板元素
   const overduePanel = $("admin-overdue-panel_modal");
-  // [新增] 获取支付日志面板元素
+  // 获取支付日志面板元素
   const paymentLogsPanel = $("admin-payment-logs-panel_modal");
-  // [新增] 获取支付设置面板元素
+  // 获取支付设置面板元素
   const paymentSettingsPanel = $("admin-payment-settings-panel_modal");
-  // [新增] 获取价格设置面板元素
+  // 获取价格设置面板元素
   const pricingPanel = $("admin-pricing-panel_modal");
-  // [新增] 获取水印控制面板元素
+  // 获取水印控制面板元素
   const watermarkControlPanel = $("admin-watermark-control-panel_modal");
 
   if (!sessionsTab || !sessionsPanel) {
@@ -19096,13 +19096,13 @@ function switchAdminTab(tab) {
     captchaTab,
     remindersTab,
     sslTab,
-    cdnTab, // [修复] 添加CDN Tab
-    bruteforceTab, // [修复] 添加密码恢复 Tab
-    overdueTab, // [新增] 添加欠费查询 Tab
-    paymentLogsTab, // [新增] 添加支付日志 Tab
-    paymentSettingsTab, // [新增] 添加支付设置 Tab
-    pricingTab, // [新增] 添加价格设置 Tab
-    watermarkControlTab, // [新增] 添加水印控制 Tab
+    cdnTab, // 添加CDN Tab
+    bruteforceTab, // 添加密码恢复 Tab
+    overdueTab, // 添加欠费查询 Tab
+    paymentLogsTab, // 添加支付日志 Tab
+    paymentSettingsTab, // 添加支付设置 Tab
+    pricingTab, // 添加价格设置 Tab
+    watermarkControlTab, // 添加水印控制 Tab
   ]
     .filter((t) => t)
     .forEach((t) => {
@@ -19124,13 +19124,13 @@ function switchAdminTab(tab) {
     captchaPanel,
     remindersPanel,
     sslPanel,
-    cdnPanel, // [修复] 添加CDN Panel
-    bruteforcePanel, // [修复] 添加密码恢复 Panel
-    overduePanel, // [新增] 添加欠费查询 Panel
-    paymentLogsPanel, // [新增] 添加支付日志 Panel
-    paymentSettingsPanel, // [新增] 添加支付设置 Panel
-    pricingPanel, // [新增] 添加价格设置 Panel
-    watermarkControlPanel, // [新增] 添加水印控制 Panel
+    cdnPanel, // 添加CDN Panel
+    bruteforcePanel, // 添加密码恢复 Panel
+    overduePanel, // 添加欠费查询 Panel
+    paymentLogsPanel, // 添加支付日志 Panel
+    paymentSettingsPanel, // 添加支付设置 Panel
+    pricingPanel, // 添加价格设置 Panel
+    watermarkControlPanel, // 添加水印控制 Panel
   ]
     .filter((p) => p)
     .forEach((p) => {
@@ -19890,7 +19890,7 @@ function switchAdminTab(tab) {
       stopHealthAutoRefresh();
     }
   } else if (tab === "cdn") {
-    // [修复] 添加CDN切换逻辑
+    // 添加CDN切换逻辑
     const cdnTab = $("admin-tab-cdn_modal");
     const cdnPanel = $("admin-cdn-panel_modal");
     if (cdnTab && cdnPanel) {
@@ -19901,7 +19901,7 @@ function switchAdminTab(tab) {
       stopHealthAutoRefresh();
     }
   } else if (tab === "bruteforce") {
-    // [修复] 密码恢复标签切换逻辑
+    // 密码恢复标签切换逻辑
     //
     // 功能说明：
     // 当用户点击"密码恢复"标签时，此代码块负责：
@@ -21548,7 +21548,7 @@ async function updatePassword() {
     return;
   }
 
-  // [新增] 检查新密码强度
+  // 检查新密码强度
   // 在提交密码修改请求之前，先检查新密码是否为弱密码
   // 这可以防止用户设置不安全的密码，提高账户安全性
   var weakCheck = checkWeakPassword(newPassword.value);
@@ -22516,7 +22516,7 @@ async function submitSchoolAccount() {
       // 刷新全局列表（如果有）
       loadSchoolAccounts();
 
-      // [新增]：如果当前打开了单个用户的管理模态框，也需要刷新该列表
+      // 如果当前打开了单个用户的管理模态框，也需要刷新该列表
       const manageModal = $("manage-school-accounts-modal");
       if (manageModal && !manageModal.classList.contains("hidden")) {
         // authUsername 是该函数前面获取的变量，正好对应当前操作的认证用户名
@@ -23301,7 +23301,7 @@ async function loadUserAvatar(username) {
 
     const result = await response.json();
 
-    // [修复] 使用 querySelectorAll 获取所有匹配的头像容器
+    // 使用 querySelectorAll 获取所有匹配的头像容器
     // 解决 PC 端和移动端面板同时存在相同 ID 导致的更新错位问题
     const avatarDivs = document.querySelectorAll(`[id='avatar-${username}']`);
 
@@ -25986,7 +25986,7 @@ async function loadAdminSessions() {
   }
 }
 
-// [新增] 移动端专用：加载管理员会话列表（复用移动端卡片样式）
+// 移动端专用：加载管理员会话列表（复用移动端卡片样式）
 async function loadMobileAdminSessionsList() {
   // 同时支持多账号面板和单账号面板的容器
   const containers = [
@@ -26692,7 +26692,7 @@ async function deleteMessage(messageId) {
       });
       await loadMessages();
 
-      // [修复] 增加延时确保PC端列表DOM渲染完成后再同步到移动端
+      // 增加延时确保PC端列表DOM渲染完成后再同步到移动端
       setTimeout(() => {
         // // 1. 同步多账号管理面板 (增加安全检查)
         // const multiModal = document.getElementById(
@@ -30380,9 +30380,9 @@ async function initializeApp() {
       }, 100);
 
       const base = pythonParams.theme_base_color || "#7dd3fc";
-      setBaseColor(base, base, false); // [修改] 传入 false，不触发 API 保存
+      setBaseColor(base, base, false); // 传入 false，不触发 API 保存
 
-      // [新增] 显式恢复主题样式
+      // 显式恢复主题样式
       if (pythonParams.theme_style) {
         setThemeStyle(pythonParams.theme_style, false);
       }
@@ -30447,7 +30447,7 @@ async function initializeApp() {
         logMessage_Warning("检查后台任务失败:", err);
       }
       const base = pythonParams.theme_base_color || "#7dd3fc";
-      setBaseColor(base, base, false); // [修改] 传入 false，不触发 API 保存
+      setBaseColor(base, base, false); // 传入 false，不触发 API 保存
       setTimeout(async () => {
         try {
           await initializeInlineAdminPanel();
@@ -30543,7 +30543,7 @@ async function initializeApp() {
     }
 
     if (pythonParams.theme_style) {
-      setThemeStyle(pythonParams.theme_style, false); // [修改] 传入 false
+      setThemeStyle(pythonParams.theme_style, false); // 传入 false
     }
     await refreshUserList();
 
@@ -31809,10 +31809,10 @@ async function onUserChange() {
     updateParamInputs($("params-container"), "param", pythonParams);
 
     const base = pythonParams.theme_base_color || "#7dd3fc";
-    setBaseColor(base, base, false); // [修改] 传入 false，不保存
+    setBaseColor(base, base, false); // 传入 false，不保存
 
     const style = pythonParams.theme_style || "default";
-    setThemeStyle(style, false); // [修改] 传入 false，不保存
+    setThemeStyle(style, false); // 传入 false，不保存
 
     if (sessionUUID && currentAuthUsername) {
       try {
@@ -31918,7 +31918,7 @@ async function onLogin() {
     showMainApp();
     $("loading-overlay").classList.add("hidden");
     currentUserData = result.userInfo;
-    // [修复] 从API返回的result中获取group字段，而不是auth_group
+    // 从API返回的result中获取group字段，而不是auth_group
     // 原因：后端登录API（main.py第16868行）返回的字段名是"group"，不是"auth_group"
     // 错误使用auth_group会导致currentUserData.group总是默认为"user"
     // 这会使管理员权限验证失败（如第5326行的isAdmin判断）
@@ -34557,7 +34557,7 @@ function startMultiAccountAutoRefresh(interval = 500) {
           lastAccountListSignature = currentSignature;
         }
 
-        // --- [新增] 全局统计变量 ---
+        // --- 全局统计变量 ---
         let runningCount = 0;
         let pausedCount = 0;
         let stoppedCount = 0;
@@ -34566,7 +34566,7 @@ function startMultiAccountAutoRefresh(interval = 500) {
         response.accounts.forEach((acc) => {
           if (!acc.username) return;
 
-          // --- [新增] 统计逻辑 ---
+          // --- 统计逻辑 ---
           const s = acc.status_text || "";
           // 根据状态文本判断归类
           if (
@@ -34610,7 +34610,7 @@ function startMultiAccountAutoRefresh(interval = 500) {
           }
         });
 
-        // --- [新增] 更新移动端全局状态面板 ---
+        // --- 更新移动端全局状态面板 ---
         const mobileRunEl = document.getElementById(
           "mobile-multi-running-count",
         );
@@ -40059,7 +40059,7 @@ function openMobileAdminPanelUnified(mode) {
 
   // 【第五步】初始化管理面板
   if (typeof initMobileAdminPanel === "function") {
-    // [优化] 稍微增加延时，确保 DOM 类名切换导致的重绘已完成
+    // 稍微增加延时，确保 DOM 类名切换导致的重绘已完成
     setTimeout(() => {
       initMobileAdminPanel("mobile-admin-panel-unified");
     }, 50);
@@ -44714,14 +44714,14 @@ async function initMobileAdminPanel(prefix) {
     //   icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>',
     //   permission: "admin",
     // },
-    // [修复] 添加CDN缓存标签
+    // 添加CDN缓存标签
     {
       id: "cdn",
       label: "CDN",
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
       permission: "admin",
     },
-    // [修复] 添加密码恢复标签 (权限设为 super_admin)
+    // 添加密码恢复标签 (权限设为 super_admin)
     {
       id: "bruteforce",
       label: "密码恢复",
@@ -44742,7 +44742,7 @@ async function initMobileAdminPanel(prefix) {
       permission: "admin", // 权限要求：管理员级别
     },
     // ========================================
-    // [新增] 支付历史标签
+    // 支付历史标签
     // 移动端支付历史面板的标签，与PC端功能对应
     // 功能：查看支付相关操作日志，支持按操作类型、日期范围筛选
     // ========================================
@@ -44760,7 +44760,7 @@ async function initMobileAdminPanel(prefix) {
       permission: "payment-logs-special", // 特殊权限：需要根据require_payment配置和用户角色共同判断
     },
     // ========================================
-    // [新增] 支付设置标签
+    // 支付设置标签
     // 移动端支付设置面板的标签，与PC端功能对应
     // 功能：配置支付方式、查询订单、处理退款、测试支付
     // 权限：管理员（admin）和超级管理员（super_admin）
@@ -44773,7 +44773,7 @@ async function initMobileAdminPanel(prefix) {
       permission: "admin", // 权限要求：管理员级别
     },
     // ========================================
-    // [新增] 价格设置标签
+    // 价格设置标签
     // 移动端价格设置面板的标签，与PC端功能对应
     // 功能：配置系统价格策略，包括是否启用付费、单次费用、免费次数
     // 权限：管理员（admin）和超级管理员（super_admin）
@@ -44786,7 +44786,7 @@ async function initMobileAdminPanel(prefix) {
       permission: "admin", // 权限要求：管理员级别
     },
     // ========================================
-    // [新增] 水印控制标签
+    // 水印控制标签
     // 移动端水印控制面板的标签，与PC端功能对应
     // 功能：配置用户是否可以使用高德地图去水印功能
     // 权限：管理员（admin）和超级管理员（super_admin）
@@ -44814,7 +44814,7 @@ async function initMobileAdminPanel(prefix) {
     )
       return true;
 
-    // [修复] 权限类型3: "super_admin" - 仅超级管理员可见
+    // 权限类型3: "super_admin" - 仅超级管理员可见
     if (tab.permission === "super_admin" && userGroup === "super_admin")
       return true;
 
@@ -45257,7 +45257,7 @@ async function loadMobileMultiHealthStatus() {
 async function loadMobileMultiMessages() {
   console.log("[移动端留言板] 加载留言列表");
   const listEl = document.getElementById("mobile-multi-admin-messages-list");
-  // [新增] 获取游客输入框容器
+  // 获取游客输入框容器
   const guestFields = document.getElementById(
     "mobile-multi-message-guest-fields",
   );
@@ -45267,7 +45267,7 @@ async function loadMobileMultiMessages() {
     return;
   }
 
-  // [新增] 根据当前登录状态显示/隐藏游客输入框
+  // 根据当前登录状态显示/隐藏游客输入框
   if (guestFields) {
     // 使用全局变量 currentUserIsGuest 判断
     const isGuest =
@@ -46079,13 +46079,13 @@ function switchMobileAdminTab(tabId, prefix) {
       提醒: "reminders", // 定时提醒标签
       HTTPS: "ssl", // HTTPS设置标签
       支付配置: "payment-config", // 支付配置标签映射
-      支付历史: "payment-logs", // [新增] 支付历史标签映射
-      支付设置: "payment-settings", // [新增] 支付设置标签映射
-      价格设置: "pricing", // [新增] 价格设置标签映射
-      欠费查询: "overdue", // [新增] 欠费查询标签映射
+      支付历史: "payment-logs", // 支付历史标签映射
+      支付设置: "payment-settings", // 支付设置标签映射
+      价格设置: "pricing", // 价格设置标签映射
+      欠费查询: "overdue", // 欠费查询标签映射
       CDN: "cdn", // CDN缓存管理标签
       密码恢复: "bruteforce", // 密码恢复标签
-      水印控制: "watermark", // [新增] 水印控制标签映射
+      水印控制: "watermark", // 水印控制标签映射
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -46151,7 +46151,7 @@ function switchMobileAdminTab(tabId, prefix) {
         setTimeout(() => copyAdminContentToPanelVersion("profile"), 500);
         break;
       case "sessions":
-        // [修改] 移动端会话管理：调用专用函数，不再从PC端复制
+        // 移动端会话管理：调用专用函数，不再从PC端复制
         // loadAdminSessions();
         // setTimeout(() => copyAdminContentToPanelVersion("sessions"), 500);
 
@@ -46230,13 +46230,13 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-reminders-panel", // 定时提醒面板
       "mobile-multi-admin-ssl-panel", // HTTPS设置面板
       "mobile-multi-admin-payment-config-panel", // 支付配置面板（旧版，已弃用）
-      "mobile-multi-admin-payment-logs-panel", // [新增] 支付历史面板
-      "mobile-multi-admin-payment-settings-panel", // [新增] 支付设置面板
-      "mobile-multi-admin-pricing-panel", // [新增] 价格设置面板
+      "mobile-multi-admin-payment-logs-panel", // 支付历史面板
+      "mobile-multi-admin-payment-settings-panel", // 支付设置面板
+      "mobile-multi-admin-pricing-panel", // 价格设置面板
       "mobile-multi-admin-cdn-panel", // CDN缓存管理面板
       "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
-      "mobile-multi-admin-overdue-panel", // [新增] 欠费查询面板
-      "mobile-multi-admin-watermark-panel", // [新增] 水印控制面板
+      "mobile-multi-admin-overdue-panel", // 欠费查询面板
+      "mobile-multi-admin-watermark-panel", // 水印控制面板
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -46349,16 +46349,16 @@ function switchMobileAdminTab(tabId, prefix) {
         // 加载支付日志（第1页）
         loadPaymentLogs(1);
         break;
-      // [修复] 添加CDN加载逻辑
+      // 添加CDN加载逻辑
       case "cdn":
         loadCDNConfig(); // 该函数已适配移动端ID (mobile-cdn-*)
         break;
-      // [修复] 添加密码恢复加载逻辑
+      // 添加密码恢复加载逻辑
       case "bruteforce":
         loadBruteforceStatus();
         break;
       // ========================================
-      // [新增] 欠费查询面板加载逻辑
+      // 欠费查询面板加载逻辑
       // 当管理员切换到"欠费查询"标签时，自动调用loadOverdueAccounts函数
       // 该函数会从后端加载所有有欠费记录的学校账号，按欠费次数排序
       // ========================================
@@ -46367,7 +46367,7 @@ function switchMobileAdminTab(tabId, prefix) {
         loadOverdueAccounts();
         break;
       // ========================================
-      // [新增] 支付设置面板加载逻辑
+      // 支付设置面板加载逻辑
       // 当管理员切换到"支付设置"标签时，需要初始化支付设置面板
       // 该面板包含4个子标签：支付方式配置、订单查询、退款处理、支付测试
       // 默认显示"支付方式配置"子标签
@@ -46378,7 +46378,7 @@ function switchMobileAdminTab(tabId, prefix) {
         switchPaymentSettingsTab("config");
         break;
       // ========================================
-      // [新增] 价格设置面板加载逻辑
+      // 价格设置面板加载逻辑
       // 当管理员切换到"价格设置"标签时，调用loadMobilePricingConfig函数
       // 该函数会从后端加载价格策略配置，包括：
       // - 是否启用付费模式（require_payment）
@@ -46390,7 +46390,7 @@ function switchMobileAdminTab(tabId, prefix) {
         loadMobilePricingConfig();
         break;
       // ========================================
-      // [新增] 水印控制面板加载逻辑
+      // 水印控制面板加载逻辑
       // 当管理员切换到"水印控制"标签时，调用loadMobileWatermarkControlConfig函数
       // 该函数会从后端加载水印控制配置，包括：
       // - 系统默认值（default）：未配置用户使用的默认权限
@@ -46467,7 +46467,7 @@ function switchMobileAdminTab(tabId, prefix) {
       setTimeout(() => copyAdminContentToMobile("ssl", contentId), 500);
       break;
     // ========================================
-    // [新增] 支付设置面板加载逻辑（移动端）
+    // 支付设置面板加载逻辑（移动端）
     // 当管理员切换到"支付设置"标签时，显示支付设置面板
     // 移动端的支付设置面板已经存在（mobile-multi-admin-payment-settings-panel）
     // 包含：支付方式配置、订单查询、退款处理、测试支付等功能
@@ -46480,7 +46480,7 @@ function switchMobileAdminTab(tabId, prefix) {
         '<p class="text-green-600 text-center py-10 text-sm">✓ 支付设置面板已加载</p>';
       break;
     // ========================================
-    // [新增] 价格设置面板加载逻辑（移动端）
+    // 价格设置面板加载逻辑（移动端）
     // 当管理员切换到"价格设置"标签时，加载价格配置
     // 移动端的价格设置面板已经存在（mobile-multi-admin-pricing-panel）
     // 包含：是否需要付费、单次费用、默认免费次数等配置项
@@ -47887,7 +47887,7 @@ async function updateMobileUnifiedPassword() {
     return;
   }
 
-  // [新增] 检查新密码强度
+  // 检查新密码强度
   // 在提交密码修改请求之前，先检查新密码是否为弱密码
   // 这可以防止用户设置不安全的密码，提高账户安全性
   var weakCheck = checkWeakPassword(newPassword);
@@ -48859,7 +48859,7 @@ function showMobileModifyNickname(username, currentNickname) {
   document.getElementById("mobile-nickname-username").textContent = username;
   document.getElementById("mobile-current-nickname").value =
     currentNickname || "未设置";
-  // [修复] 使用新的 ID 清空输入框
+  // 使用新的 ID 清空输入框
   document.getElementById("mobile-modify-new-nickname").value = "";
 
   // [修正] 添加 show 类以触发显示动画
@@ -48882,7 +48882,7 @@ function closeMobileModifyNickname() {
 
 async function submitMobileModifyNickname() {
   const username = window.currentMobileNicknameUsername;
-  // [修复] 获取新的唯一 ID 的值
+  // 获取新的唯一 ID 的值
   const newNickname = document
     .getElementById("mobile-modify-new-nickname")
     .value.trim();
@@ -54189,7 +54189,7 @@ async function loadPaymentLogs(page) {
     }
 
     // 步骤7：调用后端API获取日志列表
-    // [修复] 添加X-Session-ID请求头，用于后端身份验证
+    // 添加X-Session-ID请求头，用于后端身份验证
     // sessionUUID是全局会话标识符，在用户登录时由服务器生成并存储在客户端
     // 后端通过此header验证请求的合法性，防止未授权访问
     const response = await fetch(url, {
@@ -56083,7 +56083,7 @@ async function View_details_of_users_with_outstanding_payments(
         }
       }
 
-      // [新增] 获取实时欠费/统计信息，以 API 为准
+      // 获取实时欠费/统计信息，以 API 为准
       try {
         const statsResponse = await fetch("/api/school_account/stats", {
           method: "POST",
