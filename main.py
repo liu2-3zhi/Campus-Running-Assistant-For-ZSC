@@ -1645,6 +1645,10 @@ def auto_init_system():
         # 修复：函数已移至模块级别，直接调用而非通过Api类
         _migrate_auto_attendance_from_ini()
 
+        logging.info("步骤2.8: 执行旧版数据结构自动迁移...")
+        print("[系统初始化] 执行旧版数据结构自动迁移...")
+        _run_auto_data_migrations_from_main()
+
         logging.info("步骤3: 创建权限配置文件...")
         print("[系统初始化] 创建权限配置文件...")
         _create_permissions_json()
@@ -2515,6 +2519,179 @@ def _migrate_legacy_removed_accounts_dir():
         _ensure_json_index_file(os.path.join(target_dir, "_index.json"), "removed_accounts")
     except Exception as e:
         logging.warning(f"[删除账号迁移] 迁移目录失败: {e}")
+
+
+def _rebuild_background_tasks_index():
+    """
+    重建 background_tasks/_index.json（兼容旧版本无索引场景）。
+    """
+    try:
+        task_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "background_tasks")
+        os.makedirs(task_dir, exist_ok=True)
+        tasks = {}
+        for filename in os.listdir(task_dir):
+            if filename == "_index.json" or not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(task_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    task_state = json.load(f)
+                session_id = task_state.get("session_id")
+                if not session_id:
+                    continue
+                task_hash = hashlib.sha256(session_id.encode()).hexdigest()
+                tasks[task_hash] = {
+                    "session_id": session_id,
+                    "created_at": task_state.get("created_at", datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    "file": filename
+                }
+            except Exception as _e:
+                logging.warning(f"[后台任务迁移] 读取任务文件失败 {filename}: {_e}")
+
+        index_path = os.path.join(task_dir, "_index.json")
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "tasks": tasks
+            }, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[后台任务迁移] 重建索引失败: {e}")
+
+
+def _rebuild_uploads_index():
+    """
+    重建 uploads/_index.json（兼容旧版本无索引场景）。
+    """
+    try:
+        uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        files = {}
+        for filename in os.listdir(uploads_dir):
+            if filename == "_index.json":
+                continue
+            filepath = os.path.join(uploads_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                stat = os.stat(filepath)
+                files[filename] = {
+                    "uploaded_at": datetime.datetime.utcfromtimestamp(stat.st_mtime).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "original_name": filename,
+                    "size": stat.st_size
+                }
+            except Exception as _e:
+                logging.warning(f"[上传迁移] 读取文件信息失败 {filename}: {_e}")
+
+        index_path = os.path.join(uploads_dir, "_index.json")
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "files": files
+            }, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[上传迁移] 重建索引失败: {e}")
+
+
+def _rebuild_removed_accounts_index():
+    """
+    重建 Remove_Acoount/_index.json（兼容旧版本无索引场景）。
+    """
+    try:
+        remove_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
+        os.makedirs(remove_dir, exist_ok=True)
+        removed_accounts = {}
+        for filename in os.listdir(remove_dir):
+            if filename == "_index.json" or not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(remove_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    backup_data = json.load(f)
+                auth_username = backup_data.get("auth_username")
+                deleted_at = backup_data.get("deleted_at")
+                if not auth_username:
+                    continue
+                removed_accounts[auth_username] = {
+                    "backup_file": filename,
+                    "deleted_at": deleted_at
+                }
+            except Exception as _e:
+                logging.warning(f"[删除账号迁移] 读取备份文件失败 {filename}: {_e}")
+
+        with open(os.path.join(remove_dir, "_index.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "removed_accounts": removed_accounts
+            }, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[删除账号迁移] 重建索引失败: {e}")
+
+
+def _rebuild_user_billing_index():
+    """
+    重建 User_Billing/_index.json（自动迁移旧数据后便于统计）。
+    """
+    try:
+        billing_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing")
+        os.makedirs(billing_root, exist_ok=True)
+        users = {}
+        for auth_username in os.listdir(billing_root):
+            user_dir = os.path.join(billing_root, auth_username)
+            if not os.path.isdir(user_dir):
+                continue
+            total = 0
+            pending = 0
+            paid = 0
+            for filename in os.listdir(user_dir):
+                if not filename.endswith(".json"):
+                    continue
+                filepath = os.path.join(user_dir, filename)
+                if not os.path.isfile(filepath):
+                    continue
+                total += 1
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        record = json.load(f)
+                    if record.get("status") == "paid":
+                        paid += 1
+                    else:
+                        pending += 1
+                except Exception:
+                    pending += 1
+            if total > 0:
+                users[auth_username] = {
+                    "total": total,
+                    "pending": pending,
+                    "paid": paid
+                }
+
+        with open(os.path.join(billing_root, "_index.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "users": users
+            }, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[账单迁移] 重建索引失败: {e}")
+
+
+def _run_auto_data_migrations_from_main():
+    """
+    自动执行从旧 main 分支数据结构到当前版本的数据迁移（幂等）。
+    """
+    try:
+        _migrate_legacy_removed_accounts_dir()
+        _rebuild_system_accounts_index()
+        _rebuild_removed_accounts_index()
+        _rebuild_background_tasks_index()
+        _rebuild_uploads_index()
+        _rebuild_user_billing_index()
+        logging.info("[自动迁移] 旧版数据结构自动迁移完成")
+    except Exception as e:
+        logging.warning(f"[自动迁移] 执行失败: {e}")
 
 
 def _update_system_accounts_index(auth_username, hash_filename, action):
