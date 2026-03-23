@@ -1,5 +1,30 @@
 <!DOCTYPE html>
 <html lang="zh-CN"><head>
+  <!--[if lt IE 9]><script type="text/javascript">window.location.href='/ie_basic.html';</script><![endif]-->
+  <!--[if (IE 9)]><script type="text/javascript">window.location.href='/ie.html';</script><![endif]-->
+  <script type="text/javascript">
+  /* IE10/IE11 & EdgeHTML & Chinese dual-core Trident detection (must run synchronously before page renders) */
+  (function () {
+    var ua = navigator.userAgent;
+    /* IE10/IE11: document.documentMode is set by Trident */
+    if (document.documentMode) {
+      window.location.href = '/ie.html';
+      return;
+    }
+    /* Old Edge (EdgeHTML engine) – UA contains "Edge/" followed by version number.
+       Chromium-based Edge uses "Edg/" (no trailing 'e') instead. */
+    if (/\bEdge\/\d+/.test(ua)) {
+      window.location.href = '/ie.html';
+      return;
+    }
+    /* Chinese dual-core browsers running in Trident/IE-compatible mode.
+       In Chromium/WebKit mode they do NOT expose "Trident" in the UA. */
+    if (/Trident\//.test(ua) && /360EE|360SE|QIHU|Sogou|MetaSr|QQBrowser|TheWorld|Maxthon|2345Explorer/.test(ua)) {
+      window.location.href = '/ie.html';
+      return;
+    }
+  }());
+  </script>
   <script src="/scripts/Check_for_updates.js"></script>
   <script src="/scripts/load_amap_watermark.js"></script>
   <!-- <script src="/scripts/Remove_watermark_from_Amap_Map.js"></script> -->

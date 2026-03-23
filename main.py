@@ -30356,6 +30356,43 @@ def start_web_server(args_param):
             logging.error(f"Serving editor.md error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
 
+    # ========== IE 浏览器拦截页面路由 ==========
+    @app.route("/ie.html")
+    def ie_upgrade_page():
+        """
+        IE / 旧版 Edge / 国产双核浏览器兼容模式拦截页（适用于 IE9+ 及 EdgeHTML）。
+        """
+        try:
+            root_dir = os.path.dirname(__file__)
+            ie_path = os.path.join(root_dir, "ie.html")
+            if not os.path.exists(ie_path):
+                logging.warning(f"ie.html 文件不存在: {ie_path}")
+                return "请升级您的浏览器", 404
+            response = send_file(ie_path, mimetype="text/html")
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        except Exception as e:
+            logging.error(f"返回 ie.html 时发生错误: {e}", exc_info=True)
+            return "服务器内部错误", 500
+
+    @app.route("/ie_basic.html")
+    def ie_basic_upgrade_page():
+        """
+        IE6/7/8 及 Windows XP 极简拦截页（使用 HTML 4.01 Transitional，兼容最老的 IE）。
+        """
+        try:
+            root_dir = os.path.dirname(__file__)
+            ie_basic_path = os.path.join(root_dir, "ie_basic.html")
+            if not os.path.exists(ie_basic_path):
+                logging.warning(f"ie_basic.html 文件不存在: {ie_basic_path}")
+                return "Please upgrade your browser", 404
+            response = send_file(ie_basic_path, mimetype="text/html")
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        except Exception as e:
+            logging.error(f"返回 ie_basic.html 时发生错误: {e}", exc_info=True)
+            return "Internal server error", 500
+
     # ========== 新增路由：Favicon ==========
     @app.route("/favicon.ico")
     def favicon():
