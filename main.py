@@ -2389,6 +2389,22 @@ def _create_directories():
     except Exception as _idx_e:
         print(f"[系统账号索引] 索引重建失败（将在运行时自动修复）: {_idx_e}")
 
+    # 初始化各目录索引文件并迁移历史目录
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        _ensure_json_index_file(
+            os.path.join(base_dir, "background_tasks", "_index.json"), "tasks"
+        )
+        _ensure_json_index_file(
+            os.path.join(base_dir, "uploads", "_index.json"), "files"
+        )
+        _ensure_json_index_file(
+            os.path.join(base_dir, "User_Billing", "_index.json"), "users"
+        )
+        _migrate_legacy_removed_accounts_dir()
+    except Exception as _e:
+        logging.warning(f"[目录创建] 初始化索引/迁移目录失败: {_e}")
+
 
 def _rebuild_system_accounts_index():
     """
@@ -2439,6 +2455,66 @@ def _rebuild_system_accounts_index():
         logging.info(f"[系统账号索引] 重建索引完成，共 {len(accounts)} 个账号")
     except Exception as e:
         logging.error(f"[系统账号索引] 重建索引失败: {e}", exc_info=True)
+
+
+def _ensure_json_index_file(index_path, root_key):
+    """
+    确保索引文件存在且结构合法。
+    """
+    try:
+        os.makedirs(os.path.dirname(index_path), exist_ok=True)
+        index_data = None
+        if os.path.exists(index_path):
+            try:
+                with open(index_path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    index_data = loaded
+            except Exception:
+                index_data = None
+        if index_data is None:
+            index_data = {}
+        if root_key not in index_data or not isinstance(index_data.get(root_key), dict):
+            index_data[root_key] = {}
+        index_data["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(index_data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[索引文件] 初始化失败: {index_path}, 错误: {e}")
+
+
+def _migrate_legacy_removed_accounts_dir():
+    """
+    将历史删除账号目录迁移到新的 Remove_Acoount 目录。
+    兼容旧目录：
+      1) system_accounts/remove
+      2) Remove_Account
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        target_dir = os.path.join(base_dir, "Remove_Acoount")
+        legacy_dirs = [
+            os.path.join(SYSTEM_ACCOUNTS_DIR, "remove"),
+            os.path.join(base_dir, "Remove_Account"),
+        ]
+        os.makedirs(target_dir, exist_ok=True)
+        for legacy_dir in legacy_dirs:
+            if not os.path.isdir(legacy_dir):
+                continue
+            for fname in os.listdir(legacy_dir):
+                src = os.path.join(legacy_dir, fname)
+                dst = os.path.join(target_dir, fname)
+                if not os.path.isfile(src):
+                    continue
+                if os.path.exists(dst):
+                    continue
+                try:
+                    shutil.copy2(src, dst)
+                except Exception as _e:
+                    logging.warning(f"[删除账号迁移] 迁移文件失败: {src} -> {dst}, 错误: {_e}")
+        _ensure_json_index_file(os.path.join(target_dir, "_index.json"), "removed_accounts")
+    except Exception as e:
+        logging.warning(f"[删除账号迁移] 迁移目录失败: {e}")
 
 
 def _update_system_accounts_index(auth_username, hash_filename, action):
@@ -6655,8 +6731,8 @@ class AuthSystem:
             # ==================== 第三步：创建备份 ====================
 
             # 构建备份文件的保存路径
-            # 备份目录位于 system_accounts/remove/
-            backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Account")
+            # 备份目录位于 Remove_Acoount/
+            backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
 
             # 如果备份目录不存在，则创建它（包括所有必要的父目录）
             if not os.path.exists(backup_dir):
@@ -6669,10 +6745,16 @@ class AuthSystem:
                     return {"success": False, "message": f"创建备份目录失败: {e}"}
 
             # 生成唯一的备份文件名
-            # 检查 SYSTEM_ACCOUNTS_DIR 和 Remove_Account/ 目录中是否存在同名文件
+            # 检查 SYSTEM_ACCOUNTS_DIR、Remove_Acoount/ 及历史目录中是否存在同名文件
+            _legacy_remove_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "Remove_Account"
+            )
+            _legacy_remove_subdir = os.path.join(SYSTEM_ACCOUNTS_DIR, "remove")
             backup_uuid = str(uuid.uuid4())
             while (os.path.exists(os.path.join(SYSTEM_ACCOUNTS_DIR, f"{backup_uuid}.json")) or
-                   os.path.exists(os.path.join(backup_dir, f"{backup_uuid}.json"))):
+                   os.path.exists(os.path.join(backup_dir, f"{backup_uuid}.json")) or
+                   os.path.exists(os.path.join(_legacy_remove_dir, f"{backup_uuid}.json")) or
+                   os.path.exists(os.path.join(_legacy_remove_subdir, f"{backup_uuid}.json"))):
                 backup_uuid = str(uuid.uuid4())
             backup_filename = os.path.join(backup_dir, f"{backup_uuid}.json")
 
@@ -6693,7 +6775,7 @@ class AuthSystem:
                     # ensure_ascii=False 确保中文字符正常显示
                     json.dump(backup_data, f, indent=2, ensure_ascii=False)
                 logging.info(f"[删除用户备份] 备份成功: {backup_filename}")
-                # 更新 Remove_Account/_index.json 索引
+                # 更新 Remove_Acoount/_index.json 索引
                 try:
                     _ra_index_path = os.path.join(backup_dir, "_index.json")
                     _ra_deleted_at = backup_data["deleted_at"]
@@ -6713,9 +6795,9 @@ class AuthSystem:
                     _ra_index["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
                     with open(_ra_index_path, "w", encoding="utf-8") as _f:
                         json.dump(_ra_index, _f, indent=2, ensure_ascii=False)
-                    logging.info(f"[删除用户备份] Remove_Account/_index.json 已更新")
+                    logging.info(f"[删除用户备份] Remove_Acoount/_index.json 已更新")
                 except Exception as _e:
-                    logging.warning(f"[删除用户备份] 更新 Remove_Account 索引失败: {_e}")
+                    logging.warning(f"[删除用户备份] 更新 Remove_Acoount 索引失败: {_e}")
             except Exception as e:
                 # 如果备份失败，则不执行删除操作，保护用户数据
                 logging.error(f"[删除用户备份] 保存备份文件失败: {e}")
@@ -18545,6 +18627,9 @@ class BackgroundTaskManager:
                     last_update = task_state.get("last_update", 0)
                     if current_time - last_update > max_age_seconds:
                         os.remove(filepath)
+                        _session_id = task_state.get("session_id")
+                        if _session_id:
+                            self._update_tasks_index(_session_id, {}, action="remove")
                         logging.info(f"已删除旧的任务状态文件: {filename}")
                 except Exception as e:
                     logging.warning(f"处理任务文件失败，文件名: {filename}，错误: {e}")
@@ -20527,7 +20612,7 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
             "auth_username": auth_username,
             "school_username": school_username,
             "reason": reason,
-            "amount": amount,
+            "amount": round(float(amount), 2),
             "created_at": created_at,
             "status": "pending",
             "payment_orders": [],
@@ -21118,6 +21203,18 @@ def start_web_server(args_param):
         try:
             _billing_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
             _paid_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            _order_unit_amount = None
+            try:
+                _order_path = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+                if os.path.exists(_order_path):
+                    with open(_order_path, "r", encoding="utf-8") as _of:
+                        _order_data = json.load(_of)
+                    _order_total_amount = float(_order_data.get("amount", 0))
+                    _order_total_count = int(_order_data.get("total_count", 0))
+                    if _order_total_count > 0:
+                        _order_unit_amount = round(_order_total_amount / _order_total_count, 2)
+            except Exception:
+                _order_unit_amount = None
             if os.path.isdir(_billing_base_dir):
                 for _bf in os.listdir(_billing_base_dir):
                     if not _bf.endswith(".json"):
@@ -21128,6 +21225,12 @@ def start_web_server(args_param):
                             _brec = json.load(_f)
                         # 找到包含本订单号的账单记录
                         if out_trade_no in _brec.get("payment_orders", []):
+                            if _order_unit_amount is not None:
+                                try:
+                                    if round(float(_brec.get("amount", -1)), 2) != _order_unit_amount:
+                                        continue
+                                except Exception:
+                                    continue
                             _brec["status"] = "paid"
                             _brec["final_payment_order"] = out_trade_no
                             _brec["paid_at"] = _paid_at
@@ -37071,6 +37174,7 @@ def start_web_server(args_param):
                 _overdue_school_usernames = set(
                     acc.get("school_username", "") for acc in overdue_accounts
                 )
+                _single_run_cost_for_selection = round(single_run_cost, 2)
                 if os.path.isdir(_billing_base_dir):
                     for _bf in os.listdir(_billing_base_dir):
                         if not _bf.endswith(".json"):
@@ -37082,6 +37186,15 @@ def start_web_server(args_param):
                             # 只处理pending状态且学校账号在本次欠费列表中的记录
                             if (_brec.get("status") == "pending" and
                                     _brec.get("school_username") in _overdue_school_usernames):
+                                # 仅关联本次价格生成的账单，避免价格调整后串单
+                                _brec_amount = _brec.get("amount")
+                                if _brec_amount is None:
+                                    continue
+                                try:
+                                    if round(float(_brec_amount), 2) != _single_run_cost_for_selection:
+                                        continue
+                                except Exception:
+                                    continue
                                 # 添加订单号到payment_orders（避免重复）
                                 if out_trade_no not in _brec.get("payment_orders", []):
                                     _brec.setdefault("payment_orders", []).append(out_trade_no)
@@ -42528,6 +42641,12 @@ def start_web_server(args_param):
             # 按创建时间降序排列
             records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
             
+            for _r in records:
+                if _r.get("amount") is not None:
+                    try:
+                        _r["amount"] = round(float(_r["amount"]), 2)
+                    except Exception:
+                        pass
             return jsonify({"success": True, "records": records})
         except Exception as e:
             logging.error(f"[账单列表] 获取账单列表失败: {e}", exc_info=True)
@@ -42583,6 +42702,12 @@ def start_web_server(args_param):
             
             # 按创建时间降序排列
             records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            for _r in records:
+                if _r.get("amount") is not None:
+                    try:
+                        _r["amount"] = round(float(_r["amount"]), 2)
+                    except Exception:
+                        pass
             
             return jsonify({"success": True, "records": records, "total": len(records)})
         except Exception as e:
@@ -42593,7 +42718,7 @@ def start_web_server(args_param):
     @admin_required
     def admin_restore_account():
         """
-        管理员接口：从 Remove_Account 恢复已删除的用户账号。
+        管理员接口：从 Remove_Acoount 恢复已删除的用户账号。
         请求体: {"auth_username": "<用户名>"}
         """
         try:
@@ -42605,8 +42730,8 @@ def start_web_server(args_param):
             if not auth_username:
                 return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
             
-            # 确定 Remove_Account 目录路径
-            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Account")
+            # 确定 Remove_Acoount 目录路径
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
             index_path = os.path.join(remove_account_dir, "_index.json")
             
             # 检查索引文件是否存在
@@ -42673,7 +42798,7 @@ def start_web_server(args_param):
             user_hash = hashlib.sha256(str(auth_username).encode()).hexdigest()
             _update_system_accounts_index(auth_username, user_hash, "add")
             
-            # 从 Remove_Account/_index.json 中移除该记录
+            # 从 Remove_Acoount/_index.json 中移除该记录
             del ra_index["removed_accounts"][auth_username]
             ra_index["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             with open(index_path, "w", encoding="utf-8") as f:
@@ -42697,10 +42822,10 @@ def start_web_server(args_param):
     def admin_list_removed_accounts():
         """
         管理员接口：列出所有已删除的账号记录。
-        从 Remove_Account/_index.json 读取。
+        从 Remove_Acoount/_index.json 读取。
         """
         try:
-            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Account")
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
             index_path = os.path.join(remove_account_dir, "_index.json")
             
             if not os.path.exists(index_path):
