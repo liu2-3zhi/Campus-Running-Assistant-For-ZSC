@@ -7062,7 +7062,38 @@ class AuthSystem:
             ),  # 新增字段
             # 新增字段：可用运行次数
             "available_runs": user_data.get("available_runs", 0),
+            # 账号注销等待期状态
+            "account_cancellation": user_data.get("account_cancellation"),
         }
+
+    def set_account_cancellation_pending(self, auth_username, wait_hours=24):
+        """为用户设置账号注销等待期状态。"""
+        with self.lock:
+            user_file = self.get_user_file_path(auth_username)
+            if not os.path.exists(user_file):
+                return {"success": False, "message": "用户不存在"}
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+
+            now_ts = int(time.time())
+            execute_at = now_ts + int(wait_hours * 3600)
+            user_data["account_cancellation"] = {
+                "status": "pending",
+                "requested_at": now_ts,
+                "execute_at": execute_at,
+            }
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            return {"success": True, "execute_at": execute_at}
+
+    def get_account_cancellation_status(self, auth_username):
+        """读取用户账号注销状态。"""
+        user_file = self.get_user_file_path(auth_username)
+        if not os.path.exists(user_file):
+            return None
+        with open(user_file, "r", encoding="utf-8") as f:
+            user_data = json.load(f)
+        return user_data.get("account_cancellation")
 
     def update_user_last_school_account(self, auth_username, school_username):
         """更新用户最后使用的学校账号"""
@@ -21747,6 +21778,23 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "未登录或会话无效"}), 401
             if getattr(api_instance, "is_guest", False):
                 return jsonify({"success": False, "message": "游客无权访问此功能"}), 403
+
+            # 账号注销等待期到期后执行惰性删除
+            try:
+                cancellation_status = auth_system.get_account_cancellation_status(auth_username)
+                if (
+                    cancellation_status
+                    and cancellation_status.get("status") == "pending"
+                    and int(cancellation_status.get("execute_at", 0) or 0) <= int(time.time())
+                ):
+                    auth_system.delete_user(auth_username)
+                    with web_sessions_lock:
+                        if session_id in web_sessions:
+                            del web_sessions[session_id]
+                    return jsonify({"success": False, "message": "账号已注销"}), 403
+            except Exception as _e:
+                logging.warning(f"[账号注销] 惰性处理失败: {_e}")
+
             g.user = auth_username
             g.api_instance = api_instance
             # 将 session_id 存储到 g 对象中，以便被装饰的函数可以访问它（用于审计日志等）
@@ -25301,6 +25349,72 @@ def start_web_server(args_param):
 
         # 返回操作结果
         return jsonify(result)
+
+    @app.route("/auth/user/request_account_cancellation", methods=["POST"])
+    @login_required
+    def auth_user_request_account_cancellation():
+        """用户申请账号注销（密码+短信验证码双重校验，默认24小时等待期）。"""
+        auth_username = g.user
+        data = request.get_json() or {}
+        current_password = (data.get("current_password") or "").strip()
+        sms_code = (data.get("sms_code") or "").strip()
+        wait_hours = int(data.get("wait_hours", 24) or 24)
+        wait_hours = max(1, wait_hours)
+
+        if not current_password or not sms_code:
+            return jsonify({"success": False, "message": "请提供当前密码和短信验证码"}), 400
+        if not re.match(r"^\d{6}$", sms_code):
+            return jsonify({"success": False, "message": "短信验证码格式错误"}), 400
+
+        user_file = auth_system.get_user_file_path(auth_username)
+        if not os.path.exists(user_file):
+            return jsonify({"success": False, "message": "用户不存在"}), 404
+        with open(user_file, "r", encoding="utf-8") as f:
+            user_data = json.load(f)
+
+        stored_password = user_data.get("password", "")
+        user_phone = user_data.get("phone", "")
+        if not user_phone:
+            return jsonify({"success": False, "message": "未绑定手机号，无法进行短信验证"}), 400
+        if not auth_system._verify_password(current_password, stored_password):
+            return jsonify({"success": False, "message": "当前密码错误"}), 401
+
+        global sms_verification_codes
+        stored_code_info = sms_verification_codes.get(user_phone)
+        if not stored_code_info:
+            return jsonify({"success": False, "message": "请先获取短信验证码"}), 400
+        stored_code, expires_at = stored_code_info
+        if time.time() > expires_at:
+            del sms_verification_codes[user_phone]
+            return jsonify({"success": False, "message": "短信验证码已过期，请重新获取"}), 400
+        if stored_code != sms_code:
+            return jsonify({"success": False, "message": "短信验证码错误"}), 400
+
+        result = auth_system.set_account_cancellation_pending(auth_username, wait_hours)
+        if not result.get("success"):
+            return jsonify(result), 400
+
+        if user_phone in sms_verification_codes:
+            del sms_verification_codes[user_phone]
+
+        session_id = g.session_id
+        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+        auth_system.log_audit(
+            auth_username,
+            "request_account_cancellation",
+            f"申请账号注销，等待期{wait_hours}小时",
+            ip_address,
+            session_id,
+        )
+
+        return jsonify({
+            "success": True,
+            "message": f"已提交账号注销申请，等待期{wait_hours}小时",
+            "status": {
+                "status": "pending",
+                "execute_at": result.get("execute_at")
+            }
+        })
 
     @app.route("/auth/user/update_avatar", methods=["POST"])
     def auth_user_update_avatar():
