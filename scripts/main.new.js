@@ -19077,6 +19077,11 @@ function switchAdminTab(tab) {
   const pricingPanel = $("admin-pricing-panel_modal");
   // 获取水印控制面板元素
   const watermarkControlPanel = $("admin-watermark-control-panel_modal");
+  // 获取账单管理和恢复账号标签/面板元素
+  const adminBillingTab = $("admin-tab-billing_modal");
+  const restoreAccountTab = $("admin-tab-restore-account_modal");
+  const adminBillingPanel = $("admin-billing-panel_modal");
+  const restoreAccountPanel = $("admin-restore-account-panel_modal");
 
   if (!sessionsTab || !sessionsPanel) {
     logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
@@ -19103,6 +19108,8 @@ function switchAdminTab(tab) {
     paymentSettingsTab, // 添加支付设置 Tab
     pricingTab, // 添加价格设置 Tab
     watermarkControlTab, // 添加水印控制 Tab
+    adminBillingTab, // 添加账单管理 Tab
+    restoreAccountTab, // 添加恢复账号 Tab
   ]
     .filter((t) => t)
     .forEach((t) => {
@@ -19131,6 +19138,8 @@ function switchAdminTab(tab) {
     paymentSettingsPanel, // 添加支付设置 Panel
     pricingPanel, // 添加价格设置 Panel
     watermarkControlPanel, // 添加水印控制 Panel
+    adminBillingPanel, // 添加账单管理 Panel
+    restoreAccountPanel, // 添加恢复账号 Panel
   ]
     .filter((p) => p)
     .forEach((p) => {
@@ -20221,6 +20230,22 @@ function switchAdminTab(tab) {
             : "未知",
       });
     }
+  } else if (tab === "admin-billing") {
+    // 账单管理面板
+    if (adminBillingTab && adminBillingPanel) {
+      adminBillingTab.classList.add("text-sky-600", "border-sky-600");
+      adminBillingTab.classList.remove("text-slate-400", "border-transparent");
+      adminBillingPanel.classList.remove("hidden");
+    }
+    stopHealthAutoRefresh();
+  } else if (tab === "restore-account") {
+    // 恢复账号面板
+    if (restoreAccountTab && restoreAccountPanel) {
+      restoreAccountTab.classList.add("text-sky-600", "border-sky-600");
+      restoreAccountTab.classList.remove("text-slate-400", "border-transparent");
+      restoreAccountPanel.classList.remove("hidden");
+    }
+    stopHealthAutoRefresh();
   } else {
     if (profileTab && profilePanel) {
       profileTab.classList.add("text-sky-600", "border-sky-600");
@@ -56815,3 +56840,160 @@ document.addEventListener("DOMContentLoaded", function () {
     initOrderNumberAutoFill();
   }, 100); // 延迟100毫秒执行
 });
+
+// ========================================================
+// 账单相关函数
+// ========================================================
+
+/**
+ * 加载当前用户的账单列表（"我的账单"面板刷新按钮调用）
+ */
+async function loadUserBillingList() {
+  const container = document.getElementById("user-billing-list-container");
+  if (!container) return;
+  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  try {
+    const resp = await fetch("/api/billing/list", {
+      headers: { "X-Session-ID": sessionUUID }
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      return;
+    }
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无账单记录</p>";
+      return;
+    }
+    let html = "<table class=\"w-full text-xs border-collapse\">";
+    html += "<thead><tr class=\"bg-slate-100\">";
+    html += "<th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
+    html += "</tr></thead><tbody>";
+    records.forEach(r => {
+      const statusBadge = r.status === "paid"
+        ? "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs\">已支付</span>"
+        : "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs\">待支付</span>";
+      html += "<tr class=\"border-b border-slate-100\">";
+      html += "<td class=\"p-2\">" + (r.reason || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.amount != null ? "¥" + r.amount : "-") + "</td>";
+      html += "<td class=\"p-2\">" + statusBadge + "</td>";
+      html += "<td class=\"p-2\">" + (r.created_at || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.paid_at || "-") + "</td>";
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+  }
+}
+
+/**
+ * 管理员加载账单列表
+ */
+async function loadAdminBillingList() {
+  const container = document.getElementById("admin-billing-list-container");
+  const usernameInput = document.getElementById("admin-billing-username-input");
+  if (!container) return;
+  const username = usernameInput ? usernameInput.value.trim() : "";
+  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  try {
+    const url = username ? "/api/admin/billing/list?username=" + encodeURIComponent(username) : "/api/admin/billing/list";
+    const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      return;
+    }
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无账单记录</p>";
+      return;
+    }
+    let html = "<table class=\"w-full text-xs border-collapse\">";
+    html += "<thead><tr class=\"bg-slate-100\">";
+    html += "<th class=\"p-2 text-left\">用户名</th><th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
+    html += "</tr></thead><tbody>";
+    records.forEach(r => {
+      const statusBadge = r.status === "paid"
+        ? "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs\">已支付</span>"
+        : "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs\">待支付</span>";
+      html += "<tr class=\"border-b border-slate-100\">";
+      html += "<td class=\"p-2\">" + (r.auth_username || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.reason || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.amount != null ? "¥" + r.amount : "-") + "</td>";
+      html += "<td class=\"p-2\">" + statusBadge + "</td>";
+      html += "<td class=\"p-2\">" + (r.created_at || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.paid_at || "-") + "</td>";
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+  }
+}
+
+/**
+ * 管理员加载已删除账号列表
+ */
+async function loadRemovedAccountsList() {
+  const container = document.getElementById("removed-accounts-list-container");
+  if (!container) return;
+  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  try {
+    const resp = await fetch("/api/admin/removed_accounts", { headers: { "X-Session-ID": sessionUUID } });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      return;
+    }
+    const accounts = data.removed_accounts || {};
+    const keys = Object.keys(accounts);
+    if (keys.length === 0) {
+      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无已删除账号记录</p>";
+      return;
+    }
+    let html = "<table class=\"w-full text-xs border-collapse\">";
+    html += "<thead><tr class=\"bg-slate-100\">";
+    html += "<th class=\"p-2 text-left\">用户名</th><th class=\"p-2 text-left\">删除时间</th><th class=\"p-2 text-left\">操作</th>";
+    html += "</tr></thead><tbody>";
+    keys.forEach(username => {
+      const entry = accounts[username];
+      html += "<tr class=\"border-b border-slate-100\">";
+      html += "<td class=\"p-2 font-mono\">" + username + "</td>";
+      html += "<td class=\"p-2\">" + (entry.deleted_at || "-") + "</td>";
+      html += "<td class=\"p-2\"><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-xs text-amber-700\" onclick=\"restoreAccount(" + JSON.stringify(username) + ")\">恢复</button></td>";
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+  }
+}
+
+/**
+ * 管理员恢复指定账号
+ */
+async function restoreAccount(auth_username) {
+  if (!confirm("确定要恢复账号 " + auth_username + " 吗？")) return;
+  try {
+    const resp = await fetch("/api/admin/restore_account", {
+      method: "POST",
+      headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
+      body: JSON.stringify({ auth_username })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      alert("账号 " + auth_username + " 已成功恢复");
+      loadRemovedAccountsList();
+    } else {
+      alert("恢复失败: " + (data.message || "未知错误"));
+    }
+  } catch (e) {
+    alert("恢复异常: " + e.message);
+  }
+}
+
