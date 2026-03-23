@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Bandit 扫描
-        uses: shundor/python-bandit-scan
+        uses: shundor/python-bandit-scan@v1
         with: # 可选参数
           # 即使发现问题也返回 0
           exit_zero: true # 可选，默认值为 DEFAULT
