@@ -7252,6 +7252,22 @@
           </svg>
           水印控制
         </button>
+
+        <!-- 账单管理标签 -->
+        <button id="admin-tab-billing_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" onclick="switchAdminTab('admin-billing')">
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+          </svg>
+          账单管理
+        </button>
+
+        <!-- 恢复账号标签 -->
+        <button id="admin-tab-restore-account_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" onclick="switchAdminTab('restore-account')">
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          </svg>
+          恢复账号
+        </button>
       </div>
 
       <div class="overflow-x-hidden flex-grow min-h-0">
@@ -7583,6 +7599,22 @@
                   💡 自定义主题的主要色调，影响按钮、边框等元素颜色
                 </p>
               </div>
+            </div>
+          </div>
+
+          <!-- 我的账单区域 -->
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+            <div class="flex justify-between items-center">
+              <h5 class="font-semibold text-slate-700 mb-0">我的账单</h5>
+              <button onclick="loadUserBillingList()" class="btn btn-ghost !py-1 !px-2 text-xs">
+                <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                刷新
+              </button>
+            </div>
+            <div id="user-billing-list-container" class="overflow-x-auto">
+              <p class="text-xs text-slate-400">点击刷新加载账单记录</p>
             </div>
           </div>
         </div>
@@ -10215,11 +10247,47 @@
           </button>
         </div>
       </div>
+
+      <!-- ========================================
+           PC端账单管理面板 (admin-billing-panel_modal)
+           功能：管理员查询用户账单记录
+           ======================================== -->
+      <div id="admin-billing-panel_modal" class="hidden overflow-y-auto overflow-x-hidden p-4 space-y-4">
+        <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
+          <h3 class="text-lg font-bold text-green-700 mb-1">账单管理</h3>
+          <p class="text-sm text-green-600">查询所有用户或指定用户的账单记录</p>
+        </div>
+        <div class="flex gap-2 items-center">
+          <input type="text" id="admin-billing-username-input" class="input-field flex-1" placeholder="用户名（留空则查询全部）">
+          <button onclick="loadAdminBillingList()" class="btn btn-primary whitespace-nowrap">查询</button>
+        </div>
+        <div id="admin-billing-list-container" class="overflow-x-auto">
+          <p class="text-xs text-slate-400">点击查询加载账单记录</p>
+        </div>
+      </div>
+
+      <!-- ========================================
+           PC端恢复账号面板 (admin-restore-account-panel_modal)
+           功能：管理员恢复已删除的用户账号
+           ======================================== -->
+      <div id="admin-restore-account-panel_modal" class="hidden overflow-y-auto overflow-x-hidden p-4 space-y-4">
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-lg border border-amber-200">
+          <h3 class="text-lg font-bold text-amber-700 mb-1">恢复账号</h3>
+          <p class="text-sm text-amber-600">从删除记录中恢复已删除的用户账号</p>
+        </div>
+        <button onclick="loadRemovedAccountsList()" class="btn btn-ghost border border-slate-300">
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          </svg>
+          加载已删除账号
+        </button>
+        <div id="removed-accounts-list-container" class="overflow-x-auto">
+          <p class="text-xs text-slate-400">点击上方按钮加载已删除账号记录</p>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- ========================================
-       添加水印控制用户模态框 (add-watermark-user-modal)
        ========================================
        功能：允许管理员从系统用户列表中选择用户添加到水印控制配置
        操作流程：
