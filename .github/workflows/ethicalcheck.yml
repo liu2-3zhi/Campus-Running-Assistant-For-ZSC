@@ -1,0 +1,94 @@
+name: EthicalCheck-Workflow
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  EthicalCheck_Test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出代码
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # 2. 安装 Python 依赖
+      - name: 安装 Python 依赖
+        run: |
+          echo ">>> 开始安装 Python 依赖..."
+          pip install --no-cache-dir -r ./ssl/requirements.txt
+          echo ">>> Python 依赖安装完成！"
+
+      # 3. 安装 Playwright 浏览器及依赖
+      - name: 安装 Playwright
+        run: |
+          echo ">>> 安装 Playwright..."
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
+          echo ">>> Playwright 安装完成！"
+
+      # 4. 安装 dos2unix 和 parallel
+      - name: 安装工具
+        run: |
+          echo ">>> 安装 dos2unix 和 parallel..."
+          sudo apt-get update
+          sudo apt-get install -y dos2unix parallel jq curl
+          echo ">>> 工具安装完成！"
+
+      # 5. 转换换行符（参考 Dockerfile）
+      - name: 转换换行符
+        run: |
+          echo ">>> 开始转换文件换行符..."
+          find $GITHUB_WORKSPACE/ \
+            -type d \( -path '*/.git' -o -path '*/logs/archive' \) -prune -o \
+            -type f \( -name "*.py" -o -name "*.sh" -o -name "*.js" -o -name "*.css" -o -name "*.html" -o -name "*.txt" -o -name "*.md" \) -print0 \
+          | parallel -0 -j$(nproc) --verbose dos2unix {}
+          echo ">>> 换行符转换完成！"
+
+      # 6. 启动 API 服务（后台运行）
+      - name: 启动 API 服务
+        run: |
+          echo ">>> 启动 API 服务..."
+          nohup python3 ./main.py --host 0.0.0.0 --port 5000 > server.log 2>&1 &
+          sleep 10
+          echo ">>> API 服务已启动！"
+
+      # 7. 安装 ngrok（匿名模式）
+      - name: 安装 ngrok
+        run: |
+          echo ">>> 安装 ngrok..."
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+            sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | \
+            sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install -y ngrok
+          echo ">>> ngrok 安装完成！"
+
+      # 8. 启动 ngrok 隧道并获取随机公网地址
+      - name: 启动 ngrok 隧道
+        run: |
+          echo ">>> 启动 ngrok 隧道..."
+          nohup ngrok http 5000 > ngrok.log 2>&1 &
+          sleep 5
+          curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' > ngrok_url.txt
+          cat ngrok_url.txt
+          echo "NGROK_URL=$(cat ngrok_url.txt)" >> $GITHUB_ENV
+          echo ">>> ngrok 隧道已启动，公网地址为：$(cat ngrok_url.txt)"
+
+      # 9. 使用 EthicalCheck 测试 API
+      - name: EthicalCheck API 安全测试
+        uses: apisec-inc/ethicalcheck-action@005fac321dd843682b1af6b72f30caaf9952c641
+        with:
+          oas-url: "${{ env.NGROK_URL }}/v2/api-docs"
+          sarif-result-file: "ethicalcheck-results.sarif"
+
+      # 10. 上传测试结果
+      - name: 上传测试结果
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ./ethicalcheck-results.sarif
