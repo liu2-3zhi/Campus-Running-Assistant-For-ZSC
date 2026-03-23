@@ -2382,6 +2382,110 @@ def _create_directories():
 
     print(f"[目录创建] 所有目录创建完成")
 
+    # 重建 system_accounts/_index.json 索引（用于快速查找用户文件）
+    try:
+        _rebuild_system_accounts_index()
+        print(f"[系统账号索引] 索引重建完成")
+    except Exception as _idx_e:
+        print(f"[系统账号索引] 索引重建失败（将在运行时自动修复）: {_idx_e}")
+
+
+def _rebuild_system_accounts_index():
+    """
+    重建 system_accounts/_index.json 索引文件。
+    扫描所有 .json 文件（排除 _index.json 和子目录中的文件），
+    读取每个文件的 auth_username，构建索引。
+    """
+    try:
+        # 确保目录存在
+        if not os.path.isdir(SYSTEM_ACCOUNTS_DIR):
+            return
+        
+        accounts = {}
+        # 遍历顶层目录中的所有JSON文件
+        for filename in os.listdir(SYSTEM_ACCOUNTS_DIR):
+            # 跳过 _index.json 本身
+            if filename == "_index.json":
+                continue
+            # 只处理 .json 文件
+            if not filename.endswith(".json"):
+                continue
+            # 跳过子目录（只处理直接在该目录下的文件）
+            filepath = os.path.join(SYSTEM_ACCOUNTS_DIR, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+                # 提取 auth_username
+                au = user_data.get("auth_username")
+                if au:
+                    # 文件名（不含扩展名）即为哈希值
+                    accounts[au] = filename[:-5]  # 去掉 .json 后缀
+            except Exception as e:
+                logging.warning(f"[系统账号索引] 读取文件 {filename} 失败: {e}")
+        
+        # 构建索引数据
+        index_data = {
+            "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "accounts": accounts
+        }
+        
+        # 写入索引文件
+        index_path = os.path.join(SYSTEM_ACCOUNTS_DIR, "_index.json")
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(index_data, f, indent=2, ensure_ascii=False)
+        
+        logging.info(f"[系统账号索引] 重建索引完成，共 {len(accounts)} 个账号")
+    except Exception as e:
+        logging.error(f"[系统账号索引] 重建索引失败: {e}", exc_info=True)
+
+
+def _update_system_accounts_index(auth_username, hash_filename, action):
+    """
+    增量更新 system_accounts/_index.json 索引文件。
+    
+    参数:
+        auth_username: 用户名
+        hash_filename: 哈希文件名（不含 .json 后缀），action为"remove"时可为None
+        action: "add" 或 "remove"
+    """
+    try:
+        index_path = os.path.join(SYSTEM_ACCOUNTS_DIR, "_index.json")
+        
+        # 读取现有索引（如果存在）
+        if os.path.exists(index_path):
+            try:
+                with open(index_path, "r", encoding="utf-8") as f:
+                    index_data = json.load(f)
+            except Exception:
+                index_data = {"accounts": {}}
+        else:
+            index_data = {"accounts": {}}
+        
+        # 确保 accounts 字段存在
+        if "accounts" not in index_data:
+            index_data["accounts"] = {}
+        
+        if action == "add" and hash_filename:
+            # 添加或更新用户条目
+            index_data["accounts"][auth_username] = hash_filename
+            logging.debug(f"[系统账号索引] 添加用户到索引: {auth_username}")
+        elif action == "remove":
+            # 从索引中移除用户条目
+            if auth_username in index_data["accounts"]:
+                del index_data["accounts"][auth_username]
+                logging.debug(f"[系统账号索引] 从索引移除用户: {auth_username}")
+        
+        # 更新时间戳
+        index_data["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        # 写入索引文件
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(index_data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.error(f"[系统账号索引] 更新索引失败 (action={action}, user={auth_username}): {e}", exc_info=True)
+
 
 def _get_default_config():
     """
@@ -5815,6 +5919,10 @@ class AuthSystem:
             with open(user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
 
+            # 更新 system_accounts/_index.json 索引
+            user_hash = hashlib.sha256(str(auth_username).encode()).hexdigest()
+            _update_system_accounts_index(auth_username, user_hash, "add")
+
             logging.debug(f"register_user: 添加用户到权限组: {group}")
             self.permissions["user_groups"][auth_username] = group
             self._save_permissions()
@@ -6548,7 +6656,7 @@ class AuthSystem:
 
             # 构建备份文件的保存路径
             # 备份目录位于 system_accounts/remove/
-            backup_dir = os.path.join(SYSTEM_ACCOUNTS_DIR, "remove")
+            backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Account")
 
             # 如果备份目录不存在，则创建它（包括所有必要的父目录）
             if not os.path.exists(backup_dir):
@@ -6561,8 +6669,11 @@ class AuthSystem:
                     return {"success": False, "message": f"创建备份目录失败: {e}"}
 
             # 生成唯一的备份文件名
-            # 使用 uuid.uuid4() 生成随机 UUID，UUID4 冲突概率为 1/2^122，实际上不可能重复
+            # 检查 SYSTEM_ACCOUNTS_DIR 和 Remove_Account/ 目录中是否存在同名文件
             backup_uuid = str(uuid.uuid4())
+            while (os.path.exists(os.path.join(SYSTEM_ACCOUNTS_DIR, f"{backup_uuid}.json")) or
+                   os.path.exists(os.path.join(backup_dir, f"{backup_uuid}.json"))):
+                backup_uuid = str(uuid.uuid4())
             backup_filename = os.path.join(backup_dir, f"{backup_uuid}.json")
 
             # 构建备份数据的结构
@@ -6582,6 +6693,29 @@ class AuthSystem:
                     # ensure_ascii=False 确保中文字符正常显示
                     json.dump(backup_data, f, indent=2, ensure_ascii=False)
                 logging.info(f"[删除用户备份] 备份成功: {backup_filename}")
+                # 更新 Remove_Account/_index.json 索引
+                try:
+                    _ra_index_path = os.path.join(backup_dir, "_index.json")
+                    _ra_deleted_at = backup_data["deleted_at"]
+                    # 读取现有索引
+                    if os.path.exists(_ra_index_path):
+                        with open(_ra_index_path, "r", encoding="utf-8") as _f:
+                            _ra_index = json.load(_f)
+                    else:
+                        _ra_index = {"removed_accounts": {}}
+                    if "removed_accounts" not in _ra_index:
+                        _ra_index["removed_accounts"] = {}
+                    # 添加本次删除记录
+                    _ra_index["removed_accounts"][auth_username] = {
+                        "backup_file": f"{backup_uuid}.json",
+                        "deleted_at": _ra_deleted_at
+                    }
+                    _ra_index["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                    with open(_ra_index_path, "w", encoding="utf-8") as _f:
+                        json.dump(_ra_index, _f, indent=2, ensure_ascii=False)
+                    logging.info(f"[删除用户备份] Remove_Account/_index.json 已更新")
+                except Exception as _e:
+                    logging.warning(f"[删除用户备份] 更新 Remove_Account 索引失败: {_e}")
             except Exception as e:
                 # 如果备份失败，则不执行删除操作，保护用户数据
                 logging.error(f"[删除用户备份] 保存备份文件失败: {e}")
@@ -6594,6 +6728,8 @@ class AuthSystem:
             try:
                 os.remove(user_file)
                 logging.info(f"[删除用户] 已删除用户文件: {user_file}")
+                # 从 system_accounts/_index.json 索引中移除该用户
+                _update_system_accounts_index(auth_username, None, "remove")
             except Exception as e:
                 # 删除用户文件失败，记录错误并返回
                 logging.error(f"[删除用户] 删除用户文件失败: {e}")
@@ -8880,6 +9016,17 @@ class Api:
                     # 保存更新后的学校账号配置
                     self._save_user_school_accounts(
                         auth_username, school_accounts)
+
+                    # 读取单次费用配置，创建账单记录
+                    try:
+                        _billing_config = _read_config_ini()
+                        _single_run_cost_str = _billing_config.get(
+                            "Payment_Settings", "single_run_cost", fallback="1.0") if _billing_config else "1.0"
+                        _single_run_cost = round(float(_single_run_cost_str), 2)
+                    except Exception:
+                        _single_run_cost = 1.0
+                    # 调用全局函数创建账单记录
+                    _create_user_billing_record(auth_username, school_username, "校园跑一次", _single_run_cost)
 
                     logging.info(
                         f"[次数扣减] 用户 {auth_username} 可用次数不足（当前: {available_runs}），"
@@ -17601,8 +17748,57 @@ class BackgroundTaskManager:
             with open(task_file, "w", encoding="utf-8") as f:
                 json.dump(task_state, f, indent=2, ensure_ascii=False)
             logging.debug(f"后台任务状态已保存，会话ID: {session_id}")
+            # 同步更新 background_tasks/_index.json 索引
+            self._update_tasks_index(session_id, task_state, action="save")
         except Exception as e:
             logging.error(f"保存后台任务状态失败: {e}")
+
+    def _update_tasks_index(self, session_id, task_state, action="save"):
+        """
+        更新 background_tasks/_index.json 索引文件。
+        
+        参数:
+            session_id: 会话ID
+            task_state: 任务状态数据
+            action: "save" 或 "remove"
+        """
+        try:
+            index_path = os.path.join(self.task_storage_dir, "_index.json")
+            task_hash = hashlib.sha256(session_id.encode()).hexdigest()
+            
+            # 读取现有索引
+            if os.path.exists(index_path):
+                try:
+                    with open(index_path, "r", encoding="utf-8") as f:
+                        index_data = json.load(f)
+                except Exception:
+                    index_data = {"tasks": {}}
+            else:
+                index_data = {"tasks": {}}
+            
+            if "tasks" not in index_data:
+                index_data["tasks"] = {}
+            
+            if action == "save":
+                # 添加或更新任务条目
+                index_data["tasks"][task_hash] = {
+                    "session_id": session_id,
+                    "created_at": task_state.get("created_at", datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    "file": f"{task_hash}.json"
+                }
+            elif action == "remove":
+                # 从索引中移除任务
+                if task_hash in index_data["tasks"]:
+                    del index_data["tasks"][task_hash]
+            
+            # 更新时间戳
+            index_data["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            # 写入索引文件
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(index_data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logging.warning(f"[任务索引] 更新索引失败: {e}")
 
     def load_task_state(self, session_id):
         """从文件加载任务状态"""
@@ -20297,6 +20493,60 @@ def _send_startup_notification_to_log_forwarder(host, port):
         logging.error(f"[UDP通知] UDP通知线程发生异常: {e}", exc_info=True)
 
 
+def _create_user_billing_record(auth_username, school_username, reason, amount):
+    """
+    为用户创建账单记录。
+    
+    参数:
+        auth_username: 认证用户名
+        school_username: 学校账号用户名
+        reason: 账单原因（如"校园跑一次"）
+        amount: 金额（float）
+    
+    返回:
+        billing_id: 账单ID（UUID字符串），失败返回None
+    """
+    try:
+        # 构建账单目录路径
+        billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+        # 如果目录不存在则创建
+        os.makedirs(billing_dir, exist_ok=True)
+        
+        # 生成唯一的UUID，确保不与现有文件冲突
+        import uuid as _uuid
+        billing_id = str(_uuid.uuid4())
+        while os.path.exists(os.path.join(billing_dir, f"{billing_id}.json")):
+            billing_id = str(_uuid.uuid4())
+        
+        # 获取当前时间戳（ISO格式）
+        created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        # 构建账单数据
+        billing_data = {
+            "billing_id": billing_id,
+            "auth_username": auth_username,
+            "school_username": school_username,
+            "reason": reason,
+            "amount": amount,
+            "created_at": created_at,
+            "status": "pending",
+            "payment_orders": [],
+            "final_payment_order": None,
+            "paid_at": None
+        }
+        
+        # 写入账单文件
+        billing_file = os.path.join(billing_dir, f"{billing_id}.json")
+        with open(billing_file, "w", encoding="utf-8") as f:
+            json.dump(billing_data, f, indent=2, ensure_ascii=False)
+        
+        logging.info(f"[账单] 为用户 {auth_username} 创建账单记录: {billing_id}, 原因: {reason}, 金额: {amount}")
+        return billing_id
+    except Exception as e:
+        logging.error(f"[账单] 创建账单记录失败 (用户: {auth_username}): {e}", exc_info=True)
+        return None
+
+
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
@@ -20461,6 +20711,29 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"上传保存失败: {e}")
             return jsonify(success=False, message="文件保存失败"), 500
+
+        # 更新 uploads/_index.json 索引
+        try:
+            _uploads_index_path = os.path.join(UPLOADS_DIR, "_index.json")
+            # 读取现有索引
+            if os.path.exists(_uploads_index_path):
+                with open(_uploads_index_path, "r", encoding="utf-8") as _f:
+                    _uploads_index = json.load(_f)
+            else:
+                _uploads_index = {"files": {}}
+            if "files" not in _uploads_index:
+                _uploads_index["files"] = {}
+            # 添加本次上传记录
+            _uploads_index["files"][save_name] = {
+                "uploaded_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "original_name": file.filename,
+                "size": os.path.getsize(save_path)
+            }
+            _uploads_index["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(_uploads_index_path, "w", encoding="utf-8") as _f:
+                json.dump(_uploads_index, _f, indent=2, ensure_ascii=False)
+        except Exception as _e:
+            logging.warning(f"[上传索引] 更新索引失败: {_e}")
 
         # 二次检查实际保存的文件大小，超出则删除并返回错误
         try:
@@ -20839,6 +21112,32 @@ def start_web_server(args_param):
                 f"[overdue_count处理] 订单数据不完整，无法处理欠费 - 订单: {out_trade_no}, "
                 f"auth_username: {auth_username}, total_count: {total_count}"
             )
+
+        # ========== 更新账单记录状态 ==========
+        # 扫描该用户的账单目录，找到payment_orders中包含本订单号的记录，更新为已支付
+        try:
+            _billing_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+            _paid_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            if os.path.isdir(_billing_base_dir):
+                for _bf in os.listdir(_billing_base_dir):
+                    if not _bf.endswith(".json"):
+                        continue
+                    _bpath = os.path.join(_billing_base_dir, _bf)
+                    try:
+                        with open(_bpath, "r", encoding="utf-8") as _f:
+                            _brec = json.load(_f)
+                        # 找到包含本订单号的账单记录
+                        if out_trade_no in _brec.get("payment_orders", []):
+                            _brec["status"] = "paid"
+                            _brec["final_payment_order"] = out_trade_no
+                            _brec["paid_at"] = _paid_at
+                            with open(_bpath, "w", encoding="utf-8") as _f:
+                                json.dump(_brec, _f, indent=2, ensure_ascii=False)
+                            logging.info(f"[账单] 账单 {_brec.get('billing_id')} 已标记为已支付")
+                    except Exception as _be:
+                        logging.warning(f"[账单] 更新账单文件 {_bf} 失败: {_be}")
+        except Exception as _e:
+            logging.error(f"[账单] 更新账单状态失败: {_e}", exc_info=True)
 
         logging.info(f"[overdue_count处理] 订单处理完成 - 订单号: {out_trade_no}")
 
@@ -36566,10 +36865,10 @@ def start_web_server(args_param):
                     "message": "读取配置文件失败，请联系管理员"
                 })
 
-            # 从配置文件的 [User_Run_Cost] 节读取 single_run_cost（单次费用）
+            # 从配置文件的 [Payment_Settings] 节读取 single_run_cost（单次费用）
             # fallback="1.0" 指定默认值为1.0元
             single_run_cost_str = config.get(
-                "User_Run_Cost", "single_run_cost", fallback="1.0")
+                "Payment_Settings", "single_run_cost", fallback="1.0")
 
             # 将字符串转换为浮点数
             try:
@@ -36762,6 +37061,37 @@ def start_web_server(args_param):
             # 替换原来的手动增量更新逻辑，使用统一的 _save_order_file_incremental 函数
             # 该函数会自动处理：目录创建、文件读取、数据合并、文件写入、异常处理
             _save_order_file_incremental(out_trade_no, order_data)
+
+            # ========== 步骤11.1：关联账单记录 ==========
+            # 扫描该用户的账单目录，找到状态为pending且学校账号在overdue_accounts中的记录
+            # 将订单号添加到这些账单记录的payment_orders列表中
+            try:
+                _billing_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+                # 获取本次支付涉及的学校账号集合
+                _overdue_school_usernames = set(
+                    acc.get("school_username", "") for acc in overdue_accounts
+                )
+                if os.path.isdir(_billing_base_dir):
+                    for _bf in os.listdir(_billing_base_dir):
+                        if not _bf.endswith(".json"):
+                            continue
+                        _bpath = os.path.join(_billing_base_dir, _bf)
+                        try:
+                            with open(_bpath, "r", encoding="utf-8") as _f:
+                                _brec = json.load(_f)
+                            # 只处理pending状态且学校账号在本次欠费列表中的记录
+                            if (_brec.get("status") == "pending" and
+                                    _brec.get("school_username") in _overdue_school_usernames):
+                                # 添加订单号到payment_orders（避免重复）
+                                if out_trade_no not in _brec.get("payment_orders", []):
+                                    _brec.setdefault("payment_orders", []).append(out_trade_no)
+                                    with open(_bpath, "w", encoding="utf-8") as _f:
+                                        json.dump(_brec, _f, indent=2, ensure_ascii=False)
+                        except Exception as _be:
+                            logging.warning(f"[账单关联] 处理账单文件 {_bf} 失败: {_be}")
+                logging.info(f"[账单关联] 订单 {out_trade_no} 已关联到相关账单记录")
+            except Exception as _e:
+                logging.error(f"[账单关联] 关联账单记录失败: {_e}", exc_info=True)
 
             # 记录日志：订单文件写入成功
             logging.debug(
@@ -42163,6 +42493,226 @@ def start_web_server(args_param):
                 "response_time_ms": response_time_ms,
             }
         )
+
+    @app.route("/api/billing/list", methods=["GET"])
+    @login_required
+    def billing_list():
+        """
+        获取当前用户的账单记录列表（按创建时间降序排列）。
+        需要用户登录。
+        """
+        try:
+            # 获取当前登录用户的用户名
+            auth_username = g.user
+            
+            # 构建账单目录路径
+            billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+            
+            # 如果目录不存在，返回空列表
+            if not os.path.isdir(billing_dir):
+                return jsonify({"success": True, "records": []})
+            
+            records = []
+            # 遍历账单目录中的所有JSON文件
+            for filename in os.listdir(billing_dir):
+                if not filename.endswith(".json"):
+                    continue
+                filepath = os.path.join(billing_dir, filename)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        record = json.load(f)
+                    records.append(record)
+                except Exception as e:
+                    logging.warning(f"[账单列表] 读取账单文件 {filename} 失败: {e}")
+            
+            # 按创建时间降序排列
+            records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            
+            return jsonify({"success": True, "records": records})
+        except Exception as e:
+            logging.error(f"[账单列表] 获取账单列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/list", methods=["GET"])
+    @admin_required
+    def admin_billing_list():
+        """
+        管理员接口：获取指定用户（或所有用户）的账单记录列表。
+        可选查询参数: username（指定用户名）
+        """
+        try:
+            # 获取可选的username查询参数
+            username = request.args.get("username", "").strip()
+            
+            # 账单根目录
+            billing_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing")
+            
+            records = []
+            
+            if username:
+                # 只获取指定用户的账单
+                billing_dir = os.path.join(billing_root, username)
+                if os.path.isdir(billing_dir):
+                    for filename in os.listdir(billing_dir):
+                        if not filename.endswith(".json"):
+                            continue
+                        filepath = os.path.join(billing_dir, filename)
+                        try:
+                            with open(filepath, "r", encoding="utf-8") as f:
+                                record = json.load(f)
+                            records.append(record)
+                        except Exception as e:
+                            logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
+            else:
+                # 获取所有用户的账单
+                if os.path.isdir(billing_root):
+                    for user_dir in os.listdir(billing_root):
+                        user_billing_dir = os.path.join(billing_root, user_dir)
+                        if not os.path.isdir(user_billing_dir):
+                            continue
+                        for filename in os.listdir(user_billing_dir):
+                            if not filename.endswith(".json"):
+                                continue
+                            filepath = os.path.join(user_billing_dir, filename)
+                            try:
+                                with open(filepath, "r", encoding="utf-8") as f:
+                                    record = json.load(f)
+                                records.append(record)
+                            except Exception as e:
+                                logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
+            
+            # 按创建时间降序排列
+            records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            
+            return jsonify({"success": True, "records": records, "total": len(records)})
+        except Exception as e:
+            logging.error(f"[管理员账单] 获取账单列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/restore_account", methods=["POST"])
+    @admin_required
+    def admin_restore_account():
+        """
+        管理员接口：从 Remove_Account 恢复已删除的用户账号。
+        请求体: {"auth_username": "<用户名>"}
+        """
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"success": False, "message": "请求体不能为空"}), 400
+            
+            auth_username = data.get("auth_username", "").strip()
+            if not auth_username:
+                return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
+            
+            # 确定 Remove_Account 目录路径
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Account")
+            index_path = os.path.join(remove_account_dir, "_index.json")
+            
+            # 检查索引文件是否存在
+            if not os.path.exists(index_path):
+                return jsonify({"success": False, "message": "没有找到删除记录索引"}), 404
+            
+            # 读取索引
+            with open(index_path, "r", encoding="utf-8") as f:
+                ra_index = json.load(f)
+            
+            removed_accounts = ra_index.get("removed_accounts", {})
+            if auth_username not in removed_accounts:
+                return jsonify({"success": False, "message": f"未找到用户 {auth_username} 的删除记录"}), 404
+            
+            # 获取备份文件名
+            entry = removed_accounts[auth_username]
+            backup_file = entry.get("backup_file", "")
+            backup_path = os.path.join(remove_account_dir, backup_file)
+            
+            if not os.path.exists(backup_path):
+                return jsonify({"success": False, "message": f"备份文件不存在: {backup_file}"}), 404
+            
+            # 读取备份数据
+            with open(backup_path, "r", encoding="utf-8") as f:
+                backup_data = json.load(f)
+            
+            user_data = backup_data.get("user_data", {})
+            school_accounts_data = backup_data.get("school_accounts")
+            permissions_data = backup_data.get("permissions", {})
+            
+            if not user_data:
+                return jsonify({"success": False, "message": "备份数据损坏：缺少用户数据"}), 500
+            
+            # 检查目标用户名是否已存在
+            user_file = auth_system.get_user_file_path(auth_username)
+            if os.path.exists(user_file):
+                return jsonify({"success": False, "message": f"用户 {auth_username} 已存在，无法恢复"}), 409
+            
+            # 恢复用户文件到 system_accounts
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            logging.info(f"[恢复账号] 已恢复用户文件: {user_file}")
+            
+            # 恢复 school_accounts（如果有）
+            if school_accounts_data:
+                school_file = auth_system._get_user_accounts_file(auth_username)
+                try:
+                    with open(school_file, "w", encoding="utf-8") as f:
+                        json.dump(school_accounts_data, f, indent=2, ensure_ascii=False)
+                    logging.info(f"[恢复账号] 已恢复学校账号文件")
+                except Exception as e:
+                    logging.warning(f"[恢复账号] 恢复学校账号失败: {e}")
+            
+            # 恢复权限配置
+            if permissions_data:
+                if "group" in permissions_data:
+                    auth_system.permissions.setdefault("user_groups", {})[auth_username] = permissions_data["group"]
+                if "custom_permissions" in permissions_data:
+                    auth_system.permissions.setdefault("user_custom_permissions", {})[auth_username] = permissions_data["custom_permissions"]
+                auth_system._save_permissions()
+                logging.info(f"[恢复账号] 已恢复权限配置")
+            
+            # 更新 system_accounts/_index.json
+            user_hash = hashlib.sha256(str(auth_username).encode()).hexdigest()
+            _update_system_accounts_index(auth_username, user_hash, "add")
+            
+            # 从 Remove_Account/_index.json 中移除该记录
+            del ra_index["removed_accounts"][auth_username]
+            ra_index["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(ra_index, f, indent=2, ensure_ascii=False)
+            
+            # 删除备份文件
+            try:
+                os.remove(backup_path)
+            except Exception as e:
+                logging.warning(f"[恢复账号] 删除备份文件失败: {e}")
+            
+            logging.info(f"[恢复账号] 用户 {auth_username} 已成功恢复")
+            return jsonify({"success": True, "message": f"用户 {auth_username} 已成功恢复"})
+        
+        except Exception as e:
+            logging.error(f"[恢复账号] 恢复账号失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"恢复账号失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/removed_accounts", methods=["GET"])
+    @admin_required
+    def admin_list_removed_accounts():
+        """
+        管理员接口：列出所有已删除的账号记录。
+        从 Remove_Account/_index.json 读取。
+        """
+        try:
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Account")
+            index_path = os.path.join(remove_account_dir, "_index.json")
+            
+            if not os.path.exists(index_path):
+                return jsonify({"success": True, "removed_accounts": {}})
+            
+            with open(index_path, "r", encoding="utf-8") as f:
+                ra_index = json.load(f)
+            
+            return jsonify({"success": True, "removed_accounts": ra_index.get("removed_accounts", {}), "updated_at": ra_index.get("updated_at", "")})
+        except Exception as e:
+            logging.error(f"[已删除账号] 获取列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取已删除账号列表失败: {str(e)}"}), 500
 
     @socketio.on("connect")
     def handle_connect():
