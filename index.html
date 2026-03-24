@@ -3206,6 +3206,32 @@
                   </div>
                 </div>
               </div>
+
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+                <div class="flex justify-between items-center">
+                  <h5 class="font-semibold text-slate-700 text-xs">我的账单</h5>
+                  <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadMobileUserBillingList()">刷新</button>
+                </div>
+                <div id="mobile-user-billing-list-container" class="overflow-x-auto">
+                  <p class="text-xs text-slate-400">点击刷新加载账单记录</p>
+                </div>
+              </div>
+
+              <div class="bg-rose-50 border border-rose-200 rounded-lg p-3 space-y-2">
+                <div class="flex justify-between items-center">
+                  <h5 class="font-semibold text-rose-700 text-xs">账号注销</h5>
+                  <span id="mobile-account-cancel-status" class="text-xs text-rose-600">未申请</span>
+                </div>
+                <p class="text-xs text-rose-600">需验证当前密码和短信验证码，提交后进入默认24小时等待期。</p>
+                <input type="password" id="mobile-account-cancel-current-password" class="input-field !text-xs !py-1.5" placeholder="请输入当前密码">
+                <div class="flex gap-2">
+                  <input type="text" id="mobile-account-cancel-sms-code" class="input-field !text-xs !py-1.5 flex-1" placeholder="短信验证码" maxlength="6" inputmode="numeric">
+                  <button type="button" class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs whitespace-nowrap" onclick="sendAccountCancelSmsCode('mobile')">发送验证码</button>
+                </div>
+                <div class="flex justify-end">
+                  <button type="button" class="btn !py-1 !px-3 text-xs bg-rose-600 text-white hover:bg-rose-700" onclick="requestAccountCancellation('mobile')">申请注销</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -3280,8 +3306,10 @@
                 <!-- 邮箱输入框 -->
                 <input type="email" id="mobile-multi-message-email" class="input-field text-xs" placeholder="邮箱">
               </div>
-              <!-- 留言内容输入框 -->
+              <!-- 留言内容输入框（无JS回退） -->
               <textarea id="mobile-multi-message-content" class="input-field text-xs" rows="3" placeholder="留言内容（最多1000字）" maxlength="1000"></textarea>
+              <!-- 移动端 Editor.md 容器 -->
+              <div id="mobile-multi-message-editor" style="min-height:160px; border-radius:6px; background:#fff; border:1px solid #e6e6e6"></div>
               <!-- 字符计数显示 -->
               <div class="text-xs text-slate-500 text-right">
                 <span id="mobile-multi-message-char-count">0</span> / 1000
@@ -3311,6 +3339,30 @@
                   加载中...
                 </p>
               </div>
+            </div>
+          </div>
+
+          <div id="mobile-multi-admin-billing-panel" class="hidden space-y-3">
+            <div class="flex justify-between items-center">
+              <h4 class="font-semibold text-sm">账单管理</h4>
+              <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadMobileMultiAdminBillingList()">刷新</button>
+            </div>
+            <div class="flex gap-2 items-center">
+              <input type="text" id="mobile-multi-admin-billing-username-input" class="input-field !text-xs !py-1.5 flex-1" placeholder="用户名（留空查询全部）">
+              <button class="btn btn-primary !py-1 !px-2 text-xs whitespace-nowrap" onclick="loadMobileMultiAdminBillingList()">查询</button>
+            </div>
+            <div id="mobile-multi-admin-billing-list" class="overflow-x-auto">
+              <p class="text-xs text-slate-400">点击查询加载账单记录</p>
+            </div>
+          </div>
+
+          <div id="mobile-multi-admin-restore-account-panel" class="hidden space-y-3">
+            <div class="flex justify-between items-center">
+              <h4 class="font-semibold text-sm">账号恢复</h4>
+              <button class="btn btn-ghost !py-1 !px-2" onclick="loadMobileMultiRemovedAccountsList()">刷新</button>
+            </div>
+            <div id="mobile-multi-removed-accounts-list" class="overflow-x-auto">
+              <p class="text-xs text-slate-400">点击刷新加载已删除账号记录</p>
             </div>
           </div>
 
@@ -7256,6 +7308,22 @@
           </svg>
           水印控制
         </button>
+
+        <!-- 账单管理标签 -->
+        <button id="admin-tab-billing_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" onclick="switchAdminTab('admin-billing')">
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+          </svg>
+          账单管理
+        </button>
+
+        <!-- 恢复账号标签 -->
+        <button id="admin-tab-restore-account_modal" class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap" onclick="switchAdminTab('restore-account')">
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          </svg>
+          恢复账号
+        </button>
       </div>
 
       <div class="overflow-x-hidden flex-grow min-h-0">
@@ -7389,7 +7457,7 @@
         <div id="admin-profile-panel_modal" class="hidden space-y-4">
           <div class="flex justify-between items-center">
             <h4 class="font-semibold">个人信息</h4>
-            <button id="admin-refresh-profile_modal" class="btn btn-ghost !py-1 !px-2">
+            <button id="admin-refresh-profile_modal" class="btn btn-ghost !py-2 !px-3 min-h-[40px]">
               刷新
             </button>
           </div>
@@ -7586,6 +7654,40 @@
                 <p class="text-xs text-slate-500">
                   💡 自定义主题的主要色调，影响按钮、边框等元素颜色
                 </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 我的账单区域 -->
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+            <div class="flex justify-between items-center">
+              <h5 class="font-semibold text-slate-700 mb-0">我的账单</h5>
+              <button onclick="loadUserBillingList()" class="btn btn-ghost !py-2 !px-3 text-sm min-h-[40px]">
+                <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                刷新
+              </button>
+            </div>
+            <div id="user-billing-list-container" class="overflow-x-auto">
+              <p class="text-xs text-slate-400">点击刷新加载账单记录</p>
+            </div>
+          </div>
+
+          <div class="bg-rose-50 border border-rose-200 rounded-lg p-4 space-y-3">
+            <div class="flex justify-between items-center">
+              <h5 class="font-semibold text-rose-700 mb-0">账号注销</h5>
+              <span id="pc-account-cancel-status" class="text-xs text-rose-600">未申请</span>
+            </div>
+            <p class="text-xs text-rose-600">需同时验证当前密码和短信验证码，提交后进入默认24小时等待期。</p>
+            <div class="space-y-2">
+              <input type="password" id="pc-account-cancel-current-password" class="input-field" placeholder="请输入当前密码">
+              <div class="flex gap-2">
+                <input type="text" id="pc-account-cancel-sms-code" class="input-field flex-1" placeholder="短信验证码" maxlength="6" inputmode="numeric">
+                <button type="button" class="btn btn-ghost border border-slate-300 !py-1 !px-3 whitespace-nowrap" onclick="sendAccountCancelSmsCode('pc')">发送验证码</button>
+              </div>
+              <div class="flex justify-end">
+                <button type="button" class="btn !py-2 !px-4 bg-rose-600 text-white hover:bg-rose-700" onclick="requestAccountCancellation('pc')">申请注销</button>
               </div>
             </div>
           </div>
@@ -10219,12 +10321,52 @@
           </button>
         </div>
       </div>
+
+      <!-- ========================================
+           PC端账单管理面板 (admin-billing-panel_modal)
+           功能：管理员查询用户账单记录
+           ======================================== -->
+      <div id="admin-billing-panel_modal" class="hidden overflow-y-auto overflow-x-hidden p-4 space-y-4">
+        <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
+          <div class="flex justify-between items-center">
+            <div>
+              <h3 class="text-lg font-bold text-green-700 mb-1">账单管理</h3>
+              <p class="text-sm text-green-600">查询所有用户或指定用户的账单记录</p>
+            </div>
+            <button onclick="loadAdminBillingList()" class="btn btn-ghost !py-1 !px-2">刷新</button>
+          </div>
+        </div>
+        <div class="flex gap-2 items-center">
+          <input type="text" id="admin-billing-username-input" class="input-field flex-1" placeholder="用户名（留空则查询全部）">
+          <button onclick="loadAdminBillingList()" class="btn btn-primary whitespace-nowrap">查询</button>
+        </div>
+        <div id="admin-billing-list-container" class="overflow-x-auto">
+          <p class="text-xs text-slate-400">点击查询加载账单记录</p>
+        </div>
+      </div>
+
+      <!-- ========================================
+           PC端恢复账号面板 (admin-restore-account-panel_modal)
+           功能：管理员恢复已删除的用户账号
+           ======================================== -->
+      <div id="admin-restore-account-panel_modal" class="hidden overflow-y-auto overflow-x-hidden p-4 space-y-4">
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-lg border border-amber-200">
+          <div class="flex justify-between items-center">
+            <div>
+              <h3 class="text-lg font-bold text-amber-700 mb-1">恢复账号</h3>
+              <p class="text-sm text-amber-600">从删除记录中恢复已删除的用户账号</p>
+            </div>
+            <button onclick="loadRemovedAccountsList()" class="btn btn-ghost !py-1 !px-2">刷新</button>
+          </div>
+        </div>
+        <div id="removed-accounts-list-container" class="overflow-x-auto">
+          <p class="text-xs text-slate-400">点击刷新加载已删除账号记录</p>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- ========================================
-       添加水印控制用户模态框 (add-watermark-user-modal)
-       ========================================
        功能：允许管理员从系统用户列表中选择用户添加到水印控制配置
        操作流程：
        1. 点击"添加用户"按钮打开此模态框
