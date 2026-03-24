@@ -7966,7 +7966,7 @@ class ApiClient:
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/errand/addErrandTrackByData",
+                f"{self.BASE_URL}:9097/app/run/errand/addErrandTrackByData",
                 payload_str,
                 is_post_str=True,
                 force_content_type="application/json;charset=UTF-8",
