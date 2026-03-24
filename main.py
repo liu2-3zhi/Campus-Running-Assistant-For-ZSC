@@ -42311,10 +42311,12 @@ def start_web_server(args_param):
                 if not config.has_section('stats'):
                     config.add_section('stats')
 
+                # 读取当前欠费次数（在修改前记录，用于后续账单同步）
+                old_overdue_count = config.getint('stats', 'overdue_count', fallback=0)
+
                 # 计算最终欠费次数：叠加模式则累加，否则直接覆盖
                 if add_mode:
-                    current_overdue = config.getint('stats', 'overdue_count', fallback=0)
-                    final_overdue_count = current_overdue + new_overdue_count
+                    final_overdue_count = old_overdue_count + new_overdue_count
                 else:
                     final_overdue_count = new_overdue_count
 
@@ -42355,6 +42357,86 @@ def start_web_server(args_param):
                         "add_mode": add_mode
                     }
                 )
+
+                # ========== 同步 User_Billing 账单记录 ==========
+                # 使账单列表（billing/list）与欠费变更保持一致
+                billing_root = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), "User_Billing"
+                )
+                try:
+                    if add_mode:
+                        # 叠加模式：管理员手动增加欠费 → 为每次新增欠费创建账单记录
+                        if auth_username and os.path.isdir(billing_root):
+                            try:
+                                _bc = configparser.ConfigParser(strict=False)
+                                _bc.read("config.ini", encoding="utf-8")
+                                _cost = round(float(_bc.get(
+                                    "Payment_Settings", "single_run_cost", fallback="1.0"
+                                )), 2)
+                            except Exception:
+                                _cost = 1.0
+                            for _ in range(new_overdue_count):
+                                _create_user_billing_record(
+                                    auth_username, school_username,
+                                    "管理员手动添加欠费", _cost
+                                )
+                    else:
+                        # 覆盖模式：欠费次数减少 → 将对应数量的 pending 账单标记为 admin_cleared
+                        cleared_count = max(0, old_overdue_count - final_overdue_count)
+                        if cleared_count > 0:
+                            # 确定要搜索的账单目录列表
+                            if auth_username:
+                                search_dirs = [os.path.join(billing_root, auth_username)]
+                            else:
+                                # auth_username 未知时遍历所有用户目录
+                                search_dirs = [
+                                    os.path.join(billing_root, d)
+                                    for d in os.listdir(billing_root)
+                                    if os.path.isdir(os.path.join(billing_root, d))
+                                ] if os.path.isdir(billing_root) else []
+
+                            updated = 0
+                            for user_dir in search_dirs:
+                                if updated >= cleared_count:
+                                    break
+                                if not os.path.isdir(user_dir):
+                                    continue
+                                # 收集该用户目录下匹配的 pending 账单，按时间升序处理
+                                candidates = []
+                                for fname in os.listdir(user_dir):
+                                    if not fname.endswith(".json"):
+                                        continue
+                                    fpath = os.path.join(user_dir, fname)
+                                    try:
+                                        with open(fpath, "r", encoding="utf-8") as _f:
+                                            rec = json.load(_f)
+                                        if (rec.get("school_username") == school_username
+                                                and rec.get("status") == "pending"):
+                                            candidates.append((rec.get("created_at", ""), fpath, rec))
+                                    except Exception:
+                                        pass
+                                candidates.sort(key=lambda x: x[0])
+                                for _, fpath, rec in candidates:
+                                    if updated >= cleared_count:
+                                        break
+                                    rec["status"] = "admin_cleared"
+                                    rec["admin_cleared_by"] = admin_username
+                                    rec["admin_cleared_at"] = datetime.datetime.utcnow().strftime(
+                                        "%Y-%m-%dT%H:%M:%SZ"
+                                    )
+                                    try:
+                                        with open(fpath, "w", encoding="utf-8") as _f:
+                                            json.dump(rec, _f, indent=2, ensure_ascii=False)
+                                        updated += 1
+                                    except Exception as _e:
+                                        logging.warning(f"[账单同步] 更新账单文件失败: {fpath}: {_e}")
+                            logging.info(
+                                f"[账单同步] 已将 {updated}/{cleared_count} 条账单状态更新为 admin_cleared"
+                                f"（学校账号: {school_username}）"
+                            )
+                except Exception as _sync_e:
+                    # 账单同步失败不影响主流程
+                    logging.error(f"[账单同步] 同步 User_Billing 失败: {_sync_e}", exc_info=True)
 
                 return jsonify({
                     "success": True,
