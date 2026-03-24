@@ -43242,10 +43242,10 @@ def start_web_server(args_param):
             
             # 恢复权限配置
             if permissions_data:
-                if "group" in permissions_data:
-                    auth_system.permissions.setdefault("user_groups", {})[auth_username] = permissions_data["group"]
-                if "custom_permissions" in permissions_data:
-                    auth_system.permissions.setdefault("user_custom_permissions", {})[auth_username] = permissions_data["custom_permissions"]
+                if "user_groups" in permissions_data:
+                    auth_system.permissions.setdefault("user_groups", {})[auth_username] = permissions_data["user_groups"]
+                if "user_custom_permissions" in permissions_data:
+                    auth_system.permissions.setdefault("user_custom_permissions", {})[auth_username] = permissions_data["user_custom_permissions"]
                 auth_system._save_permissions()
                 logging.info(f"[恢复账号] 已恢复权限配置")
             
