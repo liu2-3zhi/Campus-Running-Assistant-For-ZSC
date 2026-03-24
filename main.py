@@ -43237,8 +43237,29 @@ def start_web_server(args_param):
             if not user_data:
                 return jsonify({"success": False, "message": "备份数据损坏：缺少用户数据"}), 500
             
-            # ── 冲突检测 1：用户名是否已存在 ──────────────────────────────────
-            target_user_file = auth_system.get_user_file_path(restore_as)
+            # ── 读取 system_accounts/_index.json（用于冲突双重检测）──────────
+            sys_index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", "_index.json")
+            sys_index_data = {}
+            if os.path.exists(sys_index_path):
+                try:
+                    with open(sys_index_path, "r", encoding="utf-8") as f:
+                        sys_index_data = json.load(f)
+                except Exception:
+                    sys_index_data = {}
+            sys_accounts = sys_index_data.get("accounts", {})  # {username: hash}
+            
+            # ── 冲突检测 1：用户名是否已存在（文件 + 索引双重校验）────────────
+            # 1a. 用户名已在索引中出现 → 用户名冲突
+            if restore_as in sys_accounts:
+                return jsonify({
+                    "success": False,
+                    "conflict": "username",
+                    "conflicting_username": restore_as,
+                    "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
+                }), 409
+            # 1b. 文件系统中存在对应文件（兜底，防止索引与文件不同步）
+            target_hash = hashlib.sha256(str(restore_as).encode()).hexdigest()
+            target_user_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{target_hash}.json")
             if os.path.exists(target_user_file):
                 return jsonify({
                     "success": False,
@@ -43246,6 +43267,32 @@ def start_web_server(args_param):
                     "conflicting_username": restore_as,
                     "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
                 }), 409
+            
+            # ── UUID 冲突检测：目标 hash 是否已被另一用户名占用 ────────────────
+            # （理论上 sha256 不会碰撞，但若索引/文件不同步可能出现游离 hash）
+            assigned_hash = target_hash  # 默认使用 sha256(restore_as)
+            existing_owner = next(
+                (uname for uname, uhash in sys_accounts.items() if uhash == target_hash),
+                None
+            )
+            if existing_owner and existing_owner != restore_as:
+                # UUID 冲突：该 hash 已被另一个用户名占用，重新分配一个随机 UUID
+                new_uuid = str(uuid.uuid4())
+                while (
+                    os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{new_uuid}.json"))
+                    or new_uuid in sys_accounts.values()
+                ):
+                    new_uuid = str(uuid.uuid4())
+                assigned_hash = new_uuid
+                logging.warning(
+                    f"[恢复账号] UUID 冲突：hash {target_hash[:8]}... 已被用户 {existing_owner} 占用，"
+                    f"已为 {restore_as} 重新分配 UUID: {new_uuid[:8]}..."
+                )
+            
+            # 最终目标文件路径（使用 assigned_hash，可能是重新分配的 UUID）
+            target_user_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{assigned_hash}.json"
+            )
             
             # ── 冲突检测 2：手机号是否已被其他账号绑定 ────────────────────────
             original_phone = user_data.get("phone", "")
@@ -43278,6 +43325,27 @@ def start_web_server(args_param):
             # 更新手机号
             user_data["phone"] = effective_phone
             
+            # ── UUID 冲突处理：清理 session_ids ──────────────────────────────
+            # 备份中的 session_ids 均已过期（账号删除时会话文件同步清除）。
+            # 对仍残留的 session_id，检查是否与当前活跃会话冲突；
+            # 存在冲突或已过期的 session_id 一律移除，确保账号以无活跃会话状态恢复。
+            old_session_ids = user_data.get("session_ids", [])
+            cleaned_session_ids = []
+            reassigned_count = 0
+            for sid in old_session_ids:
+                session_file = get_session_file_path(sid)
+                if os.path.exists(session_file):
+                    # 该 UUID 与现有会话文件冲突，丢弃（重新分配 = 不保留）
+                    reassigned_count += 1
+                    logging.warning(f"[恢复账号] session UUID 冲突，已丢弃: {sid[:8]}...")
+                # 无论是否冲突，备份的 session_ids 均已失效，不再保留
+            user_data["session_ids"] = cleaned_session_ids  # 恢复为空列表
+            if old_session_ids:
+                logging.info(
+                    f"[恢复账号] 已清空 {len(old_session_ids)} 个过期 session UUID"
+                    + (f"（其中 {reassigned_count} 个存在冲突）" if reassigned_count else "")
+                )
+            
             # 恢复用户文件到 system_accounts
             with open(target_user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
@@ -43302,9 +43370,8 @@ def start_web_server(args_param):
                 auth_system._save_permissions()
                 logging.info(f"[恢复账号] 已恢复权限配置")
             
-            # 更新 system_accounts/_index.json
-            user_hash = hashlib.sha256(str(restore_as).encode()).hexdigest()
-            _update_system_accounts_index(restore_as, user_hash, "add")
+            # 更新 system_accounts/_index.json（使用 assigned_hash，可能已重新分配）
+            _update_system_accounts_index(restore_as, assigned_hash, "add")
             
             # 从 Remove_Acoount/_index.json 中移除该记录
             del ra_index["removed_accounts"][auth_username]
