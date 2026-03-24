@@ -44958,7 +44958,7 @@ async function initMobileAdminPanel(prefix) {
     {
       id: "billing",
       label: "账单",
-      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1"></path></svg>',
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><g transform="scale(1.4) translate(-2.5, -3)"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1"></path></g></svg>',
       permission: "admin",
     },
     {
@@ -57257,10 +57257,10 @@ async function loadRemovedAccountsList() {
     const accounts = data.removed_accounts || {};
     const keys = Object.keys(accounts);
     if (keys.length === 0) {
-      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无已删除账号记录</p>";
+      container.innerHTML = "<p class=\"text-slate-700\">暂无已删除账号记录</p>";
       return;
     }
-    let html = "<table class=\"w-full text-xs border-collapse\">";
+    let html = "<table class=\"w-full text-slate-700 border-collapse\">";
     html += "<thead><tr class=\"bg-slate-100\">";
     html += "<th class=\"p-2 text-left\">用户名</th><th class=\"p-2 text-left\">删除时间</th><th class=\"p-2 text-left\">操作</th>";
     html += "</tr></thead><tbody>";
@@ -57269,13 +57269,13 @@ async function loadRemovedAccountsList() {
       html += "<tr class=\"border-b border-slate-100\">";
       html += "<td class=\"p-2 font-mono\">" + username + "</td>";
       html += "<td class=\"p-2\">" + (entry.deleted_at || "-") + "</td>";
-      html += "<td class=\"p-2\"><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-xs text-amber-700\" onclick=\"restoreAccount(" + JSON.stringify(username) + ")\">恢复</button></td>";
+      html += "<td class=\"p-2\"><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-slate-700 text-amber-700\" onclick=\"restoreAccount(" + JSON.stringify(username) + ")\">恢复</button></td>";
       html += "</tr>";
     });
     html += "</tbody></table>";
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+    container.innerHTML = "<p class=\"text-slate-700 text-red-500\">加载异常: " + e.message + "</p>";
   }
 }
 
