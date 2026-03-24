@@ -18130,7 +18130,10 @@ if (typeof window !== "undefined") {
     if (refreshHealthBtnModal)
       refreshHealthBtnModal.addEventListener("click", loadHealthStatus);
     if (refreshProfileBtnModal)
-      refreshProfileBtnModal.addEventListener("click", loadPersonalInfo);
+      refreshProfileBtnModal.addEventListener("click", () => {
+        loadPersonalInfo();
+        loadUserBillingList();
+      });
     if (refreshSessionsBtnModal)
       refreshSessionsBtnModal.addEventListener("click", loadAdminSessions);
     logMessage_Info(
@@ -19022,6 +19025,131 @@ async function initializeInlineAdminPanel() {
 }
 
 let messageEditor = null;
+let mobileMultiMessageEditor = null;
+let accountCancellationCooldowns = { pc: 0, mobile: 0 };
+
+function formatCancellationTimeText(ts) {
+  if (!ts) return "未申请";
+  const ms = Number(ts) * 1000;
+  if (Number.isNaN(ms)) return "已申请";
+  return `等待至 ${new Date(ms).toLocaleString()}`;
+}
+
+function updateAccountCancellationStatusDisplay(status) {
+  const text = status && status.status === "pending"
+    ? formatCancellationTimeText(status.execute_at)
+    : "未申请";
+  const pcEl = document.getElementById("pc-account-cancel-status");
+  const mobileEl = document.getElementById("mobile-account-cancel-status");
+  if (pcEl) pcEl.textContent = text;
+  if (mobileEl) mobileEl.textContent = text;
+}
+
+function getAccountCancelElements(platform) {
+  if (platform === "mobile") {
+    return {
+      passwordInput: document.getElementById("mobile-account-cancel-current-password"),
+      smsInput: document.getElementById("mobile-account-cancel-sms-code"),
+      statusEl: document.getElementById("mobile-account-cancel-status"),
+      smsButtonSelector: 'button[onclick="sendAccountCancelSmsCode(\'mobile\')"]',
+    };
+  }
+  return {
+    passwordInput: document.getElementById("pc-account-cancel-current-password"),
+    smsInput: document.getElementById("pc-account-cancel-sms-code"),
+    statusEl: document.getElementById("pc-account-cancel-status"),
+    smsButtonSelector: 'button[onclick="sendAccountCancelSmsCode(\'pc\')"]',
+  };
+}
+
+async function sendAccountCancelSmsCode(platform = "pc") {
+  const { smsButtonSelector } = getAccountCancelElements(platform);
+  const sendBtn = document.querySelector(smsButtonSelector);
+  if (accountCancellationCooldowns[platform] > 0) {
+    showModalAlert(`请等待 ${accountCancellationCooldowns[platform]} 秒后再发送`, "提示");
+    return;
+  }
+  try {
+    const profile = await callPythonAPI_raw("/api/user/profile", "GET");
+    if (!profile.success || !profile.phone) {
+      showModalAlert("未绑定手机号，无法发送验证码", "错误");
+      return;
+    }
+    if (sendBtn) sendBtn.disabled = true;
+    openCaptchaModal({
+      phone: profile.phone,
+      button: sendBtn,
+      originalText: "发送验证码",
+      scene: "password_reset",
+    });
+    accountCancellationCooldowns[platform] = 60;
+    const timer = setInterval(() => {
+      accountCancellationCooldowns[platform] -= 1;
+      if (sendBtn) {
+        sendBtn.textContent =
+          accountCancellationCooldowns[platform] > 0
+            ? `${accountCancellationCooldowns[platform]}s`
+            : "发送验证码";
+      }
+      if (accountCancellationCooldowns[platform] <= 0) {
+        clearInterval(timer);
+        if (sendBtn) sendBtn.disabled = false;
+      }
+    }, 1000);
+  } catch (e) {
+    if (sendBtn) sendBtn.disabled = false;
+    showModalAlert("发送验证码失败: " + e.message, "错误");
+  }
+}
+
+async function requestAccountCancellation(platform = "pc") {
+  const { passwordInput, smsInput, statusEl } = getAccountCancelElements(platform);
+  const currentPassword = passwordInput ? passwordInput.value.trim() : "";
+  const smsCode = smsInput ? smsInput.value.trim() : "";
+  if (!currentPassword || !smsCode) {
+    showModalAlert("请填写当前密码和短信验证码", "提示");
+    return;
+  }
+  if (!/^\d{6}$/.test(smsCode)) {
+    showModalAlert("短信验证码格式错误", "提示");
+    return;
+  }
+
+  const confirmed = await jsShowConfirm(
+    "确认账号注销申请",
+    "提交后将进入默认24小时等待期，期间账号仍可登录。确定继续？",
+  );
+  if (!confirmed) return;
+
+  try {
+    const resp = await fetch("/auth/user/request_account_cancellation", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-ID": sessionUUID,
+      },
+      body: JSON.stringify({
+        current_password: currentPassword,
+        sms_code: smsCode,
+        wait_hours: 24,
+      }),
+    });
+    const result = await resp.json();
+    if (!result.success) {
+      showModalAlert(result.message || "申请失败", "错误");
+      return;
+    }
+    updateAccountCancellationStatusDisplay(result.status);
+    if (statusEl && result.status && result.status.execute_at) {
+      statusEl.textContent = formatCancellationTimeText(result.status.execute_at);
+    }
+    if (passwordInput) passwordInput.value = "";
+    if (smsInput) smsInput.value = "";
+    showModalAlert(result.message || "已提交注销申请", "成功");
+  } catch (e) {
+    showModalAlert("申请失败: " + e.message, "错误");
+  }
+}
 function switchAdminTab(tab) {
   const userGroup = currentUserData?.group || "user";
   const usersTab = $("admin-tab-users_modal");
@@ -19077,6 +19205,11 @@ function switchAdminTab(tab) {
   const pricingPanel = $("admin-pricing-panel_modal");
   // 获取水印控制面板元素
   const watermarkControlPanel = $("admin-watermark-control-panel_modal");
+  // 获取账单管理和恢复账号标签/面板元素
+  const adminBillingTab = $("admin-tab-billing_modal");
+  const restoreAccountTab = $("admin-tab-restore-account_modal");
+  const adminBillingPanel = $("admin-billing-panel_modal");
+  const restoreAccountPanel = $("admin-restore-account-panel_modal");
 
   if (!sessionsTab || !sessionsPanel) {
     logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
@@ -19103,6 +19236,8 @@ function switchAdminTab(tab) {
     paymentSettingsTab, // 添加支付设置 Tab
     pricingTab, // 添加价格设置 Tab
     watermarkControlTab, // 添加水印控制 Tab
+    adminBillingTab, // 添加账单管理 Tab
+    restoreAccountTab, // 添加恢复账号 Tab
   ]
     .filter((t) => t)
     .forEach((t) => {
@@ -19131,6 +19266,8 @@ function switchAdminTab(tab) {
     paymentSettingsPanel, // 添加支付设置 Panel
     pricingPanel, // 添加价格设置 Panel
     watermarkControlPanel, // 添加水印控制 Panel
+    adminBillingPanel, // 添加账单管理 Panel
+    restoreAccountPanel, // 添加恢复账号 Panel
   ]
     .filter((p) => p)
     .forEach((p) => {
@@ -19170,6 +19307,7 @@ function switchAdminTab(tab) {
     profilePanel.classList.remove("hidden");
     loadPersonalInfo();
     stopHealthAutoRefresh();
+    loadUserBillingList();
   } else if (tab === "sessions") {
     sessionsTab.classList.add("text-sky-600", "border-sky-600");
     sessionsTab.classList.remove("text-slate-400", "border-transparent");
@@ -20221,6 +20359,24 @@ function switchAdminTab(tab) {
             : "未知",
       });
     }
+  } else if (tab === "admin-billing") {
+    // 账单管理面板
+    if (adminBillingTab && adminBillingPanel) {
+      adminBillingTab.classList.add("text-sky-600", "border-sky-600");
+      adminBillingTab.classList.remove("text-slate-400", "border-transparent");
+      adminBillingPanel.classList.remove("hidden");
+    }
+    stopHealthAutoRefresh();
+    loadAdminBillingList();
+  } else if (tab === "restore-account") {
+    // 恢复账号面板
+    if (restoreAccountTab && restoreAccountPanel) {
+      restoreAccountTab.classList.add("text-sky-600", "border-sky-600");
+      restoreAccountTab.classList.remove("text-slate-400", "border-transparent");
+      restoreAccountPanel.classList.remove("hidden");
+    }
+    stopHealthAutoRefresh();
+    loadRemovedAccountsList();
   } else {
     if (profileTab && profilePanel) {
       profileTab.classList.add("text-sky-600", "border-sky-600");
@@ -20633,6 +20789,7 @@ async function loadPersonalInfo() {
       return;
     }
     const user = result.user;
+    updateAccountCancellationStatusDisplay(user.account_cancellation);
     if (user.auth_username) {
       currentAuthUsername = user.auth_username;
     }
@@ -44798,6 +44955,18 @@ async function initMobileAdminPanel(prefix) {
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>',
       permission: "admin", // 权限要求：管理员级别
     },
+    {
+      id: "billing",
+      label: "账单",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1"></path></svg>',
+      permission: "admin",
+    },
+    {
+      id: "restore-account",
+      label: "账号恢复",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9"></path></svg>',
+      permission: "admin",
+    },
   ];
   // ========================================
   // 【标签权限过滤逻辑】
@@ -45427,6 +45596,7 @@ async function loadMobileMultiMessages() {
 }
 
 async function submitMobileMultiMessage() {
+  await ensureMobileMultiMessageEditorInitialized();
   // 1. 获取DOM元素
   const contentInput = document.getElementById("mobile-multi-message-content");
   const nicknameInput = document.getElementById(
@@ -45439,7 +45609,12 @@ async function submitMobileMultiMessage() {
   if (!contentInput) return;
 
   // 2. 获取输入值
-  const content = contentInput.value.trim();
+  const editorContent =
+    mobileMultiMessageEditor &&
+    typeof mobileMultiMessageEditor.getMarkdown === "function"
+      ? mobileMultiMessageEditor.getMarkdown()
+      : "";
+  const content = (editorContent || contentInput.value || "").trim();
   const nickname = nicknameInput ? nicknameInput.value.trim() : "";
   const email = emailInput ? emailInput.value.trim() : "";
 
@@ -45499,6 +45674,9 @@ async function submitMobileMultiMessage() {
       showModalAlert("留言发送成功", "成功");
       // 清空输入
       contentInput.value = "";
+      if (mobileMultiMessageEditor && typeof mobileMultiMessageEditor.clear === "function") {
+        mobileMultiMessageEditor.clear();
+      }
       if (nicknameInput) nicknameInput.value = "";
       if (emailInput) emailInput.value = "";
       if (charCount) charCount.textContent = "0";
@@ -45517,6 +45695,64 @@ async function submitMobileMultiMessage() {
       postBtn.disabled = false;
       postBtn.textContent = "发表";
     }
+  }
+}
+
+async function ensureMobileMultiMessageEditorInitialized() {
+  try {
+    if (
+      mobileMultiMessageEditor &&
+      typeof mobileMultiMessageEditor.getMarkdown === "function"
+    ) {
+      return true;
+    }
+    if (typeof editormd === "undefined") return false;
+    const editorEl = document.getElementById("mobile-multi-message-editor");
+    if (!editorEl) return false;
+    mobileMultiMessageEditor = editormd("mobile-multi-message-editor", {
+      mode: "gfm",
+      name: "mobile-multi-message-content",
+      value: "",
+      theme: "default",
+      editorTheme: "default",
+      previewTheme: "default",
+      markdown: "",
+      width: "100%",
+      height: "220px",
+      path: "/editor.md/lib/",
+      pluginPath: "/editor.md/plugins/",
+      watch: true,
+      placeholder: "请输入留言（支持 Markdown）",
+      lineNumbers: false,
+      lineWrapping: true,
+      autoCloseBrackets: true,
+      searchReplace: true,
+      emoji: true,
+      taskList: true,
+      tex: true,
+      flowChart: false,
+      sequenceDiagram: true,
+      toolbarIcons: function () {
+        return ["undo", "redo", "|", "bold", "italic", "quote", "|", "list-ul", "list-ol", "|", "link", "image", "code-block", "|", "watch", "preview"];
+      },
+      onchange: function () {
+        try {
+          const md = mobileMultiMessageEditor.getMarkdown() || "";
+          const ta = document.getElementById("mobile-multi-message-content");
+          const count = document.getElementById("mobile-multi-message-char-count");
+          if (ta) ta.value = md;
+          if (count) count.textContent = String(md.length);
+        } catch (_) {}
+      },
+    });
+    const ta = document.getElementById("mobile-multi-message-content");
+    if (ta) ta.classList.add("hidden");
+    return true;
+  } catch (e) {
+    console.warn("[移动端留言板] 初始化 Editor.md 失败，回退为 textarea", e);
+    const ta = document.getElementById("mobile-multi-message-content");
+    if (ta) ta.classList.remove("hidden");
+    return false;
   }
 }
 
@@ -46086,6 +46322,8 @@ function switchMobileAdminTab(tabId, prefix) {
       CDN: "cdn", // CDN缓存管理标签
       密码恢复: "bruteforce", // 密码恢复标签
       水印控制: "watermark", // 水印控制标签映射
+      账单: "billing", // 账单管理标签映射
+      账号恢复: "restore-account", // 账号恢复标签映射
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -46237,6 +46475,8 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
       "mobile-multi-admin-overdue-panel", // 欠费查询面板
       "mobile-multi-admin-watermark-panel", // 水印控制面板
+      "mobile-multi-admin-billing-panel", // 账单面板
+      "mobile-multi-admin-restore-account-panel", // 账号恢复面板
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -46290,6 +46530,12 @@ function switchMobileAdminTab(tabId, prefix) {
         // 【修改】使用移动端专用个人信息加载函数
         loadMobileUnifiedProfile();
         break;
+      case "billing":
+        loadMobileMultiAdminBillingList();
+        break;
+      case "restore-account":
+        loadMobileMultiRemovedAccountsList();
+        break;
       case "sessions":
         // 【修正】检查上帝模式权限并控制开关显示
         checkAdminPermission("god_mode").then((hasPermission) => {
@@ -46306,6 +46552,7 @@ function switchMobileAdminTab(tabId, prefix) {
       case "messages":
         // 【修改】使用移动端专用留言板加载函数
         loadMobileMultiMessages();
+        ensureMobileMultiMessageEditorInitialized();
         break;
       case "ipban":
         // 加载IP封禁规则列表（使用移动端专用函数）
@@ -46645,6 +46892,14 @@ function copyAdminContentToMultiPanel(tabType) {
       pc: "admin-profile-content_modal", // PC端个人信息内容
       mobile: "mobile-multi-admin-profile-content", // 多账号移动端个人信息
     },
+    billing: {
+      pc: "admin-billing-list-container",
+      mobile: "mobile-multi-admin-billing-list",
+    },
+    "restore-account": {
+      pc: "removed-accounts-list-container",
+      mobile: "mobile-multi-removed-accounts-list",
+    },
     sessions: {
       pc: "admin-sessions-list_modal", // PC端会话列表
       mobile: "mobile-multi-admin-sessions-list", // 多账号移动端会话列表
@@ -46847,6 +47102,19 @@ function copyAdminContentToMultiPanel(tabType) {
       if (onclickAttr.includes("openModifyPhoneModal")) {
         btn.setAttribute("onclick", "showMobileModifyPhoneModal()");
         return;
+      }
+    });
+  }
+
+  if (tabType === "billing" || tabType === "restore-account") {
+    mobileContainer.querySelectorAll("button").forEach((btn) => {
+      const onclickAttr = btn.getAttribute("onclick");
+      if (!onclickAttr) return;
+      if (tabType === "restore-account" && onclickAttr.includes("restoreAccount(")) {
+        btn.setAttribute(
+          "onclick",
+          onclickAttr.replace("restoreAccount(", "restoreAccountAndRefreshMobile("),
+        );
       }
     });
   }
@@ -47243,9 +47511,10 @@ async function loadMobileUnifiedProfile() {
     });
     const result = await response.json();
 
-    if (result.success) {
-      // 修正：后端返回的键名为 'user' 而不是 'data'
-      const data = result.user;
+      if (result.success) {
+        // 修正：后端返回的键名为 'user' 而不是 'data'
+        const data = result.user;
+        updateAccountCancellationStatusDisplay(data.account_cancellation);
 
       // 更新头像
       const avatarDisplay = document.getElementById(
@@ -56815,3 +57084,185 @@ document.addEventListener("DOMContentLoaded", function () {
     initOrderNumberAutoFill();
   }, 100); // 延迟100毫秒执行
 });
+
+// ========================================================
+// 账单相关函数
+// ========================================================
+
+/**
+ * 加载当前用户的账单列表（"我的账单"面板刷新按钮调用）
+ */
+async function loadUserBillingList() {
+  const container = document.getElementById("user-billing-list-container");
+  if (!container) return;
+  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  try {
+    const resp = await fetch("/api/billing/list", {
+      headers: { "X-Session-ID": sessionUUID }
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      return;
+    }
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无账单记录</p>";
+      return;
+    }
+    let html = "<table class=\"w-full text-xs border-collapse\">";
+    html += "<thead><tr class=\"bg-slate-100\">";
+    html += "<th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
+    html += "</tr></thead><tbody>";
+    records.forEach(r => {
+      const statusBadge = r.status === "paid"
+        ? "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs\">已支付</span>"
+        : "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs\">待支付</span>";
+      html += "<tr class=\"border-b border-slate-100\">";
+      html += "<td class=\"p-2\">" + (r.reason || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.amount != null ? "¥" + r.amount : "-") + "</td>";
+      html += "<td class=\"p-2\">" + statusBadge + "</td>";
+      html += "<td class=\"p-2\">" + (r.created_at || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.paid_at || "-") + "</td>";
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+  }
+}
+
+async function loadMobileUserBillingList() {
+  await loadUserBillingList();
+  const src = document.getElementById("user-billing-list-container");
+  const dst = document.getElementById("mobile-user-billing-list-container");
+  if (src && dst) dst.innerHTML = src.innerHTML;
+}
+
+/**
+ * 管理员加载账单列表
+ */
+async function loadAdminBillingList(usernameOverride = null) {
+  const container = document.getElementById("admin-billing-list-container");
+  const usernameInput = document.getElementById("admin-billing-username-input");
+  if (!container) return;
+  const username = usernameOverride != null
+    ? String(usernameOverride).trim()
+    : (usernameInput ? usernameInput.value.trim() : "");
+  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  try {
+    const url = username ? "/api/admin/billing/list?username=" + encodeURIComponent(username) : "/api/admin/billing/list";
+    const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      return;
+    }
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无账单记录</p>";
+      return;
+    }
+    let html = "<table class=\"w-full text-xs border-collapse\">";
+    html += "<thead><tr class=\"bg-slate-100\">";
+    html += "<th class=\"p-2 text-left\">用户名</th><th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
+    html += "</tr></thead><tbody>";
+    records.forEach(r => {
+      const statusBadge = r.status === "paid"
+        ? "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs\">已支付</span>"
+        : "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs\">待支付</span>";
+      html += "<tr class=\"border-b border-slate-100\">";
+      html += "<td class=\"p-2\">" + (r.auth_username || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.reason || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.amount != null ? "¥" + r.amount : "-") + "</td>";
+      html += "<td class=\"p-2\">" + statusBadge + "</td>";
+      html += "<td class=\"p-2\">" + (r.created_at || "-") + "</td>";
+      html += "<td class=\"p-2\">" + (r.paid_at || "-") + "</td>";
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+  }
+}
+
+/**
+ * 管理员加载已删除账号列表
+ */
+async function loadRemovedAccountsList() {
+  const container = document.getElementById("removed-accounts-list-container");
+  if (!container) return;
+  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  try {
+    const resp = await fetch("/api/admin/removed_accounts", { headers: { "X-Session-ID": sessionUUID } });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      return;
+    }
+    const accounts = data.removed_accounts || {};
+    const keys = Object.keys(accounts);
+    if (keys.length === 0) {
+      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无已删除账号记录</p>";
+      return;
+    }
+    let html = "<table class=\"w-full text-xs border-collapse\">";
+    html += "<thead><tr class=\"bg-slate-100\">";
+    html += "<th class=\"p-2 text-left\">用户名</th><th class=\"p-2 text-left\">删除时间</th><th class=\"p-2 text-left\">操作</th>";
+    html += "</tr></thead><tbody>";
+    keys.forEach(username => {
+      const entry = accounts[username];
+      html += "<tr class=\"border-b border-slate-100\">";
+      html += "<td class=\"p-2 font-mono\">" + username + "</td>";
+      html += "<td class=\"p-2\">" + (entry.deleted_at || "-") + "</td>";
+      html += "<td class=\"p-2\"><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-xs text-amber-700\" onclick=\"restoreAccount(" + JSON.stringify(username) + ")\">恢复</button></td>";
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+  }
+}
+
+async function loadMobileMultiAdminBillingList() {
+  const usernameInput = document.getElementById("mobile-multi-admin-billing-username-input");
+  const username = usernameInput ? usernameInput.value.trim() : "";
+  await loadAdminBillingList(username);
+  copyAdminContentToMultiPanel("billing");
+}
+
+async function loadMobileMultiRemovedAccountsList() {
+  await loadRemovedAccountsList();
+  copyAdminContentToMultiPanel("restore-account");
+}
+
+/**
+ * 管理员恢复指定账号
+ */
+async function restoreAccount(auth_username) {
+  if (!confirm("确定要恢复账号 " + auth_username + " 吗？")) return;
+  try {
+    const resp = await fetch("/api/admin/restore_account", {
+      method: "POST",
+      headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
+      body: JSON.stringify({ auth_username })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      alert("账号 " + auth_username + " 已成功恢复");
+      loadRemovedAccountsList();
+    } else {
+      alert("恢复失败: " + (data.message || "未知错误"));
+    }
+  } catch (e) {
+    alert("恢复异常: " + e.message);
+  }
+}
+
+async function restoreAccountAndRefreshMobile(auth_username) {
+  await restoreAccount(auth_username);
+  await loadMobileMultiRemovedAccountsList();
+}
