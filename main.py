@@ -7585,6 +7585,8 @@ class ApiClient:
     BASE_URL = "https://zslf.zsc.edu.cn"
     API_VERSION = 66    # 该变量已被弃用，不再使用
     NEW_APP_VERSION = "1.0.79"  # 新版本APP的版本号
+    REQUIRED_UA_SUFFIX = "uni-app Html5Plus/1.0 (Immersed/29.09091)"
+    TRACK_SUBMIT_CHUNK_SIZE = 5
 
     def __init__(self, owner_instance):
         self.session = requests.Session()
@@ -7593,12 +7595,15 @@ class ApiClient:
 
     def _get_headers(self) -> dict:
         """构建请求头，包含认证信息和设备信息"""
+        normalized_ua = self._normalize_user_agent(self.app.device_ua)
+        if normalized_ua:
+            self.app.device_ua = normalized_ua
         headers = {
             "Connection": "keep-alive",
             "Accept": "application/json, text/plain, */*",
             "X-Requested-With": "com.zx.slm",
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-            "User-Agent": self.app.device_ua,
+            "User-Agent": normalized_ua,
             "platform":"android",
         }
         try:
@@ -7609,17 +7614,22 @@ class ApiClient:
         
         try:
             logging.debug(f"尝试获取shiroCookie。")
-            auth_token = self.session.cookies.get_dict().get("shiroCookie")
+            cookie_dict = self.session.cookies.get_dict()
+            auth_token = (
+                cookie_dict.get("shiroCookie")
+                or cookie_dict.get("AuthorizationCookie")
+                or cookie_dict.get("Authorization")
+            )
         except requests.cookies.CookieConflictError:
             logging.warning(
                 "CookieConflictError 即使在使用 get_dict() 时也发生，尝试手动查找..."
             )
             auth_token = None
             for cookie in self.session.cookies:
-                if cookie.name == "shiroCookie":
+                if cookie.name in ("shiroCookie", "AuthorizationCookie", "Authorization"):
                     auth_token = cookie.value
                     logging.warning(
-                        f"手动查找到 'shiroCookie': {auth_token[:10]}...")
+                        f"手动查找到认证Cookie '{cookie.name}': {auth_token[:10]}...")
                     break
 
         if auth_token:
@@ -7683,6 +7693,21 @@ class ApiClient:
         if self.NEW_APP_VERSION:
             headers["appVersion"] = self.NEW_APP_VERSION
         return headers
+
+    @classmethod
+    def _normalize_user_agent(cls, ua_value: str | None) -> str:
+        """确保UA为移动端UA并在末尾附加学校服务器要求后缀。"""
+        ua = (ua_value or "").strip()
+        if not ua:
+            ua = (
+                "Mozilla/5.0 (Linux; Android 13; Mobile; rv:120.0) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 "
+                "Chrome/120.0.0.0 Mobile Safari/537.36"
+            )
+        suffix = cls.REQUIRED_UA_SUFFIX
+        if not ua.endswith(suffix):
+            ua = f"{ua} {suffix}"
+        return ua
 
     def _request(
         self,
@@ -7941,9 +7966,10 @@ class ApiClient:
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/errand/addErrandTrack",
+                f"{self.BASE_URL}:9097/app/run/errand/addErrandTrackByData",
                 payload_str,
                 is_post_str=True,
+                force_content_type="application/json;charset=UTF-8",
             )
         )
 
@@ -7999,32 +8025,56 @@ class ApiClient:
 
     @staticmethod
     def generate_random_ua():
-        """生成一个随机的、模拟安卓设备的User-Agent字符串"""
-        build_texts = [
-            "TD1A.221105.001.A1",
-            "TP1A.221005.003",
-            "SQ3A.220705.004",
-            "SP2A.220505.008",
-            "SQ1D.220205.004",
-            "RP1A.201005.004",
-        ]
-        phone_models = [
-            "Xiaomi 12",
-            "Xiaomi 13 Pro",
-            "Redmi K60",
-            "vivo X90",
-            "iQOO 11",
-            "OPPO Find X6 Pro",
-            "Realme GT Neo5",
-            "HONOR Magic5 Pro",
-            "OnePlus 11",
-        ]
-        android_version_map = {"T": 13, "S": 12, "R": 11, "Q": 10, "P": 9}
-        random_build = random.choice(build_texts)
-        build_letter = random_build.split(".")[0][0]
-        android_version = android_version_map.get(build_letter, 13)
-        chrome_version = f"Chrome/{random.randint(100, 120)}.0.{random.randint(4000, 6000)}.{random.randint(100, 200)}"
-        return f"Mozilla/5.0 (Linux; Android {android_version}; {random.choice(phone_models)} Build/{random_build}; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 {chrome_version} Mobile Safari/537.36"
+        """生成随机移动端UA，并强制追加学校服务器要求后缀。"""
+        ua_candidate = ""
+        try:
+            from fake_useragent import UserAgent
+
+            ua_provider = UserAgent()
+            mobile_pool = []
+            for attr in ("android", "chrome", "safari", "edge"):
+                try:
+                    ua_text = getattr(ua_provider, attr)
+                    if isinstance(ua_text, str) and "Mobile" in ua_text:
+                        mobile_pool.append(ua_text)
+                except Exception:
+                    continue
+            if mobile_pool:
+                ua_candidate = random.choice(mobile_pool)
+        except Exception as e:
+            logging.warning(f"fake_useragent 不可用，回退内置移动端UA池: {e}")
+
+        if not ua_candidate:
+            build_texts = [
+                "TD1A.221105.001.A1",
+                "TP1A.221005.003",
+                "SQ3A.220705.004",
+                "SP2A.220505.008",
+                "SQ1D.220205.004",
+                "RP1A.201005.004",
+            ]
+            phone_models = [
+                "Xiaomi 12",
+                "Xiaomi 13 Pro",
+                "Redmi K60",
+                "vivo X90",
+                "iQOO 11",
+                "OPPO Find X6 Pro",
+                "Realme GT Neo5",
+                "HONOR Magic5 Pro",
+                "OnePlus 11",
+            ]
+            android_version_map = {"T": 13, "S": 12, "R": 11, "Q": 10, "P": 9}
+            random_build = random.choice(build_texts)
+            build_letter = random_build.split(".")[0][0]
+            android_version = android_version_map.get(build_letter, 13)
+            chrome_version = f"Chrome/{random.randint(100, 120)}.0.{random.randint(4000, 6000)}.{random.randint(100, 200)}"
+            ua_candidate = (
+                f"Mozilla/5.0 (Linux; Android {android_version}; {random.choice(phone_models)} Build/{random_build}; wv) "
+                f"AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 {chrome_version} Mobile Safari/537.36"
+            )
+
+        return ApiClient._normalize_user_agent(ua_candidate)
 
     def get_roll_call_info(self, roll_call_id, user_id):
         """获取指定签到活动的信息"""
@@ -11297,7 +11347,7 @@ class Api:
         self,
         run_data: RunData,
         chunk,
-        start_time,
+        run_task_start_time_ms,
         is_finish,
         chunk_start_index,
         client: ApiClient,
@@ -11322,57 +11372,70 @@ class Api:
             f"Submitting chunk: start_index={chunk_start_index}, size={len(chunk)}, is_finish={is_finish}"
         )
 
+        if not chunk:
+            return True
+
         last_point_gps = (
             chunk[0]
             if chunk_start_index == 0
             else run_data.run_coords[chunk_start_index - 1]
         )
-        time_elapsed_before_chunk_ms = sum(
+        elapsed_ms_before_chunk = sum(
             p[2] for p in run_data.run_coords[:chunk_start_index]
         )
         coords_list, chunk_total_dist, chunk_total_dur = [], 0.0, 0
+        chunk_first_locatetime = None
+        chunk_last_locatetime = None
 
         for lon, lat, dur_ms in chunk:
             distance = self._calculate_distance_m(
                 last_point_gps[0], last_point_gps[1], lon, lat
             )
-            time_elapsed_before_chunk_ms += dur_ms
+            elapsed_ms_before_chunk += dur_ms
+            point_locatetime = int(run_task_start_time_ms) + int(elapsed_ms_before_chunk)
+            if chunk_first_locatetime is None:
+                chunk_first_locatetime = point_locatetime
+            chunk_last_locatetime = point_locatetime
             coords_list.append(
                 {
                     "location": f"{lon},{lat}",
-                    "locatetime": str(int(time.time() * 1000)),
+                    "locatetime": point_locatetime,
                     "dis": f"{distance:.1f}",
-                    "count": str(int(time_elapsed_before_chunk_ms / 1000)),
+                    "count": str(int(elapsed_ms_before_chunk / 1000)),
                 }
             )
             last_point_gps = (lon, lat, dur_ms)
             chunk_total_dist += distance
             chunk_total_dur += dur_ms
 
+        if chunk_first_locatetime is None:
+            chunk_first_locatetime = int(run_task_start_time_ms)
+        if chunk_last_locatetime is None:
+            chunk_last_locatetime = int(run_task_start_time_ms)
+
+        avatar_url = getattr(user, "avatar_url", "") or "https://zslf.zsc.edu.cn/userfiles/"
+        if not str(avatar_url).startswith("http"):
+            avatar_url = "https://zslf.zsc.edu.cn/userfiles/"
+
         payload = {
             "scheduleId": run_data.errand_schedule,
             "userId": user.id,
             "userName": user.name or "",
             "runLength": str(int(chunk_total_dist)),
-            "runTime": str(chunk_total_dur),
+            "runTime": int(max(0, chunk_last_locatetime - chunk_first_locatetime)),
             "startPoint": "",
             "endPoint": "",
-            "startTime": start_time,
+            "imgUrl": avatar_url,
+            "startTime": int(run_task_start_time_ms),
+            "endTime": int(chunk_last_locatetime),
             "trid": run_data.trid,
             "sid": "",
             "tid": "",
-            "speed": (
-                f"{(run_data.total_run_distance_m / run_data.total_run_time_s):.2f}"
-                if run_data.total_run_time_s > 0
-                else ""
-            ),
+            "speed": "0",
             "finishType": "1" if is_finish else "0",
             "coordinate": json.dumps(coords_list, separators=(",", ":")),
-            "appVersion": ApiClient.API_VERSION,
+            "appVersion": ApiClient.NEW_APP_VERSION,
         }
-
-        if is_finish:
-            payload["endTime"] = str(int(time.time() * 1000))
 
         payload_str = urllib.parse.urlencode(payload)
 
@@ -11392,6 +11455,27 @@ class Api:
             logging.debug(f"[{user.name}] 数据提交成功: {msg}")
 
         return success
+
+    @staticmethod
+    def _classify_attendance_state(status, attend_finish):
+        """
+        统一分类签到状态：
+        - status == 1: 已完成
+        - status == -1 且 attendFinish == 1: 已过期
+        - status == -1 且 attendFinish != 1: 待签到
+        - 其他且 attendFinish == 1: 已完成
+        - 其他: 待签到
+        """
+        status_str = str(status).strip() if status is not None else ""
+        finish_flag = str(attend_finish).strip() if attend_finish is not None else ""
+
+        if status_str == "1":
+            return "completed"
+        if status_str == "-1":
+            return "expired" if finish_flag == "1" else "pending"
+        if finish_flag == "1":
+            return "completed"
+        return "pending"
 
     # ===================== 提交队列：串行化所有数据包提交 =====================
     @staticmethod
@@ -11624,19 +11708,20 @@ class Api:
 
             run_data.trid = f"{user_data.student_id}{int(time.time() * 1000)}"
             start_time_ms = str(int(time.time() * 1000))
+            run_task_start_time_ms = start_time_ms
             run_data.distance_covered_m = 0.0
             last_point_gps = run_data.run_coords[0]
             submission_successful = True
 
             point_index = 0
 
-            for i in range(0, len(run_data.run_coords), 40):
+            for i in range(0, len(run_data.run_coords), ApiClient.TRACK_SUBMIT_CHUNK_SIZE):
                 if stop_flag.is_set():
                     log_func("任务已中止。")
                     logging.info("检测到停止标志，正在中止任务运行")
                     break
 
-                chunk = run_data.run_coords[i: i + 40]
+                chunk = run_data.run_coords[i: i + ApiClient.TRACK_SUBMIT_CHUNK_SIZE]
 
                 for lon, lat, dur_ms in chunk:
                     if stop_flag.wait(timeout=dur_ms / 1000.0):
@@ -11691,7 +11776,7 @@ class Api:
                 if stop_flag.is_set():
                     break
 
-                is_final_chunk = i + 40 >= len(run_data.run_coords)
+                is_final_chunk = i + ApiClient.TRACK_SUBMIT_CHUNK_SIZE >= len(run_data.run_coords)
 
                 max_attempts = 3
                 attempt = 1
@@ -11700,7 +11785,7 @@ class Api:
                     if self._submit_chunk(
                         run_data,
                         chunk,
-                        start_time_ms,
+                        run_task_start_time_ms,
                         is_final_chunk,
                         i,
                         client,
@@ -14744,9 +14829,10 @@ class Api:
                             status = roll_call_info.get("status")
                             finished = data.get("attendFinish")
 
-                        if status == -1 or status == "-1":
+                        attendance_state = self._classify_attendance_state(status, finished)
+                        if attendance_state == "expired":
                             att_expired += 1
-                        elif (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
+                        elif attendance_state == "completed":
                             att_completed += 1
                         else:
                             att_pending += 1
@@ -15379,6 +15465,7 @@ class Api:
 
                 run_data.trid = f"{acc.user_data.student_id}{int(time.time() * 1000)}"
                 start_time_ms = str(int(time.time() * 1000))
+                run_task_start_time_ms = start_time_ms
                 submission_successful = True
                 total_points = max(1, len(run_data.run_coords))
 
@@ -15386,7 +15473,7 @@ class Api:
                     acc.log("警告: 生成的轨迹点数过少，无法执行任务。")
                     continue
 
-                for chunk_idx in range(0, len(run_data.run_coords), 40):
+                for chunk_idx in range(0, len(run_data.run_coords), ApiClient.TRACK_SUBMIT_CHUNK_SIZE):
                     logging.debug(
                         f"[{acc.username}] 执行进度: {chunk_idx}/{len(run_data.run_coords)}"
                     )
@@ -15394,7 +15481,7 @@ class Api:
                         submission_successful = False
                         break
 
-                    chunk = run_data.run_coords[chunk_idx: chunk_idx + 40]
+                    chunk = run_data.run_coords[chunk_idx: chunk_idx + ApiClient.TRACK_SUBMIT_CHUNK_SIZE]
                     processed_points = chunk_idx
                     for lon, lat, dur_ms in chunk:
                         if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
@@ -15442,11 +15529,11 @@ class Api:
                     if not submission_successful:
                         break
 
-                    is_final_chunk = chunk_idx + 40 >= len(run_data.run_coords)
+                    is_final_chunk = chunk_idx + ApiClient.TRACK_SUBMIT_CHUNK_SIZE >= len(run_data.run_coords)
                     if not self._submit_chunk(
                         run_data,
                         chunk,
-                        start_time_ms,
+                        run_task_start_time_ms,
                         is_final_chunk,
                         chunk_idx,
                         acc.api_client,
@@ -15710,19 +15797,17 @@ class Api:
 
                 status = roll_call_info.get("status")
                 finished = data.get("attendFinish")
-            if status == -1 or status == "-1":
-                if not is_makeup:
-                    log_func("此签到任务已过期（status=-1）。")
-                    return {"success": False, "message": "任务已过期"}
-                else:
-                    log_func(f"任务 {roll_call_id} 已过期，正在尝试[补签]...")
-
-                if (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
-                    log_func("你已经签到过了 (status!=-1 and attendFinish=1)。")
+                attendance_state = self._classify_attendance_state(status, finished)
+                if attendance_state == "completed":
+                    log_func("你已经签到过了。")
                     return {"success": True, "message": "已签到"}
-
-                log_func("任务状态：待签到。")
-
+                if attendance_state == "expired":
+                    if not is_makeup:
+                        log_func("此签到任务已过期。")
+                        return {"success": False, "message": "任务已过期"}
+                    log_func(f"任务 {roll_call_id} 已过期，正在尝试[补签]...")
+                else:
+                    log_func("任务状态：待签到。")
             else:
                 log_func("获取签到信息失败，将继续尝试签到...")
         except Exception as e:
@@ -15932,9 +16017,10 @@ class Api:
                             notice["attendance_finished"] = finished
                             notice["attendance_status_code"] = status
 
-                            if status == -1 or status == "-1":
+                            attendance_state = self._classify_attendance_state(status, finished)
+                            if attendance_state == "expired":
                                 notice["attendance_code"] = -1
-                            elif (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
+                            elif attendance_state == "completed":
                                 notice["attendance_code"] = 1
                             else:
                                 notice["attendance_code"] = 0
@@ -16513,7 +16599,8 @@ class Api:
 
                 logging.debug(f"(后台) 签到任务状态: {status}, 完成状态: {finished}")
                     
-                if (status != -1) and not ((finished == 1)):
+                attendance_state = self._classify_attendance_state(status, finished)
+                if attendance_state == "pending":
                     log_func(
                         f"检测到待签到任务 '{notice.get('title')}'，正在自动签到..."
                     )
