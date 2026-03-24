@@ -3343,16 +3343,39 @@
           </div>
 
           <div id="mobile-multi-admin-billing-panel" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-sm">账单管理</h4>
-              <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadMobileMultiAdminBillingList()">刷新</button>
+            <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 p-3 flex items-center justify-between shadow-sm">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h4 class="font-bold text-sm text-green-700">账单管理</h4>
+                  <p class="text-xs text-green-600">查询账单记录</p>
+                </div>
+              </div>
+              <button class="btn btn-ghost !py-1 !px-2 text-xs flex items-center gap-1" onclick="loadMobileMultiAdminBillingList()">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                刷新
+              </button>
             </div>
-            <div class="flex gap-2 items-center">
-              <input type="text" id="mobile-multi-admin-billing-username-input" class="input-field !text-xs !py-1.5 flex-1" placeholder="用户名（留空查询全部）">
+            <div class="flex gap-2 items-center bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+              <svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input type="text" id="mobile-multi-admin-billing-username-input" class="input-field !text-xs !py-0 flex-1 !border-0 !shadow-none !rounded-none focus:!ring-0" placeholder="用户名（留空查询全部）">
               <button class="btn btn-primary !py-1 !px-2 text-xs whitespace-nowrap" onclick="loadMobileMultiAdminBillingList()">查询</button>
             </div>
-            <div id="mobile-multi-admin-billing-list" class="overflow-x-auto">
-              <p class="text-xs text-slate-400">点击查询加载账单记录</p>
+            <div id="mobile-multi-admin-billing-list">
+              <div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
+                <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <p class="text-xs">点击查询加载账单记录</p>
+              </div>
             </div>
           </div>
 
@@ -10327,21 +10350,41 @@
            功能：管理员查询用户账单记录
            ======================================== -->
       <div id="admin-billing-panel_modal" class="hidden overflow-y-auto overflow-x-hidden p-4 space-y-4">
-        <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
+        <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200 shadow-sm">
           <div class="flex justify-between items-center">
-            <div>
-              <h3 class="text-lg font-bold text-green-700 mb-1">账单管理</h3>
-              <p class="text-sm text-green-600">查询所有用户或指定用户的账单记录</p>
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-lg font-bold text-green-700">账单管理</h3>
+                <p class="text-xs text-green-600">查询所有用户或指定用户的账单记录</p>
+              </div>
             </div>
-            <button onclick="loadAdminBillingList()" class="btn btn-ghost !py-1 !px-2">刷新</button>
+            <button onclick="loadAdminBillingList()" class="btn btn-ghost !py-1.5 !px-3 text-sm flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              刷新
+            </button>
           </div>
         </div>
-        <div class="flex gap-2 items-center">
-          <input type="text" id="admin-billing-username-input" class="input-field flex-1" placeholder="用户名（留空则查询全部）">
-          <button onclick="loadAdminBillingList()" class="btn btn-primary whitespace-nowrap">查询</button>
+        <div class="flex gap-2 items-center bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+          <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input type="text" id="admin-billing-username-input" class="input-field flex-1 !border-0 !shadow-none !p-0 !rounded-none focus:!ring-0" placeholder="输入用户名筛选（留空查询全部）">
+          <button onclick="loadAdminBillingList()" class="btn btn-primary whitespace-nowrap !py-1.5 !px-4 text-sm">查询</button>
         </div>
-        <div id="admin-billing-list-container" class="overflow-x-auto">
-          <p class="text-xs text-slate-400">点击查询加载账单记录</p>
+        <div id="admin-billing-list-container">
+          <div class="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+            <svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <p class="text-sm">点击查询加载账单记录</p>
+          </div>
         </div>
       </div>
 
