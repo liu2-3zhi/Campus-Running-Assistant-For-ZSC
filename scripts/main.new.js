@@ -19307,6 +19307,7 @@ function switchAdminTab(tab) {
     profilePanel.classList.remove("hidden");
     loadPersonalInfo();
     stopHealthAutoRefresh();
+    loadUserBillingList();
   } else if (tab === "sessions") {
     sessionsTab.classList.add("text-sky-600", "border-sky-600");
     sessionsTab.classList.remove("text-slate-400", "border-transparent");
@@ -20366,6 +20367,7 @@ function switchAdminTab(tab) {
       adminBillingPanel.classList.remove("hidden");
     }
     stopHealthAutoRefresh();
+    loadAdminBillingList();
   } else if (tab === "restore-account") {
     // 恢复账号面板
     if (restoreAccountTab && restoreAccountPanel) {
@@ -20374,6 +20376,7 @@ function switchAdminTab(tab) {
       restoreAccountPanel.classList.remove("hidden");
     }
     stopHealthAutoRefresh();
+    loadRemovedAccountsList();
   } else {
     if (profileTab && profilePanel) {
       profileTab.classList.add("text-sky-600", "border-sky-600");

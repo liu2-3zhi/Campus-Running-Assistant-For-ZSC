@@ -7599,6 +7599,7 @@ class ApiClient:
             "X-Requested-With": "com.zx.slm",
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
             "User-Agent": self.app.device_ua,
+            "platform":"android",
         }
         try:
             logging.debug(f"当前Session的Cookies: {self.session.cookies.get_dict()}")
@@ -7778,7 +7779,7 @@ class ApiClient:
                     f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} ({resp.reason}), 来源URL: {url}, 响应头: {dict(resp.headers)}, 响应内容长度: {len(resp.content)} 字节"
                 )
                 logging.debug(
-                    f"[网络请求] 响应内容: {resp.text}\n"
+                    f"[网络请求] 响应内容: \n{resp.text}\n"
                 )
                 resp.raise_for_status()
                 return resp
