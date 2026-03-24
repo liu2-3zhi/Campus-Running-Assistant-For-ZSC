@@ -11654,13 +11654,13 @@ class Api:
 
             point_index = 0
 
-            for i in range(0, len(run_data.run_coords), 40):
+            for i in range(0, len(run_data.run_coords), 5):
                 if stop_flag.is_set():
                     log_func("任务已中止。")
                     logging.info("检测到停止标志，正在中止任务运行")
                     break
 
-                chunk = run_data.run_coords[i: i + 40]
+                chunk = run_data.run_coords[i: i + 5]
 
                 for lon, lat, dur_ms in chunk:
                     if stop_flag.wait(timeout=dur_ms / 1000.0):
@@ -11715,7 +11715,7 @@ class Api:
                 if stop_flag.is_set():
                     break
 
-                is_final_chunk = i + 40 >= len(run_data.run_coords)
+                is_final_chunk = i + 5 >= len(run_data.run_coords)
 
                 max_attempts = 3
                 attempt = 1
@@ -15412,7 +15412,7 @@ class Api:
                     acc.log("警告: 生成的轨迹点数过少，无法执行任务。")
                     continue
 
-                for chunk_idx in range(0, len(run_data.run_coords), 40):
+                for chunk_idx in range(0, len(run_data.run_coords), 5):
                     logging.debug(
                         f"[{acc.username}] 执行进度: {chunk_idx}/{len(run_data.run_coords)}"
                     )
@@ -15420,7 +15420,7 @@ class Api:
                         submission_successful = False
                         break
 
-                    chunk = run_data.run_coords[chunk_idx: chunk_idx + 40]
+                    chunk = run_data.run_coords[chunk_idx: chunk_idx + 5]
                     processed_points = chunk_idx
                     for lon, lat, dur_ms in chunk:
                         if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
@@ -15468,7 +15468,7 @@ class Api:
                     if not submission_successful:
                         break
 
-                    is_final_chunk = chunk_idx + 40 >= len(run_data.run_coords)
+                    is_final_chunk = chunk_idx + 5 >= len(run_data.run_coords)
                     if not self._submit_chunk(
                         run_data,
                         chunk,
