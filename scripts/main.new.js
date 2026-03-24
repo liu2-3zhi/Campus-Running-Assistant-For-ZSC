@@ -57150,41 +57150,93 @@ async function loadAdminBillingList(usernameOverride = null) {
   const username = usernameOverride != null
     ? String(usernameOverride).trim()
     : (usernameInput ? usernameInput.value.trim() : "");
-  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  container.innerHTML = `
+    <div class="flex items-center justify-center py-10 gap-3 text-slate-400">
+      <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <span class="text-sm">加载中...</span>
+    </div>`;
   try {
     const url = username ? "/api/admin/billing/list?username=" + encodeURIComponent(username) : "/api/admin/billing/list";
     const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
     const data = await resp.json();
     if (!data.success) {
-      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      container.innerHTML = `<div class="flex items-center gap-2 text-red-500 bg-red-50 border border-red-200 rounded-lg p-3 text-sm"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>加载失败：${data.message || "未知错误"}</span></div>`;
       return;
     }
     const records = data.records || [];
     if (records.length === 0) {
-      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无账单记录</p>";
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-12 text-slate-400 gap-2"><svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><p class="text-sm">暂无账单记录</p></div>`;
       return;
     }
-    let html = "<table class=\"w-full text-xs border-collapse\">";
-    html += "<thead><tr class=\"bg-slate-100\">";
-    html += "<th class=\"p-2 text-left\">用户名</th><th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
-    html += "</tr></thead><tbody>";
-    records.forEach(r => {
-      const statusBadge = r.status === "paid"
-        ? "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs\">已支付</span>"
-        : "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs\">待支付</span>";
-      html += "<tr class=\"border-b border-slate-100\">";
-      html += "<td class=\"p-2\">" + (r.auth_username || "-") + "</td>";
-      html += "<td class=\"p-2\">" + (r.reason || "-") + "</td>";
-      html += "<td class=\"p-2\">" + (r.amount != null ? "¥" + r.amount : "-") + "</td>";
-      html += "<td class=\"p-2\">" + statusBadge + "</td>";
-      html += "<td class=\"p-2\">" + (r.created_at || "-") + "</td>";
-      html += "<td class=\"p-2\">" + (r.paid_at || "-") + "</td>";
-      html += "</tr>";
+    // 统计
+    const totalCount = records.length;
+    const paidCount = records.filter(r => r.status === "paid").length;
+    const pendingCount = records.filter(r => r.status === "pending").length;
+    const clearedCount = records.filter(r => r.status === "admin_cleared").length;
+    const totalAmount = records.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0).toFixed(2);
+    let html = `
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-slate-700">${totalCount}</p>
+          <p class="text-xs text-slate-500 mt-0.5">总记录数</p>
+        </div>
+        <div class="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-green-600">${paidCount}</p>
+          <p class="text-xs text-green-600 mt-0.5">已支付</p>
+        </div>
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-amber-600">${pendingCount}</p>
+          <p class="text-xs text-amber-600 mt-0.5">待支付</p>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-blue-600">¥${totalAmount}</p>
+          <p class="text-xs text-blue-600 mt-0.5">总金额</p>
+        </div>
+      </div>
+      <div class="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600">
+                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">用户名</th>
+                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">学校账号</th>
+                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">原因</th>
+                <th class="px-3 py-2.5 text-right font-semibold whitespace-nowrap">金额</th>
+                <th class="px-3 py-2.5 text-center font-semibold whitespace-nowrap">状态</th>
+                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">创建时间</th>
+                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">支付时间</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">`;
+    records.forEach((r, idx) => {
+      let statusBadge;
+      if (r.status === "paid") {
+        statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-green-500 font-medium">✓ 已支付</span>`;
+      } else if (r.status === "admin_cleared") {
+        statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 font-medium">✓ 已清除</span>`;
+      } else {
+        statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 font-medium">⏳ 待支付</span>`;
+      }
+      const rowBg = idx % 2 === 0 ? "" : "bg-slate-50/60";
+      html += `<tr class="${rowBg} hover:bg-sky-50/40 transition-colors">
+        <td class="px-3 py-2.5 font-mono text-slate-700">${r.auth_username || "-"}</td>
+        <td class="px-3 py-2.5 text-slate-600">${r.school_username || "-"}</td>
+        <td class="px-3 py-2.5 text-slate-600">${r.reason || "-"}</td>
+        <td class="px-3 py-2.5 text-right font-semibold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + r.amount : "-"}</td>
+        <td class="px-3 py-2.5 text-center">${statusBadge}</td>
+        <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
+        <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
+      </tr>`;
     });
-    html += "</tbody></table>";
+    html += `</tbody></table></div></div>`;
+    if (clearedCount > 0) {
+      html += `<p class="text-xs text-slate-400 mt-2 text-right">其中 ${clearedCount} 条已由管理员清除</p>`;
+    }
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+    container.innerHTML = `<div class="flex items-center gap-2 text-red-500 bg-red-50 border border-red-200 rounded-lg p-3 text-sm"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>加载异常：${e.message}</span></div>`;
   }
 }
 
@@ -57243,7 +57295,31 @@ async function loadMobileMultiRemovedAccountsList() {
  * 管理员恢复指定账号
  */
 async function restoreAccount(auth_username) {
-  if (!confirm("确定要恢复账号 " + auth_username + " 吗？")) return;
+  const confirmResult = await Swal.fire({
+    title: "恢复账号确认",
+    html: `
+      <div style="text-align:left;padding:8px 0;">
+        <p style="font-size:14px;color:#475569;margin-bottom:12px;">确定要恢复以下账号吗？</p>
+        <div style="background:linear-gradient(145deg,#f0fdf4,#dcfce7);border-left:4px solid #16a34a;padding:10px 14px;border-radius:8px;">
+          <p style="font-size:15px;font-weight:600;color:#15803d;margin:0;font-family:monospace;">${auth_username}</p>
+        </div>
+        <p style="font-size:12px;color:#64748b;margin-top:10px;">恢复后该账号将重新可以登录，历史数据将一并还原。</p>
+      </div>`,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "<strong>✅ 确认恢复</strong>",
+    confirmButtonColor: "#16a34a",
+    cancelButtonText: "<strong>✖️ 取消</strong>",
+    cancelButtonColor: "#64748b",
+    customClass: {
+      popup: "swal2-neumorphism-popup",
+      title: "swal2-neumorphism-title",
+      confirmButton: "swal2-neumorphism-confirm",
+      cancelButton: "swal2-neumorphism-cancel",
+    },
+    reverseButtons: true,
+  });
+  if (!confirmResult.isConfirmed) return false;
   try {
     const resp = await fetch("/api/admin/restore_account", {
       method: "POST",
@@ -57252,17 +57328,43 @@ async function restoreAccount(auth_username) {
     });
     const data = await resp.json();
     if (data.success) {
-      alert("账号 " + auth_username + " 已成功恢复");
+      await Swal.fire({
+        title: "恢复成功",
+        html: `账号 <strong style="font-family:monospace;">${auth_username}</strong> 已成功恢复`,
+        icon: "success",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#16a34a",
+        timer: 3000,
+        timerProgressBar: true,
+        customClass: { popup: "swal2-neumorphism-popup" },
+      });
       loadRemovedAccountsList();
+      return true;
     } else {
-      alert("恢复失败: " + (data.message || "未知错误"));
+      await Swal.fire({
+        title: "恢复失败",
+        text: data.message || "未知错误",
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+        customClass: { popup: "swal2-neumorphism-popup" },
+      });
+      return false;
     }
   } catch (e) {
-    alert("恢复异常: " + e.message);
+    await Swal.fire({
+      title: "请求异常",
+      text: e.message,
+      icon: "error",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#dc2626",
+      customClass: { popup: "swal2-neumorphism-popup" },
+    });
+    return false;
   }
 }
 
 async function restoreAccountAndRefreshMobile(auth_username) {
-  await restoreAccount(auth_username);
-  await loadMobileMultiRemovedAccountsList();
+  const ok = await restoreAccount(auth_username);
+  if (ok) await loadMobileMultiRemovedAccountsList();
 }
