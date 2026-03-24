@@ -43174,7 +43174,16 @@ def start_web_server(args_param):
     def admin_restore_account():
         """
         管理员接口：从 Remove_Acoount 恢复已删除的用户账号。
-        请求体: {"auth_username": "<用户名>"}
+        请求体:
+          {
+            "auth_username": "<备份中的原用户名>",
+            "restore_as": "<恢复后使用的用户名，可选，默认同 auth_username>",
+            "phone_override": "<新手机号，可选；空字符串表示强制清空手机号>",
+            "force_phone_clear": true  // 可选，为 true 时强制清空手机号
+          }
+        冲突响应（409）：
+          {"success": false, "conflict": "username"|"phone",
+           "conflicting_user": "...", "phone": "...", "message": "..."}
         """
         try:
             data = request.get_json()
@@ -43184,6 +43193,14 @@ def start_web_server(args_param):
             auth_username = data.get("auth_username", "").strip()
             if not auth_username:
                 return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
+            
+            # restore_as: 恢复后使用的用户名（默认与备份用户名相同）
+            restore_as = data.get("restore_as", "").strip() or auth_username
+            # phone_override: 覆盖手机号（None=不覆盖；""=清空；其他=新手机号）
+            phone_override = data.get("phone_override", None)
+            if phone_override is not None:
+                phone_override = str(phone_override).strip()
+            force_phone_clear = bool(data.get("force_phone_clear", False))
             
             # 确定 Remove_Acoount 目录路径
             remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
@@ -43220,19 +43237,55 @@ def start_web_server(args_param):
             if not user_data:
                 return jsonify({"success": False, "message": "备份数据损坏：缺少用户数据"}), 500
             
-            # 检查目标用户名是否已存在
-            user_file = auth_system.get_user_file_path(auth_username)
-            if os.path.exists(user_file):
-                return jsonify({"success": False, "message": f"用户 {auth_username} 已存在，无法恢复"}), 409
+            # ── 冲突检测 1：用户名是否已存在 ──────────────────────────────────
+            target_user_file = auth_system.get_user_file_path(restore_as)
+            if os.path.exists(target_user_file):
+                return jsonify({
+                    "success": False,
+                    "conflict": "username",
+                    "conflicting_username": restore_as,
+                    "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
+                }), 409
+            
+            # ── 冲突检测 2：手机号是否已被其他账号绑定 ────────────────────────
+            original_phone = user_data.get("phone", "")
+            effective_phone = original_phone  # 默认使用备份中的手机号
+            
+            if phone_override is not None:
+                # 调用方已明确提供手机号覆盖（含空字符串）
+                effective_phone = phone_override
+            elif force_phone_clear:
+                effective_phone = ""
+            
+            # 仅在有手机号时才检测冲突
+            if effective_phone:
+                phone_bound_to = auth_system.find_user_by_phone(effective_phone)
+                if phone_bound_to and phone_bound_to != restore_as:
+                    return jsonify({
+                        "success": False,
+                        "conflict": "phone",
+                        "conflicting_user": phone_bound_to,
+                        "phone": effective_phone,
+                        "message": f"手机号 {effective_phone} 已被用户 {phone_bound_to} 绑定"
+                    }), 409
+            
+            # ── 应用修改并写入 ────────────────────────────────────────────────
+            # 如果用户名有变更，更新 user_data 中的相关字段
+            user_data["auth_username"] = restore_as
+            if user_data.get("nickname") == auth_username:
+                user_data["nickname"] = restore_as
+            
+            # 更新手机号
+            user_data["phone"] = effective_phone
             
             # 恢复用户文件到 system_accounts
-            with open(user_file, "w", encoding="utf-8") as f:
+            with open(target_user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
-            logging.info(f"[恢复账号] 已恢复用户文件: {user_file}")
+            logging.info(f"[恢复账号] 已恢复用户文件（恢复为 {restore_as}）: {target_user_file}")
             
             # 恢复 school_accounts（如果有）
             if school_accounts_data:
-                school_file = auth_system._get_user_accounts_file(auth_username)
+                school_file = auth_system._get_user_accounts_file(restore_as)
                 try:
                     with open(school_file, "w", encoding="utf-8") as f:
                         json.dump(school_accounts_data, f, indent=2, ensure_ascii=False)
@@ -43243,15 +43296,15 @@ def start_web_server(args_param):
             # 恢复权限配置
             if permissions_data:
                 if "user_groups" in permissions_data:
-                    auth_system.permissions.setdefault("user_groups", {})[auth_username] = permissions_data["user_groups"]
+                    auth_system.permissions.setdefault("user_groups", {})[restore_as] = permissions_data["user_groups"]
                 if "user_custom_permissions" in permissions_data:
-                    auth_system.permissions.setdefault("user_custom_permissions", {})[auth_username] = permissions_data["user_custom_permissions"]
+                    auth_system.permissions.setdefault("user_custom_permissions", {})[restore_as] = permissions_data["user_custom_permissions"]
                 auth_system._save_permissions()
                 logging.info(f"[恢复账号] 已恢复权限配置")
             
             # 更新 system_accounts/_index.json
-            user_hash = hashlib.sha256(str(auth_username).encode()).hexdigest()
-            _update_system_accounts_index(auth_username, user_hash, "add")
+            user_hash = hashlib.sha256(str(restore_as).encode()).hexdigest()
+            _update_system_accounts_index(restore_as, user_hash, "add")
             
             # 从 Remove_Acoount/_index.json 中移除该记录
             del ra_index["removed_accounts"][auth_username]
@@ -43265,8 +43318,10 @@ def start_web_server(args_param):
             except Exception as e:
                 logging.warning(f"[恢复账号] 删除备份文件失败: {e}")
             
-            logging.info(f"[恢复账号] 用户 {auth_username} 已成功恢复")
-            return jsonify({"success": True, "message": f"用户 {auth_username} 已成功恢复"})
+            restored_note = f"（原用户名: {auth_username}）" if restore_as != auth_username else ""
+            phone_note = f"，手机号已{'清空' if not effective_phone else '修改'}" if effective_phone != original_phone else ""
+            logging.info(f"[恢复账号] 用户 {restore_as}{restored_note} 已成功恢复{phone_note}")
+            return jsonify({"success": True, "message": f"用户 {restore_as} 已成功恢复{phone_note}", "restored_as": restore_as})
         
         except Exception as e:
             logging.error(f"[恢复账号] 恢复账号失败: {e}", exc_info=True)
