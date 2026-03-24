@@ -7598,7 +7598,7 @@ class ApiClient:
             "Accept": "application/json, text/plain, */*",
             "X-Requested-With": "com.zx.slm",
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-            "User-Agent": self.app.device_ua,
+            "User-Agent": self.app.device_ua + " uni-app Html5Plus/1.0 (Immersed/29.09091)",
             "platform":"android",
         }
         try:
@@ -7941,9 +7941,10 @@ class ApiClient:
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/errand/addErrandTrack",
+                f"{self.BASE_URL}:9097/run/errand/addErrandTrackByData",
                 payload_str,
                 is_post_str=True,
+                force_content_type="application/json;charset=UTF-8",
             )
         )
 
@@ -7999,7 +8000,23 @@ class ApiClient:
 
     @staticmethod
     def generate_random_ua():
-        """生成一个随机的、模拟安卓设备的User-Agent字符串"""
+        """生成一个随机的、仅限移动端设备的User-Agent字符串。
+        
+        优先使用 fake_useragent 库（如已安装）生成真实度更高的随机UA；
+        若库不可用则回退到内置的安卓设备UA模板列表。
+        """
+        # ── 方案一：使用 fake_useragent 库（移动端限定）──────────────────────
+        try:
+            from fake_useragent import UserAgent
+            ua_gen = UserAgent(platforms=["mobile"])
+            ua = ua_gen.random
+            # 如果生成的 UA 不含 Mobile/Android 关键词，则触发回退
+            if "Mobile" in ua or "Android" in ua:
+                return ua
+        except Exception:
+            pass
+
+        # ── 方案二：内置安卓移动端 UA 模板（兜底）──────────────────────────
         build_texts = [
             "TD1A.221105.001.A1",
             "TP1A.221005.003",
@@ -8007,6 +8024,8 @@ class ApiClient:
             "SP2A.220505.008",
             "SQ1D.220205.004",
             "RP1A.201005.004",
+            "TQ3A.230805.001",
+            "UP1A.231005.007",
         ]
         phone_models = [
             "Xiaomi 12",
@@ -8018,13 +8037,23 @@ class ApiClient:
             "Realme GT Neo5",
             "HONOR Magic5 Pro",
             "OnePlus 11",
+            "Samsung Galaxy S23",
+            "Pixel 7",
         ]
-        android_version_map = {"T": 13, "S": 12, "R": 11, "Q": 10, "P": 9}
+        android_version_map = {"U": 14, "T": 13, "S": 12, "R": 11, "Q": 10, "P": 9}
         random_build = random.choice(build_texts)
         build_letter = random_build.split(".")[0][0]
         android_version = android_version_map.get(build_letter, 13)
-        chrome_version = f"Chrome/{random.randint(100, 120)}.0.{random.randint(4000, 6000)}.{random.randint(100, 200)}"
-        return f"Mozilla/5.0 (Linux; Android {android_version}; {random.choice(phone_models)} Build/{random_build}; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 {chrome_version} Mobile Safari/537.36"
+        chrome_major = random.randint(110, 124)
+        chrome_minor = random.randint(4000, 6500)
+        chrome_patch = random.randint(100, 250)
+        chrome_version = f"Chrome/{chrome_major}.0.{chrome_minor}.{chrome_patch}"
+        return (
+            f"Mozilla/5.0 (Linux; Android {android_version}; "
+            f"{random.choice(phone_models)} Build/{random_build}; wv) "
+            f"AppleWebKit/537.36 (KHTML, like Gecko) "
+            f"Version/4.0 {chrome_version} Mobile Safari/537.36"
+        )
 
     def get_roll_call_info(self, roll_call_id, user_id):
         """获取指定签到活动的信息"""
@@ -11340,41 +11369,36 @@ class Api:
             coords_list.append(
                 {
                     "location": f"{lon},{lat}",
-                    "locatetime": str(int(time.time() * 1000)),
-                    "dis": f"{distance:.1f}",
-                    "count": str(int(time_elapsed_before_chunk_ms / 1000)),
+                    "locatetime": int(time.time() * 1000),
+                    "dis": round(distance, 1),
+                    "count": int(time_elapsed_before_chunk_ms / 1000),
                 }
             )
             last_point_gps = (lon, lat, dur_ms)
             chunk_total_dist += distance
             chunk_total_dur += dur_ms
 
+        current_ts_ms = int(time.time() * 1000)
         payload = {
             "scheduleId": run_data.errand_schedule,
             "userId": user.id,
             "userName": user.name or "",
             "runLength": str(int(chunk_total_dist)),
-            "runTime": str(chunk_total_dur),
+            "runTime": chunk_total_dur,
             "startPoint": "",
             "endPoint": "",
-            "startTime": start_time,
+            "imgUrl": getattr(user, "avatar_url", "") or "",
+            "startTime": int(start_time) if start_time else current_ts_ms,
+            "endTime": current_ts_ms,
             "trid": run_data.trid,
             "sid": "",
             "tid": "",
-            "speed": (
-                f"{(run_data.total_run_distance_m / run_data.total_run_time_s):.2f}"
-                if run_data.total_run_time_s > 0
-                else ""
-            ),
+            "speed": "0",
             "finishType": "1" if is_finish else "0",
             "coordinate": json.dumps(coords_list, separators=(",", ":")),
-            "appVersion": ApiClient.API_VERSION,
         }
 
-        if is_finish:
-            payload["endTime"] = str(int(time.time() * 1000))
-
-        payload_str = urllib.parse.urlencode(payload)
+        payload_str = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
         logging.debug(
             f"[{user.name}] 正在入队提交数据包, 大小: {len(payload_str)} 字节"
@@ -14744,9 +14768,11 @@ class Api:
                             status = roll_call_info.get("status")
                             finished = data.get("attendFinish")
 
-                        if status == -1 or status == "-1":
+                        _s = int(status) if isinstance(status, str) and status.lstrip('-').isdigit() else status
+                        _f = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
+                        if _s == -1 and (_f == 1 or _f is True):
                             att_expired += 1
-                        elif (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
+                        elif (_s != -1) and (_f == 1 or _f is True):
                             att_completed += 1
                         else:
                             att_pending += 1
@@ -15710,19 +15736,22 @@ class Api:
 
                 status = roll_call_info.get("status")
                 finished = data.get("attendFinish")
-            if status == -1 or status == "-1":
+            _s = int(status) if isinstance(status, str) and status.lstrip('-').isdigit() else status
+            _f = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
+            if _s == -1 and (_f == 1 or _f is True):
+                # 已过期：status=-1 且 attendFinish=1
                 if not is_makeup:
-                    log_func("此签到任务已过期（status=-1）。")
+                    log_func("此签到任务已过期（status=-1, attendFinish=1）。")
                     return {"success": False, "message": "任务已过期"}
                 else:
                     log_func(f"任务 {roll_call_id} 已过期，正在尝试[补签]...")
-
-                if (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
-                    log_func("你已经签到过了 (status!=-1 and attendFinish=1)。")
-                    return {"success": True, "message": "已签到"}
-
+            elif (_s != -1) and (_f == 1 or _f is True):
+                # 已完成签到
+                log_func("你已经签到过了 (status!=−1 and attendFinish=1)。")
+                return {"success": True, "message": "已签到"}
+            elif _s == -1:
+                # 待签到：status=-1 且 attendFinish 未设置/为0
                 log_func("任务状态：待签到。")
-
             else:
                 log_func("获取签到信息失败，将继续尝试签到...")
         except Exception as e:
@@ -15932,11 +15961,16 @@ class Api:
                             notice["attendance_finished"] = finished
                             notice["attendance_status_code"] = status
 
-                            if status == -1 or status == "-1":
+                            _s = int(status) if isinstance(status, str) and status.lstrip('-').isdigit() else status
+                            _f = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
+                            if _s == -1 and (_f == 1 or _f is True):
+                                # 已过期：status=-1 且 attendFinish=1
                                 notice["attendance_code"] = -1
-                            elif (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
+                            elif (_s != -1) and (_f == 1 or _f is True):
+                                # 已完成签到
                                 notice["attendance_code"] = 1
                             else:
+                                # 待签到（status=-1 且 attendFinish 未设置）或其他待处理状态
                                 notice["attendance_code"] = 0
 
                     except Exception as e:
@@ -16500,56 +16534,66 @@ class Api:
                 info_resp = client.get_roll_call_info(roll_call_id, user.id)
                 logging.debug(f"(后台) 获取签到信息响应: {info_resp}")
                 status = -1
-                finished = 0
+                finished = None
                 if info_resp and info_resp.get("success"):
                     data = info_resp.get("data", {})
                     roll_call_info = data.get("rollCallInfo", {})
-                    status = roll_call_info.get("status")  # 签到状态 -1为已过期
+                    status = roll_call_info.get("status")  # 签到状态
                     finished = data.get("attendFinish")    # 签到是否完成 1为完成
-                    
-                    # 判断 status 和 finished 是否为字符串 "1" 或数字 1，如果是数字则转换为数字
-                    status = int(status) if isinstance(status, str) and status.isdigit() else status
+
+                    # 统一转换为 int 方便比较
+                    status = int(status) if isinstance(status, str) and status.lstrip('-').isdigit() else status
                     finished = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
 
                 logging.debug(f"(后台) 签到任务状态: {status}, 完成状态: {finished}")
-                    
-                if (status != -1) and not ((finished == 1)):
-                    log_func(
-                        f"检测到待签到任务 '{notice.get('title')}'，正在自动签到..."
-                    )
-                    coords_str = notice.get("updateBy", "").split(",")   # 获取签到坐标字符串并拆分为经纬度
-                    if len(coords_str) == 2:
-                        try:
-                            target_lat, target_lon = float(coords_str[0]), float(
-                                coords_str[1]
-                            )
-                            target_coords = (target_lon, target_lat)
-                            logging.debug(f"(后台) 解析签到坐标: {target_coords}")
-                            logging.debug(f"(后台) 执行自动签到，参数 - roll_call_id: {roll_call_id}, target_coords: {target_coords}")
-                            auto_result = self.trigger_attendance(
-                                roll_call_id,
-                                target_coords,
-                                "random",
-                                specific_coords=None,
-                                is_makeup=False,
-                                acc=(
-                                    context
-                                    if isinstance(context, AccountSession)
-                                    else None
-                                ),
-                            )
 
-                            if auto_result.get("success"):
-                                log_func(f"自动签到 '{notice.get('title')}' 成功。")
-                                triggered_count += 1
-                            else:
-                                log_func(
-                                    f"自动签到 '{notice.get('title')}' 失败: {auto_result.get('message', '')}"
-                                )
-                        except Exception as e:
-                            log_func(f"签到坐标解析或执行失败: {e}")
-                    else:
-                        log_func("签到通知坐标格式错误，跳过。")
+                # 待签到：status==-1 且 attendFinish 未设置/为0（无 attendFinish 字段）
+                # 已过期：status==-1 且 attendFinish==1
+                # 已完成：status!=-1 且 attendFinish==1
+                if status == -1 and (finished == 1 or finished is True):
+                    logging.debug(f"(后台) 签到任务已过期，跳过: {notice.get('title')}")
+                    continue
+                if (status != -1) and (finished == 1 or finished is True):
+                    logging.debug(f"(后台) 签到任务已完成，跳过: {notice.get('title')}")
+                    continue
+
+                # 待签到任务（status==-1 且 attendFinish 未设置，或 status!=-1 且 attendFinish!=1）
+                log_func(
+                    f"检测到待签到任务 '{notice.get('title')}'，正在自动签到..."
+                )
+                coords_str = notice.get("updateBy", "").split(",")   # 获取签到坐标字符串并拆分为经纬度
+                if len(coords_str) == 2:
+                    try:
+                        target_lat, target_lon = float(coords_str[0]), float(
+                            coords_str[1]
+                        )
+                        target_coords = (target_lon, target_lat)
+                        logging.debug(f"(后台) 解析签到坐标: {target_coords}")
+                        logging.debug(f"(后台) 执行自动签到，参数 - roll_call_id: {roll_call_id}, target_coords: {target_coords}")
+                        auto_result = self.trigger_attendance(
+                            roll_call_id,
+                            target_coords,
+                            "random",
+                            specific_coords=None,
+                            is_makeup=False,
+                            acc=(
+                                context
+                                if isinstance(context, AccountSession)
+                                else None
+                            ),
+                        )
+
+                        if auto_result.get("success"):
+                            log_func(f"自动签到 '{notice.get('title')}' 成功。")
+                            triggered_count += 1
+                        else:
+                            log_func(
+                                f"自动签到 '{notice.get('title')}' 失败: {auto_result.get('message', '')}"
+                            )
+                    except Exception as e:
+                        log_func(f"签到坐标解析或执行失败: {e}")
+                else:
+                    log_func("签到通知坐标格式错误，跳过。")
 
             if triggered_count == 0:
                 log_func("(后台) 未发现待处理的签到任务。")
