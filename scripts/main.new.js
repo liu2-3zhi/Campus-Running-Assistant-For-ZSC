@@ -57292,9 +57292,10 @@ async function loadMobileMultiRemovedAccountsList() {
 }
 
 /**
- * 管理员恢复指定账号
+ * 管理员恢复指定账号（含冲突处理：用户名冲突 / 手机号冲突）
  */
 async function restoreAccount(auth_username) {
+  // ── 步骤1：二次确认 ──────────────────────────────────────────────────────
   const confirmResult = await Swal.fire({
     title: "恢复账号确认",
     html: `
@@ -57320,17 +57321,44 @@ async function restoreAccount(auth_username) {
     reverseButtons: true,
   });
   if (!confirmResult.isConfirmed) return false;
-  try {
-    const resp = await fetch("/api/admin/restore_account", {
-      method: "POST",
-      headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
-      body: JSON.stringify({ auth_username })
-    });
-    const data = await resp.json();
+
+  // ── 步骤2：调用恢复接口（含冲突解决参数）──────────────────────────────────
+  let restoreAs = auth_username;   // 可被用户名冲突处理修改
+  let phoneOverride = undefined;   // undefined=不覆盖; ""=清空; "xxx"=新号码
+  let forcePhoneClear = false;
+
+  // 循环：每次遇到冲突时弹窗让管理员解决，然后重试
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const payload = { auth_username, restore_as: restoreAs };
+    if (phoneOverride !== undefined) payload.phone_override = phoneOverride;
+    if (forcePhoneClear) payload.force_phone_clear = true;
+
+    let resp, data;
+    try {
+      resp = await fetch("/api/admin/restore_account", {
+        method: "POST",
+        headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      data = await resp.json();
+    } catch (e) {
+      await Swal.fire({
+        title: "请求异常",
+        text: e.message,
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+        customClass: { popup: "swal2-neumorphism-popup" },
+      });
+      return false;
+    }
+
+    // ── 成功 ────────────────────────────────────────────────────────────────
     if (data.success) {
+      const restoredAs = data.restored_as || restoreAs;
       await Swal.fire({
         title: "恢复成功",
-        html: `账号 <strong style="font-family:monospace;">${auth_username}</strong> 已成功恢复`,
+        html: `账号 <strong style="font-family:monospace;">${restoredAs}</strong> 已成功恢复`,
         icon: "success",
         confirmButtonText: "确定",
         confirmButtonColor: "#16a34a",
@@ -57340,21 +57368,92 @@ async function restoreAccount(auth_username) {
       });
       loadRemovedAccountsList();
       return true;
-    } else {
-      await Swal.fire({
-        title: "恢复失败",
-        text: data.message || "未知错误",
-        icon: "error",
-        confirmButtonText: "确定",
-        confirmButtonColor: "#dc2626",
-        customClass: { popup: "swal2-neumorphism-popup" },
-      });
-      return false;
     }
-  } catch (e) {
+
+    // ── 用户名冲突 ───────────────────────────────────────────────────────────
+    if (data.conflict === "username") {
+      const usernameResult = await Swal.fire({
+        title: "⚠️ 用户名冲突",
+        html: `
+          <div style="text-align:left;padding:4px 0;">
+            <p style="color:#475569;font-size:14px;margin-bottom:12px;">
+              用户名 <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:13px;">${data.conflicting_username || restoreAs}</code> 已存在，请输入新的用户名：
+            </p>
+            <input id="swal-new-username" type="text" class="swal2-input"
+              placeholder="新用户名"
+              value="${data.conflicting_username || restoreAs}"
+              style="margin:0;width:100%;box-sizing:border-box;">
+          </div>`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "确认",
+        confirmButtonColor: "#2563eb",
+        cancelButtonText: "取消",
+        cancelButtonColor: "#64748b",
+        customClass: { popup: "swal2-neumorphism-popup" },
+        reverseButtons: true,
+        preConfirm: () => {
+          const val = document.getElementById("swal-new-username").value.trim();
+          if (!val) {
+            Swal.showValidationMessage("用户名不能为空");
+            return false;
+          }
+          return val;
+        },
+      });
+      if (!usernameResult.isConfirmed) return false;
+      restoreAs = usernameResult.value;
+      continue;
+    }
+
+    // ── 手机号冲突 ───────────────────────────────────────────────────────────
+    if (data.conflict === "phone") {
+      const conflictPhone = data.phone || "";
+      const conflictUser = data.conflicting_user || "";
+      const phoneResult = await Swal.fire({
+        title: "⚠️ 手机号冲突",
+        html: `
+          <div style="text-align:left;padding:4px 0;">
+            <p style="color:#475569;font-size:14px;margin-bottom:12px;">
+              手机号 <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;font-size:13px;">${conflictPhone}</code>
+              已被用户 <strong style="font-family:monospace;">${conflictUser}</strong> 绑定。
+            </p>
+            <p style="color:#64748b;font-size:13px;margin-bottom:8px;">
+              请输入新手机号（留空或直接确认则<strong>清空手机号</strong>）：
+            </p>
+            <input id="swal-new-phone" type="tel" class="swal2-input"
+              placeholder="新手机号（留空则清空）"
+              style="margin:0;width:100%;box-sizing:border-box;">
+          </div>`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "确认",
+        confirmButtonColor: "#d97706",
+        cancelButtonText: "取消",
+        cancelButtonColor: "#64748b",
+        customClass: { popup: "swal2-neumorphism-popup" },
+        reverseButtons: true,
+        preConfirm: () => {
+          return document.getElementById("swal-new-phone").value.trim();
+        },
+      });
+      if (!phoneResult.isConfirmed) return false;
+      const newPhone = phoneResult.value || "";
+      if (!newPhone || newPhone === conflictPhone) {
+        // 管理员留空或输入了相同冲突号码 → 强制清空
+        phoneOverride = "";
+        forcePhoneClear = true;
+      } else {
+        phoneOverride = newPhone;
+        forcePhoneClear = false;
+      }
+      continue;
+    }
+
+    // ── 其他错误 ─────────────────────────────────────────────────────────────
     await Swal.fire({
-      title: "请求异常",
-      text: e.message,
+      title: "恢复失败",
+      text: data.message || "未知错误",
       icon: "error",
       confirmButtonText: "确定",
       confirmButtonColor: "#dc2626",
@@ -57362,6 +57461,17 @@ async function restoreAccount(auth_username) {
     });
     return false;
   }
+
+  // 超过最大重试次数
+  await Swal.fire({
+    title: "操作失败",
+    text: "解决冲突的尝试次数过多，请刷新后重试",
+    icon: "error",
+    confirmButtonText: "确定",
+    confirmButtonColor: "#dc2626",
+    customClass: { popup: "swal2-neumorphism-popup" },
+  });
+  return false;
 }
 
 async function restoreAccountAndRefreshMobile(auth_username) {
