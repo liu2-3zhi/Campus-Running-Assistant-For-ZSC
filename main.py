@@ -2794,6 +2794,7 @@ def _get_default_config():
         "enable_phone_login": "false",
         "enable_phone_registration_verify": "false",
         "enable_sms_service": "false",
+        "account_cancellation_wait_hours": "24",
     }
 
     config["SMS_Service_SMSBao"] = {
@@ -3216,7 +3217,12 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 短信服务总开关（true/false）\n")
         f.write("# false：关闭所有短信功能，即使其他选项为true也不会发送短信\n")
         f.write(
-            f"enable_sms_service = {config_obj.get('Features', 'enable_sms_service', fallback='false')}\n\n"
+            f"enable_sms_service = {config_obj.get('Features', 'enable_sms_service', fallback='false')}\n"
+        )
+        f.write("# 账号注销申请的冷静期（小时），默认 24 小时\n")
+        f.write("# 用户申请注销后，在等待期内登录可撤销注销\n")
+        f.write(
+            f"account_cancellation_wait_hours = {config_obj.get('Features', 'account_cancellation_wait_hours', fallback='24')}\n\n"
         )
 
         # [SMS_Service_SMSBao] 短信宝服务配置
@@ -20851,10 +20857,9 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
         os.makedirs(billing_dir, exist_ok=True)
         
         # 生成唯一的UUID，确保不与现有文件冲突
-        import uuid as _uuid
-        billing_id = str(_uuid.uuid4())
+        billing_id = str(uuid.uuid4())
         while os.path.exists(os.path.join(billing_dir, f"{billing_id}.json")):
-            billing_id = str(_uuid.uuid4())
+            billing_id = str(uuid.uuid4())
         
         # 获取当前时间戳（ISO格式）
         created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -22722,6 +22727,17 @@ def start_web_server(args_param):
                 kicked_sessions = []
 
         try:
+            # 检查账号注销等待期状态，返回给前端以便弹窗提示
+            _cancellation_status = None
+            if not auth_result.get("is_guest", False):
+                try:
+                    _cancellation_status = auth_system.get_account_cancellation_status(
+                        auth_result["auth_username"]
+                    )
+                    if _cancellation_status and _cancellation_status.get("status") != "pending":
+                        _cancellation_status = None  # 仅在 pending 状态时通知前端
+                except Exception:
+                    pass
             response_data = {
                 "success": True,
                 "session_id": session_id,
@@ -22735,6 +22751,7 @@ def start_web_server(args_param):
                 "theme": auth_result.get("theme", "light"),
                 "token": token,
                 "kicked_sessions_count": len(kicked_sessions),
+                "account_cancellation": _cancellation_status,
             }
             if cleanup_message:
                 response_data["cleanup_message"] = cleanup_message
@@ -25403,7 +25420,9 @@ def start_web_server(args_param):
         data = request.get_json() or {}
         current_password = (data.get("current_password") or "").strip()
         sms_code = (data.get("sms_code") or "").strip()
-        wait_hours = int(data.get("wait_hours", 24) or 24)
+        # 优先使用配置文件中的冷静期，允许前端覆盖（取两者中较大值以不低于配置）
+        config_wait = auth_system.config.getint("Features", "account_cancellation_wait_hours", fallback=24)
+        wait_hours = int(data.get("wait_hours", config_wait) or config_wait)
         wait_hours = max(1, wait_hours)
 
         if not current_password or not sms_code:
@@ -25461,7 +25480,33 @@ def start_web_server(args_param):
             }
         })
 
-    @app.route("/auth/user/update_avatar", methods=["POST"])
+    @app.route("/auth/user/cancel_account_cancellation", methods=["POST"])
+    @login_required
+    def auth_user_cancel_account_cancellation():
+        """用户撤销账号注销申请（在等待期内）。"""
+        auth_username = g.user
+        user_file = auth_system.get_user_file_path(auth_username)
+        if not os.path.exists(user_file):
+            return jsonify({"success": False, "message": "用户不存在"}), 404
+        with auth_system.lock:
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+            cancellation = user_data.get("account_cancellation")
+            if not cancellation or cancellation.get("status") != "pending":
+                return jsonify({"success": False, "message": "当前没有待处理的注销申请"})
+            user_data["account_cancellation"] = None
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+        auth_system.log_audit(
+            auth_username,
+            "cancel_account_cancellation",
+            "用户在等待期内撤销了账号注销申请",
+            request.environ.get("REMOTE_ADDR") or request.remote_addr,
+            g.session_id,
+        )
+        return jsonify({"success": True, "message": "账号注销申请已撤销"})
+
+
     def auth_user_update_avatar():
         """更新用户头像（URL方式）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -27799,6 +27844,17 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== 内容审核配置加载结束 ====================
+
+                # ==================== 账号功能配置加载 ====================
+                "Features": {
+                    "account_cancellation_wait_hours": _get_config_value(
+                        config,
+                        "Features",
+                        "account_cancellation_wait_hours",
+                        fallback=24,
+                    ),
+                },
+                # ==================== 账号功能配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -28004,6 +28060,17 @@ def start_web_server(args_param):
                 if "enable_message_review" in review_data:
                     config.set("Content_Review", "enable_message_review",
                                str(review_data["enable_message_review"]).lower())
+
+            # 处理账号功能配置（注销冷静期等）
+            if "Features" in data:
+                ensure_section(config, "Features")
+                features_data = data["Features"]
+                if "account_cancellation_wait_hours" in features_data:
+                    try:
+                        wait_h = max(1, int(features_data["account_cancellation_wait_hours"]))
+                    except (ValueError, TypeError):
+                        wait_h = 24
+                    config.set("Features", "account_cancellation_wait_hours", str(wait_h))
 
             _write_config_with_comments(config, CONFIG_FILE)
 
@@ -43169,7 +43236,51 @@ def start_web_server(args_param):
             logging.error(f"[管理员账单] 获取账单列表失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
 
-    @app.route("/api/admin/restore_account", methods=["POST"])
+    @app.route("/api/admin/billing/update", methods=["POST"])
+    @admin_required
+    def admin_billing_update():
+        """
+        管理员接口：修改账单的描述（reason 字段）。
+        请求体: {"billing_id": "<账单ID>", "auth_username": "<用户名>", "reason": "<新描述>"}
+        """
+        try:
+            data = request.get_json() or {}
+            billing_id = data.get("billing_id", "").strip()
+            auth_username = data.get("auth_username", "").strip()
+            new_reason = data.get("reason", "").strip()
+
+            if not billing_id or not auth_username:
+                return jsonify({"success": False, "message": "billing_id 和 auth_username 不能为空"}), 400
+
+            billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+            billing_file = os.path.join(billing_dir, f"{billing_id}.json")
+
+            if not os.path.exists(billing_file):
+                return jsonify({"success": False, "message": "账单记录不存在"}), 404
+
+            with open(billing_file, "r", encoding="utf-8") as f:
+                record = json.load(f)
+
+            old_reason = record.get("reason", "")
+            record["reason"] = new_reason
+            record["reason_updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            record["reason_updated_by"] = g.user
+
+            with open(billing_file, "w", encoding="utf-8") as f:
+                json.dump(record, f, indent=2, ensure_ascii=False)
+
+            auth_system.log_audit(
+                g.user,
+                "admin_update_billing_reason",
+                f"修改账单 {billing_id} 的描述: {old_reason!r} → {new_reason!r}",
+            )
+            logging.info(f"[管理员账单] 管理员 {g.user} 修改账单 {billing_id} 描述")
+            return jsonify({"success": True, "message": "账单描述已更新"})
+        except Exception as e:
+            logging.error(f"[管理员账单] 修改账单描述失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"修改账单描述失败: {str(e)}"}), 500
+
+
     @admin_required
     def admin_restore_account():
         """
