@@ -10356,6 +10356,7 @@
            功能：管理员查询用户账单记录
            ======================================== -->
       <div id="admin-billing-panel_modal" class="hidden overflow-y-auto overflow-x-hidden p-4 space-y-4" style="margin-top: 0px;">
+
         <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200 shadow-sm">
           <div class="flex justify-between items-center">
             <div class="flex items-center gap-3">
@@ -10369,18 +10370,21 @@
                 <p class="text-xs text-green-600">查询所有用户或指定用户的账单记录</p>
               </div>
             </div>
-            <button onclick="loadAdminBillingList()" class="btn btn-ghost !py-1.5 !px-3 text-sm flex items-center gap-1.5">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
-              刷新
-            </button>
-            <button onclick="adminAddBillingDialog()" aria-label="添加账单" class="btn btn-primary !py-1.5 !px-3 text-sm flex items-center gap-1.5">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-              </svg>
-              添加账单
-            </button>
+
+            <div class="flex items-center gap-2">
+              <button onclick="loadAdminBillingList()" class="btn btn-ghost !py-1.5 !px-3 text-sm flex items-center gap-1.5 bg-white/50 hover:bg-white/80 border border-green-200/50">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                刷新
+              </button>
+              <button onclick="adminAddBillingDialog()" aria-label="添加账单" class="btn btn-primary !py-1.5 !px-3 text-sm flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                添加账单
+              </button>
+            </div>
           </div>
         </div>
         <div class="flex gap-2 items-center bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
