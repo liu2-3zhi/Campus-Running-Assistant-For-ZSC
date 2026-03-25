@@ -57394,7 +57394,7 @@ async function loadRemovedAccountsList() {
       html += "<tr class=\"border-b border-slate-100\">";
       html += "<td class=\"p-2 font-mono\">" + username + "</td>";
       html += "<td class=\"p-2\">" + (entry.deleted_at || "-") + "</td>";
-      html += "<td class=\"p-2\"><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-slate-700 text-amber-700\" onclick=\"restoreAccount(" + JSON.stringify(username) + ")\">恢复</button></td>";
+      html += "<td class=\"p-2\"><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-slate-700 text-amber-700\" onclick=\'restoreAccount(" + JSON.stringify(username) + ")\'>恢复</button></td>";
       html += "</tr>";
     });
     html += "</tbody></table>";
@@ -57424,17 +57424,55 @@ async function restoreAccount(auth_username) {
   const confirmResult = await Swal.fire({
     title: "恢复账号确认",
     html: `
-      <div style="text-align:left;padding:8px 0;">
-        <p style="font-size:14px;color:#475569;margin-bottom:12px;">确定要恢复以下账号吗？</p>
-        <div style="background:linear-gradient(145deg,#f0fdf4,#dcfce7);border-left:4px solid #16a34a;padding:10px 14px;border-radius:8px;">
-          <p style="font-size:15px;font-weight:600;color:#15803d;margin:0;font-family:monospace;">${auth_username}</p>
+      <div style="text-align:left;padding:8px 0;line-height:1.6;">
+
+        <!-- 顶部说明 -->
+        <p style="font-size:14px;color:#475569;margin-bottom:12px;">
+          请确认是否要恢复以下账号：
+        </p>
+
+        <!-- 红色警告（无渐变、无发光） -->
+        <div style="
+          background:#fee2e2;
+          border-left:4px solid #dc2626;
+          padding:12px 14px;
+          border-radius:6px;
+          margin-bottom:14px;
+        ">
+          <p style="font-size:14px;color:#b91c1c;margin:0;font-weight:600;">
+            ⚠️ 恢复后该账号将重新可以登录，且所有历史数据将被完整还原。
+          </p>
         </div>
-        <p style="font-size:12px;color:#64748b;margin-top:10px;">恢复后该账号将重新可以登录，历史数据将一并还原。</p>
-      </div>`,
-    icon: "question",
+
+        <!-- 账号展示（纯色背景） -->
+        <div style="
+          background:#e7f7eb;
+          border-left:4px solid #16a34a;
+          padding:10px 14px;
+          border-radius:6px;
+          margin-bottom:10px;
+        ">
+          <p style="
+            font-size:16px;
+            font-weight:700;
+            color:#15803d;
+            margin:0;
+            font-family:monospace;
+          ">
+            ${auth_username}
+          </p>
+        </div>
+
+        <!-- 底部说明 -->
+        <p style="font-size:12px;color:#64748b;margin-top:6px;">
+          请谨慎操作，此操作不可撤销。
+        </p>
+      </div>
+    `,
+    icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "<strong>✅ 确认恢复</strong>",
-    confirmButtonColor: "#16a34a",
+    confirmButtonText: "<strong>🔄 确认恢复</strong>",
+    confirmButtonColor: "#dc2626",
     cancelButtonText: "<strong>✖️ 取消</strong>",
     cancelButtonColor: "#64748b",
     customClass: {
@@ -57445,6 +57483,7 @@ async function restoreAccount(auth_username) {
     },
     reverseButtons: true,
   });
+
   if (!confirmResult.isConfirmed) return false;
 
   // ── 步骤2：调用恢复接口（含冲突解决参数）──────────────────────────────────

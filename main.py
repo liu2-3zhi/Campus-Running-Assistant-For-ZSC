@@ -43280,7 +43280,7 @@ def start_web_server(args_param):
             logging.error(f"[管理员账单] 修改账单描述失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"修改账单描述失败: {str(e)}"}), 500
 
-
+    @app.route("/api/admin/restore_account", methods=["POST"])
     @admin_required
     def admin_restore_account():
         """
