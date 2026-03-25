@@ -1962,7 +1962,7 @@ def _enable_auto_attendance(school_username, session_uuid, auth_username):
             # datetime.utcnow()获取当前UTC时间
             # .isoformat()转换为ISO8601字符串格式
             # + "Z"表示这是UTC时区时间
-            "enabled_at": datetime.datetime.utcnow().isoformat() + "Z",
+            "enabled_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             # 记录账号所有者的认证用户名
             "auth_username": auth_username
         }
@@ -2462,7 +2462,7 @@ def _rebuild_system_accounts_index():
         
         # 构建索引数据
         index_data = {
-            "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "accounts": accounts
         }
         
@@ -2495,7 +2495,7 @@ def _ensure_json_index_file(index_path, root_key):
             index_data = {}
         if root_key not in index_data or not isinstance(index_data.get(root_key), dict):
             index_data[root_key] = {}
-        index_data["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        index_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with open(index_path, "w", encoding="utf-8") as f:
             json.dump(index_data, f, indent=2, ensure_ascii=False)
     except Exception as e:
@@ -2559,7 +2559,7 @@ def _rebuild_background_tasks_index():
                 task_hash = hashlib.sha256(session_id.encode()).hexdigest()
                 tasks[task_hash] = {
                     "session_id": session_id,
-                    "created_at": task_state.get("created_at", datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    "created_at": task_state.get("created_at", datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
                     "file": filename
                 }
             except Exception as _e:
@@ -2568,7 +2568,7 @@ def _rebuild_background_tasks_index():
         index_path = os.path.join(task_dir, "_index.json")
         with open(index_path, "w", encoding="utf-8") as f:
             json.dump({
-                "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "tasks": tasks
             }, f, indent=2, ensure_ascii=False)
     except Exception as e:
@@ -2602,7 +2602,7 @@ def _rebuild_uploads_index():
         index_path = os.path.join(uploads_dir, "_index.json")
         with open(index_path, "w", encoding="utf-8") as f:
             json.dump({
-                "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "files": files
             }, f, indent=2, ensure_ascii=False)
     except Exception as e:
@@ -2639,7 +2639,7 @@ def _rebuild_removed_accounts_index():
 
         with open(os.path.join(remove_dir, "_index.json"), "w", encoding="utf-8") as f:
             json.dump({
-                "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "removed_accounts": removed_accounts
             }, f, indent=2, ensure_ascii=False)
     except Exception as e:
@@ -2686,7 +2686,7 @@ def _rebuild_user_billing_index():
 
         with open(os.path.join(billing_root, "_index.json"), "w", encoding="utf-8") as f:
             json.dump({
-                "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "users": users
             }, f, indent=2, ensure_ascii=False)
     except Exception as e:
@@ -2746,7 +2746,7 @@ def _update_system_accounts_index(auth_username, hash_filename, action):
                 logging.debug(f"[系统账号索引] 从索引移除用户: {auth_username}")
         
         # 更新时间戳
-        index_data["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        index_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         
         # 写入索引文件
         with open(index_path, "w", encoding="utf-8") as f:
@@ -7195,7 +7195,7 @@ class AuthSystem:
             # 构建备份数据的结构
             # 使用 ISO 8601 格式的时间戳记录删除时间
             backup_data = {
-                "deleted_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),  # 删除时间（UTC时间）
+                "deleted_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),  # 删除时间（UTC时间）
                 "auth_username": auth_username,  # 被删除用户的用户名
                 "user_data": user_data,  # system_accounts 中的完整用户数据
                 "school_accounts": school_accounts_data,  # school_accounts 中的数据（可能为 None）
@@ -7226,7 +7226,7 @@ class AuthSystem:
                         "backup_file": f"{backup_uuid}.json",
                         "deleted_at": _ra_deleted_at
                     }
-                    _ra_index["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                    _ra_index["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     with open(_ra_index_path, "w", encoding="utf-8") as _f:
                         json.dump(_ra_index, _f, indent=2, ensure_ascii=False)
                     logging.info(f"[删除用户备份] Remove_Acoount/_index.json 已更新")
@@ -18369,7 +18369,7 @@ class BackgroundTaskManager:
                 # 添加或更新任务条目
                 index_data["tasks"][task_hash] = {
                     "session_id": session_id,
-                    "created_at": task_state.get("created_at", datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    "created_at": task_state.get("created_at", datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
                     "file": f"{task_hash}.json"
                 }
             elif action == "remove":
@@ -18378,7 +18378,7 @@ class BackgroundTaskManager:
                     del index_data["tasks"][task_hash]
             
             # 更新时间戳
-            index_data["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            index_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             
             # 写入索引文件
             with open(index_path, "w", encoding="utf-8") as f:
@@ -21107,7 +21107,7 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
             billing_id = str(uuid.uuid4())
         
         # 获取当前时间戳（ISO格式）
-        created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        created_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         
         # 构建账单数据
         billing_data = {
@@ -21291,7 +21291,7 @@ def start_web_server(args_param):
         if ext.lower() not in [e.lower() for e in ALLOWED_EXTENSIONS]:
             return jsonify(success=False, message="不支持的文件类型"), 400
 
-        timestamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S%f")
         save_name = f"{timestamp}_{filename}"
         save_path = os.path.join(UPLOADS_DIR, save_name)
         try:
@@ -21313,11 +21313,11 @@ def start_web_server(args_param):
                 _uploads_index["files"] = {}
             # 添加本次上传记录
             _uploads_index["files"][save_name] = {
-                "uploaded_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "uploaded_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "original_name": file.filename,
                 "size": os.path.getsize(save_path)
             }
-            _uploads_index["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            _uploads_index["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             with open(_uploads_index_path, "w", encoding="utf-8") as _f:
                 json.dump(_uploads_index, _f, indent=2, ensure_ascii=False)
         except Exception as _e:
@@ -21705,7 +21705,7 @@ def start_web_server(args_param):
         # 扫描该用户的账单目录，找到payment_orders中包含本订单号的记录，更新为已支付
         try:
             _billing_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
-            _paid_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            _paid_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             _order_unit_amount = None
             try:
                 _order_path = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
@@ -42755,7 +42755,7 @@ def start_web_server(args_param):
                                         break
                                     rec["status"] = "admin_cleared"
                                     rec["admin_cleared_by"] = admin_username
-                                    rec["admin_cleared_at"] = datetime.datetime.utcnow().strftime(
+                                    rec["admin_cleared_at"] = datetime.datetime.now(datetime.timezone.utc).strftime(
                                         "%Y-%m-%dT%H:%M:%SZ"
                                     )
                                     try:
@@ -43552,7 +43552,7 @@ def start_web_server(args_param):
 
             old_reason = record.get("reason", "")
             record["reason"] = new_reason
-            record["reason_updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            record["reason_updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             record["reason_updated_by"] = g.user
 
             with open(billing_file, "w", encoding="utf-8") as f:
@@ -43870,7 +43870,7 @@ def start_web_server(args_param):
             
             # 从 Remove_Acoount/_index.json 中移除该记录
             del ra_index["removed_accounts"][auth_username]
-            ra_index["updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            ra_index["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             with open(index_path, "w", encoding="utf-8") as f:
                 json.dump(ra_index, f, indent=2, ensure_ascii=False)
             
