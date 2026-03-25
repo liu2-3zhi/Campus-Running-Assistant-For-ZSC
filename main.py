@@ -42343,6 +42343,22 @@ def start_web_server(args_param):
 
             # 如果auth_username为空，尝试自动查找
             # 这种情况通常发生在管理员只知道school_username的情况下
+            if not auth_username:
+                try:
+                    user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+                    if os.path.isdir(user_accounts_dir):
+                        for fname in os.listdir(user_accounts_dir):
+                            if fname.endswith(".json"):
+                                try:
+                                    with open(os.path.join(user_accounts_dir, fname), 'r', encoding='utf-8') as f:
+                                        data = json.load(f)
+                                        if school_username in data:
+                                            auth_username = fname[:-5] # remove .json
+                                            break
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
 
             # ========== 步骤3：验证欠费次数参数 ==========
             try:
@@ -42501,6 +42517,28 @@ def start_web_server(args_param):
                                 f"[账单同步] 已将 {updated}/{cleared_count} 条账单状态更新为 admin_cleared"
                                 f"（学校账号: {school_username}）"
                             )
+
+                        # 覆盖模式：欠费次数增加 → 同步创建新的账单记录
+                        added_count = max(0, final_overdue_count - old_overdue_count)
+                        if added_count > 0 and auth_username:
+                            if os.path.isdir(billing_root):
+                                try:
+                                    _bc = configparser.ConfigParser(strict=False)
+                                    _bc.read("config.ini", encoding="utf-8")
+                                    _cost = round(float(_bc.get(
+                                        "Payment_Settings", "single_run_cost", fallback="1.0"
+                                    )), 2)
+                                except Exception:
+                                    _cost = 1.0
+                                for _ in range(added_count):
+                                    _create_user_billing_record(
+                                        auth_username, school_username,
+                                        "管理员修正欠费次数（增加）", _cost
+                                    )
+                                logging.info(
+                                    f"[账单同步] 已为用户 {auth_username} 创建 {added_count} 条新账单记录"
+                                    f"（学校账号: {school_username}）"
+                                )
                 except Exception as _sync_e:
                     # 账单同步失败不影响主流程
                     logging.error(f"[账单同步] 同步 User_Billing 失败: {_sync_e}", exc_info=True)
