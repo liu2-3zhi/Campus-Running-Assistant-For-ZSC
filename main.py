@@ -69,6 +69,7 @@ gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
 shutil = _try_import_builtin("shutil")
+codecs = _try_import_builtin("codecs")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -95,8 +96,6 @@ if sys and sys.platform.startswith("win"):
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     except AttributeError:
-        import codecs
-
         sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
         sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
@@ -146,7 +145,8 @@ def import_standard_libraries():
         ("shutil", "import shutil"),
         ("concurrent.futures", "import concurrent.futures"),
         ("tempfile", "import tempfile"),
-        ("os", "import os")
+        ("os", "import os"),
+        ("codecs", "import codecs"),
     ]
 
     failed_imports = []
@@ -163,7 +163,7 @@ def import_standard_libraries():
             logging.error(f"✗ ({e})")
             failed_imports.append({"name": name, "error": str(e)})
             
-    global ssl, eventlet, argparse, base64, bisect, collections, configparser, copy, csv, datetime, hashlib, json, math, pickle, queue, random, re, secrets, socket, threading, time, traceback, urllib, uuid, warnings, atexit, io, zipfile, functools, ipaddress, string, shutil,concurrent
+    global ssl, eventlet, argparse, base64, bisect, collections, configparser, copy, csv, datetime, hashlib, json, math, pickle, queue, random, re, secrets, socket, threading, time, traceback, urllib, uuid, warnings, atexit, io, zipfile, functools, ipaddress, string, shutil, concurrent, codecs
 
 
     if sys.platform != "win32":
@@ -266,6 +266,20 @@ def import_core_third_party():
 
     print("[依赖检查] ✓ 核心第三方库导入成功！")
     logging.info("核心第三方库导入成功！")
+
+    # 可选第三方库：导入失败不影响主流程，仅记录警告
+    optional_libs = [
+        ("fake_useragent", "from fake_useragent import UserAgent", "fake-useragent"),
+        ("greenlet", "import greenlet", "greenlet"),
+    ]
+    for display_name, import_cmd, pip_name in optional_libs:
+        try:
+            exec(import_cmd, globals())
+            logging.info(f"  ✓ 可选库 {display_name} 导入成功")
+        except ImportError:
+            logging.warning(
+                f"  [可选] {display_name} 未安装，相关功能将降级运行（pip install {pip_name}）"
+            )
 
 
 def check_and_import_dependencies():
@@ -1672,6 +1686,7 @@ LOGIN_LOGS_DIR = "logs"
 SESSION_STORAGE_DIR = "sessions"
 TOKENS_STORAGE_DIR = "tokens"
 CONFIG_FILE = "config.ini"
+CONFIG_JSON_FILE = os.path.join("configs", "config.json")
 PERMISSIONS_FILE = "permissions.json"
 # 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
@@ -3006,7 +3021,41 @@ def _write_config_with_comments(config_obj, filepath):
     将配置写入文件，包含详细的中文注释。
 
     由于ConfigParser不保留注释，这个函数手动写入带注释的配置文件。
+    当 filepath 以 ".json" 结尾，或 config_obj 是 JsonConfigAdapter 实例时，
+    直接调用 JsonConfigAdapter.save() 保存为 JSON 格式。
+    同时，如果 ./configs/config.json 已存在，也同步更新它。
     """
+    # ── JSON 快速路径 ─────────────────────────────────────────────────────
+    _is_json_adapter = isinstance(config_obj, JsonConfigAdapter)
+    _is_json_file = str(filepath).endswith(".json")
+    if _is_json_adapter or _is_json_file:
+        if _is_json_adapter:
+            config_obj._path = filepath
+            config_obj.save()
+        else:
+            # 将 configparser 对象序列化为 JSON
+            data = {}
+            for sec in config_obj.sections():
+                data[sec] = dict(config_obj.items(sec))
+            os.makedirs(os.path.dirname(os.path.abspath(filepath)) if os.path.dirname(os.path.abspath(filepath)) else ".", exist_ok=True)
+            with open(filepath, "w", encoding="utf-8") as _jf:
+                json.dump(data, _jf, indent=2, ensure_ascii=False)
+        return
+
+    # ── 同步更新 JSON 配置（如果 JSON 文件已存在）─────────────────────────
+    _json_cfg_path = CONFIG_JSON_FILE if "CONFIG_JSON_FILE" in globals() else None
+    if _json_cfg_path and os.path.exists(_json_cfg_path):
+        try:
+            _jadapter = JsonConfigAdapter(_json_cfg_path)
+            for _sec in config_obj.sections():
+                if not _jadapter.has_section(_sec):
+                    _jadapter.add_section(_sec)
+                for _k, _v in config_obj.items(_sec):
+                    _jadapter.set(_sec, _k, _v)
+            _jadapter.save()
+        except Exception as _je:
+            logging.warning(f"[配置同步] 同步 JSON 配置失败（非致命）: {_je}")
+
     try:
         # strict=False：允许读取包含重复节的配置文件，避免因config.ini历史原因存在重复节时抛出DuplicateSectionError
         existing_config = configparser.ConfigParser(strict=False)
@@ -3996,38 +4045,240 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
         }
 
 
+class JsonConfigAdapter:
+    """
+    configparser.RawConfigParser 兼容适配器，底层使用 JSON 文件存储。
+
+    JSON 文件格式（与 config.ini 一一对应）：
+    {
+      "SectionName": {
+        "key": "value",
+        ...
+      },
+      ...
+    }
+
+    实现了 configparser 中常用的接口：
+      get / getint / getfloat / getboolean / has_section / has_option /
+      set / remove_option / add_section / sections / options / items / write
+    """
+
+    def __init__(self, json_path: str):
+        self._path = json_path
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            raw = {}
+        # 规范化：所有 section/key 保持原始大小写，值统一为字符串
+        self._data: dict = {}
+        for sec, opts in raw.items():
+            if isinstance(opts, dict):
+                self._data[sec] = {k: str(v) for k, v in opts.items()}
+            else:
+                self._data[sec] = {}
+
+    # ── 读取接口 ──────────────────────────────────────────────────────────
+
+    def sections(self):
+        return list(self._data.keys())
+
+    def has_section(self, section: str) -> bool:
+        return section in self._data
+
+    def options(self, section: str):
+        if section not in self._data:
+            raise configparser.NoSectionError(section)
+        return list(self._data[section].keys())
+
+    def has_option(self, section: str, option: str) -> bool:
+        return section in self._data and option in self._data[section]
+
+    def get(self, section: str, option: str, fallback=configparser._UNSET):
+        try:
+            return self._data[section][option]
+        except KeyError:
+            if fallback is not configparser._UNSET:
+                return fallback
+            raise configparser.NoOptionError(option, section)
+
+    def getint(self, section: str, option: str, fallback=configparser._UNSET):
+        v = self.get(section, option, fallback=fallback)
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return fallback if fallback is not configparser._UNSET else 0
+
+    def getfloat(self, section: str, option: str, fallback=configparser._UNSET):
+        v = self.get(section, option, fallback=fallback)
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return fallback if fallback is not configparser._UNSET else 0.0
+
+    def getboolean(self, section: str, option: str, fallback=configparser._UNSET):
+        v = self.get(section, option, fallback=fallback)
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            if v.lower() in ("true", "yes", "1", "on"):
+                return True
+            if v.lower() in ("false", "no", "0", "off"):
+                return False
+        return bool(fallback) if fallback is not configparser._UNSET else False
+
+    def items(self, section: str = None, raw: bool = False):
+        if section is None:
+            return list(self._data.items())
+        if section not in self._data:
+            raise configparser.NoSectionError(section)
+        return list(self._data[section].items())
+
+    # ── 写入接口 ──────────────────────────────────────────────────────────
+
+    def add_section(self, section: str):
+        if section not in self._data:
+            self._data[section] = {}
+
+    def set(self, section: str, option: str, value: str = None):
+        if section not in self._data:
+            self._data[section] = {}
+        self._data[section][option] = str(value) if value is not None else ""
+
+    def remove_option(self, section: str, option: str) -> bool:
+        if section in self._data and option in self._data[section]:
+            del self._data[section][option]
+            return True
+        return False
+
+    def remove_section(self, section: str) -> bool:
+        if section in self._data:
+            del self._data[section]
+            return True
+        return False
+
+    def write(self, fileobj=None):
+        """将当前配置写回 JSON 文件（fileobj 参数保留以兼容 configparser 接口）。"""
+        os.makedirs(os.path.dirname(os.path.abspath(self._path)), exist_ok=True)
+        with open(self._path, "w", encoding="utf-8") as f:
+            json.dump(self._data, f, indent=2, ensure_ascii=False)
+
+    def save(self):
+        """显式保存到 JSON 文件的便捷方法。"""
+        self.write()
+
+    # ── 兼容性辅助 ────────────────────────────────────────────────────────
+
+    def read(self, filename, encoding=None):
+        """兼容 configparser.read() 接口，重新加载文件。"""
+        try:
+            with open(filename, "r", encoding=encoding or "utf-8") as f:
+                raw = json.load(f)
+            self._data = {sec: {k: str(v) for k, v in opts.items()} for sec, opts in raw.items() if isinstance(opts, dict)}
+            self._path = filename
+        except Exception:
+            pass
+
+    # 让 optionxform 可以被赋值（兼容 config.optionxform = str 调用）
+    @property
+    def optionxform(self):
+        return str
+
+    @optionxform.setter
+    def optionxform(self, value):
+        pass  # JSON 适配器始终保留原始大小写，无需处理
+
+
+def _migrate_ini_to_json(ini_config, json_path: str):
+    """将 configparser 对象的内容迁移到 JSON 文件（仅在目标 JSON 不存在时调用）。"""
+    try:
+        data = {}
+        for section in ini_config.sections():
+            data[section] = dict(ini_config.items(section))
+        os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logging.info(f"[配置迁移] config.ini 已迁移至 {json_path}")
+    except Exception as e:
+        logging.warning(f"[配置迁移] 迁移到 JSON 失败（非致命）: {e}")
+
+
+def _create_default_json_config(json_path: str):
+    """当 config.ini 和 config.json 都不存在时，创建包含默认值的 JSON 配置文件。"""
+    try:
+        default = _get_default_config() if "_get_default_config" in globals() else {}
+        data = {}
+        if hasattr(default, "sections"):
+            for section in default.sections():
+                data[section] = dict(default.items(section))
+        os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logging.info(f"[配置初始化] 已创建默认 JSON 配置文件: {json_path}")
+    except Exception as e:
+        logging.warning(f"[配置初始化] 创建默认 JSON 配置失败（非致命）: {e}")
+
+
 def _read_config_ini(config_file="config.ini"):
     """
-    统一的config.ini读取函数
+    统一的配置文件读取函数。
+
+    读取优先级：
+      1. ./configs/config.json  （如果存在则优先使用，返回 JsonConfigAdapter）
+      2. config.ini             （JSON 不存在时回退到 INI 格式）
+      3. 若两者均不存在，自动创建 ./configs/config.json 并以默认值初始化
 
     参数:
-        config_file: 配置文件路径，默认为"config.ini"
+        config_file: INI 文件路径（仅在 JSON 不存在时使用），默认为 "config.ini"
 
     返回:
-        configparser.RawConfigParser对象，如果读取失败返回None
+        configparser.RawConfigParser 或 JsonConfigAdapter 对象；读取失败返回 None
 
     说明:
-        - 使用RawConfigParser保持键名的大小写
-        - 设置optionxform = str保持选项名的原始大小写
-        - 统一使用utf-8编码读取
-        - 包含错误处理，读取失败时记录日志并返回None
+        - 使用 RawConfigParser / JsonConfigAdapter 保持键名的大小写
+        - 统一使用 utf-8 编码读取
+        - 包含错误处理，读取失败时记录日志并返回 None
     """
     try:
-        # 创建RawConfigParser对象，它不会对配置值进行插值处理
-        # 这确保了配置值中的特殊字符（如%）不会被误解释
-        # strict=False：允许读取包含重复节/键的配置文件（如config.ini因历史原因存在重复节时不抛出异常）
-        config = configparser.RawConfigParser(strict=False)
+        # ── 优先读取 ./configs/config.json ──────────────────────────────────
+        json_cfg_path = CONFIG_JSON_FILE
+        if os.path.exists(json_cfg_path):
+            try:
+                adapter = JsonConfigAdapter(json_cfg_path)
+                logging.debug(f"[配置] 已从 {json_cfg_path} 加载 JSON 配置")
+                return adapter
+            except Exception as je:
+                logging.warning(f"[配置] 读取 {json_cfg_path} 失败，回退到 INI: {je}")
 
-        # 保持键名的原始大小写（默认会转换为小写）
-        # 这对于区分大小写敏感的配置项很重要
-        config.optionxform = str
+        # ── 回退到 INI 文件 ─────────────────────────────────────────────────
+        if os.path.exists(config_file):
+            # 创建RawConfigParser对象，它不会对配置值进行插值处理
+            # 这确保了配置值中的特殊字符（如%）不会被误解释
+            # strict=False：允许读取包含重复节/键的配置文件（如config.ini因历史原因存在重复节时不抛出异常）
+            config = configparser.RawConfigParser(strict=False)
 
-        # 读取配置文件，使用utf-8编码
-        # 这确保能正确读取包含中文或其他Unicode字符的配置
-        config.read(config_file, encoding="utf-8")
+            # 保持键名的原始大小写（默认会转换为小写）
+            # 这对于区分大小写敏感的配置项很重要
+            config.optionxform = str
 
-        # 成功读取配置文件，返回配置对象
-        return config
+            # 读取配置文件，使用utf-8编码
+            # 这确保能正确读取包含中文或其他Unicode字符的配置
+            config.read(config_file, encoding="utf-8")
+
+            # 顺便将 INI 内容迁移到 JSON（仅在 JSON 不存在时执行一次）
+            if not os.path.exists(json_cfg_path):
+                _migrate_ini_to_json(config, json_cfg_path)
+
+            return config
+
+        # ── 两者都不存在：创建默认 JSON 配置 ─────────────────────────────
+        logging.warning(f"[配置] {config_file} 和 {json_cfg_path} 均不存在，将创建默认 JSON 配置")
+        _create_default_json_config(json_cfg_path)
+        try:
+            return JsonConfigAdapter(json_cfg_path)
+        except Exception:
+            return None
+
     except Exception as e:
         # 捕获所有可能的异常（文件不存在、权限问题、编码错误等）
         # 记录错误日志，包含完整的堆栈信息以便调试
@@ -8317,7 +8568,6 @@ class Api:
             logging.error(f"[SocketIO Emit] Failed: {event_name} from {thread_info}")
             logging.error(f"[SocketIO Emit] Error type: {type(e).__name__}")
             logging.error(f"[SocketIO Emit] Error message: {e}")
-            import traceback
             logging.error(f"[SocketIO Emit] Traceback:\n{traceback.format_exc()}")
             return False
 
@@ -8352,7 +8602,6 @@ class Api:
                     f"WebSocket emit log failed for session {session_id[:8]} from Thread[{current_thread.name}]: {e}"
                 )
                 logging.error(f"Error details: {type(e).__name__}: {e}")
-                import traceback
                 logging.error(f"Traceback: {traceback.format_exc()}")
         else:
             logging.debug(
@@ -11607,7 +11856,6 @@ class Api:
                             logging.error(
                                 f"SocketIO发送'task_completed'事件失败 from Thread[{current_thread.name}]: {e}")
                             logging.error(f"Error type: {type(e).__name__}")
-                            import traceback
                             logging.error(f"Full traceback: {traceback.format_exc()}")
                     return
             time.sleep(1)
@@ -11801,7 +12049,6 @@ class Api:
                         current_thread = threading.current_thread()
                         logging.error(f"SocketIO发送'run_stopped'运行停止事件失败 from Thread[{current_thread.name}]: {e}")
                         logging.error(f"Error type: {type(e).__name__}")
-                        import traceback
                         logging.error(f"Full traceback: {traceback.format_exc()}")
 
             if finished_event:
@@ -12774,7 +13021,6 @@ class Api:
                 logging.error(
                     f"Failed to emit accounts_updated on mode entry from Thread[{current_thread.name}]: {e}")
                 logging.error(f"Error type: {type(e).__name__}")
-                import traceback
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         # [新版] 使用统一的多账号监控线程机制
@@ -13386,7 +13632,6 @@ class Api:
                 current_thread = threading.current_thread()
                 logging.error(f"SocketIO emit 'accounts_updated' failed from Thread[{current_thread.name}]: {e}")
                 logging.error(f"Error type: {type(e).__name__}")
-                import traceback
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         try:
@@ -42309,7 +42554,13 @@ def start_web_server(args_param):
         2. 参数验证：学校账号不能为空
         3. 参数验证：覆盖模式下欠费次数必须是非负整数；叠加模式下必须大于0
         4. 记录详细的管理员操作日志，便于审计追溯
+
+        ⚠️ 此接口已弃用（Deprecated），请改用 POST /api/admin/billing/add。
+        保留此接口仅为向后兼容，后续版本将移除。
         """
+        logging.warning(
+            "[已弃用] /api/admin/clear_overdue 已弃用，请改用 /api/admin/billing/add"
+        )
         try:
             # ========== 步骤1：获取并验证请求参数 ==========
 
@@ -43317,6 +43568,101 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[管理员账单] 修改账单描述失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"修改账单描述失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/add", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_billing_add():
+        """
+        管理员接口：直接为指定用户创建账单记录。
+        支持两种模式：
+          - count（次数模式，默认）：指定欠费次数，金额 = 次数 × single_run_cost
+          - amount（金额模式）：直接指定自定义金额
+
+        请求体 JSON:
+        {
+          "auth_username": "user123",      // 目标用户名（必填）
+          "school_username": "2021001",   // 学校账号（必填）
+          "mode": "count",                // "count"（默认）或 "amount"
+          "count": 1,                     // 次数（mode=count 时使用）
+          "amount": 5.0,                  // 金额（mode=amount 时使用）
+          "reason": "手动补录欠费"         // 原因（为空时自动生成）
+        }
+
+        返回:
+          {"success": true, "billing_id": "...", "message": "账单已创建"}
+        """
+        try:
+            data = request.get_json() or {}
+            auth_username = str(data.get("auth_username", "")).strip()
+            school_username = str(data.get("school_username", "")).strip()
+            mode = str(data.get("mode", "count")).strip().lower()
+            reason = str(data.get("reason", "")).strip()
+
+            if not auth_username:
+                return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
+            if not school_username:
+                return jsonify({"success": False, "message": "school_username 不能为空"}), 400
+            if mode not in ("count", "amount"):
+                return jsonify({"success": False, "message": "mode 必须是 'count' 或 'amount'"}), 400
+
+            admin_username = g.user if hasattr(g, "user") else "unknown"
+            if isinstance(admin_username, dict):
+                admin_username = admin_username.get("auth_username", "unknown")
+
+            if mode == "count":
+                try:
+                    count = int(data.get("count", 1))
+                    if count < 1:
+                        return jsonify({"success": False, "message": "次数必须大于 0"}), 400
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "次数必须是正整数"}), 400
+
+                # 从配置读取单次费用
+                try:
+                    _cfg = _read_config_ini(CONFIG_FILE)
+                    single_run_cost = round(float(_cfg.get("Payment_Settings", "single_run_cost", fallback="1.0")), 2) if _cfg else 1.0
+                except Exception:
+                    single_run_cost = 1.0
+
+                total_amount = round(single_run_cost * count, 2)
+                if not reason:
+                    reason = f"管理员补录欠费 {count} 次（¥{single_run_cost}/次）"
+
+            else:  # amount mode
+                try:
+                    total_amount = round(float(data.get("amount", 0)), 2)
+                    if total_amount <= 0:
+                        return jsonify({"success": False, "message": "金额必须大于 0"}), 400
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "金额必须是有效数字"}), 400
+
+                if not reason:
+                    reason = f"管理员手动添加账单 ¥{total_amount}"
+
+            billing_id = _create_user_billing_record(auth_username, school_username, reason, total_amount)
+            if not billing_id:
+                return jsonify({"success": False, "message": "创建账单记录失败，请检查日志"}), 500
+
+            auth_system.log_audit(
+                admin_username,
+                "admin_add_billing",
+                f"为用户 {auth_username}（学校账号 {school_username}）创建账单: {billing_id}, "
+                f"模式={mode}, 金额=¥{total_amount}, 原因={reason!r}",
+            )
+            logging.info(
+                f"[管理员账单] {admin_username} 为 {auth_username}/{school_username} "
+                f"创建账单 {billing_id}，模式={mode}，金额=¥{total_amount}"
+            )
+            return jsonify({
+                "success": True,
+                "billing_id": billing_id,
+                "amount": total_amount,
+                "message": f"账单已创建（¥{total_amount}）",
+            })
+        except Exception as e:
+            logging.error(f"[管理员账单] 创建账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"创建账单失败: {str(e)}"}), 500
 
     @app.route("/api/admin/restore_account", methods=["POST"])
     @admin_required
