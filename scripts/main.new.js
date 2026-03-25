@@ -57186,9 +57186,14 @@ async function loadUserBillingList() {
     html += "<th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
     html += "</tr></thead><tbody>";
     records.forEach(r => {
-      const statusBadge = r.status === "paid"
-        ? "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs\">已支付</span>"
-        : "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs\">待支付</span>";
+      let statusBadge;
+      if (r.status === "paid") {
+          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs\">已支付</span>";
+      } else if (r.status === "admin_cleared") {
+          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-sky-500 text-xs\">管理员清除</span>";
+      } else {
+          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs\">待支付</span>";
+      }
       html += "<tr class=\"border-b border-slate-100\">";
       html += "<td class=\"p-2\">" + (r.reason || "-") + "</td>";
       html += "<td class=\"p-2\">" + (r.amount != null ? "¥" + r.amount : "-") + "</td>";
@@ -57287,7 +57292,7 @@ async function loadAdminBillingList(usernameOverride = null) {
       if (r.status === "paid") {
         statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-green-500 font-medium">✓ 已支付</span>`;
       } else if (r.status === "admin_cleared") {
-        statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 font-medium">✓ 已清除</span>`;
+        statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 font-medium">✓ 管理员清除</span>`;
       } else {
         statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 font-medium">⏳ 待支付</span>`;
       }
@@ -57301,7 +57306,7 @@ async function loadAdminBillingList(usernameOverride = null) {
         <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-center">
-          <button onclick="adminEditBillingReason(${JSON.stringify(r.billing_id)},${JSON.stringify(r.auth_username)},${JSON.stringify(r.reason||'')})"
+          <button onclick='adminEditBillingReason(${JSON.stringify(r.billing_id)},${JSON.stringify(r.auth_username)},${JSON.stringify(r.reason||'')})'
             class="px-2 py-1 text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md border border-sky-200 transition-colors whitespace-nowrap">✏️ 编辑描述</button>
         </td>
       </tr>`;
@@ -57326,21 +57331,59 @@ async function adminEditBillingReason(billingId, authUsername, currentReason) {
   const result = await Swal.fire({
     title: "编辑账单描述",
     html: `
-      <div style="text-align:left;padding:4px 0;">
-        <p style="color:#475569;font-size:13px;margin-bottom:8px;">账单 ID: <code style="font-size:12px;background:#f1f5f9;padding:2px 5px;border-radius:4px;">${billingId}</code></p>
-        <p style="color:#475569;font-size:13px;margin-bottom:8px;">用户: <strong>${authUsername}</strong></p>
-        <textarea id="swal-billing-reason" rows="3" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;font-size:13px;">${currentReason}</textarea>
-      </div>`,
+      <div style="text-align:left;padding:6px 0 2px;">
+        <p style="color:#475569;font-size:13px;margin-bottom:6px;">
+          账单 ID:
+          <code style="
+            font-size:12px;
+            background:#f1f5f9;
+            padding:2px 6px;
+            border-radius:4px;
+            color:#334155;
+          ">${billingId}</code>
+        </p>
+
+        <p style="color:#475569;font-size:13px;margin-bottom:10px;">
+          用户: <strong style="color:#0f172a;">${authUsername}</strong>
+        </p>
+
+        <textarea
+          id="swal-billing-reason"
+          rows="3"
+          class="swal2-textarea"
+          style="
+            width:100%;
+            margin:0;
+            box-sizing:border-box;
+            font-size:13px;
+            padding:8px 10px;
+            border-radius:6px;
+            border:1px solid #cbd5e1;
+            background:#f8fafc;
+            color:#334155;
+            resize: vertical;
+            outline:none;
+            box-shadow:none !important;
+          "
+        >${currentReason}</textarea>
+      </div>
+    `,
     icon: "info",
     showCancelButton: true,
     confirmButtonText: "保存",
     confirmButtonColor: "#2563eb",
     cancelButtonText: "取消",
     cancelButtonColor: "#64748b",
-    customClass: { popup: "swal2-neumorphism-popup" },
+    customClass: {
+      popup: "swal2-clean-popup",
+      confirmButton: "swal2-clean-btn",
+      cancelButton: "swal2-clean-btn",
+    },
     reverseButtons: true,
-    preConfirm: () => document.getElementById("swal-billing-reason").value.trim(),
+    preConfirm: () =>
+      document.getElementById("swal-billing-reason").value.trim(),
   });
+
   if (!result.isConfirmed) return;
   try {
     const resp = await fetch("/api/admin/billing/update", {
@@ -57354,11 +57397,24 @@ async function adminEditBillingReason(billingId, authUsername, currentReason) {
         title: "保存成功",
         text: "账单描述已更新",
         icon: "success",
-        timer: 1800,
-        timerProgressBar: true,
-        showConfirmButton: false,
-        customClass: { popup: "swal2-neumorphism-popup" },
+
+        timer: undefined,
+        timerProgressBar: false,
+
+        showConfirmButton: true,
+        confirmButtonText: "关闭",
+
+        buttonsStyling: false, // 禁用默认按钮样式
+        customClass: {
+          popup: "swal-flat-popup",
+          confirmButton: "swal-flat-button"
+        }
       });
+
+
+
+
+
       await loadAdminBillingList();
     } else {
       await Swal.fire({ title: "保存失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626", customClass: { popup: "swal2-neumorphism-popup" } });
