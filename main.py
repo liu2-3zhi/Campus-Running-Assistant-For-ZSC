@@ -2794,6 +2794,7 @@ def _get_default_config():
         "enable_phone_login": "false",
         "enable_phone_registration_verify": "false",
         "enable_sms_service": "false",
+        "account_cancellation_wait_hours": "24",
     }
 
     config["SMS_Service_SMSBao"] = {
@@ -3216,7 +3217,12 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 短信服务总开关（true/false）\n")
         f.write("# false：关闭所有短信功能，即使其他选项为true也不会发送短信\n")
         f.write(
-            f"enable_sms_service = {config_obj.get('Features', 'enable_sms_service', fallback='false')}\n\n"
+            f"enable_sms_service = {config_obj.get('Features', 'enable_sms_service', fallback='false')}\n"
+        )
+        f.write("# 账号注销申请的冷静期（小时），默认 24 小时\n")
+        f.write("# 用户申请注销后，在等待期内登录可撤销注销\n")
+        f.write(
+            f"account_cancellation_wait_hours = {config_obj.get('Features', 'account_cancellation_wait_hours', fallback='24')}\n\n"
         )
 
         # [SMS_Service_SMSBao] 短信宝服务配置
@@ -20851,10 +20857,9 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
         os.makedirs(billing_dir, exist_ok=True)
         
         # 生成唯一的UUID，确保不与现有文件冲突
-        import uuid as _uuid
-        billing_id = str(_uuid.uuid4())
+        billing_id = str(uuid.uuid4())
         while os.path.exists(os.path.join(billing_dir, f"{billing_id}.json")):
-            billing_id = str(_uuid.uuid4())
+            billing_id = str(uuid.uuid4())
         
         # 获取当前时间戳（ISO格式）
         created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -22722,6 +22727,17 @@ def start_web_server(args_param):
                 kicked_sessions = []
 
         try:
+            # 检查账号注销等待期状态，返回给前端以便弹窗提示
+            _cancellation_status = None
+            if not auth_result.get("is_guest", False):
+                try:
+                    _cancellation_status = auth_system.get_account_cancellation_status(
+                        auth_result["auth_username"]
+                    )
+                    if _cancellation_status and _cancellation_status.get("status") != "pending":
+                        _cancellation_status = None  # 仅在 pending 状态时通知前端
+                except Exception:
+                    pass
             response_data = {
                 "success": True,
                 "session_id": session_id,
@@ -22735,6 +22751,7 @@ def start_web_server(args_param):
                 "theme": auth_result.get("theme", "light"),
                 "token": token,
                 "kicked_sessions_count": len(kicked_sessions),
+                "account_cancellation": _cancellation_status,
             }
             if cleanup_message:
                 response_data["cleanup_message"] = cleanup_message
@@ -25403,7 +25420,9 @@ def start_web_server(args_param):
         data = request.get_json() or {}
         current_password = (data.get("current_password") or "").strip()
         sms_code = (data.get("sms_code") or "").strip()
-        wait_hours = int(data.get("wait_hours", 24) or 24)
+        # 优先使用配置文件中的冷静期，允许前端覆盖（取两者中较大值以不低于配置）
+        config_wait = auth_system.config.getint("Features", "account_cancellation_wait_hours", fallback=24)
+        wait_hours = int(data.get("wait_hours", config_wait) or config_wait)
         wait_hours = max(1, wait_hours)
 
         if not current_password or not sms_code:
@@ -25461,7 +25480,33 @@ def start_web_server(args_param):
             }
         })
 
-    @app.route("/auth/user/update_avatar", methods=["POST"])
+    @app.route("/auth/user/cancel_account_cancellation", methods=["POST"])
+    @login_required
+    def auth_user_cancel_account_cancellation():
+        """用户撤销账号注销申请（在等待期内）。"""
+        auth_username = g.user
+        user_file = auth_system.get_user_file_path(auth_username)
+        if not os.path.exists(user_file):
+            return jsonify({"success": False, "message": "用户不存在"}), 404
+        with auth_system.lock:
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+            cancellation = user_data.get("account_cancellation")
+            if not cancellation or cancellation.get("status") != "pending":
+                return jsonify({"success": False, "message": "当前没有待处理的注销申请"})
+            user_data["account_cancellation"] = None
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+        auth_system.log_audit(
+            auth_username,
+            "cancel_account_cancellation",
+            "用户在等待期内撤销了账号注销申请",
+            request.environ.get("REMOTE_ADDR") or request.remote_addr,
+            g.session_id,
+        )
+        return jsonify({"success": True, "message": "账号注销申请已撤销"})
+
+
     def auth_user_update_avatar():
         """更新用户头像（URL方式）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -27799,6 +27844,17 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== 内容审核配置加载结束 ====================
+
+                # ==================== 账号功能配置加载 ====================
+                "Features": {
+                    "account_cancellation_wait_hours": _get_config_value(
+                        config,
+                        "Features",
+                        "account_cancellation_wait_hours",
+                        fallback=24,
+                    ),
+                },
+                # ==================== 账号功能配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -28004,6 +28060,17 @@ def start_web_server(args_param):
                 if "enable_message_review" in review_data:
                     config.set("Content_Review", "enable_message_review",
                                str(review_data["enable_message_review"]).lower())
+
+            # 处理账号功能配置（注销冷静期等）
+            if "Features" in data:
+                ensure_section(config, "Features")
+                features_data = data["Features"]
+                if "account_cancellation_wait_hours" in features_data:
+                    try:
+                        wait_h = max(1, int(features_data["account_cancellation_wait_hours"]))
+                    except (ValueError, TypeError):
+                        wait_h = 24
+                    config.set("Features", "account_cancellation_wait_hours", str(wait_h))
 
             _write_config_with_comments(config, CONFIG_FILE)
 
@@ -43169,12 +43236,65 @@ def start_web_server(args_param):
             logging.error(f"[管理员账单] 获取账单列表失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
 
-    @app.route("/api/admin/restore_account", methods=["POST"])
+    @app.route("/api/admin/billing/update", methods=["POST"])
+    @admin_required
+    def admin_billing_update():
+        """
+        管理员接口：修改账单的描述（reason 字段）。
+        请求体: {"billing_id": "<账单ID>", "auth_username": "<用户名>", "reason": "<新描述>"}
+        """
+        try:
+            data = request.get_json() or {}
+            billing_id = data.get("billing_id", "").strip()
+            auth_username = data.get("auth_username", "").strip()
+            new_reason = data.get("reason", "").strip()
+
+            if not billing_id or not auth_username:
+                return jsonify({"success": False, "message": "billing_id 和 auth_username 不能为空"}), 400
+
+            billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+            billing_file = os.path.join(billing_dir, f"{billing_id}.json")
+
+            if not os.path.exists(billing_file):
+                return jsonify({"success": False, "message": "账单记录不存在"}), 404
+
+            with open(billing_file, "r", encoding="utf-8") as f:
+                record = json.load(f)
+
+            old_reason = record.get("reason", "")
+            record["reason"] = new_reason
+            record["reason_updated_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            record["reason_updated_by"] = g.user
+
+            with open(billing_file, "w", encoding="utf-8") as f:
+                json.dump(record, f, indent=2, ensure_ascii=False)
+
+            auth_system.log_audit(
+                g.user,
+                "admin_update_billing_reason",
+                f"修改账单 {billing_id} 的描述: {old_reason!r} → {new_reason!r}",
+            )
+            logging.info(f"[管理员账单] 管理员 {g.user} 修改账单 {billing_id} 描述")
+            return jsonify({"success": True, "message": "账单描述已更新"})
+        except Exception as e:
+            logging.error(f"[管理员账单] 修改账单描述失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"修改账单描述失败: {str(e)}"}), 500
+
+
     @admin_required
     def admin_restore_account():
         """
         管理员接口：从 Remove_Acoount 恢复已删除的用户账号。
-        请求体: {"auth_username": "<用户名>"}
+        请求体:
+          {
+            "auth_username": "<备份中的原用户名>",
+            "restore_as": "<恢复后使用的用户名，可选，默认同 auth_username>",
+            "phone_override": "<新手机号，可选；空字符串表示强制清空手机号>",
+            "force_phone_clear": true  // 可选，为 true 时强制清空手机号
+          }
+        冲突响应（409）：
+          {"success": false, "conflict": "username"|"phone",
+           "conflicting_user": "...", "phone": "...", "message": "..."}
         """
         try:
             data = request.get_json()
@@ -43184,6 +43304,14 @@ def start_web_server(args_param):
             auth_username = data.get("auth_username", "").strip()
             if not auth_username:
                 return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
+            
+            # restore_as: 恢复后使用的用户名（默认与备份用户名相同）
+            restore_as = data.get("restore_as", "").strip() or auth_username
+            # phone_override: 覆盖手机号（None=不覆盖；""=清空；其他=新手机号）
+            phone_override = data.get("phone_override", None)
+            if phone_override is not None:
+                phone_override = str(phone_override).strip()
+            force_phone_clear = bool(data.get("force_phone_clear", False))
             
             # 确定 Remove_Acoount 目录路径
             remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
@@ -43220,19 +43348,123 @@ def start_web_server(args_param):
             if not user_data:
                 return jsonify({"success": False, "message": "备份数据损坏：缺少用户数据"}), 500
             
-            # 检查目标用户名是否已存在
-            user_file = auth_system.get_user_file_path(auth_username)
-            if os.path.exists(user_file):
-                return jsonify({"success": False, "message": f"用户 {auth_username} 已存在，无法恢复"}), 409
+            # ── 读取 system_accounts/_index.json（用于冲突双重检测）──────────
+            sys_index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", "_index.json")
+            sys_index_data = {}
+            if os.path.exists(sys_index_path):
+                try:
+                    with open(sys_index_path, "r", encoding="utf-8") as f:
+                        sys_index_data = json.load(f)
+                except Exception:
+                    sys_index_data = {}
+            sys_accounts = sys_index_data.get("accounts", {})  # {username: hash}
+            
+            # ── 冲突检测 1：用户名是否已存在（文件 + 索引双重校验）────────────
+            # 1a. 用户名已在索引中出现 → 用户名冲突
+            if restore_as in sys_accounts:
+                return jsonify({
+                    "success": False,
+                    "conflict": "username",
+                    "conflicting_username": restore_as,
+                    "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
+                }), 409
+            # 1b. 文件系统中存在对应文件（兜底，防止索引与文件不同步）
+            target_hash = hashlib.sha256(str(restore_as).encode()).hexdigest()
+            target_user_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{target_hash}.json")
+            if os.path.exists(target_user_file):
+                return jsonify({
+                    "success": False,
+                    "conflict": "username",
+                    "conflicting_username": restore_as,
+                    "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
+                }), 409
+            
+            # ── UUID 冲突检测：目标 hash 是否已被另一用户名占用 ────────────────
+            # （理论上 sha256 不会碰撞，但若索引/文件不同步可能出现游离 hash）
+            assigned_hash = target_hash  # 默认使用 sha256(restore_as)
+            existing_owner = next(
+                (uname for uname, uhash in sys_accounts.items() if uhash == target_hash),
+                None
+            )
+            if existing_owner and existing_owner != restore_as:
+                # UUID 冲突：该 hash 已被另一个用户名占用，重新分配一个随机 UUID
+                new_uuid = str(uuid.uuid4())
+                while (
+                    os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{new_uuid}.json"))
+                    or new_uuid in sys_accounts.values()
+                ):
+                    new_uuid = str(uuid.uuid4())
+                assigned_hash = new_uuid
+                logging.warning(
+                    f"[恢复账号] UUID 冲突：hash {target_hash[:8]}... 已被用户 {existing_owner} 占用，"
+                    f"已为 {restore_as} 重新分配 UUID: {new_uuid[:8]}..."
+                )
+            
+            # 最终目标文件路径（使用 assigned_hash，可能是重新分配的 UUID）
+            target_user_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{assigned_hash}.json"
+            )
+            
+            # ── 冲突检测 2：手机号是否已被其他账号绑定 ────────────────────────
+            original_phone = user_data.get("phone", "")
+            effective_phone = original_phone  # 默认使用备份中的手机号
+            
+            if phone_override is not None:
+                # 调用方已明确提供手机号覆盖（含空字符串）
+                effective_phone = phone_override
+            elif force_phone_clear:
+                effective_phone = ""
+            
+            # 仅在有手机号时才检测冲突
+            if effective_phone:
+                phone_bound_to = auth_system.find_user_by_phone(effective_phone)
+                if phone_bound_to and phone_bound_to != restore_as:
+                    return jsonify({
+                        "success": False,
+                        "conflict": "phone",
+                        "conflicting_user": phone_bound_to,
+                        "phone": effective_phone,
+                        "message": f"手机号 {effective_phone} 已被用户 {phone_bound_to} 绑定"
+                    }), 409
+            
+            # ── 应用修改并写入 ────────────────────────────────────────────────
+            # 如果用户名有变更，更新 user_data 中的相关字段
+            user_data["auth_username"] = restore_as
+            if user_data.get("nickname") == auth_username:
+                user_data["nickname"] = restore_as
+            
+            # 更新手机号
+            user_data["phone"] = effective_phone
+            
+            # ── UUID 冲突处理：清理 session_ids ──────────────────────────────
+            # 备份中的 session_ids 均已过期（账号删除时会话文件同步清除）。
+            # 对仍残留的 session_id，检查是否与当前活跃会话冲突；
+            # 存在冲突或已过期的 session_id 一律移除，确保账号以无活跃会话状态恢复。
+            old_session_ids = user_data.get("session_ids", [])
+            cleaned_session_ids = []
+            reassigned_count = 0
+            for sid in old_session_ids:
+                session_file = get_session_file_path(sid)
+                if os.path.exists(session_file):
+                    # 该 UUID 与现有会话文件冲突，丢弃（重新分配 = 不保留）
+                    reassigned_count += 1
+                    logging.warning(f"[恢复账号] session UUID 冲突，已丢弃: {sid[:8]}...")
+                # 无论是否冲突，备份的 session_ids 均已失效，不再保留
+            user_data["session_ids"] = cleaned_session_ids  # 恢复为空列表
+            if old_session_ids:
+                logging.info(
+                    f"[恢复账号] 已清空 {len(old_session_ids)} 个过期 session UUID"
+                    + (f"（其中 {reassigned_count} 个存在冲突）" if reassigned_count else "")
+                )
             
             # 恢复用户文件到 system_accounts
-            with open(user_file, "w", encoding="utf-8") as f:
+            with open(target_user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
-            logging.info(f"[恢复账号] 已恢复用户文件: {user_file}")
+            logging.info(f"[恢复账号] 已恢复用户文件（恢复为 {restore_as}）: {target_user_file}")
             
             # 恢复 school_accounts（如果有）
             if school_accounts_data:
-                school_file = auth_system._get_user_accounts_file(auth_username)
+                school_file = auth_system._get_user_accounts_file(restore_as)
                 try:
                     with open(school_file, "w", encoding="utf-8") as f:
                         json.dump(school_accounts_data, f, indent=2, ensure_ascii=False)
@@ -43243,15 +43475,14 @@ def start_web_server(args_param):
             # 恢复权限配置
             if permissions_data:
                 if "user_groups" in permissions_data:
-                    auth_system.permissions.setdefault("user_groups", {})[auth_username] = permissions_data["user_groups"]
+                    auth_system.permissions.setdefault("user_groups", {})[restore_as] = permissions_data["user_groups"]
                 if "user_custom_permissions" in permissions_data:
-                    auth_system.permissions.setdefault("user_custom_permissions", {})[auth_username] = permissions_data["user_custom_permissions"]
+                    auth_system.permissions.setdefault("user_custom_permissions", {})[restore_as] = permissions_data["user_custom_permissions"]
                 auth_system._save_permissions()
                 logging.info(f"[恢复账号] 已恢复权限配置")
             
-            # 更新 system_accounts/_index.json
-            user_hash = hashlib.sha256(str(auth_username).encode()).hexdigest()
-            _update_system_accounts_index(auth_username, user_hash, "add")
+            # 更新 system_accounts/_index.json（使用 assigned_hash，可能已重新分配）
+            _update_system_accounts_index(restore_as, assigned_hash, "add")
             
             # 从 Remove_Acoount/_index.json 中移除该记录
             del ra_index["removed_accounts"][auth_username]
@@ -43265,8 +43496,10 @@ def start_web_server(args_param):
             except Exception as e:
                 logging.warning(f"[恢复账号] 删除备份文件失败: {e}")
             
-            logging.info(f"[恢复账号] 用户 {auth_username} 已成功恢复")
-            return jsonify({"success": True, "message": f"用户 {auth_username} 已成功恢复"})
+            restored_note = f"（原用户名: {auth_username}）" if restore_as != auth_username else ""
+            phone_note = f"，手机号已{'清空' if not effective_phone else '修改'}" if effective_phone != original_phone else ""
+            logging.info(f"[恢复账号] 用户 {restore_as}{restored_note} 已成功恢复{phone_note}")
+            return jsonify({"success": True, "message": f"用户 {restore_as} 已成功恢复{phone_note}", "restored_as": restore_as})
         
         except Exception as e:
             logging.error(f"[恢复账号] 恢复账号失败: {e}", exc_info=True)
