@@ -6,9 +6,6 @@ from __future__ import annotations
 
 _import_failures = []
 _log_buffer = []
-UserAgent = None
-greenlet = None
-LoMeiGenerator = None
 
 
 MAX_MEMORY_SESSIONS = 100
@@ -72,7 +69,6 @@ gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
 shutil = _try_import_builtin("shutil")
-codecs = _try_import_builtin("codecs")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -99,9 +95,10 @@ if sys and sys.platform.startswith("win"):
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     except AttributeError:
-        if codecs:
-            sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
-            sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
+        import codecs
+
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
+        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
 
 def import_standard_libraries():
@@ -173,7 +170,8 @@ def import_standard_libraries():
         try:
             logging.info("  -> 正在导入 fcntl (非Windows)...")
             logging.info("[依赖检查]   -> fcntl (非Windows)...")
-            fcntl = __import__("fcntl")
+            import fcntl
+
             globals()["fcntl"] = fcntl
             logging.info("  ✓ fcntl 导入成功")
             logging.info("✓")
@@ -210,9 +208,6 @@ def import_standard_libraries():
     print("[依赖检查] ✓ 所有标准库导入成功！")
     logging.info("所有标准库导入成功！")
 
-    # 将核心第三方依赖导入并入标准导入流程，避免 main() 中分散调用。
-    import_core_third_party()
-
 
 def import_core_third_party():
     """
@@ -221,8 +216,6 @@ def import_core_third_party():
     logging.info("=" * 80)
     logging.info("开始检查并导入核心第三方库 (Pillow, bcrypt, Flask-SocketIO)...")
     print("[依赖检查] 正在导入核心第三方库...")
-
-    global UserAgent, greenlet, LoMeiGenerator
 
     core_libs = [
         ("PIL (Pillow)", "from PIL import Image", "Pillow"),
@@ -235,7 +228,6 @@ def import_core_third_party():
         ("eventlet", "import eventlet", "eventlet"),
         ("eventlet.wsgi", "import eventlet.wsgi", "eventlet"),
         ("eventlet.tpool", "import eventlet.tpool", "eventlet"),
-        ("product_name_generator", "from product_name_generator import LoMeiGenerator", "本地文件: product_name_generator.py"),
     ]
 
     failed_imports = []
@@ -253,24 +245,6 @@ def import_core_third_party():
             failed_imports.append(
                 {"name": display_name, "pip_name": pip_name, "error": str(e)}
             )
-
-    # 可选依赖：导入失败时仅降级，不中断启动。
-    try:
-        _fake_useragent_module = __import__("fake_useragent", fromlist=["UserAgent"])
-        UserAgent = getattr(_fake_useragent_module, "UserAgent", None)
-        if UserAgent is None:
-            raise ImportError("fake_useragent.UserAgent not found")
-        logging.info("  ✓ fake_useragent 导入成功（随机UA增强启用）")
-    except Exception:
-        UserAgent = None
-        logging.warning("  -> fake_useragent 不可用，随机UA将使用内置模板")
-
-    try:
-        greenlet = __import__("greenlet")
-        logging.info("  ✓ greenlet 导入成功（线程诊断增强启用）")
-    except Exception:
-        greenlet = None
-        logging.warning("  -> greenlet 不可用，线程诊断将降级")
 
     if failed_imports:
         logging.critical(f"核心第三方库导入失败，共 {len(failed_imports)} 个模块")
@@ -1504,18 +1478,20 @@ def setup_logging():
     archive_dir = os.path.join(log_dir, "archive")
 
     try:
-        config = configparser.ConfigParser(strict=False)
-        if _load_main_config_json_into_parser(config) and "Logging" in config:
-            log_rotation_size_mb = config.getint(
-                "Logging", "log_rotation_size_mb", fallback=10
-            )
-            archive_max_size_mb = config.getint(
-                "Logging", "archive_max_size_mb", fallback=500
-            )
-            log_dir = config.get("Logging", "log_dir", fallback="logs")
-            archive_dir = config.get(
-                "Logging", "archive_dir", fallback="logs/archive"
-            )
+        if os.path.exists("config.ini"):
+            config = configparser.ConfigParser(strict=False)
+            config.read("config.ini", encoding="utf-8")
+            if "Logging" in config:
+                log_rotation_size_mb = config.getint(
+                    "Logging", "log_rotation_size_mb", fallback=10
+                )
+                archive_max_size_mb = config.getint(
+                    "Logging", "archive_max_size_mb", fallback=500
+                )
+                log_dir = config.get("Logging", "log_dir", fallback="logs")
+                archive_dir = config.get(
+                    "Logging", "archive_dir", fallback="logs/archive"
+                )
     except Exception as e:
         print(f"[日志系统] 读取配置失败，使用默认值: {e}")
 
@@ -1649,10 +1625,6 @@ def auto_init_system():
         print("[系统初始化] 创建/更新配置文件...")
         _create_config_ini()
 
-        logging.info("步骤2.1: 导出主配置到 JSON...")
-        print("[系统初始化] 同步主配置到 ./configs/config.json...")
-        _migrate_main_config_ini_to_json()
-
         logging.info("步骤2.5: 迁移支付方式配置...")
         print("[系统初始化] 检查并迁移支付方式配置...")
         # 调用迁移函数，将 config.ini 中的 payment_methods_config 迁移到 JSON 文件
@@ -1699,9 +1671,7 @@ SYSTEM_ACCOUNTS_DIR = "system_accounts"
 LOGIN_LOGS_DIR = "logs"
 SESSION_STORAGE_DIR = "sessions"
 TOKENS_STORAGE_DIR = "tokens"
-MAIN_CONFIG_INI_FILE = "config.ini"
-CONFIG_JSON_FILE = os.path.join("configs", "config.json")
-CONFIG_FILE = MAIN_CONFIG_INI_FILE
+CONFIG_FILE = "config.ini"
 PERMISSIONS_FILE = "permissions.json"
 # 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
@@ -1711,177 +1681,6 @@ AUTO_ATTENDANCE_CONFIG_FILE = os.path.join(
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
-
-
-def _is_project_root_main_ini(path_value):
-    """
-    判断路径是否指向项目根目录下的主配置 INI（config.ini）。
-    """
-    try:
-        if not path_value:
-            return False
-        abs_input = os.path.abspath(str(path_value))
-        abs_root_ini = os.path.abspath(os.path.join(os.path.dirname(__file__), MAIN_CONFIG_INI_FILE))
-        abs_cwd_ini = os.path.abspath(MAIN_CONFIG_INI_FILE)
-        return abs_input in {abs_root_ini, abs_cwd_ini}
-    except Exception:
-        return False
-
-
-def _is_main_config_alias(path_value):
-    """
-    判断路径是否是主配置别名（config.ini / configs/config.json）。
-    """
-    try:
-        if not path_value:
-            return False
-        abs_input = os.path.abspath(str(path_value))
-        abs_json = os.path.abspath(CONFIG_JSON_FILE)
-        if abs_input == abs_json:
-            return True
-        if str(path_value).replace("\\", "/").endswith("configs/config.json"):
-            return True
-        return _is_project_root_main_ini(path_value)
-    except Exception:
-        return False
-
-
-def _save_main_config_json_from_parser(config_obj, json_path=CONFIG_JSON_FILE):
-    """
-    将 ConfigParser 对象写入主配置 JSON 文件。
-    """
-    try:
-        payload = {
-            "meta": {
-                "source": MAIN_CONFIG_INI_FILE,
-                "schema": "ini-sections-v1",
-                "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
-            "config": {},
-        }
-
-        for section in config_obj.sections():
-            section_data = {}
-            for key, value in config_obj.items(section, raw=True):
-                section_data[key] = value
-            payload["config"][section] = section_data
-
-        os.makedirs(os.path.dirname(json_path), exist_ok=True)
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        logging.error(f"[配置JSON] 写入失败: {e}", exc_info=True)
-        return False
-
-
-def _ensure_main_config_json_exists():
-    """
-    确保主配置 JSON 存在：
-    - 若不存在，则优先从项目根 config.ini 转换；
-    - 若 ini 也不存在，则按默认配置创建 JSON。
-    """
-    try:
-        if os.path.exists(CONFIG_JSON_FILE):
-            return True
-
-        ini_path = os.path.abspath(MAIN_CONFIG_INI_FILE)
-        if os.path.exists(ini_path):
-            config = configparser.RawConfigParser(strict=False)
-            config.optionxform = str
-            config.read(ini_path, encoding="utf-8")
-            if _save_main_config_json_from_parser(config, CONFIG_JSON_FILE):
-                logging.info(f"[配置迁移] 检测到缺失 JSON，已自动从 INI 转换: {CONFIG_JSON_FILE}")
-                return True
-
-        default_config = _get_default_config()
-        if _save_main_config_json_from_parser(default_config, CONFIG_JSON_FILE):
-            logging.info(f"[配置初始化] 已创建默认 JSON 主配置: {CONFIG_JSON_FILE}")
-            return True
-        return False
-    except Exception as e:
-        logging.error(f"[配置初始化] 确保主配置 JSON 失败: {e}", exc_info=True)
-        return False
-
-
-def _load_main_config_json_into_parser(config_obj, json_path=CONFIG_JSON_FILE):
-    """
-    从主配置 JSON 读取并填充到给定的 ConfigParser 对象。
-    """
-    try:
-        if not _ensure_main_config_json_exists():
-            return False
-
-        with open(json_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-
-        if isinstance(payload, dict) and isinstance(payload.get("config"), dict):
-            raw_config = payload.get("config", {})
-        elif isinstance(payload, dict):
-            raw_config = payload
-        else:
-            raw_config = {}
-
-        config_obj.clear()
-        for section, section_data in raw_config.items():
-            if not isinstance(section_data, dict):
-                continue
-            if not config_obj.has_section(section):
-                config_obj.add_section(section)
-            for key, value in section_data.items():
-                config_obj.set(section, str(key), "" if value is None else str(value))
-
-        return True
-    except Exception as e:
-        logging.error(f"[配置JSON] 读取失败: {e}", exc_info=True)
-        return False
-
-
-def _patch_main_config_read_to_json():
-    """
-    补丁 ConfigParser.read：当读取主配置别名时，统一从 config.json 加载。
-    """
-    try:
-        if getattr(configparser, "_main_config_json_patch_applied", False):
-            return
-
-        original_config_read = configparser.ConfigParser.read
-        original_raw_read = configparser.RawConfigParser.read
-
-        def _patched_read(original_read):
-            def _inner(self, filenames, encoding=None):
-                if isinstance(filenames, (str, bytes, os.PathLike)):
-                    file_list = [filenames]
-                else:
-                    file_list = list(filenames)
-
-                normal_files = []
-                has_main_alias = False
-                for name in file_list:
-                    if _is_main_config_alias(name):
-                        has_main_alias = True
-                    else:
-                        normal_files.append(name)
-
-                loaded = []
-                if normal_files:
-                    loaded.extend(original_read(self, normal_files, encoding=encoding))
-
-                if has_main_alias and _load_main_config_json_into_parser(self):
-                    loaded.append(CONFIG_JSON_FILE)
-
-                return loaded
-
-            return _inner
-
-        configparser.ConfigParser.read = _patched_read(original_config_read)
-        configparser.RawConfigParser.read = _patched_read(original_raw_read)
-        setattr(configparser, "_main_config_json_patch_applied", True)
-    except Exception as e:
-        logging.error(f"[配置补丁] 安装 ConfigParser.read 补丁失败: {e}", exc_info=True)
-
-
-_patch_main_config_read_to_json()
 
 
 # ========================================================================
@@ -3208,15 +3007,6 @@ def _write_config_with_comments(config_obj, filepath):
 
     由于ConfigParser不保留注释，这个函数手动写入带注释的配置文件。
     """
-    # 主配置统一写入 JSON：
-    # - 优先维护 configs/config.json 作为权威配置源；
-    # - 兼容历史调用方继续传入 config.ini/config.json 路径。
-    if _is_main_config_alias(filepath):
-        ok = _save_main_config_json_from_parser(config_obj, CONFIG_JSON_FILE)
-        if not ok:
-            raise RuntimeError(f"写入主配置JSON失败: {CONFIG_JSON_FILE}")
-        return
-
     try:
         # strict=False：允许读取包含重复节的配置文件，避免因config.ini历史原因存在重复节时抛出DuplicateSectionError
         existing_config = configparser.ConfigParser(strict=False)
@@ -4224,17 +4014,19 @@ def _read_config_ini(config_file="config.ini"):
     """
     try:
         # 创建RawConfigParser对象，它不会对配置值进行插值处理
+        # 这确保了配置值中的特殊字符（如%）不会被误解释
+        # strict=False：允许读取包含重复节/键的配置文件（如config.ini因历史原因存在重复节时不抛出异常）
         config = configparser.RawConfigParser(strict=False)
+
+        # 保持键名的原始大小写（默认会转换为小写）
+        # 这对于区分大小写敏感的配置项很重要
         config.optionxform = str
 
-        # 主配置别名统一走 JSON 读取逻辑。
-        if _is_main_config_alias(config_file):
-            if _load_main_config_json_into_parser(config):
-                return config
-            return None
-
-        # 非主配置仍按原有 INI 方式读取。
+        # 读取配置文件，使用utf-8编码
+        # 这确保能正确读取包含中文或其他Unicode字符的配置
         config.read(config_file, encoding="utf-8")
+
+        # 成功读取配置文件，返回配置对象
         return config
     except Exception as e:
         # 捕获所有可能的异常（文件不存在、权限问题、编码错误等）
@@ -4245,22 +4037,22 @@ def _read_config_ini(config_file="config.ini"):
 
 
 def _create_config_ini():
-    """创建或更新主配置文件（JSON）。缺失时自动从 config.ini 迁移。"""
+    """创建或更新config.ini配置文件（兼容旧版本，自动补全缺失参数）"""
     default_config = _get_default_config()
-    config_file = CONFIG_JSON_FILE
+    config_file = "config.ini"
 
     if os.path.exists(config_file):
         # 检查文件是否为空
         if os.path.getsize(config_file) == 0:
             print(f"[配置文件] 检测到 {config_file} 为空，正在重新创建默认配置...")
-            _save_main_config_json_from_parser(default_config, config_file)
+            _write_config_with_comments(default_config, config_file)
             return
 
-        print("[配置文件] config.json 已存在，检查是否需要更新...")
-        existing_config = _read_config_ini(config_file)
+        print("[配置文件] config.ini 已存在，检查是否需要更新...")
+        existing_config = configparser.ConfigParser(strict=False)
         try:
-            if existing_config is None:
-                raise ValueError("读取配置失败")
+            existing_config.optionxform = str
+            existing_config.read(config_file, encoding="utf-8")
         except Exception as e:
             # 捕获所有解析错误（包括重复项、格式错误等），备份并重置
             print(f"\n[错误] 读取配置文件 '{config_file}' 失败: {e}")
@@ -4276,7 +4068,7 @@ def _create_config_ini():
                 print(f"[配置文件] 备份失败: {copy_err}")
 
             print("[配置文件] 正在使用默认配置覆盖损坏的文件...")
-            _save_main_config_json_from_parser(default_config, config_file)
+            _write_config_with_comments(default_config, config_file)
             return
 
         updated = False
@@ -4302,71 +4094,18 @@ def _create_config_ini():
 
         if updated:
             try:
-                _save_main_config_json_from_parser(existing_config, config_file)
+                _write_config_with_comments(existing_config, "config.ini")
                 logging.info("配置文件已更新：自动补全缺失参数")
                 print("[配置文件] 配置文件已更新并保存（包含详细注释）")
             except Exception as e:
-                print(f"[错误] 保存更新后的 config.json 失败: {e}")
-                logging.error(f"保存更新后的 config.json 失败: {e}")
+                print(f"[错误] 保存更新后的 config.ini 失败: {e}")
+                logging.error(f"保存更新后的 config.ini 失败: {e}")
         else:
             print("[配置文件] 配置文件无需更新")
     else:
-        print("[配置文件] config.json 不存在，创建新配置文件...")
-        _save_main_config_json_from_parser(default_config, config_file)
+        print("[配置文件] config.ini 不存在，创建新配置文件...")
+        _write_config_with_comments(default_config, "config.ini")
         print("[配置文件] 配置文件创建完成（包含详细注释）")
-
-
-def _migrate_main_config_ini_to_json(config_ini_path=CONFIG_FILE, config_json_path=CONFIG_JSON_FILE):
-    """
-    将主配置从 INI 结构同步导出到 JSON 文件。
-
-    说明：
-        - 这是“迁移/过渡”能力，不替代现有 INI 读取逻辑。
-        - JSON 文件用于后续逐步替换或供前端/工具直接读取。
-        - 每次调用会覆盖写入，确保 JSON 与当前 INI 内容保持一致。
-
-    参数:
-        config_ini_path (str): 源 INI 配置路径，默认使用全局 CONFIG_FILE。
-        config_json_path (str): 目标 JSON 配置路径，默认 ./configs/config.json。
-
-    返回:
-        bool: 同步成功返回 True，失败返回 False。
-    """
-    try:
-        if not os.path.exists(config_ini_path):
-            logging.warning(f"[配置迁移] 源配置文件不存在，跳过迁移: {config_ini_path}")
-            return False
-
-        config = configparser.RawConfigParser(strict=False)
-        config.optionxform = str
-        config.read(config_ini_path, encoding="utf-8")
-
-        data = {}
-        for section in config.sections():
-            section_data = {}
-            for key, value in config.items(section, raw=True):
-                section_data[key] = value
-            data[section] = section_data
-
-        os.makedirs(os.path.dirname(config_json_path), exist_ok=True)
-
-        payload = {
-            "meta": {
-                "source": config_ini_path,
-                "schema": "ini-sections-v1",
-                "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
-            "config": data,
-        }
-
-        with open(config_json_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-
-        logging.info(f"[配置迁移] 已同步主配置到 JSON: {config_json_path}")
-        return True
-    except Exception as e:
-        logging.error(f"[配置迁移] 同步主配置到 JSON 失败: {e}", exc_info=True)
-        return False
 
 
 def _get_default_payment_methods_config():
@@ -8274,12 +8013,12 @@ class ApiClient:
         """
         # ── 方案一：使用 fake_useragent 库（移动端限定）──────────────────────
         try:
-            if UserAgent is not None:
-                ua_gen = UserAgent(platforms=["mobile"])
-                ua = ua_gen.random
-                # 如果生成的 UA 不含 Mobile/Android 关键词，则触发回退
-                if "Mobile" in ua or "Android" in ua:
-                    return ua
+            from fake_useragent import UserAgent
+            ua_gen = UserAgent(platforms=["mobile"])
+            ua = ua_gen.random
+            # 如果生成的 UA 不含 Mobile/Android 关键词，则触发回退
+            if "Mobile" in ua or "Android" in ua:
+                return ua
         except Exception:
             pass
 
@@ -8559,8 +8298,7 @@ class Api:
         
         # 获取 greenlet 信息（如果可用）
         try:
-            if greenlet is None:
-                raise RuntimeError("greenlet unavailable")
+            import greenlet
             current_greenlet = greenlet.getcurrent()
             greenlet_info = f"Greenlet[id={id(current_greenlet)}, parent={id(current_greenlet.parent) if current_greenlet.parent else 'None'}]"
         except:
@@ -8579,6 +8317,7 @@ class Api:
             logging.error(f"[SocketIO Emit] Failed: {event_name} from {thread_info}")
             logging.error(f"[SocketIO Emit] Error type: {type(e).__name__}")
             logging.error(f"[SocketIO Emit] Error message: {e}")
+            import traceback
             logging.error(f"[SocketIO Emit] Traceback:\n{traceback.format_exc()}")
             return False
 
@@ -8613,6 +8352,7 @@ class Api:
                     f"WebSocket emit log failed for session {session_id[:8]} from Thread[{current_thread.name}]: {e}"
                 )
                 logging.error(f"Error details: {type(e).__name__}: {e}")
+                import traceback
                 logging.error(f"Traceback: {traceback.format_exc()}")
         else:
             logging.debug(
@@ -11867,6 +11607,7 @@ class Api:
                             logging.error(
                                 f"SocketIO发送'task_completed'事件失败 from Thread[{current_thread.name}]: {e}")
                             logging.error(f"Error type: {type(e).__name__}")
+                            import traceback
                             logging.error(f"Full traceback: {traceback.format_exc()}")
                     return
             time.sleep(1)
@@ -12060,6 +11801,7 @@ class Api:
                         current_thread = threading.current_thread()
                         logging.error(f"SocketIO发送'run_stopped'运行停止事件失败 from Thread[{current_thread.name}]: {e}")
                         logging.error(f"Error type: {type(e).__name__}")
+                        import traceback
                         logging.error(f"Full traceback: {traceback.format_exc()}")
 
             if finished_event:
@@ -13032,6 +12774,7 @@ class Api:
                 logging.error(
                     f"Failed to emit accounts_updated on mode entry from Thread[{current_thread.name}]: {e}")
                 logging.error(f"Error type: {type(e).__name__}")
+                import traceback
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         # [新版] 使用统一的多账号监控线程机制
@@ -13643,6 +13386,7 @@ class Api:
                 current_thread = threading.current_thread()
                 logging.error(f"SocketIO emit 'accounts_updated' failed from Thread[{current_thread.name}]: {e}")
                 logging.error(f"Error type: {type(e).__name__}")
+                import traceback
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         try:
@@ -37189,7 +36933,6 @@ def start_web_server(args_param):
                     "trade_no": result.get("trade_no", ""),    # 平台订单号
                     # 发起支付类型（jump/html/qrcode等）
                     "pay_type": result.get("pay_type", ""),
-                
                     # 发起支付参数（根据pay_type不同而不同）
                     "pay_info": result.get("pay_info", ""),
                     "order": {                                  # 订单详情（兼容前端）
