@@ -43530,14 +43530,20 @@ def start_web_server(args_param):
     @admin_required
     def admin_billing_update():
         """
-        管理员接口：修改账单的描述（reason 字段）。
-        请求体: {"billing_id": "<账单ID>", "school_username": "<学校账号>", "reason": "<新描述>"}
+        管理员接口：修改账单信息（描述/状态/金额）。
+        请求体:
+        {
+          "billing_id": "<账单ID>",
+          "school_username": "<学校账号>",
+          "reason": "<新描述，可选>",
+          "status": "pending|paid|admin_cleared（可选）",
+          "amount": 1.23（可选）
+        }
         """
         try:
             data = request.get_json() or {}
             billing_id = data.get("billing_id", "").strip()
             school_username = data.get("school_username", "").strip()
-            new_reason = data.get("reason", "").strip()
 
             if not billing_id or not school_username:
                 return jsonify({"success": False, "message": "billing_id 和 school_username 不能为空"}), 400
@@ -43560,24 +43566,126 @@ def start_web_server(args_param):
             with open(billing_file, "r", encoding="utf-8") as f:
                 record = json.load(f)
 
-            old_reason = record.get("reason", "")
-            record["reason"] = new_reason
-            record["reason_updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            record["reason_updated_by"] = g.user
+            changed_fields = []
+            now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            if "reason" in data:
+                new_reason = str(data.get("reason", "")).strip()
+                if new_reason != str(record.get("reason", "")):
+                    record["reason"] = new_reason
+                    record["reason_updated_at"] = now_utc
+                    record["reason_updated_by"] = g.user
+                    changed_fields.append("reason")
+
+            if "amount" in data and str(data.get("amount", "")).strip() != "":
+                try:
+                    new_amount = round(float(data.get("amount")), 2)
+                    if new_amount <= 0:
+                        return jsonify({"success": False, "message": "金额必须大于 0"}), 400
+                except (TypeError, ValueError):
+                    return jsonify({"success": False, "message": "amount 必须是有效数字"}), 400
+                old_amount = round(float(record.get("amount", 0) or 0), 2)
+                if new_amount != old_amount:
+                    record["amount"] = new_amount
+                    changed_fields.append("amount")
+
+            if "status" in data and str(data.get("status", "")).strip():
+                new_status = str(data.get("status", "")).strip().lower()
+                valid_status = {"pending", "paid", "admin_cleared"}
+                if new_status not in valid_status:
+                    return jsonify({"success": False, "message": "status 必须是 pending/paid/admin_cleared"}), 400
+
+                old_status = str(record.get("status", "pending")).strip().lower()
+                if new_status != old_status:
+                    record["status"] = new_status
+                    changed_fields.append("status")
+
+                    if new_status == "paid":
+                        record["paid_at"] = now_utc
+                        record["paid_by"] = g.user
+                    elif old_status == "paid":
+                        record.pop("paid_by", None)
+                        record["paid_at"] = ""
+
+                    if new_status == "admin_cleared":
+                        record["admin_cleared_at"] = now_utc
+                        record["admin_cleared_by"] = g.user
+                    elif old_status == "admin_cleared":
+                        record.pop("admin_cleared_at", None)
+                        record.pop("admin_cleared_by", None)
+
+            if not changed_fields:
+                return jsonify({"success": False, "message": "未检测到可更新内容"}), 400
+
+            record["updated_at"] = now_utc
+            record["updated_by"] = g.user
 
             with open(billing_file, "w", encoding="utf-8") as f:
                 json.dump(record, f, indent=2, ensure_ascii=False)
 
             auth_system.log_audit(
                 g.user,
-                "admin_update_billing_reason",
-                f"修改学校账号 {school_username} 账单 {billing_id} 的描述: {old_reason!r} → {new_reason!r}",
+                "admin_update_billing",
+                f"修改学校账号 {school_username} 账单 {billing_id} 字段: {', '.join(changed_fields)}",
             )
-            logging.info(f"[管理员账单] 管理员 {g.user} 修改账单 {billing_id} 描述")
-            return jsonify({"success": True, "message": "账单描述已更新"})
+            logging.info(f"[管理员账单] 管理员 {g.user} 修改账单 {billing_id} 字段: {', '.join(changed_fields)}")
+            return jsonify({"success": True, "message": "账单已更新", "changed_fields": changed_fields})
         except Exception as e:
-            logging.error(f"[管理员账单] 修改账单描述失败: {e}", exc_info=True)
-            return jsonify({"success": False, "message": f"修改账单描述失败: {str(e)}"}), 500
+            logging.error(f"[管理员账单] 修改账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"修改账单失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/delete", methods=["POST"])
+    @admin_required
+    def admin_billing_delete():
+        """
+        管理员接口：删除账单（软删除，移动到 ./User_Billing/Reomve/ 目录）。
+        请求体: {"billing_id": "<账单ID>", "school_username": "<学校账号>"}
+        """
+        try:
+            data = request.get_json() or {}
+            billing_id = str(data.get("billing_id", "")).strip()
+            school_username = str(data.get("school_username", "")).strip()
+
+            if not billing_id or not school_username:
+                return jsonify({"success": False, "message": "billing_id 和 school_username 不能为空"}), 400
+
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权操作该学校账号的账单"}), 403
+
+            billing_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+                school_username,
+                f"{billing_id}.json"
+            )
+            if not os.path.exists(billing_file):
+                return jsonify({"success": False, "message": "账单记录不存在"}), 404
+
+            remove_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "Reomve",
+                school_username,
+            )
+            os.makedirs(remove_dir, exist_ok=True)
+            target_file = os.path.join(remove_dir, f"{billing_id}.json")
+            if os.path.exists(target_file):
+                suffix = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+                target_file = os.path.join(remove_dir, f"{billing_id}_{suffix}.json")
+
+            shutil.move(billing_file, target_file)
+            auth_system.log_audit(
+                g.user,
+                "admin_delete_billing",
+                f"删除学校账号 {school_username} 账单 {billing_id}，移动到 {target_file}",
+            )
+            logging.info(f"[管理员账单] 管理员 {g.user} 删除账单 {billing_id} -> {target_file}")
+            return jsonify({"success": True, "message": "账单已删除（已移动到 Reomve 目录）"})
+        except Exception as e:
+            logging.error(f"[管理员账单] 删除账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"删除账单失败: {str(e)}"}), 500
 
     @app.route("/api/admin/billing/add", methods=["POST"])
     @login_required
