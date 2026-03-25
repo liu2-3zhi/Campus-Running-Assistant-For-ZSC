@@ -57221,11 +57221,11 @@ async function loadMobileUserBillingList() {
  */
 async function loadAdminBillingList(usernameOverride = null) {
   const container = document.getElementById("admin-billing-list-container");
-  const usernameInput = document.getElementById("admin-billing-username-input");
+  const schoolInput = document.getElementById("admin-billing-school-input");
   if (!container) return;
-  const username = usernameOverride != null
+  const schoolUsername = usernameOverride != null
     ? String(usernameOverride).trim()
-    : (usernameInput ? usernameInput.value.trim() : "");
+    : (schoolInput ? schoolInput.value.trim() : "");
   container.innerHTML = `
     <div class="flex items-center justify-center py-10 gap-3 text-slate-400">
       <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57234,7 +57234,7 @@ async function loadAdminBillingList(usernameOverride = null) {
       <span class="text-sm">加载中...</span>
     </div>`;
   try {
-    const url = username ? "/api/admin/billing/list?username=" + encodeURIComponent(username) : "/api/admin/billing/list";
+    const url = schoolUsername ? "/api/admin/billing/list?school_username=" + encodeURIComponent(schoolUsername) : "/api/admin/billing/list";
     const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
     const data = await resp.json();
     if (!data.success) {
@@ -57243,7 +57243,7 @@ async function loadAdminBillingList(usernameOverride = null) {
     }
     const records = data.records || [];
     if (records.length === 0) {
-      container.innerHTML = `<div class="flex flex-col items-center justify-center py-12 text-slate-400 gap-2"><svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><p class="text-sm">暂无账单记录</p></div>`;
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-12 text-slate-400 gap-2"><svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><p class="text-sm">暂无账单记录</p><p class="text-xs text-slate-400">默认展示你有权限的学校账号账单</p></div>`;
       return;
     }
     // 统计
@@ -57252,7 +57252,9 @@ async function loadAdminBillingList(usernameOverride = null) {
     const pendingCount = records.filter(r => r.status === "pending").length;
     const clearedCount = records.filter(r => r.status === "admin_cleared").length;
     const totalAmount = records.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0).toFixed(2);
+    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${schoolUsername}` : "当前范围：有权限学校账号的全部账单";
     let html = `
+      <div class="mb-3 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-center">
           <p class="text-2xl font-bold text-slate-700">${totalCount}</p>
@@ -57276,7 +57278,6 @@ async function loadAdminBillingList(usernameOverride = null) {
           <table class="w-full text-xs">
             <thead>
               <tr class="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600">
-                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">用户名</th>
                 <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">学校账号</th>
                 <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">原因/描述</th>
                 <th class="px-3 py-2.5 text-right font-semibold whitespace-nowrap">金额</th>
@@ -57298,7 +57299,6 @@ async function loadAdminBillingList(usernameOverride = null) {
       }
       const rowBg = idx % 2 === 0 ? "" : "bg-slate-50/60";
       html += `<tr class="${rowBg} hover:bg-sky-50/40 transition-colors">
-        <td class="px-3 py-2.5 font-mono text-slate-700">${r.auth_username || "-"}</td>
         <td class="px-3 py-2.5 text-slate-600">${r.school_username || "-"}</td>
         <td class="px-3 py-2.5 text-slate-600">${r.reason || "-"}</td>
         <td class="px-3 py-2.5 text-right font-semibold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + r.amount : "-"}</td>
@@ -57306,7 +57306,7 @@ async function loadAdminBillingList(usernameOverride = null) {
         <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-center">
-          <button onclick='adminEditBillingReason(${JSON.stringify(r.billing_id)},${JSON.stringify(r.auth_username)},${JSON.stringify(r.reason||'')})'
+          <button onclick='adminEditBillingReason(${JSON.stringify(r.billing_id)},${JSON.stringify(r.school_username || '')},${JSON.stringify(r.reason||'')})'
             class="px-2 py-1 text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md border border-sky-200 transition-colors whitespace-nowrap">✏️ 编辑描述</button>
         </td>
       </tr>`;
@@ -57327,7 +57327,7 @@ async function loadAdminBillingList(usernameOverride = null) {
 /**
  * 管理员编辑账单描述
  */
-async function adminEditBillingReason(billingId, authUsername, currentReason) {
+async function adminEditBillingReason(billingId, schoolUsername, currentReason) {
   const result = await Swal.fire({
     title: "编辑账单描述",
     html: `
@@ -57344,7 +57344,7 @@ async function adminEditBillingReason(billingId, authUsername, currentReason) {
         </p>
 
         <p style="color:#475569;font-size:13px;margin-bottom:10px;">
-          用户: <strong style="color:#0f172a;">${authUsername}</strong>
+          学校账号: <strong style="color:#0f172a;">${schoolUsername || "-"}</strong>
         </p>
 
         <textarea
@@ -57389,7 +57389,7 @@ async function adminEditBillingReason(billingId, authUsername, currentReason) {
     const resp = await fetch("/api/admin/billing/update", {
       method: "POST",
       headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
-      body: JSON.stringify({ billing_id: billingId, auth_username: authUsername, reason: result.value }),
+      body: JSON.stringify({ billing_id: billingId, school_username: schoolUsername, reason: result.value }),
     });
     const data = await resp.json();
     if (data.success) {
@@ -57489,7 +57489,6 @@ async function adminAddBillingDialog() {
 
   try {
     const body = {
-      auth_username: "",
       school_username: formValues.school,
       mode: formValues.mode,
       reason: formValues.reason,
@@ -57557,9 +57556,9 @@ async function loadRemovedAccountsList() {
 }
 
 async function loadMobileMultiAdminBillingList() {
-  const usernameInput = document.getElementById("mobile-multi-admin-billing-username-input");
-  const username = usernameInput ? usernameInput.value.trim() : "";
-  await loadAdminBillingList(username);
+  const schoolInput = document.getElementById("mobile-multi-admin-billing-school-input");
+  const schoolUsername = schoolInput ? schoolInput.value.trim() : "";
+  await loadAdminBillingList(schoolUsername);
   copyAdminContentToMultiPanel("billing");
 }
 
