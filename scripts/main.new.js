@@ -57306,8 +57306,12 @@ async function loadAdminBillingList(usernameOverride = null) {
         <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-center">
-          <button onclick='adminEditBillingReason(${JSON.stringify(r.billing_id)},${JSON.stringify(r.school_username || '')},${JSON.stringify(r.reason||'')})'
-            class="px-2 py-1 text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md border border-sky-200 transition-colors whitespace-nowrap">✏️ 编辑描述</button>
+          <div class="flex items-center justify-center gap-1.5">
+            <button onclick='adminEditBilling(${JSON.stringify(r)})'
+              class="px-2 py-1 text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md border border-sky-200 transition-colors whitespace-nowrap">✏️ 修改账单</button>
+            <button onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)},${JSON.stringify(r.school_username || '')})'
+              class="px-2 py-1 text-xs bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md border border-rose-200 transition-colors whitespace-nowrap">🗑 删除</button>
+          </div>
         </td>
       </tr>`;
     });
@@ -57327,9 +57331,15 @@ async function loadAdminBillingList(usernameOverride = null) {
 /**
  * 管理员编辑账单描述
  */
-async function adminEditBillingReason(billingId, schoolUsername, currentReason) {
+async function adminEditBilling(record) {
+  const billingId = record && record.billing_id ? record.billing_id : "";
+  const schoolUsername = record && record.school_username ? record.school_username : "";
+  const currentReason = record && record.reason ? record.reason : "";
+  const currentAmount = record && record.amount != null ? String(record.amount) : "";
+  const currentStatus = record && record.status ? String(record.status) : "pending";
+
   const result = await Swal.fire({
-    title: "编辑账单描述",
+    title: "修改账单",
     html: `
       <div style="text-align:left;padding:6px 0 2px;">
         <p style="color:#475569;font-size:13px;margin-bottom:6px;">
@@ -57347,6 +57357,27 @@ async function adminEditBillingReason(billingId, schoolUsername, currentReason) 
           学校账号: <strong style="color:#0f172a;">${schoolUsername || "-"}</strong>
         </p>
 
+        <label style="display:block;color:#475569;font-size:12px;margin:0 0 4px;">金额</label>
+        <input
+          id="swal-billing-amount"
+          class="swal2-input"
+          style="width:100%;margin:0 0 10px;box-sizing:border-box;height:38px;font-size:13px;padding:8px 10px;border-radius:6px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;outline:none;box-shadow:none !important;"
+          value="${currentAmount}"
+          placeholder="例如 1.00"
+        />
+
+        <label style="display:block;color:#475569;font-size:12px;margin:0 0 4px;">状态</label>
+        <select
+          id="swal-billing-status"
+          class="swal2-input"
+          style="width:100%;margin:0 0 10px;box-sizing:border-box;height:38px;font-size:13px;padding:8px 10px;border-radius:6px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;outline:none;box-shadow:none !important;"
+        >
+          <option value="pending" ${currentStatus === "pending" ? "selected" : ""}>待支付</option>
+          <option value="paid" ${currentStatus === "paid" ? "selected" : ""}>已支付</option>
+          <option value="admin_cleared" ${currentStatus === "admin_cleared" ? "selected" : ""}>管理员清除</option>
+        </select>
+
+        <label style="display:block;color:#475569;font-size:12px;margin:0 0 4px;">原因/描述</label>
         <textarea
           id="swal-billing-reason"
           rows="3"
@@ -57380,8 +57411,16 @@ async function adminEditBillingReason(billingId, schoolUsername, currentReason) 
       cancelButton: "swal2-clean-btn",
     },
     reverseButtons: true,
-    preConfirm: () =>
-      document.getElementById("swal-billing-reason").value.trim(),
+    preConfirm: () => {
+      const amount = document.getElementById("swal-billing-amount").value.trim();
+      const status = document.getElementById("swal-billing-status").value;
+      const reason = document.getElementById("swal-billing-reason").value.trim();
+      if (!amount || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
+        Swal.showValidationMessage("请输入大于 0 的有效金额");
+        return false;
+      }
+      return { amount, status, reason };
+    },
   });
 
   if (!result.isConfirmed) return;
@@ -57389,13 +57428,19 @@ async function adminEditBillingReason(billingId, schoolUsername, currentReason) 
     const resp = await fetch("/api/admin/billing/update", {
       method: "POST",
       headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
-      body: JSON.stringify({ billing_id: billingId, school_username: schoolUsername, reason: result.value }),
+      body: JSON.stringify({
+        billing_id: billingId,
+        school_username: schoolUsername,
+        reason: result.value.reason,
+        amount: result.value.amount,
+        status: result.value.status
+      }),
     });
     const data = await resp.json();
     if (data.success) {
       await Swal.fire({
         title: "保存成功",
-        text: "账单描述已更新",
+        text: "账单已更新",
         icon: "success",
 
         timer: undefined,
@@ -57416,11 +57461,62 @@ async function adminEditBillingReason(billingId, schoolUsername, currentReason) 
 
 
       await loadAdminBillingList();
+      copyAdminContentToMultiPanel("billing");
     } else {
       await Swal.fire({ title: "保存失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626", customClass: { popup: "swal2-neumorphism-popup" } });
     }
   } catch (e) {
     await Swal.fire({ title: "请求异常", text: e.message, icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626", customClass: { popup: "swal2-neumorphism-popup" } });
+  }
+}
+
+async function adminDeleteBilling(billingId, schoolUsername) {
+  const result = await Swal.fire({
+    title: "确认删除账单？",
+    html: `
+      <div style="text-align:left;font-size:13px;color:#475569;line-height:1.7;">
+        <p>账单 ID：<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;color:#334155;">${billingId}</code></p>
+        <p>学校账号：<strong style="color:#0f172a;">${schoolUsername || "-"}</strong></p>
+        <p style="margin-top:6px;color:#b45309;">删除后不会直接销毁，而是移动到 <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;">./User_Billing/Reomve/</code> 目录。</p>
+      </div>
+    `,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "确认删除",
+    cancelButtonText: "取消",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#64748b",
+    reverseButtons: true,
+    customClass: {
+      popup: "swal2-clean-popup",
+      confirmButton: "swal2-clean-btn",
+      cancelButton: "swal2-clean-btn",
+    },
+  });
+
+  if (!result.isConfirmed) return;
+  try {
+    const resp = await fetch("/api/admin/billing/delete", {
+      method: "POST",
+      headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
+      body: JSON.stringify({ billing_id: billingId, school_username: schoolUsername }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      await Swal.fire({
+        title: "删除成功",
+        text: data.message || "账单已删除",
+        icon: "success",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#16a34a"
+      });
+      await loadAdminBillingList();
+      copyAdminContentToMultiPanel("billing");
+    } else {
+      await Swal.fire({ title: "删除失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
+    }
+  } catch (e) {
+    await Swal.fire({ title: "请求异常", text: e.message, icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
   }
 }
 
