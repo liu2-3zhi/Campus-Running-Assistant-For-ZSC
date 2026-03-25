@@ -43472,49 +43472,45 @@ def start_web_server(args_param):
     @admin_required
     def admin_billing_list():
         """
-        管理员接口：获取指定用户（或所有用户）的账单记录列表。
-        可选查询参数: username（指定用户名）
+        管理员接口：获取有权限学校账号的账单记录列表。
+        可选查询参数: school_username（指定学校账号）
         """
         try:
-            # 获取可选的username查询参数
-            username = request.args.get("username", "").strip()
-            
-            # 账单根目录
-            billing_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing")
-            
+            school_username = request.args.get("school_username", "").strip()
+            billing_root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+            )
             records = []
-            
-            if username:
-                # 只获取指定用户的账单
-                billing_dir = os.path.join(billing_root, username)
-                if os.path.isdir(billing_dir):
-                    for filename in os.listdir(billing_dir):
-                        if not filename.endswith(".json"):
-                            continue
-                        filepath = os.path.join(billing_dir, filename)
-                        try:
-                            with open(filepath, "r", encoding="utf-8") as f:
-                                record = json.load(f)
-                            records.append(record)
-                        except Exception as e:
-                            logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
+
+            # 仅允许读取当前管理员有权限的学校账号账单
+            try:
+                allowed_schools = set((auth_system._load_user_school_accounts(g.user) or {}).keys())
+            except Exception:
+                allowed_schools = set()
+
+            if school_username:
+                if school_username not in allowed_schools:
+                    return jsonify({"success": True, "records": [], "total": 0})
+                target_schools = [school_username]
             else:
-                # 获取所有用户的账单
-                if os.path.isdir(billing_root):
-                    for user_dir in os.listdir(billing_root):
-                        user_billing_dir = os.path.join(billing_root, user_dir)
-                        if not os.path.isdir(user_billing_dir):
-                            continue
-                        for filename in os.listdir(user_billing_dir):
-                            if not filename.endswith(".json"):
-                                continue
-                            filepath = os.path.join(user_billing_dir, filename)
-                            try:
-                                with open(filepath, "r", encoding="utf-8") as f:
-                                    record = json.load(f)
-                                records.append(record)
-                            except Exception as e:
-                                logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
+                target_schools = sorted(allowed_schools)
+
+            for school in target_schools:
+                user_billing_dir = os.path.join(billing_root, school)
+                if not os.path.isdir(user_billing_dir):
+                    continue
+                for filename in os.listdir(user_billing_dir):
+                    if not filename.endswith(".json"):
+                        continue
+                    filepath = os.path.join(user_billing_dir, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            record = json.load(f)
+                        records.append(record)
+                    except Exception as e:
+                        logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
             
             # 按创建时间降序排列
             records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
@@ -43535,18 +43531,27 @@ def start_web_server(args_param):
     def admin_billing_update():
         """
         管理员接口：修改账单的描述（reason 字段）。
-        请求体: {"billing_id": "<账单ID>", "auth_username": "<用户名>", "reason": "<新描述>"}
+        请求体: {"billing_id": "<账单ID>", "school_username": "<学校账号>", "reason": "<新描述>"}
         """
         try:
             data = request.get_json() or {}
             billing_id = data.get("billing_id", "").strip()
-            auth_username = data.get("auth_username", "").strip()
+            school_username = data.get("school_username", "").strip()
             new_reason = data.get("reason", "").strip()
 
-            if not billing_id or not auth_username:
-                return jsonify({"success": False, "message": "billing_id 和 auth_username 不能为空"}), 400
+            if not billing_id or not school_username:
+                return jsonify({"success": False, "message": "billing_id 和 school_username 不能为空"}), 400
 
-            billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+            allowed_schools = set((auth_system._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权操作该学校账号的账单"}), 403
+
+            billing_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+                school_username
+            )
             billing_file = os.path.join(billing_dir, f"{billing_id}.json")
 
             if not os.path.exists(billing_file):
@@ -43566,7 +43571,7 @@ def start_web_server(args_param):
             auth_system.log_audit(
                 g.user,
                 "admin_update_billing_reason",
-                f"修改账单 {billing_id} 的描述: {old_reason!r} → {new_reason!r}",
+                f"修改学校账号 {school_username} 账单 {billing_id} 的描述: {old_reason!r} → {new_reason!r}",
             )
             logging.info(f"[管理员账单] 管理员 {g.user} 修改账单 {billing_id} 描述")
             return jsonify({"success": True, "message": "账单描述已更新"})
@@ -43599,7 +43604,6 @@ def start_web_server(args_param):
         """
         try:
             data = request.get_json() or {}
-            auth_username = str(data.get("auth_username", "")).strip()
             school_username = str(data.get("school_username", "")).strip()
             mode = str(data.get("mode", "count")).strip().lower()
             reason = str(data.get("reason", "")).strip()
@@ -43607,23 +43611,9 @@ def start_web_server(args_param):
             if not school_username:
                 return jsonify({"success": False, "message": "school_username 不能为空"}), 400
 
-            if not auth_username:
-                # 尝试自动查找归属用户
-                user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
-                if os.path.isdir(user_accounts_dir):
-                    for fname in os.listdir(user_accounts_dir):
-                        if fname.lower().endswith(".json"):
-                            try:
-                                with open(os.path.join(user_accounts_dir, fname), "r", encoding="utf-8") as f:
-                                    accounts_data = json.load(f)
-                                    if school_username in accounts_data:
-                                        auth_username = os.path.splitext(fname)[0]
-                                        break
-                            except Exception:
-                                continue
-
-            if not auth_username:
-                return jsonify({"success": False, "message": "无法找到该学校账号所属的用户，请手动指定目标用户名"}), 400
+            allowed_schools = set((auth_system._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权为该学校账号创建账单"}), 403
 
             if mode not in ("count", "amount"):
                 return jsonify({"success": False, "message": "mode 必须是 'count' 或 'amount'"}), 400
@@ -43662,18 +43652,18 @@ def start_web_server(args_param):
                 if not reason:
                     reason = f"管理员手动添加账单 ¥{total_amount}"
 
-            billing_id = _create_user_billing_record(auth_username, school_username, reason, total_amount)
+            billing_id = _create_user_billing_record("", school_username, reason, total_amount)
             if not billing_id:
                 return jsonify({"success": False, "message": "创建账单记录失败，请检查日志"}), 500
 
             auth_system.log_audit(
                 admin_username,
                 "admin_add_billing",
-                f"为用户 {auth_username}（学校账号 {school_username}）创建账单: {billing_id}, "
+                f"为学校账号 {school_username} 创建账单: {billing_id}, "
                 f"模式={mode}, 金额=¥{total_amount}, 原因={reason!r}",
             )
             logging.info(
-                f"[管理员账单] {admin_username} 为 {auth_username}/{school_username} "
+                f"[管理员账单] {admin_username} 为 {school_username} "
                 f"创建账单 {billing_id}，模式={mode}，金额=¥{total_amount}"
             )
             return jsonify({
