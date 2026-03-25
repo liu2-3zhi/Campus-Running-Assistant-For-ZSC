@@ -2056,3 +2056,28 @@ body.mobile-mode #session-picker-modal {
 .swal-flat-button:hover {
   background: #1e40af !important;
 }
+
+
+
+/* 弹窗整体更干净 */
+.swal2-clean-popup {
+  border-radius: 10px !important;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.08) !important;
+}
+
+/* 标题更稳重 */
+.swal2-clean-title {
+  color: #1e293b !important;
+  font-weight: 700 !important;
+}
+
+/* 按钮去除发光 */
+.swal2-clean-btn:focus {
+  box-shadow: none !important;
+}
+
+/* SweetAlert2 默认按钮也会有 glow，这里彻底去掉 */
+.swal2-confirm:focus,
+.swal2-cancel:focus {
+  box-shadow: none !important;
+}

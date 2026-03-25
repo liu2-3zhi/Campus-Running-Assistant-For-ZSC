@@ -57435,10 +57435,6 @@ async function adminAddBillingDialog() {
     html: `
       <div style="text-align:left;font-size:13px;color:#374151;">
         <div style="margin-bottom:10px;">
-          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">目标用户名 <span style="color:#ef4444;">*</span></label>
-          <input id="swal-add-billing-username" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" placeholder="auth_username（认证系统用户名）">
-        </div>
-        <div style="margin-bottom:10px;">
           <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">学校账号 <span style="color:#ef4444;">*</span></label>
           <input id="swal-add-billing-school" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" placeholder="school_username（学校学号/账号）">
         </div>
@@ -57477,17 +57473,15 @@ async function adminAddBillingDialog() {
     cancelButtonColor: "#64748b",
     reverseButtons: true,
     preConfirm: () => {
-      const username = document.getElementById("swal-add-billing-username").value.trim();
       const school = document.getElementById("swal-add-billing-school").value.trim();
       const mode = document.querySelector('input[name="swal-billing-mode"]:checked').value;
       const count = document.getElementById("swal-add-billing-count").value.trim();
       const amount = document.getElementById("swal-add-billing-amount").value.trim();
       const reason = document.getElementById("swal-add-billing-reason").value.trim();
-      if (!username) { Swal.showValidationMessage("请填写目标用户名"); return false; }
       if (!school) { Swal.showValidationMessage("请填写学校账号"); return false; }
       if (mode === "count" && (!count || parseInt(count) < 1)) { Swal.showValidationMessage("次数必须大于 0"); return false; }
       if (mode === "amount" && (!amount || parseFloat(amount) <= 0)) { Swal.showValidationMessage("金额必须大于 0"); return false; }
-      return { username, school, mode, count: parseInt(count) || 1, amount: parseFloat(amount) || 0, reason };
+      return { school, mode, count: parseInt(count) || 1, amount: parseFloat(amount) || 0, reason };
     },
   });
 
@@ -57495,7 +57489,7 @@ async function adminAddBillingDialog() {
 
   try {
     const body = {
-      auth_username: formValues.username,
+      auth_username: "",
       school_username: formValues.school,
       mode: formValues.mode,
       reason: formValues.reason,
@@ -57589,7 +57583,7 @@ async function restoreAccount(auth_username) {
           请确认是否要恢复以下账号：
         </p>
 
-        <!-- 红色警告（无渐变、无发光） -->
+        <!-- 红色警告（纯色、无发光、无渐变） -->
         <div style="
           background:#fee2e2;
           border-left:4px solid #dc2626;
@@ -57597,12 +57591,17 @@ async function restoreAccount(auth_username) {
           border-radius:6px;
           margin-bottom:14px;
         ">
-          <p style="font-size:14px;color:#b91c1c;margin:0;font-weight:600;">
+          <p style="
+            font-size:14px;
+            color:#b91c1c;
+            margin:0;
+            font-weight:600;
+          ">
             ⚠️ 恢复后该账号将重新可以登录，且所有历史数据将被完整还原。
           </p>
         </div>
 
-        <!-- 账号展示（纯色背景） -->
+        <!-- 账号展示（绿色提示块） -->
         <div style="
           background:#e7f7eb;
           border-left:4px solid #16a34a;
@@ -57629,18 +57628,26 @@ async function restoreAccount(auth_username) {
     `,
     icon: "warning",
     showCancelButton: true,
+
+    /* 按钮文本 */
     confirmButtonText: "<strong>🔄 确认恢复</strong>",
-    confirmButtonColor: "#dc2626",
     cancelButtonText: "<strong>✖️ 取消</strong>",
+
+    /* 按钮颜色（纯色、无发光） */
+    confirmButtonColor: "#dc2626",
     cancelButtonColor: "#64748b",
+
+    /* 自定义类（用于去除发光、统一风格） */
     customClass: {
-      popup: "swal2-neumorphism-popup",
-      title: "swal2-neumorphism-title",
-      confirmButton: "swal2-neumorphism-confirm",
-      cancelButton: "swal2-neumorphism-cancel",
+      popup: "swal2-clean-popup",
+      title: "swal2-clean-title",
+      confirmButton: "swal2-clean-btn",
+      cancelButton: "swal2-clean-btn",
     },
+
     reverseButtons: true,
   });
+
 
   if (!confirmResult.isConfirmed) return false;
 
