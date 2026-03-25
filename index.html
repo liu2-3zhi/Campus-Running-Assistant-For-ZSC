@@ -3207,17 +3207,13 @@
                 </div>
               </div>
 
-              <div class="relative overflow-hidden rounded-xl border border-sky-100 bg-gradient-to-br from-white via-sky-50 to-cyan-50 p-3 space-y-2 shadow-sm">
-                <div class="pointer-events-none absolute -top-6 -right-6 h-16 w-16 rounded-full bg-sky-200/30 blur-xl"></div>
-                <div class="relative flex justify-between items-center">
-                  <h5 class="font-semibold text-slate-800 text-xs tracking-wide flex items-center gap-1.5">
-                    <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 text-white text-[10px] font-bold">账</span>
-                    我的账单
-                  </h5>
-                  <button class="inline-flex items-center rounded-full border border-sky-200 bg-white/90 px-2.5 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-600 hover:text-white hover:border-sky-600" onclick="loadMobileUserBillingList()">刷新</button>
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+                <div class="flex justify-between items-center">
+                  <h5 class="font-semibold text-slate-700 text-xs">我的账单</h5>
+                  <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadMobileUserBillingList()">刷新</button>
                 </div>
-                <div id="mobile-user-billing-list-container" class="relative overflow-x-auto rounded-lg border border-sky-100 bg-white/80 p-2.5 min-h-[54px]">
-                  <p class="text-xs text-slate-500">点击刷新加载账单记录</p>
+                <div id="mobile-user-billing-list-container" class="overflow-x-auto">
+                  <p class="text-xs text-slate-400">点击刷新加载账单记录</p>
                 </div>
               </div>
 
@@ -3372,27 +3368,6 @@
               </svg>
               <input type="text" id="mobile-multi-admin-billing-username-input" class="input-field !text-xs !py-0 flex-1 !border-0 !shadow-none !rounded-none focus:!ring-0" placeholder="用户名（留空查询全部）">
               <button class="btn btn-primary !py-1 !px-2 text-xs whitespace-nowrap" onclick="loadMobileMultiAdminBillingList()">查询</button>
-            </div>
-            <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2">
-              <h5 class="text-xs font-semibold text-slate-700">添加自定义账单</h5>
-              <div class="grid grid-cols-1 gap-2">
-                <select id="mobile-multi-admin-billing-add-mode" class="input-field !text-xs" onchange="toggleAdminBillingCreateMode('mobile')">
-                  <option value="amount">按金额添加</option>
-                  <option value="count" selected>按次数添加</option>
-                </select>
-                <input type="text" id="mobile-multi-admin-billing-add-auth-username" class="input-field !text-xs" placeholder="用户名（可选，留空自动识别）">
-                <input type="text" id="mobile-multi-admin-billing-add-school-username" class="input-field !text-xs" placeholder="学校账号（必填）">
-                <div id="mobile-multi-admin-billing-add-amount-wrap" class="hidden">
-                  <input type="number" id="mobile-multi-admin-billing-add-amount" min="0.01" step="0.01" class="input-field !text-xs" placeholder="金额（元）">
-                </div>
-                <div id="mobile-multi-admin-billing-add-count-wrap">
-                  <input type="number" id="mobile-multi-admin-billing-add-count" min="1" step="1" class="input-field !text-xs" placeholder="次数（正整数）">
-                </div>
-                <input type="text" id="mobile-multi-admin-billing-add-reason" class="input-field !text-xs" placeholder="原因（可选）">
-              </div>
-              <button class="w-full py-2 bg-emerald-500 text-white rounded-md text-xs font-medium hover:bg-emerald-600 active:bg-emerald-700 transition-colors" onclick="adminCreateCustomBillingMobile()">
-                添加账单
-              </button>
             </div>
             <div id="mobile-multi-admin-billing-list">
               <div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
@@ -3840,8 +3815,31 @@
               </p>
             </div>
             
-            <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-3 text-xs text-slate-500">
-              “添加欠费”已迁移到账单管理面板，请在“账单”标签页通过“添加自定义账单”进行操作。
+            <!-- 添加欠费功能区域 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3 mb-3">
+              <!-- 区域标题 -->
+              <h4 class="text-sm font-semibold text-slate-700 mb-2">
+                <svg class="w-4 h-4 inline mr-1 text-red-500" aria-label="添加欠费图标" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                添加欠费
+              </h4>
+              <div class="space-y-2">
+                <!-- 学校账号输入框 -->
+                <div>
+                  <label for="mobile-add-overdue-school-username" class="block text-xs font-medium text-slate-700 mb-1">学校账号</label>
+                  <input type="text" id="mobile-add-overdue-school-username" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入学校账号">
+                </div>
+                <!-- 欠费次数输入框 -->
+                <div>
+                  <label for="mobile-add-overdue-count" class="block text-xs font-medium text-slate-700 mb-1">欠费次数</label>
+                  <input type="number" id="mobile-add-overdue-count" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入欠费次数">
+                </div>
+                <!-- 添加按钮 -->
+                <button onclick="mobileAdminAddOverdue()" class="w-full py-2 bg-red-500 text-white rounded-md text-sm font-medium hover:bg-red-600 active:bg-red-700 transition-colors min-h-[40px]">
+                  添加欠费
+                </button>
+              </div>
             </div>
 
             <!-- 欠费账号列表容器 -->
@@ -7684,22 +7682,18 @@
           </div>
 
           <!-- 我的账单区域 -->
-          <div class="relative overflow-hidden rounded-2xl border border-sky-100 bg-gradient-to-br from-white via-sky-50 to-cyan-50 p-4 space-y-3 shadow-sm ring-1 ring-white/70">
-            <div class="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-sky-200/30 blur-2xl"></div>
-            <div class="relative flex justify-between items-center">
-              <h5 class="font-semibold text-slate-800 mb-0 flex items-center gap-2 tracking-wide">
-                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-sky-600 text-white text-[11px] font-bold shadow-sm">账</span>
-                我的账单
-              </h5>
-              <button onclick="loadUserBillingList()" class="inline-flex items-center gap-1.5 min-h-[40px] rounded-full border border-sky-200 bg-white/90 px-3 py-2 text-sm font-medium text-sky-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-sky-600 hover:text-white hover:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-300">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+            <div class="flex justify-between items-center">
+              <h5 class="font-semibold text-slate-700 mb-0">我的账单</h5>
+              <button onclick="loadUserBillingList()" class="btn btn-ghost !py-2 !px-3 text-sm min-h-[40px]">
+                <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                 </svg>
                 刷新
               </button>
             </div>
-            <div id="user-billing-list-container" class="relative overflow-x-auto rounded-xl border border-sky-100 bg-white/75 p-3 shadow-inner min-h-[64px]">
-              <p class="text-xs text-slate-500">点击刷新加载账单记录</p>
+            <div id="user-billing-list-container" class="overflow-x-auto">
+              <p class="text-xs text-slate-400">点击刷新加载账单记录</p>
             </div>
           </div>
 
@@ -7734,8 +7728,8 @@
             <h5 class="font-semibold text-slate-700">发表留言</h5>
             <div id="message-guest-fields" class="space-y-2 hidden">
               <div>
-                <div id="mobile-user-billing-list-container" class="relative overflow-x-auto rounded-lg border border-sky-100 bg-white/80 p-2.5 min-h-[54px]">
-                  <p class="text-xs text-slate-500">点击刷新加载账单记录</p>
+                <label class="block text-sm font-semibold text-slate-700 mb-1">昵称 <span class="text-red-500">*</span></label>
+                <input type="text" id="message-nickname" class="input-field" placeholder="请输入您的昵称" maxlength="50">
               </div>
               <div>
                 <label class="block text-sm font-semibold text-slate-700 mb-1">邮箱 <span class="text-red-500">*</span></label>
@@ -8676,8 +8670,54 @@
           </p>
         </div>
         
-        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4 text-sm text-slate-500">
-          “添加欠费”已迁移到账单管理面板，请在“账单管理”中通过“添加自定义账单”操作。
+        <!-- ========================================
+             添加欠费功能区域
+             功能：允许管理员为指定学校账号添加欠费次数
+             权限：管理员（admin）和超级管理员（super_admin）
+             输入：学校账号、欠费次数
+             ======================================== -->
+        <div class="bg-white border border-slate-200 rounded-lg p-4 mb-4">
+          <!-- 区域标题 -->
+          <h3 class="text-lg font-semibold text-slate-700 mb-3">
+            <!-- 加号图标，表示"添加"操作 -->
+            <svg class="w-5 h-5 inline mr-1 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            添加欠费
+          </h3>
+          
+          <!-- 输入表单区域，使用垂直间距布局 -->
+          <div class="space-y-3">
+            <!-- 学校账号输入框 -->
+            <div>
+              <!-- 输入框标签，使用中等字重和深色文字 -->
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                学校账号
+              </label>
+              <!-- 文本输入框 -->
+              <!-- 使用完整宽度，带边框和圆角，获得焦点时显示蓝色环状高亮 -->
+              <input type="text" id="admin-add-overdue-school-username" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入学校账号">
+            </div>
+            
+            <!-- 欠费次数输入框 -->
+            <div>
+              <!-- 输入框标签 -->
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                欠费次数
+              </label>
+              <!-- 数字输入框 -->
+              <!-- type="number" 限制只能输入数字 -->
+              <!-- min="1" 设置最小值为1，防止输入0或负数 -->
+              <input type="number" id="admin-add-overdue-count" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入欠费次数">
+            </div>
+            
+            <!-- 添加按钮 -->
+            <!-- 使用红色背景强调此操作的重要性（添加欠费是敏感操作） -->
+            <!-- onclick 绑定 adminAddOverdue() 函数处理添加逻辑 -->
+            <button onclick="adminAddOverdue()" class="w-full py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors">
+              添加欠费
+            </button>
+          </div>
         </div>
         
         <!-- 欠费账号列表容器 -->
@@ -10338,29 +10378,6 @@
           <input type="text" id="admin-billing-username-input" class="input-field flex-1 !border-0 !shadow-none !p-0 !rounded-none focus:!ring-0" placeholder="输入用户名筛选（留空查询全部）">
           <button onclick="loadAdminBillingList()" class="btn btn-primary whitespace-nowrap !py-1.5 !px-4 text-sm">查询</button>
         </div>
-        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
-          <h4 class="text-sm font-semibold text-slate-700">添加自定义账单</h4>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <select id="admin-billing-add-mode" class="input-field" onchange="toggleAdminBillingCreateMode('pc')">
-              <option value="amount">按金额添加</option>
-              <option value="count" selected>按次数添加</option>
-            </select>
-            <input type="text" id="admin-billing-add-auth-username" class="input-field" placeholder="用户名（可选，留空自动识别）">
-            <input type="text" id="admin-billing-add-school-username" class="input-field" placeholder="学校账号（必填）">
-            <div id="admin-billing-add-amount-wrap" class="hidden">
-              <input type="number" id="admin-billing-add-amount" min="0.01" step="0.01" class="input-field" placeholder="金额（元）">
-            </div>
-            <div id="admin-billing-add-count-wrap">
-              <input type="number" id="admin-billing-add-count" min="1" step="1" class="input-field" placeholder="次数（正整数）">
-            </div>
-            <input type="text" id="admin-billing-add-reason" class="input-field" placeholder="原因（可选）">
-          </div>
-          <div class="flex justify-end">
-            <button onclick="adminCreateCustomBillingPC()" class="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition-colors">
-              添加账单
-            </button>
-          </div>
-        </div>
         <div id="admin-billing-list-container">
           <div class="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
             <svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11359,9 +11376,46 @@
       </div>
       
       <!-- 账户信息卡片 -->
-        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4 text-sm text-slate-500">
-          “添加欠费”已迁移到账单管理面板，请在“账单管理”中通过“添加自定义账单”操作。
-        </div>
+      <!-- 显示账户统计信息和操作按钮 -->
+      <!-- bg-blue-50: 浅蓝色背景，与整体主题色呼应 -->
+      <!-- border border-blue-200: 蓝色边框，增强视觉层次 -->
+      <!-- rounded-lg: 中等圆角（0.5rem=8px） -->
+      <!-- p-3: 内边距为0.75rem（12px），移动端紧凑布局 -->
+      <!-- mb-3: 底部外边距为0.75rem（12px） -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+        <!-- flex flex-col space-y-3: 使用垂直flex布局，子元素之间间距为0.75rem -->
+        <!-- 移动端采用垂直布局，避免水平空间不足 -->
+        <div class="flex flex-col space-y-3">
+          
+          <!-- 账户统计信息区域 -->
+          <div>
+            <!-- 账户总数显示 -->
+            <!-- text-sm: 字体大小为0.875rem（14px），移动端可读性良好 -->
+            <!-- text-blue-700: 深蓝色文字，与背景颜色协调 -->
+            <p class="text-sm text-blue-700">
+              <strong>账户总数:</strong>
+              <!-- 动态显示账户数量 -->
+              <!-- font-mono: 等宽字体，数字显示更整齐美观 -->
+              <span id="mobile-school-accounts-count" class="font-mono">0</span>
+            </p>
+            
+            <!-- 提示信息 -->
+            <!-- text-xs: 字体大小为0.75rem（12px），次要信息使用较小字体 -->
+            <!-- text-slate-600: 中灰色文字，视觉权重低于主要信息 -->
+            <!-- mt-1: 顶部外边距为0.25rem（4px） -->
+            <p class="text-xs text-slate-600 mt-1">
+              💡 您可以查看、编辑或删除此用户的学校账户信息
+            </p>
+          </div>
+          
+          <!-- 操作按钮组 -->
+          <!-- 移动端采用横向排列，充分利用屏幕宽度 -->
+          <!-- flex items-center gap-2: flex布局，垂直居中，按钮之间间距为0.5rem -->
+          <div class="flex items-center gap-2">
+            
+            <!-- 刷新按钮 -->
+            <!-- 触发mobileRefreshSchoolAccounts()函数重新加载账户列表 -->
+            <!-- flex-1: 按钮均分可用空间，确保按钮宽度一致 -->
             <!-- py-2: 上下内边距为0.5rem（8px） -->
             <!-- px-3: 左右内边距为0.75rem（12px） -->
             <!-- bg-sky-500: 天蓝色背景，主要操作按钮的标准颜色 -->
