@@ -57424,6 +57424,108 @@ async function adminEditBillingReason(billingId, authUsername, currentReason) {
   }
 }
 
+/**
+ * 管理员添加账单对话框
+ * 支持两种模式：次数模式（count）和金额模式（amount）
+ * 原因为空时服务器自动生成
+ */
+async function adminAddBillingDialog() {
+  const { value: formValues, isConfirmed } = await Swal.fire({
+    title: "添加账单",
+    html: `
+      <div style="text-align:left;font-size:13px;color:#374151;">
+        <div style="margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">目标用户名 <span style="color:#ef4444;">*</span></label>
+          <input id="swal-add-billing-username" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" placeholder="auth_username（认证系统用户名）">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">学校账号 <span style="color:#ef4444;">*</span></label>
+          <input id="swal-add-billing-school" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" placeholder="school_username（学校学号/账号）">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">计费方式</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="swal-billing-mode" value="count" checked onchange="document.getElementById('swal-billing-count-row').style.display='';document.getElementById('swal-billing-amount-row').style.display='none';">
+              按次数（默认）
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="swal-billing-mode" value="amount" onchange="document.getElementById('swal-billing-count-row').style.display='none';document.getElementById('swal-billing-amount-row').style.display='';">
+              按金额
+            </label>
+          </div>
+        </div>
+        <div id="swal-billing-count-row" style="margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">欠费次数</label>
+          <input id="swal-add-billing-count" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" type="number" min="1" value="1" placeholder="次数">
+        </div>
+        <div id="swal-billing-amount-row" style="display:none;margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">自定义金额（元）</label>
+          <input id="swal-add-billing-amount" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" type="number" min="0.01" step="0.01" placeholder="如 5.00">
+        </div>
+        <div style="margin-bottom:4px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">原因/描述 <span style="color:#9ca3af;font-weight:400;">（留空自动生成）</span></label>
+          <input id="swal-add-billing-reason" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" placeholder="如：手动补录欠费">
+        </div>
+      </div>
+    `,
+    icon: "info",
+    showCancelButton: true,
+    confirmButtonText: "创建账单",
+    confirmButtonColor: "#2563eb",
+    cancelButtonText: "取消",
+    cancelButtonColor: "#64748b",
+    reverseButtons: true,
+    preConfirm: () => {
+      const username = document.getElementById("swal-add-billing-username").value.trim();
+      const school = document.getElementById("swal-add-billing-school").value.trim();
+      const mode = document.querySelector('input[name="swal-billing-mode"]:checked').value;
+      const count = document.getElementById("swal-add-billing-count").value.trim();
+      const amount = document.getElementById("swal-add-billing-amount").value.trim();
+      const reason = document.getElementById("swal-add-billing-reason").value.trim();
+      if (!username) { Swal.showValidationMessage("请填写目标用户名"); return false; }
+      if (!school) { Swal.showValidationMessage("请填写学校账号"); return false; }
+      if (mode === "count" && (!count || parseInt(count) < 1)) { Swal.showValidationMessage("次数必须大于 0"); return false; }
+      if (mode === "amount" && (!amount || parseFloat(amount) <= 0)) { Swal.showValidationMessage("金额必须大于 0"); return false; }
+      return { username, school, mode, count: parseInt(count) || 1, amount: parseFloat(amount) || 0, reason };
+    },
+  });
+
+  if (!isConfirmed || !formValues) return;
+
+  try {
+    const body = {
+      auth_username: formValues.username,
+      school_username: formValues.school,
+      mode: formValues.mode,
+      reason: formValues.reason,
+    };
+    if (formValues.mode === "count") body.count = formValues.count;
+    else body.amount = formValues.amount;
+
+    const resp = await fetch("/api/admin/billing/add", {
+      method: "POST",
+      headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      await Swal.fire({
+        title: "账单已创建",
+        html: `<p style="color:#374151;font-size:14px;">账单 ID：<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">${data.billing_id}</code></p><p style="margin-top:6px;color:#16a34a;font-weight:600;">金额：¥${data.amount}</p>`,
+        icon: "success",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#2563eb",
+      });
+      await loadAdminBillingList();
+    } else {
+      await Swal.fire({ title: "创建失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
+    }
+  } catch (e) {
+    await Swal.fire({ title: "请求异常", text: e.message, icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
+  }
+}
+
 async function loadRemovedAccountsList() {
   const container = document.getElementById("removed-accounts-list-container");
   if (!container) return;
