@@ -34037,11 +34037,11 @@ async function multi_startAll() {
   }
 
   // ========== 步骤3：欠费检查（只检查已添加的账号）==========
-  // 【重要】这里传入已添加的账号列表，只检查这些账号的欠费情况
-  // 如果addedUsernames为空数组，checkOverdueBeforeStart会检查所有账号（回退到原有行为）
-  const canStart = await checkOverdueBeforeStart(
-    addedUsernames.length > 0 ? addedUsernames : null,
-  );
+  // 【重要】只检查已添加账号的欠费情况，若获取账号列表失败则跳过检查
+  const canStart =
+    addedUsernames.length > 0
+      ? await checkOverdueBeforeStart(addedUsernames)
+      : true;
   if (!canStart) {
     // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
     return;
@@ -35972,8 +35972,10 @@ async function toggleAllRuns() {
 
   if (btn.textContent === "执行所有") {
     // ========== 添加欠费检查 ==========
-    // 在开始所有任务前，检查所有学校账号是否有欠费
-    const canStart = await checkOverdueBeforeStart();
+    // 在开始所有任务前，只检查当前登录账号的欠费情况
+    const canStart = await checkOverdueBeforeStart(
+      String(currentUserData.student_id),
+    );
     if (!canStart) {
       // 欠费检查未通过，直接返回不启动任务
       return;
@@ -38860,9 +38862,11 @@ async function mobileStartTask() {
     }
 
     // ========== 添加欠费检查 ==========
-    // 在启动任务前，检查当前用户的所有学校账号是否有欠费
+    // 在启动任务前，只检查当前登录账号的欠费情况
     // checkOverdueBeforeStart() 会调用后端API，如果有欠费会显示缴费弹窗
-    const canStart = await checkOverdueBeforeStart();
+    const canStart = await checkOverdueBeforeStart(
+      String(currentUserData.student_id),
+    );
     if (!canStart) {
       // 用户有欠费且未完成缴费，阻止任务启动
       return;
@@ -39403,11 +39407,11 @@ async function mobileStartAllAccounts() {
     }
 
     // ========== 步骤4：欠费检查（只检查已添加的账号）==========
-    // 【重要】传入已添加的账号列表，只检查这些账号的欠费情况
-    // 如果addedUsernames为空数组，则传null检查所有账号（回退到原有行为）
-    const canStart = await checkOverdueBeforeStart(
-      addedUsernames.length > 0 ? addedUsernames : null,
-    );
+    // 【重要】只检查已添加账号的欠费情况，若获取账号列表失败则跳过检查
+    const canStart =
+      addedUsernames.length > 0
+        ? await checkOverdueBeforeStart(addedUsernames)
+        : true;
     if (!canStart) {
       // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
       return;
