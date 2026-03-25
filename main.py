@@ -43486,7 +43486,7 @@ def start_web_server(args_param):
 
             # 仅允许读取当前管理员有权限的学校账号账单
             try:
-                allowed_schools = set((auth_system._load_user_school_accounts(g.user) or {}).keys())
+                allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
             except Exception:
                 allowed_schools = set()
 
@@ -43542,7 +43542,7 @@ def start_web_server(args_param):
             if not billing_id or not school_username:
                 return jsonify({"success": False, "message": "billing_id 和 school_username 不能为空"}), 400
 
-            allowed_schools = set((auth_system._load_user_school_accounts(g.user) or {}).keys())
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
             if school_username not in allowed_schools:
                 return jsonify({"success": False, "message": "无权操作该学校账号的账单"}), 403
 
@@ -43611,7 +43611,7 @@ def start_web_server(args_param):
             if not school_username:
                 return jsonify({"success": False, "message": "school_username 不能为空"}), 400
 
-            allowed_schools = set((auth_system._load_user_school_accounts(g.user) or {}).keys())
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
             if school_username not in allowed_schools:
                 return jsonify({"success": False, "message": "无权为该学校账号创建账单"}), 403
 
