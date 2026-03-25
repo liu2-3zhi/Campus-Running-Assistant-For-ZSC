@@ -1486,7 +1486,7 @@ def setup_logging():
     配置详细的日志系统（带自定义轮转逻辑）。
     """
     log_rotation_size_mb = 10
-    archive_max_size_mb = 500
+    archive_max_size_mb = 1024*10    # 10GB
     global log_dir, archive_dir
     log_dir = "logs"
     archive_dir = os.path.join(log_dir, "archive")
@@ -21084,20 +21084,25 @@ def _send_startup_notification_to_log_forwarder(host, port):
 
 def _create_user_billing_record(auth_username, school_username, reason, amount):
     """
-    为用户创建账单记录。
+    为学校账号创建账单记录。
     
     参数:
-        auth_username: 认证用户名
-        school_username: 学校账号用户名
+        auth_username: (已弃用，保留兼容) 认证用户名，不再用于确定存储路径
+        school_username: 学校账号用户名（核心标识符）
         reason: 账单原因（如"校园跑一次"）
         amount: 金额（float）
     
     返回:
         billing_id: 账单ID（UUID字符串），失败返回None
+        
+    变更说明:
+        账单现在存储在 User_Billing/School_Bills/{school_username}/ 目录下
+        不再按 auth_username 分文件夹，以便多用户共享同一学校账号的账单
     """
     try:
-        # 构建账单目录路径
-        billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+        # 构建账单目录路径: User_Billing/School_Bills/{school_username}/
+        # 注意：这里使用 School_Bills 子目录来避免与旧数据（用户名目录）冲突
+        billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", "School_Bills", school_username)
         # 如果目录不存在则创建
         os.makedirs(billing_dir, exist_ok=True)
         
@@ -21112,7 +21117,7 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
         # 构建账单数据
         billing_data = {
             "billing_id": billing_id,
-            "auth_username": auth_username,
+            "auth_username": auth_username, # 仅供记录，不影响存储
             "school_username": school_username,
             "reason": reason,
             "amount": round(float(amount), 2),
@@ -21128,10 +21133,10 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
         with open(billing_file, "w", encoding="utf-8") as f:
             json.dump(billing_data, f, indent=2, ensure_ascii=False)
         
-        logging.info(f"[账单] 为用户 {auth_username} 创建账单记录: {billing_id}, 原因: {reason}, 金额: {amount}")
+        logging.info(f"[账单] 为学校账号 {school_username} (操作者: {auth_username}) 创建账单记录: {billing_id}, 原因: {reason}, 金额: {amount}")
         return billing_id
     except Exception as e:
-        logging.error(f"[账单] 创建账单记录失败 (用户: {auth_username}): {e}", exc_info=True)
+        logging.error(f"[账单] 创建账单记录失败 (学校账号: {school_username}): {e}", exc_info=True)
         return None
 
 
@@ -43599,10 +43604,27 @@ def start_web_server(args_param):
             mode = str(data.get("mode", "count")).strip().lower()
             reason = str(data.get("reason", "")).strip()
 
-            if not auth_username:
-                return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
             if not school_username:
                 return jsonify({"success": False, "message": "school_username 不能为空"}), 400
+
+            if not auth_username:
+                # 尝试自动查找归属用户
+                user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+                if os.path.isdir(user_accounts_dir):
+                    for fname in os.listdir(user_accounts_dir):
+                        if fname.lower().endswith(".json"):
+                            try:
+                                with open(os.path.join(user_accounts_dir, fname), "r", encoding="utf-8") as f:
+                                    accounts_data = json.load(f)
+                                    if school_username in accounts_data:
+                                        auth_username = os.path.splitext(fname)[0]
+                                        break
+                            except Exception:
+                                continue
+
+            if not auth_username:
+                return jsonify({"success": False, "message": "无法找到该学校账号所属的用户，请手动指定目标用户名"}), 400
+
             if mode not in ("count", "amount"):
                 return jsonify({"success": False, "message": "mode 必须是 'count' 或 'amount'"}), 400
 
