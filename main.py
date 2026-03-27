@@ -43427,32 +43427,45 @@ def start_web_server(args_param):
     @login_required
     def billing_list():
         """
-        获取当前用户的账单记录列表（按创建时间降序排列）。
+        获取当前用户有权限学校账号的账单记录列表（按创建时间降序排列）。
         需要用户登录。
         """
         try:
-            # 获取当前登录用户的用户名
-            auth_username = g.user
-            
-            # 构建账单目录路径
-            billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
-            
-            # 如果目录不存在，返回空列表
-            if not os.path.isdir(billing_dir):
-                return jsonify({"success": True, "records": []})
-            
+            school_username = request.args.get("school_username", "").strip()
+            billing_root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+            )
+
+            # 仅允许读取当前用户有权限的学校账号账单
+            try:
+                allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            except Exception:
+                allowed_schools = set()
+
+            if school_username:
+                if school_username not in allowed_schools:
+                    return jsonify({"success": True, "records": [], "total": 0})
+                target_schools = [school_username]
+            else:
+                target_schools = sorted(allowed_schools)
+
             records = []
-            # 遍历账单目录中的所有JSON文件
-            for filename in os.listdir(billing_dir):
-                if not filename.endswith(".json"):
+            for school in target_schools:
+                user_billing_dir = os.path.join(billing_root, school)
+                if not os.path.isdir(user_billing_dir):
                     continue
-                filepath = os.path.join(billing_dir, filename)
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        record = json.load(f)
-                    records.append(record)
-                except Exception as e:
-                    logging.warning(f"[账单列表] 读取账单文件 {filename} 失败: {e}")
+                for filename in os.listdir(user_billing_dir):
+                    if not filename.endswith(".json"):
+                        continue
+                    filepath = os.path.join(user_billing_dir, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            record = json.load(f)
+                        records.append(record)
+                    except Exception as e:
+                        logging.warning(f"[账单列表] 读取账单文件 {filename} 失败: {e}")
             
             # 按创建时间降序排列
             records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
@@ -43463,7 +43476,7 @@ def start_web_server(args_param):
                         _r["amount"] = round(float(_r["amount"]), 2)
                     except Exception:
                         pass
-            return jsonify({"success": True, "records": records})
+            return jsonify({"success": True, "records": records, "total": len(records)})
         except Exception as e:
             logging.error(f"[账单列表] 获取账单列表失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500

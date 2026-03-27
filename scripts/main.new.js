@@ -47034,6 +47034,29 @@ function copyAdminContentToMultiPanel(tabType) {
   // 将PC端内容复制到移动端容器
   mobileContainer.innerHTML = pcContainer.innerHTML;
 
+  // 【账单列表】移动端显示优化：缩小表格字号并强化横向滚动体验
+  if (tabType === "billing") {
+    mobileContainer.querySelectorAll(".overflow-x-auto").forEach((el) => {
+      el.classList.add("pb-1", "[-webkit-overflow-scrolling:touch]");
+    });
+    mobileContainer.querySelectorAll("table").forEach((tb) => {
+      tb.classList.add("text-[11px]");
+    });
+    mobileContainer.querySelectorAll("th, td").forEach((cell) => {
+      cell.classList.add("!px-1.5", "!py-1.5");
+    });
+    mobileContainer.querySelectorAll("td div").forEach((box) => {
+      if (
+        box.classList.contains("flex") &&
+        box.classList.contains("items-center") &&
+        box.classList.contains("justify-center")
+      ) {
+        box.classList.remove("justify-center");
+        box.classList.add("justify-start", "flex-wrap");
+      }
+    });
+  }
+
   // 【特殊处理】使用DOM API直接修改按钮的onclick属性，避免正则表达式匹配失败
 
   // 【用户列表】替换用户管理按钮为移动端专用函数
@@ -57165,10 +57188,21 @@ document.addEventListener("DOMContentLoaded", function () {
  */
 async function loadUserBillingList() {
   const container = document.getElementById("user-billing-list-container");
+  const schoolInput = document.getElementById("user-billing-school-filter");
   if (!container) return;
-  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  const schoolUsername = schoolInput ? schoolInput.value.trim() : "";
+  container.innerHTML = `
+    <div class="flex items-center justify-center py-8 gap-2 text-slate-400 text-xs">
+      <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <span>加载中...</span>
+    </div>`;
   try {
-    const resp = await fetch("/api/billing/list", {
+    const url = schoolUsername
+      ? "/api/billing/list?school_username=" + encodeURIComponent(schoolUsername)
+      : "/api/billing/list";
+    const resp = await fetch(url, {
       headers: { "X-Session-ID": sessionUUID }
     });
     const data = await resp.json();
@@ -57178,31 +57212,35 @@ async function loadUserBillingList() {
     }
     const records = data.records || [];
     if (records.length === 0) {
-      container.innerHTML = "<p class=\"text-xs text-slate-400\">暂无账单记录</p>";
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-1.5"><p class="text-sm">暂无账单记录</p><p class="text-xs">${schoolUsername ? ("当前筛选学校账号：" + schoolUsername) : "当前范围：有权限学校账号的全部账单"}</p></div>`;
       return;
     }
-    let html = "<table class=\"w-full text-xs border-collapse\">";
+    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${schoolUsername}` : "当前范围：有权限学校账号的全部账单";
+    let html = `<div class="mb-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div>`;
+    html += "<div class=\"rounded-xl border border-slate-200 overflow-hidden\"><div class=\"overflow-x-auto\">";
+    html += "<table class=\"w-full text-xs border-collapse\">";
     html += "<thead><tr class=\"bg-slate-100\">";
-    html += "<th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
-    html += "</tr></thead><tbody>";
+    html += "<th class=\"p-2 text-left\">学校账号</th><th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
+    html += "</tr></thead><tbody class=\"divide-y divide-slate-100\">";
     records.forEach(r => {
       let statusBadge;
       if (r.status === "paid") {
-          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs\">已支付</span>";
+          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs whitespace-nowrap\">已支付</span>";
       } else if (r.status === "admin_cleared") {
-          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-sky-500 text-xs\">管理员清除</span>";
+          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-sky-500 text-xs whitespace-nowrap\">管理员清除</span>";
       } else {
-          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs\">待支付</span>";
+          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs whitespace-nowrap\">待支付</span>";
       }
-      html += "<tr class=\"border-b border-slate-100\">";
+      html += "<tr class=\"hover:bg-slate-50\">";
+      html += "<td class=\"p-2 whitespace-nowrap\">" + (r.school_username || "-") + "</td>";
       html += "<td class=\"p-2\">" + (r.reason || "-") + "</td>";
       html += "<td class=\"p-2\">" + (r.amount != null ? "¥" + r.amount : "-") + "</td>";
       html += "<td class=\"p-2\">" + statusBadge + "</td>";
-      html += "<td class=\"p-2\">" + (r.created_at || "-") + "</td>";
-      html += "<td class=\"p-2\">" + (r.paid_at || "-") + "</td>";
+      html += "<td class=\"p-2 whitespace-nowrap\">" + (r.created_at ? String(r.created_at).replace("T"," ").replace("Z","") : "-") + "</td>";
+      html += "<td class=\"p-2 whitespace-nowrap\">" + (r.paid_at ? String(r.paid_at).replace("T"," ").replace("Z","") : "-") + "</td>";
       html += "</tr>";
     });
-    html += "</tbody></table>";
+    html += "</tbody></table></div></div>";
     container.innerHTML = html;
   } catch (e) {
     container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
@@ -57213,7 +57251,12 @@ async function loadMobileUserBillingList() {
   await loadUserBillingList();
   const src = document.getElementById("user-billing-list-container");
   const dst = document.getElementById("mobile-user-billing-list-container");
-  if (src && dst) dst.innerHTML = src.innerHTML;
+  if (src && dst) {
+    dst.innerHTML = src.innerHTML;
+    dst.querySelectorAll("table").forEach((tb) => tb.classList.add("text-[11px]"));
+    dst.querySelectorAll("th, td").forEach((cell) => cell.classList.add("!px-1.5", "!py-1.5"));
+    dst.querySelectorAll("button").forEach((btn) => btn.classList.add("!text-[11px]", "!px-1.5", "!py-1"));
+  }
 }
 
 /**
