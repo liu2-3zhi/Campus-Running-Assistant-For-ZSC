@@ -57221,6 +57221,52 @@ function _collectSelectedBillingItems(containerId) {
   return items;
 }
 
+function _renderMobileUserBillingCards(records, containerId) {
+  let html = `<div class="space-y-2.5">`;
+  records.forEach((r) => {
+    const billingId = _escapeAttr(r.billing_id || "");
+    const school = _escapeAttr(r.school_username || "-");
+    const reason = _escapeAttr(r.reason || "-");
+    const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
+    const canPay = r.status === "pending";
+    html += `
+      <div class="bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div class="min-w-0">
+            <div class="text-[11px] text-slate-500">学校账号</div>
+            <div class="text-xs font-semibold text-slate-800 break-all">${school}</div>
+          </div>
+          <div class="flex items-center gap-1.5 flex-shrink-0">
+            <input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" ${canPay ? "" : "disabled"}>
+            ${_billStatusBadge(r.status)}
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-[11px]">
+          <div class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+            <div class="text-slate-500">金额</div>
+            <div class="text-slate-800 font-medium">${amount}</div>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+            <div class="text-slate-500">创建时间</div>
+            <div class="text-slate-800">${_escapeAttr(_fmtBillTime(r.created_at))}</div>
+          </div>
+        </div>
+        <div class="mt-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px]">
+          <div class="text-slate-500">原因</div>
+          <div class="text-slate-800 break-all">${reason}</div>
+        </div>
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <div class="text-[11px] text-slate-500">支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}</div>
+          ${canPay
+            ? `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 text-[11px] text-emerald-700" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`
+            : `<span class="text-[11px] text-slate-400">不可支付</span>`}
+        </div>
+      </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
 function _renderBillingTableCommon(records, opts = {}) {
   const {
     tableClass = "w-full text-xs border-collapse",
@@ -57336,11 +57382,7 @@ async function loadMobileUserBillingList() {
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="toggleBillingSelectAll('mobile-user-billing-list-container', false)">清空</button>
       <button class="btn btn-primary !py-0.5 !px-2 text-[11px]" onclick="paySelectedBilling('mobile-user-billing-list-container')">批量支付</button>
     </div>`;
-    html += _renderBillingTableCommon(records, {
-      tableClass: "w-full text-[11px] border-collapse",
-      isMobile: true,
-      containerId: "mobile-user-billing-list-container",
-    });
+    html += _renderMobileUserBillingCards(records, "mobile-user-billing-list-container");
     container.innerHTML = html;
   } catch (e) {
     container.innerHTML = `<p class="text-xs text-red-500">加载异常: ${_escapeAttr(e.message)}</p>`;
@@ -57909,27 +57951,38 @@ async function loadMobileMultiAdminBillingList() {
     html += `<div class="mb-2 flex items-center gap-1 justify-end">
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiAdminBillingList()">刷新</button>
     </div>`;
-    html += `<div class="rounded-xl border border-slate-200 overflow-hidden"><div class="overflow-x-auto">`;
-    html += `<table class="w-full text-[11px] border-collapse"><thead><tr class="bg-slate-100">`;
-    html += `<th class="p-1.5 text-left whitespace-nowrap">学校账号</th><th class="p-1.5 text-left whitespace-nowrap">原因</th><th class="p-1.5 text-left whitespace-nowrap">金额</th><th class="p-1.5 text-left whitespace-nowrap">状态</th><th class="p-1.5 text-left whitespace-nowrap">创建时间</th><th class="p-1.5 text-left whitespace-nowrap">操作</th>`;
-    html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
-    records.forEach((r, idx) => {
-      const rowBg = idx % 2 ? "bg-slate-50/60" : "";
-      html += `<tr class="${rowBg}">
-        <td class="p-1.5 whitespace-nowrap">${_escapeAttr(r.school_username || "-")}</td>
-        <td class="p-1.5">${_escapeAttr(r.reason || "-")}</td>
-        <td class="p-1.5 whitespace-nowrap">${r.amount != null ? "¥" + _escapeAttr(r.amount) : "-"}</td>
-        <td class="p-1.5">${_billStatusBadge(r.status)}</td>
-        <td class="p-1.5 whitespace-nowrap">${_escapeAttr(_fmtBillTime(r.created_at))}</td>
-        <td class="p-1.5 whitespace-nowrap">
-          <div class="flex flex-wrap items-center gap-1">
+    html += `<div class="space-y-2.5">`;
+    records.forEach((r) => {
+      html += `
+        <div class="bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="min-w-0">
+              <div class="text-[11px] text-slate-500">学校账号</div>
+              <div class="text-xs font-semibold text-slate-800 break-all">${_escapeAttr(r.school_username || "-")}</div>
+            </div>
+            ${_billStatusBadge(r.status)}
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-[11px]">
+            <div class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+              <div class="text-slate-500">金额</div>
+              <div class="text-slate-800 font-medium">${r.amount != null ? "¥" + _escapeAttr(r.amount) : "-"}</div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+              <div class="text-slate-500">创建时间</div>
+              <div class="text-slate-800">${_escapeAttr(_fmtBillTime(r.created_at))}</div>
+            </div>
+          </div>
+          <div class="mt-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px]">
+            <div class="text-slate-500">原因</div>
+            <div class="text-slate-800 break-all">${_escapeAttr(r.reason || "-")}</div>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-1 justify-end">
             <button class="btn btn-ghost border border-sky-300 !py-0.5 !px-1.5 text-[11px] text-sky-700" onclick='adminEditBilling(${JSON.stringify(r)})'>修改</button>
             <button class="btn btn-ghost border border-rose-300 !py-0.5 !px-1.5 text-[11px] text-rose-700" onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)}, ${JSON.stringify(r.school_username || "")})'>删除</button>
           </div>
-        </td>
-      </tr>`;
+        </div>`;
     });
-    html += `</tbody></table></div></div>`;
+    html += `</div>`;
     container.innerHTML = html;
   } catch (e) {
     container.innerHTML = `<p class="text-xs text-red-500">加载异常：${_escapeAttr(e.message)}</p>`;
