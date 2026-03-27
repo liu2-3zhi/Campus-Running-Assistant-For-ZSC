@@ -57337,7 +57337,7 @@ async function loadUserBillingList() {
       return;
     }
     const scopeTip = schoolUsername ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}` : "当前范围：有权限学校账号的全部账单";
-    let html = `<div class="mb-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div>`;
+    let html = `<!-- <div class="mb-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div> -->`;
     html += `<div class="mb-2 flex items-center gap-2 justify-end">
       <button class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs" onclick="toggleBillingSelectAll('user-billing-list-container', true)">全选待支付</button>
       <button class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs" onclick="toggleBillingSelectAll('user-billing-list-container', false)">清空选择</button>
@@ -57376,7 +57376,7 @@ async function loadMobileUserBillingList() {
       container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
       return;
     }
-    let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">当前范围：有权限学校账号的全部账单</div>`;
+    let html = `<!-- <div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">当前范围：有权限学校账号的全部账单</div> -->`;
     html += `<div class="mb-2 flex items-center gap-1 justify-end">
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="toggleBillingSelectAll('mobile-user-billing-list-container', true)">全选</button>
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="toggleBillingSelectAll('mobile-user-billing-list-container', false)">清空</button>
@@ -57520,7 +57520,7 @@ async function loadAdminBillingList(usernameOverride = null) {
     const pendingCount = records.filter(r => r.status === "pending").length;
     const clearedCount = records.filter(r => r.status === "admin_cleared").length;
     const totalAmount = records.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0).toFixed(2);
-    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${schoolUsername}` : "当前范围：有权限学校账号的全部账单";
+    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${schoolUsername}` : "当前范围：所有学校账号的全部账单";
     let html = `
       <div class="mb-3 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -57745,7 +57745,7 @@ async function adminDeleteBilling(billingId, schoolUsername) {
       <div style="text-align:left;font-size:13px;color:#475569;line-height:1.7;">
         <p>账单 ID：<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;color:#334155;">${billingId}</code></p>
         <p>学校账号：<strong style="color:#0f172a;">${schoolUsername || "-"}</strong></p>
-        <p style="margin-top:6px;color:#b45309;">删除后不会直接销毁，而是移动到 <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;">./User_Billing/Reomve/</code> 目录。</p>
+        <!-- <p style="margin-top:6px;color:#b45309;">删除后不会直接销毁，而是移动到 <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;">./User_Billing/Reomve/</code> 目录。</p> -->
       </div>
     `,
     icon: "warning",
@@ -57946,7 +57946,7 @@ async function loadMobileMultiAdminBillingList() {
       container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
       return;
     }
-    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}` : "当前范围：有权限学校账号的全部账单";
+    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}` : "当前范围：所有学校账号的全部账单";
     let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">${scopeTip}</div>`;
     html += `<div class="mb-2 flex items-center gap-1 justify-end">
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiAdminBillingList()">刷新</button>
