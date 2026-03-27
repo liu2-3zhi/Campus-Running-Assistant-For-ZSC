@@ -21752,6 +21752,46 @@ def start_web_server(args_param):
 
         logging.info(f"[overdue_count处理] 订单处理完成 - 订单号: {out_trade_no}")
 
+    def _process_billing_payment_async(billing_items: list, out_trade_no: str):
+        """
+        处理普通账单支付成功后的账单状态更新。
+        """
+        if not isinstance(billing_items, list) or not billing_items:
+            return
+        try:
+            _paid_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            for item in billing_items:
+                school_username = str(item.get("school_username", "")).strip()
+                billing_id = str(item.get("billing_id", "")).strip()
+                if not school_username or not billing_id:
+                    continue
+                billing_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "User_Billing",
+                    "School_Bills",
+                    school_username,
+                    f"{billing_id}.json",
+                )
+                if not os.path.exists(billing_file):
+                    continue
+                try:
+                    with open(billing_file, "r", encoding="utf-8") as _f:
+                        _brec = json.load(_f)
+                    if _brec.get("status") != "pending":
+                        continue
+                    if out_trade_no not in (_brec.get("payment_orders") or []):
+                        continue
+                    _brec["status"] = "paid"
+                    _brec["final_payment_order"] = out_trade_no
+                    _brec["paid_at"] = _paid_at
+                    with open(billing_file, "w", encoding="utf-8") as _f:
+                        json.dump(_brec, _f, indent=2, ensure_ascii=False)
+                    logging.info(f"[账单支付] 账单 {billing_id} 已标记为已支付")
+                except Exception as _be:
+                    logging.warning(f"[账单支付] 更新账单文件 {billing_id}.json 失败: {_be}")
+        except Exception as _e:
+            logging.error(f"[账单支付] 批量更新账单状态失败: {_e}", exc_info=True)
+
     def parse_google_fonts_css(css_content):
         """
         解析Google Fonts CSS内容，提取所有字体文件URL
@@ -31090,6 +31130,29 @@ def start_web_server(args_param):
                                     f"auth_username: {auth_username}, total_count: {total_count}"
                                 )
 
+                        # 普通账单支付订单：按 billing_items 更新账单状态
+                        if "billing_items" in order_data:
+                            billing_items = order_data.get("billing_items", [])
+                            if billing_items:
+                                try:
+                                    _process_billing_payment_async(
+                                        billing_items, out_trade_no)
+                                    _write_payment_log(
+                                        user_id=order_data.get("username", ""),
+                                        order_id=out_trade_no,
+                                        action="billing_payment_completed",
+                                        log_data={
+                                            "billing_items": billing_items,
+                                            "trade_no": trade_no,
+                                            "paid_amount": paid_amount,
+                                        },
+                                    )
+                                except Exception as e:
+                                    logging.error(
+                                        f"[账单支付-异步] 处理账单支付异常 - 订单: {out_trade_no}, 错误: {str(e)}"
+                                    )
+                                    logging.error(traceback.format_exc())
+
                         # 异步处理完成，不需要返回值
                         logging.info(f"[支付通知-异步] 订单处理完成 - 订单号: {out_trade_no}")
                         return
@@ -37896,6 +37959,38 @@ def start_web_server(args_param):
             except Exception as _e:
                 logging.error(f"[账单关联] 关联账单记录失败: {_e}", exc_info=True)
 
+            # ========== 步骤11.2：普通账单支付订单关联 ==========
+            # 如果请求中携带 billing_items，则把当前订单号关联到对应账单 payment_orders
+            try:
+                billing_items_input = data.get("billing_items", [])
+                if isinstance(billing_items_input, list) and billing_items_input:
+                    for _it in billing_items_input:
+                        _billing_id = str((_it or {}).get("billing_id", "")).strip()
+                        _school_username = str((_it or {}).get("school_username", "")).strip()
+                        if not _billing_id or not _school_username:
+                            continue
+                        _billing_file = os.path.join(
+                            os.path.dirname(os.path.abspath(__file__)),
+                            "User_Billing",
+                            "School_Bills",
+                            _school_username,
+                            f"{_billing_id}.json",
+                        )
+                        if not os.path.exists(_billing_file):
+                            continue
+                        try:
+                            with open(_billing_file, "r", encoding="utf-8") as _f:
+                                _brec = json.load(_f)
+                            _brec.setdefault("payment_orders", [])
+                            if out_trade_no not in _brec.get("payment_orders", []):
+                                _brec["payment_orders"].append(out_trade_no)
+                                with open(_billing_file, "w", encoding="utf-8") as _f:
+                                    json.dump(_brec, _f, indent=2, ensure_ascii=False)
+                        except Exception as _be:
+                            logging.warning(f"[账单关联] 普通账单关联失败 {_billing_id}: {_be}")
+            except Exception as _e:
+                logging.error(f"[账单关联] 普通账单关联异常: {_e}", exc_info=True)
+
             # 记录日志：订单文件写入成功
             logging.debug(
                 f"[订单文件] 订单数据已保存（增量更新模式） - "
@@ -37958,6 +38053,183 @@ def start_web_server(args_param):
                 "success": False,
                 "message": f"创建订单失败: {str(e)}"
             }), 500
+
+    @app.route("/api/payment/create_order_for_billing", methods=["POST"])
+    @login_required
+    def payment_create_order_for_billing():
+        """
+        创建普通账单支付订单（支持多账单合并支付）。
+        """
+        try:
+            data = request.get_json() or {}
+            billing_items = data.get("billing_items", [])
+            if not isinstance(billing_items, list) or not billing_items:
+                return jsonify({"success": False, "message": "请选择至少一条账单"}), 400
+
+            # 当前用户可访问学校账号
+            try:
+                allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            except Exception:
+                allowed_schools = set()
+
+            # 去重+校验账单
+            seen = set()
+            valid_items = []
+            total_amount = 0.0
+            for item in billing_items:
+                billing_id = str((item or {}).get("billing_id", "")).strip()
+                school_username = str((item or {}).get("school_username", "")).strip()
+                if not billing_id or not school_username:
+                    continue
+                key = (billing_id, school_username)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                if school_username not in allowed_schools:
+                    return jsonify({"success": False, "message": f"无权支付学校账号 {school_username} 的账单"}), 403
+
+                billing_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "User_Billing",
+                    "School_Bills",
+                    school_username,
+                    f"{billing_id}.json",
+                )
+                if not os.path.exists(billing_file):
+                    return jsonify({"success": False, "message": f"账单不存在: {billing_id}"}), 404
+
+                with open(billing_file, "r", encoding="utf-8") as f:
+                    rec = json.load(f)
+
+                if rec.get("status") != "pending":
+                    return jsonify({"success": False, "message": f"账单 {billing_id} 非待支付状态"}), 400
+
+                amount = round(float(rec.get("amount", 0) or 0), 2)
+                if amount <= 0:
+                    return jsonify({"success": False, "message": f"账单 {billing_id} 金额无效"}), 400
+
+                valid_items.append({
+                    "billing_id": billing_id,
+                    "school_username": school_username,
+                })
+                total_amount += amount
+
+            if not valid_items:
+                return jsonify({"success": False, "message": "未找到可支付账单"}), 400
+
+            if total_amount <= 0:
+                return jsonify({"success": False, "message": "订单金额无效"}), 400
+
+            # 支付参数
+            pay_type = str(data.get("pay_type", "alipay")).strip() or "alipay"
+            payment_type = str(data.get("payment_type", "web")).strip() or "web"
+            device = str(data.get("device", "")).strip() or "pc"
+            client_app_host = str(data.get("app_host", "")).strip() or None
+
+            # 读取启用支付方式并回退
+            config = configparser.ConfigParser(strict=False)
+            config.read("config.ini", encoding="utf-8")
+            enabled_methods_str = config.get(
+                "Rainbow_YiPay", "enabled_payment_methods", fallback="alipay,wxpay"
+            ).strip()
+            enabled_methods = [m.strip() for m in enabled_methods_str.split(",") if m.strip()]
+            if not enabled_methods:
+                enabled_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
+            if pay_type not in enabled_methods:
+                pay_type = enabled_methods[0]
+
+            out_trade_no = f"{time.strftime('%Y%m%d')}{random.randint(100000000000000, 999999999999999)}"
+            amount_str = f"{round(total_amount, 2):.2f}"
+            product_name = f"账单合并支付（{len(valid_items)}笔）"
+
+            yipay_client = RainbowYiPayClient()
+            result = yipay_client.create_order(
+                out_trade_no=out_trade_no,
+                name=product_name,
+                money=amount_str,
+                pay_type=pay_type,
+                return_url=None,
+                client_app_host=client_app_host,
+                payment_type=payment_type,
+                user_id=g.user,
+                auth_code=None,
+                device_get=device,
+            )
+
+            if not result.get("success", False):
+                return jsonify({"success": False, "message": result.get("message", "创建支付订单失败")}), 400
+
+            pay_type = result.get("pay_type", pay_type)
+
+            order_data = {
+                "order_id": out_trade_no,
+                "username": g.user,
+                "auth_username": g.user,
+                "amount": amount_str,
+                "product_name": product_name,
+                "total_count": len(valid_items),
+                "billing_items": valid_items,
+                "pay_type": pay_type,
+                "status": ORDER_STATUS_PENDING,
+                "pay_url": result.get("pay_url", ""),
+                "trade_no": result.get("trade_no", ""),
+                "payment_type": result.get("pay_type", ""),
+                "pay_info": result.get("pay_info", ""),
+                "order_data": result.get("order_data", {}),
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                "user_agent": request.headers.get("User-Agent", ""),
+                "device": device,
+            }
+            _save_order_file_incremental(out_trade_no, order_data)
+
+            # 关联订单号到账单 payment_orders
+            for item in valid_items:
+                billing_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "User_Billing",
+                    "School_Bills",
+                    item["school_username"],
+                    f"{item['billing_id']}.json",
+                )
+                try:
+                    with open(billing_file, "r", encoding="utf-8") as f:
+                        rec = json.load(f)
+                    rec.setdefault("payment_orders", [])
+                    if out_trade_no not in rec["payment_orders"]:
+                        rec["payment_orders"].append(out_trade_no)
+                        with open(billing_file, "w", encoding="utf-8") as f:
+                            json.dump(rec, f, indent=2, ensure_ascii=False)
+                except Exception as be:
+                    logging.warning(f"[账单支付] 关联账单订单号失败 {item['billing_id']}: {be}")
+
+            _write_payment_log(
+                user_id=g.user,
+                order_id=out_trade_no,
+                action="create_billing_order",
+                log_data={
+                    "amount": amount_str,
+                    "pay_type": pay_type,
+                    "billing_items": valid_items,
+                    "success": True,
+                },
+            )
+
+            return jsonify({
+                "success": True,
+                "message": "账单支付订单创建成功",
+                "order_id": out_trade_no,
+                "total_amount": amount_str,
+                "total_count": len(valid_items),
+                "pay_url": result.get("pay_url", ""),
+                "pay_info": result.get("pay_info", ""),
+                "pay_type": pay_type,
+            })
+        except Exception as e:
+            logging.error(f"[账单支付] 创建订单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"创建账单支付订单失败: {str(e)}"}), 500
 
     # @app.route("/api/payment/return", methods=["GET"])
     # def payment_return():
