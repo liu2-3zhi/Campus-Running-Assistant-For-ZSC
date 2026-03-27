@@ -46599,7 +46599,7 @@ function switchMobileAdminTab(tabId, prefix) {
         break;
       case "profile":
         // 【修改】使用移动端专用个人信息加载函数
-        loadMobileUnifiedProfile();
+        loadMobileUnifiedProfile().then(() => loadMobileUserBillingList());
         break;
       case "billing":
         loadMobileMultiAdminBillingList();
@@ -47383,9 +47383,8 @@ async function confirmMobileAvatarCrop() {
           showModalAlert("头像上传成功", "成功");
           closeMobileAvatarCropModal();
           // 刷新个人信息
-          loadPersonalInfo().then(() =>
-            copyAdminContentToMultiPanel("profile"),
-          );
+          loadMobileUnifiedProfile();
+          loadMobileUserBillingList();
         } else {
           showModalAlert(result.message || "上传失败", "错误");
         }
@@ -47574,17 +47573,18 @@ async function submitMobileModifyPhone() {
 
     const result = await response.json();
 
-    if (result.success) {
-      showModalAlert("手机号修改成功", "成功");
-      closeMobileModifyPhoneModal();
-      // 刷新用户数据
-      if (currentUserData) {
-        currentUserData.phone = phone;
+      if (result.success) {
+        showModalAlert("手机号修改成功", "成功");
+        closeMobileModifyPhoneModal();
+        // 刷新用户数据
+        if (currentUserData) {
+          currentUserData.phone = phone;
+        }
+        loadMobileUnifiedProfile();
+        loadMobileUserBillingList();
+      } else {
+        showModalAlert(result.message || "修改失败", "错误");
       }
-      loadPersonalInfo().then(() => copyAdminContentToMultiPanel("profile"));
-    } else {
-      showModalAlert(result.message || "修改失败", "错误");
-    }
   } catch (e) {
     console.error("[移动端修改手机号] 失败:", e);
     showModalAlert("修改失败: " + e.message, "错误");
@@ -57183,9 +57183,84 @@ document.addEventListener("DOMContentLoaded", function () {
 // 账单相关函数
 // ========================================================
 
-/**
- * 加载当前用户的账单列表（"我的账单"面板刷新按钮调用）
- */
+function _escapeAttr(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function _fmtBillTime(v) {
+  if (!v) return "-";
+  return String(v).replace("T", " ").replace("Z", "");
+}
+
+function _billStatusBadge(status) {
+  if (status === "paid") {
+    return "<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-green-500 text-[11px]\">✓ 已支付</span>";
+  }
+  if (status === "admin_cleared") {
+    return "<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 text-[11px]\">✓ 管理员清除</span>";
+  }
+  return "<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 text-[11px]\">⏳ 待支付</span>";
+}
+
+function _collectSelectedBillingItems(containerId) {
+  const root = document.getElementById(containerId);
+  if (!root) return [];
+  const items = [];
+  root.querySelectorAll('input[data-billing-select="1"]:checked').forEach((cb) => {
+    const billingId = (cb.getAttribute("data-billing-id") || "").trim();
+    const schoolUsername = (cb.getAttribute("data-school-username") || "").trim();
+    if (billingId && schoolUsername) {
+      items.push({ billing_id: billingId, school_username: schoolUsername });
+    }
+  });
+  return items;
+}
+
+function _renderBillingTableCommon(records, opts = {}) {
+  const {
+    tableClass = "w-full text-xs border-collapse",
+    isMobile = false,
+    containerId = "user-billing-list-container",
+  } = opts;
+
+  let html = `<div class="rounded-xl border border-slate-200 overflow-hidden"><div class="overflow-x-auto">`;
+  html += `<table class="${tableClass}">`;
+  html += `<thead><tr class="bg-slate-100">`;
+  html += `<th class="p-2 text-center w-10"><input type="checkbox" onclick="toggleBillingSelectAll('${containerId}', this.checked)"></th>`;
+  html += `<th class="p-2 text-left whitespace-nowrap">学校账号</th><th class="p-2 text-left whitespace-nowrap">原因</th><th class="p-2 text-left whitespace-nowrap">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left whitespace-nowrap">创建时间</th><th class="p-2 text-left whitespace-nowrap">支付时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
+  html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
+  records.forEach((r) => {
+    const billingId = _escapeAttr(r.billing_id || "");
+    const school = _escapeAttr(r.school_username || "-");
+    const reason = _escapeAttr(r.reason || "-");
+    const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
+    const statusBadge = _billStatusBadge(r.status);
+    const canPay = r.status === "pending";
+    html += `<tr class="hover:bg-slate-50">`;
+    html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" ${canPay ? "" : "disabled"}></td>`;
+    html += `<td class="p-2 whitespace-nowrap">${school}</td>`;
+    html += `<td class="p-2">${reason}</td>`;
+    html += `<td class="p-2 whitespace-nowrap">${amount}</td>`;
+    html += `<td class="p-2">${statusBadge}</td>`;
+    html += `<td class="p-2 whitespace-nowrap">${_escapeAttr(_fmtBillTime(r.created_at))}</td>`;
+    html += `<td class="p-2 whitespace-nowrap">${_escapeAttr(_fmtBillTime(r.paid_at))}</td>`;
+    html += `<td class="p-2 whitespace-nowrap">`;
+    if (canPay) {
+      html += `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 ${isMobile ? "text-[11px]" : "text-xs"} text-emerald-700" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`;
+    } else {
+      html += `<span class="text-slate-400 text-xs">-</span>`;
+    }
+    html += `</td></tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+  return html;
+}
+
 async function loadUserBillingList() {
   const container = document.getElementById("user-billing-list-container");
   const schoolInput = document.getElementById("user-billing-school-filter");
@@ -57207,55 +57282,163 @@ async function loadUserBillingList() {
     });
     const data = await resp.json();
     if (!data.success) {
-      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + _escapeAttr(data.message || "未知错误") + "</p>";
       return;
     }
     const records = data.records || [];
     if (records.length === 0) {
-      container.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-1.5"><p class="text-sm">暂无账单记录</p><p class="text-xs">${schoolUsername ? ("当前筛选学校账号：" + schoolUsername) : "当前范围：有权限学校账号的全部账单"}</p></div>`;
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-1.5"><p class="text-sm">暂无账单记录</p><p class="text-xs">${schoolUsername ? ("当前筛选学校账号：" + _escapeAttr(schoolUsername)) : "当前范围：有权限学校账号的全部账单"}</p></div>`;
       return;
     }
-    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${schoolUsername}` : "当前范围：有权限学校账号的全部账单";
+    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}` : "当前范围：有权限学校账号的全部账单";
     let html = `<div class="mb-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div>`;
-    html += "<div class=\"rounded-xl border border-slate-200 overflow-hidden\"><div class=\"overflow-x-auto\">";
-    html += "<table class=\"w-full text-xs border-collapse\">";
-    html += "<thead><tr class=\"bg-slate-100\">";
-    html += "<th class=\"p-2 text-left\">学校账号</th><th class=\"p-2 text-left\">原因</th><th class=\"p-2 text-left\">金额</th><th class=\"p-2 text-left\">状态</th><th class=\"p-2 text-left\">创建时间</th><th class=\"p-2 text-left\">支付时间</th>";
-    html += "</tr></thead><tbody class=\"divide-y divide-slate-100\">";
-    records.forEach(r => {
-      let statusBadge;
-      if (r.status === "paid") {
-          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-green-500 text-xs whitespace-nowrap\">已支付</span>";
-      } else if (r.status === "admin_cleared") {
-          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-sky-500 text-xs whitespace-nowrap\">管理员清除</span>";
-      } else {
-          statusBadge = "<span class=\"px-1.5 py-0.5 rounded text-white bg-amber-500 text-xs whitespace-nowrap\">待支付</span>";
-      }
-      html += "<tr class=\"hover:bg-slate-50\">";
-      html += "<td class=\"p-2 whitespace-nowrap\">" + (r.school_username || "-") + "</td>";
-      html += "<td class=\"p-2\">" + (r.reason || "-") + "</td>";
-      html += "<td class=\"p-2\">" + (r.amount != null ? "¥" + r.amount : "-") + "</td>";
-      html += "<td class=\"p-2\">" + statusBadge + "</td>";
-      html += "<td class=\"p-2 whitespace-nowrap\">" + (r.created_at ? String(r.created_at).replace("T"," ").replace("Z","") : "-") + "</td>";
-      html += "<td class=\"p-2 whitespace-nowrap\">" + (r.paid_at ? String(r.paid_at).replace("T"," ").replace("Z","") : "-") + "</td>";
-      html += "</tr>";
+    html += `<div class="mb-2 flex items-center gap-2 justify-end">
+      <button class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs" onclick="toggleBillingSelectAll('user-billing-list-container', true)">全选待支付</button>
+      <button class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs" onclick="toggleBillingSelectAll('user-billing-list-container', false)">清空选择</button>
+      <button class="btn btn-primary !py-1 !px-3 text-xs" onclick="paySelectedBilling('user-billing-list-container')">批量支付</button>
+    </div>`;
+    html += _renderBillingTableCommon(records, {
+      tableClass: "w-full text-xs border-collapse",
+      isMobile: false,
+      containerId: "user-billing-list-container",
     });
-    html += "</tbody></table></div></div>";
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + e.message + "</p>";
+    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + _escapeAttr(e.message) + "</p>";
   }
 }
 
 async function loadMobileUserBillingList() {
-  await loadUserBillingList();
-  const src = document.getElementById("user-billing-list-container");
-  const dst = document.getElementById("mobile-user-billing-list-container");
-  if (src && dst) {
-    dst.innerHTML = src.innerHTML;
-    dst.querySelectorAll("table").forEach((tb) => tb.classList.add("text-[11px]"));
-    dst.querySelectorAll("th, td").forEach((cell) => cell.classList.add("!px-1.5", "!py-1.5"));
-    dst.querySelectorAll("button").forEach((btn) => btn.classList.add("!text-[11px]", "!px-1.5", "!py-1"));
+  const container = document.getElementById("mobile-user-billing-list-container");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="flex items-center justify-center py-8 gap-2 text-slate-400 text-xs">
+      <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <span>加载中...</span>
+    </div>`;
+  try {
+    const resp = await fetch("/api/billing/list", { headers: { "X-Session-ID": sessionUUID } });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = `<p class="text-xs text-red-500">加载失败: ${_escapeAttr(data.message || "未知错误")}</p>`;
+      return;
+    }
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
+      return;
+    }
+    let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">当前范围：有权限学校账号的全部账单</div>`;
+    html += `<div class="mb-2 flex items-center gap-1 justify-end">
+      <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="toggleBillingSelectAll('mobile-user-billing-list-container', true)">全选</button>
+      <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="toggleBillingSelectAll('mobile-user-billing-list-container', false)">清空</button>
+      <button class="btn btn-primary !py-0.5 !px-2 text-[11px]" onclick="paySelectedBilling('mobile-user-billing-list-container')">批量支付</button>
+    </div>`;
+    html += _renderBillingTableCommon(records, {
+      tableClass: "w-full text-[11px] border-collapse",
+      isMobile: true,
+      containerId: "mobile-user-billing-list-container",
+    });
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<p class="text-xs text-red-500">加载异常: ${_escapeAttr(e.message)}</p>`;
+  }
+}
+
+function toggleBillingSelectAll(containerId, checked) {
+  const root = document.getElementById(containerId);
+  if (!root) return;
+  root.querySelectorAll('input[data-billing-select="1"]').forEach((cb) => {
+    if (!cb.disabled) cb.checked = !!checked;
+  });
+}
+
+async function createBillingPaymentOrderAndOpen(billingItems) {
+  const createOrderResponse = await fetch("/api/payment/create_order_for_billing", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-ID": sessionUUID,
+    },
+    body: JSON.stringify({
+      billing_items: billingItems,
+      pay_type: "alipay",
+      device: Get_YiPAi_device(),
+      payment_type: "web",
+      app_host: window.location.protocol + "//" + window.location.host,
+    }),
+  });
+  const orderResult = await createOrderResponse.json();
+  if (!orderResult.success) {
+    throw new Error(orderResult.message || "创建订单失败");
+  }
+  const payUrl = orderResult.pay_url || orderResult.pay_info;
+  if (!payUrl) {
+    throw new Error("支付链接为空");
+  }
+  window.open(payUrl, "_blank", "noopener,noreferrer");
+  return orderResult;
+}
+
+async function paySelectedBilling(containerId) {
+  const selected = _collectSelectedBillingItems(containerId);
+  if (!selected.length) {
+    await Swal.fire({ title: "提示", text: "请先勾选待支付账单", icon: "warning", confirmButtonText: "确定" });
+    return;
+  }
+  const confirmResult = await Swal.fire({
+    title: "确认批量支付",
+    text: `将发起 ${selected.length} 笔账单的合并支付`,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "确认支付",
+    cancelButtonText: "取消",
+    confirmButtonColor: "#16a34a",
+    cancelButtonColor: "#64748b",
+  });
+  if (!confirmResult.isConfirmed) return;
+  try {
+    await createBillingPaymentOrderAndOpen(selected);
+    await Swal.fire({
+      title: "已发起支付",
+      text: "请在新窗口完成支付，完成后可点击刷新查看状态",
+      icon: "success",
+      confirmButtonText: "确定",
+    });
+  } catch (e) {
+    await Swal.fire({ title: "支付发起失败", text: e.message || "未知错误", icon: "error", confirmButtonText: "确定" });
+  }
+}
+
+async function paySingleBilling(containerId, billingId, schoolUsername) {
+  await paySelectedBillingWithPreset(containerId, [{ billing_id: billingId, school_username: schoolUsername }]);
+}
+
+async function paySelectedBillingWithPreset(containerId, items) {
+  if (!Array.isArray(items) || !items.length) return;
+  const confirmResult = await Swal.fire({
+    title: items.length > 1 ? "确认批量支付" : "确认支付账单",
+    text: items.length > 1 ? `将发起 ${items.length} 笔账单的合并支付` : "将发起该账单支付",
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "确认支付",
+    cancelButtonText: "取消",
+    confirmButtonColor: "#16a34a",
+    cancelButtonColor: "#64748b",
+  });
+  if (!confirmResult.isConfirmed) return;
+  try {
+    await createBillingPaymentOrderAndOpen(items);
+    await Swal.fire({
+      title: "已发起支付",
+      text: "请在新窗口完成支付，完成后可点击刷新查看状态",
+      icon: "success",
+      confirmButtonText: "确定",
+    });
+  } catch (e) {
+    await Swal.fire({ title: "支付发起失败", text: e.message || "未知错误", icon: "error", confirmButtonText: "确定" });
   }
 }
 
@@ -57504,7 +57687,7 @@ async function adminEditBilling(record) {
 
 
       await loadAdminBillingList();
-      copyAdminContentToMultiPanel("billing");
+      loadMobileMultiAdminBillingList();
     } else {
       await Swal.fire({ title: "保存失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626", customClass: { popup: "swal2-neumorphism-popup" } });
     }
@@ -57554,7 +57737,7 @@ async function adminDeleteBilling(billingId, schoolUsername) {
         confirmButtonColor: "#16a34a"
       });
       await loadAdminBillingList();
-      copyAdminContentToMultiPanel("billing");
+      loadMobileMultiAdminBillingList();
     } else {
       await Swal.fire({ title: "删除失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
     }
@@ -57697,8 +57880,60 @@ async function loadRemovedAccountsList() {
 async function loadMobileMultiAdminBillingList() {
   const schoolInput = document.getElementById("mobile-multi-admin-billing-school-input");
   const schoolUsername = schoolInput ? schoolInput.value.trim() : "";
-  await loadAdminBillingList(schoolUsername);
-  copyAdminContentToMultiPanel("billing");
+  const container = document.getElementById("mobile-multi-admin-billing-list");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
+      <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <p class="text-xs">加载中...</p>
+    </div>`;
+  try {
+    const url = schoolUsername
+      ? "/api/admin/billing/list?school_username=" + encodeURIComponent(schoolUsername)
+      : "/api/admin/billing/list";
+    const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = `<p class="text-xs text-red-500">加载失败：${_escapeAttr(data.message || "未知错误")}</p>`;
+      return;
+    }
+    const records = data.records || [];
+    if (!records.length) {
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
+      return;
+    }
+    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}` : "当前范围：有权限学校账号的全部账单";
+    let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">${scopeTip}</div>`;
+    html += `<div class="mb-2 flex items-center gap-1 justify-end">
+      <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiAdminBillingList()">刷新</button>
+    </div>`;
+    html += `<div class="rounded-xl border border-slate-200 overflow-hidden"><div class="overflow-x-auto">`;
+    html += `<table class="w-full text-[11px] border-collapse"><thead><tr class="bg-slate-100">`;
+    html += `<th class="p-1.5 text-left whitespace-nowrap">学校账号</th><th class="p-1.5 text-left whitespace-nowrap">原因</th><th class="p-1.5 text-left whitespace-nowrap">金额</th><th class="p-1.5 text-left whitespace-nowrap">状态</th><th class="p-1.5 text-left whitespace-nowrap">创建时间</th><th class="p-1.5 text-left whitespace-nowrap">操作</th>`;
+    html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
+    records.forEach((r, idx) => {
+      const rowBg = idx % 2 ? "bg-slate-50/60" : "";
+      html += `<tr class="${rowBg}">
+        <td class="p-1.5 whitespace-nowrap">${_escapeAttr(r.school_username || "-")}</td>
+        <td class="p-1.5">${_escapeAttr(r.reason || "-")}</td>
+        <td class="p-1.5 whitespace-nowrap">${r.amount != null ? "¥" + _escapeAttr(r.amount) : "-"}</td>
+        <td class="p-1.5">${_billStatusBadge(r.status)}</td>
+        <td class="p-1.5 whitespace-nowrap">${_escapeAttr(_fmtBillTime(r.created_at))}</td>
+        <td class="p-1.5 whitespace-nowrap">
+          <div class="flex flex-wrap items-center gap-1">
+            <button class="btn btn-ghost border border-sky-300 !py-0.5 !px-1.5 text-[11px] text-sky-700" onclick='adminEditBilling(${JSON.stringify(r)})'>修改</button>
+            <button class="btn btn-ghost border border-rose-300 !py-0.5 !px-1.5 text-[11px] text-rose-700" onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)}, ${JSON.stringify(r.school_username || "")})'>删除</button>
+          </div>
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div></div>`;
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<p class="text-xs text-red-500">加载异常：${_escapeAttr(e.message)}</p>`;
+  }
 }
 
 async function loadMobileMultiRemovedAccountsList() {
