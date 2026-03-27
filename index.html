@@ -3207,13 +3207,13 @@
                 </div>
               </div>
 
-              <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2" id="mobile-user-billing-section">
+              <div class="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm" id="mobile-user-billing-section">
                 <div class="flex justify-between items-center">
                   <h5 class="font-semibold text-slate-700 text-xs">我的账单</h5>
                   <button class="btn btn-primary !py-1 !px-2 text-xs" onclick="paySelectedBilling('mobile-user-billing-list-container')" aria-label="批量支付选中的账单">批量支付</button>
                   <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="loadMobileUserBillingList()">刷新</button>
                 </div>
-                <div id="mobile-user-billing-list-container" class="overflow-x-auto">
+                <div id="mobile-user-billing-list-container" class="space-y-2">
                   <p class="text-xs text-slate-400">点击刷新加载账单记录</p>
                 </div>
               </div>
