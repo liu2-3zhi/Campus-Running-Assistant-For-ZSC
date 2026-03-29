@@ -41970,9 +41970,10 @@ async function saveCaptchaSettings() {
         icon: "success",
         title: "保存成功",
         text: "验证码设置已保存",
-        timer: 2000,
-        showConfirmButton: false,
+        showConfirmButton: true,   // 显示关闭按钮
+        confirmButtonText: "关闭"  // 可自定义按钮文字
       });
+
       if (window.initialData) {
         window.initialData.captcha_settings = {
           length,
