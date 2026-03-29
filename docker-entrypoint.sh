@@ -150,19 +150,6 @@ map \$http_${REAL_IP_HEADER//-/_} \$real_forwarded_for {
 }
 NGINX_MAP_EOF
 
-# 追加：Host 头净化 Map
-# 只允许合法 hostname 字符（字母、数字、点、连字符，及可选端口号）转发给后端
-# 若客户端发来含反斜杠等非法字符的 Host 头（如某些代理软件引入的 \host），
-# 则改用 "localhost"，防止 Werkzeug 3.x 因格式校验失败返回 400。
-cat >> /etc/nginx/nginx_map.conf <<'SAFE_HOST_MAP_EOF'
-
-# Map: 净化 Host 头，屏蔽含非法字符（如反斜杠）的 Host 值
-map $http_host $safe_proxy_host {
-    ~^([a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?)$  $1;
-    default                                       "localhost";
-}
-SAFE_HOST_MAP_EOF
-
 # ==========================================
 # 2. 生成通用的 Nginx Location 配置
 #    (避免代码重复，供 HTTP 和 HTTPS 共同引用)
@@ -238,7 +225,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
-            proxy_set_header Host $safe_proxy_host;
+            proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             # 任务2修改：使用map变量智能选择X-Forwarded-For的值
             # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
@@ -252,7 +239,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location ~ ^/(api|auth|logs|cdn-cache|avatar|system-announcement)/ {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Host $safe_proxy_host;
+            proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             # 任务2修改：使用map变量智能选择X-Forwarded-For的值
             # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
@@ -296,7 +283,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location @backend {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Host $safe_proxy_host;
+            proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             # 任务2修改：使用map变量智能选择X-Forwarded-For的值
             # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
