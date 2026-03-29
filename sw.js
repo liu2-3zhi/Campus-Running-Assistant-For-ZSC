@@ -3,7 +3,7 @@ const CACHE_NAME = 'paobuzs-v2';
 const STATIC_ASSETS = [
   '/',
   '/styles/style.css',
-  '/scripts/main.js',
+  '/scripts/main.new.js',
   '/favicon.ico',
   '/icon-192x192.png',
   '/icon-512x512.png',
