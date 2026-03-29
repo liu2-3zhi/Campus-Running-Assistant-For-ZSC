@@ -12,6 +12,15 @@ MAX_MEMORY_SESSIONS = 100
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 
+# 跑步 PID 参数（单账号/多账号共用）
+PID_KP = 4.80
+PID_KI = 0.16
+PID_KD = 1.80
+PID_DEADZONE = 0.010
+PID_INTEGRAL_LIMIT = 0.50
+PID_DEADZONE_BOOST_STEP = 0.08
+PID_DEADZONE_BOOST_MAX = 2.50
+
 # [安全配置] 输入验证常量
 MAX_USERNAME_LENGTH = 200  # 用户名最大长度
 MAX_PASSWORD_LENGTH = 1000  # 密码最大长度
@@ -69,6 +78,8 @@ gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
 shutil = _try_import_builtin("shutil")
+codecs = _try_import_builtin("codecs")
+tempfile = _try_import_builtin("tempfile")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -95,8 +106,6 @@ if sys and sys.platform.startswith("win"):
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     except AttributeError:
-        import codecs
-
         sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
         sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
@@ -146,7 +155,8 @@ def import_standard_libraries():
         ("shutil", "import shutil"),
         ("concurrent.futures", "import concurrent.futures"),
         ("tempfile", "import tempfile"),
-        ("os", "import os")
+        ("os", "import os"),
+        ("codecs", "import codecs"),
     ]
 
     failed_imports = []
@@ -163,7 +173,7 @@ def import_standard_libraries():
             logging.error(f"✗ ({e})")
             failed_imports.append({"name": name, "error": str(e)})
             
-    global ssl, eventlet, argparse, base64, bisect, collections, configparser, copy, csv, datetime, hashlib, json, math, pickle, queue, random, re, secrets, socket, threading, time, traceback, urllib, uuid, warnings, atexit, io, zipfile, functools, ipaddress, string, shutil,concurrent
+    global ssl, eventlet, argparse, base64, bisect, collections, configparser, copy, csv, datetime, hashlib, json, math, pickle, queue, random, re, secrets, socket, threading, time, traceback, urllib, uuid, warnings, atexit, io, zipfile, functools, ipaddress, string, shutil, concurrent, codecs
 
 
     if sys.platform != "win32":
@@ -266,6 +276,20 @@ def import_core_third_party():
 
     print("[依赖检查] ✓ 核心第三方库导入成功！")
     logging.info("核心第三方库导入成功！")
+
+    # 可选第三方库：导入失败不影响主流程，仅记录警告
+    optional_libs = [
+        ("fake_useragent", "from fake_useragent import UserAgent", "fake-useragent"),
+        ("greenlet", "import greenlet", "greenlet"),
+    ]
+    for display_name, import_cmd, pip_name in optional_libs:
+        try:
+            exec(import_cmd, globals())
+            logging.info(f"  ✓ 可选库 {display_name} 导入成功")
+        except ImportError:
+            logging.warning(
+                f"  [可选] {display_name} 未安装，相关功能将降级运行（pip install {pip_name}）"
+            )
 
 
 def check_and_import_dependencies():
@@ -1472,15 +1496,15 @@ def setup_logging():
     配置详细的日志系统（带自定义轮转逻辑）。
     """
     log_rotation_size_mb = 10
-    archive_max_size_mb = 500
+    archive_max_size_mb = 1024*10    # 10GB
     global log_dir, archive_dir
     log_dir = "logs"
     archive_dir = os.path.join(log_dir, "archive")
 
     try:
-        if os.path.exists("config.ini"):
+        if os.path.exists(CONFIG_JSON_FILE):
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             if "Logging" in config:
                 log_rotation_size_mb = config.getint(
                     "Logging", "log_rotation_size_mb", fallback=10
@@ -1645,6 +1669,10 @@ def auto_init_system():
         # 修复：函数已移至模块级别，直接调用而非通过Api类
         _migrate_auto_attendance_from_ini()
 
+        logging.info("步骤2.8: 执行旧版数据结构自动迁移...")
+        print("[系统初始化] 执行旧版数据结构自动迁移...")
+        _run_auto_data_migrations_from_main()
+
         logging.info("步骤3: 创建权限配置文件...")
         print("[系统初始化] 创建权限配置文件...")
         _create_permissions_json()
@@ -1667,7 +1695,12 @@ SYSTEM_ACCOUNTS_DIR = "system_accounts"
 LOGIN_LOGS_DIR = "logs"
 SESSION_STORAGE_DIR = "sessions"
 TOKENS_STORAGE_DIR = "tokens"
-CONFIG_FILE = "config.ini"
+CONFIG_JSON_FILE = os.path.join("configs", "config.json")
+CONFIG_JSON_ABS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), CONFIG_JSON_FILE
+)
+CONFIG_FILE = CONFIG_JSON_ABS_PATH
+CONFIG_JSON_LOCK = threading.RLock()
 PERMISSIONS_FILE = "permissions.json"
 # 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
@@ -1943,7 +1976,7 @@ def _enable_auto_attendance(school_username, session_uuid, auth_username):
             # datetime.utcnow()获取当前UTC时间
             # .isoformat()转换为ISO8601字符串格式
             # + "Z"表示这是UTC时区时间
-            "enabled_at": datetime.datetime.utcnow().isoformat() + "Z",
+            "enabled_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             # 记录账号所有者的认证用户名
             "auth_username": auth_username
         }
@@ -2294,7 +2327,7 @@ def _migrate_auto_attendance_from_ini():
 
 def _create_directories():
     """
-    创建程序运行所需的目录结构，目录路径从 config.ini 配置文件读取。
+    创建程序运行所需的目录结构，目录路径从 config.json 配置文件读取。
     """
     global SCHOOL_ACCOUNTS_DIR, SYSTEM_ACCOUNTS_DIR, LOGIN_LOGS_DIR
     global SESSION_STORAGE_DIR, TOKENS_STORAGE_DIR
@@ -2308,11 +2341,10 @@ def _create_directories():
         "tokens_dir": "tokens",
     }
 
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
     if os.path.exists(config_file):
         try:
-            config = configparser.ConfigParser(strict=False)
-            config.read(config_file, encoding="utf-8")
+            config = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
 
             if config.has_section("System"):
                 default_dirs["school_accounts_dir"] = config.get(
@@ -2337,11 +2369,11 @@ def _create_directories():
                     "Logging", "log_dir", fallback=default_dirs["log_dir"]
                 )
 
-            print(f"[配置读取] 成功从 config.ini 读取目录配置")
+            print(f"[配置读取] 成功从 config.json 读取目录配置")
         except Exception as e:
-            print(f"[配置读取] 警告: 读取 config.ini 失败，使用默认配置: {e}")
+            print(f"[配置读取] 警告: 读取 config.json 失败，使用默认配置: {e}")
     else:
-        print(f"[配置读取] config.ini 不存在，使用默认目录配置")
+        print(f"[配置读取] config.json 不存在，使用默认目录配置")
 
     base_dir = os.path.dirname(__file__)
     SCHOOL_ACCOUNTS_DIR = os.path.join(
@@ -2381,6 +2413,359 @@ def _create_directories():
     AUDIT_LOG_FILE = os.path.join(LOGIN_LOGS_DIR, "audit.jsonl")
 
     print(f"[目录创建] 所有目录创建完成")
+
+    # 重建 system_accounts/_index.json 索引（用于快速查找用户文件）
+    try:
+        _rebuild_system_accounts_index()
+        print(f"[系统账号索引] 索引重建完成")
+    except Exception as _idx_e:
+        print(f"[系统账号索引] 索引重建失败（将在运行时自动修复）: {_idx_e}")
+
+    # 初始化各目录索引文件并迁移历史目录
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        _ensure_json_index_file(
+            os.path.join(base_dir, "background_tasks", "_index.json"), "tasks"
+        )
+        _ensure_json_index_file(
+            os.path.join(base_dir, "uploads", "_index.json"), "files"
+        )
+        _ensure_json_index_file(
+            os.path.join(base_dir, "User_Billing", "_index.json"), "users"
+        )
+        _migrate_legacy_removed_accounts_dir()
+    except Exception as _e:
+        logging.warning(f"[目录创建] 初始化索引/迁移目录失败: {_e}")
+
+
+def _rebuild_system_accounts_index():
+    """
+    重建 system_accounts/_index.json 索引文件。
+    扫描所有 .json 文件（排除 _index.json 和子目录中的文件），
+    读取每个文件的 auth_username，构建索引。
+    """
+    try:
+        # 确保目录存在
+        if not os.path.isdir(SYSTEM_ACCOUNTS_DIR):
+            return
+        
+        accounts = {}
+        # 遍历顶层目录中的所有JSON文件
+        for filename in os.listdir(SYSTEM_ACCOUNTS_DIR):
+            # 跳过 _index.json 本身
+            if filename == "_index.json":
+                continue
+            # 只处理 .json 文件
+            if not filename.endswith(".json"):
+                continue
+            # 跳过子目录（只处理直接在该目录下的文件）
+            filepath = os.path.join(SYSTEM_ACCOUNTS_DIR, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+                # 提取 auth_username
+                au = user_data.get("auth_username")
+                if au:
+                    # 文件名（不含扩展名）即为哈希值
+                    accounts[au] = filename[:-5]  # 去掉 .json 后缀
+            except Exception as e:
+                logging.warning(f"[系统账号索引] 读取文件 {filename} 失败: {e}")
+        
+        # 构建索引数据
+        index_data = {
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "accounts": accounts
+        }
+        
+        # 写入索引文件
+        index_path = os.path.join(SYSTEM_ACCOUNTS_DIR, "_index.json")
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(index_data, f, indent=2, ensure_ascii=False)
+        
+        logging.info(f"[系统账号索引] 重建索引完成，共 {len(accounts)} 个账号")
+    except Exception as e:
+        logging.error(f"[系统账号索引] 重建索引失败: {e}", exc_info=True)
+
+
+def _ensure_json_index_file(index_path, root_key):
+    """
+    确保索引文件存在且结构合法。
+    """
+    try:
+        os.makedirs(os.path.dirname(index_path), exist_ok=True)
+        index_data = None
+        if os.path.exists(index_path):
+            try:
+                with open(index_path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    index_data = loaded
+            except Exception:
+                index_data = None
+        if index_data is None:
+            index_data = {}
+        if root_key not in index_data or not isinstance(index_data.get(root_key), dict):
+            index_data[root_key] = {}
+        index_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(index_data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[索引文件] 初始化失败: {index_path}, 错误: {e}")
+
+
+def _migrate_legacy_removed_accounts_dir():
+    """
+    将历史删除账号目录迁移到新的 Remove_Acoount 目录。
+    兼容旧目录：
+      1) system_accounts/remove
+      2) Remove_Account
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        target_dir = os.path.join(base_dir, "Remove_Acoount")
+        legacy_dirs = [
+            os.path.join(SYSTEM_ACCOUNTS_DIR, "remove"),
+            os.path.join(base_dir, "Remove_Account"),
+        ]
+        os.makedirs(target_dir, exist_ok=True)
+        for legacy_dir in legacy_dirs:
+            if not os.path.isdir(legacy_dir):
+                continue
+            for fname in os.listdir(legacy_dir):
+                src = os.path.join(legacy_dir, fname)
+                dst = os.path.join(target_dir, fname)
+                if not os.path.isfile(src):
+                    continue
+                if os.path.exists(dst):
+                    continue
+                try:
+                    shutil.copy2(src, dst)
+                except Exception as _e:
+                    logging.warning(f"[删除账号迁移] 迁移文件失败: {src} -> {dst}, 错误: {_e}")
+        _ensure_json_index_file(os.path.join(target_dir, "_index.json"), "removed_accounts")
+    except Exception as e:
+        logging.warning(f"[删除账号迁移] 迁移目录失败: {e}")
+
+
+def _rebuild_background_tasks_index():
+    """
+    重建 background_tasks/_index.json（兼容旧版本无索引场景）。
+    """
+    try:
+        task_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "background_tasks")
+        os.makedirs(task_dir, exist_ok=True)
+        tasks = {}
+        for filename in os.listdir(task_dir):
+            if filename == "_index.json" or not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(task_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    task_state = json.load(f)
+                session_id = task_state.get("session_id")
+                if not session_id:
+                    continue
+                task_hash = hashlib.sha256(session_id.encode()).hexdigest()
+                tasks[task_hash] = {
+                    "session_id": session_id,
+                    "created_at": task_state.get("created_at", datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    "file": filename
+                }
+            except Exception as _e:
+                logging.warning(f"[后台任务迁移] 读取任务文件失败 {filename}: {_e}")
+
+        index_path = os.path.join(task_dir, "_index.json")
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "tasks": tasks
+            }, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[后台任务迁移] 重建索引失败: {e}")
+
+
+def _rebuild_uploads_index():
+    """
+    重建 uploads/_index.json（兼容旧版本无索引场景）。
+    """
+    try:
+        uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        files = {}
+        for filename in os.listdir(uploads_dir):
+            if filename == "_index.json":
+                continue
+            filepath = os.path.join(uploads_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                stat = os.stat(filepath)
+                files[filename] = {
+                    "uploaded_at": datetime.datetime.utcfromtimestamp(stat.st_mtime).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "original_name": filename,
+                    "size": stat.st_size
+                }
+            except Exception as _e:
+                logging.warning(f"[上传迁移] 读取文件信息失败 {filename}: {_e}")
+
+        index_path = os.path.join(uploads_dir, "_index.json")
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "files": files
+            }, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[上传迁移] 重建索引失败: {e}")
+
+
+def _rebuild_removed_accounts_index():
+    """
+    重建 Remove_Acoount/_index.json（兼容旧版本无索引场景）。
+    """
+    try:
+        remove_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
+        os.makedirs(remove_dir, exist_ok=True)
+        removed_accounts = {}
+        for filename in os.listdir(remove_dir):
+            if filename == "_index.json" or not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(remove_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    backup_data = json.load(f)
+                auth_username = backup_data.get("auth_username")
+                deleted_at = backup_data.get("deleted_at")
+                if not auth_username:
+                    continue
+                removed_accounts[auth_username] = {
+                    "backup_file": filename,
+                    "deleted_at": deleted_at
+                }
+            except Exception as _e:
+                logging.warning(f"[删除账号迁移] 读取备份文件失败 {filename}: {_e}")
+
+        with open(os.path.join(remove_dir, "_index.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "removed_accounts": removed_accounts
+            }, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[删除账号迁移] 重建索引失败: {e}")
+
+
+def _rebuild_user_billing_index():
+    """
+    重建 User_Billing/_index.json（自动迁移旧数据后便于统计）。
+    """
+    try:
+        billing_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing")
+        os.makedirs(billing_root, exist_ok=True)
+        users = {}
+        for auth_username in os.listdir(billing_root):
+            user_dir = os.path.join(billing_root, auth_username)
+            if not os.path.isdir(user_dir):
+                continue
+            total = 0
+            pending = 0
+            paid = 0
+            for filename in os.listdir(user_dir):
+                if not filename.endswith(".json"):
+                    continue
+                filepath = os.path.join(user_dir, filename)
+                if not os.path.isfile(filepath):
+                    continue
+                total += 1
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        record = json.load(f)
+                    if record.get("status") == "paid":
+                        paid += 1
+                    else:
+                        pending += 1
+                except Exception:
+                    pending += 1
+            if total > 0:
+                users[auth_username] = {
+                    "total": total,
+                    "pending": pending,
+                    "paid": paid
+                }
+
+        with open(os.path.join(billing_root, "_index.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "users": users
+            }, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"[账单迁移] 重建索引失败: {e}")
+
+
+def _run_auto_data_migrations_from_main():
+    """
+    自动执行从旧 main 分支数据结构到当前版本的数据迁移（幂等）。
+    """
+    try:
+        _migrate_legacy_removed_accounts_dir()
+        _rebuild_system_accounts_index()
+        _rebuild_removed_accounts_index()
+        _rebuild_background_tasks_index()
+        _rebuild_uploads_index()
+        _rebuild_user_billing_index()
+        logging.info("[自动迁移] 旧版数据结构自动迁移完成")
+    except Exception as e:
+        logging.warning(f"[自动迁移] 执行失败: {e}")
+
+
+def _update_system_accounts_index(auth_username, hash_filename, action):
+    """
+    增量更新 system_accounts/_index.json 索引文件。
+    
+    参数:
+        auth_username: 用户名
+        hash_filename: 哈希文件名（不含 .json 后缀），action为"remove"时可为None
+        action: "add" 或 "remove"
+    """
+    try:
+        index_path = os.path.join(SYSTEM_ACCOUNTS_DIR, "_index.json")
+        
+        # 读取现有索引（如果存在）
+        if os.path.exists(index_path):
+            try:
+                with open(index_path, "r", encoding="utf-8") as f:
+                    index_data = json.load(f)
+            except Exception:
+                index_data = {"accounts": {}}
+        else:
+            index_data = {"accounts": {}}
+        
+        # 确保 accounts 字段存在
+        if "accounts" not in index_data:
+            index_data["accounts"] = {}
+        
+        if action == "add" and hash_filename:
+            # 添加或更新用户条目
+            index_data["accounts"][auth_username] = hash_filename
+            logging.debug(f"[系统账号索引] 添加用户到索引: {auth_username}")
+        elif action == "remove":
+            # 从索引中移除用户条目
+            if auth_username in index_data["accounts"]:
+                del index_data["accounts"][auth_username]
+                logging.debug(f"[系统账号索引] 从索引移除用户: {auth_username}")
+        
+        # 更新时间戳
+        index_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        # 写入索引文件
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(index_data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.error(f"[系统账号索引] 更新索引失败 (action={action}, user={auth_username}): {e}", exc_info=True)
 
 
 def _get_default_config():
@@ -2437,6 +2822,7 @@ def _get_default_config():
         "enable_phone_login": "false",
         "enable_phone_registration_verify": "false",
         "enable_sms_service": "false",
+        "account_cancellation_wait_hours": "24",
     }
 
     config["SMS_Service_SMSBao"] = {
@@ -2648,7 +3034,72 @@ def _write_config_with_comments(config_obj, filepath):
     将配置写入文件，包含详细的中文注释。
 
     由于ConfigParser不保留注释，这个函数手动写入带注释的配置文件。
+    当 filepath 以 ".json" 结尾，或 config_obj 是 JsonConfigAdapter 实例时，
+    直接调用 JsonConfigAdapter.save() 保存为 JSON 格式。
+    同时，如果 ./configs/config.json 已存在，也同步更新它。
     """
+    resolved_filepath = filepath
+    if isinstance(resolved_filepath, str) and str(resolved_filepath).endswith(".json"):
+        if not os.path.isabs(resolved_filepath):
+            resolved_filepath = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), resolved_filepath
+            )
+
+    # ── JSON 快速路径 ─────────────────────────────────────────────────────
+    _is_json_adapter = isinstance(config_obj, JsonConfigAdapter)
+    _is_json_file = str(resolved_filepath).endswith(".json")
+    if _is_json_adapter or _is_json_file:
+        with CONFIG_JSON_LOCK:
+            if _is_json_adapter:
+                config_obj._path = resolved_filepath
+                config_obj.save()
+            else:
+                # 将 configparser 对象序列化为 JSON（合并写入，避免覆盖未修改配置）
+                data = {}
+                try:
+                    if os.path.exists(resolved_filepath):
+                        with open(resolved_filepath, "r", encoding="utf-8") as _jf:
+                            existing_data = json.load(_jf)
+                        if isinstance(existing_data, dict):
+                            for _sec, _opts in existing_data.items():
+                                if isinstance(_opts, dict):
+                                    data[_sec] = {
+                                        _k: str(_v) for _k, _v in _opts.items()
+                                    }
+                                else:
+                                    data[_sec] = {}
+                except Exception as _merge_err:
+                    logging.warning(
+                        f"[配置写入] 读取现有 JSON 配置用于合并失败，将继续仅写入传入配置: {_merge_err}"
+                    )
+                for sec in config_obj.sections():
+                    data[sec] = dict(config_obj.items(sec))
+
+                abs_filepath = os.path.abspath(resolved_filepath)
+                parent_dir = os.path.dirname(abs_filepath) or "."
+                os.makedirs(parent_dir, exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
+                ) as _tmpf:
+                    json.dump(data, _tmpf, indent=2, ensure_ascii=False)
+                    tmp_path = _tmpf.name
+                os.replace(tmp_path, abs_filepath)
+        return
+
+    # ── 同步更新 JSON 配置（如果 JSON 文件已存在）─────────────────────────
+    _json_cfg_path = CONFIG_JSON_FILE if "CONFIG_JSON_FILE" in globals() else None
+    if _json_cfg_path and os.path.exists(_json_cfg_path):
+        try:
+            _jadapter = JsonConfigAdapter(_json_cfg_path)
+            for _sec in config_obj.sections():
+                if not _jadapter.has_section(_sec):
+                    _jadapter.add_section(_sec)
+                for _k, _v in config_obj.items(_sec):
+                    _jadapter.set(_sec, _k, _v)
+            _jadapter.save()
+        except Exception as _je:
+            logging.warning(f"[配置同步] 同步 JSON 配置失败（非致命）: {_je}")
+
     try:
         # strict=False：允许读取包含重复节的配置文件，避免因config.ini历史原因存在重复节时抛出DuplicateSectionError
         existing_config = configparser.ConfigParser(strict=False)
@@ -2859,7 +3310,12 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 短信服务总开关（true/false）\n")
         f.write("# false：关闭所有短信功能，即使其他选项为true也不会发送短信\n")
         f.write(
-            f"enable_sms_service = {config_obj.get('Features', 'enable_sms_service', fallback='false')}\n\n"
+            f"enable_sms_service = {config_obj.get('Features', 'enable_sms_service', fallback='false')}\n"
+        )
+        f.write("# 账号注销申请的冷静期（小时），默认 24 小时\n")
+        f.write("# 用户申请注销后，在等待期内登录可撤销注销\n")
+        f.write(
+            f"account_cancellation_wait_hours = {config_obj.get('Features', 'account_cancellation_wait_hours', fallback='24')}\n\n"
         )
 
         # [SMS_Service_SMSBao] 短信宝服务配置
@@ -3428,7 +3884,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
     # 使用统一的配置读取函数读取config.ini文件中的[baidu_cloud]配置节
     try:
         # 调用统一的配置读取函数，该函数会返回RawConfigParser对象或None
-        config = _read_config_ini("config.ini")
+        config = _read_config_ini(CONFIG_JSON_FILE)
 
         # 检查配置文件是否成功读取
         # 如果返回None，说明配置文件读取失败（文件不存在、权限问题等）
@@ -3633,38 +4089,238 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
         }
 
 
-def _read_config_ini(config_file="config.ini"):
+class JsonConfigAdapter:
     """
-    统一的config.ini读取函数
+    configparser.RawConfigParser 兼容适配器，底层使用 JSON 文件存储。
+
+    JSON 文件格式（与 config.ini 一一对应）：
+    {
+      "SectionName": {
+        "key": "value",
+        ...
+      },
+      ...
+    }
+
+    实现了 configparser 中常用的接口：
+      get / getint / getfloat / getboolean / has_section / has_option /
+      set / remove_option / add_section / sections / options / items / write
+    """
+
+    def __init__(self, json_path: str):
+        self._path = json_path
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            raw = {}
+        # 规范化：所有 section/key 保持原始大小写，值统一为字符串
+        self._data: dict = {}
+        for sec, opts in raw.items():
+            if isinstance(opts, dict):
+                self._data[sec] = {k: str(v) for k, v in opts.items()}
+            else:
+                self._data[sec] = {}
+
+    # ── 读取接口 ──────────────────────────────────────────────────────────
+
+    def sections(self):
+        return list(self._data.keys())
+
+    def has_section(self, section: str) -> bool:
+        return section in self._data
+
+    def options(self, section: str):
+        if section not in self._data:
+            raise configparser.NoSectionError(section)
+        return list(self._data[section].keys())
+
+    def has_option(self, section: str, option: str) -> bool:
+        return section in self._data and option in self._data[section]
+
+    def get(self, section: str, option: str, fallback=configparser._UNSET):
+        try:
+            return self._data[section][option]
+        except KeyError:
+            if fallback is not configparser._UNSET:
+                return fallback
+            raise configparser.NoOptionError(option, section)
+
+    def getint(self, section: str, option: str, fallback=configparser._UNSET):
+        v = self.get(section, option, fallback=fallback)
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return fallback if fallback is not configparser._UNSET else 0
+
+    def getfloat(self, section: str, option: str, fallback=configparser._UNSET):
+        v = self.get(section, option, fallback=fallback)
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return fallback if fallback is not configparser._UNSET else 0.0
+
+    def getboolean(self, section: str, option: str, fallback=configparser._UNSET):
+        v = self.get(section, option, fallback=fallback)
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            if v.lower() in ("true", "yes", "1", "on"):
+                return True
+            if v.lower() in ("false", "no", "0", "off"):
+                return False
+        return bool(fallback) if fallback is not configparser._UNSET else False
+
+    def items(self, section: str = None, raw: bool = False):
+        if section is None:
+            return list(self._data.items())
+        if section not in self._data:
+            raise configparser.NoSectionError(section)
+        return list(self._data[section].items())
+
+    # ── 写入接口 ──────────────────────────────────────────────────────────
+
+    def add_section(self, section: str):
+        if section not in self._data:
+            self._data[section] = {}
+
+    def set(self, section: str, option: str, value: str = None):
+        if section not in self._data:
+            self._data[section] = {}
+        self._data[section][option] = str(value) if value is not None else ""
+
+    def remove_option(self, section: str, option: str) -> bool:
+        if section in self._data and option in self._data[section]:
+            del self._data[section][option]
+            return True
+        return False
+
+    def remove_section(self, section: str) -> bool:
+        if section in self._data:
+            del self._data[section]
+            return True
+        return False
+
+    def write(self, fileobj=None):
+        """将当前配置写回 JSON 文件（fileobj 参数保留以兼容 configparser 接口）。"""
+        abs_path = os.path.abspath(self._path)
+        parent_dir = os.path.dirname(abs_path)
+        os.makedirs(parent_dir, exist_ok=True)
+        with CONFIG_JSON_LOCK:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
+            ) as tmpf:
+                json.dump(self._data, tmpf, indent=2, ensure_ascii=False)
+                tmp_path = tmpf.name
+            os.replace(tmp_path, abs_path)
+
+    def save(self):
+        """显式保存到 JSON 文件的便捷方法。"""
+        self.write()
+
+    # ── 兼容性辅助 ────────────────────────────────────────────────────────
+
+    def read(self, filename, encoding=None):
+        """兼容 configparser.read() 接口，重新加载文件。"""
+        try:
+            with open(filename, "r", encoding=encoding or "utf-8") as f:
+                raw = json.load(f)
+            self._data = {sec: {k: str(v) for k, v in opts.items()} for sec, opts in raw.items() if isinstance(opts, dict)}
+            self._path = filename
+        except Exception:
+            pass
+
+    # 让 optionxform 可以被赋值（兼容 config.optionxform = str 调用）
+    @property
+    def optionxform(self):
+        return str
+
+    @optionxform.setter
+    def optionxform(self, value):
+        pass  # JSON 适配器始终保留原始大小写，无需处理
+
+
+def _migrate_ini_to_json(ini_config, json_path: str):
+    """将 configparser 对象的内容迁移到 JSON 文件（仅在目标 JSON 不存在时调用）。"""
+    try:
+        data = {}
+        for section in ini_config.sections():
+            data[section] = dict(ini_config.items(section))
+        os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logging.info(f"[配置迁移] config.ini 已迁移至 {json_path}")
+    except Exception as e:
+        logging.warning(f"[配置迁移] 迁移到 JSON 失败（非致命）: {e}")
+
+
+def _create_default_json_config(json_path: str):
+    """当 config.ini 和 config.json 都不存在时，创建包含默认值的 JSON 配置文件。"""
+    try:
+        default = _get_default_config() if "_get_default_config" in globals() else {}
+        data = {}
+        if hasattr(default, "sections"):
+            for section in default.sections():
+                data[section] = dict(default.items(section))
+        os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logging.info(f"[配置初始化] 已创建默认 JSON 配置文件: {json_path}")
+    except Exception as e:
+        logging.warning(f"[配置初始化] 创建默认 JSON 配置失败（非致命）: {e}")
+
+
+def _read_config_ini(config_file=CONFIG_FILE):
+    """
+    统一的配置文件读取函数。
+
+    读取规则：
+      1. 仅使用 ./configs/config.json（返回 JsonConfigAdapter）
+      2. 若文件不存在，自动创建默认 config.json
+      3. 若文件损坏，自动备份后重建默认 config.json
 
     参数:
-        config_file: 配置文件路径，默认为"config.ini"
+        config_file: JSON 文件路径，默认为 CONFIG_JSON_FILE
 
     返回:
-        configparser.RawConfigParser对象，如果读取失败返回None
+        configparser.RawConfigParser 或 JsonConfigAdapter 对象；读取失败返回 None
 
     说明:
-        - 使用RawConfigParser保持键名的大小写
-        - 设置optionxform = str保持选项名的原始大小写
-        - 统一使用utf-8编码读取
-        - 包含错误处理，读取失败时记录日志并返回None
+        - 使用 RawConfigParser / JsonConfigAdapter 保持键名的大小写
+        - 统一使用 utf-8 编码读取
+        - 包含错误处理，读取失败时记录日志并返回 None
     """
     try:
-        # 创建RawConfigParser对象，它不会对配置值进行插值处理
-        # 这确保了配置值中的特殊字符（如%）不会被误解释
-        # strict=False：允许读取包含重复节/键的配置文件（如config.ini因历史原因存在重复节时不抛出异常）
-        config = configparser.RawConfigParser(strict=False)
+        json_cfg_path = config_file or CONFIG_FILE
+        if not os.path.isabs(json_cfg_path):
+            json_cfg_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), json_cfg_path
+            )
 
-        # 保持键名的原始大小写（默认会转换为小写）
-        # 这对于区分大小写敏感的配置项很重要
-        config.optionxform = str
+        # 不存在则创建默认 JSON
+        if not os.path.exists(json_cfg_path):
+            logging.warning(f"[配置] {json_cfg_path} 不存在，将创建默认 JSON 配置")
+            _create_default_json_config(json_cfg_path)
 
-        # 读取配置文件，使用utf-8编码
-        # 这确保能正确读取包含中文或其他Unicode字符的配置
-        config.read(config_file, encoding="utf-8")
+        # 文件存在但损坏：先备份再重建，避免配置丢失
+        try:
+            with open(json_cfg_path, "r", encoding="utf-8") as vf:
+                json.load(vf)
+        except json.JSONDecodeError:
+            backup_file = f"{json_cfg_path}.corrupted.{int(time.time())}.bak"
+            try:
+                shutil.copy2(json_cfg_path, backup_file)
+                logging.error(f"[配置] JSON 配置损坏，已备份到: {backup_file}")
+            except Exception as be:
+                logging.error(f"[配置] JSON 损坏备份失败: {be}")
+            _create_default_json_config(json_cfg_path)
+        except FileNotFoundError:
+            _create_default_json_config(json_cfg_path)
 
-        # 成功读取配置文件，返回配置对象
-        return config
+        adapter = JsonConfigAdapter(json_cfg_path)
+        logging.debug(f"[配置] 已从 {json_cfg_path} 加载 JSON 配置")
+        return adapter
+
     except Exception as e:
         # 捕获所有可能的异常（文件不存在、权限问题、编码错误等）
         # 记录错误日志，包含完整的堆栈信息以便调试
@@ -3674,9 +4330,9 @@ def _read_config_ini(config_file="config.ini"):
 
 
 def _create_config_ini():
-    """创建或更新config.ini配置文件（兼容旧版本，自动补全缺失参数）"""
+    """创建或更新 JSON 配置文件（config.json），自动补全缺失参数。"""
     default_config = _get_default_config()
-    config_file = "config.ini"
+    config_file = CONFIG_JSON_FILE
 
     if os.path.exists(config_file):
         # 检查文件是否为空
@@ -3685,11 +4341,9 @@ def _create_config_ini():
             _write_config_with_comments(default_config, config_file)
             return
 
-        print("[配置文件] config.ini 已存在，检查是否需要更新...")
-        existing_config = configparser.ConfigParser(strict=False)
+        print("[配置文件] config.json 已存在，检查是否需要更新...")
         try:
-            existing_config.optionxform = str
-            existing_config.read(config_file, encoding="utf-8")
+            existing_config = JsonConfigAdapter(config_file)
         except Exception as e:
             # 捕获所有解析错误（包括重复项、格式错误等），备份并重置
             print(f"\n[错误] 读取配置文件 '{config_file}' 失败: {e}")
@@ -3731,17 +4385,17 @@ def _create_config_ini():
 
         if updated:
             try:
-                _write_config_with_comments(existing_config, "config.ini")
+                _write_config_with_comments(existing_config, config_file)
                 logging.info("配置文件已更新：自动补全缺失参数")
                 print("[配置文件] 配置文件已更新并保存（包含详细注释）")
             except Exception as e:
-                print(f"[错误] 保存更新后的 config.ini 失败: {e}")
-                logging.error(f"保存更新后的 config.ini 失败: {e}")
+                print(f"[错误] 保存更新后的 config.json 失败: {e}")
+                logging.error(f"保存更新后的 config.json 失败: {e}")
         else:
             print("[配置文件] 配置文件无需更新")
     else:
-        print("[配置文件] config.ini 不存在，创建新配置文件...")
-        _write_config_with_comments(default_config, "config.ini")
+        print("[配置文件] config.json 不存在，创建新配置文件...")
+        _write_config_with_comments(default_config, config_file)
         print("[配置文件] 配置文件创建完成（包含详细注释）")
 
 
@@ -3935,7 +4589,7 @@ def _migrate_payment_methods_to_json():
         # 创建 ConfigParser 对象用于读取 INI 文件
         config = configparser.ConfigParser(strict=False)
         # 读取 config.ini 文件，使用 utf-8 编码
-        config.read("config.ini", encoding="utf-8")
+        config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
         # 检查 Rainbow_YiPay 节中是否存在 payment_methods_config 配置项
         if config.has_option("Rainbow_YiPay", "payment_methods_config"):
@@ -4212,7 +4866,7 @@ def _get_watermark_removal_default():
         config = configparser.ConfigParser(strict=False)
 
         # 读取 config.ini 文件，使用 utf-8 编码
-        config.read("config.ini", encoding="utf-8")
+        config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
         # 检查 [Map] 节是否存在
         if config.has_section("Map"):
@@ -4841,7 +5495,7 @@ class RainbowYiPayClient:
     - 异步回调必须验证签名，防止伪造通知
     """
 
-    def __init__(self, config_file="config.ini"):
+    def __init__(self, config_file=CONFIG_JSON_FILE):
         """
         初始化彩虹易支付客户端
 
@@ -4859,15 +5513,8 @@ class RainbowYiPayClient:
         异常:
             如果配置文件不存在或配置项缺失，会记录错误日志
         """
-        # 创建一个新的配置解析器实例，用于读取配置文件
-        # strict=False 允许配置项重复（虽然不推荐，但提高兼容性）
-        self.config = configparser.ConfigParser(strict=False)
-
-        # optionxform=str 保持配置项的大小写敏感，默认会转为小写
-        self.config.optionxform = str
-
-        # 读取配置文件，使用 UTF-8 编码以支持中文
-        self.config.read(config_file, encoding="utf-8")
+        # 使用统一的配置读取函数，支持 JSON 格式配置文件
+        self.config = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
 
         # 从配置文件的 [Rainbow_YiPay] 节读取易支付接口域名
         # fallback 参数指定当配置项不存在时的默认值（空字符串）
@@ -5243,7 +5890,7 @@ class AuthSystem:
         config = configparser.ConfigParser(strict=False)
         config.optionxform = str
         try:
-            config.read(CONFIG_FILE, encoding="utf-8")
+            config = _read_config_ini(CONFIG_FILE)
             logging.debug(
                 f"_load_config: 配置文件加载完成，配置节: {list(config.sections())}"
             )
@@ -5814,6 +6461,10 @@ class AuthSystem:
             print(f"[用户注册] 保存用户数据到文件...")
             with open(user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
+
+            # 更新 system_accounts/_index.json 索引
+            user_hash = hashlib.sha256(str(auth_username).encode()).hexdigest()
+            _update_system_accounts_index(auth_username, user_hash, "add")
 
             logging.debug(f"register_user: 添加用户到权限组: {group}")
             self.permissions["user_groups"][auth_username] = group
@@ -6547,8 +7198,8 @@ class AuthSystem:
             # ==================== 第三步：创建备份 ====================
 
             # 构建备份文件的保存路径
-            # 备份目录位于 system_accounts/remove/
-            backup_dir = os.path.join(SYSTEM_ACCOUNTS_DIR, "remove")
+            # 备份目录位于 Remove_Acoount/
+            backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
 
             # 如果备份目录不存在，则创建它（包括所有必要的父目录）
             if not os.path.exists(backup_dir):
@@ -6561,14 +7212,23 @@ class AuthSystem:
                     return {"success": False, "message": f"创建备份目录失败: {e}"}
 
             # 生成唯一的备份文件名
-            # 使用 uuid.uuid4() 生成随机 UUID，UUID4 冲突概率为 1/2^122，实际上不可能重复
+            # 检查 SYSTEM_ACCOUNTS_DIR、Remove_Acoount/ 及历史目录中是否存在同名文件
+            _legacy_remove_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "Remove_Account"
+            )
+            _legacy_remove_subdir = os.path.join(SYSTEM_ACCOUNTS_DIR, "remove")
             backup_uuid = str(uuid.uuid4())
+            while (os.path.exists(os.path.join(SYSTEM_ACCOUNTS_DIR, f"{backup_uuid}.json")) or
+                   os.path.exists(os.path.join(backup_dir, f"{backup_uuid}.json")) or
+                   os.path.exists(os.path.join(_legacy_remove_dir, f"{backup_uuid}.json")) or
+                   os.path.exists(os.path.join(_legacy_remove_subdir, f"{backup_uuid}.json"))):
+                backup_uuid = str(uuid.uuid4())
             backup_filename = os.path.join(backup_dir, f"{backup_uuid}.json")
 
             # 构建备份数据的结构
             # 使用 ISO 8601 格式的时间戳记录删除时间
             backup_data = {
-                "deleted_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),  # 删除时间（UTC时间）
+                "deleted_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),  # 删除时间（UTC时间）
                 "auth_username": auth_username,  # 被删除用户的用户名
                 "user_data": user_data,  # system_accounts 中的完整用户数据
                 "school_accounts": school_accounts_data,  # school_accounts 中的数据（可能为 None）
@@ -6582,6 +7242,29 @@ class AuthSystem:
                     # ensure_ascii=False 确保中文字符正常显示
                     json.dump(backup_data, f, indent=2, ensure_ascii=False)
                 logging.info(f"[删除用户备份] 备份成功: {backup_filename}")
+                # 更新 Remove_Acoount/_index.json 索引
+                try:
+                    _ra_index_path = os.path.join(backup_dir, "_index.json")
+                    _ra_deleted_at = backup_data["deleted_at"]
+                    # 读取现有索引
+                    if os.path.exists(_ra_index_path):
+                        with open(_ra_index_path, "r", encoding="utf-8") as _f:
+                            _ra_index = json.load(_f)
+                    else:
+                        _ra_index = {"removed_accounts": {}}
+                    if "removed_accounts" not in _ra_index:
+                        _ra_index["removed_accounts"] = {}
+                    # 添加本次删除记录
+                    _ra_index["removed_accounts"][auth_username] = {
+                        "backup_file": f"{backup_uuid}.json",
+                        "deleted_at": _ra_deleted_at
+                    }
+                    _ra_index["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    with open(_ra_index_path, "w", encoding="utf-8") as _f:
+                        json.dump(_ra_index, _f, indent=2, ensure_ascii=False)
+                    logging.info(f"[删除用户备份] Remove_Acoount/_index.json 已更新")
+                except Exception as _e:
+                    logging.warning(f"[删除用户备份] 更新 Remove_Acoount 索引失败: {_e}")
             except Exception as e:
                 # 如果备份失败，则不执行删除操作，保护用户数据
                 logging.error(f"[删除用户备份] 保存备份文件失败: {e}")
@@ -6594,6 +7277,8 @@ class AuthSystem:
             try:
                 os.remove(user_file)
                 logging.info(f"[删除用户] 已删除用户文件: {user_file}")
+                # 从 system_accounts/_index.json 索引中移除该用户
+                _update_system_accounts_index(auth_username, None, "remove")
             except Exception as e:
                 # 删除用户文件失败，记录错误并返回
                 logging.error(f"[删除用户] 删除用户文件失败: {e}")
@@ -6667,7 +7352,38 @@ class AuthSystem:
             ),  # 新增字段
             # 新增字段：可用运行次数
             "available_runs": user_data.get("available_runs", 0),
+            # 账号注销等待期状态
+            "account_cancellation": user_data.get("account_cancellation"),
         }
+
+    def set_account_cancellation_pending(self, auth_username, wait_hours=24):
+        """为用户设置账号注销等待期状态。"""
+        with self.lock:
+            user_file = self.get_user_file_path(auth_username)
+            if not os.path.exists(user_file):
+                return {"success": False, "message": "用户不存在"}
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+
+            now_ts = int(time.time())
+            execute_at = now_ts + int(wait_hours * 3600)
+            user_data["account_cancellation"] = {
+                "status": "pending",
+                "requested_at": now_ts,
+                "execute_at": execute_at,
+            }
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            return {"success": True, "execute_at": execute_at}
+
+    def get_account_cancellation_status(self, auth_username):
+        """读取用户账号注销状态。"""
+        user_file = self.get_user_file_path(auth_username)
+        if not os.path.exists(user_file):
+            return None
+        with open(user_file, "r", encoding="utf-8") as f:
+            user_data = json.load(f)
+        return user_data.get("account_cancellation")
 
     def update_user_last_school_account(self, auth_username, school_username):
         """更新用户最后使用的学校账号"""
@@ -7108,6 +7824,8 @@ class RunData:
         self.total_run_time_s: float = 0.0
         self.total_run_distance_m: float = 0.0
         self.distance_covered_m: float = 0.0
+        self.current_point_index: int = 0
+        self.suppress_last_target_until_finish: bool = True
 
 
 class AccountSession:
@@ -7172,7 +7890,8 @@ class ApiClient:
             "Accept": "application/json, text/plain, */*",
             "X-Requested-With": "com.zx.slm",
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-            "User-Agent": self.app.device_ua,
+            "User-Agent": self.app.device_ua + " uni-app Html5Plus/1.0 (Immersed/29.09091)",
+            "platform":"android",
         }
         try:
             logging.debug(f"当前Session的Cookies: {self.session.cookies.get_dict()}")
@@ -7297,10 +8016,6 @@ class ApiClient:
         read_timeout = 10
 
         log_data = data
-        if is_post_str and isinstance(data, str) and len(data) > 500:
-            log_data = (
-                data[:500] + "... (已截断，完整数据长度: " + str(len(data)) + " 字节)"
-            )
 
         logging.debug(
             f"[网络请求] 准备发起HTTP请求 --> 请求方法: {method.upper()}, 目标URL: {url}, 重试次数配置: {retries}次, 连接超时: {connect_timeout}秒, 读取超时: {read_timeout}秒\n[请求数据]: {log_data}"
@@ -7331,7 +8046,7 @@ class ApiClient:
                         
 
                     logging.debug(
-                        f"[网络请求] 发起POST请求 --> URL: {url}, 请求头: {headers}, 请求体字节长度: {len(post_data_bytes)} 字节, 请求体: {post_data_bytes}\n"
+                        f"[网络请求] 发起POST请求 --> URL: {url}, 请求头: {headers}\n请求体字节长度: {len(post_data_bytes)} 字节\n请求体: {post_data_bytes}\n"
                     )
                     resp = self.session.post(
                         url,
@@ -7349,10 +8064,10 @@ class ApiClient:
                     )
 
                 logging.debug(
-                    f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} ({resp.reason}), 来源URL: {url}, 响应头: {dict(resp.headers)}, 响应内容长度: {len(resp.content)} 字节"
+                    f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} ({resp.reason}), 来源URL: {url}\n响应头: {dict(resp.headers)}\n响应内容长度: {len(resp.content)} 字节"
                 )
                 logging.debug(
-                    f"[网络请求] 响应内容: {resp.text}\n"
+                    f"[网络请求] 响应内容: \n{resp.text}\n"
                 )
                 resp.raise_for_status()
                 return resp
@@ -7514,9 +8229,10 @@ class ApiClient:
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/errand/addErrandTrack",
+                f"{self.BASE_URL}:9097/run/errand/addErrandTrackByData",
                 payload_str,
                 is_post_str=True,
+                force_content_type="application/json;charset=UTF-8",
             )
         )
 
@@ -7572,7 +8288,23 @@ class ApiClient:
 
     @staticmethod
     def generate_random_ua():
-        """生成一个随机的、模拟安卓设备的User-Agent字符串"""
+        """生成一个随机的、仅限移动端设备的User-Agent字符串。
+        
+        优先使用 fake_useragent 库（如已安装）生成真实度更高的随机UA；
+        若库不可用则回退到内置的安卓设备UA模板列表。
+        """
+        # ── 方案一：使用 fake_useragent 库（移动端限定）──────────────────────
+        try:
+            from fake_useragent import UserAgent
+            ua_gen = UserAgent(platforms=["mobile"])
+            ua = ua_gen.random
+            # 如果生成的 UA 不含 Mobile/Android 关键词，则触发回退
+            if "Mobile" in ua or "Android" in ua:
+                return ua
+        except Exception:
+            pass
+
+        # ── 方案二：内置安卓移动端 UA 模板（兜底）──────────────────────────
         build_texts = [
             "TD1A.221105.001.A1",
             "TP1A.221005.003",
@@ -7580,6 +8312,8 @@ class ApiClient:
             "SP2A.220505.008",
             "SQ1D.220205.004",
             "RP1A.201005.004",
+            "TQ3A.230805.001",
+            "UP1A.231005.007",
         ]
         phone_models = [
             "Xiaomi 12",
@@ -7591,13 +8325,23 @@ class ApiClient:
             "Realme GT Neo5",
             "HONOR Magic5 Pro",
             "OnePlus 11",
+            "Samsung Galaxy S23",
+            "Pixel 7",
         ]
-        android_version_map = {"T": 13, "S": 12, "R": 11, "Q": 10, "P": 9}
+        android_version_map = {"U": 14, "T": 13, "S": 12, "R": 11, "Q": 10, "P": 9}
         random_build = random.choice(build_texts)
         build_letter = random_build.split(".")[0][0]
         android_version = android_version_map.get(build_letter, 13)
-        chrome_version = f"Chrome/{random.randint(100, 120)}.0.{random.randint(4000, 6000)}.{random.randint(100, 200)}"
-        return f"Mozilla/5.0 (Linux; Android {android_version}; {random.choice(phone_models)} Build/{random_build}; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 {chrome_version} Mobile Safari/537.36"
+        chrome_major = random.randint(110, 124)
+        chrome_minor = random.randint(4000, 6500)
+        chrome_patch = random.randint(100, 250)
+        chrome_version = f"Chrome/{chrome_major}.0.{chrome_minor}.{chrome_patch}"
+        return (
+            f"Mozilla/5.0 (Linux; Android {android_version}; "
+            f"{random.choice(phone_models)} Build/{random_build}; wv) "
+            f"AppleWebKit/537.36 (KHTML, like Gecko) "
+            f"Version/4.0 {chrome_version} Mobile Safari/537.36"
+        )
 
     def get_roll_call_info(self, roll_call_id, user_id):
         """获取指定签到活动的信息"""
@@ -7659,7 +8403,7 @@ class Api:
         self.run_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.user_dir = SCHOOL_ACCOUNTS_DIR
         os.makedirs(self.user_dir, exist_ok=True)
-        self.config_path = os.path.join(self.run_dir, "config.ini")
+        self.config_path = CONFIG_JSON_ABS_PATH
         self.user_config_path = self.config_path
 
         self.api_client = ApiClient(self)
@@ -7855,7 +8599,6 @@ class Api:
             logging.error(f"[SocketIO Emit] Failed: {event_name} from {thread_info}")
             logging.error(f"[SocketIO Emit] Error type: {type(e).__name__}")
             logging.error(f"[SocketIO Emit] Error message: {e}")
-            import traceback
             logging.error(f"[SocketIO Emit] Traceback:\n{traceback.format_exc()}")
             return False
 
@@ -7890,7 +8633,6 @@ class Api:
                     f"WebSocket emit log failed for session {session_id[:8]} from Thread[{current_thread.name}]: {e}"
                 )
                 logging.error(f"Error details: {type(e).__name__}: {e}")
-                import traceback
                 logging.error(f"Traceback: {traceback.format_exc()}")
         else:
             logging.debug(
@@ -8782,7 +9524,7 @@ class Api:
             # 从配置文件中读取 require_payment（是否需要付费）和 single_run_cost（单次费用）
             # 如果不需要付费或价格为0/负数，则跳过所有付费相关逻辑（不扣除次数、不产生欠费）
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             # 读取 require_payment 配置项，默认值为 true（需要付费）
             # 如果配置为 false，表示系统运行在免费模式下
             require_payment = config.getboolean(
@@ -8880,6 +9622,17 @@ class Api:
                     # 保存更新后的学校账号配置
                     self._save_user_school_accounts(
                         auth_username, school_accounts)
+
+                    # 读取单次费用配置，创建账单记录
+                    try:
+                        _billing_config = _read_config_ini()
+                        _single_run_cost_str = _billing_config.get(
+                            "Payment_Settings", "single_run_cost", fallback="1.0") if _billing_config else "1.0"
+                        _single_run_cost = round(float(_single_run_cost_str), 2)
+                    except Exception:
+                        _single_run_cost = 1.0
+                    # 调用全局函数创建账单记录
+                    _create_user_billing_record(auth_username, school_username, "校园跑一次", _single_run_cost)
 
                     logging.info(
                         f"[次数扣减] 用户 {auth_username} 可用次数不足（当前: {available_runs}），"
@@ -9210,10 +9963,8 @@ class Api:
         """从主 config.ini 加载全局配置（优先读取新版 Map.amap_js_key，兼容旧版 System.AmapJsKey）"""
         if not os.path.exists(self.config_path):
             return
-        cfg = configparser.RawConfigParser()
-        cfg.optionxform = str
         try:
-            cfg.read(self.config_path, encoding="utf-8")
+            cfg = _read_config_ini(self.config_path) or _get_default_config()
 
             amap_key = cfg.get("Map", "amap_js_key", fallback="")
 
@@ -9514,9 +10265,7 @@ class Api:
                     f"未认证用户请求 get_initial_data，返回所有 {len(users)} 个账户（向后兼容）"
                 )
 
-            cfg = configparser.RawConfigParser()
-            cfg.optionxform = str
-            cfg.read(self.config_path, encoding="utf-8")
+            cfg = _read_config_ini(self.config_path) or _get_default_config()
 
             # [修正] LastUser 不再从 config.ini 读取，而是从当前登录用户的系统账号信息中获取
             last_user = ""
@@ -9742,10 +10491,7 @@ class Api:
         """由JS调用，保存高德地图API Key到主配置文件"""
         try:
             self.global_params["amap_js_key"] = api_key
-            cfg = configparser.RawConfigParser()
-            cfg.optionxform = str
-            if os.path.exists(self.config_path):
-                cfg.read(self.config_path, encoding="utf-8")
+            cfg = _read_config_ini(self.config_path) or _get_default_config()
 
             if not cfg.has_section("Map"):
                 cfg.add_section("Map")
@@ -10731,6 +11477,15 @@ class Api:
                 )
 
                 if current_dist < self.target_range_m:
+                    if (
+                        run_data.suppress_last_target_until_finish
+                        and run_data.target_sequence == len(run_data.target_points) - 1
+                        and run_data.current_point_index < len(run_data.run_coords)
+                    ):
+                        logging.debug(
+                            "抑制最后打卡点提前完成: 当前尚未跑到轨迹终点"
+                        )
+                        break
                     logging.info(
                         f"✓ 到达打卡点 {run_data.target_sequence+1}/{len(run_data.target_points)}"
                     )
@@ -10757,10 +11512,8 @@ class Api:
             # 获取当前登录的学校账号用户名
             school_username = self.user_data.username
 
-            # 从 INI 文件读取该账号的欠费统计数据
-            # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
-            stats = self._load_school_account_stats_from_ini(school_username)
-            overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
+            # 从账单文件读取该账号待支付账单数量作为欠费次数
+            overdue_count = _count_pending_bills_for_school(school_username)
 
             # 如果存在欠费（overdue_count > 0），拒绝启动任务
             # 这是关键的安全检查点，防止欠费用户继续使用服务
@@ -10902,44 +11655,39 @@ class Api:
             coords_list.append(
                 {
                     "location": f"{lon},{lat}",
-                    "locatetime": str(int(time.time() * 1000)),
-                    "dis": f"{distance:.1f}",
-                    "count": str(int(time_elapsed_before_chunk_ms / 1000)),
+                    "locatetime": int(time.time() * 1000),
+                    "dis": round(distance, 1),
+                    "count": int(time_elapsed_before_chunk_ms / 1000),
                 }
             )
             last_point_gps = (lon, lat, dur_ms)
             chunk_total_dist += distance
             chunk_total_dur += dur_ms
 
+        current_ts_ms = int(time.time() * 1000)
         payload = {
             "scheduleId": run_data.errand_schedule,
             "userId": user.id,
             "userName": user.name or "",
             "runLength": str(int(chunk_total_dist)),
-            "runTime": str(chunk_total_dur),
+            "runTime": chunk_total_dur,
             "startPoint": "",
             "endPoint": "",
-            "startTime": start_time,
+            "imgUrl": getattr(user, "avatar_url", "") or "",
+            "startTime": int(start_time) if start_time else current_ts_ms,
+            "endTime": current_ts_ms,
             "trid": run_data.trid,
             "sid": "",
             "tid": "",
-            "speed": (
-                f"{(run_data.total_run_distance_m / run_data.total_run_time_s):.2f}"
-                if run_data.total_run_time_s > 0
-                else ""
-            ),
+            "speed": "0",
             "finishType": "1" if is_finish else "0",
             "coordinate": json.dumps(coords_list, separators=(",", ":")),
-            "appVersion": ApiClient.API_VERSION,
         }
 
-        if is_finish:
-            payload["endTime"] = str(int(time.time() * 1000))
-
-        payload_str = urllib.parse.urlencode(payload)
+        payload_str = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
         logging.debug(
-            f"[{user.name}] 正在入队提交数据包, 大小: {len(payload_str)} 字节"
+            f"[{user.student_id}] 正在入队提交数据包, 大小: {len(payload_str)} 字节"
         )
 
         resp = self._enqueue_submission(client, payload_str, wait_timeout=60.0)
@@ -10948,10 +11696,10 @@ class Api:
         msg = resp.get("message") if resp else "请求无响应或超时"
         if not success:
             log_func(f"数据提交失败: {msg}")
-            logging.error(f"[{user.name}] 数据提交失败详情: {resp}")
+            logging.error(f"[{user.student_id}] 数据提交失败详情: {resp}")
         else:
             log_func(f"数据提交成功。")
-            logging.debug(f"[{user.name}] 数据提交成功: {msg}")
+            logging.debug(f"[{user.student_id}] 数据提交成功: {msg}")
 
         return success
 
@@ -11139,7 +11887,6 @@ class Api:
                             logging.error(
                                 f"SocketIO发送'task_completed'事件失败 from Thread[{current_thread.name}]: {e}")
                             logging.error(f"Error type: {type(e).__name__}")
-                            import traceback
                             logging.error(f"Full traceback: {traceback.format_exc()}")
                     return
             time.sleep(1)
@@ -11187,21 +11934,112 @@ class Api:
             run_data.trid = f"{user_data.student_id}{int(time.time() * 1000)}"
             start_time_ms = str(int(time.time() * 1000))
             run_data.distance_covered_m = 0.0
+            run_data.current_point_index = 0
+            run_data.suppress_last_target_until_finish = True
             last_point_gps = run_data.run_coords[0]
             submission_successful = True
 
             point_index = 0
+            _exec_start_real = time.time()
+            _exec_total_points = max(1, len(run_data.run_coords))
+            _exec_target_time_s = float(getattr(run_data, "total_run_time_s", 0.0) or 0.0)
+            if _exec_target_time_s <= 1.0:
+                _exec_target_time_s = sum(max(0.0, d) / 1000.0 for _, _, d in run_data.run_coords)
+            _exec_target_time_s = max(1.0, _exec_target_time_s)
+            _exec_prefix_plan_s = [0.0]
+            _exec_acc_plan_s = 0.0
+            for _, _, _dur_ms in run_data.run_coords:
+                _exec_acc_plan_s += max(0.0, _dur_ms) / 1000.0
+                _exec_prefix_plan_s.append(_exec_acc_plan_s)
+            _pid_kp = PID_KP
+            _pid_ki = PID_KI
+            _pid_kd = PID_KD
+            _pid_deadzone = PID_DEADZONE
+            _pid_integral = 0.0
+            _pid_prev_error = 0.0
+            _pid_deadzone_boost = 1.0
 
-            for i in range(0, len(run_data.run_coords), 40):
+            for i in range(0, len(run_data.run_coords), 5):
                 if stop_flag.is_set():
                     log_func("任务已中止。")
                     logging.info("检测到停止标志，正在中止任务运行")
                     break
 
-                chunk = run_data.run_coords[i: i + 40]
+                chunk = run_data.run_coords[i: i + 5]
 
                 for lon, lat, dur_ms in chunk:
-                    if stop_flag.wait(timeout=dur_ms / 1000.0):
+                    _elapsed_real_s = time.time() - _exec_start_real
+                    _elapsed_real_min = _elapsed_real_s / 60.0
+                    _actual_sleep_s = dur_ms / 1000.0
+                    if True:
+                        _planned_elapsed_s = min(
+                            _exec_target_time_s,
+                            _exec_prefix_plan_s[min(point_index, len(_exec_prefix_plan_s) - 1)],
+                        )
+                        _expected_frac = _planned_elapsed_s / _exec_target_time_s
+                        _actual_frac = _elapsed_real_s / _exec_target_time_s
+                        _progress_diff = _actual_frac - _expected_frac
+                        _error = _progress_diff
+                        _in_deadzone = abs(_error) <= _pid_deadzone
+                        if _in_deadzone:
+                            _pid_deadzone_boost = min(
+                                PID_DEADZONE_BOOST_MAX,
+                                _pid_deadzone_boost + PID_DEADZONE_BOOST_STEP,
+                            )
+                        else:
+                            _pid_deadzone_boost = 1.0
+                        _error_for_pid = _error
+                        _pid_integral = max(
+                            -PID_INTEGRAL_LIMIT,
+                            min(PID_INTEGRAL_LIMIT, _pid_integral + _error_for_pid),
+                        )
+                        _pid_derivative = _error_for_pid - _pid_prev_error
+                        _pid_prev_error = _error_for_pid
+                        _pid_p_term = _pid_kp * _error_for_pid
+                        _pid_i_term = _pid_ki * _pid_integral
+                        _pid_d_term = _pid_kd * _pid_derivative
+                        _pid_out = _pid_deadzone_boost * (
+                            _pid_p_term
+                            + _pid_i_term
+                            + _pid_d_term
+                        )
+                        _sleep_ratio = max(0.35, min(1.70, 1.0 - _pid_out))
+                        _actual_sleep_s = _actual_sleep_s * _sleep_ratio
+                        if _error_for_pid > 0:
+                            _remaining_s = max(1.0, _exec_target_time_s - _elapsed_real_s)
+                            _remaining_pts = max(1, _exec_total_points - point_index)
+                            _actual_sleep_s = min(_actual_sleep_s, _remaining_s / _remaining_pts)
+                            logging.debug(
+                                f"进度偏慢，PID自动加速: 实际时间进度={_actual_frac:.2%}, "
+                                f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}, "
+                                f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
+                                f"P={_pid_p_term:.4f}, I={_pid_i_term:.4f}, D={_pid_d_term:.4f}, "
+                                f"PID={_pid_out:.4f}, Boost={_pid_deadzone_boost:.2f}, "
+                                f"新等待时间={_actual_sleep_s:.2f}s"
+                            )
+                        elif _error < 0:
+                            logging.debug(
+                                f"进度偏快，PID自动减速: 实际时间进度={_actual_frac:.2%}, "
+                                f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}, "
+                                f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
+                                f"P={_pid_p_term:.4f}, I={_pid_i_term:.4f}, D={_pid_d_term:.4f}, "
+                                f"PID={_pid_out:.4f}, Boost={_pid_deadzone_boost:.2f}, "
+                                f"新等待时间={_actual_sleep_s:.2f}s"
+                            )
+                        else:
+                            logging.debug(
+                                f"进度正常(±{_pid_deadzone:.0%}): 实际时间进度={_actual_frac:.2%}, "
+                                f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}，"
+                                f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
+                                f"P={_pid_p_term:.4f}, I={_pid_i_term:.4f}, D={_pid_d_term:.4f}, "
+                                f"PID={_pid_out:.4f}, Boost={_pid_deadzone_boost:.2f}, "
+                                f"等待时间={_actual_sleep_s:.2f}s"
+                            )
+                            
+                    else:
+                        logging.debug(f"正常执行: 已执行时间={_elapsed_real_min:.2f}分钟, 未接近目标时间，无需调整执行速度。")
+
+                    if stop_flag.wait(timeout=_actual_sleep_s):
                         logging.debug("等待下一个坐标点时被停止信号中断")
                         break
 
@@ -11253,7 +12091,7 @@ class Api:
                 if stop_flag.is_set():
                     break
 
-                is_final_chunk = i + 40 >= len(run_data.run_coords)
+                is_final_chunk = i + 5 >= len(run_data.run_coords)
 
                 max_attempts = 3
                 attempt = 1
@@ -11291,6 +12129,13 @@ class Api:
                     break
 
             if not stop_flag.is_set() and submission_successful:
+                run_data.suppress_last_target_until_finish = False
+                if run_data.target_points and run_data.target_sequence < len(run_data.target_points):
+                    try:
+                        end_lon, end_lat, _ = run_data.run_coords[-1]
+                        self.check_target_reached_during_run(run_data, end_lon, end_lat)
+                    except Exception:
+                        pass
                 log_func("任务执行完毕，等待确认...")
                 logging.info("任务运行执行完毕，等待最终确认")
                 time.sleep(3)
@@ -11333,7 +12178,6 @@ class Api:
                         current_thread = threading.current_thread()
                         logging.error(f"SocketIO发送'run_stopped'运行停止事件失败 from Thread[{current_thread.name}]: {e}")
                         logging.error(f"Error type: {type(e).__name__}")
-                        import traceback
                         logging.error(f"Full traceback: {traceback.format_exc()}")
 
             if finished_event:
@@ -11342,28 +12186,97 @@ class Api:
                 f"Submission thread finished for task: {run_data.run_name}")
 
     def _get_path_for_distance(self, path, cumulative_distances, target_dist):
-        """如果路径总长不足，则通过来回走的方式凑足目标距离"""
+        """如果路径总长不足，则在末段提前折返凑足目标距离"""
         total_len = cumulative_distances[-1]
         final_path = list(path)
-        if 0 < total_len < target_dist:
-            rem = target_dist - total_len
-            rev = path[::-1]
-            acc = 0.0
-            for i in range(len(rev) - 1):
-                seg = self._calculate_distance_m(
-                    rev[i][0], rev[i][1], rev[i + 1][0], rev[i + 1][1]
-                )
-                if acc + seg < rem:
-                    final_path.append(rev[i + 1])
-                    acc += seg
-                else:
-                    ratio = (rem - acc) / seg if seg > 0 else 0
-                    s, e = rev[i], rev[i + 1]
-                    final_path.append(
-                        (s[0] + (e[0] - s[0]) * ratio,
-                         s[1] + (e[1] - s[1]) * ratio)
-                    )
-                    break
+        if total_len <= 0 or total_len >= target_dist:
+            return final_path
+
+        def _append_if_new(pt):
+            if not final_path or final_path[-1] != pt:
+                final_path.append(pt)
+
+        def _point_at(d):
+            return self._get_point_at_distance(path, cumulative_distances, d)
+
+        def _path_points_between(d_start, d_end):
+            if d_start == d_end:
+                return [_point_at(d_start)]
+            if d_start > d_end:
+                points = _path_points_between(d_end, d_start)
+                return list(reversed(points))
+
+            idx_start = bisect.bisect_left(cumulative_distances, d_start)
+            idx_end = bisect.bisect_left(cumulative_distances, d_end)
+            points = []
+            start_pt = _point_at(d_start)
+            points.append(start_pt)
+            for i in range(idx_start, idx_end):
+                dist_i = cumulative_distances[i]
+                if d_start < dist_i < d_end:
+                    pt = path[i]
+                    if pt != points[-1]:
+                        points.append(pt)
+            end_pt = _point_at(d_end)
+            if end_pt != points[-1]:
+                points.append(end_pt)
+            return points
+
+        def _append_path_between(d_start, d_end):
+            for pt in _path_points_between(d_start, d_end):
+                _append_if_new(pt)
+
+        remaining = target_dist - total_len
+
+        if total_len >= 100.0:
+            near_d = max(0.0, total_len - 50.0)   # 最后50米点
+            far_d = max(0.0, total_len - 100.0)   # 最后100米点
+        else:
+            far_d = total_len / 3.0               # 1/3 点
+            near_d = total_len * 2.0 / 3.0        # 2/3 点
+
+        if near_d <= far_d:
+            # 兜底：保持 near 在 far 之后
+            near_d = min(total_len, far_d + max(1e-6, total_len / 10.0))
+
+        end_d = total_len
+        step_a = end_d - near_d      # 末端 -> near
+        step_b = near_d - far_d      # near <-> far
+        if step_a <= 0 or step_b <= 0:
+            return final_path
+
+        # 关键修正：不要先跑到终点再折返，而是在“最后50m(或2/3)”处提前开始补距
+        cut_idx = bisect.bisect_left(cumulative_distances, near_d)
+        final_path = list(path[:cut_idx])
+        added = 0.0
+        current_d = near_d
+
+        # 先到最后50m（或2/3）点，再回到最后100m（或1/3）点
+        _append_if_new(_point_at(near_d))
+        added += step_a
+
+        if added < remaining:
+            _append_path_between(current_d, far_d)
+            current_d = far_d
+            added += step_b
+
+        # 在 near/far 间折返，直到“再加最后50m可达下限”
+        while added + step_a < remaining:
+            _append_path_between(current_d, near_d)
+            current_d = near_d
+            added += step_b
+            if added + step_a >= remaining:
+                break
+            _append_path_between(current_d, far_d)
+            current_d = far_d
+            added += step_b
+
+        # 保险动作：最后50m -> 最后100m -> 最后50m -> 终点
+        _append_path_between(current_d, far_d)
+        current_d = far_d
+        _append_path_between(current_d, near_d)
+        current_d = near_d
+        _append_path_between(current_d, end_d)
         return final_path
 
     def _get_point_at_distance(self, path, cumulative_distances, dist):
@@ -11407,7 +12320,11 @@ class Api:
                 final_path_dedup.append(coord)
                 last_coord = coord
 
-        target_time_s = random.uniform(min_t_m * 60, max_t_m * 60)
+        _plan_min_t_m = min_t_m * 1.02
+        _plan_max_t_m = max_t_m * 0.98
+        if _plan_max_t_m <= _plan_min_t_m:
+            _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
+        target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)
         target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)
 
         cumulative = [0.0]
@@ -11509,10 +12426,8 @@ class Api:
             # 获取当前登录的学校账号用户名
             school_username = self.user_data.username
 
-            # 从 INI 文件读取该账号的欠费统计数据
-            # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
-            stats = self._load_school_account_stats_from_ini(school_username)
-            overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
+            # 从账单文件读取该账号待支付账单数量作为欠费次数
+            overdue_count = _count_pending_bills_for_school(school_username)
 
             # 如果存在欠费（overdue_count > 0），拒绝启动所有任务
             # 这是关键的安全检查点，防止欠费用户批量启动任务继续使用服务
@@ -12306,7 +13221,6 @@ class Api:
                 logging.error(
                     f"Failed to emit accounts_updated on mode entry from Thread[{current_thread.name}]: {e}")
                 logging.error(f"Error type: {type(e).__name__}")
-                import traceback
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         # [新版] 使用统一的多账号监控线程机制
@@ -12918,7 +13832,6 @@ class Api:
                 current_thread = threading.current_thread()
                 logging.error(f"SocketIO emit 'accounts_updated' failed from Thread[{current_thread.name}]: {e}")
                 logging.error(f"Error type: {type(e).__name__}")
-                import traceback
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         try:
@@ -13729,9 +14642,8 @@ class Api:
             return {"success": False, "message": "账号不存在"}
 
         # 步骤2：欠费检查（在启动任务前执行）
-        # 从 INI 文件读取该账号的统计数据
-        stats = self._load_school_account_stats_from_ini(username)
-        overdue_count = stats.get("overdue_count", 0)
+        # 从账单文件读取该账号待支付账单数量作为欠费次数
+        overdue_count = _count_pending_bills_for_school(username)
 
         # 如果存在欠费，拒绝启动任务
         if overdue_count > 0:
@@ -13835,9 +14747,8 @@ class Api:
         # 遍历所有账号，检查是否存在欠费
         overdue_accounts_list = []
         for username in self.accounts.keys():
-            # 从 INI 文件读取该账号的统计数据
-            stats = self._load_school_account_stats_from_ini(username)
-            overdue_count = stats.get("overdue_count", 0)
+            # 从账单文件读取该账号待支付账单数量作为欠费次数
+            overdue_count = _count_pending_bills_for_school(username)
 
             # 如果存在欠费，记录到列表中
             if overdue_count > 0:
@@ -14306,9 +15217,11 @@ class Api:
                             status = roll_call_info.get("status")
                             finished = data.get("attendFinish")
 
-                        if status == -1 or status == "-1":
+                        _s = int(status) if isinstance(status, str) and status.lstrip('-').isdigit() else status
+                        _f = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
+                        if _s == -1 and (_f == 1 or _f is True):
                             att_expired += 1
-                        elif (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
+                        elif (_s != -1) and (_f == 1 or _f is True):
                             att_completed += 1
                         else:
                             att_pending += 1
@@ -14643,7 +15556,7 @@ class Api:
 
                     if not hasattr(self, "_amap_key_cached"):
                         config = configparser.ConfigParser(strict=False)
-                        config.read(CONFIG_FILE, encoding="utf-8")
+                        config = _read_config_ini(CONFIG_FILE)
                         self._amap_key_cached = config.get(
                             "Map", "amap_js_key", fallback=""
                         )
@@ -14856,7 +15769,11 @@ class Api:
                     f"[{acc.username}] 路径去重后点数: {len(final_path_dedup)}"
                 )
 
-                target_time_s = random.uniform(min_t_m * 60, max_t_m * 60)
+                _plan_min_t_m = min_t_m * 1.02
+                _plan_max_t_m = max_t_m * 0.98
+                if _plan_max_t_m <= _plan_min_t_m:
+                    _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
+                target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)
                 target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)
                 cumulative = [0.0]
                 for idx_c in range(len(final_path_dedup) - 1):
@@ -14943,12 +15860,33 @@ class Api:
                 start_time_ms = str(int(time.time() * 1000))
                 submission_successful = True
                 total_points = max(1, len(run_data.run_coords))
+                run_data.current_point_index = 0
+                run_data.suppress_last_target_until_finish = True
 
                 if total_points <= 1:
                     acc.log("警告: 生成的轨迹点数过少，无法执行任务。")
                     continue
 
-                for chunk_idx in range(0, len(run_data.run_coords), 40):
+                _mr_exec_start_real = time.time()
+                _mr_exec_point_idx = 0
+                _mr_target_time_s = float(getattr(run_data, "total_run_time_s", 0.0) or 0.0)
+                if _mr_target_time_s <= 1.0:
+                    _mr_target_time_s = sum(max(0.0, d) / 1000.0 for _, _, d in run_data.run_coords)
+                _mr_target_time_s = max(1.0, _mr_target_time_s)
+                _mr_prefix_plan_s = [0.0]
+                _mr_acc_plan_s = 0.0
+                for _, _, _dur_ms in run_data.run_coords:
+                    _mr_acc_plan_s += max(0.0, _dur_ms) / 1000.0
+                    _mr_prefix_plan_s.append(_mr_acc_plan_s)
+                _mr_pid_kp = PID_KP
+                _mr_pid_ki = PID_KI
+                _mr_pid_kd = PID_KD
+                _mr_pid_deadzone = PID_DEADZONE
+                _mr_pid_integral = 0.0
+                _mr_pid_prev_error = 0.0
+                _mr_pid_deadzone_boost = 1.0
+
+                for chunk_idx in range(0, len(run_data.run_coords), 5):
                     logging.debug(
                         f"[{acc.username}] 执行进度: {chunk_idx}/{len(run_data.run_coords)}"
                     )
@@ -14956,7 +15894,7 @@ class Api:
                         submission_successful = False
                         break
 
-                    chunk = run_data.run_coords[chunk_idx: chunk_idx + 40]
+                    chunk = run_data.run_coords[chunk_idx: chunk_idx + 5]
                     processed_points = chunk_idx
                     for lon, lat, dur_ms in chunk:
                         if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
@@ -14985,9 +15923,86 @@ class Api:
                                     f"Failed to emit multi_position_update: {e}"
                                 )
 
-                        if acc.stop_event.wait(timeout=dur_ms / 1000.0):
+                        _mr_elapsed_real_s = time.time() - _mr_exec_start_real
+                        _mr_elapsed_real_min = _mr_elapsed_real_s / 60.0
+                        _mr_actual_sleep_s = dur_ms / 1000.0
+                        if True:
+                            _mr_planned_elapsed_s = min(
+                                _mr_target_time_s,
+                                _mr_prefix_plan_s[min(_mr_exec_point_idx, len(_mr_prefix_plan_s) - 1)],
+                            )
+                            _mr_expected_frac = _mr_planned_elapsed_s / _mr_target_time_s
+                            _mr_actual_frac = _mr_elapsed_real_s / _mr_target_time_s
+                            _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
+                            _mr_error = _mr_progress_diff
+                            _mr_in_deadzone = abs(_mr_error) <= _mr_pid_deadzone
+                            if _mr_in_deadzone:
+                                _mr_pid_deadzone_boost = min(
+                                    PID_DEADZONE_BOOST_MAX,
+                                    _mr_pid_deadzone_boost + PID_DEADZONE_BOOST_STEP,
+                                )
+                            else:
+                                _mr_pid_deadzone_boost = 1.0
+                            _mr_error_for_pid = _mr_error
+                            _mr_pid_integral = max(
+                                -PID_INTEGRAL_LIMIT,
+                                min(PID_INTEGRAL_LIMIT, _mr_pid_integral + _mr_error_for_pid),
+                            )
+                            _mr_pid_derivative = _mr_error_for_pid - _mr_pid_prev_error
+                            _mr_pid_prev_error = _mr_error_for_pid
+                            _mr_pid_p_term = _mr_pid_kp * _mr_error_for_pid
+                            _mr_pid_i_term = _mr_pid_ki * _mr_pid_integral
+                            _mr_pid_d_term = _mr_pid_kd * _mr_pid_derivative
+                            _mr_pid_out = _mr_pid_deadzone_boost * (
+                                _mr_pid_p_term
+                                + _mr_pid_i_term
+                                + _mr_pid_d_term
+                            )
+                            _mr_sleep_ratio = max(0.35, min(1.70, 1.0 - _mr_pid_out))
+                            _mr_actual_sleep_s = _mr_actual_sleep_s * _mr_sleep_ratio
+                            if _mr_error_for_pid > 0:
+                                _mr_remaining_s = max(1.0, _mr_target_time_s - _mr_elapsed_real_s)
+                                _mr_remaining_pts = max(1, total_points - _mr_exec_point_idx)
+                                _mr_actual_sleep_s = min(_mr_actual_sleep_s, _mr_remaining_s / _mr_remaining_pts)
+                                logging.debug(
+                                    f"[{acc.username}] 进度偏慢，PID自动加速: "
+                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                                    f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
+                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
+                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
+                                    f"新等待时间={_mr_actual_sleep_s:.2f}s"
+                                )
+                            elif _mr_error < 0:
+                                logging.debug(
+                                    f"[{acc.username}] 进度偏快，PID自动减速: "
+                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                                    f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
+                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
+                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
+                                    f"新等待时间={_mr_actual_sleep_s:.2f}s"
+                                )
+                            else:
+                                logging.debug(
+                                    f"[{acc.username}] 进度正常(±{_mr_pid_deadzone:.0%}): "
+                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                                    f"时间误差={_mr_progress_diff:.2%}，实际累计={_mr_elapsed_real_s:.1f}s, "
+                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
+                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
+                                    f"等待时间={_mr_actual_sleep_s:.2f}s"
+                                )
+                        else:
+                            logging.debug(
+                                    f"[{acc.username}] 已执行时间={_mr_elapsed_real_min:.2f}分钟，未接近目标时间，无需调整执行速度。")
+
+                        if acc.stop_event.wait(timeout=_mr_actual_sleep_s):
                             submission_successful = False
                             break
+
+                        _mr_exec_point_idx += 1
+                        run_data.current_point_index = _mr_exec_point_idx
 
                         processed_points += 1
                         try:
@@ -15004,7 +16019,7 @@ class Api:
                     if not submission_successful:
                         break
 
-                    is_final_chunk = chunk_idx + 40 >= len(run_data.run_coords)
+                    is_final_chunk = chunk_idx + 5 >= len(run_data.run_coords)
                     if not self._submit_chunk(
                         run_data,
                         chunk,
@@ -15018,6 +16033,13 @@ class Api:
                         break
 
                 if submission_successful:
+                    run_data.suppress_last_target_until_finish = False
+                    if run_data.target_points and run_data.target_sequence < len(run_data.target_points):
+                        try:
+                            end_lon, end_lat, _ = run_data.run_coords[-1]
+                            self.check_target_reached_during_run(run_data, end_lon, end_lat)
+                        except Exception:
+                            pass
                     acc.log(f"任务 {run_data.run_name} 数据提交完毕，等待服务器确认...")
                     time.sleep(3)
                     self._finalize_run(run_data, -1, acc.api_client)
@@ -15272,19 +16294,22 @@ class Api:
 
                 status = roll_call_info.get("status")
                 finished = data.get("attendFinish")
-            if status == -1 or status == "-1":
+            _s = int(status) if isinstance(status, str) and status.lstrip('-').isdigit() else status
+            _f = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
+            if _s == -1 and (_f == 1 or _f is True):
+                # 已过期：status=-1 且 attendFinish=1
                 if not is_makeup:
-                    log_func("此签到任务已过期（status=-1）。")
+                    log_func("此签到任务已过期（status=-1, attendFinish=1）。")
                     return {"success": False, "message": "任务已过期"}
                 else:
                     log_func(f"任务 {roll_call_id} 已过期，正在尝试[补签]...")
-
-                if (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
-                    log_func("你已经签到过了 (status!=-1 and attendFinish=1)。")
-                    return {"success": True, "message": "已签到"}
-
+            elif (_s != -1) and (_f == 1 or _f is True):
+                # 已完成签到
+                log_func("你已经签到过了 (status!=−1 and attendFinish=1)。")
+                return {"success": True, "message": "已签到"}
+            elif _s == -1:
+                # 待签到：status=-1 且 attendFinish 未设置/为0
                 log_func("任务状态：待签到。")
-
             else:
                 log_func("获取签到信息失败，将继续尝试签到...")
         except Exception as e:
@@ -15494,11 +16519,16 @@ class Api:
                             notice["attendance_finished"] = finished
                             notice["attendance_status_code"] = status
 
-                            if status == -1 or status == "-1":
+                            _s = int(status) if isinstance(status, str) and status.lstrip('-').isdigit() else status
+                            _f = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
+                            if _s == -1 and (_f == 1 or _f is True):
+                                # 已过期：status=-1 且 attendFinish=1
                                 notice["attendance_code"] = -1
-                            elif (status != -1 and status != "-1") and ((finished == 1 or finished == "1") or finished is True):
+                            elif (_s != -1) and (_f == 1 or _f is True):
+                                # 已完成签到
                                 notice["attendance_code"] = 1
                             else:
+                                # 待签到（status=-1 且 attendFinish 未设置）或其他待处理状态
                                 notice["attendance_code"] = 0
 
                     except Exception as e:
@@ -16062,56 +17092,66 @@ class Api:
                 info_resp = client.get_roll_call_info(roll_call_id, user.id)
                 logging.debug(f"(后台) 获取签到信息响应: {info_resp}")
                 status = -1
-                finished = 0
+                finished = None
                 if info_resp and info_resp.get("success"):
                     data = info_resp.get("data", {})
                     roll_call_info = data.get("rollCallInfo", {})
-                    status = roll_call_info.get("status")  # 签到状态 -1为已过期
+                    status = roll_call_info.get("status")  # 签到状态
                     finished = data.get("attendFinish")    # 签到是否完成 1为完成
-                    
-                    # 判断 status 和 finished 是否为字符串 "1" 或数字 1，如果是数字则转换为数字
-                    status = int(status) if isinstance(status, str) and status.isdigit() else status
+
+                    # 统一转换为 int 方便比较
+                    status = int(status) if isinstance(status, str) and status.lstrip('-').isdigit() else status
                     finished = int(finished) if isinstance(finished, str) and finished.isdigit() else finished
 
                 logging.debug(f"(后台) 签到任务状态: {status}, 完成状态: {finished}")
-                    
-                if (status != -1) and not ((finished == 1)):
-                    log_func(
-                        f"检测到待签到任务 '{notice.get('title')}'，正在自动签到..."
-                    )
-                    coords_str = notice.get("updateBy", "").split(",")   # 获取签到坐标字符串并拆分为经纬度
-                    if len(coords_str) == 2:
-                        try:
-                            target_lat, target_lon = float(coords_str[0]), float(
-                                coords_str[1]
-                            )
-                            target_coords = (target_lon, target_lat)
-                            logging.debug(f"(后台) 解析签到坐标: {target_coords}")
-                            logging.debug(f"(后台) 执行自动签到，参数 - roll_call_id: {roll_call_id}, target_coords: {target_coords}")
-                            auto_result = self.trigger_attendance(
-                                roll_call_id,
-                                target_coords,
-                                "random",
-                                specific_coords=None,
-                                is_makeup=False,
-                                acc=(
-                                    context
-                                    if isinstance(context, AccountSession)
-                                    else None
-                                ),
-                            )
 
-                            if auto_result.get("success"):
-                                log_func(f"自动签到 '{notice.get('title')}' 成功。")
-                                triggered_count += 1
-                            else:
-                                log_func(
-                                    f"自动签到 '{notice.get('title')}' 失败: {auto_result.get('message', '')}"
-                                )
-                        except Exception as e:
-                            log_func(f"签到坐标解析或执行失败: {e}")
-                    else:
-                        log_func("签到通知坐标格式错误，跳过。")
+                # 待签到：status==-1 且 attendFinish 未设置/为0（无 attendFinish 字段）
+                # 已过期：status==-1 且 attendFinish==1
+                # 已完成：status!=-1 且 attendFinish==1
+                if status == -1 and (finished == 1 or finished is True):
+                    logging.debug(f"(后台) 签到任务已过期，跳过: {notice.get('title')}")
+                    continue
+                if (status != -1) and (finished == 1 or finished is True):
+                    logging.debug(f"(后台) 签到任务已完成，跳过: {notice.get('title')}")
+                    continue
+
+                # 待签到任务（status==-1 且 attendFinish 未设置，或 status!=-1 且 attendFinish!=1）
+                log_func(
+                    f"检测到待签到任务 '{notice.get('title')}'，正在自动签到..."
+                )
+                coords_str = notice.get("updateBy", "").split(",")   # 获取签到坐标字符串并拆分为经纬度
+                if len(coords_str) == 2:
+                    try:
+                        target_lat, target_lon = float(coords_str[0]), float(
+                            coords_str[1]
+                        )
+                        target_coords = (target_lon, target_lat)
+                        logging.debug(f"(后台) 解析签到坐标: {target_coords}")
+                        logging.debug(f"(后台) 执行自动签到，参数 - roll_call_id: {roll_call_id}, target_coords: {target_coords}")
+                        auto_result = self.trigger_attendance(
+                            roll_call_id,
+                            target_coords,
+                            "random",
+                            specific_coords=None,
+                            is_makeup=False,
+                            acc=(
+                                context
+                                if isinstance(context, AccountSession)
+                                else None
+                            ),
+                        )
+
+                        if auto_result.get("success"):
+                            log_func(f"自动签到 '{notice.get('title')}' 成功。")
+                            triggered_count += 1
+                        else:
+                            log_func(
+                                f"自动签到 '{notice.get('title')}' 失败: {auto_result.get('message', '')}"
+                            )
+                    except Exception as e:
+                        log_func(f"签到坐标解析或执行失败: {e}")
+                else:
+                    log_func("签到通知坐标格式错误，跳过。")
 
             if triggered_count == 0:
                 log_func("(后台) 未发现待处理的签到任务。")
@@ -16348,11 +17388,11 @@ def cleanup_inactive_session(session_id):
                     try:
                         timeout = 300
                         if os.path.exists(CONFIG_FILE):
-                            cfg = configparser.ConfigParser(strict=False)
-                            cfg.read(CONFIG_FILE, encoding="utf-8")
-                            timeout = cfg.getint(
-                                "System", "session_inactivity_timeout", fallback=300
-                            )
+                            cfg = _read_config_ini(CONFIG_FILE)
+                            if cfg:
+                                timeout = cfg.getint(
+                                    "System", "session_inactivity_timeout", fallback=300
+                                )
                         user_sids = auth_system.get_user_sessions(username)
                         current_ts = time.time()
                         with browsing_activity_lock:
@@ -16409,9 +17449,9 @@ def monitor_session_inactivity():
     inactivity_timeout = 300
 
     try:
-        if os.path.exists("config.ini"):
+        if os.path.exists(CONFIG_JSON_FILE):
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             if config.has_section("System"):
                 check_interval = config.getint(
                     "System", "session_monitor_check_interval", fallback=60
@@ -17601,8 +18641,57 @@ class BackgroundTaskManager:
             with open(task_file, "w", encoding="utf-8") as f:
                 json.dump(task_state, f, indent=2, ensure_ascii=False)
             logging.debug(f"后台任务状态已保存，会话ID: {session_id}")
+            # 同步更新 background_tasks/_index.json 索引
+            self._update_tasks_index(session_id, task_state, action="save")
         except Exception as e:
             logging.error(f"保存后台任务状态失败: {e}")
+
+    def _update_tasks_index(self, session_id, task_state, action="save"):
+        """
+        更新 background_tasks/_index.json 索引文件。
+        
+        参数:
+            session_id: 会话ID
+            task_state: 任务状态数据
+            action: "save" 或 "remove"
+        """
+        try:
+            index_path = os.path.join(self.task_storage_dir, "_index.json")
+            task_hash = hashlib.sha256(session_id.encode()).hexdigest()
+            
+            # 读取现有索引
+            if os.path.exists(index_path):
+                try:
+                    with open(index_path, "r", encoding="utf-8") as f:
+                        index_data = json.load(f)
+                except Exception:
+                    index_data = {"tasks": {}}
+            else:
+                index_data = {"tasks": {}}
+            
+            if "tasks" not in index_data:
+                index_data["tasks"] = {}
+            
+            if action == "save":
+                # 添加或更新任务条目
+                index_data["tasks"][task_hash] = {
+                    "session_id": session_id,
+                    "created_at": task_state.get("created_at", datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    "file": f"{task_hash}.json"
+                }
+            elif action == "remove":
+                # 从索引中移除任务
+                if task_hash in index_data["tasks"]:
+                    del index_data["tasks"][task_hash]
+            
+            # 更新时间戳
+            index_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            # 写入索引文件
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(index_data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logging.warning(f"[任务索引] 更新索引失败: {e}")
 
     def load_task_state(self, session_id):
         """从文件加载任务状态"""
@@ -17638,74 +18727,50 @@ class BackgroundTaskManager:
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
         """
-        # ========== 欠费检查前强制重新读取INI文件 ==========
-        # 步骤1：欠费检查（在启动任务前执行）
-        # 获取当前用户的认证用户名
-        auth_username = getattr(api_instance, 'auth_username', None)
-
-        # 如果能获取到用户名，进行欠费检查
-        if auth_username:
-            # 从 api_instance.user_info 获取学校账号用户名
-            # 注意：user_info 可能包含持久化会话中的旧数据
-            self.user_info = getattr(api_instance, "user_info", {})
-            school_username = self.user_info.get("student_id")
-
-            logging.debug(
-                f"检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费"
+        # ========== 欠费检查（前后端双重校验中的后端校验） ==========
+        # - 单账号模式：仅检查当前学校账号
+        # - 多账号模式：检查当前多账号列表中的所有学校账号
+        config = _read_config_ini()
+        require_payment = True
+        if config is not None:
+            require_payment = config.getboolean(
+                "Payment_Settings", "require_payment", fallback=True
             )
 
-            # --- 关键修复：强制从INI文件重新读取最新的统计数据 ---
-            # 原因：user_info 中可能包含缓存的旧数据
-            # 如果用户在程序运行期间通过欠费系统修改了INI文件，
-            # 而任务系统仍使用缓存的 user_info，就会导致数据不同步
-            # 解决方案：每次启动任务前，都从INI文件实时读取最新的欠费状态
-
-            # 初始化欠费账号列表（用于记录所有存在欠费的账号）
+        auth_username = getattr(api_instance, "auth_username", None)
+        if require_payment and auth_username:
             overdue_accounts_list = []
+            target_school_usernames = []
 
-            # 调用 _load_school_account_stats_from_ini() 方法
-            # 此方法会直接打开INI文件读取，不依赖任何缓存
-            # 返回格式：{"overdue_count": int, "completed_count": int}
-            stats = api_instance._load_school_account_stats_from_ini(
-                school_username)
+            try:
+                if getattr(api_instance, "is_multi_account_mode", False):
+                    target_school_usernames = list(
+                        (getattr(api_instance, "accounts", {}) or {}).keys()
+                    )
+                else:
+                    current_user_info = getattr(api_instance, "user_info", {}) or {}
+                    current_school_username = str(
+                        current_user_info.get("student_id", "") or ""
+                    ).strip()
+                    if current_school_username:
+                        target_school_usernames = [current_school_username]
+            except Exception as e:
+                logging.warning(f"[欠费检查] 获取目标账号列表失败: {e}")
+                target_school_usernames = []
 
-            # 从返回的统计数据中提取欠费次数
-            # 使用 .get() 方法并指定默认值 0，防止键不存在时报错
-            overdue_count = stats.get("overdue_count", 0)
-
-            # 记录日志：显示从INI文件读取到的欠费次数
-            # 这有助于追踪数据同步问题
-            logging.info(
-                f"从INI文件读取到最新数据 - "
-                f"学校账号: {school_username}, 欠费次数: {overdue_count}"
+            overdue_accounts_list = _collect_overdue_accounts_from_billing(
+                target_school_usernames
             )
 
-            # 如果存在欠费（overdue_count > 0），记录到欠费账号列表中
-            if overdue_count > 0:
-                overdue_accounts_list.append({
-                    "school_username": school_username,  # 学校账号用户名
-                    "overdue_count": overdue_count       # 欠费次数
-                })
-
-                # 记录警告日志：发现欠费账号
-                logging.warning(
-                    f"发现欠费账号 - "
-                    f"学校账号: {school_username}, 欠费次数: {overdue_count}"
-                )
-
-            # 如果发现任何账号有欠费，拒绝启动任务
             if overdue_accounts_list:
-                # 记录警告日志：拒绝启动任务（包含欠费账号数量）
                 logging.warning(
                     f"[欠费检查] 用户 {auth_username} 有 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
                 )
-
-                # 返回失败响应，包含详细的错误信息和欠费账号列表
                 return {
-                    "success": False,                       # 操作失败标志
-                    "message": "有账号存在欠费，请先缴费",   # 用户友好的错误消息
-                    "error_code": "OVERDUE_PAYMENT",        # 错误代码，前端可据此识别错误类型
-                    "overdue_accounts": overdue_accounts_list  # 欠费账号详细列表
+                    "success": False,
+                    "message": "有账号存在欠费，请先缴费",
+                    "error_code": "OVERDUE_PAYMENT",
+                    "overdue_accounts": overdue_accounts_list,
                 }
 
         # 步骤2：启动任务（没有欠费问题）
@@ -17818,14 +18883,14 @@ class BackgroundTaskManager:
                         amap_key = ""
                         try:
                             if os.path.exists(CONFIG_FILE):
-                                cfg = configparser.ConfigParser(strict=False)
-                                cfg.read(CONFIG_FILE, encoding="utf-8")
-                                amap_key = cfg.get(
-                                    "Map", "amap_js_key", fallback="")
-                                if not amap_key:
+                                cfg = _read_config_ini(CONFIG_FILE)
+                                if cfg:
                                     amap_key = cfg.get(
-                                        "System", "AmapJsKey", fallback=""
-                                    )
+                                        "Map", "amap_js_key", fallback="")
+                                    if not amap_key:
+                                        amap_key = cfg.get(
+                                            "System", "AmapJsKey", fallback=""
+                                        )
 
                             if amap_key:
                                 logging.info(
@@ -18349,6 +19414,9 @@ class BackgroundTaskManager:
                     last_update = task_state.get("last_update", 0)
                     if current_time - last_update > max_age_seconds:
                         os.remove(filepath)
+                        _session_id = task_state.get("session_id")
+                        if _session_id:
+                            self._update_tasks_index(_session_id, {}, action="remove")
                         logging.info(f"已删除旧的任务状态文件: {filename}")
                 except Exception as e:
                     logging.warning(f"处理任务文件失败，文件名: {filename}，错误: {e}")
@@ -19418,10 +20486,9 @@ def start_background_auto_attendance(args):
 
 def load_ssl_config():
     """
-    从config.ini文件加载SSL配置。
+    从 config.json 文件加载SSL配置。
     """
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
-    config = configparser.ConfigParser(strict=False)
+    config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
     default_config = {
         "ssl_enabled": False,
         "ssl_cert_path": "ssl/fullchain.pem",
@@ -19433,8 +20500,8 @@ def load_ssl_config():
         if not os.path.exists(config_file):
             logging.warning(f"配置文件 {config_file} 不存在，使用默认SSL配置（禁用）")
             return default_config
-        config.read(config_file, encoding="utf-8")
-        if not config.has_section("SSL"):
+        config = _read_config_ini(config_file)
+        if not config or not config.has_section("SSL"):
             logging.warning("配置文件中未找到[SSL]节，使用默认SSL配置（禁用）")
             return default_config
         ssl_config = {
@@ -19460,7 +20527,7 @@ def load_ssl_config():
 
 def save_ssl_config(ssl_config):
     """
-    将SSL配置保存到config.ini文件。
+    将SSL配置保存到config.json文件。
 
     参数：
         ssl_config (dict): 包含SSL配置的字典，键应包括：
@@ -19472,14 +20539,12 @@ def save_ssl_config(ssl_config):
     返回值：
         bool: 保存成功返回True，失败返回False
     """
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
-    config = configparser.ConfigParser(strict=False)
+    config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
+    config = _read_config_ini(config_file)
 
     try:
-        if os.path.exists(config_file):
-            config.read(config_file, encoding="utf-8")
-        else:
-            logging.warning("config.ini 文件不存在，将创建新的配置文件")
+        if not config:
+            logging.warning("config.json 文件不存在或读取失败，将创建新的配置文件")
             config = _get_default_config()
         if not config.has_section("SSL"):
             config.add_section("SSL")
@@ -20297,6 +21362,118 @@ def _send_startup_notification_to_log_forwarder(host, port):
         logging.error(f"[UDP通知] UDP通知线程发生异常: {e}", exc_info=True)
 
 
+def _create_user_billing_record(auth_username, school_username, reason, amount):
+    """
+    为学校账号创建账单记录。
+    
+    参数:
+        auth_username: (已弃用，保留兼容) 认证用户名，不再用于确定存储路径
+        school_username: 学校账号用户名（核心标识符）
+        reason: 账单原因（如"校园跑一次"）
+        amount: 金额（float）
+    
+    返回:
+        billing_id: 账单ID（UUID字符串），失败返回None
+        
+    变更说明:
+        账单现在存储在 User_Billing/School_Bills/{school_username}/ 目录下
+        不再按 auth_username 分文件夹，以便多用户共享同一学校账号的账单
+    """
+    try:
+        # 构建账单目录路径: User_Billing/School_Bills/{school_username}/
+        # 注意：这里使用 School_Bills 子目录来避免与旧数据（用户名目录）冲突
+        billing_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", "School_Bills", school_username)
+        # 如果目录不存在则创建
+        os.makedirs(billing_dir, exist_ok=True)
+        
+        # 生成唯一的UUID，确保不与现有文件冲突
+        billing_id = str(uuid.uuid4())
+        while os.path.exists(os.path.join(billing_dir, f"{billing_id}.json")):
+            billing_id = str(uuid.uuid4())
+        
+        # 获取当前时间戳（ISO格式）
+        created_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        # 构建账单数据
+        billing_data = {
+            "billing_id": billing_id,
+            "auth_username": auth_username, # 仅供记录，不影响存储
+            "school_username": school_username,
+            "reason": reason,
+            "amount": round(float(amount), 2),
+            "created_at": created_at,
+            "status": "pending",
+            "payment_orders": [],
+            "final_payment_order": None,
+            "paid_at": None
+        }
+        
+        # 写入账单文件
+        billing_file = os.path.join(billing_dir, f"{billing_id}.json")
+        with open(billing_file, "w", encoding="utf-8") as f:
+            json.dump(billing_data, f, indent=2, ensure_ascii=False)
+        
+        logging.info(f"[账单] 为学校账号 {school_username} (操作者: {auth_username}) 创建账单记录: {billing_id}, 原因: {reason}, 金额: {amount}")
+        return billing_id
+    except Exception as e:
+        logging.error(f"[账单] 创建账单记录失败 (学校账号: {school_username}): {e}", exc_info=True)
+        return None
+
+
+def _count_pending_bills_for_school(school_username):
+    """
+    统计指定学校账号在 ./User_Billing/School_Bills 下的待支付账单数量。
+    """
+    try:
+        school_username = str(school_username or "").strip()
+        if not school_username:
+            return 0
+        billing_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "User_Billing",
+            "School_Bills",
+            school_username,
+        )
+        if not os.path.isdir(billing_dir):
+            return 0
+
+        pending_count = 0
+        for filename in os.listdir(billing_dir):
+            if not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(billing_dir, filename)
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    record = json.load(f)
+                if str(record.get("status", "pending")).strip().lower() == "pending":
+                    pending_count += 1
+            except Exception as e:
+                logging.warning(
+                    f"[欠费检查] 读取账单文件失败（忽略该文件）: {filepath}, 错误: {e}"
+                )
+        return pending_count
+    except Exception as e:
+        logging.warning(f"[欠费检查] 统计待支付账单失败: {school_username}, 错误: {e}")
+        return 0
+
+
+def _collect_overdue_accounts_from_billing(school_usernames):
+    """
+    根据 ./User_Billing/School_Bills 中的待支付账单统计欠费账号列表。
+    """
+    overdue_accounts = []
+    for school_username in list(dict.fromkeys(school_usernames or [])):
+        pending_count = _count_pending_bills_for_school(school_username)
+        if pending_count > 0:
+            overdue_accounts.append(
+                {
+                    "school_username": school_username,
+                    "overdue_count": pending_count,
+                }
+            )
+    return overdue_accounts
+
+
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
@@ -20453,7 +21630,7 @@ def start_web_server(args_param):
         if ext.lower() not in [e.lower() for e in ALLOWED_EXTENSIONS]:
             return jsonify(success=False, message="不支持的文件类型"), 400
 
-        timestamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S%f")
         save_name = f"{timestamp}_{filename}"
         save_path = os.path.join(UPLOADS_DIR, save_name)
         try:
@@ -20461,6 +21638,29 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"上传保存失败: {e}")
             return jsonify(success=False, message="文件保存失败"), 500
+
+        # 更新 uploads/_index.json 索引
+        try:
+            _uploads_index_path = os.path.join(UPLOADS_DIR, "_index.json")
+            # 读取现有索引
+            if os.path.exists(_uploads_index_path):
+                with open(_uploads_index_path, "r", encoding="utf-8") as _f:
+                    _uploads_index = json.load(_f)
+            else:
+                _uploads_index = {"files": {}}
+            if "files" not in _uploads_index:
+                _uploads_index["files"] = {}
+            # 添加本次上传记录
+            _uploads_index["files"][save_name] = {
+                "uploaded_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "original_name": file.filename,
+                "size": os.path.getsize(save_path)
+            }
+            _uploads_index["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(_uploads_index_path, "w", encoding="utf-8") as _f:
+                json.dump(_uploads_index, _f, indent=2, ensure_ascii=False)
+        except Exception as _e:
+            logging.warning(f"[上传索引] 更新索引失败: {_e}")
 
         # 二次检查实际保存的文件大小，超出则删除并返回错误
         try:
@@ -20480,7 +21680,7 @@ def start_web_server(args_param):
 
         # === 内容审核（图片） ===
         try:
-            config = _read_config_ini("config.ini")
+            config = _read_config_ini(CONFIG_JSON_FILE)
             enable_review = False
             if config and config.has_section("Content_Review"):
                 enable_review = config.get(
@@ -20840,7 +22040,91 @@ def start_web_server(args_param):
                 f"auth_username: {auth_username}, total_count: {total_count}"
             )
 
+        # ========== 更新账单记录状态 ==========
+        # 扫描该用户的账单目录，找到payment_orders中包含本订单号的记录，更新为已支付
+        try:
+            _billing_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+            _paid_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            _order_unit_amount = None
+            try:
+                _order_path = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
+                if os.path.exists(_order_path):
+                    with open(_order_path, "r", encoding="utf-8") as _of:
+                        _order_data = json.load(_of)
+                    _order_total_amount = float(_order_data.get("amount", 0))
+                    _order_total_count = int(_order_data.get("total_count", 0))
+                    if _order_total_count > 0:
+                        _order_unit_amount = round(_order_total_amount / _order_total_count, 2)
+            except Exception:
+                _order_unit_amount = None
+            if os.path.isdir(_billing_base_dir):
+                for _bf in os.listdir(_billing_base_dir):
+                    if not _bf.endswith(".json"):
+                        continue
+                    _bpath = os.path.join(_billing_base_dir, _bf)
+                    try:
+                        with open(_bpath, "r", encoding="utf-8") as _f:
+                            _brec = json.load(_f)
+                        # 找到包含本订单号的账单记录
+                        if out_trade_no in _brec.get("payment_orders", []):
+                            if _order_unit_amount is not None:
+                                try:
+                                    if round(float(_brec.get("amount", -1)), 2) != _order_unit_amount:
+                                        continue
+                                except Exception:
+                                    continue
+                            _brec["status"] = "paid"
+                            _brec["final_payment_order"] = out_trade_no
+                            _brec["paid_at"] = _paid_at
+                            with open(_bpath, "w", encoding="utf-8") as _f:
+                                json.dump(_brec, _f, indent=2, ensure_ascii=False)
+                            logging.info(f"[账单] 账单 {_brec.get('billing_id')} 已标记为已支付")
+                    except Exception as _be:
+                        logging.warning(f"[账单] 更新账单文件 {_bf} 失败: {_be}")
+        except Exception as _e:
+            logging.error(f"[账单] 更新账单状态失败: {_e}", exc_info=True)
+
         logging.info(f"[overdue_count处理] 订单处理完成 - 订单号: {out_trade_no}")
+
+    def _process_billing_payment_async(billing_items: list, out_trade_no: str):
+        """
+        处理普通账单支付成功后的账单状态更新。
+        """
+        if not isinstance(billing_items, list) or not billing_items:
+            return
+        try:
+            _paid_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            for item in billing_items:
+                school_username = str(item.get("school_username", "")).strip()
+                billing_id = str(item.get("billing_id", "")).strip()
+                if not school_username or not billing_id:
+                    continue
+                billing_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "User_Billing",
+                    "School_Bills",
+                    school_username,
+                    f"{billing_id}.json",
+                )
+                if not os.path.exists(billing_file):
+                    continue
+                try:
+                    with open(billing_file, "r", encoding="utf-8") as _f:
+                        _brec = json.load(_f)
+                    if _brec.get("status") != "pending":
+                        continue
+                    if out_trade_no not in (_brec.get("payment_orders") or []):
+                        continue
+                    _brec["status"] = "paid"
+                    _brec["final_payment_order"] = out_trade_no
+                    _brec["paid_at"] = _paid_at
+                    with open(billing_file, "w", encoding="utf-8") as _f:
+                        json.dump(_brec, _f, indent=2, ensure_ascii=False)
+                    logging.info(f"[账单支付] 账单 {billing_id} 已标记为已支付")
+                except Exception as _be:
+                    logging.warning(f"[账单支付] 更新账单文件 {billing_id}.json 失败: {_be}")
+        except Exception as _e:
+            logging.error(f"[账单支付] 批量更新账单状态失败: {_e}", exc_info=True)
 
     def parse_google_fonts_css(css_content):
         """
@@ -21168,6 +22452,23 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "未登录或会话无效"}), 401
             if getattr(api_instance, "is_guest", False):
                 return jsonify({"success": False, "message": "游客无权访问此功能"}), 403
+
+            # 账号注销等待期到期后执行惰性删除
+            try:
+                cancellation_status = auth_system.get_account_cancellation_status(auth_username)
+                if (
+                    cancellation_status
+                    and cancellation_status.get("status") == "pending"
+                    and int(cancellation_status.get("execute_at", 0) or 0) <= int(time.time())
+                ):
+                    auth_system.delete_user(auth_username)
+                    with web_sessions_lock:
+                        if session_id in web_sessions:
+                            del web_sessions[session_id]
+                    return jsonify({"success": False, "message": "账号已注销"}), 403
+            except Exception as _e:
+                logging.warning(f"[账号注销] 惰性处理失败: {_e}")
+
             g.user = auth_username
             g.api_instance = api_instance
             # 将 session_id 存储到 g 对象中，以便被装饰的函数可以访问它（用于审计日志等）
@@ -21616,7 +22917,7 @@ def start_web_server(args_param):
             config = configparser.ConfigParser(strict=False)
             config.optionxform = str
             if os.path.exists(CONFIG_FILE):
-                config.read(CONFIG_FILE, encoding="utf-8")
+                config = _read_config_ini(CONFIG_FILE)
             content_type = request.headers.get("Content-Type", "").lower()
 
             if "application/json" in content_type:
@@ -21822,7 +23123,7 @@ def start_web_server(args_param):
         # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
         config = configparser.ConfigParser(strict=False)
         config.optionxform = str
-        config.read(CONFIG_FILE, encoding="utf-8")
+        config = _read_config_ini(CONFIG_FILE)
 
         data = request.get_json() or {}
         auth_phone = (data.get("auth_phone") or "").strip()
@@ -22050,6 +23351,17 @@ def start_web_server(args_param):
                 kicked_sessions = []
 
         try:
+            # 检查账号注销等待期状态，返回给前端以便弹窗提示
+            _cancellation_status = None
+            if not auth_result.get("is_guest", False):
+                try:
+                    _cancellation_status = auth_system.get_account_cancellation_status(
+                        auth_result["auth_username"]
+                    )
+                    if _cancellation_status and _cancellation_status.get("status") != "pending":
+                        _cancellation_status = None  # 仅在 pending 状态时通知前端
+                except Exception:
+                    pass
             response_data = {
                 "success": True,
                 "session_id": session_id,
@@ -22063,6 +23375,7 @@ def start_web_server(args_param):
                 "theme": auth_result.get("theme", "light"),
                 "token": token,
                 "kicked_sessions_count": len(kicked_sessions),
+                "account_cancellation": _cancellation_status,
             }
             if cleanup_message:
                 response_data["cleanup_message"] = cleanup_message
@@ -24723,7 +26036,101 @@ def start_web_server(args_param):
         # 返回操作结果
         return jsonify(result)
 
-    @app.route("/auth/user/update_avatar", methods=["POST"])
+    @app.route("/auth/user/request_account_cancellation", methods=["POST"])
+    @login_required
+    def auth_user_request_account_cancellation():
+        """用户申请账号注销（密码+短信验证码双重校验，默认24小时等待期）。"""
+        auth_username = g.user
+        data = request.get_json() or {}
+        current_password = (data.get("current_password") or "").strip()
+        sms_code = (data.get("sms_code") or "").strip()
+        # 优先使用配置文件中的冷静期，允许前端覆盖（取两者中较大值以不低于配置）
+        config_wait = auth_system.config.getint("Features", "account_cancellation_wait_hours", fallback=24)
+        wait_hours = int(data.get("wait_hours", config_wait) or config_wait)
+        wait_hours = max(1, wait_hours)
+
+        if not current_password or not sms_code:
+            return jsonify({"success": False, "message": "请提供当前密码和短信验证码"}), 400
+        if not re.match(r"^\d{6}$", sms_code):
+            return jsonify({"success": False, "message": "短信验证码格式错误"}), 400
+
+        user_file = auth_system.get_user_file_path(auth_username)
+        if not os.path.exists(user_file):
+            return jsonify({"success": False, "message": "用户不存在"}), 404
+        with open(user_file, "r", encoding="utf-8") as f:
+            user_data = json.load(f)
+
+        stored_password = user_data.get("password", "")
+        user_phone = user_data.get("phone", "")
+        if not user_phone:
+            return jsonify({"success": False, "message": "未绑定手机号，无法进行短信验证"}), 400
+        if not auth_system._verify_password(current_password, stored_password):
+            return jsonify({"success": False, "message": "当前密码错误"}), 401
+
+        global sms_verification_codes
+        stored_code_info = sms_verification_codes.get(user_phone)
+        if not stored_code_info:
+            return jsonify({"success": False, "message": "请先获取短信验证码"}), 400
+        stored_code, expires_at = stored_code_info
+        if time.time() > expires_at:
+            del sms_verification_codes[user_phone]
+            return jsonify({"success": False, "message": "短信验证码已过期，请重新获取"}), 400
+        if stored_code != sms_code:
+            return jsonify({"success": False, "message": "短信验证码错误"}), 400
+
+        result = auth_system.set_account_cancellation_pending(auth_username, wait_hours)
+        if not result.get("success"):
+            return jsonify(result), 400
+
+        if user_phone in sms_verification_codes:
+            del sms_verification_codes[user_phone]
+
+        session_id = g.session_id
+        ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
+        auth_system.log_audit(
+            auth_username,
+            "request_account_cancellation",
+            f"申请账号注销，等待期{wait_hours}小时",
+            ip_address,
+            session_id,
+        )
+
+        return jsonify({
+            "success": True,
+            "message": f"已提交账号注销申请，等待期{wait_hours}小时",
+            "status": {
+                "status": "pending",
+                "execute_at": result.get("execute_at")
+            }
+        })
+
+    @app.route("/auth/user/cancel_account_cancellation", methods=["POST"])
+    @login_required
+    def auth_user_cancel_account_cancellation():
+        """用户撤销账号注销申请（在等待期内）。"""
+        auth_username = g.user
+        user_file = auth_system.get_user_file_path(auth_username)
+        if not os.path.exists(user_file):
+            return jsonify({"success": False, "message": "用户不存在"}), 404
+        with auth_system.lock:
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+            cancellation = user_data.get("account_cancellation")
+            if not cancellation or cancellation.get("status") != "pending":
+                return jsonify({"success": False, "message": "当前没有待处理的注销申请"})
+            user_data["account_cancellation"] = None
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+        auth_system.log_audit(
+            auth_username,
+            "cancel_account_cancellation",
+            "用户在等待期内撤销了账号注销申请",
+            request.environ.get("REMOTE_ADDR") or request.remote_addr,
+            g.session_id,
+        )
+        return jsonify({"success": True, "message": "账号注销申请已撤销"})
+
+
     def auth_user_update_avatar():
         """更新用户头像（URL方式）"""
         session_id = request.headers.get("X-Session-ID", "")
@@ -25934,7 +27341,7 @@ def start_web_server(args_param):
             # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
             config = configparser.ConfigParser(strict=False)
             config.optionxform = str
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             if (
                 config.get("Features", "enable_sms_service",
                            fallback="false").lower()
@@ -26382,7 +27789,7 @@ def start_web_server(args_param):
             # 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
             config = configparser.ConfigParser(strict=False)
             config.optionxform = str
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             if (
                 config.get("Features", "enable_sms_service",
                            fallback="false").lower()
@@ -26770,7 +28177,7 @@ def start_web_server(args_param):
             default_config = _get_default_config()
             config = configparser.ConfigParser(strict=False)
             if os.path.exists(CONFIG_FILE):
-                config.read(CONFIG_FILE, encoding="utf-8")
+                config = _read_config_ini(CONFIG_FILE)
             else:
                 config = default_config
             config_data = {
@@ -27061,6 +28468,17 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== 内容审核配置加载结束 ====================
+
+                # ==================== 账号功能配置加载 ====================
+                "Features": {
+                    "account_cancellation_wait_hours": _get_config_value(
+                        config,
+                        "Features",
+                        "account_cancellation_wait_hours",
+                        fallback=24,
+                    ),
+                },
+                # ==================== 账号功能配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -27087,7 +28505,7 @@ def start_web_server(args_param):
             config = configparser.ConfigParser(strict=False)
             config.optionxform = str
             if os.path.exists(CONFIG_FILE):
-                config.read(CONFIG_FILE, encoding="utf-8")
+                config = _read_config_ini(CONFIG_FILE)
             else:
                 config = _get_default_config()
 
@@ -27266,6 +28684,17 @@ def start_web_server(args_param):
                 if "enable_message_review" in review_data:
                     config.set("Content_Review", "enable_message_review",
                                str(review_data["enable_message_review"]).lower())
+
+            # 处理账号功能配置（注销冷静期等）
+            if "Features" in data:
+                ensure_section(config, "Features")
+                features_data = data["Features"]
+                if "account_cancellation_wait_hours" in features_data:
+                    try:
+                        wait_h = max(1, int(features_data["account_cancellation_wait_hours"]))
+                    except (ValueError, TypeError):
+                        wait_h = 24
+                    config.set("Features", "account_cancellation_wait_hours", str(wait_h))
 
             _write_config_with_comments(config, CONFIG_FILE)
 
@@ -27491,18 +28920,11 @@ def start_web_server(args_param):
         - 如果读取配置发生异常，同样返回空值和 false 标志，确保前端不会因为后端错误而崩溃
         """
         try:
-            # 创建一个 ConfigParser 对象，用于读取 INI 格式的配置文件
-            config = configparser.ConfigParser(strict=False)
+            # 定义配置文件的路径
+            config_file = CONFIG_JSON_FILE
 
-            # 定义配置文件的路径（config.ini 位于项目根目录）
-            config_file = "config.ini"
-
-            # 检查配置文件是否存在于文件系统中
-            # 这是一个预防性检查，避免在文件不存在时尝试读取导致错误
-            if os.path.exists(config_file):
-                # 读取配置文件，指定 UTF-8 编码以支持中文字符
-                # 这样可以正确处理备案号中的中文字符（如"京"、"备"等）
-                config.read(config_file, encoding="utf-8")
+            # 使用统一的配置读取函数，支持 JSON 格式配置文件
+            config = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
 
             # 从配置文件的 [Beian] 部分读取备案信息
             # 使用 fallback 参数提供默认值，确保即使配置项不存在也不会抛出异常
@@ -27603,7 +29025,7 @@ def start_web_server(args_param):
         try:
             # 读取系统配置文件
             config = configparser.ConfigParser(strict=False)
-            config.read(CONFIG_FILE, encoding="utf-8")
+            config = _read_config_ini(CONFIG_FILE)
             # 检查系统是否开启了手机号修改功能
             if (
                 config.get(
@@ -28014,7 +29436,7 @@ def start_web_server(args_param):
 
             # 读取配置文件
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             sms_config = {
                 "enable_sms_service": config.getboolean(
                     "Features", "enable_sms_service", fallback=False
@@ -28072,8 +29494,8 @@ def start_web_server(args_param):
             # 获取请求数据
             data = request.get_json() or {}
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
-            if "Features" not in config:
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            if not config.has_section("Features"):
                 config.add_section("Features")
             config.set(
                 "Features",
@@ -28095,7 +29517,7 @@ def start_web_server(args_param):
                 "enable_phone_registration_verify",
                 str(data.get("enable_phone_registration_verify", False)).lower(),
             )
-            if "SMS_Service_SMSBao" not in config:
+            if not config.has_section("SMS_Service_SMSBao"):
                 config.add_section("SMS_Service_SMSBao")
             config.set("SMS_Service_SMSBao", "username",
                        data.get("username", ""))
@@ -28128,7 +29550,7 @@ def start_web_server(args_param):
                 "rate_limit_per_phone_day",
                 str(data.get("rate_limit_per_phone_day", 5)),
             )
-            _write_config_with_comments(config, "config.ini")
+            _write_config_with_comments(config, CONFIG_JSON_FILE)
             app.logger.info(f"[短信配置] {g.user} 更新了短信服务配置")
             return jsonify({"success": True, "message": "配置已保存"})
         except Exception as e:
@@ -28175,7 +29597,7 @@ def start_web_server(args_param):
             # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
             config = configparser.ConfigParser(strict=False)
             config.optionxform = str
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             username = config.get("SMS_Service_SMSBao",
                                   "username", fallback="")
@@ -28382,7 +29804,7 @@ def start_web_server(args_param):
             if not code or not re.match(r"^\d{6}$", code):
                 return jsonify({"success": False, "message": "验证码必须是6位数字"})
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             code_expire_minutes = int(
                 config.get("SMS_Service_SMSBao",
                            "code_expire_minutes", fallback="5")
@@ -28763,7 +30185,7 @@ def start_web_server(args_param):
                 )
 
             # 读取配置文件
-            config.read(CONFIG_FILE, encoding="utf-8")
+            config = _read_config_ini(CONFIG_FILE)
 
             # 读取CDN配置，如果不存在则使用默认值
             cdn_enabled = config.getboolean(
@@ -28840,7 +30262,7 @@ def start_web_server(args_param):
             # 检查配置文件是否存在
             if os.path.exists(CONFIG_FILE):
                 # 配置文件存在，读取现有配置
-                config.read(CONFIG_FILE, encoding="utf-8")
+                config = _read_config_ini(CONFIG_FILE)
             else:
                 # 配置文件不存在，使用默认配置
                 logging.warning("[CDN配置] config.ini 文件不存在，将创建新的配置文件")
@@ -29117,7 +30539,7 @@ def start_web_server(args_param):
         config.optionxform = str
 
         try:
-            config.read(CONFIG_FILE, encoding="utf-8")
+            config = _read_config_ini(CONFIG_FILE)
 
             # [修正] 读取成功后，回写配置文件以清除重复项
             # 这会利用 ConfigParser 的特性，将重复键合并为最后一个值，并重写文件
@@ -29502,7 +30924,7 @@ def start_web_server(args_param):
 
             # 读取配置文件以获取密钥和公钥信息
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             # 获取平台公钥（用于RSA签名验证）
             pubc_key = config.get(
@@ -30035,6 +31457,29 @@ def start_web_server(args_param):
                                     f"auth_username: {auth_username}, total_count: {total_count}"
                                 )
 
+                        # 普通账单支付订单：按 billing_items 更新账单状态
+                        if "billing_items" in order_data:
+                            billing_items = order_data.get("billing_items", [])
+                            if billing_items:
+                                try:
+                                    _process_billing_payment_async(
+                                        billing_items, out_trade_no)
+                                    _write_payment_log(
+                                        user_id=order_data.get("username", ""),
+                                        order_id=out_trade_no,
+                                        action="billing_payment_completed",
+                                        log_data={
+                                            "billing_items": billing_items,
+                                            "trade_no": trade_no,
+                                            "paid_amount": paid_amount,
+                                        },
+                                    )
+                                except Exception as e:
+                                    logging.error(
+                                        f"[账单支付-异步] 处理账单支付异常 - 订单: {out_trade_no}, 错误: {str(e)}"
+                                    )
+                                    logging.error(traceback.format_exc())
+
                         # 异步处理完成，不需要返回值
                         logging.info(f"[支付通知-异步] 订单处理完成 - 订单号: {out_trade_no}")
                         return
@@ -30356,6 +31801,43 @@ def start_web_server(args_param):
             logging.error(f"Serving editor.md error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
 
+    # ========== IE 浏览器拦截页面路由 ==========
+    @app.route("/ie.html")
+    def ie_upgrade_page():
+        """
+        IE / 旧版 Edge / 国产双核浏览器兼容模式拦截页（适用于 IE9+ 及 EdgeHTML）。
+        """
+        try:
+            root_dir = os.path.dirname(__file__)
+            ie_path = os.path.join(root_dir, "ie.html")
+            if not os.path.exists(ie_path):
+                logging.warning(f"ie.html 文件不存在: {ie_path}")
+                return "请升级您的浏览器", 404
+            response = send_file(ie_path, mimetype="text/html")
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        except Exception as e:
+            logging.error(f"返回 ie.html 时发生错误: {e}", exc_info=True)
+            return "服务器内部错误", 500
+
+    @app.route("/ie_basic.html")
+    def ie_basic_upgrade_page():
+        """
+        IE6/7/8 及 Windows XP 极简拦截页（使用 HTML 4.01 Transitional，兼容最老的 IE）。
+        """
+        try:
+            root_dir = os.path.dirname(__file__)
+            ie_basic_path = os.path.join(root_dir, "ie_basic.html")
+            if not os.path.exists(ie_basic_path):
+                logging.warning(f"ie_basic.html 文件不存在: {ie_basic_path}")
+                return "Please upgrade your browser", 404
+            response = send_file(ie_basic_path, mimetype="text/html")
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        except Exception as e:
+            logging.error(f"返回 ie_basic.html 时发生错误: {e}", exc_info=True)
+            return "Internal server error", 500
+
     # ========== 新增路由：Favicon ==========
     @app.route("/favicon.ico")
     def favicon():
@@ -30381,7 +31863,7 @@ def start_web_server(args_param):
         """
         try:
             root_dir = os.path.dirname(__file__)
-            manifest_path = os.path.join(root_dir, "manifest.json")
+            manifest_path = os.path.join(root_dir, "PWA", "manifest.json")
             if not os.path.exists(manifest_path):
                 logging.warning(f"manifest.json 文件不存在: {manifest_path}")
                 return jsonify({"success": False, "message": "manifest.json 文件未找到"}), 404
@@ -30398,7 +31880,7 @@ def start_web_server(args_param):
         """
         try:
             root_dir = os.path.dirname(__file__)
-            sw_path = os.path.join(root_dir, "sw.js")
+            sw_path = os.path.join(root_dir, "PWA", "sw.js")
             if not os.path.exists(sw_path):
                 logging.warning(f"sw.js 文件不存在: {sw_path}")
                 return jsonify({"success": False, "message": "sw.js 文件未找到"}), 404
@@ -30419,7 +31901,7 @@ def start_web_server(args_param):
             if size != size2 or size not in (192, 512):
                 return jsonify({"success": False, "message": "图标尺寸不支持"}), 404
             root_dir = os.path.dirname(__file__)
-            icon_path = os.path.join(root_dir, f"icon-{size}x{size}.png")
+            icon_path = os.path.join(root_dir, "PWA", f"icon-{size}x{size}.png")
             if not os.path.exists(icon_path):
                 logging.warning(f"图标文件不存在: {icon_path}")
                 return jsonify({"success": False, "message": "图标文件未找到"}), 404
@@ -31173,6 +32655,81 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "未指定任务"}), 400
 
         api_instance = web_sessions[session_id]
+
+        # 接口级欠费校验（防止前端绕过）
+        # - 单账号模式：优先检查请求中的 school_username；未传则检查当前账号
+        # - 多账号模式：优先检查请求中的 school_usernames；未传则检查已添加账号列表
+        # - 仅在 require_payment 开启时拦截
+        try:
+            config = _read_config_ini()
+            require_payment = True
+            if config is not None:
+                require_payment = config.getboolean(
+                    "Payment_Settings", "require_payment", fallback=True
+                )
+
+            if require_payment:
+                def _normalize_target_usernames(single_input, multi_input):
+                    targets = []
+                    if isinstance(single_input, str) and single_input.strip():
+                        targets.append(single_input.strip())
+                    elif isinstance(multi_input, list):
+                        targets.extend(
+                            str(u).strip()
+                            for u in multi_input
+                            if str(u).strip()
+                        )
+                    elif isinstance(multi_input, str):
+                        targets.extend(
+                            s.strip() for s in multi_input.split(",") if s.strip()
+                        )
+                    return list(dict.fromkeys(targets))
+
+                target_usernames = _normalize_target_usernames(
+                    data.get("school_username"), data.get("school_usernames")
+                )
+
+                if not target_usernames:
+                    if getattr(api_instance, "is_multi_account_mode", False):
+                        target_usernames = list(
+                            (getattr(api_instance, "accounts", {}) or {}).keys()
+                        )
+                    else:
+                        current_user_info = getattr(api_instance, "user_info", {}) or {}
+                        current_school_username = str(
+                            current_user_info.get("student_id", "") or ""
+                        ).strip()
+                        if current_school_username:
+                            target_usernames = [current_school_username]
+
+                auth_username = getattr(api_instance, "auth_username", "") or ""
+                if auth_username:
+                    allowed_accounts = (
+                        api_instance._load_user_school_accounts(auth_username) or {}
+                    )
+                    allowed_usernames = set(allowed_accounts.keys())
+                    target_usernames = [
+                        u for u in target_usernames if u in allowed_usernames
+                    ]
+
+                overdue_accounts = _collect_overdue_accounts_from_billing(
+                    target_usernames
+                )
+
+                if overdue_accounts:
+                    return jsonify(
+                        {
+                            "success": False,
+                            "message": "有账号存在欠费，请先缴费",
+                            "error_code": "OVERDUE_PAYMENT",
+                            "overdue_accounts": overdue_accounts,
+                        }
+                    )
+        except Exception as overdue_check_error:
+            logging.warning(
+                f"[后台任务启动] 接口级欠费校验失败，将继续执行原有流程: {overdue_check_error}"
+            )
+
         result = background_task_manager.start_background_task(
             session_id, api_instance, task_indices, auto_generate
         )
@@ -31763,7 +33320,7 @@ def start_web_server(args_param):
 
         # 第1步：读取配置文件，检查是否启用了留言内容审核功能
         # 使用统一的配置读取函数_read_config_ini()读取config.ini文件
-        config = _read_config_ini("config.ini")
+        config = _read_config_ini(CONFIG_JSON_FILE)
 
         # 初始化审核开关变量，默认为False（不启用审核）
         enable_review = False
@@ -31808,7 +33365,7 @@ def start_web_server(args_param):
                         config.set("Content_Review",
                                    "enable_message_review", "false")
                         # 将更新后的配置写入文件
-                        _write_config_with_comments(config, "config.ini")
+                        _write_config_with_comments(config, CONFIG_JSON_FILE)
                         logging.info(
                             "[内容审核] 已自动将config.ini中的enable_message_review设置为false"
                         )
@@ -33065,7 +34622,7 @@ def start_web_server(args_param):
             # 构建配置文件的完整路径
             # os.path.dirname(__file__) 获取当前脚本所在目录
             # os.path.join() 安全地拼接路径，避免不同操作系统路径分隔符问题
-            config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+            config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
 
             # 定义默认配置参数
             # 这些默认值确保即使配置文件不存在或读取失败，系统仍能正常工作
@@ -33074,14 +34631,10 @@ def start_web_server(args_param):
             noise_level = 0.08  # 噪声级别，默认0.08（8%），用于增加验证码的安全性
 
             # 检查配置文件是否存在
-            # 这是一个健壮性检查，避免在文件不存在时产生异常
             if os.path.exists(config_file):
                 try:
-                    # 创建ConfigParser对象用于解析INI格式的配置文件
-                    cfg = configparser.ConfigParser(strict=False)
-
-                    # 读取配置文件，指定UTF-8编码以支持中文等多字节字符
-                    cfg.read(config_file, encoding="utf-8")
+                    # 使用统一的配置读取函数，支持 JSON 格式配置文件
+                    cfg = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
 
                     # 从[Captcha]节中读取length参数
                     # int()转换为整数类型
@@ -33194,15 +34747,14 @@ def start_web_server(args_param):
         history.append(current_time)
 
         try:
-            config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+            config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
             length = 4
             scale_factor = 2
             noise_level = 0.08
 
             if os.path.exists(config_file):
                 try:
-                    cfg = configparser.ConfigParser(strict=False)
-                    cfg.read(config_file, encoding="utf-8")
+                    cfg = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
                     length = int(cfg.get("Captcha", "length", fallback="4"))
                     scale_factor = int(
                         cfg.get("Captcha", "scale_factor", fallback="2"))
@@ -33210,7 +34762,7 @@ def start_web_server(args_param):
                         cfg.get("Captcha", "noise_level", fallback="0.08")
                     )
                     logging.debug(
-                        f"[本地验证码] 从config.ini读取参数: length={length}, scale_factor={scale_factor}, noise_level={noise_level}"
+                        f"[本地验证码] 从config.json读取参数: length={length}, scale_factor={scale_factor}, noise_level={noise_level}"
                     )
                 except Exception as e:
                     logging.warning(f"[本地验证码] 读取配置文件失败，使用默认值: {e}")
@@ -34088,10 +35640,8 @@ def start_web_server(args_param):
             # ========================================
             # 4. 读取现有配置文件
             # ========================================
-            config_file = "config.ini"
-            config = configparser.ConfigParser(strict=False)
-            if os.path.exists(config_file):
-                config.read(config_file, encoding="utf-8")
+            config_file = CONFIG_JSON_FILE
+            config = _read_config_ini(config_file) or _get_default_config()
             # ========================================
             # 5. 确保[Captcha]节存在
             # ========================================
@@ -34819,7 +36369,7 @@ def start_web_server(args_param):
 
             # 读取易支付配置文件
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             # 从配置文件中获取易支付平台参数
             yipay_host = config.get(
@@ -35029,7 +36579,7 @@ def start_web_server(args_param):
 
             # 读取易支付配置文件
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             # 从配置文件中获取易支付平台参数
             yipay_host = config.get(
@@ -35233,7 +36783,7 @@ def start_web_server(args_param):
 
             # 读取配置文件
             # encoding="utf-8" 确保正确读取中文内容
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             # 获取启用的支付方式配置
             # fallback 参数指定默认值："alipay,wxpay"（当配置项不存在时使用）
@@ -35588,7 +37138,7 @@ def start_web_server(args_param):
             # 读取配置文件
             # 配置文件包含易支付平台的商户信息（host, pid, key等）
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             # 从配置文件读取易支付平台配置
             yipay_host = config.get("Rainbow_YiPay", "host", fallback="")
@@ -35903,7 +37453,7 @@ def start_web_server(args_param):
             # 配置格式为逗号分隔的字符串，例如："alipay,wxpay,bank"
             # 需要实时读取配置，支持管理员动态修改而无需重启服务
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             # 获取启用的支付方式配置
             # fallback 参数指定默认值："alipay,wxpay"（启用支付宝和微信支付）
@@ -36403,7 +37953,7 @@ def start_web_server(args_param):
 
                 # 读取配置文件
                 # encoding="utf-8" 确保正确读取中文内容
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
                 # 获取启用的支付方式配置
                 # config.get() 方法从指定节（Rainbow_YiPay）获取指定键（enabled_payment_methods）的值
@@ -36566,10 +38116,10 @@ def start_web_server(args_param):
                     "message": "读取配置文件失败，请联系管理员"
                 })
 
-            # 从配置文件的 [User_Run_Cost] 节读取 single_run_cost（单次费用）
+            # 从配置文件的 [Payment_Settings] 节读取 single_run_cost（单次费用）
             # fallback="1.0" 指定默认值为1.0元
             single_run_cost_str = config.get(
-                "User_Run_Cost", "single_run_cost", fallback="1.0")
+                "Payment_Settings", "single_run_cost", fallback="1.0")
 
             # 将字符串转换为浮点数
             try:
@@ -36763,6 +38313,79 @@ def start_web_server(args_param):
             # 该函数会自动处理：目录创建、文件读取、数据合并、文件写入、异常处理
             _save_order_file_incremental(out_trade_no, order_data)
 
+            # ========== 步骤11.1：关联账单记录 ==========
+            # 扫描该用户的账单目录，找到状态为pending且学校账号在overdue_accounts中的记录
+            # 将订单号添加到这些账单记录的payment_orders列表中
+            try:
+                _billing_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
+                # 获取本次支付涉及的学校账号集合
+                _overdue_school_usernames = set(
+                    acc.get("school_username", "") for acc in overdue_accounts
+                )
+                _single_run_cost_for_selection = round(single_run_cost, 2)
+                if os.path.isdir(_billing_base_dir):
+                    for _bf in os.listdir(_billing_base_dir):
+                        if not _bf.endswith(".json"):
+                            continue
+                        _bpath = os.path.join(_billing_base_dir, _bf)
+                        try:
+                            with open(_bpath, "r", encoding="utf-8") as _f:
+                                _brec = json.load(_f)
+                            # 只处理pending状态且学校账号在本次欠费列表中的记录
+                            if (_brec.get("status") == "pending" and
+                                    _brec.get("school_username") in _overdue_school_usernames):
+                                # 仅关联本次价格生成的账单，避免价格调整后串单
+                                _brec_amount = _brec.get("amount")
+                                if _brec_amount is None:
+                                    continue
+                                try:
+                                    if round(float(_brec_amount), 2) != _single_run_cost_for_selection:
+                                        continue
+                                except Exception:
+                                    continue
+                                # 添加订单号到payment_orders（避免重复）
+                                if out_trade_no not in _brec.get("payment_orders", []):
+                                    _brec.setdefault("payment_orders", []).append(out_trade_no)
+                                    with open(_bpath, "w", encoding="utf-8") as _f:
+                                        json.dump(_brec, _f, indent=2, ensure_ascii=False)
+                        except Exception as _be:
+                            logging.warning(f"[账单关联] 处理账单文件 {_bf} 失败: {_be}")
+                logging.info(f"[账单关联] 订单 {out_trade_no} 已关联到相关账单记录")
+            except Exception as _e:
+                logging.error(f"[账单关联] 关联账单记录失败: {_e}", exc_info=True)
+
+            # ========== 步骤11.2：普通账单支付订单关联 ==========
+            # 如果请求中携带 billing_items，则把当前订单号关联到对应账单 payment_orders
+            try:
+                billing_items_input = data.get("billing_items", [])
+                if isinstance(billing_items_input, list) and billing_items_input:
+                    for _it in billing_items_input:
+                        _billing_id = str((_it or {}).get("billing_id", "")).strip()
+                        _school_username = str((_it or {}).get("school_username", "")).strip()
+                        if not _billing_id or not _school_username:
+                            continue
+                        _billing_file = os.path.join(
+                            os.path.dirname(os.path.abspath(__file__)),
+                            "User_Billing",
+                            "School_Bills",
+                            _school_username,
+                            f"{_billing_id}.json",
+                        )
+                        if not os.path.exists(_billing_file):
+                            continue
+                        try:
+                            with open(_billing_file, "r", encoding="utf-8") as _f:
+                                _brec = json.load(_f)
+                            _brec.setdefault("payment_orders", [])
+                            if out_trade_no not in _brec.get("payment_orders", []):
+                                _brec["payment_orders"].append(out_trade_no)
+                                with open(_billing_file, "w", encoding="utf-8") as _f:
+                                    json.dump(_brec, _f, indent=2, ensure_ascii=False)
+                        except Exception as _be:
+                            logging.warning(f"[账单关联] 普通账单关联失败 {_billing_id}: {_be}")
+            except Exception as _e:
+                logging.error(f"[账单关联] 普通账单关联异常: {_e}", exc_info=True)
+
             # 记录日志：订单文件写入成功
             logging.debug(
                 f"[订单文件] 订单数据已保存（增量更新模式） - "
@@ -36825,6 +38448,182 @@ def start_web_server(args_param):
                 "success": False,
                 "message": f"创建订单失败: {str(e)}"
             }), 500
+
+    @app.route("/api/payment/create_order_for_billing", methods=["POST"])
+    @login_required
+    def payment_create_order_for_billing():
+        """
+        创建普通账单支付订单（支持多账单合并支付）。
+        """
+        try:
+            data = request.get_json() or {}
+            billing_items = data.get("billing_items", [])
+            if not isinstance(billing_items, list) or not billing_items:
+                return jsonify({"success": False, "message": "请选择至少一条账单"}), 400
+
+            # 当前用户可访问学校账号
+            try:
+                allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            except Exception:
+                allowed_schools = set()
+
+            # 去重+校验账单
+            seen = set()
+            valid_items = []
+            total_amount = 0.0
+            for item in billing_items:
+                billing_id = str((item or {}).get("billing_id", "")).strip()
+                school_username = str((item or {}).get("school_username", "")).strip()
+                if not billing_id or not school_username:
+                    continue
+                key = (billing_id, school_username)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                if school_username not in allowed_schools:
+                    return jsonify({"success": False, "message": f"无权支付学校账号 {school_username} 的账单"}), 403
+
+                billing_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "User_Billing",
+                    "School_Bills",
+                    school_username,
+                    f"{billing_id}.json",
+                )
+                if not os.path.exists(billing_file):
+                    return jsonify({"success": False, "message": f"账单不存在: {billing_id}"}), 404
+
+                with open(billing_file, "r", encoding="utf-8") as f:
+                    rec = json.load(f)
+
+                if rec.get("status") != "pending":
+                    return jsonify({"success": False, "message": f"账单 {billing_id} 非待支付状态"}), 400
+
+                amount = round(float(rec.get("amount", 0) or 0), 2)
+                if amount <= 0:
+                    return jsonify({"success": False, "message": f"账单 {billing_id} 金额无效"}), 400
+
+                valid_items.append({
+                    "billing_id": billing_id,
+                    "school_username": school_username,
+                })
+                total_amount += amount
+
+            if not valid_items:
+                return jsonify({"success": False, "message": "未找到可支付账单"}), 400
+
+            if total_amount <= 0:
+                return jsonify({"success": False, "message": "订单金额无效"}), 400
+
+            # 支付参数
+            pay_type = str(data.get("pay_type", "alipay")).strip() or "alipay"
+            payment_type = str(data.get("payment_type", "web")).strip() or "web"
+            device = str(data.get("device", "")).strip() or "pc"
+            client_app_host = str(data.get("app_host", "")).strip() or None
+
+            # 读取启用支付方式并回退
+            config = configparser.ConfigParser(strict=False)
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            enabled_methods_str = config.get(
+                "Rainbow_YiPay", "enabled_payment_methods", fallback="alipay,wxpay"
+            ).strip()
+            enabled_methods = [m.strip() for m in enabled_methods_str.split(",") if m.strip()]
+            if not enabled_methods:
+                enabled_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
+            if pay_type not in enabled_methods:
+                pay_type = enabled_methods[0]
+
+            out_trade_no = f"{time.strftime('%Y%m%d')}{random.randint(100000000000000, 999999999999999)}"
+            amount_str = f"{round(total_amount, 2):.2f}"
+            product_name = f"账单合并支付（{len(valid_items)}笔）"
+
+            yipay_client = RainbowYiPayClient()
+            result = yipay_client.create_order(
+                out_trade_no=out_trade_no,
+                name=product_name,
+                money=amount_str,
+                pay_type=pay_type,
+                return_url=None,
+                client_app_host=client_app_host,
+                payment_type=payment_type,
+                auth_code=None,
+                device_get=device,
+            )
+
+            if not result.get("success", False):
+                return jsonify({"success": False, "message": result.get("message", "创建支付订单失败")}), 400
+
+            pay_type = result.get("pay_type", pay_type)
+
+            order_data = {
+                "order_id": out_trade_no,
+                "username": g.user,
+                "auth_username": g.user,
+                "amount": amount_str,
+                "product_name": product_name,
+                "total_count": len(valid_items),
+                "billing_items": valid_items,
+                "pay_type": pay_type,
+                "status": ORDER_STATUS_PENDING,
+                "pay_url": result.get("pay_url", ""),
+                "trade_no": result.get("trade_no", ""),
+                "payment_type": result.get("pay_type", ""),
+                "pay_info": result.get("pay_info", ""),
+                "order_data": result.get("order_data", {}),
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                "user_agent": request.headers.get("User-Agent", ""),
+                "device": device,
+            }
+            _save_order_file_incremental(out_trade_no, order_data)
+
+            # 关联订单号到账单 payment_orders
+            for item in valid_items:
+                billing_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "User_Billing",
+                    "School_Bills",
+                    item["school_username"],
+                    f"{item['billing_id']}.json",
+                )
+                try:
+                    with open(billing_file, "r", encoding="utf-8") as f:
+                        rec = json.load(f)
+                    rec.setdefault("payment_orders", [])
+                    if out_trade_no not in rec["payment_orders"]:
+                        rec["payment_orders"].append(out_trade_no)
+                        with open(billing_file, "w", encoding="utf-8") as f:
+                            json.dump(rec, f, indent=2, ensure_ascii=False)
+                except Exception as be:
+                    logging.warning(f"[账单支付] 关联账单订单号失败 {item['billing_id']}: {be}")
+
+            _write_payment_log(
+                user_id=g.user,
+                order_id=out_trade_no,
+                action="create_billing_order",
+                log_data={
+                    "amount": amount_str,
+                    "pay_type": pay_type,
+                    "billing_items": valid_items,
+                    "success": True,
+                },
+            )
+
+            return jsonify({
+                "success": True,
+                "message": "账单支付订单创建成功",
+                "order_id": out_trade_no,
+                "total_amount": amount_str,
+                "total_count": len(valid_items),
+                "pay_url": result.get("pay_url", ""),
+                "pay_info": result.get("pay_info", ""),
+                "pay_type": pay_type,
+            })
+        except Exception as e:
+            logging.error(f"[账单支付] 创建订单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"创建账单支付订单失败: {str(e)}"}), 500
 
     # @app.route("/api/payment/return", methods=["GET"])
     # def payment_return():
@@ -37909,7 +39708,7 @@ def start_web_server(args_param):
                 # 读取配置文件
                 # ConfigParser 用于读取 INI 格式的配置文件
                 config = configparser.ConfigParser(strict=False)
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
                 # 获取当前启用的支付方式
                 # 从 [Rainbow_YiPay] 节读取 enabled_payment_methods 配置项
@@ -37984,7 +39783,7 @@ def start_web_server(args_param):
 
                 # 读取当前配置（用于后续保存 enabled_payment_methods）
                 config = configparser.ConfigParser(strict=False)
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
                 # 从 payment_methods.json 文件获取所有已定义的支付方式
                 # 调用 _read_payment_methods_config() 函数，该函数会自动处理异常情况
@@ -38022,7 +39821,7 @@ def start_web_server(args_param):
 
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持注释
-                _write_config_with_comments(config, "config.ini")
+                _write_config_with_comments(config, CONFIG_JSON_FILE)
 
                 # 记录信息日志：配置已更新
                 logging.info(
@@ -38362,7 +40161,7 @@ def start_web_server(args_param):
                 # 避免启用列表中包含已删除的支付方式
                 # 这需要读取和修改 config.ini 文件
                 config = configparser.ConfigParser(strict=False)
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
                 # 读取当前启用的支付方式列表
                 enabled_methods_str = config.get(
@@ -38386,7 +40185,7 @@ def start_web_server(args_param):
                     config.set("Rainbow_YiPay",
                                "enabled_payment_methods", new_enabled_str)
                     # 保存配置文件（保持注释）
-                    _write_config_with_comments(config, "config.ini")
+                    _write_config_with_comments(config, CONFIG_JSON_FILE)
 
                 # 记录日志
                 logging.info(
@@ -38462,7 +40261,7 @@ def start_web_server(args_param):
                 # 读取配置文件
                 # 使用 configparser 从 config.ini 文件读取配置项
                 config = configparser.ConfigParser(strict=False)
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
                 # 从 Payment_Settings 节读取价格相关配置
                 # 使用 fallback 参数提供默认值，确保即使配置文件缺失也能正常工作
@@ -38557,7 +40356,7 @@ def start_web_server(args_param):
 
                 # 读取当前配置作为默认值
                 config = configparser.ConfigParser(strict=False)
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
                 # 获取新的 require_payment 值（布尔类型）
                 new_require_payment = data.get(
@@ -38762,7 +40561,7 @@ def start_web_server(args_param):
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
                 # 这样可以避免覆盖配置文件时丢失注释信息
-                _write_config_with_comments(config, "config.ini")
+                _write_config_with_comments(config, CONFIG_JSON_FILE)
 
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
@@ -38938,7 +40737,7 @@ def start_web_server(args_param):
                 # 读取配置文件
                 # 使用 configparser 从 config.ini 文件读取配置项
                 config = configparser.ConfigParser(strict=False)
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
                 # 从 Rainbow_YiPay 节读取易支付相关配置
                 # 使用 fallback 参数提供默认值，确保即使配置文件缺失也能正常工作
@@ -39035,7 +40834,7 @@ def start_web_server(args_param):
 
                 # 读取当前配置作为默认值
                 config = configparser.ConfigParser(strict=False)
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
                 # 提取新的配置值
                 # 使用 .get() 方法获取参数，如果参数不存在则使用当前配置值作为默认值
@@ -39223,7 +41022,7 @@ def start_web_server(args_param):
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
                 # 这样可以避免覆盖配置文件时丢失注释信息
-                _write_config_with_comments(config, "config.ini")
+                _write_config_with_comments(config, CONFIG_JSON_FILE)
 
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
@@ -39394,7 +41193,7 @@ def start_web_server(args_param):
                 # getboolean() 方法会自动将字符串 "true"/"false" 转换为 Python 的 bool 类型
                 # fallback=True 表示如果配置项不存在，默认值为 True（需要付费）
                 config = configparser.ConfigParser(strict=False)
-                config.read("config.ini", encoding="utf-8")
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
                 require_payment = config.getboolean(
                     "Payment_Settings", "require_payment", fallback=True)
 
@@ -41030,22 +42829,16 @@ def start_web_server(args_param):
             
         try:
             # ========== 步骤1：检查付费控制配置 ==========
-            # 从配置文件中读取付费相关配置
-            # 如果系统运行在免费模式下，直接返回无欠费状态，无需继续检查
-            config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
-            # 读取 require_payment 配置项，默认值为 true（需要付费）
-            require_payment = config.getboolean(
-                "Payment_Settings", "require_payment", fallback=True)
-            # 读取 single_run_cost 配置项，默认值为 1.0元
-            single_run_cost = config.getfloat(
-                "Payment_Settings", "single_run_cost", fallback=1.0)
+            # 统一使用配置读取适配器（优先 configs/config.json，回退 config.ini）
+            # 仅根据 Payment_Settings.require_payment 判断是否启用付费检查
+            config = _read_config_ini()
+            require_payment = True
+            if config is not None:
+                require_payment = config.getboolean(
+                    "Payment_Settings", "require_payment", fallback=True)
 
-            # 判断是否为免费模式
-            # 满足以下任一条件时，系统运行在免费模式下：
-            # 1. require_payment 为 false（明确配置为免费模式）
-            # 2. single_run_cost <= 0（价格为0或负数，等同于免费）
-            if not require_payment or single_run_cost <= 0:
+            # 未开启付费时，直接返回无欠费状态
+            if not require_payment:
                 # 免费模式下，不存在欠费概念，直接返回无欠费
                 return jsonify({
                     "success": True,
@@ -41094,6 +42887,8 @@ def start_web_server(args_param):
 
             # 处理筛选逻辑：将输入统一转换为集合（若未指定则为空集合，表示不过滤）
             target_usernames = set(school_username_input) if school_username_input is not None else set()
+            
+            logging.info(f"[欠费检查] 规范化后的目标学校账号列表: {target_usernames}")
 
             # 获取当前认证用户名
             auth_username = g.user
@@ -41114,11 +42909,15 @@ def start_web_server(args_param):
                 else:
                     # 用户未指定账号：只返回其自己权限范围内的账号数据
                     target_usernames = set(user_school_accounts.keys())
+                    
+            logging.info(f"[欠费检查] 最终有效的目标学校账号列表: {target_usernames}")
 
             # 获取该认证用户的所有学校账号配置
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
             school_accounts = g.api_instance._load_user_school_accounts(
                 auth_username)
+            
+            logging.info(f"[欠费检查] 加载到的学校账号数据: {school_accounts}")
 
             # 如果没有学校账号，直接返回无欠费
             if not school_accounts:
@@ -41142,8 +42941,8 @@ def start_web_server(args_param):
                 if isinstance(account_info, str):
                     continue
 
-                # 获取欠费次数，默认为 0
-                overdue_count = account_info.get("overdue_count", 0)
+                # 从账单文件读取待支付数量作为欠费次数
+                overdue_count = _count_pending_bills_for_school(acc_username)
 
                 # 如果欠费次数大于 0，记录该账号
                 if overdue_count > 0:
@@ -41197,7 +42996,7 @@ def start_web_server(args_param):
     def get_school_account_stats():
         """
         获取指定学校账号的统计信息（欠费信息）
-        读取 school_accounts/{school_account}.ini 的 [stats] 节
+        读取 ./User_Billing/School_Bills/<school_username>/ 下的账单文件统计
         """
         try:
             # 获取请求参数
@@ -41211,25 +43010,98 @@ def start_web_server(args_param):
             auth_username = g.user
 
             # 验证该学校账号是否属于当前用户
-            # 使用 g.api_instance._load_user_school_accounts 加载用户的所有学校账号
             school_accounts = g.api_instance._load_user_school_accounts(
                 auth_username)
 
             if school_username not in school_accounts and auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
                 return jsonify({"success": False, "message": "账号不存在或不属于当前用户"}), 404
 
-            # 读取统计信息 (使用现有的辅助函数读取ini中的stats节)
-            # 返回格式: {"overdue_count": int, "completed_count": int}
-            stats = g.api_instance._load_school_account_stats_from_ini(
-                school_username)
+            # 从 ./User_Billing/School_Bills/<school_username>/ 读取账单统计
+            billing_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing", "School_Bills", school_username
+            )
+            overdue_count = 0
+            completed_count = 0
+            if os.path.isdir(billing_dir):
+                for fname in os.listdir(billing_dir):
+                    if not fname.endswith(".json"):
+                        continue
+                    fpath = os.path.join(billing_dir, fname)
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            record = json.load(f)
+                        status = str(record.get("status", "pending")).strip().lower()
+                        if status == "pending":
+                            overdue_count += 1
+                        elif status in ("paid", "admin_cleared"):
+                            completed_count += 1
+                    except Exception:
+                        pass
 
             return jsonify({
                 "success": True,
-                "data": stats
+                "data": {
+                    "overdue_count": overdue_count,
+                    "completed_count": completed_count,
+                }
             })
 
         except Exception as e:
             logging.error(f"[获取统计] 获取账号统计信息失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取失败: {str(e)}"}), 500
+
+    @app.route("/api/school_account/name", methods=["GET"])
+    @login_required
+    def get_school_account_name():
+        """
+        获取指定学校账号的对应姓名（从备份文件读取）。
+        仅需要登录，无需管理员权限；会校验当前用户是否有权限访问该学校账号。
+        管理员和超级管理员可访问任意账号姓名。
+        """
+        try:
+            school_username = request.args.get("school_username", "").strip()
+            if not school_username:
+                return jsonify({"success": False, "message": "缺少 school_username 参数"}), 400
+
+            auth_username = g.user
+            user_group = auth_system.get_user_group(auth_username)
+
+            # 非管理员需校验是否有权限访问该学校账号
+            if user_group not in ("admin", "super_admin"):
+                school_accounts = g.api_instance._load_user_school_accounts(auth_username) or {}
+                if school_username not in school_accounts:
+                    return jsonify({"success": False, "message": "账号不存在或无权限访问"}), 403
+
+            # 从备份文件读取姓名
+            # 优先从 school_accounts/<school_username>/<school_username>_backup.json 读取
+            # 其次从 school_accounts/<school_username>_backup.json（扁平结构）读取
+            name = ""
+            for backup_path in [
+                os.path.join(SCHOOL_ACCOUNTS_DIR, school_username,
+                             f"{school_username}_backup.json"),
+                os.path.join(SCHOOL_ACCOUNTS_DIR, f"{school_username}_backup.json"),
+            ]:
+                if os.path.exists(backup_path):
+                    try:
+                        with open(backup_path, "r", encoding="utf-8") as f:
+                            backup_data = json.load(f)
+                        name = (
+                            ((backup_data.get("userInfo") or {}).get("name") or "")
+                            or ((backup_data.get("deptInfo") or {}).get("name") or "")
+                        ).strip()
+                        if name:
+                            break
+                    except Exception as _e:
+                        logging.warning(f"[账号姓名] 读取备份文件失败: {backup_path}, {_e}")
+
+            return jsonify({
+                "success": True,
+                "school_username": school_username,
+                "name": name,
+            })
+        except Exception as e:
+            logging.error(f"[账号姓名] 获取账号姓名失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"获取失败: {str(e)}"}), 500
 
     # ==============================================================================
@@ -41426,7 +43298,13 @@ def start_web_server(args_param):
         2. 参数验证：学校账号不能为空
         3. 参数验证：覆盖模式下欠费次数必须是非负整数；叠加模式下必须大于0
         4. 记录详细的管理员操作日志，便于审计追溯
+
+        ⚠️ 此接口已弃用（Deprecated），请改用 POST /api/admin/billing/add。
+        保留此接口仅为向后兼容，后续版本将移除。
         """
+        logging.warning(
+            "[已弃用] /api/admin/clear_overdue 已弃用，请改用 /api/admin/billing/add"
+        )
         try:
             # ========== 步骤1：获取并验证请求参数 ==========
 
@@ -41460,6 +43338,22 @@ def start_web_server(args_param):
 
             # 如果auth_username为空，尝试自动查找
             # 这种情况通常发生在管理员只知道school_username的情况下
+            if not auth_username:
+                try:
+                    user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
+                    if os.path.isdir(user_accounts_dir):
+                        for fname in os.listdir(user_accounts_dir):
+                            if fname.endswith(".json"):
+                                try:
+                                    with open(os.path.join(user_accounts_dir, fname), 'r', encoding='utf-8') as f:
+                                        data = json.load(f)
+                                        if school_username in data:
+                                            auth_username = fname[:-5] # remove .json
+                                            break
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
 
             # ========== 步骤3：验证欠费次数参数 ==========
             try:
@@ -41495,10 +43389,12 @@ def start_web_server(args_param):
                 if not config.has_section('stats'):
                     config.add_section('stats')
 
+                # 读取当前欠费次数（在修改前记录，用于后续账单同步）
+                old_overdue_count = config.getint('stats', 'overdue_count', fallback=0)
+
                 # 计算最终欠费次数：叠加模式则累加，否则直接覆盖
                 if add_mode:
-                    current_overdue = config.getint('stats', 'overdue_count', fallback=0)
-                    final_overdue_count = current_overdue + new_overdue_count
+                    final_overdue_count = old_overdue_count + new_overdue_count
                 else:
                     final_overdue_count = new_overdue_count
 
@@ -41539,6 +43435,106 @@ def start_web_server(args_param):
                         "add_mode": add_mode
                     }
                 )
+
+                # ========== 同步 User_Billing 账单记录 ==========
+                # 使账单列表（billing/list）与欠费变更保持一致
+                billing_root = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), "User_Billing"
+                )
+                try:
+                    if add_mode:
+                        # 叠加模式：管理员手动增加欠费 → 为每次新增欠费创建账单记录
+                        if auth_username and os.path.isdir(billing_root):
+                            try:
+                                _bc = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+                                _cost = round(float(_bc.get(
+                                    "Payment_Settings", "single_run_cost", fallback="1.0"
+                                )), 2)
+                            except Exception:
+                                _cost = 1.0
+                            for _ in range(new_overdue_count):
+                                _create_user_billing_record(
+                                    auth_username, school_username,
+                                    "管理员手动添加欠费", _cost
+                                )
+                    else:
+                        # 覆盖模式：欠费次数减少 → 将对应数量的 pending 账单标记为 admin_cleared
+                        cleared_count = max(0, old_overdue_count - final_overdue_count)
+                        if cleared_count > 0:
+                            # 确定要搜索的账单目录列表
+                            if auth_username:
+                                search_dirs = [os.path.join(billing_root, auth_username)]
+                            else:
+                                # auth_username 未知时遍历所有用户目录
+                                search_dirs = [
+                                    os.path.join(billing_root, d)
+                                    for d in os.listdir(billing_root)
+                                    if os.path.isdir(os.path.join(billing_root, d))
+                                ] if os.path.isdir(billing_root) else []
+
+                            updated = 0
+                            for user_dir in search_dirs:
+                                if updated >= cleared_count:
+                                    break
+                                if not os.path.isdir(user_dir):
+                                    continue
+                                # 收集该用户目录下匹配的 pending 账单，按时间升序处理
+                                candidates = []
+                                for fname in os.listdir(user_dir):
+                                    if not fname.endswith(".json"):
+                                        continue
+                                    fpath = os.path.join(user_dir, fname)
+                                    try:
+                                        with open(fpath, "r", encoding="utf-8") as _f:
+                                            rec = json.load(_f)
+                                        if (rec.get("school_username") == school_username
+                                                and rec.get("status") == "pending"):
+                                            candidates.append((rec.get("created_at", ""), fpath, rec))
+                                    except Exception:
+                                        pass
+                                candidates.sort(key=lambda x: x[0])
+                                for _, fpath, rec in candidates:
+                                    if updated >= cleared_count:
+                                        break
+                                    rec["status"] = "admin_cleared"
+                                    rec["admin_cleared_by"] = admin_username
+                                    rec["admin_cleared_at"] = datetime.datetime.now(datetime.timezone.utc).strftime(
+                                        "%Y-%m-%dT%H:%M:%SZ"
+                                    )
+                                    try:
+                                        with open(fpath, "w", encoding="utf-8") as _f:
+                                            json.dump(rec, _f, indent=2, ensure_ascii=False)
+                                        updated += 1
+                                    except Exception as _e:
+                                        logging.warning(f"[账单同步] 更新账单文件失败: {fpath}: {_e}")
+                            logging.info(
+                                f"[账单同步] 已将 {updated}/{cleared_count} 条账单状态更新为 admin_cleared"
+                                f"（学校账号: {school_username}）"
+                            )
+
+                        # 覆盖模式：欠费次数增加 → 同步创建新的账单记录
+                        added_count = max(0, final_overdue_count - old_overdue_count)
+                        if added_count > 0 and auth_username:
+                            if os.path.isdir(billing_root):
+                                try:
+                                    _bc = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+                                    _cost = round(float(_bc.get(
+                                        "Payment_Settings", "single_run_cost", fallback="1.0"
+                                    )), 2)
+                                except Exception:
+                                    _cost = 1.0
+                                for _ in range(added_count):
+                                    _create_user_billing_record(
+                                        auth_username, school_username,
+                                        "管理员修正欠费次数（增加）", _cost
+                                    )
+                                logging.info(
+                                    f"[账单同步] 已为用户 {auth_username} 创建 {added_count} 条新账单记录"
+                                    f"（学校账号: {school_username}）"
+                                )
+                except Exception as _sync_e:
+                    # 账单同步失败不影响主流程
+                    logging.error(f"[账单同步] 同步 User_Billing 失败: {_sync_e}", exc_info=True)
 
                 return jsonify({
                     "success": True,
@@ -41614,7 +43610,7 @@ def start_web_server(args_param):
             # 使用 _get_config() 函数获取配置对象
             # 该函数会自动处理配置文件不存在的情况，返回默认配置
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             # ========== 步骤2：提取付费相关配置项 ==========
             # 使用 fallback 参数指定默认值，确保即使配置文件中缺少某项也能正常返回
@@ -41832,7 +43828,7 @@ def start_web_server(args_param):
         try:
             # 读取配置文件
             config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
 
             # 从 Payment_Settings 节读取 single_run_cost
             # 默认值为 1.0 元
@@ -42163,6 +44159,692 @@ def start_web_server(args_param):
                 "response_time_ms": response_time_ms,
             }
         )
+
+    @app.route("/api/billing/list", methods=["GET"])
+    @login_required
+    def billing_list():
+        """
+        获取当前用户有权限学校账号的账单记录列表（按创建时间降序排列）。
+        需要用户登录。
+        """
+        try:
+            school_username = request.args.get("school_username", "").strip()
+            billing_root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+            )
+
+            # 仅允许读取当前用户有权限的学校账号账单
+            try:
+                allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            except Exception:
+                allowed_schools = set()
+
+            if school_username:
+                if school_username not in allowed_schools:
+                    return jsonify({"success": True, "records": [], "total": 0})
+                target_schools = [school_username]
+            else:
+                target_schools = sorted(allowed_schools)
+
+            records = []
+
+            def _load_school_name(_school_username: str) -> str:
+                try:
+                    for _backup_path in [
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username, f"{_school_username}_backup.json"),
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, f"{_school_username}_backup.json"),
+                    ]:
+                        if os.path.exists(_backup_path):
+                            try:
+                                with open(_backup_path, "r", encoding="utf-8") as f:
+                                    backup_data = json.load(f)
+                                _name = (
+                                    ((backup_data.get("userInfo") or {}).get("name") or "").strip()
+                                    or ((backup_data.get("deptInfo") or {}).get("name") or "").strip()
+                                )
+                                if _name:
+                                    return _name
+                            except Exception as _name_err:
+                                logging.warning(
+                                    f"[账单列表] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                                )
+                except Exception as _name_err:
+                    logging.warning(
+                        f"[账单列表] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                    )
+                return _school_username
+
+            school_name_map = {
+                school: _load_school_name(school) for school in target_schools
+            }
+
+            for school in target_schools:
+                user_billing_dir = os.path.join(billing_root, school)
+                if not os.path.isdir(user_billing_dir):
+                    continue
+                for filename in os.listdir(user_billing_dir):
+                    if not filename.endswith(".json"):
+                        continue
+                    filepath = os.path.join(user_billing_dir, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            record = json.load(f)
+                        record["school_name"] = school_name_map.get(
+                            school, school
+                        )
+                        records.append(record)
+                    except Exception as e:
+                        logging.warning(f"[账单列表] 读取账单文件 {filename} 失败: {e}")
+            
+            # 按创建时间降序排列
+            records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            
+            for _r in records:
+                if _r.get("amount") is not None:
+                    try:
+                        _r["amount"] = round(float(_r["amount"]), 2)
+                    except Exception:
+                        pass
+            return jsonify({"success": True, "records": records, "total": len(records)})
+        except Exception as e:
+            logging.error(f"[账单列表] 获取账单列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/list", methods=["GET"])
+    @admin_required
+    def admin_billing_list():
+        """
+        管理员接口：获取有权限学校账号的账单记录列表。
+        可选查询参数: school_username（指定学校账号）
+        """
+        try:
+            school_username = request.args.get("school_username", "").strip()
+            billing_root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+            )
+            records = []
+
+            # 仅允许读取当前管理员有权限的学校账号账单
+            try:
+                allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            except Exception:
+                allowed_schools = set()
+
+            if school_username:
+                if school_username not in allowed_schools:
+                    return jsonify({"success": True, "records": [], "total": 0})
+                target_schools = [school_username]
+            else:
+                target_schools = sorted(allowed_schools)
+
+            def _load_admin_school_name(_school_username: str) -> str:
+                try:
+                    for _backup_path in [
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username, f"{_school_username}_backup.json"),
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, f"{_school_username}_backup.json"),
+                    ]:
+                        if os.path.exists(_backup_path):
+                            try:
+                                with open(_backup_path, "r", encoding="utf-8") as f:
+                                    backup_data = json.load(f)
+                                _name = (
+                                    ((backup_data.get("userInfo") or {}).get("name") or "").strip()
+                                    or ((backup_data.get("deptInfo") or {}).get("name") or "").strip()
+                                )
+                                if _name:
+                                    return _name
+                            except Exception as _name_err:
+                                logging.warning(
+                                    f"[管理员账单] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                                )
+                except Exception as _name_err:
+                    logging.warning(
+                        f"[管理员账单] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                    )
+                return _school_username
+
+            school_name_map = {
+                school: _load_admin_school_name(school) for school in target_schools
+            }
+
+            for school in target_schools:
+                user_billing_dir = os.path.join(billing_root, school)
+                if not os.path.isdir(user_billing_dir):
+                    continue
+                for filename in os.listdir(user_billing_dir):
+                    if not filename.endswith(".json"):
+                        continue
+                    filepath = os.path.join(user_billing_dir, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            record = json.load(f)
+                        record["school_name"] = school_name_map.get(school, school)
+                        records.append(record)
+                    except Exception as e:
+                        logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
+            
+            # 按创建时间降序排列
+            records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            for _r in records:
+                if _r.get("amount") is not None:
+                    try:
+                        _r["amount"] = round(float(_r["amount"]), 2)
+                    except Exception:
+                        pass
+            
+            return jsonify({"success": True, "records": records, "total": len(records)})
+        except Exception as e:
+            logging.error(f"[管理员账单] 获取账单列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/update", methods=["POST"])
+    @admin_required
+    def admin_billing_update():
+        """
+        管理员接口：修改账单信息（描述/状态/金额）。
+        请求体:
+        {
+          "billing_id": "<账单ID>",
+          "school_username": "<学校账号>",
+          "reason": "<新描述，可选>",
+          "status": "pending|paid|admin_cleared（可选）",
+          "amount": 1.23（可选）
+        }
+        """
+        try:
+            data = request.get_json() or {}
+            billing_id = data.get("billing_id", "").strip()
+            school_username = data.get("school_username", "").strip()
+
+            if not billing_id or not school_username:
+                return jsonify({"success": False, "message": "billing_id 和 school_username 不能为空"}), 400
+
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权操作该学校账号的账单"}), 403
+
+            billing_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+                school_username
+            )
+            billing_file = os.path.join(billing_dir, f"{billing_id}.json")
+
+            if not os.path.exists(billing_file):
+                return jsonify({"success": False, "message": "账单记录不存在"}), 404
+
+            with open(billing_file, "r", encoding="utf-8") as f:
+                record = json.load(f)
+
+            changed_fields = []
+            now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            if "reason" in data:
+                new_reason = str(data.get("reason", "")).strip()
+                if new_reason != str(record.get("reason", "")):
+                    record["reason"] = new_reason
+                    record["reason_updated_at"] = now_utc
+                    record["reason_updated_by"] = g.user
+                    changed_fields.append("reason")
+
+            if "amount" in data and str(data.get("amount", "")).strip() != "":
+                try:
+                    new_amount = round(float(data.get("amount")), 2)
+                    if new_amount <= 0:
+                        return jsonify({"success": False, "message": "金额必须大于 0"}), 400
+                except (TypeError, ValueError):
+                    return jsonify({"success": False, "message": "amount 必须是有效数字"}), 400
+                old_amount = round(float(record.get("amount", 0) or 0), 2)
+                if new_amount != old_amount:
+                    record["amount"] = new_amount
+                    changed_fields.append("amount")
+
+            if "status" in data and str(data.get("status", "")).strip():
+                new_status = str(data.get("status", "")).strip().lower()
+                valid_status = {"pending", "paid", "admin_cleared"}
+                if new_status not in valid_status:
+                    return jsonify({"success": False, "message": "status 必须是 pending/paid/admin_cleared"}), 400
+
+                old_status = str(record.get("status", "pending")).strip().lower()
+                if new_status != old_status:
+                    record["status"] = new_status
+                    changed_fields.append("status")
+
+                    if new_status == "paid":
+                        record["paid_at"] = now_utc
+                        record["paid_by"] = g.user
+                    elif old_status == "paid":
+                        record.pop("paid_by", None)
+                        record["paid_at"] = ""
+
+                    if new_status == "admin_cleared":
+                        record["admin_cleared_at"] = now_utc
+                        record["admin_cleared_by"] = g.user
+                    elif old_status == "admin_cleared":
+                        record.pop("admin_cleared_at", None)
+                        record.pop("admin_cleared_by", None)
+
+            if not changed_fields:
+                return jsonify({"success": False, "message": "未检测到可更新内容"}), 400
+
+            record["updated_at"] = now_utc
+            record["updated_by"] = g.user
+
+            with open(billing_file, "w", encoding="utf-8") as f:
+                json.dump(record, f, indent=2, ensure_ascii=False)
+
+            auth_system.log_audit(
+                g.user,
+                "admin_update_billing",
+                f"修改学校账号 {school_username} 账单 {billing_id} 字段: {', '.join(changed_fields)}",
+            )
+            logging.info(f"[管理员账单] 管理员 {g.user} 修改账单 {billing_id} 字段: {', '.join(changed_fields)}")
+            return jsonify({"success": True, "message": "账单已更新", "changed_fields": changed_fields})
+        except Exception as e:
+            logging.error(f"[管理员账单] 修改账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"修改账单失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/delete", methods=["POST"])
+    @admin_required
+    def admin_billing_delete():
+        """
+        管理员接口：删除账单（软删除，移动到 ./User_Billing/Reomve/ 目录）。
+        请求体: {"billing_id": "<账单ID>", "school_username": "<学校账号>"}
+        """
+        try:
+            data = request.get_json() or {}
+            billing_id = str(data.get("billing_id", "")).strip()
+            school_username = str(data.get("school_username", "")).strip()
+
+            if not billing_id or not school_username:
+                return jsonify({"success": False, "message": "billing_id 和 school_username 不能为空"}), 400
+
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权操作该学校账号的账单"}), 403
+
+            billing_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+                school_username,
+                f"{billing_id}.json"
+            )
+            if not os.path.exists(billing_file):
+                return jsonify({"success": False, "message": "账单记录不存在"}), 404
+
+            remove_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "Reomve",
+                school_username,
+            )
+            os.makedirs(remove_dir, exist_ok=True)
+            target_file = os.path.join(remove_dir, f"{billing_id}.json")
+            if os.path.exists(target_file):
+                suffix = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+                target_file = os.path.join(remove_dir, f"{billing_id}_{suffix}.json")
+
+            shutil.move(billing_file, target_file)
+            auth_system.log_audit(
+                g.user,
+                "admin_delete_billing",
+                f"删除学校账号 {school_username} 账单 {billing_id}，移动到 {target_file}",
+            )
+            logging.info(f"[管理员账单] 管理员 {g.user} 删除账单 {billing_id} -> {target_file}")
+            return jsonify({"success": True, "message": "账单已删除（已移动到 Reomve 目录）"})
+        except Exception as e:
+            logging.error(f"[管理员账单] 删除账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"删除账单失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/add", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_billing_add():
+        """
+        管理员接口：直接为指定用户创建账单记录。
+        支持两种模式：
+          - count（次数模式，默认）：指定欠费次数，金额 = 次数 × single_run_cost
+          - amount（金额模式）：直接指定自定义金额
+
+        请求体 JSON:
+        {
+          "auth_username": "user123",      // 目标用户名（必填）
+          "school_username": "2021001",   // 学校账号（必填）
+          "mode": "count",                // "count"（默认）或 "amount"
+          "count": 1,                     // 次数（mode=count 时使用）
+          "amount": 5.0,                  // 金额（mode=amount 时使用）
+          "reason": "手动补录欠费"         // 原因（为空时自动生成）
+        }
+
+        返回:
+          {"success": true, "billing_id": "...", "message": "账单已创建"}
+        """
+        try:
+            data = request.get_json() or {}
+            school_username = str(data.get("school_username", "")).strip()
+            mode = str(data.get("mode", "count")).strip().lower()
+            reason = str(data.get("reason", "")).strip()
+
+            if not school_username:
+                return jsonify({"success": False, "message": "school_username 不能为空"}), 400
+
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权为该学校账号创建账单"}), 403
+
+            if mode not in ("count", "amount"):
+                return jsonify({"success": False, "message": "mode 必须是 'count' 或 'amount'"}), 400
+
+            admin_username = g.user if hasattr(g, "user") else "unknown"
+            if isinstance(admin_username, dict):
+                admin_username = admin_username.get("auth_username", "unknown")
+
+            if mode == "count":
+                try:
+                    count = int(data.get("count", 1))
+                    if count < 1:
+                        return jsonify({"success": False, "message": "次数必须大于 0"}), 400
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "次数必须是正整数"}), 400
+
+                # 从配置读取单次费用
+                try:
+                    _cfg = _read_config_ini(CONFIG_FILE)
+                    single_run_cost = round(float(_cfg.get("Payment_Settings", "single_run_cost", fallback="1.0")), 2) if _cfg else 1.0
+                except Exception:
+                    single_run_cost = 1.0
+
+                total_amount = round(single_run_cost * count, 2)
+                if not reason:
+                    reason = f"管理员补录欠费 {count} 次（¥{single_run_cost}/次）"
+
+            else:  # amount mode
+                try:
+                    total_amount = round(float(data.get("amount", 0)), 2)
+                    if total_amount <= 0:
+                        return jsonify({"success": False, "message": "金额必须大于 0"}), 400
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "金额必须是有效数字"}), 400
+
+                if not reason:
+                    reason = f"管理员手动添加账单 ¥{total_amount}"
+
+            billing_id = _create_user_billing_record("", school_username, reason, total_amount)
+            if not billing_id:
+                return jsonify({"success": False, "message": "创建账单记录失败，请检查日志"}), 500
+
+            auth_system.log_audit(
+                admin_username,
+                "admin_add_billing",
+                f"为学校账号 {school_username} 创建账单: {billing_id}, "
+                f"模式={mode}, 金额=¥{total_amount}, 原因={reason!r}",
+            )
+            logging.info(
+                f"[管理员账单] {admin_username} 为 {school_username} "
+                f"创建账单 {billing_id}，模式={mode}，金额=¥{total_amount}"
+            )
+            return jsonify({
+                "success": True,
+                "billing_id": billing_id,
+                "amount": total_amount,
+                "message": f"账单已创建（¥{total_amount}）",
+            })
+        except Exception as e:
+            logging.error(f"[管理员账单] 创建账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"创建账单失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/restore_account", methods=["POST"])
+    @admin_required
+    def admin_restore_account():
+        """
+        管理员接口：从 Remove_Acoount 恢复已删除的用户账号。
+        请求体:
+          {
+            "auth_username": "<备份中的原用户名>",
+            "restore_as": "<恢复后使用的用户名，可选，默认同 auth_username>",
+            "phone_override": "<新手机号，可选；空字符串表示强制清空手机号>",
+            "force_phone_clear": true  // 可选，为 true 时强制清空手机号
+          }
+        冲突响应（409）：
+          {"success": false, "conflict": "username"|"phone",
+           "conflicting_user": "...", "phone": "...", "message": "..."}
+        """
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"success": False, "message": "请求体不能为空"}), 400
+            
+            auth_username = data.get("auth_username", "").strip()
+            if not auth_username:
+                return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
+            
+            # restore_as: 恢复后使用的用户名（默认与备份用户名相同）
+            restore_as = data.get("restore_as", "").strip() or auth_username
+            # phone_override: 覆盖手机号（None=不覆盖；""=清空；其他=新手机号）
+            phone_override = data.get("phone_override", None)
+            if phone_override is not None:
+                phone_override = str(phone_override).strip()
+            force_phone_clear = bool(data.get("force_phone_clear", False))
+            
+            # 确定 Remove_Acoount 目录路径
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
+            index_path = os.path.join(remove_account_dir, "_index.json")
+            
+            # 检查索引文件是否存在
+            if not os.path.exists(index_path):
+                return jsonify({"success": False, "message": "没有找到删除记录索引"}), 404
+            
+            # 读取索引
+            with open(index_path, "r", encoding="utf-8") as f:
+                ra_index = json.load(f)
+            
+            removed_accounts = ra_index.get("removed_accounts", {})
+            if auth_username not in removed_accounts:
+                return jsonify({"success": False, "message": f"未找到用户 {auth_username} 的删除记录"}), 404
+            
+            # 获取备份文件名
+            entry = removed_accounts[auth_username]
+            backup_file = entry.get("backup_file", "")
+            backup_path = os.path.join(remove_account_dir, backup_file)
+            
+            if not os.path.exists(backup_path):
+                return jsonify({"success": False, "message": f"备份文件不存在: {backup_file}"}), 404
+            
+            # 读取备份数据
+            with open(backup_path, "r", encoding="utf-8") as f:
+                backup_data = json.load(f)
+            
+            user_data = backup_data.get("user_data", {})
+            school_accounts_data = backup_data.get("school_accounts")
+            permissions_data = backup_data.get("permissions", {})
+            
+            if not user_data:
+                return jsonify({"success": False, "message": "备份数据损坏：缺少用户数据"}), 500
+            
+            # ── 读取 system_accounts/_index.json（用于冲突双重检测）──────────
+            sys_index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", "_index.json")
+            sys_index_data = {}
+            if os.path.exists(sys_index_path):
+                try:
+                    with open(sys_index_path, "r", encoding="utf-8") as f:
+                        sys_index_data = json.load(f)
+                except Exception:
+                    sys_index_data = {}
+            sys_accounts = sys_index_data.get("accounts", {})  # {username: hash}
+            
+            # ── 冲突检测 1：用户名是否已存在（文件 + 索引双重校验）────────────
+            # 1a. 用户名已在索引中出现 → 用户名冲突
+            if restore_as in sys_accounts:
+                return jsonify({
+                    "success": False,
+                    "conflict": "username",
+                    "conflicting_username": restore_as,
+                    "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
+                }), 409
+            # 1b. 文件系统中存在对应文件（兜底，防止索引与文件不同步）
+            target_hash = hashlib.sha256(str(restore_as).encode()).hexdigest()
+            target_user_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{target_hash}.json")
+            if os.path.exists(target_user_file):
+                return jsonify({
+                    "success": False,
+                    "conflict": "username",
+                    "conflicting_username": restore_as,
+                    "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
+                }), 409
+            
+            # ── UUID 冲突检测：目标 hash 是否已被另一用户名占用 ────────────────
+            # （理论上 sha256 不会碰撞，但若索引/文件不同步可能出现游离 hash）
+            assigned_hash = target_hash  # 默认使用 sha256(restore_as)
+            existing_owner = next(
+                (uname for uname, uhash in sys_accounts.items() if uhash == target_hash),
+                None
+            )
+            if existing_owner and existing_owner != restore_as:
+                # UUID 冲突：该 hash 已被另一个用户名占用，重新分配一个随机 UUID
+                new_uuid = str(uuid.uuid4())
+                while (
+                    os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{new_uuid}.json"))
+                    or new_uuid in sys_accounts.values()
+                ):
+                    new_uuid = str(uuid.uuid4())
+                assigned_hash = new_uuid
+                logging.warning(
+                    f"[恢复账号] UUID 冲突：hash {target_hash[:8]}... 已被用户 {existing_owner} 占用，"
+                    f"已为 {restore_as} 重新分配 UUID: {new_uuid[:8]}..."
+                )
+            
+            # 最终目标文件路径（使用 assigned_hash，可能是重新分配的 UUID）
+            target_user_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{assigned_hash}.json"
+            )
+            
+            # ── 冲突检测 2：手机号是否已被其他账号绑定 ────────────────────────
+            original_phone = user_data.get("phone", "")
+            effective_phone = original_phone  # 默认使用备份中的手机号
+            
+            if phone_override is not None:
+                # 调用方已明确提供手机号覆盖（含空字符串）
+                effective_phone = phone_override
+            elif force_phone_clear:
+                effective_phone = ""
+            
+            # 仅在有手机号时才检测冲突
+            if effective_phone:
+                phone_bound_to = auth_system.find_user_by_phone(effective_phone)
+                if phone_bound_to and phone_bound_to != restore_as:
+                    return jsonify({
+                        "success": False,
+                        "conflict": "phone",
+                        "conflicting_user": phone_bound_to,
+                        "phone": effective_phone,
+                        "message": f"手机号 {effective_phone} 已被用户 {phone_bound_to} 绑定"
+                    }), 409
+            
+            # ── 应用修改并写入 ────────────────────────────────────────────────
+            # 如果用户名有变更，更新 user_data 中的相关字段
+            user_data["auth_username"] = restore_as
+            if user_data.get("nickname") == auth_username:
+                user_data["nickname"] = restore_as
+            
+            # 更新手机号
+            user_data["phone"] = effective_phone
+            
+            # ── UUID 冲突处理：清理 session_ids ──────────────────────────────
+            # 备份中的 session_ids 均已过期（账号删除时会话文件同步清除）。
+            # 对仍残留的 session_id，检查是否与当前活跃会话冲突；
+            # 存在冲突或已过期的 session_id 一律移除，确保账号以无活跃会话状态恢复。
+            old_session_ids = user_data.get("session_ids", [])
+            cleaned_session_ids = []
+            reassigned_count = 0
+            for sid in old_session_ids:
+                session_file = get_session_file_path(sid)
+                if os.path.exists(session_file):
+                    # 该 UUID 与现有会话文件冲突，丢弃（重新分配 = 不保留）
+                    reassigned_count += 1
+                    logging.warning(f"[恢复账号] session UUID 冲突，已丢弃: {sid[:8]}...")
+                # 无论是否冲突，备份的 session_ids 均已失效，不再保留
+            user_data["session_ids"] = cleaned_session_ids  # 恢复为空列表
+            if old_session_ids:
+                logging.info(
+                    f"[恢复账号] 已清空 {len(old_session_ids)} 个过期 session UUID"
+                    + (f"（其中 {reassigned_count} 个存在冲突）" if reassigned_count else "")
+                )
+            
+            # 恢复用户文件到 system_accounts
+            with open(target_user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            logging.info(f"[恢复账号] 已恢复用户文件（恢复为 {restore_as}）: {target_user_file}")
+            
+            # 恢复 school_accounts（如果有）
+            if school_accounts_data:
+                school_file = auth_system._get_user_accounts_file(restore_as)
+                try:
+                    with open(school_file, "w", encoding="utf-8") as f:
+                        json.dump(school_accounts_data, f, indent=2, ensure_ascii=False)
+                    logging.info(f"[恢复账号] 已恢复学校账号文件")
+                except Exception as e:
+                    logging.warning(f"[恢复账号] 恢复学校账号失败: {e}")
+            
+            # 恢复权限配置
+            if permissions_data:
+                if "user_groups" in permissions_data:
+                    auth_system.permissions.setdefault("user_groups", {})[restore_as] = permissions_data["user_groups"]
+                if "user_custom_permissions" in permissions_data:
+                    auth_system.permissions.setdefault("user_custom_permissions", {})[restore_as] = permissions_data["user_custom_permissions"]
+                auth_system._save_permissions()
+                logging.info(f"[恢复账号] 已恢复权限配置")
+            
+            # 更新 system_accounts/_index.json（使用 assigned_hash，可能已重新分配）
+            _update_system_accounts_index(restore_as, assigned_hash, "add")
+            
+            # 从 Remove_Acoount/_index.json 中移除该记录
+            del ra_index["removed_accounts"][auth_username]
+            ra_index["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(ra_index, f, indent=2, ensure_ascii=False)
+            
+            # 删除备份文件
+            try:
+                os.remove(backup_path)
+            except Exception as e:
+                logging.warning(f"[恢复账号] 删除备份文件失败: {e}")
+            
+            restored_note = f"（原用户名: {auth_username}）" if restore_as != auth_username else ""
+            phone_note = f"，手机号已{'清空' if not effective_phone else '修改'}" if effective_phone != original_phone else ""
+            logging.info(f"[恢复账号] 用户 {restore_as}{restored_note} 已成功恢复{phone_note}")
+            return jsonify({"success": True, "message": f"用户 {restore_as} 已成功恢复{phone_note}", "restored_as": restore_as})
+        
+        except Exception as e:
+            logging.error(f"[恢复账号] 恢复账号失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"恢复账号失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/removed_accounts", methods=["GET"])
+    @admin_required
+    def admin_list_removed_accounts():
+        """
+        管理员接口：列出所有已删除的账号记录。
+        从 Remove_Acoount/_index.json 读取。
+        """
+        try:
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
+            index_path = os.path.join(remove_account_dir, "_index.json")
+            
+            if not os.path.exists(index_path):
+                return jsonify({"success": True, "removed_accounts": {}})
+            
+            with open(index_path, "r", encoding="utf-8") as f:
+                ra_index = json.load(f)
+            
+            return jsonify({"success": True, "removed_accounts": ra_index.get("removed_accounts", {}), "updated_at": ra_index.get("updated_at", "")})
+        except Exception as e:
+            logging.error(f"[已删除账号] 获取列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取已删除账号列表失败: {str(e)}"}), 500
 
     @socketio.on("connect")
     def handle_connect():

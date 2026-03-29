@@ -17,7 +17,7 @@ services:
       #（例如修复跨文件系统操作、自动续期等）。如果不需要写入，请改为使用 :ro 以提高安全性。
       - ./ssl:/app/ssl
       # 配置文件挂载
-      - ./config.ini:/app/config.ini
+      # - ./config.ini:/app/config.ini
       # 数据持久化目录
       - ./cache:/app/cache
       - ./logs:/app/logs
@@ -33,6 +33,8 @@ services:
       - ./payment_methods.json:/app/payment_methods.json
       - ./configs:/app/configs
       - ./uploads:/app/uploads
+      - ./Remove_Acoount:/app/Remove_Acoount
+      - ./User_Billing:/app/User_Billing
 
     environment:
       - PYTHONUNBUFFERED=1
@@ -46,8 +48,8 @@ services:
         max-file: "3"    # 最多保留3个日志文件
         
     networks:
-      - app-network
+      - python-running-helper-network
 
 networks:
-  app-network:
+  python-running-helper-network:
     driver: bridge
