@@ -38251,7 +38251,6 @@ def start_web_server(args_param):
                 return_url=None,
                 client_app_host=client_app_host,
                 payment_type=payment_type,
-                user_id=g.user,
                 auth_code=None,
                 device_get=device,
             )
