@@ -11920,6 +11920,11 @@ class Api:
             if _exec_target_time_s <= 1.0:
                 _exec_target_time_s = sum(max(0.0, d) / 1000.0 for _, _, d in run_data.run_coords)
             _exec_target_time_s = max(1.0, _exec_target_time_s)
+            _exec_prefix_plan_s = [0.0]
+            _exec_acc_plan_s = 0.0
+            for _, _, _dur_ms in run_data.run_coords:
+                _exec_acc_plan_s += max(0.0, _dur_ms) / 1000.0
+                _exec_prefix_plan_s.append(_exec_acc_plan_s)
             _pid_kp = 4.80
             _pid_ki = 0.16
             _pid_kd = 1.80
@@ -11940,10 +11945,14 @@ class Api:
                     _elapsed_real_min = _elapsed_real_s / 60.0
                     _actual_sleep_s = dur_ms / 1000.0
                     if True:
-                        _expected_frac = _elapsed_real_s / _exec_target_time_s
-                        _actual_frac = point_index / _exec_total_points
+                        _planned_elapsed_s = min(
+                            _exec_target_time_s,
+                            _exec_prefix_plan_s[min(point_index, len(_exec_prefix_plan_s) - 1)],
+                        )
+                        _expected_frac = _planned_elapsed_s / _exec_target_time_s
+                        _actual_frac = _elapsed_real_s / _exec_target_time_s
                         _progress_diff = _actual_frac - _expected_frac
-                        _error = _expected_frac - _actual_frac
+                        _error = _progress_diff
                         _error_for_pid = _error if abs(_error) >= _pid_deadzone else 0.0
                         _pid_integral = max(-0.50, min(0.50, _pid_integral + _error_for_pid))
                         _pid_derivative = _error_for_pid - _pid_prev_error
@@ -15814,6 +15823,11 @@ class Api:
                 if _mr_target_time_s <= 1.0:
                     _mr_target_time_s = sum(max(0.0, d) / 1000.0 for _, _, d in run_data.run_coords)
                 _mr_target_time_s = max(1.0, _mr_target_time_s)
+                _mr_prefix_plan_s = [0.0]
+                _mr_acc_plan_s = 0.0
+                for _, _, _dur_ms in run_data.run_coords:
+                    _mr_acc_plan_s += max(0.0, _dur_ms) / 1000.0
+                    _mr_prefix_plan_s.append(_mr_acc_plan_s)
                 _mr_pid_kp = 4.80
                 _mr_pid_ki = 0.16
                 _mr_pid_kd = 1.80
@@ -15862,10 +15876,14 @@ class Api:
                         _mr_elapsed_real_min = _mr_elapsed_real_s / 60.0
                         _mr_actual_sleep_s = dur_ms / 1000.0
                         if True:
-                            _mr_expected_frac = _mr_elapsed_real_s / _mr_target_time_s
-                            _mr_actual_frac = _mr_exec_point_idx / total_points
+                            _mr_planned_elapsed_s = min(
+                                _mr_target_time_s,
+                                _mr_prefix_plan_s[min(_mr_exec_point_idx, len(_mr_prefix_plan_s) - 1)],
+                            )
+                            _mr_expected_frac = _mr_planned_elapsed_s / _mr_target_time_s
+                            _mr_actual_frac = _mr_elapsed_real_s / _mr_target_time_s
                             _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
-                            _mr_error = _mr_expected_frac - _mr_actual_frac
+                            _mr_error = _mr_progress_diff
                             _mr_error_for_pid = _mr_error if abs(_mr_error) >= _mr_pid_deadzone else 0.0
                             _mr_pid_integral = max(-0.50, min(0.50, _mr_pid_integral + _mr_error_for_pid))
                             _mr_pid_derivative = _mr_error_for_pid - _mr_pid_prev_error
