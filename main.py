@@ -18420,74 +18420,50 @@ class BackgroundTaskManager:
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
         """
-        # ========== 欠费检查前强制重新读取INI文件 ==========
-        # 步骤1：欠费检查（在启动任务前执行）
-        # 获取当前用户的认证用户名
-        auth_username = getattr(api_instance, 'auth_username', None)
-
-        # 如果能获取到用户名，进行欠费检查
+        # ========== 欠费检查（前后端双重校验中的后端校验） ==========
+        # - 单账号模式：仅检查当前学校账号
+        # - 多账号模式：检查当前多账号列表中的所有学校账号
+        auth_username = getattr(api_instance, "auth_username", None)
         if auth_username:
-            # 从 api_instance.user_info 获取学校账号用户名
-            # 注意：user_info 可能包含持久化会话中的旧数据
-            self.user_info = getattr(api_instance, "user_info", {})
-            school_username = self.user_info.get("student_id")
-
-            logging.debug(
-                f"检查用户 {auth_username} 的学校账号 {school_username} 是否存在欠费"
-            )
-
-            # --- 关键修复：强制从INI文件重新读取最新的统计数据 ---
-            # 原因：user_info 中可能包含缓存的旧数据
-            # 如果用户在程序运行期间通过欠费系统修改了INI文件，
-            # 而任务系统仍使用缓存的 user_info，就会导致数据不同步
-            # 解决方案：每次启动任务前，都从INI文件实时读取最新的欠费状态
-
-            # 初始化欠费账号列表（用于记录所有存在欠费的账号）
             overdue_accounts_list = []
+            target_school_usernames = []
 
-            # 调用 _load_school_account_stats_from_ini() 方法
-            # 此方法会直接打开INI文件读取，不依赖任何缓存
-            # 返回格式：{"overdue_count": int, "completed_count": int}
-            stats = api_instance._load_school_account_stats_from_ini(
-                school_username)
+            try:
+                if getattr(api_instance, "is_multi_account_mode", False):
+                    target_school_usernames = list(
+                        (getattr(api_instance, "accounts", {}) or {}).keys()
+                    )
+                else:
+                    current_user_info = getattr(api_instance, "user_info", {}) or {}
+                    current_school_username = str(
+                        current_user_info.get("student_id", "") or ""
+                    ).strip()
+                    if current_school_username:
+                        target_school_usernames = [current_school_username]
+            except Exception as e:
+                logging.warning(f"[欠费检查] 获取目标账号列表失败: {e}")
+                target_school_usernames = []
 
-            # 从返回的统计数据中提取欠费次数
-            # 使用 .get() 方法并指定默认值 0，防止键不存在时报错
-            overdue_count = stats.get("overdue_count", 0)
+            for school_username in target_school_usernames:
+                stats = api_instance._load_school_account_stats_from_ini(school_username)
+                overdue_count = stats.get("overdue_count", 0)
+                if overdue_count > 0:
+                    overdue_accounts_list.append(
+                        {
+                            "school_username": school_username,
+                            "overdue_count": overdue_count,
+                        }
+                    )
 
-            # 记录日志：显示从INI文件读取到的欠费次数
-            # 这有助于追踪数据同步问题
-            logging.info(
-                f"从INI文件读取到最新数据 - "
-                f"学校账号: {school_username}, 欠费次数: {overdue_count}"
-            )
-
-            # 如果存在欠费（overdue_count > 0），记录到欠费账号列表中
-            if overdue_count > 0:
-                overdue_accounts_list.append({
-                    "school_username": school_username,  # 学校账号用户名
-                    "overdue_count": overdue_count       # 欠费次数
-                })
-
-                # 记录警告日志：发现欠费账号
-                logging.warning(
-                    f"发现欠费账号 - "
-                    f"学校账号: {school_username}, 欠费次数: {overdue_count}"
-                )
-
-            # 如果发现任何账号有欠费，拒绝启动任务
             if overdue_accounts_list:
-                # 记录警告日志：拒绝启动任务（包含欠费账号数量）
                 logging.warning(
                     f"[欠费检查] 用户 {auth_username} 有 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
                 )
-
-                # 返回失败响应，包含详细的错误信息和欠费账号列表
                 return {
-                    "success": False,                       # 操作失败标志
-                    "message": "有账号存在欠费，请先缴费",   # 用户友好的错误消息
-                    "error_code": "OVERDUE_PAYMENT",        # 错误代码，前端可据此识别错误类型
-                    "overdue_accounts": overdue_accounts_list  # 欠费账号详细列表
+                    "success": False,
+                    "message": "有账号存在欠费，请先缴费",
+                    "error_code": "OVERDUE_PAYMENT",
+                    "overdue_accounts": overdue_accounts_list,
                 }
 
         # 步骤2：启动任务（没有欠费问题）
