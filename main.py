@@ -3042,8 +3042,24 @@ def _write_config_with_comments(config_obj, filepath):
             config_obj._path = filepath
             config_obj.save()
         else:
-            # 将 configparser 对象序列化为 JSON
+            # 将 configparser 对象序列化为 JSON（合并写入，避免覆盖未修改配置）
             data = {}
+            try:
+                if os.path.exists(filepath):
+                    with open(filepath, "r", encoding="utf-8") as _jf:
+                        existing_data = json.load(_jf)
+                    if isinstance(existing_data, dict):
+                        for _sec, _opts in existing_data.items():
+                            if isinstance(_opts, dict):
+                                data[_sec] = {
+                                    _k: str(_v) for _k, _v in _opts.items()
+                                }
+                            else:
+                                data[_sec] = {}
+            except Exception as _merge_err:
+                logging.warning(
+                    f"[配置写入] 读取现有 JSON 配置用于合并失败，将继续仅写入传入配置: {_merge_err}"
+                )
             for sec in config_obj.sections():
                 data[sec] = dict(config_obj.items(sec))
             os.makedirs(os.path.dirname(os.path.abspath(filepath)) if os.path.dirname(os.path.abspath(filepath)) else ".", exist_ok=True)
