@@ -55232,7 +55232,7 @@ async function showOverduePaymentModal(overdueAccounts) {
   const totalAmount = pendingBills.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0).toFixed(2);
 
   // 点击卡片/行切换选中状态并更新合计
-  const updateTotal = `document.getElementById('overdue-total-amount').textContent='¥'+[...document.querySelectorAll('[data-overdue-bill-select="1"]')].filter(c=>c.checked).reduce((s,c)=>s+parseFloat(c.dataset.amount||0),0).toFixed(2);`;
+  const updateTotal = `document.getElementById('overdue-total-amount').textContent='¥'+[...document.querySelectorAll('[data-overdue-bill-select]')].filter(c=>c.checked).reduce((s,c)=>s+parseFloat(c.dataset.amount||0),0).toFixed(2);`;
 
   let bodyHtml, modalWidth;
 
@@ -55327,9 +55327,6 @@ async function showOverduePaymentModal(overdueAccounts) {
             <div class="truncate" title="${safeReason}">${safeReason}</div>
           </td>
           <td class="py-2.5 px-2 text-sm font-semibold text-amber-600 whitespace-nowrap">${fmtAmount}</td>
-          <td class="py-2.5 px-2">
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">⏳ 待支付</span>
-          </td>
           <td class="py-2.5 px-2 text-xs text-slate-400 whitespace-nowrap">${fmtTime}</td>
         </tr>`;
     }).join("");
@@ -55344,13 +55341,12 @@ async function showOverduePaymentModal(overdueAccounts) {
                 <tr class="bg-slate-100 sticky top-0 z-10">
                   <th class="py-2.5 pl-3 pr-2 w-8">
                     <input type="checkbox" checked
-                      onclick="document.querySelectorAll('[data-overdue-bill-select=\\"1\\"]').forEach(c=>c.checked=this.checked);${updateTotal}"
+                      onclick="document.querySelectorAll('[data-overdue-bill-select]').forEach(c=>c.checked=this.checked);${updateTotal}"
                       class="w-4 h-4 accent-blue-500">
                   </th>
                   <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">学校账号 / 姓名</th>
                   <th class="py-2.5 px-2 font-semibold text-slate-600">原因</th>
                   <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">金额</th>
-                  <th class="py-2.5 px-2 font-semibold text-slate-600">状态</th>
                   <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">创建时间</th>
                 </tr>
               </thead>
@@ -55383,7 +55379,7 @@ async function showOverduePaymentModal(overdueAccounts) {
 
   // 收集选中的账单
   const selectedBills = [];
-  document.querySelectorAll('[data-overdue-bill-select="1"]').forEach((cb) => {
+  document.querySelectorAll('[data-overdue-bill-select]').forEach((cb) => {
     if (cb.checked) {
       selectedBills.push({
         billing_id: cb.dataset.billingId,
@@ -57639,7 +57635,7 @@ function _renderBillingTableCommon(records, opts = {}) {
   html += `<table class="${tableClass}">`;
   html += `<thead><tr class="bg-slate-100">`;
   html += `<th class="p-2 text-center w-10"><input type="checkbox" onclick="toggleBillingSelectAll('${containerId}', this.checked)"></th>`;
-  html += `<th class="p-2 text-left whitespace-nowrap">学校账号</th><th class="p-2 text-left whitespace-nowrap">姓名</th><th class="p-2 text-left whitespace-nowrap">原因</th><th class="p-2 text-left whitespace-nowrap">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left whitespace-nowrap">创建时间</th><th class="p-2 text-left whitespace-nowrap">支付时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
+  html += `<th class="p-2 text-left">学校账号</th><th class="p-2 text-left">姓名</th><th class="p-2 text-left">原因</th><th class="p-2 text-left">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left">创建时间</th><th class="p-2 text-left">支付时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
   html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
   records.forEach((r) => {
     const billingId = _escapeAttr(r.billing_id || "");
@@ -57651,13 +57647,13 @@ function _renderBillingTableCommon(records, opts = {}) {
     const canPay = r.status === "pending";
     html += `<tr class="hover:bg-slate-50">`;
     html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-school-name="${schoolName}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" data-created-at="${_escapeAttr(r.created_at || "")}" ${canPay ? "" : "disabled"}></td>`;
-    html += `<td class="p-2 whitespace-nowrap text-slate-800">${school}</td>`;
-    html += `<td class="p-2 whitespace-nowrap text-slate-600">${schoolName}</td>`;
+    html += `<td class="p-2 text-slate-800">${school}</td>`;
+    html += `<td class="p-2 text-slate-600">${schoolName}</td>`;
     html += `<td class="p-2">${reason}</td>`;
-    html += `<td class="p-2 whitespace-nowrap">${amount}</td>`;
-    html += `<td class="p-2">${statusBadge}</td>`;
-    html += `<td class="p-2 whitespace-nowrap">${_escapeAttr(_fmtBillTime(r.created_at))}</td>`;
-    html += `<td class="p-2 whitespace-nowrap">${_escapeAttr(_fmtBillTime(r.paid_at))}</td>`;
+    html += `<td class="p-2">${amount}</td>`;
+    html += `<td class="p-2 whitespace-nowrap">${statusBadge}</td>`;
+    html += `<td class="p-2">${_escapeAttr(_fmtBillTime(r.created_at))}</td>`;
+    html += `<td class="p-2">${_escapeAttr(_fmtBillTime(r.paid_at))}</td>`;
     html += `<td class="p-2 whitespace-nowrap">`;
     if (canPay) {
       html += `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 ${isMobile ? "text-[11px]" : "text-xs"} text-emerald-700" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`;
@@ -57911,16 +57907,16 @@ async function loadAdminBillingList(usernameOverride = null) {
       </div>
       <div class="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
         <div class="overflow-x-auto">
-          <table class="w-full text-xs">
+          <table class="w-full text-xs" id="admin-billing-table">
             <thead>
               <tr class="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600">
-                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">学校账号</th>
-                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">姓名</th>
-                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">原因/描述</th>
-                <th class="px-3 py-2.5 text-right font-semibold whitespace-nowrap">金额</th>
-                <th class="px-3 py-2.5 text-center font-semibold whitespace-nowrap">状态</th>
-                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">创建时间</th>
-                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">支付时间</th>
+                <th class="px-3 py-2.5 text-left font-semibold">学校账号</th>
+                <th class="px-3 py-2.5 text-left font-semibold">姓名</th>
+                <th class="px-3 py-2.5 text-left font-semibold">原因/描述</th>
+                <th class="px-3 py-2.5 text-right font-semibold">金额</th>
+                <th class="px-3 py-2.5 text-center font-semibold admin-status-th whitespace-nowrap">状态</th>
+                <th class="px-3 py-2.5 text-left font-semibold">创建时间</th>
+                <th class="px-3 py-2.5 text-left font-semibold">支付时间</th>
                 <th class="px-3 py-2.5 text-center font-semibold whitespace-nowrap">操作</th>
               </tr>
             </thead>
@@ -57941,9 +57937,9 @@ async function loadAdminBillingList(usernameOverride = null) {
         <td class="px-3 py-2.5 text-slate-600">${schoolName}</td>
         <td class="px-3 py-2.5 text-slate-600">${_escapeAttr(r.reason || "-")}</td>
         <td class="px-3 py-2.5 text-right font-semibold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + _escapeAttr(r.amount) : "-"}</td>
-        <td class="px-3 py-2.5 text-center">${statusBadge}</td>
-        <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
-        <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
+        <td class="px-3 py-2.5 text-center admin-status-td whitespace-nowrap">${statusBadge}</td>
+        <td class="px-3 py-2.5 text-slate-500">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
+        <td class="px-3 py-2.5 text-slate-500">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-center">
           <div class="flex items-center justify-center gap-1.5">
             <button onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(r.school_username || "")})'
@@ -57961,6 +57957,24 @@ async function loadAdminBillingList(usernameOverride = null) {
       html += `<p class="text-xs text-slate-400 mt-2 text-right">其中 ${clearedCount} 条已由管理员清除</p>`;
     }
     container.innerHTML = html;
+    // 动态控制「状态」列换行：当容器宽度 < 5× 状态列（不换行）宽度时允许换行
+    (function () {
+      const statusCells = container.querySelectorAll(".admin-status-td, .admin-status-th");
+      if (!statusCells.length) return;
+      const applyWrap = () => {
+        const containerW = container.getBoundingClientRect().width;
+        // 先强制不换行以量出自然宽度
+        statusCells.forEach(c => { c.style.whiteSpace = "nowrap"; });
+        const statusW = statusCells[0].getBoundingClientRect().width;
+        const wrap = containerW > 0 && containerW < 5 * statusW;
+        statusCells.forEach(c => { c.style.whiteSpace = wrap ? "" : "nowrap"; });
+      };
+      applyWrap();
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(applyWrap);
+        ro.observe(container);
+      }
+    })();
   } catch (e) {
     container.innerHTML = `<div class="flex items-center gap-2 text-red-500 bg-red-50 border border-red-200 rounded-lg p-3 text-sm"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>加载异常：${e.message}</span></div>`;
   }
