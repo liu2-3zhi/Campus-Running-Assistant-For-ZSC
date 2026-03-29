@@ -12088,7 +12088,7 @@ class Api:
                 f"Submission thread finished for task: {run_data.run_name}")
 
     def _get_path_for_distance(self, path, cumulative_distances, target_dist):
-        """如果路径总长不足，则通过末段折返策略凑足目标距离"""
+        """如果路径总长不足，则在末段提前折返凑足目标距离"""
         total_len = cumulative_distances[-1]
         final_path = list(path)
         if total_len <= 0 or total_len >= target_dist:
@@ -12120,17 +12120,19 @@ class Api:
         if step_a <= 0 or step_b <= 0:
             return final_path
 
+        # 关键修正：不要先跑到终点再折返，而是在“最后50m(或2/3)”处提前开始补距
+        cut_idx = bisect.bisect_left(cumulative_distances, near_d)
+        final_path = list(path[:cut_idx])
         near_pt = _point_at(near_d)
         far_pt = _point_at(far_d)
         end_pt = path[-1]
 
         added = 0.0
 
-        # 先到最后50m（或2/3）点
+        # 先到最后50m（或2/3）点，再回到最后100m（或1/3）点
         _append_if_new(near_pt)
         added += step_a
 
-        # 再到最后100m（或1/3）点
         if added < remaining:
             _append_if_new(far_pt)
             added += step_b
