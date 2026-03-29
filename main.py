@@ -43899,17 +43899,24 @@ def start_web_server(args_param):
 
             def _load_school_name(_school_username: str) -> str:
                 try:
-                    backup_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username)
-                    backup_file = os.path.join(
-                        backup_dir, f"{_school_username}_backup.json"
-                    )
-                    if os.path.exists(backup_file):
-                        with open(backup_file, "r", encoding="utf-8") as f:
-                            backup_data = json.load(f)
-                        return (
-                            ((backup_data.get("userInfo") or {}).get("name") or "").strip()
-                            or _school_username
-                        )
+                    for _backup_path in [
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username, f"{_school_username}_backup.json"),
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, f"{_school_username}_backup.json"),
+                    ]:
+                        if os.path.exists(_backup_path):
+                            try:
+                                with open(_backup_path, "r", encoding="utf-8") as f:
+                                    backup_data = json.load(f)
+                                _name = (
+                                    ((backup_data.get("userInfo") or {}).get("name") or "").strip()
+                                    or ((backup_data.get("deptInfo") or {}).get("name") or "").strip()
+                                )
+                                if _name:
+                                    return _name
+                            except Exception as _name_err:
+                                logging.warning(
+                                    f"[账单列表] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                                )
                 except Exception as _name_err:
                     logging.warning(
                         f"[账单列表] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
@@ -43983,17 +43990,24 @@ def start_web_server(args_param):
 
             def _load_admin_school_name(_school_username: str) -> str:
                 try:
-                    backup_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username)
-                    backup_file = os.path.join(
-                        backup_dir, f"{_school_username}_backup.json"
-                    )
-                    if os.path.exists(backup_file):
-                        with open(backup_file, "r", encoding="utf-8") as f:
-                            backup_data = json.load(f)
-                        return (
-                            ((backup_data.get("userInfo") or {}).get("name") or "").strip()
-                            or _school_username
-                        )
+                    for _backup_path in [
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username, f"{_school_username}_backup.json"),
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, f"{_school_username}_backup.json"),
+                    ]:
+                        if os.path.exists(_backup_path):
+                            try:
+                                with open(_backup_path, "r", encoding="utf-8") as f:
+                                    backup_data = json.load(f)
+                                _name = (
+                                    ((backup_data.get("userInfo") or {}).get("name") or "").strip()
+                                    or ((backup_data.get("deptInfo") or {}).get("name") or "").strip()
+                                )
+                                if _name:
+                                    return _name
+                            except Exception as _name_err:
+                                logging.warning(
+                                    f"[管理员账单] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                                )
                 except Exception as _name_err:
                     logging.warning(
                         f"[管理员账单] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
