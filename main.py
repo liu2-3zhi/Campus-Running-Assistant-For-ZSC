@@ -18423,8 +18423,15 @@ class BackgroundTaskManager:
         # ========== 欠费检查（前后端双重校验中的后端校验） ==========
         # - 单账号模式：仅检查当前学校账号
         # - 多账号模式：检查当前多账号列表中的所有学校账号
+        config = _read_config_ini()
+        require_payment = True
+        if config is not None:
+            require_payment = config.getboolean(
+                "Payment_Settings", "require_payment", fallback=True
+            )
+
         auth_username = getattr(api_instance, "auth_username", None)
-        if auth_username:
+        if require_payment and auth_username:
             overdue_accounts_list = []
             target_school_usernames = []
 
@@ -32304,6 +32311,89 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "未指定任务"}), 400
 
         api_instance = web_sessions[session_id]
+
+        # 接口级欠费校验（防止前端绕过）
+        # - 单账号模式：优先检查请求中的 school_username；未传则检查当前账号
+        # - 多账号模式：优先检查请求中的 school_usernames；未传则检查已添加账号列表
+        # - 仅在 require_payment 开启时拦截
+        try:
+            config = _read_config_ini()
+            require_payment = True
+            if config is not None:
+                require_payment = config.getboolean(
+                    "Payment_Settings", "require_payment", fallback=True
+                )
+
+            if require_payment:
+                def _normalize_target_usernames(single_input, multi_input):
+                    targets = []
+                    if isinstance(single_input, str) and single_input.strip():
+                        targets.append(single_input.strip())
+                    elif isinstance(multi_input, list):
+                        targets.extend(
+                            str(u).strip()
+                            for u in multi_input
+                            if str(u).strip()
+                        )
+                    elif isinstance(multi_input, str):
+                        targets.extend(
+                            s.strip() for s in multi_input.split(",") if s.strip()
+                        )
+                    return list(dict.fromkeys(targets))
+
+                target_usernames = _normalize_target_usernames(
+                    data.get("school_username"), data.get("school_usernames")
+                )
+
+                if not target_usernames:
+                    if getattr(api_instance, "is_multi_account_mode", False):
+                        target_usernames = list(
+                            (getattr(api_instance, "accounts", {}) or {}).keys()
+                        )
+                    else:
+                        current_user_info = getattr(api_instance, "user_info", {}) or {}
+                        current_school_username = str(
+                            current_user_info.get("student_id", "") or ""
+                        ).strip()
+                        if current_school_username:
+                            target_usernames = [current_school_username]
+
+                auth_username = getattr(api_instance, "auth_username", "") or ""
+                if auth_username:
+                    allowed_accounts = (
+                        api_instance._load_user_school_accounts(auth_username) or {}
+                    )
+                    allowed_usernames = set(allowed_accounts.keys())
+                    target_usernames = [
+                        u for u in target_usernames if u in allowed_usernames
+                    ]
+
+                overdue_accounts = []
+                for school_username in target_usernames:
+                    stats = api_instance._load_school_account_stats_from_ini(school_username)
+                    overdue_count = int(stats.get("overdue_count", 0) or 0)
+                    if overdue_count > 0:
+                        overdue_accounts.append(
+                            {
+                                "school_username": school_username,
+                                "overdue_count": overdue_count,
+                            }
+                        )
+
+                if overdue_accounts:
+                    return jsonify(
+                        {
+                            "success": False,
+                            "message": "有账号存在欠费，请先缴费",
+                            "error_code": "OVERDUE_PAYMENT",
+                            "overdue_accounts": overdue_accounts,
+                        }
+                    )
+        except Exception as overdue_check_error:
+            logging.warning(
+                f"[后台任务启动] 接口级欠费校验失败，将继续执行原有流程: {overdue_check_error}"
+            )
+
         result = background_task_manager.start_background_task(
             session_id, api_instance, task_indices, auto_generate
         )
@@ -43694,6 +43784,30 @@ def start_web_server(args_param):
                 target_schools = sorted(allowed_schools)
 
             records = []
+
+            def _load_school_name(_school_username: str) -> str:
+                try:
+                    backup_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username)
+                    backup_file = os.path.join(
+                        backup_dir, f"{_school_username}_backup.json"
+                    )
+                    if os.path.exists(backup_file):
+                        with open(backup_file, "r", encoding="utf-8") as f:
+                            backup_data = json.load(f)
+                        return (
+                            ((backup_data.get("userInfo") or {}).get("name") or "").strip()
+                            or _school_username
+                        )
+                except Exception as _name_err:
+                    logging.warning(
+                        f"[账单列表] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                    )
+                return _school_username
+
+            school_name_map = {
+                school: _load_school_name(school) for school in target_schools
+            }
+
             for school in target_schools:
                 user_billing_dir = os.path.join(billing_root, school)
                 if not os.path.isdir(user_billing_dir):
@@ -43705,6 +43819,9 @@ def start_web_server(args_param):
                     try:
                         with open(filepath, "r", encoding="utf-8") as f:
                             record = json.load(f)
+                        record["school_name"] = school_name_map.get(
+                            school, school
+                        )
                         records.append(record)
                     except Exception as e:
                         logging.warning(f"[账单列表] 读取账单文件 {filename} 失败: {e}")

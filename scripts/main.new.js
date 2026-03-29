@@ -35912,12 +35912,14 @@ async function toggleRun() {
       updateDashboard();
       drawMarkers();
     }
+    const currentSchoolUsername = String(currentUserData?.student_id || "").trim();
     const result = await callPythonAPI_raw(
       "/api/background_task/start",
       "POST",
       {
         task_indices: [selectedTaskIndex],
         auto_generate: autoGen,
+        school_username: currentSchoolUsername || undefined,
       },
     );
 
@@ -36009,14 +36011,34 @@ async function toggleAllRuns() {
       updateDashboard();
       drawMarkers();
     }
+    const multiUsernames = _isInMultiAccountModeForOverdueCheck()
+      ? _getMultiAccountListUsernames()
+      : [];
+    const currentSchoolUsername = String(currentUserData?.student_id || "").trim();
     const result = await callPythonAPI_raw(
       "/api/background_task/start",
       "POST",
       {
         task_indices: taskIndices,
         auto_generate: autoGen,
+        school_usernames: multiUsernames.length ? multiUsernames : undefined,
+        school_username:
+          !multiUsernames.length && currentSchoolUsername
+            ? currentSchoolUsername
+            : undefined,
       },
     );
+    if (!result.success && result.error_code === "OVERDUE_PAYMENT") {
+      let overdueList = "";
+      if (result.overdue_accounts && result.overdue_accounts.length > 0) {
+        overdueList = result.overdue_accounts
+          .map((acc) => `${acc.school_username} (欠费${acc.overdue_count}次)`)
+          .join("\n");
+      }
+      const message = `检测到以下账号存在欠费：\n\n${overdueList}\n\n请先完成缴费后再执行任务。`;
+      showModalAlert(message, "欠费提示");
+      return;
+    }
     if (result.success) {
       btn.textContent = "全部停止";
       btn.classList.remove("btn-secondary");
@@ -57294,6 +57316,12 @@ function _billStatusBadge(status) {
   return "<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 text-[11px]\">⏳ 待支付</span>";
 }
 
+function _billStatusText(status) {
+  if (status === "paid") return "已支付";
+  if (status === "admin_cleared") return "管理员清除";
+  return "待支付";
+}
+
 function _collectSelectedBillingItems(containerId) {
   const root = document.getElementById(containerId);
   if (!root) return [];
@@ -57316,26 +57344,34 @@ function _buildBillingSelectionDetailHtml(containerId, items) {
   const rows = (items || []).map((item, idx) => {
     const billingId = String(item?.billing_id || "").trim();
     const schoolUsername = String(item?.school_username || "").trim();
+    let schoolName = "-";
     let reason = "-";
     let amount = "-";
     let status = "-";
+    let createdAt = "-";
     const el = selectedInputs.find(
       (input) =>
         String(input.getAttribute("data-billing-id") || "").trim() === billingId &&
         String(input.getAttribute("data-school-username") || "").trim() === schoolUsername,
     );
     if (el) {
+      schoolName = (el.getAttribute("data-school-name") || "-").trim() || "-";
       reason = (el.getAttribute("data-reason") || "-").trim() || "-";
       amount = (el.getAttribute("data-amount") || "-").trim() || "-";
-      status = (el.getAttribute("data-status") || "-").trim() || "-";
+      status = _billStatusText((el.getAttribute("data-status") || "-").trim() || "-");
+      createdAt = (el.getAttribute("data-created-at") || "-").trim() || "-";
     }
-    return `<div class="text-left border border-slate-200 rounded-lg px-2 py-1.5 ${
+    return `<div class="text-left border border-slate-200 rounded-xl p-2.5 bg-slate-50 ${
       idx > 0 ? "mt-1.5" : ""
     }">
-      <div class="text-[11px] text-slate-500">学校账号：${_escapeAttr(schoolUsername || "-")}</div>
-      <div class="text-xs text-slate-800 break-all">账单ID：${_escapeAttr(billingId || "-")}</div>
-      <div class="text-xs text-slate-700 break-all mt-0.5">原因：${_escapeAttr(reason)}</div>
-      <div class="text-xs text-slate-700 mt-0.5">金额：${_escapeAttr(amount)}，状态：${_escapeAttr(status)}</div>
+      <div class="grid grid-cols-1 gap-1.5">
+        <div class="text-xs text-slate-800"><span class="text-slate-500">学校账号对应姓名：</span>${_escapeAttr(schoolName)}</div>
+        <div class="text-xs text-slate-800 break-all"><span class="text-slate-500">学校账号：</span>${_escapeAttr(schoolUsername || "-")}</div>
+        <div class="text-xs text-slate-700"><span class="text-slate-500">欠费账单创建时间：</span>${_escapeAttr(_fmtBillTime(createdAt))}</div>
+        <div class="text-xs text-slate-700 break-all"><span class="text-slate-500">欠费账单描述：</span>${_escapeAttr(reason)}</div>
+        <div class="text-xs text-slate-700"><span class="text-slate-500">欠费状态：</span>${_escapeAttr(status)}</div>
+        <div class="text-[11px] text-slate-500 break-all">账单ID：${_escapeAttr(billingId || "-")}，金额：${_escapeAttr(amount)}</div>
+      </div>
     </div>`;
   });
   return rows.join("");
@@ -57346,6 +57382,7 @@ function _renderMobileUserBillingCards(records, containerId) {
   records.forEach((r) => {
     const billingId = _escapeAttr(r.billing_id || "");
     const school = _escapeAttr(r.school_username || "-");
+    const schoolName = _escapeAttr(r.school_name || r.school_username || "-");
     const reason = _escapeAttr(r.reason || "-");
     const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
     const canPay = r.status === "pending";
@@ -57353,11 +57390,13 @@ function _renderMobileUserBillingCards(records, containerId) {
       <div class="bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
         <div class="flex items-start justify-between gap-2 mb-2">
           <div class="min-w-0">
-            <div class="text-[11px] text-slate-500">学校账号</div>
+            <div class="text-[11px] text-slate-500">学校账号对应姓名</div>
+            <div class="text-xs font-semibold text-slate-800 break-all">${schoolName}</div>
+            <div class="text-[11px] text-slate-500 mt-1">学校账号</div>
             <div class="text-xs font-semibold text-slate-800 break-all">${school}</div>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0">
-            <input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" ${canPay ? "" : "disabled"}>
+            <input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-school-name="${schoolName}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" data-created-at="${_escapeAttr(r.created_at || "")}" ${canPay ? "" : "disabled"}>
             ${_billStatusBadge(r.status)}
           </div>
         </div>
@@ -57403,13 +57442,14 @@ function _renderBillingTableCommon(records, opts = {}) {
   records.forEach((r) => {
     const billingId = _escapeAttr(r.billing_id || "");
     const school = _escapeAttr(r.school_username || "-");
+    const schoolName = _escapeAttr(r.school_name || r.school_username || "-");
     const reason = _escapeAttr(r.reason || "-");
     const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
     const statusBadge = _billStatusBadge(r.status);
     const canPay = r.status === "pending";
     html += `<tr class="hover:bg-slate-50">`;
-    html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" ${canPay ? "" : "disabled"}></td>`;
-    html += `<td class="p-2 whitespace-nowrap">${school}</td>`;
+    html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-school-name="${schoolName}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" data-created-at="${_escapeAttr(r.created_at || "")}" ${canPay ? "" : "disabled"}></td>`;
+    html += `<td class="p-2 whitespace-nowrap"><div class="text-slate-800">${schoolName}</div><div class="text-[11px] text-slate-500">${school}</div></td>`;
     html += `<td class="p-2">${reason}</td>`;
     html += `<td class="p-2 whitespace-nowrap">${amount}</td>`;
     html += `<td class="p-2">${statusBadge}</td>`;
