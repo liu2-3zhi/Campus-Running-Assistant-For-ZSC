@@ -45081,13 +45081,13 @@ async function initMobileAdminPanel(prefix) {
     // 功能：显示欠费账号列表，按欠费次数排序
     // 权限：管理员（admin）和超级管理员（super_admin）
     // ========================================
-    {
-      id: "overdue", // 标签ID，用于标识和切换面板
-      label: "欠费查询", // 标签显示的文本
-      // 警告图标：表示欠费/异常状态
-      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
-      permission: "admin", // 权限要求：管理员级别
-    },
+    // {
+    //   id: "overdue", // 标签ID，用于标识和切换面板
+    //   label: "欠费查询", // 标签显示的文本
+    //   // 警告图标：表示欠费/异常状态
+    //   icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+    //   permission: "admin", // 权限要求：管理员级别
+    // },
     // ========================================
     // 支付历史标签
     // 移动端支付历史面板的标签，与PC端功能对应
