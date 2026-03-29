@@ -223,14 +223,14 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location /socket.io/ {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
             # 任务2修改：使用map变量智能选择X-Forwarded-For的值
             # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
-            proxy_set_header X-Forwarded-For \$real_forwarded_for;
-            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header X-Forwarded-For $real_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
             proxy_buffering off;
             proxy_read_timeout 86400;
         }
@@ -239,12 +239,12 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location ~ ^/(api|auth|logs|cdn-cache|avatar|system-announcement)/ {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
             # 任务2修改：使用map变量智能选择X-Forwarded-For的值
             # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
-            proxy_set_header X-Forwarded-For \$real_forwarded_for;
-            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header X-Forwarded-For $real_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
             proxy_buffering off;
             proxy_read_timeout 300;
             proxy_connect_timeout 300;
@@ -283,12 +283,12 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location @backend {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
             # 任务2修改：使用map变量智能选择X-Forwarded-For的值
             # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
-            proxy_set_header X-Forwarded-For \$real_forwarded_for;
-            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header X-Forwarded-For $real_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
         }
 LOCATIONS_EOF
 
