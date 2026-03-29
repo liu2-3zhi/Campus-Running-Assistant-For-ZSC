@@ -11920,7 +11920,7 @@ class Api:
             _pid_kp = 3.20
             _pid_ki = 0.08
             _pid_kd = 1.35
-            _pid_deadzone = 0.02
+            _pid_deadzone = 0.010
             _pid_integral = 0.0
             _pid_prev_error = 0.0
 
@@ -11971,7 +11971,8 @@ class Api:
                         else:
                             logging.debug(
                                 f"进度正常(±{_pid_deadzone:.0%}): 实际进度={_actual_frac:.2%}, "
-                                f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}"
+                                f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}，"
+                                f"PID={_pid_out:.4f}, 等待时间={_actual_sleep_s:.2f}s"
                             )
                             
                     else:
@@ -15810,7 +15811,7 @@ class Api:
                 _mr_pid_kp = 3.20
                 _mr_pid_ki = 0.08
                 _mr_pid_kd = 1.35
-                _mr_pid_deadzone = 0.02
+                _mr_pid_deadzone = 0.010
                 _mr_pid_integral = 0.0
                 _mr_pid_prev_error = 0.0
 
@@ -15892,7 +15893,8 @@ class Api:
                                 logging.debug(
                                     f"[{acc.username}] 进度正常(±{_mr_pid_deadzone:.0%}): "
                                     f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
-                                    f"差值={_mr_progress_diff:.2%}"
+                                    f"差值={_mr_progress_diff:.2%}，"
+                                    f"PID={_mr_pid_out:.4f}, 等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
                         else:
                             logging.debug(
