@@ -42559,6 +42559,8 @@ def start_web_server(args_param):
 
             # 处理筛选逻辑：将输入统一转换为集合（若未指定则为空集合，表示不过滤）
             target_usernames = set(school_username_input) if school_username_input is not None else set()
+            
+            logging.info(f"[欠费检查] 规范化后的目标学校账号列表: {target_usernames}")
 
             # 获取当前认证用户名
             auth_username = g.user
@@ -42579,11 +42581,15 @@ def start_web_server(args_param):
                 else:
                     # 用户未指定账号：只返回其自己权限范围内的账号数据
                     target_usernames = set(user_school_accounts.keys())
+                    
+            logging.info(f"[欠费检查] 最终有效的目标学校账号列表: {target_usernames}")
 
             # 获取该认证用户的所有学校账号配置
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
             school_accounts = g.api_instance._load_user_school_accounts(
                 auth_username)
+            
+            logging.info(f"[欠费检查] 加载到的学校账号数据: {school_accounts}")
 
             # 如果没有学校账号，直接返回无欠费
             if not school_accounts:
