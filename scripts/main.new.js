@@ -57472,7 +57472,7 @@ function _buildBillingSelectionDetailHtml(containerId, items) {
 }
 
 function _renderMobileUserBillingCards(records, containerId) {
-  let html = `<div class="space-y-2.5">`;
+  let html = `<div class="space-y-3">`;
   records.forEach((r) => {
     const billingId = _escapeAttr(r.billing_id || "");
     const school = _escapeAttr(r.school_username || "-");
@@ -57481,38 +57481,58 @@ function _renderMobileUserBillingCards(records, containerId) {
     const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
     const canPay = r.status === "pending";
     html += `
-      <div class="bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
-        <div class="flex items-start justify-between gap-2 mb-2">
-          <div class="min-w-0">
-            <div class="text-[11px] text-slate-500">学校账号对应姓名</div>
-            <div class="text-xs font-semibold text-slate-800 break-all">${schoolName}</div>
-            <div class="text-[11px] text-slate-500 mt-1">学校账号</div>
-            <div class="text-xs font-semibold text-slate-800 break-all">${school}</div>
+      <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <!-- 顶栏：复选框在最左 + 状态徽章在最右 -->
+        <div class="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-200">
+          <input
+            type="checkbox"
+            data-billing-select="1"
+            data-billing-id="${billingId}"
+            data-school-username="${school}"
+            data-school-name="${schoolName}"
+            data-reason="${reason}"
+            data-amount="${amount}"
+            data-status="${_escapeAttr(r.status || "-")}"
+            data-created-at="${_escapeAttr(r.created_at || "")}"
+            class="w-4 h-4 flex-shrink-0 accent-emerald-500"
+            ${canPay ? "" : "disabled"}
+          >
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] text-slate-500 leading-none mb-0.5">学校账号</div>
+            <div class="text-xs font-semibold text-slate-800 truncate">${school}</div>
           </div>
-          <div class="flex items-center gap-1.5 flex-shrink-0">
-            <input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-school-name="${schoolName}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" data-created-at="${_escapeAttr(r.created_at || "")}" ${canPay ? "" : "disabled"}>
-            ${_billStatusBadge(r.status)}
-          </div>
+          <div class="flex-shrink-0">${_billStatusBadge(r.status)}</div>
         </div>
-        <div class="grid grid-cols-2 gap-2 text-[11px]">
-          <div class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
-            <div class="text-slate-500">金额</div>
-            <div class="text-slate-800 font-medium">${amount}</div>
+        <!-- 内容区 -->
+        <div class="px-3 pt-2.5 pb-3">
+          <!-- 姓名行 -->
+          <div class="flex items-center gap-1.5 mb-2">
+            <span class="text-[11px] text-slate-500 flex-shrink-0">姓名</span>
+            <span class="text-xs font-medium text-slate-700 truncate">${schoolName}</span>
           </div>
-          <div class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
-            <div class="text-slate-500">创建时间</div>
-            <div class="text-slate-800">${_escapeAttr(_fmtBillTime(r.created_at))}</div>
+          <!-- 金额 + 创建时间 两列自适应 -->
+          <div class="grid grid-cols-2 gap-2 text-[11px] mb-2">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2">
+              <div class="text-slate-500 leading-none mb-0.5">金额</div>
+              <div class="text-slate-800 font-semibold">${amount}</div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2">
+              <div class="text-slate-500 leading-none mb-0.5">创建时间</div>
+              <div class="text-slate-700 break-all">${_escapeAttr(_fmtBillTime(r.created_at))}</div>
+            </div>
           </div>
-        </div>
-        <div class="mt-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px]">
-          <div class="text-slate-500">原因</div>
-          <div class="text-slate-800 break-all">${reason}</div>
-        </div>
-        <div class="mt-2 flex items-center justify-between gap-2">
-          <div class="text-[11px] text-slate-500">支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}</div>
-          ${canPay
-            ? `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 text-[11px] text-emerald-700" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`
-            : `<span class="text-[11px] text-slate-400">不可支付</span>`}
+          <!-- 原因 -->
+          <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-[11px] mb-2">
+            <div class="text-slate-500 leading-none mb-0.5">原因</div>
+            <div class="text-slate-800 break-all">${reason}</div>
+          </div>
+          <!-- 支付时间 + 操作按钮 -->
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[11px] text-slate-400 truncate">支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}</div>
+            ${canPay
+              ? `<button class="flex-shrink-0 px-3 py-1 text-[11px] font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg border border-emerald-200 transition-colors" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`
+              : `<span class="flex-shrink-0 text-[11px] text-slate-400">不可支付</span>`}
+          </div>
         </div>
       </div>`;
   });

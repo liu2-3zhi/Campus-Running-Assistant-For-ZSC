@@ -43981,6 +43981,29 @@ def start_web_server(args_param):
             else:
                 target_schools = sorted(allowed_schools)
 
+            def _load_admin_school_name(_school_username: str) -> str:
+                try:
+                    backup_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username)
+                    backup_file = os.path.join(
+                        backup_dir, f"{_school_username}_backup.json"
+                    )
+                    if os.path.exists(backup_file):
+                        with open(backup_file, "r", encoding="utf-8") as f:
+                            backup_data = json.load(f)
+                        return (
+                            ((backup_data.get("userInfo") or {}).get("name") or "").strip()
+                            or _school_username
+                        )
+                except Exception as _name_err:
+                    logging.warning(
+                        f"[管理员账单] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                    )
+                return _school_username
+
+            school_name_map = {
+                school: _load_admin_school_name(school) for school in target_schools
+            }
+
             for school in target_schools:
                 user_billing_dir = os.path.join(billing_root, school)
                 if not os.path.isdir(user_billing_dir):
@@ -43992,6 +44015,7 @@ def start_web_server(args_param):
                     try:
                         with open(filepath, "r", encoding="utf-8") as f:
                             record = json.load(f)
+                        record["school_name"] = school_name_map.get(school, school)
                         records.append(record)
                     except Exception as e:
                         logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
