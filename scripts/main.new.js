@@ -35890,11 +35890,11 @@ async function toggleRun() {
 
   if (btn.textContent === "开始执行") {
     // ========== 添加欠费检查 ==========
-    // 在开始任务前，检查当前学校账号是否有欠费
-    // 如果有欠费，会显示弹窗并返回 false，阻止任务启动
-    const canStart = await checkOverdueBeforeStart(
-      String(currentUserData.student_id),
-    );
+    // 按当前模式执行欠费检查：
+    // - 单账号模式：只检查当前账号
+    // - 多账号模式：只检查 multi-account-list / mobile-multi-account-list 中的账号
+    // - 仅在 pricing-require-payment_modal 启用时执行
+    const canStart = await _checkOverdueBeforeStartByCurrentMode();
     if (!canStart) {
       // 欠费检查未通过，直接返回不启动任务
       return;
@@ -35972,10 +35972,11 @@ async function toggleAllRuns() {
 
   if (btn.textContent === "执行所有") {
     // ========== 添加欠费检查 ==========
-    // 在开始所有任务前，只检查当前登录账号的欠费情况
-    const canStart = await checkOverdueBeforeStart(
-      String(currentUserData.student_id),
-    );
+    // 按当前模式执行欠费检查：
+    // - 单账号模式：只检查当前账号
+    // - 多账号模式：只检查 multi-account-list / mobile-multi-account-list 中的账号
+    // - 仅在 pricing-require-payment_modal 启用时执行
+    const canStart = await _checkOverdueBeforeStartByCurrentMode();
     if (!canStart) {
       // 欠费检查未通过，直接返回不启动任务
       return;
@@ -38862,11 +38863,10 @@ async function mobileStartTask() {
     }
 
     // ========== 添加欠费检查 ==========
-    // 在启动任务前，只检查当前登录账号的欠费情况
-    // checkOverdueBeforeStart() 会调用后端API，如果有欠费会显示缴费弹窗
-    const canStart = await checkOverdueBeforeStart(
-      String(currentUserData.student_id),
-    );
+    // 按当前模式执行欠费检查（仅在 require_payment 启用时）：
+    // - 单账号模式：只检查当前账号
+    // - 多账号模式：只检查列表中的账号
+    const canStart = await _checkOverdueBeforeStartByCurrentMode();
     if (!canStart) {
       // 用户有欠费且未完成缴费，阻止任务启动
       return;
@@ -39387,19 +39387,21 @@ async function mobileStartAllAccounts() {
     // ========== 步骤3：获取已添加的账号列表 ==========
     // 调用loadInitialData()获取当前所有已添加的账号数据
     // 使用try-catch确保即使获取失败也能继续执行（容错处理）
-    let addedUsernames = [];
+    let addedUsernames = _getMultiAccountListUsernames();
     try {
-      const initialData = await loadInitialData();
-      if (
-        initialData &&
-        initialData.accounts &&
-        Array.isArray(initialData.accounts)
-      ) {
+      if (addedUsernames.length === 0) {
+        const initialData = await loadInitialData();
+        if (
+          initialData &&
+          initialData.accounts &&
+          Array.isArray(initialData.accounts)
+        ) {
         // 从accounts数组中提取所有账号的username字段
         // 这些是当前已添加到多账号管理的所有账号
         addedUsernames = initialData.accounts
           .map((acc) => acc.username)
           .filter(Boolean); // 过滤掉空值
+        }
       }
     } catch (error) {
       // 如果获取账号列表失败，记录错误但不阻止继续执行
@@ -55066,6 +55068,49 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
   }
 }
 
+function _isPaymentRequiredForOverdueCheck() {
+  const requirePaymentCheckbox = document.getElementById("pricing-require-payment_modal");
+  if (!requirePaymentCheckbox) return true;
+  return !!requirePaymentCheckbox.checked;
+}
+
+function _isInMultiAccountModeForOverdueCheck() {
+  const pcMultiApp = document.getElementById("multi-account-app");
+  const mobileMultiApp = document.getElementById("mobile-multi-account-app");
+  return (
+    (pcMultiApp && !pcMultiApp.classList.contains("hidden")) ||
+    (mobileMultiApp && !mobileMultiApp.classList.contains("hidden")) ||
+    window.mobileAdminPanelMode === "multi"
+  );
+}
+
+function _getMultiAccountListUsernames() {
+  const usernames = new Set();
+  ["multi-account-list", "mobile-multi-account-list"].forEach((containerId) => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll("[data-username]").forEach((el) => {
+      const username = (el.dataset.username || "").trim();
+      if (username) usernames.add(username);
+    });
+  });
+  return Array.from(usernames);
+}
+
+async function _checkOverdueBeforeStartByCurrentMode() {
+  if (!_isPaymentRequiredForOverdueCheck()) {
+    return true;
+  }
+  if (_isInMultiAccountModeForOverdueCheck()) {
+    const usernames = _getMultiAccountListUsernames();
+    return usernames.length > 0 ? await checkOverdueBeforeStart(usernames) : true;
+  }
+  const currentSchoolUsername = String(currentUserData?.student_id || "").trim();
+  return currentSchoolUsername
+    ? await checkOverdueBeforeStart(currentSchoolUsername)
+    : await checkOverdueBeforeStart();
+}
+
 /**
  * 显示欠费提示弹窗
  */
@@ -57221,6 +57266,39 @@ function _collectSelectedBillingItems(containerId) {
   return items;
 }
 
+function _buildBillingSelectionDetailHtml(containerId, items) {
+  const root = document.getElementById(containerId);
+  const selectedInputs = root
+    ? Array.from(root.querySelectorAll('input[data-billing-select="1"]'))
+    : [];
+  const rows = (items || []).map((item, idx) => {
+    const billingId = String(item?.billing_id || "").trim();
+    const schoolUsername = String(item?.school_username || "").trim();
+    let reason = "-";
+    let amount = "-";
+    let status = "-";
+    const el = selectedInputs.find(
+      (input) =>
+        String(input.getAttribute("data-billing-id") || "").trim() === billingId &&
+        String(input.getAttribute("data-school-username") || "").trim() === schoolUsername,
+    );
+    if (el) {
+      reason = (el.getAttribute("data-reason") || "-").trim() || "-";
+      amount = (el.getAttribute("data-amount") || "-").trim() || "-";
+      status = (el.getAttribute("data-status") || "-").trim() || "-";
+    }
+    return `<div class="text-left border border-slate-200 rounded-lg px-2 py-1.5 ${
+      idx > 0 ? "mt-1.5" : ""
+    }">
+      <div class="text-[11px] text-slate-500">学校账号：${_escapeAttr(schoolUsername || "-")}</div>
+      <div class="text-xs text-slate-800 break-all">账单ID：${_escapeAttr(billingId || "-")}</div>
+      <div class="text-xs text-slate-700 break-all mt-0.5">原因：${_escapeAttr(reason)}</div>
+      <div class="text-xs text-slate-700 mt-0.5">金额：${_escapeAttr(amount)}，状态：${_escapeAttr(status)}</div>
+    </div>`;
+  });
+  return rows.join("");
+}
+
 function _renderMobileUserBillingCards(records, containerId) {
   let html = `<div class="space-y-2.5">`;
   records.forEach((r) => {
@@ -57237,7 +57315,7 @@ function _renderMobileUserBillingCards(records, containerId) {
             <div class="text-xs font-semibold text-slate-800 break-all">${school}</div>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0">
-            <input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" ${canPay ? "" : "disabled"}>
+            <input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" ${canPay ? "" : "disabled"}>
             ${_billStatusBadge(r.status)}
           </div>
         </div>
@@ -57288,7 +57366,7 @@ function _renderBillingTableCommon(records, opts = {}) {
     const statusBadge = _billStatusBadge(r.status);
     const canPay = r.status === "pending";
     html += `<tr class="hover:bg-slate-50">`;
-    html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" ${canPay ? "" : "disabled"}></td>`;
+    html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" ${canPay ? "" : "disabled"}></td>`;
     html += `<td class="p-2 whitespace-nowrap">${school}</td>`;
     html += `<td class="p-2">${reason}</td>`;
     html += `<td class="p-2 whitespace-nowrap">${amount}</td>`;
@@ -57460,15 +57538,20 @@ async function paySingleBilling(containerId, billingId, schoolUsername) {
 
 async function paySelectedBillingWithPreset(containerId, items) {
   if (!Array.isArray(items) || !items.length) return;
+  const detailHtml = _buildBillingSelectionDetailHtml(containerId, items);
   const confirmResult = await Swal.fire({
     title: items.length > 1 ? "确认批量支付" : "确认支付账单",
-    text: items.length > 1 ? `将发起 ${items.length} 笔账单的合并支付` : "将发起该账单支付",
+    html: `
+      <div class="text-sm text-slate-600 mb-2">${items.length > 1 ? `将发起 ${items.length} 笔账单的合并支付` : "将发起该账单支付"}</div>
+      <div class="max-h-64 overflow-y-auto">${detailHtml}</div>
+    `,
     icon: "question",
     showCancelButton: true,
     confirmButtonText: "确认支付",
     cancelButtonText: "取消",
     confirmButtonColor: "#16a34a",
     cancelButtonColor: "#64748b",
+    width: 560,
   });
   if (!confirmResult.isConfirmed) return;
   try {
