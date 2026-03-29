@@ -19279,7 +19279,7 @@ function switchAdminTab(tab) {
   const cdnPanel = $("admin-cdn-panel_modal");
   const bruteforcePanel = $("admin-bruteforce-panel_modal");
   // 获取欠费查询面板元素
-  const overduePanel = $("admin-overdue-panel_modal");
+  const overduePanel = $("admin-billing-panel_modal");
   // 获取支付日志面板元素
   const paymentLogsPanel = $("admin-payment-logs-panel_modal");
   // 获取支付设置面板元素
@@ -20202,7 +20202,7 @@ function switchAdminTab(tab) {
 
     // [获取元素] 获取欠费查询标签和面板的DOM元素
     const overdueTab = $("admin-tab-overdue_modal");
-    const overduePanel = $("admin-overdue-panel_modal");
+    const overduePanel = $("admin-billing-panel_modal");
 
     // [元素验证] 检查标签和面板元素是否存在
     if (overdueTab && overduePanel) {
@@ -20238,7 +20238,7 @@ function switchAdminTab(tab) {
         missingElement: !overdueTab
           ? "admin-tab-overdue_modal"
           : !overduePanel
-            ? "admin-overdue-panel_modal"
+            ? "admin-billing-panel_modal"
             : "未知",
       });
     }
@@ -46537,7 +46537,7 @@ function switchMobileAdminTab(tabId, prefix) {
       支付历史: "payment-logs", // 支付历史标签映射
       支付设置: "payment-settings", // 支付设置标签映射
       价格设置: "pricing", // 价格设置标签映射
-      欠费查询: "overdue", // 欠费查询标签映射
+      欠费查询: "billing", // 欠费查询标签映射（复用账单面板）
       CDN: "cdn", // CDN缓存管理标签
       密码恢复: "bruteforce", // 密码恢复标签
       水印控制: "watermark", // 水印控制标签映射
@@ -46692,7 +46692,6 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-pricing-panel", // 价格设置面板
       "mobile-multi-admin-cdn-panel", // CDN缓存管理面板
       "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
-      "mobile-multi-admin-overdue-panel", // 欠费查询面板
       "mobile-multi-admin-watermark-panel", // 水印控制面板
       "mobile-multi-admin-billing-panel", // 账单面板
       "mobile-multi-admin-restore-account-panel", // 账号恢复面板

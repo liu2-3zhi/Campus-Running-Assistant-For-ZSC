@@ -1840,7 +1840,7 @@ body.mobile-mode #session-picker-modal {
 }
 
 #admin-payment-logs-panel_modal,
-#admin-overdue-panel_modal,
+#admin-billing-panel_modal,
 #admin-watermark-control-panel_modal,
 #admin-payment-settings-panel_modal {
   margin-top: 0px;
