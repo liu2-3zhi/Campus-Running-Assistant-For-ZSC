@@ -31863,7 +31863,7 @@ def start_web_server(args_param):
         """
         try:
             root_dir = os.path.dirname(__file__)
-            manifest_path = os.path.join(root_dir, "manifest.json")
+            manifest_path = os.path.join(root_dir, "PWA", "manifest.json")
             if not os.path.exists(manifest_path):
                 logging.warning(f"manifest.json 文件不存在: {manifest_path}")
                 return jsonify({"success": False, "message": "manifest.json 文件未找到"}), 404
@@ -31880,7 +31880,7 @@ def start_web_server(args_param):
         """
         try:
             root_dir = os.path.dirname(__file__)
-            sw_path = os.path.join(root_dir, "sw.js")
+            sw_path = os.path.join(root_dir, "PWA", "sw.js")
             if not os.path.exists(sw_path):
                 logging.warning(f"sw.js 文件不存在: {sw_path}")
                 return jsonify({"success": False, "message": "sw.js 文件未找到"}), 404
@@ -31901,7 +31901,7 @@ def start_web_server(args_param):
             if size != size2 or size not in (192, 512):
                 return jsonify({"success": False, "message": "图标尺寸不支持"}), 404
             root_dir = os.path.dirname(__file__)
-            icon_path = os.path.join(root_dir, f"icon-{size}x{size}.png")
+            icon_path = os.path.join(root_dir, "PWA", f"icon-{size}x{size}.png")
             if not os.path.exists(icon_path):
                 logging.warning(f"图标文件不存在: {icon_path}")
                 return jsonify({"success": False, "message": "图标文件未找到"}), 404
