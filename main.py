@@ -11969,20 +11969,23 @@ class Api:
                             _remaining_pts = max(1, _exec_total_points - point_index)
                             _actual_sleep_s = min(_actual_sleep_s, _remaining_s / _remaining_pts)
                             logging.debug(
-                                f"进度偏慢，PID自动加速: 实际进度={_actual_frac:.2%}, "
-                                f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}, "
+                                f"进度偏慢，PID自动加速: 实际时间进度={_actual_frac:.2%}, "
+                                f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}, "
+                                f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
                                 f"PID={_pid_out:.4f}, 新等待时间={_actual_sleep_s:.2f}s"
                             )
                         elif _error_for_pid < 0:
                             logging.debug(
-                                f"进度偏快，PID自动减速: 实际进度={_actual_frac:.2%}, "
-                                f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}, "
+                                f"进度偏快，PID自动减速: 实际时间进度={_actual_frac:.2%}, "
+                                f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}, "
+                                f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
                                 f"PID={_pid_out:.4f}, 新等待时间={_actual_sleep_s:.2f}s"
                             )
                         else:
                             logging.debug(
-                                f"进度正常(±{_pid_deadzone:.0%}): 实际进度={_actual_frac:.2%}, "
-                                f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}，"
+                                f"进度正常(±{_pid_deadzone:.0%}): 实际时间进度={_actual_frac:.2%}, "
+                                f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}，"
+                                f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
                                 f"PID={_pid_out:.4f}, 等待时间={_actual_sleep_s:.2f}s"
                             )
                             
@@ -15901,22 +15904,25 @@ class Api:
                                 _mr_actual_sleep_s = min(_mr_actual_sleep_s, _mr_remaining_s / _mr_remaining_pts)
                                 logging.debug(
                                     f"[{acc.username}] 进度偏慢，PID自动加速: "
-                                    f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
-                                    f"差值={_mr_progress_diff:.2%}, PID={_mr_pid_out:.4f}, "
+                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                                    f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
+                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, PID={_mr_pid_out:.4f}, "
                                     f"新等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
                             elif _mr_error_for_pid < 0:
                                 logging.debug(
                                     f"[{acc.username}] 进度偏快，PID自动减速: "
-                                    f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
-                                    f"差值={_mr_progress_diff:.2%}, PID={_mr_pid_out:.4f}, "
+                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                                    f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
+                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, PID={_mr_pid_out:.4f}, "
                                     f"新等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
                             else:
                                 logging.debug(
                                     f"[{acc.username}] 进度正常(±{_mr_pid_deadzone:.0%}): "
-                                    f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
-                                    f"差值={_mr_progress_diff:.2%}，"
+                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                                    f"时间误差={_mr_progress_diff:.2%}，实际累计={_mr_elapsed_real_s:.1f}s, "
+                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
                                     f"PID={_mr_pid_out:.4f}, 等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
                         else:
