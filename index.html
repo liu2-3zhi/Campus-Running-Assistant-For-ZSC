@@ -2616,11 +2616,10 @@
                       class="input-field !py-1 w-full"
                       title="自动签到时，在服务器允许范围内的最大随机偏移半径。设为0为精确签到。"
                     />
-                    <p class="text-xs text-slate-500 leading-relaxed">
-                      ⚠
-                      若随机半径大于签到要求的最大允许范围，将自动按签到要求的最大半径处理。
-                    </p>
                   </div>
+                  <p class="text-xs text-amber-600 leading-relaxed">
+                    ⚠ 若随机半径超过签到允许的最大范围，将自动缩减至该上限。
+                  </p>
                 </div>
                 <div
                   class="flex justify-between items-center border-t pt-2 mt-2"
@@ -5249,9 +5248,8 @@
                   </div>
 
                   <div class="flex items-center gap-3 w-full">
-                  <p class="text-xs text-slate-500 leading-relaxed">
-                    ⚠
-                    若随机半径大于签到要求的最大允许范围，将自动按签到要求的最大半径处理。
+                  <p class="text-xs text-amber-600 leading-relaxed">
+                    ⚠ 若随机半径超过签到允许的最大范围，将自动缩减至该上限。
                   </p>
                   </div>
                 </div>
@@ -10852,6 +10850,9 @@
                 <!-- 说明文字：解释随机半径的用途 -->
                 <p class="text-[10px] text-slate-400 mt-1">
                   签到位置的随机偏移半径，0为精确签到
+                </p>
+                <p class="text-[10px] text-amber-600 mt-1">
+                  ⚠ 若随机半径超过签到允许的最大范围，将自动缩减至该上限。
                 </p>
               </div>
             </div>
