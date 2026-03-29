@@ -7983,10 +7983,6 @@ class ApiClient:
         read_timeout = 10
 
         log_data = data
-        if is_post_str and isinstance(data, str) and len(data) > 500:
-            log_data = (
-                data[:500] + "... (已截断，完整数据长度: " + str(len(data)) + " 字节)"
-            )
 
         logging.debug(
             f"[网络请求] 准备发起HTTP请求 --> 请求方法: {method.upper()}, 目标URL: {url}, 重试次数配置: {retries}次, 连接超时: {connect_timeout}秒, 读取超时: {read_timeout}秒\n[请求数据]: {log_data}"
@@ -8017,7 +8013,7 @@ class ApiClient:
                         
 
                     logging.debug(
-                        f"[网络请求] 发起POST请求 --> URL: {url}, 请求头: {headers}, 请求体字节长度: {len(post_data_bytes)} 字节, 请求体: {post_data_bytes}\n"
+                        f"[网络请求] 发起POST请求 --> URL: {url}, 请求头: {headers}\n请求体字节长度: {len(post_data_bytes)} 字节\n请求体: {post_data_bytes}\n"
                     )
                     resp = self.session.post(
                         url,
@@ -8035,7 +8031,7 @@ class ApiClient:
                     )
 
                 logging.debug(
-                    f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} ({resp.reason}), 来源URL: {url}, 响应头: {dict(resp.headers)}, 响应内容长度: {len(resp.content)} 字节"
+                    f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} ({resp.reason}), 来源URL: {url}\n响应头: {dict(resp.headers)}\n响应内容长度: {len(resp.content)} 字节"
                 )
                 logging.debug(
                     f"[网络请求] 响应内容: \n{resp.text}\n"
