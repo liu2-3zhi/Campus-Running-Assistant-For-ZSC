@@ -46,6 +46,10 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # 拉取镜像缓存（如果存在），加速构建过程
+      - name: Pull cache image
+        run: docker pull "${REGISTRY_PREFIX}/${IMAGE_NAME}:latest" || echo "未能成功拉取镜像，继续构建。"
+
       # 3) 构建临时镜像
       - name: Build image
         run: docker build -t "${TEMP_TAG}" .
