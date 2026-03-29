@@ -42756,6 +42756,59 @@ def start_web_server(args_param):
             logging.error(f"[获取统计] 获取账号统计信息失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"获取失败: {str(e)}"}), 500
 
+    @app.route("/api/school_account/name", methods=["GET"])
+    @login_required
+    def get_school_account_name():
+        """
+        获取指定学校账号的对应姓名（从备份文件读取）。
+        仅需要登录，无需管理员权限；会校验当前用户是否有权限访问该学校账号。
+        管理员和超级管理员可访问任意账号姓名。
+        """
+        try:
+            school_username = request.args.get("school_username", "").strip()
+            if not school_username:
+                return jsonify({"success": False, "message": "缺少 school_username 参数"}), 400
+
+            auth_username = g.user
+            user_group = auth_system.get_user_group(auth_username)
+
+            # 非管理员需校验是否有权限访问该学校账号
+            if user_group not in ("admin", "super_admin"):
+                school_accounts = g.api_instance._load_user_school_accounts(auth_username) or {}
+                if school_username not in school_accounts:
+                    return jsonify({"success": False, "message": "账号不存在或无权限访问"}), 403
+
+            # 从备份文件读取姓名
+            # 优先从 school_accounts/<school_username>/<school_username>_backup.json 读取
+            # 其次从 school_accounts/<school_username>_backup.json（扁平结构）读取
+            name = ""
+            for backup_path in [
+                os.path.join(SCHOOL_ACCOUNTS_DIR, school_username,
+                             f"{school_username}_backup.json"),
+                os.path.join(SCHOOL_ACCOUNTS_DIR, f"{school_username}_backup.json"),
+            ]:
+                if os.path.exists(backup_path):
+                    try:
+                        with open(backup_path, "r", encoding="utf-8") as f:
+                            backup_data = json.load(f)
+                        name = (
+                            ((backup_data.get("userInfo") or {}).get("name") or "")
+                            or ((backup_data.get("deptInfo") or {}).get("name") or "")
+                        ).strip()
+                        if name:
+                            break
+                    except Exception as _e:
+                        logging.warning(f"[账号姓名] 读取备份文件失败: {backup_path}, {_e}")
+
+            return jsonify({
+                "success": True,
+                "school_username": school_username,
+                "name": name,
+            })
+        except Exception as e:
+            logging.error(f"[账号姓名] 获取账号姓名失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取失败: {str(e)}"}), 500
+
     # ==============================================================================
     # 付费配置获取接口
     # ==============================================================================
