@@ -2339,8 +2339,7 @@ def _create_directories():
     config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
     if os.path.exists(config_file):
         try:
-            config = configparser.ConfigParser(strict=False)
-            config.read(config_file, encoding="utf-8")
+            config = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
 
             if config.has_section("System"):
                 default_dirs["school_accounts_dir"] = config.get(
@@ -5483,15 +5482,8 @@ class RainbowYiPayClient:
         异常:
             如果配置文件不存在或配置项缺失，会记录错误日志
         """
-        # 创建一个新的配置解析器实例，用于读取配置文件
-        # strict=False 允许配置项重复（虽然不推荐，但提高兼容性）
-        self.config = configparser.ConfigParser(strict=False)
-
-        # optionxform=str 保持配置项的大小写敏感，默认会转为小写
-        self.config.optionxform = str
-
-        # 读取配置文件，使用 UTF-8 编码以支持中文
-        self.config.read(config_file, encoding="utf-8")
+        # 使用统一的配置读取函数，支持 JSON 格式配置文件
+        self.config = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
 
         # 从配置文件的 [Rainbow_YiPay] 节读取易支付接口域名
         # fallback 参数指定当配置项不存在时的默认值（空字符串）
@@ -28904,18 +28896,11 @@ def start_web_server(args_param):
         - 如果读取配置发生异常，同样返回空值和 false 标志，确保前端不会因为后端错误而崩溃
         """
         try:
-            # 创建一个 ConfigParser 对象，用于读取 INI 格式的配置文件
-            config = configparser.ConfigParser(strict=False)
-
-            # 定义配置文件的路径（config.ini 位于项目根目录）
+            # 定义配置文件的路径
             config_file = CONFIG_JSON_FILE
 
-            # 检查配置文件是否存在于文件系统中
-            # 这是一个预防性检查，避免在文件不存在时尝试读取导致错误
-            if os.path.exists(config_file):
-                # 读取配置文件，指定 UTF-8 编码以支持中文字符
-                # 这样可以正确处理备案号中的中文字符（如"京"、"备"等）
-                config.read(config_file, encoding="utf-8")
+            # 使用统一的配置读取函数，支持 JSON 格式配置文件
+            config = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
 
             # 从配置文件的 [Beian] 部分读取备案信息
             # 使用 fallback 参数提供默认值，确保即使配置项不存在也不会抛出异常
@@ -34622,14 +34607,10 @@ def start_web_server(args_param):
             noise_level = 0.08  # 噪声级别，默认0.08（8%），用于增加验证码的安全性
 
             # 检查配置文件是否存在
-            # 这是一个健壮性检查，避免在文件不存在时产生异常
             if os.path.exists(config_file):
                 try:
-                    # 创建ConfigParser对象用于解析INI格式的配置文件
-                    cfg = configparser.ConfigParser(strict=False)
-
-                    # 读取配置文件，指定UTF-8编码以支持中文等多字节字符
-                    cfg.read(config_file, encoding="utf-8")
+                    # 使用统一的配置读取函数，支持 JSON 格式配置文件
+                    cfg = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
 
                     # 从[Captcha]节中读取length参数
                     # int()转换为整数类型
@@ -34749,8 +34730,7 @@ def start_web_server(args_param):
 
             if os.path.exists(config_file):
                 try:
-                    cfg = configparser.ConfigParser(strict=False)
-                    cfg.read(config_file, encoding="utf-8")
+                    cfg = _read_config_ini(config_file) or configparser.ConfigParser(strict=False)
                     length = int(cfg.get("Captcha", "length", fallback="4"))
                     scale_factor = int(
                         cfg.get("Captcha", "scale_factor", fallback="2"))
@@ -34758,7 +34738,7 @@ def start_web_server(args_param):
                         cfg.get("Captcha", "noise_level", fallback="0.08")
                     )
                     logging.debug(
-                        f"[本地验证码] 从config.ini读取参数: length={length}, scale_factor={scale_factor}, noise_level={noise_level}"
+                        f"[本地验证码] 从config.json读取参数: length={length}, scale_factor={scale_factor}, noise_level={noise_level}"
                     )
                 except Exception as e:
                     logging.warning(f"[本地验证码] 读取配置文件失败，使用默认值: {e}")
@@ -35637,9 +35617,7 @@ def start_web_server(args_param):
             # 4. 读取现有配置文件
             # ========================================
             config_file = CONFIG_JSON_FILE
-            config = configparser.ConfigParser(strict=False)
-            if os.path.exists(config_file):
-                config.read(config_file, encoding="utf-8")
+            config = _read_config_ini(config_file) or _get_default_config()
             # ========================================
             # 5. 确保[Captcha]节存在
             # ========================================
