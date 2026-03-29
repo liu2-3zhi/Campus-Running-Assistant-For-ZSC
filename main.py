@@ -11915,11 +11915,14 @@ class Api:
 
             point_index = 0
             _exec_start_real = time.time()
-            _exec_max_time_m = self.params.get("max_time_m", 30)
             _exec_total_points = max(1, len(run_data.run_coords))
-            _pid_kp = 3.20
-            _pid_ki = 0.08
-            _pid_kd = 1.35
+            _exec_target_time_s = float(getattr(run_data, "total_run_time_s", 0.0) or 0.0)
+            if _exec_target_time_s <= 1.0:
+                _exec_target_time_s = sum(max(0.0, d) / 1000.0 for _, _, d in run_data.run_coords)
+            _exec_target_time_s = max(1.0, _exec_target_time_s)
+            _pid_kp = 4.80
+            _pid_ki = 0.16
+            _pid_kd = 1.80
             _pid_deadzone = 0.010
             _pid_integral = 0.0
             _pid_prev_error = 0.0
@@ -11936,14 +11939,13 @@ class Api:
                     _elapsed_real_s = time.time() - _exec_start_real
                     _elapsed_real_min = _elapsed_real_s / 60.0
                     _actual_sleep_s = dur_ms / 1000.0
-                    # if _elapsed_real_min >= _exec_max_time_m - 10:
                     if True:
-                        _expected_frac = _elapsed_real_min / max(1e-6, _exec_max_time_m - 2)
+                        _expected_frac = _elapsed_real_s / _exec_target_time_s
                         _actual_frac = point_index / _exec_total_points
                         _progress_diff = _actual_frac - _expected_frac
                         _error = _expected_frac - _actual_frac
                         _error_for_pid = _error if abs(_error) >= _pid_deadzone else 0.0
-                        _pid_integral = max(-0.30, min(0.30, _pid_integral + _error_for_pid))
+                        _pid_integral = max(-0.50, min(0.50, _pid_integral + _error_for_pid))
                         _pid_derivative = _error_for_pid - _pid_prev_error
                         _pid_prev_error = _error_for_pid
                         _pid_out = (
@@ -11951,10 +11953,10 @@ class Api:
                             + _pid_ki * _pid_integral
                             + _pid_kd * _pid_derivative
                         )
-                        _sleep_ratio = max(0.55, min(1.45, 1.0 - _pid_out))
+                        _sleep_ratio = max(0.35, min(1.70, 1.0 - _pid_out))
                         _actual_sleep_s = _actual_sleep_s * _sleep_ratio
                         if _error_for_pid > 0:
-                            _remaining_s = max(1.0, (_exec_max_time_m - 2) * 60.0 - _elapsed_real_s)
+                            _remaining_s = max(1.0, _exec_target_time_s - _elapsed_real_s)
                             _remaining_pts = max(1, _exec_total_points - point_index)
                             _actual_sleep_s = min(_actual_sleep_s, _remaining_s / _remaining_pts)
                             logging.debug(
@@ -15808,9 +15810,13 @@ class Api:
 
                 _mr_exec_start_real = time.time()
                 _mr_exec_point_idx = 0
-                _mr_pid_kp = 3.20
-                _mr_pid_ki = 0.08
-                _mr_pid_kd = 1.35
+                _mr_target_time_s = float(getattr(run_data, "total_run_time_s", 0.0) or 0.0)
+                if _mr_target_time_s <= 1.0:
+                    _mr_target_time_s = sum(max(0.0, d) / 1000.0 for _, _, d in run_data.run_coords)
+                _mr_target_time_s = max(1.0, _mr_target_time_s)
+                _mr_pid_kp = 4.80
+                _mr_pid_ki = 0.16
+                _mr_pid_kd = 1.80
                 _mr_pid_deadzone = 0.010
                 _mr_pid_integral = 0.0
                 _mr_pid_prev_error = 0.0
@@ -15855,14 +15861,13 @@ class Api:
                         _mr_elapsed_real_s = time.time() - _mr_exec_start_real
                         _mr_elapsed_real_min = _mr_elapsed_real_s / 60.0
                         _mr_actual_sleep_s = dur_ms / 1000.0
-                        # if _mr_elapsed_real_min >= max_t_m - 10:
                         if True:
-                            _mr_expected_frac = _mr_elapsed_real_min / max(1e-6, max_t_m - 2)
+                            _mr_expected_frac = _mr_elapsed_real_s / _mr_target_time_s
                             _mr_actual_frac = _mr_exec_point_idx / total_points
                             _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
                             _mr_error = _mr_expected_frac - _mr_actual_frac
                             _mr_error_for_pid = _mr_error if abs(_mr_error) >= _mr_pid_deadzone else 0.0
-                            _mr_pid_integral = max(-0.30, min(0.30, _mr_pid_integral + _mr_error_for_pid))
+                            _mr_pid_integral = max(-0.50, min(0.50, _mr_pid_integral + _mr_error_for_pid))
                             _mr_pid_derivative = _mr_error_for_pid - _mr_pid_prev_error
                             _mr_pid_prev_error = _mr_error_for_pid
                             _mr_pid_out = (
@@ -15870,10 +15875,10 @@ class Api:
                                 + _mr_pid_ki * _mr_pid_integral
                                 + _mr_pid_kd * _mr_pid_derivative
                             )
-                            _mr_sleep_ratio = max(0.55, min(1.45, 1.0 - _mr_pid_out))
+                            _mr_sleep_ratio = max(0.35, min(1.70, 1.0 - _mr_pid_out))
                             _mr_actual_sleep_s = _mr_actual_sleep_s * _mr_sleep_ratio
                             if _mr_error_for_pid > 0:
-                                _mr_remaining_s = max(1.0, (max_t_m - 2) * 60.0 - _mr_elapsed_real_s)
+                                _mr_remaining_s = max(1.0, _mr_target_time_s - _mr_elapsed_real_s)
                                 _mr_remaining_pts = max(1, total_points - _mr_exec_point_idx)
                                 _mr_actual_sleep_s = min(_mr_actual_sleep_s, _mr_remaining_s / _mr_remaining_pts)
                                 logging.debug(
