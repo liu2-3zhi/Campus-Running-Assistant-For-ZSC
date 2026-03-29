@@ -55068,8 +55068,50 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
   }
 }
 
-function _isPaymentRequiredForOverdueCheck() {
-  const requirePaymentCheckbox = document.getElementById("pricing-require-payment_modal");
+let _requirePaymentForOverdueCache = {
+  value: null,
+  ts: 0,
+};
+
+async function _isPaymentRequiredForOverdueCheck() {
+  const now = Date.now();
+  if (
+    _requirePaymentForOverdueCache.value !== null &&
+    now - _requirePaymentForOverdueCache.ts < 30 * 1000
+  ) {
+    return _requirePaymentForOverdueCache.value;
+  }
+
+  try {
+    const headers = {};
+    if (typeof sessionUUID !== "undefined" && sessionUUID) {
+      headers["X-Session-ID"] = sessionUUID;
+    }
+    const response = await fetch("/api/config/pricing", {
+      method: "GET",
+      headers,
+    });
+    const result = await response.json();
+    if (
+      response.ok &&
+      result &&
+      result.success &&
+      result.config &&
+      typeof result.config.require_payment !== "undefined"
+    ) {
+      const enabled =
+        result.config.require_payment === true ||
+        String(result.config.require_payment).toLowerCase() === "true";
+      _requirePaymentForOverdueCache = { value: enabled, ts: now };
+      return enabled;
+    }
+  } catch (error) {
+    console.warn("[欠费检查] 获取后端 require_payment 配置失败，回退本地状态", error);
+  }
+
+  const requirePaymentCheckbox = document.getElementById(
+    "pricing-require-payment_modal",
+  );
   if (!requirePaymentCheckbox) return true;
   return !!requirePaymentCheckbox.checked;
 }
@@ -55098,7 +55140,7 @@ function _getMultiAccountListUsernames() {
 }
 
 async function _checkOverdueBeforeStartByCurrentMode() {
-  if (!_isPaymentRequiredForOverdueCheck()) {
+  if (!(await _isPaymentRequiredForOverdueCheck())) {
     return true;
   }
   if (_isInMultiAccountModeForOverdueCheck()) {
