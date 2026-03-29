@@ -11935,7 +11935,7 @@ class Api:
                         _expected_frac = _elapsed_real_min / max(1e-6, _exec_max_time_m - 2)
                         _actual_frac = point_index / _exec_total_points
                         _progress_diff = _actual_frac - _expected_frac
-                        _progress_tolerance = 0.02
+                        _progress_tolerance = 0.00
                         if _progress_diff <= -_progress_tolerance:
                             _remaining_s = max(1.0, (_exec_max_time_m - 2) * 60.0 - _elapsed_real_s)
                             _remaining_pts = max(1, _exec_total_points - point_index)
@@ -15831,7 +15831,7 @@ class Api:
                             _mr_expected_frac = _mr_elapsed_real_min / max(1e-6, max_t_m - 2)
                             _mr_actual_frac = _mr_exec_point_idx / total_points
                             _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
-                            _mr_progress_tolerance = 0.02
+                            _mr_progress_tolerance = 0.00
                             if _mr_progress_diff <= -_mr_progress_tolerance:
                                 _mr_remaining_s = max(1.0, (max_t_m - 2) * 60.0 - _mr_elapsed_real_s)
                                 _mr_remaining_pts = max(1, total_points - _mr_exec_point_idx)
