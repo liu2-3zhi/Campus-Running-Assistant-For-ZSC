@@ -29,41 +29,66 @@ echo "================================================="
 echo "  跑步助手 Docker 容器启动 (Nginx前端模式)"
 echo "================================================="
 
-# 检查config.ini是否存在，如果不存在则创建
-if [ ! -f "/app/config.ini" ]; then
-    echo "配置文件不存在，将在首次运行时自动创建"
+# 检查config.json是否存在（config.ini 已弃用）
+if [ ! -f "/app/configs/config.json" ]; then
+    echo "配置文件 /app/configs/config.json 不存在，将在首次运行时自动创建"
 fi
 
 # ==========================================
-# 0. 配置读取模块 (修复：支持注释、容错处理)
+# 0. 配置读取模块（读取 JSON，兼容布尔值容错）
 # ==========================================
 
 # 初始化默认值
 ssl_enabled="false"
 https_only="false"
 
-# 定义读取函数：处理行内注释(#,;)、去空格、转小写
-get_ini_value() {
-    local key=$1
-    local file=$2
+# 定义读取函数：优先读取 JSON 的 SSL 节，回退到 JSON 根键
+get_json_bool_value() {
+    local key="$1"
+    local file="$2"
     if [ -f "$file" ]; then
-        # 1. grep: 查找以 key 开头的行
-        # 2. head: 只取第一行防止重复
-        # 3. cut: 移除 # 和 ; 后面的注释
-        # 4. cut: 提取 = 后面的值
-        # 5. tr: 转小写并移除所有空格
-        grep -E "^[[:space:]]*$key[[:space:]]*=" "$file" | head -n 1 | \
-        cut -d '#' -f 1 | cut -d ';' -f 1 | \
-        cut -d '=' -f 2- | \
-        tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'
+        python3 - "$file" "$key" <<'PY'
+import json
+import sys
+
+file_path = sys.argv[1]
+key = sys.argv[2]
+
+try:
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"[entrypoint] 读取配置失败: {file_path}, error={e}", file=sys.stderr)
+    sys.exit(0)
+
+value = None
+if isinstance(data, dict):
+    ssl_cfg = data.get("SSL")
+    if isinstance(ssl_cfg, dict):
+        value = ssl_cfg.get(key)
+    if value is None:
+        value = data.get(key)
+
+if isinstance(value, (bool, int, float)):
+    print("true" if value else "false")
+elif isinstance(value, str):
+    normalized = value.strip().lower()
+    if normalized in ("true", "1", "yes", "on"):
+        print("true")
+    elif normalized in ("false", "0", "no", "off"):
+        print("false")
+    else:
+        print(f"[entrypoint] 未识别布尔值: key={key}, value={value!r}, 使用 false", file=sys.stderr)
+        print("false")
+PY
     fi
 }
 
 # 执行读取
-val_ssl=$(get_ini_value "ssl_enabled" "/app/config.ini")
+val_ssl=$(get_json_bool_value "ssl_enabled" "/app/configs/config.json")
 if [ -n "$val_ssl" ]; then ssl_enabled="$val_ssl"; fi
 
-val_https=$(get_ini_value "https_only" "/app/config.ini")
+val_https=$(get_json_bool_value "https_only" "/app/configs/config.json")
 if [ -n "$val_https" ]; then https_only="$val_https"; fi
 
 echo "配置状态检测: SSL=$ssl_enabled, HTTPS_ONLY=$https_only"
