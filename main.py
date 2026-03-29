@@ -11934,16 +11934,31 @@ class Api:
                     if True:
                         _expected_frac = _elapsed_real_min / max(1e-6, _exec_max_time_m - 2)
                         _actual_frac = point_index / _exec_total_points
-                        if _actual_frac < _expected_frac:
+                        _progress_diff = _actual_frac - _expected_frac
+                        _progress_tolerance = 0.02
+                        if _progress_diff <= -_progress_tolerance:
                             _remaining_s = max(1.0, (_exec_max_time_m - 2) * 60.0 - _elapsed_real_s)
                             _remaining_pts = max(1, _exec_total_points - point_index)
-                            _actual_sleep_s = min(_actual_sleep_s, _remaining_s / _remaining_pts)
+                            _ratio = max(0.55, 1.0 + (_progress_diff * 4.0))
+                            _actual_sleep_s = min(_actual_sleep_s * _ratio, _remaining_s / _remaining_pts)
                             logging.debug(
-                                f"进度落后，加速执行: 实际进度={_actual_frac:.2%}, "
-                                f"期望进度={_expected_frac:.2%}, 新等待时间={_actual_sleep_s:.2f}s"
+                                f"进度偏慢，自动加速: 实际进度={_actual_frac:.2%}, "
+                                f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}, "
+                                f"新等待时间={_actual_sleep_s:.2f}s"
+                            )
+                        elif _progress_diff >= _progress_tolerance:
+                            _ratio = min(1.45, 1.0 + (_progress_diff * 4.0))
+                            _actual_sleep_s = _actual_sleep_s * _ratio
+                            logging.debug(
+                                f"进度偏快，自动减速: 实际进度={_actual_frac:.2%}, "
+                                f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}, "
+                                f"新等待时间={_actual_sleep_s:.2f}s"
                             )
                         else:
-                            logging.debug(f"进度正常: 实际进度={_actual_frac:.2%}, 期望进度={_expected_frac:.2%}")
+                            logging.debug(
+                                f"进度正常: 实际进度={_actual_frac:.2%}, "
+                                f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}"
+                            )
                             
                     else:
                         logging.debug(f"正常执行: 已执行时间={_elapsed_real_min:.2f}分钟, 未接近目标时间，无需调整执行速度。")
@@ -15815,19 +15830,31 @@ class Api:
                         if True:
                             _mr_expected_frac = _mr_elapsed_real_min / max(1e-6, max_t_m - 2)
                             _mr_actual_frac = _mr_exec_point_idx / total_points
-                            if _mr_actual_frac < _mr_expected_frac:
+                            _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
+                            _mr_progress_tolerance = 0.02
+                            if _mr_progress_diff <= -_mr_progress_tolerance:
                                 _mr_remaining_s = max(1.0, (max_t_m - 2) * 60.0 - _mr_elapsed_real_s)
                                 _mr_remaining_pts = max(1, total_points - _mr_exec_point_idx)
-                                _mr_actual_sleep_s = min(_mr_actual_sleep_s, _mr_remaining_s / _mr_remaining_pts)
+                                _mr_ratio = max(0.55, 1.0 + (_mr_progress_diff * 4.0))
+                                _mr_actual_sleep_s = min(_mr_actual_sleep_s * _mr_ratio, _mr_remaining_s / _mr_remaining_pts)
                                 logging.debug(
-                                    f"[{acc.username}] 进度落后，加速执行: "
+                                    f"[{acc.username}] 进度偏慢，自动加速: "
                                     f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
-                                    f"新等待时间={_mr_actual_sleep_s:.2f}s"
+                                    f"差值={_mr_progress_diff:.2%}, 新等待时间={_mr_actual_sleep_s:.2f}s"
+                                )
+                            elif _mr_progress_diff >= _mr_progress_tolerance:
+                                _mr_ratio = min(1.45, 1.0 + (_mr_progress_diff * 4.0))
+                                _mr_actual_sleep_s = _mr_actual_sleep_s * _mr_ratio
+                                logging.debug(
+                                    f"[{acc.username}] 进度偏快，自动减速: "
+                                    f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
+                                    f"差值={_mr_progress_diff:.2%}, 新等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
                             else:
                                 logging.debug(
                                     f"[{acc.username}] 进度正常: "
-                                    f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}"
+                                    f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
+                                    f"差值={_mr_progress_diff:.2%}"
                                 )
                         else:
                             logging.debug(
