@@ -15804,7 +15804,8 @@ class Api:
                         _mr_elapsed_real_s = time.time() - _mr_exec_start_real
                         _mr_elapsed_real_min = _mr_elapsed_real_s / 60.0
                         _mr_actual_sleep_s = dur_ms / 1000.0
-                        if _mr_elapsed_real_min >= max_t_m - 10:
+                        # if _mr_elapsed_real_min >= max_t_m - 10:
+                        if True:
                             _mr_expected_frac = _mr_elapsed_real_min / max(1e-6, max_t_m - 2)
                             _mr_actual_frac = _mr_exec_point_idx / total_points
                             if _mr_actual_frac < _mr_expected_frac:
@@ -15816,6 +15817,14 @@ class Api:
                                     f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
                                     f"新等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
+                            else:
+                                logging.debug(
+                                    f"[{acc.username}] 进度正常: "
+                                    f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}"
+                                )
+                        else:
+                            logging.debug(
+                                    f"[{acc.username}] 当前时间={_mr_elapsed_real_min:.2f}分钟，未接近目标时间，无需调整执行速度。")
 
                         if acc.stop_event.wait(timeout=_mr_actual_sleep_s):
                             submission_successful = False
