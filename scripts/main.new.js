@@ -10004,7 +10004,9 @@ async function initRegisterAvailableRunsHint() {
       // 当默认次数等于 -1 时直接显示"无限制"，不套用格式模板，避免出现占位符残留
       let hintText;
       if (Number(defaultRuns) === -1) {
-        hintText = hintTemplate.replace("{available_runs} 次", "无限制").replace("{available_runs}", "无限制");
+        hintText = hintTemplate
+          .replace("{available_runs} 次", "无限制")
+          .replace("{available_runs}", "无限制");
       } else {
         hintText = hintTemplate.replace("{available_runs}", defaultRuns);
       }
@@ -16989,6 +16991,68 @@ async function handleAuthLogin(isMobile_use = false) {
 
       showAuthSuccess(successMessage);
 
+      // ── 账号注销等待期检测 ──────────────────────────────────────────────────
+      // 若该账号正在注销等待期内，弹窗提示管理员并提供撤销选项
+      if (
+        result.account_cancellation &&
+        result.account_cancellation.status === "pending"
+      ) {
+        const executeAt = result.account_cancellation.execute_at;
+        const executeDate = executeAt
+          ? new Date(executeAt * 1000).toLocaleString("zh-CN")
+          : "未知";
+        const cancelResult = await Swal.fire({
+          title: "⚠️ 账号注销等待中",
+          html: `
+            <div style="text-align:left;padding:6px 0;">
+              <p style="color:#475569;font-size:14px;margin-bottom:10px;">
+                该账号已申请注销，将在 <strong style="color:#dc2626;">${executeDate}</strong> 自动删除。
+              </p>
+              <p style="color:#64748b;font-size:13px;">继续登录即视为撤销注销申请，账号将恢复正常状态。</p>
+            </div>`,
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "✅ 继续登录（撤销注销）",
+          confirmButtonColor: "#16a34a",
+          cancelButtonText: "退出登录",
+          cancelButtonColor: "#dc2626",
+          customClass: { popup: "swal2-neumorphism-popup" },
+          reverseButtons: true,
+          allowOutsideClick: false,
+        });
+        if (cancelResult.isConfirmed) {
+          // 调用撤销注销接口
+          try {
+            const revokeResp = await fetch(
+              "/auth/user/cancel_account_cancellation",
+              {
+                method: "POST",
+                headers: { "X-Session-ID": sessionUUID },
+              },
+            );
+            const revokeData = await revokeResp.json();
+            if (revokeData.success) {
+              await Swal.fire({
+                title: "注销已撤销",
+                text: "账号注销申请已撤销，账号已恢复正常。",
+                icon: "success",
+                timer: 2000,
+                timerProgressBar: true,
+                showConfirmButton: false,
+                customClass: { popup: "swal2-neumorphism-popup" },
+              });
+            }
+          } catch (_e) {
+            /* 静默失败，不阻断登录 */
+          }
+        } else {
+          // 用户选择退出 — 不进入主界面，保持在登录页
+          setButtonLoading("auth-login-btn", false);
+          return;
+        }
+      }
+      // ── 账号注销等待期检测结束 ───────────────────────────────────────────────
+
       if (result.token) {
         logMessage_Info("Received auth token (stored in cookie)");
         logMessage_Info("[安全] 登录令牌已生成，有效期1小时");
@@ -17071,7 +17135,9 @@ async function handleAuthLogin(isMobile_use = false) {
         refreshCaptcha("mobile-login");
       }
       $("auth-login-captcha").value = "";
-      const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+      const mobileLoginCaptcha = document.getElementById(
+        "mobile-login-captcha",
+      );
       if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
     }
   } catch (e) {
@@ -17091,7 +17157,9 @@ async function handleAuthLogin(isMobile_use = false) {
       refreshCaptcha("mobile-login");
     }
     $("auth-login-captcha").value = "";
-    const mobileLoginCaptchaErr = document.getElementById("mobile-login-captcha");
+    const mobileLoginCaptchaErr = document.getElementById(
+      "mobile-login-captcha",
+    );
     if (mobileLoginCaptchaErr) mobileLoginCaptchaErr.value = "";
   }
 }
@@ -17461,7 +17529,9 @@ async function handleAuthRegister(isMobile_use = false) {
         refreshCaptcha("mobile-register");
       }
       $("auth-register-captcha").value = "";
-      const mobileRegCaptcha = document.getElementById("mobile-register-captcha");
+      const mobileRegCaptcha = document.getElementById(
+        "mobile-register-captcha",
+      );
       if (mobileRegCaptcha) mobileRegCaptcha.value = "";
     }
   } catch (e) {
@@ -17481,7 +17551,9 @@ async function handleAuthRegister(isMobile_use = false) {
       refreshCaptcha("mobile-register");
     }
     $("auth-register-captcha").value = "";
-    const mobileRegCaptchaErr = document.getElementById("mobile-register-captcha");
+    const mobileRegCaptchaErr = document.getElementById(
+      "mobile-register-captcha",
+    );
     if (mobileRegCaptchaErr) mobileRegCaptchaErr.value = "";
   } finally {
     registrationCroppedAvatarBlob = null;
@@ -18130,7 +18202,10 @@ if (typeof window !== "undefined") {
     if (refreshHealthBtnModal)
       refreshHealthBtnModal.addEventListener("click", loadHealthStatus);
     if (refreshProfileBtnModal)
-      refreshProfileBtnModal.addEventListener("click", loadPersonalInfo);
+      refreshProfileBtnModal.addEventListener("click", () => {
+        loadPersonalInfo();
+        loadUserBillingList();
+      });
     if (refreshSessionsBtnModal)
       refreshSessionsBtnModal.addEventListener("click", loadAdminSessions);
     logMessage_Info(
@@ -18961,7 +19036,6 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         "[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素",
       );
     }
-    
 
     // 步骤9：设置"水印控制"标签的显示状态
     // 逻辑：仅管理员可见（用于配置用户的高德地图去水印权限）
@@ -19022,6 +19096,143 @@ async function initializeInlineAdminPanel() {
 }
 
 let messageEditor = null;
+let mobileMultiMessageEditor = null;
+let accountCancellationCooldowns = { pc: 0, mobile: 0 };
+
+function formatCancellationTimeText(ts) {
+  if (!ts) return "未申请";
+  const ms = Number(ts) * 1000;
+  if (Number.isNaN(ms)) return "已申请";
+  return `等待至 ${new Date(ms).toLocaleString()}`;
+}
+
+function updateAccountCancellationStatusDisplay(status) {
+  const text =
+    status && status.status === "pending"
+      ? formatCancellationTimeText(status.execute_at)
+      : "未申请";
+  const pcEl = document.getElementById("pc-account-cancel-status");
+  const mobileEl = document.getElementById("mobile-account-cancel-status");
+  if (pcEl) pcEl.textContent = text;
+  if (mobileEl) mobileEl.textContent = text;
+}
+
+function getAccountCancelElements(platform) {
+  if (platform === "mobile") {
+    return {
+      passwordInput: document.getElementById(
+        "mobile-account-cancel-current-password",
+      ),
+      smsInput: document.getElementById("mobile-account-cancel-sms-code"),
+      statusEl: document.getElementById("mobile-account-cancel-status"),
+      smsButtonSelector:
+        "button[onclick=\"sendAccountCancelSmsCode('mobile')\"]",
+    };
+  }
+  return {
+    passwordInput: document.getElementById(
+      "pc-account-cancel-current-password",
+    ),
+    smsInput: document.getElementById("pc-account-cancel-sms-code"),
+    statusEl: document.getElementById("pc-account-cancel-status"),
+    smsButtonSelector: "button[onclick=\"sendAccountCancelSmsCode('pc')\"]",
+  };
+}
+
+async function sendAccountCancelSmsCode(platform = "pc") {
+  const { smsButtonSelector } = getAccountCancelElements(platform);
+  const sendBtn = document.querySelector(smsButtonSelector);
+  if (accountCancellationCooldowns[platform] > 0) {
+    showModalAlert(
+      `请等待 ${accountCancellationCooldowns[platform]} 秒后再发送`,
+      "提示",
+    );
+    return;
+  }
+  try {
+    const profile = await callPythonAPI_raw("/api/user/profile", "GET");
+    if (!profile.success || !profile.phone) {
+      showModalAlert("未绑定手机号，无法发送验证码", "错误");
+      return;
+    }
+    if (sendBtn) sendBtn.disabled = true;
+    openCaptchaModal({
+      phone: profile.phone,
+      button: sendBtn,
+      originalText: "发送验证码",
+      scene: "password_reset",
+    });
+    accountCancellationCooldowns[platform] = 60;
+    const timer = setInterval(() => {
+      accountCancellationCooldowns[platform] -= 1;
+      if (sendBtn) {
+        sendBtn.textContent =
+          accountCancellationCooldowns[platform] > 0
+            ? `${accountCancellationCooldowns[platform]}s`
+            : "发送验证码";
+      }
+      if (accountCancellationCooldowns[platform] <= 0) {
+        clearInterval(timer);
+        if (sendBtn) sendBtn.disabled = false;
+      }
+    }, 1000);
+  } catch (e) {
+    if (sendBtn) sendBtn.disabled = false;
+    showModalAlert("发送验证码失败: " + e.message, "错误");
+  }
+}
+
+async function requestAccountCancellation(platform = "pc") {
+  const { passwordInput, smsInput, statusEl } =
+    getAccountCancelElements(platform);
+  const currentPassword = passwordInput ? passwordInput.value.trim() : "";
+  const smsCode = smsInput ? smsInput.value.trim() : "";
+  if (!currentPassword || !smsCode) {
+    showModalAlert("请填写当前密码和短信验证码", "提示");
+    return;
+  }
+  if (!/^\d{6}$/.test(smsCode)) {
+    showModalAlert("短信验证码格式错误", "提示");
+    return;
+  }
+
+  const confirmed = await jsShowConfirm(
+    "确认账号注销申请",
+    "提交后将进入默认24小时等待期，期间账号仍可登录。确定继续？",
+  );
+  if (!confirmed) return;
+
+  try {
+    const resp = await fetch("/auth/user/request_account_cancellation", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-ID": sessionUUID,
+      },
+      body: JSON.stringify({
+        current_password: currentPassword,
+        sms_code: smsCode,
+        wait_hours: 24,
+      }),
+    });
+    const result = await resp.json();
+    if (!result.success) {
+      showModalAlert(result.message || "申请失败", "错误");
+      return;
+    }
+    updateAccountCancellationStatusDisplay(result.status);
+    if (statusEl && result.status && result.status.execute_at) {
+      statusEl.textContent = formatCancellationTimeText(
+        result.status.execute_at,
+      );
+    }
+    if (passwordInput) passwordInput.value = "";
+    if (smsInput) smsInput.value = "";
+    showModalAlert(result.message || "已提交注销申请", "成功");
+  } catch (e) {
+    showModalAlert("申请失败: " + e.message, "错误");
+  }
+}
 function switchAdminTab(tab) {
   const userGroup = currentUserData?.group || "user";
   const usersTab = $("admin-tab-users_modal");
@@ -19068,7 +19279,7 @@ function switchAdminTab(tab) {
   const cdnPanel = $("admin-cdn-panel_modal");
   const bruteforcePanel = $("admin-bruteforce-panel_modal");
   // 获取欠费查询面板元素
-  const overduePanel = $("admin-overdue-panel_modal");
+  const overduePanel = $("admin-billing-panel_modal");
   // 获取支付日志面板元素
   const paymentLogsPanel = $("admin-payment-logs-panel_modal");
   // 获取支付设置面板元素
@@ -19077,6 +19288,11 @@ function switchAdminTab(tab) {
   const pricingPanel = $("admin-pricing-panel_modal");
   // 获取水印控制面板元素
   const watermarkControlPanel = $("admin-watermark-control-panel_modal");
+  // 获取账单管理和恢复账号标签/面板元素
+  const adminBillingTab = $("admin-tab-billing_modal");
+  const restoreAccountTab = $("admin-tab-restore-account_modal");
+  const adminBillingPanel = $("admin-billing-panel_modal");
+  const restoreAccountPanel = $("admin-restore-account-panel_modal");
 
   if (!sessionsTab || !sessionsPanel) {
     logMessage_Error("switchAdminTab: 无法找到必要的管理面板元素");
@@ -19103,6 +19319,8 @@ function switchAdminTab(tab) {
     paymentSettingsTab, // 添加支付设置 Tab
     pricingTab, // 添加价格设置 Tab
     watermarkControlTab, // 添加水印控制 Tab
+    adminBillingTab, // 添加账单管理 Tab
+    restoreAccountTab, // 添加恢复账号 Tab
   ]
     .filter((t) => t)
     .forEach((t) => {
@@ -19131,6 +19349,8 @@ function switchAdminTab(tab) {
     paymentSettingsPanel, // 添加支付设置 Panel
     pricingPanel, // 添加价格设置 Panel
     watermarkControlPanel, // 添加水印控制 Panel
+    adminBillingPanel, // 添加账单管理 Panel
+    restoreAccountPanel, // 添加恢复账号 Panel
   ]
     .filter((p) => p)
     .forEach((p) => {
@@ -19170,6 +19390,7 @@ function switchAdminTab(tab) {
     profilePanel.classList.remove("hidden");
     loadPersonalInfo();
     stopHealthAutoRefresh();
+    loadUserBillingList();
   } else if (tab === "sessions") {
     sessionsTab.classList.add("text-sky-600", "border-sky-600");
     sessionsTab.classList.remove("text-slate-400", "border-transparent");
@@ -19981,7 +20202,7 @@ function switchAdminTab(tab) {
 
     // [获取元素] 获取欠费查询标签和面板的DOM元素
     const overdueTab = $("admin-tab-overdue_modal");
-    const overduePanel = $("admin-overdue-panel_modal");
+    const overduePanel = $("admin-billing-panel_modal");
 
     // [元素验证] 检查标签和面板元素是否存在
     if (overdueTab && overduePanel) {
@@ -20017,7 +20238,7 @@ function switchAdminTab(tab) {
         missingElement: !overdueTab
           ? "admin-tab-overdue_modal"
           : !overduePanel
-            ? "admin-overdue-panel_modal"
+            ? "admin-billing-panel_modal"
             : "未知",
       });
     }
@@ -20221,6 +20442,27 @@ function switchAdminTab(tab) {
             : "未知",
       });
     }
+  } else if (tab === "admin-billing") {
+    // 账单管理面板
+    if (adminBillingTab && adminBillingPanel) {
+      adminBillingTab.classList.add("text-sky-600", "border-sky-600");
+      adminBillingTab.classList.remove("text-slate-400", "border-transparent");
+      adminBillingPanel.classList.remove("hidden");
+    }
+    stopHealthAutoRefresh();
+    loadAdminBillingList();
+  } else if (tab === "restore-account") {
+    // 恢复账号面板
+    if (restoreAccountTab && restoreAccountPanel) {
+      restoreAccountTab.classList.add("text-sky-600", "border-sky-600");
+      restoreAccountTab.classList.remove(
+        "text-slate-400",
+        "border-transparent",
+      );
+      restoreAccountPanel.classList.remove("hidden");
+    }
+    stopHealthAutoRefresh();
+    loadRemovedAccountsList();
   } else {
     if (profileTab && profilePanel) {
       profileTab.classList.add("text-sky-600", "border-sky-600");
@@ -20391,7 +20633,11 @@ async function loadAdminSessions_inline() {
   }
 }
 
-function updateAdminSessionCountDisplayInline(currentCount, maxSessions, isGodMode = false) {
+function updateAdminSessionCountDisplayInline(
+  currentCount,
+  maxSessions,
+  isGodMode = false,
+) {
   const countEl = $("admin-session-count-display-inline");
   if (!countEl) return;
 
@@ -20633,6 +20879,7 @@ async function loadPersonalInfo() {
       return;
     }
     const user = result.user;
+    updateAccountCancellationStatusDisplay(user.account_cancellation);
     if (user.auth_username) {
       currentAuthUsername = user.auth_username;
     }
@@ -20671,7 +20918,9 @@ async function loadPersonalInfo() {
     }
     const pcForgotPasswordHint = $("pc-forgot-password-hint");
     if (pcForgotPasswordHint) {
-      pcForgotPasswordHint.style.display = config.enable_phone_modification ? "" : "none";
+      pcForgotPasswordHint.style.display = config.enable_phone_modification
+        ? ""
+        : "none";
     }
     const avatarDisplay = $("profile-avatar-display");
     const avatarInput = $("profile-avatar-input");
@@ -28687,7 +28936,11 @@ async function checkButtonPermission(buttonId, permissionName) {
   return true;
 }
 
-function updateAdminSessionCountDisplay(currentCount, maxSessions, isGodMode = false) {
+function updateAdminSessionCountDisplay(
+  currentCount,
+  maxSessions,
+  isGodMode = false,
+) {
   const countEl = $("admin-session-count-display");
   if (!countEl) return;
 
@@ -32110,19 +32363,24 @@ function renderMobileTaskList() {
   const mobileTaskListDiv = $("mobile-task-list");
   if (!mobileTaskListDiv) return;
   mobileTaskListDiv.innerHTML = "";
+
   const taskCountElem = $("mobile-task-count");
   if (taskCountElem) {
     taskCountElem.textContent = `${currentTasks.length} 个任务`;
   }
+
   if (currentTasks.length === 0) {
     mobileTaskListDiv.innerHTML = `<p class="text-slate-400 text-center py-8 text-sm">暂无任务</p>`;
     return;
   }
+
   currentTasks.forEach((task, index) => {
     const item = document.createElement("div");
+
     let statusClass = "text-amber-600";
     let statusText = "未完成";
     let statusIcon = "🕒";
+
     if (task.status == 1) {
       statusClass = "text-emerald-600";
       statusText = "已完成";
@@ -32134,6 +32392,7 @@ function renderMobileTaskList() {
       statusText = "已过期";
       statusIcon = "⛔";
     }
+
     if (!(task.status == 1)) {
       if (
         typeof task.info_text === "string" &&
@@ -32144,28 +32403,36 @@ function renderMobileTaskList() {
         statusIcon = "⏳";
       }
     }
+
     item.className =
-      "bg-white rounded-lg p-3 border border-slate-200 cursor-pointer transition-all duration-200 hover:shadow-md active:scale-98 min-w-[300px]";
+      "bg-white rounded-lg p-3 border border-slate-200 cursor-pointer transition-all duration-200 hover:shadow-md active:scale-98 w-full max-w-full break-words";
     item.id = `Mobile_Task_List_Sub_project${task.errand_id}`;
+
     item.innerHTML = `
-          <div class="flex items-center justify-between mb-2"">
-            <p class="font-semibold text-slate-800 text-sm truncate flex-1">${
-              task.run_name
-            }</p>
-          </div>
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-medium ${statusClass} flex items-center gap-1">
-              <span>${statusIcon}</span>
-              <span>${statusText}</span>
-            </span>
-            <span class="text-slate-500">${task.info_text || ""}</span>
-          </div>
-        `;
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 w-full">
+        <p class="font-semibold text-slate-800 text-sm break-words w-full">
+          ${task.run_name}
+        </p>
+      </div>
+
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs w-full gap-1">
+        <span class="font-medium ${statusClass} flex items-center gap-1">
+          <span>${statusIcon}</span>
+          <span>${statusText}</span>
+        </span>
+
+        <span class="text-slate-500 break-words w-full sm:w-auto">
+          ${task.info_text || ""}
+        </span>
+      </div>
+    `;
 
     item.dataset.index = index;
+
     if (task.status === 1) {
       item.style.opacity = "0.6";
     }
+
     if (index === selectedTaskIndex) {
       item.style.backgroundColor = "#eff6ff";
       item.style.border = "2px solid #3b82f6";
@@ -32196,18 +32463,19 @@ function renderMobileTaskList() {
         selectTask(index);
         return;
       }
+
       const statusRes = await callPythonAPI_raw(
         "/api/background_task/status",
         "GET",
         null,
       );
+
       const isBackendRunning =
         statusRes.success &&
         statusRes.task_status &&
         statusRes.task_status.status === "running";
 
       if (isBackendRunning) {
-        // showModalAlert("任务正在运行中，禁止切换任务！", "错误");
         swal.fire({
           title: "错误",
           text: "任务正在运行中，禁止切换任务！",
@@ -32217,11 +32485,14 @@ function renderMobileTaskList() {
         updateMobileTaskUI("运行中", "任务执行中");
         return;
       }
+
       selectTask(index);
     });
+
     mobileTaskListDiv.appendChild(item);
   });
 }
+
 function renderMobileCheckpointsList() {
   const checkpointsListDiv = $("mobile-checkpoints-list");
   const taskInfoDiv = $("mobile-checkpoints-task-info");
@@ -33828,11 +34099,11 @@ async function multi_startAll() {
   }
 
   // ========== 步骤3：欠费检查（只检查已添加的账号）==========
-  // 【重要】这里传入已添加的账号列表，只检查这些账号的欠费情况
-  // 如果addedUsernames为空数组，checkOverdueBeforeStart会检查所有账号（回退到原有行为）
-  const canStart = await checkOverdueBeforeStart(
-    addedUsernames.length > 0 ? addedUsernames : null,
-  );
+  // 【重要】只检查已添加账号的欠费情况，若获取账号列表失败则跳过检查
+  const canStart =
+    addedUsernames.length > 0
+      ? await checkOverdueBeforeStart(addedUsernames)
+      : true;
   if (!canStart) {
     // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
     return;
@@ -34919,12 +35190,22 @@ function selectTaskFromBackend(index) {
 }
 
 function updateDashboard() {
+  const formatMMSS = (sec) => {
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(
+      s % 60,
+    ).padStart(2, "0")}`;
+  };
   if (!currentRunData || Object.keys(currentRunData).length === 0) {
     $("run-stats-label").textContent = `-- km / --:--`;
     $("live-dist-label").textContent = "0.00 km";
     $("total-dist-label").textContent = "0.00 km";
     $("live-time-label").textContent = "00:00";
     $("total-time-label").textContent = "00:00";
+    const remainLabel = $("remaining-time-label");
+    if (remainLabel) remainLabel.textContent = "00:00";
+    const mobileRemainLabel = document.getElementById("mobile-remaining-time-label");
+    if (mobileRemainLabel) mobileRemainLabel.textContent = "00:00";
     $("target-points-text").innerHTML =
       '<p class="text-slate-400 text-center text-xs pt-4">请选择一个任务</p>';
     $("current-location-label").textContent = "当前位置GPS坐标: --, --";
@@ -34965,6 +35246,14 @@ function updateDashboard() {
     2,
     "0",
   )}:${String(totalTimeSec).padStart(2, "0")}`;
+  const remainingTimeS = Math.max(
+    0,
+    (currentRunData.total_run_time_s || 0) - liveMs / 1000,
+  );
+  const remainingLabel = $("remaining-time-label");
+  if (remainingLabel) {
+    remainingLabel.textContent = formatMMSS(remainingTimeS);
+  }
 
   const targetDiv = $("target-points-text");
   targetDiv.innerHTML = "";
@@ -35018,6 +35307,9 @@ function updateDashboard() {
   const mobileTotalTimeLabel = document.getElementById(
     "mobile-total-time-label",
   );
+  const mobileRemainingTimeLabel = document.getElementById(
+    "mobile-remaining-time-label",
+  );
   const mobileCurrentLocationLabel = document.getElementById(
     "mobile-current-location-label",
   );
@@ -35042,6 +35334,9 @@ function updateDashboard() {
       2,
       "0",
     )}:${String(totalTimeSec).padStart(2, "0")}`;
+  }
+  if (mobileRemainingTimeLabel) {
+    mobileRemainingTimeLabel.textContent = formatMMSS(remainingTimeS);
   }
   if (mobileCurrentLocationLabel && currentRunData) {
     const currentLocationLabel = document.getElementById(
@@ -35681,11 +35976,11 @@ async function toggleRun() {
 
   if (btn.textContent === "开始执行") {
     // ========== 添加欠费检查 ==========
-    // 在开始任务前，检查当前学校账号是否有欠费
-    // 如果有欠费，会显示弹窗并返回 false，阻止任务启动
-    const canStart = await checkOverdueBeforeStart(
-      String(currentUserData.student_id),
-    );
+    // 按当前模式执行欠费检查：
+    // - 单账号模式：只检查当前账号
+    // - 多账号模式：只检查 multi-account-list / mobile-multi-account-list 中的账号
+    // - 仅在 pricing-require-payment_modal 启用时执行
+    const canStart = await _checkOverdueBeforeStartByCurrentMode();
     if (!canStart) {
       // 欠费检查未通过，直接返回不启动任务
       return;
@@ -35703,12 +35998,16 @@ async function toggleRun() {
       updateDashboard();
       drawMarkers();
     }
+    const currentSchoolUsername = String(
+      currentUserData?.student_id || "",
+    ).trim();
     const result = await callPythonAPI_raw(
       "/api/background_task/start",
       "POST",
       {
         task_indices: [selectedTaskIndex],
         auto_generate: autoGen,
+        school_username: currentSchoolUsername || undefined,
       },
     );
 
@@ -35763,8 +36062,11 @@ async function toggleAllRuns() {
 
   if (btn.textContent === "执行所有") {
     // ========== 添加欠费检查 ==========
-    // 在开始所有任务前，检查所有学校账号是否有欠费
-    const canStart = await checkOverdueBeforeStart();
+    // 按当前模式执行欠费检查：
+    // - 单账号模式：只检查当前账号
+    // - 多账号模式：只检查 multi-account-list / mobile-multi-account-list 中的账号
+    // - 仅在 pricing-require-payment_modal 启用时执行
+    const canStart = await _checkOverdueBeforeStartByCurrentMode();
     if (!canStart) {
       // 欠费检查未通过，直接返回不启动任务
       return;
@@ -35797,14 +36099,36 @@ async function toggleAllRuns() {
       updateDashboard();
       drawMarkers();
     }
+    const multiUsernames = _isInMultiAccountModeForOverdueCheck()
+      ? _getMultiAccountListUsernames()
+      : [];
+    const currentSchoolUsername = String(
+      currentUserData?.student_id || "",
+    ).trim();
     const result = await callPythonAPI_raw(
       "/api/background_task/start",
       "POST",
       {
         task_indices: taskIndices,
         auto_generate: autoGen,
+        school_usernames: multiUsernames.length ? multiUsernames : undefined,
+        school_username:
+          !multiUsernames.length && currentSchoolUsername
+            ? currentSchoolUsername
+            : undefined,
       },
     );
+    if (!result.success && result.error_code === "OVERDUE_PAYMENT") {
+      let overdueList = "";
+      if (result.overdue_accounts && result.overdue_accounts.length > 0) {
+        overdueList = result.overdue_accounts
+          .map((acc) => `${acc.school_username} (欠费${acc.overdue_count}次)`)
+          .join("\n");
+      }
+      const message = `检测到以下账号存在欠费：\n\n${overdueList}\n\n请先完成缴费后再执行任务。`;
+      showModalAlert(message, "欠费提示");
+      return;
+    }
     if (result.success) {
       btn.textContent = "全部停止";
       btn.classList.remove("btn-secondary");
@@ -38651,9 +38975,10 @@ async function mobileStartTask() {
     }
 
     // ========== 添加欠费检查 ==========
-    // 在启动任务前，检查当前用户的所有学校账号是否有欠费
-    // checkOverdueBeforeStart() 会调用后端API，如果有欠费会显示缴费弹窗
-    const canStart = await checkOverdueBeforeStart();
+    // 按当前模式执行欠费检查（仅在 require_payment 启用时）：
+    // - 单账号模式：只检查当前账号
+    // - 多账号模式：只检查列表中的账号
+    const canStart = await _checkOverdueBeforeStartByCurrentMode();
     if (!canStart) {
       // 用户有欠费且未完成缴费，阻止任务启动
       return;
@@ -39174,19 +39499,21 @@ async function mobileStartAllAccounts() {
     // ========== 步骤3：获取已添加的账号列表 ==========
     // 调用loadInitialData()获取当前所有已添加的账号数据
     // 使用try-catch确保即使获取失败也能继续执行（容错处理）
-    let addedUsernames = [];
+    let addedUsernames = _getMultiAccountListUsernames();
     try {
-      const initialData = await loadInitialData();
-      if (
-        initialData &&
-        initialData.accounts &&
-        Array.isArray(initialData.accounts)
-      ) {
-        // 从accounts数组中提取所有账号的username字段
-        // 这些是当前已添加到多账号管理的所有账号
-        addedUsernames = initialData.accounts
-          .map((acc) => acc.username)
-          .filter(Boolean); // 过滤掉空值
+      if (addedUsernames.length === 0) {
+        const initialData = await loadInitialData();
+        if (
+          initialData &&
+          initialData.accounts &&
+          Array.isArray(initialData.accounts)
+        ) {
+          // 从accounts数组中提取所有账号的username字段
+          // 这些是当前已添加到多账号管理的所有账号
+          addedUsernames = initialData.accounts
+            .map((acc) => acc.username)
+            .filter(Boolean); // 过滤掉空值
+        }
       }
     } catch (error) {
       // 如果获取账号列表失败，记录错误但不阻止继续执行
@@ -39194,11 +39521,11 @@ async function mobileStartAllAccounts() {
     }
 
     // ========== 步骤4：欠费检查（只检查已添加的账号）==========
-    // 【重要】传入已添加的账号列表，只检查这些账号的欠费情况
-    // 如果addedUsernames为空数组，则传null检查所有账号（回退到原有行为）
-    const canStart = await checkOverdueBeforeStart(
-      addedUsernames.length > 0 ? addedUsernames : null,
-    );
+    // 【重要】只检查已添加账号的欠费情况，若获取账号列表失败则跳过检查
+    const canStart =
+      addedUsernames.length > 0
+        ? await checkOverdueBeforeStart(addedUsernames)
+        : true;
     if (!canStart) {
       // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
       return;
@@ -40253,9 +40580,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
     // [修正] initMobileAdminPanel 由 openMobileAdminPanelUnified 通过 setTimeout 统一调用，
     //        此处不再重复调用，避免产生竞态条件导致面板隐藏失败
     if (panelId === "mobile-admin-panel-unified") {
-      logMessage_Info(
-        "[移动端单账号] 激活统一管理面板（复用多账号面板）",
-      );
+      logMessage_Info("[移动端单账号] 激活统一管理面板（复用多账号面板）");
       // 设置当前模式为单账号，供主题保存等功能判断
       window.mobileAdminPanelMode = "single";
       // 更新面板状态显示为单账号管理
@@ -41321,6 +41646,15 @@ async function loadSystemConfig() {
       "登录审计日志的保留天数。",
     );
     html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">账号功能配置</h5>';
+    html += createInput(
+      "Features",
+      "account_cancellation_wait_hours",
+      "账号注销冷静期（小时）",
+      "number",
+      "用户申请注销账号后，在此时间段内登录可撤销注销，到期后账号将被自动删除。默认 24 小时。",
+    );
+    html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">地图配置</h5>';
     html += createInput(
       "Map",
@@ -41636,9 +41970,10 @@ async function saveCaptchaSettings() {
         icon: "success",
         title: "保存成功",
         text: "验证码设置已保存",
-        timer: 2000,
-        showConfirmButton: false,
+        showConfirmButton: true,   // 显示关闭按钮
+        confirmButtonText: "关闭"  // 可自定义按钮文字
       });
+
       if (window.initialData) {
         window.initialData.captcha_settings = {
           length,
@@ -44188,6 +44523,13 @@ async function saveSystemConfig() {
         enable_message_review:
           $("config-Content_Review-enable_message_review").value === "true",
       },
+      Features: {
+        account_cancellation_wait_hours: parseInt(
+          ($("config-Features-account_cancellation_wait_hours") || {}).value ||
+            "24",
+          10,
+        ),
+      },
     };
     const response = await fetch("/api/admin/config/save", {
       method: "POST",
@@ -44260,7 +44602,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const regSmsDiv = document.getElementById("auth-reg-sms-wrapper");
     if (regSmsDiv) regSmsDiv.style.display = "none";
     // 移动端注册表单：隐藏手机号和短信验证码区域
-    const mobileRegPhoneDiv = document.getElementById("mobile-reg-phone-wrapper");
+    const mobileRegPhoneDiv = document.getElementById(
+      "mobile-reg-phone-wrapper",
+    );
     if (mobileRegPhoneDiv) mobileRegPhoneDiv.style.display = "none";
     const mobileRegSmsDiv = document.getElementById("mobile-reg-sms-wrapper");
     if (mobileRegSmsDiv) mobileRegSmsDiv.style.display = "none";
@@ -44272,12 +44616,16 @@ document.addEventListener("DOMContentLoaded", function () {
     if (profilePhoneHint) profilePhoneHint.style.display = "none";
   }
   if (!config.enable_phone_login) {
-    console.log("手机号验证码登录已禁用，隐藏登录类型切换按钮并启用手机号自动识别...");
+    console.log(
+      "手机号验证码登录已禁用，隐藏登录类型切换按钮并启用手机号自动识别...",
+    );
     // 隐藏 PC 端登录类型切换按钮组
     const loginTypeToggle = document.getElementById("auth-login-type-toggle");
     if (loginTypeToggle) loginTypeToggle.style.display = "none";
     // 隐藏移动端登录类型切换按钮组
-    const mobileLoginTypeToggle = document.getElementById("mobile-login-type-toggle");
+    const mobileLoginTypeToggle = document.getElementById(
+      "mobile-login-type-toggle",
+    );
     if (mobileLoginTypeToggle) mobileLoginTypeToggle.style.display = "none";
     // 隐藏"使用验证码登录"入口（PC 和移动端）
     const switchToSmsBtn = document.getElementById("auth-switch-to-sms");
@@ -44734,13 +45082,13 @@ async function initMobileAdminPanel(prefix) {
     // 功能：显示欠费账号列表，按欠费次数排序
     // 权限：管理员（admin）和超级管理员（super_admin）
     // ========================================
-    {
-      id: "overdue", // 标签ID，用于标识和切换面板
-      label: "欠费查询", // 标签显示的文本
-      // 警告图标：表示欠费/异常状态
-      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
-      permission: "admin", // 权限要求：管理员级别
-    },
+    // {
+    //   id: "overdue", // 标签ID，用于标识和切换面板
+    //   label: "欠费查询", // 标签显示的文本
+    //   // 警告图标：表示欠费/异常状态
+    //   icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+    //   permission: "admin", // 权限要求：管理员级别
+    // },
     // ========================================
     // 支付历史标签
     // 移动端支付历史面板的标签，与PC端功能对应
@@ -44797,6 +45145,18 @@ async function initMobileAdminPanel(prefix) {
       // 图层/文档图标：表示水印管理
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>',
       permission: "admin", // 权限要求：管理员级别
+    },
+    {
+      id: "billing",
+      label: "账单",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><g transform="scale(1.4) translate(-2.5, -3)"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1"></path></g></svg>',
+      permission: "admin",
+    },
+    {
+      id: "restore-account",
+      label: "账号恢复",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9"></path></svg>',
+      permission: "admin",
     },
   ];
   // ========================================
@@ -45325,7 +45685,9 @@ async function loadMobileMultiMessages() {
             : `?session_id=${sessionUUID}`;
         }
 
-        console.log(`[移动端留言板] 渲染留言 ID: ${msg.id}, 昵称: ${displayName}, IP城市: ${ipCity}, 是否游客: ${msg.is_guest}, 可删除: ${canDelete}`);
+        console.log(
+          `[移动端留言板] 渲染留言 ID: ${msg.id}, 昵称: ${displayName}, IP城市: ${ipCity}, 是否游客: ${msg.is_guest}, 可删除: ${canDelete}`,
+        );
         return `
         <div class="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-5 space-y-3 shadow-lg hover:shadow-xl transition-shadow duration-200 ease-in-out">
           <div class="flex justify-between items-start gap-4">
@@ -45414,10 +45776,15 @@ async function loadMobileMultiMessages() {
             console.warn("移动端留言 Markdown 渲染失败，回退为纯文本显示", e);
           }
         } else {
-          console.warn(`[移动端留言板] editormd 未加载，无法渲染 Markdown 留言 ID: ${m.id}`);
+          console.warn(
+            `[移动端留言板] editormd 未加载，无法渲染 Markdown 留言 ID: ${m.id}`,
+          );
         }
 
-        container.innerHTML = escapeHtml(m.content || "").replace(/\n/g, "<br>");
+        container.innerHTML = escapeHtml(m.content || "").replace(
+          /\n/g,
+          "<br>",
+        );
       });
     })(messages);
   } catch (e) {
@@ -45427,6 +45794,7 @@ async function loadMobileMultiMessages() {
 }
 
 async function submitMobileMultiMessage() {
+  await ensureMobileMultiMessageEditorInitialized();
   // 1. 获取DOM元素
   const contentInput = document.getElementById("mobile-multi-message-content");
   const nicknameInput = document.getElementById(
@@ -45439,7 +45807,12 @@ async function submitMobileMultiMessage() {
   if (!contentInput) return;
 
   // 2. 获取输入值
-  const content = contentInput.value.trim();
+  const editorContent =
+    mobileMultiMessageEditor &&
+    typeof mobileMultiMessageEditor.getMarkdown === "function"
+      ? mobileMultiMessageEditor.getMarkdown()
+      : "";
+  const content = (editorContent || contentInput.value || "").trim();
   const nickname = nicknameInput ? nicknameInput.value.trim() : "";
   const email = emailInput ? emailInput.value.trim() : "";
 
@@ -45499,6 +45872,12 @@ async function submitMobileMultiMessage() {
       showModalAlert("留言发送成功", "成功");
       // 清空输入
       contentInput.value = "";
+      if (
+        mobileMultiMessageEditor &&
+        typeof mobileMultiMessageEditor.clear === "function"
+      ) {
+        mobileMultiMessageEditor.clear();
+      }
       if (nicknameInput) nicknameInput.value = "";
       if (emailInput) emailInput.value = "";
       if (charCount) charCount.textContent = "0";
@@ -45517,6 +45896,83 @@ async function submitMobileMultiMessage() {
       postBtn.disabled = false;
       postBtn.textContent = "发表";
     }
+  }
+}
+
+async function ensureMobileMultiMessageEditorInitialized() {
+  try {
+    if (
+      mobileMultiMessageEditor &&
+      typeof mobileMultiMessageEditor.getMarkdown === "function"
+    ) {
+      return true;
+    }
+    if (typeof editormd === "undefined") return false;
+    const editorEl = document.getElementById("mobile-multi-message-editor");
+    if (!editorEl) return false;
+    mobileMultiMessageEditor = editormd("mobile-multi-message-editor", {
+      mode: "gfm",
+      name: "mobile-multi-message-content",
+      value: "",
+      theme: "default",
+      editorTheme: "default",
+      previewTheme: "default",
+      markdown: "",
+      width: "100%",
+      height: "220px",
+      path: "/editor.md/lib/",
+      pluginPath: "/editor.md/plugins/",
+      watch: true,
+      placeholder: "请输入留言（支持 Markdown）",
+      lineNumbers: false,
+      lineWrapping: true,
+      autoCloseBrackets: true,
+      searchReplace: true,
+      emoji: true,
+      taskList: true,
+      tex: true,
+      flowChart: false,
+      sequenceDiagram: true,
+      toolbarIcons: function () {
+        return [
+          "undo",
+          "redo",
+          "|",
+          "bold",
+          "italic",
+          "quote",
+          "|",
+          "list-ul",
+          "list-ol",
+          "|",
+          "link",
+          "image",
+          "code-block",
+          "|",
+          "watch",
+          "preview",
+        ];
+      },
+      onchange: function () {
+        try {
+          const md = mobileMultiMessageEditor.getMarkdown() || "";
+          const ta = document.getElementById("mobile-multi-message-content");
+          const count = document.getElementById(
+            "mobile-multi-message-char-count",
+          );
+          if (ta) ta.value = md;
+          if (count) count.textContent = String(md.length);
+        } catch (_) {}
+      },
+    });
+    const ta = document.getElementById("mobile-multi-message-content");
+    if (ta) ta.classList.add("hidden");
+    return true;
+  } catch (e) {
+    console.warn("[移动端留言板] 初始化 Editor.md 失败，回退为 textarea", e);
+    const ta = document.getElementById("mobile-multi-message-content");
+    if (ta) ta.classList.remove("hidden");
+    return false;
   }
 }
 
@@ -46082,10 +46538,12 @@ function switchMobileAdminTab(tabId, prefix) {
       支付历史: "payment-logs", // 支付历史标签映射
       支付设置: "payment-settings", // 支付设置标签映射
       价格设置: "pricing", // 价格设置标签映射
-      欠费查询: "overdue", // 欠费查询标签映射
+      欠费查询: "billing", // 欠费查询标签映射（复用账单面板）
       CDN: "cdn", // CDN缓存管理标签
       密码恢复: "bruteforce", // 密码恢复标签
       水印控制: "watermark", // 水印控制标签映射
+      账单: "billing", // 账单管理标签映射
+      账号恢复: "restore-account", // 账号恢复标签映射
     };
     const buttonTabId = tabMap[buttonText];
     if (buttonTabId === tabId) {
@@ -46235,8 +46693,9 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-pricing-panel", // 价格设置面板
       "mobile-multi-admin-cdn-panel", // CDN缓存管理面板
       "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
-      "mobile-multi-admin-overdue-panel", // 欠费查询面板
       "mobile-multi-admin-watermark-panel", // 水印控制面板
+      "mobile-multi-admin-billing-panel", // 账单面板
+      "mobile-multi-admin-restore-account-panel", // 账号恢复面板
     ];
 
     // 先隐藏所有面板，准备切换到目标面板
@@ -46288,7 +46747,13 @@ function switchMobileAdminTab(tabId, prefix) {
         break;
       case "profile":
         // 【修改】使用移动端专用个人信息加载函数
-        loadMobileUnifiedProfile();
+        loadMobileUnifiedProfile().then(() => loadMobileUserBillingList());
+        break;
+      case "billing":
+        loadMobileMultiAdminBillingList();
+        break;
+      case "restore-account":
+        loadMobileMultiRemovedAccountsList();
         break;
       case "sessions":
         // 【修正】检查上帝模式权限并控制开关显示
@@ -46306,6 +46771,7 @@ function switchMobileAdminTab(tabId, prefix) {
       case "messages":
         // 【修改】使用移动端专用留言板加载函数
         loadMobileMultiMessages();
+        ensureMobileMultiMessageEditorInitialized();
         break;
       case "ipban":
         // 加载IP封禁规则列表（使用移动端专用函数）
@@ -46645,6 +47111,14 @@ function copyAdminContentToMultiPanel(tabType) {
       pc: "admin-profile-content_modal", // PC端个人信息内容
       mobile: "mobile-multi-admin-profile-content", // 多账号移动端个人信息
     },
+    billing: {
+      pc: "admin-billing-list-container",
+      mobile: "mobile-multi-admin-billing-list",
+    },
+    "restore-account": {
+      pc: "removed-accounts-list-container",
+      mobile: "mobile-multi-removed-accounts-list",
+    },
     sessions: {
       pc: "admin-sessions-list_modal", // PC端会话列表
       mobile: "mobile-multi-admin-sessions-list", // 多账号移动端会话列表
@@ -46707,6 +47181,29 @@ function copyAdminContentToMultiPanel(tabType) {
 
   // 将PC端内容复制到移动端容器
   mobileContainer.innerHTML = pcContainer.innerHTML;
+
+  // 【账单列表】移动端显示优化：缩小表格字号并强化横向滚动体验
+  if (tabType === "billing") {
+    mobileContainer.querySelectorAll(".overflow-x-auto").forEach((el) => {
+      el.classList.add("pb-1", "[-webkit-overflow-scrolling:touch]");
+    });
+    mobileContainer.querySelectorAll("table").forEach((tb) => {
+      tb.classList.add("text-[11px]");
+    });
+    mobileContainer.querySelectorAll("th, td").forEach((cell) => {
+      cell.classList.add("!px-1.5", "!py-1.5");
+    });
+    mobileContainer.querySelectorAll("td div").forEach((box) => {
+      if (
+        box.classList.contains("flex") &&
+        box.classList.contains("items-center") &&
+        box.classList.contains("justify-center")
+      ) {
+        box.classList.remove("justify-center");
+        box.classList.add("justify-start", "flex-wrap");
+      }
+    });
+  }
 
   // 【特殊处理】使用DOM API直接修改按钮的onclick属性，避免正则表达式匹配失败
 
@@ -46847,6 +47344,25 @@ function copyAdminContentToMultiPanel(tabType) {
       if (onclickAttr.includes("openModifyPhoneModal")) {
         btn.setAttribute("onclick", "showMobileModifyPhoneModal()");
         return;
+      }
+    });
+  }
+
+  if (tabType === "billing" || tabType === "restore-account") {
+    mobileContainer.querySelectorAll("button").forEach((btn) => {
+      const onclickAttr = btn.getAttribute("onclick");
+      if (!onclickAttr) return;
+      if (
+        tabType === "restore-account" &&
+        onclickAttr.includes("restoreAccount(")
+      ) {
+        btn.setAttribute(
+          "onclick",
+          onclickAttr.replace(
+            "restoreAccount(",
+            "restoreAccountAndRefreshMobile(",
+          ),
+        );
       }
     });
   }
@@ -47021,9 +47537,8 @@ async function confirmMobileAvatarCrop() {
           showModalAlert("头像上传成功", "成功");
           closeMobileAvatarCropModal();
           // 刷新个人信息
-          loadPersonalInfo().then(() =>
-            copyAdminContentToMultiPanel("profile"),
-          );
+          loadMobileUnifiedProfile();
+          loadMobileUserBillingList();
         } else {
           showModalAlert(result.message || "上传失败", "错误");
         }
@@ -47219,7 +47734,8 @@ async function submitMobileModifyPhone() {
       if (currentUserData) {
         currentUserData.phone = phone;
       }
-      loadPersonalInfo().then(() => copyAdminContentToMultiPanel("profile"));
+      loadMobileUnifiedProfile();
+      loadMobileUserBillingList();
     } else {
       showModalAlert(result.message || "修改失败", "错误");
     }
@@ -47246,6 +47762,7 @@ async function loadMobileUnifiedProfile() {
     if (result.success) {
       // 修正：后端返回的键名为 'user' 而不是 'data'
       const data = result.user;
+      updateAccountCancellationStatusDisplay(data.account_cancellation);
 
       // 更新头像
       const avatarDisplay = document.getElementById(
@@ -47296,8 +47813,12 @@ async function loadMobileUnifiedProfile() {
         }
         // 根据 enable_phone_modification 配置控制修改手机号按钮和提示的显示
         const appConfig = window.APP_CONFIG || {};
-        const modifyPhoneBtn = document.getElementById("mobile-unified-modify-phone-btn");
-        const modifyPhoneHint = document.getElementById("mobile-unified-modify-phone-hint");
+        const modifyPhoneBtn = document.getElementById(
+          "mobile-unified-modify-phone-btn",
+        );
+        const modifyPhoneHint = document.getElementById(
+          "mobile-unified-modify-phone-hint",
+        );
         if (!appConfig.enable_phone_modification) {
           if (modifyPhoneBtn) modifyPhoneBtn.style.display = "none";
           if (modifyPhoneHint) modifyPhoneHint.style.display = "none";
@@ -47306,9 +47827,12 @@ async function loadMobileUnifiedProfile() {
           if (modifyPhoneBtn) modifyPhoneBtn.style.display = "";
           if (modifyPhoneHint) modifyPhoneHint.style.display = "";
         }
-        const mobileForgotPasswordHint = document.getElementById("mobile-forgot-password-hint");
+        const mobileForgotPasswordHint = document.getElementById(
+          "mobile-forgot-password-hint",
+        );
         if (mobileForgotPasswordHint) {
-          mobileForgotPasswordHint.style.display = appConfig.enable_phone_modification ? "" : "none";
+          mobileForgotPasswordHint.style.display =
+            appConfig.enable_phone_modification ? "" : "none";
         }
         // --- 新增：更新 2FA 状态 ---
         const tfaStatus = document.getElementById("mobile-unified-2fa-status");
@@ -54703,6 +55227,103 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
   }
 }
 
+let _requirePaymentForOverdueCache = {
+  value: null,
+  ts: 0,
+};
+
+async function _isPaymentRequiredForOverdueCheck() {
+  const now = Date.now();
+  if (
+    _requirePaymentForOverdueCache.value !== null &&
+    now - _requirePaymentForOverdueCache.ts < 30 * 1000
+  ) {
+    return _requirePaymentForOverdueCache.value;
+  }
+
+  try {
+    const headers = {};
+    if (typeof sessionUUID !== "undefined" && sessionUUID) {
+      headers["X-Session-ID"] = sessionUUID;
+    }
+    const response = await fetch("/api/config/pricing", {
+      method: "GET",
+      headers,
+    });
+    const result = await response.json();
+    if (
+      response.ok &&
+      result &&
+      result.success &&
+      result.config &&
+      typeof result.config.require_payment !== "undefined"
+    ) {
+      const enabled =
+        result.config.require_payment === true ||
+        String(result.config.require_payment).toLowerCase() === "true";
+      _requirePaymentForOverdueCache = { value: enabled, ts: now };
+      return enabled;
+    }
+  } catch (error) {
+    console.warn(
+      "[欠费检查] 获取后端 require_payment 配置失败，回退本地状态",
+      error,
+    );
+  }
+
+  const requirePaymentCheckbox = document.getElementById(
+    "pricing-require-payment_modal",
+  );
+  if (!requirePaymentCheckbox) return true;
+  return !!requirePaymentCheckbox.checked;
+}
+
+function _isInMultiAccountModeForOverdueCheck() {
+  const pcMultiApp = document.getElementById("multi-account-app");
+  const mobileMultiApp = document.getElementById("mobile-multi-account-app");
+  return (
+    (pcMultiApp && !pcMultiApp.classList.contains("hidden")) ||
+    (mobileMultiApp && !mobileMultiApp.classList.contains("hidden")) ||
+    window.mobileAdminPanelMode === "multi"
+  );
+}
+
+function _getMultiAccountListUsernames() {
+  const usernames = new Set();
+  ["multi-account-list", "mobile-multi-account-list"].forEach((containerId) => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll("[data-username]").forEach((el) => {
+      const username = (el.dataset.username || "").trim();
+      if (username) usernames.add(username);
+    });
+  });
+  return Array.from(usernames);
+}
+
+async function _checkOverdueBeforeStartByCurrentMode() {
+  if (!(await _isPaymentRequiredForOverdueCheck())) {
+    console.log("未开启欠费检查，允许继续。");
+    return true;
+  }
+  if (_isInMultiAccountModeForOverdueCheck()) {
+    console.log("多账号模式，检查所有账号的欠费状态。");
+    const usernames = _getMultiAccountListUsernames();
+    console.log("多账号模式，获取到的账号列表:", usernames);
+    return usernames.length > 0
+      ? await checkOverdueBeforeStart(usernames)
+      : true;
+  }
+  console.log("单账号模式，检查当前账号的欠费状态。");
+  const currentSchoolUsername = String(
+    currentUserData?.student_id || "",
+  ).trim();
+  console.log("单账号模式，当前账号:", currentSchoolUsername);
+  return currentSchoolUsername
+    ? await checkOverdueBeforeStart(currentSchoolUsername)
+    : await checkOverdueBeforeStart();
+}
+
 /**
  * 显示欠费提示弹窗
  */
@@ -54712,188 +55333,255 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
  * @param {Array} overdueAccounts - 欠费账号列表，格式：[{username, name, overdue_count, school_username}, ...]
  */
 async function showOverduePaymentModal(overdueAccounts) {
-  // ========== 第一步：从后端获取单次费用配置 ==========
-
-  // 默认单次费用为1.0元
-  // 如果后端API调用失败，会使用这个默认值
-  let singleRunCost = 1.0;
-
-  try {
-    // 调用后端API获取用户单次运行费用配置
-    // 这个费用决定了每次欠费需要支付的金额
-    const configResponse = await fetch("/api/config/get_user_run_cost", {
-      method: "GET",
-      headers: {
-        "X-Session-ID": sessionUUID, // 携带会话ID进行身份验证
-      },
-    });
-
-    // 解析JSON响应
-    const configResult = await configResponse.json();
-
-    // 如果API调用成功且返回了single_run_cost配置
-    if (configResult.success && configResult.single_run_cost) {
-      // 将字符串转换为浮点数，确保数值计算的准确性
-      singleRunCost = parseFloat(configResult.single_run_cost);
-    }
-  } catch (e) {
-    // 如果获取配置失败（网络错误、API不存在等），记录警告并使用默认值
-    console.warn("获取费用配置失败，使用默认值1.0元:", e);
-  }
-
-  // ========== 第二步：构建账号选择列表HTML ==========
-
-  // 为每个欠费账号生成一个交互式的复选框行
-  // 每行包含：复选框、账号信息、欠费次数、预估金额
-  const accountListHtml = overdueAccounts
-    .map((acc, index) => {
-      // 计算该账号的预估缴费金额：欠费次数 × 单次费用
-      // toFixed(2) 保留两位小数，例如：3.50、10.00
-      const estimatedAmount = (acc.overdue_count * singleRunCost).toFixed(2);
-
-      // 使用 escapeHtml 防止XSS攻击
-      // 如果账号名称中包含 <script> 等恶意代码，会被转义为 &lt;script&gt;
-      const displayName = escapeHtml(
-        acc.name || acc.username || acc.school_username,
-      );
-      const schoolUsername = escapeHtml(acc.school_username || acc.username);
-
-      // 返回一个美观的账号选择卡片HTML
-      return `
-            <div class="overdue-account-item" style="
-                display: flex; 
-                align-items: center; 
-                padding: 10px; 
-                margin: 8px 0; 
-                background: #f8fafc; 
-                border-radius: 8px;
-                border: 2px solid #e2e8f0;
-                cursor: pointer;
-                transition: all 0.2s;
-            " onclick="toggleOverdueAccount(${index})">
-                <input 
-                    type="checkbox" 
-                    id="overdue-account-${index}" 
-                    data-school-username="${schoolUsername}"
-                    data-overdue-count="${acc.overdue_count}"
-                    data-estimated-amount="${estimatedAmount}"
-                    checked
-                    style="margin-right: 12px; width: 18px; height: 18px; cursor: pointer;"
-                    onclick="event.stopPropagation(); updateTotalAmount();">
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; color: #1e293b; margin-bottom: 4px;">
-                        ${displayName}
-                    </div>
-                    <div style="font-size: 13px; color: #64748b;">
-                        账号：${schoolUsername} | 欠费：${acc.overdue_count}次 | 金额：¥${estimatedAmount}
-                    </div>
-                </div>
-            </div>
-        `;
-    })
-    .join("");
-
-  // ========== 第三步：显示选择弹窗 ==========
-
-  const result = await Swal.fire({
-    title: "选择要缴费的账号",
-    html: `
-            <div style="text-align: left;">
-                <p style="margin-bottom: 15px; color: #64748b; font-size: 14px;">
-                    💡 勾选需要缴费的账号，单价：¥${singleRunCost}/次
-                </p>
-                <div style="max-height: 400px; overflow-y: auto; margin-bottom: 15px;">
-                    ${accountListHtml}
-                </div>
-                <div style="
-                    padding: 15px; 
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius: 10px; 
-                    text-align: center;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                ">
-                    <div style="color: rgba(255,255,255,0.9); font-size: 13px; margin-bottom: 5px;">
-                        合计金额
-                    </div>
-                    <div id="total-payment-amount" style="color: white; font-size: 28px; font-weight: bold;">
-                        ¥${(
-                          overdueAccounts.reduce(
-                            (sum, acc) => sum + acc.overdue_count,
-                            0,
-                          ) * singleRunCost
-                        ).toFixed(2)}
-                    </div>
-                </div>
-            </div>
-        `,
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonText: "选择支付方式",
-    cancelButtonText: "取消",
-    confirmButtonColor: "#3b82f6",
-    cancelButtonColor: "#94a3b8",
-    width: "600px",
+  // 显示加载提示
+  Swal.fire({
+    title: "正在获取欠费账单",
+    allowOutsideClick: false,
     didOpen: () => {
-      // 绑定点击事件切换复选框
-      // 当用户点击整个卡片时，切换复选框的选中状态
-      window.toggleOverdueAccount = (index) => {
-        const checkbox = document.getElementById(`overdue-account-${index}`);
-        checkbox.checked = !checkbox.checked;
-        updateTotalAmount(); // 切换后更新总金额显示
-      };
-
-      // 更新总金额的函数
-      // 遍历所有复选框，累加选中账号的预估金额
-      window.updateTotalAmount = () => {
-        let total = 0;
-        document
-          .querySelectorAll('[id^="overdue-account-"]')
-          .forEach((checkbox) => {
-            if (checkbox.checked) {
-              // 从 data-estimated-amount 属性获取该账号的预估金额
-              total += parseFloat(checkbox.dataset.estimatedAmount);
-            }
-          });
-
-        // 更新页面上显示的总金额
-        const totalElement = document.getElementById("total-payment-amount");
-        if (totalElement) {
-          totalElement.textContent = "¥" + total.toFixed(2);
-        }
-      };
+      Swal.showLoading();
     },
   });
 
-  // ========== 第四步：如果用户确认，获取选中的账号并进入支付流程 ==========
+  // 收集所有欠费账号的 school_username 集合
+  const overdueSet = new Set(
+    (overdueAccounts || [])
+      .map((a) => a.school_username || a.username || "")
+      .filter(Boolean),
+  );
 
-  if (result.isConfirmed) {
-    // 收集选中的账号信息
-    const selectedAccounts = [];
-    document
-      .querySelectorAll('[id^="overdue-account-"]')
-      .forEach((checkbox) => {
-        if (checkbox.checked) {
-          // 将选中账号的信息添加到数组中
-          selectedAccounts.push({
-            school_username: checkbox.dataset.schoolUsername,
-            overdue_count: parseInt(checkbox.dataset.overdueCount),
-          });
-        }
-      });
-
-    // 验证是否至少选择了一个账号
-    if (selectedAccounts.length === 0) {
-      await Swal.fire({
-        title: "提示",
-        text: "请至少选择一个账号进行缴费",
-        icon: "info",
-        confirmButtonText: "确定",
-      });
-      return; // 退出函数，不进入支付流程
+  // 从账单系统获取所有待支付账单，过滤出欠费账号的账单
+  let pendingBills = [];
+  try {
+    const resp = await fetch("/api/billing/list", {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const result = await resp.json();
+    if (result.success) {
+      pendingBills = (result.records || []).filter(
+        (r) => r.status === "pending" && overdueSet.has(r.school_username),
+      );
     }
+  } catch (e) {
+    console.warn("[showOverduePaymentModal] 获取账单失败:", e);
+  }
 
-    // 进入支付流程，传递选中的账号和单次费用
-    await clearOverduePlaceholder(selectedAccounts, singleRunCost);
+  Swal.close();
+
+  if (!pendingBills.length) {
+    await Swal.fire({
+      title: "暂无待支付账单",
+      text: "未找到对应的待支付账单记录，请联系管理员确认。",
+      icon: "info",
+      confirmButtonText: "确定",
+    });
+    return;
+  }
+
+  const totalAmount = pendingBills
+    .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+    .toFixed(2);
+
+  // 点击卡片/行切换选中状态并更新合计
+  const updateTotal = `document.getElementById('overdue-total-amount').textContent='¥'+[...document.querySelectorAll('[data-overdue-bill-select]')].filter(c=>c.checked).reduce((s,c)=>s+parseFloat(c.dataset.amount||0),0).toFixed(2);`;
+
+  let bodyHtml, modalWidth;
+
+  if (isMobileMode) {
+    // ── 移动端：全卡片式 ────────────────────────────────────────────────
+    const cardsHtml = pendingBills
+      .map((r, idx) => {
+        const safeId = escapeHtml(r.billing_id || "");
+        const safeSchool = escapeHtml(r.school_username || "-");
+        const safeName = escapeHtml(r.school_name || r.school_username || "-");
+        const safeReason = escapeHtml(r.reason || "-");
+        const amount = r.amount != null ? parseFloat(r.amount) : 0;
+        const fmtAmount = "¥" + amount.toFixed(2);
+        return `
+<div class="bg-white border-2 border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all cursor-pointer"
+     style="tap-highlight-color:transparent"
+     onclick="const cb=document.getElementById('ob-${idx}');cb.checked=!cb.checked;${updateTotal}this.style.borderColor=cb.checked?'#3b82f6':'#e2e8f0';">
+
+  <!-- 顶栏：小屏垂直，大屏水平 -->
+  <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-200 text-center sm:text-left">
+
+    <input id="ob-${idx}" type="checkbox" data-overdue-bill-select="1"
+      data-billing-id="${safeId}" data-school-username="${safeSchool}"
+      data-amount="${amount}" checked
+      onclick="event.stopPropagation();${updateTotal}this.closest('[onclick]').style.borderColor=this.checked?'#3b82f6':'#e2e8f0';"
+      class="w-4 h-4 mx-auto sm:mx-0 flex-shrink-0 accent-blue-500">
+
+    <div class="flex-1 min-w-0">
+      <div class="text-[10px] text-slate-500 leading-none mb-0.5">学校账号</div>
+      <div class="text-xs font-semibold text-slate-800 truncate">${safeSchool}</div>
+    </div>
+
+  </div>
+
+  <!-- 内容区 -->
+  <div class="px-3 pt-2 pb-2.5">
+
+    <div class="flex items-center gap-1.5 mb-1.5">
+      <span class="text-[10px] text-slate-500 flex-shrink-0">姓名</span>
+      <span class="text-[11px] font-medium text-slate-700 truncate">${safeName}</span>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] mb-1.5">
+      <div class="bg-amber-50 border border-amber-100 rounded-xl px-2.5 py-1.5">
+        <div class="text-amber-600/70 leading-none mb-0.5 text-[10px]">金额</div>
+        <div class="text-amber-700 font-bold">${fmtAmount}</div>
+      </div>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+        <div class="text-slate-500 leading-none mb-0.5 text-[10px]">创建时间</div>
+        <div class="text-slate-700 break-all text-[10px]">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-[10px]">
+      <div class="text-slate-500 leading-none mb-0.5">详情</div>
+      <div class="text-slate-800 break-all">${safeReason}</div>
+    </div>
+
+  </div>
+</div>
+`;
+      })
+      .join("");
+
+    bodyHtml = `
+      <div class="text-left space-y-3">
+        <p class="text-[11px] text-slate-500">💡 点击卡片或勾选可切换选中状态</p>
+        <div class="space-y-2 max-h-[55vh] overflow-y-auto pr-0.5">
+          ${cardsHtml}
+        </div>
+        <div class="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-3 text-center shadow-md">
+          <div class="text-white/70 text-[10px] mb-0.5">合计金额</div>
+          <div id="overdue-total-amount" class="text-white text-2xl font-bold">¥${totalAmount}</div>
+        </div>
+      </div>`;
+    modalWidth = "95vw";
+  } else {
+    // ── PC端：列表式 ─────────────────────────────────────────────────────
+    const rowsHtml = pendingBills
+      .map((r, idx) => {
+        const safeId = escapeHtml(r.billing_id || "");
+        const safeSchool = escapeHtml(r.school_username || "-");
+        const safeName = escapeHtml(r.school_name || r.school_username || "-");
+        const safeReason = escapeHtml(r.reason || "-");
+        const amount = r.amount != null ? parseFloat(r.amount) : 0;
+        const fmtAmount = "¥" + amount.toFixed(2);
+        const fmtTime = escapeHtml(_fmtBillTime(r.created_at) || "-");
+        return `
+        <tr class="border-b border-slate-100 hover:bg-blue-50/40 cursor-pointer transition-colors"
+            onclick="const cb=document.getElementById('ob-${idx}');cb.checked=!cb.checked;${updateTotal}">
+          <td class="py-2.5 pl-3 pr-2 text-center">
+            <input id="ob-${idx}" type="checkbox" data-overdue-bill-select="1"
+              data-billing-id="${safeId}" data-school-username="${safeSchool}"
+              data-amount="${amount}" checked
+              onclick="event.stopPropagation();${updateTotal}"
+              class="w-4 h-4 accent-blue-500">
+          </td>
+          <td class="py-2.5 px-2">
+            <div class="text-sm font-medium text-slate-800">${safeSchool}</div>
+          </td>
+          <td class="py-2.5 px-2">
+            <div class="text-xs text-slate-500">${safeName}</div>
+          </td>
+          <td class="py-2.5 px-2 text-sm text-slate-600 max-w-[180px]">
+            <div class="break-words whitespace-normal" title="${safeReason}">
+              ${safeReason}
+            </div>
+          </td>
+
+          <td class="py-2.5 px-2 text-sm font-semibold text-amber-600 whitespace-nowrap">${fmtAmount}</td>
+          <td class="py-2.5 px-2 text-xs text-slate-400 whitespace-nowrap">${fmtTime}</td>
+        </tr>`;
+      })
+      .join("");
+
+    bodyHtml = `
+      <div class="text-left">
+        <p class="text-xs text-slate-500 mb-3">💡 点击行可切换勾选，勾选后点击"确认支付"合并发起支付</p>
+        <div class="rounded-xl border border-slate-200 overflow-hidden mb-3">
+          <div class="overflow-x-auto max-h-72 overflow-y-auto">
+            <table class="w-full text-left border-collapse text-xs text-center">
+              <thead>
+                <tr class="bg-slate-100 sticky top-0 z-10">
+                  <th class="py-2.5 pl-3 pr-2 w-8">
+                    <input type="checkbox" checked
+                      onclick="document.querySelectorAll('[data-overdue-bill-select]').forEach(c=>c.checked=this.checked);${updateTotal}"
+                      class="w-4 h-4 accent-blue-500">
+                  </th>
+                  <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">学校账号</th>
+                  <th class="py-2.5 px-2 font-semibold text-slate-600">姓名</th>
+                  <th class="py-2.5 px-2 font-semibold text-slate-600">详情</th>
+                  <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">金额</th>
+                  <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">创建时间</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-slate-50">
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl px-5 py-3 flex items-center justify-between shadow-md">
+          <span class="text-white/80 text-sm">合计金额</span>
+          <span id="overdue-total-amount" class="text-white text-2xl font-bold">¥${totalAmount}</span>
+        </div>
+      </div>`;
+    modalWidth = "780px";
+  }
+
+  const result = await Swal.fire({
+    title: "选择要支付的账单",
+    html: bodyHtml,
+    showCancelButton: true,
+    confirmButtonText: "确认支付",
+    cancelButtonText: "取消",
+    confirmButtonColor: "#3b82f6",
+    cancelButtonColor: "#94a3b8",
+    width: modalWidth,
+  });
+
+  if (!result.isConfirmed) return;
+
+  // 收集选中的账单
+  const selectedBills = [];
+  document.querySelectorAll("[data-overdue-bill-select]").forEach((cb) => {
+    if (cb.checked) {
+      selectedBills.push({
+        billing_id: cb.dataset.billingId,
+        school_username: cb.dataset.schoolUsername,
+      });
+    }
+  });
+
+  if (!selectedBills.length) {
+    await Swal.fire({
+      title: "提示",
+      text: "请至少选择一条账单",
+      icon: "info",
+      confirmButtonText: "确定",
+    });
+    return;
+  }
+
+  try {
+    await createBillingPaymentOrderAndOpen(selectedBills);
+    await Swal.fire({
+      title: "已发起支付",
+      text: "请在新窗口完成支付，完成后可刷新查看账单状态",
+      icon: "success",
+      confirmButtonText: "确定",
+    });
+  } catch (e) {
+    await Swal.fire({
+      title: "支付发起失败",
+      text: e.message || "未知错误",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
   }
 }
 
@@ -55632,7 +56320,9 @@ async function loadOverdueAccounts() {
       if (mergedMap.has(key)) {
         const existing = mergedMap.get(key);
         // 追加所属账号（去重），同时记录该账号是否为管理员
-        if (!existing.auth_usernames.find((u) => u.name === account.auth_username)) {
+        if (
+          !existing.auth_usernames.find((u) => u.name === account.auth_username)
+        ) {
           existing.auth_usernames.push({
             name: account.auth_username,
             is_admin: !!account.is_admin,
@@ -55643,7 +56333,9 @@ async function loadOverdueAccounts() {
       } else {
         mergedMap.set(key, {
           ...account,
-          auth_usernames: [{ name: account.auth_username, is_admin: !!account.is_admin }],
+          auth_usernames: [
+            { name: account.auth_username, is_admin: !!account.is_admin },
+          ],
         });
       }
     });
@@ -55662,7 +56354,8 @@ async function loadOverdueAccounts() {
     // 检查是否有欠费账号
     if (mergedAccounts.length === 0) {
       // 没有欠费账号，显示提示信息
-      pcHtml = '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
+      pcHtml =
+        '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
       mobileHtml = pcHtml;
     } else {
       // 有欠费账号，遍历生成每个账号的卡片
@@ -56129,14 +56822,57 @@ async function View_details_of_users_with_outstanding_payments(
       const dept = data.deptInfo || {};
       const user = data.userInfo || {};
 
-      // // ========== 检查当前用户是否为管理员 ==========
-      // // 从sessionStorage中获取用户组信息
-      // // 用户组存储在sessionStorage.user_group中，登录时由后端设置
-      // const userGroup = sessionStorage.getItem('user_group') || '';
+      // 获取该学校账号的账单记录
+      let billingRecords = [];
+      try {
+        const billResp = await fetch(
+          `/api/admin/billing/list?school_username=${encodeURIComponent(school_username)}`,
+          { headers: { "X-Session-ID": sessionUUID } },
+        );
+        const billResult = await billResp.json();
+        if (billResult.success) {
+          billingRecords = billResult.records || [];
+        }
+      } catch (e) {
+        console.warn("[View_details] 获取账单记录失败:", e);
+      }
 
-      // // 判断是否为管理员：只有admin或super_admin才能看到"结清"按钮
-      // // 这是前端的安全检查，后端API还会再次验证权限
-      // const isAdmin = (userGroup === 'admin' || userGroup === 'super_admin');
+      // 构建账单卡片 HTML
+      const buildBillingCardsHtml = (records) => {
+        if (!records.length) {
+          return `<div class="text-xs text-slate-400 text-center py-3">暂无账单记录</div>`;
+        }
+        const statusLabel = (s) => {
+          if (s === "paid")
+            return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">✓ 已支付</span>`;
+          if (s === "admin_cleared")
+            return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-800">✓ 管理员清除</span>`;
+          return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">⏳ 待支付</span>`;
+        };
+        return records
+          .map(
+            (r) => `
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-2">
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <div class="text-[10px] text-slate-400">创建时间</div>
+                <div class="text-xs text-slate-700">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+              </div>
+              ${statusLabel(r.status)}
+            </div>
+            <div class="text-[10px] text-slate-400 mb-0.5">描述</div>
+            <div class="text-xs text-slate-800 mb-2">${escapeHtml(r.reason || "-")}</div>
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-[10px] text-slate-400">金额：</span>
+                <span class="text-sm font-bold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + escapeHtml(String(r.amount)) : "-"}</span>
+              </div>
+              ${r.status === "pending" ? `<button onclick="Swal.close();paySingleBilling('admin-billing-list-container','${escapeHtml(r.billing_id || "")}','${escapeHtml(r.school_username || "")}')" class="px-2 py-1 text-[11px] bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md border border-emerald-200 transition-colors">支付</button>` : ""}
+            </div>
+          </div>`,
+          )
+          .join("");
+      };
 
       // 构建HTML内容 - 使用现代化的渐变背景和卡片设计
       const htmlContent = `
@@ -56146,6 +56882,7 @@ async function View_details_of_users_with_outstanding_payments(
                     <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-lg border border-blue-100">
                         <div class="flex justify-between items-center">
                             <!-- 备份时间信息 -->
+
                             <div class="flex flex-col">
                                 <span class="text-xs text-indigo-600 font-medium mb-1">
                                     📅 备份时间
@@ -56338,6 +57075,21 @@ async function View_details_of_users_with_outstanding_payments(
                             )}</pre>
                         </div>
                     </div>
+
+                    <!-- 账单记录卡片区域 -->
+                    <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                        <div class="bg-gradient-to-r from-amber-50 via-orange-50 to-white px-3 py-2 border-b border-amber-100 flex items-center gap-2">
+                            <div class="p-1 bg-gradient-to-br from-amber-100 to-orange-100 rounded text-amber-600">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                </svg>
+                            </div>
+                            <span class="font-bold text-amber-800 text-xs">账单记录（共 ${billingRecords.length} 条）</span>
+                        </div>
+                        <div class="p-3">
+                            ${buildBillingCardsHtml(billingRecords)}
+                        </div>
+                    </div>
                 </div>
             `;
 
@@ -56355,12 +57107,72 @@ async function View_details_of_users_with_outstanding_payments(
         },
       });
     } else {
+      // 备份数据不存在或无权限时，使用新的轻量详情视图（仅展示姓名 + 账单）
+      const resolvedName = await fetchSchoolAccountName(school_username);
+
+      // 获取该账号账单记录（非管理员走 /api/billing/list，管理员走 /api/admin/billing/list）
+      let fallbackBills = [];
+      try {
+        const billResp = await fetch(
+          `/api/billing/list?school_username=${encodeURIComponent(school_username)}`,
+          { headers: { "X-Session-ID": sessionUUID } },
+        );
+        const billData = await billResp.json();
+        if (billData.success) fallbackBills = billData.records || [];
+      } catch (_e) {}
+
+      const statusLabelFb = (s) => {
+        if (s === "paid")
+          return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">✓ 已支付</span>`;
+        if (s === "admin_cleared")
+          return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-800">✓ 管理员清除</span>`;
+        return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">⏳ 待支付</span>`;
+      };
+      const billCardsHtmlFb = fallbackBills.length
+        ? fallbackBills
+            .map(
+              (r) => `
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-2">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-xs text-slate-600">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+              ${statusLabelFb(r.status)}
+            </div>
+            <div class="text-[11px] text-slate-400 mb-0.5">描述</div>
+            <div class="text-xs text-slate-800 mb-2">${escapeHtml(r.reason || "-")}</div>
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] text-slate-400">金额：</span>
+              <span class="text-sm font-bold ${r.status === "pending" ? "text-amber-600" : "text-green-600"}">${r.amount != null ? "¥" + escapeHtml(String(r.amount)) : "-"}</span>
+            </div>
+          </div>`,
+            )
+            .join("")
+        : `<div class="text-xs text-slate-400 text-center py-3">暂无账单记录</div>`;
+
       Swal.fire({
-        icon: "info",
-        title: "未找到备份",
-        text: result.message || "该账号暂无备份数据",
-        confirmButtonText: "确定",
-        confirmButtonColor: "#64748b",
+        title: resolvedName || school_username,
+        html: `
+          <div class="text-left space-y-3 max-h-[60vh] overflow-y-auto px-1 pr-2">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600">
+              <div class="text-[10px] text-slate-400 mb-0.5">学校账号</div>
+              <div class="font-mono font-semibold text-slate-800">${escapeHtml(school_username)}</div>
+              ${resolvedName ? `<div class="text-[10px] text-slate-400 mt-1.5 mb-0.5">姓名</div><div class="font-medium text-slate-800">${escapeHtml(resolvedName)}</div>` : ""}
+            </div>
+            <div class="border border-slate-200 rounded-lg overflow-hidden">
+              <div class="bg-amber-50 px-3 py-2 border-b border-amber-100 text-xs font-bold text-amber-800">
+                账单记录（共 ${fallbackBills.length} 条）
+              </div>
+              <div class="p-3">${billCardsHtmlFb}</div>
+            </div>
+          </div>`,
+        width: "420px",
+        showConfirmButton: true,
+        confirmButtonText: "关闭",
+        confirmButtonColor: "#3b82f6",
+        customClass: {
+          popup: "rounded-2xl",
+          title: "text-lg font-bold text-slate-800 pt-4 pb-0",
+          htmlContainer: "!px-4 !pb-4 !pt-2 !overflow-visible !m-0 w-full",
+        },
       });
     }
   } catch (error) {
@@ -56403,134 +57215,153 @@ async function adminClearOverdue(
   is_detail_view = true,
 ) {
   try {
-    // ========== 步骤1：显示输入对话框 ==========
-
-    // 使用SweetAlert2显示输入对话框
-    // SweetAlert2是现代化的弹窗库，提供美观的UI和丰富的功能
-    const result = await Swal.fire({
-      title: "修改欠费次数",
-
-      // html参数支持完整的HTML内容
-      // 这里显示学校账号、所属用户信息，以及输入框
-      html: `
-                <p class="text-sm text-slate-600 mb-3">学校账号：<span class="font-semibold">${escapeHtml(
-                  school_username,
-                )}</span></p>
-                <!-- <p class="text-sm text-slate-600 mb-3">所属用户：<span class="font-semibold">${escapeHtml(
-                  auth_username,
-                )}</span></p> -->
-                <input id="new-overdue-count" type="number" min="0" value="0" 
-                    class="swal2-input" placeholder="输入新的欠费次数（0表示清零）">
-            `,
-
-      icon: "question", // 图标类型：问号
-      showCancelButton: true, // 显示取消按钮
-      confirmButtonText: "确认修改",
-      cancelButtonText: "取消",
-      confirmButtonColor: "#10b981", // 绿色确认按钮（emerald-500）
-
-      // preConfirm: 在用户点击确认时执行的验证函数
-      // 返回false会阻止对话框关闭，返回其他值则作为result.value
-      preConfirm: () => {
-        // 获取输入框的值
-        const value = document.getElementById("new-overdue-count").value;
-
-        // 尝试转换为整数
-        const count = parseInt(value);
-
-        // 验证是否为有效的非负整数
-        if (isNaN(count) || count < 0) {
-          // 显示验证错误信息（不关闭对话框）
-          Swal.showValidationMessage("请输入有效的非负整数");
-          return false;
-        }
-
-        // 返回验证通过的值
-        return count;
-      },
-    });
-
-    // ========== 步骤2：检查用户是否取消 ==========
-
-    // 如果用户点击了取消按钮，result.isConfirmed为false
-    if (!result.isConfirmed) {
-      return; // 直接返回，不执行后续操作
-    }
-
-    // 获取用户输入的新欠费次数
-    const newOverdueCount = result.value;
-
-    // ========== 步骤3：显示加载动画 ==========
-
-    // 在调用API期间显示加载动画，提升用户体验
+    // ========== 步骤1：加载该学校账号的待支付账单 ==========
     Swal.fire({
-      title: "正在处理...",
-      text: "请稍候",
-      allowOutsideClick: false, // 禁止点击外部关闭
-      didOpen: () => {
-        Swal.showLoading(); // 显示旋转的加载图标
-      },
+      title: "加载账单中...",
+      allowOutsideClick: false,
+      didOpen: () => { Swal.showLoading(); },
     });
 
-    // ========== 步骤4：调用后端API ==========
+    const resp = await fetch(
+      "/api/admin/billing/list?school_username=" + encodeURIComponent(school_username),
+      { headers: { "X-Session-ID": sessionUUID } }
+    );
+    const data = await resp.json();
 
-    // 发送POST请求到后端API
-    const response = await fetch("/api/admin/clear_overdue", {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json", // 指定请求体为JSON格式
-        "X-Session-ID": sessionUUID, // 会话ID，用于身份验证
-      },
-
-      // 将参数转换为JSON字符串发送
-      body: JSON.stringify({
-        school_username: school_username, // 学校账号用户名
-        new_overdue_count: newOverdueCount, // 新的欠费次数
-      }),
-    });
-
-    // 解析后端返回的JSON响应
-    const apiResult = await response.json();
-
-    // ========== 步骤5：处理API响应 ==========
-
-    if (apiResult.success) {
-      // ===== 操作成功 =====
-
-      // 显示成功提示
+    if (!data.success) {
       await Swal.fire({
-        title: "操作成功",
-        text: `已将欠费次数修改为 ${newOverdueCount}`,
-        icon: "success",
-        confirmButtonText: "确定",
-      });
-
-      loadOverdueAccounts();
-
-      // 刷新当前显示的详情页面，让用户看到最新数据
-      // 调用View_details_of_users_with_outstanding_payments函数重新加载数据
-      if (is_detail_view) {
-        await View_details_of_users_with_outstanding_payments(school_username);
-      }
-    } else {
-      // ===== 操作失败 =====
-
-      // 显示失败提示，展示后端返回的错误信息
-      await Swal.fire({
-        title: "操作失败",
-        text: apiResult.message || "未知错误",
+        title: "加载失败",
+        text: data.message || "未知错误",
         icon: "error",
         confirmButtonText: "确定",
       });
+      return;
     }
+
+    const pendingBills = (data.records || []).filter(r => r.status === "pending");
+
+    if (pendingBills.length === 0) {
+      await Swal.fire({
+        title: "无待支付账单",
+        text: `学校账号 ${school_username} 暂无待支付账单`,
+        icon: "info",
+        confirmButtonText: "确定",
+      });
+      return;
+    }
+
+    // ========== 步骤2：显示账单选择弹窗 ==========
+    const billRows = pendingBills.map((r, i) => {
+      const amount = r.amount != null ? "¥" + r.amount : "-";
+      const reason = (r.reason || "-").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const created = r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-";
+      return `
+        <tr style="border-bottom:1px solid #e2e8f0;">
+          <td style="padding:6px 8px;text-align:center;">
+            <input type="checkbox" id="clear-bill-${i}" data-billing-id="${(r.billing_id || "").replace(/"/g, "&quot;")}" class="admin-clear-bill-check" checked style="width:14px;height:14px;accent-color:#0ea5e9;">
+          </td>
+          <td style="padding:6px 8px;font-size:12px;color:#334155;">${reason}</td>
+          <td style="padding:6px 8px;font-size:12px;color:#334155;font-weight:600;white-space:nowrap;">${amount}</td>
+          <td style="padding:6px 8px;font-size:11px;color:#94a3b8;white-space:nowrap;">${created}</td>
+        </tr>`;
+    }).join("");
+
+    const result = await Swal.fire({
+      title: "结算欠费账单",
+      html: `
+        <p style="font-size:13px;color:#475569;margin-bottom:6px;">学校账号：<strong>${school_username}</strong></p>
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:10px;">勾选要清除的账单，确认后标记为管理员清除</p>
+        <div style="overflow-x:auto;max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f1f5f9;position:sticky;top:0;">
+                <th style="padding:6px 8px;text-align:center;">
+                  <input type="checkbox" id="clear-bill-all" checked
+                    onchange="document.querySelectorAll('.admin-clear-bill-check').forEach(c=>c.checked=this.checked)"
+                    style="accent-color:#0ea5e9;">
+                </th>
+                <th style="padding:6px 8px;text-align:left;color:#64748b;">原因</th>
+                <th style="padding:6px 8px;text-align:left;color:#64748b;white-space:nowrap;">金额</th>
+                <th style="padding:6px 8px;text-align:left;color:#64748b;white-space:nowrap;">创建时间</th>
+              </tr>
+            </thead>
+            <tbody>${billRows}</tbody>
+          </table>
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: "确认清除",
+      cancelButtonText: "取消",
+      confirmButtonColor: "#0ea5e9",
+      width: "520px",
+      preConfirm: () => {
+        const selected = [...document.querySelectorAll(".admin-clear-bill-check")].filter(c => c.checked);
+        if (selected.length === 0) {
+          Swal.showValidationMessage("请至少选择一条账单");
+          return false;
+        }
+        return selected.map(c => c.dataset.billingId);
+      },
+    });
+
+    if (!result.isConfirmed) return;
+
+    const selectedIds = result.value;
+
+    // ========== 步骤3：依次调用账单更新接口 ==========
+    Swal.fire({
+      title: "正在清除...",
+      text: `共 ${selectedIds.length} 条账单`,
+      allowOutsideClick: false,
+      didOpen: () => { Swal.showLoading(); },
+    });
+
+    let successCount = 0;
+    let failCount = 0;
+    for (const billingId of selectedIds) {
+      try {
+        const updateResp = await fetch("/api/admin/billing/update", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-ID": sessionUUID,
+          },
+          body: JSON.stringify({
+            billing_id: billingId,
+            school_username: school_username,
+            status: "admin_cleared",
+          }),
+        });
+        const updateResult = await updateResp.json();
+        if (updateResult.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch {
+        failCount++;
+      }
+    }
+
+    // ========== 步骤4：显示结果 ==========
+    const msg = failCount === 0
+      ? `已成功清除 ${successCount} 条账单`
+      : `成功 ${successCount} 条，失败 ${failCount} 条`;
+
+    await Swal.fire({
+      title: failCount === 0 ? "清除成功" : "部分完成",
+      text: msg,
+      icon: failCount === 0 ? "success" : "warning",
+      confirmButtonText: "确定",
+    });
+
+    // ========== 步骤5：刷新页面显示 ==========
+    if (typeof loadOverdueAccounts === "function") loadOverdueAccounts();
+    if (is_detail_view && typeof View_details_of_users_with_outstanding_payments === "function") {
+      await View_details_of_users_with_outstanding_payments(school_username);
+    }
+    if (typeof loadAdminBillingList === "function") loadAdminBillingList();
   } catch (error) {
-    // ========== 异常处理 ==========
-
-    // 捕获网络错误、解析错误等异常
     console.error("管理员清除欠费失败:", error);
-
-    // 显示友好的错误提示
     await Swal.fire({
       title: "操作失败",
       text: "网络错误或服务器异常",
@@ -56815,3 +57646,1381 @@ document.addEventListener("DOMContentLoaded", function () {
     initOrderNumberAutoFill();
   }, 100); // 延迟100毫秒执行
 });
+
+// ========================================================
+// 账单相关函数
+// ========================================================
+
+/**
+ * 获取学校账号对应姓名（带本地缓存，适用于管理员和普通用户）。
+ * 调用 /api/school_account/name，无需管理员权限。
+ * @param {string} school_username
+ * @returns {Promise<string>} 姓名，获取失败时返回空字符串
+ */
+const _schoolNameCache = {};
+async function fetchSchoolAccountName(school_username) {
+  if (!school_username) return "";
+  if (_schoolNameCache[school_username] !== undefined) {
+    return _schoolNameCache[school_username];
+  }
+  try {
+    const resp = await fetch(
+      `/api/school_account/name?school_username=${encodeURIComponent(school_username)}`,
+      { headers: { "X-Session-ID": sessionUUID } },
+    );
+    const result = await resp.json();
+    const name = result.success && result.name ? result.name : "";
+    _schoolNameCache[school_username] = name;
+    return name;
+  } catch (e) {
+    console.warn("[fetchSchoolAccountName] 获取姓名失败:", school_username, e);
+    _schoolNameCache[school_username] = "";
+    return "";
+  }
+}
+
+function _escapeAttr(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function _fmtBillTime(v) {
+  if (!v) return "-";
+  return String(v).replace("T", " ").replace("Z", "");
+}
+
+function _billStatusBadge(status) {
+  if (status === "paid") {
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-green-500 text-[11px]">✓ 已支付</span>';
+  }
+  if (status === "admin_cleared") {
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 text-[11px]">✓ 管理员清除</span>';
+  }
+  return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 text-[11px]">⏳ 待支付</span>';
+}
+
+function _billStatusText(status) {
+  if (status === "paid") return "已支付";
+  if (status === "admin_cleared") return "管理员清除";
+  return "待支付";
+}
+
+function _collectSelectedBillingItems(containerId) {
+  const root = document.getElementById(containerId);
+  if (!root) return [];
+  const items = [];
+  root
+    .querySelectorAll('input[data-billing-select="1"]:checked')
+    .forEach((cb) => {
+      const billingId = (cb.getAttribute("data-billing-id") || "").trim();
+      const schoolUsername = (
+        cb.getAttribute("data-school-username") || ""
+      ).trim();
+      if (billingId && schoolUsername) {
+        items.push({ billing_id: billingId, school_username: schoolUsername });
+      }
+    });
+  return items;
+}
+
+function _buildBillingSelectionDetailHtml(containerId, items) {
+  const root = document.getElementById(containerId);
+  const selectedInputs = root
+    ? Array.from(root.querySelectorAll('input[data-billing-select="1"]'))
+    : [];
+  const rows = (items || []).map((item, idx) => {
+    const billingId = String(item?.billing_id || "").trim();
+    const schoolUsername = String(item?.school_username || "").trim();
+    let schoolName = "-";
+    let reason = "-";
+    let amount = "-";
+    let status = "-";
+    let createdAt = "-";
+    const el = selectedInputs.find(
+      (input) =>
+        String(input.getAttribute("data-billing-id") || "").trim() ===
+          billingId &&
+        String(input.getAttribute("data-school-username") || "").trim() ===
+          schoolUsername,
+    );
+    if (el) {
+      schoolName = (el.getAttribute("data-school-name") || "-").trim() || "-";
+      reason = (el.getAttribute("data-reason") || "-").trim() || "-";
+      amount = (el.getAttribute("data-amount") || "-").trim() || "-";
+      status = _billStatusText(
+        (el.getAttribute("data-status") || "-").trim() || "-",
+      );
+      createdAt = (el.getAttribute("data-created-at") || "-").trim() || "-";
+    }
+    return `<div class="text-left border border-slate-200 rounded-xl p-2.5 bg-slate-50 ${
+      idx > 0 ? "mt-1.5" : ""
+    }">
+      <div class="grid grid-cols-1 gap-1.5">
+        <div class="text-xs text-slate-800 break-all"><span class="text-slate-500">学校账号：</span>${_escapeAttr(schoolUsername || "-")}</div>
+        <div class="text-xs text-slate-800"><span class="text-slate-500">姓名：</span>${_escapeAttr(schoolName)}</div>
+        
+        <div class="text-xs text-slate-700"><span class="text-slate-500">账单创建时间：</span>${_escapeAttr(_fmtBillTime(createdAt))}</div>
+        <div class="text-xs text-slate-700 break-all"><span class="text-slate-500">账单描述：</span>${_escapeAttr(reason)}</div>
+        <div class="text-xs text-slate-700"><span class="text-slate-500">金额：</span>${_escapeAttr(amount)}</div>
+        <div class="text-xs text-slate-700"><span class="text-slate-500">状态：</span>${_escapeAttr(status)}</div>
+        <div class="text-[11px] text-slate-500 break-all">账单ID：${_escapeAttr(billingId || "-")}</div>
+      </div>
+    </div>`;
+  });
+  return rows.join("");
+}
+
+function _renderMobileUserBillingCards(records, containerId) {
+  let html = `<div class="space-y-3">`;
+  records.forEach((r) => {
+    const billingId = _escapeAttr(r.billing_id || "");
+    const school = _escapeAttr(r.school_username || "-");
+    const schoolName = _escapeAttr(r.school_name || r.school_username || "-");
+    const reason = _escapeAttr(r.reason || "-");
+    const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
+    const canPay = r.status === "pending";
+    html += `
+      <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <!-- 顶栏：复选框在最左 + 状态徽章在最右 -->
+        <div class="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-200">
+          <input
+            type="checkbox"
+            data-billing-select="1"
+            data-billing-id="${billingId}"
+            data-school-username="${school}"
+            data-school-name="${schoolName}"
+            data-reason="${reason}"
+            data-amount="${amount}"
+            data-status="${_escapeAttr(r.status || "-")}"
+            data-created-at="${_escapeAttr(r.created_at || "")}"
+            class="w-4 h-4 flex-shrink-0 accent-emerald-500"
+            ${canPay ? "" : "disabled"}
+          >
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] text-slate-500 leading-none mb-0.5">学校账号</div>
+            <div class="text-xs font-semibold text-slate-800 truncate">${school}</div>
+          </div>
+          <div class="flex-shrink-0">${_billStatusBadge(r.status)}</div>
+        </div>
+        <!-- 内容区 -->
+        <div class="px-3 pt-2.5 pb-3">
+          <!-- 姓名行 -->
+          <div class="flex items-center gap-1.5 mb-2">
+            <span class="text-[11px] text-slate-500 flex-shrink-0">姓名</span>
+            <span class="text-xs font-medium text-slate-700 truncate">${schoolName}</span>
+          </div>
+          <!-- 金额 + 创建时间 两列自适应 -->
+          <div class="grid grid-cols-2 gap-2 text-[11px] mb-2">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2">
+              <div class="text-slate-500 leading-none mb-0.5">金额</div>
+              <div class="text-slate-800 font-semibold">${amount}</div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2">
+              <div class="text-slate-500 leading-none mb-0.5">创建时间</div>
+              <div class="text-slate-700 break-all">${_escapeAttr(_fmtBillTime(r.created_at))}</div>
+            </div>
+          </div>
+          <!-- 原因 -->
+          <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-[11px] mb-2">
+            <div class="text-slate-500 leading-none mb-0.5">原因</div>
+            <div class="text-slate-800 break-all">${reason}</div>
+          </div>
+          <!-- 时间 + 操作按钮（按账单状态显示不同内容） -->
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[11px] text-slate-400 truncate">
+              ${
+                r.status === "paid"
+                  ? `支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}`
+                  : r.status === "admin_cleared"
+                    ? `清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}`
+                    : ""
+              }
+            </div>
+            ${
+              canPay
+                ? `<button class="flex-shrink-0 px-3 py-1 text-[11px] font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg border border-emerald-200 transition-colors" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`
+                : `<span class="flex-shrink-0 text-[11px] ${r.status === "admin_cleared" ? "text-sky-500" : "text-green-500"}">${r.status === "admin_cleared" ? "已清除" : "已支付"}</span>`
+            }
+          </div>
+        </div>
+      </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function _renderBillingTableCommon(records, opts = {}) {
+  const {
+    tableClass = "w-full text-xs border-collapse",
+    isMobile = false,
+    containerId = "user-billing-list-container",
+  } = opts;
+
+  let html = `<div class="rounded-xl border border-slate-200 overflow-hidden"><div class="overflow-x-auto">`;
+  html += `<table class="${tableClass}">`;
+  html += `<thead><tr class="bg-slate-100">`;
+  html += `<th class="p-2 text-center w-10"><input type="checkbox" onclick="toggleBillingSelectAll('${containerId}', this.checked)"></th>`;
+  html += `<th class="p-2 text-left">学校账号</th><th class="p-2 text-left">姓名</th><th class="p-2 text-left">原因</th><th class="p-2 text-left">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left">创建时间</th><th class="p-2 text-left">支付/清除时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
+  html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
+  records.forEach((r) => {
+    const billingId = _escapeAttr(r.billing_id || "");
+    const school = _escapeAttr(r.school_username || "-");
+    const schoolName = _escapeAttr(r.school_name || "-");
+    const reason = _escapeAttr(r.reason || "-");
+    const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
+    const statusBadge = _billStatusBadge(r.status);
+    const canPay = r.status === "pending";
+    html += `<tr class="hover:bg-slate-50">`;
+    html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-school-name="${schoolName}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" data-created-at="${_escapeAttr(r.created_at || "")}" ${canPay ? "" : "disabled"}></td>`;
+    html += `<td class="p-2 text-slate-800">${school}</td>`;
+    html += `<td class="p-2 text-slate-600">${schoolName}</td>`;
+    html += `<td class="p-2">${reason}</td>`;
+    html += `<td class="p-2">${amount}</td>`;
+    html += `<td class="p-2 whitespace-nowrap">${statusBadge}</td>`;
+    html += `<td class="p-2">${_escapeAttr(_fmtBillTime(r.created_at))}</td>`;
+    html += `<td class="p-2">${r.status === "admin_cleared" ? _escapeAttr(_fmtBillTime(r.admin_cleared_at)) : _escapeAttr(_fmtBillTime(r.paid_at))}</td>`;
+    html += `<td class="p-2 whitespace-nowrap">`;
+    if (canPay) {
+      html += `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 ${isMobile ? "text-[11px]" : "text-xs"} text-emerald-700" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`;
+    } else {
+      html += `<span class="text-slate-400 text-xs">-</span>`;
+    }
+    html += `</td></tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+  return html;
+}
+
+async function loadUserBillingList() {
+  const container = document.getElementById("user-billing-list-container");
+  const schoolInput = document.getElementById("user-billing-school-filter");
+  if (!container) return;
+  const schoolUsername = schoolInput ? schoolInput.value.trim() : "";
+  container.innerHTML = `
+    <div class="flex items-center justify-center py-8 gap-2 text-slate-400 text-xs">
+      <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <span>加载中...</span>
+    </div>`;
+  try {
+    const url = schoolUsername
+      ? "/api/billing/list?school_username=" +
+        encodeURIComponent(schoolUsername)
+      : "/api/billing/list";
+    const resp = await fetch(url, {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML =
+        '<p class="text-xs text-red-500">加载失败: ' +
+        _escapeAttr(data.message || "未知错误") +
+        "</p>";
+      return;
+    }
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-1.5"><p class="text-sm">暂无账单记录</p><p class="text-xs">${schoolUsername ? "当前筛选学校账号：" + _escapeAttr(schoolUsername) : "当前范围：有权限学校账号的全部账单"}</p></div>`;
+      return;
+    }
+    const scopeTip = schoolUsername
+      ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}`
+      : "当前范围：有权限学校账号的全部账单";
+    let html = `<!-- <div class="mb-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div> -->`;
+    html += `<div class="mb-2 flex items-center gap-2 justify-end">
+      <button class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs" onclick="toggleBillingSelectAll('user-billing-list-container', true)">全选待支付</button>
+      <button class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs" onclick="toggleBillingSelectAll('user-billing-list-container', false)">清空选择</button>
+      <button class="btn btn-primary !py-1 !px-3 text-xs" onclick="paySelectedBilling('user-billing-list-container')">批量支付</button>
+    </div>`;
+    html += _renderBillingTableCommon(records, {
+      tableClass: "w-full text-xs border-collapse",
+      isMobile: false,
+      containerId: "user-billing-list-container",
+    });
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML =
+      '<p class="text-xs text-red-500">加载异常: ' +
+      _escapeAttr(e.message) +
+      "</p>";
+  }
+}
+
+async function loadMobileUserBillingList() {
+  const container = document.getElementById(
+    "mobile-user-billing-list-container",
+  );
+  if (!container) return;
+  container.innerHTML = `
+    <div class="flex items-center justify-center py-8 gap-2 text-slate-400 text-xs">
+      <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <span>加载中...</span>
+    </div>`;
+  try {
+    const resp = await fetch("/api/billing/list", {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = `<p class="text-xs text-red-500">加载失败: ${_escapeAttr(data.message || "未知错误")}</p>`;
+      return;
+    }
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
+      return;
+    }
+    let html = `<!-- <div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">当前范围：有权限学校账号的全部账单</div> -->`;
+    html += `<div class="mb-2 flex items-center gap-1 justify-end">
+      <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="toggleBillingSelectAll('mobile-user-billing-list-container', true)">全选</button>
+      <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="toggleBillingSelectAll('mobile-user-billing-list-container', false)">清空</button>
+      <button class="btn btn-primary !py-0.5 !px-2 text-[11px]" onclick="paySelectedBilling('mobile-user-billing-list-container')">批量支付</button>
+    </div>`;
+    html += _renderMobileUserBillingCards(
+      records,
+      "mobile-user-billing-list-container",
+    );
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<p class="text-xs text-red-500">加载异常: ${_escapeAttr(e.message)}</p>`;
+  }
+}
+
+function toggleBillingSelectAll(containerId, checked) {
+  const root = document.getElementById(containerId);
+  if (!root) return;
+  root.querySelectorAll('input[data-billing-select="1"]').forEach((cb) => {
+    if (!cb.disabled) cb.checked = !!checked;
+  });
+}
+
+async function createBillingPaymentOrderAndOpen(billingItems) {
+  const createOrderResponse = await fetch(
+    "/api/payment/create_order_for_billing",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-ID": sessionUUID,
+      },
+      body: JSON.stringify({
+        billing_items: billingItems,
+        pay_type: "alipay",
+        device: Get_YiPAi_device(),
+        payment_type: "web",
+        app_host: window.location.protocol + "//" + window.location.host,
+      }),
+    },
+  );
+  const orderResult = await createOrderResponse.json();
+  if (!orderResult.success) {
+    throw new Error(orderResult.message || "创建订单失败");
+  }
+  const payUrl = orderResult.pay_url || orderResult.pay_info;
+  if (!payUrl) {
+    throw new Error("支付链接为空");
+  }
+  window.open(payUrl, "_blank", "noopener,noreferrer");
+  return orderResult;
+}
+
+async function paySelectedBilling(containerId) {
+  const selected = _collectSelectedBillingItems(containerId);
+  if (!selected.length) {
+    await Swal.fire({
+      title: "提示",
+      text: "请先勾选待支付账单",
+      icon: "warning",
+      confirmButtonText: "确定",
+    });
+    return;
+  }
+  const confirmResult = await Swal.fire({
+    title: "确认批量支付",
+    text: `将发起 ${selected.length} 笔账单的合并支付`,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "确认支付",
+    cancelButtonText: "取消",
+    confirmButtonColor: "#16a34a",
+    cancelButtonColor: "#64748b",
+  });
+  if (!confirmResult.isConfirmed) return;
+  try {
+    await createBillingPaymentOrderAndOpen(selected);
+    await Swal.fire({
+      title: "已发起支付",
+      text: "请在新窗口完成支付，完成后可点击刷新查看状态",
+      icon: "success",
+      confirmButtonText: "确定",
+    });
+  } catch (e) {
+    await Swal.fire({
+      title: "支付发起失败",
+      text: e.message || "未知错误",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
+  }
+}
+
+async function paySingleBilling(containerId, billingId, schoolUsername) {
+  await paySelectedBillingWithPreset(containerId, [
+    { billing_id: billingId, school_username: schoolUsername },
+  ]);
+}
+
+async function paySelectedBillingWithPreset(containerId, items) {
+  if (!Array.isArray(items) || !items.length) return;
+  const detailHtml = _buildBillingSelectionDetailHtml(containerId, items);
+  const confirmResult = await Swal.fire({
+    title: items.length > 1 ? "确认批量支付" : "确认支付账单",
+    html: `
+      <div class="text-sm text-slate-600 mb-2">${items.length > 1 ? `将发起 ${items.length} 笔账单的合并支付` : "将发起该账单支付"}</div>
+      <div class="max-h-64 overflow-y-auto">${detailHtml}</div>
+    `,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "确认支付",
+    cancelButtonText: "取消",
+    confirmButtonColor: "#16a34a",
+    cancelButtonColor: "#64748b",
+    width: 560,
+  });
+  if (!confirmResult.isConfirmed) return;
+  try {
+    await createBillingPaymentOrderAndOpen(items);
+    await Swal.fire({
+      title: "已发起支付",
+      text: "请在新窗口完成支付，完成后可点击刷新查看状态",
+      icon: "success",
+      confirmButtonText: "确定",
+    });
+  } catch (e) {
+    await Swal.fire({
+      title: "支付发起失败",
+      text: e.message || "未知错误",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
+  }
+}
+
+/**
+ * 管理员加载账单列表
+ */
+async function loadAdminBillingList(usernameOverride = null) {
+  const container = document.getElementById("admin-billing-list-container");
+  const schoolInput = document.getElementById("admin-billing-school-input");
+  if (!container) return;
+  const schoolUsername =
+    usernameOverride != null
+      ? String(usernameOverride).trim()
+      : schoolInput
+        ? schoolInput.value.trim()
+        : "";
+  container.innerHTML = `
+    <div class="flex items-center justify-center py-10 gap-3 text-slate-400">
+      <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <span class="text-sm">加载中...</span>
+    </div>`;
+  try {
+    const url = schoolUsername
+      ? "/api/admin/billing/list?school_username=" +
+        encodeURIComponent(schoolUsername)
+      : "/api/admin/billing/list";
+    const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = `<div class="flex items-center gap-2 text-red-500 bg-red-50 border border-red-200 rounded-lg p-3 text-sm"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>加载失败：${data.message || "未知错误"}</span></div>`;
+      return;
+    }
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-12 text-slate-400 gap-2"><svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><p class="text-sm">暂无账单记录</p><p class="text-xs text-slate-400">默认展示你有权限的学校账号账单</p></div>`;
+      return;
+    }
+    // 统计
+    const totalCount = records.length;
+    const paidCount = records.filter((r) => r.status === "paid").length;
+    const pendingCount = records.filter((r) => r.status === "pending").length;
+    const clearedCount = records.filter(
+      (r) => r.status === "admin_cleared",
+    ).length;
+    const totalAmount = records
+      .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+      .toFixed(2);
+    const scopeTip = schoolUsername
+      ? `当前筛选：学校账号 ${schoolUsername}`
+      : "当前范围：所有学校账号的全部账单";
+    let html = `
+      <div class="mb-3 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-slate-700">${totalCount}</p>
+          <p class="text-xs text-slate-500 mt-0.5">总记录数</p>
+        </div>
+        <div class="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-green-600">${paidCount}</p>
+          <p class="text-xs text-green-600 mt-0.5">已支付</p>
+        </div>
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-amber-600">${pendingCount}</p>
+          <p class="text-xs text-amber-600 mt-0.5">待支付</p>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-blue-600">¥${totalAmount}</p>
+          <p class="text-xs text-blue-600 mt-0.5">总金额</p>
+        </div>
+      </div>
+      <div class="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs" id="admin-billing-table">
+            <thead>
+              <tr class="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600">
+                <th class="px-3 py-2.5 text-left font-semibold">学校账号</th>
+                <th class="px-3 py-2.5 text-left font-semibold">姓名</th>
+                <th class="px-3 py-2.5 text-left font-semibold">原因/描述</th>
+                <th class="px-3 py-2.5 text-right font-semibold">金额</th>
+                <th class="px-3 py-2.5 text-center font-semibold admin-status-th whitespace-nowrap">状态</th>
+                <th class="px-3 py-2.5 text-left font-semibold">创建时间</th>
+                <th class="px-3 py-2.5 text-left font-semibold">支付时间</th>
+                <th class="px-3 py-2.5 text-center font-semibold whitespace-nowrap">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">`;
+    records.forEach((r, idx) => {
+      let statusBadge;
+      if (r.status === "paid") {
+        statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-green-500 font-medium">✓ 已支付</span>`;
+      } else if (r.status === "admin_cleared") {
+        statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 font-medium">✓ 管理员清除</span>`;
+      } else {
+        statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 font-medium">⏳ 待支付</span>`;
+      }
+      const rowBg = idx % 2 === 0 ? "" : "bg-slate-50/60";
+      const schoolName = _escapeAttr(r.school_name || "-");
+      html += `<tr class="${rowBg} hover:bg-sky-50/40 transition-colors">
+        <td class="px-3 py-2.5 text-slate-800 font-medium">${_escapeAttr(r.school_username || "-")}</td>
+        <td class="px-3 py-2.5 text-slate-600">${schoolName}</td>
+        <td class="px-3 py-2.5 text-slate-600">${_escapeAttr(r.reason || "-")}</td>
+        <td class="px-3 py-2.5 text-right font-semibold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + _escapeAttr(r.amount) : "-"}</td>
+        <td class="px-3 py-2.5 text-center admin-status-td whitespace-nowrap">${statusBadge}</td>
+        <td class="px-3 py-2.5 text-slate-500">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
+        <td class="px-3 py-2.5 text-slate-500">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
+        <td class="px-3 py-2.5 text-center">
+          <div class="flex items-center justify-center gap-1.5">
+            <button onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(r.school_username || "")})'
+              class="px-2 py-1 text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-md border border-indigo-200 transition-colors whitespace-nowrap">🔍 查看详情</button>
+            <button onclick='adminEditBilling(${JSON.stringify(r)})'
+              class="px-2 py-1 text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md border border-sky-200 transition-colors whitespace-nowrap">✏️ 修改账单</button>
+            <button onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)},${JSON.stringify(r.school_username || "")})'
+              class="px-2 py-1 text-xs bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md border border-rose-200 transition-colors whitespace-nowrap">🗑 删除</button>
+          </div>
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div></div>`;
+    if (clearedCount > 0) {
+      html += `<p class="text-xs text-slate-400 mt-2 text-right">其中 ${clearedCount} 条已由管理员清除</p>`;
+    }
+    container.innerHTML = html;
+    // 动态控制「状态」列换行：当容器宽度 < 5× 状态列（不换行）宽度时允许换行
+    (function () {
+      const statusCells = container.querySelectorAll(
+        ".admin-status-td, .admin-status-th",
+      );
+      if (!statusCells.length) return;
+      const applyWrap = () => {
+        const containerW = container.getBoundingClientRect().width;
+        // 先强制不换行以量出自然宽度
+        statusCells.forEach((c) => {
+          c.style.whiteSpace = "nowrap";
+        });
+        const statusW = statusCells[0].getBoundingClientRect().width;
+        const wrap = containerW > 0 && containerW < 5 * statusW;
+        statusCells.forEach((c) => {
+          c.style.whiteSpace = wrap ? "" : "nowrap";
+        });
+      };
+      applyWrap();
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(applyWrap);
+        ro.observe(container);
+      }
+    })();
+  } catch (e) {
+    container.innerHTML = `<div class="flex items-center gap-2 text-red-500 bg-red-50 border border-red-200 rounded-lg p-3 text-sm"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>加载异常：${e.message}</span></div>`;
+  }
+}
+
+/**
+ * 管理员加载已删除账号列表
+ */
+/**
+ * 管理员编辑账单描述
+ */
+async function adminEditBilling(record) {
+  const billingId = record && record.billing_id ? record.billing_id : "";
+  const schoolUsername =
+    record && record.school_username ? record.school_username : "";
+  const currentReason = record && record.reason ? record.reason : "";
+  const currentAmount =
+    record && record.amount != null ? String(record.amount) : "";
+  const currentStatus =
+    record && record.status ? String(record.status) : "pending";
+
+  const result = await Swal.fire({
+    title: "修改账单",
+    html: `
+      <div style="text-align:left;padding:6px 0 2px;">
+        <p style="color:#475569;font-size:13px;margin-bottom:6px;">
+          账单 ID:
+          <code style="
+            font-size:12px;
+            background:#f1f5f9;
+            padding:2px 6px;
+            border-radius:4px;
+            color:#334155;
+          ">${billingId}</code>
+        </p>
+
+        <p style="color:#475569;font-size:13px;margin-bottom:10px;">
+          学校账号: <strong style="color:#0f172a;">${schoolUsername || "-"}</strong>
+        </p>
+
+        <label style="display:block;color:#475569;font-size:12px;margin:0 0 4px;">金额</label>
+        <input
+          id="swal-billing-amount"
+          class="swal2-input"
+          style="width:100%;margin:0 0 10px;box-sizing:border-box;height:38px;font-size:13px;padding:8px 10px;border-radius:6px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;outline:none;box-shadow:none !important;"
+          value="${currentAmount}"
+          placeholder="例如 1.00"
+        />
+
+        <label style="display:block;color:#475569;font-size:12px;margin:0 0 4px;">状态</label>
+        <select
+          id="swal-billing-status"
+          class="swal2-input"
+          style="width:100%;margin:0 0 10px;box-sizing:border-box;height:38px;font-size:13px;padding:8px 10px;border-radius:6px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;outline:none;box-shadow:none !important;"
+        >
+          <option value="pending" ${currentStatus === "pending" ? "selected" : ""}>待支付</option>
+          <option value="paid" ${currentStatus === "paid" ? "selected" : ""}>已支付</option>
+          <option value="admin_cleared" ${currentStatus === "admin_cleared" ? "selected" : ""}>管理员清除</option>
+        </select>
+
+        <label style="display:block;color:#475569;font-size:12px;margin:0 0 4px;">原因/描述</label>
+        <textarea
+          id="swal-billing-reason"
+          rows="3"
+          class="swal2-textarea"
+          style="
+            width:100%;
+            margin:0;
+            box-sizing:border-box;
+            font-size:13px;
+            padding:8px 10px;
+            border-radius:6px;
+            border:1px solid #cbd5e1;
+            background:#f8fafc;
+            color:#334155;
+            resize: vertical;
+            outline:none;
+            box-shadow:none !important;
+          "
+        >${currentReason}</textarea>
+      </div>
+    `,
+    icon: "info",
+    showCancelButton: true,
+    confirmButtonText: "保存",
+    confirmButtonColor: "#2563eb",
+    cancelButtonText: "取消",
+    cancelButtonColor: "#64748b",
+    customClass: {
+      popup: "swal2-clean-popup",
+      confirmButton: "swal2-clean-btn",
+      cancelButton: "swal2-clean-btn",
+    },
+    reverseButtons: true,
+    preConfirm: () => {
+      const amount = document
+        .getElementById("swal-billing-amount")
+        .value.trim();
+      const status = document.getElementById("swal-billing-status").value;
+      const reason = document
+        .getElementById("swal-billing-reason")
+        .value.trim();
+      if (!amount || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
+        Swal.showValidationMessage("请输入大于 0 的有效金额");
+        return false;
+      }
+      return { amount, status, reason };
+    },
+  });
+
+  if (!result.isConfirmed) return;
+  try {
+    const resp = await fetch("/api/admin/billing/update", {
+      method: "POST",
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        billing_id: billingId,
+        school_username: schoolUsername,
+        reason: result.value.reason,
+        amount: result.value.amount,
+        status: result.value.status,
+      }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      await Swal.fire({
+        title: "保存成功",
+        text: "账单已更新",
+        icon: "success",
+
+        timer: undefined,
+        timerProgressBar: false,
+
+        showConfirmButton: true,
+        confirmButtonText: "关闭",
+
+        buttonsStyling: false, // 禁用默认按钮样式
+        customClass: {
+          popup: "swal-flat-popup",
+          confirmButton: "swal-flat-button",
+        },
+      });
+
+      await loadAdminBillingList();
+      loadMobileMultiAdminBillingList();
+    } else {
+      await Swal.fire({
+        title: "保存失败",
+        text: data.message || "未知错误",
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+        customClass: { popup: "swal2-neumorphism-popup" },
+      });
+    }
+  } catch (e) {
+    await Swal.fire({
+      title: "请求异常",
+      text: e.message,
+      icon: "error",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#dc2626",
+      customClass: { popup: "swal2-neumorphism-popup" },
+    });
+  }
+}
+
+async function adminDeleteBilling(billingId, schoolUsername) {
+  const result = await Swal.fire({
+    title: "确认删除账单？",
+    html: `
+      <div style="text-align:left;font-size:13px;color:#475569;line-height:1.7;">
+        <p>账单 ID：<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;color:#334155;">${billingId}</code></p>
+        <p>学校账号：<strong style="color:#0f172a;">${schoolUsername || "-"}</strong></p>
+        <!-- <p style="margin-top:6px;color:#b45309;">删除后不会直接销毁，而是移动到 <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;">./User_Billing/Reomve/</code> 目录。</p> -->
+      </div>
+    `,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "确认删除",
+    cancelButtonText: "取消",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#64748b",
+    reverseButtons: true,
+    customClass: {
+      popup: "swal2-clean-popup",
+      confirmButton: "swal2-clean-btn",
+      cancelButton: "swal2-clean-btn",
+    },
+  });
+
+  if (!result.isConfirmed) return;
+  try {
+    const resp = await fetch("/api/admin/billing/delete", {
+      method: "POST",
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        billing_id: billingId,
+        school_username: schoolUsername,
+      }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      await Swal.fire({
+        title: "删除成功",
+        text: data.message || "账单已删除",
+        icon: "success",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#16a34a",
+      });
+      await loadAdminBillingList();
+      loadMobileMultiAdminBillingList();
+    } else {
+      await Swal.fire({
+        title: "删除失败",
+        text: data.message || "未知错误",
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+      });
+    }
+  } catch (e) {
+    await Swal.fire({
+      title: "请求异常",
+      text: e.message,
+      icon: "error",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#dc2626",
+    });
+  }
+}
+
+/**
+ * 管理员添加账单对话框
+ * 支持两种模式：次数模式（count）和金额模式（amount）
+ * 原因为空时服务器自动生成
+ */
+async function adminAddBillingDialog() {
+  const { value: formValues, isConfirmed } = await Swal.fire({
+    title: "添加账单",
+    html: `
+      <div style="text-align:left;font-size:13px;color:#374151;">
+        <div style="margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">学校账号 <span style="color:#ef4444;">*</span></label>
+          <input id="swal-add-billing-school" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" placeholder="school_username（学校学号/账号）">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">计费方式</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="swal-billing-mode" value="count" checked onchange="document.getElementById('swal-billing-count-row').style.display='';document.getElementById('swal-billing-amount-row').style.display='none';">
+              按次数（默认）
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="swal-billing-mode" value="amount" onchange="document.getElementById('swal-billing-count-row').style.display='none';document.getElementById('swal-billing-amount-row').style.display='';">
+              按金额
+            </label>
+          </div>
+        </div>
+        <div id="swal-billing-count-row" style="margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">欠费次数</label>
+          <input id="swal-add-billing-count" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" type="number" min="1" value="1" placeholder="次数">
+        </div>
+        <div id="swal-billing-amount-row" style="display:none;margin-bottom:10px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">自定义金额（元）</label>
+          <input id="swal-add-billing-amount" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" type="number" min="0.01" step="0.01" placeholder="如 5.00">
+        </div>
+        <div style="margin-bottom:4px;">
+          <label style="display:block;font-weight:600;margin-bottom:4px;color:#111827;">原因/描述 <span style="color:#9ca3af;font-weight:400;">（留空自动生成）</span></label>
+          <input id="swal-add-billing-reason" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" placeholder="如：手动补录欠费">
+        </div>
+      </div>
+    `,
+    icon: "info",
+    showCancelButton: true,
+    confirmButtonText: "创建账单",
+    confirmButtonColor: "#2563eb",
+    cancelButtonText: "取消",
+    cancelButtonColor: "#64748b",
+    reverseButtons: true,
+    preConfirm: () => {
+      const school = document
+        .getElementById("swal-add-billing-school")
+        .value.trim();
+      const mode = document.querySelector(
+        'input[name="swal-billing-mode"]:checked',
+      ).value;
+      const count = document
+        .getElementById("swal-add-billing-count")
+        .value.trim();
+      const amount = document
+        .getElementById("swal-add-billing-amount")
+        .value.trim();
+      const reason = document
+        .getElementById("swal-add-billing-reason")
+        .value.trim();
+      if (!school) {
+        Swal.showValidationMessage("请填写学校账号");
+        return false;
+      }
+      if (mode === "count" && (!count || parseInt(count) < 1)) {
+        Swal.showValidationMessage("次数必须大于 0");
+        return false;
+      }
+      if (mode === "amount" && (!amount || parseFloat(amount) <= 0)) {
+        Swal.showValidationMessage("金额必须大于 0");
+        return false;
+      }
+      return {
+        school,
+        mode,
+        count: parseInt(count) || 1,
+        amount: parseFloat(amount) || 0,
+        reason,
+      };
+    },
+  });
+
+  if (!isConfirmed || !formValues) return;
+
+  try {
+    const body = {
+      school_username: formValues.school,
+      mode: formValues.mode,
+      reason: formValues.reason,
+    };
+    if (formValues.mode === "count") body.count = formValues.count;
+    else body.amount = formValues.amount;
+
+    const resp = await fetch("/api/admin/billing/add", {
+      method: "POST",
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      await Swal.fire({
+        title: "账单已创建",
+        html: `<p style="color:#374151;font-size:14px;">账单 ID：<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">${data.billing_id}</code></p><p style="margin-top:6px;color:#16a34a;font-weight:600;">金额：¥${data.amount}</p>`,
+        icon: "success",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#2563eb",
+      });
+      await loadAdminBillingList();
+    } else {
+      await Swal.fire({
+        title: "创建失败",
+        text: data.message || "未知错误",
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+      });
+    }
+  } catch (e) {
+    await Swal.fire({
+      title: "请求异常",
+      text: e.message,
+      icon: "error",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#dc2626",
+    });
+  }
+}
+
+async function loadRemovedAccountsList() {
+  const container = document.getElementById("removed-accounts-list-container");
+  if (!container) return;
+  container.innerHTML = '<p class="text-xs text-slate-400">加载中...</p>';
+  try {
+    const resp = await fetch("/api/admin/removed_accounts", {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML =
+        '<p class="text-xs text-red-500">加载失败: ' +
+        (data.message || "未知错误") +
+        "</p>";
+      return;
+    }
+    const accounts = data.removed_accounts || {};
+    const keys = Object.keys(accounts);
+    if (keys.length === 0) {
+      container.innerHTML = '<p class="text-slate-700">暂无已删除账号记录</p>';
+      return;
+    }
+    let html = '<table class="w-full text-slate-700 border-collapse">';
+    html += '<thead><tr class="bg-slate-100">';
+    html +=
+      '<th class="p-2 text-left">用户名</th><th class="p-2 text-left">删除时间</th><th class="p-2 text-left">操作</th>';
+    html += "</tr></thead><tbody>";
+    keys.forEach((username) => {
+      const entry = accounts[username];
+      html += '<tr class="border-b border-slate-100">';
+      html += '<td class="p-2 font-mono">' + username + "</td>";
+      html += '<td class="p-2">' + (entry.deleted_at || "-") + "</td>";
+      html +=
+        '<td class="p-2"><button class="btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-slate-700 text-amber-700" onclick=\'restoreAccount(' +
+        JSON.stringify(username) +
+        ")\'>恢复</button></td>";
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML =
+      '<p class="text-slate-700 text-red-500">加载异常: ' + e.message + "</p>";
+  }
+}
+
+async function loadMobileMultiAdminBillingList() {
+  const schoolInput = document.getElementById(
+    "mobile-multi-admin-billing-school-input",
+  );
+  const schoolUsername = schoolInput ? schoolInput.value.trim() : "";
+  const container = document.getElementById("mobile-multi-admin-billing-list");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
+      <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <p class="text-xs">加载中...</p>
+    </div>`;
+  try {
+    const url = schoolUsername
+      ? "/api/admin/billing/list?school_username=" +
+        encodeURIComponent(schoolUsername)
+      : "/api/admin/billing/list";
+    const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = `<p class="text-xs text-red-500">加载失败：${_escapeAttr(data.message || "未知错误")}</p>`;
+      return;
+    }
+    const records = data.records || [];
+    if (!records.length) {
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
+      return;
+    }
+    const scopeTip = schoolUsername
+      ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}`
+      : "当前范围：所有学校账号的全部账单";
+    let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">${scopeTip}</div>`;
+    html += `<div class="mb-2 flex items-center gap-1 justify-end">
+      <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiAdminBillingList()">刷新</button>
+    </div>`;
+    html += `<div class="space-y-3">`;
+    records.forEach((r) => {
+      const school = _escapeAttr(r.school_username || "-");
+      const schoolName = _escapeAttr(r.school_name || "-");
+      const reason = _escapeAttr(r.reason || "-");
+      const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
+      const timeRow =
+        r.status === "paid"
+          ? `<div class="text-[11px] text-slate-400">支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}</div>`
+          : r.status === "admin_cleared"
+            ? `<div class="text-[11px] text-slate-400">清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}</div>`
+            : `<div class="text-[11px] text-slate-400">等待支付中…</div>`;
+      html += `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <!-- 顶栏：账号 + 状态徽章 -->
+          <div class="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-200">
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] text-slate-500 leading-none mb-0.5">学校账号</div>
+              <div class="text-xs font-semibold text-slate-800 truncate">${school}</div>
+            </div>
+            <div class="flex-shrink-0">${_billStatusBadge(r.status)}</div>
+          </div>
+          <!-- 内容区 -->
+          <div class="px-3 pt-2.5 pb-3">
+            <!-- 姓名行 -->
+            <div class="flex items-center gap-1.5 mb-2">
+              <span class="text-[11px] text-slate-500 flex-shrink-0">姓名</span>
+              <span class="text-xs font-medium text-slate-700 truncate">${schoolName}</span>
+            </div>
+            <!-- 金额 + 创建时间 两列 -->
+            <div class="grid grid-cols-2 gap-2 text-[11px] mb-2">
+              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2">
+                <div class="text-slate-500 leading-none mb-0.5">金额</div>
+                <div class="text-slate-800 font-semibold">${amount}</div>
+              </div>
+              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2">
+                <div class="text-slate-500 leading-none mb-0.5">创建时间</div>
+                <div class="text-slate-700 break-all">${_escapeAttr(_fmtBillTime(r.created_at))}</div>
+              </div>
+            </div>
+            <!-- 原因 -->
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-[11px] mb-2">
+              <div class="text-slate-500 leading-none mb-0.5">原因</div>
+              <div class="text-slate-800 break-all">${reason}</div>
+            </div>
+            <!-- 时间 + 操作按钮 -->
+            <div class="flex items-center justify-between gap-2">
+              ${timeRow}
+              <div class="flex-shrink-0 flex items-center gap-1">
+                <button class="px-2 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(r.school_username || "")})'>详情</button>
+                <button class="px-2 py-1 text-[11px] font-medium bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg border border-sky-200 transition-colors" onclick='adminEditBilling(${JSON.stringify(r)})'>修改</button>
+                <button class="px-2 py-1 text-[11px] font-medium bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors" onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)}, ${JSON.stringify(r.school_username || "")})'>删除</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<p class="text-xs text-red-500">加载异常：${_escapeAttr(e.message)}</p>`;
+  }
+}
+
+async function loadMobileMultiRemovedAccountsList() {
+  await loadRemovedAccountsList();
+  copyAdminContentToMultiPanel("restore-account");
+}
+
+/**
+ * 管理员恢复指定账号（含冲突处理：用户名冲突 / 手机号冲突）
+ */
+async function restoreAccount(auth_username) {
+  // ── 步骤1：二次确认 ──────────────────────────────────────────────────────
+  const confirmResult = await Swal.fire({
+    title: "恢复账号确认",
+    html: `
+      <div style="text-align:left;padding:8px 0;line-height:1.6;">
+
+        <!-- 顶部说明 -->
+        <p style="font-size:14px;color:#475569;margin-bottom:12px;">
+          请确认是否要恢复以下账号：
+        </p>
+
+        <!-- 红色警告（纯色、无发光、无渐变） -->
+        <div style="
+          background:#fee2e2;
+          border-left:4px solid #dc2626;
+          padding:12px 14px;
+          border-radius:6px;
+          margin-bottom:14px;
+        ">
+          <p style="
+            font-size:14px;
+            color:#b91c1c;
+            margin:0;
+            font-weight:600;
+          ">
+            ⚠️ 恢复后该账号将重新可以登录，且所有历史数据将被完整还原。
+          </p>
+        </div>
+
+        <!-- 账号展示（绿色提示块） -->
+        <div style="
+          background:#e7f7eb;
+          border-left:4px solid #16a34a;
+          padding:10px 14px;
+          border-radius:6px;
+          margin-bottom:10px;
+        ">
+          <p style="
+            font-size:16px;
+            font-weight:700;
+            color:#15803d;
+            margin:0;
+            font-family:monospace;
+          ">
+            ${auth_username}
+          </p>
+        </div>
+
+        <!-- 底部说明 -->
+        <p style="font-size:12px;color:#64748b;margin-top:6px;">
+          请谨慎操作，此操作不可撤销。
+        </p>
+      </div>
+    `,
+    icon: "warning",
+    showCancelButton: true,
+
+    /* 按钮文本 */
+    confirmButtonText: "<strong>🔄 确认恢复</strong>",
+    cancelButtonText: "<strong>✖️ 取消</strong>",
+
+    /* 按钮颜色（纯色、无发光） */
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#64748b",
+
+    /* 自定义类（用于去除发光、统一风格） */
+    customClass: {
+      popup: "swal2-clean-popup",
+      title: "swal2-clean-title",
+      confirmButton: "swal2-clean-btn",
+      cancelButton: "swal2-clean-btn",
+    },
+
+    reverseButtons: true,
+  });
+
+  if (!confirmResult.isConfirmed) return false;
+
+  // ── 步骤2：调用恢复接口（含冲突解决参数）──────────────────────────────────
+  let restoreAs = auth_username; // 可被用户名冲突处理修改
+  let phoneOverride = undefined; // undefined=不覆盖; ""=清空; "xxx"=新号码
+  let forcePhoneClear = false;
+
+  // 循环：每次遇到冲突时弹窗让管理员解决，然后重试
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const payload = { auth_username, restore_as: restoreAs };
+    if (phoneOverride !== undefined) payload.phone_override = phoneOverride;
+    if (forcePhoneClear) payload.force_phone_clear = true;
+
+    let resp, data;
+    try {
+      resp = await fetch("/api/admin/restore_account", {
+        method: "POST",
+        headers: {
+          "X-Session-ID": sessionUUID,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      data = await resp.json();
+    } catch (e) {
+      await Swal.fire({
+        title: "请求异常",
+        text: e.message,
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+        customClass: { popup: "swal2-neumorphism-popup" },
+      });
+      return false;
+    }
+
+    // ── 成功 ────────────────────────────────────────────────────────────────
+    if (data.success) {
+      const restoredAs = data.restored_as || restoreAs;
+      await Swal.fire({
+        title: "恢复成功",
+        html: `账号 <strong style="font-family:monospace;">${restoredAs}</strong> 已成功恢复`,
+        icon: "success",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#16a34a",
+        timer: 3000,
+        timerProgressBar: true,
+        customClass: { popup: "swal2-neumorphism-popup" },
+      });
+      loadRemovedAccountsList();
+      return true;
+    }
+
+    // ── 用户名冲突 ───────────────────────────────────────────────────────────
+    if (data.conflict === "username") {
+      const usernameResult = await Swal.fire({
+        title: "⚠️ 用户名冲突",
+        html: `
+          <div style="text-align:left;padding:4px 0;">
+            <p style="color:#475569;font-size:14px;margin-bottom:12px;">
+              用户名 <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:13px;">${data.conflicting_username || restoreAs}</code> 已存在，请输入新的用户名：
+            </p>
+            <input id="swal-new-username" type="text" class="swal2-input"
+              placeholder="新用户名"
+              value="${data.conflicting_username || restoreAs}"
+              style="margin:0;width:100%;box-sizing:border-box;">
+          </div>`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "确认",
+        confirmButtonColor: "#2563eb",
+        cancelButtonText: "取消",
+        cancelButtonColor: "#64748b",
+        customClass: { popup: "swal2-neumorphism-popup" },
+        reverseButtons: true,
+        preConfirm: () => {
+          const val = document.getElementById("swal-new-username").value.trim();
+          if (!val) {
+            Swal.showValidationMessage("用户名不能为空");
+            return false;
+          }
+          return val;
+        },
+      });
+      if (!usernameResult.isConfirmed) return false;
+      restoreAs = usernameResult.value;
+      continue;
+    }
+
+    // ── 手机号冲突 ───────────────────────────────────────────────────────────
+    if (data.conflict === "phone") {
+      const conflictPhone = data.phone || "";
+      const conflictUser = data.conflicting_user || "";
+      const phoneResult = await Swal.fire({
+        title: "⚠️ 手机号冲突",
+        html: `
+          <div style="text-align:left;padding:4px 0;">
+            <p style="color:#475569;font-size:14px;margin-bottom:12px;">
+              手机号 <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;font-size:13px;">${conflictPhone}</code>
+              已被用户 <strong style="font-family:monospace;">${conflictUser}</strong> 绑定。
+            </p>
+            <p style="color:#64748b;font-size:13px;margin-bottom:8px;">
+              请输入新手机号（留空或直接确认则<strong>清空手机号</strong>）：
+            </p>
+            <input id="swal-new-phone" type="tel" class="swal2-input"
+              placeholder="新手机号（留空则清空）"
+              style="margin:0;width:100%;box-sizing:border-box;">
+          </div>`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "确认",
+        confirmButtonColor: "#d97706",
+        cancelButtonText: "取消",
+        cancelButtonColor: "#64748b",
+        customClass: { popup: "swal2-neumorphism-popup" },
+        reverseButtons: true,
+        preConfirm: () => {
+          return document.getElementById("swal-new-phone").value.trim();
+        },
+      });
+      if (!phoneResult.isConfirmed) return false;
+      const newPhone = phoneResult.value || "";
+      if (!newPhone || newPhone === conflictPhone) {
+        // 管理员留空或输入了相同冲突号码 → 强制清空
+        phoneOverride = "";
+        forcePhoneClear = true;
+      } else {
+        phoneOverride = newPhone;
+        forcePhoneClear = false;
+      }
+      continue;
+    }
+
+    // ── 其他错误 ─────────────────────────────────────────────────────────────
+    await Swal.fire({
+      title: "恢复失败",
+      text: data.message || "未知错误",
+      icon: "error",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#dc2626",
+      customClass: { popup: "swal2-neumorphism-popup" },
+    });
+    return false;
+  }
+
+  // 超过最大重试次数
+  await Swal.fire({
+    title: "操作失败",
+    text: "解决冲突的尝试次数过多，请刷新后重试",
+    icon: "error",
+    confirmButtonText: "确定",
+    confirmButtonColor: "#dc2626",
+    customClass: { popup: "swal2-neumorphism-popup" },
+  });
+  return false;
+}
+
+async function restoreAccountAndRefreshMobile(auth_username) {
+  const ok = await restoreAccount(auth_username);
+  if (ok) await loadMobileMultiRemovedAccountsList();
+}

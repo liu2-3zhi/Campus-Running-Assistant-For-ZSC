@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>请升级您的浏览器 - 跑步助手</title>
+  <style>
+    * { margin: 0; padding: 0; -webkit-box-sizing: border-box; box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      background: #e8f0fe;
+      color: #1a202c;
+      min-height: 100%;
+    }
+    .page-wrapper {
+      min-height: 100vh;
+      display: -ms-flexbox;
+      display: flex;
+      -ms-flex-align: center;
+          align-items: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+      padding: 24px 16px;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      -webkit-box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+              box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      max-width: 600px;
+      width: 100%;
+      padding: 40px 36px 36px;
+      text-align: center;
+    }
+    .icon-wrap {
+      margin-bottom: 24px;
+    }
+    .icon-wrap img {
+      width: 80px;
+      height: 80px;
+    }
+    /* Fallback icon drawn with CSS for very old rendering engines */
+    .icon-fallback {
+      display: inline-block;
+      width: 80px;
+      height: 80px;
+      background: #fd6b6b;
+      border-radius: 50%;
+      line-height: 80px;
+      font-size: 42px;
+      color: #fff;
+    }
+    h1 {
+      font-size: 1.6em;
+      font-weight: 700;
+      color: #1a202c;
+      margin-bottom: 12px;
+    }
+    .subtitle {
+      font-size: 1em;
+      color: #4a5568;
+      line-height: 1.7;
+      margin-bottom: 28px;
+    }
+    .browsers {
+      display: -ms-flexbox;
+      display: flex;
+      -ms-flex-wrap: wrap;
+          flex-wrap: wrap;
+      gap: 16px;
+      -ms-flex-pack: center;
+          justify-content: center;
+      margin-bottom: 28px;
+    }
+    .browser-btn {
+      display: -ms-flexbox;
+      display: flex;
+      -ms-flex-direction: column;
+          flex-direction: column;
+      -ms-flex-align: center;
+          align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: #2d3748;
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px 20px;
+      width: 130px;
+      -webkit-transition: -webkit-box-shadow 0.2s, border-color 0.2s, color 0.2s;
+              transition: box-shadow 0.2s, border-color 0.2s, color 0.2s;
+      cursor: pointer;
+    }
+    .browser-btn:hover {
+      -webkit-box-shadow: 0 4px 12px rgba(37,99,235,0.15);
+              box-shadow: 0 4px 12px rgba(37,99,235,0.15);
+      border-color: #90cdf4;
+      color: #2563eb;
+    }
+    .browser-btn .browser-name {
+      font-size: 0.88em;
+      font-weight: 600;
+    }
+    .browser-btn .browser-desc {
+      font-size: 0.76em;
+      color: #718096;
+    }
+    /* SVG browser icons */
+    .browser-icon {
+      width: 44px;
+      height: 44px;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 24px 0 20px;
+    }
+    .note {
+      font-size: 0.82em;
+      color: #718096;
+      line-height: 1.6;
+    }
+    .note a { color: #2563eb; text-decoration: underline; }
+    .note a:hover { color: #1d4ed8; }
+    .tag {
+      display: inline-block;
+      background: #fff5f5;
+      color: #c53030;
+      border: 1px solid #feb2b2;
+      border-radius: 20px;
+      font-size: 0.78em;
+      padding: 2px 10px;
+      margin-bottom: 18px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="card">
+      <div class="icon-wrap">
+        <!-- Warning SVG icon (IE9+ supports inline SVG) -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="browser-icon" viewBox="0 0 80 80" width="80" height="80">
+          <circle cx="40" cy="40" r="38" fill="#fff3cd" stroke="#f6ad55" stroke-width="3"/>
+          <rect x="37" y="22" width="6" height="24" rx="3" fill="#dd6b20"/>
+          <circle cx="40" cy="56" r="4" fill="#dd6b20"/>
+        </svg>
+      </div>
+
+      <span class="tag">&#x26A0; 浏览器不兼容</span>
+
+      <h1>您的浏览器不受支持</h1>
+      <p class="subtitle">
+        您正在使用的浏览器<strong>版本过旧或不受本应用支持</strong>，
+        缺少运行本应用所需的现代 Web 技术（如 ES2015+、Promise、
+        fetch、Service Worker 等），无法正常使用。
+        <br><br>
+        请下载并安装以下任意一款<strong>主流现代浏览器</strong>，以获得最佳体验：
+      </p>
+
+      <div class="browsers">
+
+        <!-- Microsoft Edge -->
+        <a class="browser-btn" href="https://www.microsoft.com/zh-cn/edge/download" target="_blank" rel="noopener noreferrer">
+          <svg class="browser-icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="edge-g1" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#0CBBFF"/>
+                <stop offset="100%" stop-color="#0067D8"/>
+              </linearGradient>
+              <linearGradient id="edge-g2" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#2264D1"/>
+                <stop offset="100%" stop-color="#15B4FF"/>
+              </linearGradient>
+            </defs>
+            <ellipse cx="24" cy="24" rx="22" ry="22" fill="url(#edge-g1)"/>
+            <path d="M24 10 C14 10 7 18 9 27 C11 34 18 38 25 38 C30 38 36 35 38 30 L26 30 C22 30 18 27 18 23 C18 19 21 16 24 16 C30 16 34 20 34 26 C34 26 34 27 34 28 L38 28 C39 20 33 10 24 10 Z" fill="white" opacity="0.9"/>
+          </svg>
+          <span class="browser-name">Microsoft Edge</span>
+          <span class="browser-desc">推荐首选</span>
+        </a>
+
+        <!-- Google Chrome -->
+        <a class="browser-btn" href="https://www.google.cn/intl/zh-CN/chrome/" target="_blank" rel="noopener noreferrer">
+          <svg class="browser-icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="12" fill="#ffffff"/>
+            <path d="M24 12 A12 12 0 0 1 34.39 18 L24 18 A6 6 0 0 0 18 24 A6 6 0 0 0 24 30 A6 6 0 0 0 30 24 L34.39 18 A22 22 0 1 1 13.61 18 Z" fill="#DB4437"/>
+            <path d="M13.61 18 L24 36.77 A12 12 0 0 1 12 24 A12 12 0 0 1 13.61 18 Z" fill="#0F9D58"/>
+            <path d="M34.39 18 L24 36.77 A12 12 0 0 0 36 24 A12 12 0 0 0 34.39 18 Z" fill="#F4B400"/>
+            <circle cx="24" cy="24" r="6" fill="#4285F4"/>
+          </svg>
+          <span class="browser-name">Google Chrome</span>
+          <span class="browser-desc">速度极快</span>
+        </a>
+
+        <!-- Firefox -->
+        <a class="browser-btn" href="https://www.firefox.com.cn/" target="_blank" rel="noopener noreferrer">
+          <svg class="browser-icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="22" fill="#FF9800"/>
+            <circle cx="24" cy="24" r="14" fill="#E65100"/>
+            <path d="M24 10 C18 10 14 14 13 18 C15 15 19 14 22 15 C19 17 17 21 18 25 C19 29 23 31 27 30 C25 32 21 32 18 30 C20 35 28 38 34 34 C38 30 40 24 38 18 C36 24 32 26 29 24 C31 21 31 16 28 13 C27 12 26 11 24 10 Z" fill="#FF6D00"/>
+          </svg>
+          <span class="browser-name">Firefox</span>
+          <span class="browser-desc">注重隐私</span>
+        </a>
+
+        <!-- 360极速浏览器（极速模式） -->
+        <a class="browser-btn" href="https://browser.360.cn/ee/" target="_blank" rel="noopener noreferrer">
+          <svg class="browser-icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="22" fill="#1E88E5"/>
+            <text x="24" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="white" font-family="Arial,sans-serif">360</text>
+          </svg>
+          <span class="browser-name">360极速浏览器</span>
+          <span class="browser-desc">请用极速模式</span>
+        </a>
+
+      </div>
+
+      <hr class="divider">
+
+      <p class="note">
+        &#x1F4A1; 如果您正在使用 <strong>360浏览器、搜狗浏览器或QQ浏览器</strong>，
+        请点击地址栏右侧的 <strong>&#x26A1; 极速模式</strong> 切换图标，切换到 Chromium/极速内核后即可正常使用。
+        <br><br>
+        &#x1F4A1; 如果您正在使用 <strong>UC浏览器或百度浏览器</strong>，
+        由于其内核兼容性问题，建议直接下载并使用上方推荐的主流现代浏览器。
+        <br><br>
+        &#x1F4A1; 如果您正在使用 <strong>旧版 Chrome / Firefox / Safari / Samsung Internet</strong>，
+        请在系统设置或官网中将其更新到最新版本。
+        <br><br>
+        &#x1F4CC; 如果您的操作系统是 <strong>Windows XP 或 Vista</strong>，请
+        <a href="/ie_basic.html">查看适合 Windows XP / Vista 的浏览器推荐</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

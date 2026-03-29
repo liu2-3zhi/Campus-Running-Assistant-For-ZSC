@@ -1,20 +1,18 @@
-# 此工作流使用了 GitHub 未认证的 Actions。
-# 它们由第三方提供，并受单独的服务条款、隐私政策和支持文档约束。
-
-# 此工作流会检出代码，执行 Codacy 安全扫描，
-# 并将结果集成到 GitHub 高级安全代码扫描功能中。
-# 有关 Codacy 安全扫描 Action 的使用和参数，请参阅：
+# 此工作流会检出代码、执行 Codacy 安全扫描，
+# 并将结果集成到
+# GitHub Advanced Security 代码扫描功能中。有关
+# Codacy 安全扫描 Action 的用法和参数，请参见：
 # https://github.com/codacy/codacy-analysis-cli-action
-# 有关 Codacy Analysis CLI 的更多信息，请参阅：
+# 有关 Codacy Analysis CLI 的更多信息，请参见：
 # https://github.com/codacy/codacy-analysis-cli
 
-name: Codacy Security Scan
+name: Codacy 安全扫描
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
-    # 以下分支必须是上面分支的子集
+    # 下方分支必须是上方分支的子集
     branches: [ "main" ]
   schedule:
     - cron: '37 18 * * 3'
@@ -25,34 +23,34 @@ permissions:
 jobs:
   codacy-security-scan:
     permissions:
-      contents: read # 供 actions/checkout 获取代码
+      contents: read # 供 actions/checkout 拉取代码
       security-events: write # 供 github/codeql-action/upload-sarif 上传 SARIF 结果
-      actions: read # 私有仓库时，供 github/codeql-action/upload-sarif 获取 Action 运行状态
-    name: Codacy Security Scan
+      actions: read # 私有仓库场景下，供 github/codeql-action/upload-sarif 获取 Action 运行状态
+    name: Codacy 安全扫描
     runs-on: ubuntu-latest
     steps:
-      # 将仓库检出到 GitHub Actions 运行器
-      - name: Checkout code
+      # 将仓库代码检出到 GitHub Actions 运行器
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      # 执行 Codacy Analysis CLI 并生成 SARIF 输出，包含分析过程中识别的安全问题
-      - name: Run Codacy Analysis CLI
-        uses: codacy/codacy-analysis-cli-action@master
+      # 执行 Codacy Analysis CLI，并输出包含扫描结果的 SARIF 文件
+      - name: 运行 Codacy Analysis CLI
+        uses: codacy/codacy-analysis-cli-action@d840f886c4bd4edc059706d09c6a1586111c540b
         with:
-          # 请查看 https://github.com/codacy/codacy-analysis-cli#project-token 获取 Codacy 仓库的项目令牌
-          # 也可以省略令牌，仅运行支持默认配置的工具
+          # 参考 https://github.com/codacy/codacy-analysis-cli#project-token 获取项目令牌
+          # 也可省略令牌，仅运行支持默认配置的工具
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
           verbose: true
           output: results.sarif
           format: sarif
-          # 调整非安全问题的严重性
+          # 调整非安全问题的严重级别映射
           gh-code-scanning-compat: true
-          # 强制退出码为 0，以便生成 SARIF 文件
-          # 这会将 PR 拒绝的控制权交给 GitHub 端
+          # 强制返回 0 退出码，以确保 SARIF 文件可生成
+          # 由 GitHub 侧决定是否据此阻止 PR 合并
           max-allowed-issues: 2147483647
 
-      # 上传上一步生成的 SARIF 文件
-      - name: Upload SARIF results file
+      # 上传上一步生成的 SARIF 结果文件
+      - name: 上传 SARIF 结果文件
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
