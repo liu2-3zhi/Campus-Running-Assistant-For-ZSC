@@ -16,3 +16,4 @@ cryptography
 eventlet
 BeautifulSoup4
 werkzeug
+fake-useragent
