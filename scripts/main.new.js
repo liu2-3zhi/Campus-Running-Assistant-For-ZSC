@@ -56839,12 +56839,66 @@ async function View_details_of_users_with_outstanding_payments(
         },
       });
     } else {
+      // 备份数据不存在或无权限时，使用新的轻量详情视图（仅展示姓名 + 账单）
+      const resolvedName = await fetchSchoolAccountName(school_username);
+
+      // 获取该账号账单记录（非管理员走 /api/billing/list，管理员走 /api/admin/billing/list）
+      let fallbackBills = [];
+      try {
+        const billResp = await fetch(
+          `/api/billing/list?school_username=${encodeURIComponent(school_username)}`,
+          { headers: { "X-Session-ID": sessionUUID } }
+        );
+        const billData = await billResp.json();
+        if (billData.success) fallbackBills = billData.records || [];
+      } catch (_e) {}
+
+      const statusLabelFb = (s) => {
+        if (s === "paid") return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">✓ 已支付</span>`;
+        if (s === "admin_cleared") return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-800">✓ 管理员清除</span>`;
+        return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">⏳ 待支付</span>`;
+      };
+      const billCardsHtmlFb = fallbackBills.length
+        ? fallbackBills.map(r => `
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-2">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-xs text-slate-600">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+              ${statusLabelFb(r.status)}
+            </div>
+            <div class="text-[11px] text-slate-400 mb-0.5">描述</div>
+            <div class="text-xs text-slate-800 mb-2">${escapeHtml(r.reason || "-")}</div>
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] text-slate-400">金额：</span>
+              <span class="text-sm font-bold ${r.status === "pending" ? "text-amber-600" : "text-green-600"}">${r.amount != null ? "¥" + escapeHtml(String(r.amount)) : "-"}</span>
+            </div>
+          </div>`).join("")
+        : `<div class="text-xs text-slate-400 text-center py-3">暂无账单记录</div>`;
+
       Swal.fire({
-        icon: "info",
-        title: "未找到备份",
-        text: result.message || "该账号暂无备份数据",
-        confirmButtonText: "确定",
-        confirmButtonColor: "#64748b",
+        title: resolvedName || school_username,
+        html: `
+          <div class="text-left space-y-3 max-h-[60vh] overflow-y-auto px-1 pr-2">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600">
+              <div class="text-[10px] text-slate-400 mb-0.5">学校账号</div>
+              <div class="font-mono font-semibold text-slate-800">${escapeHtml(school_username)}</div>
+              ${resolvedName ? `<div class="text-[10px] text-slate-400 mt-1.5 mb-0.5">姓名</div><div class="font-medium text-slate-800">${escapeHtml(resolvedName)}</div>` : ""}
+            </div>
+            <div class="border border-slate-200 rounded-lg overflow-hidden">
+              <div class="bg-amber-50 px-3 py-2 border-b border-amber-100 text-xs font-bold text-amber-800">
+                账单记录（共 ${fallbackBills.length} 条）
+              </div>
+              <div class="p-3">${billCardsHtmlFb}</div>
+            </div>
+          </div>`,
+        width: "420px",
+        showConfirmButton: true,
+        confirmButtonText: "关闭",
+        confirmButtonColor: "#3b82f6",
+        customClass: {
+          popup: "rounded-2xl",
+          title: "text-lg font-bold text-slate-800 pt-4 pb-0",
+          htmlContainer: "!px-4 !pb-4 !pt-2 !overflow-visible !m-0 w-full",
+        },
       });
     }
   } catch (error) {
@@ -57303,6 +57357,34 @@ document.addEventListener("DOMContentLoaded", function () {
 // ========================================================
 // 账单相关函数
 // ========================================================
+
+/**
+ * 获取学校账号对应姓名（带本地缓存，适用于管理员和普通用户）。
+ * 调用 /api/school_account/name，无需管理员权限。
+ * @param {string} school_username
+ * @returns {Promise<string>} 姓名，获取失败时返回空字符串
+ */
+const _schoolNameCache = {};
+async function fetchSchoolAccountName(school_username) {
+  if (!school_username) return "";
+  if (_schoolNameCache[school_username] !== undefined) {
+    return _schoolNameCache[school_username];
+  }
+  try {
+    const resp = await fetch(
+      `/api/school_account/name?school_username=${encodeURIComponent(school_username)}`,
+      { headers: { "X-Session-ID": sessionUUID } }
+    );
+    const result = await resp.json();
+    const name = (result.success && result.name) ? result.name : "";
+    _schoolNameCache[school_username] = name;
+    return name;
+  } catch (e) {
+    console.warn("[fetchSchoolAccountName] 获取姓名失败:", school_username, e);
+    _schoolNameCache[school_username] = "";
+    return "";
+  }
+}
 
 function _escapeAttr(v) {
   return String(v == null ? "" : v)
