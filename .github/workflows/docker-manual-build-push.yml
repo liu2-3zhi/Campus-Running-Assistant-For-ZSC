@@ -46,7 +46,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 3) 构建临时镜像（对应 build.bat 中 TEMP_TAG）
+      # 3) 构建临时镜像
       - name: Build image
         run: docker build -t "${TEMP_TAG}" .
 
