@@ -55189,188 +55189,142 @@ async function _checkOverdueBeforeStartByCurrentMode() {
  * @param {Array} overdueAccounts - 欠费账号列表，格式：[{username, name, overdue_count, school_username}, ...]
  */
 async function showOverduePaymentModal(overdueAccounts) {
-  // ========== 第一步：从后端获取单次费用配置 ==========
+  // 显示加载提示
+  Swal.fire({
+    title: "正在获取欠费账单",
+    allowOutsideClick: false,
+    didOpen: () => { Swal.showLoading(); },
+  });
 
-  // 默认单次费用为1.0元
-  // 如果后端API调用失败，会使用这个默认值
-  let singleRunCost = 1.0;
+  // 收集所有欠费账号的 school_username 集合
+  const overdueSet = new Set(
+    (overdueAccounts || []).map((a) => a.school_username || a.username || "").filter(Boolean)
+  );
 
+  // 从账单系统获取所有待支付账单，过滤出欠费账号的账单
+  let pendingBills = [];
   try {
-    // 调用后端API获取用户单次运行费用配置
-    // 这个费用决定了每次欠费需要支付的金额
-    const configResponse = await fetch("/api/config/get_user_run_cost", {
-      method: "GET",
-      headers: {
-        "X-Session-ID": sessionUUID, // 携带会话ID进行身份验证
-      },
+    const resp = await fetch("/api/billing/list", {
+      headers: { "X-Session-ID": sessionUUID },
     });
-
-    // 解析JSON响应
-    const configResult = await configResponse.json();
-
-    // 如果API调用成功且返回了single_run_cost配置
-    if (configResult.success && configResult.single_run_cost) {
-      // 将字符串转换为浮点数，确保数值计算的准确性
-      singleRunCost = parseFloat(configResult.single_run_cost);
+    const result = await resp.json();
+    if (result.success) {
+      pendingBills = (result.records || []).filter(
+        (r) => r.status === "pending" && overdueSet.has(r.school_username)
+      );
     }
   } catch (e) {
-    // 如果获取配置失败（网络错误、API不存在等），记录警告并使用默认值
-    console.warn("获取费用配置失败，使用默认值1.0元:", e);
+    console.warn("[showOverduePaymentModal] 获取账单失败:", e);
   }
 
-  // ========== 第二步：构建账号选择列表HTML ==========
+  Swal.close();
 
-  // 为每个欠费账号生成一个交互式的复选框行
-  // 每行包含：复选框、账号信息、欠费次数、预估金额
-  const accountListHtml = overdueAccounts
-    .map((acc, index) => {
-      // 计算该账号的预估缴费金额：欠费次数 × 单次费用
-      // toFixed(2) 保留两位小数，例如：3.50、10.00
-      const estimatedAmount = (acc.overdue_count * singleRunCost).toFixed(2);
+  if (!pendingBills.length) {
+    await Swal.fire({
+      title: "暂无待支付账单",
+      text: "未找到对应的待支付账单记录，请联系管理员确认。",
+      icon: "info",
+      confirmButtonText: "确定",
+    });
+    return;
+  }
 
-      // 使用 escapeHtml 防止XSS攻击
-      // 如果账号名称中包含 <script> 等恶意代码，会被转义为 &lt;script&gt;
-      const displayName = escapeHtml(
-        acc.name || acc.username || acc.school_username,
-      );
-      const schoolUsername = escapeHtml(acc.school_username || acc.username);
+  // 计算总金额
+  const calcTotal = () => {
+    let total = 0;
+    document.querySelectorAll('[data-overdue-bill-select="1"]').forEach((cb) => {
+      if (cb.checked) total += parseFloat(cb.dataset.amount || "0");
+    });
+    return total;
+  };
 
-      // 返回一个美观的账号选择卡片HTML
-      return `
-            <div class="overdue-account-item" style="
-                display: flex; 
-                align-items: center; 
-                padding: 10px; 
-                margin: 8px 0; 
-                background: #f8fafc; 
-                border-radius: 8px;
-                border: 2px solid #e2e8f0;
-                cursor: pointer;
-                transition: all 0.2s;
-            " onclick="toggleOverdueAccount(${index})">
-                <input 
-                    type="checkbox" 
-                    id="overdue-account-${index}" 
-                    data-school-username="${schoolUsername}"
-                    data-overdue-count="${acc.overdue_count}"
-                    data-estimated-amount="${estimatedAmount}"
-                    checked
-                    style="margin-right: 12px; width: 18px; height: 18px; cursor: pointer;"
-                    onclick="event.stopPropagation(); updateTotalAmount();">
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; color: #1e293b; margin-bottom: 4px;">
-                        ${displayName}
-                    </div>
-                    <div style="font-size: 13px; color: #64748b;">
-                        账号：${schoolUsername} | 欠费：${acc.overdue_count}次 | 金额：¥${estimatedAmount}
-                    </div>
-                </div>
+  // 构建账单卡片 HTML
+  const statusLabel = (s) => {
+    return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">⏳ 待支付</span>`;
+  };
+  const billCardsHtml = pendingBills.map((r, idx) => {
+    const safeId = escapeHtml(r.billing_id || "");
+    const safeSchool = escapeHtml(r.school_username || "-");
+    const safeName = escapeHtml(r.school_name || r.school_username || "-");
+    const safeReason = escapeHtml(r.reason || "-");
+    const amount = r.amount != null ? parseFloat(r.amount) : 0;
+    const fmtAmount = "¥" + amount.toFixed(2);
+    return `
+      <div class="bg-white border-2 border-slate-200 rounded-xl p-3 shadow-sm cursor-pointer transition-all hover:border-blue-300"
+           onclick="const cb=document.getElementById('ob-${idx}');cb.checked=!cb.checked;document.getElementById('overdue-total-amount').textContent='¥'+[...document.querySelectorAll('[data-overdue-bill-select=\\'1\\']')].filter(c=>c.checked).reduce((s,c)=>s+parseFloat(c.dataset.amount||0),0).toFixed(2);">
+        <div class="flex items-start justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <input id="ob-${idx}" type="checkbox" data-overdue-bill-select="1"
+              data-billing-id="${safeId}" data-school-username="${safeSchool}"
+              data-amount="${amount}" checked
+              onclick="event.stopPropagation();document.getElementById('overdue-total-amount').textContent='¥'+[...document.querySelectorAll('[data-overdue-bill-select=\\'1\\']')].filter(c=>c.checked).reduce((s,c)=>s+parseFloat(c.dataset.amount||0),0).toFixed(2);"
+              class="w-4 h-4 rounded border-slate-300 text-blue-600">
+            <div>
+              <div class="text-xs font-semibold text-slate-800">${safeSchool}</div>
+              <div class="text-[11px] text-slate-500">${safeName}</div>
             </div>
-        `;
-    })
-    .join("");
+          </div>
+          ${statusLabel(r.status)}
+        </div>
+        <div class="text-[11px] text-slate-500 mb-1">描述：${safeReason}</div>
+        <div class="flex items-center justify-between">
+          <div class="text-[11px] text-slate-400">创建时间：${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+          <div class="text-sm font-bold text-amber-600">${fmtAmount}</div>
+        </div>
+      </div>`;
+  }).join("");
 
-  // ========== 第三步：显示选择弹窗 ==========
+  const totalAmount = pendingBills.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0).toFixed(2);
 
   const result = await Swal.fire({
-    title: "选择要缴费的账号",
+    title: "选择要支付的账单",
     html: `
-            <div style="text-align: left;">
-                <p style="margin-bottom: 15px; color: #64748b; font-size: 14px;">
-                    💡 勾选需要缴费的账号，单价：¥${singleRunCost}/次
-                </p>
-                <div style="max-height: 400px; overflow-y: auto; margin-bottom: 15px;">
-                    ${accountListHtml}
-                </div>
-                <div style="
-                    padding: 15px; 
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius: 10px; 
-                    text-align: center;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                ">
-                    <div style="color: rgba(255,255,255,0.9); font-size: 13px; margin-bottom: 5px;">
-                        合计金额
-                    </div>
-                    <div id="total-payment-amount" style="color: white; font-size: 28px; font-weight: bold;">
-                        ¥${(
-                          overdueAccounts.reduce(
-                            (sum, acc) => sum + acc.overdue_count,
-                            0,
-                          ) * singleRunCost
-                        ).toFixed(2)}
-                    </div>
-                </div>
-            </div>
-        `,
-    icon: "warning",
+      <div class="text-left space-y-3">
+        <p class="text-xs text-slate-500">💡 勾选需要支付的账单，点击卡片可切换选中状态</p>
+        <div class="space-y-2 max-h-80 overflow-y-auto pr-1">
+          ${billCardsHtml}
+        </div>
+        <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-3 text-center shadow">
+          <div class="text-white/80 text-xs mb-1">合计金额</div>
+          <div id="overdue-total-amount" class="text-white text-2xl font-bold">¥${totalAmount}</div>
+        </div>
+      </div>`,
     showCancelButton: true,
-    confirmButtonText: "选择支付方式",
+    confirmButtonText: "确认支付",
     cancelButtonText: "取消",
     confirmButtonColor: "#3b82f6",
     cancelButtonColor: "#94a3b8",
-    width: "600px",
-    didOpen: () => {
-      // 绑定点击事件切换复选框
-      // 当用户点击整个卡片时，切换复选框的选中状态
-      window.toggleOverdueAccount = (index) => {
-        const checkbox = document.getElementById(`overdue-account-${index}`);
-        checkbox.checked = !checkbox.checked;
-        updateTotalAmount(); // 切换后更新总金额显示
-      };
-
-      // 更新总金额的函数
-      // 遍历所有复选框，累加选中账号的预估金额
-      window.updateTotalAmount = () => {
-        let total = 0;
-        document
-          .querySelectorAll('[id^="overdue-account-"]')
-          .forEach((checkbox) => {
-            if (checkbox.checked) {
-              // 从 data-estimated-amount 属性获取该账号的预估金额
-              total += parseFloat(checkbox.dataset.estimatedAmount);
-            }
-          });
-
-        // 更新页面上显示的总金额
-        const totalElement = document.getElementById("total-payment-amount");
-        if (totalElement) {
-          totalElement.textContent = "¥" + total.toFixed(2);
-        }
-      };
-    },
+    width: "520px",
   });
 
-  // ========== 第四步：如果用户确认，获取选中的账号并进入支付流程 ==========
+  if (!result.isConfirmed) return;
 
-  if (result.isConfirmed) {
-    // 收集选中的账号信息
-    const selectedAccounts = [];
-    document
-      .querySelectorAll('[id^="overdue-account-"]')
-      .forEach((checkbox) => {
-        if (checkbox.checked) {
-          // 将选中账号的信息添加到数组中
-          selectedAccounts.push({
-            school_username: checkbox.dataset.schoolUsername,
-            overdue_count: parseInt(checkbox.dataset.overdueCount),
-          });
-        }
+  // 收集选中的账单
+  const selectedBills = [];
+  document.querySelectorAll('[data-overdue-bill-select="1"]').forEach((cb) => {
+    if (cb.checked) {
+      selectedBills.push({
+        billing_id: cb.dataset.billingId,
+        school_username: cb.dataset.schoolUsername,
       });
-
-    // 验证是否至少选择了一个账号
-    if (selectedAccounts.length === 0) {
-      await Swal.fire({
-        title: "提示",
-        text: "请至少选择一个账号进行缴费",
-        icon: "info",
-        confirmButtonText: "确定",
-      });
-      return; // 退出函数，不进入支付流程
     }
+  });
 
-    // 进入支付流程，传递选中的账号和单次费用
-    await clearOverduePlaceholder(selectedAccounts, singleRunCost);
+  if (!selectedBills.length) {
+    await Swal.fire({ title: "提示", text: "请至少选择一条账单", icon: "info", confirmButtonText: "确定" });
+    return;
+  }
+
+  try {
+    await createBillingPaymentOrderAndOpen(selectedBills);
+    await Swal.fire({
+      title: "已发起支付",
+      text: "请在新窗口完成支付，完成后可刷新查看账单状态",
+      icon: "success",
+      confirmButtonText: "确定",
+    });
+  } catch (e) {
+    await Swal.fire({ title: "支付发起失败", text: e.message || "未知错误", icon: "error", confirmButtonText: "确定" });
   }
 }
 
@@ -56606,14 +56560,51 @@ async function View_details_of_users_with_outstanding_payments(
       const dept = data.deptInfo || {};
       const user = data.userInfo || {};
 
-      // // ========== 检查当前用户是否为管理员 ==========
-      // // 从sessionStorage中获取用户组信息
-      // // 用户组存储在sessionStorage.user_group中，登录时由后端设置
-      // const userGroup = sessionStorage.getItem('user_group') || '';
+      // 获取该学校账号的账单记录
+      let billingRecords = [];
+      try {
+        const billResp = await fetch(
+          `/api/admin/billing/list?school_username=${encodeURIComponent(school_username)}`,
+          { headers: { "X-Session-ID": sessionUUID } }
+        );
+        const billResult = await billResp.json();
+        if (billResult.success) {
+          billingRecords = billResult.records || [];
+        }
+      } catch (e) {
+        console.warn("[View_details] 获取账单记录失败:", e);
+      }
 
-      // // 判断是否为管理员：只有admin或super_admin才能看到"结清"按钮
-      // // 这是前端的安全检查，后端API还会再次验证权限
-      // const isAdmin = (userGroup === 'admin' || userGroup === 'super_admin');
+      // 构建账单卡片 HTML
+      const buildBillingCardsHtml = (records) => {
+        if (!records.length) {
+          return `<div class="text-xs text-slate-400 text-center py-3">暂无账单记录</div>`;
+        }
+        const statusLabel = (s) => {
+          if (s === "paid") return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">✓ 已支付</span>`;
+          if (s === "admin_cleared") return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-800">✓ 管理员清除</span>`;
+          return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">⏳ 待支付</span>`;
+        };
+        return records.map(r => `
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-2">
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <div class="text-[10px] text-slate-400">创建时间</div>
+                <div class="text-xs text-slate-700">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+              </div>
+              ${statusLabel(r.status)}
+            </div>
+            <div class="text-[10px] text-slate-400 mb-0.5">描述</div>
+            <div class="text-xs text-slate-800 mb-2">${escapeHtml(r.reason || "-")}</div>
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-[10px] text-slate-400">金额：</span>
+                <span class="text-sm font-bold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + escapeHtml(String(r.amount)) : "-"}</span>
+              </div>
+              ${r.status === "pending" ? `<button onclick="Swal.close();paySingleBilling('admin-billing-list-container','${escapeHtml(r.billing_id || "")}','${escapeHtml(r.school_username || "")}')" class="px-2 py-1 text-[11px] bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md border border-emerald-200 transition-colors">支付</button>` : ""}
+            </div>
+          </div>`).join("");
+      };
 
       // 构建HTML内容 - 使用现代化的渐变背景和卡片设计
       const htmlContent = `
@@ -56623,6 +56614,7 @@ async function View_details_of_users_with_outstanding_payments(
                     <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-lg border border-blue-100">
                         <div class="flex justify-between items-center">
                             <!-- 备份时间信息 -->
+
                             <div class="flex flex-col">
                                 <span class="text-xs text-indigo-600 font-medium mb-1">
                                     📅 备份时间
@@ -56813,6 +56805,21 @@ async function View_details_of_users_with_outstanding_payments(
                               null,
                               2,
                             )}</pre>
+                        </div>
+                    </div>
+
+                    <!-- 账单记录卡片区域 -->
+                    <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                        <div class="bg-gradient-to-r from-amber-50 via-orange-50 to-white px-3 py-2 border-b border-amber-100 flex items-center gap-2">
+                            <div class="p-1 bg-gradient-to-br from-amber-100 to-orange-100 rounded text-amber-600">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                </svg>
+                            </div>
+                            <span class="font-bold text-amber-800 text-xs">账单记录（共 ${billingRecords.length} 条）</span>
+                        </div>
+                        <div class="p-3">
+                            ${buildBillingCardsHtml(billingRecords)}
                         </div>
                     </div>
                 </div>
@@ -57442,19 +57449,20 @@ function _renderBillingTableCommon(records, opts = {}) {
   html += `<table class="${tableClass}">`;
   html += `<thead><tr class="bg-slate-100">`;
   html += `<th class="p-2 text-center w-10"><input type="checkbox" onclick="toggleBillingSelectAll('${containerId}', this.checked)"></th>`;
-  html += `<th class="p-2 text-left whitespace-nowrap">学校账号</th><th class="p-2 text-left whitespace-nowrap">原因</th><th class="p-2 text-left whitespace-nowrap">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left whitespace-nowrap">创建时间</th><th class="p-2 text-left whitespace-nowrap">支付时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
+  html += `<th class="p-2 text-left whitespace-nowrap">学校账号</th><th class="p-2 text-left whitespace-nowrap">姓名</th><th class="p-2 text-left whitespace-nowrap">原因</th><th class="p-2 text-left whitespace-nowrap">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left whitespace-nowrap">创建时间</th><th class="p-2 text-left whitespace-nowrap">支付时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
   html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
   records.forEach((r) => {
     const billingId = _escapeAttr(r.billing_id || "");
     const school = _escapeAttr(r.school_username || "-");
-    const schoolName = _escapeAttr(r.school_name || r.school_username || "-");
+    const schoolName = _escapeAttr(r.school_name || "-");
     const reason = _escapeAttr(r.reason || "-");
     const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
     const statusBadge = _billStatusBadge(r.status);
     const canPay = r.status === "pending";
     html += `<tr class="hover:bg-slate-50">`;
     html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-school-name="${schoolName}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" data-created-at="${_escapeAttr(r.created_at || "")}" ${canPay ? "" : "disabled"}></td>`;
-    html += `<td class="p-2 whitespace-nowrap"><div class="text-slate-800">${schoolName}</div><div class="text-[11px] text-slate-500">${school}</div></td>`;
+    html += `<td class="p-2 whitespace-nowrap text-slate-800">${school}</td>`;
+    html += `<td class="p-2 whitespace-nowrap text-slate-600">${schoolName}</td>`;
     html += `<td class="p-2">${reason}</td>`;
     html += `<td class="p-2 whitespace-nowrap">${amount}</td>`;
     html += `<td class="p-2">${statusBadge}</td>`;
@@ -57717,6 +57725,7 @@ async function loadAdminBillingList(usernameOverride = null) {
             <thead>
               <tr class="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600">
                 <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">学校账号</th>
+                <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">姓名</th>
                 <th class="px-3 py-2.5 text-left font-semibold whitespace-nowrap">原因/描述</th>
                 <th class="px-3 py-2.5 text-right font-semibold whitespace-nowrap">金额</th>
                 <th class="px-3 py-2.5 text-center font-semibold whitespace-nowrap">状态</th>
@@ -57736,15 +57745,19 @@ async function loadAdminBillingList(usernameOverride = null) {
         statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 font-medium">⏳ 待支付</span>`;
       }
       const rowBg = idx % 2 === 0 ? "" : "bg-slate-50/60";
+      const schoolName = _escapeAttr(r.school_name || "-");
       html += `<tr class="${rowBg} hover:bg-sky-50/40 transition-colors">
-        <td class="px-3 py-2.5 text-slate-600">${r.school_username || "-"}</td>
-        <td class="px-3 py-2.5 text-slate-600">${r.reason || "-"}</td>
-        <td class="px-3 py-2.5 text-right font-semibold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + r.amount : "-"}</td>
+        <td class="px-3 py-2.5 text-slate-800 font-medium">${_escapeAttr(r.school_username || "-")}</td>
+        <td class="px-3 py-2.5 text-slate-600">${schoolName}</td>
+        <td class="px-3 py-2.5 text-slate-600">${_escapeAttr(r.reason || "-")}</td>
+        <td class="px-3 py-2.5 text-right font-semibold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + _escapeAttr(r.amount) : "-"}</td>
         <td class="px-3 py-2.5 text-center">${statusBadge}</td>
         <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-slate-500 whitespace-nowrap">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
         <td class="px-3 py-2.5 text-center">
           <div class="flex items-center justify-center gap-1.5">
+            <button onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(r.school_username || "")})'
+              class="px-2 py-1 text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-md border border-indigo-200 transition-colors whitespace-nowrap">🔍 查看详情</button>
             <button onclick='adminEditBilling(${JSON.stringify(r)})'
               class="px-2 py-1 text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md border border-sky-200 transition-colors whitespace-nowrap">✏️ 修改账单</button>
             <button onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)},${JSON.stringify(r.school_username || '')})'
@@ -58123,12 +58136,15 @@ async function loadMobileMultiAdminBillingList() {
     </div>`;
     html += `<div class="space-y-2.5">`;
     records.forEach((r) => {
+      const schoolName = _escapeAttr(r.school_name || "-");
       html += `
         <div class="bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
           <div class="flex items-start justify-between gap-2 mb-2">
             <div class="min-w-0">
               <div class="text-[11px] text-slate-500">学校账号</div>
               <div class="text-xs font-semibold text-slate-800 break-all">${_escapeAttr(r.school_username || "-")}</div>
+              <div class="text-[11px] text-slate-500 mt-1">姓名</div>
+              <div class="text-xs text-slate-700 break-all">${schoolName}</div>
             </div>
             ${_billStatusBadge(r.status)}
           </div>
@@ -58147,6 +58163,7 @@ async function loadMobileMultiAdminBillingList() {
             <div class="text-slate-800 break-all">${_escapeAttr(r.reason || "-")}</div>
           </div>
           <div class="mt-2 flex flex-wrap items-center gap-1 justify-end">
+            <button class="btn btn-ghost border border-indigo-300 !py-0.5 !px-1.5 text-[11px] text-indigo-700" onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(r.school_username || "")})'>🔍 详情</button>
             <button class="btn btn-ghost border border-sky-300 !py-0.5 !px-1.5 text-[11px] text-sky-700" onclick='adminEditBilling(${JSON.stringify(r)})'>修改</button>
             <button class="btn btn-ghost border border-rose-300 !py-0.5 !px-1.5 text-[11px] text-rose-700" onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)}, ${JSON.stringify(r.school_username || "")})'>删除</button>
           </div>

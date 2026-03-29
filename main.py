@@ -42701,7 +42701,7 @@ def start_web_server(args_param):
     def get_school_account_stats():
         """
         获取指定学校账号的统计信息（欠费信息）
-        读取 school_accounts/{school_account}.ini 的 [stats] 节
+        读取 ./User_Billing/School_Bills/<school_username>/ 下的账单文件统计
         """
         try:
             # 获取请求参数
@@ -42715,21 +42715,41 @@ def start_web_server(args_param):
             auth_username = g.user
 
             # 验证该学校账号是否属于当前用户
-            # 使用 g.api_instance._load_user_school_accounts 加载用户的所有学校账号
             school_accounts = g.api_instance._load_user_school_accounts(
                 auth_username)
 
             if school_username not in school_accounts and auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
                 return jsonify({"success": False, "message": "账号不存在或不属于当前用户"}), 404
 
-            # 读取统计信息 (使用现有的辅助函数读取ini中的stats节)
-            # 返回格式: {"overdue_count": int, "completed_count": int}
-            stats = g.api_instance._load_school_account_stats_from_ini(
-                school_username)
+            # 从 ./User_Billing/School_Bills/<school_username>/ 读取账单统计
+            billing_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing", "School_Bills", school_username
+            )
+            overdue_count = 0
+            completed_count = 0
+            if os.path.isdir(billing_dir):
+                for fname in os.listdir(billing_dir):
+                    if not fname.endswith(".json"):
+                        continue
+                    fpath = os.path.join(billing_dir, fname)
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            record = json.load(f)
+                        status = str(record.get("status", "pending")).strip().lower()
+                        if status == "pending":
+                            overdue_count += 1
+                        elif status in ("paid", "admin_cleared"):
+                            completed_count += 1
+                    except Exception:
+                        pass
 
             return jsonify({
                 "success": True,
-                "data": stats
+                "data": {
+                    "overdue_count": overdue_count,
+                    "completed_count": completed_count,
+                }
             })
 
         except Exception as e:
