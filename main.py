@@ -5851,7 +5851,7 @@ class AuthSystem:
         config = configparser.ConfigParser(strict=False)
         config.optionxform = str
         try:
-            config.read(CONFIG_FILE, encoding="utf-8")
+            config = _read_config_ini(CONFIG_FILE)
             logging.debug(
                 f"_load_config: 配置文件加载完成，配置节: {list(config.sections())}"
             )
@@ -15524,7 +15524,7 @@ class Api:
 
                     if not hasattr(self, "_amap_key_cached"):
                         config = configparser.ConfigParser(strict=False)
-                        config.read(CONFIG_FILE, encoding="utf-8")
+                        config = _read_config_ini(CONFIG_FILE)
                         self._amap_key_cached = config.get(
                             "Map", "amap_js_key", fallback=""
                         )
@@ -22888,7 +22888,7 @@ def start_web_server(args_param):
             config = configparser.ConfigParser(strict=False)
             config.optionxform = str
             if os.path.exists(CONFIG_FILE):
-                config.read(CONFIG_FILE, encoding="utf-8")
+                config = _read_config_ini(CONFIG_FILE)
             content_type = request.headers.get("Content-Type", "").lower()
 
             if "application/json" in content_type:
@@ -23094,7 +23094,7 @@ def start_web_server(args_param):
         # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
         config = configparser.ConfigParser(strict=False)
         config.optionxform = str
-        config.read(CONFIG_FILE, encoding="utf-8")
+        config = _read_config_ini(CONFIG_FILE)
 
         data = request.get_json() or {}
         auth_phone = (data.get("auth_phone") or "").strip()
@@ -28148,7 +28148,7 @@ def start_web_server(args_param):
             default_config = _get_default_config()
             config = configparser.ConfigParser(strict=False)
             if os.path.exists(CONFIG_FILE):
-                config.read(CONFIG_FILE, encoding="utf-8")
+                config = _read_config_ini(CONFIG_FILE)
             else:
                 config = default_config
             config_data = {
@@ -28476,7 +28476,7 @@ def start_web_server(args_param):
             config = configparser.ConfigParser(strict=False)
             config.optionxform = str
             if os.path.exists(CONFIG_FILE):
-                config.read(CONFIG_FILE, encoding="utf-8")
+                config = _read_config_ini(CONFIG_FILE)
             else:
                 config = _get_default_config()
 
@@ -29003,7 +29003,7 @@ def start_web_server(args_param):
         try:
             # 读取系统配置文件
             config = configparser.ConfigParser(strict=False)
-            config.read(CONFIG_FILE, encoding="utf-8")
+            config = _read_config_ini(CONFIG_FILE)
             # 检查系统是否开启了手机号修改功能
             if (
                 config.get(
@@ -30163,7 +30163,7 @@ def start_web_server(args_param):
                 )
 
             # 读取配置文件
-            config.read(CONFIG_FILE, encoding="utf-8")
+            config = _read_config_ini(CONFIG_FILE)
 
             # 读取CDN配置，如果不存在则使用默认值
             cdn_enabled = config.getboolean(
@@ -30240,7 +30240,7 @@ def start_web_server(args_param):
             # 检查配置文件是否存在
             if os.path.exists(CONFIG_FILE):
                 # 配置文件存在，读取现有配置
-                config.read(CONFIG_FILE, encoding="utf-8")
+                config = _read_config_ini(CONFIG_FILE)
             else:
                 # 配置文件不存在，使用默认配置
                 logging.warning("[CDN配置] config.ini 文件不存在，将创建新的配置文件")
@@ -30517,7 +30517,7 @@ def start_web_server(args_param):
         config.optionxform = str
 
         try:
-            config.read(CONFIG_FILE, encoding="utf-8")
+            config = _read_config_ini(CONFIG_FILE)
 
             # [修正] 读取成功后，回写配置文件以清除重复项
             # 这会利用 ConfigParser 的特性，将重复键合并为最后一个值，并重写文件
