@@ -79,6 +79,7 @@ heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
 shutil = _try_import_builtin("shutil")
 codecs = _try_import_builtin("codecs")
+tempfile = _try_import_builtin("tempfile")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -1695,7 +1696,11 @@ LOGIN_LOGS_DIR = "logs"
 SESSION_STORAGE_DIR = "sessions"
 TOKENS_STORAGE_DIR = "tokens"
 CONFIG_JSON_FILE = os.path.join("configs", "config.json")
-CONFIG_FILE = CONFIG_JSON_FILE
+CONFIG_JSON_ABS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), CONFIG_JSON_FILE
+)
+CONFIG_FILE = CONFIG_JSON_ABS_PATH
+CONFIG_JSON_LOCK = threading.RLock()
 PERMISSIONS_FILE = "permissions.json"
 # 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
@@ -2322,7 +2327,7 @@ def _migrate_auto_attendance_from_ini():
 
 def _create_directories():
     """
-    创建程序运行所需的目录结构，目录路径从 config.ini 配置文件读取。
+    创建程序运行所需的目录结构，目录路径从 config.json 配置文件读取。
     """
     global SCHOOL_ACCOUNTS_DIR, SYSTEM_ACCOUNTS_DIR, LOGIN_LOGS_DIR
     global SESSION_STORAGE_DIR, TOKENS_STORAGE_DIR
@@ -2364,11 +2369,11 @@ def _create_directories():
                     "Logging", "log_dir", fallback=default_dirs["log_dir"]
                 )
 
-            print(f"[配置读取] 成功从 config.ini 读取目录配置")
+            print(f"[配置读取] 成功从 config.json 读取目录配置")
         except Exception as e:
-            print(f"[配置读取] 警告: 读取 config.ini 失败，使用默认配置: {e}")
+            print(f"[配置读取] 警告: 读取 config.json 失败，使用默认配置: {e}")
     else:
-        print(f"[配置读取] config.ini 不存在，使用默认目录配置")
+        print(f"[配置读取] config.json 不存在，使用默认目录配置")
 
     base_dir = os.path.dirname(__file__)
     SCHOOL_ACCOUNTS_DIR = os.path.join(
@@ -3033,37 +3038,52 @@ def _write_config_with_comments(config_obj, filepath):
     直接调用 JsonConfigAdapter.save() 保存为 JSON 格式。
     同时，如果 ./configs/config.json 已存在，也同步更新它。
     """
+    resolved_filepath = filepath
+    if isinstance(resolved_filepath, str) and str(resolved_filepath).endswith(".json"):
+        if not os.path.isabs(resolved_filepath):
+            resolved_filepath = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), resolved_filepath
+            )
+
     # ── JSON 快速路径 ─────────────────────────────────────────────────────
     _is_json_adapter = isinstance(config_obj, JsonConfigAdapter)
-    _is_json_file = str(filepath).endswith(".json")
+    _is_json_file = str(resolved_filepath).endswith(".json")
     if _is_json_adapter or _is_json_file:
-        if _is_json_adapter:
-            config_obj._path = filepath
-            config_obj.save()
-        else:
-            # 将 configparser 对象序列化为 JSON（合并写入，避免覆盖未修改配置）
-            data = {}
-            try:
-                if os.path.exists(filepath):
-                    with open(filepath, "r", encoding="utf-8") as _jf:
-                        existing_data = json.load(_jf)
-                    if isinstance(existing_data, dict):
-                        for _sec, _opts in existing_data.items():
-                            if isinstance(_opts, dict):
-                                data[_sec] = {
-                                    _k: str(_v) for _k, _v in _opts.items()
-                                }
-                            else:
-                                data[_sec] = {}
-            except Exception as _merge_err:
-                logging.warning(
-                    f"[配置写入] 读取现有 JSON 配置用于合并失败，将继续仅写入传入配置: {_merge_err}"
-                )
-            for sec in config_obj.sections():
-                data[sec] = dict(config_obj.items(sec))
-            os.makedirs(os.path.dirname(os.path.abspath(filepath)) if os.path.dirname(os.path.abspath(filepath)) else ".", exist_ok=True)
-            with open(filepath, "w", encoding="utf-8") as _jf:
-                json.dump(data, _jf, indent=2, ensure_ascii=False)
+        with CONFIG_JSON_LOCK:
+            if _is_json_adapter:
+                config_obj._path = resolved_filepath
+                config_obj.save()
+            else:
+                # 将 configparser 对象序列化为 JSON（合并写入，避免覆盖未修改配置）
+                data = {}
+                try:
+                    if os.path.exists(resolved_filepath):
+                        with open(resolved_filepath, "r", encoding="utf-8") as _jf:
+                            existing_data = json.load(_jf)
+                        if isinstance(existing_data, dict):
+                            for _sec, _opts in existing_data.items():
+                                if isinstance(_opts, dict):
+                                    data[_sec] = {
+                                        _k: str(_v) for _k, _v in _opts.items()
+                                    }
+                                else:
+                                    data[_sec] = {}
+                except Exception as _merge_err:
+                    logging.warning(
+                        f"[配置写入] 读取现有 JSON 配置用于合并失败，将继续仅写入传入配置: {_merge_err}"
+                    )
+                for sec in config_obj.sections():
+                    data[sec] = dict(config_obj.items(sec))
+
+                abs_filepath = os.path.abspath(resolved_filepath)
+                parent_dir = os.path.dirname(abs_filepath) or "."
+                os.makedirs(parent_dir, exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
+                ) as _tmpf:
+                    json.dump(data, _tmpf, indent=2, ensure_ascii=False)
+                    tmp_path = _tmpf.name
+                os.replace(tmp_path, abs_filepath)
         return
 
     # ── 同步更新 JSON 配置（如果 JSON 文件已存在）─────────────────────────
@@ -4183,9 +4203,16 @@ class JsonConfigAdapter:
 
     def write(self, fileobj=None):
         """将当前配置写回 JSON 文件（fileobj 参数保留以兼容 configparser 接口）。"""
-        os.makedirs(os.path.dirname(os.path.abspath(self._path)), exist_ok=True)
-        with open(self._path, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, indent=2, ensure_ascii=False)
+        abs_path = os.path.abspath(self._path)
+        parent_dir = os.path.dirname(abs_path)
+        os.makedirs(parent_dir, exist_ok=True)
+        with CONFIG_JSON_LOCK:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
+            ) as tmpf:
+                json.dump(self._data, tmpf, indent=2, ensure_ascii=False)
+                tmp_path = tmpf.name
+            os.replace(tmp_path, abs_path)
 
     def save(self):
         """显式保存到 JSON 文件的便捷方法。"""
@@ -4243,7 +4270,7 @@ def _create_default_json_config(json_path: str):
         logging.warning(f"[配置初始化] 创建默认 JSON 配置失败（非致命）: {e}")
 
 
-def _read_config_ini(config_file=CONFIG_JSON_FILE):
+def _read_config_ini(config_file=CONFIG_FILE):
     """
     统一的配置文件读取函数。
 
@@ -4264,7 +4291,11 @@ def _read_config_ini(config_file=CONFIG_JSON_FILE):
         - 包含错误处理，读取失败时记录日志并返回 None
     """
     try:
-        json_cfg_path = config_file or CONFIG_JSON_FILE
+        json_cfg_path = config_file or CONFIG_FILE
+        if not os.path.isabs(json_cfg_path):
+            json_cfg_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), json_cfg_path
+            )
 
         # 不存在则创建默认 JSON
         if not os.path.exists(json_cfg_path):
@@ -8372,7 +8403,7 @@ class Api:
         self.run_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.user_dir = SCHOOL_ACCOUNTS_DIR
         os.makedirs(self.user_dir, exist_ok=True)
-        self.config_path = os.path.join(self.run_dir, "config.ini")
+        self.config_path = CONFIG_JSON_ABS_PATH
         self.user_config_path = self.config_path
 
         self.api_client = ApiClient(self)
@@ -9932,10 +9963,8 @@ class Api:
         """从主 config.ini 加载全局配置（优先读取新版 Map.amap_js_key，兼容旧版 System.AmapJsKey）"""
         if not os.path.exists(self.config_path):
             return
-        cfg = configparser.RawConfigParser()
-        cfg.optionxform = str
         try:
-            cfg.read(self.config_path, encoding="utf-8")
+            cfg = _read_config_ini(self.config_path) or _get_default_config()
 
             amap_key = cfg.get("Map", "amap_js_key", fallback="")
 
@@ -10236,9 +10265,7 @@ class Api:
                     f"未认证用户请求 get_initial_data，返回所有 {len(users)} 个账户（向后兼容）"
                 )
 
-            cfg = configparser.RawConfigParser()
-            cfg.optionxform = str
-            cfg.read(self.config_path, encoding="utf-8")
+            cfg = _read_config_ini(self.config_path) or _get_default_config()
 
             # [修正] LastUser 不再从 config.ini 读取，而是从当前登录用户的系统账号信息中获取
             last_user = ""
@@ -10464,10 +10491,7 @@ class Api:
         """由JS调用，保存高德地图API Key到主配置文件"""
         try:
             self.global_params["amap_js_key"] = api_key
-            cfg = configparser.RawConfigParser()
-            cfg.optionxform = str
-            if os.path.exists(self.config_path):
-                cfg.read(self.config_path, encoding="utf-8")
+            cfg = _read_config_ini(self.config_path) or _get_default_config()
 
             if not cfg.has_section("Map"):
                 cfg.add_section("Map")
@@ -29471,7 +29495,7 @@ def start_web_server(args_param):
             data = request.get_json() or {}
             config = configparser.ConfigParser(strict=False)
             config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            if "Features" not in config:
+            if not config.has_section("Features"):
                 config.add_section("Features")
             config.set(
                 "Features",
@@ -29493,7 +29517,7 @@ def start_web_server(args_param):
                 "enable_phone_registration_verify",
                 str(data.get("enable_phone_registration_verify", False)).lower(),
             )
-            if "SMS_Service_SMSBao" not in config:
+            if not config.has_section("SMS_Service_SMSBao"):
                 config.add_section("SMS_Service_SMSBao")
             config.set("SMS_Service_SMSBao", "username",
                        data.get("username", ""))
