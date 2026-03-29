@@ -55163,13 +55163,18 @@ function _getMultiAccountListUsernames() {
 
 async function _checkOverdueBeforeStartByCurrentMode() {
   if (!(await _isPaymentRequiredForOverdueCheck())) {
+    console.log("未开启欠费检查，允许继续。");
     return true;
   }
   if (_isInMultiAccountModeForOverdueCheck()) {
+    console.log("多账号模式，检查所有账号的欠费状态。");
     const usernames = _getMultiAccountListUsernames();
+    console.log("多账号模式，获取到的账号列表:", usernames);
     return usernames.length > 0 ? await checkOverdueBeforeStart(usernames) : true;
   }
+  console.log("单账号模式，检查当前账号的欠费状态。");
   const currentSchoolUsername = String(currentUserData?.student_id || "").trim();
+  console.log("单账号模式，当前账号:", currentSchoolUsername);
   return currentSchoolUsername
     ? await checkOverdueBeforeStart(currentSchoolUsername)
     : await checkOverdueBeforeStart();
