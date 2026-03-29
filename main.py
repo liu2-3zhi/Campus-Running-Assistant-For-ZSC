@@ -1694,8 +1694,8 @@ SYSTEM_ACCOUNTS_DIR = "system_accounts"
 LOGIN_LOGS_DIR = "logs"
 SESSION_STORAGE_DIR = "sessions"
 TOKENS_STORAGE_DIR = "tokens"
-CONFIG_FILE = "config.ini"
 CONFIG_JSON_FILE = os.path.join("configs", "config.json")
+CONFIG_FILE = CONFIG_JSON_FILE
 PERMISSIONS_FILE = "permissions.json"
 # 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
@@ -2336,7 +2336,7 @@ def _create_directories():
         "tokens_dir": "tokens",
     }
 
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
     if os.path.exists(config_file):
         try:
             config = configparser.ConfigParser(strict=False)
@@ -3849,7 +3849,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
     # 使用统一的配置读取函数读取config.ini文件中的[baidu_cloud]配置节
     try:
         # 调用统一的配置读取函数，该函数会返回RawConfigParser对象或None
-        config = _read_config_ini("config.ini")
+        config = _read_config_ini(CONFIG_JSON_FILE)
 
         # 检查配置文件是否成功读取
         # 如果返回None，说明配置文件读取失败（文件不存在、权限问题等）
@@ -4228,17 +4228,17 @@ def _create_default_json_config(json_path: str):
         logging.warning(f"[配置初始化] 创建默认 JSON 配置失败（非致命）: {e}")
 
 
-def _read_config_ini(config_file="config.ini"):
+def _read_config_ini(config_file=CONFIG_JSON_FILE):
     """
     统一的配置文件读取函数。
 
-    读取优先级：
-      1. ./configs/config.json  （如果存在则优先使用，返回 JsonConfigAdapter）
-      2. config.ini             （JSON 不存在时回退到 INI 格式）
-      3. 若两者均不存在，自动创建 ./configs/config.json 并以默认值初始化
+    读取规则：
+      1. 仅使用 ./configs/config.json（返回 JsonConfigAdapter）
+      2. 若文件不存在，自动创建默认 config.json
+      3. 若文件损坏，自动备份后重建默认 config.json
 
     参数:
-        config_file: INI 文件路径（仅在 JSON 不存在时使用），默认为 "config.ini"
+        config_file: JSON 文件路径，默认为 CONFIG_JSON_FILE
 
     返回:
         configparser.RawConfigParser 或 JsonConfigAdapter 对象；读取失败返回 None
@@ -4249,44 +4249,31 @@ def _read_config_ini(config_file="config.ini"):
         - 包含错误处理，读取失败时记录日志并返回 None
     """
     try:
-        # ── 优先读取 ./configs/config.json ──────────────────────────────────
-        json_cfg_path = CONFIG_JSON_FILE
-        if os.path.exists(json_cfg_path):
-            try:
-                adapter = JsonConfigAdapter(json_cfg_path)
-                logging.debug(f"[配置] 已从 {json_cfg_path} 加载 JSON 配置")
-                return adapter
-            except Exception as je:
-                logging.warning(f"[配置] 读取 {json_cfg_path} 失败，回退到 INI: {je}")
+        json_cfg_path = config_file or CONFIG_JSON_FILE
 
-        # ── 回退到 INI 文件 ─────────────────────────────────────────────────
-        if os.path.exists(config_file):
-            # 创建RawConfigParser对象，它不会对配置值进行插值处理
-            # 这确保了配置值中的特殊字符（如%）不会被误解释
-            # strict=False：允许读取包含重复节/键的配置文件（如config.ini因历史原因存在重复节时不抛出异常）
-            config = configparser.RawConfigParser(strict=False)
+        # 不存在则创建默认 JSON
+        if not os.path.exists(json_cfg_path):
+            logging.warning(f"[配置] {json_cfg_path} 不存在，将创建默认 JSON 配置")
+            _create_default_json_config(json_cfg_path)
 
-            # 保持键名的原始大小写（默认会转换为小写）
-            # 这对于区分大小写敏感的配置项很重要
-            config.optionxform = str
-
-            # 读取配置文件，使用utf-8编码
-            # 这确保能正确读取包含中文或其他Unicode字符的配置
-            config.read(config_file, encoding="utf-8")
-
-            # 顺便将 INI 内容迁移到 JSON（仅在 JSON 不存在时执行一次）
-            if not os.path.exists(json_cfg_path):
-                _migrate_ini_to_json(config, json_cfg_path)
-
-            return config
-
-        # ── 两者都不存在：创建默认 JSON 配置 ─────────────────────────────
-        logging.warning(f"[配置] {config_file} 和 {json_cfg_path} 均不存在，将创建默认 JSON 配置")
-        _create_default_json_config(json_cfg_path)
+        # 文件存在但损坏：先备份再重建，避免配置丢失
         try:
-            return JsonConfigAdapter(json_cfg_path)
-        except Exception:
-            return None
+            with open(json_cfg_path, "r", encoding="utf-8") as vf:
+                json.load(vf)
+        except json.JSONDecodeError:
+            backup_file = f"{json_cfg_path}.corrupted.{int(time.time())}.bak"
+            try:
+                shutil.copy2(json_cfg_path, backup_file)
+                logging.error(f"[配置] JSON 配置损坏，已备份到: {backup_file}")
+            except Exception as be:
+                logging.error(f"[配置] JSON 损坏备份失败: {be}")
+            _create_default_json_config(json_cfg_path)
+        except FileNotFoundError:
+            _create_default_json_config(json_cfg_path)
+
+        adapter = JsonConfigAdapter(json_cfg_path)
+        logging.debug(f"[配置] 已从 {json_cfg_path} 加载 JSON 配置")
+        return adapter
 
     except Exception as e:
         # 捕获所有可能的异常（文件不存在、权限问题、编码错误等）
@@ -4297,9 +4284,9 @@ def _read_config_ini(config_file="config.ini"):
 
 
 def _create_config_ini():
-    """创建或更新config.ini配置文件（兼容旧版本，自动补全缺失参数）"""
+    """创建或更新 JSON 配置文件（config.json），自动补全缺失参数。"""
     default_config = _get_default_config()
-    config_file = "config.ini"
+    config_file = CONFIG_JSON_FILE
 
     if os.path.exists(config_file):
         # 检查文件是否为空
@@ -4308,11 +4295,9 @@ def _create_config_ini():
             _write_config_with_comments(default_config, config_file)
             return
 
-        print("[配置文件] config.ini 已存在，检查是否需要更新...")
-        existing_config = configparser.ConfigParser(strict=False)
+        print("[配置文件] config.json 已存在，检查是否需要更新...")
         try:
-            existing_config.optionxform = str
-            existing_config.read(config_file, encoding="utf-8")
+            existing_config = JsonConfigAdapter(config_file)
         except Exception as e:
             # 捕获所有解析错误（包括重复项、格式错误等），备份并重置
             print(f"\n[错误] 读取配置文件 '{config_file}' 失败: {e}")
@@ -4354,17 +4339,17 @@ def _create_config_ini():
 
         if updated:
             try:
-                _write_config_with_comments(existing_config, "config.ini")
+                _write_config_with_comments(existing_config, config_file)
                 logging.info("配置文件已更新：自动补全缺失参数")
                 print("[配置文件] 配置文件已更新并保存（包含详细注释）")
             except Exception as e:
-                print(f"[错误] 保存更新后的 config.ini 失败: {e}")
-                logging.error(f"保存更新后的 config.ini 失败: {e}")
+                print(f"[错误] 保存更新后的 config.json 失败: {e}")
+                logging.error(f"保存更新后的 config.json 失败: {e}")
         else:
             print("[配置文件] 配置文件无需更新")
     else:
-        print("[配置文件] config.ini 不存在，创建新配置文件...")
-        _write_config_with_comments(default_config, "config.ini")
+        print("[配置文件] config.json 不存在，创建新配置文件...")
+        _write_config_with_comments(default_config, config_file)
         print("[配置文件] 配置文件创建完成（包含详细注释）")
 
 
@@ -20471,7 +20456,7 @@ def load_ssl_config():
     """
     从config.ini文件加载SSL配置。
     """
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
     config = configparser.ConfigParser(strict=False)
     default_config = {
         "ssl_enabled": False,
@@ -20523,7 +20508,7 @@ def save_ssl_config(ssl_config):
     返回值：
         bool: 保存成功返回True，失败返回False
     """
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
     config = configparser.ConfigParser(strict=False)
 
     try:
@@ -21666,7 +21651,7 @@ def start_web_server(args_param):
 
         # === 内容审核（图片） ===
         try:
-            config = _read_config_ini("config.ini")
+            config = _read_config_ini(CONFIG_JSON_FILE)
             enable_review = False
             if config and config.has_section("Content_Review"):
                 enable_review = config.get(
@@ -29543,7 +29528,7 @@ def start_web_server(args_param):
                 "rate_limit_per_phone_day",
                 str(data.get("rate_limit_per_phone_day", 5)),
             )
-            _write_config_with_comments(config, "config.ini")
+            _write_config_with_comments(config, CONFIG_JSON_FILE)
             app.logger.info(f"[短信配置] {g.user} 更新了短信服务配置")
             return jsonify({"success": True, "message": "配置已保存"})
         except Exception as e:
@@ -33313,7 +33298,7 @@ def start_web_server(args_param):
 
         # 第1步：读取配置文件，检查是否启用了留言内容审核功能
         # 使用统一的配置读取函数_read_config_ini()读取config.ini文件
-        config = _read_config_ini("config.ini")
+        config = _read_config_ini(CONFIG_JSON_FILE)
 
         # 初始化审核开关变量，默认为False（不启用审核）
         enable_review = False
@@ -33358,7 +33343,7 @@ def start_web_server(args_param):
                         config.set("Content_Review",
                                    "enable_message_review", "false")
                         # 将更新后的配置写入文件
-                        _write_config_with_comments(config, "config.ini")
+                        _write_config_with_comments(config, CONFIG_JSON_FILE)
                         logging.info(
                             "[内容审核] 已自动将config.ini中的enable_message_review设置为false"
                         )
@@ -34615,7 +34600,7 @@ def start_web_server(args_param):
             # 构建配置文件的完整路径
             # os.path.dirname(__file__) 获取当前脚本所在目录
             # os.path.join() 安全地拼接路径，避免不同操作系统路径分隔符问题
-            config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+            config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
 
             # 定义默认配置参数
             # 这些默认值确保即使配置文件不存在或读取失败，系统仍能正常工作
@@ -34744,7 +34729,7 @@ def start_web_server(args_param):
         history.append(current_time)
 
         try:
-            config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+            config_file = os.path.join(os.path.dirname(__file__), CONFIG_JSON_FILE)
             length = 4
             scale_factor = 2
             noise_level = 0.08
@@ -39821,7 +39806,7 @@ def start_web_server(args_param):
 
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持注释
-                _write_config_with_comments(config, "config.ini")
+                _write_config_with_comments(config, CONFIG_JSON_FILE)
 
                 # 记录信息日志：配置已更新
                 logging.info(
@@ -40185,7 +40170,7 @@ def start_web_server(args_param):
                     config.set("Rainbow_YiPay",
                                "enabled_payment_methods", new_enabled_str)
                     # 保存配置文件（保持注释）
-                    _write_config_with_comments(config, "config.ini")
+                    _write_config_with_comments(config, CONFIG_JSON_FILE)
 
                 # 记录日志
                 logging.info(
@@ -40561,7 +40546,7 @@ def start_web_server(args_param):
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
                 # 这样可以避免覆盖配置文件时丢失注释信息
-                _write_config_with_comments(config, "config.ini")
+                _write_config_with_comments(config, CONFIG_JSON_FILE)
 
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
@@ -41022,7 +41007,7 @@ def start_web_server(args_param):
                 # 保存配置文件
                 # 使用 _write_config_with_comments() 函数保持配置文件中的注释
                 # 这样可以避免覆盖配置文件时丢失注释信息
-                _write_config_with_comments(config, "config.ini")
+                _write_config_with_comments(config, CONFIG_JSON_FILE)
 
                 # ========== 记录信息日志 ==========
                 # 记录配置变更，便于审计和问题追踪
