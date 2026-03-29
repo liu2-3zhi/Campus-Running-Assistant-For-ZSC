@@ -11661,7 +11661,7 @@ class Api:
         payload_str = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
         logging.debug(
-            f"[{user.name}] 正在入队提交数据包, 大小: {len(payload_str)} 字节"
+            f"[{user.student_id}] 正在入队提交数据包, 大小: {len(payload_str)} 字节"
         )
 
         resp = self._enqueue_submission(client, payload_str, wait_timeout=60.0)
@@ -11670,10 +11670,10 @@ class Api:
         msg = resp.get("message") if resp else "请求无响应或超时"
         if not success:
             log_func(f"数据提交失败: {msg}")
-            logging.error(f"[{user.name}] 数据提交失败详情: {resp}")
+            logging.error(f"[{user.student_id}] 数据提交失败详情: {resp}")
         else:
             log_func(f"数据提交成功。")
-            logging.debug(f"[{user.name}] 数据提交成功: {msg}")
+            logging.debug(f"[{user.student_id}] 数据提交成功: {msg}")
 
         return success
 
@@ -11930,7 +11930,8 @@ class Api:
                     _elapsed_real_s = time.time() - _exec_start_real
                     _elapsed_real_min = _elapsed_real_s / 60.0
                     _actual_sleep_s = dur_ms / 1000.0
-                    if _elapsed_real_min >= _exec_max_time_m - 10:
+                    # if _elapsed_real_min >= _exec_max_time_m - 10:
+                    if True:
                         _expected_frac = _elapsed_real_min / max(1e-6, _exec_max_time_m - 2)
                         _actual_frac = point_index / _exec_total_points
                         if _actual_frac < _expected_frac:
@@ -11941,6 +11942,12 @@ class Api:
                                 f"进度落后，加速执行: 实际进度={_actual_frac:.2%}, "
                                 f"期望进度={_expected_frac:.2%}, 新等待时间={_actual_sleep_s:.2f}s"
                             )
+                        else:
+                            logging.debug(f"进度正常: 实际进度={_actual_frac:.2%}, 期望进度={_expected_frac:.2%}")
+                            
+                    else:
+                        logging.debug(f"正常执行: 已执行时间={_elapsed_real_min:.2f}分钟, 未接近目标时间，无需调整执行速度。")
+
                     if stop_flag.wait(timeout=_actual_sleep_s):
                         logging.debug("等待下一个坐标点时被停止信号中断")
                         break
@@ -15824,7 +15831,7 @@ class Api:
                                 )
                         else:
                             logging.debug(
-                                    f"[{acc.username}] 当前时间={_mr_elapsed_real_min:.2f}分钟，未接近目标时间，无需调整执行速度。")
+                                    f"[{acc.username}] 已执行时间={_mr_elapsed_real_min:.2f}分钟，未接近目标时间，无需调整执行速度。")
 
                         if acc.stop_event.wait(timeout=_mr_actual_sleep_s):
                             submission_successful = False
