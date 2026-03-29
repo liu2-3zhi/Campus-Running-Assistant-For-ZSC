@@ -11917,6 +11917,12 @@ class Api:
             _exec_start_real = time.time()
             _exec_max_time_m = self.params.get("max_time_m", 30)
             _exec_total_points = max(1, len(run_data.run_coords))
+            _pid_kp = 3.20
+            _pid_ki = 0.08
+            _pid_kd = 1.35
+            _pid_deadzone = 0.02
+            _pid_integral = 0.0
+            _pid_prev_error = 0.0
 
             for i in range(0, len(run_data.run_coords), 5):
                 if stop_flag.is_set():
@@ -11935,28 +11941,36 @@ class Api:
                         _expected_frac = _elapsed_real_min / max(1e-6, _exec_max_time_m - 2)
                         _actual_frac = point_index / _exec_total_points
                         _progress_diff = _actual_frac - _expected_frac
-                        _progress_tolerance = 0.00
-                        if _progress_diff <= -_progress_tolerance:
+                        _error = _expected_frac - _actual_frac
+                        _error_for_pid = _error if abs(_error) >= _pid_deadzone else 0.0
+                        _pid_integral = max(-0.30, min(0.30, _pid_integral + _error_for_pid))
+                        _pid_derivative = _error_for_pid - _pid_prev_error
+                        _pid_prev_error = _error_for_pid
+                        _pid_out = (
+                            _pid_kp * _error_for_pid
+                            + _pid_ki * _pid_integral
+                            + _pid_kd * _pid_derivative
+                        )
+                        _sleep_ratio = max(0.55, min(1.45, 1.0 - _pid_out))
+                        _actual_sleep_s = _actual_sleep_s * _sleep_ratio
+                        if _error_for_pid > 0:
                             _remaining_s = max(1.0, (_exec_max_time_m - 2) * 60.0 - _elapsed_real_s)
                             _remaining_pts = max(1, _exec_total_points - point_index)
-                            _ratio = max(0.55, 1.0 + (_progress_diff * 4.0))
-                            _actual_sleep_s = min(_actual_sleep_s * _ratio, _remaining_s / _remaining_pts)
+                            _actual_sleep_s = min(_actual_sleep_s, _remaining_s / _remaining_pts)
                             logging.debug(
-                                f"进度偏慢，自动加速: 实际进度={_actual_frac:.2%}, "
+                                f"进度偏慢，PID自动加速: 实际进度={_actual_frac:.2%}, "
                                 f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}, "
-                                f"新等待时间={_actual_sleep_s:.2f}s"
+                                f"PID={_pid_out:.4f}, 新等待时间={_actual_sleep_s:.2f}s"
                             )
-                        elif _progress_diff >= _progress_tolerance:
-                            _ratio = min(1.45, 1.0 + (_progress_diff * 4.0))
-                            _actual_sleep_s = _actual_sleep_s * _ratio
+                        elif _error_for_pid < 0:
                             logging.debug(
-                                f"进度偏快，自动减速: 实际进度={_actual_frac:.2%}, "
+                                f"进度偏快，PID自动减速: 实际进度={_actual_frac:.2%}, "
                                 f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}, "
-                                f"新等待时间={_actual_sleep_s:.2f}s"
+                                f"PID={_pid_out:.4f}, 新等待时间={_actual_sleep_s:.2f}s"
                             )
                         else:
                             logging.debug(
-                                f"进度正常: 实际进度={_actual_frac:.2%}, "
+                                f"进度正常(±{_pid_deadzone:.0%}): 实际进度={_actual_frac:.2%}, "
                                 f"期望进度={_expected_frac:.2%}, 差值={_progress_diff:.2%}"
                             )
                             
@@ -12244,7 +12258,11 @@ class Api:
                 final_path_dedup.append(coord)
                 last_coord = coord
 
-        target_time_s = random.uniform(min_t_m * 60, max_t_m * 60)
+        _plan_min_t_m = min_t_m * 1.02
+        _plan_max_t_m = max_t_m * 0.98
+        if _plan_max_t_m <= _plan_min_t_m:
+            _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
+        target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)
         target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)
 
         cumulative = [0.0]
@@ -15689,7 +15707,11 @@ class Api:
                     f"[{acc.username}] 路径去重后点数: {len(final_path_dedup)}"
                 )
 
-                target_time_s = random.uniform(min_t_m * 60, max_t_m * 60)
+                _plan_min_t_m = min_t_m * 1.02
+                _plan_max_t_m = max_t_m * 0.98
+                if _plan_max_t_m <= _plan_min_t_m:
+                    _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
+                target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)
                 target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)
                 cumulative = [0.0]
                 for idx_c in range(len(final_path_dedup) - 1):
@@ -15785,6 +15807,12 @@ class Api:
 
                 _mr_exec_start_real = time.time()
                 _mr_exec_point_idx = 0
+                _mr_pid_kp = 3.20
+                _mr_pid_ki = 0.08
+                _mr_pid_kd = 1.35
+                _mr_pid_deadzone = 0.02
+                _mr_pid_integral = 0.0
+                _mr_pid_prev_error = 0.0
 
                 for chunk_idx in range(0, len(run_data.run_coords), 5):
                     logging.debug(
@@ -15831,28 +15859,38 @@ class Api:
                             _mr_expected_frac = _mr_elapsed_real_min / max(1e-6, max_t_m - 2)
                             _mr_actual_frac = _mr_exec_point_idx / total_points
                             _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
-                            _mr_progress_tolerance = 0.00
-                            if _mr_progress_diff <= -_mr_progress_tolerance:
+                            _mr_error = _mr_expected_frac - _mr_actual_frac
+                            _mr_error_for_pid = _mr_error if abs(_mr_error) >= _mr_pid_deadzone else 0.0
+                            _mr_pid_integral = max(-0.30, min(0.30, _mr_pid_integral + _mr_error_for_pid))
+                            _mr_pid_derivative = _mr_error_for_pid - _mr_pid_prev_error
+                            _mr_pid_prev_error = _mr_error_for_pid
+                            _mr_pid_out = (
+                                _mr_pid_kp * _mr_error_for_pid
+                                + _mr_pid_ki * _mr_pid_integral
+                                + _mr_pid_kd * _mr_pid_derivative
+                            )
+                            _mr_sleep_ratio = max(0.55, min(1.45, 1.0 - _mr_pid_out))
+                            _mr_actual_sleep_s = _mr_actual_sleep_s * _mr_sleep_ratio
+                            if _mr_error_for_pid > 0:
                                 _mr_remaining_s = max(1.0, (max_t_m - 2) * 60.0 - _mr_elapsed_real_s)
                                 _mr_remaining_pts = max(1, total_points - _mr_exec_point_idx)
-                                _mr_ratio = max(0.55, 1.0 + (_mr_progress_diff * 4.0))
-                                _mr_actual_sleep_s = min(_mr_actual_sleep_s * _mr_ratio, _mr_remaining_s / _mr_remaining_pts)
+                                _mr_actual_sleep_s = min(_mr_actual_sleep_s, _mr_remaining_s / _mr_remaining_pts)
                                 logging.debug(
-                                    f"[{acc.username}] 进度偏慢，自动加速: "
+                                    f"[{acc.username}] 进度偏慢，PID自动加速: "
                                     f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
-                                    f"差值={_mr_progress_diff:.2%}, 新等待时间={_mr_actual_sleep_s:.2f}s"
+                                    f"差值={_mr_progress_diff:.2%}, PID={_mr_pid_out:.4f}, "
+                                    f"新等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
-                            elif _mr_progress_diff >= _mr_progress_tolerance:
-                                _mr_ratio = min(1.45, 1.0 + (_mr_progress_diff * 4.0))
-                                _mr_actual_sleep_s = _mr_actual_sleep_s * _mr_ratio
+                            elif _mr_error_for_pid < 0:
                                 logging.debug(
-                                    f"[{acc.username}] 进度偏快，自动减速: "
+                                    f"[{acc.username}] 进度偏快，PID自动减速: "
                                     f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
-                                    f"差值={_mr_progress_diff:.2%}, 新等待时间={_mr_actual_sleep_s:.2f}s"
+                                    f"差值={_mr_progress_diff:.2%}, PID={_mr_pid_out:.4f}, "
+                                    f"新等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
                             else:
                                 logging.debug(
-                                    f"[{acc.username}] 进度正常: "
+                                    f"[{acc.username}] 进度正常(±{_mr_pid_deadzone:.0%}): "
                                     f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
                                     f"差值={_mr_progress_diff:.2%}"
                                 )
