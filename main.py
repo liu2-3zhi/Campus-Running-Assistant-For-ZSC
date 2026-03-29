@@ -12,6 +12,24 @@ MAX_MEMORY_SESSIONS = 100
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 
+# 单账号运行 PID 参数
+SINGLE_PID_KP = 4.80
+SINGLE_PID_KI = 0.16
+SINGLE_PID_KD = 1.80
+SINGLE_PID_DEADZONE = 0.010
+SINGLE_PID_INTEGRAL_LIMIT = 0.50
+SINGLE_PID_DEADZONE_BOOST_STEP = 0.08
+SINGLE_PID_DEADZONE_BOOST_MAX = 2.50
+
+# 多账号运行 PID 参数
+MULTI_PID_KP = 4.80
+MULTI_PID_KI = 0.16
+MULTI_PID_KD = 1.80
+MULTI_PID_DEADZONE = 0.010
+MULTI_PID_INTEGRAL_LIMIT = 0.50
+MULTI_PID_DEADZONE_BOOST_STEP = 0.08
+MULTI_PID_DEADZONE_BOOST_MAX = 2.50
+
 # [安全配置] 输入验证常量
 MAX_USERNAME_LENGTH = 200  # 用户名最大长度
 MAX_PASSWORD_LENGTH = 1000  # 密码最大长度
@@ -11925,12 +11943,13 @@ class Api:
             for _, _, _dur_ms in run_data.run_coords:
                 _exec_acc_plan_s += max(0.0, _dur_ms) / 1000.0
                 _exec_prefix_plan_s.append(_exec_acc_plan_s)
-            _pid_kp = 4.80
-            _pid_ki = 0.16
-            _pid_kd = 1.80
-            _pid_deadzone = 0.010
+            _pid_kp = SINGLE_PID_KP
+            _pid_ki = SINGLE_PID_KI
+            _pid_kd = SINGLE_PID_KD
+            _pid_deadzone = SINGLE_PID_DEADZONE
             _pid_integral = 0.0
             _pid_prev_error = 0.0
+            _pid_deadzone_boost = 1.0
 
             for i in range(0, len(run_data.run_coords), 5):
                 if stop_flag.is_set():
@@ -11953,14 +11972,28 @@ class Api:
                         _actual_frac = _elapsed_real_s / _exec_target_time_s
                         _progress_diff = _actual_frac - _expected_frac
                         _error = _progress_diff
-                        _error_for_pid = _error if abs(_error) >= _pid_deadzone else 0.0
-                        _pid_integral = max(-0.50, min(0.50, _pid_integral + _error_for_pid))
+                        _in_deadzone = abs(_error) <= _pid_deadzone
+                        if _in_deadzone:
+                            _pid_deadzone_boost = min(
+                                SINGLE_PID_DEADZONE_BOOST_MAX,
+                                _pid_deadzone_boost + SINGLE_PID_DEADZONE_BOOST_STEP,
+                            )
+                        else:
+                            _pid_deadzone_boost = 1.0
+                        _error_for_pid = _error
+                        _pid_integral = max(
+                            -SINGLE_PID_INTEGRAL_LIMIT,
+                            min(SINGLE_PID_INTEGRAL_LIMIT, _pid_integral + _error_for_pid),
+                        )
                         _pid_derivative = _error_for_pid - _pid_prev_error
                         _pid_prev_error = _error_for_pid
-                        _pid_out = (
-                            _pid_kp * _error_for_pid
-                            + _pid_ki * _pid_integral
-                            + _pid_kd * _pid_derivative
+                        _pid_p_term = _pid_kp * _error_for_pid
+                        _pid_i_term = _pid_ki * _pid_integral
+                        _pid_d_term = _pid_kd * _pid_derivative
+                        _pid_out = _pid_deadzone_boost * (
+                            _pid_p_term
+                            + _pid_i_term
+                            + _pid_d_term
                         )
                         _sleep_ratio = max(0.35, min(1.70, 1.0 - _pid_out))
                         _actual_sleep_s = _actual_sleep_s * _sleep_ratio
@@ -11972,21 +12005,27 @@ class Api:
                                 f"进度偏慢，PID自动加速: 实际时间进度={_actual_frac:.2%}, "
                                 f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}, "
                                 f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
-                                f"PID={_pid_out:.4f}, 新等待时间={_actual_sleep_s:.2f}s"
+                                f"P={_pid_p_term:.4f}, I={_pid_i_term:.4f}, D={_pid_d_term:.4f}, "
+                                f"PID={_pid_out:.4f}, Boost={_pid_deadzone_boost:.2f}, "
+                                f"新等待时间={_actual_sleep_s:.2f}s"
                             )
-                        elif _error_for_pid < 0:
+                        elif _error < 0:
                             logging.debug(
                                 f"进度偏快，PID自动减速: 实际时间进度={_actual_frac:.2%}, "
                                 f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}, "
                                 f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
-                                f"PID={_pid_out:.4f}, 新等待时间={_actual_sleep_s:.2f}s"
+                                f"P={_pid_p_term:.4f}, I={_pid_i_term:.4f}, D={_pid_d_term:.4f}, "
+                                f"PID={_pid_out:.4f}, Boost={_pid_deadzone_boost:.2f}, "
+                                f"新等待时间={_actual_sleep_s:.2f}s"
                             )
                         else:
                             logging.debug(
                                 f"进度正常(±{_pid_deadzone:.0%}): 实际时间进度={_actual_frac:.2%}, "
                                 f"规划时间进度={_expected_frac:.2%}, 时间误差={_progress_diff:.2%}，"
                                 f"实际累计={_elapsed_real_s:.1f}s, 规划累计={_planned_elapsed_s:.1f}s, "
-                                f"PID={_pid_out:.4f}, 等待时间={_actual_sleep_s:.2f}s"
+                                f"P={_pid_p_term:.4f}, I={_pid_i_term:.4f}, D={_pid_d_term:.4f}, "
+                                f"PID={_pid_out:.4f}, Boost={_pid_deadzone_boost:.2f}, "
+                                f"等待时间={_actual_sleep_s:.2f}s"
                             )
                             
                     else:
@@ -15831,12 +15870,13 @@ class Api:
                 for _, _, _dur_ms in run_data.run_coords:
                     _mr_acc_plan_s += max(0.0, _dur_ms) / 1000.0
                     _mr_prefix_plan_s.append(_mr_acc_plan_s)
-                _mr_pid_kp = 4.80
-                _mr_pid_ki = 0.16
-                _mr_pid_kd = 1.80
-                _mr_pid_deadzone = 0.010
+                _mr_pid_kp = MULTI_PID_KP
+                _mr_pid_ki = MULTI_PID_KI
+                _mr_pid_kd = MULTI_PID_KD
+                _mr_pid_deadzone = MULTI_PID_DEADZONE
                 _mr_pid_integral = 0.0
                 _mr_pid_prev_error = 0.0
+                _mr_pid_deadzone_boost = 1.0
 
                 for chunk_idx in range(0, len(run_data.run_coords), 5):
                     logging.debug(
@@ -15887,14 +15927,28 @@ class Api:
                             _mr_actual_frac = _mr_elapsed_real_s / _mr_target_time_s
                             _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
                             _mr_error = _mr_progress_diff
-                            _mr_error_for_pid = _mr_error if abs(_mr_error) >= _mr_pid_deadzone else 0.0
-                            _mr_pid_integral = max(-0.50, min(0.50, _mr_pid_integral + _mr_error_for_pid))
+                            _mr_in_deadzone = abs(_mr_error) <= _mr_pid_deadzone
+                            if _mr_in_deadzone:
+                                _mr_pid_deadzone_boost = min(
+                                    MULTI_PID_DEADZONE_BOOST_MAX,
+                                    _mr_pid_deadzone_boost + MULTI_PID_DEADZONE_BOOST_STEP,
+                                )
+                            else:
+                                _mr_pid_deadzone_boost = 1.0
+                            _mr_error_for_pid = _mr_error
+                            _mr_pid_integral = max(
+                                -MULTI_PID_INTEGRAL_LIMIT,
+                                min(MULTI_PID_INTEGRAL_LIMIT, _mr_pid_integral + _mr_error_for_pid),
+                            )
                             _mr_pid_derivative = _mr_error_for_pid - _mr_pid_prev_error
                             _mr_pid_prev_error = _mr_error_for_pid
-                            _mr_pid_out = (
-                                _mr_pid_kp * _mr_error_for_pid
-                                + _mr_pid_ki * _mr_pid_integral
-                                + _mr_pid_kd * _mr_pid_derivative
+                            _mr_pid_p_term = _mr_pid_kp * _mr_error_for_pid
+                            _mr_pid_i_term = _mr_pid_ki * _mr_pid_integral
+                            _mr_pid_d_term = _mr_pid_kd * _mr_pid_derivative
+                            _mr_pid_out = _mr_pid_deadzone_boost * (
+                                _mr_pid_p_term
+                                + _mr_pid_i_term
+                                + _mr_pid_d_term
                             )
                             _mr_sleep_ratio = max(0.35, min(1.70, 1.0 - _mr_pid_out))
                             _mr_actual_sleep_s = _mr_actual_sleep_s * _mr_sleep_ratio
@@ -15906,15 +15960,19 @@ class Api:
                                     f"[{acc.username}] 进度偏慢，PID自动加速: "
                                     f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
                                     f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
-                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, PID={_mr_pid_out:.4f}, "
+                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
+                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
                                     f"新等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
-                            elif _mr_error_for_pid < 0:
+                            elif _mr_error < 0:
                                 logging.debug(
                                     f"[{acc.username}] 进度偏快，PID自动减速: "
                                     f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
                                     f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
-                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, PID={_mr_pid_out:.4f}, "
+                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
+                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
                                     f"新等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
                             else:
@@ -15923,7 +15981,9 @@ class Api:
                                     f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
                                     f"时间误差={_mr_progress_diff:.2%}，实际累计={_mr_elapsed_real_s:.1f}s, "
                                     f"规划累计={_mr_planned_elapsed_s:.1f}s, "
-                                    f"PID={_mr_pid_out:.4f}, 等待时间={_mr_actual_sleep_s:.2f}s"
+                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
+                                    f"等待时间={_mr_actual_sleep_s:.2f}s"
                                 )
                         else:
                             logging.debug(
