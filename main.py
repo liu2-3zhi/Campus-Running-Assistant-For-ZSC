@@ -42411,22 +42411,16 @@ def start_web_server(args_param):
             
         try:
             # ========== 步骤1：检查付费控制配置 ==========
-            # 从配置文件中读取付费相关配置
-            # 如果系统运行在免费模式下，直接返回无欠费状态，无需继续检查
-            config = configparser.ConfigParser(strict=False)
-            config.read("config.ini", encoding="utf-8")
-            # 读取 require_payment 配置项，默认值为 true（需要付费）
-            require_payment = config.getboolean(
-                "Payment_Settings", "require_payment", fallback=True)
-            # 读取 single_run_cost 配置项，默认值为 1.0元
-            single_run_cost = config.getfloat(
-                "Payment_Settings", "single_run_cost", fallback=1.0)
+            # 统一使用配置读取适配器（优先 configs/config.json，回退 config.ini）
+            # 仅根据 Payment_Settings.require_payment 判断是否启用付费检查
+            config = _read_config_ini()
+            require_payment = True
+            if config is not None:
+                require_payment = config.getboolean(
+                    "Payment_Settings", "require_payment", fallback=True)
 
-            # 判断是否为免费模式
-            # 满足以下任一条件时，系统运行在免费模式下：
-            # 1. require_payment 为 false（明确配置为免费模式）
-            # 2. single_run_cost <= 0（价格为0或负数，等同于免费）
-            if not require_payment or single_run_cost <= 0:
+            # 未开启付费时，直接返回无欠费状态
+            if not require_payment:
                 # 免费模式下，不存在欠费概念，直接返回无欠费
                 return jsonify({
                     "success": True,
