@@ -12,23 +12,14 @@ MAX_MEMORY_SESSIONS = 100
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 
-# 单账号运行 PID 参数
-SINGLE_PID_KP = 4.80
-SINGLE_PID_KI = 0.16
-SINGLE_PID_KD = 1.80
-SINGLE_PID_DEADZONE = 0.010
-SINGLE_PID_INTEGRAL_LIMIT = 0.50
-SINGLE_PID_DEADZONE_BOOST_STEP = 0.08
-SINGLE_PID_DEADZONE_BOOST_MAX = 2.50
-
-# 多账号运行 PID 参数
-MULTI_PID_KP = 4.80
-MULTI_PID_KI = 0.16
-MULTI_PID_KD = 1.80
-MULTI_PID_DEADZONE = 0.010
-MULTI_PID_INTEGRAL_LIMIT = 0.50
-MULTI_PID_DEADZONE_BOOST_STEP = 0.08
-MULTI_PID_DEADZONE_BOOST_MAX = 2.50
+# 跑步 PID 参数（单账号/多账号共用）
+PID_KP = 4.80
+PID_KI = 0.16
+PID_KD = 1.80
+PID_DEADZONE = 0.010
+PID_INTEGRAL_LIMIT = 0.50
+PID_DEADZONE_BOOST_STEP = 0.08
+PID_DEADZONE_BOOST_MAX = 2.50
 
 # [安全配置] 输入验证常量
 MAX_USERNAME_LENGTH = 200  # 用户名最大长度
@@ -11943,10 +11934,10 @@ class Api:
             for _, _, _dur_ms in run_data.run_coords:
                 _exec_acc_plan_s += max(0.0, _dur_ms) / 1000.0
                 _exec_prefix_plan_s.append(_exec_acc_plan_s)
-            _pid_kp = SINGLE_PID_KP
-            _pid_ki = SINGLE_PID_KI
-            _pid_kd = SINGLE_PID_KD
-            _pid_deadzone = SINGLE_PID_DEADZONE
+            _pid_kp = PID_KP
+            _pid_ki = PID_KI
+            _pid_kd = PID_KD
+            _pid_deadzone = PID_DEADZONE
             _pid_integral = 0.0
             _pid_prev_error = 0.0
             _pid_deadzone_boost = 1.0
@@ -11975,15 +11966,15 @@ class Api:
                         _in_deadzone = abs(_error) <= _pid_deadzone
                         if _in_deadzone:
                             _pid_deadzone_boost = min(
-                                SINGLE_PID_DEADZONE_BOOST_MAX,
-                                _pid_deadzone_boost + SINGLE_PID_DEADZONE_BOOST_STEP,
+                                PID_DEADZONE_BOOST_MAX,
+                                _pid_deadzone_boost + PID_DEADZONE_BOOST_STEP,
                             )
                         else:
                             _pid_deadzone_boost = 1.0
                         _error_for_pid = _error
                         _pid_integral = max(
-                            -SINGLE_PID_INTEGRAL_LIMIT,
-                            min(SINGLE_PID_INTEGRAL_LIMIT, _pid_integral + _error_for_pid),
+                            -PID_INTEGRAL_LIMIT,
+                            min(PID_INTEGRAL_LIMIT, _pid_integral + _error_for_pid),
                         )
                         _pid_derivative = _error_for_pid - _pid_prev_error
                         _pid_prev_error = _error_for_pid
@@ -15870,10 +15861,10 @@ class Api:
                 for _, _, _dur_ms in run_data.run_coords:
                     _mr_acc_plan_s += max(0.0, _dur_ms) / 1000.0
                     _mr_prefix_plan_s.append(_mr_acc_plan_s)
-                _mr_pid_kp = MULTI_PID_KP
-                _mr_pid_ki = MULTI_PID_KI
-                _mr_pid_kd = MULTI_PID_KD
-                _mr_pid_deadzone = MULTI_PID_DEADZONE
+                _mr_pid_kp = PID_KP
+                _mr_pid_ki = PID_KI
+                _mr_pid_kd = PID_KD
+                _mr_pid_deadzone = PID_DEADZONE
                 _mr_pid_integral = 0.0
                 _mr_pid_prev_error = 0.0
                 _mr_pid_deadzone_boost = 1.0
@@ -15930,15 +15921,15 @@ class Api:
                             _mr_in_deadzone = abs(_mr_error) <= _mr_pid_deadzone
                             if _mr_in_deadzone:
                                 _mr_pid_deadzone_boost = min(
-                                    MULTI_PID_DEADZONE_BOOST_MAX,
-                                    _mr_pid_deadzone_boost + MULTI_PID_DEADZONE_BOOST_STEP,
+                                    PID_DEADZONE_BOOST_MAX,
+                                    _mr_pid_deadzone_boost + PID_DEADZONE_BOOST_STEP,
                                 )
                             else:
                                 _mr_pid_deadzone_boost = 1.0
                             _mr_error_for_pid = _mr_error
                             _mr_pid_integral = max(
-                                -MULTI_PID_INTEGRAL_LIMIT,
-                                min(MULTI_PID_INTEGRAL_LIMIT, _mr_pid_integral + _mr_error_for_pid),
+                                -PID_INTEGRAL_LIMIT,
+                                min(PID_INTEGRAL_LIMIT, _mr_pid_integral + _mr_error_for_pid),
                             )
                             _mr_pid_derivative = _mr_error_for_pid - _mr_pid_prev_error
                             _mr_pid_prev_error = _mr_error_for_pid
