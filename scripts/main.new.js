@@ -57191,134 +57191,153 @@ async function adminClearOverdue(
   is_detail_view = true,
 ) {
   try {
-    // ========== 步骤1：显示输入对话框 ==========
-
-    // 使用SweetAlert2显示输入对话框
-    // SweetAlert2是现代化的弹窗库，提供美观的UI和丰富的功能
-    const result = await Swal.fire({
-      title: "修改欠费次数",
-
-      // html参数支持完整的HTML内容
-      // 这里显示学校账号、所属用户信息，以及输入框
-      html: `
-                <p class="text-sm text-slate-600 mb-3">学校账号：<span class="font-semibold">${escapeHtml(
-                  school_username,
-                )}</span></p>
-                <!-- <p class="text-sm text-slate-600 mb-3">所属用户：<span class="font-semibold">${escapeHtml(
-                  auth_username,
-                )}</span></p> -->
-                <input id="new-overdue-count" type="number" min="0" value="0" 
-                    class="swal2-input" placeholder="输入新的欠费次数（0表示清零）">
-            `,
-
-      icon: "question", // 图标类型：问号
-      showCancelButton: true, // 显示取消按钮
-      confirmButtonText: "确认修改",
-      cancelButtonText: "取消",
-      confirmButtonColor: "#10b981", // 绿色确认按钮（emerald-500）
-
-      // preConfirm: 在用户点击确认时执行的验证函数
-      // 返回false会阻止对话框关闭，返回其他值则作为result.value
-      preConfirm: () => {
-        // 获取输入框的值
-        const value = document.getElementById("new-overdue-count").value;
-
-        // 尝试转换为整数
-        const count = parseInt(value);
-
-        // 验证是否为有效的非负整数
-        if (isNaN(count) || count < 0) {
-          // 显示验证错误信息（不关闭对话框）
-          Swal.showValidationMessage("请输入有效的非负整数");
-          return false;
-        }
-
-        // 返回验证通过的值
-        return count;
-      },
-    });
-
-    // ========== 步骤2：检查用户是否取消 ==========
-
-    // 如果用户点击了取消按钮，result.isConfirmed为false
-    if (!result.isConfirmed) {
-      return; // 直接返回，不执行后续操作
-    }
-
-    // 获取用户输入的新欠费次数
-    const newOverdueCount = result.value;
-
-    // ========== 步骤3：显示加载动画 ==========
-
-    // 在调用API期间显示加载动画，提升用户体验
+    // ========== 步骤1：加载该学校账号的待支付账单 ==========
     Swal.fire({
-      title: "正在处理...",
-      text: "请稍候",
-      allowOutsideClick: false, // 禁止点击外部关闭
-      didOpen: () => {
-        Swal.showLoading(); // 显示旋转的加载图标
-      },
+      title: "加载账单中...",
+      allowOutsideClick: false,
+      didOpen: () => { Swal.showLoading(); },
     });
 
-    // ========== 步骤4：调用后端API ==========
+    const resp = await fetch(
+      "/api/admin/billing/list?school_username=" + encodeURIComponent(school_username),
+      { headers: { "X-Session-ID": sessionUUID } }
+    );
+    const data = await resp.json();
 
-    // 发送POST请求到后端API
-    const response = await fetch("/api/admin/clear_overdue", {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json", // 指定请求体为JSON格式
-        "X-Session-ID": sessionUUID, // 会话ID，用于身份验证
-      },
-
-      // 将参数转换为JSON字符串发送
-      body: JSON.stringify({
-        school_username: school_username, // 学校账号用户名
-        new_overdue_count: newOverdueCount, // 新的欠费次数
-      }),
-    });
-
-    // 解析后端返回的JSON响应
-    const apiResult = await response.json();
-
-    // ========== 步骤5：处理API响应 ==========
-
-    if (apiResult.success) {
-      // ===== 操作成功 =====
-
-      // 显示成功提示
+    if (!data.success) {
       await Swal.fire({
-        title: "操作成功",
-        text: `已将欠费次数修改为 ${newOverdueCount}`,
-        icon: "success",
-        confirmButtonText: "确定",
-      });
-
-      loadOverdueAccounts();
-
-      // 刷新当前显示的详情页面，让用户看到最新数据
-      // 调用View_details_of_users_with_outstanding_payments函数重新加载数据
-      if (is_detail_view) {
-        await View_details_of_users_with_outstanding_payments(school_username);
-      }
-    } else {
-      // ===== 操作失败 =====
-
-      // 显示失败提示，展示后端返回的错误信息
-      await Swal.fire({
-        title: "操作失败",
-        text: apiResult.message || "未知错误",
+        title: "加载失败",
+        text: data.message || "未知错误",
         icon: "error",
         confirmButtonText: "确定",
       });
+      return;
     }
+
+    const pendingBills = (data.records || []).filter(r => r.status === "pending");
+
+    if (pendingBills.length === 0) {
+      await Swal.fire({
+        title: "无待支付账单",
+        text: `学校账号 ${school_username} 暂无待支付账单`,
+        icon: "info",
+        confirmButtonText: "确定",
+      });
+      return;
+    }
+
+    // ========== 步骤2：显示账单选择弹窗 ==========
+    const billRows = pendingBills.map((r, i) => {
+      const amount = r.amount != null ? "¥" + r.amount : "-";
+      const reason = (r.reason || "-").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const created = r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-";
+      return `
+        <tr style="border-bottom:1px solid #e2e8f0;">
+          <td style="padding:6px 8px;text-align:center;">
+            <input type="checkbox" id="clear-bill-${i}" data-billing-id="${(r.billing_id || "").replace(/"/g, "&quot;")}" class="admin-clear-bill-check" checked style="width:14px;height:14px;accent-color:#0ea5e9;">
+          </td>
+          <td style="padding:6px 8px;font-size:12px;color:#334155;">${reason}</td>
+          <td style="padding:6px 8px;font-size:12px;color:#334155;font-weight:600;white-space:nowrap;">${amount}</td>
+          <td style="padding:6px 8px;font-size:11px;color:#94a3b8;white-space:nowrap;">${created}</td>
+        </tr>`;
+    }).join("");
+
+    const result = await Swal.fire({
+      title: "结算欠费账单",
+      html: `
+        <p style="font-size:13px;color:#475569;margin-bottom:6px;">学校账号：<strong>${school_username}</strong></p>
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:10px;">勾选要清除的账单，确认后标记为管理员清除</p>
+        <div style="overflow-x:auto;max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f1f5f9;position:sticky;top:0;">
+                <th style="padding:6px 8px;text-align:center;">
+                  <input type="checkbox" id="clear-bill-all" checked
+                    onchange="document.querySelectorAll('.admin-clear-bill-check').forEach(c=>c.checked=this.checked)"
+                    style="accent-color:#0ea5e9;">
+                </th>
+                <th style="padding:6px 8px;text-align:left;color:#64748b;">原因</th>
+                <th style="padding:6px 8px;text-align:left;color:#64748b;white-space:nowrap;">金额</th>
+                <th style="padding:6px 8px;text-align:left;color:#64748b;white-space:nowrap;">创建时间</th>
+              </tr>
+            </thead>
+            <tbody>${billRows}</tbody>
+          </table>
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: "确认清除",
+      cancelButtonText: "取消",
+      confirmButtonColor: "#0ea5e9",
+      width: "520px",
+      preConfirm: () => {
+        const selected = [...document.querySelectorAll(".admin-clear-bill-check")].filter(c => c.checked);
+        if (selected.length === 0) {
+          Swal.showValidationMessage("请至少选择一条账单");
+          return false;
+        }
+        return selected.map(c => c.dataset.billingId);
+      },
+    });
+
+    if (!result.isConfirmed) return;
+
+    const selectedIds = result.value;
+
+    // ========== 步骤3：依次调用账单更新接口 ==========
+    Swal.fire({
+      title: "正在清除...",
+      text: `共 ${selectedIds.length} 条账单`,
+      allowOutsideClick: false,
+      didOpen: () => { Swal.showLoading(); },
+    });
+
+    let successCount = 0;
+    let failCount = 0;
+    for (const billingId of selectedIds) {
+      try {
+        const updateResp = await fetch("/api/admin/billing/update", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-ID": sessionUUID,
+          },
+          body: JSON.stringify({
+            billing_id: billingId,
+            school_username: school_username,
+            status: "admin_cleared",
+          }),
+        });
+        const updateResult = await updateResp.json();
+        if (updateResult.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch {
+        failCount++;
+      }
+    }
+
+    // ========== 步骤4：显示结果 ==========
+    const msg = failCount === 0
+      ? `已成功清除 ${successCount} 条账单`
+      : `成功 ${successCount} 条，失败 ${failCount} 条`;
+
+    await Swal.fire({
+      title: failCount === 0 ? "清除成功" : "部分完成",
+      text: msg,
+      icon: failCount === 0 ? "success" : "warning",
+      confirmButtonText: "确定",
+    });
+
+    // ========== 步骤5：刷新页面显示 ==========
+    if (typeof loadOverdueAccounts === "function") loadOverdueAccounts();
+    if (is_detail_view && typeof View_details_of_users_with_outstanding_payments === "function") {
+      await View_details_of_users_with_outstanding_payments(school_username);
+    }
+    if (typeof loadAdminBillingList === "function") loadAdminBillingList();
   } catch (error) {
-    // ========== 异常处理 ==========
-
-    // 捕获网络错误、解析错误等异常
     console.error("管理员清除欠费失败:", error);
-
-    // 显示友好的错误提示
     await Swal.fire({
       title: "操作失败",
       text: "网络错误或服务器异常",
@@ -57821,7 +57840,7 @@ function _renderBillingTableCommon(records, opts = {}) {
   html += `<table class="${tableClass}">`;
   html += `<thead><tr class="bg-slate-100">`;
   html += `<th class="p-2 text-center w-10"><input type="checkbox" onclick="toggleBillingSelectAll('${containerId}', this.checked)"></th>`;
-  html += `<th class="p-2 text-left">学校账号</th><th class="p-2 text-left">姓名</th><th class="p-2 text-left">原因</th><th class="p-2 text-left">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left">创建时间</th><th class="p-2 text-left">支付时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
+  html += `<th class="p-2 text-left">学校账号</th><th class="p-2 text-left">姓名</th><th class="p-2 text-left">原因</th><th class="p-2 text-left">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left">创建时间</th><th class="p-2 text-left">支付/清除时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
   html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
   records.forEach((r) => {
     const billingId = _escapeAttr(r.billing_id || "");
@@ -57839,7 +57858,7 @@ function _renderBillingTableCommon(records, opts = {}) {
     html += `<td class="p-2">${amount}</td>`;
     html += `<td class="p-2 whitespace-nowrap">${statusBadge}</td>`;
     html += `<td class="p-2">${_escapeAttr(_fmtBillTime(r.created_at))}</td>`;
-    html += `<td class="p-2">${_escapeAttr(_fmtBillTime(r.paid_at))}</td>`;
+    html += `<td class="p-2">${r.status === "admin_cleared" ? _escapeAttr(_fmtBillTime(r.admin_cleared_at)) : _escapeAttr(_fmtBillTime(r.paid_at))}</td>`;
     html += `<td class="p-2 whitespace-nowrap">`;
     if (canPay) {
       html += `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 ${isMobile ? "text-[11px]" : "text-xs"} text-emerald-700" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`;
