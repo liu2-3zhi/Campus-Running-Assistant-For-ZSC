@@ -242,7 +242,8 @@ body.dark-mode .border-yellow-200 {
 body.dark-mode .modal-content.neumorphic,
 body.dark-mode .neumorphic-modal .modal-content {
   background: #2d3748;
-  box-shadow: 12px 12px 24px rgba(0, 0, 0, 0.6),
+  box-shadow:
+    12px 12px 24px rgba(0, 0, 0, 0.6),
     -12px -12px 24px rgba(74, 85, 104, 0.4);
 }
 
@@ -254,7 +255,8 @@ body.dark-mode .modal-content.neumorphic textarea,
 body.dark-mode .neumorphic-modal .modal-content textarea {
   background: #2d3748;
   color: #e5e7eb;
-  box-shadow: inset 4px 4px 8px rgba(0, 0, 0, 0.5),
+  box-shadow:
+    inset 4px 4px 8px rgba(0, 0, 0, 0.5),
     inset -4px -4px 8px rgba(74, 85, 104, 0.3);
 }
 
@@ -262,15 +264,14 @@ body.dark-mode .modal-content.neumorphic button,
 body.dark-mode .neumorphic-modal .modal-content button {
   background: #2d3748;
   color: #e5e7eb;
-  box-shadow: 6px 6px 12px rgba(0, 0, 0, 0.6),
+  box-shadow:
+    6px 6px 12px rgba(0, 0, 0, 0.6),
     -6px -6px 12px rgba(74, 85, 104, 0.4);
 }
 
 body.dark-mode.theme-anime {
-  background-image: linear-gradient(
-      rgba(0, 0, 0, 0.4),
-      rgba(0, 0, 0, 0.4)
-    ),
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)),
     url("https://api.paugram.com/wallpaper");
 }
 
@@ -316,7 +317,8 @@ select.select-field {
 .modal-content.neumorphic,
 .neumorphic-modal .modal-content {
   background: #e8ecf4;
-  box-shadow: 12px 12px 24px rgba(163, 177, 198, 0.6),
+  box-shadow:
+    12px 12px 24px rgba(163, 177, 198, 0.6),
     -12px -12px 24px rgba(255, 255, 255, 0.8);
   border: none;
   border-radius: 20px;
@@ -330,7 +332,8 @@ select.select-field {
 .neumorphic-modal .modal-content textarea {
   background: #e8ecf4;
   border: none;
-  box-shadow: inset 4px 4px 8px rgba(163, 177, 198, 0.5),
+  box-shadow:
+    inset 4px 4px 8px rgba(163, 177, 198, 0.5),
     inset -4px -4px 8px rgba(255, 255, 255, 0.7);
   border-radius: 10px;
   padding: 10px 14px;
@@ -344,7 +347,8 @@ select.select-field {
 .modal-content.neumorphic textarea:focus,
 .neumorphic-modal .modal-content textarea:focus {
   outline: none;
-  box-shadow: inset 6px 6px 12px rgba(163, 177, 198, 0.7),
+  box-shadow:
+    inset 6px 6px 12px rgba(163, 177, 198, 0.7),
     inset -6px -6px 12px rgba(255, 255, 255, 0.5);
 }
 
@@ -352,7 +356,8 @@ select.select-field {
 .neumorphic-modal .modal-content button {
   background: #e8ecf4;
   border: none;
-  box-shadow: 6px 6px 12px rgba(163, 177, 198, 0.6),
+  box-shadow:
+    6px 6px 12px rgba(163, 177, 198, 0.6),
     -6px -6px 12px rgba(255, 255, 255, 0.8);
   border-radius: 12px;
   padding: 10px 20px;
@@ -363,14 +368,16 @@ select.select-field {
 .modal-content.neumorphic button:hover,
 .neumorphic-modal .modal-content button:hover {
   transform: translateY(-2px);
-  box-shadow: 8px 8px 16px rgba(163, 177, 198, 0.7),
+  box-shadow:
+    8px 8px 16px rgba(163, 177, 198, 0.7),
     -8px -8px 16px rgba(255, 255, 255, 0.9);
 }
 
 .modal-content.neumorphic button:active,
 .neumorphic-modal .modal-content button:active {
   transform: translateY(0);
-  box-shadow: inset 4px 4px 8px rgba(163, 177, 198, 0.6),
+  box-shadow:
+    inset 4px 4px 8px rgba(163, 177, 198, 0.6),
     inset -4px -4px 8px rgba(255, 255, 255, 0.7);
 }
 
@@ -391,14 +398,16 @@ select.select-field {
   padding: 24px 28px;
   border-radius: 16px;
   width: 360px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25),
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.25),
     0 0 12px rgba(120, 160, 255, 0.4);
-  animation: fadeIn 0.35s ease, scaleIn 0.35s ease;
+  animation:
+    fadeIn 0.35s ease,
+    scaleIn 0.35s ease;
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   position: relative;
   pointer-events: auto;
 }
-
 
 .modal-content h3 {
   margin-top: 0;
@@ -568,11 +577,7 @@ body {
 
 .btn-primary {
   color: #fff;
-  background: linear-gradient(
-    135deg,
-    var(--base-color),
-    var(--base-color-600)
-  );
+  background: linear-gradient(135deg, var(--base-color), var(--base-color-600));
 }
 
 .btn-secondary {
@@ -612,10 +617,13 @@ body {
     rgba(255, 255, 255, 0.85)
   );
   border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6),
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
     0 8px 14px rgba(16, 24, 40, 0.06);
   color: #0f172a;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .input-field:focus,
@@ -636,9 +644,12 @@ body {
     rgba(255, 255, 255, 0.85)
   );
   border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6),
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
     0 8px 14px rgba(16, 24, 40, 0.06);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
   overflow: hidden;
 }
 
@@ -782,39 +793,25 @@ body {
 #amap-key-modal:not(.hidden) ~ #map-container .amap-logo,
 #amap-key-modal:not(.hidden) ~ #map-container .amap-copyright,
 #amap-key-modal:not(.hidden) ~ main > #multi-map-container .amap-logo,
-#amap-key-modal:not(.hidden)
-  ~ main
-  > #multi-map-container
-  .amap-copyright,
+#amap-key-modal:not(.hidden) ~ main > #multi-map-container .amap-copyright,
 #user-details-modal:not(.hidden) ~ #map-container .amap-logo,
 #user-details-modal:not(.hidden) ~ #map-container .amap-copyright,
 #task-details-modal:not(.hidden) ~ #map-container .amap-logo,
 #task-details-modal:not(.hidden) ~ #map-container .amap-copyright,
 #user-details-modal:not(.hidden) ~ main > #multi-map-container .amap-logo,
-#user-details-modal:not(.hidden)
-  ~ main
-  > #multi-map-container
-  .amap-copyright,
+#user-details-modal:not(.hidden) ~ main > #multi-map-container .amap-copyright,
 #task-details-modal:not(.hidden) ~ main > #multi-map-container .amap-logo,
-#task-details-modal:not(.hidden)
-  ~ main
-  > #multi-map-container
-  .amap-copyright,
-#account-params-modal:not(.hidden)
-  ~ main
-  > #multi-map-container
-  .amap-logo,
+#task-details-modal:not(.hidden) ~ main > #multi-map-container .amap-copyright,
+#account-params-modal:not(.hidden) ~ main > #multi-map-container .amap-logo,
 #account-params-modal:not(.hidden)
   ~ main
   > #multi-map-container
   .amap-copyright,
 body.modal-visible .amap-logo,
-body.modal-visible .amap-copyright  {
+body.modal-visible .amap-copyright {
   display: none;
   z-index: -1;
 }
-
-
 
 #admin-modal-close-btn:hover {
   transform: translateY(-50%);
@@ -1159,7 +1156,7 @@ body.mobile-mode #session-picker-modal {
 .mobile-mode #mobile-task-history-list,
 .mobile-mode #mobile-admin-panel-content-panel,
 .mobile-mode #mobile-multi-admin-content-panel {
-    padding-bottom: 0px;
+  padding-bottom: 0px;
 }
 
 .mobile-mode .mobile-bottom-nav {
@@ -1411,17 +1408,13 @@ body.mobile-mode #session-picker-modal {
   transition: all 0.2s ease;
 }
 
-.mobile-mode
-  #mobile-all-notifications-list
-  .mobile-list-item:not(.opacity-60) {
+.mobile-mode #mobile-all-notifications-list .mobile-list-item:not(.opacity-60) {
   border-left-color: #3b82f6;
   background: rgba(59, 130, 246, 0.05);
 }
 
 .mobile-mode #mobile-all-notifications-list .mobile-list-item:active,
-.mobile-mode
-  #mobile-attendance-notifications-list
-  .mobile-list-item:active {
+.mobile-mode #mobile-attendance-notifications-list .mobile-list-item:active {
   background: rgba(59, 130, 246, 0.1);
   transform: scale(0.98);
 }
@@ -1545,12 +1538,7 @@ body.mobile-mode #session-picker-modal {
 
 @media (prefers-color-scheme: dark) {
   .mobile-mode #mobile-container {
-    background: linear-gradient(
-      180deg,
-      #0f172a 0%,
-      #1e293b 50%,
-      #334155 100%
-    );
+    background: linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #334155 100%);
   }
 
   .mobile-mode-auth #mobile-container .mobile-header,
@@ -1605,7 +1593,9 @@ body.mobile-mode #session-picker-modal {
   z-index: 9998;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.3s ease, visibility 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
 }
 
 .mobile-sidebar-backdrop.show {
@@ -1811,7 +1801,6 @@ body.mobile-mode #session-picker-modal {
 
 /* 为mobile-beian-footer添加底部间距，避开底部导航栏和浏览器工具栏 */
 #mobile-beian-footer {
-
   padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px));
   /* env(safe-area-inset-bottom)用于适配iPhone等带有刘海屏的设备 */
 }
@@ -1857,28 +1846,26 @@ body.mobile-mode #session-picker-modal {
   margin-top: 0px;
 }
 
-
-
 /* 拟态风格对话框容器 */
 .swal2-neumorphism-popup {
   /* 应用渐变背景，从浅色到略深的颜色 */
   background: linear-gradient(145deg, #ffffff, #f8fafc) !important;
-  
+
   /* 拟态阴影效果：
      - 右下方的深色阴影（8px 8px）模拟光源来自左上方
      - 左上方的浅色阴影（-8px -8px）模拟反射光
      - 两种阴影叠加产生立体浮起效果 */
-  box-shadow: 
+  box-shadow:
     12px 12px 24px rgba(15, 23, 42, 0.15),
     -12px -12px 24px rgba(255, 255, 255, 0.9),
     inset 0 0 0 1px rgba(203, 213, 225, 0.3) !important;
-  
+
   /* 圆角边框，增强现代感 */
   border-radius: 24px !important;
-  
+
   /* 内边距，确保内容不会太靠近边缘 */
   padding: 32px !important;
-  
+
   /* 边框：细微的边框增强层次感 */
   border: 1px solid rgba(203, 213, 225, 0.5) !important;
 }
@@ -1887,16 +1874,16 @@ body.mobile-mode #session-picker-modal {
 .swal2-neumorphism-title {
   /* 标题颜色：深灰色，保持良好的对比度 */
   color: #1e293b !important;
-  
+
   /* 字体粗细：粗体，突出标题 */
   font-weight: 700 !important;
-  
+
   /* 字体大小：稍大的字体增强标题的重要性 */
   font-size: 24px !important;
-  
+
   /* 下边距：标题与内容之间保持适当间距 */
   margin-bottom: 20px !important;
-  
+
   /* 文字阴影：轻微的阴影增强立体感 */
   text-shadow: 0 2px 4px rgba(15, 23, 42, 0.1) !important;
 }
@@ -1905,27 +1892,27 @@ body.mobile-mode #session-picker-modal {
 .swal2-neumorphism-confirm {
   /* 渐变背景：使用主题色创建渐变效果 */
   background: linear-gradient(145deg, #3b82f6, #2563eb) !important;
-  
+
   /* 按钮阴影：
      - 外部阴影产生浮起效果
      - 内部阴影增强立体感 */
-  box-shadow: 
+  box-shadow:
     6px 6px 12px rgba(37, 99, 235, 0.3),
     -4px -4px 10px rgba(255, 255, 255, 0.5),
     inset 0 2px 4px rgba(255, 255, 255, 0.3) !important;
-  
+
   /* 圆角边框 */
   border-radius: 12px !important;
-  
+
   /* 内边距：确保按钮足够大，易于点击 */
   padding: 12px 32px !important;
-  
+
   /* 字体粗细：粗体，突出按钮文字 */
   font-weight: 600 !important;
-  
+
   /* 边框：细微的边框增强按钮边界 */
   border: 1px solid rgba(37, 99, 235, 0.5) !important;
-  
+
   /* 过渡效果：平滑的悬停和点击动画 */
   transition: all 0.3s ease !important;
 }
@@ -1934,13 +1921,13 @@ body.mobile-mode #session-picker-modal {
 .swal2-neumorphism-confirm:hover {
   /* 悬停时改变渐变方向，产生动态效果 */
   background: linear-gradient(145deg, #2563eb, #1d4ed8) !important;
-  
+
   /* 增强阴影，产生更明显的浮起效果 */
-  box-shadow: 
+  box-shadow:
     8px 8px 16px rgba(37, 99, 235, 0.4),
     -6px -6px 12px rgba(255, 255, 255, 0.6),
     inset 0 2px 4px rgba(255, 255, 255, 0.4) !important;
-  
+
   /* 轻微放大，增强交互反馈 */
   transform: translateY(-2px) scale(1.02) !important;
 }
@@ -1948,10 +1935,10 @@ body.mobile-mode #session-picker-modal {
 /* 确认按钮激活（点击）效果 */
 .swal2-neumorphism-confirm:active {
   /* 点击时反转阴影，产生按下效果 */
-  box-shadow: 
+  box-shadow:
     inset 4px 4px 8px rgba(37, 99, 235, 0.4),
     inset -2px -2px 6px rgba(255, 255, 255, 0.2) !important;
-  
+
   /* 轻微缩小，增强按下反馈 */
   transform: translateY(0) scale(0.98) !important;
 }
@@ -1960,25 +1947,25 @@ body.mobile-mode #session-picker-modal {
 .swal2-neumorphism-cancel {
   /* 渐变背景：使用中性灰色 */
   background: linear-gradient(145deg, #94a3b8, #64748b) !important;
-  
+
   /* 按钮阴影：与确认按钮相同的阴影逻辑 */
-  box-shadow: 
+  box-shadow:
     6px 6px 12px rgba(100, 116, 139, 0.3),
     -4px -4px 10px rgba(255, 255, 255, 0.5),
     inset 0 2px 4px rgba(255, 255, 255, 0.3) !important;
-  
+
   /* 圆角边框 */
   border-radius: 12px !important;
-  
+
   /* 内边距 */
   padding: 12px 32px !important;
-  
+
   /* 字体粗细 */
   font-weight: 600 !important;
-  
+
   /* 边框 */
   border: 1px solid rgba(100, 116, 139, 0.5) !important;
-  
+
   /* 过渡效果 */
   transition: all 0.3s ease !important;
 }
@@ -1987,13 +1974,13 @@ body.mobile-mode #session-picker-modal {
 .swal2-neumorphism-cancel:hover {
   /* 悬停时改变渐变 */
   background: linear-gradient(145deg, #64748b, #475569) !important;
-  
+
   /* 增强阴影 */
-  box-shadow: 
+  box-shadow:
     8px 8px 16px rgba(100, 116, 139, 0.4),
     -6px -6px 12px rgba(255, 255, 255, 0.6),
     inset 0 2px 4px rgba(255, 255, 255, 0.4) !important;
-  
+
   /* 轻微放大 */
   transform: translateY(-2px) scale(1.02) !important;
 }
@@ -2001,14 +1988,13 @@ body.mobile-mode #session-picker-modal {
 /* 取消按钮激活效果 */
 .swal2-neumorphism-cancel:active {
   /* 点击时反转阴影 */
-  box-shadow: 
+  box-shadow:
     inset 4px 4px 8px rgba(100, 116, 139, 0.4),
     inset -2px -2px 6px rgba(255, 255, 255, 0.2) !important;
-  
+
   /* 轻微缩小 */
   transform: translateY(0) scale(0.98) !important;
 }
-
 
 /* 按钮加载态反馈 */
 .btn-loading {
@@ -2021,16 +2007,18 @@ body.mobile-mode #session-picker-modal {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(0,0,0,0.15);
-  border-top-color: rgba(0,0,0,0.6);
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  border-top-color: rgba(0, 0, 0, 0.6);
   border-radius: 50%;
   margin-left: 8px;
   vertical-align: middle;
   animation: cr-spin 0.8s linear infinite;
 }
-@keyframes cr-spin { to { transform: rotate(360deg); } }
-
-
+@keyframes cr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* 弹窗：无阴影、无渐变、无发光 */
 .swal-flat-popup {
@@ -2057,12 +2045,10 @@ body.mobile-mode #session-picker-modal {
   background: #1e40af !important;
 }
 
-
-
 /* 弹窗整体更干净 */
 .swal2-clean-popup {
   border-radius: 10px !important;
-  box-shadow: 0 4px 18px rgba(0,0,0,0.08) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
 }
 
 /* 标题更稳重 */

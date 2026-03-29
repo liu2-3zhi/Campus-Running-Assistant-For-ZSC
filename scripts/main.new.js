@@ -10004,7 +10004,9 @@ async function initRegisterAvailableRunsHint() {
       // 当默认次数等于 -1 时直接显示"无限制"，不套用格式模板，避免出现占位符残留
       let hintText;
       if (Number(defaultRuns) === -1) {
-        hintText = hintTemplate.replace("{available_runs} 次", "无限制").replace("{available_runs}", "无限制");
+        hintText = hintTemplate
+          .replace("{available_runs} 次", "无限制")
+          .replace("{available_runs}", "无限制");
       } else {
         hintText = hintTemplate.replace("{available_runs}", defaultRuns);
       }
@@ -16991,9 +16993,14 @@ async function handleAuthLogin(isMobile_use = false) {
 
       // ── 账号注销等待期检测 ──────────────────────────────────────────────────
       // 若该账号正在注销等待期内，弹窗提示管理员并提供撤销选项
-      if (result.account_cancellation && result.account_cancellation.status === "pending") {
+      if (
+        result.account_cancellation &&
+        result.account_cancellation.status === "pending"
+      ) {
         const executeAt = result.account_cancellation.execute_at;
-        const executeDate = executeAt ? new Date(executeAt * 1000).toLocaleString("zh-CN") : "未知";
+        const executeDate = executeAt
+          ? new Date(executeAt * 1000).toLocaleString("zh-CN")
+          : "未知";
         const cancelResult = await Swal.fire({
           title: "⚠️ 账号注销等待中",
           html: `
@@ -17016,10 +17023,13 @@ async function handleAuthLogin(isMobile_use = false) {
         if (cancelResult.isConfirmed) {
           // 调用撤销注销接口
           try {
-            const revokeResp = await fetch("/auth/user/cancel_account_cancellation", {
-              method: "POST",
-              headers: { "X-Session-ID": sessionUUID },
-            });
+            const revokeResp = await fetch(
+              "/auth/user/cancel_account_cancellation",
+              {
+                method: "POST",
+                headers: { "X-Session-ID": sessionUUID },
+              },
+            );
             const revokeData = await revokeResp.json();
             if (revokeData.success) {
               await Swal.fire({
@@ -17032,7 +17042,9 @@ async function handleAuthLogin(isMobile_use = false) {
                 customClass: { popup: "swal2-neumorphism-popup" },
               });
             }
-          } catch (_e) { /* 静默失败，不阻断登录 */ }
+          } catch (_e) {
+            /* 静默失败，不阻断登录 */
+          }
         } else {
           // 用户选择退出 — 不进入主界面，保持在登录页
           setButtonLoading("auth-login-btn", false);
@@ -17123,7 +17135,9 @@ async function handleAuthLogin(isMobile_use = false) {
         refreshCaptcha("mobile-login");
       }
       $("auth-login-captcha").value = "";
-      const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+      const mobileLoginCaptcha = document.getElementById(
+        "mobile-login-captcha",
+      );
       if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
     }
   } catch (e) {
@@ -17143,7 +17157,9 @@ async function handleAuthLogin(isMobile_use = false) {
       refreshCaptcha("mobile-login");
     }
     $("auth-login-captcha").value = "";
-    const mobileLoginCaptchaErr = document.getElementById("mobile-login-captcha");
+    const mobileLoginCaptchaErr = document.getElementById(
+      "mobile-login-captcha",
+    );
     if (mobileLoginCaptchaErr) mobileLoginCaptchaErr.value = "";
   }
 }
@@ -17513,7 +17529,9 @@ async function handleAuthRegister(isMobile_use = false) {
         refreshCaptcha("mobile-register");
       }
       $("auth-register-captcha").value = "";
-      const mobileRegCaptcha = document.getElementById("mobile-register-captcha");
+      const mobileRegCaptcha = document.getElementById(
+        "mobile-register-captcha",
+      );
       if (mobileRegCaptcha) mobileRegCaptcha.value = "";
     }
   } catch (e) {
@@ -17533,7 +17551,9 @@ async function handleAuthRegister(isMobile_use = false) {
       refreshCaptcha("mobile-register");
     }
     $("auth-register-captcha").value = "";
-    const mobileRegCaptchaErr = document.getElementById("mobile-register-captcha");
+    const mobileRegCaptchaErr = document.getElementById(
+      "mobile-register-captcha",
+    );
     if (mobileRegCaptchaErr) mobileRegCaptchaErr.value = "";
   } finally {
     registrationCroppedAvatarBlob = null;
@@ -19016,7 +19036,6 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         "[价格设置Tab警告] 未找到ID为'admin-tab-pricing_modal'的元素",
       );
     }
-    
 
     // 步骤9：设置"水印控制"标签的显示状态
     // 逻辑：仅管理员可见（用于配置用户的高德地图去水印权限）
@@ -19088,9 +19107,10 @@ function formatCancellationTimeText(ts) {
 }
 
 function updateAccountCancellationStatusDisplay(status) {
-  const text = status && status.status === "pending"
-    ? formatCancellationTimeText(status.execute_at)
-    : "未申请";
+  const text =
+    status && status.status === "pending"
+      ? formatCancellationTimeText(status.execute_at)
+      : "未申请";
   const pcEl = document.getElementById("pc-account-cancel-status");
   const mobileEl = document.getElementById("mobile-account-cancel-status");
   if (pcEl) pcEl.textContent = text;
@@ -19100,17 +19120,22 @@ function updateAccountCancellationStatusDisplay(status) {
 function getAccountCancelElements(platform) {
   if (platform === "mobile") {
     return {
-      passwordInput: document.getElementById("mobile-account-cancel-current-password"),
+      passwordInput: document.getElementById(
+        "mobile-account-cancel-current-password",
+      ),
       smsInput: document.getElementById("mobile-account-cancel-sms-code"),
       statusEl: document.getElementById("mobile-account-cancel-status"),
-      smsButtonSelector: 'button[onclick="sendAccountCancelSmsCode(\'mobile\')"]',
+      smsButtonSelector:
+        "button[onclick=\"sendAccountCancelSmsCode('mobile')\"]",
     };
   }
   return {
-    passwordInput: document.getElementById("pc-account-cancel-current-password"),
+    passwordInput: document.getElementById(
+      "pc-account-cancel-current-password",
+    ),
     smsInput: document.getElementById("pc-account-cancel-sms-code"),
     statusEl: document.getElementById("pc-account-cancel-status"),
-    smsButtonSelector: 'button[onclick="sendAccountCancelSmsCode(\'pc\')"]',
+    smsButtonSelector: "button[onclick=\"sendAccountCancelSmsCode('pc')\"]",
   };
 }
 
@@ -19118,7 +19143,10 @@ async function sendAccountCancelSmsCode(platform = "pc") {
   const { smsButtonSelector } = getAccountCancelElements(platform);
   const sendBtn = document.querySelector(smsButtonSelector);
   if (accountCancellationCooldowns[platform] > 0) {
-    showModalAlert(`请等待 ${accountCancellationCooldowns[platform]} 秒后再发送`, "提示");
+    showModalAlert(
+      `请等待 ${accountCancellationCooldowns[platform]} 秒后再发送`,
+      "提示",
+    );
     return;
   }
   try {
@@ -19155,7 +19183,8 @@ async function sendAccountCancelSmsCode(platform = "pc") {
 }
 
 async function requestAccountCancellation(platform = "pc") {
-  const { passwordInput, smsInput, statusEl } = getAccountCancelElements(platform);
+  const { passwordInput, smsInput, statusEl } =
+    getAccountCancelElements(platform);
   const currentPassword = passwordInput ? passwordInput.value.trim() : "";
   const smsCode = smsInput ? smsInput.value.trim() : "";
   if (!currentPassword || !smsCode) {
@@ -19193,7 +19222,9 @@ async function requestAccountCancellation(platform = "pc") {
     }
     updateAccountCancellationStatusDisplay(result.status);
     if (statusEl && result.status && result.status.execute_at) {
-      statusEl.textContent = formatCancellationTimeText(result.status.execute_at);
+      statusEl.textContent = formatCancellationTimeText(
+        result.status.execute_at,
+      );
     }
     if (passwordInput) passwordInput.value = "";
     if (smsInput) smsInput.value = "";
@@ -20424,7 +20455,10 @@ function switchAdminTab(tab) {
     // 恢复账号面板
     if (restoreAccountTab && restoreAccountPanel) {
       restoreAccountTab.classList.add("text-sky-600", "border-sky-600");
-      restoreAccountTab.classList.remove("text-slate-400", "border-transparent");
+      restoreAccountTab.classList.remove(
+        "text-slate-400",
+        "border-transparent",
+      );
       restoreAccountPanel.classList.remove("hidden");
     }
     stopHealthAutoRefresh();
@@ -20599,7 +20633,11 @@ async function loadAdminSessions_inline() {
   }
 }
 
-function updateAdminSessionCountDisplayInline(currentCount, maxSessions, isGodMode = false) {
+function updateAdminSessionCountDisplayInline(
+  currentCount,
+  maxSessions,
+  isGodMode = false,
+) {
   const countEl = $("admin-session-count-display-inline");
   if (!countEl) return;
 
@@ -20880,7 +20918,9 @@ async function loadPersonalInfo() {
     }
     const pcForgotPasswordHint = $("pc-forgot-password-hint");
     if (pcForgotPasswordHint) {
-      pcForgotPasswordHint.style.display = config.enable_phone_modification ? "" : "none";
+      pcForgotPasswordHint.style.display = config.enable_phone_modification
+        ? ""
+        : "none";
     }
     const avatarDisplay = $("profile-avatar-display");
     const avatarInput = $("profile-avatar-input");
@@ -28896,7 +28936,11 @@ async function checkButtonPermission(buttonId, permissionName) {
   return true;
 }
 
-function updateAdminSessionCountDisplay(currentCount, maxSessions, isGodMode = false) {
+function updateAdminSessionCountDisplay(
+  currentCount,
+  maxSessions,
+  isGodMode = false,
+) {
   const countEl = $("admin-session-count-display");
   if (!countEl) return;
 
@@ -32319,19 +32363,24 @@ function renderMobileTaskList() {
   const mobileTaskListDiv = $("mobile-task-list");
   if (!mobileTaskListDiv) return;
   mobileTaskListDiv.innerHTML = "";
+
   const taskCountElem = $("mobile-task-count");
   if (taskCountElem) {
     taskCountElem.textContent = `${currentTasks.length} 个任务`;
   }
+
   if (currentTasks.length === 0) {
     mobileTaskListDiv.innerHTML = `<p class="text-slate-400 text-center py-8 text-sm">暂无任务</p>`;
     return;
   }
+
   currentTasks.forEach((task, index) => {
     const item = document.createElement("div");
+
     let statusClass = "text-amber-600";
     let statusText = "未完成";
     let statusIcon = "🕒";
+
     if (task.status == 1) {
       statusClass = "text-emerald-600";
       statusText = "已完成";
@@ -32343,6 +32392,7 @@ function renderMobileTaskList() {
       statusText = "已过期";
       statusIcon = "⛔";
     }
+
     if (!(task.status == 1)) {
       if (
         typeof task.info_text === "string" &&
@@ -32353,28 +32403,36 @@ function renderMobileTaskList() {
         statusIcon = "⏳";
       }
     }
+
     item.className =
-      "bg-white rounded-lg p-3 border border-slate-200 cursor-pointer transition-all duration-200 hover:shadow-md active:scale-98 min-w-[300px]";
+      "bg-white rounded-lg p-3 border border-slate-200 cursor-pointer transition-all duration-200 hover:shadow-md active:scale-98 w-full max-w-full break-words";
     item.id = `Mobile_Task_List_Sub_project${task.errand_id}`;
+
     item.innerHTML = `
-          <div class="flex items-center justify-between mb-2"">
-            <p class="font-semibold text-slate-800 text-sm truncate flex-1">${
-              task.run_name
-            }</p>
-          </div>
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-medium ${statusClass} flex items-center gap-1">
-              <span>${statusIcon}</span>
-              <span>${statusText}</span>
-            </span>
-            <span class="text-slate-500">${task.info_text || ""}</span>
-          </div>
-        `;
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 w-full">
+        <p class="font-semibold text-slate-800 text-sm break-words w-full">
+          ${task.run_name}
+        </p>
+      </div>
+
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs w-full gap-1">
+        <span class="font-medium ${statusClass} flex items-center gap-1">
+          <span>${statusIcon}</span>
+          <span>${statusText}</span>
+        </span>
+
+        <span class="text-slate-500 break-words w-full sm:w-auto">
+          ${task.info_text || ""}
+        </span>
+      </div>
+    `;
 
     item.dataset.index = index;
+
     if (task.status === 1) {
       item.style.opacity = "0.6";
     }
+
     if (index === selectedTaskIndex) {
       item.style.backgroundColor = "#eff6ff";
       item.style.border = "2px solid #3b82f6";
@@ -32405,18 +32463,19 @@ function renderMobileTaskList() {
         selectTask(index);
         return;
       }
+
       const statusRes = await callPythonAPI_raw(
         "/api/background_task/status",
         "GET",
         null,
       );
+
       const isBackendRunning =
         statusRes.success &&
         statusRes.task_status &&
         statusRes.task_status.status === "running";
 
       if (isBackendRunning) {
-        // showModalAlert("任务正在运行中，禁止切换任务！", "错误");
         swal.fire({
           title: "错误",
           text: "任务正在运行中，禁止切换任务！",
@@ -32426,11 +32485,14 @@ function renderMobileTaskList() {
         updateMobileTaskUI("运行中", "任务执行中");
         return;
       }
+
       selectTask(index);
     });
+
     mobileTaskListDiv.appendChild(item);
   });
 }
+
 function renderMobileCheckpointsList() {
   const checkpointsListDiv = $("mobile-checkpoints-list");
   const taskInfoDiv = $("mobile-checkpoints-task-info");
@@ -35912,7 +35974,9 @@ async function toggleRun() {
       updateDashboard();
       drawMarkers();
     }
-    const currentSchoolUsername = String(currentUserData?.student_id || "").trim();
+    const currentSchoolUsername = String(
+      currentUserData?.student_id || "",
+    ).trim();
     const result = await callPythonAPI_raw(
       "/api/background_task/start",
       "POST",
@@ -36014,7 +36078,9 @@ async function toggleAllRuns() {
     const multiUsernames = _isInMultiAccountModeForOverdueCheck()
       ? _getMultiAccountListUsernames()
       : [];
-    const currentSchoolUsername = String(currentUserData?.student_id || "").trim();
+    const currentSchoolUsername = String(
+      currentUserData?.student_id || "",
+    ).trim();
     const result = await callPythonAPI_raw(
       "/api/background_task/start",
       "POST",
@@ -39418,11 +39484,11 @@ async function mobileStartAllAccounts() {
           initialData.accounts &&
           Array.isArray(initialData.accounts)
         ) {
-        // 从accounts数组中提取所有账号的username字段
-        // 这些是当前已添加到多账号管理的所有账号
-        addedUsernames = initialData.accounts
-          .map((acc) => acc.username)
-          .filter(Boolean); // 过滤掉空值
+          // 从accounts数组中提取所有账号的username字段
+          // 这些是当前已添加到多账号管理的所有账号
+          addedUsernames = initialData.accounts
+            .map((acc) => acc.username)
+            .filter(Boolean); // 过滤掉空值
         }
       }
     } catch (error) {
@@ -40490,9 +40556,7 @@ function switchMobileSinglePanel(panelId, showalert = true) {
     // [修正] initMobileAdminPanel 由 openMobileAdminPanelUnified 通过 setTimeout 统一调用，
     //        此处不再重复调用，避免产生竞态条件导致面板隐藏失败
     if (panelId === "mobile-admin-panel-unified") {
-      logMessage_Info(
-        "[移动端单账号] 激活统一管理面板（复用多账号面板）",
-      );
+      logMessage_Info("[移动端单账号] 激活统一管理面板（复用多账号面板）");
       // 设置当前模式为单账号，供主题保存等功能判断
       window.mobileAdminPanelMode = "single";
       // 更新面板状态显示为单账号管理
@@ -44436,7 +44500,8 @@ async function saveSystemConfig() {
       },
       Features: {
         account_cancellation_wait_hours: parseInt(
-          ($("config-Features-account_cancellation_wait_hours") || {}).value || "24",
+          ($("config-Features-account_cancellation_wait_hours") || {}).value ||
+            "24",
           10,
         ),
       },
@@ -44512,7 +44577,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const regSmsDiv = document.getElementById("auth-reg-sms-wrapper");
     if (regSmsDiv) regSmsDiv.style.display = "none";
     // 移动端注册表单：隐藏手机号和短信验证码区域
-    const mobileRegPhoneDiv = document.getElementById("mobile-reg-phone-wrapper");
+    const mobileRegPhoneDiv = document.getElementById(
+      "mobile-reg-phone-wrapper",
+    );
     if (mobileRegPhoneDiv) mobileRegPhoneDiv.style.display = "none";
     const mobileRegSmsDiv = document.getElementById("mobile-reg-sms-wrapper");
     if (mobileRegSmsDiv) mobileRegSmsDiv.style.display = "none";
@@ -44524,12 +44591,16 @@ document.addEventListener("DOMContentLoaded", function () {
     if (profilePhoneHint) profilePhoneHint.style.display = "none";
   }
   if (!config.enable_phone_login) {
-    console.log("手机号验证码登录已禁用，隐藏登录类型切换按钮并启用手机号自动识别...");
+    console.log(
+      "手机号验证码登录已禁用，隐藏登录类型切换按钮并启用手机号自动识别...",
+    );
     // 隐藏 PC 端登录类型切换按钮组
     const loginTypeToggle = document.getElementById("auth-login-type-toggle");
     if (loginTypeToggle) loginTypeToggle.style.display = "none";
     // 隐藏移动端登录类型切换按钮组
-    const mobileLoginTypeToggle = document.getElementById("mobile-login-type-toggle");
+    const mobileLoginTypeToggle = document.getElementById(
+      "mobile-login-type-toggle",
+    );
     if (mobileLoginTypeToggle) mobileLoginTypeToggle.style.display = "none";
     // 隐藏"使用验证码登录"入口（PC 和移动端）
     const switchToSmsBtn = document.getElementById("auth-switch-to-sms");
@@ -45589,7 +45660,9 @@ async function loadMobileMultiMessages() {
             : `?session_id=${sessionUUID}`;
         }
 
-        console.log(`[移动端留言板] 渲染留言 ID: ${msg.id}, 昵称: ${displayName}, IP城市: ${ipCity}, 是否游客: ${msg.is_guest}, 可删除: ${canDelete}`);
+        console.log(
+          `[移动端留言板] 渲染留言 ID: ${msg.id}, 昵称: ${displayName}, IP城市: ${ipCity}, 是否游客: ${msg.is_guest}, 可删除: ${canDelete}`,
+        );
         return `
         <div class="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-5 space-y-3 shadow-lg hover:shadow-xl transition-shadow duration-200 ease-in-out">
           <div class="flex justify-between items-start gap-4">
@@ -45678,10 +45751,15 @@ async function loadMobileMultiMessages() {
             console.warn("移动端留言 Markdown 渲染失败，回退为纯文本显示", e);
           }
         } else {
-          console.warn(`[移动端留言板] editormd 未加载，无法渲染 Markdown 留言 ID: ${m.id}`);
+          console.warn(
+            `[移动端留言板] editormd 未加载，无法渲染 Markdown 留言 ID: ${m.id}`,
+          );
         }
 
-        container.innerHTML = escapeHtml(m.content || "").replace(/\n/g, "<br>");
+        container.innerHTML = escapeHtml(m.content || "").replace(
+          /\n/g,
+          "<br>",
+        );
       });
     })(messages);
   } catch (e) {
@@ -45769,7 +45847,10 @@ async function submitMobileMultiMessage() {
       showModalAlert("留言发送成功", "成功");
       // 清空输入
       contentInput.value = "";
-      if (mobileMultiMessageEditor && typeof mobileMultiMessageEditor.clear === "function") {
+      if (
+        mobileMultiMessageEditor &&
+        typeof mobileMultiMessageEditor.clear === "function"
+      ) {
         mobileMultiMessageEditor.clear();
       }
       if (nicknameInput) nicknameInput.value = "";
@@ -45828,13 +45909,32 @@ async function ensureMobileMultiMessageEditorInitialized() {
       flowChart: false,
       sequenceDiagram: true,
       toolbarIcons: function () {
-        return ["undo", "redo", "|", "bold", "italic", "quote", "|", "list-ul", "list-ol", "|", "link", "image", "code-block", "|", "watch", "preview"];
+        return [
+          "undo",
+          "redo",
+          "|",
+          "bold",
+          "italic",
+          "quote",
+          "|",
+          "list-ul",
+          "list-ol",
+          "|",
+          "link",
+          "image",
+          "code-block",
+          "|",
+          "watch",
+          "preview",
+        ];
       },
       onchange: function () {
         try {
           const md = mobileMultiMessageEditor.getMarkdown() || "";
           const ta = document.getElementById("mobile-multi-message-content");
-          const count = document.getElementById("mobile-multi-message-char-count");
+          const count = document.getElementById(
+            "mobile-multi-message-char-count",
+          );
           if (ta) ta.value = md;
           if (count) count.textContent = String(md.length);
         } catch (_) {}
@@ -47228,10 +47328,16 @@ function copyAdminContentToMultiPanel(tabType) {
     mobileContainer.querySelectorAll("button").forEach((btn) => {
       const onclickAttr = btn.getAttribute("onclick");
       if (!onclickAttr) return;
-      if (tabType === "restore-account" && onclickAttr.includes("restoreAccount(")) {
+      if (
+        tabType === "restore-account" &&
+        onclickAttr.includes("restoreAccount(")
+      ) {
         btn.setAttribute(
           "onclick",
-          onclickAttr.replace("restoreAccount(", "restoreAccountAndRefreshMobile("),
+          onclickAttr.replace(
+            "restoreAccount(",
+            "restoreAccountAndRefreshMobile(",
+          ),
         );
       }
     });
@@ -47597,18 +47703,18 @@ async function submitMobileModifyPhone() {
 
     const result = await response.json();
 
-      if (result.success) {
-        showModalAlert("手机号修改成功", "成功");
-        closeMobileModifyPhoneModal();
-        // 刷新用户数据
-        if (currentUserData) {
-          currentUserData.phone = phone;
-        }
-        loadMobileUnifiedProfile();
-        loadMobileUserBillingList();
-      } else {
-        showModalAlert(result.message || "修改失败", "错误");
+    if (result.success) {
+      showModalAlert("手机号修改成功", "成功");
+      closeMobileModifyPhoneModal();
+      // 刷新用户数据
+      if (currentUserData) {
+        currentUserData.phone = phone;
       }
+      loadMobileUnifiedProfile();
+      loadMobileUserBillingList();
+    } else {
+      showModalAlert(result.message || "修改失败", "错误");
+    }
   } catch (e) {
     console.error("[移动端修改手机号] 失败:", e);
     showModalAlert("修改失败: " + e.message, "错误");
@@ -47629,10 +47735,10 @@ async function loadMobileUnifiedProfile() {
     });
     const result = await response.json();
 
-      if (result.success) {
-        // 修正：后端返回的键名为 'user' 而不是 'data'
-        const data = result.user;
-        updateAccountCancellationStatusDisplay(data.account_cancellation);
+    if (result.success) {
+      // 修正：后端返回的键名为 'user' 而不是 'data'
+      const data = result.user;
+      updateAccountCancellationStatusDisplay(data.account_cancellation);
 
       // 更新头像
       const avatarDisplay = document.getElementById(
@@ -47683,8 +47789,12 @@ async function loadMobileUnifiedProfile() {
         }
         // 根据 enable_phone_modification 配置控制修改手机号按钮和提示的显示
         const appConfig = window.APP_CONFIG || {};
-        const modifyPhoneBtn = document.getElementById("mobile-unified-modify-phone-btn");
-        const modifyPhoneHint = document.getElementById("mobile-unified-modify-phone-hint");
+        const modifyPhoneBtn = document.getElementById(
+          "mobile-unified-modify-phone-btn",
+        );
+        const modifyPhoneHint = document.getElementById(
+          "mobile-unified-modify-phone-hint",
+        );
         if (!appConfig.enable_phone_modification) {
           if (modifyPhoneBtn) modifyPhoneBtn.style.display = "none";
           if (modifyPhoneHint) modifyPhoneHint.style.display = "none";
@@ -47693,9 +47803,12 @@ async function loadMobileUnifiedProfile() {
           if (modifyPhoneBtn) modifyPhoneBtn.style.display = "";
           if (modifyPhoneHint) modifyPhoneHint.style.display = "";
         }
-        const mobileForgotPasswordHint = document.getElementById("mobile-forgot-password-hint");
+        const mobileForgotPasswordHint = document.getElementById(
+          "mobile-forgot-password-hint",
+        );
         if (mobileForgotPasswordHint) {
-          mobileForgotPasswordHint.style.display = appConfig.enable_phone_modification ? "" : "none";
+          mobileForgotPasswordHint.style.display =
+            appConfig.enable_phone_modification ? "" : "none";
         }
         // --- 新增：更新 2FA 状态 ---
         const tfaStatus = document.getElementById("mobile-unified-2fa-status");
@@ -55128,7 +55241,10 @@ async function _isPaymentRequiredForOverdueCheck() {
       return enabled;
     }
   } catch (error) {
-    console.warn("[欠费检查] 获取后端 require_payment 配置失败，回退本地状态", error);
+    console.warn(
+      "[欠费检查] 获取后端 require_payment 配置失败，回退本地状态",
+      error,
+    );
   }
 
   const requirePaymentCheckbox = document.getElementById(
@@ -55170,10 +55286,14 @@ async function _checkOverdueBeforeStartByCurrentMode() {
     console.log("多账号模式，检查所有账号的欠费状态。");
     const usernames = _getMultiAccountListUsernames();
     console.log("多账号模式，获取到的账号列表:", usernames);
-    return usernames.length > 0 ? await checkOverdueBeforeStart(usernames) : true;
+    return usernames.length > 0
+      ? await checkOverdueBeforeStart(usernames)
+      : true;
   }
   console.log("单账号模式，检查当前账号的欠费状态。");
-  const currentSchoolUsername = String(currentUserData?.student_id || "").trim();
+  const currentSchoolUsername = String(
+    currentUserData?.student_id || "",
+  ).trim();
   console.log("单账号模式，当前账号:", currentSchoolUsername);
   return currentSchoolUsername
     ? await checkOverdueBeforeStart(currentSchoolUsername)
@@ -55193,12 +55313,16 @@ async function showOverduePaymentModal(overdueAccounts) {
   Swal.fire({
     title: "正在获取欠费账单",
     allowOutsideClick: false,
-    didOpen: () => { Swal.showLoading(); },
+    didOpen: () => {
+      Swal.showLoading();
+    },
   });
 
   // 收集所有欠费账号的 school_username 集合
   const overdueSet = new Set(
-    (overdueAccounts || []).map((a) => a.school_username || a.username || "").filter(Boolean)
+    (overdueAccounts || [])
+      .map((a) => a.school_username || a.username || "")
+      .filter(Boolean),
   );
 
   // 从账单系统获取所有待支付账单，过滤出欠费账号的账单
@@ -55210,7 +55334,7 @@ async function showOverduePaymentModal(overdueAccounts) {
     const result = await resp.json();
     if (result.success) {
       pendingBills = (result.records || []).filter(
-        (r) => r.status === "pending" && overdueSet.has(r.school_username)
+        (r) => r.status === "pending" && overdueSet.has(r.school_username),
       );
     }
   } catch (e) {
@@ -55229,7 +55353,9 @@ async function showOverduePaymentModal(overdueAccounts) {
     return;
   }
 
-  const totalAmount = pendingBills.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0).toFixed(2);
+  const totalAmount = pendingBills
+    .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+    .toFixed(2);
 
   // 点击卡片/行切换选中状态并更新合计
   const updateTotal = `document.getElementById('overdue-total-amount').textContent='¥'+[...document.querySelectorAll('[data-overdue-bill-select]')].filter(c=>c.checked).reduce((s,c)=>s+parseFloat(c.dataset.amount||0),0).toFixed(2);`;
@@ -55238,53 +55364,65 @@ async function showOverduePaymentModal(overdueAccounts) {
 
   if (isMobileMode) {
     // ── 移动端：全卡片式 ────────────────────────────────────────────────
-    const cardsHtml = pendingBills.map((r, idx) => {
-      const safeId = escapeHtml(r.billing_id || "");
-      const safeSchool = escapeHtml(r.school_username || "-");
-      const safeName = escapeHtml(r.school_name || r.school_username || "-");
-      const safeReason = escapeHtml(r.reason || "-");
-      const amount = r.amount != null ? parseFloat(r.amount) : 0;
-      const fmtAmount = "¥" + amount.toFixed(2);
-      return `
-        <div class="bg-white border-2 border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all cursor-pointer"
-             style="tap-highlight-color:transparent"
-             onclick="const cb=document.getElementById('ob-${idx}');cb.checked=!cb.checked;${updateTotal}this.style.borderColor=cb.checked?'#3b82f6':'#e2e8f0';">
-          <!-- 顶栏 -->
-          <div class="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-200">
-            <input id="ob-${idx}" type="checkbox" data-overdue-bill-select="1"
-              data-billing-id="${safeId}" data-school-username="${safeSchool}"
-              data-amount="${amount}" checked
-              onclick="event.stopPropagation();${updateTotal}this.closest('[onclick]').style.borderColor=this.checked?'#3b82f6':'#e2e8f0';"
-              class="w-4 h-4 flex-shrink-0 accent-blue-500">
-            <div class="flex-1 min-w-0">
-              <div class="text-[10px] text-slate-500 leading-none mb-0.5">学校账号</div>
-              <div class="text-xs font-semibold text-slate-800 truncate">${safeSchool}</div>
-            </div>
-            <span class="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">⏳ 待支付</span>
-          </div>
-          <!-- 内容区 -->
-          <div class="px-3 pt-2 pb-2.5">
-            <div class="flex items-center gap-1.5 mb-1.5">
-              <span class="text-[10px] text-slate-500 flex-shrink-0">姓名</span>
-              <span class="text-[11px] font-medium text-slate-700 truncate">${safeName}</span>
-            </div>
-            <div class="grid grid-cols-2 gap-1.5 text-[11px] mb-1.5">
-              <div class="bg-amber-50 border border-amber-100 rounded-xl px-2.5 py-1.5">
-                <div class="text-amber-600/70 leading-none mb-0.5 text-[10px]">金额</div>
-                <div class="text-amber-700 font-bold">${fmtAmount}</div>
-              </div>
-              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
-                <div class="text-slate-500 leading-none mb-0.5 text-[10px]">创建时间</div>
-                <div class="text-slate-700 break-all text-[10px]">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
-              </div>
-            </div>
-            <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-[10px]">
-              <div class="text-slate-500 leading-none mb-0.5">原因</div>
-              <div class="text-slate-800 break-all">${safeReason}</div>
-            </div>
-          </div>
-        </div>`;
-    }).join("");
+    const cardsHtml = pendingBills
+      .map((r, idx) => {
+        const safeId = escapeHtml(r.billing_id || "");
+        const safeSchool = escapeHtml(r.school_username || "-");
+        const safeName = escapeHtml(r.school_name || r.school_username || "-");
+        const safeReason = escapeHtml(r.reason || "-");
+        const amount = r.amount != null ? parseFloat(r.amount) : 0;
+        const fmtAmount = "¥" + amount.toFixed(2);
+        return `
+<div class="bg-white border-2 border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all cursor-pointer"
+     style="tap-highlight-color:transparent"
+     onclick="const cb=document.getElementById('ob-${idx}');cb.checked=!cb.checked;${updateTotal}this.style.borderColor=cb.checked?'#3b82f6':'#e2e8f0';">
+
+  <!-- 顶栏：小屏垂直，大屏水平 -->
+  <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-200 text-center sm:text-left">
+
+    <input id="ob-${idx}" type="checkbox" data-overdue-bill-select="1"
+      data-billing-id="${safeId}" data-school-username="${safeSchool}"
+      data-amount="${amount}" checked
+      onclick="event.stopPropagation();${updateTotal}this.closest('[onclick]').style.borderColor=this.checked?'#3b82f6':'#e2e8f0';"
+      class="w-4 h-4 mx-auto sm:mx-0 flex-shrink-0 accent-blue-500">
+
+    <div class="flex-1 min-w-0">
+      <div class="text-[10px] text-slate-500 leading-none mb-0.5">学校账号</div>
+      <div class="text-xs font-semibold text-slate-800 truncate">${safeSchool}</div>
+    </div>
+
+  </div>
+
+  <!-- 内容区 -->
+  <div class="px-3 pt-2 pb-2.5">
+
+    <div class="flex items-center gap-1.5 mb-1.5">
+      <span class="text-[10px] text-slate-500 flex-shrink-0">姓名</span>
+      <span class="text-[11px] font-medium text-slate-700 truncate">${safeName}</span>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] mb-1.5">
+      <div class="bg-amber-50 border border-amber-100 rounded-xl px-2.5 py-1.5">
+        <div class="text-amber-600/70 leading-none mb-0.5 text-[10px]">金额</div>
+        <div class="text-amber-700 font-bold">${fmtAmount}</div>
+      </div>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+        <div class="text-slate-500 leading-none mb-0.5 text-[10px]">创建时间</div>
+        <div class="text-slate-700 break-all text-[10px]">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-[10px]">
+      <div class="text-slate-500 leading-none mb-0.5">详情</div>
+      <div class="text-slate-800 break-all">${safeReason}</div>
+    </div>
+
+  </div>
+</div>
+`;
+      })
+      .join("");
 
     bodyHtml = `
       <div class="text-left space-y-3">
@@ -55298,18 +55436,18 @@ async function showOverduePaymentModal(overdueAccounts) {
         </div>
       </div>`;
     modalWidth = "95vw";
-
   } else {
     // ── PC端：列表式 ─────────────────────────────────────────────────────
-    const rowsHtml = pendingBills.map((r, idx) => {
-      const safeId = escapeHtml(r.billing_id || "");
-      const safeSchool = escapeHtml(r.school_username || "-");
-      const safeName = escapeHtml(r.school_name || r.school_username || "-");
-      const safeReason = escapeHtml(r.reason || "-");
-      const amount = r.amount != null ? parseFloat(r.amount) : 0;
-      const fmtAmount = "¥" + amount.toFixed(2);
-      const fmtTime = escapeHtml(_fmtBillTime(r.created_at) || "-");
-      return `
+    const rowsHtml = pendingBills
+      .map((r, idx) => {
+        const safeId = escapeHtml(r.billing_id || "");
+        const safeSchool = escapeHtml(r.school_username || "-");
+        const safeName = escapeHtml(r.school_name || r.school_username || "-");
+        const safeReason = escapeHtml(r.reason || "-");
+        const amount = r.amount != null ? parseFloat(r.amount) : 0;
+        const fmtAmount = "¥" + amount.toFixed(2);
+        const fmtTime = escapeHtml(_fmtBillTime(r.created_at) || "-");
+        return `
         <tr class="border-b border-slate-100 hover:bg-blue-50/40 cursor-pointer transition-colors"
             onclick="const cb=document.getElementById('ob-${idx}');cb.checked=!cb.checked;${updateTotal}">
           <td class="py-2.5 pl-3 pr-2 text-center">
@@ -55321,22 +55459,28 @@ async function showOverduePaymentModal(overdueAccounts) {
           </td>
           <td class="py-2.5 px-2">
             <div class="text-sm font-medium text-slate-800">${safeSchool}</div>
+          </td>
+          <td class="py-2.5 px-2">
             <div class="text-xs text-slate-500">${safeName}</div>
           </td>
           <td class="py-2.5 px-2 text-sm text-slate-600 max-w-[180px]">
-            <div class="truncate" title="${safeReason}">${safeReason}</div>
+            <div class="break-words whitespace-normal" title="${safeReason}">
+              ${safeReason}
+            </div>
           </td>
+
           <td class="py-2.5 px-2 text-sm font-semibold text-amber-600 whitespace-nowrap">${fmtAmount}</td>
           <td class="py-2.5 px-2 text-xs text-slate-400 whitespace-nowrap">${fmtTime}</td>
         </tr>`;
-    }).join("");
+      })
+      .join("");
 
     bodyHtml = `
       <div class="text-left">
         <p class="text-xs text-slate-500 mb-3">💡 点击行可切换勾选，勾选后点击"确认支付"合并发起支付</p>
         <div class="rounded-xl border border-slate-200 overflow-hidden mb-3">
           <div class="overflow-x-auto max-h-72 overflow-y-auto">
-            <table class="w-full text-left border-collapse text-xs">
+            <table class="w-full text-left border-collapse text-xs text-center">
               <thead>
                 <tr class="bg-slate-100 sticky top-0 z-10">
                   <th class="py-2.5 pl-3 pr-2 w-8">
@@ -55344,8 +55488,9 @@ async function showOverduePaymentModal(overdueAccounts) {
                       onclick="document.querySelectorAll('[data-overdue-bill-select]').forEach(c=>c.checked=this.checked);${updateTotal}"
                       class="w-4 h-4 accent-blue-500">
                   </th>
-                  <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">学校账号 / 姓名</th>
-                  <th class="py-2.5 px-2 font-semibold text-slate-600">原因</th>
+                  <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">学校账号</th>
+                  <th class="py-2.5 px-2 font-semibold text-slate-600">姓名</th>
+                  <th class="py-2.5 px-2 font-semibold text-slate-600">详情</th>
                   <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">金额</th>
                   <th class="py-2.5 px-2 font-semibold text-slate-600 whitespace-nowrap">创建时间</th>
                 </tr>
@@ -55361,7 +55506,7 @@ async function showOverduePaymentModal(overdueAccounts) {
           <span id="overdue-total-amount" class="text-white text-2xl font-bold">¥${totalAmount}</span>
         </div>
       </div>`;
-    modalWidth = "680px";
+    modalWidth = "780px";
   }
 
   const result = await Swal.fire({
@@ -55379,7 +55524,7 @@ async function showOverduePaymentModal(overdueAccounts) {
 
   // 收集选中的账单
   const selectedBills = [];
-  document.querySelectorAll('[data-overdue-bill-select]').forEach((cb) => {
+  document.querySelectorAll("[data-overdue-bill-select]").forEach((cb) => {
     if (cb.checked) {
       selectedBills.push({
         billing_id: cb.dataset.billingId,
@@ -55389,7 +55534,12 @@ async function showOverduePaymentModal(overdueAccounts) {
   });
 
   if (!selectedBills.length) {
-    await Swal.fire({ title: "提示", text: "请至少选择一条账单", icon: "info", confirmButtonText: "确定" });
+    await Swal.fire({
+      title: "提示",
+      text: "请至少选择一条账单",
+      icon: "info",
+      confirmButtonText: "确定",
+    });
     return;
   }
 
@@ -55402,7 +55552,12 @@ async function showOverduePaymentModal(overdueAccounts) {
       confirmButtonText: "确定",
     });
   } catch (e) {
-    await Swal.fire({ title: "支付发起失败", text: e.message || "未知错误", icon: "error", confirmButtonText: "确定" });
+    await Swal.fire({
+      title: "支付发起失败",
+      text: e.message || "未知错误",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
   }
 }
 
@@ -56141,7 +56296,9 @@ async function loadOverdueAccounts() {
       if (mergedMap.has(key)) {
         const existing = mergedMap.get(key);
         // 追加所属账号（去重），同时记录该账号是否为管理员
-        if (!existing.auth_usernames.find((u) => u.name === account.auth_username)) {
+        if (
+          !existing.auth_usernames.find((u) => u.name === account.auth_username)
+        ) {
           existing.auth_usernames.push({
             name: account.auth_username,
             is_admin: !!account.is_admin,
@@ -56152,7 +56309,9 @@ async function loadOverdueAccounts() {
       } else {
         mergedMap.set(key, {
           ...account,
-          auth_usernames: [{ name: account.auth_username, is_admin: !!account.is_admin }],
+          auth_usernames: [
+            { name: account.auth_username, is_admin: !!account.is_admin },
+          ],
         });
       }
     });
@@ -56171,7 +56330,8 @@ async function loadOverdueAccounts() {
     // 检查是否有欠费账号
     if (mergedAccounts.length === 0) {
       // 没有欠费账号，显示提示信息
-      pcHtml = '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
+      pcHtml =
+        '<div class="text-center py-10 text-slate-500">暂无欠费账号</div>';
       mobileHtml = pcHtml;
     } else {
       // 有欠费账号，遍历生成每个账号的卡片
@@ -56643,7 +56803,7 @@ async function View_details_of_users_with_outstanding_payments(
       try {
         const billResp = await fetch(
           `/api/admin/billing/list?school_username=${encodeURIComponent(school_username)}`,
-          { headers: { "X-Session-ID": sessionUUID } }
+          { headers: { "X-Session-ID": sessionUUID } },
         );
         const billResult = await billResp.json();
         if (billResult.success) {
@@ -56659,11 +56819,15 @@ async function View_details_of_users_with_outstanding_payments(
           return `<div class="text-xs text-slate-400 text-center py-3">暂无账单记录</div>`;
         }
         const statusLabel = (s) => {
-          if (s === "paid") return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">✓ 已支付</span>`;
-          if (s === "admin_cleared") return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-800">✓ 管理员清除</span>`;
+          if (s === "paid")
+            return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">✓ 已支付</span>`;
+          if (s === "admin_cleared")
+            return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-800">✓ 管理员清除</span>`;
           return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">⏳ 待支付</span>`;
         };
-        return records.map(r => `
+        return records
+          .map(
+            (r) => `
           <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-2">
             <div class="flex items-center justify-between mb-2">
               <div>
@@ -56681,7 +56845,9 @@ async function View_details_of_users_with_outstanding_payments(
               </div>
               ${r.status === "pending" ? `<button onclick="Swal.close();paySingleBilling('admin-billing-list-container','${escapeHtml(r.billing_id || "")}','${escapeHtml(r.school_username || "")}')" class="px-2 py-1 text-[11px] bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md border border-emerald-200 transition-colors">支付</button>` : ""}
             </div>
-          </div>`).join("");
+          </div>`,
+          )
+          .join("");
       };
 
       // 构建HTML内容 - 使用现代化的渐变背景和卡片设计
@@ -56925,19 +57091,23 @@ async function View_details_of_users_with_outstanding_payments(
       try {
         const billResp = await fetch(
           `/api/billing/list?school_username=${encodeURIComponent(school_username)}`,
-          { headers: { "X-Session-ID": sessionUUID } }
+          { headers: { "X-Session-ID": sessionUUID } },
         );
         const billData = await billResp.json();
         if (billData.success) fallbackBills = billData.records || [];
       } catch (_e) {}
 
       const statusLabelFb = (s) => {
-        if (s === "paid") return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">✓ 已支付</span>`;
-        if (s === "admin_cleared") return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-800">✓ 管理员清除</span>`;
+        if (s === "paid")
+          return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">✓ 已支付</span>`;
+        if (s === "admin_cleared")
+          return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-800">✓ 管理员清除</span>`;
         return `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">⏳ 待支付</span>`;
       };
       const billCardsHtmlFb = fallbackBills.length
-        ? fallbackBills.map(r => `
+        ? fallbackBills
+            .map(
+              (r) => `
           <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-2">
             <div class="flex items-center justify-between mb-2">
               <div class="text-xs text-slate-600">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
@@ -56949,7 +57119,9 @@ async function View_details_of_users_with_outstanding_payments(
               <span class="text-[10px] text-slate-400">金额：</span>
               <span class="text-sm font-bold ${r.status === "pending" ? "text-amber-600" : "text-green-600"}">${r.amount != null ? "¥" + escapeHtml(String(r.amount)) : "-"}</span>
             </div>
-          </div>`).join("")
+          </div>`,
+            )
+            .join("")
         : `<div class="text-xs text-slate-400 text-center py-3">暂无账单记录</div>`;
 
       Swal.fire({
@@ -57451,10 +57623,10 @@ async function fetchSchoolAccountName(school_username) {
   try {
     const resp = await fetch(
       `/api/school_account/name?school_username=${encodeURIComponent(school_username)}`,
-      { headers: { "X-Session-ID": sessionUUID } }
+      { headers: { "X-Session-ID": sessionUUID } },
     );
     const result = await resp.json();
-    const name = (result.success && result.name) ? result.name : "";
+    const name = result.success && result.name ? result.name : "";
     _schoolNameCache[school_username] = name;
     return name;
   } catch (e) {
@@ -57480,12 +57652,12 @@ function _fmtBillTime(v) {
 
 function _billStatusBadge(status) {
   if (status === "paid") {
-    return "<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-green-500 text-[11px]\">✓ 已支付</span>";
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-green-500 text-[11px]">✓ 已支付</span>';
   }
   if (status === "admin_cleared") {
-    return "<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 text-[11px]\">✓ 管理员清除</span>";
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 text-[11px]">✓ 管理员清除</span>';
   }
-  return "<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 text-[11px]\">⏳ 待支付</span>";
+  return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 text-[11px]">⏳ 待支付</span>';
 }
 
 function _billStatusText(status) {
@@ -57498,13 +57670,17 @@ function _collectSelectedBillingItems(containerId) {
   const root = document.getElementById(containerId);
   if (!root) return [];
   const items = [];
-  root.querySelectorAll('input[data-billing-select="1"]:checked').forEach((cb) => {
-    const billingId = (cb.getAttribute("data-billing-id") || "").trim();
-    const schoolUsername = (cb.getAttribute("data-school-username") || "").trim();
-    if (billingId && schoolUsername) {
-      items.push({ billing_id: billingId, school_username: schoolUsername });
-    }
-  });
+  root
+    .querySelectorAll('input[data-billing-select="1"]:checked')
+    .forEach((cb) => {
+      const billingId = (cb.getAttribute("data-billing-id") || "").trim();
+      const schoolUsername = (
+        cb.getAttribute("data-school-username") || ""
+      ).trim();
+      if (billingId && schoolUsername) {
+        items.push({ billing_id: billingId, school_username: schoolUsername });
+      }
+    });
   return items;
 }
 
@@ -57523,26 +57699,32 @@ function _buildBillingSelectionDetailHtml(containerId, items) {
     let createdAt = "-";
     const el = selectedInputs.find(
       (input) =>
-        String(input.getAttribute("data-billing-id") || "").trim() === billingId &&
-        String(input.getAttribute("data-school-username") || "").trim() === schoolUsername,
+        String(input.getAttribute("data-billing-id") || "").trim() ===
+          billingId &&
+        String(input.getAttribute("data-school-username") || "").trim() ===
+          schoolUsername,
     );
     if (el) {
       schoolName = (el.getAttribute("data-school-name") || "-").trim() || "-";
       reason = (el.getAttribute("data-reason") || "-").trim() || "-";
       amount = (el.getAttribute("data-amount") || "-").trim() || "-";
-      status = _billStatusText((el.getAttribute("data-status") || "-").trim() || "-");
+      status = _billStatusText(
+        (el.getAttribute("data-status") || "-").trim() || "-",
+      );
       createdAt = (el.getAttribute("data-created-at") || "-").trim() || "-";
     }
     return `<div class="text-left border border-slate-200 rounded-xl p-2.5 bg-slate-50 ${
       idx > 0 ? "mt-1.5" : ""
     }">
       <div class="grid grid-cols-1 gap-1.5">
-        <div class="text-xs text-slate-800"><span class="text-slate-500">学校账号对应姓名：</span>${_escapeAttr(schoolName)}</div>
         <div class="text-xs text-slate-800 break-all"><span class="text-slate-500">学校账号：</span>${_escapeAttr(schoolUsername || "-")}</div>
-        <div class="text-xs text-slate-700"><span class="text-slate-500">欠费账单创建时间：</span>${_escapeAttr(_fmtBillTime(createdAt))}</div>
-        <div class="text-xs text-slate-700 break-all"><span class="text-slate-500">欠费账单描述：</span>${_escapeAttr(reason)}</div>
-        <div class="text-xs text-slate-700"><span class="text-slate-500">欠费状态：</span>${_escapeAttr(status)}</div>
-        <div class="text-[11px] text-slate-500 break-all">账单ID：${_escapeAttr(billingId || "-")}，金额：${_escapeAttr(amount)}</div>
+        <div class="text-xs text-slate-800"><span class="text-slate-500">姓名：</span>${_escapeAttr(schoolName)}</div>
+        
+        <div class="text-xs text-slate-700"><span class="text-slate-500">账单创建时间：</span>${_escapeAttr(_fmtBillTime(createdAt))}</div>
+        <div class="text-xs text-slate-700 break-all"><span class="text-slate-500">账单描述：</span>${_escapeAttr(reason)}</div>
+        <div class="text-xs text-slate-700"><span class="text-slate-500">金额：</span>${_escapeAttr(amount)}</div>
+        <div class="text-xs text-slate-700"><span class="text-slate-500">状态：</span>${_escapeAttr(status)}</div>
+        <div class="text-[11px] text-slate-500 break-all">账单ID：${_escapeAttr(billingId || "-")}</div>
       </div>
     </div>`;
   });
@@ -57607,15 +57789,19 @@ function _renderMobileUserBillingCards(records, containerId) {
           <!-- 时间 + 操作按钮（按账单状态显示不同内容） -->
           <div class="flex items-center justify-between gap-2">
             <div class="text-[11px] text-slate-400 truncate">
-              ${r.status === "paid"
-                ? `支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}`
-                : r.status === "admin_cleared"
-                  ? `清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}`
-                  : ""}
+              ${
+                r.status === "paid"
+                  ? `支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}`
+                  : r.status === "admin_cleared"
+                    ? `清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}`
+                    : ""
+              }
             </div>
-            ${canPay
-              ? `<button class="flex-shrink-0 px-3 py-1 text-[11px] font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg border border-emerald-200 transition-colors" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`
-              : `<span class="flex-shrink-0 text-[11px] ${r.status === "admin_cleared" ? "text-sky-500" : "text-green-500"}">${r.status === "admin_cleared" ? "已清除" : "已支付"}</span>`}
+            ${
+              canPay
+                ? `<button class="flex-shrink-0 px-3 py-1 text-[11px] font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg border border-emerald-200 transition-colors" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`
+                : `<span class="flex-shrink-0 text-[11px] ${r.status === "admin_cleared" ? "text-sky-500" : "text-green-500"}">${r.status === "admin_cleared" ? "已清除" : "已支付"}</span>`
+            }
           </div>
         </div>
       </div>`;
@@ -57680,22 +57866,28 @@ async function loadUserBillingList() {
     </div>`;
   try {
     const url = schoolUsername
-      ? "/api/billing/list?school_username=" + encodeURIComponent(schoolUsername)
+      ? "/api/billing/list?school_username=" +
+        encodeURIComponent(schoolUsername)
       : "/api/billing/list";
     const resp = await fetch(url, {
-      headers: { "X-Session-ID": sessionUUID }
+      headers: { "X-Session-ID": sessionUUID },
     });
     const data = await resp.json();
     if (!data.success) {
-      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + _escapeAttr(data.message || "未知错误") + "</p>";
+      container.innerHTML =
+        '<p class="text-xs text-red-500">加载失败: ' +
+        _escapeAttr(data.message || "未知错误") +
+        "</p>";
       return;
     }
     const records = data.records || [];
     if (records.length === 0) {
-      container.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-1.5"><p class="text-sm">暂无账单记录</p><p class="text-xs">${schoolUsername ? ("当前筛选学校账号：" + _escapeAttr(schoolUsername)) : "当前范围：有权限学校账号的全部账单"}</p></div>`;
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-1.5"><p class="text-sm">暂无账单记录</p><p class="text-xs">${schoolUsername ? "当前筛选学校账号：" + _escapeAttr(schoolUsername) : "当前范围：有权限学校账号的全部账单"}</p></div>`;
       return;
     }
-    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}` : "当前范围：有权限学校账号的全部账单";
+    const scopeTip = schoolUsername
+      ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}`
+      : "当前范围：有权限学校账号的全部账单";
     let html = `<!-- <div class="mb-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div> -->`;
     html += `<div class="mb-2 flex items-center gap-2 justify-end">
       <button class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs" onclick="toggleBillingSelectAll('user-billing-list-container', true)">全选待支付</button>
@@ -57709,12 +57901,17 @@ async function loadUserBillingList() {
     });
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = "<p class=\"text-xs text-red-500\">加载异常: " + _escapeAttr(e.message) + "</p>";
+    container.innerHTML =
+      '<p class="text-xs text-red-500">加载异常: ' +
+      _escapeAttr(e.message) +
+      "</p>";
   }
 }
 
 async function loadMobileUserBillingList() {
-  const container = document.getElementById("mobile-user-billing-list-container");
+  const container = document.getElementById(
+    "mobile-user-billing-list-container",
+  );
   if (!container) return;
   container.innerHTML = `
     <div class="flex items-center justify-center py-8 gap-2 text-slate-400 text-xs">
@@ -57724,7 +57921,9 @@ async function loadMobileUserBillingList() {
       <span>加载中...</span>
     </div>`;
   try {
-    const resp = await fetch("/api/billing/list", { headers: { "X-Session-ID": sessionUUID } });
+    const resp = await fetch("/api/billing/list", {
+      headers: { "X-Session-ID": sessionUUID },
+    });
     const data = await resp.json();
     if (!data.success) {
       container.innerHTML = `<p class="text-xs text-red-500">加载失败: ${_escapeAttr(data.message || "未知错误")}</p>`;
@@ -57741,7 +57940,10 @@ async function loadMobileUserBillingList() {
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="toggleBillingSelectAll('mobile-user-billing-list-container', false)">清空</button>
       <button class="btn btn-primary !py-0.5 !px-2 text-[11px]" onclick="paySelectedBilling('mobile-user-billing-list-container')">批量支付</button>
     </div>`;
-    html += _renderMobileUserBillingCards(records, "mobile-user-billing-list-container");
+    html += _renderMobileUserBillingCards(
+      records,
+      "mobile-user-billing-list-container",
+    );
     container.innerHTML = html;
   } catch (e) {
     container.innerHTML = `<p class="text-xs text-red-500">加载异常: ${_escapeAttr(e.message)}</p>`;
@@ -57757,20 +57959,23 @@ function toggleBillingSelectAll(containerId, checked) {
 }
 
 async function createBillingPaymentOrderAndOpen(billingItems) {
-  const createOrderResponse = await fetch("/api/payment/create_order_for_billing", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Session-ID": sessionUUID,
+  const createOrderResponse = await fetch(
+    "/api/payment/create_order_for_billing",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-ID": sessionUUID,
+      },
+      body: JSON.stringify({
+        billing_items: billingItems,
+        pay_type: "alipay",
+        device: Get_YiPAi_device(),
+        payment_type: "web",
+        app_host: window.location.protocol + "//" + window.location.host,
+      }),
     },
-    body: JSON.stringify({
-      billing_items: billingItems,
-      pay_type: "alipay",
-      device: Get_YiPAi_device(),
-      payment_type: "web",
-      app_host: window.location.protocol + "//" + window.location.host,
-    }),
-  });
+  );
   const orderResult = await createOrderResponse.json();
   if (!orderResult.success) {
     throw new Error(orderResult.message || "创建订单失败");
@@ -57786,7 +57991,12 @@ async function createBillingPaymentOrderAndOpen(billingItems) {
 async function paySelectedBilling(containerId) {
   const selected = _collectSelectedBillingItems(containerId);
   if (!selected.length) {
-    await Swal.fire({ title: "提示", text: "请先勾选待支付账单", icon: "warning", confirmButtonText: "确定" });
+    await Swal.fire({
+      title: "提示",
+      text: "请先勾选待支付账单",
+      icon: "warning",
+      confirmButtonText: "确定",
+    });
     return;
   }
   const confirmResult = await Swal.fire({
@@ -57809,12 +58019,19 @@ async function paySelectedBilling(containerId) {
       confirmButtonText: "确定",
     });
   } catch (e) {
-    await Swal.fire({ title: "支付发起失败", text: e.message || "未知错误", icon: "error", confirmButtonText: "确定" });
+    await Swal.fire({
+      title: "支付发起失败",
+      text: e.message || "未知错误",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
   }
 }
 
 async function paySingleBilling(containerId, billingId, schoolUsername) {
-  await paySelectedBillingWithPreset(containerId, [{ billing_id: billingId, school_username: schoolUsername }]);
+  await paySelectedBillingWithPreset(containerId, [
+    { billing_id: billingId, school_username: schoolUsername },
+  ]);
 }
 
 async function paySelectedBillingWithPreset(containerId, items) {
@@ -57844,7 +58061,12 @@ async function paySelectedBillingWithPreset(containerId, items) {
       confirmButtonText: "确定",
     });
   } catch (e) {
-    await Swal.fire({ title: "支付发起失败", text: e.message || "未知错误", icon: "error", confirmButtonText: "确定" });
+    await Swal.fire({
+      title: "支付发起失败",
+      text: e.message || "未知错误",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
   }
 }
 
@@ -57855,9 +58077,12 @@ async function loadAdminBillingList(usernameOverride = null) {
   const container = document.getElementById("admin-billing-list-container");
   const schoolInput = document.getElementById("admin-billing-school-input");
   if (!container) return;
-  const schoolUsername = usernameOverride != null
-    ? String(usernameOverride).trim()
-    : (schoolInput ? schoolInput.value.trim() : "");
+  const schoolUsername =
+    usernameOverride != null
+      ? String(usernameOverride).trim()
+      : schoolInput
+        ? schoolInput.value.trim()
+        : "";
   container.innerHTML = `
     <div class="flex items-center justify-center py-10 gap-3 text-slate-400">
       <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57866,7 +58091,10 @@ async function loadAdminBillingList(usernameOverride = null) {
       <span class="text-sm">加载中...</span>
     </div>`;
   try {
-    const url = schoolUsername ? "/api/admin/billing/list?school_username=" + encodeURIComponent(schoolUsername) : "/api/admin/billing/list";
+    const url = schoolUsername
+      ? "/api/admin/billing/list?school_username=" +
+        encodeURIComponent(schoolUsername)
+      : "/api/admin/billing/list";
     const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
     const data = await resp.json();
     if (!data.success) {
@@ -57880,11 +58108,17 @@ async function loadAdminBillingList(usernameOverride = null) {
     }
     // 统计
     const totalCount = records.length;
-    const paidCount = records.filter(r => r.status === "paid").length;
-    const pendingCount = records.filter(r => r.status === "pending").length;
-    const clearedCount = records.filter(r => r.status === "admin_cleared").length;
-    const totalAmount = records.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0).toFixed(2);
-    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${schoolUsername}` : "当前范围：所有学校账号的全部账单";
+    const paidCount = records.filter((r) => r.status === "paid").length;
+    const pendingCount = records.filter((r) => r.status === "pending").length;
+    const clearedCount = records.filter(
+      (r) => r.status === "admin_cleared",
+    ).length;
+    const totalAmount = records
+      .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+      .toFixed(2);
+    const scopeTip = schoolUsername
+      ? `当前筛选：学校账号 ${schoolUsername}`
+      : "当前范围：所有学校账号的全部账单";
     let html = `
       <div class="mb-3 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -57946,7 +58180,7 @@ async function loadAdminBillingList(usernameOverride = null) {
               class="px-2 py-1 text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-md border border-indigo-200 transition-colors whitespace-nowrap">🔍 查看详情</button>
             <button onclick='adminEditBilling(${JSON.stringify(r)})'
               class="px-2 py-1 text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md border border-sky-200 transition-colors whitespace-nowrap">✏️ 修改账单</button>
-            <button onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)},${JSON.stringify(r.school_username || '')})'
+            <button onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)},${JSON.stringify(r.school_username || "")})'
               class="px-2 py-1 text-xs bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md border border-rose-200 transition-colors whitespace-nowrap">🗑 删除</button>
           </div>
         </td>
@@ -57959,15 +58193,21 @@ async function loadAdminBillingList(usernameOverride = null) {
     container.innerHTML = html;
     // 动态控制「状态」列换行：当容器宽度 < 5× 状态列（不换行）宽度时允许换行
     (function () {
-      const statusCells = container.querySelectorAll(".admin-status-td, .admin-status-th");
+      const statusCells = container.querySelectorAll(
+        ".admin-status-td, .admin-status-th",
+      );
       if (!statusCells.length) return;
       const applyWrap = () => {
         const containerW = container.getBoundingClientRect().width;
         // 先强制不换行以量出自然宽度
-        statusCells.forEach(c => { c.style.whiteSpace = "nowrap"; });
+        statusCells.forEach((c) => {
+          c.style.whiteSpace = "nowrap";
+        });
         const statusW = statusCells[0].getBoundingClientRect().width;
         const wrap = containerW > 0 && containerW < 5 * statusW;
-        statusCells.forEach(c => { c.style.whiteSpace = wrap ? "" : "nowrap"; });
+        statusCells.forEach((c) => {
+          c.style.whiteSpace = wrap ? "" : "nowrap";
+        });
       };
       applyWrap();
       if (window.ResizeObserver) {
@@ -57988,10 +58228,13 @@ async function loadAdminBillingList(usernameOverride = null) {
  */
 async function adminEditBilling(record) {
   const billingId = record && record.billing_id ? record.billing_id : "";
-  const schoolUsername = record && record.school_username ? record.school_username : "";
+  const schoolUsername =
+    record && record.school_username ? record.school_username : "";
   const currentReason = record && record.reason ? record.reason : "";
-  const currentAmount = record && record.amount != null ? String(record.amount) : "";
-  const currentStatus = record && record.status ? String(record.status) : "pending";
+  const currentAmount =
+    record && record.amount != null ? String(record.amount) : "";
+  const currentStatus =
+    record && record.status ? String(record.status) : "pending";
 
   const result = await Swal.fire({
     title: "修改账单",
@@ -58067,9 +58310,13 @@ async function adminEditBilling(record) {
     },
     reverseButtons: true,
     preConfirm: () => {
-      const amount = document.getElementById("swal-billing-amount").value.trim();
+      const amount = document
+        .getElementById("swal-billing-amount")
+        .value.trim();
       const status = document.getElementById("swal-billing-status").value;
-      const reason = document.getElementById("swal-billing-reason").value.trim();
+      const reason = document
+        .getElementById("swal-billing-reason")
+        .value.trim();
       if (!amount || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
         Swal.showValidationMessage("请输入大于 0 的有效金额");
         return false;
@@ -58082,13 +58329,16 @@ async function adminEditBilling(record) {
   try {
     const resp = await fetch("/api/admin/billing/update", {
       method: "POST",
-      headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         billing_id: billingId,
         school_username: schoolUsername,
         reason: result.value.reason,
         amount: result.value.amount,
-        status: result.value.status
+        status: result.value.status,
       }),
     });
     const data = await resp.json();
@@ -58107,21 +58357,31 @@ async function adminEditBilling(record) {
         buttonsStyling: false, // 禁用默认按钮样式
         customClass: {
           popup: "swal-flat-popup",
-          confirmButton: "swal-flat-button"
-        }
+          confirmButton: "swal-flat-button",
+        },
       });
-
-
-
-
 
       await loadAdminBillingList();
       loadMobileMultiAdminBillingList();
     } else {
-      await Swal.fire({ title: "保存失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626", customClass: { popup: "swal2-neumorphism-popup" } });
+      await Swal.fire({
+        title: "保存失败",
+        text: data.message || "未知错误",
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+        customClass: { popup: "swal2-neumorphism-popup" },
+      });
     }
   } catch (e) {
-    await Swal.fire({ title: "请求异常", text: e.message, icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626", customClass: { popup: "swal2-neumorphism-popup" } });
+    await Swal.fire({
+      title: "请求异常",
+      text: e.message,
+      icon: "error",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#dc2626",
+      customClass: { popup: "swal2-neumorphism-popup" },
+    });
   }
 }
 
@@ -58153,8 +58413,14 @@ async function adminDeleteBilling(billingId, schoolUsername) {
   try {
     const resp = await fetch("/api/admin/billing/delete", {
       method: "POST",
-      headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
-      body: JSON.stringify({ billing_id: billingId, school_username: schoolUsername }),
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        billing_id: billingId,
+        school_username: schoolUsername,
+      }),
     });
     const data = await resp.json();
     if (data.success) {
@@ -58163,15 +58429,27 @@ async function adminDeleteBilling(billingId, schoolUsername) {
         text: data.message || "账单已删除",
         icon: "success",
         confirmButtonText: "确定",
-        confirmButtonColor: "#16a34a"
+        confirmButtonColor: "#16a34a",
       });
       await loadAdminBillingList();
       loadMobileMultiAdminBillingList();
     } else {
-      await Swal.fire({ title: "删除失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
+      await Swal.fire({
+        title: "删除失败",
+        text: data.message || "未知错误",
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+      });
     }
   } catch (e) {
-    await Swal.fire({ title: "请求异常", text: e.message, icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
+    await Swal.fire({
+      title: "请求异常",
+      text: e.message,
+      icon: "error",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#dc2626",
+    });
   }
 }
 
@@ -58224,15 +58502,40 @@ async function adminAddBillingDialog() {
     cancelButtonColor: "#64748b",
     reverseButtons: true,
     preConfirm: () => {
-      const school = document.getElementById("swal-add-billing-school").value.trim();
-      const mode = document.querySelector('input[name="swal-billing-mode"]:checked').value;
-      const count = document.getElementById("swal-add-billing-count").value.trim();
-      const amount = document.getElementById("swal-add-billing-amount").value.trim();
-      const reason = document.getElementById("swal-add-billing-reason").value.trim();
-      if (!school) { Swal.showValidationMessage("请填写学校账号"); return false; }
-      if (mode === "count" && (!count || parseInt(count) < 1)) { Swal.showValidationMessage("次数必须大于 0"); return false; }
-      if (mode === "amount" && (!amount || parseFloat(amount) <= 0)) { Swal.showValidationMessage("金额必须大于 0"); return false; }
-      return { school, mode, count: parseInt(count) || 1, amount: parseFloat(amount) || 0, reason };
+      const school = document
+        .getElementById("swal-add-billing-school")
+        .value.trim();
+      const mode = document.querySelector(
+        'input[name="swal-billing-mode"]:checked',
+      ).value;
+      const count = document
+        .getElementById("swal-add-billing-count")
+        .value.trim();
+      const amount = document
+        .getElementById("swal-add-billing-amount")
+        .value.trim();
+      const reason = document
+        .getElementById("swal-add-billing-reason")
+        .value.trim();
+      if (!school) {
+        Swal.showValidationMessage("请填写学校账号");
+        return false;
+      }
+      if (mode === "count" && (!count || parseInt(count) < 1)) {
+        Swal.showValidationMessage("次数必须大于 0");
+        return false;
+      }
+      if (mode === "amount" && (!amount || parseFloat(amount) <= 0)) {
+        Swal.showValidationMessage("金额必须大于 0");
+        return false;
+      }
+      return {
+        school,
+        mode,
+        count: parseInt(count) || 1,
+        amount: parseFloat(amount) || 0,
+        reason,
+      };
     },
   });
 
@@ -58249,7 +58552,10 @@ async function adminAddBillingDialog() {
 
     const resp = await fetch("/api/admin/billing/add", {
       method: "POST",
-      headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(body),
     });
     const data = await resp.json();
@@ -58263,51 +58569,75 @@ async function adminAddBillingDialog() {
       });
       await loadAdminBillingList();
     } else {
-      await Swal.fire({ title: "创建失败", text: data.message || "未知错误", icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
+      await Swal.fire({
+        title: "创建失败",
+        text: data.message || "未知错误",
+        icon: "error",
+        confirmButtonText: "确定",
+        confirmButtonColor: "#dc2626",
+      });
     }
   } catch (e) {
-    await Swal.fire({ title: "请求异常", text: e.message, icon: "error", confirmButtonText: "确定", confirmButtonColor: "#dc2626" });
+    await Swal.fire({
+      title: "请求异常",
+      text: e.message,
+      icon: "error",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#dc2626",
+    });
   }
 }
 
 async function loadRemovedAccountsList() {
   const container = document.getElementById("removed-accounts-list-container");
   if (!container) return;
-  container.innerHTML = "<p class=\"text-xs text-slate-400\">加载中...</p>";
+  container.innerHTML = '<p class="text-xs text-slate-400">加载中...</p>';
   try {
-    const resp = await fetch("/api/admin/removed_accounts", { headers: { "X-Session-ID": sessionUUID } });
+    const resp = await fetch("/api/admin/removed_accounts", {
+      headers: { "X-Session-ID": sessionUUID },
+    });
     const data = await resp.json();
     if (!data.success) {
-      container.innerHTML = "<p class=\"text-xs text-red-500\">加载失败: " + (data.message || "未知错误") + "</p>";
+      container.innerHTML =
+        '<p class="text-xs text-red-500">加载失败: ' +
+        (data.message || "未知错误") +
+        "</p>";
       return;
     }
     const accounts = data.removed_accounts || {};
     const keys = Object.keys(accounts);
     if (keys.length === 0) {
-      container.innerHTML = "<p class=\"text-slate-700\">暂无已删除账号记录</p>";
+      container.innerHTML = '<p class="text-slate-700">暂无已删除账号记录</p>';
       return;
     }
-    let html = "<table class=\"w-full text-slate-700 border-collapse\">";
-    html += "<thead><tr class=\"bg-slate-100\">";
-    html += "<th class=\"p-2 text-left\">用户名</th><th class=\"p-2 text-left\">删除时间</th><th class=\"p-2 text-left\">操作</th>";
+    let html = '<table class="w-full text-slate-700 border-collapse">';
+    html += '<thead><tr class="bg-slate-100">';
+    html +=
+      '<th class="p-2 text-left">用户名</th><th class="p-2 text-left">删除时间</th><th class="p-2 text-left">操作</th>';
     html += "</tr></thead><tbody>";
-    keys.forEach(username => {
+    keys.forEach((username) => {
       const entry = accounts[username];
-      html += "<tr class=\"border-b border-slate-100\">";
-      html += "<td class=\"p-2 font-mono\">" + username + "</td>";
-      html += "<td class=\"p-2\">" + (entry.deleted_at || "-") + "</td>";
-      html += "<td class=\"p-2\"><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-slate-700 text-amber-700\" onclick=\'restoreAccount(" + JSON.stringify(username) + ")\'>恢复</button></td>";
+      html += '<tr class="border-b border-slate-100">';
+      html += '<td class="p-2 font-mono">' + username + "</td>";
+      html += '<td class="p-2">' + (entry.deleted_at || "-") + "</td>";
+      html +=
+        '<td class="p-2"><button class="btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-slate-700 text-amber-700" onclick=\'restoreAccount(' +
+        JSON.stringify(username) +
+        ")\'>恢复</button></td>";
       html += "</tr>";
     });
     html += "</tbody></table>";
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = "<p class=\"text-slate-700 text-red-500\">加载异常: " + e.message + "</p>";
+    container.innerHTML =
+      '<p class="text-slate-700 text-red-500">加载异常: ' + e.message + "</p>";
   }
 }
 
 async function loadMobileMultiAdminBillingList() {
-  const schoolInput = document.getElementById("mobile-multi-admin-billing-school-input");
+  const schoolInput = document.getElementById(
+    "mobile-multi-admin-billing-school-input",
+  );
   const schoolUsername = schoolInput ? schoolInput.value.trim() : "";
   const container = document.getElementById("mobile-multi-admin-billing-list");
   if (!container) return;
@@ -58320,7 +58650,8 @@ async function loadMobileMultiAdminBillingList() {
     </div>`;
   try {
     const url = schoolUsername
-      ? "/api/admin/billing/list?school_username=" + encodeURIComponent(schoolUsername)
+      ? "/api/admin/billing/list?school_username=" +
+        encodeURIComponent(schoolUsername)
       : "/api/admin/billing/list";
     const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
     const data = await resp.json();
@@ -58333,7 +58664,9 @@ async function loadMobileMultiAdminBillingList() {
       container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
       return;
     }
-    const scopeTip = schoolUsername ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}` : "当前范围：所有学校账号的全部账单";
+    const scopeTip = schoolUsername
+      ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}`
+      : "当前范围：所有学校账号的全部账单";
     let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">${scopeTip}</div>`;
     html += `<div class="mb-2 flex items-center gap-1 justify-end">
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiAdminBillingList()">刷新</button>
@@ -58344,11 +58677,12 @@ async function loadMobileMultiAdminBillingList() {
       const schoolName = _escapeAttr(r.school_name || "-");
       const reason = _escapeAttr(r.reason || "-");
       const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
-      const timeRow = r.status === "paid"
-        ? `<div class="text-[11px] text-slate-400">支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}</div>`
-        : r.status === "admin_cleared"
-          ? `<div class="text-[11px] text-slate-400">清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}</div>`
-          : `<div class="text-[11px] text-slate-400">等待支付中…</div>`;
+      const timeRow =
+        r.status === "paid"
+          ? `<div class="text-[11px] text-slate-400">支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}</div>`
+          : r.status === "admin_cleared"
+            ? `<div class="text-[11px] text-slate-400">清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}</div>`
+            : `<div class="text-[11px] text-slate-400">等待支付中…</div>`;
       html += `
         <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <!-- 顶栏：账号 + 状态徽章 -->
@@ -58486,12 +58820,11 @@ async function restoreAccount(auth_username) {
     reverseButtons: true,
   });
 
-
   if (!confirmResult.isConfirmed) return false;
 
   // ── 步骤2：调用恢复接口（含冲突解决参数）──────────────────────────────────
-  let restoreAs = auth_username;   // 可被用户名冲突处理修改
-  let phoneOverride = undefined;   // undefined=不覆盖; ""=清空; "xxx"=新号码
+  let restoreAs = auth_username; // 可被用户名冲突处理修改
+  let phoneOverride = undefined; // undefined=不覆盖; ""=清空; "xxx"=新号码
   let forcePhoneClear = false;
 
   // 循环：每次遇到冲突时弹窗让管理员解决，然后重试
@@ -58504,8 +58837,11 @@ async function restoreAccount(auth_username) {
     try {
       resp = await fetch("/api/admin/restore_account", {
         method: "POST",
-        headers: { "X-Session-ID": sessionUUID, "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        headers: {
+          "X-Session-ID": sessionUUID,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       });
       data = await resp.json();
     } catch (e) {
