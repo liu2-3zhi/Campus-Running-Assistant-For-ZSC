@@ -11479,10 +11479,8 @@ class Api:
             # 获取当前登录的学校账号用户名
             school_username = self.user_data.username
 
-            # 从 INI 文件读取该账号的欠费统计数据
-            # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
-            stats = self._load_school_account_stats_from_ini(school_username)
-            overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
+            # 从账单文件读取该账号待支付账单数量作为欠费次数
+            overdue_count = _count_pending_bills_for_school(school_username)
 
             # 如果存在欠费（overdue_count > 0），拒绝启动任务
             # 这是关键的安全检查点，防止欠费用户继续使用服务
@@ -12224,10 +12222,8 @@ class Api:
             # 获取当前登录的学校账号用户名
             school_username = self.user_data.username
 
-            # 从 INI 文件读取该账号的欠费统计数据
-            # INI 文件是欠费数据的可靠来源，每个学校账号对应一个 INI 文件
-            stats = self._load_school_account_stats_from_ini(school_username)
-            overdue_count = stats.get("overdue_count", 0)  # 获取欠费次数，默认为0
+            # 从账单文件读取该账号待支付账单数量作为欠费次数
+            overdue_count = _count_pending_bills_for_school(school_username)
 
             # 如果存在欠费（overdue_count > 0），拒绝启动所有任务
             # 这是关键的安全检查点，防止欠费用户批量启动任务继续使用服务
@@ -14442,9 +14438,8 @@ class Api:
             return {"success": False, "message": "账号不存在"}
 
         # 步骤2：欠费检查（在启动任务前执行）
-        # 从 INI 文件读取该账号的统计数据
-        stats = self._load_school_account_stats_from_ini(username)
-        overdue_count = stats.get("overdue_count", 0)
+        # 从账单文件读取该账号待支付账单数量作为欠费次数
+        overdue_count = _count_pending_bills_for_school(username)
 
         # 如果存在欠费，拒绝启动任务
         if overdue_count > 0:
@@ -14548,9 +14543,8 @@ class Api:
         # 遍历所有账号，检查是否存在欠费
         overdue_accounts_list = []
         for username in self.accounts.keys():
-            # 从 INI 文件读取该账号的统计数据
-            stats = self._load_school_account_stats_from_ini(username)
-            overdue_count = stats.get("overdue_count", 0)
+            # 从账单文件读取该账号待支付账单数量作为欠费次数
+            overdue_count = _count_pending_bills_for_school(username)
 
             # 如果存在欠费，记录到列表中
             if overdue_count > 0:
@@ -18451,16 +18445,9 @@ class BackgroundTaskManager:
                 logging.warning(f"[欠费检查] 获取目标账号列表失败: {e}")
                 target_school_usernames = []
 
-            for school_username in target_school_usernames:
-                stats = api_instance._load_school_account_stats_from_ini(school_username)
-                overdue_count = stats.get("overdue_count", 0)
-                if overdue_count > 0:
-                    overdue_accounts_list.append(
-                        {
-                            "school_username": school_username,
-                            "overdue_count": overdue_count,
-                        }
-                    )
+            overdue_accounts_list = _collect_overdue_accounts_from_billing(
+                target_school_usernames
+            )
 
             if overdue_accounts_list:
                 logging.warning(
@@ -21121,6 +21108,60 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
     except Exception as e:
         logging.error(f"[账单] 创建账单记录失败 (学校账号: {school_username}): {e}", exc_info=True)
         return None
+
+
+def _count_pending_bills_for_school(school_username):
+    """
+    统计指定学校账号在 ./User_Billing/School_Bills 下的待支付账单数量。
+    """
+    try:
+        school_username = str(school_username or "").strip()
+        if not school_username:
+            return 0
+        billing_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "User_Billing",
+            "School_Bills",
+            school_username,
+        )
+        if not os.path.isdir(billing_dir):
+            return 0
+
+        pending_count = 0
+        for filename in os.listdir(billing_dir):
+            if not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(billing_dir, filename)
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    record = json.load(f)
+                if str(record.get("status", "pending")).strip().lower() == "pending":
+                    pending_count += 1
+            except Exception as e:
+                logging.warning(
+                    f"[欠费检查] 读取账单文件失败（忽略该文件）: {filepath}, 错误: {e}"
+                )
+        return pending_count
+    except Exception as e:
+        logging.warning(f"[欠费检查] 统计待支付账单失败: {school_username}, 错误: {e}")
+        return 0
+
+
+def _collect_overdue_accounts_from_billing(school_usernames):
+    """
+    根据 ./User_Billing/School_Bills 中的待支付账单统计欠费账号列表。
+    """
+    overdue_accounts = []
+    for school_username in list(dict.fromkeys(school_usernames or [])):
+        pending_count = _count_pending_bills_for_school(school_username)
+        if pending_count > 0:
+            overdue_accounts.append(
+                {
+                    "school_username": school_username,
+                    "overdue_count": pending_count,
+                }
+            )
+    return overdue_accounts
 
 
 def start_web_server(args_param):
@@ -32368,17 +32409,9 @@ def start_web_server(args_param):
                         u for u in target_usernames if u in allowed_usernames
                     ]
 
-                overdue_accounts = []
-                for school_username in target_usernames:
-                    stats = api_instance._load_school_account_stats_from_ini(school_username)
-                    overdue_count = int(stats.get("overdue_count", 0) or 0)
-                    if overdue_count > 0:
-                        overdue_accounts.append(
-                            {
-                                "school_username": school_username,
-                                "overdue_count": overdue_count,
-                            }
-                        )
+                overdue_accounts = _collect_overdue_accounts_from_billing(
+                    target_usernames
+                )
 
                 if overdue_accounts:
                     return jsonify(
@@ -42613,8 +42646,8 @@ def start_web_server(args_param):
                 if isinstance(account_info, str):
                     continue
 
-                # 获取欠费次数，默认为 0
-                overdue_count = account_info.get("overdue_count", 0)
+                # 从账单文件读取待支付数量作为欠费次数
+                overdue_count = _count_pending_bills_for_school(acc_username)
 
                 # 如果欠费次数大于 0，记录该账号
                 if overdue_count > 0:
