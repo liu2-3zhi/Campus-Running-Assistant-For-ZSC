@@ -11905,6 +11905,9 @@ class Api:
             submission_successful = True
 
             point_index = 0
+            _exec_start_real = time.time()
+            _exec_max_time_m = self.params.get("max_time_m", 30)
+            _exec_total_points = max(1, len(run_data.run_coords))
 
             for i in range(0, len(run_data.run_coords), 5):
                 if stop_flag.is_set():
@@ -11915,7 +11918,21 @@ class Api:
                 chunk = run_data.run_coords[i: i + 5]
 
                 for lon, lat, dur_ms in chunk:
-                    if stop_flag.wait(timeout=dur_ms / 1000.0):
+                    _elapsed_real_s = time.time() - _exec_start_real
+                    _elapsed_real_min = _elapsed_real_s / 60.0
+                    _actual_sleep_s = dur_ms / 1000.0
+                    if _elapsed_real_min >= _exec_max_time_m - 10:
+                        _expected_frac = _elapsed_real_min / max(1e-6, _exec_max_time_m - 2)
+                        _actual_frac = point_index / _exec_total_points
+                        if _actual_frac < _expected_frac:
+                            _remaining_s = max(1.0, (_exec_max_time_m - 2) * 60.0 - _elapsed_real_s)
+                            _remaining_pts = max(1, _exec_total_points - point_index)
+                            _actual_sleep_s = min(_actual_sleep_s, _remaining_s / _remaining_pts)
+                            logging.debug(
+                                f"进度落后，加速执行: 实际进度={_actual_frac:.2%}, "
+                                f"期望进度={_expected_frac:.2%}, 新等待时间={_actual_sleep_s:.2f}s"
+                            )
+                    if stop_flag.wait(timeout=_actual_sleep_s):
                         logging.debug("等待下一个坐标点时被停止信号中断")
                         break
 
@@ -15657,6 +15674,9 @@ class Api:
                     acc.log("警告: 生成的轨迹点数过少，无法执行任务。")
                     continue
 
+                _mr_exec_start_real = time.time()
+                _mr_exec_point_idx = 0
+
                 for chunk_idx in range(0, len(run_data.run_coords), 5):
                     logging.debug(
                         f"[{acc.username}] 执行进度: {chunk_idx}/{len(run_data.run_coords)}"
@@ -15694,9 +15714,27 @@ class Api:
                                     f"Failed to emit multi_position_update: {e}"
                                 )
 
-                        if acc.stop_event.wait(timeout=dur_ms / 1000.0):
+                        _mr_elapsed_real_s = time.time() - _mr_exec_start_real
+                        _mr_elapsed_real_min = _mr_elapsed_real_s / 60.0
+                        _mr_actual_sleep_s = dur_ms / 1000.0
+                        if _mr_elapsed_real_min >= max_t_m - 10:
+                            _mr_expected_frac = _mr_elapsed_real_min / max(1e-6, max_t_m - 2)
+                            _mr_actual_frac = _mr_exec_point_idx / total_points
+                            if _mr_actual_frac < _mr_expected_frac:
+                                _mr_remaining_s = max(1.0, (max_t_m - 2) * 60.0 - _mr_elapsed_real_s)
+                                _mr_remaining_pts = max(1, total_points - _mr_exec_point_idx)
+                                _mr_actual_sleep_s = min(_mr_actual_sleep_s, _mr_remaining_s / _mr_remaining_pts)
+                                logging.debug(
+                                    f"[{acc.username}] 进度落后，加速执行: "
+                                    f"实际进度={_mr_actual_frac:.2%}, 期望进度={_mr_expected_frac:.2%}, "
+                                    f"新等待时间={_mr_actual_sleep_s:.2f}s"
+                                )
+
+                        if acc.stop_event.wait(timeout=_mr_actual_sleep_s):
                             submission_successful = False
                             break
+
+                        _mr_exec_point_idx += 1
 
                         processed_points += 1
                         try:
