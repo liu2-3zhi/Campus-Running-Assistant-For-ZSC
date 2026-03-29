@@ -12101,6 +12101,33 @@ class Api:
         def _point_at(d):
             return self._get_point_at_distance(path, cumulative_distances, d)
 
+        def _path_points_between(d_start, d_end):
+            if d_start == d_end:
+                return [_point_at(d_start)]
+            if d_start > d_end:
+                points = _path_points_between(d_end, d_start)
+                return list(reversed(points))
+
+            idx_start = bisect.bisect_left(cumulative_distances, d_start)
+            idx_end = bisect.bisect_left(cumulative_distances, d_end)
+            points = []
+            start_pt = _point_at(d_start)
+            points.append(start_pt)
+            for i in range(idx_start, idx_end):
+                dist_i = cumulative_distances[i]
+                if d_start < dist_i < d_end:
+                    pt = path[i]
+                    if pt != points[-1]:
+                        points.append(pt)
+            end_pt = _point_at(d_end)
+            if end_pt != points[-1]:
+                points.append(end_pt)
+            return points
+
+        def _append_path_between(d_start, d_end):
+            for pt in _path_points_between(d_start, d_end):
+                _append_if_new(pt)
+
         remaining = target_dist - total_len
 
         if total_len >= 100.0:
@@ -12123,33 +12150,35 @@ class Api:
         # 关键修正：不要先跑到终点再折返，而是在“最后50m(或2/3)”处提前开始补距
         cut_idx = bisect.bisect_left(cumulative_distances, near_d)
         final_path = list(path[:cut_idx])
-        near_pt = _point_at(near_d)
-        far_pt = _point_at(far_d)
-        end_pt = path[-1]
-
         added = 0.0
+        current_d = near_d
 
         # 先到最后50m（或2/3）点，再回到最后100m（或1/3）点
-        _append_if_new(near_pt)
+        _append_if_new(_point_at(near_d))
         added += step_a
 
         if added < remaining:
-            _append_if_new(far_pt)
+            _append_path_between(current_d, far_d)
+            current_d = far_d
             added += step_b
 
         # 在 near/far 间折返，直到“再加最后50m可达下限”
         while added + step_a < remaining:
-            _append_if_new(near_pt)
+            _append_path_between(current_d, near_d)
+            current_d = near_d
             added += step_b
             if added + step_a >= remaining:
                 break
-            _append_if_new(far_pt)
+            _append_path_between(current_d, far_d)
+            current_d = far_d
             added += step_b
 
         # 保险动作：最后50m -> 最后100m -> 最后50m -> 终点
-        _append_if_new(far_pt)
-        _append_if_new(near_pt)
-        _append_if_new(end_pt)
+        _append_path_between(current_d, far_d)
+        current_d = far_d
+        _append_path_between(current_d, near_d)
+        current_d = near_d
+        _append_path_between(current_d, end_d)
         return final_path
 
     def _get_point_at_distance(self, path, cumulative_distances, dist):
