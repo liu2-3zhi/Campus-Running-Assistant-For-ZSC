@@ -2584,6 +2584,9 @@
                       >开启自动签到</span
                     >
                   </label>
+                  <p class="text-xs text-amber-600 leading-relaxed">
+                    ⏱ 自动签到启用后将在 120 分钟内自动关闭。
+                  </p>
 
                   <div class="flex items-center gap-2">
                     <label
@@ -2613,11 +2616,10 @@
                       class="input-field !py-1 w-full"
                       title="自动签到时，在服务器允许范围内的最大随机偏移半径。设为0为精确签到。"
                     />
-                    <p class="text-xs text-slate-500 leading-relaxed">
-                      ⚠
-                      若随机半径大于签到要求的最大允许范围，将自动按签到要求的最大半径处理。
-                    </p>
                   </div>
+                  <p class="text-xs text-amber-600 leading-relaxed">
+                    ⚠ 若随机半径超过签到允许的最大范围，将自动缩减至该上限。
+                  </p>
                 </div>
                 <div
                   class="flex justify-between items-center border-t pt-2 mt-2"
@@ -5155,6 +5157,9 @@
                     <span class="text-xs text-slate-600 mt-1 block"
                       >后台自动刷新通知并尝试签到</span
                     >
+                    <span class="text-xs text-amber-600 mt-1 block"
+                      >⏱ 启用后 120 分钟内将自动关闭</span
+                    >
                   </div>
                 </label>
 
@@ -5243,9 +5248,8 @@
                   </div>
 
                   <div class="flex items-center gap-3 w-full">
-                  <p class="text-xs text-slate-500 leading-relaxed">
-                    ⚠
-                    若随机半径大于签到要求的最大允许范围，将自动按签到要求的最大半径处理。
+                  <p class="text-xs text-amber-600 leading-relaxed">
+                    ⚠ 若随机半径超过签到允许的最大范围，将自动缩减至该上限。
                   </p>
                   </div>
                 </div>
@@ -10804,6 +10808,10 @@
                   ></div>
                 </label>
               </div>
+              <!-- 自动关闭提示 -->
+              <p class="text-[10px] text-amber-600 leading-relaxed">
+                ⏱ 自动签到启用后将在 120 分钟内自动关闭。
+              </p>
 
               <!-- 刷新间隔设置：控制自动刷新通知的时间间隔 -->
               <div>
@@ -10842,6 +10850,9 @@
                 <!-- 说明文字：解释随机半径的用途 -->
                 <p class="text-[10px] text-slate-400 mt-1">
                   签到位置的随机偏移半径，0为精确签到
+                </p>
+                <p class="text-[10px] text-amber-600 mt-1">
+                  ⚠ 若随机半径超过签到允许的最大范围，将自动缩减至该上限。
                 </p>
               </div>
             </div>

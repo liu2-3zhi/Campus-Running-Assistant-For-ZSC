@@ -11,6 +11,7 @@ _log_buffer = []
 MAX_MEMORY_SESSIONS = 100
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
+AUTO_ATTENDANCE_MAX_MINUTES = 120  # 自动签到最长持续时间（分钟），超时后自动关闭
 
 # 跑步 PID 参数（单账号/多账号共用）
 PID_KP = 4.80
@@ -2067,13 +2068,13 @@ def _is_auto_attendance_enabled(school_username):
 
     功能说明：
         查询配置文件，判断指定账号是否在启用列表中。
-        这是一个简单的查询操作，不修改配置。
+        若账号已启用超过 AUTO_ATTENDANCE_MAX_MINUTES 分钟，则自动将其禁用并返回 False。
 
     参数:
         school_username (str): 学校账号的用户名
 
     返回值:
-        bool: True表示已启用自动签到，False表示未启用或查询失败
+        bool: True表示已启用自动签到，False表示未启用、已超时自动关闭或查询失败
 
     异常处理：
         如果查询过程中发生异常，返回False（安全默认值）
@@ -2081,9 +2082,43 @@ def _is_auto_attendance_enabled(school_username):
     try:
         # 加载当前的自动签到配置
         config = _load_auto_attendance_config()
-        # 使用in运算符检查school_username是否在enabled_accounts字典的键中
-        # 如果存在返回True，否则返回False
-        return school_username in config["enabled_accounts"]
+
+        # 检查账号是否在启用列表中
+        if school_username not in config["enabled_accounts"]:
+            return False
+
+        # 获取该账号的配置信息
+        account_info = config["enabled_accounts"][school_username]
+
+        # 检查是否超过最大持续时间（AUTO_ATTENDANCE_MAX_MINUTES 分钟）
+        enabled_at_str = account_info.get("enabled_at")
+        if enabled_at_str:
+            try:
+                # 解析启用时间（ISO8601格式，带Z后缀表示UTC）
+                enabled_at = datetime.datetime.strptime(
+                    enabled_at_str, "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=datetime.timezone.utc)
+                # 计算已启用的时长（分钟）
+                elapsed_minutes = (
+                    datetime.datetime.now(datetime.timezone.utc) - enabled_at
+                ).total_seconds() / 60.0
+
+                if elapsed_minutes >= AUTO_ATTENDANCE_MAX_MINUTES:
+                    # 超时，自动禁用该账号的自动签到
+                    logging.info(
+                        f"[自动签到配置] 账号 {school_username} 已启用超过 "
+                        f"{AUTO_ATTENDANCE_MAX_MINUTES} 分钟（实际 {elapsed_minutes:.1f} 分钟），自动关闭自动签到"
+                    )
+                    _disable_auto_attendance(school_username)
+                    return False
+            except ValueError:
+                # 时间格式解析失败，忽略超时检查，正常返回启用状态
+                logging.warning(
+                    f"[自动签到配置] 账号 {school_username} 的启用时间格式异常: {enabled_at_str}，跳过超时检查"
+                )
+
+        # 账号在启用列表中且未超时，返回True
+        return True
     except Exception as e:
         # 捕获所有异常，例如文件读取错误
         logging.error(
