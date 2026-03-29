@@ -7791,6 +7791,8 @@ class RunData:
         self.total_run_time_s: float = 0.0
         self.total_run_distance_m: float = 0.0
         self.distance_covered_m: float = 0.0
+        self.current_point_index: int = 0
+        self.suppress_last_target_until_finish: bool = True
 
 
 class AccountSession:
@@ -11453,6 +11455,15 @@ class Api:
                 )
 
                 if current_dist < self.target_range_m:
+                    if (
+                        run_data.suppress_last_target_until_finish
+                        and run_data.target_sequence == len(run_data.target_points) - 1
+                        and run_data.current_point_index < len(run_data.run_coords)
+                    ):
+                        logging.debug(
+                            "抑制最后打卡点提前完成: 当前尚未跑到轨迹终点"
+                        )
+                        break
                     logging.info(
                         f"✓ 到达打卡点 {run_data.target_sequence+1}/{len(run_data.target_points)}"
                     )
@@ -11901,6 +11912,8 @@ class Api:
             run_data.trid = f"{user_data.student_id}{int(time.time() * 1000)}"
             start_time_ms = str(int(time.time() * 1000))
             run_data.distance_covered_m = 0.0
+            run_data.current_point_index = 0
+            run_data.suppress_last_target_until_finish = True
             last_point_gps = run_data.run_coords[0]
             submission_successful = True
 
@@ -12022,6 +12035,13 @@ class Api:
                     break
 
             if not stop_flag.is_set() and submission_successful:
+                run_data.suppress_last_target_until_finish = False
+                if run_data.target_points and run_data.target_sequence < len(run_data.target_points):
+                    try:
+                        end_lon, end_lat, _ = run_data.run_coords[-1]
+                        self.check_target_reached_during_run(run_data, end_lon, end_lat)
+                    except Exception:
+                        pass
                 log_func("任务执行完毕，等待确认...")
                 logging.info("任务运行执行完毕，等待最终确认")
                 time.sleep(3)
@@ -12072,28 +12092,66 @@ class Api:
                 f"Submission thread finished for task: {run_data.run_name}")
 
     def _get_path_for_distance(self, path, cumulative_distances, target_dist):
-        """如果路径总长不足，则通过来回走的方式凑足目标距离"""
+        """如果路径总长不足，则通过末段折返策略凑足目标距离"""
         total_len = cumulative_distances[-1]
         final_path = list(path)
-        if 0 < total_len < target_dist:
-            rem = target_dist - total_len
-            rev = path[::-1]
-            acc = 0.0
-            for i in range(len(rev) - 1):
-                seg = self._calculate_distance_m(
-                    rev[i][0], rev[i][1], rev[i + 1][0], rev[i + 1][1]
-                )
-                if acc + seg < rem:
-                    final_path.append(rev[i + 1])
-                    acc += seg
-                else:
-                    ratio = (rem - acc) / seg if seg > 0 else 0
-                    s, e = rev[i], rev[i + 1]
-                    final_path.append(
-                        (s[0] + (e[0] - s[0]) * ratio,
-                         s[1] + (e[1] - s[1]) * ratio)
-                    )
-                    break
+        if total_len <= 0 or total_len >= target_dist:
+            return final_path
+
+        def _append_if_new(pt):
+            if not final_path or final_path[-1] != pt:
+                final_path.append(pt)
+
+        def _point_at(d):
+            return self._get_point_at_distance(path, cumulative_distances, d)
+
+        remaining = target_dist - total_len
+
+        if total_len >= 100.0:
+            near_d = max(0.0, total_len - 50.0)   # 最后50米点
+            far_d = max(0.0, total_len - 100.0)   # 最后100米点
+        else:
+            far_d = total_len / 3.0               # 1/3 点
+            near_d = total_len * 2.0 / 3.0        # 2/3 点
+
+        if near_d <= far_d:
+            # 兜底：保持 near 在 far 之后
+            near_d = min(total_len, far_d + max(1e-6, total_len / 10.0))
+
+        end_d = total_len
+        step_a = end_d - near_d      # 末端 -> near
+        step_b = near_d - far_d      # near <-> far
+        if step_a <= 0 or step_b <= 0:
+            return final_path
+
+        near_pt = _point_at(near_d)
+        far_pt = _point_at(far_d)
+        end_pt = path[-1]
+
+        added = 0.0
+
+        # 先到最后50m（或2/3）点
+        _append_if_new(near_pt)
+        added += step_a
+
+        # 再到最后100m（或1/3）点
+        if added < remaining:
+            _append_if_new(far_pt)
+            added += step_b
+
+        # 在 near/far 间折返，直到“再加最后50m可达下限”
+        while added + step_a < remaining:
+            _append_if_new(near_pt)
+            added += step_b
+            if added + step_a >= remaining:
+                break
+            _append_if_new(far_pt)
+            added += step_b
+
+        # 保险动作：最后50m -> 最后100m -> 最后50m -> 终点
+        _append_if_new(far_pt)
+        _append_if_new(near_pt)
+        _append_if_new(end_pt)
         return final_path
 
     def _get_point_at_distance(self, path, cumulative_distances, dist):
@@ -15669,6 +15727,8 @@ class Api:
                 start_time_ms = str(int(time.time() * 1000))
                 submission_successful = True
                 total_points = max(1, len(run_data.run_coords))
+                run_data.current_point_index = 0
+                run_data.suppress_last_target_until_finish = True
 
                 if total_points <= 1:
                     acc.log("警告: 生成的轨迹点数过少，无法执行任务。")
@@ -15735,6 +15795,7 @@ class Api:
                             break
 
                         _mr_exec_point_idx += 1
+                        run_data.current_point_index = _mr_exec_point_idx
 
                         processed_points += 1
                         try:
@@ -15765,6 +15826,13 @@ class Api:
                         break
 
                 if submission_successful:
+                    run_data.suppress_last_target_until_finish = False
+                    if run_data.target_points and run_data.target_sequence < len(run_data.target_points):
+                        try:
+                            end_lon, end_lat, _ = run_data.run_coords[-1]
+                            self.check_target_reached_during_run(run_data, end_lon, end_lat)
+                        except Exception:
+                            pass
                     acc.log(f"任务 {run_data.run_name} 数据提交完毕，等待服务器确认...")
                     time.sleep(3)
                     self._finalize_run(run_data, -1, acc.api_client)

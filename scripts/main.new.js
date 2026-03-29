@@ -35190,12 +35190,22 @@ function selectTaskFromBackend(index) {
 }
 
 function updateDashboard() {
+  const formatMMSS = (sec) => {
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(
+      s % 60,
+    ).padStart(2, "0")}`;
+  };
   if (!currentRunData || Object.keys(currentRunData).length === 0) {
     $("run-stats-label").textContent = `-- km / --:--`;
     $("live-dist-label").textContent = "0.00 km";
     $("total-dist-label").textContent = "0.00 km";
     $("live-time-label").textContent = "00:00";
     $("total-time-label").textContent = "00:00";
+    const remainLabel = $("remaining-time-label");
+    if (remainLabel) remainLabel.textContent = "00:00";
+    const mobileRemainLabel = document.getElementById("mobile-remaining-time-label");
+    if (mobileRemainLabel) mobileRemainLabel.textContent = "00:00";
     $("target-points-text").innerHTML =
       '<p class="text-slate-400 text-center text-xs pt-4">请选择一个任务</p>';
     $("current-location-label").textContent = "当前位置GPS坐标: --, --";
@@ -35236,6 +35246,14 @@ function updateDashboard() {
     2,
     "0",
   )}:${String(totalTimeSec).padStart(2, "0")}`;
+  const remainingTimeS = Math.max(
+    0,
+    (currentRunData.total_run_time_s || 0) - liveMs / 1000,
+  );
+  const remainingLabel = $("remaining-time-label");
+  if (remainingLabel) {
+    remainingLabel.textContent = formatMMSS(remainingTimeS);
+  }
 
   const targetDiv = $("target-points-text");
   targetDiv.innerHTML = "";
@@ -35289,6 +35307,9 @@ function updateDashboard() {
   const mobileTotalTimeLabel = document.getElementById(
     "mobile-total-time-label",
   );
+  const mobileRemainingTimeLabel = document.getElementById(
+    "mobile-remaining-time-label",
+  );
   const mobileCurrentLocationLabel = document.getElementById(
     "mobile-current-location-label",
   );
@@ -35313,6 +35334,9 @@ function updateDashboard() {
       2,
       "0",
     )}:${String(totalTimeSec).padStart(2, "0")}`;
+  }
+  if (mobileRemainingTimeLabel) {
+    mobileRemainingTimeLabel.textContent = formatMMSS(remainingTimeS);
   }
   if (mobileCurrentLocationLabel && currentRunData) {
     const currentLocationLabel = document.getElementById(
