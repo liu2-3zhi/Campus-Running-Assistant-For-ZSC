@@ -58847,14 +58847,45 @@ async function loadRemovedAccountsList() {
         ? `${avatarRaw}${avatarRaw.includes("?") ? "&" : "?"}session_id=${encodeURIComponent(sessionUUID)}&t=${Date.now()}`
         : "/default_avatar.png";
       const nickname = _escapeAttr(entry?.nickname || username);
+      const phoneText = _escapeAttr(entry?.phone || "未绑定");
+      const createdAtText = _escapeAttr(_formatUnixOrIsoTime(entry?.created_at));
+      const lastLoginText = _escapeAttr(_formatUnixOrIsoTime(entry?.last_login));
+      const loginIpText = _escapeAttr(entry?.last_login_ip || "无记录");
+      const loginCityText = _escapeAttr(entry?.last_login_city || "未知");
+      const maxSessions =
+        Number(entry?.max_sessions) === -1
+          ? "无限制"
+          : `${Number(entry?.max_sessions || 1)}个`;
+      const availableRunsNum = Number(entry?.available_runs ?? 0);
+      const availableRunsText =
+        availableRunsNum === -1 ? "无限制" : `${availableRunsNum}次`;
+      const tfaEnabled = !!entry?.["2fa_enabled"];
       html += '<tr class="border-b border-slate-100">';
       html +=
         '<td class="p-2"><div class="flex items-center gap-2"><img src="' +
         _escapeAttr(avatarUrl) +
-        "\" class=\"w-8 h-8 rounded-full object-cover border border-slate-200\" onerror=\"this.onerror=null;this.src='/default_avatar.png';\"><div><div class=\"font-mono text-xs text-slate-800\">" +
+        "\" class=\"w-10 h-10 rounded-full object-cover border border-slate-200\" onerror=\"this.onerror=null;this.src='/default_avatar.png';\"><div><div class=\"font-mono text-xs text-slate-800\">" +
         _escapeAttr(username) +
-        "</div><div class=\"text-[11px] text-slate-500\">" +
+        "</div><div class=\"text-[11px] text-slate-500\">昵称: " +
         nickname +
+        "</div><div class=\"text-[11px] text-slate-500\">手机号: " +
+        phoneText +
+        "</div><div class=\"text-[11px] text-slate-500\">创建时间: " +
+        createdAtText +
+        "</div><div class=\"text-[11px] text-slate-500\">最后登录: " +
+        lastLoginText +
+        "</div><div class=\"text-[11px] text-slate-500\">登录IP: " +
+        loginIpText +
+        " (" +
+        loginCityText +
+        ")</div><div class=\"text-[11px] text-slate-500\">会话限制: " +
+        _escapeAttr(maxSessions) +
+        "</div><div class=\"text-[11px] text-slate-500\">可用次数: " +
+        _escapeAttr(availableRunsText) +
+        "</div><div class=\"text-[11px] " +
+        (tfaEnabled ? "text-green-600" : "text-slate-400") +
+        "\">2FA: " +
+        (tfaEnabled ? "已启用" : "未启用") +
         "</div></div></div></td>";
       html += '<td class="p-2">' + _escapeAttr(entry.deleted_at || "-") + "</td>";
       html +=
@@ -59007,6 +59038,19 @@ async function loadMobileMultiRemovedAccountsList() {
       const safeUsername = _escapeAttr(username);
       const safeDeletedAt = _escapeAttr(entry.deleted_at || "-");
       const safeNickname = _escapeAttr(entry.nickname || username);
+      const safePhone = _escapeAttr(entry.phone || "未绑定");
+      const safeCreatedAt = _escapeAttr(_formatUnixOrIsoTime(entry.created_at));
+      const safeLastLogin = _escapeAttr(_formatUnixOrIsoTime(entry.last_login));
+      const safeLoginIp = _escapeAttr(entry.last_login_ip || "无记录");
+      const safeLoginCity = _escapeAttr(entry.last_login_city || "未知");
+      const maxSessions =
+        Number(entry.max_sessions) === -1
+          ? "无限制"
+          : `${Number(entry.max_sessions || 1)}个`;
+      const availableRunsNum = Number(entry.available_runs ?? 0);
+      const availableRunsText =
+        availableRunsNum === -1 ? "无限制" : `${availableRunsNum}次`;
+      const tfaEnabled = !!entry["2fa_enabled"];
       const avatarRaw = String(entry.avatar_url || "default_avatar.png");
       const avatarUrl = avatarRaw.startsWith("/api/avatar/")
         ? `${avatarRaw}${avatarRaw.includes("?") ? "&" : "?"}session_id=${encodeURIComponent(sessionUUID)}&t=${Date.now()}`
@@ -59027,6 +59071,16 @@ async function loadMobileMultiRemovedAccountsList() {
           <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-[11px] mb-2">
             <div class="text-slate-500 leading-none mb-0.5">删除时间</div>
             <div class="text-slate-700 break-all">${safeDeletedAt}</div>
+          </div>
+          <div class="text-[11px] text-slate-500 space-y-0.5 mb-2">
+            <div>昵称: ${safeNickname}</div>
+            <div>手机号: ${safePhone}</div>
+            <div>创建时间: ${safeCreatedAt}</div>
+            <div>最后登录: ${safeLastLogin}</div>
+            <div>登录IP: ${safeLoginIp} (${safeLoginCity})</div>
+            <div>会话限制: ${_escapeAttr(maxSessions)}</div>
+            <div>可用次数: ${_escapeAttr(availableRunsText)}</div>
+            <div class="${tfaEnabled ? "text-green-600" : "text-slate-400"}">2FA: ${tfaEnabled ? "已启用" : "未启用"}</div>
           </div>
           <div class="flex items-center justify-end gap-1.5">
             <button class="px-2 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${JSON.stringify(username)})'>查看详情</button>
