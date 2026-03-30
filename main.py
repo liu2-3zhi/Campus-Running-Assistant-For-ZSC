@@ -1340,7 +1340,7 @@ class ContextEnrichFilter(logging.Filter):
                 record.request_user = str(request_user)
             if client_ip:
                 record.client_ip = str(client_ip)
-        except Exception:
+        except Exception:  # nosec B110 - 非请求上下文时使用默认值，不需要记录
             # 非请求上下文（或上下文访问失败）时使用默认值
             pass
 
@@ -1740,7 +1740,7 @@ def _install_global_exception_logging(logger):
 
     try:
         logging.captureWarnings(True)
-    except Exception:
+    except Exception:  # nosec B110 - 某些环境不支持captureWarnings，安全忽略
         pass
 
     _logging_exception_hooks_installed = True
@@ -12318,7 +12318,7 @@ class Api:
                     try:
                         end_lon, end_lat, _ = run_data.run_coords[-1]
                         self.check_target_reached_during_run(run_data, end_lon, end_lat)
-                    except Exception:
+                    except Exception:  # nosec B110 - 目标检查失败不影响主流程
                         pass
                 log_func("任务执行完毕，等待确认...")
                 logging.info("任务运行执行完毕，等待最终确认")
@@ -12508,8 +12508,8 @@ class Api:
         _plan_max_t_m = max_t_m * 0.98
         if _plan_max_t_m <= _plan_min_t_m:
             _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
-        target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)
-        target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)
+        target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
+        target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
 
         cumulative = [0.0]
         for i in range(len(final_path_dedup) - 1):
@@ -15957,8 +15957,8 @@ class Api:
                 _plan_max_t_m = max_t_m * 0.98
                 if _plan_max_t_m <= _plan_min_t_m:
                     _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
-                target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)
-                target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)
+                target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
+                target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
                 cumulative = [0.0]
                 for idx_c in range(len(final_path_dedup) - 1):
                     cumulative.append(
@@ -16222,7 +16222,7 @@ class Api:
                         try:
                             end_lon, end_lat, _ = run_data.run_coords[-1]
                             self.check_target_reached_during_run(run_data, end_lon, end_lat)
-                        except Exception:
+                        except Exception:  # nosec B110 - 目标检查失败不影响主流程
                             pass
                     acc.log(f"任务 {run_data.run_name} 数据提交完毕，等待服务器确认...")
                     time.sleep(3)
@@ -43297,7 +43297,7 @@ def start_web_server(args_param):
                             overdue_count += 1
                         elif status in ("paid", "admin_cleared"):
                             completed_count += 1
-                    except Exception:
+                    except Exception:  # nosec B110 - 单条记录解析失败不影响统计
                         pass
 
             return jsonify({
@@ -44506,7 +44506,7 @@ def start_web_server(args_param):
                 if _r.get("amount") is not None:
                     try:
                         _r["amount"] = round(float(_r["amount"]), 2)
-                    except Exception:
+                    except Exception:  # nosec B110 - 金额格式化失败保留原值
                         pass
             return jsonify({"success": True, "records": records, "total": len(records)})
         except Exception as e:
@@ -44594,7 +44594,7 @@ def start_web_server(args_param):
                 if _r.get("amount") is not None:
                     try:
                         _r["amount"] = round(float(_r["amount"]), 2)
-                    except Exception:
+                    except Exception:  # nosec B110 - 金额格式化失败保留原值
                         pass
             
             return jsonify({"success": True, "records": records, "total": len(records)})
@@ -45977,7 +45977,7 @@ def main():
                 )
                 max_random_tries = 20
                 for i in range(max_random_tries):
-                    random_port = random.randint(10000, 65535)
+                    random_port = random.randint(10000, 65535)  # nosec B311 - 用于查找可用端口，非安全用途
                     if check_port_available(args.host, random_port):
                         found_port = random_port
                         logging.info(f"找到可用随机端口: {found_port}")
