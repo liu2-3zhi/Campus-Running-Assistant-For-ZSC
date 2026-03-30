@@ -5327,6 +5327,7 @@ async function createTestOrder() {
       body: JSON.stringify({
         amount: amount, // 支付金额
         product_name: productName, // 商品名称
+        preserve_product_name: true, // 测试支付：保留用户输入商品名
         payment_method: paymentMethod, // 支付方式
         payment_type: paymentType, // 接口类型（web/jump/jsapi/app/scan/applet）
         app_host: app_host, // 应用主机地址
@@ -8400,6 +8401,7 @@ async function createAdminTestPayment() {
       payment_method: method, // 支付方式（alipay/wechat/qq/unionpay）
       payment_type: paymentType, // 支付接口类型（jump/web/jsapi/app/scan/applet）
       product_name: productName, // 商品名称（手动输入或自动生成）
+      preserve_product_name: true, // 测试支付：保留用户输入商品名
       app_host: window.location.protocol + "//" + window.location.host,
       return_url: window.location.href, //浏览器当前地址
       sub_openid: subOpenid, // 【修改】JSAPI支付所需的用户Openid（从输入框获取）
@@ -10226,7 +10228,8 @@ async function updateProfileAvailableRuns(userData) {
       // 当次数为 -1 时直接显示"无限制"，不套用格式模板，避免出现占位符残留
       let displayText;
       if (Number(availableRuns) === -1) {
-        displayText = "无限制";
+        // displayText = "无限制";
+        displayText = formatTemplate.replace("{available_runs}", "无限制");
       } else {
         displayText = formatTemplate.replace("{available_runs}", availableRuns);
       }
@@ -58011,6 +58014,19 @@ async function _chooseBillingPayType(options = {}) {
   let enabledMethods = [];
   let methodsConfig = {};
   let paymentMethodsFullConfig = {};
+  const normalizeMethodsConfig = (raw) => {
+    if (!raw) return {};
+    if (Array.isArray(raw)) {
+      const obj = {};
+      raw.forEach((item) => {
+        const code = String(item?.code || "").trim();
+        if (code) obj[code] = item;
+      });
+      return obj;
+    }
+    if (typeof raw === "object") return raw;
+    return {};
+  };
   try {
     const methodsResp = await fetch("/api/payment/methods_config", {
       headers: { "X-Session-ID": sessionUUID },
@@ -58020,7 +58036,7 @@ async function _chooseBillingPayType(options = {}) {
       enabledMethods = Array.isArray(methodsData.enabled_methods)
         ? methodsData.enabled_methods
         : [];
-      methodsConfig = methodsData.methods || {};
+      methodsConfig = normalizeMethodsConfig(methodsData.methods);
     }
 
     const configResp = await fetch("/api/admin/payment/config", {
@@ -58028,7 +58044,9 @@ async function _chooseBillingPayType(options = {}) {
     });
     const configData = await configResp.json();
     if (configData.success && configData.payment_methods) {
-      paymentMethodsFullConfig = configData.payment_methods;
+      paymentMethodsFullConfig = normalizeMethodsConfig(
+        configData.payment_methods,
+      );
     }
   } catch (e) {
     console.warn("[账单支付] 获取支付方式失败:", e);
@@ -58043,10 +58061,6 @@ async function _chooseBillingPayType(options = {}) {
     });
     return null;
   }
-  if (enabledMethods.length === 1) {
-    return enabledMethods[0];
-  }
-
   const modalTitle = String(options.title || "").trim() || "选择支付方式";
   const totalAmount = options.totalAmount;
 
@@ -58817,23 +58831,38 @@ async function loadRemovedAccountsList() {
     const accounts = data.removed_accounts || {};
     const keys = Object.keys(accounts);
     if (keys.length === 0) {
-      container.innerHTML = '<p class="text-slate-700">暂无已删除账号记录</p>';
+      container.innerHTML =
+        '<p class="text-slate-700 text-sm">暂无已删除账号记录</p>';
       return;
     }
     let html = '<table class="w-full text-slate-700 border-collapse">';
     html += '<thead><tr class="bg-slate-100">';
     html +=
-      '<th class="p-2 text-left">用户名</th><th class="p-2 text-left">删除时间</th><th class="p-2 text-left">操作</th>';
+      '<th class="p-2 text-left">账号</th><th class="p-2 text-left">删除时间</th><th class="p-2 text-left">操作</th>';
     html += "</tr></thead><tbody>";
     keys.forEach((username) => {
       const entry = accounts[username];
+      const avatarRaw = String(entry?.avatar_url || "default_avatar.png");
+      const avatarUrl = avatarRaw.startsWith("/api/avatar/")
+        ? `${avatarRaw}${avatarRaw.includes("?") ? "&" : "?"}session_id=${encodeURIComponent(sessionUUID)}&t=${Date.now()}`
+        : "/default_avatar.png";
+      const nickname = _escapeAttr(entry?.nickname || username);
       html += '<tr class="border-b border-slate-100">';
-      html += '<td class="p-2 font-mono">' + username + "</td>";
-      html += '<td class="p-2">' + (entry.deleted_at || "-") + "</td>";
       html +=
-        '<td class="p-2"><button class="btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-slate-700 text-amber-700" onclick=\'restoreAccount(' +
+        '<td class="p-2"><div class="flex items-center gap-2"><img src="' +
+        _escapeAttr(avatarUrl) +
+        "\" class=\"w-8 h-8 rounded-full object-cover border border-slate-200\" onerror=\"this.onerror=null;this.src='/default_avatar.png';\"><div><div class=\"font-mono text-xs text-slate-800\">" +
+        _escapeAttr(username) +
+        "</div><div class=\"text-[11px] text-slate-500\">" +
+        nickname +
+        "</div></div></div></td>";
+      html += '<td class="p-2">' + _escapeAttr(entry.deleted_at || "-") + "</td>";
+      html +=
+        '<td class="p-2"><div class="flex items-center gap-1.5"><button class="btn btn-ghost border border-indigo-300 !py-0.5 !px-2 text-indigo-700" onclick=\'showRemovedAccountDetail(' +
         JSON.stringify(username) +
-        ")\'>恢复</button></td>";
+        ")\'>查看详情</button><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-amber-700\" onclick='restoreAccount(" +
+        JSON.stringify(username) +
+        ")'>恢复</button></div></td>";
       html += "</tr>";
     });
     html += "</tbody></table>";
@@ -58946,8 +58975,168 @@ async function loadMobileMultiAdminBillingList() {
 }
 
 async function loadMobileMultiRemovedAccountsList() {
-  await loadRemovedAccountsList();
-  copyAdminContentToMultiPanel("restore-account");
+  const container = document.getElementById("mobile-multi-removed-accounts-list");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
+      <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <p class="text-xs">加载中...</p>
+    </div>`;
+  try {
+    const resp = await fetch("/api/admin/removed_accounts", {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      container.innerHTML = `<p class="text-xs text-red-500">加载失败：${_escapeAttr(data.message || "未知错误")}</p>`;
+      return;
+    }
+    const accounts = data.removed_accounts || {};
+    const keys = Object.keys(accounts);
+    if (!keys.length) {
+      container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无已删除账号记录</p></div>`;
+      return;
+    }
+    let html = `<div class="mb-2 flex items-center gap-1 justify-end">
+      <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiRemovedAccountsList()">刷新</button>
+    </div><div class="space-y-2.5">`;
+    keys.forEach((username) => {
+      const entry = accounts[username] || {};
+      const safeUsername = _escapeAttr(username);
+      const safeDeletedAt = _escapeAttr(entry.deleted_at || "-");
+      const safeNickname = _escapeAttr(entry.nickname || username);
+      const avatarRaw = String(entry.avatar_url || "default_avatar.png");
+      const avatarUrl = avatarRaw.startsWith("/api/avatar/")
+        ? `${avatarRaw}${avatarRaw.includes("?") ? "&" : "?"}session_id=${encodeURIComponent(sessionUUID)}&t=${Date.now()}`
+        : "/default_avatar.png";
+      html += `
+      <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div class="px-3 py-2.5 bg-slate-50 border-b border-slate-200">
+          <div class="flex items-center gap-2.5">
+            <img src="${_escapeAttr(avatarUrl)}" class="w-9 h-9 rounded-full object-cover border border-slate-200" onerror="this.onerror=null;this.src='/default_avatar.png';">
+            <div class="min-w-0">
+              <div class="text-[11px] text-slate-500 leading-none mb-0.5">用户名</div>
+              <div class="text-xs font-semibold text-slate-800 font-mono break-all">${safeUsername}</div>
+              <div class="text-[11px] text-slate-500 truncate">${safeNickname}</div>
+            </div>
+          </div>
+        </div>
+        <div class="px-3 py-2.5">
+          <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-[11px] mb-2">
+            <div class="text-slate-500 leading-none mb-0.5">删除时间</div>
+            <div class="text-slate-700 break-all">${safeDeletedAt}</div>
+          </div>
+          <div class="flex items-center justify-end gap-1.5">
+            <button class="px-2 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${JSON.stringify(username)})'>查看详情</button>
+            <button class="px-2 py-1 text-[11px] font-medium bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors" onclick='restoreAccountAndRefreshMobile(${JSON.stringify(username)})'>恢复</button>
+          </div>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<p class="text-xs text-red-500">加载异常：${_escapeAttr(e.message)}</p>`;
+  }
+}
+
+function _formatUnixOrIsoTime(v) {
+  if (v == null || v === "") return "-";
+  const num = Number(v);
+  if (!Number.isNaN(num) && Number.isFinite(num)) {
+    const ms = num > 1e12 ? num : num * 1000;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d.toLocaleString("zh-CN");
+  }
+  const d2 = new Date(String(v));
+  if (!Number.isNaN(d2.getTime())) return d2.toLocaleString("zh-CN");
+  return _escapeAttr(String(v));
+}
+
+function _buildRemovedSchoolAccountsHtml(schoolAccounts) {
+  const list = Array.isArray(schoolAccounts) ? schoolAccounts : [];
+  if (!list.length) return '<div class="text-xs text-slate-500">无</div>';
+  return list
+    .map((school) => {
+      const safeSchool = _escapeAttr(school);
+      return `<div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+        <span class="text-xs font-mono text-slate-700 break-all">${safeSchool}</span>
+        <button class="px-2 py-0.5 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200 transition-colors"
+          onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(school)})'>查看账号详情</button>
+      </div>`;
+    })
+    .join("");
+}
+
+async function showRemovedAccountDetail(authUsername) {
+  const username = String(authUsername || "").trim();
+  if (!username) return;
+  try {
+    Swal.fire({
+      title: "加载中...",
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading(),
+    });
+    const resp = await fetch(
+      `/api/admin/removed_account_detail?auth_username=${encodeURIComponent(username)}`,
+      { headers: { "X-Session-ID": sessionUUID } },
+    );
+    const data = await resp.json();
+    Swal.close();
+    if (!data.success || !data.detail) {
+      await Swal.fire({
+        title: "查看失败",
+        text: data.message || "无法获取已删除账号详情",
+        icon: "error",
+        confirmButtonText: "确定",
+      });
+      return;
+    }
+    const detail = data.detail || {};
+    const avatarRaw = String(detail.avatar_url || "default_avatar.png");
+    const avatarUrl = avatarRaw.startsWith("/api/avatar/")
+      ? `${avatarRaw}${avatarRaw.includes("?") ? "&" : "?"}session_id=${encodeURIComponent(sessionUUID)}&t=${Date.now()}`
+      : "/default_avatar.png";
+    const schoolAccountsHtml = _buildRemovedSchoolAccountsHtml(detail.school_accounts);
+    await Swal.fire({
+      title: "已删除账号详情",
+      width: isMobileMode ? "95vw" : "680px",
+      html: `
+      <div class="text-left">
+        <div class="flex items-center gap-3 mb-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
+          <img src="${_escapeAttr(avatarUrl)}" class="w-14 h-14 rounded-full object-cover border border-slate-200" onerror="this.onerror=null;this.src='/default_avatar.png';">
+          <div class="min-w-0">
+            <div class="text-xs text-slate-500 mb-0.5">用户名</div>
+            <div class="text-sm font-semibold text-slate-800 font-mono break-all">${_escapeAttr(detail.auth_username || username)}</div>
+            <div class="text-xs text-slate-500 mt-0.5">昵称：${_escapeAttr(detail.nickname || detail.auth_username || username)}</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-3">
+          <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">登录 IP</div><div class="text-slate-700 break-all">${_escapeAttr(detail.last_login_ip || "-")}</div></div>
+          <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">最后登录时间</div><div class="text-slate-700 break-all">${_escapeAttr(_formatUnixOrIsoTime(detail.last_login))}</div></div>
+          <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">注册时间</div><div class="text-slate-700 break-all">${_escapeAttr(_formatUnixOrIsoTime(detail.register_time))}</div></div>
+          <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">注销时间</div><div class="text-slate-700 break-all">${_escapeAttr(_formatUnixOrIsoTime(detail.deleted_at))}</div></div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-2.5">
+          <div class="text-xs font-semibold text-slate-700 mb-2">有权限的学校账号</div>
+          <div class="space-y-1.5 max-h-56 overflow-y-auto">${schoolAccountsHtml}</div>
+        </div>
+      </div>
+      `,
+      showConfirmButton: true,
+      confirmButtonText: "关闭",
+      confirmButtonColor: "#3b82f6",
+    });
+  } catch (e) {
+    await Swal.fire({
+      title: "查看失败",
+      text: e.message || "请求异常",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
+  }
 }
 
 /**
