@@ -58835,11 +58835,7 @@ async function loadRemovedAccountsList() {
         '<p class="text-slate-700 text-sm">暂无已删除账号记录</p>';
       return;
     }
-    let html = '<table class="w-full text-slate-700 border-collapse">';
-    html += '<thead><tr class="bg-slate-100">';
-    html +=
-      '<th class="p-2 text-left">账号</th><th class="p-2 text-left">删除时间</th><th class="p-2 text-left">操作</th>';
-    html += "</tr></thead><tbody>";
+    let html = '<div class="space-y-3">';
     keys.forEach((username) => {
       const entry = accounts[username];
       const avatarRaw = String(entry?.avatar_url || "default_avatar.png");
@@ -58860,43 +58856,42 @@ async function loadRemovedAccountsList() {
       const availableRunsText =
         availableRunsNum === -1 ? "无限制" : `${availableRunsNum}次`;
       const tfaEnabled = !!entry?.["2fa_enabled"];
-      html += '<tr class="border-b border-slate-100">';
-      html +=
-        '<td class="p-2"><div class="flex items-center gap-2"><img src="' +
-        _escapeAttr(avatarUrl) +
-        "\" class=\"w-10 h-10 rounded-full object-cover border border-slate-200\" onerror=\"this.onerror=null;this.src='/default_avatar.png';\"><div><div class=\"font-mono text-xs text-slate-800\">" +
-        _escapeAttr(username) +
-        "</div><div class=\"text-[11px] text-slate-500\">昵称: " +
-        nickname +
-        "</div><div class=\"text-[11px] text-slate-500\">手机号: " +
-        phoneText +
-        "</div><div class=\"text-[11px] text-slate-500\">创建时间: " +
-        createdAtText +
-        "</div><div class=\"text-[11px] text-slate-500\">最后登录: " +
-        lastLoginText +
-        "</div><div class=\"text-[11px] text-slate-500\">登录IP: " +
-        loginIpText +
-        " (" +
-        loginCityText +
-        ")</div><div class=\"text-[11px] text-slate-500\">会话限制: " +
-        _escapeAttr(maxSessions) +
-        "</div><div class=\"text-[11px] text-slate-500\">可用次数: " +
-        _escapeAttr(availableRunsText) +
-        "</div><div class=\"text-[11px] " +
-        (tfaEnabled ? "text-green-600" : "text-slate-400") +
-        "\">2FA: " +
-        (tfaEnabled ? "已启用" : "未启用") +
-        "</div></div></div></td>";
-      html += '<td class="p-2">' + _escapeAttr(entry.deleted_at || "-") + "</td>";
-      html +=
-        '<td class="p-2"><div class="flex items-center gap-1.5"><button class="btn btn-ghost border border-indigo-300 !py-0.5 !px-2 text-indigo-700" onclick=\'showRemovedAccountDetail(' +
-        JSON.stringify(username) +
-        ")\'>查看详情</button><button class=\"btn btn-ghost border border-amber-300 !py-0.5 !px-2 text-amber-700\" onclick='restoreAccount(" +
-        JSON.stringify(username) +
-        ")'>恢复</button></div></td>";
-      html += "</tr>";
+      const safeDeletedAt = _escapeAttr(entry?.deleted_at || "-");
+      html += `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+          <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <img src="${_escapeAttr(avatarUrl)}" class="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-slate-200" onerror="this.onerror=null;this.src='/default_avatar.png';">
+              <div class="min-w-0">
+                <div class="font-mono text-xs text-slate-800 break-all">用户名: ${_escapeAttr(username)}</div>
+                <div class="text-[11px] text-slate-500 truncate">昵称: ${nickname}</div>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-50 text-rose-600 border border-rose-200">已删除</div>
+              <div class="text-[11px] text-slate-700 mt-1">删除时间: ${safeDeletedAt}</div>
+            </div>
+          </div>
+          <div class="px-4 py-3">
+            <div class="grid grid-cols-2 xl:grid-cols-4 gap-2 text-[11px] mb-3">
+              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">手机号</div><div class="text-slate-700 mt-0.5 break-all">${phoneText}</div></div>
+              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">创建时间</div><div class="text-slate-700 mt-0.5 break-all">${createdAtText}</div></div>
+              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">最后登录</div><div class="text-slate-700 mt-0.5 break-all">${lastLoginText}</div></div>
+              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">登录IP</div><div class="text-slate-700 mt-0.5 break-all">${loginIpText} (${loginCityText})</div></div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+              <span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] border border-slate-200">会话限制: ${_escapeAttr(maxSessions)}</span>
+              <span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] border border-slate-200">可用次数: ${_escapeAttr(availableRunsText)}</span>
+              <span class="px-2 py-1 rounded-lg text-[11px] border ${tfaEnabled ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-400 border-slate-200"}">2FA: ${tfaEnabled ? "已启用" : "未启用"}</span>
+            </div>
+            <div class="flex items-center justify-end gap-2">
+              <button class="px-2.5 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${JSON.stringify(username)})'>查看详情</button>
+              <button class="px-2.5 py-1 text-[11px] font-medium bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors" onclick='restoreAccount(${JSON.stringify(username)})'>恢复</button>
+            </div>
+          </div>
+        </div>`;
     });
-    html += "</tbody></table>";
+    html += "</div>";
     container.innerHTML = html;
   } catch (e) {
     container.innerHTML =
@@ -59030,7 +59025,7 @@ async function loadMobileMultiRemovedAccountsList() {
       container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无已删除账号记录</p></div>`;
       return;
     }
-    let html = `<div class="mb-2 flex items-center gap-1 justify-end">
+    let html = `<div class="mb-2 flex items-center gap-1 justify-start">
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiRemovedAccountsList()">刷新</button>
     </div><div class="space-y-2.5">`;
     keys.forEach((username) => {
@@ -59056,35 +59051,37 @@ async function loadMobileMultiRemovedAccountsList() {
         ? `${avatarRaw}${avatarRaw.includes("?") ? "&" : "?"}session_id=${encodeURIComponent(sessionUUID)}&t=${Date.now()}`
         : "/default_avatar.png";
       html += `
-      <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div class="px-3 py-2.5 bg-slate-50 border-b border-slate-200">
-          <div class="flex items-center gap-2.5">
-            <img src="${_escapeAttr(avatarUrl)}" class="w-9 h-9 rounded-full object-cover border border-slate-200" onerror="this.onerror=null;this.src='/default_avatar.png';">
-            <div class="min-w-0">
-              <div class="text-[11px] text-slate-500 leading-none mb-0.5">用户名</div>
-              <div class="text-xs font-semibold text-slate-800 font-mono break-all">${safeUsername}</div>
-              <div class="text-[11px] text-slate-500 truncate">${safeNickname}</div>
+      <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden active:scale-[0.998] transition-transform">
+        <div class="px-3.5 py-3 bg-gradient-to-r from-slate-50 to-slate-100/80 border-b border-slate-200 text-left">
+          <div class="flex items-start justify-start gap-2.5">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <img src="${_escapeAttr(avatarUrl)}" class="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-slate-200" onerror="this.onerror=null;this.src='/default_avatar.png';">
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-slate-800 font-mono break-all">用户名: ${safeUsername}</div>
+                <div class="text-[11px] text-slate-500 truncate">昵称: ${safeNickname}</div>
+              </div>
             </div>
           </div>
+          <div class="mt-2">
+            <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-medium bg-rose-50 text-rose-600 border border-rose-200">已删除</span>
+          </div>
         </div>
-        <div class="px-3 py-2.5">
-          <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-[11px] mb-2">
-            <div class="text-slate-500 leading-none mb-0.5">删除时间</div>
-            <div class="text-slate-700 break-all">${safeDeletedAt}</div>
+        <div class="px-3.5 py-3">
+          <div class="space-y-2 text-[12px] mb-2.5">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 break-all">删除时间: ${safeDeletedAt}</div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 break-all">手机号: ${safePhone}</div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 break-all">创建时间: ${safeCreatedAt}</div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 break-all">最后登录: ${safeLastLogin}</div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 break-all">登录IP: ${safeLoginIp} (${safeLoginCity})</div>
           </div>
-          <div class="text-[11px] text-slate-500 space-y-0.5 mb-2">
-            <div>昵称: ${safeNickname}</div>
-            <div>手机号: ${safePhone}</div>
-            <div>创建时间: ${safeCreatedAt}</div>
-            <div>最后登录: ${safeLastLogin}</div>
-            <div>登录IP: ${safeLoginIp} (${safeLoginCity})</div>
-            <div>会话限制: ${_escapeAttr(maxSessions)}</div>
-            <div>可用次数: ${_escapeAttr(availableRunsText)}</div>
-            <div class="${tfaEnabled ? "text-green-600" : "text-slate-400"}">2FA: ${tfaEnabled ? "已启用" : "未启用"}</div>
+          <div class="space-y-1.5 text-left mb-3">
+            <div class="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 text-[12px] border border-slate-200">会话限制: ${_escapeAttr(maxSessions)}</div>
+            <div class="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 text-[12px] border border-slate-200">可用次数: ${_escapeAttr(availableRunsText)}</div>
+            <div class="px-3 py-2 rounded-xl text-[12px] border ${tfaEnabled ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200"}">2FA: ${tfaEnabled ? "已启用" : "未启用"}</div>
           </div>
-          <div class="flex items-center justify-end gap-1.5">
-            <button class="px-2 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${JSON.stringify(username)})'>查看详情</button>
-            <button class="px-2 py-1 text-[11px] font-medium bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors" onclick='restoreAccountAndRefreshMobile(${JSON.stringify(username)})'>恢复</button>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="w-full min-h-[38px] px-3 py-2 text-[12px] font-medium bg-indigo-50 active:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${JSON.stringify(username)})'>查看详情</button>
+            <button class="w-full min-h-[38px] px-3 py-2 text-[12px] font-medium bg-amber-50 active:bg-amber-100 text-amber-700 rounded-xl border border-amber-200 transition-colors" onclick='restoreAccountAndRefreshMobile(${JSON.stringify(username)})'>恢复账号</button>
           </div>
         </div>
       </div>`;
