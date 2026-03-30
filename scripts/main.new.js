@@ -55567,7 +55567,10 @@ async function showOverduePaymentModal(overdueAccounts) {
     return;
   }
 
-  const selectedPayType = await _chooseBillingPayType();
+  const selectedPayType = await _chooseBillingPayType({
+    title: "选择支付方式",
+    totalAmount,
+  });
   if (!selectedPayType) return;
 
   try {
@@ -58004,9 +58007,10 @@ function toggleBillingSelectAll(containerId, checked) {
   });
 }
 
-async function _chooseBillingPayType() {
+async function _chooseBillingPayType(options = {}) {
   let enabledMethods = [];
   let methodsConfig = {};
+  let paymentMethodsFullConfig = {};
   try {
     const methodsResp = await fetch("/api/payment/methods_config", {
       headers: { "X-Session-ID": sessionUUID },
@@ -58017,6 +58021,14 @@ async function _chooseBillingPayType() {
         ? methodsData.enabled_methods
         : [];
       methodsConfig = methodsData.methods || {};
+    }
+
+    const configResp = await fetch("/api/admin/payment/config", {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const configData = await configResp.json();
+    if (configData.success && configData.payment_methods) {
+      paymentMethodsFullConfig = configData.payment_methods;
     }
   } catch (e) {
     console.warn("[账单支付] 获取支付方式失败:", e);
@@ -58035,23 +58047,102 @@ async function _chooseBillingPayType() {
     return enabledMethods[0];
   }
 
-  const inputOptions = {};
-  enabledMethods.forEach((method) => {
-    const conf = methodsConfig[method] || {};
-    inputOptions[method] = conf.name || method;
-  });
+  const modalTitle = String(options.title || "").trim() || "选择支付方式";
+  const totalAmount = options.totalAmount;
+
+  const paymentMethodsHtml = enabledMethods
+    .map((method) => {
+      const config =
+        paymentMethodsFullConfig[method] || methodsConfig[method] || {};
+      const name = config.name || method;
+      const svg =
+        config.svg ||
+        '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>';
+      const textColor = config.textColor || "text-blue-600";
+      const borderColor = config.borderColor || "hover:border-blue-500";
+      return `
+        <div class="payment-method-option ${borderColor}" 
+             data-method="${escapeHtml(method)}"
+             onclick="selectBillingPaymentMethod('${escapeHtml(method)}')"
+             style="
+                 padding: 15px 20px;
+                 margin: 10px 0;
+                 border: 2px solid #e2e8f0;
+                 border-radius: 10px;
+                 cursor: pointer;
+                 transition: all 0.2s;
+                 display: flex;
+                 align-items: center;
+                 background: white;
+             "
+             onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';"
+             onmouseout="this.style.boxShadow='none';">
+            <div class="${textColor}" style="margin-right: 15px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+                ${svg}
+            </div>
+            <div style="flex: 1;">
+                <div style="font-weight: 600; font-size: 16px; color: #1e293b;">
+                    ${escapeHtml(name)}
+                </div>
+            </div>
+            <input type="radio" 
+                   name="billing-payment-method" 
+                   value="${escapeHtml(method)}"
+                   style="width: 20px; height: 20px; cursor: pointer;">
+        </div>
+      `;
+    })
+    .join("");
+
+  const amountHtml =
+    totalAmount != null && totalAmount !== ""
+      ? `
+      <div style="
+          padding: 12px;
+          background: #f1f5f9;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          text-align: center;
+      ">
+          <div style="color: #64748b; font-size: 13px; margin-bottom: 5px;">应付金额</div>
+          <div style="color: #dc2626; font-size: 24px; font-weight: bold;">¥${escapeHtml(String(totalAmount))}</div>
+      </div>
+    `
+      : "";
 
   const chooseResult = await Swal.fire({
-    title: "选择支付方式",
-    text: "请选择本次账单支付使用的方式",
-    input: "radio",
-    inputOptions,
+    title: modalTitle,
+    html: `
+      <div style="text-align: left;">
+        ${amountHtml}
+        ${paymentMethodsHtml}
+      </div>
+    `,
     showCancelButton: true,
     confirmButtonText: "确认",
     cancelButtonText: "取消",
-    inputValidator: (value) => {
-      if (!value) return "请选择支付方式";
-      return undefined;
+    confirmButtonColor: "#3b82f6",
+    cancelButtonColor: "#94a3b8",
+    width: "500px",
+    preConfirm: () => {
+      const selectedMethod = document.querySelector(
+        'input[name="billing-payment-method"]:checked',
+      );
+      if (!selectedMethod) {
+        Swal.showValidationMessage("请选择一种支付方式");
+        return false;
+      }
+      return selectedMethod.value;
+    },
+    didOpen: () => {
+      window.selectBillingPaymentMethod = (method) => {
+        const radio = document.querySelector(
+          `input[name="billing-payment-method"][value="${method}"]`,
+        );
+        if (radio) {
+          radio.checked = true;
+        }
+      };
     },
   });
   if (!chooseResult.isConfirmed) return null;
@@ -58135,6 +58226,15 @@ async function paySelectedBilling(containerId) {
 }
 
 async function paySingleBilling(containerId, billingId, schoolUsername) {
+  if (!billingId || !schoolUsername) {
+    await Swal.fire({
+      title: "参数错误",
+      text: "账单信息不完整，请刷新后重试",
+      icon: "error",
+      confirmButtonText: "确定",
+    });
+    return;
+  }
   await paySelectedBillingWithPreset(containerId, [
     { billing_id: billingId, school_username: schoolUsername },
   ]);
@@ -58158,7 +58258,9 @@ async function paySelectedBillingWithPreset(containerId, items) {
     width: 560,
   });
   if (!confirmResult.isConfirmed) return;
-  const selectedPayType = await _chooseBillingPayType();
+  const selectedPayType = await _chooseBillingPayType({
+    title: items.length > 1 ? "选择支付方式" : "选择支付方式",
+  });
   if (!selectedPayType) return;
   try {
     await createBillingPaymentOrderAndOpen(items, selectedPayType);

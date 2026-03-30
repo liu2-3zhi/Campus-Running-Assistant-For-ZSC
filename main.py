@@ -5509,6 +5509,28 @@ class RsaSigner:
         return "&".join(kv_pairs)
 
 
+def _normalize_yipay_device(device_value=None):
+    """
+    统一归一化易支付设备类型。
+    支持值：pc/mobile/qq/wechat/alipay
+    """
+    valid_devices = {"pc", "mobile", "qq", "wechat", "alipay"}
+    raw_device = str(device_value or "").strip().lower()
+    if raw_device in valid_devices:
+        return raw_device
+
+    ua = (request.headers.get("User-Agent", "") or "").lower()
+    if "alipayclient" in ua or "alipay" in ua:
+        return "alipay"
+    if "micromessenger" in ua:
+        return "wechat"
+    if " qq/" in f" {ua}" or ("mqqbrowser" in ua and "mobile" in ua):
+        return "qq"
+    if any(k in ua for k in ["mobile", "android", "touch", "webos", "hpwos"]):
+        return "mobile"
+    return "pc"
+
+
 class RainbowYiPayClient:
     """
     彩虹易支付V2接口客户端类
@@ -5580,9 +5602,10 @@ class RainbowYiPayClient:
         """
         创建支付订单
         """
-        method = payment_type
+        # 按接口约定固定 method=web，由平台根据 device 自动判断实际拉起方式
+        method = "web"
         logging.info(
-            f"[彩虹易支付] 创建订单请求 - 订单号: {out_trade_no}, 商品名称: {name}, 金额: {money}, 支付方式: {pay_type}, 接口类型: {payment_type}，服务器端地址：{client_app_host}，接口类型：{payment_type}，设备：{device_get}")
+            f"[彩虹易支付] 创建订单请求 - 订单号: {out_trade_no}, 商品名称: {name}, 金额: {money}, 支付方式: {pay_type}, 接口类型: {method}，服务器端地址：{client_app_host}，设备：{device_get}")
         if pay_type == "jsapi":
             if not sub_openid or not sub_appid:
                 return {"success": False, "message": "jsapi支付方式需要提供sub_openid和sub_appid"}
@@ -5733,10 +5756,7 @@ class RainbowYiPayClient:
                 "[彩虹易支付] return_url 不是 /api/payment/yipay_notify，正在尝试修正...")
             return_url = f"{app_host}/api/payment/yipay_notify?jump=" + return_url
 
-        if device_get in ["pc", "mobile", "qq", "wechat", "alipay"]:
-            device = device_get
-        else:
-            device = "pc"
+        device = _normalize_yipay_device(device_get)
 
         # 构造订单参数字典
         # 这些参数将被发送到彩虹易支付API
@@ -37492,9 +37512,9 @@ def start_web_server(args_param):
             if (not return_url) or return_url.strip() == '' or return_url.strip() == "null" or return_url.strip() == "undefind" or IPVerifier().is_allowed_ip(return_url):
                 return_url = None
 
-            # 提取设备类型参数（仅web接口类型需要）
+            # 提取设备类型参数（web接口根据设备自动判断拉起方式）
             # device: 设备类型（pc/mobile/qq/wechat/alipay）
-            device = data.get("device", "").strip() or None
+            device = _normalize_yipay_device(data.get("device", ""))
 
             # 提取扫码支付授权码参数（仅scan接口类型需要）
             # auth_code: 被扫支付授权码（18位数字）
@@ -37506,7 +37526,8 @@ def start_web_server(args_param):
             sub_openid = data.get("sub_openid", "").strip() or None
             sub_appid = data.get("sub_appid", "").strip() or None
 
-            payment_type = data.get("payment_type", "").strip() or None
+            # 约定固定使用 web，由平台根据 device 自动选择实际发起方式
+            payment_type = "web"
 
             # ========== 参数验证 ==========
 
@@ -38226,9 +38247,10 @@ def start_web_server(args_param):
 
             # ========== 步骤7：判断设备类型（根据User-Agent） ==========
 
-            device = data.get("device", "").strip()
+            device = _normalize_yipay_device(data.get("device", ""))
 
-            payment_type = data.get("payment_type", "web").strip()
+            # 约定固定使用 web，由平台根据 device 自动选择实际发起方式
+            payment_type = "web"
 
             payment_method = pay_type
 
@@ -38589,8 +38611,8 @@ def start_web_server(args_param):
 
             # 支付参数
             pay_type = str(data.get("pay_type", "alipay")).strip() or "alipay"
-            payment_type = str(data.get("payment_type", "web")).strip() or "web"
-            device = str(data.get("device", "")).strip() or "pc"
+            payment_type = "web"
+            device = _normalize_yipay_device(data.get("device", ""))
             client_app_host = str(data.get("app_host", "")).strip() or None
 
             # 读取启用支付方式并回退
