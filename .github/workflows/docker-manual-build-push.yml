@@ -1,85 +1,82 @@
-name: Manual Docker Build & Push
+name: 手动构建并推送 Docker 镜像
 
-# 触发方式说明：
-# 仅支持手动触发（Actions 页面点击 Run workflow）
 on:
   workflow_dispatch:
-    # 允许手动输入镜像标签，默认 latest
     inputs:
       image_tag:
-        description: "镜像标签（不含 registry 和 repository 前缀）"
+        description: "镜像标签"
         required: true
         default: "latest"
 
-# 最小权限原则：本任务只需要读取仓库内容
 permissions:
   contents: read
 
-# 与 build.bat 对齐的核心变量
 env:
-  # 镜像名称（不含 registry）
   IMAGE_NAME: python_runing-python-running-helper
-  # 镜像仓库域名
   REGISTRY: hongkong.zelly.cn
-  # 仓库命名空间前缀
   REGISTRY_PREFIX: hongkong.zelly.cn/python_runing-python-running-helper
-  # 构建阶段使用的临时本地标签
-  TEMP_TAG: python_runing-python-running-helper:build-temp
 
 jobs:
   build-and-push:
-    # 使用 Linux Runner 执行 Docker 构建与推送
     runs-on: ubuntu-latest
+
     steps:
-      # 1) 拉取当前仓库代码，供 docker build 使用
-      - name: Checkout
+      # 1) 拉取仓库代码
+      - name: 拉取仓库代码
         uses: actions/checkout@v4
 
-      # 初始化 buildx
-      - name: Set up Docker Buildx
+      # 2) 初始化 buildx
+      - name: 初始化 Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 2) 登录私有镜像仓库
-      # 账号密码来自仓库 Secrets：
-      # - DOCKER_USERNAME
-      # - DOCKER_PASSWORD
-      - name: Login to registry
+      # 3) 登录私有镜像仓库
+      - name: 登录镜像仓库
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 拉取镜像缓存（如果存在），加速构建过程
-      - name: Pull cache image
-        run: docker pull "${REGISTRY_PREFIX}/${IMAGE_NAME}:latest" || echo "未能成功拉取镜像，继续构建。"
+      # 4) 恢复 GitHub Actions 缓存
+      - name: 恢复 GHA 构建缓存
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: buildx-${{ github.sha }}
+          restore-keys: |
+            buildx-
 
-
-        
-      # # 3) 构建临时镜像
-      # - name: Build image
-      #   run: docker build -t "${TEMP_TAG}" .
-
-      # 使用 buildx 构建临时镜像，并启用 GitHub Actions 的缓存机制
-      - name: Build image with cache
+      # 5) 拉取上一次构建的镜像作为缓存来源
+      - name: 拉取上一次构建的镜像缓存
         run: |
+          docker pull "${REGISTRY_PREFIX}/${IMAGE_NAME}:latest" || true
+
+      # 6) 拉取 Dockerfile 中的基础镜像，确保基础镜像为最新
+      - name: 拉取基础镜像
+        run: |
+          BASE_IMAGE=$(grep -i '^FROM ' Dockerfile | head -n1 | awk '{print $2}')
+          echo "基础镜像: $BASE_IMAGE"
+          docker pull "$BASE_IMAGE" || true
+
+      # 7) 使用 buildx 构建镜像（使用 GHA + registry 双缓存）
+      - name: 构建并推送镜像（带缓存）
+        run: |
+          FINAL_TAG="${REGISTRY_PREFIX}/${IMAGE_NAME}:${{ github.event.inputs.image_tag }}"
+          LATEST_TAG="${REGISTRY_PREFIX}/${IMAGE_NAME}:latest"
+
           docker buildx build \
-            --cache-from type=gha \
-            --cache-to type=gha,mode=max \
-            -t "${TEMP_TAG}" \
-            --load \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-from type=registry,ref=${LATEST_TAG} \
+            --cache-to type=local,dest=/tmp/.buildx-cache,mode=max \
+            --cache-to type=registry,ref=${LATEST_TAG},mode=max \
+            -t "${FINAL_TAG}" \
+            -t "${LATEST_TAG}" \
+            --push \
             .
 
-
-      # 4) 按最终规则打标签，并写入环境变量供后续步骤复用
-      # 最终格式：
-      #   hongkong.zelly.cn/python_runing-python-running-helper/python_runing-python-running-helper:<image_tag>
-      - name: Tag image
-        run: |
-          TAG="${REGISTRY_PREFIX}/${IMAGE_NAME}:${{ github.event.inputs.image_tag }}"
-          echo "TAG=${TAG}" >> "$GITHUB_ENV"
-          docker tag "${TEMP_TAG}" "${TAG}"
-
-      # 5) 推送最终镜像到远端仓库
-      - name: Push image
-        run: docker push "${TAG}"
+      # 8) 保存 GHA 缓存（供下次构建使用）
+      - name: 保存 GHA 构建缓存
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: buildx-${{ github.sha }}
