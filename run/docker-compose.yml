@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   python-running-helper:
-    image: hongkong.zelly.cn/python_runing-python-running-helper/python_runing-python-running-helper:latest
+    image: xenlia/campus-running-assistant-for-zsc:latest
     # image: python_runing-python-running-helper:latest
     container_name: python-running-helper
     ports:

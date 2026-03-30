@@ -2,11 +2,6 @@ name: 手动构建并推送 Docker 镜像
 
 on:
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: "镜像标签"
-        required: true
-        default: "latest"
 
 permissions:
   contents: read
@@ -23,6 +18,13 @@ jobs:
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
+
+      - name: 生成时间戳 TAG
+        id: time
+        run: |
+          TAG=$(date +"%Y_%m_%d_%H_%M_%S")
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "生成的时间标签: $TAG"
 
       - name: 初始化 Buildx（container driver）
         uses: docker/setup-buildx-action@v3
@@ -44,22 +46,28 @@ jobs:
           restore-keys: |
             buildx-
 
+      - name: 拉取 Registry 缓存镜像（如果存在）
+        run: |
+          CACHE_IMAGE="${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:cache"
+          echo "尝试拉取缓存镜像: $CACHE_IMAGE"
+          docker pull "$CACHE_IMAGE" || true
+
       - name: 拉取基础镜像
         run: |
           BASE_IMAGE=$(grep -i '^FROM ' Dockerfile | head -n1 | awk '{print $2}')
           echo "基础镜像: $BASE_IMAGE"
           docker pull "$BASE_IMAGE" || true
 
-      - name: 构建并推送镜像（build-push-action@v5）
+      - name: 构建并推送镜像（使用 GHA + Registry 双缓存）
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
+
           tags: |
-            ${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
+            ${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:${{ steps.time.outputs.tag }}
             ${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:latest
 
-          # 使用 GHA 缓存 + Registry 缓存
           cache-from: |
             type=local,src=/tmp/.buildx-cache
             type=registry,ref=${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:cache
@@ -67,7 +75,6 @@ jobs:
           cache-to: |
             type=local,dest=/tmp/.buildx-cache,mode=max
             type=registry,ref=${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:cache,mode=max
-
 
       - name: 保存 GHA 构建缓存
         uses: actions/cache@v4
