@@ -45066,6 +45066,190 @@ def start_web_server(args_param):
             school_accounts_data = backup_data.get("school_accounts", {}) or {}
             if not isinstance(school_accounts_data, dict):
                 school_accounts_data = {}
+            school_accounts = list(school_accounts_data.keys())
+
+            permissions_snapshot = backup_data.get("permissions", {}) or {}
+            if not isinstance(permissions_snapshot, dict):
+                permissions_snapshot = {}
+            snapshot_user_groups = permissions_snapshot.get("user_groups", {}) or {}
+            if not isinstance(snapshot_user_groups, dict):
+                snapshot_user_groups = {}
+            snapshot_user_custom = permissions_snapshot.get("user_custom_permissions", {}) or {}
+            if not isinstance(snapshot_user_custom, dict):
+                snapshot_user_custom = {}
+
+            user_group = (
+                snapshot_user_groups.get(auth_username)
+                or user_data.get("group")
+                or "guest"
+            )
+            group_info = auth_system.permissions.get("permission_groups", {}).get(user_group, {}) or {}
+            group_permissions = group_info.get("permissions", {}) or {}
+            if not isinstance(group_permissions, dict):
+                group_permissions = {}
+            user_custom_permissions = snapshot_user_custom.get(auth_username, {}) or {}
+            if not isinstance(user_custom_permissions, dict):
+                user_custom_permissions = {}
+            added_permissions = [
+                str(p).strip()
+                for p in (user_custom_permissions.get("added", []) or [])
+                if str(p).strip()
+            ]
+            removed_permissions = [
+                str(p).strip()
+                for p in (user_custom_permissions.get("removed", []) or [])
+                if str(p).strip()
+            ]
+            effective_permissions = dict(group_permissions)
+            for perm in added_permissions:
+                effective_permissions[perm] = True
+            for perm in removed_permissions:
+                effective_permissions[perm] = False
+            enabled_permissions = sorted(
+                [k for k, v in effective_permissions.items() if bool(v)],
+                key=lambda x: str(x),
+            )
+
+            current_messages = []
+            messages_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "messages.json")
+            if os.path.exists(messages_file):
+                try:
+                    with open(messages_file, "r", encoding="utf-8") as f:
+                        all_messages = json.load(f)
+                    if isinstance(all_messages, list):
+                        current_messages = [
+                            msg for msg in all_messages
+                            if isinstance(msg, dict) and str(msg.get("auth_username") or "").strip() == auth_username
+                        ]
+                except Exception as e:
+                    logging.warning(f"[已删除账号] 读取 messages.json 失败（忽略）: {e}")
+
+            deleted_messages = []
+            deleted_messages_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logs",
+                "deleted_messages.json",
+            )
+            if os.path.exists(deleted_messages_file):
+                try:
+                    with open(deleted_messages_file, "r", encoding="utf-8") as f:
+                        deleted_log = json.load(f)
+                    if isinstance(deleted_log, list):
+                        deleted_messages = [
+                            msg for msg in deleted_log
+                            if isinstance(msg, dict) and str(msg.get("auth_username") or "").strip() == auth_username
+                        ]
+                except Exception as e:
+                    logging.warning(f"[已删除账号] 读取 deleted_messages.json 失败（忽略）: {e}")
+
+            message_items = []
+            for msg in current_messages:
+                message_items.append(
+                    {
+                        "id": msg.get("id", ""),
+                        "content": msg.get("content", ""),
+                        "timestamp": msg.get("timestamp"),
+                        "ip": msg.get("ip", ""),
+                        "source": "active",
+                        "status_text": "现存",
+                    }
+                )
+            for msg in deleted_messages:
+                message_items.append(
+                    {
+                        "id": msg.get("id", ""),
+                        "content": msg.get("content", ""),
+                        "timestamp": msg.get("timestamp"),
+                        "ip": msg.get("ip", ""),
+                        "source": "deleted",
+                        "status_text": "已删",
+                        "deleted_at": msg.get("deleted_at"),
+                        "deleted_by": msg.get("deleted_by", ""),
+                        "deletion_reason": msg.get("deletion_reason", ""),
+                    }
+                )
+
+            def _message_sort_key(item):
+                primary = item.get("timestamp")
+                if primary is None or primary == "":
+                    primary = item.get("deleted_at", "")
+                return str(primary)
+
+            message_items.sort(key=_message_sort_key, reverse=True)
+            message_items_limited = message_items[:50]
+
+            billing_records = []
+            billing_root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+            )
+            if os.path.isdir(billing_root):
+                for school_username in school_accounts:
+                    school_dir = os.path.join(billing_root, school_username)
+                    if not os.path.isdir(school_dir):
+                        continue
+                    for filename in os.listdir(school_dir):
+                        if not filename.endswith(".json"):
+                            continue
+                        bill_path = os.path.join(school_dir, filename)
+                        try:
+                            with open(bill_path, "r", encoding="utf-8") as bf:
+                                bill = json.load(bf)
+                            if not isinstance(bill, dict):
+                                continue
+                            amount = bill.get("amount")
+                            try:
+                                amount = round(float(amount), 2)
+                            except Exception:
+                                amount = 0.0
+                            billing_records.append(
+                                {
+                                    "billing_id": bill.get("billing_id", os.path.splitext(filename)[0]),
+                                    "school_username": bill.get("school_username", school_username) or school_username,
+                                    "reason": bill.get("reason", ""),
+                                    "amount": amount,
+                                    "status": bill.get("status", "pending"),
+                                    "created_at": bill.get("created_at"),
+                                    "paid_at": bill.get("paid_at"),
+                                    "payment_orders_count": len(bill.get("payment_orders", []) or []),
+                                }
+                            )
+                        except Exception as e:
+                            logging.warning(
+                                f"[已删除账号] 读取账单失败（忽略）: {bill_path}, 错误: {e}"
+                            )
+            billing_records.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+            billing_records_limited = billing_records[:100]
+            billing_stats = {
+                "total": len(billing_records),
+                "pending": 0,
+                "paid": 0,
+                "admin_cleared": 0,
+                "other": 0,
+                "total_amount": 0.0,
+                "pending_amount": 0.0,
+            }
+            for rec in billing_records:
+                status = str(rec.get("status", "")).strip().lower()
+                if status == "pending":
+                    billing_stats["pending"] += 1
+                elif status == "paid":
+                    billing_stats["paid"] += 1
+                elif status == "admin_cleared":
+                    billing_stats["admin_cleared"] += 1
+                else:
+                    billing_stats["other"] += 1
+                amt = rec.get("amount", 0.0) or 0.0
+                try:
+                    amt = float(amt)
+                except Exception:
+                    amt = 0.0
+                billing_stats["total_amount"] += amt
+                if status == "pending":
+                    billing_stats["pending_amount"] += amt
+            billing_stats["total_amount"] = round(billing_stats["total_amount"], 2)
+            billing_stats["pending_amount"] = round(billing_stats["pending_amount"], 2)
 
             detail = {
                 "auth_username": user_data.get("auth_username", auth_username) or auth_username,
@@ -45075,7 +45259,29 @@ def start_web_server(args_param):
                 "last_login": user_data.get("last_login"),
                 "register_time": user_data.get("created_at"),
                 "deleted_at": backup_data.get("deleted_at") or entry.get("deleted_at", ""),
-                "school_accounts": list(school_accounts_data.keys()),
+                "school_accounts": school_accounts,
+                "permission_group": {
+                    "key": user_group,
+                    "name": group_info.get("name", user_group) or user_group,
+                },
+                "permissions": {
+                    "group_permissions": group_permissions,
+                    "user_custom_permissions": {
+                        "added": added_permissions,
+                        "removed": removed_permissions,
+                    },
+                    "effective_permissions": effective_permissions,
+                    "enabled_permissions": enabled_permissions,
+                },
+                "messages": {
+                    "total_current": len(current_messages),
+                    "total_deleted": len(deleted_messages),
+                    "records": message_items_limited,
+                },
+                "billing": {
+                    "stats": billing_stats,
+                    "records": billing_records_limited,
+                },
             }
 
             return jsonify({"success": True, "detail": detail})

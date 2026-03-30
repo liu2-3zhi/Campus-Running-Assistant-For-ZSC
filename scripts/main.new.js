@@ -59151,6 +59151,117 @@ async function showRemovedAccountDetail(authUsername) {
       ? `${avatarRaw}${avatarRaw.includes("?") ? "&" : "?"}session_id=${encodeURIComponent(sessionUUID)}&t=${Date.now()}`
       : "/default_avatar.png";
     const schoolAccountsHtml = _buildRemovedSchoolAccountsHtml(detail.school_accounts);
+    const permissionGroup = detail.permission_group || {};
+    const permissions = detail.permissions || {};
+    const enabledPermissions = Array.isArray(permissions.enabled_permissions)
+      ? permissions.enabled_permissions
+      : [];
+    const groupPermissionMap =
+      permissions.group_permissions && typeof permissions.group_permissions === "object"
+        ? permissions.group_permissions
+        : {};
+    const groupEnabledPermissions = Object.keys(groupPermissionMap).filter(
+      (key) => !!groupPermissionMap[key],
+    );
+    const userCustomPermissions =
+      permissions.user_custom_permissions && typeof permissions.user_custom_permissions === "object"
+        ? permissions.user_custom_permissions
+        : {};
+    const addedPermissions = Array.isArray(userCustomPermissions.added)
+      ? userCustomPermissions.added
+      : [];
+    const removedPermissions = Array.isArray(userCustomPermissions.removed)
+      ? userCustomPermissions.removed
+      : [];
+
+    const permissionBadgesHtml = enabledPermissions.length
+      ? enabledPermissions
+          .map(
+            (perm) =>
+              `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">${_escapeAttr(translatePermission(String(perm)))}</span>`,
+          )
+          .join("")
+      : '<span class="text-xs text-slate-500">无</span>';
+    const groupPermissionBadgesHtml = groupEnabledPermissions.length
+      ? groupEnabledPermissions
+          .map(
+            (perm) =>
+              `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-sky-50 text-sky-700 border border-sky-200">${_escapeAttr(translatePermission(String(perm)))}</span>`,
+          )
+          .join("")
+      : '<span class="text-xs text-slate-500">无</span>';
+    const addedPermissionBadgesHtml = addedPermissions.length
+      ? addedPermissions
+          .map(
+            (perm) =>
+              `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">+ ${_escapeAttr(translatePermission(String(perm)))}</span>`,
+          )
+          .join("")
+      : '<span class="text-xs text-slate-500">无</span>';
+    const removedPermissionBadgesHtml = removedPermissions.length
+      ? removedPermissions
+          .map(
+            (perm) =>
+              `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">- ${_escapeAttr(translatePermission(String(perm)))}</span>`,
+          )
+          .join("")
+      : '<span class="text-xs text-slate-500">无</span>';
+
+    const messages = detail.messages || {};
+    const messageRecords = Array.isArray(messages.records) ? messages.records : [];
+    const messageRowsHtml = messageRecords.length
+      ? messageRecords
+          .slice(0, 30)
+          .map((msg) => {
+            const statusText = String(msg.status_text || (msg.source === "deleted" ? "已删" : "现存"));
+            const statusClass =
+              statusText === "已删"
+                ? "bg-rose-50 text-rose-700 border-rose-200"
+                : "bg-emerald-50 text-emerald-700 border-emerald-200";
+            const timeRaw = msg.timestamp != null && msg.timestamp !== "" ? msg.timestamp : msg.deleted_at;
+            return `<div class="border border-slate-200 rounded-lg p-2 bg-white">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${statusClass}">${_escapeAttr(statusText)}</span>
+                <span class="text-[11px] text-slate-500">${_escapeAttr(_formatUnixOrIsoTime(timeRaw))}</span>
+              </div>
+              <div class="text-xs text-slate-700 break-words whitespace-pre-wrap">${_escapeAttr(msg.content || "")}</div>
+            </div>`;
+          })
+          .join("")
+      : '<div class="text-xs text-slate-500">无</div>';
+
+    const billing = detail.billing || {};
+    const billingStats = billing.stats || {};
+    const billingRecords = Array.isArray(billing.records) ? billing.records : [];
+    const billingRowsHtml = billingRecords.length
+      ? billingRecords
+          .slice(0, 40)
+          .map((rec) => {
+            const amountNumber = Number(rec.amount);
+            const amountText = Number.isFinite(amountNumber) ? amountNumber.toFixed(2) : "0.00";
+            const status = String(rec.status || "pending");
+            const statusLabelMap = { pending: "待支付", paid: "已支付", admin_cleared: "管理员清除" };
+            const statusLabel = statusLabelMap[status] || status;
+            const statusClass =
+              status === "paid"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : status === "admin_cleared"
+                  ? "bg-slate-100 text-slate-700 border-slate-300"
+                  : "bg-amber-50 text-amber-700 border-amber-200";
+            return `<div class="border border-slate-200 rounded-lg p-2 bg-white">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <div class="text-xs font-mono text-slate-700 break-all">${_escapeAttr(rec.school_username || "-")}</div>
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${statusClass}">${_escapeAttr(statusLabel)}</span>
+              </div>
+              <div class="text-xs text-slate-700 break-words">${_escapeAttr(rec.reason || "-")}</div>
+              <div class="mt-1 text-[11px] text-slate-500 flex items-center justify-between gap-2">
+                <span>金额：¥${_escapeAttr(amountText)}</span>
+                <span>${_escapeAttr(_formatUnixOrIsoTime(rec.created_at))}</span>
+              </div>
+            </div>`;
+          })
+          .join("")
+      : '<div class="text-xs text-slate-500">无</div>';
     await Swal.fire({
       title: "已删除账号详情",
       width: isMobileMode ? "95vw" : "680px",
@@ -59174,6 +59285,52 @@ async function showRemovedAccountDetail(authUsername) {
           <div class="text-xs font-semibold text-slate-700 mb-2">有权限的学校账号</div>
           <div class="space-y-1.5 max-h-56 overflow-y-auto">${schoolAccountsHtml}</div>
         </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-2.5 mt-3">
+          <div class="text-xs font-semibold text-slate-700 mb-2">权限组</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
+              <div class="text-slate-500 mb-0.5">组标识</div>
+              <div class="text-slate-700 font-mono break-all">${_escapeAttr(permissionGroup.key || "-")}</div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
+              <div class="text-slate-500 mb-0.5">组名称</div>
+              <div class="text-slate-700 break-all">${_escapeAttr(permissionGroup.name || permissionGroup.key || "-")}</div>
+            </div>
+          </div>
+          <div class="mt-2">
+            <div class="text-[11px] text-slate-500 mb-1">组内权限</div>
+            <div class="flex flex-wrap gap-1.5">${groupPermissionBadgesHtml}</div>
+          </div>
+          <div class="mt-2">
+            <div class="text-[11px] text-slate-500 mb-1">自定义追加权限</div>
+            <div class="flex flex-wrap gap-1.5">${addedPermissionBadgesHtml}</div>
+          </div>
+          <div class="mt-2">
+            <div class="text-[11px] text-slate-500 mb-1">自定义移除权限</div>
+            <div class="flex flex-wrap gap-1.5">${removedPermissionBadgesHtml}</div>
+          </div>
+          <div class="mt-2">
+            <div class="text-[11px] text-slate-500 mb-1">最终生效权限</div>
+            <div class="flex flex-wrap gap-1.5">${permissionBadgesHtml}</div>
+          </div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-2.5 mt-3">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="text-xs font-semibold text-slate-700">留言记录</div>
+            <div class="text-[11px] text-slate-500">现存 ${_escapeAttr(String(messages.total_current || 0))} / 已删 ${_escapeAttr(String(messages.total_deleted || 0))}</div>
+          </div>
+          <div class="space-y-1.5 max-h-56 overflow-y-auto">${messageRowsHtml}</div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-2.5 mt-3">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="text-xs font-semibold text-slate-700">账单记录</div>
+            <div class="text-[11px] text-slate-500">共 ${_escapeAttr(String(billingStats.total || 0))} 条</div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-2">
+            <div class="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 text-amber-700">待支付：${_escapeAttr(String(billingStats.pending || 0))}</div>
+            <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5 text-emerald-700">已支付：${_escapeAttr(String(billingStats.paid || 0))}</div>
+            <div class="bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-slate-700">管理员清除：${_escapeAttr(String(billingStats.admin_cleared || 0))}</div>
+            <div class="bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1.5 text-indigo-700">待支付金额：¥${_escapeAttr(String(Number(billingStats.pending_amount || 0).toFixed(2)))}</div>
       </div>
       `,
       showConfirmButton: true,
