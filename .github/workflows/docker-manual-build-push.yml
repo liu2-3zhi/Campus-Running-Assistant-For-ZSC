@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE_NAME: Campus-Running-Assistant-For-ZSC
+  IMAGE_NAME: campus-running-assistant-for-zsc
   REGISTRY: docker.io
   REGISTRY_PREFIX: docker.io/${{ secrets.DOCKER_USERNAME }}
 
@@ -59,9 +59,15 @@ jobs:
             ${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
             ${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:latest
 
-          # 仅使用 GHA 缓存
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
+          # 使用 GHA 缓存 + Registry 缓存
+          cache-from: |
+            type=local,src=/tmp/.buildx-cache
+            type=registry,ref=${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:cache
+
+          cache-to: |
+            type=local,dest=/tmp/.buildx-cache,mode=max
+            type=registry,ref=${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:cache,mode=max
+
 
       - name: 保存 GHA 构建缓存
         uses: actions/cache@v4
