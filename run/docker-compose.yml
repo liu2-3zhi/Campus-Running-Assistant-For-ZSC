@@ -35,6 +35,7 @@ services:
       - ./uploads:/app/uploads
       - ./Remove_Acoount:/app/Remove_Acoount
       - ./User_Billing:/app/User_Billing
+      - ./amap_watermark_control.json:/app/amap_watermark_control.json
 
     environment:
       - PYTHONUNBUFFERED=1
