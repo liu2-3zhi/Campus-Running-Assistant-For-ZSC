@@ -55567,8 +55567,11 @@ async function showOverduePaymentModal(overdueAccounts) {
     return;
   }
 
+  const selectedPayType = await _chooseBillingPayType();
+  if (!selectedPayType) return;
+
   try {
-    await createBillingPaymentOrderAndOpen(selectedBills);
+    await createBillingPaymentOrderAndOpen(selectedBills, selectedPayType);
     await Swal.fire({
       title: "已发起支付",
       text: "请在新窗口完成支付，完成后可刷新查看账单状态",
@@ -58001,7 +58004,65 @@ function toggleBillingSelectAll(containerId, checked) {
   });
 }
 
-async function createBillingPaymentOrderAndOpen(billingItems) {
+async function _chooseBillingPayType() {
+  let enabledMethods = [];
+  let methodsConfig = {};
+  try {
+    const methodsResp = await fetch("/api/payment/methods_config", {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const methodsData = await methodsResp.json();
+    if (methodsData.success) {
+      enabledMethods = Array.isArray(methodsData.enabled_methods)
+        ? methodsData.enabled_methods
+        : [];
+      methodsConfig = methodsData.methods || {};
+    }
+  } catch (e) {
+    console.warn("[账单支付] 获取支付方式失败:", e);
+  }
+
+  if (!enabledMethods.length) {
+    await Swal.fire({
+      title: "暂无可用支付方式",
+      text: "请联系管理员启用支付方式后再试",
+      icon: "warning",
+      confirmButtonText: "确定",
+    });
+    return null;
+  }
+  if (enabledMethods.length === 1) {
+    return enabledMethods[0];
+  }
+
+  const inputOptions = {};
+  enabledMethods.forEach((method) => {
+    const conf = methodsConfig[method] || {};
+    inputOptions[method] = conf.name || method;
+  });
+
+  const chooseResult = await Swal.fire({
+    title: "选择支付方式",
+    text: "请选择本次账单支付使用的方式",
+    input: "radio",
+    inputOptions,
+    showCancelButton: true,
+    confirmButtonText: "确认",
+    cancelButtonText: "取消",
+    inputValidator: (value) => {
+      if (!value) return "请选择支付方式";
+      return undefined;
+    },
+  });
+  if (!chooseResult.isConfirmed) return null;
+  return chooseResult.value;
+}
+
+async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
+  const payType = String(selectedPayType || "").trim();
+  if (!payType) {
+    throw new Error("请选择支付方式");
+  }
   const createOrderResponse = await fetch(
     "/api/payment/create_order_for_billing",
     {
@@ -58012,7 +58073,7 @@ async function createBillingPaymentOrderAndOpen(billingItems) {
       },
       body: JSON.stringify({
         billing_items: billingItems,
-        pay_type: "alipay",
+        pay_type: payType,
         device: Get_YiPAi_device(),
         payment_type: "web",
         app_host: window.location.protocol + "//" + window.location.host,
@@ -58053,8 +58114,10 @@ async function paySelectedBilling(containerId) {
     cancelButtonColor: "#64748b",
   });
   if (!confirmResult.isConfirmed) return;
+  const selectedPayType = await _chooseBillingPayType();
+  if (!selectedPayType) return;
   try {
-    await createBillingPaymentOrderAndOpen(selected);
+    await createBillingPaymentOrderAndOpen(selected, selectedPayType);
     await Swal.fire({
       title: "已发起支付",
       text: "请在新窗口完成支付，完成后可点击刷新查看状态",
@@ -58095,8 +58158,10 @@ async function paySelectedBillingWithPreset(containerId, items) {
     width: 560,
   });
   if (!confirmResult.isConfirmed) return;
+  const selectedPayType = await _chooseBillingPayType();
+  if (!selectedPayType) return;
   try {
-    await createBillingPaymentOrderAndOpen(items);
+    await createBillingPaymentOrderAndOpen(items, selectedPayType);
     await Swal.fire({
       title: "已发起支付",
       text: "请在新窗口完成支付，完成后可点击刷新查看状态",
