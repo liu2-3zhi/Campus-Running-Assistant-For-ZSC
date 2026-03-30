@@ -19,7 +19,7 @@ import json
 import time
 import requests
 import logging
-import subprocess  # nosec B404 - subprocess模块用于执行tail命令监控日志文件，使用固定参数，无安全风险
+import subprocess
 import sys
 import socket
 import threading
@@ -216,7 +216,6 @@ def tail_nginx_log():
     """
     try:
         # 使用tail -F命令跟踪日志文件（-F会在文件轮转时自动重新打开）
-        # nosec B603, B607 - 使用固定参数执行tail命令监控日志文件，无执行不可信输入的风险
         process = subprocess.Popen(
             ["tail", "-F", "-n", "0", NGINX_LOG_FILE],
             stdout=subprocess.PIPE,

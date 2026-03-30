@@ -20,7 +20,7 @@
 
 """
 
-import random  # nosec B311 - 用于随机选择食材、形容词等元素，增加生成结果的多样性，非安全用途
+import random  # 用于随机选择食材、形容词等元素，增加生成结果的多样性
 
 
 class LoMeiGenerator:
