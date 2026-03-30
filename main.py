@@ -21511,6 +21511,50 @@ def _build_run_billing_reason(count, single_run_cost):
     return f"完成校园跑{run_text}（单价：{cost_text}元每次）"
 
 
+def _get_single_run_cost_value(config_obj=None):
+    """
+    获取并规范化单次跑步价格。
+    """
+    try:
+        cfg = config_obj or _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+        single_run_cost = round(float(cfg.get("Payment_Settings", "single_run_cost", fallback="1.0")), 2)
+        if single_run_cost <= 0:
+            return 1.0
+        return single_run_cost
+    except Exception:
+        return 1.0
+
+
+def _generate_payment_product_name_by_amount(total_amount, single_run_cost):
+    """
+    按“金额 / 单次跑步价格（向上取整）”计算数量并生成商品名称。
+    """
+    try:
+        amount_value = round(float(total_amount), 2)
+    except (ValueError, TypeError):
+        amount_value = 0.0
+
+    try:
+        cost_value = round(float(single_run_cost), 2)
+    except (ValueError, TypeError):
+        cost_value = 1.0
+
+    if cost_value <= 0:
+        cost_value = 1.0
+
+    if amount_value <= 0:
+        quantity = 1
+    else:
+        quantity = max(1, int(math.ceil(amount_value / cost_value)))
+
+    generator = LoMeiGenerator()
+    product_name = generator.generate(quantity)
+    if not product_name:
+        product_name = f"{quantity}份现捞小吃"
+
+    return product_name, quantity
+
+
 def _count_pending_bills_for_school(school_username):
     """
     统计指定学校账号在 ./User_Billing/School_Bills 下的待支付账单数量。
@@ -37493,6 +37537,8 @@ def start_web_server(args_param):
 
             # 从请求数据中提取商品名称
             product_name = str(data.get("product_name", "")).strip()
+            # 测试支付场景允许沿用前端手动输入的商品名称
+            preserve_product_name = bool(data.get("preserve_product_name", False))
 
             # 从请求数据中提取支付方式，默认为支付宝
             # 支持两种参数名：pay_type（标准）和payment_method（PC端兼容）
@@ -37534,10 +37580,6 @@ def start_web_server(args_param):
             # 验证金额是否为空
             if not amount:
                 return jsonify({"success": False, "message": "支付金额不能为空"})
-
-            # 验证商品名称是否为空
-            if not product_name:
-                return jsonify({"success": False, "message": "商品名称不能为空"})
 
             # ========== 验证支付方式是否启用 ==========
 
@@ -37597,6 +37639,21 @@ def start_web_server(args_param):
                 # 如果金额格式不正确（例如 "abc" 或 "12.34.56"）
                 # 返回错误信息
                 return jsonify({"success": False, "message": "支付金额格式不正确"})
+
+            if preserve_product_name and product_name:
+                logging.info(f"[支付订单] 使用前端传入商品名（测试支付）: {product_name}")
+            else:
+                # 商品名按金额和单次价格自动生成（数量=ceil(金额/单价)）
+                single_run_cost = _get_single_run_cost_value()
+                auto_product_name, run_count = _generate_payment_product_name_by_amount(
+                    amount_float,
+                    single_run_cost
+                )
+                if auto_product_name:
+                    product_name = auto_product_name
+                logging.info(
+                    f"[支付订单] 自动生成商品名: {product_name} (金额: {amount_float}, 单价: {single_run_cost}, 估算次数: {run_count})"
+                )
 
             # ========== 生成唯一订单号 ==========
 
@@ -38177,26 +38234,7 @@ def start_web_server(args_param):
                     "message": "欠费次数必须大于0"
                 })
 
-            # ========== 步骤4：使用LoMeiGenerator生成商品名 ==========
-
-            # 创建商品名生成器实例
-            generator = LoMeiGenerator()
-
-            # 调用generate()方法生成商品名
-            # 传入总欠费次数，生成类似"五串麻辣鸭脖配上三根秘制烤肠"的趣味描述
-            product_name = generator.generate(total_overdue_count)
-
-            # 验证生成的商品名是否为None（异常情况）
-            # generate()方法在输入非法时会返回None
-            if product_name is None:
-                # 如果生成失败，使用简单的兜底商品名
-                product_name = f"{total_overdue_count}份现捞小吃"
-
-            # 记录日志：生成的商品名（用于调试）
-            logging.info(
-                f"[欠费支付] 生成商品名: {product_name} (次数: {total_overdue_count})")
-
-            # ========== 步骤5：从配置读取单次费用，计算总金额 ==========
+            # ========== 步骤4：从配置读取单次费用，计算总金额 ==========
 
             # 读取配置文件
             config = _read_config_ini()
@@ -38237,6 +38275,15 @@ def start_web_server(args_param):
                     "message": "支付金额必须大于0"
                 })
             amount = f"{amount_old:.2f}"  # 格式化为字符串，保留2位小数
+
+            # 商品名按金额和单次价格自动生成（数量=ceil(金额/单价)）
+            product_name, run_count = _generate_payment_product_name_by_amount(
+                amount_old,
+                single_run_cost
+            )
+            logging.info(
+                f"[欠费支付] 自动生成商品名: {product_name} (金额: {amount_old}, 单价: {single_run_cost}, 估算次数: {run_count})"
+            )
             # ========== 步骤6：生成唯一订单号 ==========
 
             # 订单号格式：YYYYMMDD + 15位随机数字
@@ -38629,7 +38676,14 @@ def start_web_server(args_param):
 
             out_trade_no = f"{time.strftime('%Y%m%d')}{random.randint(100000000000000, 999999999999999)}"
             amount_str = f"{round(total_amount, 2):.2f}"
-            product_name = f"账单合并支付（{len(valid_items)}笔）"
+            single_run_cost = _get_single_run_cost_value(config)
+            product_name, run_count = _generate_payment_product_name_by_amount(
+                total_amount,
+                single_run_cost
+            )
+            logging.info(
+                f"[账单支付] 自动生成商品名: {product_name} (金额: {round(total_amount, 2)}, 单价: {single_run_cost}, 估算次数: {run_count})"
+            )
 
             yipay_client = RainbowYiPayClient()
             result = yipay_client.create_order(
@@ -44933,11 +44987,85 @@ def start_web_server(args_param):
             
             with open(index_path, "r", encoding="utf-8") as f:
                 ra_index = json.load(f)
-            
-            return jsonify({"success": True, "removed_accounts": ra_index.get("removed_accounts", {}), "updated_at": ra_index.get("updated_at", "")})
+
+            removed_accounts = ra_index.get("removed_accounts", {}) or {}
+            enriched_accounts = {}
+            for auth_username, entry in removed_accounts.items():
+                item = {
+                    "backup_file": entry.get("backup_file", ""),
+                    "deleted_at": entry.get("deleted_at", ""),
+                    "nickname": auth_username,
+                    "avatar_url": "default_avatar.png",
+                }
+                backup_file = entry.get("backup_file", "")
+                backup_path = os.path.join(remove_account_dir, backup_file) if backup_file else ""
+                if backup_path and os.path.exists(backup_path):
+                    try:
+                        with open(backup_path, "r", encoding="utf-8") as bf:
+                            backup_data = json.load(bf)
+                        user_data = backup_data.get("user_data", {}) or {}
+                        item["nickname"] = user_data.get("nickname", auth_username) or auth_username
+                        item["avatar_url"] = user_data.get("avatar_url", "default_avatar.png") or "default_avatar.png"
+                    except Exception as e:
+                        logging.warning(f"[已删除账号] 读取备份补充信息失败: {auth_username}, 错误: {e}")
+                enriched_accounts[auth_username] = item
+
+            return jsonify({"success": True, "removed_accounts": enriched_accounts, "updated_at": ra_index.get("updated_at", "")})
         except Exception as e:
             logging.error(f"[已删除账号] 获取列表失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"获取已删除账号列表失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/removed_account_detail", methods=["GET"])
+    @admin_required
+    def admin_removed_account_detail():
+        """
+        管理员接口：获取单个已删除账号的详细信息。
+        """
+        try:
+            auth_username = str(request.args.get("auth_username", "")).strip()
+            if not auth_username:
+                return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
+
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
+            index_path = os.path.join(remove_account_dir, "_index.json")
+            if not os.path.exists(index_path):
+                return jsonify({"success": False, "message": "未找到已删除账号索引"}), 404
+
+            with open(index_path, "r", encoding="utf-8") as f:
+                ra_index = json.load(f)
+            removed_accounts = ra_index.get("removed_accounts", {}) or {}
+            if auth_username not in removed_accounts:
+                return jsonify({"success": False, "message": f"未找到用户 {auth_username} 的删除记录"}), 404
+
+            entry = removed_accounts.get(auth_username, {}) or {}
+            backup_file = entry.get("backup_file", "")
+            backup_path = os.path.join(remove_account_dir, backup_file) if backup_file else ""
+            if not backup_path or not os.path.exists(backup_path):
+                return jsonify({"success": False, "message": f"备份文件不存在: {backup_file}"}), 404
+
+            with open(backup_path, "r", encoding="utf-8") as bf:
+                backup_data = json.load(bf)
+
+            user_data = backup_data.get("user_data", {}) or {}
+            school_accounts_data = backup_data.get("school_accounts", {}) or {}
+            if not isinstance(school_accounts_data, dict):
+                school_accounts_data = {}
+
+            detail = {
+                "auth_username": user_data.get("auth_username", auth_username) or auth_username,
+                "nickname": user_data.get("nickname", auth_username) or auth_username,
+                "avatar_url": user_data.get("avatar_url", "default_avatar.png") or "default_avatar.png",
+                "last_login_ip": user_data.get("last_login_ip", "") or "",
+                "last_login": user_data.get("last_login"),
+                "register_time": user_data.get("created_at"),
+                "deleted_at": backup_data.get("deleted_at") or entry.get("deleted_at", ""),
+                "school_accounts": list(school_accounts_data.keys()),
+            }
+
+            return jsonify({"success": True, "detail": detail})
+        except Exception as e:
+            logging.error(f"[已删除账号] 获取详情失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取已删除账号详情失败: {str(e)}"}), 500
 
     @socketio.on("connect")
     def handle_connect():
