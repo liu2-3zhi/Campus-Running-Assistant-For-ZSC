@@ -44633,7 +44633,7 @@ def start_web_server(args_param):
 
                 total_amount = round(single_run_cost * count, 2)
                 if not reason:
-                    reason = _build_run_billing_reason(count, single_run_cost)
+                    reason = f"管理员补录：{_build_run_billing_reason(count, single_run_cost)}"
 
             else:  # amount mode
                 try:
