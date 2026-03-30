@@ -44996,6 +44996,14 @@ def start_web_server(args_param):
                     "deleted_at": entry.get("deleted_at", ""),
                     "nickname": auth_username,
                     "avatar_url": "default_avatar.png",
+                    "phone": "",
+                    "created_at": None,
+                    "last_login": None,
+                    "last_login_ip": "",
+                    "last_login_city": "未知",
+                    "max_sessions": 1,
+                    "available_runs": 0,
+                    "2fa_enabled": False,
                 }
                 backup_file = entry.get("backup_file", "")
                 backup_path = os.path.join(remove_account_dir, backup_file) if backup_file else ""
@@ -45006,6 +45014,14 @@ def start_web_server(args_param):
                         user_data = backup_data.get("user_data", {}) or {}
                         item["nickname"] = user_data.get("nickname", auth_username) or auth_username
                         item["avatar_url"] = user_data.get("avatar_url", "default_avatar.png") or "default_avatar.png"
+                        item["phone"] = user_data.get("phone", "") or ""
+                        item["created_at"] = user_data.get("created_at")
+                        item["last_login"] = user_data.get("last_login")
+                        item["last_login_ip"] = user_data.get("last_login_ip", "") or ""
+                        item["last_login_city"] = user_data.get("last_login_city", "未知") or "未知"
+                        item["max_sessions"] = user_data.get("max_sessions", 1)
+                        item["available_runs"] = user_data.get("available_runs", 0)
+                        item["2fa_enabled"] = bool(user_data.get("2fa_enabled") or user_data.get("tfa_enabled"))
                     except Exception as e:
                         logging.warning(f"[已删除账号] 读取备份补充信息失败: {auth_username}, 错误: {e}")
                 enriched_accounts[auth_username] = item
