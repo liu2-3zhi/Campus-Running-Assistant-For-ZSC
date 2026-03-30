@@ -35,6 +35,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 初始化 buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       # 2) 登录私有镜像仓库
       # 账号密码来自仓库 Secrets：
       # - DOCKER_USERNAME
@@ -50,9 +54,22 @@ jobs:
       - name: Pull cache image
         run: docker pull "${REGISTRY_PREFIX}/${IMAGE_NAME}:latest" || echo "未能成功拉取镜像，继续构建。"
 
-      # 3) 构建临时镜像
-      - name: Build image
-        run: docker build -t "${TEMP_TAG}" .
+
+        
+      # # 3) 构建临时镜像
+      # - name: Build image
+      #   run: docker build -t "${TEMP_TAG}" .
+
+      # 使用 buildx 构建临时镜像，并启用 GitHub Actions 的缓存机制
+      - name: Build image with cache
+        run: |
+          docker buildx build \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            -t "${TEMP_TAG}" \
+            --load \
+            .
+
 
       # 4) 按最终规则打标签，并写入环境变量供后续步骤复用
       # 最终格式：
