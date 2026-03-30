@@ -35790,7 +35790,8 @@ async function toggleRecordMode() {
     btn.classList.remove("btn-success");
     btn.classList.add("btn-danger");
     $("map-container").classList.add("drawing");
-    clearCurrentPath((confirm = false), (showAlert = false));
+    // 先等待清理完成，避免异步重置 target_sequence 导致首个打卡点样式偶发错误
+    await clearCurrentPath((confirm = false), (showAlert = false));
     currentRunData.target_sequence = 1;
     currentRunData.isInTargetZone = false;
     draftTotalDist = 0;
