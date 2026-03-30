@@ -59331,6 +59331,9 @@ async function showRemovedAccountDetail(authUsername) {
             <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5 text-emerald-700">已支付：${_escapeAttr(String(billingStats.paid || 0))}</div>
             <div class="bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-slate-700">管理员清除：${_escapeAttr(String(billingStats.admin_cleared || 0))}</div>
             <div class="bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1.5 text-indigo-700">待支付金额：¥${_escapeAttr(String(Number(billingStats.pending_amount || 0).toFixed(2)))}</div>
+          </div>
+          <div class="space-y-1.5 max-h-64 overflow-y-auto">${billingRowsHtml}</div>
+        </div>
       </div>
       `,
       showConfirmButton: true,
