@@ -6,6 +6,7 @@ from __future__ import annotations
 
 _import_failures = []
 _log_buffer = []
+_logging_exception_hooks_installed = False
 
 
 MAX_MEMORY_SESSIONS = 100
@@ -1296,6 +1297,56 @@ class NoColorFileFormatter(logging.Formatter):
         return cleaned_message
 
 
+class ContextEnrichFilter(logging.Filter):
+    """
+    为日志记录补充通用上下文字段，避免格式化时缺失字段。
+    """
+
+    def filter(self, record):
+        record.request_id = "-"
+        record.request_user = "-"
+        record.client_ip = "-"
+        record.request_method = "-"
+        record.request_path = "-"
+
+        request_obj = globals().get("request")
+        if request_obj is None:
+            return True
+
+        try:
+            record.request_method = request_obj.method
+            record.request_path = request_obj.path
+
+            g_obj = globals().get("g")
+            request_id = None
+            request_user = None
+            if g_obj is not None:
+                request_id = getattr(g_obj, "request_id", None)
+                request_user = getattr(g_obj, "user", None)
+
+            if not request_id:
+                request_id = request_obj.headers.get("X-Request-ID")
+            if not request_user:
+                request_user = request_obj.headers.get("X-User", None)
+
+            forwarded_for = request_obj.headers.get("X-Forwarded-For", "")
+            client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else ""
+            if not client_ip:
+                client_ip = request_obj.environ.get("REMOTE_ADDR") or request_obj.remote_addr
+
+            if request_id:
+                record.request_id = str(request_id)
+            if request_user:
+                record.request_user = str(request_user)
+            if client_ip:
+                record.client_ip = str(client_ip)
+        except Exception:
+            # 非请求上下文（或上下文访问失败）时使用默认值
+            pass
+
+        return True
+
+
 class CustomLogHandler(logging.FileHandler):
     """
     自定义日志处理器，实现文件大小检查和轮转。
@@ -1536,13 +1587,17 @@ def setup_logging():
     logger.handlers.clear()
 
     log_format = logging.Formatter(
-        "%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] [%(funcName)s] %(message)s",
+        "%(asctime)s [%(levelname)s] [pid=%(process)d tid=%(thread)d %(threadName)s] "
+        "[req=%(request_id)s user=%(request_user)s ip=%(client_ip)s] "
+        "[%(filename)s:%(lineno)d] [%(funcName)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    context_filter = ContextEnrichFilter()
 
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(log_format)
+    console_handler.addFilter(context_filter)
     logger.addHandler(console_handler)
 
     max_bytes = log_rotation_size_mb * 1024 * 1024
@@ -1555,6 +1610,7 @@ def setup_logging():
         log_format._fmt, datefmt=log_format.datefmt
     )
     file_handler.setFormatter(no_color_formatter)
+    file_handler.addFilter(context_filter)
 
     logger.addHandler(file_handler)
 
@@ -1574,6 +1630,7 @@ def setup_logging():
         datefmt=log_format.datefmt,
     )
     warning_file_handler.setFormatter(warning_no_color_formatter)
+    warning_file_handler.addFilter(context_filter)
 
     logger.addHandler(warning_file_handler)
     error_log_file = os.path.join(log_dir, "zx-slm-tool-ERROR.log")
@@ -1592,6 +1649,7 @@ def setup_logging():
         datefmt=log_format.datefmt,
     )
     error_file_handler.setFormatter(error_no_color_formatter)
+    error_file_handler.addFilter(context_filter)
 
     logger.addHandler(error_file_handler)
 
@@ -1619,6 +1677,7 @@ def setup_logging():
         gc.collect()
 
     logging.info("=" * 80)
+    _install_global_exception_logging(logger)
     logging.info("日志系统初始化完成！")
     logging.info(f"日志文件: {log_file}")
     logging.info(f"警告日志文件: {warning_log_file}")
@@ -1631,6 +1690,61 @@ def setup_logging():
     logging.info("=" * 80)
 
     return logger
+
+
+def _install_global_exception_logging(logger):
+    """
+    安装进程级异常日志钩子（主线程与子线程）。
+    """
+    global _logging_exception_hooks_installed
+    if _logging_exception_hooks_installed:
+        return
+
+    original_sys_excepthook = sys.excepthook
+
+    def _sys_excepthook(exc_type, exc_value, exc_traceback):
+        if exc_type and issubclass(exc_type, KeyboardInterrupt):
+            if original_sys_excepthook:
+                original_sys_excepthook(exc_type, exc_value, exc_traceback)
+            return
+        logger.critical(
+            "捕获到未处理的全局异常（主线程）",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+        if original_sys_excepthook and original_sys_excepthook is not _sys_excepthook:
+            original_sys_excepthook(exc_type, exc_value, exc_traceback)
+
+    sys.excepthook = _sys_excepthook
+
+    if hasattr(threading, "excepthook"):
+        original_threading_excepthook = threading.excepthook
+
+        def _threading_excepthook(args):
+            if args.exc_type and issubclass(args.exc_type, KeyboardInterrupt):
+                if original_threading_excepthook:
+                    original_threading_excepthook(args)
+                return
+            thread_name = args.thread.name if args.thread else "unknown"
+            thread_id = args.thread.ident if args.thread else "unknown"
+            logger.critical(
+                f"捕获到未处理的线程异常（thread={thread_name}, id={thread_id}）",
+                exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+            )
+            if (
+                original_threading_excepthook
+                and original_threading_excepthook is not _threading_excepthook
+            ):
+                original_threading_excepthook(args)
+
+        threading.excepthook = _threading_excepthook
+
+    try:
+        logging.captureWarnings(True)
+    except Exception:
+        pass
+
+    _logging_exception_hooks_installed = True
+    logger.info("已启用全局异常捕获与 warnings 转日志")
 
 
 def auto_init_system():
@@ -45532,6 +45646,39 @@ def start_web_server(args_param):
     # 这些钩子在每个请求处理之前执行
     # ============================================================================
     @app.before_request
+    def inject_request_context_and_log_start():
+        """
+        为请求注入 request_id 并记录入口日志。
+        """
+        try:
+            g.request_start_time = time.perf_counter()
+            incoming_request_id = request.headers.get("X-Request-ID", "").strip()
+            if incoming_request_id:
+                g.request_id = incoming_request_id[:128]
+            else:
+                g.request_id = str(uuid.uuid4())
+
+            is_noisy_path = (
+                request.path.startswith("/static/")
+                or request.path.startswith("/css/")
+                or request.path.startswith("/js/")
+                or request.path == "/health"
+                or request.path.endswith(".png")
+                or request.path.endswith(".jpg")
+                or request.path.endswith(".ico")
+            )
+            log_msg = (
+                f"[请求开始] {request.method} {request.path} "
+                f"query={request.query_string.decode('utf-8', errors='ignore')[:512]}"
+            )
+            if is_noisy_path:
+                logging.debug(log_msg)
+            else:
+                logging.info(log_msg)
+        except Exception:
+            logging.exception("记录请求入口日志失败")
+
+    @app.before_request
     def handle_forwarded_proto():
         """
         处理反向代理（nginx）转发的请求头。
@@ -45572,10 +45719,47 @@ def start_web_server(args_param):
         """
         为所有响应添加安全相关的HTTP头。
         """
+        request_id = getattr(g, "request_id", None)
+        if request_id:
+            response.headers["X-Request-ID"] = str(request_id)
+
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        start_time = getattr(g, "request_start_time", None)
+        if start_time is not None:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+        else:
+            duration_ms = -1
+
+        is_noisy_path = (
+            request.path.startswith("/static/")
+            or request.path.startswith("/css/")
+            or request.path.startswith("/js/")
+            or request.path == "/health"
+            or request.path.endswith(".png")
+            or request.path.endswith(".jpg")
+            or request.path.endswith(".ico")
+        )
+
+        response_size = response.calculate_content_length()
+        if response_size is None:
+            response_size = -1
+
+        access_msg = (
+            f"[请求完成] {request.method} {request.path} "
+            f"status={response.status_code} duration_ms={duration_ms:.2f} size={response_size}"
+        )
+        if response.status_code >= 500:
+            logging.error(access_msg)
+        elif response.status_code >= 400:
+            logging.warning(access_msg)
+        elif is_noisy_path:
+            logging.debug(access_msg)
+        else:
+            logging.info(access_msg)
         return response
 
     # ============================================================================
@@ -45733,11 +45917,13 @@ def main():
     # ========== 第6步：配置日志级别 ==========
     selected_level_name = "debug" if args.debug else args.log_level
     log_level = getattr(logging, selected_level_name.upper(), logging.DEBUG)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+    for existing_handler in root_logger.handlers:
+        # 文件分流处理器（WARNING/ERROR）需保留各自阈值，只下调 DEBUG/INFO 处理器
+        if existing_handler.level <= logging.INFO:
+            existing_handler.setLevel(log_level)
 
-    log_format = "%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s"
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter(log_format))
-    logging.basicConfig(level=log_level, format=log_format, handlers=[handler])
     logging.info("=" * 60)
     logging.info("跑步助手 Web 模式启动中...")
     level_name_map = {
