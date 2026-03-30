@@ -25,11 +25,7 @@ jobs:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
-      # 2) 初始化 buildx
-      - name: 初始化 Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # 3) 登录私有镜像仓库
+      # 2) 登录镜像仓库
       - name: 登录镜像仓库
         uses: docker/login-action@v3
         with:
@@ -37,7 +33,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 4) 恢复 GitHub Actions 缓存
+      # 3) 恢复 GHA 缓存
       - name: 恢复 GHA 构建缓存
         uses: actions/cache@v4
         with:
@@ -46,28 +42,28 @@ jobs:
           restore-keys: |
             buildx-
 
-      # 5) 拉取基础镜像（确保最新）
+      # 4) 拉取基础镜像（确保最新）
       - name: 拉取基础镜像
         run: |
           BASE_IMAGE=$(grep -i '^FROM ' Dockerfile | head -n1 | awk '{print $2}')
           echo "基础镜像: $BASE_IMAGE"
           docker pull "$BASE_IMAGE" || true
 
-      # 6) 使用 buildx 构建镜像（仅 GHA 缓存）
-      - name: 构建并推送镜像（仅 GHA 缓存）
-        run: |
-          FINAL_TAG="${REGISTRY_PREFIX}/${IMAGE_NAME}:${{ github.event.inputs.image_tag }}"
-          LATEST_TAG="${REGISTRY_PREFIX}/${IMAGE_NAME}:latest"
+      # 5) 使用 build-push-action@v5 构建并推送
+      - name: 构建并推送镜像（build-push-action@v5）
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
+            ${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:latest
 
-          docker buildx build \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache,mode=max \
-            -t "${FINAL_TAG}" \
-            -t "${LATEST_TAG}" \
-            --push \
-            .
+          # 仅使用 GHA 缓存
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
 
-      # 7) 保存 GHA 缓存
+      # 6) 保存 GHA 缓存
       - name: 保存 GHA 构建缓存
         uses: actions/cache@v4
         with:
