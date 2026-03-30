@@ -9914,13 +9914,13 @@ document.addEventListener("DOMContentLoaded", function () {
  * - 移动端：#mobile-register-available-runs-hint（容器）和 #mobile-register-runs-text（文本）
  *
  * 配置来源：
- * - config.ini 的 [Registration_Display] 节
+ * - .\configs\config.json 的 [Registration_Display] 节
  * - show_available_runs_on_register: 是否显示（"true"或"false"）
  * - register_available_runs_hint: 提示文本模板（包含 {available_runs} 占位符）
  *
  * 默认免费次数：
  * - 从 /api/config/registration_display 的 available_runs 字段获取
- * - 该值从 config.ini 的 [Payment_Settings] -> default_available_runs 读取
+ * - 该值从 .\configs\config.json 的 [Payment_Settings] -> default_available_runs 读取
  * - 这个数值与系统实际给新用户分配的次数一致
  */
 async function initRegisterAvailableRunsHint() {
@@ -9988,7 +9988,7 @@ async function initRegisterAvailableRunsHint() {
       // ========== 步骤3：获取available_runs值 ==========
 
       // 从API响应中获取 available_runs 的值
-      // 这个值是从服务器的 config.ini 配置文件中读取的
+      // 这个值是从服务器的 .\configs\config.json 配置文件中读取的
       // [Payment_Settings] -> default_available_runs
       // 如果配置中没有该字段，使用默认值10次作为后备
       const defaultRuns = config.available_runs || 10;
@@ -10132,7 +10132,7 @@ async function initRegisterAvailableRunsHint() {
  * - 移动端：#mobile-profile-available-runs-container（容器）和 #mobile-profile-available-runs-text（文本）
  *
  * 配置来源：
- * - config.ini 的 [Profile_Display] 节
+ * - .\configs\config.json 的 [Profile_Display] 节
  * - show_available_runs: 是否显示（"true"或"false"）
  * - available_runs_format: 显示格式模板（包含 {available_runs} 占位符）
  *
@@ -11159,7 +11159,7 @@ async function saveMobilePricingConfig() {
  * 1. 初始值为空对象，必须等待 loadPaymentMethodsConfig() 加载完成后才有数据
  * 2. 所有使用此变量的代码应确保配置已加载完成
  * 3. 支持SVG图标，icon字段为'svg'时使用svg字段的SVG代码
- * 4. 配置完全由后端config.ini管理，添加新支付方式无需修改前端代码
+ * 4. 配置完全由后端.\configs\config.json管理，添加新支付方式无需修改前端代码
  */
 let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
 
@@ -11239,7 +11239,7 @@ let PAYMENT_METHODS = {}; // 将在页面加载时从后端获取
  *
  * 功能说明：
  * 从服务器获取高德地图去水印控制配置，包括：
- * 1. 系统默认值（从 config.ini 读取）
+ * 1. 系统默认值（从 .\configs\config.json 读取）
  * 2. 所有用户的个性化设置（从 amap_watermark_control.json 读取）
  * 3. 系统中所有用户的列表
  *
@@ -18991,7 +18991,7 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
     // 步骤6：设置"支付日志"标签的显示状态
     // ========================================================================
     // 【业务需求说明】
-    // 支付历史标签的显示需要根据 config.ini 中的 [Payment_Settings].require_payment 配置：
+    // 支付历史标签的显示需要根据 .\configs\config.json 中的 [Payment_Settings].require_payment 配置：
     //
     // 场景A: require_payment = true（启用付费模式）
     //   → 显示条件：所有用户都能看到
@@ -22324,7 +22324,7 @@ function showCreateUserModal() {
         //
         // available_runs（可用次数）处理说明：
         // - 此API请求中**不需要**传递 available_runs 参数
-        // - 后端会自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取默认值
+        // - 后端会自动从 .\configs\config.json 的 [Payment_Settings] -> default_available_runs 读取默认值
         // - 这确保了通过 PC端管理员界面（admin-create-user_modal）创建的用户
         //   与其他方式（移动端、自助注册）创建的用户使用统一的默认 available_runs
         // - 如需修改某个用户的 available_runs，请在用户创建后通过用户管理功能进行修改
@@ -33559,10 +33559,10 @@ async function submitMobileCreateUser() {
     //
     // available_runs（可用次数）处理说明：
     // - 此API请求中**不需要**传递 available_runs 参数
-    // - 后端会自动从 config.ini 的 [Payment_Settings] -> default_available_runs 读取默认值
+    // - 后端会自动从 .\configs\config.json 的 [Payment_Settings] -> default_available_runs 读取默认值
     // - 这确保了通过 移动端管理员界面（mobile-new-user-confirm-btn）创建的用户
     //   与其他方式（PC端、自助注册）创建的用户使用统一的默认 available_runs
-    // - 配置路径：config.ini -> [Payment_Settings] -> default_available_runs
+    // - 配置路径：.\configs\config.json -> [Payment_Settings] -> default_available_runs
     // - 如需修改某个用户的 available_runs，请在用户创建后通过用户管理功能进行修改
     //
     // 请求参数说明：
@@ -37657,7 +37657,7 @@ function showUserDetails() {
     }</span>`;
     content.appendChild(p);
   });
-  const uaText = IS_OFFLINE ? "NULL" : currentSessionUA || "NULL";
+  const uaText = getCurrentSessionUAText();
   const p_ua = document.createElement("p");
   p_ua.innerHTML = `<span class="font-bold w-24 inline-block text-left pr-2 text-slate-500">UA:</span><span class="break-all">${uaText}</span>`;
   content.appendChild(p_ua);
@@ -39913,7 +39913,7 @@ async function loadMobileUserDetails() {
     }
     const uaText = document.getElementById("mobile-user-details-ua-text");
     if (uaText) {
-      const uaString = IS_OFFLINE ? "NULL" : currentSessionUA || "NULL";
+      const uaString = getCurrentSessionUAText();
       uaText.textContent = uaString;
     }
     // showModalAlert("用户详情加载成功", "成功");
@@ -41114,11 +41114,32 @@ function clearMobileLog() {
   }
 }
 function syncUAToMobile(uaText) {
+  // 同步时一并更新当前会话UA，避免详情面板显示旧值
+  if (!IS_OFFLINE) {
+    currentSessionUA = normalizeSessionUA(uaText);
+  }
   const mobileUALabel = document.getElementById("mobile-ua-label");
   if (mobileUALabel) {
     mobileUALabel.textContent = uaText || "(未加载)";
     console.log("[移动端] UA已同步:", uaText);
   }
+}
+
+function normalizeSessionUA(uaText) {
+  const text = (uaText || "").toString().trim();
+  if (!text) return "";
+  if (text === "(未加载)" || text === "(新用户将在登录时自动生成)") return "";
+  return text;
+}
+
+function getCurrentSessionUAText() {
+  if (IS_OFFLINE) return "NULL";
+  const pcLabelUA = normalizeSessionUA($("ua-label")?.textContent);
+  const mobileLabelUA = normalizeSessionUA(
+    document.getElementById("mobile-ua-label")?.textContent,
+  );
+  const sessionUA = normalizeSessionUA(currentSessionUA);
+  return sessionUA || pcLabelUA || mobileLabelUA || "NULL";
 }
 // async function loadMobileCaptcha(formType) {
 //   const displayId =
@@ -44559,7 +44580,7 @@ async function saveSystemConfig() {
         // 实现原理：
         // 1. 从页面的 select 元素读取值（"true" 或 "false" 字符串）
         // 2. 通过 === "true" 比较，转换为 JavaScript 布尔值
-        // 3. 发送到后端时，后端会将布尔值转换为字符串保存到 config.ini
+        // 3. 发送到后端时，后端会将布尔值转换为字符串保存到 .\configs\config.json
         // 4. 下次加载时，后端通过 config.getboolean() 转换回布尔值
         enable_message_review:
           $("config-Content_Review-enable_message_review").value === "true",

@@ -1859,13 +1859,13 @@ def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="j
 
     示例:
         # JSON文件，默认内容为空字典
-        _backup_and_reset_corrupted_file("config.json", {}, "json")
+        _backup_and_reset_corrupted_file(os.path.join("configs", "config.json"), {}, "json")
 
         # JSON文件，默认内容为空列表
         _backup_and_reset_corrupted_file("messages.json", [], "json")
 
-        # INI文件，默认内容为空字符串
-        _backup_and_reset_corrupted_file("config.ini", "", "ini")
+        # JSON文件，默认内容为空对象
+        _backup_and_reset_corrupted_file(os.path.join("configs", "config.json"), {}, "json")
     """
     try:
         # 首先检查源文件是否存在
@@ -5671,7 +5671,7 @@ class RainbowYiPayClient:
         初始化彩虹易支付客户端
 
         参数:
-            config_file (str): 配置文件路径，默认为 "config.ini"
+            config_file (str): 配置文件路径，默认为 ".\\configs\\config.json"
 
         功能:
             从配置文件中读取彩虹易支付的商户参数，包括：
@@ -6049,7 +6049,7 @@ class AuthSystem:
         logging.info("=" * 80)
 
     def _load_config(self):
-        """加载配置文件（增强：处理重复项错误并提示用户修复）"""
+        """加载配置文件（增强：处理错误并提示用户修复）"""
         logging.debug("_load_config: 开始加载配置文件...")
         try:
             _create_config_ini()
@@ -6059,7 +6059,7 @@ class AuthSystem:
                 exc_info=True,
             )
             print(
-                f"\n[严重错误] 配置文件 ('config.ini') 已损坏。请修复上述提到的重复选项，然后重新启动程序。"
+                f"\n[严重错误] 配置文件 ('{CONFIG_FILE}') 已损坏。请修复上述提到的重复选项，然后重新启动程序。"
             )
             sys.exit(1)
         except Exception as e:
@@ -6068,7 +6068,7 @@ class AuthSystem:
                 exc_info=True,
             )
             print(
-                f"\n[严重错误] 检查配置文件 'config.ini' 时发生意外错误: {e}\n请检查文件格式是否正确，然后重新启动程序。"
+                f"\n[严重错误] 检查配置文件 '{CONFIG_FILE}' 时发生意外错误: {e}\n请检查文件格式是否正确，然后重新启动程序。"
             )
             sys.exit(1)
 
@@ -6086,7 +6086,7 @@ class AuthSystem:
                 exc_info=True,
             )
             print(f"\n{'='*60}")
-            print(f"[配置文件错误] 无法加载 config.ini 文件！")
+            print(f"[配置文件错误] 无法加载 {CONFIG_FILE} 文件！")
             print(
                 f"  错误原因: 在区域 [{e.section}] 中发现重复的选项 '{e.option}' (不区分大小写)."
             )
