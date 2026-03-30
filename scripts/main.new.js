@@ -58379,7 +58379,7 @@ async function loadAdminBillingList(usernameOverride = null) {
       .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
       .toFixed(2);
     const scopeTip = schoolUsername
-      ? `当前筛选：学校账号 ${schoolUsername}`
+      ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}`
       : "当前范围：所有学校账号的全部账单";
     let html = `
       <div class="mb-3 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${scopeTip}</div>
