@@ -10642,7 +10642,9 @@ class Api:
         logging.info("API调用: generate_new_ua - 生成新的随机User-Agent字符串")
         self.device_ua = ApiClient.generate_random_ua()
         try:
-            cfg = _read_config_ini(self.user_config_path) or _get_default_config()
+            cfg = _read_config_ini(self.user_config_path)
+            if cfg is None:
+                cfg = _get_default_config()
             if not cfg.has_section("System"):
                 cfg.add_section("System")
             cfg.set("System", "UA", self.device_ua)
