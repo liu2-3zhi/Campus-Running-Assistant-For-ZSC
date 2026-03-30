@@ -4367,7 +4367,7 @@ def _read_config_ini(config_file=CONFIG_FILE):
 def _create_config_ini():
     """创建或更新 JSON 配置文件（config.json），自动补全缺失参数。"""
     default_config = _get_default_config()
-    config_file = CONFIG_JSON_FILE
+    config_file = CONFIG_FILE
 
     if os.path.exists(config_file):
         # 检查文件是否为空
@@ -10641,22 +10641,16 @@ class Api:
         """生成一个新的UA并保存"""
         logging.info("API调用: generate_new_ua - 生成新的随机User-Agent字符串")
         self.device_ua = ApiClient.generate_random_ua()
-        # [修正] 使用 strict=False 允许读取包含重复项的配置文件，optionxform=str 保持大小写
-        cfg = configparser.ConfigParser(strict=False)
-        cfg.optionxform = str
-        if os.path.exists(self.user_config_path):
-            try:
-                cfg.read(self.user_config_path, encoding="utf-8")
-            except Exception as e:
-                logging.warning(
-                    f"读取配置文件 {self.user_config_path} 失败: {e}，将创建新配置")
-                # 如果读取失败，cfg 保持为空或部分内容，继续执行不会崩溃
-
+        try:
+            cfg = _read_config_ini(self.user_config_path)
+            if cfg is None:
+                cfg = _get_default_config()
             if not cfg.has_section("System"):
                 cfg.add_section("System")
             cfg.set("System", "UA", self.device_ua)
-            with open(self.user_config_path, "w", encoding="utf-8") as f:
-                cfg.write(f)
+            _write_config_with_comments(cfg, self.user_config_path)
+        except Exception as e:
+            logging.warning(f"保存 UA 到配置文件 {self.user_config_path} 失败: {e}")
         logging.info(f"已成功生成新的User-Agent字符串: {self.device_ua}")
         return self.device_ua
 
