@@ -5597,6 +5597,22 @@ class RainbowYiPayClient:
         # requests 已在 check_and_import_dependencies() 中导入
         global requests, payment_verify_challenge_get
 
+        # 兜底客户端IP，避免易支付拒绝“clientip不能为空”
+        clientip = str(clientip or "").strip()
+        if not clientip:
+            try:
+                clientip = str(
+                    request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                    or request.environ.get("REMOTE_ADDR")
+                    or request.remote_addr
+                    or ""
+                ).strip()
+            except Exception:
+                clientip = ""
+            if not clientip:
+                clientip = "127.0.0.1"
+            logging.warning(f"[彩虹易支付] clientip 为空，已使用兜底IP: {clientip}")
+
         # 检查必需的配置参数是否已填写
         # 如果 host、pid 或 key 为空，说明配置不完整，无法创建订单
         if not self.host or not self.pid or not self.key:
@@ -9667,7 +9683,12 @@ class Api:
                     except Exception:
                         _single_run_cost = 1.0
                     # 调用全局函数创建账单记录
-                    _create_user_billing_record(auth_username, school_username, "校园跑一次", _single_run_cost)
+                    _create_user_billing_record(
+                        auth_username,
+                        school_username,
+                        _build_run_billing_reason(1, _single_run_cost),
+                        _single_run_cost
+                    )
 
                     logging.info(
                         f"[次数扣减] 用户 {auth_username} 可用次数不足（当前: {available_runs}），"
@@ -21447,6 +21468,27 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
     except Exception as e:
         logging.error(f"[账单] 创建账单记录失败 (学校账号: {school_username}): {e}", exc_info=True)
         return None
+
+
+def _build_run_billing_reason(count, single_run_cost):
+    """
+    构建校园跑账单描述，统一自动与手动添加账单文案。
+    """
+    try:
+        count = int(count)
+    except (ValueError, TypeError):
+        count = 1
+    if count < 1:
+        count = 1
+
+    try:
+        single_run_cost = round(float(single_run_cost), 2)
+    except (ValueError, TypeError):
+        single_run_cost = 1.0
+
+    cost_text = f"{single_run_cost:g}"
+    run_text = "一次" if count == 1 else f"{count}次"
+    return f"完成校园跑{run_text}（单价：{cost_text}元每次）"
 
 
 def _count_pending_bills_for_school(school_username):
@@ -44591,7 +44633,7 @@ def start_web_server(args_param):
 
                 total_amount = round(single_run_cost * count, 2)
                 if not reason:
-                    reason = f"管理员补录欠费 {count} 次（¥{single_run_cost}/次）"
+                    reason = _build_run_billing_reason(count, single_run_cost)
 
             else:  # amount mode
                 try:
