@@ -18,6 +18,34 @@
    * @returns {string|null} Session UUID，如果未找到则返回 null
    */
   function getUUIDFromURL() {
+    // 优先使用主脚本在运行期维护的全局会话ID
+    if (window.sessionUUID && typeof window.sessionUUID === "string") {
+      const v = window.sessionUUID.trim();
+      if (v) return v;
+    }
+
+    // 兼容历史存储位置
+    try {
+      const localVal = localStorage.getItem("sessionUUID");
+      if (localVal && localVal.trim()) return localVal.trim();
+    } catch (e) {}
+
+    try {
+      const sessionVal = sessionStorage.getItem("sessionUUID");
+      if (sessionVal && sessionVal.trim()) return sessionVal.trim();
+    } catch (e) {}
+
+    // 兼容从 cookie 中读取
+    try {
+      const cookieMatch = document.cookie.match(
+        /(?:^|;\s*)session_id_cookie=([^;]+)/i
+      );
+      if (cookieMatch && cookieMatch[1]) {
+        const cookieVal = decodeURIComponent(cookieMatch[1]).trim();
+        if (cookieVal) return cookieVal;
+      }
+    } catch (e) {}
+
     const urlPath = window.location.pathname;
 
     const match = urlPath.match(
@@ -38,15 +66,30 @@
    * 这样可以在运行时按需加载去水印脚本，而不是在页面加载时就加载。
    */
   function loadWatermarkRemovalScript() {
+    // 防止重复注入
+    if (document.querySelector('script[data-amap-watermark-removal="1"]')) {
+      console.log("[水印控制] 去水印脚本已存在，跳过重复加载");
+      return;
+    }
+
     // 创建一个新的 <script> 元素
     const script = document.createElement("script");
 
     // 设置脚本的源路径，指向去水印脚本文件
     script.src = "/scripts/Remove_watermark_from_Amap_Map.js";
+    script.setAttribute("data-amap-watermark-removal", "1");
 
     // 设置 async 为 false，确保脚本按顺序执行
     // 如果为 true，脚本会异步加载，可能导致执行顺序不确定
     script.async = false;
+
+    script.onload = function () {
+      console.log("[水印控制] 去水印脚本加载成功");
+    };
+    script.onerror = function () {
+      console.error("[水印控制] 去水印脚本加载失败，回退普通高德加载");
+      loadAmapScript();
+    };
 
     // 将脚本元素添加到页面的 <head> 中，浏览器会自动开始下载并执行
     document.head.appendChild(script);
@@ -56,8 +99,12 @@
   }
 
   function loadAmapScript() {
+    if (document.querySelector('script[data-amap-loader="1"]')) {
+      return;
+    }
     // 1. 创建 script 元素
     var script = document.createElement("script");
+    script.setAttribute("data-amap-loader", "1");
 
     // 2. 设置主要源地址
     script.src = "/api/cdn/amap-loader";

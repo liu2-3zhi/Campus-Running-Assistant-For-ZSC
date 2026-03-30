@@ -13355,6 +13355,40 @@ let currentSessionInfo = {
 // ============================================================
 
 let isMobileMode = false;
+const DEFAULT_VIEWPORT_CONTENT = "width=device-width, initial-scale=1";
+let _desktopViewportForced = false;
+
+function shouldForceDesktopLayout() {
+  const viewportWidth = Math.max(
+    window.innerWidth || 0,
+    document.documentElement?.clientWidth || 0,
+  );
+  const hasTouch =
+    "maxTouchPoints" in navigator
+      ? Number(navigator.maxTouchPoints) > 0
+      : "ontouchstart" in window;
+  return hasTouch && viewportWidth > 0 && viewportWidth < 1024;
+}
+
+function applyDesktopForcedViewport(forceDesktop) {
+  const viewportMeta = document.querySelector('meta[name="viewport"]');
+  if (!viewportMeta) return;
+
+  if (forceDesktop) {
+    if (!_desktopViewportForced) {
+      viewportMeta.setAttribute(
+        "content",
+        "width=1280, initial-scale=0.25, minimum-scale=0.25",
+      );
+      _desktopViewportForced = true;
+      console.log("[视口控制] 已强制桌面视口: width=1280");
+    }
+  } else if (_desktopViewportForced) {
+    viewportMeta.setAttribute("content", DEFAULT_VIEWPORT_CONTENT);
+    _desktopViewportForced = false;
+    console.log("[视口控制] 已恢复默认移动视口");
+  }
+}
 
 function detectMobileDevice() {
   const userAgent = navigator.userAgent || navigator.vendor || window.opera;
@@ -13379,6 +13413,9 @@ function switchUIContainer() {
 
   const isMobile = detectMobileDevice();
   isMobileMode = isMobile;
+  const desktopForced = !isMobile && shouldForceDesktopLayout();
+  applyDesktopForcedViewport(desktopForced);
+  document.body.classList.toggle("desktop-forced-mode", desktopForced);
 
   if (isMobile) {
     console.log("[UI切换] 切换到移动端模式");
