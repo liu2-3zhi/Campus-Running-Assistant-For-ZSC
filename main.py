@@ -4367,7 +4367,7 @@ def _read_config_ini(config_file=CONFIG_FILE):
 def _create_config_ini():
     """创建或更新 JSON 配置文件（config.json），自动补全缺失参数。"""
     default_config = _get_default_config()
-    config_file = CONFIG_JSON_FILE
+    config_file = CONFIG_FILE
 
     if os.path.exists(config_file):
         # 检查文件是否为空
