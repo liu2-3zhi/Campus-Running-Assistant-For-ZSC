@@ -55634,36 +55634,7 @@ async function showOverduePaymentModal(overdueAccounts) {
     totalAmount,
   });
   if (!selectedPayType) return;
-
-  while (true) {
-    try {
-      const orderResult = await createBillingPaymentOrderAndOpen(
-        selectedBills,
-        selectedPayType,
-      );
-      const pollingResult = await _showBillingPaymentPollingModal(orderResult);
-      if (pollingResult.paid) {
-        await Swal.fire({
-          title: "支付成功",
-          text: "系统已收到支付成功通知，账单状态将自动更新。",
-          icon: "success",
-          confirmButtonText: "确定",
-        });
-      } else if (pollingResult.status === "timeout") {
-        await Swal.fire({
-          title: "等待超时",
-          text: "10分钟内未收到支付成功通知。订单仍有效，可稍后刷新查看状态。",
-          icon: "info",
-          confirmButtonText: "确定",
-        });
-      }
-      return;
-    } catch (e) {
-      const action = await _handleBillingPayErrorAndMaybeRetry(e);
-      if (action === "retry") continue;
-      return;
-    }
-  }
+  await _runBillingPaymentFlow(selectedBills, selectedPayType);
 }
 
 /**
@@ -58651,6 +58622,44 @@ async function _showBillingPaymentPollingModal(orderResult) {
   return { status: finalStatus || "pending", paid: false };
 }
 
+async function _showBillingPollingResultSummary(pollingResult) {
+  if (pollingResult?.paid) {
+    await Swal.fire({
+      title: "支付成功",
+      text: "系统已收到支付成功通知，账单状态将自动更新。",
+      icon: "success",
+      confirmButtonText: "确定",
+    });
+    return;
+  }
+  if (pollingResult?.status === "timeout") {
+    await Swal.fire({
+      title: "等待超时",
+      text: "10分钟内未收到支付成功通知。订单仍有效，可稍后刷新查看状态。",
+      icon: "info",
+      confirmButtonText: "确定",
+    });
+  }
+}
+
+async function _runBillingPaymentFlow(billingItems, selectedPayType) {
+  while (true) {
+    try {
+      const orderResult = await createBillingPaymentOrderAndOpen(
+        billingItems,
+        selectedPayType,
+      );
+      const pollingResult = await _showBillingPaymentPollingModal(orderResult);
+      await _showBillingPollingResultSummary(pollingResult);
+      return;
+    } catch (e) {
+      const action = await _handleBillingPayErrorAndMaybeRetry(e);
+      if (action === "retry") continue;
+      return;
+    }
+  }
+}
+
 async function paySelectedBilling(containerId) {
   const selected = _collectSelectedBillingItems(containerId);
   if (!selected.length) {
@@ -58675,37 +58684,7 @@ async function paySelectedBilling(containerId) {
   if (!confirmResult.isConfirmed) return;
   const selectedPayType = await _chooseBillingPayType();
   if (!selectedPayType) return;
-  while (true) {
-    try {
-      const orderResult = await createBillingPaymentOrderAndOpen(
-        selected,
-        selectedPayType,
-      );
-      const pollingResult = await _showBillingPaymentPollingModal(orderResult);
-      if (pollingResult.paid) {
-        await Swal.fire({
-          title: "支付成功",
-          text: "系统已收到支付成功通知，账单状态将自动更新。",
-          icon: "success",
-          confirmButtonText: "确定",
-        });
-      } else if (pollingResult.status === "timeout") {
-        await Swal.fire({
-          title: "等待超时",
-          text: "10分钟内未收到支付成功通知。订单仍有效，可稍后刷新查看状态。",
-          icon: "info",
-          confirmButtonText: "确定",
-        });
-      }
-      return;
-    } catch (e) {
-      const action = await _handleBillingPayErrorAndMaybeRetry(e);
-      if (action === "retry") {
-        continue;
-      }
-      return;
-    }
-  }
+  await _runBillingPaymentFlow(selected, selectedPayType);
 }
 
 async function paySingleBilling(containerId, billingId, schoolUsername) {
@@ -58746,37 +58725,7 @@ async function paySelectedBillingWithPreset(containerId, items) {
     title: items.length > 1 ? "选择支付方式" : "选择支付方式",
   });
   if (!selectedPayType) return;
-  while (true) {
-    try {
-      const orderResult = await createBillingPaymentOrderAndOpen(
-        items,
-        selectedPayType,
-      );
-      const pollingResult = await _showBillingPaymentPollingModal(orderResult);
-      if (pollingResult.paid) {
-        await Swal.fire({
-          title: "支付成功",
-          text: "系统已收到支付成功通知，账单状态将自动更新。",
-          icon: "success",
-          confirmButtonText: "确定",
-        });
-      } else if (pollingResult.status === "timeout") {
-        await Swal.fire({
-          title: "等待超时",
-          text: "10分钟内未收到支付成功通知。订单仍有效，可稍后刷新查看状态。",
-          icon: "info",
-          confirmButtonText: "确定",
-        });
-      }
-      return;
-    } catch (e) {
-      const action = await _handleBillingPayErrorAndMaybeRetry(e);
-      if (action === "retry") {
-        continue;
-      }
-      return;
-    }
-  }
+  await _runBillingPaymentFlow(items, selectedPayType);
 }
 
 /**
