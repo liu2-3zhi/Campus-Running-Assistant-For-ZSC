@@ -58269,6 +58269,9 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
   console.log("[账单支付] 创建订单成功，支付方式:", responsePayType, "支付信息:", payInfo);
 
   if (responsePayType === "qrcode") {
+    let qrPollTimer = null;
+    let qrPollingStopped = false;
+    let qrPaidByPolling = false;
     const scanConfirmResult = await Swal.fire({
       title: "请扫码支付",
       html: `
@@ -58277,12 +58280,7 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
           <div style="margin-bottom:14px;padding:12px;background:#fff;border-radius:8px;">
             <canvas id="billing-payment-qrcode-canvas" style="display:block;margin:0 auto;"></canvas>
           </div>
-          <div style="padding:10px;background:#f8fafc;border-radius:6px;text-align:left;">
-            <div style="color:#64748b;font-size:12px;margin-bottom:4px;">支付链接</div>
-            <div style="font-family:monospace;font-size:11px;color:#475569;word-break:break-all;max-height:72px;overflow-y:auto;">
-              ${escapeHtml(String(payInfo))}
-            </div>
-          </div>
+          <div id="billing-qrcode-local-status" style="font-size:12px;color:#0f766e;">正在同步本地订单状态...</div>
         </div>
       `,
       icon: "info",
@@ -58295,6 +58293,7 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
         try {
           await new Promise((resolve) => setTimeout(resolve, 80));
           const canvas = document.getElementById("billing-payment-qrcode-canvas");
+          const statusEl = document.getElementById("billing-qrcode-local-status");
           if (canvas && typeof QRCode !== "undefined") {
             await QRCode.toCanvas(canvas, String(payInfo), {
               width: 220,
@@ -58302,6 +58301,52 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
               margin: 2,
               color: { dark: "#000000", light: "#ffffff" },
             });
+            const pollLocalStatus = async () => {
+              if (qrPollingStopped) return;
+              try {
+                const resp = await fetch("/api/payment/query", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Session-ID": sessionUUID,
+                  },
+                  body: JSON.stringify({ order_id: orderResult.order_id }),
+                });
+                const result = await resp.json();
+                if (qrPollingStopped) return;
+                if (!result.success) {
+                  if (statusEl) {
+                    statusEl.textContent = "本地状态同步失败，正在重试...";
+                    statusEl.style.color = "#b45309";
+                  }
+                  return;
+                }
+                const status = String(result?.order?.status || result?.status || "pending")
+                  .trim()
+                  .toLowerCase();
+                if (status === "paid") {
+                  qrPaidByPolling = true;
+                  orderResult.active_query_result = result;
+                  if (statusEl) {
+                    statusEl.textContent = "已检测到支付成功，正在关闭窗口...";
+                    statusEl.style.color = "#15803d";
+                  }
+                  Swal.close();
+                  return;
+                }
+                if (statusEl) {
+                  statusEl.textContent = "本地状态：未支付，继续等待中...";
+                  statusEl.style.color = "#0f766e";
+                }
+              } catch (_) {
+                if (statusEl) {
+                  statusEl.textContent = "本地状态同步异常，正在重试...";
+                  statusEl.style.color = "#b45309";
+                }
+              }
+            };
+            pollLocalStatus();
+            qrPollTimer = setInterval(pollLocalStatus, 3000);
           } else {
             console.warn("[账单支付] 无法生成二维码：QRCode库未加载或canvas不存在");
           }
@@ -58309,7 +58354,17 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
           console.error("[账单支付] 生成二维码失败:", error);
         }
       },
+      willClose: () => {
+        qrPollingStopped = true;
+        if (qrPollTimer) {
+          clearInterval(qrPollTimer);
+          qrPollTimer = null;
+        }
+      },
     });
+    if (qrPaidByPolling) {
+      return orderResult;
+    }
     if (!scanConfirmResult.isConfirmed) {
       return orderResult;
     }
