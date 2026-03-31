@@ -38119,6 +38119,106 @@ def start_web_server(args_param):
             logging.error(traceback.format_exc())
             return jsonify({"success": False, "message": f"查询订单失败: {str(e)}"}), 500
 
+    @app.route("/api/payment/query_billing_active", methods=["POST"])
+    @login_required
+    def payment_query_billing_active():
+        """
+        账单支付主动查询接口（强鉴权）
+
+        要求：
+        1) 必须登录
+        2) 订单必须属于当前用户（或管理员）
+        3) 必须提供并通过一次性主动查询令牌校验
+        4) 仅允许账单支付订单调用
+        """
+        try:
+            data = request.get_json() or {}
+            order_id = str(data.get("order_id", "")).strip()
+            active_query_token = str(data.get("active_query_token", "")).strip()
+
+            if not order_id:
+                return jsonify({"success": False, "message": "订单号不能为空"}), 400
+            if not active_query_token:
+                return jsonify({"success": False, "message": "主动查询令牌不能为空"}), 400
+
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            if not os.path.exists(order_file):
+                return jsonify({"success": False, "message": "订单不存在"}), 404
+
+            with open(order_file, "r", encoding="utf-8") as f:
+                order_data = json.load(f)
+
+            _normalize_order_created_at(order_data)
+
+            # 订单归属权限校验：所有者或管理员
+            if order_data.get("username") != g.user:
+                if not auth_system.check_permission(g.user, "manage_users"):
+                    return jsonify({"success": False, "message": "无权查询此订单"}), 403
+
+            # 仅允许账单支付订单主动查询
+            if not order_data.get("billing_items"):
+                return jsonify({"success": False, "message": "该订单不支持主动账单查询"}), 400
+
+            token_hash_saved = str(order_data.get("active_query_token_hash", "")).strip()
+            session_hash_saved = str(order_data.get("active_query_session_hash", "")).strip()
+            token_expire_at = int(order_data.get("active_query_token_expire_at", 0) or 0)
+            token_used = bool(order_data.get("active_query_token_used", False))
+            token_hash_input = hashlib.sha256(active_query_token.encode("utf-8")).hexdigest()
+            session_hash_input = hashlib.sha256(
+                str(g.session_id or "").encode("utf-8")
+            ).hexdigest()
+
+            if not token_hash_saved:
+                return jsonify({"success": False, "message": "订单未启用主动查询令牌"}), 403
+            if not session_hash_saved:
+                return jsonify({"success": False, "message": "订单未绑定主动查询会话"}), 403
+            if token_used:
+                return jsonify({"success": False, "message": "主动查询令牌已使用"}), 403
+            if token_expire_at <= int(time.time()):
+                return jsonify({"success": False, "message": "主动查询令牌已过期"}), 403
+            if session_hash_saved != session_hash_input:
+                return jsonify({"success": False, "message": "主动查询会话不匹配"}), 403
+            if token_hash_saved != token_hash_input:
+                return jsonify({"success": False, "message": "主动查询令牌无效"}), 403
+
+            # 复用支付查询逻辑：仅 pending 状态才向易支付查询
+            if order_data.get("status") == "pending":
+                query_result = _query_yipay_order(order_id)
+                if query_result["success"] and query_result.get("data", {}).get("status") == "TRADE_SUCCESS":
+                    order_data["status"] = ORDER_STATUS_PAID
+                    order_data["paid_at"] = time.time()
+                    order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    logging.info(f"[账单主动查询] 订单状态更新为已支付: {order_id}")
+
+            # 一次性令牌：无论查询结果如何，首次主动查询后即失效
+            order_data["active_query_token_used"] = True
+            _save_order_file_incremental(order_id, order_data)
+
+            _write_payment_log(
+                user_id=g.user,
+                order_id=order_id,
+                action="query_billing_order_active",
+                log_data={
+                    "order_status": order_data.get("status"),
+                    "order_owner": order_data.get("username"),
+                    "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                    "user_agent": request.headers.get("User-Agent", ""),
+                    "success": True,
+                    "message": "主动查询成功",
+                },
+            )
+
+            return jsonify({
+                "success": True,
+                "message": "查询成功",
+                "status": order_data.get("status"),
+                "order": order_data,
+            })
+        except Exception as e:
+            logging.error(f"[账单主动查询] 查询异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({"success": False, "message": f"主动查询失败: {str(e)}"}), 500
+
     @app.route("/api/payment/create_order_for_overdue", methods=["POST"])
     @login_required
     def payment_create_order_for_overdue():
@@ -38838,6 +38938,20 @@ def start_web_server(args_param):
                 "user_agent": request.headers.get("User-Agent", ""),
                 "device": device,
             }
+            # 账单支付主动查询令牌（用于扫码后强鉴权主动查询）
+            active_query_token = hashlib.sha256(
+                f"{out_trade_no}:{g.user}:{time.time()}:{random.randint(100000, 999999)}".encode("utf-8")
+            ).hexdigest()
+            order_data["active_query_token_hash"] = hashlib.sha256(
+                active_query_token.encode("utf-8")
+            ).hexdigest()
+            # 绑定当前会话，主动查询必须同会话发起
+            order_data["active_query_session_hash"] = hashlib.sha256(
+                str(g.session_id or "").encode("utf-8")
+            ).hexdigest()
+            # 令牌10分钟有效，降低重放风险
+            order_data["active_query_token_expire_at"] = int(time.time()) + 600
+            order_data["active_query_token_used"] = False
             _save_order_file_incremental(out_trade_no, order_data)
 
             # 关联订单号到账单 payment_orders
@@ -38881,6 +38995,7 @@ def start_web_server(args_param):
                 "pay_url": result.get("pay_url", ""),
                 "pay_info": result.get("pay_info", ""),
                 "pay_type": pay_type,
+                "active_query_token": active_query_token,
             })
         except Exception as e:
             logging.error(f"[账单支付] 创建订单失败: {e}", exc_info=True)
