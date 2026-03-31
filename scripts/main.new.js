@@ -58266,6 +58266,7 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
   if (!payInfo) {
     throw new Error("支付链接为空");
   }
+  console.log("[账单支付] 创建订单成功，支付方式:", responsePayType, "支付信息:", payInfo);
 
   if (responsePayType === "qrcode") {
     const scanConfirmResult = await Swal.fire({
