@@ -38219,6 +38219,74 @@ def start_web_server(args_param):
             logging.error(traceback.format_exc())
             return jsonify({"success": False, "message": f"主动查询失败: {str(e)}"}), 500
 
+    @app.route("/api/payment/query_billing_local", methods=["POST"])
+    @login_required
+    def payment_query_billing_local():
+        """
+        账单支付本地状态查询接口（强鉴权，纯本地）
+
+        说明：
+        - 只读取本地订单文件，不调用支付服务商查询接口
+        - 仅允许订单所有者（或管理员）查询
+        - 对账单支付订单额外校验会话绑定，避免跨会话轮询
+        """
+        try:
+            data = request.get_json() or {}
+            order_id = str(data.get("order_id", "")).strip()
+            if not order_id:
+                return jsonify({"success": False, "message": "订单号不能为空"}), 400
+
+            order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+            if not os.path.exists(order_file):
+                return jsonify({"success": False, "message": "订单不存在"}), 404
+
+            with open(order_file, "r", encoding="utf-8") as f:
+                order_data = json.load(f)
+
+            _normalize_order_created_at(order_data)
+
+            is_admin = auth_system.check_permission(g.user, "manage_users")
+            if order_data.get("username") != g.user and not is_admin:
+                return jsonify({"success": False, "message": "无权查询此订单"}), 403
+
+            # 仅支持账单支付场景
+            if not order_data.get("billing_items"):
+                return jsonify({"success": False, "message": "该订单不支持账单本地查询"}), 400
+
+            # 账单订单会话绑定校验（管理员可跳过）
+            if not is_admin:
+                session_hash_saved = str(order_data.get("active_query_session_hash", "")).strip()
+                session_hash_input = hashlib.sha256(
+                    str(g.session_id or "").encode("utf-8")
+                ).hexdigest()
+                if session_hash_saved and session_hash_saved != session_hash_input:
+                    return jsonify({"success": False, "message": "账单查询会话不匹配"}), 403
+
+            _write_payment_log(
+                user_id=g.user,
+                order_id=order_id,
+                action="query_billing_order_local",
+                log_data={
+                    "order_status": order_data.get("status"),
+                    "order_owner": order_data.get("username"),
+                    "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                    "user_agent": request.headers.get("User-Agent", ""),
+                    "success": True,
+                    "message": "本地查询成功",
+                },
+            )
+
+            return jsonify({
+                "success": True,
+                "message": "本地查询成功",
+                "status": order_data.get("status"),
+                "order": order_data,
+            })
+        except Exception as e:
+            logging.error(f"[账单本地查询] 查询异常: {str(e)}")
+            logging.error(traceback.format_exc())
+            return jsonify({"success": False, "message": f"本地查询失败: {str(e)}"}), 500
+
     @app.route("/api/payment/create_order_for_overdue", methods=["POST"])
     @login_required
     def payment_create_order_for_overdue():
