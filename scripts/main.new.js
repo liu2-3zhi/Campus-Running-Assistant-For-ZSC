@@ -58275,7 +58275,7 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
             const pollLocalStatus = async () => {
               if (qrPollingStopped) return;
               try {
-                const resp = await fetch("/api/payment/query", {
+                const resp = await fetch("/api/payment/query_billing_local", {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -58541,7 +58541,7 @@ async function _showBillingPaymentPollingModal(orderResult) {
       const pollOnce = async () => {
         if (isModalClosed) return;
         try {
-          const resp = await fetch("/api/payment/query", {
+          const resp = await fetch("/api/payment/query_billing_local", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
