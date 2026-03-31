@@ -853,8 +853,18 @@ class IPVerifier:
             try:
                 # 向 http://4.ipw.cn 发起请求，该服务只返回 IPv4 地址
                 # timeout=3: 设置3秒超时，避免长时间等待
-                response_v4 = requests.get("http://4.ipw.cn", timeout=3)
-                if response_v4.status_code == 200:
+                # 最多重试3次，每次间隔1秒，应对瞬时网络抖动
+                response_v4 = None
+                for _attempt_v4 in range(3):
+                    try:
+                        response_v4 = requests.get("http://4.ipw.cn", timeout=3)
+                        break
+                    except Exception as _retry_e:
+                        if _attempt_v4 < 2:
+                            time.sleep(1)
+                        else:
+                            raise
+                if response_v4 is not None and response_v4.status_code == 200:
                     # 提取响应文本并去除首尾空格
                     ipv4_text = response_v4.text.strip()
                     try:
@@ -871,7 +881,7 @@ class IPVerifier:
                 else:
                     # HTTP 状态码不是 200，获取失败
                     logging.warning(
-                        f"[IP验证] 获取 IPv4 公网地址失败，状态码: {response_v4.status_code}")
+                        f"[IP验证] 获取 IPv4 公网地址失败，状态码: {response_v4.status_code if response_v4 else 'N/A'}")
                     self._public_ip_cache["ipv4"] = None
             except Exception as e:
                 # 网络异常或其他错误
@@ -882,8 +892,18 @@ class IPVerifier:
             try:
                 # 向 http://6.ipw.cn 发起请求，该服务只返回 IPv6 地址
                 # timeout=3: 设置3秒超时，避免长时间等待
-                response_v6 = requests.get("http://6.ipw.cn", timeout=3)
-                if response_v6.status_code == 200:
+                # 最多重试3次，每次间隔1秒，应对瞬时网络抖动（部分环境 IPv6 间歇性不可达）
+                response_v6 = None
+                for _attempt_v6 in range(3):
+                    try:
+                        response_v6 = requests.get("http://6.ipw.cn", timeout=3)
+                        break
+                    except Exception as _retry_e:
+                        if _attempt_v6 < 2:
+                            time.sleep(1)
+                        else:
+                            raise
+                if response_v6 is not None and response_v6.status_code == 200:
                     # 提取响应文本并去除首尾空格
                     ipv6_text = response_v6.text.strip()
                     try:
@@ -901,7 +921,7 @@ class IPVerifier:
                 else:
                     # HTTP 状态码不是 200，获取失败
                     logging.warning(
-                        f"[IP验证] 获取 IPv6 公网地址失败，状态码: {response_v6.status_code}")
+                        f"[IP验证] 获取 IPv6 公网地址失败，状态码: {response_v6.status_code if response_v6 else 'N/A'}")
                     self._public_ip_cache["ipv6"] = None
             except Exception as e:
                 # 网络异常或其他错误（例如：服务器不支持 IPv6）
@@ -10101,17 +10121,7 @@ class Api:
                 self.auth_username, username, password, ua, login_verified=False
             )
 
-        main_cfg = configparser.RawConfigParser()
-        main_cfg.optionxform = str
-
-        if os.path.exists(self.config_path):
-            try:
-                main_cfg.read(self.config_path, encoding="utf-8")
-            except Exception as e:
-                logging.warning(
-                    f"读取主配置文件 {self.config_path} 失败: {e}, 将创建新的。"
-                )
-
+        main_cfg = _read_config_ini(self.config_path) or configparser.RawConfigParser()
         # [修正] 不再将 LastUser 写入 config.ini，而是更新到系统账号文件
         if (
             hasattr(self, "auth_username")
@@ -12946,10 +12956,7 @@ class Api:
                 ]
                 if key in global_keys:
                     try:
-                        main_cfg = configparser.RawConfigParser()
-                        main_cfg.optionxform = str
-                        if os.path.exists(self.config_path):
-                            main_cfg.read(self.config_path, encoding="utf-8")
+                        main_cfg = _read_config_ini(self.config_path) or configparser.RawConfigParser()
 
                         if not main_cfg.has_section("Config"):
                             main_cfg.add_section("Config")
@@ -12972,8 +12979,7 @@ class Api:
                                 self._save_config(acc.username)
 
                 if not username_to_update:
-                    cfg = configparser.ConfigParser(strict=False)
-                    cfg.read(self.config_path, encoding="utf-8")
+                    cfg = _read_config_ini(self.config_path) or configparser.ConfigParser(strict=False)
                     username_to_update = cfg.get(
                         "Config", "LastUser", fallback=None)
 
