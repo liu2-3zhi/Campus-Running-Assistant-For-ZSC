@@ -16,13 +16,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: 设置时区为 Asia/Shanghai
+        run: sudo timedatectl set-timezone Asia/Shanghai
+
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
       - name: 生成时间戳 TAG
         id: time
         run: |
-          TAG=$(date +"%Y_%m_%d_%H_%M_%S")
+          TAG=$(TZ='Asia/Shanghai' date +"%Y_%m_%d_%H_%M_%S")
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "生成的时间标签: $TAG"
 
