@@ -55635,21 +55635,34 @@ async function showOverduePaymentModal(overdueAccounts) {
   });
   if (!selectedPayType) return;
 
-  try {
-    await createBillingPaymentOrderAndOpen(selectedBills, selectedPayType);
-    await Swal.fire({
-      title: "已发起支付",
-      text: "请在新窗口完成支付，完成后可刷新查看账单状态",
-      icon: "success",
-      confirmButtonText: "确定",
-    });
-  } catch (e) {
-    await Swal.fire({
-      title: "支付发起失败",
-      text: e.message || "未知错误",
-      icon: "error",
-      confirmButtonText: "确定",
-    });
+  while (true) {
+    try {
+      const orderResult = await createBillingPaymentOrderAndOpen(
+        selectedBills,
+        selectedPayType,
+      );
+      const pollingResult = await _showBillingPaymentPollingModal(orderResult);
+      if (pollingResult.paid) {
+        await Swal.fire({
+          title: "支付成功",
+          text: "系统已收到支付成功通知，账单状态将自动更新。",
+          icon: "success",
+          confirmButtonText: "确定",
+        });
+      } else if (pollingResult.status === "timeout") {
+        await Swal.fire({
+          title: "等待超时",
+          text: "10分钟内未收到支付成功通知。订单仍有效，可稍后刷新查看状态。",
+          icon: "info",
+          confirmButtonText: "确定",
+        });
+      }
+      return;
+    } catch (e) {
+      const action = await _handleBillingPayErrorAndMaybeRetry(e);
+      if (action === "retry") continue;
+      return;
+    }
   }
 }
 
@@ -58248,12 +58261,338 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
   if (!orderResult.success) {
     throw new Error(orderResult.message || "创建订单失败");
   }
-  const payUrl = orderResult.pay_url || orderResult.pay_info;
-  if (!payUrl) {
+  const responsePayType = String(orderResult.pay_type || "").trim().toLowerCase();
+  const payInfo = orderResult.pay_info || orderResult.pay_url;
+  if (!payInfo) {
     throw new Error("支付链接为空");
   }
-  window.open(payUrl, "_blank", "noopener,noreferrer");
+
+  if (responsePayType === "qrcode") {
+    const scanConfirmResult = await Swal.fire({
+      title: "请扫码支付",
+      html: `
+        <div style="text-align:center;">
+          <div style="color:#64748b;font-size:13px;margin-bottom:10px;">请使用支付应用扫码完成支付</div>
+          <div style="margin-bottom:14px;padding:12px;background:#fff;border-radius:8px;">
+            <canvas id="billing-payment-qrcode-canvas" style="display:block;margin:0 auto;"></canvas>
+          </div>
+          <div style="padding:10px;background:#f8fafc;border-radius:6px;text-align:left;">
+            <div style="color:#64748b;font-size:12px;margin-bottom:4px;">支付链接</div>
+            <div style="font-family:monospace;font-size:11px;color:#475569;word-break:break-all;max-height:72px;overflow-y:auto;">
+              ${escapeHtml(String(payInfo))}
+            </div>
+          </div>
+        </div>
+      `,
+      icon: "info",
+      confirmButtonText: "我已扫码完成支付",
+      showCancelButton: true,
+      cancelButtonText: "稍后再查",
+      cancelButtonColor: "#94a3b8",
+      confirmButtonColor: "#3b82f6",
+      didOpen: async () => {
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          const canvas = document.getElementById("billing-payment-qrcode-canvas");
+          if (canvas && typeof QRCode !== "undefined") {
+            await QRCode.toCanvas(canvas, String(payInfo), {
+              width: 220,
+              height: 220,
+              margin: 2,
+              color: { dark: "#000000", light: "#ffffff" },
+            });
+          } else {
+            console.warn("[账单支付] 无法生成二维码：QRCode库未加载或canvas不存在");
+          }
+        } catch (error) {
+          console.error("[账单支付] 生成二维码失败:", error);
+        }
+      },
+    });
+    if (!scanConfirmResult.isConfirmed) {
+      return orderResult;
+    }
+    if (!orderResult.active_query_token) {
+      const action = await _showBillingErrorNeumorphic(
+        "支付系统返回异常（缺少主动查询令牌）。",
+        {
+          title: "系统错误",
+          showRefreshButton: true,
+        },
+      );
+      if (action === "refresh") {
+        window.location.reload();
+        throw new Error("__BILLING_REFRESH_REQUIRED__");
+      }
+      if (action === "retry") {
+        throw new Error("__BILLING_RETRY_REQUIRED__");
+      }
+      // 允许用户放弃主动查询，继续等待常规轮询/支付回调
+      return orderResult;
+    }
+    const activeQueryResp = await fetch("/api/payment/query_billing_active", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-ID": sessionUUID,
+      },
+      body: JSON.stringify({
+        order_id: orderResult.order_id,
+        active_query_token: orderResult.active_query_token,
+      }),
+    });
+    const activeQueryResult = await activeQueryResp.json();
+    if (!activeQueryResult.success) {
+      throw new Error(activeQueryResult.message || "主动查询订单状态失败");
+    }
+    orderResult.active_query_result = activeQueryResult;
+  } else if (responsePayType === "html") {
+    const htmlWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!htmlWindow) {
+      throw new Error("无法打开新窗口，请允许浏览器弹窗后重试");
+    }
+    htmlWindow.document.open();
+    htmlWindow.document.write(String(payInfo));
+    htmlWindow.document.close();
+  } else if (responsePayType === "jump" || responsePayType === "") {
+    const payUrl = String(orderResult.pay_url || orderResult.pay_info || "").trim();
+    if (!payUrl) {
+      throw new Error("支付链接为空");
+    }
+    const newWindow = window.open(payUrl, "_blank", "noopener,noreferrer");
+    if (!newWindow) {
+      throw new Error("无法打开新窗口，请允许浏览器弹窗后重试");
+    }
+  } else {
+    await Swal.fire({
+      title: "支付返回信息",
+      html: `
+        <div style="text-align:left;">
+          <div style="color:#64748b;font-size:12px;margin-bottom:6px;">支付类型：${escapeHtml(responsePayType || "-")}</div>
+          <pre style="margin:0;padding:12px;background:#f8fafc;border-radius:8px;color:#334155;font-size:12px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all;">${escapeHtml(
+            typeof payInfo === "string" ? payInfo : JSON.stringify(payInfo, null, 2),
+          )}</pre>
+        </div>
+      `,
+      icon: "info",
+      confirmButtonText: "确定",
+      confirmButtonColor: "#3b82f6",
+      width: 620,
+    });
+  }
   return orderResult;
+}
+
+async function _showBillingErrorNeumorphic(
+  message,
+  { title = "支付发起失败", showRefreshButton = true } = {},
+) {
+  const result = await Swal.fire({
+    title,
+    html: `
+      <div style="
+        background:#eef2f7;
+        border-radius:16px;
+        padding:14px 16px;
+        text-align:left;
+        color:#334155;
+        box-shadow:
+          8px 8px 18px rgba(148,163,184,0.28),
+          -8px -8px 18px rgba(255,255,255,0.9),
+          inset 1px 1px 2px rgba(255,255,255,0.9),
+          inset -1px -1px 2px rgba(148,163,184,0.15);
+      ">
+        <div style="font-size:13px;line-height:1.6;word-break:break-all;">
+          ${escapeHtml(message || "未知错误")}
+        </div>
+      </div>
+    `,
+    icon: "error",
+    showCancelButton: true,
+    showDenyButton: showRefreshButton,
+    confirmButtonText: "重试",
+    cancelButtonText: "取消",
+    denyButtonText: "刷新网页",
+    confirmButtonColor: "#2563eb",
+    denyButtonColor: "#dc2626",
+    cancelButtonColor: "#94a3b8",
+    width: 560,
+  });
+  if (result.isConfirmed) return "retry";
+  if (result.isDenied) return "refresh";
+  return "cancel";
+}
+
+async function _handleBillingPayErrorAndMaybeRetry(error) {
+  const msg = String(error?.message || "未知错误");
+  if (msg === "__BILLING_RETRY_REQUIRED__") return "retry";
+  if (msg === "__BILLING_REFRESH_REQUIRED__") return "stop";
+  if (msg === "__BILLING_ACTION_CANCELED__") return "stop";
+
+  const action = await _showBillingErrorNeumorphic(msg, {
+    title: "支付发起失败",
+    showRefreshButton: true,
+  });
+  if (action === "refresh") {
+    window.location.reload();
+    return "stop";
+  }
+  if (action === "retry") return "retry";
+  return "stop";
+}
+
+function _getBillingPayPendingHint(orderResult) {
+  const resultPayType = String(orderResult?.pay_type || "")
+    .trim()
+    .toLowerCase();
+  if (resultPayType === "qrcode") {
+    return orderResult?.active_query_result?.status === "pending"
+      ? "已发起主动查询，系统仍将继续自动轮询支付状态"
+      : "系统将持续轮询支付状态，请在支付应用内完成支付";
+  }
+  if (resultPayType === "jump" || resultPayType === "html") {
+    return "请在新窗口完成支付，当前页面会自动轮询支付结果";
+  }
+  return "请按页面提示完成支付，当前页面会自动轮询支付结果";
+}
+
+async function _showBillingPaymentPollingModal(orderResult) {
+  const orderId = String(orderResult?.order_id || "").trim();
+  if (!orderId) {
+    return { status: "unknown", paid: false };
+  }
+  const maxDurationMs = 10 * 60 * 1000;
+  const pollIntervalMs = 3000;
+  const startedAt = Date.now();
+  let pollTimer = null;
+  let elapsedTimer = null;
+  let finalStatus = "pending";
+  let paid = false;
+  let isModalClosed = false;
+
+  const modalResult = await Swal.fire({
+    title: "正在等待支付结果",
+    html: `
+      <div style="
+        background:#eef2f7;
+        border-radius:16px;
+        padding:14px 16px;
+        text-align:left;
+        color:#334155;
+        box-shadow:
+          8px 8px 18px rgba(148,163,184,0.28),
+          -8px -8px 18px rgba(255,255,255,0.9),
+          inset 1px 1px 2px rgba(255,255,255,0.9),
+          inset -1px -1px 2px rgba(148,163,184,0.15);
+      ">
+        <div style="font-size:12px;color:#64748b;margin-bottom:8px;">订单号：${escapeHtml(orderId)}</div>
+        <div style="font-size:13px;line-height:1.6;margin-bottom:8px;">${escapeHtml(_getBillingPayPendingHint(orderResult))}</div>
+        <div id="billing-pay-poll-status" style="font-size:13px;color:#0f766e;font-weight:600;">轮询中：等待支付成功回调...</div>
+        <div id="billing-pay-poll-elapsed" style="font-size:12px;color:#64748b;margin-top:6px;">已等待 0 秒（最长 600 秒）</div>
+      </div>
+    `,
+    icon: "info",
+    showCancelButton: true,
+    cancelButtonText: "稍后查看",
+    cancelButtonColor: "#94a3b8",
+    showConfirmButton: false,
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    width: 620,
+    didOpen: () => {
+      const statusEl = document.getElementById("billing-pay-poll-status");
+      const elapsedEl = document.getElementById("billing-pay-poll-elapsed");
+
+      const updateElapsed = () => {
+        if (isModalClosed) return;
+        const sec = Math.floor((Date.now() - startedAt) / 1000);
+        if (elapsedEl) {
+          elapsedEl.textContent = `已等待 ${sec} 秒（最长 600 秒）`;
+        }
+      };
+
+      const pollOnce = async () => {
+        if (isModalClosed) return;
+        try {
+          const resp = await fetch("/api/payment/query", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Session-ID": sessionUUID,
+            },
+            body: JSON.stringify({ order_id: orderId }),
+          });
+          const result = await resp.json();
+          if (isModalClosed) return;
+          if (!result.success) {
+            if (statusEl) {
+              statusEl.textContent = "轮询中：查询失败，正在重试...";
+              statusEl.style.color = "#b45309";
+            }
+            return;
+          }
+          const status = String(result?.order?.status || result?.status || "pending")
+            .trim()
+            .toLowerCase();
+          finalStatus = status;
+          if (status === "paid") {
+            paid = true;
+            if (statusEl) {
+              statusEl.textContent = "已检测到支付成功，正在完成收尾...";
+              statusEl.style.color = "#15803d";
+            }
+            if (!isModalClosed) Swal.close();
+            return;
+          }
+          if (statusEl) {
+            statusEl.textContent = "轮询中：未收到支付成功回调，继续等待...";
+            statusEl.style.color = "#0f766e";
+          }
+        } catch (_) {
+          if (isModalClosed) return;
+          if (statusEl) {
+            statusEl.textContent = "轮询中：网络波动，正在自动重试...";
+            statusEl.style.color = "#b45309";
+          }
+        }
+      };
+
+      updateElapsed();
+      elapsedTimer = setInterval(updateElapsed, 1000);
+      pollOnce();
+      pollTimer = setInterval(() => {
+        if (isModalClosed) return;
+        if (Date.now() - startedAt >= maxDurationMs) {
+          finalStatus = "timeout";
+          if (statusEl) {
+            statusEl.textContent = "等待超时：10分钟内未检测到支付成功回调";
+            statusEl.style.color = "#b45309";
+          }
+          if (!isModalClosed) Swal.close();
+          return;
+        }
+        pollOnce();
+      }, pollIntervalMs);
+    },
+    willClose: () => {
+      isModalClosed = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (elapsedTimer) {
+        clearInterval(elapsedTimer);
+        elapsedTimer = null;
+      }
+    },
+  });
+
+  if (paid) return { status: "paid", paid: true };
+  if (finalStatus === "timeout") return { status: "timeout", paid: false };
+  if (modalResult?.dismiss === Swal.DismissReason.cancel) {
+    return { status: "canceled", paid: false };
+  }
+  return { status: finalStatus || "pending", paid: false };
 }
 
 async function paySelectedBilling(containerId) {
@@ -58280,32 +58619,48 @@ async function paySelectedBilling(containerId) {
   if (!confirmResult.isConfirmed) return;
   const selectedPayType = await _chooseBillingPayType();
   if (!selectedPayType) return;
-  try {
-    await createBillingPaymentOrderAndOpen(selected, selectedPayType);
-    await Swal.fire({
-      title: "已发起支付",
-      text: "请在新窗口完成支付，完成后可点击刷新查看状态",
-      icon: "success",
-      confirmButtonText: "确定",
-    });
-  } catch (e) {
-    await Swal.fire({
-      title: "支付发起失败",
-      text: e.message || "未知错误",
-      icon: "error",
-      confirmButtonText: "确定",
-    });
+  while (true) {
+    try {
+      const orderResult = await createBillingPaymentOrderAndOpen(
+        selected,
+        selectedPayType,
+      );
+      const pollingResult = await _showBillingPaymentPollingModal(orderResult);
+      if (pollingResult.paid) {
+        await Swal.fire({
+          title: "支付成功",
+          text: "系统已收到支付成功通知，账单状态将自动更新。",
+          icon: "success",
+          confirmButtonText: "确定",
+        });
+      } else if (pollingResult.status === "timeout") {
+        await Swal.fire({
+          title: "等待超时",
+          text: "10分钟内未收到支付成功通知。订单仍有效，可稍后刷新查看状态。",
+          icon: "info",
+          confirmButtonText: "确定",
+        });
+      }
+      return;
+    } catch (e) {
+      const action = await _handleBillingPayErrorAndMaybeRetry(e);
+      if (action === "retry") {
+        continue;
+      }
+      return;
+    }
   }
 }
 
 async function paySingleBilling(containerId, billingId, schoolUsername) {
   if (!billingId || !schoolUsername) {
-    await Swal.fire({
+    const action = await _showBillingErrorNeumorphic("账单信息不完整，请刷新后重试", {
       title: "参数错误",
-      text: "账单信息不完整，请刷新后重试",
-      icon: "error",
-      confirmButtonText: "确定",
+      showRefreshButton: true,
     });
+    if (action === "refresh") {
+      window.location.reload();
+    }
     return;
   }
   await paySelectedBillingWithPreset(containerId, [
@@ -58335,21 +58690,36 @@ async function paySelectedBillingWithPreset(containerId, items) {
     title: items.length > 1 ? "选择支付方式" : "选择支付方式",
   });
   if (!selectedPayType) return;
-  try {
-    await createBillingPaymentOrderAndOpen(items, selectedPayType);
-    await Swal.fire({
-      title: "已发起支付",
-      text: "请在新窗口完成支付，完成后可点击刷新查看状态",
-      icon: "success",
-      confirmButtonText: "确定",
-    });
-  } catch (e) {
-    await Swal.fire({
-      title: "支付发起失败",
-      text: e.message || "未知错误",
-      icon: "error",
-      confirmButtonText: "确定",
-    });
+  while (true) {
+    try {
+      const orderResult = await createBillingPaymentOrderAndOpen(
+        items,
+        selectedPayType,
+      );
+      const pollingResult = await _showBillingPaymentPollingModal(orderResult);
+      if (pollingResult.paid) {
+        await Swal.fire({
+          title: "支付成功",
+          text: "系统已收到支付成功通知，账单状态将自动更新。",
+          icon: "success",
+          confirmButtonText: "确定",
+        });
+      } else if (pollingResult.status === "timeout") {
+        await Swal.fire({
+          title: "等待超时",
+          text: "10分钟内未收到支付成功通知。订单仍有效，可稍后刷新查看状态。",
+          icon: "info",
+          confirmButtonText: "确定",
+        });
+      }
+      return;
+    } catch (e) {
+      const action = await _handleBillingPayErrorAndMaybeRetry(e);
+      if (action === "retry") {
+        continue;
+      }
+      return;
+    }
   }
 }
 
