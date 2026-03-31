@@ -5369,95 +5369,146 @@ async function createTestOrder() {
 
     // 7.1 获取订单数据
     const order = result.order || {};
+    const payType = result.pay_type || "jump";
+    const payInfo = result.pay_info || result.pay_url || "";
 
     // 输出成功日志
     logMessage_Info("[测试支付] 订单创建成功：", result);
 
-    // 7.2 显示订单号
+    // 7.2 填充商户订单号
+    const orderIdElem = document.getElementById("test-order-id");
+    if (orderIdElem) orderIdElem.textContent = result.order_id || "-";
+
+    // 7.3 显示平台订单号
     // 优先使用平台订单号（trade_no），如果没有则使用商户订单号
     tradeNoSpan.textContent = result.trade_no || order.trade_no || tradeNo;
 
-    // 7.3 显示订单金额
+    // 7.4 显示订单金额
     // 格式化金额：添加货币符号¥，保留2位小数
     const displayAmount = order.amount || amount;
     amountSpan.textContent = `¥${parseFloat(displayAmount).toFixed(2)}`;
 
-    // 7.4 显示支付信息（根据pay_type类型显示不同内容）
-    const payType = result.pay_type || "jump";
-    const payInfo = result.pay_info || result.pay_url || "";
-
-    if (payInfo) {
-      // 根据支付类型显示不同的信息
-      let displayText = "";
-
-      if (payType === "jump" || payType === "html") {
-        // 跳转支付：显示链接（截断显示）
-        displayText =
-          payInfo.length > 60 ? payInfo.substring(0, 60) + "..." : payInfo;
-      } else if (payType === "qrcode") {
-        // 二维码支付：显示二维码链接
-        displayText =
-          "二维码: " +
-          (payInfo.length > 50 ? payInfo.substring(0, 50) + "..." : payInfo);
-      } else if (payType === "urlscheme") {
-        // URL Scheme：显示微信/支付宝小程序跳转链接
-        displayText =
-          "小程序跳转: " +
-          (payInfo.length > 50 ? payInfo.substring(0, 50) + "..." : payInfo);
-      } else if (
-        payType === "jsapi" ||
-        payType === "app" ||
-        payType === "wxplugin" ||
-        payType === "wxapp"
-      ) {
-        // JSAPI/APP/小程序支付：显示JSON参数（格式化）
-        try {
-          const jsonObj =
-            typeof payInfo === "string" ? JSON.parse(payInfo) : payInfo;
-          displayText =
-            "JSON参数: " +
-            JSON.stringify(jsonObj, null, 2).substring(0, 100) +
-            "...";
-        } catch (e) {
-          displayText = payInfo.substring(0, 60) + "...";
-        }
-      } else if (payType === "scan") {
-        // 扫码支付成功：显示订单信息
-        displayText = "支付成功: " + payInfo;
-      } else {
-        // 其他类型：直接显示
-        displayText =
-          payInfo.length > 60 ? payInfo.substring(0, 60) + "..." : payInfo;
-      }
-
-      payUrlSpan.textContent = displayText;
-
-      // 将完整的支付信息保存到按钮的data-url属性中
-      // 对于jump/html/urlscheme类型，保存链接并启用打开按钮
-      if (payType === "jump" || payType === "html" || payType === "urlscheme") {
-        openPayBtn.setAttribute("data-url", payInfo);
-        // 启用"打开支付链接"按钮
-        openPayBtn.disabled = false;
-        openPayBtn.classList.remove("opacity-50", "cursor-not-allowed");
-      } else {
-        // 其他类型不支持直接打开，禁用按钮
-        openPayBtn.disabled = true;
-        openPayBtn.classList.add("opacity-50", "cursor-not-allowed");
-      }
-
-      logMessage_Info("[测试支付] 支付信息已保存，类型：", payType);
-    } else {
-      // 如果没有返回支付信息，显示提示信息
-      payUrlSpan.textContent = "（未返回支付信息）";
-
-      // 禁用"打开支付链接"按钮
-      openPayBtn.disabled = true;
-      openPayBtn.classList.add("opacity-50", "cursor-not-allowed");
-
-      logMessage_Warning("[测试支付] 警告：API未返回支付信息");
+    // 7.5 填充支付方式（翻译为中文）
+    const payMethodElem = document.getElementById("test-order-pay-method");
+    if (payMethodElem) {
+      const methodNames = {
+        alipay: "支付宝",
+        wxpay: "微信支付",
+        qqpay: "QQ钱包",
+        unionpay: "云闪付",
+      };
+      payMethodElem.textContent = methodNames[paymentMethod] || paymentMethod || "-";
     }
 
-    // 7.5 显示订单结果容器
+    // 7.6 填充接口类型
+    const methodTypeElem = document.getElementById("test-order-method-type");
+    if (methodTypeElem) methodTypeElem.textContent = paymentType || "-";
+
+    // 7.7 填充发起支付类型
+    const payTypeElem = document.getElementById("test-order-pay-type");
+    if (payTypeElem) payTypeElem.textContent = payType || "-";
+
+    // 7.8 根据支付类型设置说明文字
+    const payInfoDescElem = document.getElementById("test-order-pay-info-desc");
+    if (payInfoDescElem) {
+      const payTypeDescriptions = {
+        jump: "跳转链接 - 可直接打开进行支付",
+        html: "HTML代码 - 用于支付跳转",
+        qrcode: "二维码链接 - 已生成二维码供扫描",
+        urlscheme: "小程序跳转链接 - 可在微信/支付宝中打开",
+        jsapi: "JSAPI支付参数 - JSON格式，用于小程序内支付",
+        app: "APP支付参数 - JSON格式，用于APP内支付",
+        scan: "扫码支付结果 - 付款码支付成功的订单信息",
+        wxplugin: "小程序插件参数 - JSON格式，用于拉起微信小程序插件",
+        wxapp: "小程序跳转参数 - JSON格式，用于APP内拉起微信小程序",
+      };
+      payInfoDescElem.textContent = payTypeDescriptions[payType] || "支付信息";
+    }
+
+    // 7.9 填充支付信息到 textarea（完整显示，不截断）
+    // 重置二维码容器
+    const qrcodeContainer = document.getElementById("test-order-qrcode-display");
+    if (qrcodeContainer) {
+      qrcodeContainer.innerHTML = "";
+      qrcodeContainer.classList.add("hidden");
+    }
+
+    if (payType === "jump" || payType === "html") {
+      // 跳转支付：直接显示完整链接
+      payUrlSpan.value = payInfo;
+    } else if (payType === "qrcode") {
+      // 二维码支付：显示原始链接并渲染二维码
+      payUrlSpan.value = payInfo;
+      if (qrcodeContainer && typeof QRCode !== "undefined") {
+        try {
+          const canvas = document.createElement("canvas");
+          qrcodeContainer.appendChild(canvas);
+          QRCode.toCanvas(
+            canvas,
+            payInfo,
+            { width: 180, margin: 2, color: { dark: "#000000", light: "#ffffff" } },
+            function (error) {
+              if (error) {
+                logMessage_Error("[测试支付] 二维码生成失败：", error);
+                qrcodeContainer.innerHTML =
+                  '<p class="text-red-500 text-xs">二维码生成失败</p>';
+                qrcodeContainer.classList.remove("hidden");
+              } else {
+                logMessage_Info("[测试支付] 二维码生成成功");
+                qrcodeContainer.classList.remove("hidden");
+              }
+            },
+          );
+        } catch (e) {
+          logMessage_Error("[测试支付] 二维码生成出错：", e);
+          qrcodeContainer.innerHTML =
+            '<p class="text-red-500 text-xs">二维码生成出错</p>';
+          qrcodeContainer.classList.remove("hidden");
+        }
+      } else if (qrcodeContainer) {
+        qrcodeContainer.innerHTML =
+          '<p class="text-yellow-600 text-xs">QRCode库未加载，请手动扫描上方链接</p>';
+        qrcodeContainer.classList.remove("hidden");
+      }
+    } else if (payType === "urlscheme") {
+      // URL Scheme：显示完整的小程序跳转链接
+      payUrlSpan.value = payInfo;
+    } else if (
+      payType === "jsapi" ||
+      payType === "app" ||
+      payType === "wxplugin" ||
+      payType === "wxapp"
+    ) {
+      // JSAPI/APP/小程序支付：显示格式化的JSON参数
+      try {
+        const jsonObj =
+          typeof payInfo === "string" ? JSON.parse(payInfo) : payInfo;
+        payUrlSpan.value = JSON.stringify(jsonObj, null, 2);
+      } catch (e) {
+        payUrlSpan.value = payInfo;
+      }
+    } else if (payType === "scan") {
+      // 扫码支付成功：显示订单信息
+      payUrlSpan.value = `扫码支付成功: ${payInfo}`;
+    } else {
+      // 其他类型：直接显示完整内容
+      payUrlSpan.value = payInfo;
+    }
+
+    // 7.10 配置"打开链接"按钮
+    // jump/html/urlscheme 类型可直接打开，其他类型禁用按钮
+    if (payType === "jump" || payType === "html" || payType === "urlscheme") {
+      openPayBtn.setAttribute("data-url", payInfo);
+      openPayBtn.disabled = false;
+      openPayBtn.classList.remove("opacity-50", "cursor-not-allowed");
+    } else {
+      openPayBtn.disabled = true;
+      openPayBtn.classList.add("opacity-50", "cursor-not-allowed");
+    }
+
+    logMessage_Info("[测试支付] 支付信息已保存，类型：", payType);
+
+    // 7.11 显示订单结果容器
     // 移除hidden类，让用户看到订单信息
     resultContainer.classList.remove("hidden");
 
@@ -5466,7 +5517,7 @@ async function createTestOrder() {
 
     // 7.6 可选：向用户显示成功提示
     // showModalAlert('测试订单创建成功！请点击下方按钮打开支付链接。');
-    swal.fire({
+    Swal.fire({
       icon: "success",
       title: "成功",
       text: "测试订单创建成功！请点击下方按钮打开支付链接。",
@@ -5482,7 +5533,7 @@ async function createTestOrder() {
     // showModalAlert(
     //   `创建订单失败：${error.message || "未知错误，请重试或联系管理员"}`
     // );
-    swal.fire({
+    Swal.fire({
       icon: "error",
       title: "错误",
       text: `创建订单失败：${error.message || "未知错误，请重试或联系管理员"}`,
@@ -5622,6 +5673,51 @@ function openTestPayUrl() {
         error.message || "未知错误"
       }\n\n支付链接：${payUrl}\n\n请手动复制链接在新标签页打开。`,
     });
+  }
+}
+
+/**
+ * 复制移动端测试支付信息
+ *
+ * 功能说明：
+ * 将 textarea 中的完整支付信息复制到剪贴板，方便用户分享或保存
+ *
+ * 调用时机：
+ * - 用户点击"复制信息"按钮时（onclick="copyTestPayInfo()"）
+ */
+function copyTestPayInfo() {
+  logMessage_Info("[测试支付] 准备复制支付信息...");
+
+  const payUrlTextarea = document.getElementById("test-order-pay-url");
+  if (!payUrlTextarea) {
+    Swal.fire({ icon: "error", title: "错误", text: "页面元素异常，请刷新页面后重试。" });
+    return;
+  }
+
+  const payInfo = payUrlTextarea.value;
+  if (!payInfo) {
+    Swal.fire({ icon: "error", title: "错误", text: "支付信息为空，请先创建测试订单。" });
+    return;
+  }
+
+  try {
+    payUrlTextarea.select();
+    payUrlTextarea.setSelectionRange(0, payInfo.length);
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(payInfo).then(function () {
+        Swal.fire({ icon: "success", title: "已复制", text: "支付信息已复制到剪贴板！", timer: 1500, showConfirmButton: false });
+      }).catch(function () {
+        document.execCommand("copy");
+        Swal.fire({ icon: "success", title: "已复制", text: "支付信息已复制到剪贴板！", timer: 1500, showConfirmButton: false });
+      });
+    } else {
+      document.execCommand("copy");
+      Swal.fire({ icon: "success", title: "已复制", text: "支付信息已复制到剪贴板！", timer: 1500, showConfirmButton: false });
+    }
+  } catch (e) {
+    logMessage_Error("[测试支付] 复制支付信息失败：", e);
+    Swal.fire({ icon: "error", title: "复制失败", text: "请手动选中文本并复制。" });
   }
 }
 
