@@ -21553,7 +21553,7 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
     参数:
         auth_username: (已弃用，保留兼容) 认证用户名，不再用于确定存储路径
         school_username: 学校账号用户名（核心标识符）
-        reason: 账单原因（如"校园跑一次"）
+        reason: 账单原因（如"完成校园跑一次（单价：0.8元每次）"）
         amount: 金额（float）
     
     返回:
