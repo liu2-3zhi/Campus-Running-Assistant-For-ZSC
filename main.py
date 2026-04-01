@@ -33558,13 +33558,13 @@ def start_web_server(args_param):
                             location_str = f"{province} {city}".strip()
 
                     if not location_str:
+                        # 高德对境外IP返回空数据，自动切换到 pconline 重试
                         logging.warning(
-                            f"[IP定位][amap] API返回空数据: ip={ip_address}, "
-                            f"数据={data}, 尝试次数={attempt + 1}/{max_retries + 1}"
+                            f"[IP定位][amap] 高德返回空数据，自动回退到 pconline: "
+                            f"ip={ip_address}, 数据={data}"
                         )
-                        if attempt < max_retries:
-                            continue
-                        return "未知"
+                        query_method = "pconline"
+                        continue
 
                 else:
                     # pconline whois 接口（默认）
