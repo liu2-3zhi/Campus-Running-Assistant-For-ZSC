@@ -22122,65 +22122,29 @@ def start_web_server(args_param):
     # 需要缓存的CDN文件列表
     CDN_FILES = {
         "sweetalert2": {
-            "url": "https://cdn.jsdelivr.net/npm/sweetalert2@11",
-            "filename": "sweetalert2.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js",
+            "filename": "sweetalert2.all.min.js",
             "type": "js",
-            "auto_version": {
-                "enabled": True,
-                "package": "sweetalert2",
-                "default_version": "11.0.0",
-                "url_template": "https://cdn.jsdelivr.net/npm/sweetalert2@{version}/dist/sweetalert2.min.js",
-            },
         },
-        "qrcode": {
-            "url": "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js",
-            "filename": "qrcode.min.js",
-            "type": "js",
-            "auto_version": {
-                "enabled": True,
-                "package": "qrcode",
-                "default_version": "1.5.4",
-                "url_template": "https://cdn.jsdelivr.net/npm/qrcode@{version}/build/qrcode.min.js",
-            },
-        },
-        "cropperjs": {
-            "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js",
-            "filename": "cropper.min.js",
-            "type": "js",
-            "auto_version": {
-                "enabled": True,
-                "package": "cropperjs",
-                "default_version": "1.6.1",
-                "url_template": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/{version}/cropper.min.js",
-            },
-        },
-        "cropperjs-css": {
-            "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css",
-            "filename": "cropper.min.css",
+        "sweetalert2-css": {
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css",
+            "filename": "sweetalert2.min.css",
             "type": "css",
-            "auto_version": {
-                "enabled": True,
-                "package": "cropperjs",
-                "default_version": "1.6.1",
-                "url_template": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/{version}/cropper.min.css",
-            },
         },
         "tailwindcss": {
-            "url": "https://cdn.tailwindcss.com",
-            "filename": "tailwindcss.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/tailwindcss@4/dist/lib.min.js",
+            "filename": "tailwindcss.lib.min.js",
             "type": "js",
         },
+        "tailwindcss-css": {
+            "url": "https://cdn.jsdelivr.net/npm/tailwindcss@4/index.min.css",
+            "filename": "tailwindcss.index.min.css",
+            "type": "css",
+        },
         "socketio": {
-            "url": "https://cdn.socket.io/4.8.1/socket.io.min.js",  # 自动获取最新稳定版
+            "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js",
             "filename": "socket.io.min.js",
             "type": "js",
-            "check_latest": True,  # 标记需要检查最新版本
-            "auto_version": {
-                "enabled": True,
-                "package": "socket.io-client",
-                "default_version": "4.8.1",
-                "url_template": "https://cdn.socket.io/{version}/socket.io.min.js",
-            },
         },
         "google-fonts": {
             "url": "https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=Noto+Sans+SC:wght@400;600;700&display=swap",
@@ -22193,15 +22157,24 @@ def start_web_server(args_param):
             "type": "js",
         },
         "jquery": {
-            "url": "https://code.jquery.com/jquery-3.7.1.js",
-            "filename": "jquery.js",
+            "url": "https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js",
+            "filename": "jquery.min.js",
             "type": "js",
-            "auto_version": {
-                "enabled": True,
-                "package": "jquery",
-                "default_version": "3.7.1",
-                "url_template": "https://code.jquery.com/jquery-{version}.js",
-            },
+        },
+        "qrcode": {
+            "url": "https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js",
+            "filename": "qrcode.browser.min.js",
+            "type": "js",
+        },
+        "cropperjs": {
+            "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js",
+            "filename": "cropper.min.js",
+            "type": "js",
+        },
+        "cropperjs-css": {
+            "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.css",
+            "filename": "cropper.min.css",
+            "type": "css",
         },
     }
 
@@ -22209,10 +22182,6 @@ def start_web_server(args_param):
     js_cache_storage = {}
     js_cache_lock = threading.Lock()
     js_cache_last_update = {}
-    npm_version_cache = {}
-    npm_version_cache_lock = threading.Lock()
-    NPM_VERSION_CACHE_TTL = 3600  # 成功获取后缓存1小时
-    NPM_VERSION_FAILURE_TTL = 120  # 获取失败时仅短暂缓存，便于快速重试
 
     # 字体文件缓存存储（用于Google Fonts的TTF文件）
     font_cache_storage = {}
@@ -22536,56 +22505,6 @@ def start_web_server(args_param):
         except Exception as e:
             logging.warning(f"[CDN缓存] 扫描字体缓存目录失败: {e}")
 
-    def get_latest_socketio_version():
-        """
-        获取socket.io的最新稳定版本号
-        """
-        return get_latest_npm_version("socket.io-client", "4.8.1")
-
-    def get_latest_npm_version(package_name, default_version):
-        """
-        从 npm registry 获取包最新版本，并做内存缓存。
-        """
-        cache_key = f"{package_name}@latest"
-        now_ts = time.time()
-        with npm_version_cache_lock:
-            if cache_key in npm_version_cache:
-                cache_entry = npm_version_cache[cache_key]
-                expires_at = cache_entry.get("expires_at", 0)
-                if now_ts < expires_at:
-                    return cache_entry.get("version", default_version)
-
-        version = default_version
-        cache_ttl = NPM_VERSION_FAILURE_TTL
-        try:
-            response = requests.get(
-                f"https://registry.npmjs.org/{package_name}/latest", timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                latest_version = str(data.get("version", "")).strip()
-                if latest_version:
-                    version = latest_version
-                    cache_ttl = NPM_VERSION_CACHE_TTL
-                    logging.info(f"[CDN缓存] {package_name} 最新版本: {version}")
-                else:
-                    logging.warning(
-                        f"[CDN缓存] {package_name} 最新版本字段为空，回退默认版本: {default_version}"
-                    )
-            else:
-                logging.warning(
-                    f"[CDN缓存] 获取 {package_name} 最新版本失败，状态码: {response.status_code}"
-                )
-        except Exception as e:
-            logging.warning(f"[CDN缓存] 获取 {package_name} 最新版本异常: {e}")
-
-        with npm_version_cache_lock:
-            npm_version_cache[cache_key] = {
-                "version": version,
-                "expires_at": now_ts + cache_ttl,
-            }
-        return version
-
     def fetch_cdn_file(url, timeout=30, binary=False):
         """
         从CDN获取文件内容
@@ -22664,25 +22583,6 @@ def start_web_server(args_param):
         """
         url = config["url"]
         filename = config["filename"]
-        auto_version_config = config.get("auto_version")
-        resolved_version = None
-
-        if auto_version_config and auto_version_config.get("enabled"):
-            package_name = auto_version_config.get("package")
-            default_version = auto_version_config.get("default_version", "")
-            url_template = auto_version_config.get("url_template")
-            if package_name and url_template and default_version:
-                resolved_version = get_latest_npm_version(package_name, default_version)
-                url = url_template.format(version=resolved_version)
-                logging.info(
-                    f"[CDN缓存] {key} 自动升级版本: {resolved_version}"
-                )
-
-        # 如果是socket.io且标记需要检查最新版本，则动态获取最新版本URL
-        if config.get("check_latest") and key == "socketio" and not resolved_version:
-            latest_version = get_latest_socketio_version()
-            url = f"https://cdn.socket.io/{latest_version}/socket.io.min.js"
-            logging.info(f"[CDN缓存] Socket.IO 使用最新版本: {latest_version}")
 
         logging.info(f"[CDN缓存] 正在获取: {key} ({url})")
         content = fetch_cdn_file(url)

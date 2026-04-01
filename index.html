@@ -17,10 +17,10 @@
     <script src="/scripts/load_amap_watermark.js"></script>
     <!-- <script src="/scripts/Remove_watermark_from_Amap_Map.js"></script> -->
     <script src="/api/frontend_config.js"></script>
-    <!-- Socket.IO - 使用本地缓存，后端自动获取最新版本 -->
+    <!-- Socket.IO - 使用本地缓存，后端自动从 jsdelivr 拉取最新版 -->
     <script
       src="/api/cdn/socketio"
-      onerror="this.src = 'https://cdn.socket.io/4/socket.io.min.js'"
+      onerror="this.src = 'https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js'"
     ></script>
     <meta charset="UTF-8" />
     <title>跑步助手</title>
@@ -37,8 +37,13 @@
     <!-- TailwindCSS - 使用本地缓存 -->
     <script
       src="/api/cdn/tailwindcss"
-      onerror="this.src = 'https://cdn.tailwindcss.com'"
+      onerror="this.src = 'https://cdn.jsdelivr.net/npm/tailwindcss@4/dist/lib.min.js'"
     ></script>
+    <link
+      rel="stylesheet"
+      href="/api/cdn/tailwindcss-css"
+      onerror="this.href = 'https://cdn.jsdelivr.net/npm/tailwindcss@4/index.min.css'"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
     <!-- Google Fonts - 使用本地缓存 -->
@@ -56,12 +61,17 @@
     <!-- 使用本地缓存的CDN文件，后端每小时自动从CDN更新 -->
     <script
       src="/api/cdn/sweetalert2"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2@11'"
+      onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js'"
     ></script>
+    <link
+      rel="stylesheet"
+      href="/api/cdn/sweetalert2-css"
+      onerror="this.href = 'https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css'"
+    />
     <script
       src="/api/cdn/qrcode"
       onerror="
-        this.src = 'https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js'
+        this.src = 'https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js'
       "
     ></script>
     <link
@@ -69,14 +79,14 @@
       href="/api/cdn/cropperjs-css"
       onerror="
         this.href =
-          'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css'
+          'https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.css'
       "
     />
     <script
       src="/api/cdn/cropperjs"
       onerror="
         this.src =
-          'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js'
+          'https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js'
       "
     ></script>
 
@@ -226,7 +236,7 @@
 
     <script
       src="/api/cdn/jquery"
-      onerror="this.src = 'https://code.jquery.com/jquery-3.js'"
+      onerror="this.src = 'https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js'"
     ></script>
     <script src="/editor.md/editormd.js"></script>
     <script type="text/javascript"></script>
