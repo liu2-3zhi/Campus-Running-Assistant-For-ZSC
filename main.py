@@ -2983,7 +2983,7 @@ def _get_default_config():
 
     config["CDN"] = {
         "cdn_enabled": "true",
-        "cache_time": "86400",
+        "cache_time": "3600",
     }
 
     config["Features"] = {
@@ -3441,13 +3441,13 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# true：启用CDN缓存，提高静态资源加载速度\n")
         f.write("# false：禁用CDN缓存，所有资源直接从服务器获取\n")
         f.write(
-            f"cdn_enabled = {config_obj.get('CDN', 'cdn_enabled', fallback='true')}\n"
+            f"cdn_enabled = {config_obj.get('CDN', 'cdn_enabled', fallback='false')}\n"
         )
         f.write("# CDN缓存时间（秒）\n")
         f.write("# 设置静态资源在CDN上的缓存有效期\n")
         f.write("# 建议值：3600（1小时）、21600（6小时）、86400（24小时）\n")
         f.write(
-            f"cache_time = {config_obj.get('CDN', 'cache_time', fallback='86400')}\n\n"
+            f"cache_time = {config_obj.get('CDN', 'cache_time', fallback='3600')}\n\n"
         )
 
         # ========================================
@@ -22122,29 +22122,72 @@ def start_web_server(args_param):
     # 需要缓存的CDN文件列表
     CDN_FILES = {
         "sweetalert2": {
-            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js",
-            "filename": "sweetalert2.all.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2@11",
+            "filename": "sweetalert2.min.js",
             "type": "js",
+            "auto_version": {
+                "enabled": True,
+                "package": "sweetalert2",
+                "default_version": "11.0.0",
+                "url_template": "https://cdn.jsdelivr.net/npm/sweetalert2@{version}/dist/sweetalert2.min.js",
+            },
         },
-        "sweetalert2-css": {
-            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css",
-            "filename": "sweetalert2.min.css",
+        "qrcode": {
+            "url": "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js",
+            "filename": "qrcode.min.js",
+            "type": "js",
+            "auto_version": {
+                "enabled": True,
+                "package": "qrcode",
+                "default_version": "1.5.4",
+                "url_template": "https://cdn.jsdelivr.net/npm/qrcode@{version}/build/qrcode.min.js",
+            },
+        },
+        "cropperjs": {
+            "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js",
+            "filename": "cropper.min.js",
+            "type": "js",
+            "auto_version": {
+                "enabled": True,
+                "package": "cropperjs",
+                "default_version": "1.6.1",
+                "url_template": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/{version}/cropper.min.js",
+            },
+        },
+        "cropperjs-css": {
+            "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css",
+            "filename": "cropper.min.css",
             "type": "css",
+            "auto_version": {
+                "enabled": True,
+                "package": "cropperjs",
+                "default_version": "1.6.1",
+                "url_template": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/{version}/cropper.min.css",
+            },
         },
         "tailwindcss": {
-            "url": "https://cdn.jsdelivr.net/npm/tailwindcss@4/dist/lib.min.js",
-            "filename": "tailwindcss.lib.min.js",
+            "url": "https://cdn.tailwindcss.com",
+            "filename": "tailwindcss.min.js",
             "type": "js",
-        },
-        "tailwindcss-css": {
-            "url": "https://cdn.jsdelivr.net/npm/tailwindcss@4/index.min.css",
-            "filename": "tailwindcss.index.min.css",
-            "type": "css",
         },
         "socketio": {
-            "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js",
+            "url": "https://cdn.socket.io/4.8.1/socket.io.min.js",  # 自动获取最新稳定版
             "filename": "socket.io.min.js",
             "type": "js",
+            "check_latest": True,  # 标记需要检查最新版本
+            "auto_version": {
+                "enabled": True,
+                "package": "socket.io-client",
+                "default_version": "4.8.1",
+                "url_template": "https://cdn.socket.io/{version}/socket.io.min.js",
+            },
+            "sourcemap": {
+                "key": "socketio-map",
+                "filename": "socket.io.min.js.map",
+                "type": "map",
+                "url": "https://cdn.socket.io/4.8.1/socket.io.min.js.map",
+                "url_template": "https://cdn.socket.io/{version}/socket.io.min.js.map",
+            },
         },
         "google-fonts": {
             "url": "https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=Noto+Sans+SC:wght@400;600;700&display=swap",
@@ -22157,24 +22200,15 @@ def start_web_server(args_param):
             "type": "js",
         },
         "jquery": {
-            "url": "https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js",
-            "filename": "jquery.min.js",
+            "url": "https://code.jquery.com/jquery-3.7.1.js",
+            "filename": "jquery.js",
             "type": "js",
-        },
-        "qrcode": {
-            "url": "https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js",
-            "filename": "qrcode.browser.min.js",
-            "type": "js",
-        },
-        "cropperjs": {
-            "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js",
-            "filename": "cropper.min.js",
-            "type": "js",
-        },
-        "cropperjs-css": {
-            "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.css",
-            "filename": "cropper.min.css",
-            "type": "css",
+            "auto_version": {
+                "enabled": True,
+                "package": "jquery",
+                "default_version": "3.7.1",
+                "url_template": "https://code.jquery.com/jquery-{version}.js",
+            },
         },
     }
 
@@ -22182,6 +22216,10 @@ def start_web_server(args_param):
     js_cache_storage = {}
     js_cache_lock = threading.Lock()
     js_cache_last_update = {}
+    npm_version_cache = {}
+    npm_version_cache_lock = threading.Lock()
+    NPM_VERSION_CACHE_TTL = 3600  # 成功获取后缓存1小时
+    NPM_VERSION_FAILURE_TTL = 120  # 获取失败时仅短暂缓存，便于快速重试
 
     # 字体文件缓存存储（用于Google Fonts的TTF文件）
     font_cache_storage = {}
@@ -22505,6 +22543,56 @@ def start_web_server(args_param):
         except Exception as e:
             logging.warning(f"[CDN缓存] 扫描字体缓存目录失败: {e}")
 
+    def get_latest_socketio_version():
+        """
+        获取socket.io的最新稳定版本号
+        """
+        return get_latest_npm_version("socket.io-client", "4.8.1")
+
+    def get_latest_npm_version(package_name, default_version):
+        """
+        从 npm registry 获取包最新版本，并做内存缓存。
+        """
+        cache_key = f"{package_name}@latest"
+        now_ts = time.time()
+        with npm_version_cache_lock:
+            if cache_key in npm_version_cache:
+                cache_entry = npm_version_cache[cache_key]
+                expires_at = cache_entry.get("expires_at", 0)
+                if now_ts < expires_at:
+                    return cache_entry.get("version", default_version)
+
+        version = default_version
+        cache_ttl = NPM_VERSION_FAILURE_TTL
+        try:
+            response = requests.get(
+                f"https://registry.npmjs.org/{package_name}/latest", timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                latest_version = str(data.get("version", "")).strip()
+                if latest_version:
+                    version = latest_version
+                    cache_ttl = NPM_VERSION_CACHE_TTL
+                    logging.info(f"[CDN缓存] {package_name} 最新版本: {version}")
+                else:
+                    logging.warning(
+                        f"[CDN缓存] {package_name} 最新版本字段为空，回退默认版本: {default_version}"
+                    )
+            else:
+                logging.warning(
+                    f"[CDN缓存] 获取 {package_name} 最新版本失败，状态码: {response.status_code}"
+                )
+        except Exception as e:
+            logging.warning(f"[CDN缓存] 获取 {package_name} 最新版本异常: {e}")
+
+        with npm_version_cache_lock:
+            npm_version_cache[cache_key] = {
+                "version": version,
+                "expires_at": now_ts + cache_ttl,
+            }
+        return version
+
     def fetch_cdn_file(url, timeout=30, binary=False):
         """
         从CDN获取文件内容
@@ -22559,23 +22647,32 @@ def start_web_server(args_param):
             binary: 是否以二进制模式写入
         """
         cache_path = os.path.join(JS_CACHE_DIR, filename)
-        tmp_path = cache_path + ".tmp"
         try:
             mode = "wb" if binary else "w"
             encoding = None if binary else "utf-8"
-            with open(tmp_path, mode, encoding=encoding) as f:
+            with open(cache_path, mode, encoding=encoding) as f:
                 f.write(content)
-            os.replace(tmp_path, cache_path)
             logging.info(f"[CDN缓存] 已保存缓存文件: {filename}")
             return True
         except Exception as e:
             logging.error(f"[CDN缓存] 保存缓存文件失败: {e}, 文件: {filename}")
-            try:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-            except Exception:
-                pass
             return False
+
+    def build_fallback_sourcemap(target_filename):
+        """
+        生成最小可用的 sourcemap 内容，作为下载失败时的兜底。
+        """
+        return json.dumps(
+            {
+                "version": 3,
+                "file": target_filename,
+                "sources": [target_filename],
+                "names": [],
+                "mappings": "",
+                "x_fallback_generated": True,
+            },
+            ensure_ascii=False,
+        )
 
     def update_single_cdn_file(key, config):
         """
@@ -22583,6 +22680,35 @@ def start_web_server(args_param):
         """
         url = config["url"]
         filename = config["filename"]
+        auto_version_config = config.get("auto_version")
+        sourcemap_config = config.get("sourcemap")
+        sourcemap_url = sourcemap_config.get("url") if sourcemap_config else None
+        resolved_version = None
+
+        if auto_version_config and auto_version_config.get("enabled"):
+            package_name = auto_version_config.get("package")
+            default_version = auto_version_config.get("default_version", "")
+            url_template = auto_version_config.get("url_template")
+            if package_name and url_template and default_version:
+                resolved_version = get_latest_npm_version(package_name, default_version)
+                url = url_template.format(version=resolved_version)
+                logging.info(
+                    f"[CDN缓存] {key} 自动升级版本: {resolved_version}"
+                )
+                if sourcemap_config and sourcemap_config.get("url_template"):
+                    sourcemap_url = sourcemap_config["url_template"].format(
+                        version=resolved_version
+                    )
+
+        # 如果是socket.io且标记需要检查最新版本，则动态获取最新版本URL
+        if config.get("check_latest") and key == "socketio" and not resolved_version:
+            latest_version = get_latest_socketio_version()
+            url = f"https://cdn.socket.io/{latest_version}/socket.io.min.js"
+            if sourcemap_config:
+                sourcemap_url = (
+                    f"https://cdn.socket.io/{latest_version}/socket.io.min.js.map"
+                )
+            logging.info(f"[CDN缓存] Socket.IO 使用最新版本: {latest_version}")
 
         logging.info(f"[CDN缓存] 正在获取: {key} ({url})")
         content = fetch_cdn_file(url)
@@ -22598,6 +22724,35 @@ def start_web_server(args_param):
                 js_cache_last_update[key] = time.time()
             save_cached_file(filename, content)
 
+            if sourcemap_config and sourcemap_url:
+                sourcemap_key = sourcemap_config["key"]
+                sourcemap_filename = sourcemap_config["filename"]
+                sourcemap_content = fetch_cdn_file(sourcemap_url)
+                if sourcemap_content:
+                    with js_cache_lock:
+                        js_cache_storage[sourcemap_key] = sourcemap_content
+                        js_cache_last_update[sourcemap_key] = time.time()
+                    save_cached_file(sourcemap_filename, sourcemap_content)
+                    logging.info(f"[CDN缓存] 成功更新 sourcemap: {sourcemap_key}")
+                else:
+                    cached_sourcemap = load_cached_file(sourcemap_filename)
+                    if cached_sourcemap:
+                        with js_cache_lock:
+                            js_cache_storage[sourcemap_key] = cached_sourcemap
+                            js_cache_last_update[sourcemap_key] = time.time()
+                        logging.warning(
+                            f"[CDN缓存] sourcemap 获取失败，使用本地缓存: {sourcemap_key}"
+                        )
+                    else:
+                        fallback_sourcemap = build_fallback_sourcemap(filename)
+                        with js_cache_lock:
+                            js_cache_storage[sourcemap_key] = fallback_sourcemap
+                            js_cache_last_update[sourcemap_key] = time.time()
+                        save_cached_file(sourcemap_filename, fallback_sourcemap)
+                        logging.warning(
+                            f"[CDN缓存] sourcemap 获取失败，已生成内置备用 sourcemap: {sourcemap_key}"
+                        )
+
             logging.info(f"[CDN缓存] 成功更新: {key}")
             return True
         else:
@@ -22610,6 +22765,26 @@ def start_web_server(args_param):
                     if key not in js_cache_last_update:
                         js_cache_last_update[key] = time.time()
                 logging.warning(f"[CDN缓存] 获取失败，使用本地缓存: {key}")
+
+                if sourcemap_config:
+                    sourcemap_key = sourcemap_config["key"]
+                    sourcemap_filename = sourcemap_config["filename"]
+                    cached_sourcemap = load_cached_file(sourcemap_filename)
+                    if cached_sourcemap:
+                        with js_cache_lock:
+                            if sourcemap_key not in js_cache_storage:
+                                js_cache_storage[sourcemap_key] = cached_sourcemap
+                            if sourcemap_key not in js_cache_last_update:
+                                js_cache_last_update[sourcemap_key] = time.time()
+                    else:
+                        fallback_sourcemap = build_fallback_sourcemap(filename)
+                        with js_cache_lock:
+                            js_cache_storage[sourcemap_key] = fallback_sourcemap
+                            js_cache_last_update[sourcemap_key] = time.time()
+                        save_cached_file(sourcemap_filename, fallback_sourcemap)
+                        logging.warning(
+                            f"[CDN缓存] 主文件使用本地缓存，已生成内置备用 sourcemap: {sourcemap_key}"
+                        )
                 return False
             else:
                 logging.error(f"[CDN缓存] 获取失败且无本地缓存: {key}")
@@ -22643,6 +22818,7 @@ def start_web_server(args_param):
 
         for key, config in CDN_FILES.items():
             filename = config["filename"]
+            sourcemap_config = config.get("sourcemap")
             # 先尝试加载本地缓存
             cached = load_cached_file(filename)
             if cached:
@@ -22655,6 +22831,18 @@ def start_web_server(args_param):
             else:
                 # 本地没有缓存，从CDN获取
                 update_single_cdn_file(key, config)
+
+            if sourcemap_config:
+                sourcemap_key = sourcemap_config["key"]
+                sourcemap_filename = sourcemap_config["filename"]
+                cached_sourcemap = load_cached_file(sourcemap_filename)
+                if cached_sourcemap:
+                    with js_cache_lock:
+                        js_cache_storage[sourcemap_key] = cached_sourcemap
+                        js_cache_last_update[sourcemap_key] = os.path.getmtime(
+                            os.path.join(JS_CACHE_DIR, sourcemap_filename)
+                        )
+                    logging.info(f"[CDN缓存] 从本地加载 sourcemap: {sourcemap_key}")
 
         logging.info(
             f"[CDN缓存] 初始化完成，已缓存 {len(js_cache_storage)} 个JS/CSS文件, {len(font_cache_storage)} 个字体文件"
@@ -30485,8 +30673,8 @@ def start_web_server(args_param):
 
             # 读取CDN配置，如果不存在则使用默认值
             cdn_enabled = config.getboolean(
-                "CDN", "cdn_enabled", fallback=True)
-            cache_time = config.getint("CDN", "cache_time", fallback=86400)
+                "CDN", "cdn_enabled", fallback=False)
+            cache_time = config.getint("CDN", "cache_time", fallback=3600)
 
             # 组装配置数据
             cdn_config = {"cdn_enabled": cdn_enabled, "cache_time": cache_time}
@@ -30570,10 +30758,10 @@ def start_web_server(args_param):
 
             # 当前配置值（用于返回）
             current_cdn_enabled = config.getboolean(
-                "CDN", "cdn_enabled", fallback=True
+                "CDN", "cdn_enabled", fallback=False
             )
             current_cache_time = config.getint(
-                "CDN", "cache_time", fallback=86400)
+                "CDN", "cache_time", fallback=3600)
 
             # 更新cdn_enabled配置（如果请求中提供了该字段）
             if "cdn_enabled" in data:
@@ -31860,15 +32048,17 @@ def start_web_server(args_param):
             resolved_key = file_key
             file_type = "js"
 
-            # 忽略所有 .map 请求
-            if file_key.endswith(".map"):
-                return make_response("", 404)
-
             if file_key not in js_cache_storage:
                 for cdn_key, cdn_config in CDN_FILES.items():
                     if file_key == cdn_config.get("filename"):
                         resolved_key = cdn_key
                         file_type = cdn_config.get("type", "js")
+                        break
+
+                    sourcemap_config = cdn_config.get("sourcemap")
+                    if sourcemap_config and file_key == sourcemap_config.get("filename"):
+                        resolved_key = sourcemap_config.get("key")
+                        file_type = sourcemap_config.get("type", "map")
                         break
 
             with js_cache_lock:
@@ -31881,6 +32071,8 @@ def start_web_server(args_param):
                     # 设置正确的Content-Type
                     if file_type == "css":
                         mimetype = "text/css"
+                    elif file_type == "map" or resolved_key.endswith(".map"):
+                        mimetype = "application/json"
                     else:
                         mimetype = "application/javascript"
 
