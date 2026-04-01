@@ -13764,12 +13764,7 @@ async function saveMobileAttendanceParams() {
       pythonParams["attendance_user_radius_m"] = radius;
     }
 
-    // showModalAlert("自动签到配置已保存", "成功");
-    Swal.fire({
-      icon: "success",
-      title: "配置已保存",
-      text: "自动签到配置已成功保存。",
-    });
+    showAutoAttendanceToggleModal(enabled, { mode: "single" });
 
     if (enabled) {
     }
@@ -37627,6 +37622,9 @@ function onParamChange(event) {
   else value = event.target.value;
   pythonParams[key] = value;
   callPythonAPI("update_param", key, value);
+  if (key === "auto_attendance_enabled") {
+    showAutoAttendanceToggleModal(!!value, { mode: "single" });
+  }
   if (key === "ignore_task_time") {
     logMessage_Info("参数 'ignore_task_time' 已更改，正在自动刷新任务列表...");
     refreshTasks();
@@ -37640,9 +37638,145 @@ function onGlobalParamChange(event) {
       : event.target.value;
   pythonParams[key] = value;
   callPythonAPI("update_param", key, value);
+  if (key === "auto_attendance_enabled") {
+    showAutoAttendanceToggleModal(!!value, { mode: "multi" });
+  }
   if (key === "ignore_task_time") {
     updateAllAccountsStatusText();
   }
+}
+
+function _escapeAutoAttendanceHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function _getSingleAutoAttendanceSchoolRows() {
+  let userData = {};
+  try {
+    userData = currentUserData || {};
+  } catch (_) {
+    userData = {};
+  }
+  const schoolUsername = String(userData?.student_id || "").trim() || "-";
+  const schoolName = String(userData?.school_name || "").trim() || "-";
+  return [{ schoolUsername, schoolName, source: "当前登录账号" }];
+}
+
+function _getMultiAutoAttendanceSchoolRows() {
+  const rows = [];
+  const seen = new Set();
+  ["multi-account-list", "mobile-multi-account-list"].forEach((containerId) => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll("[data-username]").forEach((el) => {
+      const schoolUsername = String(el.dataset.username || "").trim();
+      if (!schoolUsername || seen.has(schoolUsername)) return;
+      seen.add(schoolUsername);
+      rows.push({
+        schoolUsername,
+        schoolName: String(
+          el.dataset.displayName || el.dataset.name || schoolUsername,
+        ).trim(),
+        source: "多账号列表",
+      });
+    });
+  });
+  if (!rows.length) {
+    const fallback = _getSingleAutoAttendanceSchoolRows()[0];
+    rows.push({ ...fallback, source: "当前登录账号(回退)" });
+  }
+  return rows;
+}
+
+function _buildAutoAttendanceDesktopTable(rows) {
+  const body = rows
+    .map(
+      (row, index) => `
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:center;">${index + 1}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-family:monospace;">${_escapeAutoAttendanceHtml(row.schoolUsername)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${_escapeAutoAttendanceHtml(row.schoolName)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#64748b;">${_escapeAutoAttendanceHtml(row.source || "-")}</td>
+      </tr>`,
+    )
+    .join("");
+  return `
+    <div style="margin-top:12px;text-align:left;">
+      <div style="font-size:13px;color:#64748b;margin-bottom:8px;">学校账号信息（表格）</div>
+      <div style="border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;background:#fff;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead style="background:#f1f5f9;">
+            <tr>
+              <th style="padding:8px 10px;border-bottom:1px solid #cbd5e1;">序号</th>
+              <th style="padding:8px 10px;border-bottom:1px solid #cbd5e1;">学校账号</th>
+              <th style="padding:8px 10px;border-bottom:1px solid #cbd5e1;">姓名</th>
+              <th style="padding:8px 10px;border-bottom:1px solid #cbd5e1;">来源</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function _buildAutoAttendanceMobileCards(rows) {
+  const cards = rows
+    .map(
+      (row, index) => `
+      <div style="border:1px solid #dbeafe;border-radius:12px;padding:10px 12px;background:#f8fbff;box-shadow: 4px 4px 10px rgba(15,23,42,0.08), -4px -4px 10px rgba(255,255,255,0.9);text-align:left;">
+        <div style="font-size:12px;color:#64748b;margin-bottom:6px;">账号卡片 #${index + 1}</div>
+        <div style="font-size:13px;margin-bottom:4px;"><b>学校账号：</b><span style="font-family:monospace;">${_escapeAutoAttendanceHtml(row.schoolUsername)}</span></div>
+        <div style="font-size:13px;margin-bottom:4px;"><b>姓名：</b>${_escapeAutoAttendanceHtml(row.schoolName)}</div>
+        <div style="font-size:12px;color:#64748b;"><b>来源：</b>${_escapeAutoAttendanceHtml(row.source || "-")}</div>
+      </div>`,
+    )
+    .join("");
+  return `
+    <div style="margin-top:12px;text-align:left;">
+      <div style="font-size:13px;color:#64748b;margin-bottom:8px;">学校账号信息（卡片）</div>
+      <div style="display:grid;gap:8px;">${cards}</div>
+    </div>`;
+}
+
+function showAutoAttendanceToggleModal(enabled, { mode = "single" } = {}) {
+  const isMobile =
+    typeof globalThis?.isMobileMode === "boolean"
+      ? !!globalThis.isMobileMode
+      : (typeof globalThis?.detectMobileDevice === "function" &&
+          !!globalThis.detectMobileDevice()) ||
+        window.innerWidth <= 1024;
+  const isMulti = mode === "multi";
+  const rows = isMulti
+    ? _getMultiAutoAttendanceSchoolRows()
+    : _getSingleAutoAttendanceSchoolRows();
+  const modeText = isMulti ? "多账号模式" : "单账号模式";
+  const statusText = enabled ? "已开启" : "已关闭";
+  const statusColor = enabled ? "#16a34a" : "#dc2626";
+  const layoutHtml = isMobile
+    ? _buildAutoAttendanceMobileCards(rows)
+    : _buildAutoAttendanceDesktopTable(rows);
+  Swal.fire({
+    title: `${modeText}自动签到${statusText}`,
+    icon: enabled ? "success" : "info",
+    html: `
+      <div style="text-align:left;padding:2px 0;">
+        <p style="margin:0 0 8px 0;font-size:14px;color:#334155;">
+          自动签到状态：<strong style="color:${statusColor};">${statusText}</strong>
+        </p>
+        <p style="margin:0;font-size:13px;color:#64748b;">展示布局：${isMobile ? "移动端卡片" : "PC端表格"}</p>
+        ${layoutHtml}
+      </div>`,
+    confirmButtonText: "我知道了",
+    customClass: {
+      popup: "swal2-neumorphism-popup",
+      confirmButton: "swal2-neumorphism-confirm",
+    },
+  });
 }
 async function openAccountParamsModal(username) {
   const result = await callPythonAPI("multi_get_account_params", username);
@@ -44987,6 +45121,7 @@ document.addEventListener("DOMContentLoaded", function () {
             this.checked,
           );
           console.log(`[移动端多账号] 自动签到开关已更新: ${this.checked}`);
+          showAutoAttendanceToggleModal(!!this.checked, { mode: "multi" });
         }
       });
     }
