@@ -17,7 +17,11 @@
     <script src="/scripts/load_amap_watermark.js"></script>
     <!-- <script src="/scripts/Remove_watermark_from_Amap_Map.js"></script> -->
     <script src="/api/frontend_config.js"></script>
-
+    <!-- Socket.IO - 使用本地缓存，后端自动获取最新版本 -->
+    <script
+      src="/api/cdn/socketio"
+      onerror="this.src = 'https://cdn.socket.io/4.8.1/socket.io.min.js'"
+    ></script>
     <meta charset="UTF-8" />
     <title>跑步助手</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon" />
@@ -30,23 +34,13 @@
     <meta name="apple-mobile-web-app-title" content="跑步助手" />
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- 无法链接到 Google Fonts -->
-    <!-- <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" /> -->
-
-
-    <!-- Socket.IO - 使用本地缓存，后端自动获取最新版本 -->
-    <script
-      src="/api/cdn/socketio"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js'"
-    ></script>
-
     <!-- TailwindCSS - 使用本地缓存 -->
     <script
       src="/api/cdn/tailwindcss"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser/dist/index.global.min.js'"
+      onerror="this.src = 'https://cdn.tailwindcss.com'"
     ></script>
-
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
     <!-- Google Fonts - 使用本地缓存 -->
     <link
       href="/api/cdn/google-fonts"
@@ -59,41 +53,36 @@
 
     <!-- 高德地图 loader.js - 使用本地缓存 -->
     <!-- <script src="/api/cdn/amap-loader" onerror="this.src='https://webapi.amap.com/loader.js'"></script> -->
-     <!-- 高德地图通过scripts\load_amap_watermark.js 加载 -->
     <!-- 使用本地缓存的CDN文件，后端每小时自动从CDN更新 -->
-
-    <!-- SweetAlert2 用于美化弹窗 -->
-    <link rel="stylesheet" href="/api/cdn/sweetalert2-css" onerror="this.href='https://cdn.jsdelivr.net/npm/sweetalert2@11.26.24/dist/sweetalert2.min.css'" />
     <script
       src="/api/cdn/sweetalert2"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2@11.26.24/dist/sweetalert2.all.min.js'"
+      onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2@11'"
     ></script>
-        <!-- QR Code 用于生成二维码 -->
     <script
       src="/api/cdn/qrcode"
       onerror="
-        this.src = 'https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js'
+        this.src = 'https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js'
       "
     ></script>
-
-    <!-- Cropper.js 用于图片裁剪 -->
+    <link
+      rel="stylesheet"
+      href="/api/cdn/cropperjs-css"
+      onerror="
+        this.href =
+          'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css'
+      "
+    />
     <script
       src="/api/cdn/cropperjs"
       onerror="
         this.src =
-          'https://cdn.jsdelivr.net/npm/cropperjs@2.1.0/dist/cropper.min.js'
+          'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js'
       "
-    ></script>
-    <!-- JavaScript函数库 -->
-    <script
-      src="/api/cdn/jquery"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/jquery@4.0.0/dist/jquery.min.js'"
     ></script>
 
     <link rel="stylesheet" href="styles/style.css" />
     <script src="scripts/main.new.js" defer=""></script>
-
-
+    <link rel="stylesheet" href="/editor.md/css/editormd.css" />
     <style>
       @media (max-width: 768px) {
         #newbie-help-btn {
@@ -235,9 +224,13 @@
       }
     </style>
 
-    <!-- 引入 Editor.md -->
-    <link rel="stylesheet" href="/editor.md/css/editormd.css" />
+    <script
+      src="/api/cdn/jquery"
+      onerror="this.src = 'https://code.jquery.com/jquery-3.7.1.js'"
+    ></script>
     <script src="/editor.md/editormd.js"></script>
+    <script type="text/javascript"></script>
+
     <script src="/editor.md/lib/flowchart.min.js"></script>
     <script src="/editor.md/lib/jquery.flowchart.min.js"></script>
     <script src="/editor.md/lib/marked.min.js"></script>
@@ -7719,15 +7712,6 @@
                     ></path>
                   </svg>
                   保存配置
-                </button>
-                <button
-                  id="mobile-cdn-force-refresh-btn"
-                  class="btn btn-secondary w-full !py-2 text-sm"
-                  onclick="forceRefreshCDNCache(true)"
-                  disabled
-                  title="启用CDN缓存后可用"
-                >
-                  强制刷新服务器缓存
                 </button>
 
                 <!-- 提示信息 -->
@@ -16698,15 +16682,6 @@
                     ></path>
                   </svg>
                   保存配置
-                </button>
-                <button
-                  id="cdn-force-refresh-btn"
-                  class="btn btn-secondary flex-1 !py-2"
-                  onclick="forceRefreshCDNCache()"
-                  disabled
-                  title="启用CDN缓存后可用"
-                >
-                  强制刷新服务器缓存
                 </button>
               </div>
 

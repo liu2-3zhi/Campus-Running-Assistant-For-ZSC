@@ -13223,22 +13223,22 @@ function initDraggableAdminBtn() {
 
 // --- Next Script Block ---
 
-// if (typeof tailwind !== "undefined") {
-//   tailwind.config = {
-//     theme: {
-//       extend: {
-//         fontFamily: {
-//           sans: ["Noto Sans SC", "system-ui", "sans-serif"],
-//           display: ["Zilla Slab", "serif"],
-//         },
-//         colors: { base: "#7dd3fc" },
-//       },
-//     },
-//   };
-// } else {
-//   console.error("Tailwind CSS 未加载，跳过配置。");
-//   if (typeof handleCdnError === "function") handleCdnError("TailwindCSS");
-// }
+if (typeof tailwind !== "undefined") {
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ["Noto Sans SC", "system-ui", "sans-serif"],
+          display: ["Zilla Slab", "serif"],
+        },
+        colors: { base: "#7dd3fc" },
+      },
+    },
+  };
+} else {
+  console.error("Tailwind CSS 未加载，跳过配置。");
+  if (typeof handleCdnError === "function") handleCdnError("TailwindCSS");
+}
 
 // --- Next Script Block ---
 
@@ -13764,7 +13764,12 @@ async function saveMobileAttendanceParams() {
       pythonParams["attendance_user_radius_m"] = radius;
     }
 
-    showAutoAttendanceToggleModal(enabled, { mode: "single" });
+    // showModalAlert("自动签到配置已保存", "成功");
+    Swal.fire({
+      icon: "success",
+      title: "配置已保存",
+      text: "自动签到配置已成功保存。",
+    });
 
     if (enabled) {
     }
@@ -37622,9 +37627,6 @@ function onParamChange(event) {
   else value = event.target.value;
   pythonParams[key] = value;
   callPythonAPI("update_param", key, value);
-  if (key === "auto_attendance_enabled") {
-    showAutoAttendanceToggleModal(!!value, { mode: "single" });
-  }
   if (key === "ignore_task_time") {
     logMessage_Info("参数 'ignore_task_time' 已更改，正在自动刷新任务列表...");
     refreshTasks();
@@ -37638,145 +37640,9 @@ function onGlobalParamChange(event) {
       : event.target.value;
   pythonParams[key] = value;
   callPythonAPI("update_param", key, value);
-  if (key === "auto_attendance_enabled") {
-    showAutoAttendanceToggleModal(!!value, { mode: "multi" });
-  }
   if (key === "ignore_task_time") {
     updateAllAccountsStatusText();
   }
-}
-
-function _escapeAutoAttendanceHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function _getSingleAutoAttendanceSchoolRows() {
-  let userData = {};
-  try {
-    userData = currentUserData || {};
-  } catch (_) {
-    userData = {};
-  }
-  const schoolUsername = String(userData?.student_id || "").trim() || "-";
-  const schoolName = String(userData?.school_name || "").trim() || "-";
-  return [{ schoolUsername, schoolName, source: "当前登录账号" }];
-}
-
-function _getMultiAutoAttendanceSchoolRows() {
-  const rows = [];
-  const seen = new Set();
-  ["multi-account-list", "mobile-multi-account-list"].forEach((containerId) => {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.querySelectorAll("[data-username]").forEach((el) => {
-      const schoolUsername = String(el.dataset.username || "").trim();
-      if (!schoolUsername || seen.has(schoolUsername)) return;
-      seen.add(schoolUsername);
-      rows.push({
-        schoolUsername,
-        schoolName: String(
-          el.dataset.displayName || el.dataset.name || schoolUsername,
-        ).trim(),
-        source: "多账号列表",
-      });
-    });
-  });
-  if (!rows.length) {
-    const fallback = _getSingleAutoAttendanceSchoolRows()[0];
-    rows.push({ ...fallback, source: "当前登录账号(回退)" });
-  }
-  return rows;
-}
-
-function _buildAutoAttendanceDesktopTable(rows) {
-  const body = rows
-    .map(
-      (row, index) => `
-      <tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:center;">${index + 1}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-family:monospace;">${_escapeAutoAttendanceHtml(row.schoolUsername)}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${_escapeAutoAttendanceHtml(row.schoolName)}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#64748b;">${_escapeAutoAttendanceHtml(row.source || "-")}</td>
-      </tr>`,
-    )
-    .join("");
-  return `
-    <div style="margin-top:12px;text-align:left;">
-      <div style="font-size:13px;color:#64748b;margin-bottom:8px;">学校账号信息（表格）</div>
-      <div style="border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;background:#fff;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead style="background:#f1f5f9;">
-            <tr>
-              <th style="padding:8px 10px;border-bottom:1px solid #cbd5e1;">序号</th>
-              <th style="padding:8px 10px;border-bottom:1px solid #cbd5e1;">学校账号</th>
-              <th style="padding:8px 10px;border-bottom:1px solid #cbd5e1;">姓名</th>
-              <th style="padding:8px 10px;border-bottom:1px solid #cbd5e1;">来源</th>
-            </tr>
-          </thead>
-          <tbody>${body}</tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-function _buildAutoAttendanceMobileCards(rows) {
-  const cards = rows
-    .map(
-      (row, index) => `
-      <div style="border:1px solid #dbeafe;border-radius:12px;padding:10px 12px;background:#f8fbff;box-shadow: 4px 4px 10px rgba(15,23,42,0.08), -4px -4px 10px rgba(255,255,255,0.9);text-align:left;">
-        <div style="font-size:12px;color:#64748b;margin-bottom:6px;">账号卡片 #${index + 1}</div>
-        <div style="font-size:13px;margin-bottom:4px;"><b>学校账号：</b><span style="font-family:monospace;">${_escapeAutoAttendanceHtml(row.schoolUsername)}</span></div>
-        <div style="font-size:13px;margin-bottom:4px;"><b>姓名：</b>${_escapeAutoAttendanceHtml(row.schoolName)}</div>
-        <div style="font-size:12px;color:#64748b;"><b>来源：</b>${_escapeAutoAttendanceHtml(row.source || "-")}</div>
-      </div>`,
-    )
-    .join("");
-  return `
-    <div style="margin-top:12px;text-align:left;">
-      <div style="font-size:13px;color:#64748b;margin-bottom:8px;">学校账号信息（卡片）</div>
-      <div style="display:grid;gap:8px;">${cards}</div>
-    </div>`;
-}
-
-function showAutoAttendanceToggleModal(enabled, { mode = "single" } = {}) {
-  const isMobile =
-    typeof globalThis?.isMobileMode === "boolean"
-      ? !!globalThis.isMobileMode
-      : (typeof globalThis?.detectMobileDevice === "function" &&
-          !!globalThis.detectMobileDevice()) ||
-        window.innerWidth <= 1024;
-  const isMulti = mode === "multi";
-  const rows = isMulti
-    ? _getMultiAutoAttendanceSchoolRows()
-    : _getSingleAutoAttendanceSchoolRows();
-  const modeText = isMulti ? "多账号模式" : "单账号模式";
-  const statusText = enabled ? "已开启" : "已关闭";
-  const statusColor = enabled ? "#16a34a" : "#dc2626";
-  const layoutHtml = isMobile
-    ? _buildAutoAttendanceMobileCards(rows)
-    : _buildAutoAttendanceDesktopTable(rows);
-  Swal.fire({
-    title: `${modeText}自动签到${statusText}`,
-    icon: enabled ? "success" : "info",
-    html: `
-      <div style="text-align:left;padding:2px 0;">
-        <p style="margin:0 0 8px 0;font-size:14px;color:#334155;">
-          自动签到状态：<strong style="color:${statusColor};">${statusText}</strong>
-        </p>
-        <p style="margin:0;font-size:13px;color:#64748b;">展示布局：${isMobile ? "移动端卡片" : "PC端表格"}</p>
-        ${layoutHtml}
-      </div>`,
-    confirmButtonText: "我知道了",
-    customClass: {
-      popup: "swal2-neumorphism-popup",
-      confirmButton: "swal2-neumorphism-confirm",
-    },
-  });
 }
 async function openAccountParamsModal(username) {
   const result = await callPythonAPI("multi_get_account_params", username);
@@ -41802,17 +41668,6 @@ async function loadSystemConfig() {
           }>bcrypt(自动加盐)</option>
         </select>
       `;
-      } else if (type === "ip_query_method") {
-        inputHtml = `
-        <select id="config-${section}-${key}" class="select-field">
-          <option value="pconline" ${
-            value === "pconline" ? "selected" : ""
-          }>pconline（太平洋网络，默认）</option>
-          <option value="amap" ${
-            value === "amap" ? "selected" : ""
-          }>amap（高德地图 Web API）</option>
-        </select>
-      `;
       } else {
         inputHtml = `<input type="text" id="config-${section}-${key}" value="${value}" class="input-field">`;
       }
@@ -41965,22 +41820,6 @@ async function loadSystemConfig() {
       "高德地图 API Key",
       "text",
       "用于前端地图显示的JS API Key。",
-    );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">IP 归属地查询配置</h5>';
-    html += createInput(
-      "IP_Location",
-      "query_method",
-      "查询方式",
-      "ip_query_method",
-      "pconline：太平洋网络（默认，无需额外配置）；amap：高德地图 Web API（需填写下方 Key，境外 IP 自动回退到 pconline）。",
-    );
-    html += createInput(
-      "IP_Location",
-      "amap_web_api_key",
-      "高德 Web API Key（IP 定位）",
-      "text",
-      "查询方式为 amap 时必填。在高德开放平台创建 Web 服务类型应用后获取，留空时即使选择 amap 也会自动回退到 pconline。",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
@@ -44130,54 +43969,6 @@ async function saveSSLConfig() {
 // 这个部分负责CDN缓存设置的加载和保存
 // ============================================================================
 
-let cdnRefreshInProgress = false;
-
-function updateCDNForceRefreshButtons(enabled) {
-  const desktopBtn = $("cdn-force-refresh-btn");
-  const mobileBtn = $("mobile-cdn-force-refresh-btn");
-  [desktopBtn, mobileBtn].forEach((btn) => {
-    if (!btn) return;
-    btn.disabled = !enabled || cdnRefreshInProgress;
-    if (cdnRefreshInProgress) {
-      btn.title = "CDN缓存后台刷新进行中，请稍候";
-    } else {
-      btn.title = enabled
-        ? "立即从上游CDN重新拉取并覆盖服务器缓存"
-        : "启用CDN缓存后可用";
-    }
-  });
-}
-
-async function triggerCDNRefreshWithRetry(maxRetries = 3, delayMs = 1500) {
-  let lastError = null;
-  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
-    try {
-      const response = await fetch("/api/cdn/refresh", {
-        method: "POST",
-        headers: {
-          "X-Session-ID": sessionUUID,
-          "Content-Type": "application/json",
-        },
-      });
-      const data = await response.json();
-      if (data && data.success) {
-        return { success: true, message: data.message || "CDN缓存强制刷新成功" };
-      }
-      lastError = new Error((data && data.message) || "CDN缓存强制刷新失败");
-    } catch (error) {
-      lastError = error;
-    }
-    if (attempt < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  }
-  return {
-    success: false,
-    message: `CDN缓存刷新失败，已自动重试 ${maxRetries} 次。`,
-    error: lastError,
-  };
-}
-
 /**
  * 加载CDN缓存配置
  * 功能：从服务器获取当前的CDN缓存配置并更新UI
@@ -44218,8 +44009,6 @@ async function loadCDNConfig() {
 
       // 获取移动端的缓存时间输入框
       const mobileCdnCacheTime = $("mobile-cdn-cache-time");
-      const cdnForceRefreshBtn = $("cdn-force-refresh-btn");
-      const mobileCdnForceRefreshBtn = $("mobile-cdn-force-refresh-btn");
 
       // 如果桌面版开关元素存在，则更新其选中状态
       // 使用逻辑或运算符(||)提供默认值false，防止undefined错误
@@ -44231,10 +44020,6 @@ async function loadCDNConfig() {
       // 默认值为3600秒（1小时）
       if (cdnCacheTime) {
         cdnCacheTime.value = data.config.cache_time || 3600;
-      }
-
-      if (cdnForceRefreshBtn || mobileCdnForceRefreshBtn) {
-        updateCDNForceRefreshButtons(!!data.config.cdn_enabled);
       }
 
       // 同步更新移动端UI元素
@@ -44262,53 +44047,6 @@ async function loadCDNConfig() {
     console.error("[CDN配置] 加载配置失败:", error);
     showModalAlert("加载失败: " + error.message, "网络错误");
   }
-}
-
-async function forceRefreshCDNCache(isMobile = false) {
-  const cdnEnabledToggle = isMobile
-    ? $("mobile-cdn-enabled-toggle")
-    : $("cdn-enabled-toggle");
-  const forceBtn = isMobile
-    ? $("mobile-cdn-force-refresh-btn")
-    : $("cdn-force-refresh-btn");
-  if (!cdnEnabledToggle || !cdnEnabledToggle.checked) {
-    showModalAlert("请先启用CDN缓存，再执行强制刷新。", "提示");
-    return;
-  }
-  if (cdnRefreshInProgress) {
-    showModalAlert("后台刷新任务正在进行中，请勿重复点击。", "提示");
-    return;
-  }
-  cdnRefreshInProgress = true;
-  setButtonLoading(forceBtn, true, "后台刷新中...");
-  updateCDNForceRefreshButtons(true);
-  showModalAlert("已提交后台刷新任务，正在自动重试更新 CDN 缓存。", "已开始");
-
-  (async () => {
-    try {
-      const result = await triggerCDNRefreshWithRetry(3, 1500);
-      if (result.success) {
-        showModalAlert(result.message, "成功");
-      } else {
-        const reason =
-          result.error && result.error.message
-            ? `\n原因：${result.error.message}`
-            : "";
-        showModalAlert(`${result.message}${reason}`, "失败");
-      }
-    } catch (error) {
-      console.error("[CDN配置] 强制刷新缓存失败:", error);
-      showModalAlert("强制刷新失败: " + error.message, "网络错误");
-    } finally {
-      cdnRefreshInProgress = false;
-      setButtonLoading(forceBtn, false, "强制刷新服务器缓存");
-      const enabledNow = !!(
-        ($("cdn-enabled-toggle") && $("cdn-enabled-toggle").checked) ||
-        ($("mobile-cdn-enabled-toggle") && $("mobile-cdn-enabled-toggle").checked)
-      );
-      updateCDNForceRefreshButtons(enabledNow);
-    }
-  })();
 }
 
 /**
@@ -44373,8 +44111,6 @@ async function saveCDNConfig() {
     if (data.success) {
       // 显示成功消息，告知用户配置已保存
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
-
-      updateCDNForceRefreshButtons(!!configData.cdn_enabled);
 
       // 在控制台输出成功日志
       console.log("[CDN配置] 配置保存成功");
@@ -44448,7 +44184,6 @@ async function saveMobileCDNConfig() {
     // 检查保存是否成功
     if (data.success) {
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
-      updateCDNForceRefreshButtons(!!configData.cdn_enabled);
       console.log("[移动端CDN配置] 配置保存成功");
     } else {
       showModalAlert(data.message || "保存配置失败", "保存失败");
@@ -44903,10 +44638,6 @@ async function saveSystemConfig() {
       Map: {
         amap_js_key: $("config-Map-amap_js_key").value,
       },
-      IP_Location: {
-        query_method: $("config-IP_Location-query_method").value || "pconline",
-        amap_web_api_key: $("config-IP_Location-amap_web_api_key").value || "",
-      },
       // ==================== 网站备案信息配置保存 ====================
       // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中
       // 这些配置项用于在网站底部显示合规的备案信息
@@ -45225,7 +44956,6 @@ document.addEventListener("DOMContentLoaded", function () {
             this.checked,
           );
           console.log(`[移动端多账号] 自动签到开关已更新: ${this.checked}`);
-          showAutoAttendanceToggleModal(!!this.checked, { mode: "multi" });
         }
       });
     }
@@ -46327,115 +46057,6 @@ async function submitMobileMultiMessage() {
   }
 }
 
-function ensureEditorDialogsOnBodyByRootId(editorRootId) {
-  const editorRoot = document.getElementById(editorRootId);
-  if (!editorRoot || editorRoot.__dialog_relocate_bound) return;
-  editorRoot.__dialog_relocate_bound = true;
-
-  const relocate = (dialog) => {
-    if (!dialog || dialog.__moved_to_body) return;
-    try {
-      const r = dialog.getBoundingClientRect();
-      const w = dialog.offsetWidth;
-      const h = dialog.offsetHeight;
-      dialog.style.position = "fixed";
-      dialog.style.left = Math.max(0, r.left) + "px";
-      dialog.style.top = Math.max(0, r.top) + "px";
-      dialog.style.width = w ? w + "px" : "auto";
-      dialog.style.height = h ? h + "px" : "auto";
-      dialog.style.zIndex = 20000;
-
-      const origMask =
-        dialog.parentElement &&
-        dialog.parentElement.querySelector &&
-        dialog.parentElement.querySelector(".editormd-dialog-mask");
-      if (origMask) {
-        try {
-          const clone = origMask.cloneNode(true);
-          clone.__orig_display = origMask.style.display || "";
-          clone.style.position = "fixed";
-          clone.style.left = "0";
-          clone.style.top = "0";
-          clone.style.width = "100%";
-          clone.style.height = "100%";
-          clone.style.zIndex = 19990;
-          clone.classList.add("editormd-dialog-mask");
-          document.body.appendChild(clone);
-          origMask.__orig_display = origMask.style.display || "";
-          origMask.style.display = "none";
-          clone.__moved_for_dialog = dialog;
-          dialog.__moved_mask = clone;
-          dialog.__orig_mask = origMask;
-        } catch (_) {
-          origMask.__orig_display = origMask.style.display || "";
-          document.body.appendChild(origMask);
-          origMask.style.position = "fixed";
-          origMask.style.left = "0";
-          origMask.style.top = "0";
-          origMask.style.width = "100%";
-          origMask.style.height = "100%";
-          origMask.style.zIndex = 19990;
-          origMask.__moved_for_dialog = dialog;
-          dialog.__moved_mask = origMask;
-        }
-      }
-
-      document.body.appendChild(dialog);
-      dialog.__moved_to_body = true;
-
-      const checkVisibilityAndToggleMask = () => {
-        try {
-          const curMask = dialog.__moved_mask;
-          if (!curMask) return;
-          const style = window.getComputedStyle(dialog);
-          const isVisible =
-            style &&
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            dialog.offsetParent !== null &&
-            dialog.getBoundingClientRect().width > 0 &&
-            dialog.getBoundingClientRect().height > 0;
-          curMask.style.display = isVisible ? curMask.__orig_display || "" : "none";
-        } catch (_) {}
-      };
-
-      checkVisibilityAndToggleMask();
-      try {
-        const attrObserver = new MutationObserver(() =>
-          checkVisibilityAndToggleMask(),
-        );
-        attrObserver.observe(dialog, {
-          attributes: true,
-          attributeFilter: ["style", "class"],
-        });
-        dialog.__visibilityAttrObserver = attrObserver;
-      } catch (_) {}
-    } catch (e) {
-      console.warn("relocate dialog failed", e);
-    }
-  };
-
-  const mo = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      for (const node of m.addedNodes) {
-        if (!(node instanceof HTMLElement)) continue;
-        if (node.classList && node.classList.contains("editormd-dialog")) {
-          relocate(node);
-        } else {
-          const found =
-            node.querySelector &&
-            node.querySelectorAll &&
-            node.querySelectorAll(".editormd-dialog");
-          if (found && found.length) found.forEach((d) => relocate(d));
-        }
-      }
-    }
-  });
-  mo.observe(editorRoot, { childList: true, subtree: true });
-  const existing = editorRoot.querySelectorAll(".editormd-dialog");
-  existing.forEach((d) => relocate(d));
-}
-
 async function ensureMobileMultiMessageEditorInitialized() {
   try {
     if (
@@ -46502,7 +46123,6 @@ async function ensureMobileMultiMessageEditorInitialized() {
         } catch (_) {}
       },
     });
-    ensureEditorDialogsOnBodyByRootId("mobile-multi-message-editor");
     const ta = document.getElementById("mobile-multi-message-content");
     if (ta) ta.classList.add("hidden");
     return true;
