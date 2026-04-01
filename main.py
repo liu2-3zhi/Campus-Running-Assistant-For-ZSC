@@ -32149,33 +32149,20 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
     @app.route("/api/cdn/refresh", methods=["POST"])
-    @admin_required
     @login_required
     def refresh_cdn_cache():
         """
         手动刷新CDN缓存（管理员功能）
         """
         try:
-            session_id = request.headers.get("X-Session-ID", "")
-            if not session_id:
-                return jsonify({"success": False, "message": "未授权"}), 401
-
-            # 检查是否有管理员权限
-            api_instance = None
-            with web_sessions_lock:
-                if session_id in web_sessions:
-                    api_instance = web_sessions[session_id]
-
-            if not api_instance:
-                return jsonify({"success": False, "message": "会话无效"}), 401
-
-            auth_username = getattr(api_instance, "auth_username", None)
-            if not auth_username:
-                return jsonify({"success": False, "message": "未登录"}), 401
-
-            # 检查管理员权限
-            if not auth_system.check_permission(auth_username, "admin_panel"):
-                return jsonify({"success": False, "message": "权限不足"}), 403
+            # 与CDN配置面板保持一致：需要 modify_config 权限
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": "权限不足，需要配置修改权限（modify_config）",
+                    }
+                ), 403
 
             # 执行刷新
             success_count, fail_count = update_all_cdn_files()
