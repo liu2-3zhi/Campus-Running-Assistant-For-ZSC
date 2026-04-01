@@ -88,25 +88,6 @@
         #newbie-help-btn {
           display: none !important;
         }
-        /* 移动端多人留言编辑器适配：避免工具栏和编辑区横向溢出被截断 */
-        #mobile-multi-message-editor {
-          width: 100%;
-          max-width: 100%;
-          overflow: hidden;
-        }
-        #mobile-multi-message-editor .editormd,
-        #mobile-multi-message-editor .CodeMirror,
-        #mobile-multi-message-editor .editormd-preview-container {
-          width: 100% !important;
-          max-width: 100%;
-          box-sizing: border-box;
-        }
-        #mobile-multi-message-editor .editormd-toolbar {
-          overflow-x: auto;
-          overflow-y: hidden;
-          white-space: nowrap;
-          -webkit-overflow-scrolling: touch;
-        }
       }
       /* 保留最小的布局与交互规则，外观交由按钮类（如 bg-white/80、shadow-lg、border-slate-200）控制 */
       #newbie-help-btn {
