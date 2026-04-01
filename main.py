@@ -22108,36 +22108,44 @@ def start_web_server(args_param):
 
     # 需要缓存的CDN文件列表
     CDN_FILES = {
+        # 美化弹窗
         "sweetalert2": {
-            "url": "https://cdn.jsdelivr.net/npm/sweetalert2@11",
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js",
             "filename": "sweetalert2.min.js",
             "type": "js",
         },
+        "sweetalert2-css": {
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css",
+            "filename": "sweetalert2.min.css",
+            "type": "css",
+        },
+        # 二维码生成库
         "qrcode": {
-            "url": "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js",
             "filename": "qrcode.min.js",
             "type": "js",
         },
+        # 图片裁剪库
         "cropperjs": {
-            "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js",
             "filename": "cropper.min.js",
             "type": "js",
         },
-        "cropperjs-css": {
-            "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css",
-            "filename": "cropper.min.css",
-            "type": "css",
-        },
+        # "cropperjs-css": {
+        #     "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css",
+        #     "filename": "cropper.min.css",
+        #     "type": "css",
+        # },
         "tailwindcss": {
-            "url": "https://cdn.tailwindcss.com",
+            "url": "https://cdn.jsdelivr.net/npm/@tailwindcss/browser/dist/index.global.min.js",
+            # "url": "https://cdn.tailwindcss.com",
             "filename": "tailwindcss.min.js",
             "type": "js",
         },
         "socketio": {
-            "url": "https://cdn.socket.io/4.8.1/socket.io.min.js",  # 自动获取最新稳定版
+            "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js",
             "filename": "socket.io.min.js",
             "type": "js",
-            "check_latest": True,  # 标记需要检查最新版本
         },
         "google-fonts": {
             "url": "https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=Noto+Sans+SC:wght@400;600;700&display=swap",
@@ -22150,8 +22158,8 @@ def start_web_server(args_param):
             "type": "js",
         },
         "jquery": {
-            "url": "https://code.jquery.com/jquery-3.7.1.js",
-            "filename": "jquery-3.7.1.js",
+            "url": "https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js",
+            "filename": "jquery.js",
             "type": "js",
         },
     }
@@ -22160,6 +22168,10 @@ def start_web_server(args_param):
     js_cache_storage = {}
     js_cache_lock = threading.Lock()
     js_cache_last_update = {}
+
+    # Source Map缓存存储
+    source_map_storage = {}
+    source_map_lock = threading.Lock()
 
     # 字体文件缓存存储（用于Google Fonts的TTF文件）
     font_cache_storage = {}
@@ -22483,24 +22495,6 @@ def start_web_server(args_param):
         except Exception as e:
             logging.warning(f"[CDN缓存] 扫描字体缓存目录失败: {e}")
 
-    def get_latest_socketio_version():
-        """
-        获取socket.io的最新稳定版本号
-        """
-        try:
-            # 从npm registry获取最新版本
-            response = requests.get(
-                "https://registry.npmjs.org/socket.io-client/latest", timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                version = data.get("version", "4.8.1")
-                logging.info(f"[CDN缓存] Socket.IO 最新版本: {version}")
-                return version
-        except Exception as e:
-            logging.warning(f"[CDN缓存] 获取Socket.IO最新版本失败: {e}")
-        return "4.8.1"  # 默认版本
-
     def fetch_cdn_file(url, timeout=30, binary=False):
         """
         从CDN获取文件内容
@@ -22526,6 +22520,109 @@ def start_web_server(args_param):
             logging.error(f"[CDN缓存] 获取文件异常: {e}, URL: {url}")
             return None
 
+    def extract_source_map_url(js_content, js_url):
+        """
+        从JS内容中提取sourceMappingURL
+        
+        参数:
+            js_content: JS文件内容
+            js_url: JS文件的URL，用于解析相对路径
+            
+        返回:
+            (source_map_url, source_map_comment): source map的完整URL和原始注释
+        """
+        import re
+        from urllib.parse import urljoin
+        
+        # 匹配 sourceMappingURL 注释（支持 // 和 /* */ 两种格式）
+        pattern = r'//[#@]\s*sourceMappingURL=([^\s]+)|/\*[#@]\s*sourceMappingURL=([^\s]+)\s*\*/'
+        matches = list(re.finditer(pattern, js_content))
+        
+        if matches:
+            # 取最后一个匹配（通常在文件末尾）
+            match = matches[-1]
+            map_url = match.group(1) or match.group(2)
+            
+            # 如果是data URI，不处理
+            if map_url.startswith('data:'):
+                return None, match.group(0)
+            
+            # 解析相对URL为绝对URL
+            full_map_url = urljoin(js_url, map_url)
+            return full_map_url, match.group(0)
+        
+        # 如果没有找到，且URL以.js结尾，尝试url + .map
+        if js_url.endswith('.js'):
+            return js_url + '.map', None
+        
+        return None, None
+
+    def process_js_with_source_map(js_content, js_url, key):
+        """
+        处理JS文件的source map
+        
+        参数:
+            js_content: JS文件内容
+            js_url: JS文件的URL
+            key: 文件标识符
+            
+        返回:
+            处理后的JS内容
+        """
+        map_url, original_comment = extract_source_map_url(js_content, js_url)
+        
+        if not map_url:
+            logging.info(f"[CDN缓存] {key} 未找到source map URL")
+            return js_content
+        
+        logging.info(f"[CDN缓存] {key} 尝试下载source map: {map_url}")
+        
+        # 下载source map
+        map_content = fetch_cdn_file(map_url, timeout=30, binary=False)
+        
+        if map_content:
+            # 下载成功，保存到内存和磁盘
+            map_filename = f"{key}.map"
+            with source_map_lock:
+                source_map_storage[key] = map_content
+            save_cached_file(map_filename, map_content, binary=False)
+            
+            logging.info(f"[CDN缓存] {key} source map 下载并缓存成功")
+            
+            # 修改JS中的sourceMappingURL为本地接口
+            local_map_url = f"/api/cdn/map/{key}"
+            
+            if original_comment:
+                # 替换原有注释
+                js_content = js_content.replace(original_comment, f"//# sourceMappingURL={local_map_url}")
+            else:
+                # 在末尾添加注释
+                js_content = js_content.rstrip() + f"\n//# sourceMappingURL={local_map_url}"
+        else:
+            # 下载失败，清理旧的map
+            logging.warning(f"[CDN缓存] {key} source map 下载失败，清理旧缓存")
+            
+            with source_map_lock:
+                if key in source_map_storage:
+                    del source_map_storage[key]
+            
+            # 尝试删除磁盘上的旧map
+            map_filename = f"{key}.map"
+            map_path = os.path.join(JS_CACHE_DIR, map_filename)
+            try:
+                if os.path.exists(map_path):
+                    os.remove(map_path)
+                    logging.info(f"[CDN缓存] 已删除旧的source map文件: {map_filename}")
+            except Exception as e:
+                logging.error(f"[CDN缓存] 删除旧source map文件失败: {e}")
+            
+            # 删除JS中的sourceMappingURL
+            if original_comment:
+                js_content = js_content.replace(original_comment, "")
+        
+        return js_content
+
+
     def load_cached_file(filename, binary=False):
         """
         从本地缓存文件加载内容
@@ -22547,7 +22644,7 @@ def start_web_server(args_param):
 
     def save_cached_file(filename, content, binary=False):
         """
-        保存内容到本地缓存文件
+        保存内容到本地缓存文件（原子性替换）
 
         参数:
             filename: 文件名
@@ -22555,15 +22652,31 @@ def start_web_server(args_param):
             binary: 是否以二进制模式写入
         """
         cache_path = os.path.join(JS_CACHE_DIR, filename)
+        temp_path = cache_path + ".tmp"
         try:
             mode = "wb" if binary else "w"
             encoding = None if binary else "utf-8"
-            with open(cache_path, mode, encoding=encoding) as f:
+            
+            # 先写入临时文件
+            with open(temp_path, mode, encoding=encoding) as f:
                 f.write(content)
+            
+            # 原子性替换旧文件
+            if os.path.exists(cache_path):
+                os.replace(temp_path, cache_path)
+            else:
+                os.rename(temp_path, cache_path)
+            
             logging.info(f"[CDN缓存] 已保存缓存文件: {filename}")
             return True
         except Exception as e:
             logging.error(f"[CDN缓存] 保存缓存文件失败: {e}, 文件: {filename}")
+            # 清理临时文件
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except:
+                pass
             return False
 
     def update_single_cdn_file(key, config):
@@ -22572,12 +22685,7 @@ def start_web_server(args_param):
         """
         url = config["url"]
         filename = config["filename"]
-
-        # 如果是socket.io且标记需要检查最新版本，则动态获取最新版本URL
-        if config.get("check_latest") and key == "socketio":
-            latest_version = get_latest_socketio_version()
-            url = f"https://cdn.socket.io/{latest_version}/socket.io.min.js"
-            logging.info(f"[CDN缓存] Socket.IO 使用最新版本: {latest_version}")
+        file_type = config.get("type", "js")
 
         logging.info(f"[CDN缓存] 正在获取: {key} ({url})")
         content = fetch_cdn_file(url)
@@ -22587,13 +22695,23 @@ def start_web_server(args_param):
             if key == "google-fonts":
                 logging.info(f"[CDN缓存] 正在解析Google Fonts CSS并缓存字体文件...")
                 content = cache_google_fonts_with_ttf(content, key)
+            
+            # 如果是JS文件，处理source map
+            elif file_type == "js":
+                logging.info(f"[CDN缓存] 处理 {key} 的source map...")
+                content = process_js_with_source_map(content, url, key)
 
-            with js_cache_lock:
-                js_cache_storage[key] = content
-                js_cache_last_update[key] = time.time()
-            save_cached_file(filename, content)
-            logging.info(f"[CDN缓存] 成功更新: {key}")
-            return True
+            # 先将处理后的内容写入缓存
+            if save_cached_file(filename, content):
+                # 文件保存成功后，更新内存缓存
+                with js_cache_lock:
+                    js_cache_storage[key] = content
+                    js_cache_last_update[key] = time.time()
+                logging.info(f"[CDN缓存] 成功更新: {key}")
+                return True
+            else:
+                logging.error(f"[CDN缓存] 保存文件失败: {key}")
+                return False
         else:
             # 获取失败，尝试使用本地缓存
             cached = load_cached_file(filename)
@@ -22644,12 +22762,22 @@ def start_web_server(args_param):
                         os.path.join(JS_CACHE_DIR, filename)
                     )
                 logging.info(f"[CDN缓存] 从本地加载: {key}")
+                
+                # 如果是JS文件，尝试加载对应的source map
+                if config.get("type") == "js":
+                    map_filename = f"{key}.map"
+                    map_cached = load_cached_file(map_filename)
+                    if map_cached:
+                        with source_map_lock:
+                            source_map_storage[key] = map_cached
+                        logging.info(f"[CDN缓存] 从本地加载source map: {key}")
             else:
                 # 本地没有缓存，从CDN获取
                 update_single_cdn_file(key, config)
 
         logging.info(
-            f"[CDN缓存] 初始化完成，已缓存 {len(js_cache_storage)} 个JS/CSS文件, {len(font_cache_storage)} 个字体文件"
+            f"[CDN缓存] 初始化完成，已缓存 {len(js_cache_storage)} 个JS/CSS文件, "
+            f"{len(source_map_storage)} 个source map文件, {len(font_cache_storage)} 个字体文件"
         )
 
     def cdn_cache_update_worker():
@@ -31891,6 +32019,40 @@ def start_web_server(args_param):
                     )
         except Exception as e:
             logging.error(f"[CDN缓存API] 返回字体文件时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/api/cdn/map/<map_key>")
+    def get_cdn_cached_source_map(map_key):
+        """
+        返回本地缓存的source map文件
+
+        参数:
+            map_key: source map文件标识符，如 socketio, jquery
+
+        返回:
+            source map文件内容，并设置正确的Content-Type
+        """
+        try:
+            with source_map_lock:
+                if map_key in source_map_storage:
+                    content = source_map_storage[map_key]
+
+                    response = make_response(content)
+                    response.headers["Content-Type"] = "application/json"
+                    response.headers["Cache-Control"] = (
+                        "public, max-age=3600"  # 缓存1小时
+                    )
+                    return response
+                else:
+                    logging.warning(f"[CDN缓存API] 请求的source map文件不存在: {map_key}")
+                    return (
+                        jsonify(
+                            {"success": False, "message": f"source map文件未找到: {map_key}"}
+                        ),
+                        404,
+                    )
+        except Exception as e:
+            logging.error(f"[CDN缓存API] 返回source map文件时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
     @app.route("/api/cdn/refresh", methods=["POST"])
