@@ -31862,6 +31862,11 @@ def start_web_server(args_param):
             文件内容，并设置正确的Content-Type
         """
         try:
+            if file_key.endswith(".map"):
+                response = make_response("")
+                response.headers["Content-Type"] = "application/json"
+                response.headers["Cache-Control"] = "public, max-age=86400"
+                return response, 204
             with js_cache_lock:
                 if file_key in js_cache_storage:
                     content = js_cache_storage[file_key]
@@ -31891,6 +31896,13 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[CDN缓存API] 返回文件时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/.well-known/appspecific/com.chrome.devtools.json")
+    def chrome_devtools_well_known():
+        response = make_response("")
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Content-Type"] = "application/json"
+        return response, 204
 
     @app.route("/api/cdn/font/<font_key>")
     def get_cdn_cached_font(font_key):
