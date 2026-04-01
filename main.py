@@ -2983,7 +2983,7 @@ def _get_default_config():
 
     config["CDN"] = {
         "cdn_enabled": "true",
-        "cache_time": "3600",
+        "cache_time": "86400",
     }
 
     config["Features"] = {
@@ -3441,13 +3441,13 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# true：启用CDN缓存，提高静态资源加载速度\n")
         f.write("# false：禁用CDN缓存，所有资源直接从服务器获取\n")
         f.write(
-            f"cdn_enabled = {config_obj.get('CDN', 'cdn_enabled', fallback='false')}\n"
+            f"cdn_enabled = {config_obj.get('CDN', 'cdn_enabled', fallback='true')}\n"
         )
         f.write("# CDN缓存时间（秒）\n")
         f.write("# 设置静态资源在CDN上的缓存有效期\n")
         f.write("# 建议值：3600（1小时）、21600（6小时）、86400（24小时）\n")
         f.write(
-            f"cache_time = {config_obj.get('CDN', 'cache_time', fallback='3600')}\n\n"
+            f"cache_time = {config_obj.get('CDN', 'cache_time', fallback='86400')}\n\n"
         )
 
         # ========================================
@@ -22647,15 +22647,22 @@ def start_web_server(args_param):
             binary: 是否以二进制模式写入
         """
         cache_path = os.path.join(JS_CACHE_DIR, filename)
+        tmp_path = cache_path + ".tmp"
         try:
             mode = "wb" if binary else "w"
             encoding = None if binary else "utf-8"
-            with open(cache_path, mode, encoding=encoding) as f:
+            with open(tmp_path, mode, encoding=encoding) as f:
                 f.write(content)
+            os.replace(tmp_path, cache_path)
             logging.info(f"[CDN缓存] 已保存缓存文件: {filename}")
             return True
         except Exception as e:
             logging.error(f"[CDN缓存] 保存缓存文件失败: {e}, 文件: {filename}")
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
             return False
 
     def build_fallback_sourcemap(target_filename):
@@ -30673,8 +30680,8 @@ def start_web_server(args_param):
 
             # 读取CDN配置，如果不存在则使用默认值
             cdn_enabled = config.getboolean(
-                "CDN", "cdn_enabled", fallback=False)
-            cache_time = config.getint("CDN", "cache_time", fallback=3600)
+                "CDN", "cdn_enabled", fallback=True)
+            cache_time = config.getint("CDN", "cache_time", fallback=86400)
 
             # 组装配置数据
             cdn_config = {"cdn_enabled": cdn_enabled, "cache_time": cache_time}
@@ -30758,10 +30765,10 @@ def start_web_server(args_param):
 
             # 当前配置值（用于返回）
             current_cdn_enabled = config.getboolean(
-                "CDN", "cdn_enabled", fallback=False
+                "CDN", "cdn_enabled", fallback=True
             )
             current_cache_time = config.getint(
-                "CDN", "cache_time", fallback=3600)
+                "CDN", "cache_time", fallback=86400)
 
             # 更新cdn_enabled配置（如果请求中提供了该字段）
             if "cdn_enabled" in data:
