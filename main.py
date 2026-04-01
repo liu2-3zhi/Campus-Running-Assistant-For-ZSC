@@ -22181,13 +22181,6 @@ def start_web_server(args_param):
                 "default_version": "4.8.1",
                 "url_template": "https://cdn.socket.io/{version}/socket.io.min.js",
             },
-            "sourcemap": {
-                "key": "socketio-map",
-                "filename": "socket.io.min.js.map",
-                "type": "map",
-                "url": "https://cdn.socket.io/4.8.1/socket.io.min.js.map",
-                "url_template": "https://cdn.socket.io/{version}/socket.io.min.js.map",
-            },
         },
         "google-fonts": {
             "url": "https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=Noto+Sans+SC:wght@400;600;700&display=swap",
@@ -22665,22 +22658,6 @@ def start_web_server(args_param):
                 pass
             return False
 
-    def build_fallback_sourcemap(target_filename):
-        """
-        生成最小可用的 sourcemap 内容，作为下载失败时的兜底。
-        """
-        return json.dumps(
-            {
-                "version": 3,
-                "file": target_filename,
-                "sources": [target_filename],
-                "names": [],
-                "mappings": "",
-                "x_fallback_generated": True,
-            },
-            ensure_ascii=False,
-        )
-
     def update_single_cdn_file(key, config):
         """
         更新单个CDN文件的缓存
@@ -22688,8 +22665,6 @@ def start_web_server(args_param):
         url = config["url"]
         filename = config["filename"]
         auto_version_config = config.get("auto_version")
-        sourcemap_config = config.get("sourcemap")
-        sourcemap_url = sourcemap_config.get("url") if sourcemap_config else None
         resolved_version = None
 
         if auto_version_config and auto_version_config.get("enabled"):
@@ -22702,19 +22677,11 @@ def start_web_server(args_param):
                 logging.info(
                     f"[CDN缓存] {key} 自动升级版本: {resolved_version}"
                 )
-                if sourcemap_config and sourcemap_config.get("url_template"):
-                    sourcemap_url = sourcemap_config["url_template"].format(
-                        version=resolved_version
-                    )
 
         # 如果是socket.io且标记需要检查最新版本，则动态获取最新版本URL
         if config.get("check_latest") and key == "socketio" and not resolved_version:
             latest_version = get_latest_socketio_version()
             url = f"https://cdn.socket.io/{latest_version}/socket.io.min.js"
-            if sourcemap_config:
-                sourcemap_url = (
-                    f"https://cdn.socket.io/{latest_version}/socket.io.min.js.map"
-                )
             logging.info(f"[CDN缓存] Socket.IO 使用最新版本: {latest_version}")
 
         logging.info(f"[CDN缓存] 正在获取: {key} ({url})")
@@ -22731,35 +22698,6 @@ def start_web_server(args_param):
                 js_cache_last_update[key] = time.time()
             save_cached_file(filename, content)
 
-            if sourcemap_config and sourcemap_url:
-                sourcemap_key = sourcemap_config["key"]
-                sourcemap_filename = sourcemap_config["filename"]
-                sourcemap_content = fetch_cdn_file(sourcemap_url)
-                if sourcemap_content:
-                    with js_cache_lock:
-                        js_cache_storage[sourcemap_key] = sourcemap_content
-                        js_cache_last_update[sourcemap_key] = time.time()
-                    save_cached_file(sourcemap_filename, sourcemap_content)
-                    logging.info(f"[CDN缓存] 成功更新 sourcemap: {sourcemap_key}")
-                else:
-                    cached_sourcemap = load_cached_file(sourcemap_filename)
-                    if cached_sourcemap:
-                        with js_cache_lock:
-                            js_cache_storage[sourcemap_key] = cached_sourcemap
-                            js_cache_last_update[sourcemap_key] = time.time()
-                        logging.warning(
-                            f"[CDN缓存] sourcemap 获取失败，使用本地缓存: {sourcemap_key}"
-                        )
-                    else:
-                        fallback_sourcemap = build_fallback_sourcemap(filename)
-                        with js_cache_lock:
-                            js_cache_storage[sourcemap_key] = fallback_sourcemap
-                            js_cache_last_update[sourcemap_key] = time.time()
-                        save_cached_file(sourcemap_filename, fallback_sourcemap)
-                        logging.warning(
-                            f"[CDN缓存] sourcemap 获取失败，已生成内置备用 sourcemap: {sourcemap_key}"
-                        )
-
             logging.info(f"[CDN缓存] 成功更新: {key}")
             return True
         else:
@@ -22772,26 +22710,6 @@ def start_web_server(args_param):
                     if key not in js_cache_last_update:
                         js_cache_last_update[key] = time.time()
                 logging.warning(f"[CDN缓存] 获取失败，使用本地缓存: {key}")
-
-                if sourcemap_config:
-                    sourcemap_key = sourcemap_config["key"]
-                    sourcemap_filename = sourcemap_config["filename"]
-                    cached_sourcemap = load_cached_file(sourcemap_filename)
-                    if cached_sourcemap:
-                        with js_cache_lock:
-                            if sourcemap_key not in js_cache_storage:
-                                js_cache_storage[sourcemap_key] = cached_sourcemap
-                            if sourcemap_key not in js_cache_last_update:
-                                js_cache_last_update[sourcemap_key] = time.time()
-                    else:
-                        fallback_sourcemap = build_fallback_sourcemap(filename)
-                        with js_cache_lock:
-                            js_cache_storage[sourcemap_key] = fallback_sourcemap
-                            js_cache_last_update[sourcemap_key] = time.time()
-                        save_cached_file(sourcemap_filename, fallback_sourcemap)
-                        logging.warning(
-                            f"[CDN缓存] 主文件使用本地缓存，已生成内置备用 sourcemap: {sourcemap_key}"
-                        )
                 return False
             else:
                 logging.error(f"[CDN缓存] 获取失败且无本地缓存: {key}")
@@ -22825,7 +22743,6 @@ def start_web_server(args_param):
 
         for key, config in CDN_FILES.items():
             filename = config["filename"]
-            sourcemap_config = config.get("sourcemap")
             # 先尝试加载本地缓存
             cached = load_cached_file(filename)
             if cached:
@@ -22838,18 +22755,6 @@ def start_web_server(args_param):
             else:
                 # 本地没有缓存，从CDN获取
                 update_single_cdn_file(key, config)
-
-            if sourcemap_config:
-                sourcemap_key = sourcemap_config["key"]
-                sourcemap_filename = sourcemap_config["filename"]
-                cached_sourcemap = load_cached_file(sourcemap_filename)
-                if cached_sourcemap:
-                    with js_cache_lock:
-                        js_cache_storage[sourcemap_key] = cached_sourcemap
-                        js_cache_last_update[sourcemap_key] = os.path.getmtime(
-                            os.path.join(JS_CACHE_DIR, sourcemap_filename)
-                        )
-                    logging.info(f"[CDN缓存] 从本地加载 sourcemap: {sourcemap_key}")
 
         logging.info(
             f"[CDN缓存] 初始化完成，已缓存 {len(js_cache_storage)} 个JS/CSS文件, {len(font_cache_storage)} 个字体文件"
@@ -32055,17 +31960,15 @@ def start_web_server(args_param):
             resolved_key = file_key
             file_type = "js"
 
+            # 忽略所有 .map 请求
+            if file_key.endswith(".map"):
+                return make_response("", 404)
+
             if file_key not in js_cache_storage:
                 for cdn_key, cdn_config in CDN_FILES.items():
                     if file_key == cdn_config.get("filename"):
                         resolved_key = cdn_key
                         file_type = cdn_config.get("type", "js")
-                        break
-
-                    sourcemap_config = cdn_config.get("sourcemap")
-                    if sourcemap_config and file_key == sourcemap_config.get("filename"):
-                        resolved_key = sourcemap_config.get("key")
-                        file_type = sourcemap_config.get("type", "map")
                         break
 
             with js_cache_lock:
@@ -32078,8 +31981,6 @@ def start_web_server(args_param):
                     # 设置正确的Content-Type
                     if file_type == "css":
                         mimetype = "text/css"
-                    elif file_type == "map" or resolved_key.endswith(".map"):
-                        mimetype = "application/json"
                     else:
                         mimetype = "application/javascript"
 
