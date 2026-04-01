@@ -44170,6 +44170,7 @@ async function loadCDNConfig() {
 
       // 获取移动端的缓存时间输入框
       const mobileCdnCacheTime = $("mobile-cdn-cache-time");
+      const cdnForceRefreshBtn = $("cdn-force-refresh-btn");
 
       // 如果桌面版开关元素存在，则更新其选中状态
       // 使用逻辑或运算符(||)提供默认值false，防止undefined错误
@@ -44181,6 +44182,14 @@ async function loadCDNConfig() {
       // 默认值为3600秒（1小时）
       if (cdnCacheTime) {
         cdnCacheTime.value = data.config.cache_time || 3600;
+      }
+
+      if (cdnForceRefreshBtn) {
+        const enabled = !!data.config.cdn_enabled;
+        cdnForceRefreshBtn.disabled = !enabled;
+        cdnForceRefreshBtn.title = enabled
+          ? "立即从上游CDN重新拉取并覆盖服务器缓存"
+          : "启用CDN缓存后可用";
       }
 
       // 同步更新移动端UI元素
@@ -44207,6 +44216,36 @@ async function loadCDNConfig() {
     // 捕获网络错误或其他异常
     console.error("[CDN配置] 加载配置失败:", error);
     showModalAlert("加载失败: " + error.message, "网络错误");
+  }
+}
+
+async function forceRefreshCDNCache() {
+  const cdnEnabledToggle = $("cdn-enabled-toggle");
+  const forceBtn = $("cdn-force-refresh-btn");
+  if (!cdnEnabledToggle || !cdnEnabledToggle.checked) {
+    showModalAlert("请先启用CDN缓存，再执行强制刷新。", "提示");
+    return;
+  }
+  setButtonLoading(forceBtn, true, "强制刷新中...");
+  try {
+    const response = await fetch("/api/cdn/refresh", {
+      method: "POST",
+      headers: {
+        "X-Session-ID": sessionUUID,
+        "Content-Type": "application/json",
+      },
+    });
+    const data = await response.json();
+    if (data.success) {
+      showModalAlert(data.message || "CDN缓存强制刷新成功", "成功");
+    } else {
+      showModalAlert(data.message || "CDN缓存强制刷新失败", "失败");
+    }
+  } catch (error) {
+    console.error("[CDN配置] 强制刷新缓存失败:", error);
+    showModalAlert("强制刷新失败: " + error.message, "网络错误");
+  } finally {
+    setButtonLoading(forceBtn, false, "强制刷新服务器缓存");
   }
 }
 
@@ -44272,6 +44311,15 @@ async function saveCDNConfig() {
     if (data.success) {
       // 显示成功消息，告知用户配置已保存
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
+
+      const forceBtn = $("cdn-force-refresh-btn");
+      if (forceBtn) {
+        const enabled = !!configData.cdn_enabled;
+        forceBtn.disabled = !enabled;
+        forceBtn.title = enabled
+          ? "立即从上游CDN重新拉取并覆盖服务器缓存"
+          : "启用CDN缓存后可用";
+      }
 
       // 在控制台输出成功日志
       console.log("[CDN配置] 配置保存成功");
