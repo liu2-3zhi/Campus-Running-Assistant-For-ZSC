@@ -41668,6 +41668,17 @@ async function loadSystemConfig() {
           }>bcrypt(自动加盐)</option>
         </select>
       `;
+      } else if (type === "ip_query_method") {
+        inputHtml = `
+        <select id="config-${section}-${key}" class="select-field">
+          <option value="pconline" ${
+            value === "pconline" ? "selected" : ""
+          }>pconline（太平洋网络，默认）</option>
+          <option value="amap" ${
+            value === "amap" ? "selected" : ""
+          }>amap（高德地图 Web API）</option>
+        </select>
+      `;
       } else {
         inputHtml = `<input type="text" id="config-${section}-${key}" value="${value}" class="input-field">`;
       }
@@ -41820,6 +41831,22 @@ async function loadSystemConfig() {
       "高德地图 API Key",
       "text",
       "用于前端地图显示的JS API Key。",
+    );
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">IP 归属地查询配置</h5>';
+    html += createInput(
+      "IP_Location",
+      "query_method",
+      "查询方式",
+      "ip_query_method",
+      "pconline：太平洋网络（默认，无需额外配置）；amap：高德地图 Web API（需填写下方 Key，境外 IP 自动回退到 pconline）。",
+    );
+    html += createInput(
+      "IP_Location",
+      "amap_web_api_key",
+      "高德 Web API Key（IP 定位）",
+      "text",
+      "查询方式为 amap 时必填。在高德开放平台创建 Web 服务类型应用后获取，留空时即使选择 amap 也会自动回退到 pconline。",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
@@ -44637,6 +44664,10 @@ async function saveSystemConfig() {
       },
       Map: {
         amap_js_key: $("config-Map-amap_js_key").value,
+      },
+      IP_Location: {
+        query_method: $("config-IP_Location-query_method").value || "pconline",
+        amap_web_api_key: $("config-IP_Location-amap_web_api_key").value || "",
       },
       // ==================== 网站备案信息配置保存 ====================
       // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中

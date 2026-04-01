@@ -28747,6 +28747,23 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== 账号功能配置加载结束 ====================
+
+                # ==================== IP归属地查询配置加载 ====================
+                "IP_Location": {
+                    "query_method": _get_config_value(
+                        config,
+                        "IP_Location",
+                        "query_method",
+                        fallback="pconline",
+                    ),
+                    "amap_web_api_key": _get_config_value(
+                        config,
+                        "IP_Location",
+                        "amap_web_api_key",
+                        fallback="",
+                    ),
+                },
+                # ==================== IP归属地查询配置加载结束 ====================
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -28963,6 +28980,22 @@ def start_web_server(args_param):
                     except (ValueError, TypeError):
                         wait_h = 24
                     config.set("Features", "account_cancellation_wait_hours", str(wait_h))
+
+            # 处理 IP 归属地查询配置
+            if "IP_Location" in data:
+                ensure_section(config, "IP_Location")
+                ip_loc_data = data["IP_Location"]
+                if "query_method" in ip_loc_data:
+                    allowed_methods = ["pconline", "amap"]
+                    method = str(ip_loc_data["query_method"])
+                    if method in allowed_methods:
+                        config.set("IP_Location", "query_method", method)
+                if "amap_web_api_key" in ip_loc_data:
+                    config.set(
+                        "IP_Location",
+                        "amap_web_api_key",
+                        str(ip_loc_data["amap_web_api_key"]),
+                    )
 
             _write_config_with_comments(config, CONFIG_FILE)
 
