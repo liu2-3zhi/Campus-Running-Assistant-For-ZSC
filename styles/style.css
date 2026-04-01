@@ -820,12 +820,14 @@ body.modal-visible .amap-copyright {
 /* 修复问题4：Swal显示时Body不添加padding-right，防止登录框位移 */
 html.swal2-shown,
 body.swal2-shown:not(.swal2-toast-shown) {
-  padding-right: 0;
-  overflow-y: auto; /* 保持滚动条，避免消失造成的跳动 */
+  padding-right: 0 !important;
+  overflow: hidden !important; /* 保持 SweetAlert2 默认遮罩行为，避免容器显示异常 */
 }
 
 .swal2-container {
-  z-index: 20001;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 20001 !important;
 }
 
 /* ============================================================ */
