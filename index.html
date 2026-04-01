@@ -91,11 +91,14 @@
         /* 移动端多人留言编辑器适配：避免工具栏和编辑区横向溢出被截断 */
         #mobile-multi-message-editor {
           width: 100%;
+          max-width: 100%;
+          overflow: hidden;
         }
         #mobile-multi-message-editor .editormd,
         #mobile-multi-message-editor .CodeMirror,
         #mobile-multi-message-editor .editormd-preview-container {
-          width: 100%;
+          width: 100% !important;
+          max-width: 100%;
           box-sizing: border-box;
         }
         #mobile-multi-message-editor .editormd-toolbar {
