@@ -17,11 +17,6 @@
     <script src="/scripts/load_amap_watermark.js"></script>
     <!-- <script src="/scripts/Remove_watermark_from_Amap_Map.js"></script> -->
     <script src="/api/frontend_config.js"></script>
-    <!-- Socket.IO - 使用本地缓存，后端自动获取最新版本 -->
-    <script
-      src="/api/cdn/socketio"
-      onerror="this.src = 'https://cdn.socket.io/4.8.1/socket.io.min.js'"
-    ></script>
     <meta charset="UTF-8" />
     <title>跑步助手</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon" />
@@ -34,55 +29,43 @@
     <meta name="apple-mobile-web-app-title" content="跑步助手" />
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- TailwindCSS - 使用本地缓存 -->
-    <script
-      src="/api/cdn/tailwindcss"
-      onerror="this.src = 'https://cdn.tailwindcss.com'"
-    ></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
-    <!-- Google Fonts - 使用本地缓存 -->
-    <link
-      href="/api/cdn/google-fonts"
-      rel="stylesheet"
-      onerror="
-        this.href =
-          'https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&amp;family=Noto+Sans+SC:wght@400;600;700&amp;display=swap'
-      "
-    />
+
+    <!-- 美化弹窗 -->
+    <link rel="stylesheet" href="/api/cdn/sweetalert2-css" onerror="this.href='https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css'" />
+    <script src="/api/cdn/sweetalert2" onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js'"></script>
+
+    <!-- 二维码生成 -->
+    <script src="/api/cdn/qrcode" onerror="this.src = 'https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js'"></script>
+
+    <!-- 图片裁剪工具 -->
+    <!-- <link rel="stylesheet" href="/api/cdn/cropperjs-css" onerror="this.href ='https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css'"/> -->
+    <script src="/api/cdn/cropperjs" onerror="this.src ='https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js'"></script>
+
+    <!-- TailwindCSS -->
+    <script src="/api/cdn/tailwindcss" onerror="this.src = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser/dist/index.global.min.js'"></script>
+    <!-- <script src="/api/cdn/tailwindcss" onerror="this.src = 'https://cdn.tailwindcss.com'"></script> -->
+
+    <!-- Socket.IO -->
+    <script src="/api/cdn/socketio" onerror="this.src = 'https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js'"></script>
+
+    <!-- Google Fonts  -->
+    <!-- 通知浏览器，需要预连接 Google Fonts -->
+    <!-- <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" /> -->
+    <link href="/api/cdn/google-fonts" rel="stylesheet" onerror="this.href ='https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&amp;family=Noto+Sans+SC:wght@400;600;700&amp;display=swap'"/>
 
     <!-- 高德地图 loader.js - 使用本地缓存 -->
     <!-- <script src="/api/cdn/amap-loader" onerror="this.src='https://webapi.amap.com/loader.js'"></script> -->
-    <!-- 使用本地缓存的CDN文件，后端每小时自动从CDN更新 -->
-    <script
-      src="/api/cdn/sweetalert2"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2@11'"
-    ></script>
-    <script
-      src="/api/cdn/qrcode"
-      onerror="
-        this.src = 'https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js'
-      "
-    ></script>
-    <link
-      rel="stylesheet"
-      href="/api/cdn/cropperjs-css"
-      onerror="
-        this.href =
-          'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css'
-      "
-    />
-    <script
-      src="/api/cdn/cropperjs"
-      onerror="
-        this.src =
-          'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js'
-      "
-    ></script>
+    <!-- 高德地图已改用 scripts\load_amap_watermark.js 加载-->
+
+    <!-- jQuery -->
+    <script src="/api/cdn/jquery" onerror="this.src = 'https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js'"></script>
+
+    
 
     <link rel="stylesheet" href="styles/style.css" />
     <script src="scripts/main.new.js" defer=""></script>
-    <link rel="stylesheet" href="/editor.md/css/editormd.css" />
+    
     <style>
       @media (max-width: 768px) {
         #newbie-help-btn {
@@ -224,13 +207,9 @@
       }
     </style>
 
-    <script
-      src="/api/cdn/jquery"
-      onerror="this.src = 'https://code.jquery.com/jquery-3.7.1.js'"
-    ></script>
+    <!-- 引入 Editor.md  -->
     <script src="/editor.md/editormd.js"></script>
-    <script type="text/javascript"></script>
-
+    <link rel="stylesheet" href="/editor.md/css/editormd.css" />
     <script src="/editor.md/lib/flowchart.min.js"></script>
     <script src="/editor.md/lib/jquery.flowchart.min.js"></script>
     <script src="/editor.md/lib/marked.min.js"></script>

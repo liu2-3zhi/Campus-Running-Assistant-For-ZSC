@@ -13221,24 +13221,77 @@ function initDraggableAdminBtn() {
   });
 }
 
-// --- Next Script Block ---
+// Tailwind 更新，已经无法使用这种方法检测是否加载
+// if (typeof tailwind !== "undefined") {
+//   tailwind.config = {
+//     theme: {
+//       extend: {
+//         fontFamily: {
+//           sans: ["Noto Sans SC", "system-ui", "sans-serif"],
+//           display: ["Zilla Slab", "serif"],
+//         },
+//         colors: { base: "#7dd3fc" },
+//       },
+//     },
+//   };
+// } else {
+//   console.error("Tailwind CSS 未加载，跳过配置。");
+//   if (typeof handleCdnError === "function") handleCdnError("TailwindCSS");
+// }
 
-if (typeof tailwind !== "undefined") {
-  tailwind.config = {
-    theme: {
-      extend: {
-        fontFamily: {
-          sans: ["Noto Sans SC", "system-ui", "sans-serif"],
-          display: ["Zilla Slab", "serif"],
-        },
-        colors: { base: "#7dd3fc" },
-      },
-    },
-  };
-} else {
-  console.error("Tailwind CSS 未加载，跳过配置。");
-  if (typeof handleCdnError === "function") handleCdnError("TailwindCSS");
+function applyTailwindV4Config(config) {
+  const extend = config?.theme?.extend || {};
+  let css = "@theme {\n";
+
+  // 处理 fontFamily
+  if (extend.fontFamily) {
+    for (const key in extend.fontFamily) {
+      const value = extend.fontFamily[key].join(", ");
+      css += `  --font-${key}: ${value};\n`;
+    }
+  }
+
+  // 处理 colors（支持嵌套）
+  function processColors(obj, prefix = "") {
+    for (const key in obj) {
+      const value = obj[key];
+      const name = prefix ? `${prefix}-${key}` : key;
+
+      if (typeof value === "string") {
+        css += `  --color-${name}: ${value};\n`;
+      } else {
+        processColors(value, name);
+      }
+    }
+  }
+
+  if (extend.colors) {
+    processColors(extend.colors);
+  }
+
+  css += "}\n";
+
+  // 注入到页面
+  const style = document.createElement("style");
+  style.type = "text/tailwindcss";
+  style.textContent = css;
+  document.head.appendChild(style);
 }
+// 应用 Tailwind CSS V4 配置
+applyTailwindV4Config({
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ["Noto Sans SC", "system-ui", "sans-serif"],
+        display: ["Zilla Slab", "serif"],
+      },
+      colors: { base: "#7dd3fc" },
+    },
+  },
+});
+
+
+
 
 // --- Next Script Block ---
 
@@ -30971,6 +31024,7 @@ async function initializeApp() {
       text: "服务器无法连接，请检查网络或稍后重试。",
       icon: "warning",
     });
+    console.error("应用初始化失败:", err);
     IS_OFFLINE = true;
   }
 }
