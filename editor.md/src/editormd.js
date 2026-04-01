@@ -1,15 +1,3 @@
-/*
- * Editor.md
- *
- * @file        editormd.js 
- * @version     v1.5.1 
- * @description Open source online markdown editor.
- * @license     MIT License
- * @author      Pandao
- * {@link       https://github.com/pandao/editor.md}
- * @updateTime  2019-05-11
- */
-
 ;(function(factory) {
     "use strict";
 
@@ -64,7 +52,6 @@
             "link", "reference-link", "image", "code", "preformatted-text", "code-block", "table", "datetime", "emoji", "html-entities", "pagebreak", "|",
             "goto-line", "watch", "preview", "fullscreen", "clear", "search", "|",
             "help", "info"
-            // 工具栏样式
         ],
         simple : [
             "undo", "redo", "|",
@@ -73,13 +60,11 @@
             "list-ul", "list-ol", "hr", "|",
             "watch", "preview", "fullscreen", "|",
             "help", "info"
-            // 工具栏样式
         ],
         mini : [
             "undo", "redo", "|",
             "watch", "preview", "|",
             "help", "info"
-            // 工具栏样式
         ]
     };
 
@@ -168,7 +153,6 @@
             "twemoji",
             "font-awesome",
             "editormd-logo"
-            // emoji 目录
         ],
 
         tex                  : false,          // TeX(LaTeX), based on KaTeX
@@ -2528,10 +2512,8 @@
                 $("html,body").css("overflow", "hidden");
 
                 editor.css({
-                    // width  : $(window).width(),
-                    width : "100%vw",
-                    // height : $(window).height(),
-                    height : "100%vh",
+                    width  : $(window).width(),
+                    height : $(window).height(),
                     zIndex : editormd.dialogZindex,
                 }).addClass(fullscreenClass);
 
@@ -3210,13 +3192,13 @@
 
     // Emoji graphics files url path
     editormd.emoji     = {
-        path  : "/Github_emojis/assets/png/",
+        path  : "https://www.webpagefx.com/tools/emoji-cheat-sheet/graphics/emojis/",
         ext   : ".png"
     };
 
     // Twitter Emoji (Twemoji)  graphics files url path
     editormd.twemoji = {
-        path : "/twemoji/assets/72x72/",
+        path : "http://twemoji.maxcdn.com/36x36/",
         ext  : ".png"
     };
 

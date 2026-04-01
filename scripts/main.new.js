@@ -46448,194 +46448,28 @@ async function ensureMobileMultiMessageEditorInitialized() {
     const editorEl = document.getElementById("mobile-multi-message-editor");
     if (!editorEl) return false;
     mobileMultiMessageEditor = editormd("mobile-multi-message-editor", {
-      // ===== 基本配置 =====
-      // 编辑器模式：
-      // gfm：GitHub Flavored Markdown，与 Markdown 语法基本相同，但增加了一些扩展语法，如表格、任务列表等
-      // markdown：标准 Markdown 语法
       mode: "gfm",
-      // 表单元素名称，用于提交表单时标识该编辑器
       name: "mobile-multi-message-content",
-      // CodeMirror 的值，如果模式不是 gfm/markdown（通常不需要设置，留空即可）
       value: "",
-      // 编辑器主题，可选值：default（默认主题）, dark（暗色主题）
       theme: "default",
-      // 编辑区域主题（代码编辑区域的样式），可选值包括：
-      // default, 3024-day, 3024-night, ambiance, ambiance-mobile, base16-dark, base16-light,
-      // blackboard, cobalt, eclipse, elegant, erlang-dark, lesser-dark, mbo, mdn-like,
-      // midnight, monokai, neat, neo, night, paraiso-dark, paraiso-light, pastel-on-dark,
-      // rubyblue, solarized, the-matrix, tomorrow-night-eighties, twilight, vibrant-ink,
-      // xq-dark, xq-light
       editorTheme: "default",
-      // 预览区域主题，默认空表示使用默认主题，可选值：default（默认主题）, dark（暗色主题）
       previewTheme: "default",
-      // Markdown 源代码（编辑器初始化时显示的内容，可以是预填的 Markdown 文本）
       markdown: "",
-      // 如果初始化时 textarea 值不为空，则追加 markdown 到 textarea（通常用于追加内容到现有文本）
-      appendMarkdown: "",
-      // 编辑器宽度（支持百分比如"100%"或像素值如"800px"）
       width: "100%",
-      // 编辑器高度（支持百分比如"100%"或像素值如"600px"）
-      height: "600px",
-      // 依赖模块文件目录（Editor.md 所需的文件路径，通常使用 CDN 地址）
+      height: "220px",
       path: "/editor.md/lib/",
-      // 插件路径，如果为空，默认使用 settings.path + "../plugins/"（插件存放目录）
       pluginPath: "/editor.md/plugins/",
-      // 延迟解析 markdown 到 html，单位：毫秒（避免频繁解析，提升性能，默认300ms）
-      delay: 300,
-      // 自动加载依赖模块文件（推荐保持 true，确保所有功能正常工作）
-      autoLoadModules: true,
-      // ===== 编辑器行为配置 =====
-      // 监听模式（是否实时预览，true 为开启监听，false 为手动预览）
       watch: true,
-      // 占位符文本（当编辑器为空时显示的提示文本，引导用户输入）
       placeholder: "请输入留言（支持 Markdown）",
-      // 启用/禁用 跳转到行功能（Ctrl+G 快捷键，快速跳转到指定行）
-      gotoLine: true,
-      // 代码折叠（是否允许折叠代码块，方便查看长代码）
-      codeFold: false,
-      // 自动高度（是否根据内容自动调整编辑器高度，true 时高度自适应）
-      autoHeight: false,
-      // 启用/禁用 自动聚焦编辑器左侧输入区域（页面加载后自动聚焦到编辑器）
-      autoFocus: true,
-      // 自动关闭标签（输入 < 时自动补全标签，提高 HTML 编写效率）
-      autoCloseTags: true,
-      // 启用/禁用 搜索和替换功能（CodeMirror 的搜索功能，Ctrl+F 激活）
-      searchReplace: true,
-      // 同步滚动选项：true（同步滚动）| false（不同步）| "single"（单向同步），默认 true
-      syncScrolling: true,
-      // 启用/禁用 只读模式（设为 true 后无法编辑，只能查看）
-      readOnly: false,
-      // 制表符大小（Tab 键缩进的空格数，通常设为 4）
-      tabSize: 4,
-      // 缩进单位（每次缩进的空格数，通常与 tabSize 保持一致）
-      indentUnit: 4,
-      // 显示编辑器行号（左侧显示行号，便于定位代码位置）
-      lineNumbers: true,
-      // 行换行（是否自动换行，true 时长行会自动换行）
+      lineNumbers: false,
       lineWrapping: true,
-      // 自动关闭括号（输入左括号时自动补全右括号，支持 (), [], {}）
       autoCloseBrackets: true,
-      // 显示尾随空格（显示行末的空格字符，帮助保持代码整洁）
-      showTrailingSpace: true,
-      // 匹配括号（高亮匹配的括号对，方便检查括号匹配）
-      matchBrackets: true,
-      // 使用制表符缩进（true 使用 Tab 字符，false 使用空格）
-      indentWithTabs: true,
-      // 样式化选中文本（选中的文本是否有特殊样式，如背景色）
-      styleSelectedText: true,
-      // 匹配单词高亮：true（高亮所有相同单词）| false（不高亮）| "onselected"（只在选中时高亮）
-      matchWordHighlight: true,
-      // 高亮当前行（当前行是否有背景色，方便定位）
-      styleActiveLine: true,
-      // ===== 对话框配置 =====
-      // 对话框锁定屏幕（对话框弹出时是否锁定背景，防止误操作）
-      dialogLockScreen: true,
-      // 对话框显示遮罩（是否显示半透明遮罩层）
-      dialogShowMask: true,
-      // 对话框可拖拽（对话框是否可以拖动位置）
-      dialogDraggable: true,
-      // 对话框遮罩背景色（遮罩的颜色，通常使用白色或半透明）
-      dialogMaskBgColor: "#fff",
-      // 对话框遮罩不透明度（0.0 到 1.0，控制遮罩透明度）
-      dialogMaskOpacity: 0.1,
-      // 字体大小（编辑器内文字的大小，影响可读性）
-      fontSize: "13px",
-      // 如果启用，编辑器将创建一个 <textarea> 标签保存 HTML 代码用于表单提交
-      saveHTMLToTextarea: true,
-      // 禁用的键映射（禁用某些快捷键，数组格式，如 ["Ctrl-B", "Ctrl-I"]）
-      disabledKeyMaps: [],
-
-      // ===== 事件回调函数 =====
-      // 加载完成回调（编辑器初始化完成后触发）
-      onload: function () {},
-      // 调整大小回调（编辑器大小改变时触发）
-      onresize: function () {},
-      // 内容改变回调（编辑器内容发生变化时触发）
-      onchange: function () {
-        try {
-          const md = mobileMultiMessageEditor.getMarkdown() || "";
-          const ta = document.getElementById("mobile-multi-message-content");
-          const count = document.getElementById(
-            "mobile-multi-message-char-count",
-          );
-          if (ta) ta.value = md;
-          if (count) count.textContent = String(md.length);
-        } catch (_) {}
-      },
-      // 监听开始回调（开始监听模式时触发）
-      onwatch: null,
-      // 监听结束回调（结束监听模式时触发）
-      onunwatch: null,
-      // 预览中回调（正在生成预览时触发）
-      onpreviewing: function () {},
-      // 预览完成回调（预览生成完成后触发）
-      onpreviewed: function () {},
-      // 全屏回调（进入全屏模式时触发）
-      onfullscreen: function () {},
-      // 退出全屏回调（退出全屏模式时触发）
-      onfullscreenExit: function () {},
-      // 滚动回调（编辑器滚动时触发）
-      onscroll: function () {},
-      // 预览滚动回调（预览区域滚动时触发）
-      onpreviewscroll: function () {},
-
-      // ===== 图片上传配置 =====
-      // 启用/禁用 上传功能（是否允许上传图片到服务器）
-      imageUpload: true,
-      // 支持的图片格式（允许上传的图片文件类型数组）
-      imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
-      // 上传 URL（图片上传的服务器端点地址）
-      imageUploadURL: "/upload",
-      // 启用/禁用 跨域上传（是否支持跨域上传图片）
-      crossDomainUpload: false,
-      // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
-      // uploadCallbackURL: "",
-
-      // ===== 目录和扩展功能配置 =====
-      // 启用/禁用 目录功能（是否自动生成文章目录）
-      toc: true,
-      // 使用 [TOCM]，自动创建目录下拉菜单（在标题前添加 [TOCM] 标记启用）
-      tocm: false,
-      // 目录下拉菜单按钮标题（下拉菜单的显示文本）
-      tocTitle: "",
-      // 启用/禁用 目录下拉菜单（是否显示目录下拉菜单按钮）
-      tocDropdown: false,
-      // 自定义目录容器选择器（目录插入的 DOM 元素选择器，默认插入编辑器内部）
-      tocContainer: "",
-      // 从 H1 开始创建目录（目录从哪一级标题开始生成，1表示H1，2表示H2）
-      tocStartLevel: 1,
-      // 打开 HTML 标签识别（是否解析和显示 HTML 标签）
-      htmlDecode: true,
-      // 启用解析分页符 [========]（是否支持分页符语法，用于分隔内容）
-      pageBreak: true,
-      // 启用 @链接功能（@用户名 自动转换为链接）
-      atLink: false,
-      // 邮箱地址自动链接（自动识别邮箱地址并转换为可点击链接）
-      emailLink: true,
-      // 启用 GitHub Flavored Markdown 任务列表（支持 - [ ] 任务列表语法）
-      taskList: true,
-      // 启用表情符号支持：
-      // :emoji: 支持 GitHub 表情、Twitter 表情 (Twemoji)
-      // :fa-xxx: 使用 FontAwesome 图标 web 字体
-      // :editormd-logo: :editormd-logo-1x: > 1~8x 支持 Editor.md logo 图标
+      searchReplace: true,
       emoji: true,
-      // 启用 TeX(LaTeX) 数学公式支持，基于 KaTeX 库
+      taskList: true,
       tex: true,
-      // 启用流程图支持（flowChart.js，只支持 IE9+，用于绘制流程图）
-      flowChart: true,
-      // 启用时序图支持（sequenceDiagram.js，只支持 IE9+，用于绘制时序图）
+      flowChart: false,
       sequenceDiagram: true,
-      // 启用/禁用 编辑器预览区域代码高亮（预览区代码是否进行语法高亮）
-      previewCodeHighlight: true,
-
-      // ===== 工具栏配置 =====
-      // 显示或隐藏工具栏
-      toolbar: true,
-      // 窗口滚动时自动固定工具栏位置
-      toolbarAutoFixed: true,
-      // 工具栏图标模式：full（完整）| simple（简单）| mini（最小），参见 `editormd.toolbarModes` 属性
-      toolbarIcons: "full",
-      /*
       toolbarIcons: function () {
         return [
           "undo",
@@ -46656,15 +46490,17 @@ async function ensureMobileMultiMessageEditorInitialized() {
           "preview",
         ];
       },
-      */
-      // 工具栏标题（自定义工具栏按钮的提示文本）
-      toolbarTitles: {},
-      // 工具栏处理程序（自定义工具栏按钮的点击事件）
-      toolbarHandlers: {},
-      // 使用 HTML 标签创建工具栏图标，未使用默认 <a> 标签（自定义工具栏图标的 HTML）
-      toolbarCustomIcons: {},
-      // 工具栏图标文本（自定义工具栏按钮的文本）
-      toolbarIconTexts: {},
+      onchange: function () {
+        try {
+          const md = mobileMultiMessageEditor.getMarkdown() || "";
+          const ta = document.getElementById("mobile-multi-message-content");
+          const count = document.getElementById(
+            "mobile-multi-message-char-count",
+          );
+          if (ta) ta.value = md;
+          if (count) count.textContent = String(md.length);
+        } catch (_) {}
+      },
     });
     ensureEditorDialogsOnBodyByRootId("mobile-multi-message-editor");
     const ta = document.getElementById("mobile-multi-message-content");
