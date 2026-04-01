@@ -44130,6 +44130,54 @@ async function saveSSLConfig() {
 // 这个部分负责CDN缓存设置的加载和保存
 // ============================================================================
 
+let cdnRefreshInProgress = false;
+
+function updateCDNForceRefreshButtons(enabled) {
+  const desktopBtn = $("cdn-force-refresh-btn");
+  const mobileBtn = $("mobile-cdn-force-refresh-btn");
+  [desktopBtn, mobileBtn].forEach((btn) => {
+    if (!btn) return;
+    btn.disabled = !enabled || cdnRefreshInProgress;
+    if (cdnRefreshInProgress) {
+      btn.title = "CDN缓存后台刷新进行中，请稍候";
+    } else {
+      btn.title = enabled
+        ? "立即从上游CDN重新拉取并覆盖服务器缓存"
+        : "启用CDN缓存后可用";
+    }
+  });
+}
+
+async function triggerCDNRefreshWithRetry(maxRetries = 3, delayMs = 1500) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    try {
+      const response = await fetch("/api/cdn/refresh", {
+        method: "POST",
+        headers: {
+          "X-Session-ID": sessionUUID,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await response.json();
+      if (data && data.success) {
+        return { success: true, message: data.message || "CDN缓存强制刷新成功" };
+      }
+      lastError = new Error((data && data.message) || "CDN缓存强制刷新失败");
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return {
+    success: false,
+    message: `CDN缓存刷新失败，已自动重试 ${maxRetries} 次。`,
+    error: lastError,
+  };
+}
+
 /**
  * 加载CDN缓存配置
  * 功能：从服务器获取当前的CDN缓存配置并更新UI
@@ -44171,6 +44219,7 @@ async function loadCDNConfig() {
       // 获取移动端的缓存时间输入框
       const mobileCdnCacheTime = $("mobile-cdn-cache-time");
       const cdnForceRefreshBtn = $("cdn-force-refresh-btn");
+      const mobileCdnForceRefreshBtn = $("mobile-cdn-force-refresh-btn");
 
       // 如果桌面版开关元素存在，则更新其选中状态
       // 使用逻辑或运算符(||)提供默认值false，防止undefined错误
@@ -44184,12 +44233,8 @@ async function loadCDNConfig() {
         cdnCacheTime.value = data.config.cache_time || 3600;
       }
 
-      if (cdnForceRefreshBtn) {
-        const enabled = !!data.config.cdn_enabled;
-        cdnForceRefreshBtn.disabled = !enabled;
-        cdnForceRefreshBtn.title = enabled
-          ? "立即从上游CDN重新拉取并覆盖服务器缓存"
-          : "启用CDN缓存后可用";
+      if (cdnForceRefreshBtn || mobileCdnForceRefreshBtn) {
+        updateCDNForceRefreshButtons(!!data.config.cdn_enabled);
       }
 
       // 同步更新移动端UI元素
@@ -44219,34 +44264,51 @@ async function loadCDNConfig() {
   }
 }
 
-async function forceRefreshCDNCache() {
-  const cdnEnabledToggle = $("cdn-enabled-toggle");
-  const forceBtn = $("cdn-force-refresh-btn");
+async function forceRefreshCDNCache(isMobile = false) {
+  const cdnEnabledToggle = isMobile
+    ? $("mobile-cdn-enabled-toggle")
+    : $("cdn-enabled-toggle");
+  const forceBtn = isMobile
+    ? $("mobile-cdn-force-refresh-btn")
+    : $("cdn-force-refresh-btn");
   if (!cdnEnabledToggle || !cdnEnabledToggle.checked) {
     showModalAlert("请先启用CDN缓存，再执行强制刷新。", "提示");
     return;
   }
-  setButtonLoading(forceBtn, true, "强制刷新中...");
-  try {
-    const response = await fetch("/api/cdn/refresh", {
-      method: "POST",
-      headers: {
-        "X-Session-ID": sessionUUID,
-        "Content-Type": "application/json",
-      },
-    });
-    const data = await response.json();
-    if (data.success) {
-      showModalAlert(data.message || "CDN缓存强制刷新成功", "成功");
-    } else {
-      showModalAlert(data.message || "CDN缓存强制刷新失败", "失败");
-    }
-  } catch (error) {
-    console.error("[CDN配置] 强制刷新缓存失败:", error);
-    showModalAlert("强制刷新失败: " + error.message, "网络错误");
-  } finally {
-    setButtonLoading(forceBtn, false, "强制刷新服务器缓存");
+  if (cdnRefreshInProgress) {
+    showModalAlert("后台刷新任务正在进行中，请勿重复点击。", "提示");
+    return;
   }
+  cdnRefreshInProgress = true;
+  setButtonLoading(forceBtn, true, "后台刷新中...");
+  updateCDNForceRefreshButtons(true);
+  showModalAlert("已提交后台刷新任务，正在自动重试更新 CDN 缓存。", "已开始");
+
+  (async () => {
+    try {
+      const result = await triggerCDNRefreshWithRetry(3, 1500);
+      if (result.success) {
+        showModalAlert(result.message, "成功");
+      } else {
+        const reason =
+          result.error && result.error.message
+            ? `\n原因：${result.error.message}`
+            : "";
+        showModalAlert(`${result.message}${reason}`, "失败");
+      }
+    } catch (error) {
+      console.error("[CDN配置] 强制刷新缓存失败:", error);
+      showModalAlert("强制刷新失败: " + error.message, "网络错误");
+    } finally {
+      cdnRefreshInProgress = false;
+      setButtonLoading(forceBtn, false, "强制刷新服务器缓存");
+      const enabledNow = !!(
+        ($("cdn-enabled-toggle") && $("cdn-enabled-toggle").checked) ||
+        ($("mobile-cdn-enabled-toggle") && $("mobile-cdn-enabled-toggle").checked)
+      );
+      updateCDNForceRefreshButtons(enabledNow);
+    }
+  })();
 }
 
 /**
@@ -44312,14 +44374,7 @@ async function saveCDNConfig() {
       // 显示成功消息，告知用户配置已保存
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
 
-      const forceBtn = $("cdn-force-refresh-btn");
-      if (forceBtn) {
-        const enabled = !!configData.cdn_enabled;
-        forceBtn.disabled = !enabled;
-        forceBtn.title = enabled
-          ? "立即从上游CDN重新拉取并覆盖服务器缓存"
-          : "启用CDN缓存后可用";
-      }
+      updateCDNForceRefreshButtons(!!configData.cdn_enabled);
 
       // 在控制台输出成功日志
       console.log("[CDN配置] 配置保存成功");
@@ -44393,6 +44448,7 @@ async function saveMobileCDNConfig() {
     // 检查保存是否成功
     if (data.success) {
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
+      updateCDNForceRefreshButtons(!!configData.cdn_enabled);
       console.log("[移动端CDN配置] 配置保存成功");
     } else {
       showModalAlert(data.message || "保存配置失败", "保存失败");
@@ -46271,6 +46327,115 @@ async function submitMobileMultiMessage() {
   }
 }
 
+function ensureEditorDialogsOnBodyByRootId(editorRootId) {
+  const editorRoot = document.getElementById(editorRootId);
+  if (!editorRoot || editorRoot.__dialog_relocate_bound) return;
+  editorRoot.__dialog_relocate_bound = true;
+
+  const relocate = (dialog) => {
+    if (!dialog || dialog.__moved_to_body) return;
+    try {
+      const r = dialog.getBoundingClientRect();
+      const w = dialog.offsetWidth;
+      const h = dialog.offsetHeight;
+      dialog.style.position = "fixed";
+      dialog.style.left = Math.max(0, r.left) + "px";
+      dialog.style.top = Math.max(0, r.top) + "px";
+      dialog.style.width = w ? w + "px" : "auto";
+      dialog.style.height = h ? h + "px" : "auto";
+      dialog.style.zIndex = 20000;
+
+      const origMask =
+        dialog.parentElement &&
+        dialog.parentElement.querySelector &&
+        dialog.parentElement.querySelector(".editormd-dialog-mask");
+      if (origMask) {
+        try {
+          const clone = origMask.cloneNode(true);
+          clone.__orig_display = origMask.style.display || "";
+          clone.style.position = "fixed";
+          clone.style.left = "0";
+          clone.style.top = "0";
+          clone.style.width = "100%";
+          clone.style.height = "100%";
+          clone.style.zIndex = 19990;
+          clone.classList.add("editormd-dialog-mask");
+          document.body.appendChild(clone);
+          origMask.__orig_display = origMask.style.display || "";
+          origMask.style.display = "none";
+          clone.__moved_for_dialog = dialog;
+          dialog.__moved_mask = clone;
+          dialog.__orig_mask = origMask;
+        } catch (_) {
+          origMask.__orig_display = origMask.style.display || "";
+          document.body.appendChild(origMask);
+          origMask.style.position = "fixed";
+          origMask.style.left = "0";
+          origMask.style.top = "0";
+          origMask.style.width = "100%";
+          origMask.style.height = "100%";
+          origMask.style.zIndex = 19990;
+          origMask.__moved_for_dialog = dialog;
+          dialog.__moved_mask = origMask;
+        }
+      }
+
+      document.body.appendChild(dialog);
+      dialog.__moved_to_body = true;
+
+      const checkVisibilityAndToggleMask = () => {
+        try {
+          const curMask = dialog.__moved_mask;
+          if (!curMask) return;
+          const style = window.getComputedStyle(dialog);
+          const isVisible =
+            style &&
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            dialog.offsetParent !== null &&
+            dialog.getBoundingClientRect().width > 0 &&
+            dialog.getBoundingClientRect().height > 0;
+          curMask.style.display = isVisible ? curMask.__orig_display || "" : "none";
+        } catch (_) {}
+      };
+
+      checkVisibilityAndToggleMask();
+      try {
+        const attrObserver = new MutationObserver(() =>
+          checkVisibilityAndToggleMask(),
+        );
+        attrObserver.observe(dialog, {
+          attributes: true,
+          attributeFilter: ["style", "class"],
+        });
+        dialog.__visibilityAttrObserver = attrObserver;
+      } catch (_) {}
+    } catch (e) {
+      console.warn("relocate dialog failed", e);
+    }
+  };
+
+  const mo = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.classList && node.classList.contains("editormd-dialog")) {
+          relocate(node);
+        } else {
+          const found =
+            node.querySelector &&
+            node.querySelectorAll &&
+            node.querySelectorAll(".editormd-dialog");
+          if (found && found.length) found.forEach((d) => relocate(d));
+        }
+      }
+    }
+  });
+  mo.observe(editorRoot, { childList: true, subtree: true });
+  const existing = editorRoot.querySelectorAll(".editormd-dialog");
+  existing.forEach((d) => relocate(d));
+}
+
 async function ensureMobileMultiMessageEditorInitialized() {
   try {
     if (
@@ -46337,6 +46502,7 @@ async function ensureMobileMultiMessageEditorInitialized() {
         } catch (_) {}
       },
     });
+    ensureEditorDialogsOnBodyByRootId("mobile-multi-message-editor");
     const ta = document.getElementById("mobile-multi-message-content");
     if (ta) ta.classList.add("hidden");
     return true;
