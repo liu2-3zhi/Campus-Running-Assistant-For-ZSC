@@ -3195,6 +3195,19 @@ def _get_default_config():
         "newbie_help_url": "",
     }
 
+    # IP归属地查询配置节
+    config["IP_Location"] = {
+        # IP归属地查询方式
+        # pconline：使用太平洋电脑网 whois 接口（免费，无需 API Key）
+        # amap：使用高德地图 Web API（需要填写 amap_web_api_key）
+        # 默认值：pconline
+        "query_method": "pconline",
+        # 高德地图 Web API Key（query_method 为 amap 时必填）
+        # 在高德开放平台 https://lbs.amap.com/ 申请 Web 服务类型的 Key
+        # 留空时即使 query_method=amap 也会回退到 pconline
+        "amap_web_api_key": "",
+    }
+
     return config
 
 
@@ -33458,9 +33471,15 @@ def start_web_server(args_param):
     def get_ip_location(ip_address):
         """
         获取IP地址的地理位置信息 (带1天缓存)
-        使用 pconline whois 接口
-        当API返回非字典类型数据时，自动重试最多2次
+        支持 pconline whois 接口和高德地图 Web API
+        查询方式由配置文件 [IP_Location].query_method 决定（pconline / amap）
+        遇到缓存命中但结果为"未知"时，对有效IP重新查询以确保数据正确
+        所有错误（超时、网络异常、解析失败）均自动重试最多2次
         """
+        # 预处理：去除首尾空白，跳过空IP
+        if not ip_address:
+            return "未知"
+        ip_address = ip_address.strip()
         if not ip_address:
             return "未知"
 
@@ -33472,34 +33491,117 @@ def start_web_server(args_param):
             timestamp = cached_entry.get("timestamp", 0)
             location = cached_entry.get("location")
             if (current_time - timestamp < CACHE_DURATION_SECONDS) and location:
-                logging.debug(f"[IP缓存] 命中: ip={ip_address}, 位置={location}")
-                return location
+                # 缓存命中但结果为"未知"时，忽略缓存并重新查询
+                if location == "未知":
+                    logging.debug(
+                        f"[IP缓存] 命中但结果为未知，将重新查询: ip={ip_address}"
+                    )
+                else:
+                    logging.debug(f"[IP缓存] 命中: ip={ip_address}, 位置={location}")
+                    return location
             else:
                 logging.debug(f"[IP缓存] 过期: ip={ip_address}")
+
+        # 读取查询方式与高德 API Key
+        try:
+            _cfg = _read_config_ini(CONFIG_FILE)
+            query_method = _cfg.get(
+                "IP_Location", "query_method", fallback="pconline"
+            ).strip().lower()
+            amap_key = _cfg.get(
+                "IP_Location", "amap_web_api_key", fallback=""
+            ).strip()
+        except Exception:
+            query_method = "pconline"
+            amap_key = ""
+
+        # 若选择 amap 但未填写 Key，回退到 pconline
+        if query_method == "amap" and not amap_key:
+            logging.warning("[IP定位] query_method=amap 但 amap_web_api_key 为空，回退到 pconline")
+            query_method = "pconline"
 
         max_retries = 2
         for attempt in range(max_retries + 1):
             try:
-                api_url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip_address}&json=true"
-                response = requests.get(api_url, timeout=5)
-                response.encoding = "gbk"
-                data = response.json()
+                location_str = None
 
-                if not isinstance(data, dict):
-                    logging.warning(
-                        f"[IP定位] API返回非字典类型数据: ip={ip_address}, 类型={type(data).__name__}, "
-                        f"数据={data}, 尝试次数={attempt + 1}/{max_retries + 1}"
+                if query_method == "amap":
+                    # 高德地图 IP 定位 API
+                    api_url = (
+                        f"https://restapi.amap.com/v3/ip"
+                        f"?key={amap_key}&ip={ip_address}"
                     )
-                    if attempt < max_retries:
-                        continue
-                    return "未知"
+                    response = requests.get(api_url, timeout=5)
+                    data = response.json()
 
-                addr = data.get("addr", "").strip()
+                    if not isinstance(data, dict):
+                        logging.warning(
+                            f"[IP定位][amap] API返回非字典类型数据: ip={ip_address}, "
+                            f"类型={type(data).__name__}, 尝试次数={attempt + 1}/{max_retries + 1}"
+                        )
+                        if attempt < max_retries:
+                            continue
+                        return "未知"
 
-                if addr:
-                    location_str = addr
+                    status = data.get("status", "0")
+                    if status == "1":
+                        province = data.get("province", "")
+                        city = data.get("city", "")
+                        # 高德对境外IP返回空列表，需转为空字符串
+                        if isinstance(province, list):
+                            province = ""
+                        if isinstance(city, list):
+                            city = ""
+                        province = province.strip() if province else ""
+                        city = city.strip() if city else ""
+                        if province or city:
+                            location_str = f"{province} {city}".strip()
+
+                    if not location_str:
+                        logging.warning(
+                            f"[IP定位][amap] API返回空数据: ip={ip_address}, "
+                            f"数据={data}, 尝试次数={attempt + 1}/{max_retries + 1}"
+                        )
+                        if attempt < max_retries:
+                            continue
+                        return "未知"
+
+                else:
+                    # pconline whois 接口（默认）
+                    api_url = (
+                        f"https://whois.pconline.com.cn/ipJson.jsp"
+                        f"?ip={ip_address}&json=true"
+                    )
+                    response = requests.get(api_url, timeout=5)
+                    response.encoding = "gbk"
+                    data = response.json()
+
+                    if not isinstance(data, dict):
+                        logging.warning(
+                            f"[IP定位][pconline] API返回非字典类型数据: ip={ip_address}, "
+                            f"类型={type(data).__name__}, 数据={data}, "
+                            f"尝试次数={attempt + 1}/{max_retries + 1}"
+                        )
+                        if attempt < max_retries:
+                            continue
+                        return "未知"
+
+                    addr = data.get("addr", "").strip()
+                    if addr:
+                        location_str = addr
+                    else:
+                        logging.warning(
+                            f"[IP定位][pconline] API返回空数据: ip={ip_address}, "
+                            f"尝试次数={attempt + 1}/{max_retries + 1}"
+                        )
+                        if attempt < max_retries:
+                            continue
+                        return "未知"
+
+                if location_str:
                     logging.debug(
-                        f"[IP定位] 成功获取: ip={ip_address}, 位置={location_str}"
+                        f"[IP定位] 成功获取: ip={ip_address}, 位置={location_str}, "
+                        f"方式={query_method}"
                     )
                     with ip_cache_lock:
                         ip_location_cache[ip_address] = {
@@ -33508,18 +33610,30 @@ def start_web_server(args_param):
                         }
                     _save_ip_cache()
                     return location_str
-                else:
-                    logging.warning(f"[IP定位] API返回空数据: ip={ip_address}")
-                    return "未知"
 
             except requests.exceptions.Timeout:
-                logging.warning(f"[IP定位] 请求超时: ip={ip_address}")
+                logging.warning(
+                    f"[IP定位] 请求超时: ip={ip_address}, "
+                    f"尝试次数={attempt + 1}/{max_retries + 1}"
+                )
+                if attempt < max_retries:
+                    continue
                 return "未知"
             except requests.exceptions.RequestException as e:
-                logging.warning(f"[IP定位] 网络请求失败: ip={ip_address}, 错误={str(e)}")
+                logging.warning(
+                    f"[IP定位] 网络请求失败: ip={ip_address}, 错误={str(e)}, "
+                    f"尝试次数={attempt + 1}/{max_retries + 1}"
+                )
+                if attempt < max_retries:
+                    continue
                 return "未知"
             except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
-                logging.warning(f"[IP定位] 数据解析失败: ip={ip_address}, 错误={str(e)}")
+                logging.warning(
+                    f"[IP定位] 数据解析失败: ip={ip_address}, 错误={str(e)}, "
+                    f"尝试次数={attempt + 1}/{max_retries + 1}"
+                )
+                if attempt < max_retries:
+                    continue
                 return "未知"
             except Exception as e:
                 logging.error(
