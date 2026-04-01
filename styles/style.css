@@ -520,6 +520,8 @@ select.select-field {
   --card-bg: rgba(255, 255, 255, 0.85);
   --glass: rgba(255, 255, 255, 0.65);
   --ink: #0f172a;
+  /* 高于现有 modal(<=20000)，确保 SweetAlert2 始终处于最上层遮罩 */
+  --z-index-swal-overlay: 20001;
 }
 
 html,
@@ -820,14 +822,18 @@ body.modal-visible .amap-copyright {
 /* 修复问题4：Swal显示时Body不添加padding-right，防止登录框位移 */
 html.swal2-shown,
 body.swal2-shown:not(.swal2-toast-shown) {
+  /* SweetAlert2 会在 body 上写入内联 padding-right； 这里需用 !important 覆盖，避免登录容器偏移 */
   padding-right: 0 !important;
-  overflow: hidden !important; /* 保持 SweetAlert2 默认遮罩行为，避免容器显示异常 */
+  overflow: hidden; /* 弹窗显示时禁止页面背景滚动，避免 auth-login-container 下出现显示异常 */
 }
 
 .swal2-container {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 20001 !important;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-index-swal-overlay);
 }
 
 /* ============================================================ */
