@@ -127,6 +127,7 @@
         fullScreenCoordinatesX : null,          // 全屏时编辑器 X 坐标（父容器相对坐标，如 "2%"、"2px"）
         fullScreenCoordinatesY : null,          // 全屏时编辑器 Y 坐标（父容器相对坐标，如 "2%"、"2px"）
         fullScreenAutomaticScrolling : null,    // 进入全屏自动滚动（基于整页，如 "2%"、"2px"）
+        fullScreenAutomaticScrollingOuterHtml : false, // 自动滚动时是否同时滚动最外层 html/body
         fullScreenWidthAdjustment : null,       // 全屏宽度微调：可传函数，或 "2px"/"2%" 这类增量值，默认 null
         fullScreenHeightAdjustment : null,      // 全屏高度微调：可传函数，或 "-100px"/"2%" 这类增量值，默认 null
         parentContainerLayer : 1,              // 全屏父容器层级（1=最近的父 div）
@@ -3027,17 +3028,39 @@
 
                 runStep(0);
             };
-            var stabilizeAutoScroll = function(targetTop) {
-                var top = Math.max(targetTop, 0);
+            var stabilizeAutoScroll = function(targetTopValue) {
                 var scrollLayer = parseInt(settings.parentContainerLayer, 10);
                 var normalizedScrollLayer = (isNaN(scrollLayer) || scrollLayer < 1) ? 1 : scrollLayer;
-                var targetScrollParent = editor.parents().eq(normalizedScrollLayer - 1);
+                var baseLayerParent = editor.parents().eq(normalizedScrollLayer - 1);
+                if (!baseLayerParent || !baseLayerParent.length) {
+                    baseLayerParent = editor.parent();
+                }
+                var outerParents = baseLayerParent.parents();
+                var firstOuterParent = outerParents.eq(0);
+                var top = Math.max(targetTopValue, 0);
                 var steps = [
                     { delay: 0, label: "scroll-rAF#1" },
                     { delay: 0, label: "scroll-rAF#2" },
                     { delay: 40, label: "scroll-timeout#40ms" },
                     { delay: 100, label: "scroll-timeout#100ms" }
                 ];
+                var getNodeLabel = function(node) {
+                    if (!node) {
+                        return "";
+                    }
+                    var id = node.id ? ("#" + node.id) : "";
+                    var className = node.className && typeof node.className === "string" ? ("." + node.className.trim().replace(/\s+/g, ".")) : "";
+                    return node.tagName + id + className;
+                };
+                var setNodeScrollTop = function(node, value) {
+                    if (!node) {
+                        return;
+                    }
+                    node.scrollTop = value;
+                    if (typeof node.scrollTo === "function") {
+                        node.scrollTo(node.scrollLeft || 0, value);
+                    }
+                };
 
                 var runStep = function(index) {
                     if (!state.fullscreen) {
@@ -3052,16 +3075,81 @@
                         if (!state.fullscreen) {
                             return;
                         }
-                        if (targetScrollParent && targetScrollParent.length) {
-                            targetScrollParent[0].scrollTop = top;
+                        var htmlMaxTop = Math.max(
+                            (document.documentElement ? document.documentElement.scrollHeight - document.documentElement.clientHeight : 0),
+                            (document.body ? document.body.scrollHeight - document.body.clientHeight : 0),
+                            0
+                        );
+                        var firstOuterMaxTop = null;
+                        if (firstOuterParent && firstOuterParent.length) {
+                            firstOuterMaxTop = Math.max(firstOuterParent[0].scrollHeight - firstOuterParent[0].clientHeight, 0);
+                        }
+                        var finalOuterTop = Math.min(top, htmlMaxTop);
+                        var finalFirstOuterTop = firstOuterMaxTop === null ? top : Math.min(top, firstOuterMaxTop);
+                        var affectedParents = [];
+
+                        if (settings.fullScreenAutomaticScrollingOuterHtml) {
+                            outerParents.each(function() {
+                                if (this === document.body || this === document.documentElement) {
+                                    return;
+                                }
+                                var maxTop = Math.max(this.scrollHeight - this.clientHeight, 0);
+                                var finalTop = Math.min(top, maxTop);
+                                setNodeScrollTop(this, finalTop);
+                                affectedParents.push({
+                                    node: getNodeLabel(this),
+                                    maxTop: maxTop,
+                                    appliedTop: finalTop,
+                                    actualTop: this.scrollTop
+                                });
+                            });
+                        } else if (firstOuterParent && firstOuterParent.length) {
+                            setNodeScrollTop(firstOuterParent[0], finalFirstOuterTop);
+                            affectedParents.push({
+                                node: getNodeLabel(firstOuterParent[0]),
+                                maxTop: firstOuterMaxTop,
+                                appliedTop: finalFirstOuterTop,
+                                actualTop: firstOuterParent[0].scrollTop
+                            });
+                        }
+
+                        if (settings.fullScreenAutomaticScrollingOuterHtml) {
+                            window.scrollTo(0, finalOuterTop);
+                            if (document.scrollingElement) {
+                                document.scrollingElement.scrollTop = finalOuterTop;
+                            }
+                            document.documentElement.scrollTop = finalOuterTop;
+                            document.body.scrollTop = finalOuterTop;
+                            $("html, body").scrollTop(finalOuterTop);
+                        }
+                        if (state.fullscreen && state.fullscreenRect) {
+                            var reflowRect = getFullscreenRect();
+                            var stabilizedRect = {
+                                top: reflowRect.top,
+                                left: reflowRect.left,
+                                width: state.fullscreenRect.width,
+                                height: state.fullscreenRect.height
+                            };
+                            state.fullscreenRect = stabilizedRect;
+                            applyFullscreenRect(stabilizedRect, "自动滚动后重设-" + step.label);
                         }
                         console.log(logPrefix, "自动滚动重试", {
                             step: step.label,
                             targetTop: top,
+                            htmlMaxTop: htmlMaxTop,
+                            firstOuterMaxTop: firstOuterMaxTop,
+                            finalOuterTop: finalOuterTop,
+                            finalFirstOuterTop: finalFirstOuterTop,
+                            fullScreenAutomaticScrollingOuterHtml: settings.fullScreenAutomaticScrollingOuterHtml,
                             parentContainerLayer: settings.parentContainerLayer,
                             normalizedScrollLayer: normalizedScrollLayer,
-                            targetParentTag: targetScrollParent && targetScrollParent.length ? targetScrollParent[0].tagName : null,
-                            actualParentTop: targetScrollParent && targetScrollParent.length ? targetScrollParent[0].scrollTop : null
+                            baseLayerParent: baseLayerParent && baseLayerParent.length ? getNodeLabel(baseLayerParent[0]) : null,
+                            firstOuterParent: firstOuterParent && firstOuterParent.length ? getNodeLabel(firstOuterParent[0]) : null,
+                            affectedParents: affectedParents,
+                            actualOuterTop: $(window).scrollTop(),
+                            actualDocumentElementTop: document.documentElement.scrollTop,
+                            actualBodyTop: document.body.scrollTop,
+                            actualScrollingElementTop: document.scrollingElement ? document.scrollingElement.scrollTop : null
                         });
                         runStep(index + 1);
                     };
@@ -3108,11 +3196,6 @@
                     nearestDivParentInfo: getElementBrief(editor.parents("div").first()),
                     fullScreenAutomaticScrolling: settings.fullScreenAutomaticScrolling
                 });
-
-                var autoScroll = parseOffsetValue(settings.fullScreenAutomaticScrolling, $(document).height());
-                if (autoScroll !== null) {
-                    stabilizeAutoScroll(autoScroll);
-                }
 
                 state.fullscreenLockedScrollParents = [];
                 if (!settings.fullScreenScrolling || settings.fullScreenForceDisableAllScroll) {
@@ -3212,6 +3295,15 @@
                     applyFullscreenRect(state.fullscreenRect, "resize后重设");
                     stabilizeFullscreenRect(state.fullscreenRect);
                     console.log(logPrefix, "resize后重新应用全屏区域", state.fullscreenRect);
+                }
+                var docHeight = Math.max(
+                    $(document).height(),
+                    document.documentElement ? document.documentElement.scrollHeight : 0,
+                    document.body ? document.body.scrollHeight : 0
+                );
+                var autoScrollTargetTop = parseOffsetValue(settings.fullScreenAutomaticScrolling, docHeight);
+                if (autoScrollTargetTop !== null) {
+                    stabilizeAutoScroll(autoScrollTargetTop);
                 }
 
                 $.proxy(settings.onfullscreen, this)();
