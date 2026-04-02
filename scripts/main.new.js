@@ -58611,7 +58611,18 @@ async function fetchOrderAmountAndFill(tradeNo) {
     // ========== 步骤4.5：检查是否已退款（一个订单只能退款一次） ==========
     
     const refundedAmount = parseFloat(matchedOrder.refundmoney) || 0;
-    if (refundedAmount > 0) {
+    const refundCount = parseInt(matchedOrder.refund_count || 0, 10) || 0;
+    const hasRefundRecords =
+      Array.isArray(matchedOrder.refund_records) &&
+      matchedOrder.refund_records.length > 0;
+    const orderStatus = String(matchedOrder.status || "").toLowerCase();
+    if (
+      refundedAmount > 0 ||
+      refundCount >= 1 ||
+      hasRefundRecords ||
+      orderStatus === "refunded_full" ||
+      orderStatus === "refunded_partial"
+    ) {
       console.log("[订单号自动填充] 该订单已退款，不可再次退款");
       const amountInput = document.getElementById("admin-refund-amount_modal");
       if (amountInput) amountInput.value = "";
