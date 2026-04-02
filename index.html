@@ -13459,19 +13459,19 @@
     <!-- 订单详情弹窗：点击查看详情按钮时显示 -->
     <div
       id="admin-order-detail-modal_overlay"
-      class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[20001]"
+      class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[20001] p-2 sm:p-4"
       onclick="closeOrderDetailModal(event)"
     >
       <!-- 弹窗内容容器：防止点击内容区域时关闭弹窗 -->
       <div
-        class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+        class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-2 sm:mx-4 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
         onclick="event.stopPropagation()"
       >
         <!-- 弹窗标题栏 -->
         <div
-          class="bg-slate-100 px-6 py-4 border-b border-slate-200 flex justify-between items-center"
+          class="bg-gradient-to-r from-slate-100 to-slate-50 px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex justify-between items-center sticky top-0 z-10"
         >
-          <h4 class="font-bold text-lg text-slate-800">
+          <h4 class="font-bold text-base sm:text-lg text-slate-800">
             <!-- 文档图标 -->
             <svg
               class="w-5 h-5 inline mr-2"
@@ -13491,7 +13491,7 @@
           <!-- 关闭按钮 -->
           <button
             onclick="closeOrderDetailModal()"
-            class="text-slate-400 hover:text-slate-600 transition-colors"
+            class="text-slate-400 hover:text-slate-600 transition-colors p-1"
             aria-label="按钮"
           >
             <svg
@@ -13510,203 +13510,226 @@
           </button>
         </div>
 
-        <!-- 弹窗内容区域：显示订单的完整信息 -->
-        <div class="p-6 space-y-4">
-          <!-- 订单信息网格：使用两列布局展示详细信息 -->
-          <div class="grid grid-cols-2 gap-4 text-sm">
-            <!-- 系统订单号 (order_id) -->
-            <div class="col-span-2">
-              <span class="text-slate-500 font-medium">系统订单号：</span>
-              <span
-                id="admin-detail-order-id_modal"
-                class="text-slate-800 font-semibold break-all ml-2"
-                >-</span
-              >
+        <!-- 弹窗内容区域：显示订单的完整信息（移动端卡片式布局） -->
+        <div class="p-3 sm:p-6 space-y-3 sm:space-y-4">
+          
+          <!-- 移动端卡片：订单号信息 -->
+          <div class="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-3 sm:p-4 border border-sky-100 shadow-sm">
+            <h5 class="text-xs sm:text-sm font-semibold text-sky-700 mb-2 flex items-center">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path></svg>
+              订单号信息
+            </h5>
+            <div class="space-y-2 text-xs sm:text-sm">
+              <!-- 系统订单号 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-24">系统订单号</span>
+                <span id="admin-detail-order-id_modal" class="text-slate-800 font-semibold break-all font-mono mt-0.5 sm:mt-0">-</span>
+              </div>
+              <!-- 平台订单号 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-24">平台订单号</span>
+                <span id="admin-detail-trade-no_modal" class="text-slate-800 font-semibold break-all font-mono mt-0.5 sm:mt-0">-</span>
+              </div>
+              <!-- 接口订单号 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-24">接口订单号</span>
+                <span id="admin-detail-api-trade-no_modal" class="text-slate-700 break-all font-mono mt-0.5 sm:mt-0">-</span>
+              </div>
             </div>
-            <!-- 平台订单号 (trade_no) -->
-            <div class="col-span-2">
-              <span class="text-slate-500 font-medium">平台订单号：</span>
-              <span
-                id="admin-detail-trade-no_modal"
-                class="text-slate-800 font-semibold break-all ml-2"
-                >-</span
-              >
+          </div>
+
+          <!-- 移动端卡片：金额状态信息 -->
+          <div class="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-3 sm:p-4 border border-emerald-100 shadow-sm">
+            <h5 class="text-xs sm:text-sm font-semibold text-emerald-700 mb-2 flex items-center">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              金额与状态
+            </h5>
+            <div class="grid grid-cols-2 gap-3 text-xs sm:text-sm">
+              <!-- 订单状态 -->
+              <div>
+                <span class="text-slate-500 font-medium block mb-1">订单状态</span>
+                <span id="admin-detail-status_modal">-</span>
+              </div>
+              <!-- 支付金额 -->
+              <div>
+                <span class="text-slate-500 font-medium block mb-1">支付金额</span>
+                <span id="admin-detail-amount_modal" class="text-red-600 font-bold text-base sm:text-lg">-</span>
+              </div>
+              <!-- 已退款金额 -->
+              <div>
+                <span class="text-slate-500 font-medium block mb-1">已退款</span>
+                <span id="admin-detail-refundmoney_modal" class="text-orange-600 font-semibold">-</span>
+              </div>
+              <!-- 支付方式 -->
+              <div>
+                <span class="text-slate-500 font-medium block mb-1">支付方式</span>
+                <span id="admin-detail-pay-type_modal" class="text-slate-700">-</span>
+              </div>
             </div>
-            <!-- 接口订单号 (api_trade_no) -->
-            <div class="col-span-2">
-              <span class="text-slate-500 font-medium">接口订单号：</span>
-              <span
-                id="admin-detail-api-trade-no_modal"
-                class="text-slate-700 break-all ml-2"
-                >-</span
-              >
+          </div>
+
+          <!-- 移动端卡片：用户信息 -->
+          <div class="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-3 sm:p-4 border border-violet-100 shadow-sm">
+            <h5 class="text-xs sm:text-sm font-semibold text-violet-700 mb-2 flex items-center">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+              用户信息
+            </h5>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
+              <!-- 用户名 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-20">用户名</span>
+                <span id="admin-detail-username_modal" class="text-slate-700 mt-0.5 sm:mt-0">-</span>
+              </div>
+              <!-- 支付用户标识 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-20">支付用户</span>
+                <span id="admin-detail-buyer_modal" class="text-slate-700 break-all mt-0.5 sm:mt-0">-</span>
+              </div>
+              <!-- 商品名称 -->
+              <div class="col-span-1 sm:col-span-2 flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-20">商品名称</span>
+                <span id="admin-detail-product-name_modal" class="text-slate-700 mt-0.5 sm:mt-0">-</span>
+              </div>
+              <!-- 客户端IP -->
+              <div class="col-span-1 sm:col-span-2 flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-20">客户端IP</span>
+                <span id="admin-detail-clientip_modal" class="text-slate-700 font-mono mt-0.5 sm:mt-0">-</span>
+              </div>
             </div>
-            <!-- 订单状态 (status) -->
-            <div>
-              <span class="text-slate-500 font-medium">订单状态：</span>
-              <span id="admin-detail-status_modal" class="ml-2">-</span>
+          </div>
+
+          <!-- 移动端卡片：时间信息 -->
+          <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-3 sm:p-4 border border-amber-100 shadow-sm">
+            <h5 class="text-xs sm:text-sm font-semibold text-amber-700 mb-2 flex items-center">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              时间信息
+            </h5>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
+              <!-- 创建时间 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-20">创建时间</span>
+                <span id="admin-detail-created-at_modal" class="text-slate-700 mt-0.5 sm:mt-0">-</span>
+              </div>
+              <!-- 支付时间 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-20">支付时间</span>
+                <span id="admin-detail-paid-time_modal" class="text-slate-700 mt-0.5 sm:mt-0">-</span>
+              </div>
+              <!-- 数据来源 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-20">数据来源</span>
+                <span id="admin-detail-synced-from-platform_modal" class="text-slate-700 mt-0.5 sm:mt-0">-</span>
+              </div>
+              <!-- 同步时间 -->
+              <div class="flex flex-col sm:flex-row sm:items-center">
+                <span class="text-slate-500 font-medium sm:w-20">同步时间</span>
+                <span id="admin-detail-synced-time_modal" class="text-slate-700 mt-0.5 sm:mt-0">-</span>
+              </div>
             </div>
-            <!-- 支付金额 (amount) -->
-            <div>
-              <span class="text-slate-500 font-medium">支付金额：</span>
-              <span
-                id="admin-detail-amount_modal"
-                class="text-red-600 font-bold ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 已退款金额 (refundmoney) -->
-            <div>
-              <span class="text-slate-500 font-medium">已退款金额：</span>
-              <span
-                id="admin-detail-refundmoney_modal"
-                class="text-orange-600 font-semibold ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 支付方式 (pay_type) -->
-            <div>
-              <span class="text-slate-500 font-medium">支付方式：</span>
-              <span id="admin-detail-pay-type_modal" class="text-slate-700 ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 用户名 (username) -->
-            <div>
-              <span class="text-slate-500 font-medium">用户名：</span>
-              <span id="admin-detail-username_modal" class="text-slate-700 ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 支付用户标识 (buyer) -->
-            <div>
-              <span class="text-slate-500 font-medium">买家标识：</span>
-              <span id="admin-detail-buyer_modal" class="text-slate-700 ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 客户端IP (clientip) -->
-            <div>
-              <span class="text-slate-500 font-medium">客户端IP：</span>
-              <span id="admin-detail-clientip_modal" class="text-slate-700 ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 商品名称 (product_name) -->
-            <div class="col-span-2">
-              <span class="text-slate-500 font-medium">商品名称：</span>
-              <span
-                id="admin-detail-product-name_modal"
-                class="text-slate-700 ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 创建时间 (created_at) -->
-            <div>
-              <span class="text-slate-500 font-medium">创建时间：</span>
-              <span
-                id="admin-detail-created-at_modal"
-                class="text-slate-700 ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 支付时间 (paid_time) -->
-            <div>
-              <span class="text-slate-500 font-medium">支付时间：</span>
-              <span
-                id="admin-detail-paid-time_modal"
-                class="text-slate-700 ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 业务扩展参数 (param) -->
-            <div class="col-span-2">
-              <span class="text-slate-500 font-medium">业务参数：</span>
-              <span
-                id="admin-detail-param_modal"
-                class="text-slate-700 ml-2 break-all"
-                >-</span
-              >
-            </div>
-            <!-- 是否从平台同步 (synced_from_platform) -->
-            <div>
-              <span class="text-slate-500 font-medium">数据来源：</span>
-              <span
-                id="admin-detail-synced-from-platform_modal"
-                class="text-slate-700 ml-2"
-                >-</span
-              >
-            </div>
-            <!-- 同步时间 (synced_time) -->
-            <div>
-              <span class="text-slate-500 font-medium">同步时间：</span>
-              <span
-                id="admin-detail-synced-time_modal"
-                class="text-slate-700 ml-2"
-                >-</span
-              >
+          </div>
+
+          <!-- 业务扩展参数卡片 -->
+          <div class="bg-slate-50 rounded-xl p-3 sm:p-4 border border-slate-200">
+            <h5 class="text-xs sm:text-sm font-semibold text-slate-600 mb-2 flex items-center">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+              业务扩展参数
+            </h5>
+            <div class="text-xs sm:text-sm">
+              <span id="admin-detail-param_modal" class="text-slate-700 break-all font-mono">-</span>
             </div>
           </div>
         </div>
 
-        <!-- 弹窗底部按钮区域 -->
+        <!-- 弹窗底部按钮区域（移动端优化：垂直堆叠+水平滚动） -->
         <div
-          class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-between items-center"
+          class="bg-gradient-to-r from-slate-50 to-slate-100 px-3 sm:px-6 py-3 sm:py-4 border-t border-slate-200 sticky bottom-0"
         >
-          <!-- 左侧：刷新按钮组 -->
-          <div class="flex gap-2">
-            <!-- 本地刷新按钮：重新读取本地订单文件 -->
-            <button
-              onclick="refreshOrderDetailLocal()"
-              class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors flex items-center gap-1"
-              title="重新读取本地订单文件，刷新显示内容"
-            >
-              <!-- 刷新图标 -->
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+          <!-- 按钮组：移动端垂直堆叠，桌面端水平排列 -->
+          <div class="flex flex-col sm:flex-row sm:justify-between gap-2 sm:gap-3">
+            <!-- 操作按钮组：移动端网格布局 -->
+            <div class="grid grid-cols-2 sm:flex gap-2">
+              <!-- 复制单号按钮：复制平台订单号到剪贴板 -->
+              <button
+                onclick="copyOrderTradeNo()"
+                class="px-3 sm:px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg text-xs sm:text-sm font-semibold hover:from-amber-600 hover:to-orange-600 transition-all shadow-sm flex items-center justify-center gap-1.5"
+                title="复制平台订单号到剪贴板"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                ></path>
-              </svg>
-              本地刷新
-            </button>
-            <!-- 从平台刷新按钮：调用API从支付平台查询最新状态 -->
-            <button
-              onclick="refreshOrderDetailFromPlatform()"
-              class="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors flex items-center gap-1"
-              title="从支付平台查询订单最新状态并更新"
-            >
-              <!-- 云同步图标 -->
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+                <!-- 复制图标 -->
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  ></path>
+                </svg>
+                <span>复制单号</span>
+              </button>
+              <!-- 本地刷新按钮：重新读取本地订单文件 -->
+              <button
+                onclick="refreshOrderDetailLocal()"
+                class="px-3 sm:px-4 py-2.5 bg-gradient-to-r from-blue-500 to-sky-500 text-white rounded-lg text-xs sm:text-sm font-semibold hover:from-blue-600 hover:to-sky-600 transition-all shadow-sm flex items-center justify-center gap-1.5"
+                title="重新读取本地订单文件，刷新显示内容"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                ></path>
-              </svg>
-              从平台刷新
+                <!-- 刷新图标 -->
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
+                </svg>
+                <span>本地刷新</span>
+              </button>
+              <!-- 从平台刷新按钮：调用API从支付平台查询最新状态 -->
+              <button
+                onclick="refreshOrderDetailFromPlatform()"
+                class="px-3 sm:px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-lg text-xs sm:text-sm font-semibold hover:from-emerald-600 hover:to-green-600 transition-all shadow-sm flex items-center justify-center gap-1.5"
+                title="从支付平台查询订单最新状态并更新"
+              >
+                <!-- 云同步图标 -->
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
+                </svg>
+                <span class="hidden xs:inline">从平台</span>刷新
+              </button>
+              <!-- 关闭按钮：移动端显示在网格中 -->
+              <button
+                onclick="closeOrderDetailModal()"
+                class="px-3 sm:px-6 py-2.5 bg-slate-500 text-white rounded-lg text-xs sm:text-sm font-semibold hover:bg-slate-600 transition-all shadow-sm sm:hidden flex items-center justify-center"
+              >
+                关闭
+              </button>
+            </div>
+            <!-- 桌面端单独显示关闭按钮 -->
+            <button
+              onclick="closeOrderDetailModal()"
+              class="hidden sm:block px-6 py-2.5 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 transition-all shadow-sm"
+            >
+              关闭
             </button>
           </div>
-          <!-- 右侧：关闭按钮 -->
-          <button
-            onclick="closeOrderDetailModal()"
-            class="px-6 py-2 bg-slate-500 text-white rounded-lg text-sm font-semibold hover:bg-slate-600 transition-colors"
-          >
-            关闭
-          </button>
         </div>
       </div>
     </div>
