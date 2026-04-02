@@ -2976,8 +2976,6 @@ def _get_default_config():
     }
 
     config["IP_Location"] = {
-        # 兼容旧配置：保留 query_method 字段
-        "query_method": "uapipro",
         # 查询顺序（逗号分隔）：默认 UapiPro -> 高德 -> 百度
         "query_order": "uapipro,amap,baidu",
         # 高德 Web API Key（IP定位）
@@ -17546,6 +17544,8 @@ def _save_ip_cache():
 def _migrate_ip_location_config_if_needed():
     """
     兼容旧配置并自动迁移 IP_Location 配置。
+    优先读取旧的 query_method，按照其优先级重新生成 query_order，
+    迁移完成后移除 query_method 配置项。
     """
     try:
         cfg = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
@@ -17554,18 +17554,33 @@ def _migrate_ip_location_config_if_needed():
             cfg.add_section("IP_Location")
             changed = True
 
-        if not cfg.has_option("IP_Location", "query_method"):
-            cfg.set("IP_Location", "query_method", "uapipro")
-            changed = True
-        if not cfg.has_option("IP_Location", "query_order"):
+        # 检查是否存在旧的 query_method 配置
+        has_query_method = cfg.has_option("IP_Location", "query_method")
+        has_query_order = cfg.has_option("IP_Location", "query_order")
+        
+        if has_query_method and not has_query_order:
+            # 存在旧配置但没有新配置，进行迁移
             legacy_method = cfg.get("IP_Location", "query_method", fallback="uapipro").strip().lower()
             base_order = ["uapipro", "amap", "baidu"]
             if legacy_method in ("uapipro", "amap", "baidu", "pconline"):
+                # 将旧的优先方式放在首位
                 new_order = [legacy_method] + [x for x in base_order if x != legacy_method]
             else:
                 new_order = base_order
             cfg.set("IP_Location", "query_order", ",".join(new_order))
             changed = True
+            logging.info(f"[配置迁移] IP查询方式从 query_method({legacy_method}) 迁移到 query_order({','.join(new_order)})")
+        elif not has_query_order:
+            # 既没有旧配置也没有新配置，设置默认值
+            cfg.set("IP_Location", "query_order", "uapipro,amap,baidu")
+            changed = True
+        
+        # 移除旧的 query_method 配置项（如果存在）
+        if has_query_method:
+            cfg.remove_option("IP_Location", "query_method")
+            changed = True
+            logging.info("[配置迁移] 已移除旧的 query_method 配置项")
+            
         if not cfg.has_option("IP_Location", "amap_web_api_key"):
             cfg.set("IP_Location", "amap_web_api_key", "")
             changed = True
@@ -17575,7 +17590,7 @@ def _migrate_ip_location_config_if_needed():
 
         if changed:
             _write_config_with_comments(cfg, CONFIG_JSON_FILE)
-            logging.info("[配置迁移] IP_Location 新配置项已自动迁移")
+            logging.info("[配置迁移] IP_Location 配置迁移完成")
     except Exception as e:
         logging.warning(f"[配置迁移] IP_Location 迁移失败: {e}")
 
@@ -28831,14 +28846,6 @@ def start_web_server(args_param):
                     )
                 },
                 "IP_Location": {
-                    "query_method": _get_config_value(
-                        config,
-                        "IP_Location",
-                        "query_method",
-                        fallback=default_config.get(
-                            "IP_Location", "query_method", fallback="uapipro"
-                        ),
-                    ),
                     "query_order": _get_config_value(
                         config,
                         "IP_Location",
@@ -29136,21 +29143,6 @@ def start_web_server(args_param):
             if "IP_Location" in data:
                 ensure_section(config, "IP_Location")
                 ip_loc_data = data["IP_Location"]
-                if "query_method" in ip_loc_data:
-                    allowed_methods = ["uapipro", "amap", "baidu", "pconline"]
-                    query_method = str(ip_loc_data["query_method"]).strip().lower()
-                    if query_method in allowed_methods:
-                        config.set("IP_Location", "query_method", query_method)
-                    else:
-                        return (
-                            jsonify(
-                                {
-                                    "success": False,
-                                    "message": f"无效的 query_method 值，必须是 {allowed_methods} 之一",
-                                }
-                            ),
-                            400,
-                        )
                 if "query_order" in ip_loc_data:
                     raw_order = str(ip_loc_data["query_order"]).strip().lower()
                     if not raw_order:
@@ -33855,19 +33847,14 @@ def start_web_server(args_param):
         if not normalized_ip:
             return "未知"
 
-        # 读取IP归属地配置（兼容旧配置）
+        # 读取IP归属地配置
         ip_loc_cfg = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
         query_order_cfg = ip_loc_cfg.get("IP_Location", "query_order", fallback="").strip()
-        query_method_cfg = ip_loc_cfg.get("IP_Location", "query_method", fallback="").strip().lower()
         amap_web_api_key = ip_loc_cfg.get("IP_Location", "amap_web_api_key", fallback="").strip()
         uapipro_api_key = ip_loc_cfg.get("IP_Location", "uapipro_api_key", fallback="").strip()
 
         if query_order_cfg:
             query_order = [x.strip().lower() for x in query_order_cfg.split(",") if x.strip()]
-        elif query_method_cfg in ("uapipro", "amap", "baidu", "pconline"):
-            # 旧配置迁移兼容：只配置了 query_method 时自动构建顺序
-            fallback_order = ["uapipro", "amap", "baidu"]
-            query_order = [query_method_cfg] + [x for x in fallback_order if x != query_method_cfg]
         else:
             query_order = ["uapipro", "amap", "baidu"]
 
