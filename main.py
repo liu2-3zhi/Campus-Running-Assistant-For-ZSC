@@ -37965,23 +37965,6 @@ def start_web_server(args_param):
             # 计算剩余可退金额
             remaining_amount = round(order_amount - total_refunded, 2)
 
-            # 业务规则：每个订单仅允许退款一次，默认退款比例为80%
-            default_refund_limit = round(order_amount * 0.8, 2)
-
-            # 首次退款必须等于80%默认金额
-            if total_refunded == 0 and refund_amount_float != default_refund_limit:
-                logging.error(
-                    f"[退款请求] 首次退款金额不符合80%规则 - "
-                    f"订单号: {trade_no}, "
-                    f"订单金额: {order_amount}, "
-                    f"要求金额: {default_refund_limit}, "
-                    f"实际金额: {refund_amount_float}"
-                )
-                return jsonify({
-                    "success": False,
-                    "message": f"每个订单仅允许退款一次，且默认退款金额必须为订单金额的80%（{default_refund_limit}元）"
-                })
-
             # 验证退款金额不能超过剩余可退金额
             if refund_amount_float > remaining_amount:
                 logging.error(
