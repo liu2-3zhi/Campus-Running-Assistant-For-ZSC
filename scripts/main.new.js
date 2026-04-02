@@ -41616,75 +41616,126 @@ async function loadSystemConfig() {
 
     const config = result.config;
     formContainer.innerHTML = "";
-    const createInput = (section, key, label, type = "text", help = "") => {
-      // [修复问题28] 获取原始配置值
+
+    // ==================== 旧配置迁移逻辑 ====================
+    // 如果存在旧的 query_method 配置，自动迁移到 query_order
+    // 迁移规则：将旧的优先方式放到查询顺序的最前面
+    if (config.IP_Location && config.IP_Location.query_method) {
+      const oldMethod = String(config.IP_Location.query_method || "").trim().toLowerCase();
+      const currentOrder = String(config.IP_Location.query_order || "uapipro,amap,baidu").trim().toLowerCase();
+      const orderList = currentOrder.split(",").map(s => s.trim()).filter(s => s);
+      
+      // 如果旧配置的方式不在第一位，则将其移到第一位
+      if (oldMethod && orderList.includes(oldMethod) && orderList[0] !== oldMethod) {
+        const newOrderList = [oldMethod, ...orderList.filter(s => s !== oldMethod)];
+        config.IP_Location.query_order = newOrderList.join(",");
+        console.log("[配置迁移] IP归属地查询顺序已迁移:", config.IP_Location.query_order);
+      } else if (oldMethod && !orderList.includes(oldMethod)) {
+        // 如果旧方式不在列表中，添加到最前面
+        config.IP_Location.query_order = [oldMethod, ...orderList].join(",");
+        console.log("[配置迁移] IP归属地查询顺序已添加旧方式:", config.IP_Location.query_order);
+      }
+      // 标记配置已迁移（前端不再显示query_method）
+      delete config.IP_Location.query_method;
+    }
+
+    // ==================== 美化版 createInput 函数 ====================
+    const createInput = (section, key, label, type = "text", help = "", options = {}) => {
+      // 获取原始配置值
       const rawValue = config[section]?.[key];
 
-      // [修复问题28] 标准化布尔值
-      // 如果类型是boolean，将各种可能的值（字符串"true"/"false"、布尔值、数字等）统一转换为布尔类型
+      // 标准化布尔值
       let value = rawValue;
       if (type === "boolean") {
-        // 如果已经是布尔类型，直接使用
         if (typeof rawValue === "boolean") {
           value = rawValue;
-        }
-        // 如果是字符串"true"（不区分大小写），转换为true
-        else if (typeof rawValue === "string") {
+        } else if (typeof rawValue === "string") {
           value = rawValue.toLowerCase().trim() === "true";
-        }
-        // 如果是数字1，转换为true；数字0转换为false
-        else if (typeof rawValue === "number") {
+        } else if (typeof rawValue === "number") {
           value = rawValue === 1;
-        }
-        // 其他情况，使用false作为默认值
-        else {
+        } else {
           value = false;
         }
+      }
+
+      // 根据类型选择图标
+      let iconSvg = "";
+      if (type === "boolean") {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+      } else if (type === "number") {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path></svg>`;
+      } else if (type === "password_storage" || key.includes("key") || key.includes("secret")) {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>`;
+      } else if (type === "ip_query_order") {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>`;
+      } else {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>`;
       }
 
       let inputHtml = "";
       if (type === "boolean") {
         inputHtml = `
-        <select id="config-${section}-${key}" class="select-field">
-          <option value="true" ${value === true ? "selected" : ""}>启用</option>
-          <option value="false" ${
-            value === false ? "selected" : ""
-          }>禁用</option>
+        <select id="config-${section}-${key}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">
+          <option value="true" ${value === true ? "selected" : ""}>✅ 启用</option>
+          <option value="false" ${value === false ? "selected" : ""}>❌ 禁用</option>
         </select>
       `;
       } else if (type === "number") {
-        inputHtml = `<input type="number" id="config-${section}-${key}" value="${value}" class="input-field">`;
+        inputHtml = `<input type="number" id="config-${section}-${key}" value="${value}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">`;
       } else if (type === "password_storage") {
         inputHtml = `
-        <select id="config-${section}-${key}" class="select-field">
-          <option value="plaintext" ${
-            value === "plaintext" ? "selected" : ""
-          }>明文</option>
-          <option value="sha256" ${
-            value === "sha256" ? "selected" : ""
-          }>sha256</option>
-          <option value="bcrypt" ${
-            value === "bcrypt" ? "selected" : ""
-          }>bcrypt(自动加盐)</option>
+        <select id="config-${section}-${key}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">
+          <option value="plaintext" ${value === "plaintext" ? "selected" : ""}>🔓 明文</option>
+          <option value="sha256" ${value === "sha256" ? "selected" : ""}>🔐 SHA256</option>
+          <option value="bcrypt" ${value === "bcrypt" ? "selected" : ""}>🛡️ BCrypt (自动加盐)</option>
         </select>
       `;
-      } else if (type === "ip_query_method") {
+      } else if (type === "ip_query_order") {
+        // IP归属地查询顺序 - 拖拽排序
+        const allMethods = [
+          { key: "uapipro", name: "UapiPro", icon: "🌐" },
+          { key: "amap", name: "高德地图", icon: "🗺️" },
+          { key: "baidu", name: "百度开放数据", icon: "📍" },
+          { key: "pconline", name: "PConline", icon: "💻" },
+        ];
+        const currentOrderStr = String(value || "uapipro,amap,baidu").trim().toLowerCase();
+        const currentOrder = currentOrderStr.split(",").map(s => s.trim()).filter(s => s);
+        
+        // 根据当前顺序排列，未包含的放在后面
+        const sortedMethods = [
+          ...currentOrder.map(key => allMethods.find(m => m.key === key)).filter(Boolean),
+          ...allMethods.filter(m => !currentOrder.includes(m.key))
+        ];
+        
         inputHtml = `
-        <select id="config-${section}-${key}" class="select-field">
-          <option value="uapipro" ${value === "uapipro" ? "selected" : ""}>UapiPro</option>
-          <option value="amap" ${value === "amap" ? "selected" : ""}>高德地图</option>
-          <option value="baidu" ${value === "baidu" ? "selected" : ""}>百度开放数据</option>
-          <option value="pconline" ${value === "pconline" ? "selected" : ""}>PConline</option>
-        </select>
+        <div id="config-${section}-${key}-container" class="space-y-1.5">
+          <ul id="config-${section}-${key}-sortable" class="space-y-1.5">
+            ${sortedMethods.map((m, idx) => `
+              <li data-key="${m.key}" class="flex items-center gap-3 px-3 py-2.5 bg-white border border-slate-200 rounded-lg cursor-grab active:cursor-grabbing hover:bg-slate-50 hover:border-sky-300 transition-all duration-200 group">
+                <span class="text-slate-400 group-hover:text-sky-500 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
+                </span>
+                <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-sky-100 text-sky-600 rounded-full text-xs font-bold">${idx + 1}</span>
+                <span class="text-lg">${m.icon}</span>
+                <span class="flex-1 text-sm font-medium text-slate-700">${m.name}</span>
+                <span class="text-xs text-slate-400 font-mono">${m.key}</span>
+              </li>
+            `).join("")}
+          </ul>
+          <input type="hidden" id="config-${section}-${key}" value="${currentOrder.join(",")}" />
+        </div>
       `;
       } else {
-        inputHtml = `<input type="text" id="config-${section}-${key}" value="${value || ""}" class="input-field">`;
+        inputHtml = `<input type="text" id="config-${section}-${key}" value="${value || ""}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="${options.placeholder || ""}">`;
       }
       return `
-      <div class="mb-3">
-        <label for="config-${section}-${key}" class="block text-sm font-semibold text-slate-700">${label} <!-- <span class="text-xs font-mono text-slate-400">[${section}] ${key}</span> --></label>
+      <div class="mb-4 p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+        <label for="config-${section}-${key}" class="flex items-center gap-2 mb-2">
+          ${iconSvg}
+          <span class="text-sm font-semibold text-slate-700">${label}</span>
+        </label>
         ${inputHtml}
-        ${help ? `<p class="text-xs text-slate-500 mt-1">${help}</p>` : ""}
+        ${help ? `<p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>${help}</span></p>` : ""}
       </div>
     `;
     };
@@ -41831,20 +41882,14 @@ async function loadSystemConfig() {
       "用于前端地图显示的JS API Key。",
     );
     html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">IP 归属地查询配置</h5>';
-    html += createInput(
-      "IP_Location",
-      "query_method",
-      "默认查询方式（兼容旧配置）",
-      "ip_query_method",
-      "仅用于兼容旧配置，建议主要使用下方“查询顺序”。",
-    );
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">🌐 IP 归属地查询配置</h5>';
     html += createInput(
       "IP_Location",
       "query_order",
-      "查询顺序",
-      "text",
-      "按逗号分隔：uapipro,amap,baidu（默认）。可选：uapipro / amap / baidu / pconline",
+      "查询顺序（拖拽排序）",
+      "ip_query_order",
+      "拖拽调整查询优先级。查询失败时会自动尝试下一个服务。",
     );
     html += createInput(
       "IP_Location",
@@ -41972,6 +42017,39 @@ async function loadSystemConfig() {
     );
 
     formContainer.innerHTML = html;
+    
+    // ==================== 初始化 SortableJS 拖拽排序 ====================
+    // 为 IP 归属地查询顺序的拖拽列表初始化 SortableJS
+    const sortableContainer = document.getElementById("config-IP_Location-query_order-sortable");
+    if (sortableContainer && typeof Sortable !== "undefined") {
+      new Sortable(sortableContainer, {
+        animation: 150,
+        ghostClass: "bg-sky-100",
+        chosenClass: "shadow-lg",
+        dragClass: "opacity-50",
+        handle: ".cursor-grab",
+        onEnd: function () {
+          // 获取排序后的顺序
+          const items = sortableContainer.querySelectorAll("li[data-key]");
+          const order = Array.from(items).map(item => item.dataset.key);
+          // 更新隐藏输入框的值
+          const hiddenInput = document.getElementById("config-IP_Location-query_order");
+          if (hiddenInput) {
+            hiddenInput.value = order.join(",");
+          }
+          // 更新序号显示
+          items.forEach((item, idx) => {
+            const numSpan = item.querySelector(".bg-sky-100");
+            if (numSpan) {
+              numSpan.textContent = idx + 1;
+            }
+          });
+          console.log("[配置] IP归属地查询顺序已更新:", order.join(","));
+        },
+      });
+      console.log("[配置] SortableJS 拖拽排序已初始化");
+    }
+    
     configLoadState.system = true;
   } catch (e) {
     configLoadState.system = false;
@@ -44768,7 +44846,6 @@ async function saveSystemConfig() {
         amap_js_key: $("config-Map-amap_js_key").value,
       },
       IP_Location: {
-        query_method: $("config-IP_Location-query_method").value,
         query_order: ($("config-IP_Location-query_order").value || "").trim(),
         amap_web_api_key: ($("config-IP_Location-amap_web_api_key").value || "").trim(),
         uapipro_api_key: ($("config-IP_Location-uapipro_api_key").value || "").trim(),
