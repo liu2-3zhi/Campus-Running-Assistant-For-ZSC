@@ -119,7 +119,7 @@
 					table.append(row);
 				}
 
-				dialog.find("." + classPrefix + "html-entity-btn").bind(exports.mouseOrTouch("click", "touchend"), function() {
+				dialog.find("." + classPrefix + "html-entity-btn").on(exports.mouseOrTouch("click", "touchend"), function() {
 					$(this).toggleClass("selected");
 
 					if ($(this).hasClass("selected")) 
