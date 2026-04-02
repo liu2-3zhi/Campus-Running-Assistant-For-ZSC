@@ -41860,8 +41860,8 @@ async function loadSystemConfig() {
       "text",
       "用于调用 https://uapis.cn/api/v1/network/ipinfo（Bearer Token）",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
+    // html +=
+    //   '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
     // ==================== 网站备案信息配置 ====================
     // 添加网站备案（Beian）相关配置项，包括ICP备案号和公安网备案号
     // 这些配置项用于在网站底部显示合规信息，满足中国大陆网站的备案要求
