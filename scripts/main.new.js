@@ -43750,14 +43750,6 @@ async function openReminderEditModal(reminderId = "") {
                 window.reminderEditor.recreate();
               } catch (e) {}
             }
-            if (
-              window.reminderEditor &&
-              typeof window.reminderEditor.previewing === "function"
-            ) {
-              try {
-                window.reminderEditor.previewing();
-              } catch (e) {}
-            }
           } catch (e) {}
         }, 60);
 
