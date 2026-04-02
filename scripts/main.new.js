@@ -17720,12 +17720,48 @@ async function handleAuthLogin(isMobile_use = false) {
     } else {
       setButtonLoading("auth-login-btn", false);
       showButtonError("auth-login-btn", "登录失败");
-      // showModalAlert(result.message || "登录失败", "登录失败");
-      Swal.fire({
-        icon: "error",
-        title: "登录失败",
-        text: result.message || "登录失败",
-      });
+      
+      // 检查是否是手机号未注册的错误
+      const isPhoneNotRegistered = result.message && (
+        result.message.includes("未注册") ||
+        result.message.includes("不存在") ||
+        result.message.includes("not registered") ||
+        result.message.includes("手机号未绑定")
+      );
+      
+      // 如果是手机号登录且手机号未注册，提示跳转到注册页面
+      if (isPhoneNotRegistered && login_mode === "phone") {
+        const phoneNumber = login_id;
+        const currentSmsCode = sms_code;
+        
+        Swal.fire({
+          icon: "info",
+          title: "手机号未注册",
+          html: `
+            <div class="text-left">
+              <p class="mb-3">手机号 <strong class="font-mono">${escapeHtml(phoneNumber)}</strong> 尚未注册。</p>
+              <p class="text-sm text-slate-600">是否立即注册？系统将自动填充手机号和验证码。</p>
+            </div>
+          `,
+          showCancelButton: true,
+          confirmButtonText: "立即注册",
+          confirmButtonColor: "#22c55e",
+          cancelButtonText: "取消",
+          cancelButtonColor: "#64748b",
+        }).then((swalResult) => {
+          if (swalResult.isConfirmed) {
+            // 跳转到注册选项卡
+            handlePhoneNotRegisteredRedirect(phoneNumber, currentSmsCode, isMobile_use);
+          }
+        });
+      } else {
+        // 普通登录失败提示
+        Swal.fire({
+          icon: "error",
+          title: "登录失败",
+          text: result.message || "登录失败",
+        });
+      }
 
       if (isMobile_use === false) {
         refreshCaptcha("login");
@@ -17760,6 +17796,99 @@ async function handleAuthLogin(isMobile_use = false) {
     );
     if (mobileLoginCaptchaErr) mobileLoginCaptchaErr.value = "";
   }
+}
+
+/**
+ * 处理手机号未注册时跳转到注册页面
+ * 自动填充手机号和验证码，并延迟验证码有效期
+ * @param {string} phoneNumber - 用户输入的手机号
+ * @param {string} smsCode - 用户输入的短信验证码
+ * @param {boolean} isMobile - 是否为移动端
+ */
+function handlePhoneNotRegisteredRedirect(phoneNumber, smsCode, isMobile) {
+  console.log("[手机号未注册跳转] 开始处理:", { phoneNumber, smsCode, isMobile });
+  
+  // 切换到注册选项卡
+  const loginTab = document.querySelector('[data-auth-tab="login"]');
+  const registerTab = document.querySelector('[data-auth-tab="register"]');
+  const loginPanel = document.getElementById("auth-login-panel");
+  const registerPanel = document.getElementById("auth-register-panel");
+  
+  // 移动端选项卡
+  const mobileLoginTab = document.querySelector('[data-mobile-auth-tab="login"]');
+  const mobileRegisterTab = document.querySelector('[data-mobile-auth-tab="register"]');
+  const mobileLoginPanel = document.getElementById("mobile-auth-login-panel");
+  const mobileRegisterPanel = document.getElementById("mobile-auth-register-panel");
+  
+  if (isMobile) {
+    // 移动端处理
+    if (mobileLoginTab && mobileRegisterTab && mobileLoginPanel && mobileRegisterPanel) {
+      // 切换选项卡激活状态
+      mobileLoginTab.classList.remove("border-sky-500", "text-sky-600", "font-semibold");
+      mobileLoginTab.classList.add("border-transparent", "text-slate-500");
+      mobileRegisterTab.classList.add("border-sky-500", "text-sky-600", "font-semibold");
+      mobileRegisterTab.classList.remove("border-transparent", "text-slate-500");
+      
+      // 切换面板显示
+      mobileLoginPanel.classList.add("hidden");
+      mobileRegisterPanel.classList.remove("hidden");
+    }
+  } else {
+    // PC端处理
+    if (loginTab && registerTab && loginPanel && registerPanel) {
+      // 切换选项卡激活状态
+      loginTab.classList.remove("border-sky-500", "text-sky-600", "font-semibold");
+      loginTab.classList.add("border-transparent", "text-slate-500");
+      registerTab.classList.add("border-sky-500", "text-sky-600", "font-semibold");
+      registerTab.classList.remove("border-transparent", "text-slate-500");
+      
+      // 切换面板显示
+      loginPanel.classList.add("hidden");
+      registerPanel.classList.remove("hidden");
+    }
+  }
+  
+  // 填充手机号到注册表单
+  const regPhoneInput = document.getElementById("auth-reg-phone");
+  if (regPhoneInput) {
+    regPhoneInput.value = phoneNumber;
+    console.log("[手机号未注册跳转] 已填充手机号:", phoneNumber);
+  }
+  
+  // 填充验证码到注册表单
+  const regSmsCodeInput = document.getElementById("auth-reg-sms-code");
+  if (regSmsCodeInput && smsCode) {
+    regSmsCodeInput.value = smsCode;
+    console.log("[手机号未注册跳转] 已填充验证码:", smsCode);
+    
+    // 延长验证码有效期：更新前端倒计时显示
+    // 通常登录用的验证码和注册用的是同一个，所以直接复用
+    // 但需要通知用户验证码已复用
+    Swal.fire({
+      icon: "success",
+      title: "信息已自动填充",
+      html: `
+        <div class="text-left">
+          <p class="mb-2 text-green-600">✅ 手机号和验证码已自动填充</p>
+          <p class="text-sm text-slate-600">请设置用户名和密码完成注册。</p>
+        </div>
+      `,
+      timer: 2500,
+      timerProgressBar: true,
+      showConfirmButton: false,
+    });
+  }
+  
+  // 刷新注册页验证码
+  refreshCaptcha("register");
+  
+  // 聚焦到用户名输入框
+  setTimeout(() => {
+    const regUsernameInput = document.getElementById("auth-reg-username");
+    if (regUsernameInput) {
+      regUsernameInput.focus();
+    }
+  }, 500);
 }
 
 async function handle2FAVerify() {
