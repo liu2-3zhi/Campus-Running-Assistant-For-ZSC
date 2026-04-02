@@ -39,43 +39,34 @@
       src="/api/cdn/sweetalert2"
       onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js'"
     ></script>
-
+    <!-- 二维码生成 -->
+     <!-- 不能切换到 https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js -->
+    <script src="/api/cdn/qrcode" onerror="this.src = 'https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js'"></script>
+    <!-- 图片裁剪库 -->
+    <!-- 目前还在使用 1.6.2 版本，因为 2.X 版本API有变化 -->
+    <link rel="stylesheet" href="/api/cdn/cropperjs-css" onerror="this.href='https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css'"/>
+    <script src="/api/cdn/cropperjs" onerror="this.src = 'https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js'"></script>
+    <!-- CSS 框架 -->
     <!-- TailwindCSS -->
-    <script
-      src="/api/cdn/tailwindcss"
-      onerror="this.src = 'https://cdn.tailwindcss.com'"
-    ></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
-    <!-- Google Fonts - 使用本地缓存 -->
-    <link
-      href="/api/cdn/google-fonts"
-      rel="stylesheet"
-      onerror="
-        this.href =
-          'https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&amp;family=Noto+Sans+SC:wght@400;600;700&amp;display=swap'
-      "
-    />
-
-    <!-- 高德地图 loader.js - 使用本地缓存 -->
+    <!-- 目前还在使用 3.4.17 版本，4.X 版本API有变化 -->
+    <script src="/api/cdn/tailwindcss" onerror="this.src = 'https://cdn.tailwindcss.com'"></script>
+    <!-- 基于事件驱动的实时通信框架 -->
+    <script src="/api/cdn/socketio" onerror="this.src = 'https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js'"></script>
+    <!-- 通知浏览器提前加载资源 -->
+    <!-- <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" /> -->
+    <!-- Google Fonts -->
+    <!-- Zilla Slab 字体，适用于标题 -->
+    <!-- Noto Sans SC 字体，适用于正文 -->
+    <!-- <linkhref="/api/cdn/google-fonts" rel="stylesheet" onerror="this.href ='https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&amp;family=Noto+Sans+SC:wght@400;600;700&amp;display=swap'"/> -->
+    <link rel="stylesheet" href="/api/cdn/zilla-slab" onerror="this.href ='https://cdn.jsdelivr.net/npm/@fontsource/zilla-slab@5/index.min.css'"/>
+    <link rel="stylesheet" href="/api/cdn/noto-sans-sc" onerror="this.href ='https://cdn.jsdelivr.net/npm/@fontsource-variable/noto-sans-sc/index.min.css'"/>
+    <!-- 高德地图 -->
     <!-- <script src="/api/cdn/amap-loader" onerror="this.src='https://webapi.amap.com/loader.js'"></script> -->
-    <!-- 使用本地缓存的CDN文件，后端每小时自动从CDN更新 -->
-    <script
-      src="/api/cdn/qrcode"
-      onerror="
-        this.src = 'https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js'
-      "
-    ></script>
-    <script
-      src="/api/cdn/cropperjs"
-      onerror="
-        this.src = 'https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js'
-      "
-    ></script>
-    <script
-      src="/api/cdn/socketio"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js'"
-    ></script>
+    <!-- 高德地图已经改用.\scripts\load_amap_watermark.js 引入 -->
+
+
+
     <script
       src="/api/cdn/jquery"
       onerror="this.src = 'https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js'"

@@ -22157,6 +22157,7 @@ def start_web_server(args_param):
     # 需要缓存的CDN文件列表
     CDN_FILES = {
         # 美化弹窗
+        # 正常工作
         "sweetalert2": {
             "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js",
             "filename": "sweetalert2.min.js",
@@ -22168,32 +22169,57 @@ def start_web_server(args_param):
             "type": "css",
         },
         # 二维码生成库
+        # 不能切换到 https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js
         "qrcode": {
-            "url": "https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js",
             "filename": "qrcode.min.js",
             "type": "js",
         },
         # 图片裁剪库
+        # 目前还在使用 1.6.2 版本，因为 2.1 版本API有变化
         "cropperjs": {
-            "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js",
+            # "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js",
+             "url": "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js",
             "filename": "cropper.min.js",
             "type": "js",
         },
+        "cropperjs-css": {
+            "url": "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css",
+            "filename": "cropper.min.css",
+            "type": "css",
+        },
+        # CSS 框架
+        # 目前还在使用 3.4.17 版本，4.X 版本API有变化
         "tailwindcss": {
+            # "url": "https://cdn.jsdelivr.net/npm/@tailwindcss/browser/dist/index.global.min.js",
             "url": "https://cdn.tailwindcss.com",
             "filename": "tailwindcss.min.js",
             "type": "js",
         },
+        # 基于事件驱动的实时通信框架
         "socketio": {
             "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js",
             "filename": "socket.io.min.js",
             "type": "js",
         },
-        "google-fonts": {
-            "url": "https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=Noto+Sans+SC:wght@400;600;700&display=swap",
-            "filename": "google-fonts.css",
+        # Zilla Slab 字体，适用于标题
+        # Noto Sans SC 字体，适用于正文
+        "zilla-slab": {
+            "url": "https://cdn.jsdelivr.net/npm/@fontsource/zilla-slab@5/index.min.css",
+            "filename": "zilla-slab.min.css",
             "type": "css",
         },
+        "noto-sans-sc": {
+            "url": "https://cdn.jsdelivr.net/npm/@fontsource-variable/noto-sans-sc/index.min.css",
+            "filename": "noto-sans-sc.min.css",
+            "type": "css",
+        },
+        # "google-fonts": {
+        #     "url": "https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=Noto+Sans+SC:wght@400;600;700&display=swap",
+        #     "filename": "google-fonts.css",
+        #     "type": "css",
+        # },
+        # 高德地图
         "amap-loader": {
             "url": "https://webapi.amap.com/loader.js",
             "filename": "amap-loader.js",
