@@ -17,11 +17,6 @@
     <script src="/scripts/load_amap_watermark.js"></script>
     <!-- <script src="/scripts/Remove_watermark_from_Amap_Map.js"></script> -->
     <script src="/api/frontend_config.js"></script>
-    <!-- Socket.IO - 使用本地缓存，后端自动获取最新版本 -->
-    <script
-      src="/api/cdn/socketio"
-      onerror="this.src = 'https://cdn.socket.io/4.8.1/socket.io.min.js'"
-    ></script>
     <meta charset="UTF-8" />
     <title>跑步助手</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon" />
@@ -34,7 +29,18 @@
     <meta name="apple-mobile-web-app-title" content="跑步助手" />
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- TailwindCSS - 使用本地缓存 -->
+    <!-- 美化弹窗 -->
+    <link
+      rel="stylesheet"
+      href="/api/cdn/sweetalert2-css"
+      onerror="this.href='https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css'"
+    />
+    <script
+      src="/api/cdn/sweetalert2"
+      onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js'"
+    ></script>
+
+    <!-- TailwindCSS -->
     <script
       src="/api/cdn/tailwindcss"
       onerror="this.src = 'https://cdn.tailwindcss.com'"
@@ -55,29 +61,24 @@
     <!-- <script src="/api/cdn/amap-loader" onerror="this.src='https://webapi.amap.com/loader.js'"></script> -->
     <!-- 使用本地缓存的CDN文件，后端每小时自动从CDN更新 -->
     <script
-      src="/api/cdn/sweetalert2"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/sweetalert2@11'"
-    ></script>
-    <script
       src="/api/cdn/qrcode"
       onerror="
-        this.src = 'https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js'
+        this.src = 'https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js'
       "
     ></script>
-    <link
-      rel="stylesheet"
-      href="/api/cdn/cropperjs-css"
-      onerror="
-        this.href =
-          'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css'
-      "
-    />
     <script
       src="/api/cdn/cropperjs"
       onerror="
-        this.src =
-          'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js'
+        this.src = 'https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js'
       "
+    ></script>
+    <script
+      src="/api/cdn/socketio"
+      onerror="this.src = 'https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js'"
+    ></script>
+    <script
+      src="/api/cdn/jquery"
+      onerror="this.src = 'https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js'"
     ></script>
 
     <link rel="stylesheet" href="styles/style.css" />
@@ -7615,6 +7616,15 @@
                     ></div>
                   </label>
                 </div>
+
+                <!-- 强制刷新按钮 -->
+                <button
+                  id="mobile-cdn-force-refresh-btn"
+                  class="btn btn-warning w-full !py-2 text-sm"
+                  onclick="triggerCDNForceRefresh()"
+                >
+                  强制刷新服务器缓存
+                </button>
 
                 <!-- 缓存时间设置卡片 -->
                 <div class="p-3 bg-white border border-slate-200 rounded-lg">
@@ -16682,6 +16692,13 @@
                     ></path>
                   </svg>
                   保存配置
+                </button>
+                <button
+                  id="cdn-force-refresh-btn"
+                  class="btn btn-warning flex-1 !py-2"
+                  onclick="triggerCDNForceRefresh()"
+                >
+                  强制刷新服务器缓存
                 </button>
               </div>
 
