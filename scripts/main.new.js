@@ -47148,6 +47148,8 @@ async function ensureMobileMultiMessageEditorInitialized() {
           // 进入全屏自动滚动
           fullScreenAutomaticScrolling: "0%",
           fullScreenAutomaticScrollingOuterHtml: true,
+          // 锁定所有父容器
+          fullScreenForceDisableAllScroll: true,
         });
     const ta = document.getElementById("mobile-multi-message-content");
     if (ta) ta.classList.add("hidden");
