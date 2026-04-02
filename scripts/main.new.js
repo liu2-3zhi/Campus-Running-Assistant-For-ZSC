@@ -20794,10 +20794,10 @@ function switchAdminTab(tab) {
           try {
             await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
             // 先加载依赖库，再加载 editormd 本体，减少 race condition
-            await loadOnce("/editor.md/lib/marked.min.js", false).catch(
+            await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(
               () => {},
             );
-            await loadOnce("/editor.md/lib/prettify.min.js", false).catch(
+            await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
               () => {},
             );
             await loadOnce("/editor.md/editormd.js", false).catch(() => {});
@@ -43514,8 +43514,8 @@ async function openReminderEditModal(reminderId = "") {
       // 这里使用相对路径，项目中已有 editor.md 资源（若使用 CDN，请替换为 CDN 地址）
       await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
       // 先加载 editormd 依赖库，再加载主体脚本，减少 race condition
-      await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
-      await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {});
+      await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+      await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
       await loadOnce("/editor.md/editormd.js", false).catch(() => {});
 
       // 等待 window.editormd 可用（轮询），最长等待1500ms
@@ -44219,8 +44219,8 @@ async function checkAndShowReminders() {
         await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
         await loadOnce("/editor.md/editormd.js", false).catch(() => {});
         // editormd 渲染依赖
-        await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
-        await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {});
+        await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+        await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
         console.log("[定时提醒] 预加载 editormd 及依赖完成");
       } catch (e) {
         console.warn("[定时提醒] 预加载 editormd 及依赖时发生错误:", e);
@@ -44271,10 +44271,10 @@ async function checkAndShowReminders() {
           await loadOnce("/editor.md/editormd.js", false).catch(() => {
             console.warn("延迟加载 editormd.js 失败");
           });
-          await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {
+          await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {
             console.warn("延迟加载 marked 失败");
           });
-          await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {
+          await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {
             console.warn("延迟加载 prettify 失败");
           });
 
@@ -44364,8 +44364,8 @@ async function checkAndShowReminders() {
         );
 
         try {
-          await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
-          await loadOnce("/editor.md/lib/prettify.min.js", false).catch(
+          await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+          await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
             () => {},
           );
         } catch (e) {
