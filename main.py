@@ -2987,10 +2987,11 @@ def _get_default_config():
     }
 
     config["IP_Location"] = {
-        "method": "pconline",
         "amap_key": "",
+        "uapipro_key": "",
         "retry_times": "3",
         "timeout": "5",
+        "query_order": "uapipro,amap,baidu",
     }
 
     config["Features"] = {
@@ -33697,8 +33698,8 @@ def start_web_server(args_param):
     def get_ip_location(ip_address):
         """
         获取IP地址的地理位置信息 (带1天缓存)
-        支持多种查询方法：高德地图、pconline
-        自动重试，并在缓存"未知"时对有效IP重新查询
+        支持多种查询方法：UapiPro、高德地图、百度开放数据
+        自动重试，DNS解析验证，智能回退
         """
         # 预处理IP地址，验证有效性
         if not ip_address or not isinstance(ip_address, str):
@@ -33707,8 +33708,13 @@ def start_web_server(args_param):
         ip_address = ip_address.strip()
         
         # 检查是否为空或无效IP
-        if not ip_address or ip_address in ["", "0.0.0.0", "127.0.0.1", "::1", "localhost"]:
+        if not ip_address or ip_address in ["", "0.0.0.0"]:
             return "未知"
+        
+        # 检查是否为本地回环地址
+        local_ips = ["127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"]
+        if ip_address in local_ips or ip_address.startswith("127.") or ip_address.startswith("::ffff:127."):
+            return "本地回环地址"
         
         # 简单验证IP格式（IPv4或IPv6）
         import re
@@ -33744,31 +33750,108 @@ def start_web_server(args_param):
         try:
             config = _read_config_ini()
             if config and config.has_section("IP_Location"):
-                method = config.get("IP_Location", "method", fallback="pconline")
                 amap_key = config.get("IP_Location", "amap_key", fallback="")
+                uapipro_key = config.get("IP_Location", "uapipro_key", fallback="")
                 retry_times = config.getint("IP_Location", "retry_times", fallback=3)
                 timeout = config.getint("IP_Location", "timeout", fallback=5)
+                query_order = config.get("IP_Location", "query_order", fallback="uapipro,amap,baidu")
             else:
-                method = "pconline"
                 amap_key = ""
+                uapipro_key = ""
                 retry_times = 3
                 timeout = 5
+                query_order = "uapipro,amap,baidu"
         except Exception as e:
             logging.warning(f"[IP定位] 读取配置失败，使用默认值: {e}")
-            method = "pconline"
             amap_key = ""
+            uapipro_key = ""
             retry_times = 3
             timeout = 5
+            query_order = "uapipro,amap,baidu"
+
+        # DNS解析辅助函数
+        def check_dns(domain, max_retries=2):
+            """检查域名是否可以解析"""
+            import socket
+            for attempt in range(max_retries):
+                try:
+                    socket.gethostbyname(domain)
+                    return True
+                except socket.gaierror:
+                    if attempt < max_retries - 1:
+                        time.sleep(0.3)
+                        continue
+                    logging.warning(f"[IP定位] DNS解析失败: {domain}")
+                    return False
+            return False
 
         # 定义查询方法
-        def query_amap(ip, key, timeout_sec):
-            """使用高德地图API查询IP位置"""
+        def query_uapipro(ip, key, timeout_sec):
+            """使用UapiPro API查询IP位置"""
             if not key:
-                logging.debug("[IP定位] 高德地图API Key未配置")
+                logging.debug("[IP定位-UapiPro] API Key未配置")
+                return None
+            
+            domain = "uapis.cn"
+            if not check_dns(domain):
+                logging.warning(f"[IP定位-UapiPro] 域名 {domain} 无法解析")
                 return None
             
             try:
-                api_url = f"https://restapi.amap.com/v3/ip?key={key}&ip={ip}"
+                api_url = f"https://{domain}/api/v1/network/ipinfo?ip={ip}"
+                headers = {"Authorization": f"Bearer {key}"}
+                response = requests.get(api_url, headers=headers, timeout=timeout_sec)
+                
+                # 检查HTTP状态码
+                if response.status_code == 400:
+                    logging.warning(f"[IP定位-UapiPro] 无效的IP地址: {ip}")
+                    return None
+                elif response.status_code in [404, 500]:
+                    logging.warning(f"[IP定位-UapiPro] 服务器错误: {response.status_code}")
+                    return None
+                elif response.status_code != 200:
+                    logging.warning(f"[IP定位-UapiPro] HTTP错误: {response.status_code}")
+                    return None
+                
+                data = response.json()
+                
+                if not isinstance(data, dict):
+                    logging.warning(f"[IP定位-UapiPro] API返回非字典类型: {type(data).__name__}")
+                    return None
+                
+                # 检查是否有错误
+                if "code" in data:
+                    logging.warning(f"[IP定位-UapiPro] API返回错误: {data.get('message', 'Unknown error')}")
+                    return None
+                
+                region = data.get("region", "").strip()
+                if region:
+                    logging.debug(f"[IP定位-UapiPro] 成功: ip={ip}, 位置={region}")
+                    return region
+                else:
+                    logging.warning(f"[IP定位-UapiPro] 返回空数据")
+                    return None
+                    
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"[IP定位-UapiPro] 网络请求失败: {e}")
+                return None
+            except Exception as e:
+                logging.warning(f"[IP定位-UapiPro] 查询失败: {e}")
+                return None
+        
+        def query_amap(ip, key, timeout_sec):
+            """使用高德地图API查询IP位置"""
+            if not key:
+                logging.debug("[IP定位-高德] API Key未配置")
+                return None
+            
+            domain = "restapi.amap.com"
+            if not check_dns(domain):
+                logging.warning(f"[IP定位-高德] 域名 {domain} 无法解析")
+                return None
+            
+            try:
+                api_url = f"https://{domain}/v3/ip?key={key}&ip={ip}"
                 response = requests.get(api_url, timeout=timeout_sec)
                 data = response.json()
                 
@@ -33802,14 +33885,82 @@ def start_web_server(args_param):
                 logging.debug(f"[IP定位-高德] 成功: ip={ip}, 位置={location_str}")
                 return location_str
                 
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"[IP定位-高德] 网络请求失败: {e}")
+                return None
             except Exception as e:
                 logging.warning(f"[IP定位-高德] 查询失败: {e}")
                 return None
         
-        def query_pconline(ip, timeout_sec):
-            """使用pconline API查询IP位置"""
+        def query_baidu(ip, timeout_sec):
+            """使用百度开放数据API查询IP位置"""
+            domain = "opendata.baidu.com"
+            if not check_dns(domain):
+                logging.warning(f"[IP定位-百度] 域名 {domain} 无法解析")
+                return None
+            
             try:
-                api_url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip}&json=true"
+                api_url = f"https://{domain}/api.php?co=&resource_id=6006&oe=utf8&query={ip}"
+                response = requests.get(api_url, timeout=timeout_sec)
+                data = response.json()
+                
+                if not isinstance(data, dict):
+                    logging.warning(f"[IP定位-百度] API返回非字典类型: {type(data).__name__}")
+                    return None
+                
+                status = data.get("status")
+                if status != "0":
+                    logging.warning(f"[IP定位-百度] API返回错误状态: {data}")
+                    return None
+                
+                data_list = data.get("data", [])
+                if not data_list or not isinstance(data_list, list):
+                    logging.warning(f"[IP定位-百度] 返回空数据")
+                    return None
+                
+                if len(data_list) > 0:
+                    location = data_list[0].get("location", "").strip()
+                    if location:
+                        logging.debug(f"[IP定位-百度] 成功: ip={ip}, 位置={location}")
+                        return location
+                
+                logging.warning(f"[IP定位-百度] 未找到location字段")
+                return None
+                    
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"[IP定位-百度] 网络请求失败: {e}")
+                return None
+            except Exception as e:
+                logging.warning(f"[IP定位-百度] 查询失败: {e}")
+                return None
+
+        # 解析查询顺序
+        query_methods = []
+        for method_name in query_order.split(","):
+            method_name = method_name.strip().lower()
+            if method_name == "uapipro" and uapipro_key:
+                query_methods.append(("UapiPro", lambda ip, t: query_uapipro(ip, uapipro_key, t)))
+            elif method_name == "amap" and amap_key:
+                query_methods.append(("高德", lambda ip, t: query_amap(ip, amap_key, t)))
+            elif method_name == "baidu":
+                query_methods.append(("百度", lambda ip, t: query_baidu(ip, t)))
+            elif method_name == "pconline":
+                # 保留pconline作为备选
+                query_methods.append(("pconline", lambda ip, t: query_pconline(ip, t)))
+        
+        # 如果没有配置任何方法，使用百度作为默认
+        if not query_methods:
+            query_methods.append(("百度", lambda ip, t: query_baidu(ip, t)))
+        
+        def query_pconline(ip, timeout_sec):
+            """使用pconline API查询IP位置（备选方法）"""
+            domain = "whois.pconline.com.cn"
+            if not check_dns(domain):
+                logging.warning(f"[IP定位-pconline] 域名 {domain} 无法解析")
+                return None
+            
+            try:
+                api_url = f"https://{domain}/ipJson.jsp?ip={ip}&json=true"
                 response = requests.get(api_url, timeout=timeout_sec)
                 response.encoding = "gbk"
                 data = response.json()
@@ -33826,36 +33977,40 @@ def start_web_server(args_param):
                     logging.warning(f"[IP定位-pconline] 返回空数据")
                     return None
                     
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"[IP定位-pconline] 网络请求失败: {e}")
+                return None
             except Exception as e:
                 logging.warning(f"[IP定位-pconline] 查询失败: {e}")
                 return None
 
-        # 执行查询，支持自动重试和回退
+        # 执行查询，按照配置的顺序尝试各个方法
         location_result = None
         
-        for attempt in range(retry_times):
-            # 根据配置的方法查询
-            if method == "amap":
-                location_result = query_amap(ip_address, amap_key, timeout)
-                # 如果高德失败，尝试pconline作为备用
-                if not location_result:
-                    logging.debug(f"[IP定位] 高德查询失败，尝试pconline (尝试 {attempt + 1}/{retry_times})")
-                    location_result = query_pconline(ip_address, timeout)
-            else:
-                # 默认使用pconline
-                location_result = query_pconline(ip_address, timeout)
-                # 如果pconline失败且配置了高德Key，尝试高德作为备用
-                if not location_result and amap_key:
-                    logging.debug(f"[IP定位] pconline查询失败，尝试高德 (尝试 {attempt + 1}/{retry_times})")
-                    location_result = query_amap(ip_address, amap_key, timeout)
+        for method_name, query_func in query_methods:
+            logging.debug(f"[IP定位] 尝试使用 {method_name} 查询: {ip_address}")
             
-            # 如果成功获取到位置信息，跳出重试循环
+            # 对每个方法进行重试
+            for attempt in range(retry_times):
+                try:
+                    location_result = query_func(ip_address, timeout)
+                    if location_result:
+                        logging.info(f"[IP定位] {method_name} 查询成功: ip={ip_address}, 位置={location_result}")
+                        break
+                    else:
+                        if attempt < retry_times - 1:
+                            logging.debug(f"[IP定位] {method_name} 查询失败，重试 {attempt + 2}/{retry_times}")
+                            time.sleep(0.5)
+                except Exception as e:
+                    logging.warning(f"[IP定位] {method_name} 查询异常 (尝试 {attempt + 1}/{retry_times}): {e}")
+                    if attempt < retry_times - 1:
+                        time.sleep(0.5)
+            
+            # 如果当前方法成功，跳出循环
             if location_result:
                 break
-            
-            # 等待一小段时间再重试
-            if attempt < retry_times - 1:
-                time.sleep(0.5)
+            else:
+                logging.warning(f"[IP定位] {method_name} 所有重试均失败，尝试下一个方法")
         
         # 保存结果到缓存
         final_location = location_result if location_result else "未知"
