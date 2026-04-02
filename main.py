@@ -22159,19 +22159,21 @@ def start_web_server(args_param):
         # 美化弹窗
         # 正常工作
         "sweetalert2": {
-            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js",
+            # "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.js",
             "filename": "sweetalert2.min.js",
             "type": "js",
         },
         "sweetalert2-css": {
-            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css",
+            # "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css",
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.css",
             "filename": "sweetalert2.min.css",
             "type": "css",
         },
         # 二维码生成库
         # 不能切换到 https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js
         "qrcode": {
-            "url": "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js",  # 只有压缩之后的版本
             "filename": "qrcode.min.js",
             "type": "js",
         },
@@ -22179,12 +22181,14 @@ def start_web_server(args_param):
         # 目前还在使用 1.6.2 版本，因为 2.1 版本API有变化
         "cropperjs": {
             # "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js",
-             "url": "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js",
+            # "url": "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.js",
             "filename": "cropper.min.js",
             "type": "js",
         },
         "cropperjs-css": {
-            "url": "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css",
+            # "url": "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css",
+            "url": "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.css",
             "filename": "cropper.min.css",
             "type": "css",
         },
@@ -22192,25 +22196,28 @@ def start_web_server(args_param):
         # 目前还在使用 3.4.17 版本，4.X 版本API有变化
         "tailwindcss": {
             # "url": "https://cdn.jsdelivr.net/npm/@tailwindcss/browser/dist/index.global.min.js",
-            "url": "https://cdn.tailwindcss.com",
+            "url": "https://cdn.tailwindcss.com",  # 只有压缩之后的版本
             "filename": "tailwindcss.min.js",
             "type": "js",
         },
         # 基于事件驱动的实时通信框架
         "socketio": {
-            "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js",
+            # "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.js",
             "filename": "socket.io.min.js",
             "type": "js",
         },
-        # Zilla Slab 字体，适用于标题
-        # Noto Sans SC 字体，适用于正文
+        # Zilla Slab 字体，非中文字体
+        # Noto Sans SC 字体，中文字库
         "zilla-slab": {
-            "url": "https://cdn.jsdelivr.net/npm/@fontsource/zilla-slab@5/index.min.css",
+            # "url": "https://cdn.jsdelivr.net/npm/@fontsource/zilla-slab@5/index.min.css",
+            "url": "https://cdn.jsdelivr.net/npm/@fontsource/zilla-slab@5/index.css",
             "filename": "zilla-slab.min.css",
             "type": "css",
         },
         "noto-sans-sc": {
-            "url": "https://cdn.jsdelivr.net/npm/@fontsource-variable/noto-sans-sc/index.min.css",
+            # "url": "https://cdn.jsdelivr.net/npm/@fontsource-variable/noto-sans-sc/index.min.css",
+            "url": "https://cdn.jsdelivr.net/npm/@fontsource-variable/noto-sans-sc/index.css",
             "filename": "noto-sans-sc.min.css",
             "type": "css",
         },
@@ -22219,17 +22226,29 @@ def start_web_server(args_param):
         #     "filename": "google-fonts.css",
         #     "type": "css",
         # },
+        # 弃用 Noto Sans SC 字体，改用思源雅黑
+        # TODO: 需要找到一个合适的思源雅黑CDN资源，并替换掉原有的 Noto Sans SC 字体链接
         # 高德地图
         "amap-loader": {
             "url": "https://webapi.amap.com/loader.js",
             "filename": "amap-loader.js",
             "type": "js",
         },
+        # JavaScript 库
         "jquery": {
-            "url": "https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js",
+            # "url": "https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/jquery/dist/jquery.js",
             "filename": "jquery.js",
             "type": "js",
         },
+        # JavaScript 拖拽排序库
+        "sortable": {
+            # "url": "https://cdn.jsdelivr.net/npm/sortablejs/Sortable.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/sortablejs/Sortable.js",
+            "filename": "sortable.min.js",
+            "type": "js",
+        }
+
     }
 
     # JS缓存存储
@@ -22457,78 +22476,100 @@ def start_web_server(args_param):
         except Exception as _e:
             logging.error(f"[账单支付] 批量更新账单状态失败: {_e}", exc_info=True)
 
-    def parse_google_fonts_css(css_content):
+    def parse_google_fonts_css(css_content, css_url, key):
         """
-        解析Google Fonts CSS内容，提取所有字体文件URL
+        解析CSS内容中的字体文件URL（支持绝对路径与相对路径）。
 
         参数:
             css_content: CSS文件内容
+            css_url: CSS来源URL（用于解析相对路径）
+            key: CDN缓存键名（用于生成稳定文件名）
 
         返回:
-            字体URL列表 [(url, font_name), ...]
+            字体URL列表 [(原始URL, 绝对URL, font_key), ...]
         """
-        # import re
+        if not isinstance(css_content, str):
+            return []
 
-        # 匹配 url(https://...) 格式的链接
-        pattern = r"url\((https://fonts\.gstatic\.com/[^)]+)\)"
-        urls = re.findall(pattern, css_content)
+        # 同时匹配 url("..."), url('...'), url(...) 三种写法
+        pattern = r"url\(\s*([\"']?)([^\"')]+)\1\s*\)"
+        matches = re.findall(pattern, css_content)
 
-        # 为每个URL生成唯一的标识符（基于文件名）
+        supported_exts = (".woff2", ".woff", ".ttf", ".otf")
         font_urls = []
-        for url in urls:
-            # 从URL提取文件名作为标识符
-            # 例如: https://fonts.gstatic.com/s/notosanssc/v39/xxx.ttf -> notosanssc-xxx.ttf
-            parts = url.split("/")
-            if len(parts) >= 2:
-                font_family = parts[-3] if len(parts) >= 3 else "font"
-                font_file = parts[-1]
-                font_key = f"{font_family}-{font_file}"
-            else:
-                font_key = url.split("/")[-1]
-            font_urls.append((url, font_key))
+        seen = set()
+
+        for _, raw_url in matches:
+            original_ref = (raw_url or "").strip()
+            if not original_ref:
+                continue
+
+            # 跳过内联data URI、锚点和本地blob
+            lowered = original_ref.lower()
+            if lowered.startswith("data:") or lowered.startswith("blob:") or lowered.startswith("#"):
+                continue
+
+            # 解析相对路径为绝对URL，便于下载
+            absolute_url = urllib.parse.urljoin(css_url, original_ref)
+            parsed = urllib.parse.urlparse(absolute_url)
+            path_lower = (parsed.path or "").lower()
+            if not path_lower.endswith(supported_exts):
+                continue
+
+            base_name = os.path.basename(parsed.path)
+            safe_key = re.sub(r"[^a-zA-Z0-9_-]", "-", str(key))
+            url_hash = hashlib.sha256(absolute_url.encode("utf-8")).hexdigest()[:10]
+            font_key = f"{safe_key}-{url_hash}-{base_name}"
+
+            dedupe_key = (original_ref, absolute_url)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+
+            font_urls.append((original_ref, absolute_url, font_key))
 
         return font_urls
 
-    def cache_google_fonts_with_ttf(css_content, key):
+    def cache_google_fonts_with_ttf(css_content, key, css_url, css_filename):
         """
-        缓存Google Fonts CSS及其引用的所有TTF字体文件
+        缓存CSS中引用的字体文件（TTF/WOFF/WOFF2/OTF），并将URL改写为本地接口。
 
         参数:
             css_content: CSS文件内容
             key: 缓存键名
+            css_url: CSS来源URL（用于解析相对路径）
+            css_filename: CSS缓存文件名（用于构建字体子目录）
 
         返回:
             处理后的CSS内容（URL已替换为本地API地址）
         """
-        # import re
-
-        # 解析CSS中的字体URL
-        font_urls = parse_google_fonts_css(css_content)
-        logging.info(f"[CDN缓存] 发现 {len(font_urls)} 个字体文件需要缓存")
+        font_urls = parse_google_fonts_css(css_content, css_url, key)
+        logging.info(f"[CDN缓存] 资源 {key} 发现 {len(font_urls)} 个字体文件需要缓存")
 
         modified_css = css_content
+        # 目录名取CSS文件基名，并去掉 .min.css 或 .css 后缀
+        css_name = os.path.basename((css_filename or f"{key}.css").strip() or f"{key}.css")
+        css_font_dir = re.sub(r"(?:\.min)?\.css$", "", css_name, flags=re.IGNORECASE).strip() or str(key)
 
-        for original_url, font_key in font_urls:
-            # 下载字体文件（二进制模式）
+        for original_ref, absolute_url, font_key in font_urls:
             logging.info(f"[CDN缓存] 正在下载字体: {font_key}")
-            font_content = fetch_cdn_file(
-                original_url, timeout=60, binary=True)
+            font_content = fetch_cdn_file(absolute_url, timeout=60, binary=True)
 
             if font_content:
-                # 缓存字体文件（二进制）
+                # 按CSS文件名归档字体文件，如 zilla-slab.min.css/<font-file>
+                font_relative_path = os.path.join(css_font_dir, font_key)
+                font_storage_key = font_relative_path.replace("\\", "/").replace("/", "__")
+
                 with font_cache_lock:
-                    font_cache_storage[font_key] = font_content
+                    font_cache_storage[font_storage_key] = font_content
 
-                # 保存到本地文件
-                font_filename = font_key
-                save_cached_file(font_filename, font_content, binary=True)
+                save_cached_file(font_relative_path, font_content, binary=True)
 
-                # 替换CSS中的URL为本地API地址
-                local_url = f"/api/cdn/font/{font_key}"
-                modified_css = modified_css.replace(original_url, local_url)
-                logging.info(f"[CDN缓存] 字体已缓存: {font_key}")
+                local_url = f"/api/cdn/font/{font_storage_key}"
+                modified_css = modified_css.replace(original_ref, local_url)
+                logging.info(f"[CDN缓存] 字体已缓存并改写: {font_relative_path}")
             else:
-                logging.warning(f"[CDN缓存] 字体下载失败: {font_key}")
+                logging.warning(f"[CDN缓存] 字体下载失败: {absolute_url}")
 
         return modified_css
 
@@ -22541,21 +22582,30 @@ def start_web_server(args_param):
             if not os.path.exists(fonts_dir):
                 return
 
-            for filename in os.listdir(fonts_dir):
-                if (
-                    filename.endswith(".ttf")
-                    or filename.endswith(".woff")
-                    or filename.endswith(".woff2")
-                ):
-                    filepath = os.path.join(fonts_dir, filename)
+            for root, _, files in os.walk(fonts_dir):
+                for filename in files:
+                    if not (
+                        filename.endswith(".ttf")
+                        or filename.endswith(".woff")
+                        or filename.endswith(".woff2")
+                        or filename.endswith(".otf")
+                    ):
+                        continue
+
+                    filepath = os.path.join(root, filename)
                     try:
                         with open(filepath, "rb") as f:
                             content = f.read()
+
+                        rel_path = os.path.relpath(filepath, fonts_dir)
+                        rel_path = rel_path.replace("\\", "/")
+                        storage_key = rel_path.replace("/", "__")
+
                         with font_cache_lock:
-                            font_cache_storage[filename] = content
-                        logging.info(f"[CDN缓存] 从本地加载字体: {filename}")
+                            font_cache_storage[storage_key] = content
+                        logging.info(f"[CDN缓存] 从本地加载字体: {rel_path}")
                     except Exception as e:
-                        logging.warning(f"[CDN缓存] 加载字体文件失败 {filename}: {e}")
+                        logging.warning(f"[CDN缓存] 加载字体文件失败 {filepath}: {e}")
         except Exception as e:
             logging.warning(f"[CDN缓存] 扫描字体缓存目录失败: {e}")
 
@@ -22615,6 +22665,9 @@ def start_web_server(args_param):
         cache_path = os.path.join(JS_CACHE_DIR, filename)
         tmp_path = f"{cache_path}.tmp"
         try:
+            cache_dir = os.path.dirname(cache_path)
+            if cache_dir:
+                os.makedirs(cache_dir, exist_ok=True)
             mode = "wb" if binary else "w"
             encoding = None if binary else "utf-8"
             with open(tmp_path, mode, encoding=encoding) as f:
@@ -22635,32 +22688,54 @@ def start_web_server(args_param):
     source_map_storage = {}
     source_map_lock = threading.Lock()
 
-    def _extract_source_map_url(js_content, js_url):
+    def _extract_source_map_url(content, asset_url, file_type="js"):
         """
-        从JS内容提取 sourceMappingURL，并解析为绝对URL。
-        若未提取到且js_url以.js结尾，则尝试 js_url + '.map'
+        从资源内容提取 sourceMappingURL 并解析为绝对URL。
+        支持JS与CSS；若未提取到且URL后缀可推断，则尝试 URL + '.map'。
         """
         try:
-            # 匹配 //# sourceMappingURL=xxx 或 //@ sourceMappingURL=xxx
-            matches = re.findall(
-                r"//[@#]\s*sourceMappingURL=([^\s]+)", js_content or "")
+            matches = []
+            if file_type == "css":
+                # 匹配 /*# sourceMappingURL=xxx */ 或 /*@ sourceMappingURL=xxx */
+                matches = re.findall(
+                    r"/\*[@#]\s*sourceMappingURL=([^*\s]+)\s*\*/",
+                    content or "",
+                    flags=re.IGNORECASE,
+                )
+            else:
+                # 匹配 //# sourceMappingURL=xxx 或 //@ sourceMappingURL=xxx
+                matches = re.findall(
+                    r"//[@#]\s*sourceMappingURL=([^\s]+)", content or "")
+
             if matches:
                 raw_map = matches[-1].strip()
-                return urllib.parse.urljoin(js_url, raw_map), raw_map
-            if isinstance(js_url, str) and js_url.endswith(".js"):
-                return js_url + ".map", None
+                return urllib.parse.urljoin(asset_url, raw_map), raw_map
+
+            if isinstance(asset_url, str) and (asset_url.endswith(".js") or asset_url.endswith(".css")):
+                return asset_url + ".map", None
         except Exception as e:
             logging.warning(f"[CDN缓存] 提取source map URL失败: {e}")
         return None, None
 
-    def _remove_js_source_map_comment(js_content):
+    def _remove_source_map_comment(content, file_type="js"):
         """
-        删除JS中的 sourceMappingURL 注释
+        删除资源中的 sourceMappingURL 注释（支持JS/CSS）
         """
-        if not isinstance(js_content, str):
-            return js_content
-        return re.sub(r"\n?//[@#]\s*sourceMappingURL=[^\n\r]*\s*$",
-                      "", js_content, flags=re.MULTILINE)
+        if not isinstance(content, str):
+            return content
+        if file_type == "css":
+            return re.sub(
+                r"\n?/\*[@#]\s*sourceMappingURL=[^*]*\*/\s*$",
+                "",
+                content,
+                flags=re.MULTILINE | re.IGNORECASE,
+            )
+        return re.sub(
+            r"\n?//[@#]\s*sourceMappingURL=[^\n\r]*\s*$",
+            "",
+            content,
+            flags=re.MULTILINE,
+        )
 
     def _safe_delete_cached_file(filename):
         """
@@ -22673,15 +22748,15 @@ def start_web_server(args_param):
         except Exception as e:
             logging.warning(f"[CDN缓存] 删除缓存文件失败: {filename}, 错误: {e}")
 
-    def process_js_with_source_map(js_content, js_url, key):
+    def process_asset_with_source_map(content, asset_url, key, file_type="js"):
         """
-        处理JS中的 sourceMappingURL。
-        - map下载成功：缓存map并将JS尾部 sourceMappingURL 改写成本地 /api/cdn/map/<key>
-        - map下载失败：清理旧map（内存+磁盘）并删除JS中的 sourceMappingURL
+        处理资源中的 sourceMappingURL（支持JS/CSS）。
+        - map下载成功：缓存map并改写为本地 /api/cdn/map/<key>
+        - map下载失败：清理旧map并删除 sourceMappingURL
         """
-        map_url, original_map_ref = _extract_source_map_url(js_content, js_url)
+        map_url, original_map_ref = _extract_source_map_url(content, asset_url, file_type=file_type)
         if not map_url:
-            return js_content
+            return content
 
         map_content = fetch_cdn_file(map_url)
         map_filename = f"{key}.map"
@@ -22693,33 +22768,44 @@ def start_web_server(args_param):
                     source_map_storage[key] = map_content
                 local_map_ref = f"/api/cdn/map/{key}"
                 if original_map_ref:
-                    # 替换 sourceMappingURL 为本地接口地址
-                    js_content = re.sub(
-                        r"//[@#]\s*sourceMappingURL=[^\n\r]*\s*$",
-                        f"//# sourceMappingURL={local_map_ref}",
-                        js_content,
-                        flags=re.MULTILINE,
-                    )
+                    if file_type == "css":
+                        content = re.sub(
+                            r"/\*[@#]\s*sourceMappingURL=[^*]*\*/\s*$",
+                            f"/*# sourceMappingURL={local_map_ref} */",
+                            content,
+                            flags=re.MULTILINE | re.IGNORECASE,
+                        )
+                    else:
+                        content = re.sub(
+                            r"//[@#]\s*sourceMappingURL=[^\n\r]*\s*$",
+                            f"//# sourceMappingURL={local_map_ref}",
+                            content,
+                            flags=re.MULTILINE,
+                        )
                 else:
-                    js_content = js_content.rstrip() + \
-                        f"\n//# sourceMappingURL={local_map_ref}\n"
-                logging.info(f"[CDN缓存] source map下载并改写成功: {key}")
+                    if file_type == "css":
+                        content = content.rstrip() + \
+                            f"\n/*# sourceMappingURL={local_map_ref} */\n"
+                    else:
+                        content = content.rstrip() + \
+                            f"\n//# sourceMappingURL={local_map_ref}\n"
+                logging.info(f"[CDN缓存] {file_type} source map下载并改写成功: {key}")
             else:
                 # map文件保存失败，按失败处理：清理旧map并删除sourceMappingURL
                 with source_map_lock:
                     source_map_storage.pop(key, None)
                 _safe_delete_cached_file(map_filename)
-                js_content = _remove_js_source_map_comment(js_content)
-                logging.warning(f"[CDN缓存] source map保存失败，已移除映射: {key}")
+                content = _remove_source_map_comment(content, file_type=file_type)
+                logging.warning(f"[CDN缓存] {file_type} source map保存失败，已移除映射: {key}")
         else:
             # map下载失败：清理旧map并移除JS中的sourceMappingURL
             with source_map_lock:
                 source_map_storage.pop(key, None)
             _safe_delete_cached_file(map_filename)
-            js_content = _remove_js_source_map_comment(js_content)
-            logging.warning(f"[CDN缓存] source map下载失败，已移除映射: {key}")
+            content = _remove_source_map_comment(content, file_type=file_type)
+            logging.warning(f"[CDN缓存] {file_type} source map下载失败，已移除映射: {key}")
 
-        return js_content
+        return content
 
     def update_single_cdn_file(key, config):
         """
@@ -22734,11 +22820,12 @@ def start_web_server(args_param):
 
         if content:
             # 先处理内容
-            if key == "google-fonts":
-                logging.info(f"[CDN缓存] 正在解析Google Fonts CSS并缓存字体文件...")
-                content = cache_google_fonts_with_ttf(content, key)
+            if file_type == "css":
+                logging.info(f"[CDN缓存] 正在解析CSS中的字体并缓存: {key}")
+                content = cache_google_fonts_with_ttf(content, key, url, filename)
+                content = process_asset_with_source_map(content, url, key, file_type="css")
             elif file_type == "js":
-                content = process_js_with_source_map(content, url, key)
+                content = process_asset_with_source_map(content, url, key, file_type="js")
 
             # 先落盘，成功后再更新内存缓存，避免更新中断导致文件缺失
             if save_cached_file(filename, content):
@@ -22798,7 +22885,7 @@ def start_web_server(args_param):
                         os.path.join(JS_CACHE_DIR, filename)
                     )
                 logging.info(f"[CDN缓存] 从本地加载: {key}")
-                if config.get("type") == "js":
+                if config.get("type") in ["js", "css"]:
                     map_filename = f"{key}.map"
                     map_cached = load_cached_file(map_filename)
                     if map_cached:
@@ -32109,7 +32196,7 @@ def start_web_server(args_param):
     @app.route("/api/cdn/font/<font_key>")
     def get_cdn_cached_font(font_key):
         """
-        返回本地缓存的字体文件（TTF/WOFF/WOFF2）
+        返回本地缓存的字体文件（TTF/WOFF/WOFF2/OTF）
 
         参数:
             font_key: 字体文件标识符，如 notosanssc-xxx.ttf
@@ -32129,6 +32216,8 @@ def start_web_server(args_param):
                         mimetype = "font/woff"
                     elif font_key.endswith(".ttf"):
                         mimetype = "font/ttf"
+                    elif font_key.endswith(".otf"):
+                        mimetype = "font/otf"
                     else:
                         mimetype = "application/octet-stream"
 
