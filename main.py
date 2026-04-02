@@ -22137,14 +22137,10 @@ def start_web_server(args_param):
         #     "type": "css",
         # },
         "tailwindcss": {
-            "url": "https://cdn.jsdelivr.net/npm/tailwindcss@4/dist/lib.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/@tailwindcss/browser/dist/index.global.min.js",
+            # "url": "https://cdn.tailwindcss.com",
             "filename": "tailwindcss.min.js",
             "type": "js",
-        },
-        "tailwindcss-css": {
-            "url": "https://cdn.jsdelivr.net/npm/tailwindcss@4/index.min.css",
-            "filename": "tailwindcss.min.css",
-            "type": "css",
         },
         "socketio": {
             "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js",
@@ -31947,9 +31943,6 @@ def start_web_server(args_param):
         返回:
             文件内容，并设置正确的Content-Type
         """
-        # 直接忽略所有 source map 请求（浏览器调试工具发出的 .map 请求）
-        if file_key.endswith(".map"):
-            return make_response("", 204)
         try:
             with js_cache_lock:
                 if file_key in js_cache_storage:
