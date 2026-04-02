@@ -41668,8 +41668,17 @@ async function loadSystemConfig() {
           }>bcrypt(自动加盐)</option>
         </select>
       `;
+      } else if (type === "ip_query_method") {
+        inputHtml = `
+        <select id="config-${section}-${key}" class="select-field">
+          <option value="uapipro" ${value === "uapipro" ? "selected" : ""}>UapiPro</option>
+          <option value="amap" ${value === "amap" ? "selected" : ""}>高德地图</option>
+          <option value="baidu" ${value === "baidu" ? "selected" : ""}>百度开放数据</option>
+          <option value="pconline" ${value === "pconline" ? "selected" : ""}>PConline</option>
+        </select>
+      `;
       } else {
-        inputHtml = `<input type="text" id="config-${section}-${key}" value="${value}" class="input-field">`;
+        inputHtml = `<input type="text" id="config-${section}-${key}" value="${value || ""}" class="input-field">`;
       }
       return `
       <div class="mb-3">
@@ -41820,6 +41829,36 @@ async function loadSystemConfig() {
       "高德地图 API Key",
       "text",
       "用于前端地图显示的JS API Key。",
+    );
+    html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">IP 归属地查询配置</h5>';
+    html += createInput(
+      "IP_Location",
+      "query_method",
+      "默认查询方式（兼容旧配置）",
+      "ip_query_method",
+      "仅用于兼容旧配置，建议主要使用下方“查询顺序”。",
+    );
+    html += createInput(
+      "IP_Location",
+      "query_order",
+      "查询顺序",
+      "text",
+      "按逗号分隔：uapipro,amap,baidu（默认）。可选：uapipro / amap / baidu / pconline",
+    );
+    html += createInput(
+      "IP_Location",
+      "amap_web_api_key",
+      "高德 Web API Key（IP定位）",
+      "text",
+      "用于调用 https://restapi.amap.com/v3/ip",
+    );
+    html += createInput(
+      "IP_Location",
+      "uapipro_api_key",
+      "UapiPro API Key",
+      "text",
+      "用于调用 https://uapis.cn/api/v1/network/ipinfo（Bearer Token）",
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
@@ -44032,6 +44071,7 @@ async function loadCDNConfig() {
       if (mobileCdnCacheTime) {
         mobileCdnCacheTime.value = data.config.cache_time || 3600;
       }
+      _syncCDNForceRefreshAvailability(!!(data.config.cdn_enabled || false));
 
       // 在控制台输出日志，方便调试
       console.log("[CDN配置] 配置加载成功:", data.config);
@@ -44111,6 +44151,7 @@ async function saveCDNConfig() {
     if (data.success) {
       // 显示成功消息，告知用户配置已保存
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
+      _syncCDNForceRefreshAvailability(!!cdnEnabledToggle.checked);
 
       // 在控制台输出成功日志
       console.log("[CDN配置] 配置保存成功");
@@ -44184,6 +44225,7 @@ async function saveMobileCDNConfig() {
     // 检查保存是否成功
     if (data.success) {
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
+      _syncCDNForceRefreshAvailability(!!cdnEnabledToggle.checked);
       console.log("[移动端CDN配置] 配置保存成功");
     } else {
       showModalAlert(data.message || "保存配置失败", "保存失败");
@@ -44196,6 +44238,93 @@ async function saveMobileCDNConfig() {
     // 恢复按钮状态
     setButtonLoading(saveBtn, false, "保存配置");
   }
+}
+
+// CDN 强制刷新（异步后台执行，防重复点击，自动重试）
+let cdnForceRefreshInFlight = false;
+let cdnForceRefreshRetryTimer = null;
+
+function _setCDNForceRefreshButtonState(disabled, text = "强制刷新服务器缓存") {
+  const btnIds = ["cdn-force-refresh-btn", "mobile-cdn-force-refresh-btn"];
+  btnIds.forEach((id) => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.disabled = disabled;
+    btn.textContent = text;
+  });
+}
+
+function _syncCDNForceRefreshAvailability(cdnEnabled) {
+  const shouldDisable = !cdnEnabled || cdnForceRefreshInFlight;
+  _setCDNForceRefreshButtonState(
+    shouldDisable,
+    cdnForceRefreshInFlight ? "后台刷新中..." : "强制刷新服务器缓存",
+  );
+}
+
+function triggerCDNForceRefresh() {
+  if (cdnForceRefreshInFlight) {
+    showModalAlert("CDN缓存正在后台刷新中，请勿重复点击", "提示");
+    return;
+  }
+
+  cdnForceRefreshInFlight = true;
+  if (cdnForceRefreshRetryTimer) {
+    clearTimeout(cdnForceRefreshRetryTimer);
+    cdnForceRefreshRetryTimer = null;
+  }
+  _setCDNForceRefreshButtonState(true, "后台刷新中...");
+  showModalAlert("已启动后台强制刷新，任务正在执行中", "已提交");
+
+  const maxAttempts = 3;
+  let attempt = 0;
+
+  const doRefresh = async () => {
+    attempt += 1;
+    try {
+      const response = await fetch("/api/cdn/refresh", {
+        method: "POST",
+        headers: {
+          "X-Session-ID": sessionUUID,
+          "Content-Type": "application/json",
+        },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result && result.success) {
+        showTempMessage(
+          `CDN后台刷新完成（成功 ${result.success_count || 0}，失败 ${result.fail_count || 0}）`,
+          "success",
+        );
+        cdnForceRefreshInFlight = false;
+        _setCDNForceRefreshButtonState(false);
+        return;
+      }
+
+      if (attempt < maxAttempts) {
+        showTempMessage(`CDN刷新失败，准备第 ${attempt + 1} 次重试...`, "warning");
+        cdnForceRefreshRetryTimer = setTimeout(doRefresh, 1200);
+      } else {
+        showModalAlert(
+          `CDN后台刷新失败：${(result && result.message) || `HTTP ${response.status}`}`,
+          "刷新失败",
+        );
+        cdnForceRefreshInFlight = false;
+        _setCDNForceRefreshButtonState(false);
+      }
+    } catch (e) {
+      if (attempt < maxAttempts) {
+        showTempMessage(`CDN刷新网络异常，准备第 ${attempt + 1} 次重试...`, "warning");
+        cdnForceRefreshRetryTimer = setTimeout(doRefresh, 1200);
+      } else {
+        showModalAlert(`CDN后台刷新失败：${e.message}`, "刷新失败");
+        cdnForceRefreshInFlight = false;
+        _setCDNForceRefreshButtonState(false);
+      }
+    }
+  };
+
+  // 立即后台执行，不阻塞当前UI
+  setTimeout(doRefresh, 0);
 }
 
 // ============================================================================
@@ -44637,6 +44766,12 @@ async function saveSystemConfig() {
       },
       Map: {
         amap_js_key: $("config-Map-amap_js_key").value,
+      },
+      IP_Location: {
+        query_method: $("config-IP_Location-query_method").value,
+        query_order: ($("config-IP_Location-query_order").value || "").trim(),
+        amap_web_api_key: ($("config-IP_Location-amap_web_api_key").value || "").trim(),
+        uapipro_api_key: ($("config-IP_Location-uapipro_api_key").value || "").trim(),
       },
       // ==================== 网站备案信息配置保存 ====================
       // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中
