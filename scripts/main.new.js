@@ -3683,6 +3683,10 @@ document.addEventListener("DOMContentLoaded", function () {
     );
   }
 
+  // ========== Tab 3: 初始化移动端退款订单号自动填充功能 ==========
+  // 当用户输入订单号时，自动查询并填充退款金额（与PC端modal一致）
+  initMobileRefundOrderAutoFill();
+
   // ========== Tab 4: 绑定"创建测试订单"按钮的点击事件 ==========
 
   // 1. 通过ID获取"创建测试订单"按钮的DOM元素
@@ -4132,6 +4136,136 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 // ==========================================
+// 移动端退款订单号自动填充初始化函数
+// ==========================================
+/**
+ * 初始化移动端退款表单的订单号自动填充功能
+ * 当用户输入订单号时，自动查询订单金额并填充到退款金额输入框
+ * 功能与PC端 initOrderNumberAutoFill() 一致
+ */
+function initMobileRefundOrderAutoFill() {
+  // 获取移动端订单号输入框DOM元素
+  const tradeNoInput = document.getElementById("refund-order-trade-no");
+
+  // 如果输入框不存在，直接退出（可能在PC端或元素尚未加载）
+  if (!tradeNoInput) {
+    console.log("[移动端退款自动填充] 未找到订单号输入框元素，跳过初始化");
+    return;
+  }
+
+  // 为订单号输入框添加input事件监听
+  // 使用防抖（debounce）技术，避免频繁触发API请求
+  let debounceTimer = null;
+
+  tradeNoInput.addEventListener("input", function (event) {
+    // 清除之前的防抖计时器
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    // 获取用户输入的订单号（去除首尾空格）
+    const tradeNo = event.target.value.trim();
+
+    // 如果订单号为空，清空退款金额输入框并退出
+    if (!tradeNo) {
+      const amountInput = document.getElementById("refund-amount");
+      if (amountInput) {
+        amountInput.value = "";
+      }
+      return;
+    }
+
+    // 设置防抖计时器：用户停止输入500毫秒后才触发查询
+    debounceTimer = setTimeout(async () => {
+      // 调用订单号校验和金额获取函数（复用PC端逻辑，传入移动端元素ID）
+      await fetchMobileOrderAmountAndFill(tradeNo);
+    }, 500);
+  });
+
+  console.log("[移动端退款自动填充] 初始化完成");
+}
+
+/**
+ * 根据订单号获取订单金额并填充到移动端退款金额输入框
+ * 复用 fetchOrderAmountAndFill 的逻辑，但使用移动端元素ID
+ * @param {string} tradeNo - 订单号
+ */
+async function fetchMobileOrderAmountAndFill(tradeNo) {
+  console.log("[移动端退款自动填充] 开始处理订单号:", tradeNo);
+
+  // 获取移动端退款金额输入框
+  const amountInput = document.getElementById("refund-amount");
+  if (!amountInput) {
+    console.error("[移动端退款自动填充] 未找到退款金额输入框");
+    return;
+  }
+
+  // 校验订单号长度（通常订单号长度在10-50个字符之间）
+  if (tradeNo.length < 10) {
+    console.log("[移动端退款自动填充] 订单号长度不足，等待继续输入");
+    return;
+  }
+
+  try {
+    // 调用后端API查询订单信息
+    const response = await fetch(
+      `/api/payment/orders?page=1&per_page=1000&status=all`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session-ID": sessionUUID,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error("[移动端退款自动填充] API请求失败:", response.status);
+      return;
+    }
+
+    const data = await response.json();
+
+    if (!data.success || !data.orders) {
+      console.error("[移动端退款自动填充] API返回数据异常:", data);
+      return;
+    }
+
+    // 在订单列表中查找匹配的订单
+    const order = data.orders.find(
+      (o) =>
+        o.order_trade_no === tradeNo ||
+        o.trade_no === tradeNo ||
+        o.order_id === tradeNo
+    );
+
+    if (order) {
+      // 找到订单，计算退款金额（默认填充原订单金额）
+      const orderAmount = parseFloat(order.amount) || 0;
+      // 计算已退款金额
+      const refundedAmount = parseFloat(order.refundmoney) || 0;
+      // 可退款金额 = 订单金额 - 已退款金额
+      const refundableAmount = Math.max(0, orderAmount - refundedAmount);
+
+      // 填充退款金额（保留两位小数）
+      amountInput.value = refundableAmount.toFixed(2);
+
+      console.log("[移动端退款自动填充] 订单金额已填充:", {
+        orderAmount,
+        refundedAmount,
+        refundableAmount,
+      });
+    } else {
+      console.log("[移动端退款自动填充] 未找到匹配的订单");
+      // 清空退款金额
+      amountInput.value = "";
+    }
+  } catch (error) {
+    console.error("[移动端退款自动填充] 查询订单失败:", error);
+  }
+}
+
+// ==========================================
 // Tab 3: 退款功能 (processRefund函数)
 // ==========================================
 // 【功能说明】
@@ -4440,15 +4574,15 @@ async function processRefund() {
     resultContainer.innerHTML = successHTML;
     resultContainer.classList.remove("hidden");
 
-    // 6.5 可选：清空输入框，为下一次退款做准备
-    // 保留退款单号输入框为空，以便系统自动生成新的退款单号
-    // tradeNoInput.value = '';
-    // amountInput.value = '';
-    // refundNoInput.value = '';
-    // reasonInput.value = '';
+    // 6.5 清空输入框，为下一次退款做准备
+    // 退款成功后清空所有输入，方便用户进行下一次退款操作
+    tradeNoInput.value = '';
+    amountInput.value = '';
+    refundNoInput.value = '';
+    reasonInput.value = '';
 
     // 输出完成日志
-    logMessage_Info("[退款功能] 退款操作完成");
+    logMessage_Info("[退款功能] 退款操作完成，表单已清空");
   } catch (error) {
     // ========== 错误处理 ==========
     // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
@@ -7342,6 +7476,79 @@ function showOrderDetailModal(order) {
   );
   if (modalOverlay) {
     modalOverlay.classList.remove("hidden");
+  }
+}
+
+/**
+ * 复制订单号到剪贴板
+ *
+ * 功能说明：
+ * 将当前订单的平台订单号（trade_no）复制到系统剪贴板
+ * 优先复制平台订单号，若无则复制系统订单号
+ */
+async function copyOrderTradeNo() {
+  logMessage_Info("[订单详情] 复制订单号到剪贴板...");
+  
+  try {
+    // 获取当前订单信息
+    const currentOrder = window.currentOrderDetail;
+    if (!currentOrder) {
+      Swal.fire({
+        icon: "error",
+        title: "复制失败",
+        text: "未找到当前订单信息",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      return;
+    }
+    
+    // 优先复制平台订单号，若无则复制系统订单号
+    const orderNo = currentOrder.trade_no || currentOrder.order_id || "";
+    if (!orderNo || orderNo === "-") {
+      Swal.fire({
+        icon: "warning",
+        title: "复制失败",
+        text: "订单号为空",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      return;
+    }
+    
+    // 使用 Clipboard API 复制到剪贴板
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(orderNo);
+    } else {
+      // 降级方案：使用 execCommand
+      const textArea = document.createElement("textarea");
+      textArea.value = orderNo;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+    
+    Swal.fire({
+      icon: "success",
+      title: "复制成功",
+      html: `<div style="word-break: break-all; font-family: monospace; font-size: 14px; padding: 8px; background: #f1f5f9; border-radius: 6px; margin-top: 8px;">${escapeHtml(orderNo)}</div>`,
+      timer: 2000,
+      showConfirmButton: false,
+    });
+    
+    logMessage_Info("[订单详情] 订单号已复制：", orderNo);
+  } catch (error) {
+    logMessage_Error("[订单详情] 复制订单号失败：", error);
+    Swal.fire({
+      icon: "error",
+      title: "复制失败",
+      text: error.message || "复制操作失败",
+      timer: 2000,
+      showConfirmButton: false,
+    });
   }
 }
 
