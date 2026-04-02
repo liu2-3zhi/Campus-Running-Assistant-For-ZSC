@@ -477,7 +477,12 @@
                 }
 
                 if (typeof window.marked !== "undefined") {
-                    editormd.$marked = window.marked;
+                    // 兼容 marked v4.x API
+                    if (typeof window.marked === "function") {
+                        editormd.$marked = window.marked;
+                    } else if (typeof window.marked.parse === "function") {
+                        editormd.$marked = window.marked.parse.bind(window.marked);
+                    }
                 }
 
                 this.setCodeMirror().setToolbar().loadedDisplay();
@@ -500,6 +505,24 @@
             var settings     = this.settings;
             var loadPath     = settings.path;
 
+            // 检测全局已加载的库，避免重复加载
+            var isRaphaelLoaded = typeof window.Raphael !== "undefined";
+            var isUnderscoreLoaded = typeof window._ !== "undefined";
+            var isFlowchartLoaded = typeof window.flowchart !== "undefined";
+            var isSequenceLoaded = typeof window.Diagram !== "undefined";
+            var isMarkedLoaded = typeof window.marked !== "undefined";
+            var isPrettifyLoaded = typeof window.prettyPrint !== "undefined" || typeof window.PR !== "undefined";
+
+            // 兼容 marked v4.x API (marked.parse) 和旧版 (marked)
+            var getMarkedParser = function() {
+                if (typeof window.marked === "function") {
+                    return window.marked;
+                } else if (typeof window.marked === "object" && typeof window.marked.parse === "function") {
+                    return window.marked.parse.bind(window.marked);
+                }
+                return null;
+            };
+
             var loadFlowChartOrSequenceDiagram = function() {
 
                 if (editormd.isIE8) {
@@ -509,83 +532,136 @@
                 }
 
                 if (settings.flowChart || settings.sequenceDiagram) {
-                    editormd.loadScript(loadPath + "raphael.min", function() {
-
-                        editormd.loadScript(loadPath + "underscore.min", function() {
-
-                            if (!settings.flowChart && settings.sequenceDiagram) {
-                                editormd.loadScript(loadPath + "sequence-diagram.min", function() {
-                                    _this.loadedDisplay();
-                                });
-                            } else if (settings.flowChart && !settings.sequenceDiagram) {
-                                editormd.loadScript(loadPath + "flowchart.min", function() {
-                                    editormd.loadScript(loadPath + "jquery.flowchart.min", function() {
+                    // 如果依赖已加载，直接继续
+                    if (isRaphaelLoaded && isUnderscoreLoaded) {
+                        if (settings.flowChart && settings.sequenceDiagram) {
+                            if (isFlowchartLoaded && isSequenceLoaded) {
+                                _this.loadedDisplay();
+                            } else {
+                                _this.loadedDisplay();
+                            }
+                        } else if (settings.flowChart && isFlowchartLoaded) {
+                            _this.loadedDisplay();
+                        } else if (settings.sequenceDiagram && isSequenceLoaded) {
+                            _this.loadedDisplay();
+                        } else {
+                            _this.loadedDisplay();
+                        }
+                    } else {
+                        // 回退到动态加载
+                        editormd.loadScript(loadPath + "raphael.min", function() {
+                            editormd.loadScript(loadPath + "underscore.min", function() {
+                                if (!settings.flowChart && settings.sequenceDiagram) {
+                                    editormd.loadScript(loadPath + "sequence-diagram.min", function() {
                                         _this.loadedDisplay();
                                     });
-                                });
-                            } else if (settings.flowChart && settings.sequenceDiagram) {
-                                editormd.loadScript(loadPath + "flowchart.min", function() {
-                                    editormd.loadScript(loadPath + "jquery.flowchart.min", function() {
-                                        editormd.loadScript(loadPath + "sequence-diagram.min", function() {
+                                } else if (settings.flowChart && !settings.sequenceDiagram) {
+                                    editormd.loadScript(loadPath + "flowchart.min", function() {
+                                        editormd.loadScript(loadPath + "jquery.flowchart.min", function() {
                                             _this.loadedDisplay();
                                         });
                                     });
-                                });
-                            }
+                                } else if (settings.flowChart && settings.sequenceDiagram) {
+                                    editormd.loadScript(loadPath + "flowchart.min", function() {
+                                        editormd.loadScript(loadPath + "jquery.flowchart.min", function() {
+                                            editormd.loadScript(loadPath + "sequence-diagram.min", function() {
+                                                _this.loadedDisplay();
+                                            });
+                                        });
+                                    });
+                                }
+                            });
                         });
-
-                    });
+                    }
                 } else {
                     _this.loadedDisplay();
                 }
             };
 
-            editormd.loadCSS(loadPath + "codemirror/codemirror.min");
+            // 检测 CodeMirror 是否已全局加载
+            var isCodeMirrorLoaded = typeof window.CodeMirror !== "undefined";
 
-            if (settings.searchReplace && !settings.readOnly) {
-                editormd.loadCSS(loadPath + "codemirror/addon/dialog/dialog");
-                editormd.loadCSS(loadPath + "codemirror/addon/search/matchesonscrollbar");
+            // 如果 CodeMirror 未加载，才加载 CSS
+            if (!isCodeMirrorLoaded) {
+                editormd.loadCSS(loadPath + "codemirror/codemirror.min");
+
+                if (settings.searchReplace && !settings.readOnly) {
+                    editormd.loadCSS(loadPath + "codemirror/addon/dialog/dialog");
+                    editormd.loadCSS(loadPath + "codemirror/addon/search/matchesonscrollbar");
+                }
+
+                if (settings.codeFold) {
+                    editormd.loadCSS(loadPath + "codemirror/addon/fold/foldgutter");
+                }
             }
 
-            if (settings.codeFold) {
-                editormd.loadCSS(loadPath + "codemirror/addon/fold/foldgutter");
-            }
+            // 继续加载的通用函数
+            var continueLoading = function() {
+                _this.setCodeMirror();
 
-            editormd.loadScript(loadPath + "codemirror/codemirror.min", function() {
-                editormd.$CodeMirror = CodeMirror;
+                if (settings.mode !== "gfm" && settings.mode !== "markdown") {
+                    _this.loadedDisplay();
 
-                editormd.loadScript(loadPath + "codemirror/modes.min", function() {
+                    return false;
+                }
 
-                    editormd.loadScript(loadPath + "codemirror/addons.min", function() {
+                _this.setToolbar();
 
-                        _this.setCodeMirror();
-
-                        if (settings.mode !== "gfm" && settings.mode !== "markdown") {
-                            _this.loadedDisplay();
-
-                            return false;
+                // 检测 marked 是否已全局加载
+                if (isMarkedLoaded) {
+                    editormd.$marked = getMarkedParser();
+                    
+                    // 检测 prettify 是否已全局加载
+                    if (settings.previewCodeHighlight) {
+                        if (isPrettifyLoaded) {
+                            loadFlowChartOrSequenceDiagram();
+                        } else {
+                            editormd.loadScript(loadPath + "prettify.min", function() {
+                                loadFlowChartOrSequenceDiagram();
+                            });
                         }
+                    } else {
+                        loadFlowChartOrSequenceDiagram();
+                    }
+                } else {
+                    editormd.loadScript(loadPath + "marked.min", function() {
 
-                        _this.setToolbar();
+                        editormd.$marked = getMarkedParser();
 
-                        editormd.loadScript(loadPath + "marked.min", function() {
-
-                            editormd.$marked = marked;
-
-                            if (settings.previewCodeHighlight) {
+                        if (settings.previewCodeHighlight) {
+                            if (isPrettifyLoaded) {
+                                loadFlowChartOrSequenceDiagram();
+                            } else {
                                 editormd.loadScript(loadPath + "prettify.min", function() {
                                     loadFlowChartOrSequenceDiagram();
                                 });
-                            } else {
-                                loadFlowChartOrSequenceDiagram();
                             }
+                        } else {
+                            loadFlowChartOrSequenceDiagram();
+                        }
+                    });
+                }
+            };
+
+            // 如果 CodeMirror 已加载，直接使用
+            if (isCodeMirrorLoaded) {
+                editormd.$CodeMirror = CodeMirror;
+                continueLoading();
+            } else {
+                // 动态加载 CodeMirror
+                editormd.loadScript(loadPath + "codemirror/codemirror.min", function() {
+                    editormd.$CodeMirror = CodeMirror;
+
+                    editormd.loadScript(loadPath + "codemirror/modes.min", function() {
+
+                        editormd.loadScript(loadPath + "codemirror/addons.min", function() {
+                            continueLoading();
                         });
 
                     });
 
                 });
-
-            });
+            }
 
             return this;
         },
@@ -1256,9 +1332,13 @@
             var _this        = this;
 			var editor       = this.editor;
             var classPrefix  = this.classPrefix;
+            var settings     = this.settings;
 
             var infoDialogHTML = [
                 "<div class=\"" + classPrefix + "dialog " + classPrefix + "dialog-info\" style=\"\">",
+                "<div class=\"" + classPrefix + "dialog-header\" style=\"cursor: move;\">",
+                "<strong class=\"" + classPrefix + "dialog-title\">关于 Editor.md</strong>",
+                "</div>",
                 "<div class=\"" + classPrefix + "dialog-container\">",
                 "<h1><i class=\"editormd-logo editormd-logo-lg editormd-logo-color\"></i> " + editormd.title + "<small>v" + editormd.version + "</small></h1>",
                 "<p>" + this.lang.description + "</p>",
@@ -1278,6 +1358,98 @@
             });
 
             infoDialog.css("border", (editormd.isIE8) ? "1px solid #ddd" : "").css("z-index", editormd.dialogZindex).show();
+
+            // 添加拖动功能
+            if (settings.dialogDraggable) {
+                var dialogHeader = infoDialog.children("." + classPrefix + "dialog-header");
+                var posX, posY;
+
+                var userCanSelect = function (obj) {
+                    obj.removeClass(classPrefix + "user-unselect").off("selectstart");
+                };
+
+                var userUnselect = function (obj) {
+                    obj.addClass(classPrefix + "user-unselect").on("selectstart", function() {
+                        return false;
+                    });
+                };
+
+                var moveAction = function (e) {
+                    e = e || window.event;
+                    var left, top, nowLeft = parseInt(infoDialog[0].style.left), nowTop = parseInt(infoDialog[0].style.top);
+
+                    if( nowLeft >= 0 ) {
+                        if( nowLeft + infoDialog.width() <= $(window).width()) {
+                            left = e.clientX - posX;
+                        } else {
+                            left = $(window).width() - infoDialog.width();
+                            document.onmousemove = null;
+                        }
+                    } else {
+                        left = 0;
+                        document.onmousemove = null;
+                    }
+
+                    if( nowTop >= 0 ) {
+                        top = e.clientY - posY;
+                    } else {
+                        top = 0;
+                        document.onmousemove = null;
+                    }
+
+                    document.onselectstart = function() {
+                        return false;
+                    };
+
+                    userUnselect($("body"));
+                    userUnselect(infoDialog);
+
+                    infoDialog[0].style.left = left + "px";
+                    infoDialog[0].style.top  = top + "px";
+                };
+
+                dialogHeader.on("mousedown", function(e) {
+                    e = e || window.event;
+                    posX = e.clientX - parseInt(infoDialog[0].style.left);
+                    posY = e.clientY - parseInt(infoDialog[0].style.top);
+
+                    document.onmousemove = moveAction;
+                });
+
+                document.onmouseup = function() {
+                    userCanSelect($("body"));
+                    userCanSelect(infoDialog);
+
+                    document.onselectstart = null;
+                    document.onmousemove = null;
+                };
+
+                dialogHeader.touchDraggable = function() {
+                    var offset, position;
+
+                    var start = function(e) {
+                        var orig = e.originalEvent;
+                        position = infoDialog.position();
+                        offset   = {
+                            x : orig.changedTouches[0].pageX - position.left,
+                            y : orig.changedTouches[0].pageY - position.top
+                        };
+                    };
+
+                    var move = function(e) {
+                        e.preventDefault();
+                        var orig = e.originalEvent;
+                        infoDialog.css({
+                            top  : orig.changedTouches[0].pageY - offset.y,
+                            left : orig.changedTouches[0].pageX - offset.x
+                        });
+                    };
+
+                    this.on("touchstart", start).on("touchmove", move);
+                };
+
+                dialogHeader.touchDraggable();
+            }
 
             this.infoDialogPosition();
 
@@ -1911,15 +2083,16 @@
             var markedOptions = this.markedOptions = {
                 renderer    : editormd.markedRenderer(markdownToC, rendererOptions),
                 gfm         : true,
-                tables      : true,
                 breaks      : true,
                 pedantic    : false,
-                sanitize    : (settings.htmlDecode) ? false : true,  // 关闭忽略HTML标签，即开启识别HTML标签，默认为false
                 smartLists  : true,
                 smartypants : true
             };
 
-            marked.setOptions(markedOptions);
+            // 兼容 marked v4.x (移除 sanitize 选项，使用 marked.use 或直接传参)
+            if (typeof window.marked === "object" && typeof window.marked.setOptions === "function") {
+                window.marked.setOptions(markedOptions);
+            }
 
             var newMarkdownDoc = editormd.$marked(cmValue, markedOptions);
             newMarkdownDoc     = editormd.filterHTMLTags(newMarkdownDoc, settings.htmlDecode);
@@ -3246,7 +3419,15 @@
         var _headingIds     = [];
         var settings        = $.extend(defaults, options || {});
         var marked          = editormd.$marked;
-        var markedRenderer  = new marked.Renderer();
+        
+        // 兼容 marked v4.x Renderer API
+        var MarkedRenderer;
+        if (typeof window.marked === "object" && window.marked.Renderer) {
+            MarkedRenderer = window.marked.Renderer;
+        } else if (typeof window.marked === "function" && window.marked.Renderer) {
+            MarkedRenderer = window.marked.Renderer;
+        }
+        var markedRenderer  = new MarkedRenderer();
         markdownToC         = markdownToC || [];
 
         var regexs          = editormd.regexs;
@@ -3466,7 +3647,7 @@
             } else if ( lang === "math" || lang === "latex" || lang === "katex") {
                 return "<p class=\"" + editormd.classNames.tex + "\">" + code + "</p>";
             } else {
-                return marked.Renderer.prototype.code.apply(this, arguments);
+                return MarkedRenderer.prototype.code.apply(this, arguments);
             }
         };
 
@@ -3739,7 +3920,12 @@
             previewCodeHighlight : true
         };
 
-        editormd.$marked  = marked;
+        // 兼容 marked v4.x API
+        if (typeof marked === "function") {
+            editormd.$marked = marked;
+        } else if (typeof marked === "object" && typeof marked.parse === "function") {
+            editormd.$marked = marked.parse.bind(marked);
+        }
 
         var div           = $("#" + id);
         var settings      = div.settings = $.extend(true, {}, defaults, options || {});
@@ -3771,17 +3957,15 @@
         var markedOptions = {
             renderer    : editormd.markedRenderer(markdownToC, rendererOptions),
             gfm         : settings.gfm,
-            tables      : true,
             breaks      : true,
             pedantic    : false,
-            sanitize    : (settings.htmlDecode) ? false : true, // 是否忽略HTML标签，即是否开启HTML标签解析，为了安全性，默认不开启
             smartLists  : true,
             smartypants : true
         };
 
         markdownDoc = markdownDoc.toString();
 
-        var markdownParsed = marked(markdownDoc, markedOptions);
+        var markdownParsed = editormd.$marked(markdownDoc, markedOptions);
 
         markdownParsed = editormd.filterHTMLTags(markdownParsed, settings.htmlDecode);
 
