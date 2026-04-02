@@ -13222,23 +13222,23 @@ function initDraggableAdminBtn() {
 }
 
 // Tailwind 更新，已经无法使用这种方法检测是否加载
-// if (typeof tailwind !== "undefined") {
-//   tailwind.config = {
-//     theme: {
-//       extend: {
-//         fontFamily: {
-//           sans: ["Noto Sans SC", "system-ui", "sans-serif"],
-//           display: ["Zilla Slab", "serif"],
-//         },
-//         colors: { base: "#7dd3fc" },
-//       },
-//     },
-//   };
-// } else {
-//   console.error("Tailwind CSS 未加载，跳过配置。");
-//   if (typeof handleCdnError === "function") handleCdnError("TailwindCSS");
-// }
-
+if (typeof tailwind !== "undefined") {
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ["Noto Sans SC", "system-ui", "sans-serif"],
+          display: ["Zilla Slab", "serif"],
+        },
+        colors: { base: "#7dd3fc" },
+      },
+    },
+  };
+} else {
+  console.error("Tailwind CSS 未加载，跳过配置。");
+  if (typeof handleCdnError === "function") handleCdnError("TailwindCSS");
+}
+/*
 function applyTailwindV4Config(config) {
   if (typeof window === "undefined") return;
   if (!window.tailwindCSS) {
@@ -13298,7 +13298,7 @@ applyTailwindV4Config({
     },
   },
 });
-
+*/
 
 
 
