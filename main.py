@@ -22145,8 +22145,8 @@ def start_web_server(args_param):
         #     "type": "css",
         # },
         "tailwindcss": {
-            "url": "https://cdn.jsdelivr.net/npm/@tailwindcss/browser/dist/index.global.min.js",
-            # "url": "https://cdn.tailwindcss.com",
+            # "url": "https://cdn.jsdelivr.net/npm/@tailwindcss/browser/dist/index.global.min.js",
+            "url": "https://cdn.tailwindcss.com",
             "filename": "tailwindcss.min.js",
             "type": "js",
         },
