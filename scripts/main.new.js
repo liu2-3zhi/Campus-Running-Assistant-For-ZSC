@@ -13972,14 +13972,18 @@ async function saveMobileAttendanceParams() {
     }
 
     // showModalAlert("自动签到配置已保存", "成功");
-    Swal.fire({
+    // 使用队列方式显示提示，避免与其他提示冲突
+    // 先显示配置保存提示
+    await Swal.fire({
       icon: "success",
       title: "配置已保存",
       text: "自动签到配置已成功保存。",
+      timer: 1500,
+      showConfirmButton: false,
     });
 
-    if (enabled) {
-    }
+    // 然后显示自动签到状态提示
+    showAutoAttendanceToggleAlert(enabled, true); // true = 移动端
   } catch (e) {
     console.error("保存签到配置失败:", e);
     // showModalAlert("保存失败: " + e.message, "错误");
@@ -13989,6 +13993,257 @@ async function saveMobileAttendanceParams() {
       text: "保存失败: " + e.message,
     });
   }
+}
+
+/**
+ * 显示自动签到开关状态变更提示
+ * 根据设备类型显示不同格式的账号信息
+ * @param {boolean} enabled - 是否开启自动签到
+ * @param {boolean} isMobile - 是否为移动端
+ */
+function showAutoAttendanceToggleAlert(enabled, isMobile) {
+  // 获取当前用户信息
+  const userName = currentUserData?.name || "未知";
+  const studentId = currentUserData?.student_id || "未知";
+  
+  // 检查账号列表是否为空（多账号模式下使用）
+  const hasAccounts = cachedMultiAccounts && cachedMultiAccounts.length > 0;
+  
+  // 构建提示内容
+  let htmlContent = "";
+  
+  if (enabled) {
+    // 开启自动签到的提示
+    htmlContent = `
+      <div class="text-left">
+        <p class="mb-3 text-green-600 font-semibold">✅ 自动签到已开启</p>
+    `;
+    
+    // 如果有当前用户信息（单账号模式）
+    if (currentUserData && currentUserData.student_id) {
+      if (isMobile) {
+        // 移动端：卡片式展示
+        htmlContent += `
+          <div class="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-3 border border-sky-100 shadow-sm mb-3">
+            <p class="text-xs text-slate-500 mb-1">当前账号</p>
+            <p class="font-semibold text-slate-800">${escapeHtml(userName)}</p>
+            <p class="text-sm text-slate-600 font-mono">${escapeHtml(studentId)}</p>
+          </div>
+        `;
+      } else {
+        // PC端：表格式展示
+        htmlContent += `
+          <table class="w-full text-sm border-collapse mb-3">
+            <thead>
+              <tr class="bg-slate-100">
+                <th class="px-3 py-2 text-left border border-slate-200 font-semibold">姓名</th>
+                <th class="px-3 py-2 text-left border border-slate-200 font-semibold">学号</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="px-3 py-2 border border-slate-200">${escapeHtml(userName)}</td>
+                <td class="px-3 py-2 border border-slate-200 font-mono">${escapeHtml(studentId)}</td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      }
+    }
+    
+    htmlContent += `
+        <p class="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
+          ⏱ 自动签到将在 120 分钟内自动关闭
+        </p>
+      </div>
+    `;
+  } else {
+    // 关闭自动签到的提示
+    htmlContent = `
+      <div class="text-left">
+        <p class="mb-3 text-slate-600 font-semibold">⏸️ 自动签到已关闭</p>
+    `;
+    
+    // 如果有当前用户信息
+    if (currentUserData && currentUserData.student_id) {
+      if (isMobile) {
+        // 移动端：卡片式展示
+        htmlContent += `
+          <div class="bg-gradient-to-br from-slate-50 to-gray-50 rounded-xl p-3 border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 mb-1">当前账号</p>
+            <p class="font-semibold text-slate-800">${escapeHtml(userName)}</p>
+            <p class="text-sm text-slate-600 font-mono">${escapeHtml(studentId)}</p>
+          </div>
+        `;
+      } else {
+        // PC端：表格式展示
+        htmlContent += `
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-100">
+                <th class="px-3 py-2 text-left border border-slate-200 font-semibold">姓名</th>
+                <th class="px-3 py-2 text-left border border-slate-200 font-semibold">学号</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="px-3 py-2 border border-slate-200">${escapeHtml(userName)}</td>
+                <td class="px-3 py-2 border border-slate-200 font-mono">${escapeHtml(studentId)}</td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      }
+    }
+    
+    htmlContent += `</div>`;
+  }
+  
+  // 显示Swal弹窗
+  Swal.fire({
+    title: enabled ? "自动签到已开启" : "自动签到已关闭",
+    html: htmlContent,
+    icon: enabled ? "success" : "info",
+    confirmButtonText: "我知道了",
+    confirmButtonColor: enabled ? "#22c55e" : "#64748b",
+    customClass: {
+      popup: isMobile ? "swal2-popup-mobile" : "",
+    },
+  });
+}
+
+/**
+ * 显示多账号模式下自动签到开关状态变更提示
+ * 当账号列表为空时，提醒用户后续添加的账号也会应用此设置
+ * @param {boolean} enabled - 是否开启自动签到
+ * @param {boolean} isMobile - 是否为移动端
+ */
+function showMultiAutoAttendanceToggleAlert(enabled, isMobile) {
+  // 检查是否有账号
+  const hasAccounts = cachedMultiAccounts && cachedMultiAccounts.length > 0;
+  
+  let htmlContent = "";
+  
+  if (enabled) {
+    htmlContent = `<div class="text-left">`;
+    
+    if (!hasAccounts) {
+      // 账号列表为空的提示
+      htmlContent += `
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+          <p class="text-amber-700 font-semibold mb-1">⚠️ 当前暂无账号</p>
+          <p class="text-sm text-amber-600">
+            后续添加到账号列表的账号将自动开启自动签到功能。
+          </p>
+        </div>
+      `;
+    } else {
+      // 显示账号列表
+      if (isMobile) {
+        // 移动端：卡片式展示
+        htmlContent += `<div class="space-y-2 max-h-48 overflow-y-auto mb-3">`;
+        cachedMultiAccounts.forEach((account) => {
+          htmlContent += `
+            <div class="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-2 border border-sky-100">
+              <p class="font-semibold text-sm text-slate-800">${escapeHtml(account.name || account.username)}</p>
+              <p class="text-xs text-slate-600 font-mono">${escapeHtml(account.username)}</p>
+            </div>
+          `;
+        });
+        htmlContent += `</div>`;
+      } else {
+        // PC端：表格式展示
+        htmlContent += `
+          <div class="max-h-48 overflow-y-auto mb-3">
+            <table class="w-full text-sm border-collapse">
+              <thead class="sticky top-0">
+                <tr class="bg-slate-100">
+                  <th class="px-3 py-2 text-left border border-slate-200 font-semibold">姓名</th>
+                  <th class="px-3 py-2 text-left border border-slate-200 font-semibold">账号</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        cachedMultiAccounts.forEach((account) => {
+          htmlContent += `
+            <tr>
+              <td class="px-3 py-2 border border-slate-200">${escapeHtml(account.name || "-")}</td>
+              <td class="px-3 py-2 border border-slate-200 font-mono">${escapeHtml(account.username)}</td>
+            </tr>
+          `;
+        });
+        htmlContent += `</tbody></table></div>`;
+      }
+    }
+    
+    htmlContent += `
+      <p class="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
+        ⏱ 自动签到将在 120 分钟内自动关闭
+      </p>
+    </div>`;
+  } else {
+    htmlContent = `<div class="text-left">`;
+    
+    if (!hasAccounts) {
+      htmlContent += `
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <p class="text-slate-600 font-semibold mb-1">⏸️ 自动签到已关闭</p>
+          <p class="text-sm text-slate-500">
+            当前暂无账号，后续添加的账号不会自动开启签到。
+          </p>
+        </div>
+      `;
+    } else {
+      htmlContent += `<p class="mb-3 text-slate-600 font-semibold">⏸️ 以下账号的自动签到已关闭</p>`;
+      
+      if (isMobile) {
+        htmlContent += `<div class="space-y-2 max-h-48 overflow-y-auto">`;
+        cachedMultiAccounts.forEach((account) => {
+          htmlContent += `
+            <div class="bg-slate-50 rounded-xl p-2 border border-slate-200">
+              <p class="font-semibold text-sm text-slate-800">${escapeHtml(account.name || account.username)}</p>
+              <p class="text-xs text-slate-600 font-mono">${escapeHtml(account.username)}</p>
+            </div>
+          `;
+        });
+        htmlContent += `</div>`;
+      } else {
+        htmlContent += `
+          <div class="max-h-48 overflow-y-auto">
+            <table class="w-full text-sm border-collapse">
+              <thead class="sticky top-0">
+                <tr class="bg-slate-100">
+                  <th class="px-3 py-2 text-left border border-slate-200 font-semibold">姓名</th>
+                  <th class="px-3 py-2 text-left border border-slate-200 font-semibold">账号</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        cachedMultiAccounts.forEach((account) => {
+          htmlContent += `
+            <tr>
+              <td class="px-3 py-2 border border-slate-200">${escapeHtml(account.name || "-")}</td>
+              <td class="px-3 py-2 border border-slate-200 font-mono">${escapeHtml(account.username)}</td>
+            </tr>
+          `;
+        });
+        htmlContent += `</tbody></table></div>`;
+      }
+    }
+    
+    htmlContent += `</div>`;
+  }
+  
+  Swal.fire({
+    title: enabled ? "自动签到已开启" : "自动签到已关闭",
+    html: htmlContent,
+    icon: enabled ? "success" : "info",
+    confirmButtonText: "我知道了",
+    confirmButtonColor: enabled ? "#22c55e" : "#64748b",
+    customClass: {
+      popup: isMobile ? "swal2-popup-mobile" : "",
+    },
+  });
 }
 
 function isSessionUUIDInvalid(uuid) {
@@ -37838,6 +38093,10 @@ function onParamChange(event) {
     logMessage_Info("参数 'ignore_task_time' 已更改，正在自动刷新任务列表...");
     refreshTasks();
   }
+  // 自动签到开关变更时显示提示
+  if (key === "auto_attendance_enabled") {
+    showAutoAttendanceToggleAlert(value, false); // false = PC端
+  }
 }
 function onGlobalParamChange(event) {
   const key = event.target.dataset.key;
@@ -37849,6 +38108,10 @@ function onGlobalParamChange(event) {
   callPythonAPI("update_param", key, value);
   if (key === "ignore_task_time") {
     updateAllAccountsStatusText();
+  }
+  // 多账号模式下自动签到开关变更时显示提示
+  if (key === "auto_attendance_enabled") {
+    showMultiAutoAttendanceToggleAlert(value, false); // false = PC端
   }
 }
 async function openAccountParamsModal(username) {
@@ -45366,7 +45629,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // 设置复选框的选中状态
       autoAttendanceEnabled.checked =
         pythonParams["auto_attendance_enabled"] || false;
-      // 绑定 change 事件，实现实时保存
+      // 绑定 change 事件，实现实时保存和提示
       autoAttendanceEnabled.addEventListener("change", function () {
         if (typeof callPythonAPI === "function") {
           callPythonAPI(
@@ -45375,6 +45638,8 @@ document.addEventListener("DOMContentLoaded", function () {
             this.checked,
           );
           console.log(`[移动端多账号] 自动签到开关已更新: ${this.checked}`);
+          // 显示多账号模式的自动签到提示
+          showMultiAutoAttendanceToggleAlert(this.checked, true); // true = 移动端
         }
       });
     }
