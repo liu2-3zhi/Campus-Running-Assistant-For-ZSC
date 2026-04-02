@@ -56,21 +56,20 @@
     <!-- <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" /> -->
     <!-- Google Fonts -->
-    <!-- Zilla Slab 字体，适用于标题 -->
-    <!-- Noto Sans SC 字体，适用于正文 -->
+    <!-- Zilla Slab 字体，非中文字体 -->
+    <!-- Noto Sans SC 字体，中文字库 -->
     <!-- <linkhref="/api/cdn/google-fonts" rel="stylesheet" onerror="this.href ='https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&amp;family=Noto+Sans+SC:wght@400;600;700&amp;display=swap'"/> -->
     <link rel="stylesheet" href="/api/cdn/zilla-slab" onerror="this.href ='https://cdn.jsdelivr.net/npm/@fontsource/zilla-slab@5/index.min.css'"/>
     <link rel="stylesheet" href="/api/cdn/noto-sans-sc" onerror="this.href ='https://cdn.jsdelivr.net/npm/@fontsource-variable/noto-sans-sc/index.min.css'"/>
+    <!-- 弃用 Noto Sans SC 字体，改用思源雅黑 --> 
+    <!-- TODO: 需要找到一个合适的思源雅黑CDN资源，并替换掉原有的 Noto Sans SC 字体链接 -->
     <!-- 高德地图 -->
     <!-- <script src="/api/cdn/amap-loader" onerror="this.src='https://webapi.amap.com/loader.js'"></script> -->
     <!-- 高德地图已经改用.\scripts\load_amap_watermark.js 引入 -->
-
-
-
-    <script
-      src="/api/cdn/jquery"
-      onerror="this.src = 'https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js'"
-    ></script>
+    <!-- JavaScript 库 -->
+    <script src="/api/cdn/jquery" onerror="this.src = 'https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js'"></script>
+    <!-- JavaScript 拖拽排序库 -->
+    <script src="/api/cdn/sortable" onerror="this.src = 'https://cdn.jsdelivr.net/npm/sortablejs/Sortable.min.js'"></script>
 
     <link rel="stylesheet" href="styles/style.css" />
     <script src="scripts/main.new.js" defer=""></script>
