@@ -4,8 +4,7 @@
  * ======================================== */
 
 /* 确保对话框脱离编辑器容器限制 */
-.editormd-dialog,
-.editormd-dialog-container {
+.editormd-dialog {
   position: fixed !important;
   z-index: 99999 !important;
 }
@@ -16,12 +15,20 @@
   left: 50% !important;
   transform: translate(-50%, -50%) !important;
   margin: 0 !important;
+  /* 保留原有的边框和阴影 */
+  border: 1px solid #ddd !important;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3) !important;
+  border-radius: 3px !important;
+  background: #fff !important;
 }
 
-/* PC端允许拖动 */
+/* PC端允许拖动 - 修改光标样式 */
 .editormd-dialog-header {
   cursor: move !important;
   user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
 }
 
 /* 移动端自适应大小 */
@@ -34,14 +41,15 @@
   }
   
   /* 移动端对话框内容区域滚动 */
-  .editormd-dialog-content {
+  .editormd-dialog-container {
     max-height: 60vh !important;
     overflow-y: auto !important;
   }
 }
 
 /* 遮罩层样式 */
-.editormd-dialog-mask {
+.editormd-dialog-mask,
+.editormd-mask {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -53,7 +61,8 @@
 
 /* 移动端点击遮罩层可关闭 */
 @media (max-width: 768px) {
-  .editormd-dialog-mask {
+  .editormd-dialog-mask,
+  .editormd-mask {
     pointer-events: auto !important;
     cursor: pointer !important;
   }
@@ -73,33 +82,47 @@
 
 /* 关闭按钮样式优化 */
 .editormd-dialog-close {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  width: 30px;
-  height: 30px;
-  line-height: 30px;
-  text-align: center;
-  cursor: pointer;
-  font-size: 20px;
-  color: #666;
-  background: transparent;
-  border: none;
-  z-index: 100000;
+  position: absolute !important;
+  right: 15px !important;
+  top: 12px !important;
+  width: 30px !important;
+  height: 30px !important;
+  line-height: 30px !important;
+  text-align: center !important;
+  cursor: pointer !important;
+  font-size: 18px !important;
+  color: #ccc !important;
+  background: transparent !important;
+  border: none !important;
+  z-index: 100000 !important;
+  transition: color 300ms ease-out !important;
 }
 
 .editormd-dialog-close:hover {
-  color: #000;
-  background-color: rgba(0, 0, 0, 0.05);
-  border-radius: 50%;
+  color: #999 !important;
 }
 
 /* 移动端关闭按钮更大 */
 @media (max-width: 768px) {
   .editormd-dialog-close {
-    width: 40px;
-    height: 40px;
-    line-height: 40px;
-    font-size: 24px;
+    width: 40px !important;
+    height: 40px !important;
+    line-height: 40px !important;
+    font-size: 24px !important;
   }
+}
+
+/* 确保"关于Editor.md"对话框也有正确的样式 */
+.editormd-dialog-info {
+  /* 继承通用对话框样式 */
+}
+
+/* 拖动时的视觉反馈 */
+.editormd-dialog.dragging {
+  cursor: move !important;
+  opacity: 0.9 !important;
+}
+
+.editormd-dialog.dragging .editormd-dialog-header {
+  background: #f0f0f0 !important;
 }

@@ -13240,6 +13240,12 @@ function initDraggableAdminBtn() {
 // }
 
 function applyTailwindV4Config(config) {
+  if (typeof window === "undefined") return;
+  if (!window.tailwindCSS) {
+    // Tailwind 浏览器运行时尚未就绪，稍后重试
+    setTimeout(() => applyTailwindV4Config(config), 50);
+    return;
+  }
   const extend = config?.theme?.extend || {};
   let css = "@theme {\n";
 
@@ -13274,7 +13280,10 @@ function applyTailwindV4Config(config) {
   // 注入到页面
   const style = document.createElement("style");
   style.type = "text/tailwindcss";
+  style.setAttribute("data-tailwind-dynamic-theme", "true");
   style.textContent = css;
+  const old = document.querySelector('style[data-tailwind-dynamic-theme="true"]');
+  if (old) old.remove();
   document.head.appendChild(style);
 }
 // 应用 Tailwind CSS V4 配置
@@ -19862,6 +19871,12 @@ function switchAdminTab(tab) {
                       dialog.style.width = w ? w + "px" : "auto";
                       dialog.style.height = h ? h + "px" : "auto";
                       dialog.style.zIndex = 20000;
+                      // 允许拖动（标题栏）
+                      const header = dialog.querySelector(".editormd-dialog-header");
+                      if (header) {
+                        header.style.cursor = "move";
+                        header.style.userSelect = "none";
+                      }
                       // 遮罩（mask）通常是紧邻的元素，尝试将同一对话框相关的遮罩也移动
                       const origMask =
                         dialog.parentElement &&
@@ -19906,6 +19921,8 @@ function switchAdminTab(tab) {
                       }
                       document.body.appendChild(dialog);
                       dialog.__moved_to_body = true;
+                      // 标记可拖动（供增强脚本识别）
+                      dialog.dataset.dragEnabled = "true";
 
                       // 根据对话框的可见性，切换遮罩显示；并监听属性变化以实时更新
                       const checkVisibilityAndToggleMask = () => {
@@ -20005,6 +20022,11 @@ function switchAdminTab(tab) {
                       dialog.style.width = w ? w + "px" : "auto";
                       dialog.style.height = h ? h + "px" : "auto";
                       dialog.style.zIndex = 20000;
+                      const header = dialog.querySelector(".editormd-dialog-header");
+                      if (header) {
+                        header.style.cursor = "move";
+                        header.style.userSelect = "none";
+                      }
                       const origMask =
                         dialog.parentElement &&
                         dialog.parentElement.querySelector &&
@@ -20045,6 +20067,7 @@ function switchAdminTab(tab) {
                       }
                       document.body.appendChild(dialog);
                       dialog.__moved_to_body = true;
+                      dialog.dataset.dragEnabled = "true";
 
                       const checkVisibilityAndToggleMask = () => {
                         try {
