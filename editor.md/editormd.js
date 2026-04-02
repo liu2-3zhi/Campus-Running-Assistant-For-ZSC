@@ -1404,6 +1404,7 @@
                     userUnselect($("body"));
                     userUnselect(infoDialog);
 
+                    _this.state.infoDialogMoved = true;
                     infoDialog[0].style.left = left + "px";
                     infoDialog[0].style.top  = top + "px";
                 };
@@ -1439,6 +1440,7 @@
                     var move = function(e) {
                         e.preventDefault();
                         var orig = e.originalEvent;
+                        _this.state.infoDialogMoved = true;
                         infoDialog.css({
                             top  : orig.changedTouches[0].pageY - offset.y,
                             left : orig.changedTouches[0].pageX - offset.x
@@ -1464,18 +1466,30 @@
          */
 
         infoDialogPosition : function() {
+            var _this      = this;
+            var editor     = this.editor;
             var infoDialog = this.infoDialog;
 
 			var _infoDialogPosition = function() {
+                if (_this.state.infoDialogMoved) {
+                    return;
+                }
+
+                var editorOffset = editor.offset() || { top : 0, left : 0 };
+                var editorWidth  = editor.outerWidth();
+                var editorHeight = editor.outerHeight();
+                var viewportTop  = editorOffset.top  - $(window).scrollTop();
+                var viewportLeft = editorOffset.left - $(window).scrollLeft();
+                var top          = viewportTop  + (editorHeight - infoDialog.outerHeight()) / 2;
+                var left         = viewportLeft + (editorWidth  - infoDialog.outerWidth())  / 2;
+
 				infoDialog.css({
-					top  : ($(window).height() - infoDialog.height()) / 2 + "px",
-					left : ($(window).width()  - infoDialog.width()) / 2  + "px"
+					top  : Math.max(top, 8) + "px",
+					left : Math.max(left, 8) + "px"
 				});
 			};
 
 			_infoDialogPosition();
-
-			$(window).resize(_infoDialogPosition);
 
             return this;
         },
@@ -1494,6 +1508,8 @@
 			var editor      = this.editor;
             var settings    = this.settings;
 			var infoDialog  = this.infoDialog = editor.children("." + this.classPrefix + "dialog-info");
+
+            this.state.infoDialogMoved = false;
 
             if (infoDialog.length < 1) {
                 this.createInfoDialog();
@@ -2697,16 +2713,25 @@
 
             if (!editor.hasClass(fullscreenClass)) {
                 state.fullscreen = true;
+                state.fullscreenScrollTop  = $(window).scrollTop();
+                state.fullscreenScrollLeft = $(window).scrollLeft();
+
+                window.scrollTo(0, 0);
 
                 $("html,body").css("overflow", "hidden");
 
                 editor.css({
-                    // width  : $(window).width(),
-                    width : "100%vw",
-                    // height : $(window).height(),
-                    height : "100%vh",
+                    width  : "100%",
+                    height : $(window).height() + "px",
                     zIndex : editormd.dialogZindex,
                 }).addClass(fullscreenClass);
+
+                $(window).off("resize.editormdFullscreen").on("resize.editormdFullscreen", function() {
+                    if (_this.state.fullscreen) {
+                        editor.css("height", $(window).height() + "px");
+                        _this.resize();
+                    }
+                });
 
                 this.resize();
 
@@ -2742,6 +2767,9 @@
             }
 
             $("html,body").css("overflow", "");
+            $(window).off("resize.editormdFullscreen");
+            $(window).scrollTop(this.state.fullscreenScrollTop || 0);
+            $(window).scrollLeft(this.state.fullscreenScrollLeft || 0);
 
             editor.css({
                 width  : editor.data("oldWidth"),
@@ -4210,6 +4238,9 @@
      */
 
     editormd.lockScreen = function(lock) {
+        if (lock) {
+            window.scrollTo(0, 0);
+        }
         $("html,body").css("overflow", (lock) ? "hidden" : "");
     };
 
@@ -4277,6 +4308,9 @@
 
         dialog.lockScreen = function(lock) {
             if (options.lockScreen) {
+                if (lock) {
+                    window.scrollTo(0, 0);
+                }
                 $("html,body").css("overflow", (lock) ? "hidden" : "");
                 $this.resize();
             }
@@ -4317,10 +4351,26 @@
         });
 
         var dialogPosition = function(){
+            var editorOffset = editor.offset() || { top : 0, left : 0 };
+            var editorWidth  = editor.outerWidth();
+            var editorHeight = editor.outerHeight();
+            var viewportTop  = editorOffset.top  - $(window).scrollTop();
+            var viewportLeft = editorOffset.left - $(window).scrollLeft();
+            var top          = viewportTop  + (editorHeight - dialog.outerHeight()) / 2;
+            var left         = viewportLeft + (editorWidth  - dialog.outerWidth())  / 2;
+
             dialog.css({
-                top    : ($(window).height() - dialog.height()) / 2 + "px",
-                left   : ($(window).width() - dialog.width()) / 2 + "px"
+                top    : Math.max(top, 8) + "px",
+                left   : Math.max(left, 8) + "px"
             });
+        };
+
+        // Keep dialogs centered every time they are shown (including cached dialogs reopened later).
+        var _dialogShow = dialog.show;
+        dialog.show = function() {
+            _dialogShow.apply(dialog, arguments);
+            dialogPosition();
+            return dialog;
         };
 
         dialogPosition();
