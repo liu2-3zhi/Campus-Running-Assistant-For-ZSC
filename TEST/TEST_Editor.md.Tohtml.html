@@ -20,12 +20,13 @@
     </div>
     <!-- 引入jQuery库，用于DOM操作 -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    
+    <!-- Editor.md 依赖 (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/code-prettify@0.1.0/src/prettify.min.js"></script>
+    
     <!-- 引入Editor.md主文件 -->
     <script src="/editor.md/editormd.js"></script>
-    <!-- 引入Marked库，用于Markdown解析 -->
-    <script src="/editor.md/lib/marked.min.js"></script>
-    <!-- 引入Prettify库，用于代码高亮 -->
-    <script src="/editor.md/lib/prettify.min.js"></script>
     <!-- 初始化Editor.md，将Markdown转换为HTML -->
     <script type="text/javascript">
         var testView=null;
