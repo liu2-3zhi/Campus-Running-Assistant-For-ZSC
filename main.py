@@ -2986,6 +2986,13 @@ def _get_default_config():
         "cache_time": "3600",
     }
 
+    config["IP_Location"] = {
+        "method": "pconline",
+        "amap_key": "",
+        "retry_times": "3",
+        "timeout": "5",
+    }
+
     config["Features"] = {
         "enable_phone_modification": "false",
         "enable_phone_login": "false",
@@ -22679,51 +22686,69 @@ def start_web_server(args_param):
                 pass
             return False
 
-    def update_single_cdn_file(key, config):
+    def update_single_cdn_file(key, config, max_retries=3):
         """
-        更新单个CDN文件的缓存
+        更新单个CDN文件的缓存（支持自动重试）
         """
         url = config["url"]
         filename = config["filename"]
         file_type = config.get("type", "js")
 
-        logging.info(f"[CDN缓存] 正在获取: {key} ({url})")
-        content = fetch_cdn_file(url)
+        for attempt in range(max_retries):
+            try:
+                logging.info(f"[CDN缓存] 正在获取: {key} ({url}) [尝试 {attempt + 1}/{max_retries}]")
+                content = fetch_cdn_file(url)
 
-        if content:
-            # 如果是 Google Fonts，需要特殊处理：解析并缓存TTF字体文件
-            if key == "google-fonts":
-                logging.info(f"[CDN缓存] 正在解析Google Fonts CSS并缓存字体文件...")
-                content = cache_google_fonts_with_ttf(content, key)
-            
-            # 如果是JS文件，处理source map
-            elif file_type == "js":
-                logging.info(f"[CDN缓存] 处理 {key} 的source map...")
-                content = process_js_with_source_map(content, url, key)
+                if content:
+                    # 如果是 Google Fonts，需要特殊处理：解析并缓存TTF字体文件
+                    if key == "google-fonts":
+                        logging.info(f"[CDN缓存] 正在解析Google Fonts CSS并缓存字体文件...")
+                        content = cache_google_fonts_with_ttf(content, key)
+                    
+                    # 如果是JS文件，处理source map
+                    elif file_type == "js":
+                        logging.info(f"[CDN缓存] 处理 {key} 的source map...")
+                        content = process_js_with_source_map(content, url, key)
 
-            # 先将处理后的内容写入缓存
-            if save_cached_file(filename, content):
-                # 文件保存成功后，更新内存缓存
-                with js_cache_lock:
-                    js_cache_storage[key] = content
-                    js_cache_last_update[key] = time.time()
-                logging.info(f"[CDN缓存] 成功更新: {key}")
-                return True
-            else:
-                logging.error(f"[CDN缓存] 保存文件失败: {key}")
+                    # 先将处理后的内容写入缓存
+                    if save_cached_file(filename, content):
+                        # 文件保存成功后，更新内存缓存
+                        with js_cache_lock:
+                            js_cache_storage[key] = content
+                            js_cache_last_update[key] = time.time()
+                        logging.info(f"[CDN缓存] 成功更新: {key}")
+                        return True
+                    else:
+                        logging.error(f"[CDN缓存] 保存文件失败: {key}")
+                        if attempt < max_retries - 1:
+                            time.sleep(1)  # 等待1秒后重试
+                            continue
+                        return False
+                else:
+                    logging.warning(f"[CDN缓存] 获取内容失败: {key} [尝试 {attempt + 1}/{max_retries}]")
+                    if attempt < max_retries - 1:
+                        time.sleep(1)  # 等待1秒后重试
+                        continue
+                    
+                    # 所有尝试都失败，尝试使用本地缓存
+                    cached = load_cached_file(filename)
+                    if cached:
+                        with js_cache_lock:
+                            if key not in js_cache_storage:
+                                js_cache_storage[key] = cached
+                        logging.warning(f"[CDN缓存] 获取失败，使用本地缓存: {key}")
+                        return False
+                    else:
+                        logging.error(f"[CDN缓存] 获取失败且无本地缓存: {key}")
+                        return False
+            except Exception as e:
+                logging.error(f"[CDN缓存] 更新 {key} 时发生错误 [尝试 {attempt + 1}/{max_retries}]: {e}", exc_info=True)
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                    continue
                 return False
-        else:
-            # 获取失败，尝试使用本地缓存
-            cached = load_cached_file(filename)
-            if cached:
-                with js_cache_lock:
-                    if key not in js_cache_storage:
-                        js_cache_storage[key] = cached
-                logging.warning(f"[CDN缓存] 获取失败，使用本地缓存: {key}")
-                return False
-            else:
-                logging.error(f"[CDN缓存] 获取失败且无本地缓存: {key}")
-                return False
+        
+        return False
 
     def update_all_cdn_files():
         """
@@ -32099,6 +32124,58 @@ def start_web_server(args_param):
             logging.error(f"[CDN缓存API] 刷新缓存时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
+    @app.route("/api/cdn/force-refresh", methods=["POST"])
+    @admin_required
+    @login_required
+    def force_refresh_cdn_cache():
+        """
+        强制刷新CDN缓存（后台执行，管理员功能）
+        立即返回响应，在后台异步执行刷新任务
+        """
+        try:
+            session_id = request.headers.get("X-Session-ID", "")
+            if not session_id:
+                return jsonify({"success": False, "message": "未授权"}), 401
+
+            # 检查是否有管理员权限
+            api_instance = None
+            with web_sessions_lock:
+                if session_id in web_sessions:
+                    api_instance = web_sessions[session_id]
+
+            if not api_instance:
+                return jsonify({"success": False, "message": "会话无效"}), 401
+
+            auth_username = getattr(api_instance, "auth_username", None)
+            if not auth_username:
+                return jsonify({"success": False, "message": "未登录"}), 401
+
+            # 检查管理员权限
+            if not auth_system.check_permission(auth_username, "admin_panel"):
+                return jsonify({"success": False, "message": "权限不足"}), 403
+
+            # 在后台线程执行刷新
+            def background_refresh():
+                try:
+                    logging.info("[CDN缓存] 开始后台强制刷新...")
+                    success_count, fail_count = update_all_cdn_files()
+                    logging.info(f"[CDN缓存] 后台强制刷新完成: 成功 {success_count}, 失败 {fail_count}")
+                except Exception as e:
+                    logging.error(f"[CDN缓存] 后台强制刷新失败: {e}", exc_info=True)
+
+            refresh_thread = threading.Thread(target=background_refresh, daemon=True)
+            refresh_thread.start()
+
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "CDN缓存正在后台刷新，请稍候...",
+                }
+            )
+        except Exception as e:
+            logging.error(f"[CDN缓存API] 强制刷新缓存时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
     # ========== 新增路由：静态资源 (Scripts & Styles) ==========
     @app.route("/scripts/<path:filename>")
     def serve_scripts(filename):
@@ -33620,76 +33697,178 @@ def start_web_server(args_param):
     def get_ip_location(ip_address):
         """
         获取IP地址的地理位置信息 (带1天缓存)
-        使用 pconline whois 接口
-        当API返回非字典类型数据时，自动重试最多2次
+        支持多种查询方法：高德地图、pconline
+        自动重试，并在缓存"未知"时对有效IP重新查询
         """
-        if not ip_address:
+        # 预处理IP地址，验证有效性
+        if not ip_address or not isinstance(ip_address, str):
+            return "未知"
+        
+        ip_address = ip_address.strip()
+        
+        # 检查是否为空或无效IP
+        if not ip_address or ip_address in ["", "0.0.0.0", "127.0.0.1", "::1", "localhost"]:
+            return "未知"
+        
+        # 简单验证IP格式（IPv4或IPv6）
+        import re
+        ipv4_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+        ipv6_pattern = r'^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$'
+        
+        if not (re.match(ipv4_pattern, ip_address) or re.match(ipv6_pattern, ip_address)):
+            logging.debug(f"[IP定位] 无效的IP格式: {ip_address}")
             return "未知"
 
         current_time = time.time()
+        
+        # 检查缓存
         with ip_cache_lock:
             cached_entry = ip_location_cache.get(ip_address)
 
         if cached_entry:
             timestamp = cached_entry.get("timestamp", 0)
             location = cached_entry.get("location")
-            if (current_time - timestamp < CACHE_DURATION_SECONDS) and location:
-                logging.debug(f"[IP缓存] 命中: ip={ip_address}, 位置={location}")
-                return location
+            
+            # 如果缓存未过期
+            if current_time - timestamp < CACHE_DURATION_SECONDS:
+                # 如果缓存的是"未知"且IP地址有效，忽略缓存重新查询
+                if location == "未知":
+                    logging.debug(f"[IP缓存] 缓存为'未知'，对有效IP重新查询: ip={ip_address}")
+                elif location:
+                    logging.debug(f"[IP缓存] 命中: ip={ip_address}, 位置={location}")
+                    return location
             else:
                 logging.debug(f"[IP缓存] 过期: ip={ip_address}")
 
-        max_retries = 2
-        for attempt in range(max_retries + 1):
+        # 读取配置
+        try:
+            config = _read_config_ini()
+            if config and config.has_section("IP_Location"):
+                method = config.get("IP_Location", "method", fallback="pconline")
+                amap_key = config.get("IP_Location", "amap_key", fallback="")
+                retry_times = config.getint("IP_Location", "retry_times", fallback=3)
+                timeout = config.getint("IP_Location", "timeout", fallback=5)
+            else:
+                method = "pconline"
+                amap_key = ""
+                retry_times = 3
+                timeout = 5
+        except Exception as e:
+            logging.warning(f"[IP定位] 读取配置失败，使用默认值: {e}")
+            method = "pconline"
+            amap_key = ""
+            retry_times = 3
+            timeout = 5
+
+        # 定义查询方法
+        def query_amap(ip, key, timeout_sec):
+            """使用高德地图API查询IP位置"""
+            if not key:
+                logging.debug("[IP定位] 高德地图API Key未配置")
+                return None
+            
             try:
-                api_url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip_address}&json=true"
-                response = requests.get(api_url, timeout=5)
+                api_url = f"https://restapi.amap.com/v3/ip?key={key}&ip={ip}"
+                response = requests.get(api_url, timeout=timeout_sec)
+                data = response.json()
+                
+                if not isinstance(data, dict):
+                    logging.warning(f"[IP定位-高德] API返回非字典类型: {type(data).__name__}")
+                    return None
+                
+                status = data.get("status")
+                if status != "1":
+                    logging.warning(f"[IP定位-高德] API返回错误状态: {data}")
+                    return None
+                
+                province = data.get("province", "")
+                city = data.get("city", "")
+                
+                # 检查是否为空数组或空字符串
+                if isinstance(province, list) or isinstance(city, list):
+                    logging.warning(f"[IP定位-高德] 返回空数据: province={province}, city={city}")
+                    return None
+                
+                if not province or not city:
+                    logging.warning(f"[IP定位-高德] 返回空数据: province={province}, city={city}")
+                    return None
+                
+                # 组合省市信息
+                if province == city:
+                    location_str = province
+                else:
+                    location_str = f"{province} {city}"
+                
+                logging.debug(f"[IP定位-高德] 成功: ip={ip}, 位置={location_str}")
+                return location_str
+                
+            except Exception as e:
+                logging.warning(f"[IP定位-高德] 查询失败: {e}")
+                return None
+        
+        def query_pconline(ip, timeout_sec):
+            """使用pconline API查询IP位置"""
+            try:
+                api_url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip}&json=true"
+                response = requests.get(api_url, timeout=timeout_sec)
                 response.encoding = "gbk"
                 data = response.json()
 
                 if not isinstance(data, dict):
-                    logging.warning(
-                        f"[IP定位] API返回非字典类型数据: ip={ip_address}, 类型={type(data).__name__}, "
-                        f"数据={data}, 尝试次数={attempt + 1}/{max_retries + 1}"
-                    )
-                    if attempt < max_retries:
-                        continue
-                    return "未知"
+                    logging.warning(f"[IP定位-pconline] API返回非字典类型: {type(data).__name__}")
+                    return None
 
                 addr = data.get("addr", "").strip()
-
                 if addr:
-                    location_str = addr
-                    logging.debug(
-                        f"[IP定位] 成功获取: ip={ip_address}, 位置={location_str}"
-                    )
-                    with ip_cache_lock:
-                        ip_location_cache[ip_address] = {
-                            "location": location_str,
-                            "timestamp": current_time,
-                        }
-                    _save_ip_cache()
-                    return location_str
+                    logging.debug(f"[IP定位-pconline] 成功: ip={ip}, 位置={addr}")
+                    return addr
                 else:
-                    logging.warning(f"[IP定位] API返回空数据: ip={ip_address}")
-                    return "未知"
-
-            except requests.exceptions.Timeout:
-                logging.warning(f"[IP定位] 请求超时: ip={ip_address}")
-                return "未知"
-            except requests.exceptions.RequestException as e:
-                logging.warning(f"[IP定位] 网络请求失败: ip={ip_address}, 错误={str(e)}")
-                return "未知"
-            except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
-                logging.warning(f"[IP定位] 数据解析失败: ip={ip_address}, 错误={str(e)}")
-                return "未知"
+                    logging.warning(f"[IP定位-pconline] 返回空数据")
+                    return None
+                    
             except Exception as e:
-                logging.error(
-                    f"[IP定位] 未知错误: ip={ip_address}, 错误={str(e)}", exc_info=True
-                )
-                return "未知"
+                logging.warning(f"[IP定位-pconline] 查询失败: {e}")
+                return None
 
-        return "未知"
+        # 执行查询，支持自动重试和回退
+        location_result = None
+        
+        for attempt in range(retry_times):
+            # 根据配置的方法查询
+            if method == "amap":
+                location_result = query_amap(ip_address, amap_key, timeout)
+                # 如果高德失败，尝试pconline作为备用
+                if not location_result:
+                    logging.debug(f"[IP定位] 高德查询失败，尝试pconline (尝试 {attempt + 1}/{retry_times})")
+                    location_result = query_pconline(ip_address, timeout)
+            else:
+                # 默认使用pconline
+                location_result = query_pconline(ip_address, timeout)
+                # 如果pconline失败且配置了高德Key，尝试高德作为备用
+                if not location_result and amap_key:
+                    logging.debug(f"[IP定位] pconline查询失败，尝试高德 (尝试 {attempt + 1}/{retry_times})")
+                    location_result = query_amap(ip_address, amap_key, timeout)
+            
+            # 如果成功获取到位置信息，跳出重试循环
+            if location_result:
+                break
+            
+            # 等待一小段时间再重试
+            if attempt < retry_times - 1:
+                time.sleep(0.5)
+        
+        # 保存结果到缓存
+        final_location = location_result if location_result else "未知"
+        
+        with ip_cache_lock:
+            ip_location_cache[ip_address] = {
+                "location": final_location,
+                "timestamp": current_time,
+            }
+        _save_ip_cache()
+        
+        logging.debug(f"[IP定位] 最终结果: ip={ip_address}, 位置={final_location}")
+        return final_location
 
     @app.route("/api/messages/post", methods=["POST"])
     def post_message():
