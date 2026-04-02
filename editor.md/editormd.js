@@ -361,7 +361,8 @@
             preview    : false,
             fullscreen : false,
             fullscreenPlaceholder : null,
-            fullscreenLockedScrollParents : []
+            fullscreenLockedScrollParents : [],
+            fullscreenAutoScrollRestoreNodes : []
         },
 
         /**
@@ -3061,6 +3062,32 @@
                         node.scrollTo(node.scrollLeft || 0, value);
                     }
                 };
+                var rememberRestoreNode = function(node) {
+                    if (!node) {
+                        return;
+                    }
+                    for (var i = 0; i < state.fullscreenAutoScrollRestoreNodes.length; i++) {
+                        if (state.fullscreenAutoScrollRestoreNodes[i].node === node) {
+                            return;
+                        }
+                    }
+                    state.fullscreenAutoScrollRestoreNodes.push({
+                        node: node,
+                        scrollTop: node.scrollTop || 0,
+                        scrollLeft: node.scrollLeft || 0
+                    });
+                };
+
+                if (settings.fullScreenAutomaticScrollingOuterHtml) {
+                    outerParents.each(function() {
+                        if (this === document.body || this === document.documentElement) {
+                            return;
+                        }
+                        rememberRestoreNode(this);
+                    });
+                } else if (firstOuterParent && firstOuterParent.length) {
+                    rememberRestoreNode(firstOuterParent[0]);
+                }
 
                 var runStep = function(index) {
                     if (!state.fullscreen) {
@@ -3122,7 +3149,8 @@
                             document.body.scrollTop = finalOuterTop;
                             $("html, body").scrollTop(finalOuterTop);
                         }
-                        if (state.fullscreen && state.fullscreenRect) {
+                        var isLastStep = index === (steps.length - 1);
+                        if (isLastStep && state.fullscreen && state.fullscreenRect) {
                             var reflowRect = getFullscreenRect();
                             var stabilizedRect = {
                                 top: reflowRect.top,
@@ -3198,6 +3226,7 @@
                 });
 
                 state.fullscreenLockedScrollParents = [];
+                state.fullscreenAutoScrollRestoreNodes = [];
                 if (!settings.fullScreenScrolling || settings.fullScreenForceDisableAllScroll) {
                     $("html,body").css("overflow", "hidden");
                     var lockLayer = parseInt(settings.parentContainerLayer, 10);
@@ -3380,9 +3409,29 @@
                 });
             }
             this.state.fullscreenLockedScrollParents = [];
+            if (this.state.fullscreenAutoScrollRestoreNodes && this.state.fullscreenAutoScrollRestoreNodes.length) {
+                for (var j = 0; j < this.state.fullscreenAutoScrollRestoreNodes.length; j++) {
+                    var restoreItem = this.state.fullscreenAutoScrollRestoreNodes[j];
+                    if (!restoreItem || !restoreItem.node) {
+                        continue;
+                    }
+                    restoreItem.node.scrollTop = restoreItem.scrollTop;
+                    restoreItem.node.scrollLeft = restoreItem.scrollLeft;
+                }
+                console.log(logPrefix, "已恢复自动滚动父容器位置", {
+                    restoredCount: this.state.fullscreenAutoScrollRestoreNodes.length
+                });
+            }
+            this.state.fullscreenAutoScrollRestoreNodes = [];
             $(window).off("resize.editormdFullscreen");
             $(window).scrollTop(this.state.fullscreenScrollTop || 0);
             $(window).scrollLeft(this.state.fullscreenScrollLeft || 0);
+            if (document.scrollingElement) {
+                document.scrollingElement.scrollTop = this.state.fullscreenScrollTop || 0;
+                document.scrollingElement.scrollLeft = this.state.fullscreenScrollLeft || 0;
+            }
+            document.documentElement.scrollTop = this.state.fullscreenScrollTop || 0;
+            document.body.scrollTop = this.state.fullscreenScrollTop || 0;
 
             editor.css({
                 top    : "",
