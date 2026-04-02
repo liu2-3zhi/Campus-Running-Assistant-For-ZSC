@@ -17863,42 +17863,65 @@ function handlePhoneNotRegisteredRedirect(phoneNumber, smsCode, isMobile) {
   }
   
   // 填充手机号到注册表单
-  const regPhoneInput = document.getElementById("auth-reg-phone");
+  const regPhoneInput = document.getElementById(isMobile ? "mobile-reg-phone" : "auth-reg-phone");
   if (regPhoneInput) {
     regPhoneInput.value = phoneNumber;
     console.log("[手机号未注册跳转] 已填充手机号:", phoneNumber);
   }
   
   // 填充验证码到注册表单
-  const regSmsCodeInput = document.getElementById("auth-reg-sms-code");
+  const regSmsCodeInput = document.getElementById(isMobile ? "mobile-reg-sms-code" : "auth-reg-sms-code");
   if (regSmsCodeInput && smsCode) {
     regSmsCodeInput.value = smsCode;
     console.log("[手机号未注册跳转] 已填充验证码:", smsCode);
     
-    // 延长验证码有效期：更新前端倒计时显示
-    // 通常登录用的验证码和注册用的是同一个，所以直接复用
-    // 但需要通知用户验证码已复用
+    // 调用后端API延长验证码有效期
+    (async () => {
+      try {
+        const response = await fetch("/api/sms/extend_code", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            phone: phoneNumber,
+          }),
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          console.log("[手机号未注册跳转] 验证码有效期已延长:", data.extend_minutes, "分钟");
+        } else {
+          console.warn("[手机号未注册跳转] 验证码延长失败:", data.message);
+        }
+      } catch (error) {
+        console.error("[手机号未注册跳转] 延长验证码请求失败:", error);
+      }
+    })();
+    
+    // 通知用户验证码已复用
     Swal.fire({
       icon: "success",
       title: "信息已自动填充",
       html: `
         <div class="text-left">
           <p class="mb-2 text-green-600">✅ 手机号和验证码已自动填充</p>
-          <p class="text-sm text-slate-600">请设置用户名和密码完成注册。</p>
+          <p class="text-sm text-slate-600">验证码有效期已自动延长5分钟</p>
+          <p class="text-sm text-slate-600 mt-2">请设置用户名和密码完成注册。</p>
         </div>
       `,
-      timer: 2500,
+      timer: 3000,
       timerProgressBar: true,
       showConfirmButton: false,
     });
   }
   
   // 刷新注册页验证码
-  refreshCaptcha("register");
+  refreshCaptcha(isMobile ? "mobile-register" : "register");
   
   // 聚焦到用户名输入框
   setTimeout(() => {
-    const regUsernameInput = document.getElementById("auth-reg-username");
+    const regUsernameInput = document.getElementById(isMobile ? "mobile-reg-username" : "auth-reg-username");
     if (regUsernameInput) {
       regUsernameInput.focus();
     }
