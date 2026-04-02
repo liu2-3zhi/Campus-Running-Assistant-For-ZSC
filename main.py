@@ -30352,6 +30352,56 @@ def start_web_server(args_param):
             app.logger.error(f"[验证码管理] 使验证码失效失败：{str(e)}")
             return jsonify({"success": False, "message": "操作失败"}), 500
 
+    @app.route("/api/sms/extend_code", methods=["POST"])
+    def extend_verification_code():
+        """
+        延长验证码有效期API
+        用于在手机号未注册时，延长验证码有效期以便用户跳转到注册页面
+        """
+        try:
+            data = request.get_json() or {}
+            phone = data.get("phone", "").strip()
+            
+            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
+                return jsonify({"success": False, "message": "手机号格式不正确"})
+            
+            # 检查该手机号是否有有效的验证码
+            if phone not in sms_verification_codes:
+                return jsonify({"success": False, "message": "该手机号没有待验证的验证码"})
+            
+            code, expire_time = sms_verification_codes[phone]
+            current_time = time.time()
+            
+            # 检查验证码是否已过期
+            if current_time > expire_time:
+                del sms_verification_codes[phone]
+                return jsonify({"success": False, "message": "验证码已过期"})
+            
+            # 延长验证码有效期（额外增加5分钟）
+            config = configparser.ConfigParser(strict=False)
+            config.optionxform = str
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            
+            extend_minutes = 5  # 延长5分钟
+            extend_seconds = extend_minutes * 60
+            new_expire_time = current_time + extend_seconds
+            
+            sms_verification_codes[phone] = (code, new_expire_time)
+            
+            app.logger.info(
+                f"[验证码延长] 手机号 {phone} 的验证码有效期已延长 {extend_minutes} 分钟"
+            )
+            
+            return jsonify({
+                "success": True,
+                "message": f"验证码有效期已延长{extend_minutes}分钟",
+                "extend_minutes": extend_minutes
+            })
+            
+        except Exception as e:
+            app.logger.error(f"[验证码延长] 延长失败：{str(e)}")
+            return jsonify({"success": False, "message": "延长失败"}), 500
+
     @app.route("/api/admin/sms/add_manual_code", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def add_manual_verification_code():
