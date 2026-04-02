@@ -30750,6 +30750,112 @@ def start_web_server(args_param):
             )
 
     # ============================================================================
+    # IP定位配置API（管理员）
+    # ============================================================================
+
+    @app.route("/api/admin/ip_location/config", methods=["GET"])
+    @admin_required
+    @login_required
+    def get_ip_location_config():
+        """获取IP定位配置"""
+        try:
+            session_id = request.headers.get("X-Session-ID", "")
+            if not session_id:
+                return jsonify({"success": False, "message": "未授权"}), 401
+
+            config = _read_config_ini()
+            if not config:
+                return jsonify({"success": False, "message": "配置文件读取失败"}), 500
+
+            # 读取IP定位配置
+            config_data = {
+                "amap_key": config.get("IP_Location", "amap_key", fallback=""),
+                "uapipro_key": config.get("IP_Location", "uapipro_key", fallback=""),
+                "retry_times": config.getint("IP_Location", "retry_times", fallback=3),
+                "timeout": config.getint("IP_Location", "timeout", fallback=5),
+                "query_order": config.get("IP_Location", "query_order", fallback="uapipro,amap,baidu"),
+            }
+
+            return jsonify({"success": True, "config": config_data})
+
+        except Exception as e:
+            logging.error(f"[IP定位配置API] 获取配置失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/api/admin/ip_location/config", methods=["POST"])
+    @admin_required
+    @login_required
+    def update_ip_location_config():
+        """更新IP定位配置"""
+        try:
+            session_id = request.headers.get("X-Session-ID", "")
+            if not session_id:
+                return jsonify({"success": False, "message": "未授权"}), 401
+
+            data = request.json
+            if not data:
+                return jsonify({"success": False, "message": "无效的请求数据"}), 400
+
+            config = _read_config_ini()
+            if not config:
+                return jsonify({"success": False, "message": "配置文件读取失败"}), 500
+
+            # 确保IP_Location节存在
+            if not config.has_section("IP_Location"):
+                config.add_section("IP_Location")
+
+            # 更新配置
+            if "amap_key" in data:
+                config.set("IP_Location", "amap_key", str(data["amap_key"]))
+
+            if "uapipro_key" in data:
+                config.set("IP_Location", "uapipro_key", str(data["uapipro_key"]))
+
+            if "retry_times" in data:
+                retry_times = int(data["retry_times"])
+                if retry_times < 1 or retry_times > 10:
+                    return jsonify({"success": False, "message": "重试次数必须在1-10之间"}), 400
+                config.set("IP_Location", "retry_times", str(retry_times))
+
+            if "timeout" in data:
+                timeout = int(data["timeout"])
+                if timeout < 1 or timeout > 30:
+                    return jsonify({"success": False, "message": "超时时间必须在1-30秒之间"}), 400
+                config.set("IP_Location", "timeout", str(timeout))
+
+            if "query_order" in data:
+                query_order = str(data["query_order"]).strip()
+                # 验证查询顺序格式
+                valid_methods = ["uapipro", "amap", "baidu", "pconline"]
+                methods = [m.strip().lower() for m in query_order.split(",")]
+                for method in methods:
+                    if method not in valid_methods:
+                        return jsonify({
+                            "success": False,
+                            "message": f"无效的查询方法: {method}。有效方法: {', '.join(valid_methods)}"
+                        }), 400
+                config.set("IP_Location", "query_order", query_order)
+
+            # 保存配置
+            config.save()
+
+            # 记录日志
+            logging.info(f"[IP定位配置] {g.user} 更新IP定位配置: {data}")
+
+            return jsonify({
+                "success": True,
+                "message": "IP定位配置已保存，立即生效"
+            })
+
+        except ValueError as e:
+            logging.error(f"[IP定位配置] 配置数据类型错误: {e}")
+            return jsonify({"success": False, "message": f"配置数据格式错误: {str(e)}"}), 400
+
+        except Exception as e:
+            logging.error(f"[IP定位配置] 更新配置失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"更新配置失败: {str(e)}"}), 500
+
+    # ============================================================================
     # 密码恢复（暴力破解）API（仅超级管理员）
     # 警告：此功能仅用于合法的学校账号密码恢复
     # ============================================================================
