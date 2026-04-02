@@ -2975,6 +2975,17 @@ def _get_default_config():
         "amap_js_key": "",
     }
 
+    config["IP_Location"] = {
+        # 兼容旧配置：保留 query_method 字段
+        "query_method": "uapipro",
+        # 查询顺序（逗号分隔）：默认 UapiPro -> 高德 -> 百度
+        "query_order": "uapipro,amap,baidu",
+        # 高德 Web API Key（IP定位）
+        "amap_web_api_key": "",
+        # UapiPro API Key（Bearer）
+        "uapipro_api_key": "",
+    }
+
     config["Captcha"] = {
         "length": "4",
         "scale_factor": "2",
@@ -17532,6 +17543,43 @@ def _save_ip_cache():
             logging.error(f"[IP缓存] 序列化缓存数据失败: {e}")
 
 
+def _migrate_ip_location_config_if_needed():
+    """
+    兼容旧配置并自动迁移 IP_Location 配置。
+    """
+    try:
+        cfg = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+        changed = False
+        if not cfg.has_section("IP_Location"):
+            cfg.add_section("IP_Location")
+            changed = True
+
+        if not cfg.has_option("IP_Location", "query_method"):
+            cfg.set("IP_Location", "query_method", "uapipro")
+            changed = True
+        if not cfg.has_option("IP_Location", "query_order"):
+            legacy_method = cfg.get("IP_Location", "query_method", fallback="uapipro").strip().lower()
+            base_order = ["uapipro", "amap", "baidu"]
+            if legacy_method in ("uapipro", "amap", "baidu", "pconline"):
+                new_order = [legacy_method] + [x for x in base_order if x != legacy_method]
+            else:
+                new_order = base_order
+            cfg.set("IP_Location", "query_order", ",".join(new_order))
+            changed = True
+        if not cfg.has_option("IP_Location", "amap_web_api_key"):
+            cfg.set("IP_Location", "amap_web_api_key", "")
+            changed = True
+        if not cfg.has_option("IP_Location", "uapipro_api_key"):
+            cfg.set("IP_Location", "uapipro_api_key", "")
+            changed = True
+
+        if changed:
+            _write_config_with_comments(cfg, CONFIG_JSON_FILE)
+            logging.info("[配置迁移] IP_Location 新配置项已自动迁移")
+    except Exception as e:
+        logging.warning(f"[配置迁移] IP_Location 迁移失败: {e}")
+
+
 def update_session_activity(session_id):
     """更新会话活动时间"""
     with session_activity_lock:
@@ -22108,25 +22156,28 @@ def start_web_server(args_param):
 
     # 需要缓存的CDN文件列表
     CDN_FILES = {
+        # 美化弹窗
         "sweetalert2": {
-            "url": "https://cdn.jsdelivr.net/npm/sweetalert2@11",
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.all.min.js",
             "filename": "sweetalert2.min.js",
             "type": "js",
         },
+        "sweetalert2-css": {
+            "url": "https://cdn.jsdelivr.net/npm/sweetalert2/dist/sweetalert2.min.css",
+            "filename": "sweetalert2.min.css",
+            "type": "css",
+        },
+        # 二维码生成库
         "qrcode": {
-            "url": "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/qrcode/lib/browser.min.js",
             "filename": "qrcode.min.js",
             "type": "js",
         },
+        # 图片裁剪库
         "cropperjs": {
-            "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js",
+            "url": "https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js",
             "filename": "cropper.min.js",
             "type": "js",
-        },
-        "cropperjs-css": {
-            "url": "https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css",
-            "filename": "cropper.min.css",
-            "type": "css",
         },
         "tailwindcss": {
             "url": "https://cdn.tailwindcss.com",
@@ -22134,10 +22185,9 @@ def start_web_server(args_param):
             "type": "js",
         },
         "socketio": {
-            "url": "https://cdn.socket.io/4.8.1/socket.io.min.js",  # 自动获取最新稳定版
+            "url": "https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js",
             "filename": "socket.io.min.js",
             "type": "js",
-            "check_latest": True,  # 标记需要检查最新版本
         },
         "google-fonts": {
             "url": "https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=Noto+Sans+SC:wght@400;600;700&display=swap",
@@ -22150,8 +22200,8 @@ def start_web_server(args_param):
             "type": "js",
         },
         "jquery": {
-            "url": "https://code.jquery.com/jquery-3.7.1.js",
-            "filename": "jquery-3.7.1.js",
+            "url": "https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js",
+            "filename": "jquery.js",
             "type": "js",
         },
     }
@@ -22483,24 +22533,6 @@ def start_web_server(args_param):
         except Exception as e:
             logging.warning(f"[CDN缓存] 扫描字体缓存目录失败: {e}")
 
-    def get_latest_socketio_version():
-        """
-        获取socket.io的最新稳定版本号
-        """
-        try:
-            # 从npm registry获取最新版本
-            response = requests.get(
-                "https://registry.npmjs.org/socket.io-client/latest", timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                version = data.get("version", "4.8.1")
-                logging.info(f"[CDN缓存] Socket.IO 最新版本: {version}")
-                return version
-        except Exception as e:
-            logging.warning(f"[CDN缓存] 获取Socket.IO最新版本失败: {e}")
-        return "4.8.1"  # 默认版本
-
     def fetch_cdn_file(url, timeout=30, binary=False):
         """
         从CDN获取文件内容
@@ -22555,57 +22587,153 @@ def start_web_server(args_param):
             binary: 是否以二进制模式写入
         """
         cache_path = os.path.join(JS_CACHE_DIR, filename)
+        tmp_path = f"{cache_path}.tmp"
         try:
             mode = "wb" if binary else "w"
             encoding = None if binary else "utf-8"
-            with open(cache_path, mode, encoding=encoding) as f:
+            with open(tmp_path, mode, encoding=encoding) as f:
                 f.write(content)
+            os.replace(tmp_path, cache_path)
             logging.info(f"[CDN缓存] 已保存缓存文件: {filename}")
             return True
         except Exception as e:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
             logging.error(f"[CDN缓存] 保存缓存文件失败: {e}, 文件: {filename}")
             return False
 
+    # Source Map缓存存储
+    source_map_storage = {}
+    source_map_lock = threading.Lock()
+
+    def _extract_source_map_url(js_content, js_url):
+        """
+        从JS内容提取 sourceMappingURL，并解析为绝对URL。
+        若未提取到且js_url以.js结尾，则尝试 js_url + '.map'
+        """
+        try:
+            # 匹配 //# sourceMappingURL=xxx 或 //@ sourceMappingURL=xxx
+            matches = re.findall(
+                r"//[@#]\s*sourceMappingURL=([^\s]+)", js_content or "")
+            if matches:
+                raw_map = matches[-1].strip()
+                return urllib.parse.urljoin(js_url, raw_map), raw_map
+            if isinstance(js_url, str) and js_url.endswith(".js"):
+                return js_url + ".map", None
+        except Exception as e:
+            logging.warning(f"[CDN缓存] 提取source map URL失败: {e}")
+        return None, None
+
+    def _remove_js_source_map_comment(js_content):
+        """
+        删除JS中的 sourceMappingURL 注释
+        """
+        if not isinstance(js_content, str):
+            return js_content
+        return re.sub(r"\n?//[@#]\s*sourceMappingURL=[^\n\r]*\s*$",
+                      "", js_content, flags=re.MULTILINE)
+
+    def _safe_delete_cached_file(filename):
+        """
+        安全删除缓存文件
+        """
+        try:
+            cache_path = os.path.join(JS_CACHE_DIR, filename)
+            if os.path.exists(cache_path):
+                os.remove(cache_path)
+        except Exception as e:
+            logging.warning(f"[CDN缓存] 删除缓存文件失败: {filename}, 错误: {e}")
+
+    def process_js_with_source_map(js_content, js_url, key):
+        """
+        处理JS中的 sourceMappingURL。
+        - map下载成功：缓存map并将JS尾部 sourceMappingURL 改写成本地 /api/cdn/map/<key>
+        - map下载失败：清理旧map（内存+磁盘）并删除JS中的 sourceMappingURL
+        """
+        map_url, original_map_ref = _extract_source_map_url(js_content, js_url)
+        if not map_url:
+            return js_content
+
+        map_content = fetch_cdn_file(map_url)
+        map_filename = f"{key}.map"
+
+        if map_content:
+            # 先写入map缓存，再改写JS
+            if save_cached_file(map_filename, map_content):
+                with source_map_lock:
+                    source_map_storage[key] = map_content
+                local_map_ref = f"/api/cdn/map/{key}"
+                if original_map_ref:
+                    # 替换 sourceMappingURL 为本地接口地址
+                    js_content = re.sub(
+                        r"//[@#]\s*sourceMappingURL=[^\n\r]*\s*$",
+                        f"//# sourceMappingURL={local_map_ref}",
+                        js_content,
+                        flags=re.MULTILINE,
+                    )
+                else:
+                    js_content = js_content.rstrip() + \
+                        f"\n//# sourceMappingURL={local_map_ref}\n"
+                logging.info(f"[CDN缓存] source map下载并改写成功: {key}")
+            else:
+                # map文件保存失败，按失败处理：清理旧map并删除sourceMappingURL
+                with source_map_lock:
+                    source_map_storage.pop(key, None)
+                _safe_delete_cached_file(map_filename)
+                js_content = _remove_js_source_map_comment(js_content)
+                logging.warning(f"[CDN缓存] source map保存失败，已移除映射: {key}")
+        else:
+            # map下载失败：清理旧map并移除JS中的sourceMappingURL
+            with source_map_lock:
+                source_map_storage.pop(key, None)
+            _safe_delete_cached_file(map_filename)
+            js_content = _remove_js_source_map_comment(js_content)
+            logging.warning(f"[CDN缓存] source map下载失败，已移除映射: {key}")
+
+        return js_content
+
     def update_single_cdn_file(key, config):
         """
-        更新单个CDN文件的缓存
+        更新单个CDN文件的缓存（先下载并处理，再原子替换）
         """
         url = config["url"]
         filename = config["filename"]
-
-        # 如果是socket.io且标记需要检查最新版本，则动态获取最新版本URL
-        if config.get("check_latest") and key == "socketio":
-            latest_version = get_latest_socketio_version()
-            url = f"https://cdn.socket.io/{latest_version}/socket.io.min.js"
-            logging.info(f"[CDN缓存] Socket.IO 使用最新版本: {latest_version}")
+        file_type = config.get("type", "js")
 
         logging.info(f"[CDN缓存] 正在获取: {key} ({url})")
         content = fetch_cdn_file(url)
 
         if content:
-            # 如果是 Google Fonts，需要特殊处理：解析并缓存TTF字体文件
+            # 先处理内容
             if key == "google-fonts":
                 logging.info(f"[CDN缓存] 正在解析Google Fonts CSS并缓存字体文件...")
                 content = cache_google_fonts_with_ttf(content, key)
+            elif file_type == "js":
+                content = process_js_with_source_map(content, url, key)
 
-            with js_cache_lock:
-                js_cache_storage[key] = content
-                js_cache_last_update[key] = time.time()
-            save_cached_file(filename, content)
-            logging.info(f"[CDN缓存] 成功更新: {key}")
-            return True
-        else:
-            # 获取失败，尝试使用本地缓存
-            cached = load_cached_file(filename)
-            if cached:
+            # 先落盘，成功后再更新内存缓存，避免更新中断导致文件缺失
+            if save_cached_file(filename, content):
                 with js_cache_lock:
-                    if key not in js_cache_storage:
-                        js_cache_storage[key] = cached
-                logging.warning(f"[CDN缓存] 获取失败，使用本地缓存: {key}")
-                return False
-            else:
-                logging.error(f"[CDN缓存] 获取失败且无本地缓存: {key}")
-                return False
+                    js_cache_storage[key] = content
+                    js_cache_last_update[key] = time.time()
+                logging.info(f"[CDN缓存] 成功更新: {key}")
+                return True
+            logging.error(f"[CDN缓存] 保存文件失败: {key}")
+            return False
+
+        # 获取失败，尝试使用本地缓存
+        cached = load_cached_file(filename)
+        if cached:
+            with js_cache_lock:
+                if key not in js_cache_storage:
+                    js_cache_storage[key] = cached
+            logging.warning(f"[CDN缓存] 获取失败，使用本地缓存: {key}")
+            return False
+        logging.error(f"[CDN缓存] 获取失败且无本地缓存: {key}")
+        return False
 
     def update_all_cdn_files():
         """
@@ -22644,12 +22772,20 @@ def start_web_server(args_param):
                         os.path.join(JS_CACHE_DIR, filename)
                     )
                 logging.info(f"[CDN缓存] 从本地加载: {key}")
+                if config.get("type") == "js":
+                    map_filename = f"{key}.map"
+                    map_cached = load_cached_file(map_filename)
+                    if map_cached:
+                        with source_map_lock:
+                            source_map_storage[key] = map_cached
+                        logging.info(f"[CDN缓存] 从本地加载source map: {key}")
             else:
                 # 本地没有缓存，从CDN获取
                 update_single_cdn_file(key, config)
 
         logging.info(
-            f"[CDN缓存] 初始化完成，已缓存 {len(js_cache_storage)} 个JS/CSS文件, {len(font_cache_storage)} 个字体文件"
+            f"[CDN缓存] 初始化完成，已缓存 {len(js_cache_storage)} 个JS/CSS文件, "
+            f"{len(source_map_storage)} 个source map文件, {len(font_cache_storage)} 个字体文件"
         )
 
     def cdn_cache_update_worker():
@@ -28581,6 +28717,40 @@ def start_web_server(args_param):
                             "Map", "amap_js_key", fallback=""),
                     )
                 },
+                "IP_Location": {
+                    "query_method": _get_config_value(
+                        config,
+                        "IP_Location",
+                        "query_method",
+                        fallback=default_config.get(
+                            "IP_Location", "query_method", fallback="uapipro"
+                        ),
+                    ),
+                    "query_order": _get_config_value(
+                        config,
+                        "IP_Location",
+                        "query_order",
+                        fallback=default_config.get(
+                            "IP_Location", "query_order", fallback="uapipro,amap,baidu"
+                        ),
+                    ),
+                    "amap_web_api_key": _get_config_value(
+                        config,
+                        "IP_Location",
+                        "amap_web_api_key",
+                        fallback=default_config.get(
+                            "IP_Location", "amap_web_api_key", fallback=""
+                        ),
+                    ),
+                    "uapipro_api_key": _get_config_value(
+                        config,
+                        "IP_Location",
+                        "uapipro_api_key",
+                        fallback=default_config.get(
+                            "IP_Location", "uapipro_api_key", fallback=""
+                        ),
+                    ),
+                },
                 "API": {
                     "captcha_api_key": _get_config_value(
                         config,
@@ -28850,6 +29020,49 @@ def start_web_server(args_param):
             if "Map" in data and "amap_js_key" in data["Map"]:
                 ensure_section(config, "Map")
                 config.set("Map", "amap_js_key", data["Map"]["amap_js_key"])
+            if "IP_Location" in data:
+                ensure_section(config, "IP_Location")
+                ip_loc_data = data["IP_Location"]
+                if "query_method" in ip_loc_data:
+                    allowed_methods = ["uapipro", "amap", "baidu", "pconline"]
+                    query_method = str(ip_loc_data["query_method"]).strip().lower()
+                    if query_method in allowed_methods:
+                        config.set("IP_Location", "query_method", query_method)
+                    else:
+                        return (
+                            jsonify(
+                                {
+                                    "success": False,
+                                    "message": f"无效的 query_method 值，必须是 {allowed_methods} 之一",
+                                }
+                            ),
+                            400,
+                        )
+                if "query_order" in ip_loc_data:
+                    raw_order = str(ip_loc_data["query_order"]).strip().lower()
+                    if not raw_order:
+                        raw_order = "uapipro,amap,baidu"
+                    order_items = [x.strip() for x in raw_order.split(",") if x.strip()]
+                    allowed_order_items = {"uapipro", "amap", "baidu", "pconline"}
+                    validated_order = []
+                    for item in order_items:
+                        if item in allowed_order_items and item not in validated_order:
+                            validated_order.append(item)
+                    if not validated_order:
+                        validated_order = ["uapipro", "amap", "baidu"]
+                    config.set("IP_Location", "query_order", ",".join(validated_order))
+                if "amap_web_api_key" in ip_loc_data:
+                    config.set(
+                        "IP_Location",
+                        "amap_web_api_key",
+                        str(ip_loc_data["amap_web_api_key"]).strip(),
+                    )
+                if "uapipro_api_key" in ip_loc_data:
+                    config.set(
+                        "IP_Location",
+                        "uapipro_api_key",
+                        str(ip_loc_data["uapipro_api_key"]).strip(),
+                    )
             if "API" in data:
                 ensure_section(config, "API")
                 api_data = data["API"]
@@ -31815,6 +32028,9 @@ def start_web_server(args_param):
         返回:
             文件内容，并设置正确的Content-Type
         """
+        # 直接忽略所有 source map 请求（浏览器调试工具发出的 .map 请求）
+        if file_key.endswith(".map"):
+            return make_response("", 204)
         try:
             with js_cache_lock:
                 if file_key in js_cache_storage:
@@ -31845,6 +32061,24 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[CDN缓存API] 返回文件时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/api/cdn/map/<map_key>")
+    def get_cdn_cached_source_map(map_key):
+        """
+        返回本地缓存的source map文件
+        """
+        try:
+            with source_map_lock:
+                if map_key in source_map_storage:
+                    content = source_map_storage[map_key]
+                    response = make_response(content)
+                    response.headers["Content-Type"] = "application/json"
+                    response.headers["Cache-Control"] = "public, max-age=3600"
+                    return response
+                return make_response("", 204)
+        except Exception as e:
+            logging.error(f"[CDN缓存API] 返回source map文件时发生错误: {e}", exc_info=True)
+            return make_response("", 204)
 
     @app.route("/api/cdn/font/<font_key>")
     def get_cdn_cached_font(font_key):
@@ -31936,6 +32170,13 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[CDN缓存API] 刷新缓存时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/.well-known/appspecific/com.chrome.devtools.json", methods=["GET"])
+    def ignore_chrome_devtools_well_known():
+        """
+        忽略 Chrome DevTools 的探测请求，避免产生无意义 404 日志噪声
+        """
+        return make_response("", 204)
 
     # ========== 新增路由：静态资源 (Scripts & Styles) ==========
     @app.route("/scripts/<path:filename>")
@@ -33457,76 +33698,293 @@ def start_web_server(args_param):
 
     def get_ip_location(ip_address):
         """
-        获取IP地址的地理位置信息 (带1天缓存)
-        使用 pconline whois 接口
-        当API返回非字典类型数据时，自动重试最多2次
+        获取IP地址的地理位置信息 (带1天缓存)。
+        支持多渠道可配置顺序查询，默认：UapiPro -> 高德 -> 百度。
+        规则：
+        - 预处理IP；空/无效IP直接返回“未知”
+        - 本地回环地址直接返回“本地回环地址”
+        - 缓存命中为“未知”时忽略缓存并重新查询
+        - 仅网络错误自动重试；HTTP 4xx/5xx 自动切换渠道
+        - 请求前先做域名DNS解析；解析失败重试，仍失败切换渠道
         """
         if not ip_address:
             return "未知"
 
+        ip_raw = str(ip_address).strip()
+        if not ip_raw:
+            return "未知"
+
+        # 允许传入 host（如 cn.bing.com），若是IP则标准化
+        normalized_ip = ""
+        try:
+            ip_obj = ipaddress.ip_address(ip_raw)
+            normalized_ip = str(ip_obj)
+        except Exception:
+            normalized_ip = ip_raw
+
+        # 如果是主机名，先尝试解析为IP，避免无效查询
+        try:
+            if re.search(r"[a-zA-Z]", normalized_ip):
+                resolved = socket.getaddrinfo(normalized_ip, None)
+                if resolved:
+                    normalized_ip = str(resolved[0][4][0]).strip()
+        except Exception:
+            # 保持原值交给下游渠道（UapiPro支持域名查询）
+            pass
+
+        # 本地回环地址直接返回，避免浪费API
+        if normalized_ip in ("127.0.0.1", "::1"):
+            return "本地回环地址"
+
+        # 非法IP/域名直接返回未知（避免空值与明显无效查询）
+        if not normalized_ip:
+            return "未知"
+
+        # 读取IP归属地配置（兼容旧配置）
+        ip_loc_cfg = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+        query_order_cfg = ip_loc_cfg.get("IP_Location", "query_order", fallback="").strip()
+        query_method_cfg = ip_loc_cfg.get("IP_Location", "query_method", fallback="").strip().lower()
+        amap_web_api_key = ip_loc_cfg.get("IP_Location", "amap_web_api_key", fallback="").strip()
+        uapipro_api_key = ip_loc_cfg.get("IP_Location", "uapipro_api_key", fallback="").strip()
+
+        if query_order_cfg:
+            query_order = [x.strip().lower() for x in query_order_cfg.split(",") if x.strip()]
+        elif query_method_cfg in ("uapipro", "amap", "baidu", "pconline"):
+            # 旧配置迁移兼容：只配置了 query_method 时自动构建顺序
+            fallback_order = ["uapipro", "amap", "baidu"]
+            query_order = [query_method_cfg] + [x for x in fallback_order if x != query_method_cfg]
+        else:
+            query_order = ["uapipro", "amap", "baidu"]
+
+        # 去重并过滤非法渠道
+        _allowed_methods = {"uapipro", "amap", "baidu", "pconline"}
+        dedup_order = []
+        for m in query_order:
+            if m in _allowed_methods and m not in dedup_order:
+                dedup_order.append(m)
+        if not dedup_order:
+            dedup_order = ["uapipro", "amap", "baidu"]
+
         current_time = time.time()
         with ip_cache_lock:
-            cached_entry = ip_location_cache.get(ip_address)
+            cached_entry = ip_location_cache.get(normalized_ip)
+            if not cached_entry and normalized_ip != ip_raw:
+                cached_entry = ip_location_cache.get(ip_raw)
 
         if cached_entry:
             timestamp = cached_entry.get("timestamp", 0)
             location = cached_entry.get("location")
             if (current_time - timestamp < CACHE_DURATION_SECONDS) and location:
-                logging.debug(f"[IP缓存] 命中: ip={ip_address}, 位置={location}")
-                return location
+                # 缓存为“未知”时忽略缓存并重新查询（仅对非空正常IP）
+                if str(location).strip() not in ("未知", "unknown", "UNKNOWN"):
+                    logging.debug(f"[IP缓存] 命中: ip={normalized_ip}, 位置={location}")
+                    return location
+                logging.info(f"[IP缓存] 命中未知值，忽略缓存并重查: ip={normalized_ip}")
             else:
-                logging.debug(f"[IP缓存] 过期: ip={ip_address}")
+                logging.debug(f"[IP缓存] 过期: ip={normalized_ip}")
 
-        max_retries = 2
-        for attempt in range(max_retries + 1):
+        def _dns_resolvable(url):
+            """请求前DNS预检：失败重试，持续失败则切换渠道"""
             try:
-                api_url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip_address}&json=true"
-                response = requests.get(api_url, timeout=5)
-                response.encoding = "gbk"
-                data = response.json()
-
-                if not isinstance(data, dict):
-                    logging.warning(
-                        f"[IP定位] API返回非字典类型数据: ip={ip_address}, 类型={type(data).__name__}, "
-                        f"数据={data}, 尝试次数={attempt + 1}/{max_retries + 1}"
-                    )
-                    if attempt < max_retries:
+                host = urllib.parse.urlparse(url).hostname
+                if not host:
+                    return False
+            except Exception:
+                return False
+            for i in range(3):
+                try:
+                    socket.getaddrinfo(host, None)
+                    return True
+                except socket.gaierror:
+                    if i < 2:
+                        time.sleep(0.2)
                         continue
-                    return "未知"
+                    return False
+                except Exception:
+                    if i < 2:
+                        time.sleep(0.2)
+                        continue
+                    return False
+            return False
 
-                addr = data.get("addr", "").strip()
+        def _is_valid_location_text(text):
+            if not text:
+                return False
+            s = str(text).strip()
+            return s not in ("未知", "unknown", "UNKNOWN", "[]")
 
-                if addr:
-                    location_str = addr
-                    logging.debug(
-                        f"[IP定位] 成功获取: ip={ip_address}, 位置={location_str}"
-                    )
-                    with ip_cache_lock:
-                        ip_location_cache[ip_address] = {
-                            "location": location_str,
+        def _query_uapipro(ip_or_host):
+            if not uapipro_api_key:
+                return None, "skip_no_key", None
+            url = f"https://uapis.cn/api/v1/network/ipinfo?ip={urllib.parse.quote(str(ip_or_host))}"
+            if not _dns_resolvable(url):
+                return None, "dns_failed", None
+            headers = {"Authorization": f"Bearer {uapipro_api_key}"}
+            max_net_retries = 2
+            for i in range(max_net_retries + 1):
+                try:
+                    resp = requests.get(url, headers=headers, timeout=5)
+                    if resp.status_code >= 400:
+                        return None, "http_error", resp.status_code
+                    data = resp.json()
+                    region = str(data.get("region", "")).strip()
+                    if _is_valid_location_text(region):
+                        return region, "ok", 200
+                    return None, "empty_data", 200
+                except requests.exceptions.RequestException:
+                    if i < max_net_retries:
+                        continue
+                    return None, "network_error", None
+                except Exception:
+                    return None, "parse_error", None
+            return None, "network_error", None
+
+        def _query_amap(ip_text):
+            if not amap_web_api_key:
+                return None, "skip_no_key", None
+            # 高德IP定位接口仅支持IP地址，不支持域名
+            try:
+                ipaddress.ip_address(str(ip_text))
+            except Exception:
+                return None, "skip_invalid_ip", None
+            url = f"https://restapi.amap.com/v3/ip?key={urllib.parse.quote(amap_web_api_key)}&ip={urllib.parse.quote(str(ip_text))}"
+            if not _dns_resolvable(url):
+                return None, "dns_failed", None
+            max_net_retries = 2
+            for i in range(max_net_retries + 1):
+                try:
+                    resp = requests.get(url, timeout=5)
+                    if resp.status_code >= 400:
+                        return None, "http_error", resp.status_code
+                    data = resp.json()
+                    if str(data.get("status", "")) != "1":
+                        return None, "bad_status", 200
+                    province = data.get("province", "")
+                    city = data.get("city", "")
+                    if isinstance(province, list):
+                        province = ""
+                    if isinstance(city, list):
+                        city = ""
+                    location = f"{str(province).strip()} {str(city).strip()}".strip()
+                    if _is_valid_location_text(location):
+                        return location, "ok", 200
+                    return None, "empty_data", 200
+                except requests.exceptions.RequestException:
+                    if i < max_net_retries:
+                        continue
+                    return None, "network_error", None
+                except Exception:
+                    return None, "parse_error", None
+            return None, "network_error", None
+
+        def _query_baidu(ip_text):
+            # 百度此接口期望 query 为IP文本，域名场景跳过
+            try:
+                ipaddress.ip_address(str(ip_text))
+            except Exception:
+                return None, "skip_invalid_ip", None
+            url = (
+                "https://opendata.baidu.com/api.php"
+                f"?co=&resource_id=6006&oe=utf8&query={urllib.parse.quote(str(ip_text))}"
+            )
+            if not _dns_resolvable(url):
+                return None, "dns_failed", None
+            max_net_retries = 2
+            for i in range(max_net_retries + 1):
+                try:
+                    resp = requests.get(url, timeout=5)
+                    if resp.status_code >= 400:
+                        return None, "http_error", resp.status_code
+                    data = resp.json()
+                    data_list = data.get("data", []) if isinstance(data, dict) else []
+                    if not data_list:
+                        return None, "empty_data", 200
+                    first_item = data_list[0] if isinstance(data_list[0], dict) else {}
+                    location = str(first_item.get("location", "")).strip()
+                    if _is_valid_location_text(location):
+                        return location, "ok", 200
+                    return None, "empty_data", 200
+                except requests.exceptions.RequestException:
+                    if i < max_net_retries:
+                        continue
+                    return None, "network_error", None
+                except Exception:
+                    return None, "parse_error", None
+            return None, "network_error", None
+
+        def _query_pconline(ip_text):
+            # pconline接口使用IP参数，域名场景跳过
+            try:
+                ipaddress.ip_address(str(ip_text))
+            except Exception:
+                return None, "skip_invalid_ip", None
+            url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={urllib.parse.quote(str(ip_text))}&json=true"
+            if not _dns_resolvable(url):
+                return None, "dns_failed", None
+            max_net_retries = 2
+            for i in range(max_net_retries + 1):
+                try:
+                    resp = requests.get(url, timeout=5)
+                    if resp.status_code >= 400:
+                        return None, "http_error", resp.status_code
+                    resp.encoding = "gbk"
+                    data = resp.json()
+                    addr = str(data.get("addr", "")).strip() if isinstance(data, dict) else ""
+                    if _is_valid_location_text(addr):
+                        return addr, "ok", 200
+                    return None, "empty_data", 200
+                except requests.exceptions.RequestException:
+                    if i < max_net_retries:
+                        continue
+                    return None, "network_error", None
+                except Exception:
+                    return None, "parse_error", None
+            return None, "network_error", None
+
+        method_map = {
+            "uapipro": _query_uapipro,
+            "amap": _query_amap,
+            "baidu": _query_baidu,
+            "pconline": _query_pconline,
+        }
+
+        for method in dedup_order:
+            query_fn = method_map.get(method)
+            if not query_fn:
+                continue
+            location, reason, status_code = query_fn(normalized_ip)
+            if location and _is_valid_location_text(location):
+                with ip_cache_lock:
+                    ip_location_cache[normalized_ip] = {
+                        "location": location,
+                        "timestamp": current_time,
+                    }
+                    if normalized_ip != ip_raw:
+                        ip_location_cache[ip_raw] = {
+                            "location": location,
                             "timestamp": current_time,
                         }
-                    _save_ip_cache()
-                    return location_str
-                else:
-                    logging.warning(f"[IP定位] API返回空数据: ip={ip_address}")
-                    return "未知"
+                _save_ip_cache()
+                logging.debug(f"[IP定位] 成功获取: ip={normalized_ip}, 渠道={method}, 位置={location}")
+                return location
 
-            except requests.exceptions.Timeout:
-                logging.warning(f"[IP定位] 请求超时: ip={ip_address}")
-                return "未知"
-            except requests.exceptions.RequestException as e:
-                logging.warning(f"[IP定位] 网络请求失败: ip={ip_address}, 错误={str(e)}")
-                return "未知"
-            except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
-                logging.warning(f"[IP定位] 数据解析失败: ip={ip_address}, 错误={str(e)}")
-                return "未知"
-            except Exception as e:
-                logging.error(
-                    f"[IP定位] 未知错误: ip={ip_address}, 错误={str(e)}", exc_info=True
-                )
-                return "未知"
+            # 仅网络错误内部重试，当前函数内已处理；这里统一切换下一个渠道
+            logging.info(
+                f"[IP定位] 渠道失败，切换下一个: ip={normalized_ip}, 渠道={method}, 原因={reason}, 状态={status_code}"
+            )
 
+        # 所有渠道都失败，缓存为未知，降低短时间重复请求
+        with ip_cache_lock:
+            ip_location_cache[normalized_ip] = {
+                "location": "未知",
+                "timestamp": current_time,
+            }
+            if normalized_ip != ip_raw:
+                ip_location_cache[ip_raw] = {
+                    "location": "未知",
+                    "timestamp": current_time,
+                }
+        _save_ip_cache()
         return "未知"
 
     @app.route("/api/messages/post", methods=["POST"])
@@ -46063,7 +46521,8 @@ def main():
     except Exception as e:
         print(f"[错误] 日志系统初始化失败: {e}")
         traceback.print_exc()
-        _load_ip_cache()
+    _load_ip_cache()
+    _migrate_ip_location_config_if_needed()
     # ========== 第3步：导入所有依赖库 ==========
     import_standard_libraries()
     import_core_third_party()
