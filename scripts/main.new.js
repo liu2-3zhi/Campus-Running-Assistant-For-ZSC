@@ -56119,24 +56119,70 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
             <div style="text-align: left;">
                 <div style="
                     padding: 12px;
-                    background: #f1f5f9;
-                    border-radius: 8px;
+                    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+                    border-radius: 12px;
                     margin-bottom: 20px;
                     text-align: center;
+                    box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
                 ">
-                    <div style="color: #64748b; font-size: 13px; margin-bottom: 5px;">应付金额</div>
-                    <div style="color: #dc2626; font-size: 24px; font-weight: bold;">¥${totalAmount}</div>
+                    <div style="color: #64748b; font-size: 13px; margin-bottom: 5px;">💰 应付金额</div>
+                    <div style="color: #dc2626; font-size: 28px; font-weight: bold;">¥${totalAmount}</div>
                 </div>
-                ${paymentMethodsHtml}
+                <div class="payment-methods-container" style="
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                    gap: 10px;
+                    max-height: calc(100vh - 350px);
+                    overflow-y: auto;
+                    padding: 4px;
+                ">
+                    ${paymentMethodsHtml}
+                </div>
             </div>
         `,
-    icon: "question",
     showCancelButton: true,
     confirmButtonText: "确认支付",
     cancelButtonText: "返回",
     confirmButtonColor: "#3b82f6",
     cancelButtonColor: "#94a3b8",
-    width: "500px",
+    width: "auto",
+    customClass: {
+      popup: "swal2-payment-popup",
+    },
+    didOpen: () => {
+      // 根据屏幕高度动态调整
+      const popup = Swal.getPopup();
+      const container = popup.querySelector(".payment-methods-container");
+      if (container) {
+        const viewportHeight = window.innerHeight;
+        const methodsCount = paymentMethods.length;
+        if (viewportHeight > 600 && methodsCount <= 4) {
+          container.style.maxHeight = "none";
+          container.style.overflowY = "visible";
+        }
+        popup.style.maxWidth = methodsCount > 2 ? "550px" : "400px";
+        popup.style.minWidth = "320px";
+      }
+      // 绑定点击事件，点击整个div时选中对应的radio按钮
+      window.selectPaymentMethod = (method) => {
+        const radio = document.querySelector(
+          `input[name="payment-method"][value="${method}"]`,
+        );
+        if (radio) {
+          radio.checked = true;
+          // 添加选中视觉效果
+          document.querySelectorAll(".payment-method-option").forEach(el => {
+            el.style.borderColor = "#e2e8f0";
+            el.style.background = "white";
+          });
+          const parentDiv = radio.closest(".payment-method-option");
+          if (parentDiv) {
+            parentDiv.style.borderColor = "#3b82f6";
+            parentDiv.style.background = "#f0f9ff";
+          }
+        }
+      };
+    },
     preConfirm: () => {
       // 在用户点击"确认支付"时，验证是否选择了支付方式
       const selectedMethod = document.querySelector(
@@ -56147,17 +56193,6 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
         return false;
       }
       return selectedMethod.value; // 返回选中的支付方式
-    },
-    didOpen: () => {
-      // 绑定点击事件，点击整个div时选中对应的radio按钮
-      window.selectPaymentMethod = (method) => {
-        const radio = document.querySelector(
-          `input[name="payment-method"][value="${method}"]`,
-        );
-        if (radio) {
-          radio.checked = true;
-        }
-      };
     },
   });
 
@@ -58480,15 +58515,63 @@ async function _chooseBillingPayType(options = {}) {
     html: `
       <div style="text-align: left;">
         ${amountHtml}
-        ${paymentMethodsHtml}
+        <div class="payment-methods-container" style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 12px;
+          max-height: calc(100vh - 320px);
+          overflow-y: auto;
+          padding: 4px;
+        ">
+          ${paymentMethodsHtml}
+        </div>
       </div>
     `,
     showCancelButton: true,
-    confirmButtonText: "确认",
+    confirmButtonText: "确认支付",
     cancelButtonText: "取消",
     confirmButtonColor: "#3b82f6",
     cancelButtonColor: "#94a3b8",
-    width: "500px",
+    width: "auto",
+    customClass: {
+      popup: "swal2-payment-popup",
+      htmlContainer: "swal2-payment-html",
+    },
+    didOpen: () => {
+      // 根据屏幕高度动态调整弹窗样式
+      const popup = Swal.getPopup();
+      const container = popup.querySelector(".payment-methods-container");
+      if (container) {
+        const viewportHeight = window.innerHeight;
+        const methodsCount = enabledMethods.length;
+        // 当屏幕高度足够时，移除滚动限制
+        if (viewportHeight > 600 && methodsCount <= 4) {
+          container.style.maxHeight = "none";
+          container.style.overflowY = "visible";
+        }
+        // 设置弹窗最大宽度
+        popup.style.maxWidth = methodsCount > 2 ? "600px" : "420px";
+        popup.style.minWidth = "340px";
+      }
+      window.selectBillingPaymentMethod = (method) => {
+        const radio = document.querySelector(
+          `input[name="billing-payment-method"][value="${method}"]`,
+        );
+        if (radio) {
+          radio.checked = true;
+          // 添加选中效果
+          document.querySelectorAll(".payment-method-option").forEach(el => {
+            el.style.borderColor = "#e2e8f0";
+            el.style.background = "white";
+          });
+          const parentDiv = radio.closest(".payment-method-option");
+          if (parentDiv) {
+            parentDiv.style.borderColor = "#3b82f6";
+            parentDiv.style.background = "#f0f9ff";
+          }
+        }
+      };
+    },
     preConfirm: () => {
       const selectedMethod = document.querySelector(
         'input[name="billing-payment-method"]:checked',
@@ -58498,16 +58581,6 @@ async function _chooseBillingPayType(options = {}) {
         return false;
       }
       return selectedMethod.value;
-    },
-    didOpen: () => {
-      window.selectBillingPaymentMethod = (method) => {
-        const radio = document.querySelector(
-          `input[name="billing-payment-method"][value="${method}"]`,
-        );
-        if (radio) {
-          radio.checked = true;
-        }
-      };
     },
   });
   if (!chooseResult.isConfirmed) return null;
