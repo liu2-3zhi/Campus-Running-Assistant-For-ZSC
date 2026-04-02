@@ -4772,14 +4772,14 @@ hr.editormd-page-break {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100% !important;
-  max-width: 100% !important;
-  height: 100vh;
+  right: auto;
+  bottom: auto;
+  width: auto;
+  max-width: none;
+  height: auto;
   box-sizing: border-box;
   border: none;
-  margin: 0 !important;
+  margin: 0;
 }
 
 /* Editor.md Dark theme */

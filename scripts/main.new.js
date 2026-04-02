@@ -20415,6 +20415,8 @@ function switchAdminTab(tab) {
                   toolbarCustomIcons: {},
                   // 工具栏图标文本（自定义工具栏按钮的文本）
                   toolbarIconTexts: {},
+                  // 父容器层级（用于解决全屏模式下的定位问题）
+                  parentContainerLayer: '5',
                 });
 
                 // 将编辑器内部生成的对话框（.editormd-dialog）移动到 body，并固定定位，避免被父容器裁剪
@@ -43726,6 +43728,8 @@ async function openReminderEditModal(reminderId = "") {
           toolbarCustomIcons: {},
           // 工具栏图标文本（自定义工具栏按钮的文本）
           toolbarIconTexts: {},
+          // 父容器层级（用于解决全屏模式下的定位问题）
+          parentContainerLayer:"3",
         });
         window._reminderEditorInitialized = true;
         // 在初始化完成后，短延迟刷新编辑器以确保首次打开时预览/渲染正常
