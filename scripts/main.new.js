@@ -4240,12 +4240,25 @@ async function fetchMobileOrderAmountAndFill(tradeNo) {
     );
 
     if (order) {
-      // 找到订单，计算退款金额（默认填充原订单金额）
+      // 找到订单，计算退款金额
       const orderAmount = parseFloat(order.amount) || 0;
       // 计算已退款金额
       const refundedAmount = parseFloat(order.refundmoney) || 0;
-      // 可退款金额 = 订单金额 - 已退款金额
-      const refundableAmount = Math.max(0, orderAmount - refundedAmount);
+      
+      // 一个订单只能退款一次：如果已有退款记录，则不能再退款
+      if (refundedAmount > 0) {
+        console.log("[移动端退款自动填充] 该订单已退款，不可再次退款");
+        amountInput.value = "";
+        Swal.fire({
+          icon: "warning",
+          title: "无法退款",
+          text: "该订单已退款，每个订单只能退款一次。",
+        });
+        return;
+      }
+      
+      // 默认退款金额 = 订单金额 * 80%
+      const refundableAmount = Math.max(0, orderAmount * 0.8);
 
       // 填充退款金额（保留两位小数）
       amountInput.value = refundableAmount.toFixed(2);
@@ -4253,7 +4266,8 @@ async function fetchMobileOrderAmountAndFill(tradeNo) {
       console.log("[移动端退款自动填充] 订单金额已填充:", {
         orderAmount,
         refundedAmount,
-        refundableAmount,
+        refundableAmount: refundableAmount,
+        percentage: "80%",
       });
     } else {
       console.log("[移动端退款自动填充] 未找到匹配的订单");
@@ -58379,7 +58393,8 @@ async function adminClearOverdue(
  * 功能说明：
  * 1. 为订单号输入框添加input事件监听
  * 2. 当用户输入完订单号后，自动获取订单金额
- * 3. 计算金额的75%并填充到退款金额输入框
+ * 3. 检查是否已退款（一个订单只能退款一次）
+ * 4. 计算金额的80%并填充到退款金额输入框
  *
  * 调用时机：
  * - 页面加载完成后自动初始化
@@ -58388,7 +58403,8 @@ async function adminClearOverdue(
  * - 监听订单号输入框的input事件
  * - 进行订单号格式校验（长度、字符等）
  * - 调用后端API获取订单信息
- * - 计算75%金额并自动填充
+ * - 检查订单是否已退款
+ * - 计算80%金额并自动填充
  * - 提供友好的错误提示
  */
 function initOrderNumberAutoFill() {
@@ -58437,14 +58453,15 @@ function initOrderNumberAutoFill() {
 }
 
 /**
- * 根据订单号获取订单金额并填充75%到退款金额输入框
+ * 根据订单号获取订单金额并填充80%到退款金额输入框
  * 功能说明：
  * 1. 校验订单号格式（长度、字符等）
  * 2. 调用后端API查询订单信息
- * 3. 获取订单金额
- * 4. 计算金额的75%
- * 5. 自动填充到退款金额输入框
- * 6. 提供详细的错误提示
+ * 3. 检查是否已退款（一个订单只能退款一次）
+ * 4. 获取订单金额
+ * 5. 计算金额的80%
+ * 6. 自动填充到退款金额输入框
+ * 7. 提供详细的错误提示
  *
  * @param {string} tradeNo - 订单号
  *
@@ -58570,6 +58587,21 @@ async function fetchOrderAmountAndFill(tradeNo) {
 
     console.log("[订单号自动填充] 成功获取订单数据:", matchedOrder);
 
+    // ========== 步骤4.5：检查是否已退款（一个订单只能退款一次） ==========
+    
+    const refundedAmount = parseFloat(matchedOrder.refundmoney) || 0;
+    if (refundedAmount > 0) {
+      console.log("[订单号自动填充] 该订单已退款，不可再次退款");
+      const amountInput = document.getElementById("admin-refund-amount_modal");
+      if (amountInput) amountInput.value = "";
+      Swal.fire({
+        icon: "warning",
+        title: "无法退款",
+        text: "该订单已退款，每个订单只能退款一次。",
+      });
+      return;
+    }
+
     // ========== 步骤5：获取订单金额并校验 ==========
 
     // 从订单对象中获取金额字段
@@ -58582,17 +58614,17 @@ async function fetchOrderAmountAndFill(tradeNo) {
       return;
     }
 
-    // ========== 步骤5：计算退款金额（75%） ==========
+    // ========== 步骤5.5：计算退款金额（80%） ==========
 
-    // 计算退款金额：原金额 × 0.75
-    const refundAmount = orderAmount * 0.75;
+    // 计算退款金额：原金额 × 0.80
+    const refundAmount = orderAmount * 0.80;
 
     // 保留2位小数，符合货币金额的标准格式
     const refundAmountFormatted = refundAmount.toFixed(2);
 
     console.log("[订单号自动填充] 计算退款金额:", {
       原订单金额: orderAmount,
-      退款金额_75Percent: refundAmountFormatted,
+      退款金额_80Percent: refundAmountFormatted,
     });
 
     // ========== 步骤6：填充退款金额到输入框 ==========
@@ -58616,7 +58648,7 @@ async function fetchOrderAmountAndFill(tradeNo) {
     console.log("[订单号自动填充] 成功填充退款金额:", refundAmountFormatted);
 
     // 可选：显示成功提示（可根据需要开启）
-    // showModalAlert(`已自动填充退款金额：¥${refundAmountFormatted}（原金额的75%）`, '成功');
+    // showModalAlert(`已自动填充退款金额：¥${refundAmountFormatted}（原金额的80%）`, '成功');
   } catch (error) {
     // ========== 异常处理 ==========
 
