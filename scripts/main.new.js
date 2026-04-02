@@ -4207,9 +4207,9 @@ async function fetchMobileOrderAmountAndFill(tradeNo) {
   }
 
   try {
-    // 调用后端API查询订单信息
+    // 调用后端API按订单号直接查询，避免拉取全量订单导致遗漏
     const response = await fetch(
-      `/api/payment/orders?page=1&per_page=1000&status=all`,
+      `/api/payment/order_by_tradeno?trade_no=${encodeURIComponent(tradeNo)}`,
       {
         method: "GET",
         headers: {
@@ -4226,54 +4226,52 @@ async function fetchMobileOrderAmountAndFill(tradeNo) {
 
     const data = await response.json();
 
-    if (!data.success || !data.orders) {
+    if (!data.success || !data.order) {
       console.error("[移动端退款自动填充] API返回数据异常:", data);
       return;
     }
+    const order = data.order;
 
-    // 在订单列表中查找匹配的订单
-    const order = data.orders.find(
-      (o) =>
-        o.order_trade_no === tradeNo ||
-        o.trade_no === tradeNo ||
-        o.order_id === tradeNo
-    );
+    // 找到订单，计算退款金额
+    const orderAmount = parseFloat(order.amount) || 0;
+    const refundedAmount = parseFloat(order.refundmoney) || 0;
+    const refundCount = parseInt(order.refund_count || 0, 10) || 0;
+    const hasRefundRecords =
+      Array.isArray(order.refund_records) && order.refund_records.length > 0;
+    const orderStatus = String(order.status || "").toLowerCase();
 
-    if (order) {
-      // 找到订单，计算退款金额
-      const orderAmount = parseFloat(order.amount) || 0;
-      // 计算已退款金额
-      const refundedAmount = parseFloat(order.refundmoney) || 0;
-      
-      // 一个订单只能退款一次：如果已有退款记录，则不能再退款
-      if (refundedAmount > 0) {
-        console.log("[移动端退款自动填充] 该订单已退款，不可再次退款");
-        amountInput.value = "";
-        Swal.fire({
-          icon: "warning",
-          title: "无法退款",
-          text: "该订单已退款，每个订单只能退款一次。",
-        });
-        return;
-      }
-      
-      // 默认退款金额 = 订单金额 * 80%
-      const refundableAmount = Math.max(0, orderAmount * 0.8);
-
-      // 填充退款金额（保留两位小数）
-      amountInput.value = refundableAmount.toFixed(2);
-
-      console.log("[移动端退款自动填充] 订单金额已填充:", {
-        orderAmount,
-        refundedAmount,
-        refundableAmount: refundableAmount,
-        percentage: "80%",
-      });
-    } else {
-      console.log("[移动端退款自动填充] 未找到匹配的订单");
-      // 清空退款金额
+    // 一个订单只能退款一次：任一退款迹象均禁止再次退款
+    if (
+      refundedAmount > 0 ||
+      refundCount >= 1 ||
+      hasRefundRecords ||
+      orderStatus === "refunded_full" ||
+      orderStatus === "refunded_partial"
+    ) {
+      console.log("[移动端退款自动填充] 该订单已退款，不可再次退款");
       amountInput.value = "";
+      Swal.fire({
+        icon: "warning",
+        title: "无法退款",
+        text: "该订单已退款，每个订单只能退款一次。",
+      });
+      return;
     }
+
+    // 默认退款金额 = 订单金额 * 80%
+    const refundableAmount = Math.max(0, orderAmount * 0.8);
+
+    // 填充退款金额（保留两位小数）
+    amountInput.value = refundableAmount.toFixed(2);
+
+    console.log("[移动端退款自动填充] 订单金额已填充:", {
+      orderAmount,
+      refundedAmount,
+      refundCount,
+      hasRefundRecords,
+      refundableAmount: refundableAmount,
+      percentage: "80%",
+    });
   } catch (error) {
     console.error("[移动端退款自动填充] 查询订单失败:", error);
   }
@@ -4441,7 +4439,7 @@ async function processRefund() {
       refundAmount,
     );
     // showModalAlert("退款金额必须大于0");
-    swal.fire({
+    Swal.fire({
       icon: "warning",
       title: "警告",
       text: "退款金额必须大于0",
