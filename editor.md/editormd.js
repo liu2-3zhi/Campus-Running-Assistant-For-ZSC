@@ -122,6 +122,7 @@
         dialogLockScreen     : false,
         dialogShowMask       : true,
         dialogDraggable      : true,
+        parentContainerLayer : 1,              // Fullscreen target container layer by nearest parent div (1 = nearest)
         dialogMaskBgColor    : "#fff",
         dialogMaskOpacity    : 0.1,
         fontSize             : "13px",
@@ -350,7 +351,9 @@
             watching   : false,
             loaded     : false,
             preview    : false,
-            fullscreen : false
+            fullscreen : false,
+            fullscreenPlaceholder : null,
+            fullscreenLockedScrollParents : []
         },
 
         /**
@@ -2009,8 +2012,13 @@
                 var $codeMirrorGutters = codeMirror.find('.CodeMirror-gutters');
 
                 if (state.fullscreen) {
-                    editor.height($(window).height());
-                    $codeMirrorGutters.height($(window).height() - toolbarHeight);
+                    if (state.fullscreenRect && state.fullscreenRect.height) {
+                        editor.height(state.fullscreenRect.height);
+                        $codeMirrorGutters.height(state.fullscreenRect.height - toolbarHeight);
+                    } else {
+                        editor.height($(window).height());
+                        $codeMirrorGutters.height($(window).height() - toolbarHeight);
+                    }
                 } else {
                     $codeMirrorGutters.height(editor.height() - toolbarHeight);
                 }
@@ -2698,6 +2706,161 @@
             var toolbar          = this.toolbar;
             var settings         = this.settings;
             var fullscreenClass  = this.classPrefix + "fullscreen";
+            var logPrefix        = "[Editor.md][全屏]";
+            var formatElementHTML = function($el) {
+                if (!$el || !$el.length) {
+                    return "(null)";
+                }
+
+                var tag = ($el[0].tagName || "").toLowerCase();
+                var id = $el.attr("id");
+                var className = ($el.attr("class") || "").trim().replace(/\s+/g, " ");
+                var attrs = "";
+
+                if (id) {
+                    attrs += " id=\"" + id + "\"";
+                }
+
+                if (className) {
+                    attrs += " class=\"" + className + "\"";
+                }
+
+                return "<" + tag + attrs + ">";
+            };
+            var getElementBrief = function($el) {
+                if (!$el || !$el.length) {
+                    return null;
+                }
+
+                var el = $el[0];
+                var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+
+                return {
+                    tag: el.tagName,
+                    id: $el.attr("id") || "",
+                    className: $el.attr("class") || "",
+                    position: $el.css("position"),
+                    overflow: $el.css("overflow"),
+                    overflowX: $el.css("overflow-x"),
+                    overflowY: $el.css("overflow-y"),
+                    width: $el.outerWidth(),
+                    height: $el.outerHeight(),
+                    rect: rect ? {
+                        top: rect.top,
+                        left: rect.left,
+                        right: rect.right,
+                        bottom: rect.bottom,
+                        width: rect.width,
+                        height: rect.height
+                    } : null
+                };
+            };
+            var getParentChain = function($el, maxDepth) {
+                var chain = [];
+                var current = $el;
+                var depth = 0;
+
+                while (current && current.length && depth < maxDepth) {
+                    chain.push(getElementBrief(current));
+                    current = current.parent();
+                    depth++;
+                }
+
+                return chain;
+            };
+            var getFullscreenRect = function() {
+                var viewportWidth  = $(window).width();
+                var viewportHeight = $(window).height();
+                var parent         = editor.parent();
+                var parentLayer    = parseInt(settings.parentContainerLayer, 10);
+                var normalizedLayer = (isNaN(parentLayer) || parentLayer < 1) ? 1 : parentLayer;
+                var parentDivs     = editor.parents("div");
+                var layerIndex     = normalizedLayer - 1;
+                var layerParent    = parentDivs.eq(layerIndex);
+                var nearestDivParent = layerParent.length ? layerParent : parentDivs.first();
+                var targetParent   = nearestDivParent.length ? nearestDivParent : parent;
+                var parentRect     = (targetParent.length && targetParent[0].getBoundingClientRect) ? targetParent[0].getBoundingClientRect() : null;
+                var top            = 0;
+                var left           = 0;
+                var width          = viewportWidth;
+                var height         = viewportHeight;
+
+                if (parentRect) {
+                    top    = Math.max(parentRect.top, 0);
+                    left   = Math.max(parentRect.left, 0);
+                    width  = Math.max(Math.min(parentRect.width, viewportWidth - left), 1);
+                    height = Math.max(Math.min(parentRect.height, viewportHeight - top), 1);
+                }
+
+                console.log(logPrefix, "计算全屏区域", {
+                    viewportWidth: viewportWidth,
+                    viewportHeight: viewportHeight,
+                    windowInnerWidth: window.innerWidth,
+                    windowInnerHeight: window.innerHeight,
+                    devicePixelRatio: window.devicePixelRatio,
+                    scrollTop: $(window).scrollTop(),
+                    scrollLeft: $(window).scrollLeft(),
+                    parentContainerLayer: settings.parentContainerLayer,
+                    normalizedLayer: normalizedLayer,
+                    layerIndex: layerIndex,
+                    editorElement: getElementBrief(editor),
+                    parentElement: getElementBrief(parent),
+                    nearestDivParentElement: getElementBrief(targetParent),
+                    nearestDivParentHTML: formatElementHTML(targetParent),
+                    nearestDivParentSizeText: Math.round(width) + "px x " + Math.round(height) + "px",
+                    parentChain: getParentChain(editor, 6),
+                    parentClass: targetParent.attr("class") || "",
+                    parentId: targetParent.attr("id") || "",
+                    parentRect: parentRect ? {
+                        top: parentRect.top,
+                        left: parentRect.left,
+                        width: parentRect.width,
+                        height: parentRect.height
+                    } : null,
+                    appliedRect: { top: top, left: left, width: width, height: height }
+                });
+
+                return {
+                    top    : top,
+                    left   : left,
+                    width  : width,
+                    height : height
+                };
+            };
+            var applyFullscreenRect = function(rect, stage) {
+                editor.css({
+                    top    : rect.top + "px",
+                    left   : rect.left + "px",
+                    width  : rect.width + "px",
+                    height : rect.height + "px"
+                });
+
+                var domRect = editor[0] && editor[0].getBoundingClientRect ? editor[0].getBoundingClientRect() : null;
+                if (domRect) {
+                    var offsetTop = domRect.top - rect.top;
+                    var offsetLeft = domRect.left - rect.left;
+
+                    if (Math.abs(offsetTop) > 1 || Math.abs(offsetLeft) > 1) {
+                        editor.css({
+                            top  : (rect.top - offsetTop) + "px",
+                            left : (rect.left - offsetLeft) + "px"
+                        });
+
+                        var correctedRect = editor[0].getBoundingClientRect();
+                        console.log(logPrefix, "检测到偏移并已校正", {
+                            stage: stage,
+                            targetTop: rect.top,
+                            targetLeft: rect.left,
+                            firstPaintTop: domRect.top,
+                            firstPaintLeft: domRect.left,
+                            offsetTop: offsetTop,
+                            offsetLeft: offsetLeft,
+                            correctedTop: correctedRect.top,
+                            correctedLeft: correctedRect.left
+                        });
+                    }
+                }
+            };
 
             if (toolbar) {
                 toolbar.find(".fa[name=fullscreen]").parent().toggleClass("active");
@@ -2715,25 +2878,106 @@
                 state.fullscreen = true;
                 state.fullscreenScrollTop  = $(window).scrollTop();
                 state.fullscreenScrollLeft = $(window).scrollLeft();
+                console.log(logPrefix, "进入全屏", {
+                    userAgent: navigator.userAgent,
+                    fullscreenClass: fullscreenClass,
+                    editorHasClassBefore: editor.hasClass(fullscreenClass),
+                    oldWidth: editor.data("oldWidth"),
+                    oldHeight: editor.data("oldHeight"),
+                    editorCurrentWidth: editor.outerWidth(),
+                    editorCurrentHeight: editor.outerHeight(),
+                    scrollTop: state.fullscreenScrollTop,
+                    scrollLeft: state.fullscreenScrollLeft,
+                    editorInfo: getElementBrief(editor),
+                    parentInfo: getElementBrief(editor.parent()),
+                    nearestDivParentHTML: formatElementHTML(editor.parents("div").first()),
+                    nearestDivParentInfo: getElementBrief(editor.parents("div").first())
+                });
 
                 window.scrollTo(0, 0);
 
                 $("html,body").css("overflow", "hidden");
+                var scrollParents = editor.parents().filter(function() {
+                    var $node = $(this);
+                    var overflowY = $node.css("overflow-y");
+                    var overflow = $node.css("overflow");
+                    var isScrollable = /(auto|scroll)/.test(overflowY) || /(auto|scroll)/.test(overflow);
+                    return isScrollable && this !== document.body && this !== document.documentElement;
+                });
+                state.fullscreenLockedScrollParents = [];
+                scrollParents.each(function() {
+                    var $node = $(this);
+                    state.fullscreenLockedScrollParents.push({
+                        node: this,
+                        overflow: $node.css("overflow"),
+                        overflowX: $node.css("overflow-x"),
+                        overflowY: $node.css("overflow-y")
+                    });
+                    $node.css({
+                        overflow: "hidden",
+                        overflowX: "hidden",
+                        overflowY: "hidden"
+                    });
+                });
+                console.log(logPrefix, "已锁定父容器滚动", {
+                    lockedCount: state.fullscreenLockedScrollParents.length
+                });
+                var fullscreenRect = getFullscreenRect();
+
+                if (!state.fullscreenPlaceholder || state.fullscreenPlaceholder.length < 1) {
+                    var placeholder = $("<div class=\"" + this.classPrefix + "fullscreen-placeholder\"></div>");
+                    placeholder.css({
+                        width  : editor.outerWidth() + "px",
+                        height : editor.outerHeight() + "px",
+                        margin : editor.css("margin")
+                    });
+                    editor.before(placeholder);
+                    state.fullscreenPlaceholder = placeholder;
+                    console.log(logPrefix, "已创建占位符防止布局跳动", {
+                        placeholderWidth: placeholder.css("width"),
+                        placeholderHeight: placeholder.css("height")
+                    });
+                }
 
                 editor.css({
-                    width  : "100%",
-                    height : $(window).height() + "px",
-                    zIndex : editormd.dialogZindex,
+                    zIndex : editormd.dialogZindex
                 }).addClass(fullscreenClass);
+                applyFullscreenRect(fullscreenRect, "首次进入全屏");
+                state.fullscreenRect = fullscreenRect;
+                console.log(logPrefix, "应用全屏区域", {
+                    appliedRect: fullscreenRect,
+                    appliedSizeText: Math.round(fullscreenRect.width) + "px x " + Math.round(fullscreenRect.height) + "px",
+                    editorStyleTop: editor.css("top"),
+                    editorStyleLeft: editor.css("left"),
+                    editorStyleWidth: editor.css("width"),
+                    editorStyleHeight: editor.css("height"),
+                    editorStylePosition: editor.css("position"),
+                    editorInfoAfterApply: getElementBrief(editor)
+                });
 
                 $(window).off("resize.editormdFullscreen").on("resize.editormdFullscreen", function() {
                     if (_this.state.fullscreen) {
-                        editor.css("height", $(window).height() + "px");
+                        var resizeRect = getFullscreenRect();
+                        _this.state.fullscreenRect = resizeRect;
+                        applyFullscreenRect(resizeRect, "窗口变化");
+                        console.log(logPrefix, "窗口变化后应用区域", {
+                            resizeRect: resizeRect,
+                            editorStyleTop: editor.css("top"),
+                            editorStyleLeft: editor.css("left"),
+                            editorStyleWidth: editor.css("width"),
+                            editorStyleHeight: editor.css("height"),
+                            editorInfoAfterResize: getElementBrief(editor),
+                            parentInfoAfterResize: getElementBrief(editor.parent())
+                        });
                         _this.resize();
                     }
                 });
 
                 this.resize();
+                if (state.fullscreenRect) {
+                    applyFullscreenRect(state.fullscreenRect, "resize后重设");
+                    console.log(logPrefix, "resize后重新应用全屏区域", state.fullscreenRect);
+                }
 
                 $.proxy(settings.onfullscreen, this)();
 
@@ -2759,6 +3003,29 @@
             var settings          = this.settings;
             var toolbar           = this.toolbar;
             var fullscreenClass   = this.classPrefix + "fullscreen";
+            var logPrefix         = "[Editor.md][全屏]";
+            var getElementBrief   = function($el) {
+                if (!$el || !$el.length) {
+                    return null;
+                }
+
+                var el = $el[0];
+                var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+
+                return {
+                    tag: el.tagName,
+                    id: $el.attr("id") || "",
+                    className: $el.attr("class") || "",
+                    width: $el.outerWidth(),
+                    height: $el.outerHeight(),
+                    rect: rect ? {
+                        top: rect.top,
+                        left: rect.left,
+                        width: rect.width,
+                        height: rect.height
+                    } : null
+                };
+            };
 
             this.state.fullscreen = false;
 
@@ -2767,15 +3034,46 @@
             }
 
             $("html,body").css("overflow", "");
+            if (this.state.fullscreenLockedScrollParents && this.state.fullscreenLockedScrollParents.length) {
+                for (var i = 0; i < this.state.fullscreenLockedScrollParents.length; i++) {
+                    var locked = this.state.fullscreenLockedScrollParents[i];
+                    var $node = $(locked.node);
+                    $node.css({
+                        overflow: locked.overflow,
+                        overflowX: locked.overflowX,
+                        overflowY: locked.overflowY
+                    });
+                }
+                console.log(logPrefix, "已恢复父容器滚动", {
+                    restoredCount: this.state.fullscreenLockedScrollParents.length
+                });
+            }
+            this.state.fullscreenLockedScrollParents = [];
             $(window).off("resize.editormdFullscreen");
             $(window).scrollTop(this.state.fullscreenScrollTop || 0);
             $(window).scrollLeft(this.state.fullscreenScrollLeft || 0);
 
             editor.css({
+                top    : "",
+                left   : "",
                 width  : editor.data("oldWidth"),
                 height : editor.data("oldHeight"),
                 zIndex : ''
             }).removeClass(fullscreenClass);
+
+            if (this.state.fullscreenPlaceholder && this.state.fullscreenPlaceholder.length) {
+                this.state.fullscreenPlaceholder.remove();
+                this.state.fullscreenPlaceholder = null;
+                console.log(logPrefix, "已移除占位符并恢复页面流");
+            }
+
+            this.state.fullscreenRect = null;
+            console.log(logPrefix, "退出全屏并恢复尺寸", {
+                restoreWidth: editor.data("oldWidth"),
+                restoreHeight: editor.data("oldHeight"),
+                editorInfoAfterExit: getElementBrief(editor),
+                parentInfoAfterExit: getElementBrief(editor.parent())
+            });
 
             this.resize();
 
