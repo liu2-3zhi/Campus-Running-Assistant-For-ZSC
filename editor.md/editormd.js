@@ -1047,8 +1047,8 @@
             };
 
             if (!state.fullscreen && !state.preview && settings.toolbar && settings.toolbarAutoFixed) {
-                $(window).bind("scroll", autoFixedHandle);
-                $(window).bind("resize", autoFixedHandle);
+                $(window).on("scroll", autoFixedHandle);
+                $(window).on("resize", autoFixedHandle);
             }
 
             return this;
@@ -1192,7 +1192,7 @@
             var toolbarIcons        = this.toolbarIcons = toolbar.find("." + classPrefix + "menu > li > a");
             var toolbarIconHandlers = this.getToolbarHandles();
 
-            toolbarIcons.bind("click", function() {
+            toolbarIcons.on("click", function() {
 
                 var icon                = $(this).children(".fa");
                 var name                = icon.attr("name");
@@ -1273,7 +1273,7 @@
 
             var infoDialog  = this.infoDialog = editor.children("." + classPrefix + "dialog-info");
 
-            infoDialog.find("." + classPrefix + "dialog-close").bind("click", function() {
+            infoDialog.find("." + classPrefix + "dialog-close").on("click", function() {
                 _this.hideInfoDialog();
             });
 
@@ -1605,7 +1605,7 @@
             }
 
             var cmBindScroll = function() {
-                codeMirror.find(".CodeMirror-scroll").bind(mouseOrTouch("scroll", "touchmove"), function(event) {
+                codeMirror.find(".CodeMirror-scroll").on(mouseOrTouch("scroll", "touchmove"), function(event) {
                     var height    = $(this).height();
                     var scrollTop = $(this).scrollTop();
                     var percent   = (scrollTop / $(this)[0].scrollHeight);
@@ -1632,12 +1632,12 @@
             };
 
             var cmUnbindScroll = function() {
-                codeMirror.find(".CodeMirror-scroll").unbind(mouseOrTouch("scroll", "touchmove"));
+                codeMirror.find(".CodeMirror-scroll").off(mouseOrTouch("scroll", "touchmove"));
             };
 
             var previewBindScroll = function() {
 
-                preview.bind(mouseOrTouch("scroll", "touchmove"), function(event) {
+                preview.on(mouseOrTouch("scroll", "touchmove"), function(event) {
                     var height    = $(this).height();
                     var scrollTop = $(this).scrollTop();
                     var percent   = (scrollTop / $(this)[0].scrollHeight);
@@ -1657,10 +1657,10 @@
             };
 
             var previewUnbindScroll = function() {
-                preview.unbind(mouseOrTouch("scroll", "touchmove"));
+                preview.off(mouseOrTouch("scroll", "touchmove"));
             };
 
-			codeMirror.bind({
+			codeMirror.on({
 				mouseover  : cmBindScroll,
 				mouseout   : cmUnbindScroll,
 				touchstart : cmBindScroll,
@@ -1671,7 +1671,7 @@
                 return this;
             }
 
-			preview.bind({
+			preview.on({
 				mouseover  : previewBindScroll,
 				mouseout   : previewUnbindScroll,
 				touchstart : previewBindScroll,
@@ -2411,7 +2411,7 @@
                     preview.css("background", "#fff");
                 }
 
-                editor.find("." + this.classPrefix + "preview-close-btn").show().bind("click", function(){
+                editor.find("." + this.classPrefix + "preview-close-btn").show().on("click", function(){
                     _this.previewed();
                 });
 
@@ -2434,9 +2434,9 @@
                     $.proxy(settings.onpreviewing, this)();
                 }
 
-                $(window).bind("keyup", escHandle);
+                $(window).on("keyup", escHandle);
             } else {
-                $(window).unbind("keyup", escHandle);
+                $(window).off("keyup", escHandle);
                 this.previewed();
             }
         },
@@ -2467,7 +2467,7 @@
 
             preview[(settings.watch) ? "show" : "hide"]();
 
-            previewCloseBtn.hide().unbind("click");
+            previewCloseBtn.hide().off("click");
 
             previewContainer.removeClass(this.classPrefix + "preview-active");
 
@@ -2539,9 +2539,9 @@
 
                 $.proxy(settings.onfullscreen, this)();
 
-                $(window).bind("keyup", escHandle);
+                $(window).on("keyup", escHandle);
             } else {
-                $(window).unbind("keyup", escHandle);
+                $(window).off("keyup", escHandle);
                 this.fullscreenExit();
             }
 
@@ -4143,7 +4143,7 @@
 
         $(window).resize(dialogPosition);
 
-        dialog.children("." + classPrefix + "dialog-close").bind("click", function() {
+        dialog.children("." + classPrefix + "dialog-close").on("click", function() {
             dialog.hide().lockScreen(false).hideMask();
 
             if (!options.cached) {
@@ -4160,7 +4160,7 @@
 
                 footer.append("<button class=\"" + classPrefix + "btn " + btnClassName + "\">" + btn[0] + "</button>");
                 btn[1] = $.proxy(btn[1], dialog);
-                footer.children("." + btnClassName).bind("click", btn[1]);
+                footer.children("." + btnClassName).on("click", btn[1]);
             }
         }
 
@@ -4169,7 +4169,7 @@
             var dialogHeader = dialog.children("." + classPrefix + "dialog-header");
 
             if (!options.mask) {
-                dialogHeader.bind("click", function(){
+                dialogHeader.on("click", function(){
                     editormd.dialogZindex += 2;
                     dialog.css("z-index", editormd.dialogZindex);
                 });
@@ -4257,7 +4257,7 @@
                     });
                 };
 
-                this.bind("touchstart", start).bind("touchmove", move);
+                this.on("touchstart", start).on("touchmove", move);
             };
 
             dialogHeader.touchDraggable();
