@@ -19857,6 +19857,75 @@ function switchAdminTab(tab) {
                 (function ensureDialogsOnBody() {
                   const editorRoot = document.getElementById("message-editor");
                   if (!editorRoot) return;
+                  const attachDialogDrag = (dialog) => {
+                    if (!dialog || dialog.__drag_bound) return;
+                    const header = dialog.querySelector(".editormd-dialog-header");
+                    if (!header) return;
+                    dialog.__drag_bound = true;
+                    header.style.cursor = "move";
+                    header.style.userSelect = "none";
+
+                    let dragging = false;
+                    let startX = 0;
+                    let startY = 0;
+                    let originLeft = 0;
+                    let originTop = 0;
+
+                    const getPoint = (evt) => {
+                      if (evt.touches && evt.touches[0]) {
+                        return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+                      }
+                      return { x: evt.clientX, y: evt.clientY };
+                    };
+
+                    const onMove = (evt) => {
+                      if (!dragging) return;
+                      const p = getPoint(evt);
+                      const dx = p.x - startX;
+                      const dy = p.y - startY;
+                      const nextLeft = Math.max(
+                        0,
+                        Math.min(window.innerWidth - dialog.offsetWidth, originLeft + dx),
+                      );
+                      const nextTop = Math.max(
+                        0,
+                        Math.min(window.innerHeight - dialog.offsetHeight, originTop + dy),
+                      );
+                      dialog.style.transform = "none";
+                      dialog.style.left = `${nextLeft}px`;
+                      dialog.style.top = `${nextTop}px`;
+                      if (evt.cancelable) evt.preventDefault();
+                    };
+
+                    const onUp = () => {
+                      dragging = false;
+                    };
+
+                    const onDown = (evt) => {
+                      if (
+                        evt.target.closest(".editormd-dialog-close") ||
+                        evt.target.closest("input,textarea,select,button,a")
+                      ) {
+                        return;
+                      }
+                      const rect = dialog.getBoundingClientRect();
+                      const p = getPoint(evt);
+                      dragging = true;
+                      startX = p.x;
+                      startY = p.y;
+                      originLeft = rect.left;
+                      originTop = rect.top;
+                      dialog.style.transform = "none";
+                      if (evt.cancelable) evt.preventDefault();
+                    };
+
+                    header.addEventListener("mousedown", onDown);
+                    header.addEventListener("touchstart", onDown, { passive: false });
+                    window.addEventListener("mousemove", onMove);
+                    window.addEventListener("touchmove", onMove, { passive: false });
+                    window.addEventListener("mouseup", onUp);
+                    window.addEventListener("touchend", onUp);
+                  };
 
                   const relocate = (dialog) => {
                     if (!dialog || dialog.__moved_to_body) return;
@@ -19923,6 +19992,7 @@ function switchAdminTab(tab) {
                       dialog.__moved_to_body = true;
                       // 标记可拖动（供增强脚本识别）
                       dialog.dataset.dragEnabled = "true";
+                      attachDialogDrag(dialog);
 
                       // 根据对话框的可见性，切换遮罩显示；并监听属性变化以实时更新
                       const checkVisibilityAndToggleMask = () => {
@@ -20009,6 +20079,75 @@ function switchAdminTab(tab) {
                 (function ensureReminderDialogsOnBody() {
                   const editorRoot = document.getElementById("reminder-editor");
                   if (!editorRoot) return;
+                  const attachDialogDrag = (dialog) => {
+                    if (!dialog || dialog.__drag_bound) return;
+                    const header = dialog.querySelector(".editormd-dialog-header");
+                    if (!header) return;
+                    dialog.__drag_bound = true;
+                    header.style.cursor = "move";
+                    header.style.userSelect = "none";
+
+                    let dragging = false;
+                    let startX = 0;
+                    let startY = 0;
+                    let originLeft = 0;
+                    let originTop = 0;
+
+                    const getPoint = (evt) => {
+                      if (evt.touches && evt.touches[0]) {
+                        return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+                      }
+                      return { x: evt.clientX, y: evt.clientY };
+                    };
+
+                    const onMove = (evt) => {
+                      if (!dragging) return;
+                      const p = getPoint(evt);
+                      const dx = p.x - startX;
+                      const dy = p.y - startY;
+                      const nextLeft = Math.max(
+                        0,
+                        Math.min(window.innerWidth - dialog.offsetWidth, originLeft + dx),
+                      );
+                      const nextTop = Math.max(
+                        0,
+                        Math.min(window.innerHeight - dialog.offsetHeight, originTop + dy),
+                      );
+                      dialog.style.transform = "none";
+                      dialog.style.left = `${nextLeft}px`;
+                      dialog.style.top = `${nextTop}px`;
+                      if (evt.cancelable) evt.preventDefault();
+                    };
+
+                    const onUp = () => {
+                      dragging = false;
+                    };
+
+                    const onDown = (evt) => {
+                      if (
+                        evt.target.closest(".editormd-dialog-close") ||
+                        evt.target.closest("input,textarea,select,button,a")
+                      ) {
+                        return;
+                      }
+                      const rect = dialog.getBoundingClientRect();
+                      const p = getPoint(evt);
+                      dragging = true;
+                      startX = p.x;
+                      startY = p.y;
+                      originLeft = rect.left;
+                      originTop = rect.top;
+                      dialog.style.transform = "none";
+                      if (evt.cancelable) evt.preventDefault();
+                    };
+
+                    header.addEventListener("mousedown", onDown);
+                    header.addEventListener("touchstart", onDown, { passive: false });
+                    window.addEventListener("mousemove", onMove);
+                    window.addEventListener("touchmove", onMove, { passive: false });
+                    window.addEventListener("mouseup", onUp);
+                    window.addEventListener("touchend", onUp);
+                  };
 
                   const relocate = (dialog) => {
                     if (!dialog || dialog.__moved_to_body) return;
@@ -20068,6 +20207,7 @@ function switchAdminTab(tab) {
                       document.body.appendChild(dialog);
                       dialog.__moved_to_body = true;
                       dialog.dataset.dragEnabled = "true";
+                      attachDialogDrag(dialog);
 
                       const checkVisibilityAndToggleMask = () => {
                         try {
