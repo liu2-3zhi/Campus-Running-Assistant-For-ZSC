@@ -13221,7 +13221,8 @@ function initDraggableAdminBtn() {
   });
 }
 
-// Tailwind 更新，已经无法使用这种方法检测是否加载
+// --- Next Script Block ---
+
 if (typeof tailwind !== "undefined") {
   tailwind.config = {
     theme: {
@@ -13238,60 +13239,6 @@ if (typeof tailwind !== "undefined") {
   console.error("Tailwind CSS 未加载，跳过配置。");
   if (typeof handleCdnError === "function") handleCdnError("TailwindCSS");
 }
-/*
-function applyTailwindV4Config(config) {
-  const extend = config?.theme?.extend || {};
-  let css = "@theme {\n";
-
-  // 处理 fontFamily
-  if (extend.fontFamily) {
-    for (const key in extend.fontFamily) {
-      const value = extend.fontFamily[key].join(", ");
-      css += `  --font-${key}: ${value};\n`;
-    }
-  }
-
-  // 处理 colors（支持嵌套）
-  function processColors(obj, prefix = "") {
-    for (const key in obj) {
-      const value = obj[key];
-      const name = prefix ? `${prefix}-${key}` : key;
-
-      if (typeof value === "string") {
-        css += `  --color-${name}: ${value};\n`;
-      } else {
-        processColors(value, name);
-      }
-    }
-  }
-
-  if (extend.colors) {
-    processColors(extend.colors);
-  }
-
-  css += "}\n";
-
-  // 注入到页面
-  const style = document.createElement("style");
-  style.type = "text/tailwindcss";
-  style.textContent = css;
-  document.head.appendChild(style);
-}
-// 应用 Tailwind CSS V4 配置
-applyTailwindV4Config({
-  theme: {
-    extend: {
-      fontFamily: {
-        sans: ["Noto Sans SC", "system-ui", "sans-serif"],
-        display: ["Zilla Slab", "serif"],
-      },
-      colors: { base: "#7dd3fc" },
-    },
-  },
-});
-*/
-
-
 
 // --- Next Script Block ---
 
@@ -31024,7 +30971,6 @@ async function initializeApp() {
       text: "服务器无法连接，请检查网络或稍后重试。",
       icon: "warning",
     });
-    console.error("应用初始化失败:", err);
     IS_OFFLINE = true;
   }
 }
@@ -44087,26 +44033,6 @@ async function loadCDNConfig() {
         mobileCdnCacheTime.value = data.config.cache_time || 3600;
       }
 
-      // 显示或隐藏强制刷新CDN缓存按钮（仅当CDN启用时显示）
-      const forceRefreshSection = $("cdn-force-refresh-section");
-      const mobileForceRefreshSection = $("mobile-cdn-force-refresh-section");
-      
-      if (forceRefreshSection) {
-        if (data.config.cdn_enabled) {
-          forceRefreshSection.classList.remove("hidden");
-        } else {
-          forceRefreshSection.classList.add("hidden");
-        }
-      }
-      
-      if (mobileForceRefreshSection) {
-        if (data.config.cdn_enabled) {
-          mobileForceRefreshSection.classList.remove("hidden");
-        } else {
-          mobileForceRefreshSection.classList.add("hidden");
-        }
-      }
-
       // 在控制台输出日志，方便调试
       console.log("[CDN配置] 配置加载成功:", data.config);
       configLoadState.cdn = true;
@@ -44269,107 +44195,6 @@ async function saveMobileCDNConfig() {
   } finally {
     // 恢复按钮状态
     setButtonLoading(saveBtn, false, "保存配置");
-  }
-}
-
-/**
- * 强制刷新CDN缓存
- * 功能：强制从CDN源服务器重新下载所有资源文件
- * 
- * 特性：
- * 1. 立即返回响应，不等待刷新完成
- * 2. 在后台异步执行刷新任务
- * 3. 防止重复点击
- * 4. 自动重试失败的文件
- */
-let cdnForceRefreshInProgress = false; // 全局标志，防止重复点击
-
-async function forceRefreshCDN() {
-  // 防止重复点击
-  if (cdnForceRefreshInProgress) {
-    showModalAlert("CDN缓存正在刷新中，请稍候...", "提示");
-    return;
-  }
-
-  // 获取按钮元素（PC端和移动端）
-  const pcBtn = $("cdn-force-refresh-btn");
-  const mobileBtn = $("mobile-cdn-force-refresh-btn");
-
-  // 设置为进行中状态
-  cdnForceRefreshInProgress = true;
-
-  // 设置按钮为加载状态
-  if (pcBtn) {
-    setButtonLoading(pcBtn, true, "刷新中...");
-    pcBtn.disabled = true;
-  }
-  if (mobileBtn) {
-    setButtonLoading(mobileBtn, true, "刷新中...");
-    mobileBtn.disabled = true;
-  }
-
-  try {
-    // 立即显示提示，告知用户刷新已开始
-    showModalAlert(
-      "CDN缓存正在后台刷新，这可能需要几分钟时间。刷新完成后，新的资源将自动生效。",
-      "刷新已开始"
-    );
-
-    // 向服务器发送强制刷新请求
-    const response = await fetch("/api/cdn/force-refresh", {
-      method: "POST",
-      headers: {
-        "X-Session-ID": sessionUUID,
-        "Content-Type": "application/json",
-      },
-    });
-
-    const data = await response.json();
-
-    if (data.success) {
-      console.log("[CDN缓存] 强制刷新请求已发送，后台执行中");
-      
-      // 3秒后恢复按钮状态
-      setTimeout(() => {
-        if (pcBtn) {
-          setButtonLoading(pcBtn, false, "强制刷新CDN缓存");
-          pcBtn.disabled = false;
-        }
-        if (mobileBtn) {
-          setButtonLoading(mobileBtn, false, "强制刷新CDN");
-          mobileBtn.disabled = false;
-        }
-        cdnForceRefreshInProgress = false;
-      }, 3000);
-    } else {
-      // 请求失败，立即恢复按钮
-      if (pcBtn) {
-        setButtonLoading(pcBtn, false, "强制刷新CDN缓存");
-        pcBtn.disabled = false;
-      }
-      if (mobileBtn) {
-        setButtonLoading(mobileBtn, false, "强制刷新CDN");
-        mobileBtn.disabled = false;
-      }
-      cdnForceRefreshInProgress = false;
-      showModalAlert(data.message || "刷新CDN缓存失败", "刷新失败");
-    }
-  } catch (error) {
-    // 错误处理
-    console.error("[CDN缓存] 强制刷新失败:", error);
-    
-    // 恢复按钮状态
-    if (pcBtn) {
-      setButtonLoading(pcBtn, false, "强制刷新CDN缓存");
-      pcBtn.disabled = false;
-    }
-    if (mobileBtn) {
-      setButtonLoading(mobileBtn, false, "强制刷新CDN");
-      mobileBtn.disabled = false;
-    }
-    cdnForceRefreshInProgress = false;
-    
-    showModalAlert("刷新失败: " + error.message, "网络错误");
   }
 }
 
