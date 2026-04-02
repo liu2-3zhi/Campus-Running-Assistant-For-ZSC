@@ -47136,6 +47136,17 @@ async function ensureMobileMultiMessageEditorInitialized() {
           toolbarCustomIcons: {},
           // 工具栏图标文本（自定义工具栏按钮的文本）
           toolbarIconTexts: {},
+          // 父容器层级（用于解决全屏模式下的定位问题）
+          parentContainerLayer:"4",
+          // 全屏的时候是否允许滚动
+          fullScreenScrolling: true,
+          // 全屏的时候编辑器位于父容器的坐标位置
+          fullScreenCoordinatesX: null,
+          fullScreenCoordinatesY: "1px",
+          // 全屏的时候微调编辑器
+          fullScreenHeightAdjustment: "-75px",
+          // 进入全屏自动滚动
+          fullScreenAutomaticScrolling: "0%",
         });
     const ta = document.getElementById("mobile-multi-message-content");
     if (ta) ta.classList.add("hidden");

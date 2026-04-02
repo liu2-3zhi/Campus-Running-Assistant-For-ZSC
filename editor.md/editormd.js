@@ -84,20 +84,20 @@
     };
 
     editormd.defaults     = {
-        mode                 : "gfm",          //gfm or markdown
-        name                 : "",             // Form element name
-        value                : "",             // value for CodeMirror, if mode not gfm/markdown
-        theme                : "",             // Editor.md self themes, before v1.5.0 is CodeMirror theme, default empty
-        editorTheme          : "default",      // Editor area, this is CodeMirror theme at v1.5.0
-        previewTheme         : "",             // Preview area theme, default empty
-        markdown             : "",             // Markdown source code
-        appendMarkdown       : "",             // if in init textarea value not empty, append markdown to textarea
+        mode                 : "gfm",          // 编辑模式：gfm 或 markdown
+        name                 : "",             // 表单字段名
+        value                : "",             // CodeMirror 初始值（当 mode 非 gfm/markdown 时使用）
+        theme                : "",             // Editor.md 主题（v1.5.0 前为 CodeMirror 主题），默认空
+        editorTheme          : "default",      // 编辑区主题（v1.5.0 起）
+        previewTheme         : "",             // 预览区主题，默认空
+        markdown             : "",             // Markdown 源码
+        appendMarkdown       : "",             // 初始化时若 textarea 有值，则追加 markdown
         width                : "100%",
         height               : "100%",
-        path                 : "./lib/",       // Dependents module file directory
-        pluginPath           : "",             // If this empty, default use settings.path + "../plugins/"
-        delay                : 300,            // Delay parse markdown to html, Uint : ms
-        autoLoadModules      : true,           // Automatic load dependent module files
+        path                 : "./lib/",       // 依赖模块目录
+        pluginPath           : "",             // 插件目录；为空时默认 settings.path + "../plugins/"
+        delay                : 300,            // Markdown 转 HTML 延迟（毫秒）
+        autoLoadModules      : true,           // 自动加载依赖模块
         watch                : true,
         placeholder          : "Enjoy Markdown! coding now...",
         gotoLine             : true,
@@ -106,7 +106,7 @@
 		autoFocus            : true,
         autoCloseTags        : true,
         searchReplace        : true,
-        syncScrolling        : true,           // true | false | "single", default true
+        syncScrolling        : true,           // 同步滚动：true | false | "single"，默认 true
         readOnly             : false,
         tabSize              : 4,
 		indentUnit           : 4,
@@ -117,12 +117,19 @@
 		matchBrackets        : true,
 		indentWithTabs       : true,
 		styleSelectedText    : true,
-        matchWordHighlight   : true,           // options: true, false, "onselected"
-        styleActiveLine      : true,           // Highlight the current line
+        matchWordHighlight   : true,           // 单词高亮：true、false、"onselected"
+        styleActiveLine      : true,           // 高亮当前行
         dialogLockScreen     : false,
         dialogShowMask       : true,
         dialogDraggable      : true,
-        parentContainerLayer : 1,              // Fullscreen target container layer by nearest parent div (1 = nearest)
+        fullScreenScrolling  : false,           // false 时全屏锁定页面/父容器滚动
+        fullScreenForceDisableAllScroll : false, // true 时强制锁定所有父容器滚动（覆盖 fullScreenScrolling）
+        fullScreenCoordinatesX : null,          // 全屏时编辑器 X 坐标（父容器相对坐标，如 "2%"、"2px"）
+        fullScreenCoordinatesY : null,          // 全屏时编辑器 Y 坐标（父容器相对坐标，如 "2%"、"2px"）
+        fullScreenAutomaticScrolling : null,    // 进入全屏自动滚动（基于整页，如 "2%"、"2px"）
+        fullScreenWidthAdjustment : null,       // 全屏宽度微调：可传函数，或 "2px"/"2%" 这类增量值，默认 null
+        fullScreenHeightAdjustment : null,      // 全屏高度微调：可传函数，或 "-100px"/"2%" 这类增量值，默认 null
+        parentContainerLayer : 1,              // 全屏父容器层级（1=最近的父 div）
         dialogMaskBgColor    : "#fff",
         dialogMaskOpacity    : 0.1,
         fontSize             : "13px",
@@ -144,27 +151,27 @@
         imageUpload          : false,
         imageFormats         : ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
         imageUploadURL       : "",
-        imageUploadFields    : "", // append upload form fields for CRSF etc. Server-side receives the POST parameters. v1.5.1+
-        imageUploadCallback  : function() {}, // set image upload finish (success or failure) callback handler v1.5.1+
-        imageUploadCallbackName : '__Editor_md_ImageUploadCallback', // upload callback name for cross-domain upload v1.5.1+
+        imageUploadFields    : "", // 追加上传表单字段（如 CSRF），服务端通过 POST 接收（v1.5.1+）
+        imageUploadCallback  : function() {}, // 图片上传完成回调（成功/失败，v1.5.1+）
+        imageUploadCallbackName : '__Editor_md_ImageUploadCallback', // 跨域上传回调名（v1.5.1+）
         crossDomainUpload    : false,
         uploadCallbackURL    : "",
 
-        toc                  : true,           // Table of contents
-        tocm                 : false,           // Using [TOCM], auto create ToC dropdown menu
-        tocTitle             : "",             // for ToC dropdown menu btn
+        toc                  : true,           // 目录（Table of Contents）
+        tocm                 : false,           // 使用 [TOCM] 自动生成目录下拉菜单
+        tocTitle             : "",             // 目录下拉按钮标题
         tocDropdown          : false,
         tocContainer         : "",
-        tocStartLevel        : 1,              // Said from H1 to create ToC
-        htmlDecode           : false,          // Open the HTML tag identification, If set String value expression : tagName,tagName,...|attrName,attrName,...
-        pageBreak            : true,           // Enable parse page break [========]
-        atLink               : true,           // for @link
-        emailLink            : true,           // for email address auto link
-        taskList             : false,          // Enable Github Flavored Markdown task lists
-        emoji                : false,          // :emoji: , Support Github emoji, Twitter Emoji (Twemoji);
-                                               // Support FontAwesome icon emoji :fa-xxx: > Using fontAwesome icon web fonts;
-                                               // Support Editor.md logo icon emoji :editormd-logo: :editormd-logo-1x: > 1~8x;
-        emojiCategories      : [               // Custom Emoji categories
+        tocStartLevel        : 1,              // 目录起始级别（从 H1 开始）
+        htmlDecode           : false,          // 是否启用 HTML 解析；字符串格式：tag1,tag2|attr1,attr2
+        pageBreak            : true,           // 解析分页符 [========]
+        atLink               : true,           // 启用 @link
+        emailLink            : true,           // 自动识别邮箱链接
+        taskList             : false,          // 启用 GFM 任务列表
+        emoji                : false,          // 支持 :emoji:（Github/Twemoji）
+                                               // 支持 FontAwesome：:fa-xxx:
+                                               // 支持 Editor.md logo：:editormd-logo: / :editormd-logo-1x: ~ 8x
+        emojiCategories      : [               // 自定义 Emoji 分类
             "github-emoji",
             "twemoji",
             "font-awesome",
@@ -172,13 +179,13 @@
             // emoji 目录
         ],
 
-        tex                  : false,          // TeX(LaTeX), based on KaTeX
-        flowChart            : false,          // flowChart.js only support IE9+
-        sequenceDiagram      : false,          // sequenceDiagram.js only support IE9+
+        tex                  : false,          // TeX(LaTeX)，基于 KaTeX
+        flowChart            : false,          // flowChart.js（仅支持 IE9+）
+        sequenceDiagram      : false,          // sequenceDiagram.js（仅支持 IE9+）
         previewCodeHighlight : true,
 
-        toolbar              : true,           // show/hide toolbar
-        toolbarAutoFixed     : true,           // on window scroll auto fixed position
+        toolbar              : true,           // 显示/隐藏工具栏
+        toolbarAutoFixed     : true,           // 窗口滚动时自动固定工具栏
         toolbarIcons         : "full",
         toolbarTitles        : {},
         toolbarHandlers      : {
@@ -375,6 +382,31 @@
 
             var classPrefix      = this.classPrefix  = editormd.classPrefix;
             var settings         = $.extend(true, {}, editormd.defaults, options);
+            var normalizeNullableBoolean = function(value, defaultValue) {
+                if (value === null || typeof value === "undefined") {
+                    return defaultValue;
+                }
+
+                if (typeof value === "boolean") {
+                    return value;
+                }
+
+                if (typeof value === "string") {
+                    var lower = value.toLowerCase().trim();
+                    if (lower === "true") {
+                        return true;
+                    }
+                    if (lower === "false") {
+                        return false;
+                    }
+                    if (lower === "null" || lower === "") {
+                        return defaultValue;
+                    }
+                }
+
+                return !!value;
+            };
+            settings.fullScreenScrolling = normalizeNullableBoolean(settings.fullScreenScrolling, false);
 
             if (options.imageFormats) {
                 settings.imageFormats = options.imageFormats;
@@ -2768,10 +2800,35 @@
 
                 return chain;
             };
+            var parseOffsetValue = function(value, base) {
+                if (value === null || typeof value === "undefined" || value === "") {
+                    return null;
+                }
+
+                if (typeof value === "number") {
+                    return value;
+                }
+
+                var str = (value + "").trim();
+                if (/^-?\d+(\.\d+)?%$/.test(str)) {
+                    return base * parseFloat(str) / 100;
+                }
+
+                if (/^-?\d+(\.\d+)?px$/.test(str)) {
+                    return parseFloat(str);
+                }
+
+                if (/^-?\d+(\.\d+)?$/.test(str)) {
+                    return parseFloat(str);
+                }
+
+                return null;
+            };
             var getFullscreenRect = function() {
                 var viewportWidth  = $(window).width();
                 var viewportHeight = $(window).height();
                 var parent         = editor.parent();
+                var editorRect     = (editor.length && editor[0].getBoundingClientRect) ? editor[0].getBoundingClientRect() : null;
                 var parentLayer    = parseInt(settings.parentContainerLayer, 10);
                 var normalizedLayer = (isNaN(parentLayer) || parentLayer < 1) ? 1 : parentLayer;
                 var parentDivs     = editor.parents("div");
@@ -2780,16 +2837,70 @@
                 var nearestDivParent = layerParent.length ? layerParent : parentDivs.first();
                 var targetParent   = nearestDivParent.length ? nearestDivParent : parent;
                 var parentRect     = (targetParent.length && targetParent[0].getBoundingClientRect) ? targetParent[0].getBoundingClientRect() : null;
-                var top            = 0;
-                var left           = 0;
+                var parentBaseTop  = 0;
+                var parentBaseLeft = 0;
+                var parentBaseWidth = viewportWidth;
+                var parentBaseHeight = viewportHeight;
+                var top            = editorRect ? editorRect.top : 0;
+                var left           = editorRect ? editorRect.left : 0;
                 var width          = viewportWidth;
                 var height         = viewportHeight;
 
                 if (parentRect) {
-                    top    = Math.max(parentRect.top, 0);
-                    left   = Math.max(parentRect.left, 0);
+                    parentBaseTop  = parentRect.top;
+                    parentBaseLeft = parentRect.left;
+                    parentBaseWidth = parentRect.width;
+                    parentBaseHeight = parentRect.height;
+
+                    top    = Math.max(parentBaseTop, 0);
+                    left   = Math.max(parentBaseLeft, 0);
                     width  = Math.max(Math.min(parentRect.width, viewportWidth - left), 1);
                     height = Math.max(Math.min(parentRect.height, viewportHeight - top), 1);
+                }
+
+                var xOffset = parseOffsetValue(settings.fullScreenCoordinatesX, parentBaseWidth);
+                var yOffset = parseOffsetValue(settings.fullScreenCoordinatesY, parentBaseHeight);
+
+                if (xOffset !== null) {
+                    left = parentBaseLeft + xOffset;
+                }
+
+                if (yOffset !== null) {
+                    top = parentBaseTop + yOffset;
+                }
+
+                var widthAdjustmentValue = parseOffsetValue(settings.fullScreenWidthAdjustment, width);
+                if (typeof settings.fullScreenWidthAdjustment === "function") {
+                    var adjustedWidth = settings.fullScreenWidthAdjustment(width, {
+                        viewportWidth: viewportWidth,
+                        viewportHeight: viewportHeight,
+                        parentWidth: parentBaseWidth,
+                        parentHeight: parentBaseHeight,
+                        left: left,
+                        top: top
+                    });
+                    if (typeof adjustedWidth === "number" && !isNaN(adjustedWidth)) {
+                        width = Math.max(adjustedWidth, 1);
+                    }
+                } else if (widthAdjustmentValue !== null) {
+                    width = Math.max(width + widthAdjustmentValue, 1);
+                }
+
+                var heightAdjustmentValue = parseOffsetValue(settings.fullScreenHeightAdjustment, height);
+                if (typeof settings.fullScreenHeightAdjustment === "function") {
+                    var adjustedHeight = settings.fullScreenHeightAdjustment(height, {
+                        viewportWidth: viewportWidth,
+                        viewportHeight: viewportHeight,
+                        parentWidth: parentBaseWidth,
+                        parentHeight: parentBaseHeight,
+                        left: left,
+                        top: top
+                    });
+                    if (typeof adjustedHeight === "number" && !isNaN(adjustedHeight)) {
+                        height = Math.max(adjustedHeight, 1);
+                    }
+                } else if (heightAdjustmentValue !== null) {
+                    height = Math.max(height + heightAdjustmentValue, 1);
                 }
 
                 console.log(logPrefix, "计算全屏区域", {
@@ -2801,6 +2912,12 @@
                     scrollTop: $(window).scrollTop(),
                     scrollLeft: $(window).scrollLeft(),
                     parentContainerLayer: settings.parentContainerLayer,
+                    fullScreenCoordinatesX: settings.fullScreenCoordinatesX,
+                    fullScreenCoordinatesY: settings.fullScreenCoordinatesY,
+                    hasFullScreenWidthAdjustment: typeof settings.fullScreenWidthAdjustment === "function",
+                    hasFullScreenHeightAdjustment: typeof settings.fullScreenHeightAdjustment === "function",
+                    widthAdjustmentValue: widthAdjustmentValue,
+                    heightAdjustmentValue: heightAdjustmentValue,
                     normalizedLayer: normalizedLayer,
                     layerIndex: layerIndex,
                     editorElement: getElementBrief(editor),
@@ -2817,6 +2934,12 @@
                         width: parentRect.width,
                         height: parentRect.height
                     } : null,
+                    coordinateBaseWidth: parentBaseWidth,
+                    coordinateBaseHeight: parentBaseHeight,
+                    originalEditorTop: editorRect ? editorRect.top : null,
+                    originalEditorLeft: editorRect ? editorRect.left : null,
+                    coordinateOffsetX: xOffset,
+                    coordinateOffsetY: yOffset,
                     appliedRect: { top: top, left: left, width: width, height: height }
                 });
 
@@ -2861,6 +2984,97 @@
                     }
                 }
             };
+            var stabilizeFullscreenRect = function(rect) {
+                var steps = [
+                    { delay: 0, label: "rAF#1" },
+                    { delay: 0, label: "rAF#2" },
+                    { delay: 30, label: "timeout#30ms" },
+                    { delay: 80, label: "timeout#80ms" }
+                ];
+
+                var runStep = function(index) {
+                    if (!state.fullscreen || !state.fullscreenRect) {
+                        return;
+                    }
+                    if (index >= steps.length) {
+                        return;
+                    }
+
+                    var step = steps[index];
+                    var applyStep = function() {
+                        if (!state.fullscreen || !state.fullscreenRect) {
+                            return;
+                        }
+
+                        applyFullscreenRect(rect, "稳定定位-" + step.label);
+                        var nowRect = editor[0] && editor[0].getBoundingClientRect ? editor[0].getBoundingClientRect() : null;
+                        console.log(logPrefix, "稳定定位检查", {
+                            step: step.label,
+                            targetTop: rect.top,
+                            targetLeft: rect.left,
+                            currentTop: nowRect ? nowRect.top : null,
+                            currentLeft: nowRect ? nowRect.left : null
+                        });
+                        runStep(index + 1);
+                    };
+
+                    if (step.delay === 0) {
+                        window.requestAnimationFrame(applyStep);
+                    } else {
+                        setTimeout(applyStep, step.delay);
+                    }
+                };
+
+                runStep(0);
+            };
+            var stabilizeAutoScroll = function(targetTop) {
+                var top = Math.max(targetTop, 0);
+                var scrollLayer = parseInt(settings.parentContainerLayer, 10);
+                var normalizedScrollLayer = (isNaN(scrollLayer) || scrollLayer < 1) ? 1 : scrollLayer;
+                var targetScrollParent = editor.parents().eq(normalizedScrollLayer - 1);
+                var steps = [
+                    { delay: 0, label: "scroll-rAF#1" },
+                    { delay: 0, label: "scroll-rAF#2" },
+                    { delay: 40, label: "scroll-timeout#40ms" },
+                    { delay: 100, label: "scroll-timeout#100ms" }
+                ];
+
+                var runStep = function(index) {
+                    if (!state.fullscreen) {
+                        return;
+                    }
+                    if (index >= steps.length) {
+                        return;
+                    }
+
+                    var step = steps[index];
+                    var doScroll = function() {
+                        if (!state.fullscreen) {
+                            return;
+                        }
+                        if (targetScrollParent && targetScrollParent.length) {
+                            targetScrollParent[0].scrollTop = top;
+                        }
+                        console.log(logPrefix, "自动滚动重试", {
+                            step: step.label,
+                            targetTop: top,
+                            parentContainerLayer: settings.parentContainerLayer,
+                            normalizedScrollLayer: normalizedScrollLayer,
+                            targetParentTag: targetScrollParent && targetScrollParent.length ? targetScrollParent[0].tagName : null,
+                            actualParentTop: targetScrollParent && targetScrollParent.length ? targetScrollParent[0].scrollTop : null
+                        });
+                        runStep(index + 1);
+                    };
+
+                    if (step.delay === 0) {
+                        window.requestAnimationFrame(doScroll);
+                    } else {
+                        setTimeout(doScroll, step.delay);
+                    }
+                };
+
+                runStep(0);
+            };
 
             if (toolbar) {
                 toolbar.find(".fa[name=fullscreen]").parent().toggleClass("active");
@@ -2891,37 +3105,55 @@
                     editorInfo: getElementBrief(editor),
                     parentInfo: getElementBrief(editor.parent()),
                     nearestDivParentHTML: formatElementHTML(editor.parents("div").first()),
-                    nearestDivParentInfo: getElementBrief(editor.parents("div").first())
+                    nearestDivParentInfo: getElementBrief(editor.parents("div").first()),
+                    fullScreenAutomaticScrolling: settings.fullScreenAutomaticScrolling
                 });
 
-                window.scrollTo(0, 0);
+                var autoScroll = parseOffsetValue(settings.fullScreenAutomaticScrolling, $(document).height());
+                if (autoScroll !== null) {
+                    stabilizeAutoScroll(autoScroll);
+                }
 
-                $("html,body").css("overflow", "hidden");
-                var scrollParents = editor.parents().filter(function() {
-                    var $node = $(this);
-                    var overflowY = $node.css("overflow-y");
-                    var overflow = $node.css("overflow");
-                    var isScrollable = /(auto|scroll)/.test(overflowY) || /(auto|scroll)/.test(overflow);
-                    return isScrollable && this !== document.body && this !== document.documentElement;
-                });
                 state.fullscreenLockedScrollParents = [];
-                scrollParents.each(function() {
-                    var $node = $(this);
-                    state.fullscreenLockedScrollParents.push({
-                        node: this,
-                        overflow: $node.css("overflow"),
-                        overflowX: $node.css("overflow-x"),
-                        overflowY: $node.css("overflow-y")
+                if (!settings.fullScreenScrolling || settings.fullScreenForceDisableAllScroll) {
+                    $("html,body").css("overflow", "hidden");
+                    var lockLayer = parseInt(settings.parentContainerLayer, 10);
+                    var normalizedLockLayer = (isNaN(lockLayer) || lockLayer < 1) ? 1 : lockLayer;
+                    var lockParents = settings.fullScreenForceDisableAllScroll ? editor.parents() : editor.parents().slice(0, normalizedLockLayer);
+                    var scrollParents = lockParents.filter(function() {
+                        var $node = $(this);
+                        var overflowY = $node.css("overflow-y");
+                        var overflow = $node.css("overflow");
+                        var isScrollable = /(auto|scroll)/.test(overflowY) || /(auto|scroll)/.test(overflow);
+                        return isScrollable && this !== document.body && this !== document.documentElement;
                     });
-                    $node.css({
-                        overflow: "hidden",
-                        overflowX: "hidden",
-                        overflowY: "hidden"
+                    scrollParents.each(function() {
+                        var $node = $(this);
+                        state.fullscreenLockedScrollParents.push({
+                            node: this,
+                            overflow: $node.css("overflow"),
+                            overflowX: $node.css("overflow-x"),
+                            overflowY: $node.css("overflow-y")
+                        });
+                        $node.css({
+                            overflow: "hidden",
+                            overflowX: "hidden",
+                            overflowY: "hidden"
+                        });
                     });
-                });
-                console.log(logPrefix, "已锁定父容器滚动", {
-                    lockedCount: state.fullscreenLockedScrollParents.length
-                });
+                    console.log(logPrefix, "已锁定父容器滚动", {
+                        fullScreenScrolling: settings.fullScreenScrolling,
+                        fullScreenForceDisableAllScroll: settings.fullScreenForceDisableAllScroll,
+                        parentContainerLayer: settings.parentContainerLayer,
+                        normalizedLockLayer: normalizedLockLayer,
+                        lockedCount: state.fullscreenLockedScrollParents.length
+                    });
+                } else {
+                    console.log(logPrefix, "全屏滚动未锁定", {
+                        fullScreenScrolling: settings.fullScreenScrolling,
+                        fullScreenForceDisableAllScroll: settings.fullScreenForceDisableAllScroll
+                    });
+                }
                 var fullscreenRect = getFullscreenRect();
 
                 if (!state.fullscreenPlaceholder || state.fullscreenPlaceholder.length < 1) {
@@ -2944,6 +3176,7 @@
                 }).addClass(fullscreenClass);
                 applyFullscreenRect(fullscreenRect, "首次进入全屏");
                 state.fullscreenRect = fullscreenRect;
+                stabilizeFullscreenRect(fullscreenRect);
                 console.log(logPrefix, "应用全屏区域", {
                     appliedRect: fullscreenRect,
                     appliedSizeText: Math.round(fullscreenRect.width) + "px x " + Math.round(fullscreenRect.height) + "px",
@@ -2960,6 +3193,7 @@
                         var resizeRect = getFullscreenRect();
                         _this.state.fullscreenRect = resizeRect;
                         applyFullscreenRect(resizeRect, "窗口变化");
+                        stabilizeFullscreenRect(resizeRect);
                         console.log(logPrefix, "窗口变化后应用区域", {
                             resizeRect: resizeRect,
                             editorStyleTop: editor.css("top"),
@@ -2976,6 +3210,7 @@
                 this.resize();
                 if (state.fullscreenRect) {
                     applyFullscreenRect(state.fullscreenRect, "resize后重设");
+                    stabilizeFullscreenRect(state.fullscreenRect);
                     console.log(logPrefix, "resize后重新应用全屏区域", state.fullscreenRect);
                 }
 
@@ -3033,8 +3268,10 @@
                 toolbar.find(".fa[name=fullscreen]").parent().removeClass("active");
             }
 
-            $("html,body").css("overflow", "");
-            if (this.state.fullscreenLockedScrollParents && this.state.fullscreenLockedScrollParents.length) {
+            if (!settings.fullScreenScrolling || settings.fullScreenForceDisableAllScroll) {
+                $("html,body").css("overflow", "");
+            }
+            if ((!settings.fullScreenScrolling || settings.fullScreenForceDisableAllScroll) && this.state.fullscreenLockedScrollParents && this.state.fullscreenLockedScrollParents.length) {
                 for (var i = 0; i < this.state.fullscreenLockedScrollParents.length; i++) {
                     var locked = this.state.fullscreenLockedScrollParents[i];
                     var $node = $(locked.node);
@@ -3045,6 +3282,8 @@
                     });
                 }
                 console.log(logPrefix, "已恢复父容器滚动", {
+                    fullScreenScrolling: settings.fullScreenScrolling,
+                    fullScreenForceDisableAllScroll: settings.fullScreenForceDisableAllScroll,
                     restoredCount: this.state.fullscreenLockedScrollParents.length
                 });
             }
