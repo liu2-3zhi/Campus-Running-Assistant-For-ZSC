@@ -9096,8 +9096,9 @@
                     <textarea
                       id="test-order-pay-url"
                       readonly=""
-                      rows="3"
-                      class="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      rows="4"
+                      class="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-700 resize-y focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      style="word-break: break-all; overflow-wrap: break-word; min-height: 80px;"
                       aria-label="支付信息"
                       title="支付信息"
                       placeholder="支付信息将显示在这里"
@@ -9109,11 +9110,13 @@
                     >
                       根据不同的支付类型，这里显示相应的支付参数
                     </p>
-                    <!-- 二维码显示容器 -->
+                    <!-- 二维码显示容器（改进样式，确保二维码居中显示） -->
                     <div
                       id="test-order-qrcode-display"
-                      class="hidden mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                      class="hidden mt-3 p-4 bg-gradient-to-br from-slate-50 to-white border-2 border-slate-200 rounded-xl text-center shadow-inner"
                     >
+                      <!-- 二维码标题 -->
+                      <p class="text-xs text-slate-600 mb-2 font-medium">📱 扫描二维码支付</p>
                       <!-- 二维码将动态插入到这里 -->
                     </div>
                   </div>
