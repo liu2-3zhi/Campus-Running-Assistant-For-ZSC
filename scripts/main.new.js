@@ -2777,54 +2777,48 @@ async function loadPaymentMethodsConfig(
         // 5. 更小的按钮尺寸(p-1而非p-1.5)
         // 6. 更紧凑的间距(gap-2而非gap-3)
         itemHTML = `
-          <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 ${safeBorderColor} transition-colors">
-            <!-- 左侧：Logo和名称 (移动端紧凑版) -->
-            <div class="flex items-center gap-2 flex-1 min-w-0">
-              <!-- Logo - 移动端使用更小的尺寸 -->
-              ${logoHTML.replace(/w-10 h-10/g, "w-8 h-8")}
-              <!-- 名称和描述 - 移动端使用更小的字体 -->
+          <div class="bg-white rounded-lg border border-slate-200 ${safeBorderColor} transition-colors p-3 space-y-3 overflow-hidden">
+            <div class="flex items-start gap-3 min-w-0">
+              <div class="shrink-0 flex items-center justify-center">
+                ${logoHTML.replace(/w-10 h-10/g, "w-8 h-8")}
+              </div>
               <div class="flex-1 min-w-0">
-                <span class="text-xs font-semibold text-slate-700 block truncate">${safeName}</span>
+                <span class="text-sm font-semibold text-slate-700 block break-words">${safeName}</span>
                 ${
                   safeDescription
-                    ? `<span class="text-xs text-slate-500 block truncate">${safeDescription}</span>`
+                    ? `<span class="text-xs text-slate-500 block break-words mt-1">${safeDescription}</span>`
                     : ""
                 }
               </div>
             </div>
-            
-            <!-- 右侧：操作按钮组 (移动端紧凑版) -->
-            <div class="flex items-center gap-1.5 ml-2">
-              <!-- 启用/禁用开关 - 移动端使用更小的开关 -->
-              <label class="relative inline-flex items-center cursor-pointer" title="启用/禁用">
+
+            <div class="flex items-center justify-between gap-3 pt-1">
+              <label class="relative inline-flex items-center cursor-pointer shrink-0" title="启用/禁用">
                 <input type="checkbox" id="payment-method-${safeCode}${idSuffix}" class="sr-only peer" ${
                   isEnabled ? "checked" : ""
                 }>
-                <!-- 移动端开关：w-9 h-5（比PC端的w-11 h-6小）-->
                 <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
               </label>
-              
-              <!-- 【安全修复3】编辑按钮 - 移动端紧凑版 -->
-              <button class="payment-edit-btn p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors" 
-                title="编辑" 
-                data-payment-code="${safeCode}">
-                <!-- 移动端图标：w-3.5 h-3.5（比PC端的w-4 h-4小）-->
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                </svg>
-              </button>
-              
-              <!-- 【安全修复4】删除按钮 - 移动端紧凑版 -->
-              <button class="payment-delete-btn p-1 text-red-600 hover:bg-red-50 rounded transition-colors" 
-                title="删除" 
-                data-payment-code="${safeCode}">
-                <!-- 移动端图标：w-3.5 h-3.5（比PC端的w-4 h-4小）-->
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                </svg>
-              </button>
+
+              <div class="flex items-center gap-2 ml-auto shrink-0">
+                <button class="payment-edit-btn inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                  title="编辑"
+                  data-payment-code="${safeCode}">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                  </svg>
+                </button>
+
+                <button class="payment-delete-btn inline-flex items-center justify-center w-8 h-8 text-red-600 hover:bg-red-50 rounded transition-colors"
+                  title="删除"
+                  data-payment-code="${safeCode}">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         `;
