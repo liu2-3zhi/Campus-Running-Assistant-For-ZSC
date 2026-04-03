@@ -52509,11 +52509,14 @@ async function mobileLoadSMSConfig() {
       // 渲染移动端短信配置表单
       contentEl.innerHTML = `
         <!-- 短信服务主开关 -->
-        <div class="bg-white border border-slate-200 rounded-lg p-3">
+        <div class="bg-gradient-to-r from-blue-50 to-white border border-blue-100 rounded-xl p-4">
           <div class="flex items-center justify-between">
-            <div>
-              <h5 class="font-semibold text-sm text-slate-800">启用短信服务</h5>
-              <p class="text-xs text-slate-500">开启后可使用短信验证功能</p>
+            <div class="flex items-center gap-3">
+              <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+              <div>
+                <h5 class="font-semibold text-sm text-slate-800">启用短信服务</h5>
+                <p class="text-xs text-slate-500">开启后可使用短信验证功能</p>
+              </div>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" id="mobile-sms-enabled" class="sr-only peer" ${
@@ -52525,58 +52528,76 @@ async function mobileLoadSMSConfig() {
         </div>
 
         <!-- 功能开关组 -->
-        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-3">
-          <h5 class="font-semibold text-xs text-slate-700">功能开关</h5>
+        <div class="bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <h5 class="font-semibold text-xs text-slate-700">功能开关</h5>
+          </div>
           
-          <div class="flex items-center justify-between py-2 border-b border-slate-100">
+          <label class="flex items-center justify-between py-2.5 px-3 bg-white border border-slate-100 rounded-lg cursor-pointer hover:border-sky-200 transition-colors">
             <span class="text-xs text-slate-600">允许手机号绑定/修改</span>
             <input type="checkbox" id="mobile-sms-enable-phone-modification" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_modification ? "checked" : ""
             }>
-          </div>
+          </label>
           
-          <div class="flex items-center justify-between py-2 border-b border-slate-100">
+          <label class="flex items-center justify-between py-2.5 px-3 bg-white border border-slate-100 rounded-lg cursor-pointer hover:border-sky-200 transition-colors">
             <span class="text-xs text-slate-600">允许手机号登录</span>
             <input type="checkbox" id="mobile-sms-enable-phone-login" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_login ? "checked" : ""
             }>
-          </div>
+          </label>
           
-          <div class="flex items-center justify-between py-2">
+          <label class="flex items-center justify-between py-2.5 px-3 bg-white border border-slate-100 rounded-lg cursor-pointer hover:border-sky-200 transition-colors">
             <span class="text-xs text-slate-600">注册时强制手机验证</span>
             <input type="checkbox" id="mobile-sms-enable-phone-registration-verify" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_registration_verify ? "checked" : ""
             }>
-          </div>
+          </label>
         </div>
 
         <!-- API配置 -->
-        <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
-          <h5 class="font-semibold text-xs text-slate-700">API配置</h5>
+        <div class="bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+            <h5 class="font-semibold text-xs text-slate-700">API配置</h5>
+          </div>
           
           <div>
-            <label class="block text-xs text-slate-600 mb-1">用户名/账号</label>
+            <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+              用户名/账号
+            </label>
             <input type="text" id="mobile-sms-username" value="${
               config.username || ""
             }" class="input-field text-xs w-full" placeholder="短信服务商账号">
           </div>
           
           <div>
-            <label class="block text-xs text-slate-600 mb-1">API Key</label>
+            <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+              API Key
+            </label>
             <input type="password" id="mobile-sms-apikey" value="${
               config.api_key || ""
             }" class="input-field text-xs w-full" placeholder="短信服务商API密钥">
           </div>
           
           <div>
-            <label class="block text-xs text-slate-600 mb-1">签名</label>
+            <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+              签名
+            </label>
             <input type="text" id="mobile-sms-signature" value="${
               config.signature || ""
             }" class="input-field text-xs w-full" placeholder="短信签名">
           </div>
           
           <div>
-            <label class="block text-xs text-slate-600 mb-1">模板ID</label>
+            <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              模板ID
+            </label>
             <input type="text" id="mobile-sms-template" value="${
               config.template_register || ""
             }" class="input-field text-xs w-full" placeholder="验证码模板ID">
@@ -52584,30 +52605,45 @@ async function mobileLoadSMSConfig() {
         </div>
 
         <!-- 限制配置 -->
-        <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
-          <h5 class="font-semibold text-xs text-slate-700">安全限制</h5>
+        <div class="bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            <h5 class="font-semibold text-xs text-slate-700">安全限制</h5>
+          </div>
           
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs text-slate-600 mb-1">验证码有效期(分钟)</label>
+              <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                有效期(分钟)
+              </label>
               <input type="number" id="mobile-sms-code-expire" value="${
                 config.code_expire_minutes || 5
               }" class="input-field text-xs w-full" min="1" max="30">
             </div>
             <div>
-              <label class="block text-xs text-slate-600 mb-1">账号日限额</label>
+              <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                账号日限额
+              </label>
               <input type="number" id="mobile-sms-limit-account" value="${
                 config.rate_limit_per_account_day || 10
               }" class="input-field text-xs w-full" min="1">
             </div>
             <div>
-              <label class="block text-xs text-slate-600 mb-1">IP日限额</label>
+              <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+                IP日限额
+              </label>
               <input type="number" id="mobile-sms-limit-ip" value="${
                 config.rate_limit_per_ip_day || 20
               }" class="input-field text-xs w-full" min="1">
             </div>
             <div>
-              <label class="block text-xs text-slate-600 mb-1">手机号日限额</label>
+              <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+                手机号日限额
+              </label>
               <input type="number" id="mobile-sms-limit-phone" value="${
                 config.rate_limit_per_phone_day || 5
               }" class="input-field text-xs w-full" min="1">
