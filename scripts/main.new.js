@@ -50764,22 +50764,39 @@ function showMobileAdminModifyPhone(username, currentPhone) {
           </svg>
           <h3 class="text-xl font-bold text-teal-600 text-center">修改手机号</h3>
         </div>
-        <div class="text-center text-sm text-slate-600">用户: <span id="mobile-admin-phone-username" class="font-semibold"></span></div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">当前手机号</label>
-          <input type="tel" id="mobile-admin-phone-current" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50" readonly>
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">新手机号</label>
-          <input type="tel" id="mobile-admin-phone-new" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新手机号" maxlength="11" inputmode="numeric">
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">短信验证码（可选）</label>
-          <div class="flex gap-2">
-            <input type="text" id="mobile-admin-phone-code" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="验证码" maxlength="6" inputmode="numeric">
-            <button id="mobile-admin-phone-send-btn" onclick="sendMobileAdminPhoneCode()" class="px-4 py-2 bg-sky-500 text-white rounded-lg text-sm whitespace-nowrap">发送</button>
+        <div class="p-4 bg-gradient-to-r from-teal-50 to-white border border-teal-100 rounded-xl mb-4">
+          <div class="flex items-center justify-center gap-3">
+            <svg class="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+            <span class="text-sm text-slate-600">用户: <span id="mobile-admin-phone-username" class="font-semibold text-slate-800"></span></span>
           </div>
-          <p class="text-xs text-slate-500 mt-1">管理员修改手机号不强制要求验证码，如填写将进行校验</p>
+        </div>
+        <div class="space-y-4">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+            <label for="mobile-admin-phone-current" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">当前手机号</span>
+            </label>
+            <input type="tel" id="mobile-admin-phone-current" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none" readonly>
+          </div>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-admin-phone-new" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-teal-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">新手机号</span>
+            </label>
+            <input type="tel" id="mobile-admin-phone-new" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新手机号" maxlength="11" inputmode="numeric">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>请输入11位有效手机号码</span></p>
+          </div>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-admin-phone-code" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-teal-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">短信验证码（可选）</span>
+            </label>
+            <div class="flex gap-2">
+              <input type="text" id="mobile-admin-phone-code" class="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="验证码" maxlength="6" inputmode="numeric">
+              <button id="mobile-admin-phone-send-btn" onclick="sendMobileAdminPhoneCode()" class="px-4 py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-sm whitespace-nowrap transition-colors duration-200">发送</button>
+            </div>
+            <p class="text-xs text-amber-600 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span>管理员修改手机号不强制要求验证码，如填写将进行校验</span></p>
+          </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
           <button onclick="closeMobileAdminModifyPhone()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
