@@ -50935,10 +50935,21 @@ function showMobileResetPassword(username) {
           </svg>
           <h3 class="text-xl font-bold text-purple-600 text-center">重置密码</h3>
         </div>
-        <div class="text-center text-sm text-slate-600">用户: <span id="mobile-reset-password-username" class="font-semibold"></span></div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">新密码（至少6位）</label>
-          <input type="password" id="mobile-new-password_2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新密码">
+        <div class="p-4 bg-gradient-to-r from-purple-50 to-white border border-purple-100 rounded-xl mb-4">
+          <div class="flex items-center justify-center gap-3">
+            <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+            <span class="text-sm text-slate-600">用户: <span id="mobile-reset-password-username" class="font-semibold text-slate-800"></span></span>
+          </div>
+        </div>
+        <div class="space-y-4">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-new-password_2" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-purple-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">新密码（至少6位）</span>
+            </label>
+            <input type="password" id="mobile-new-password_2" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新密码">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>密码长度至少6位，建议使用字母、数字组合</span></p>
+          </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
           <button onclick="closeMobileResetPassword()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
