@@ -47889,9 +47889,11 @@ function switchMobileAdminTab(tabId, prefix) {
     // 构建目标面板的ID并显示
     const targetMultiPanelId = `mobile-multi-admin-${tabId}-panel`;
     const targetMultiPanel = document.getElementById(targetMultiPanelId);
+    console.log(`[switchMobileAdminTab] 目标面板ID: ${targetMultiPanelId}, 元素存在: ${!!targetMultiPanel}`);
     if (targetMultiPanel) {
       // 移除hidden类以显示目标面板
       targetMultiPanel.classList.remove("hidden");
+      console.log(`[switchMobileAdminTab] 已移除 ${targetMultiPanelId} 的 hidden 类`);
     } else {
       // 如果找不到目标面板，输出警告日志便于调试
       console.warn(
@@ -47973,6 +47975,7 @@ function switchMobileAdminTab(tabId, prefix) {
         break;
       case "reminders":
         // 加载定时提醒列表（使用移动端专用函数）
+        console.log("[switchMobileAdminTab] 触发 reminders 标签，调用 mobileRefreshReminders()");
         mobileRefreshReminders();
         break;
       case "ssl":
@@ -53323,26 +53326,40 @@ async function loadMobileCaptchaHistoryModal() {
  * 刷新移动端定时提醒列表
  */
 async function mobileRefreshReminders() {
+  console.log("[移动端提醒] mobileRefreshReminders() 被调用");
+  
   // 获取移动端提醒列表容器
   const listContainer = document.getElementById(
     "mobile-multi-admin-reminders-content",
   );
   if (!listContainer) {
-    console.error("[移动端提醒] 找不到列表容器");
+    console.error("[移动端提醒] 找不到列表容器 mobile-multi-admin-reminders-content");
     return;
+  }
+  
+  // 检查面板是否可见
+  const panel = document.getElementById("mobile-multi-admin-reminders-panel");
+  if (panel) {
+    console.log("[移动端提醒] 面板存在，hidden 类:", panel.classList.contains("hidden"));
+  } else {
+    console.warn("[移动端提醒] 面板不存在: mobile-multi-admin-reminders-panel");
   }
 
   // 显示加载状态
   listContainer.innerHTML =
     '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
+  console.log("[移动端提醒] 已设置加载状态");
 
   try {
+    console.log("[移动端提醒] 开始调用 API: /api/reminders/list");
     // 调用后端API获取提醒列表
     const response = await fetch("/api/reminders/list", {
       method: "GET",
       headers: { "X-Session-ID": sessionUUID },
     });
+    console.log("[移动端提醒] API 响应状态:", response.status);
     const result = await response.json();
+    console.log("[移动端提醒] API 返回数据:", result);
 
     if (!result.success) {
       listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${
@@ -53355,6 +53372,7 @@ async function mobileRefreshReminders() {
     const total = reminders.length;
     const enabled = reminders.filter((r) => r.enabled).length;
     const disabled = total - enabled;
+    console.log(`[移动端提醒] 共 ${total} 条提醒，启用 ${enabled}，禁用 ${disabled}`);
 
     // 更新移动端统计数据
     const statTotal = document.getElementById("mobile-reminder-stat-total");
@@ -53370,16 +53388,20 @@ async function mobileRefreshReminders() {
     if (reminders.length === 0) {
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10 text-xs">暂无提醒，点击"添加"创建新提醒</p>';
+      console.log("[移动端提醒] 无提醒数据，显示空状态");
       return;
     }
 
     listContainer.innerHTML = "";
-    reminders.forEach((reminder) => {
+    console.log("[移动端提醒] 开始渲染提醒列表...");
+    reminders.forEach((reminder, index) => {
       const itemDiv = document.createElement("div");
       // 根据是否跨天设置样式
       const isCrossDay = reminder.start_time > reminder.end_time;
       const timeIcon = isCrossDay ? "🌙" : "☀️";
       const timeHint = isCrossDay ? "(跨天)" : "";
+      // 为每个提醒的 Markdown 内容创建唯一ID
+      const messageContainerId = `mobile-reminder-message-${reminder.id}-${index}`;
 
       itemDiv.className = "bg-white border border-slate-200 rounded-lg p-3";
       itemDiv.innerHTML = `
@@ -53396,10 +53418,8 @@ async function mobileRefreshReminders() {
                   : "bg-slate-100 text-slate-600"
               }">${reminder.enabled ? "启用" : "禁用"}</span>
             </div>
-            <!-- 提醒内容 -->
-            <p class="text-xs text-slate-600 mb-2 line-clamp-2">${escapeHtml(
-              reminder.message,
-            )}</p>
+            <!-- 提醒内容（Markdown渲染） -->
+            <div id="${messageContainerId}" class="text-xs text-slate-600 mb-2 line-clamp-3 mobile-reminder-markdown-content"></div>
             <!-- 时间范围 -->
             <div class="flex items-center gap-1 text-xs ${
               isCrossDay ? "text-purple-600" : "text-blue-600"
@@ -53434,6 +53454,34 @@ async function mobileRefreshReminders() {
         </div>
       `;
       listContainer.appendChild(itemDiv);
+    });
+    
+    // 渲染所有提醒内容的 Markdown
+    console.log("[移动端提醒] 开始使用 Editor.md 渲染 Markdown...");
+    reminders.forEach((reminder, index) => {
+      const messageContainerId = `mobile-reminder-message-${reminder.id}-${index}`;
+      const messageContainer = document.getElementById(messageContainerId);
+      console.log(`[移动端提醒] 渲染第 ${index + 1} 条提醒，容器ID: ${messageContainerId}, 容器存在: ${!!messageContainer}, 内容长度: ${reminder.message?.length || 0}`);
+      if (messageContainer && reminder.message) {
+        try {
+          // 使用 editormd.markdownToHTML 渲染 Markdown
+          console.log(`[移动端提醒] 调用 editormd.markdownToHTML("${messageContainerId}", ...)`);
+          editormd.markdownToHTML(messageContainerId, {
+            markdown: reminder.message,
+            htmlDecode: "style,script,iframe",
+            emoji: true,
+            taskList: true,
+            tex: false,
+            flowChart: false,
+            sequenceDiagram: false,
+          });
+          console.log(`[移动端提醒] 第 ${index + 1} 条提醒渲染完成`);
+        } catch (err) {
+          // Markdown 渲染失败时回退为纯文本
+          console.error(`[移动端提醒] Markdown渲染失败，回退纯文本:`, err);
+          messageContainer.textContent = reminder.message;
+        }
+      }
     });
 
     console.log(`[移动端提醒] 已加载 ${reminders.length} 条提醒`);
