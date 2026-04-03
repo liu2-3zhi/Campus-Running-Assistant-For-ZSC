@@ -23199,9 +23199,9 @@ async function showCreateGroupModal() {
           permissionsContainer.innerHTML = Object.keys(firstGroup.permissions)
             .map(
               (perm) => `
-                <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                  <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}">
-                  <span class="text-sm text-slate-700">${translatePermission(
+                <label class="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 hover:border-sky-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group">
+                  <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}">
+                  <span class="text-sm text-slate-700 group-hover:text-slate-900">${translatePermission(
                     perm,
                   )}</span>
                 </label>
@@ -26705,11 +26705,11 @@ async function editGroupPermissions(groupKey) {
       permissionsContainer.innerHTML = Object.keys(group.permissions)
         .map(
           (perm) => `
-            <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
-              <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" ${
+            <label class="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 hover:border-sky-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group">
+              <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}" ${
                 group.permissions[perm] ? "checked" : ""
               }>
-              <span class="text-sm text-slate-700">${translatePermission(
+              <span class="text-sm text-slate-700 group-hover:text-slate-900">${translatePermission(
                 perm,
               )}</span>
             </label>
@@ -47476,9 +47476,9 @@ async function showMobileCreateGroupModal() {
           permissionsContainer.innerHTML = Object.keys(firstGroup.permissions)
             .map(
               (perm) => `
-            <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
-              <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}">
-              <span class="text-sm text-slate-700">${translatePermission(
+            <label class="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 hover:border-sky-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group">
+              <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}">
+              <span class="text-sm text-slate-700 group-hover:text-slate-900">${translatePermission(
                 perm,
               )}</span>
             </label>
@@ -47634,11 +47634,11 @@ async function showMobileEditGroupModal(groupKey) {
       permissionsContainer.innerHTML = Object.keys(group.permissions)
         .map(
           (perm) => `
-              <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" ${
+              <label class="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 hover:border-sky-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group">
+                <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}" ${
                   group.permissions[perm] ? "checked" : ""
                 }>
-                <span class="text-sm text-slate-700">${translatePermission(
+                <span class="text-sm text-slate-700 group-hover:text-slate-900">${translatePermission(
                   perm,
                 )}</span>
               </label>
