@@ -14054,12 +14054,16 @@
       ></div>
 
       <div
-        class="panel rounded-3xl p-8 w-[65rem] max-h-[85vh] overflow-x-hidden space-y-5 relative flex flex-col shadow-2xl border-2 border-white/20"
+        class="bg-white rounded-2xl w-[65rem] max-h-[85vh] overflow-x-hidden relative flex flex-col shadow-2xl border border-slate-100 overflow-hidden"
       >
-        <div class="relative mb-2 text-center flex-shrink-0">
-          <div class="flex items-center justify-center gap-3">
+        <!-- 头部渐变装饰条 -->
+        <div class="h-1.5 bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-500 flex-shrink-0"></div>
+
+        <!-- 标题区域 -->
+        <div class="relative px-7 pt-5 pb-4 flex items-center gap-3 border-b border-slate-100 flex-shrink-0">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-md">
             <svg
-              class="w-8 h-8 text-sky-500"
+              class="w-5 h-5 text-white"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -14078,20 +14082,24 @@
                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
               ></path>
             </svg>
+          </div>
+          <div class="flex-1">
             <h3
-              class="text-3xl font-bold bg-gradient-to-r from-sky-600 to-blue-600 bg-clip-text text-transparent inline-block"
+              class="text-xl font-bold bg-gradient-to-r from-sky-600 to-blue-600 bg-clip-text text-transparent inline-block"
             >
               管理面板
             </h3>
+            <p class="text-xs text-slate-500 mt-0.5">系统管理与配置中心</p>
           </div>
 
           <button
             id="admin-modal-close-btn"
-            class="absolute top-1/2 right-0 transform -translate-y-1/2 btn btn-ghost !py-2 !px-4 hover:bg-red-50 hover:text-red-600 transition-all duration-200 rounded-xl"
+            class="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all duration-200"
             onclick="toggleAdminPanel(false)"
+            title="关闭"
           >
             <svg
-              class="w-5 h-5 inline mr-1"
+              class="w-5 h-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -14104,12 +14112,12 @@
                 d="M6 18L18 6M6 6l12 12"
               ></path>
             </svg>
-            关闭
           </button>
         </div>
 
         <div
-          class="flex border-b-2 border-slate-200 flex-shrink-0 overflow-x-auto gap-1 pb-0"
+          class="flex border-b border-slate-200 flex-shrink-0 overflow-x-auto gap-1 pb-0 px-4 bg-slate-50/50"
+          style="scrollbar-width: none"
         >
           <button
             id="admin-tab-users_modal"
@@ -14646,7 +14654,7 @@
           </button>
         </div>
 
-        <div class="overflow-x-hidden flex-grow min-h-0">
+        <div class="overflow-x-hidden flex-grow min-h-0 overflow-y-auto p-6">
           <div id="admin-users-panel_modal" class="space-y-4">
             <div class="flex justify-between items-center">
               <h4 class="font-semibold">用户列表</h4>
