@@ -26154,28 +26154,28 @@ async function manageUserPermissions(username) {
           const isRemoved = removedPerms[perm] === true;
           const currentValue = result.all_permissions[perm];
 
-          let statusClass = "";
+          let statusClass = "bg-gradient-to-r from-slate-50 to-white border-slate-100 hover:border-sky-200";
           let statusText = "";
           if (isAdded) {
-            statusClass = "bg-green-50 border-green-200";
+            statusClass = "bg-gradient-to-r from-green-50 to-white border-green-200 hover:border-green-300";
             statusText = "(新增)";
           } else if (isRemoved) {
-            statusClass = "bg-red-50 border-red-200";
+            statusClass = "bg-gradient-to-r from-red-50 to-white border-red-200 hover:border-red-300";
             statusText = "(移除)";
           }
 
           return `
-              <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer border ${statusClass}">
-                <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" data-group-value="${groupHas}" ${
+              <label class="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group border ${statusClass}">
+                <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}" data-group-value="${groupHas}" ${
                   currentValue ? "checked" : ""
                 }>
-                <span class="text-sm text-slate-700 flex-1">${translatePermission(
+                <span class="text-sm text-slate-700 group-hover:text-slate-900 flex-1">${translatePermission(
                   perm,
                 )}</span>
                 ${
                   statusText
-                    ? `<span class="text-xs ${
-                        isAdded ? "text-green-600" : "text-red-600"
+                    ? `<span class="text-xs font-medium px-2 py-0.5 rounded-full ${
+                        isAdded ? "text-green-600 bg-green-100" : "text-red-600 bg-red-100"
                       }">${statusText}</span>`
                     : ""
                 }
