@@ -52490,21 +52490,21 @@ async function mobileLoadSMSConfig() {
           
           <div class="flex items-center justify-between py-2 border-b border-slate-100">
             <span class="text-xs text-slate-600">允许手机号绑定/修改</span>
-            <input type="checkbox" id="mobile-sms-enable-phone-modification" class="w-4 h-4 rounded" ${
+            <input type="checkbox" id="mobile-sms-enable-phone-modification" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_modification ? "checked" : ""
             }>
           </div>
           
           <div class="flex items-center justify-between py-2 border-b border-slate-100">
             <span class="text-xs text-slate-600">允许手机号登录</span>
-            <input type="checkbox" id="mobile-sms-enable-phone-login" class="w-4 h-4 rounded" ${
+            <input type="checkbox" id="mobile-sms-enable-phone-login" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_login ? "checked" : ""
             }>
           </div>
           
           <div class="flex items-center justify-between py-2">
             <span class="text-xs text-slate-600">注册时强制手机验证</span>
-            <input type="checkbox" id="mobile-sms-enable-phone-registration-verify" class="w-4 h-4 rounded" ${
+            <input type="checkbox" id="mobile-sms-enable-phone-registration-verify" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_registration_verify ? "checked" : ""
             }>
           </div>
