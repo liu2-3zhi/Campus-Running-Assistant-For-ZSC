@@ -1617,6 +1617,34 @@
                 
                 if (scrollTop !== null) {
                     scrollTop = Math.max(scrollTop, 0);
+
+                    // 先处理编辑器最近可滚动父容器（如 mobile-modal-content），确保 about 弹窗也能在移动端容器内滚动
+                    var nearestScrollableParent = null;
+                    editor.parents().each(function() {
+                        if (this === document.body || this === document.documentElement) {
+                            return;
+                        }
+                        var style = window.getComputedStyle ? window.getComputedStyle(this) : null;
+                        var overflowY = style ? (style.overflowY || style.overflow || "") : "";
+                        var canScroll = /auto|scroll/i.test(overflowY) && this.scrollHeight > this.clientHeight;
+                        if (canScroll) {
+                            nearestScrollableParent = this;
+                            return false;
+                        }
+                    });
+                    if (nearestScrollableParent) {
+                        var nearestMaxTop = Math.max(nearestScrollableParent.scrollHeight - nearestScrollableParent.clientHeight, 0);
+                        var nearestFinalTop = Math.min(scrollTop, nearestMaxTop);
+                        state.dialogAutoScrollRestoreNodes.push({
+                            node: nearestScrollableParent,
+                            scrollTop: nearestScrollableParent.scrollTop || 0,
+                            scrollLeft: nearestScrollableParent.scrollLeft || 0
+                        });
+                        nearestScrollableParent.scrollTop = nearestFinalTop;
+                        if (typeof nearestScrollableParent.scrollTo === "function") {
+                            nearestScrollableParent.scrollTo(nearestScrollableParent.scrollLeft || 0, nearestFinalTop);
+                        }
+                    }
                     
                     if (settings.dialogOpenAutoScrollOuterHtml) {
                         var baseLayerParent = editor.parents().eq(parseInt(settings.parentContainerLayer, 10) - 1);
@@ -3232,6 +3260,9 @@
                 };
 
                 if (settings.fullScreenAutomaticScrollingOuterHtml) {
+                    if (baseLayerParent && baseLayerParent.length) {
+                        rememberRestoreNode(baseLayerParent[0]);
+                    }
                     outerParents.each(function() {
                         if (this === document.body || this === document.documentElement) {
                             return;
@@ -3269,6 +3300,20 @@
                         var affectedParents = [];
 
                         if (settings.fullScreenAutomaticScrollingOuterHtml) {
+                            if (baseLayerParent && baseLayerParent.length) {
+                                var baseNode = baseLayerParent[0];
+                                if (baseNode !== document.body && baseNode !== document.documentElement) {
+                                    var baseMaxTop = Math.max(baseNode.scrollHeight - baseNode.clientHeight, 0);
+                                    var baseFinalTop = Math.min(top, baseMaxTop);
+                                    setNodeScrollTop(baseNode, baseFinalTop);
+                                    affectedParents.push({
+                                        node: getNodeLabel(baseNode),
+                                        maxTop: baseMaxTop,
+                                        appliedTop: baseFinalTop,
+                                        actualTop: baseNode.scrollTop
+                                    });
+                                }
+                            }
                             outerParents.each(function() {
                                 if (this === document.body || this === document.documentElement) {
                                     return;
@@ -4279,14 +4324,50 @@
         var settings        = $.extend(defaults, options || {});
         var marked          = editormd.$marked;
         
-        // 兼容 marked v4.x Renderer API
-        var MarkedRenderer;
-        if (typeof window.marked === "object" && window.marked.Renderer) {
+        // 兼容不同版本 marked 的 Renderer API（构造器/工厂函数/对象）
+        var MarkedRenderer = null;
+        if (window.marked && window.marked.Renderer) {
             MarkedRenderer = window.marked.Renderer;
-        } else if (typeof window.marked === "function" && window.marked.Renderer) {
-            MarkedRenderer = window.marked.Renderer;
+        } else if (marked && marked.Renderer) {
+            MarkedRenderer = marked.Renderer;
         }
-        var markedRenderer  = new MarkedRenderer();
+
+        var markedRenderer = null;
+        if (MarkedRenderer) {
+            if (typeof MarkedRenderer === "function") {
+                try {
+                    markedRenderer = new MarkedRenderer();
+                } catch (e1) {
+                    try {
+                        markedRenderer = MarkedRenderer();
+                    } catch (e2) {}
+                }
+            } else if (typeof MarkedRenderer === "object") {
+                markedRenderer = $.extend(true, {}, MarkedRenderer);
+            }
+        }
+
+        if (!markedRenderer || typeof markedRenderer !== "object") {
+            // 最后兜底，避免 "MarkedRenderer is not a constructor" 导致 Markdown 渲染失败
+            markedRenderer = {};
+        }
+
+        var defaultCodeRenderer = function(code) {
+            return "<pre><code>" + code + "</code></pre>";
+        };
+        if (
+            MarkedRenderer &&
+            MarkedRenderer.prototype &&
+            typeof MarkedRenderer.prototype.code === "function"
+        ) {
+            defaultCodeRenderer = function() {
+                return MarkedRenderer.prototype.code.apply(this, arguments);
+            };
+        } else if (typeof markedRenderer.code === "function") {
+            defaultCodeRenderer = function() {
+                return markedRenderer.code.apply(this, arguments);
+            };
+        }
         markdownToC         = markdownToC || [];
 
         var regexs          = editormd.regexs;
@@ -4506,7 +4587,7 @@
             } else if ( lang === "math" || lang === "latex" || lang === "katex") {
                 return "<p class=\"" + editormd.classNames.tex + "\">" + code + "</p>";
             } else {
-                return MarkedRenderer.prototype.code.apply(this, arguments);
+                return defaultCodeRenderer.apply(this, arguments);
             }
         };
 
@@ -5215,6 +5296,34 @@
             
             if (scrollTop !== null) {
                 scrollTop = Math.max(scrollTop, 0);
+
+                // 先处理编辑器最近可滚动父容器（如 mobile-modal-content），确保弹窗内滚动也生效
+                var nearestScrollableParent = null;
+                editor.parents().each(function() {
+                    if (this === document.body || this === document.documentElement) {
+                        return;
+                    }
+                    var style = window.getComputedStyle ? window.getComputedStyle(this) : null;
+                    var overflowY = style ? (style.overflowY || style.overflow || "") : "";
+                    var canScroll = /auto|scroll/i.test(overflowY) && this.scrollHeight > this.clientHeight;
+                    if (canScroll) {
+                        nearestScrollableParent = this;
+                        return false;
+                    }
+                });
+                if (nearestScrollableParent) {
+                    var nearestMaxTop = Math.max(nearestScrollableParent.scrollHeight - nearestScrollableParent.clientHeight, 0);
+                    var nearestFinalTop = Math.min(scrollTop, nearestMaxTop);
+                    $this.state.dialogAutoScrollRestoreNodes.push({
+                        node: nearestScrollableParent,
+                        scrollTop: nearestScrollableParent.scrollTop || 0,
+                        scrollLeft: nearestScrollableParent.scrollLeft || 0
+                    });
+                    nearestScrollableParent.scrollTop = nearestFinalTop;
+                    if (typeof nearestScrollableParent.scrollTo === "function") {
+                        nearestScrollableParent.scrollTo(nearestScrollableParent.scrollLeft || 0, nearestFinalTop);
+                    }
+                }
                 
                 if ($this.settings.dialogOpenAutoScrollOuterHtml) {
                     var baseLayerParent = editor.parents().eq(parseInt($this.settings.parentContainerLayer, 10) - 1);
