@@ -42398,9 +42398,20 @@ async function loadSystemConfig() {
       </div>
     `;
     };
+    
+    // ==================== 美化版区段标题 ====================
+    const createSectionTitle = (title, icon = "") => {
+      return `
+      <div class="flex items-center gap-3 mt-6 mb-4 first:mt-0">
+        ${icon ? `<span class="text-xl">${icon}</span>` : ''}
+        <h5 class="font-bold text-base text-sky-800">${title}</h5>
+        <div class="flex-1 h-px bg-gradient-to-r from-sky-200 to-transparent"></div>
+      </div>
+    `;
+    };
+    
     let html = "";
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">游客配置</h5>';
+    html += createSectionTitle("游客配置", "👤");
     html += createInput(
       "Guest",
       "allow_guest_login",
@@ -42408,8 +42419,7 @@ async function loadSystemConfig() {
       "boolean",
       "是否允许未注册用户以游客身份使用系统。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">帮助配置</h5>';
+    html += createSectionTitle("帮助配置", "❓");
     // 新手帮助相关配置
     html += createInput(
       "Guest",
@@ -42425,8 +42435,7 @@ async function loadSystemConfig() {
       "text",
       "指向新手帮助页面或文档的URL地址。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">系统配置</h5>';
+    html += createSectionTitle("系统配置", "⚙️");
     html += createInput(
       "System",
       "session_expiry_days",
@@ -42469,8 +42478,7 @@ async function loadSystemConfig() {
       "number",
       "会话无活动超过此时间将被清理。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">日志配置</h5>';
+    html += createSectionTitle("日志配置", "📋");
     html += createInput(
       "Logging",
       "log_rotation_size_mb",
@@ -42499,8 +42507,7 @@ async function loadSystemConfig() {
       "text",
       "存储压缩日志 (logs/archive) 的目录。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">安全配置</h5>';
+    html += createSectionTitle("安全配置", "🔒");
     html += createInput(
       "Security",
       "password_storage",
@@ -42522,8 +42529,7 @@ async function loadSystemConfig() {
       "number",
       "登录审计日志的保留天数。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">账号功能配置</h5>';
+    html += createSectionTitle("账号功能配置", "👥");
     html += createInput(
       "Features",
       "account_cancellation_wait_hours",
@@ -42531,8 +42537,7 @@ async function loadSystemConfig() {
       "number",
       "用户申请注销账号后，在此时间段内登录可撤销注销，到期后账号将被自动删除。默认 24 小时。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">地图配置</h5>';
+    html += createSectionTitle("地图配置", "🗺️");
     html += createInput(
       "Map",
       "amap_js_key",
@@ -42540,9 +42545,7 @@ async function loadSystemConfig() {
       "text",
       "用于前端地图显示的JS API Key。",
     );
-    html +=
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">🌐 IP 归属地查询配置</h5>';
+    html += createSectionTitle("IP 归属地查询配置", "🌐");
     html += createInput(
       "IP_Location",
       "query_order",
@@ -42569,8 +42572,7 @@ async function loadSystemConfig() {
     // ==================== 网站备案信息配置 ====================
     // 添加网站备案（Beian）相关配置项，包括ICP备案号和公安网备案号
     // 这些配置项用于在网站底部显示合规信息，满足中国大陆网站的备案要求
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">网站备案信息</h5>';
+    html += createSectionTitle("网站备案信息", "📜");
     // ICP备案号配置项
     // 用于显示工信部颁发的ICP备案号，例如：京ICP备12345678号
     html += createInput(
@@ -42612,11 +42614,10 @@ async function loadSystemConfig() {
     // 添加百度云文本审核API相关配置项
     // 用途：对用户发布的留言内容进行智能审核，检测违规信息
     // 依赖：需要在百度智能云控制台创建"内容审核"应用
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">🔍 百度云审核服务</h5>';
+    html += createSectionTitle("百度云审核服务", "🔍");
     // 添加说明文字，引导管理员了解此配置的用途
     html +=
-      '<p class="text-xs text-slate-500 mb-3">用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）</p>';
+      '<p class="text-xs text-slate-500 mb-3 ml-1">用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）</p>';
 
     // API Key 配置项
     // 用于身份验证，从百度智能云控制台获取
@@ -42656,13 +42657,12 @@ async function loadSystemConfig() {
     // ==================== 留言内容审核功能配置 ====================
     // 添加内容审核功能的总开关
     // 控制是否启用留言内容的自动审核
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">📝 留言内容审核</h5>';
+    html += createSectionTitle("留言内容审核", "📝");
 
     // 添加警告提示，提醒管理员需要先配置百度云API密钥
     // 使用醒目的黄色背景色和警告图标，增强视觉提示效果
     html +=
-      '<p class="text-xs text-amber-600 bg-amber-50 p-2 rounded mb-3">⚠️ 启用此功能需要先配置上方的百度云API密钥</p>';
+      '<p class="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg mb-3 ml-1">⚠️ 启用此功能需要先配置上方的百度云API密钥</p>';
 
     // 是否启用留言审核的开关
     // 类型：boolean（布尔值选择器，显示"启用"或"禁用"）
