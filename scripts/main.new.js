@@ -13908,11 +13908,23 @@ function detectMobileDevice() {
   const mobileRegex =
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i;
   const isMobile = mobileRegex.test(userAgent);
+  
+  // 额外检查：如果屏幕宽度足够大，即使User-Agent包含Mobile关键词也当作桌面设备
+  const viewportWidth = Math.max(
+    window.innerWidth || 0,
+    document.documentElement?.clientWidth || 0,
+  );
+  const isLargeScreen = viewportWidth >= 1024;
+  
+  const finalResult = isMobile && !isLargeScreen;
 
   console.log("[移动端检测] User-Agent:", userAgent);
-  console.log("[移动端检测] 最终判定:", isMobile ? "移动设备" : "桌面设备");
+  console.log("[移动端检测] 正则匹配结果:", isMobile);
+  console.log("[移动端检测] 屏幕宽度:", viewportWidth);
+  console.log("[移动端检测] 是否大屏幕:", isLargeScreen);
+  console.log("[移动端检测] 最终判定:", finalResult ? "移动设备" : "桌面设备");
 
-  return isMobile;
+  return finalResult;
 }
 
 function switchUIContainer() {
@@ -18347,12 +18359,17 @@ async function handleAuthLogin(isMobile_use = false) {
 
         setTimeout(() => {
           setButtonLoading("auth-login-btn", false);
+          
+          console.log("[登录成功] 当前isMobileMode值:", isMobileMode);
+          console.log("[登录成功] 准备显示会话选择器");
 
           $("auth-login-container").classList.add("hidden");
           if (isMobileMode) {
             $("mobile-auth-login-container").classList.add("hidden");
+            console.log("[登录成功] 调用移动端会话选择器");
             showMobileSessionPicker();
           } else {
+            console.log("[登录成功] 调用桌面端会话选择器");
             showSessionPicker();
           }
 
@@ -18658,8 +18675,12 @@ async function handle2FAVerify() {
         setTimeout(() => {
           setButtonLoading("auth-2fa-verify-btn", false);
 
-          $("auth-login-container").classList.add("hidden");
-          if (isMobileMode) {
+          const mobile2FAForm = $("mobile-auth-2fa-form");
+          const isUsingMobile2FA =
+            mobile2FAForm && !mobile2FAForm.classList.contains("hidden");
+
+          if (isUsingMobile2FA) {
+            $("auth-login-container").classList.add("hidden");
             $("mobile-auth-login-container")?.classList.add("hidden");
             showMobileSessionPicker();
           } else {
@@ -30811,13 +30832,50 @@ async function deleteSession(sessionId, confirm = true) {
 
 function showSessionPicker() {
   const modal = $("session-picker-modal");
-  if (!modal) return;
+  if (!modal) {
+    console.error("[会话选择器] 桌面端会话选择器模态框未找到");
+    return;
+  }
 
+  console.log("[会话选择器] 显示桌面端会话选择器");
+  
+  // 强制确保不是移动模式
+  document.body.classList.remove("mobile-mode");
+  isMobileMode = false;
+  
+  // 隐藏移动端会话选择器（如果存在）
+  const mobileModal = $("mobile-session-picker-modal");
+  if (mobileModal && !mobileModal.classList.contains("hidden")) {
+    mobileModal.classList.add("hidden");
+    mobileModal.style.display = "none";
+    console.log("[会话选择器] 隐藏了移动端会话选择器");
+  }
+  
+  // 关键修复：将模态框移动到body根级别，避免父容器影响
+  if (modal.parentElement !== document.body) {
+    document.body.appendChild(modal);
+    console.log("[会话选择器] 已将模态框移动到body根级别");
+  }
+  
+  // 强力显示桌面端会话选择器 - 覆盖Tailwind hidden类
   modal.classList.remove("hidden");
   modal.classList.add("flex");
+  
+  // 使用内联样式强制显示，覆盖所有CSS规则包括!important
+  modal.style.setProperty("display", "flex", "important");
+  modal.style.setProperty("position", "fixed", "important");
+  modal.style.setProperty("inset", "0", "important");
+  modal.style.setProperty("align-items", "center", "important");
+  modal.style.setProperty("justify-content", "center", "important");
+  modal.style.setProperty("z-index", "9999", "important");
+  modal.style.setProperty("visibility", "visible", "important");
+  modal.style.setProperty("opacity", "1", "important");
+  modal.style.removeProperty("pointer-events");
+  
   document.body.classList.add("modal-visible");
 
   loadSessionPickerList();
+  console.log("[会话选择器] 桌面端会话选择器已强制显示");
 }
 
 function closeSessionPicker() {
@@ -30826,6 +30884,9 @@ function closeSessionPicker() {
 
   modal.classList.add("hidden");
   modal.classList.remove("flex");
+  modal.style.removeProperty("display");
+  modal.style.removeProperty("visibility");
+  modal.style.removeProperty("pointer-events");
   document.body.classList.remove("modal-visible");
 }
 
