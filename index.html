@@ -20016,159 +20016,171 @@
       class="fixed inset-0 flex items-center justify-center hidden z-[1055]"
     >
       <div
-        class="absolute inset-0 bg-black/70"
+        class="absolute inset-0 bg-black/50"
         onclick="closeReminderEditModal()"
         id="reminder-edit-modal_background"
       ></div>
 
       <div
-        class="panel rounded-2xl p-6 w-[90%] max-w-4xl max-h-[85vh] space-y-4 relative overflow-y-auto"
+        class="bg-white rounded-2xl shadow-2xl w-[90%] max-w-4xl max-h-[85vh] overflow-y-auto relative border border-slate-100 overflow-hidden"
+        onclick="event.stopPropagation()"
       >
-        <div class="flex items-center justify-between">
-          <h3 id="reminder-modal-title" class="text-xl font-bold text-sky-600">
-            ⏰ 添加定时提醒
-          </h3>
-          <button
-            onclick="closeReminderEditModal()"
-            class="text-slate-400 hover:text-slate-600 text-2xl leading-none"
-          >
-            ×
-          </button>
-        </div>
+        <!-- 头部渐变装饰条 -->
+        <div class="h-1.5 bg-gradient-to-r from-amber-400 via-yellow-500 to-orange-400"></div>
 
-        <div class="space-y-4">
-          <input
-            type="hidden"
-            id="reminder-id-field"
-            aria-label="reminder id field"
-            title="reminder id field"
-            placeholder="reminder id field"
-          />
+        <div class="p-6">
+          <!-- 标题行 -->
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center flex-shrink-0 shadow-md">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </div>
+            <div class="flex-1">
+              <h3 id="reminder-modal-title" class="text-lg font-bold text-slate-800">添加定时提醒</h3>
+              <p class="text-xs text-slate-500">设置在指定时间段向用户显示的提醒消息</p>
+            </div>
+            <button
+              onclick="closeReminderEditModal()"
+              class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+              title="关闭"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
 
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">
-              📌 提醒标题 <span class="text-red-500">*</span>
-            </label>
+          <div class="space-y-3">
             <input
-              type="text"
-              id="reminder-title-field"
-              class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
-              placeholder="例如：学校服务器关闭提醒"
-              maxlength="50"
+              type="hidden"
+              id="reminder-id-field"
+              aria-label="reminder id field"
+              title="reminder id field"
+              placeholder="reminder id field"
             />
-            <p class="text-xs text-slate-500 mt-1">最多50个字符</p>
-          </div>
 
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">
-              📝 提醒内容 <span class="text-red-500">*</span>
-            </label>
-            <!-- 保留原 textarea 作为无 JS 回退（隐藏），Editor.md 将在下方的容器中初始化 -->
-            <textarea
-              id="reminder-message-field"
-              rows="4"
-              class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
-              placeholder="例如：学校服务器将于20:00关闭，请各位注意时间"
-              maxlength="500"
-              style="display: none"
-            ></textarea>
-            <div
-              id="reminder-editor"
-              style="
-                min-height: 220px;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 6px;
-                background: #fff;
-              "
-            ></div>
-            <p class="text-xs text-slate-500 mt-1">
-              最多500个字符（支持 Markdown）
-            </p>
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">
-                ⏰ 开始时间 <span class="text-red-500">*</span>
-              </label>
+            <!-- 提醒标题 -->
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <div class="flex items-center gap-2 mb-1.5">
+                <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                <label class="text-sm font-semibold text-slate-700">提醒标题 <span class="text-red-400">*</span></label>
+              </div>
               <input
-                type="time"
-                id="reminder-start-time-field"
-                class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
-                aria-label="reminder start time field"
-                title="reminder start time field"
-                placeholder="reminder start time field"
+                type="text"
+                id="reminder-title-field"
+                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all duration-200 hover:border-slate-300"
+                placeholder="例如：学校服务器关闭提醒"
+                maxlength="50"
               />
-              <p class="text-xs text-slate-500 mt-1">24小时制（如 19:00）</p>
+              <p class="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                最多50个字符
+              </p>
             </div>
 
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">
-                ⏰ 结束时间 <span class="text-red-500">*</span>
+            <!-- 提醒内容 -->
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <div class="flex items-center gap-2 mb-1.5">
+                <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                <label class="text-sm font-semibold text-slate-700">提醒内容 <span class="text-red-400">*</span></label>
+              </div>
+              <!-- 保留原 textarea 作为无 JS 回退（隐藏），Editor.md 将在下方的容器中初始化 -->
+              <textarea
+                id="reminder-message-field"
+                rows="4"
+                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all duration-200"
+                placeholder="例如：学校服务器将于20:00关闭，请各位注意时间"
+                maxlength="500"
+                style="display: none"
+              ></textarea>
+              <div
+                id="reminder-editor"
+                style="
+                  min-height: 220px;
+                  border: 1px solid #e2e8f0;
+                  border-radius: 8px;
+                  padding: 6px;
+                  background: #fff;
+                "
+              ></div>
+              <p class="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                最多500个字符（支持 Markdown）
+              </p>
+            </div>
+
+            <!-- 时间设置 -->
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <label class="text-sm font-semibold text-slate-700">显示时间段</label>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <p class="text-xs text-slate-500 mb-1">开始时间 <span class="text-red-400">*</span></p>
+                  <input
+                    type="time"
+                    id="reminder-start-time-field"
+                    class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all duration-200 hover:border-slate-300"
+                    aria-label="reminder start time field"
+                    title="reminder start time field"
+                    placeholder="reminder start time field"
+                  />
+                  <p class="text-xs text-slate-500 mt-1">24小时制（如 19:00）</p>
+                </div>
+                <div>
+                  <p class="text-xs text-slate-500 mb-1">结束时间 <span class="text-red-400">*</span></p>
+                  <input
+                    type="time"
+                    id="reminder-end-time-field"
+                    class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all duration-200 hover:border-slate-300"
+                    aria-label="reminder end time field"
+                    title="reminder end time field"
+                    placeholder="reminder end time field"
+                  />
+                  <p class="text-xs text-slate-500 mt-1">24小时制（如 20:00）</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 跨天说明 -->
+            <div class="p-3 bg-gradient-to-r from-blue-50 to-white border border-blue-100 rounded-xl">
+              <div class="flex items-start gap-2">
+                <svg class="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <div class="text-xs text-blue-700 leading-relaxed">
+                  <strong>跨天时间说明：</strong><br />
+                  • 如果结束时间小于开始时间，系统会自动识别为跨天<br />
+                  • 例如：开始 20:00，结束 08:00 → 表示从晚上20:00到次日早上08:00<br />
+                  • 正常时间：开始 09:00，结束 17:00 → 表示当天09:00到17:00
+                </div>
+              </div>
+            </div>
+
+            <!-- 启用开关 -->
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="reminder-enabled-field"
+                  class="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                  checked=""
+                  aria-label="启用此提醒（取消勾选则暂时禁用，不会删除数据）"
+                  title="启用此提醒（取消勾选则暂时禁用，不会删除数据）"
+                />
+                <span class="text-sm font-semibold text-slate-700">✅ 启用此提醒（取消勾选则暂时禁用，不会删除数据）</span>
               </label>
-              <input
-                type="time"
-                id="reminder-end-time-field"
-                class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
-                aria-label="reminder end time field"
-                title="reminder end time field"
-                placeholder="reminder end time field"
-              />
-              <p class="text-xs text-slate-500 mt-1">24小时制（如 20:00）</p>
             </div>
           </div>
 
-          <div class="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
-            <p class="text-sm text-blue-700">
-              💡 <strong>跨天时间说明：</strong><br />
-              • 如果结束时间小于开始时间，系统会自动识别为跨天<br />
-              • 例如：开始 20:00，结束 08:00 → 表示从晚上20:00到次日早上08:00<br />
-              • 正常时间：开始 09:00，结束 17:00 → 表示当天09:00到17:00
-            </p>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="reminder-enabled-field"
-              class="w-4 h-4 text-sky-600 rounded focus:ring-sky-500"
-              checked=""
-              aria-label="✅ 启用此提醒（取消勾选则暂时禁用，不会删除数据）"
-              title="✅ 启用此提醒（取消勾选则暂时禁用，不会删除数据）"
-            />
-            <label
-              for="reminder-enabled-field"
-              class="text-sm font-semibold text-slate-700"
+          <div class="flex gap-3 mt-5 pt-4 border-t border-slate-100">
+            <button
+              onclick="closeReminderEditModal()"
+              class="btn btn-ghost flex-1 py-2.5 hover:bg-slate-100 transition-colors rounded-lg border border-slate-200"
             >
-              ✅ 启用此提醒（取消勾选则暂时禁用，不会删除数据）
-            </label>
+              取消
+            </button>
+            <button onclick="saveReminder()" class="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-sm font-semibold rounded-lg transition-all duration-200 shadow-sm flex items-center justify-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+              保存提醒
+            </button>
           </div>
-        </div>
-
-        <div class="flex gap-3 border-t pt-4">
-          <button
-            onclick="closeReminderEditModal()"
-            class="btn btn-ghost flex-1"
-          >
-            取消
-          </button>
-          <button onclick="saveReminder()" class="btn btn-primary flex-1">
-            <svg
-              class="w-4 h-4 inline mr-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M5 13l4 4L19 7"
-              ></path>
-            </svg>
-            保存提醒
-          </button>
         </div>
       </div>
     </div>
