@@ -156,7 +156,7 @@
 
 				var fileInput  = dialog.find("[name=\"" + classPrefix + "image-file\"]");
 
-				fileInput.bind("change", function() {
+				fileInput.on("change", function() {
 					var fileName  = fileInput.val();
 					var isImage   = new RegExp("(\\.(" + settings.imageFormats.join("|") + "))$", "i"); // /(\.(webp|jpg|jpeg|gif|bmp|png))$/
 
