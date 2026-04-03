@@ -813,10 +813,9 @@ body.modal-visible .amap-copyright {
   z-index: -1;
 }
 
-/* 关闭按钮不需要位移 */
-/* #admin-modal-close-btn:hover {
+#admin-modal-close-btn:hover {
   transform: translateY(-50%);
-} */
+}
 
 /* 修复问题4：Swal显示时Body不添加padding-right，防止登录框位移 */
 html.swal2-shown,
