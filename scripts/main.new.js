@@ -50530,26 +50530,26 @@ async function showMobileUserPermissions(username) {
           const currentValue = result.all_permissions[perm];
           const groupValue = groupPerms[perm] || false;
 
-          let statusClass = "";
-          if (isAdded) statusClass = "bg-green-50 border-green-200";
-          else if (isRemoved) statusClass = "bg-red-50 border-red-200";
+          let statusClass = "bg-gradient-to-r from-slate-50 to-white border-slate-100 hover:border-sky-200";
+          if (isAdded) statusClass = "bg-gradient-to-r from-green-50 to-white border-green-200 hover:border-green-300";
+          else if (isRemoved) statusClass = "bg-gradient-to-r from-red-50 to-white border-red-200 hover:border-red-300";
 
           return `
-          <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer border ${statusClass}">
-            <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" data-group-value="${groupValue}" ${
+          <label class="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group border ${statusClass}">
+            <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}" data-group-value="${groupValue}" ${
               currentValue ? "checked" : ""
             }>
-            <span class="text-xs text-slate-700 flex-1">${translatePermission(
+            <span class="text-xs text-slate-700 group-hover:text-slate-900 flex-1">${translatePermission(
               perm,
             )}</span>
             ${
               isAdded
-                ? '<span class="text-xs text-green-600">(新增)</span>'
+                ? '<span class="text-xs font-medium px-2 py-0.5 rounded-full text-green-600 bg-green-100">(新增)</span>'
                 : ""
             }
             ${
               isRemoved
-                ? '<span class="text-xs text-red-600">(移除)</span>'
+                ? '<span class="text-xs font-medium px-2 py-0.5 rounded-full text-red-600 bg-red-100">(移除)</span>'
                 : ""
             }
           </label>
