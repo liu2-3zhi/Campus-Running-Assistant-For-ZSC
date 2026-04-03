@@ -14716,37 +14716,43 @@
         </div>
 
         <div class="overflow-x-hidden flex-grow min-h-0 overflow-y-auto p-6">
-          <div id="admin-users-panel_modal" class="space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold">用户列表</h4>
+          <div id="admin-users-panel_modal" class="space-y-3">
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">用户列表</h4>
+              <div class="flex-1"></div>
               <div class="flex gap-2">
                 <button
                   id="admin-view-school-accounts_modal"
-                  class="btn btn-secondary !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
                   style="display: none"
                 >
                   查看 School Accounts
                 </button>
                 <button
                   id="admin-create-user_modal"
-                  class="btn btn-primary !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 rounded-lg transition-all shadow-sm"
                 >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
                   新增用户
                 </button>
                 <button
                   id="admin-refresh-users_modal"
-                  class="btn btn-ghost !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                   刷新
                 </button>
               </div>
             </div>
             <!-- 排序控件 -->
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="text-xs text-slate-500">排序：</span>
+              <span class="text-xs text-slate-500 font-medium">排序：</span>
               <select
                 id="admin-users-sort-field_modal"
-                class="text-xs border border-slate-300 rounded px-2 py-1"
+                class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
                 onchange="resortAdminUsers()"
                 aria-label="用户列表排序字段"
               >
@@ -14760,7 +14766,7 @@
               </select>
               <button
                 id="admin-users-sort-dir_modal"
-                class="btn btn-ghost !py-0.5 !px-2 text-xs border border-slate-300"
+                class="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 onclick="toggleAdminUsersSort()"
                 title="切换排序方向"
                 data-dir="desc"
@@ -14770,34 +14776,40 @@
             </div>
             <div
               id="admin-users-list_modal"
-              class="space-y-2 max-h-[50vh] overflow-y-auto -mr-2 pr-2"
+              class="space-y-2 max-h-[50vh] overflow-y-auto"
             >
               <p class="text-slate-400 text-center py-10">加载中...</p>
             </div>
           </div>
         
 
-          <div id="admin-groups-panel_modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold">权限组列表</h4>
+          <div id="admin-groups-panel_modal" class="hidden space-y-3">
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">权限组列表</h4>
+              <div class="flex-1"></div>
               <div class="flex gap-2">
                 <button
                   id="admin-create-group_modal"
-                  class="btn btn-primary !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-orange-400 to-amber-500 hover:from-orange-500 hover:to-amber-600 rounded-lg transition-all shadow-sm"
                 >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                   新增权限组
                 </button>
                 <button
                   id="admin-refresh-groups_modal"
-                  class="btn btn-ghost !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                   刷新
                 </button>
               </div>
             </div>
             <div
               id="admin-groups-list_modal"
-              class="space-y-2 max-h-[50vh] overflow-y-auto -mr-2 pr-2"
+              class="space-y-2 max-h-[50vh] overflow-y-auto"
             >
               <p class="text-slate-400 text-center py-10">加载中...</p>
             </div>
@@ -16463,51 +16475,46 @@
             </div>
           </div>
 
-          <div id="admin-reminders-panel_modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-lg">⏰ 定时提醒管理</h4>
+          <div id="admin-reminders-panel_modal" class="hidden space-y-3">
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">定时提醒管理</h4>
+              <div class="flex-1"></div>
               <div class="flex gap-2">
                 <button
                   id="admin-refresh-reminders_modal"
-                  class="btn btn-ghost !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                   onclick="loadReminders()"
                 >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                   刷新
                 </button>
                 <button
                   id="admin-add-reminder_modal"
-                  class="btn btn-primary !py-2 !px-4"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-lg transition-all shadow-sm"
                   onclick="openReminderEditModal()"
                 >
-                  <svg
-                    class="w-4 h-4 inline mr-1"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M12 4v16m8-8H4"
-                    ></path>
-                  </svg>
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                   添加提醒
                 </button>
               </div>
             </div>
 
-            <p class="text-xs text-blue-700 bg-blue-50 p-3 rounded-md">
-              💡 <strong>功能说明：</strong><br />
-              • 定时提醒会在设定的时间范围内自动弹出提示<br />
-              • 支持跨天时间设置（例如：20:00 到次日 08:00）<br />
-              • 禁用的提醒不会显示，但数据会保留<br />
-              • 用户打开页面或每分钟检查一次是否有提醒需要显示
-            </p>
+            <div class="p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800 leading-relaxed">
+              <p class="font-semibold mb-1">💡 功能说明</p>
+              <ul class="list-disc list-inside space-y-0.5">
+                <li>定时提醒会在设定的时间范围内自动弹出提示</li>
+                <li>支持跨天时间设置（例如：20:00 到次日 08:00）</li>
+                <li>禁用的提醒不会显示，但数据会保留</li>
+                <li>用户打开页面或每分钟检查一次是否有提醒需要显示</li>
+              </ul>
+            </div>
 
             <div
               id="admin-reminders-list_modal"
-              class="space-y-2 max-h-[55vh] overflow-y-auto pr-2"
+              class="space-y-2 max-h-[55vh] overflow-y-auto"
             >
               <p class="text-slate-400 text-center py-10">
                 暂无提醒，点击"添加提醒"创建新提醒
@@ -16515,56 +16522,50 @@
             </div>
 
             <div class="grid grid-cols-3 gap-2 text-center text-sm">
-              <div class="p-2 bg-slate-100 rounded">
-                <div class="text-slate-600">总计</div>
-                <div id="reminder-stat-total" class="text-lg font-semibold">
-                  0
-                </div>
+              <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+                <div class="text-xs text-slate-500 mb-1">总计</div>
+                <div id="reminder-stat-total" class="text-xl font-bold text-slate-700">0</div>
               </div>
-              <div class="p-2 bg-green-100 rounded">
-                <div class="text-green-700">启用</div>
-                <div
-                  id="reminder-stat-enabled"
-                  class="text-lg font-semibold text-green-700"
-                >
-                  0
-                </div>
+              <div class="p-3 bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-100 rounded-xl">
+                <div class="text-xs text-emerald-600 mb-1">启用</div>
+                <div id="reminder-stat-enabled" class="text-xl font-bold text-emerald-600">0</div>
               </div>
-              <div class="p-2 bg-slate-100 rounded">
-                <div class="text-slate-600">禁用</div>
-                <div
-                  id="reminder-stat-disabled"
-                  class="text-lg font-semibold text-slate-600"
-                >
-                  0
-                </div>
+              <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+                <div class="text-xs text-slate-500 mb-1">禁用</div>
+                <div id="reminder-stat-disabled" class="text-xl font-bold text-slate-500">0</div>
               </div>
             </div>
           </div>
 
           <div id="admin-ssl-panel_modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-lg">🔒 HTTPS/SSL 设置</h4>
-              <div class="flex items-center gap-2"></div>
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">HTTPS/SSL 设置</h4>
+              <div class="flex-1"></div>
               <div
                 id="ssl-status-badge"
-                class="px-3 py-1 rounded-full text-sm font-semibold"
+                class="px-3 py-1 rounded-full text-xs font-semibold"
               ></div>
               <button
                 id="ssl-refresh-btn"
-                class="btn btn-ghost !py-1 !px-2"
+                class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 onclick="loadSSLInfo()"
               >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 刷新
               </button>
             </div>
 
-            <div class="text-xs text-blue-700 bg-blue-50 p-3 rounded-md">
-              💡 <strong>功能说明：</strong><br />
-              • 启用HTTPS可以加密客户端与服务器之间的通信，提高安全性<br />
-              • 需要上传有效的SSL证书（.pem格式）和私钥文件（.key格式）<br />
-              • 修改配置后需要重启服务器才能生效<br />
-              • "仅HTTPS"模式会自动将HTTP请求重定向到HTTPS
+            <div class="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-800 leading-relaxed">
+              <p class="font-semibold mb-1">💡 功能说明</p>
+              <ul class="list-disc list-inside space-y-0.5">
+                <li>启用HTTPS可以加密客户端与服务器之间的通信，提高安全性</li>
+                <li>需要上传有效的SSL证书（.pem格式）和私钥文件（.key格式）</li>
+                <li>修改配置后需要重启服务器才能生效</li>
+                <li>"仅HTTPS"模式会自动将HTTP请求重定向到HTTPS</li>
+              </ul>
             </div>
 
             <div class="space-y-4">
@@ -20694,64 +20695,70 @@
         onclick="closeUserLogsSecondaryModal()"
       ></div>
       <div
-        class="panel rounded-2xl p-6 w-[50rem] max-h-[81vh] space-y-4 relative overflow-y-auto"
+        class="panel rounded-2xl w-[50rem] max-h-[81vh] relative overflow-hidden flex flex-col"
       >
-        <div class="flex items-center justify-between">
-          <h3 class="text-xl font-bold text-sky-600">用户日志查看</h3>
-          <button
-            onclick="closeUserLogsSecondaryModal()"
-            class="text-slate-400 hover:text-slate-600 text-2xl leading-none"
-          >
-            ×
-          </button>
-        </div>
-
-        <div class="bg-sky-50 border border-sky-200 rounded-lg p-3">
-          <p class="text-sm text-slate-700">
-            当前查看用户:
-            <span
-              id="current-log-username-secondary"
-              class="font-semibold text-sky-600"
-              >N/A</span
+        <!-- 渐变装饰条 -->
+        <div class="h-1.5 bg-gradient-to-r from-sky-400 to-indigo-500 flex-shrink-0"></div>
+        <div class="p-6 space-y-4 overflow-y-auto">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800">用户日志查看</h3>
+            <div class="flex-1"></div>
+            <button
+              onclick="closeUserLogsSecondaryModal()"
+              class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
             >
-          </p>
-        </div>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
 
-        <div class="flex border-b border-slate-200">
-          <button
-            id="log-tab-login-secondary"
-            class="px-4 py-2 font-semibold text-sky-600 border-b-2 border-sky-600"
-            onclick="switchUserLogTab('login')"
+          <div class="flex items-center gap-2 px-3 py-2 bg-sky-50 border border-sky-100 rounded-xl text-sm">
+            <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <span class="text-slate-600">当前查看用户：</span>
+            <span id="current-log-username-secondary" class="font-semibold text-sky-600">N/A</span>
+          </div>
+
+          <div class="flex border-b border-slate-200">
+            <button
+              id="log-tab-login-secondary"
+              class="px-4 py-2 font-semibold text-sky-600 border-b-2 border-sky-600 text-sm"
+              onclick="switchUserLogTab('login')"
+            >
+              登录记录
+            </button>
+            <button
+              id="log-tab-audit-secondary"
+              class="px-4 py-2 font-semibold text-slate-400 border-b-2 border-transparent text-sm hover:text-slate-600 transition-colors"
+              onclick="switchUserLogTab('audit')"
+            >
+              操作记录
+            </button>
+          </div>
+
+          <div
+            id="log-login-content-secondary"
+            class="space-y-2 max-h-[50vh] overflow-y-auto"
           >
-            登录记录
-          </button>
-          <button
-            id="log-tab-audit-secondary"
-            class="px-4 py-2 font-semibold text-slate-400 border-b-2 border-transparent"
-            onclick="switchUserLogTab('audit')"
+            <p class="text-slate-400 text-center py-10">加载中...</p>
+          </div>
+
+          <div
+            id="log-audit-content-secondary"
+            class="hidden space-y-2 max-h-[50vh] overflow-y-auto"
           >
-            操作记录
-          </button>
-        </div>
+            <p class="text-slate-400 text-center py-10">加载中...</p>
+          </div>
 
-        <div
-          id="log-login-content-secondary"
-          class="space-y-2 max-h-[50vh] overflow-y-auto"
-        >
-          <p class="text-slate-400 text-center py-10">加载中...</p>
-        </div>
-
-        <div
-          id="log-audit-content-secondary"
-          class="hidden space-y-2 max-h-[50vh] overflow-y-auto"
-        >
-          <p class="text-slate-400 text-center py-10">加载中...</p>
-        </div>
-
-        <div class="flex justify-end">
-          <button onclick="closeUserLogsSecondaryModal()" class="btn btn-ghost">
-            关闭
-          </button>
+          <div class="flex justify-end pt-2 border-t border-slate-100">
+            <button
+              onclick="closeUserLogsSecondaryModal()"
+              class="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              关闭
+            </button>
+          </div>
         </div>
       </div>
     </div>
