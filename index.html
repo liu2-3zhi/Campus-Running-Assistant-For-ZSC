@@ -21323,49 +21323,64 @@
       class="fixed inset-0 flex items-center justify-center hidden z-[1054]"
     >
       <div
-        class="absolute inset-0 bg-black/60"
+        class="absolute inset-0 bg-black/50"
         onclick="closeEditGroupPermissionsModal()"
       ></div>
       <div
-        class="panel rounded-2xl p-6 w-full max-w-[50rem] mx-4 max-h-[80vh] overflow-y-auto space-y-4 relative"
+        class="bg-white rounded-2xl shadow-2xl w-full max-w-[50rem] mx-4 max-h-[80vh] overflow-y-auto relative border border-slate-100 overflow-hidden"
+        onclick="event.stopPropagation()"
       >
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-xl font-bold text-sky-600">
-            编辑权限组: <span id="edit-group-name"></span>
-          </h3>
-          <button
-            onclick="closeEditGroupPermissionsModal()"
-            class="btn btn-ghost !py-1 !px-3"
-          >
-            关闭
-          </button>
-        </div>
+        <!-- 头部渐变装饰条 -->
+        <div class="h-1.5 bg-gradient-to-r from-violet-400 via-purple-500 to-indigo-500"></div>
 
-        <div class="space-y-3">
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2"
-              >权限设置</label
+        <div class="p-6">
+          <!-- 标题行 -->
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            </div>
+            <div class="flex-1">
+              <h3 class="text-lg font-bold text-slate-800">编辑权限组: <span id="edit-group-name" class="text-violet-600"></span></h3>
+              <p class="text-xs text-slate-500">调整此权限组的权限设置</p>
+            </div>
+            <button
+              onclick="closeEditGroupPermissionsModal()"
+              class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+              title="关闭"
+              aria-label="关闭"
             >
-            <div
-              id="edit-group-permissions-list"
-              class="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto border border-slate-200 rounded-lg p-3"
-            ></div>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
           </div>
-        </div>
 
-        <div class="flex justify-end gap-3 pt-4 border-t">
-          <button
-            onclick="closeEditGroupPermissionsModal()"
-            class="btn btn-ghost border border-slate-300"
-          >
-            取消
-          </button>
-          <button
-            onclick="submitEditGroupPermissions()"
-            class="btn btn-primary"
-          >
-            保存
-          </button>
+          <div class="space-y-3">
+            <!-- 权限设置 -->
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-violet-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                <label class="text-sm font-semibold text-slate-700">权限设置</label>
+              </div>
+              <div
+                id="edit-group-permissions-list"
+                class="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto border border-slate-200 rounded-lg p-3 bg-white"
+              ></div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-3 mt-5 pt-4 border-t border-slate-100">
+            <button
+              onclick="closeEditGroupPermissionsModal()"
+              class="btn btn-ghost px-5 py-2.5 hover:bg-slate-100 transition-colors rounded-lg border border-slate-200"
+            >
+              取消
+            </button>
+            <button
+              onclick="submitEditGroupPermissions()"
+              class="px-6 py-2.5 bg-gradient-to-r from-violet-500 to-indigo-600 hover:from-violet-600 hover:to-indigo-700 text-white text-sm font-semibold rounded-lg transition-all duration-200 shadow-sm"
+            >
+              ✓ 保存
+            </button>
+          </div>
         </div>
       </div>
     </div>
