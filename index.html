@@ -438,6 +438,17 @@
 
         document.addEventListener("DOMContentLoaded", function () {
           applyConfig();
+          
+          // 为 admin-modal-tabs 添加鼠标滚轮横向滚动支持
+          var adminModalTabs = document.getElementById("admin-modal-tabs");
+          if (adminModalTabs) {
+            adminModalTabs.addEventListener("wheel", function (e) {
+              if (adminModalTabs.scrollWidth > adminModalTabs.clientWidth) {
+                e.preventDefault();
+                adminModalTabs.scrollLeft += e.deltaY || e.deltaX;
+              }
+            }, { passive: false });
+          }
           var btn = document.getElementById("newbie-help-btn");
           if (btn) {
             // 如果配置允许，则初始化可拖拽并显示
@@ -14134,8 +14145,10 @@
 
         <div
           class="flex border-b border-slate-200 flex-shrink-0 overflow-x-auto gap-1 pb-0 px-4 bg-slate-50/50"
-          style="scrollbar-width: none"
+          
+          id="admin-modal-tabs"
         >
+        <!-- style="scrollbar-width: none" -->
           <button
             id="admin-tab-users_modal"
             class="px-5 py-3 font-semibold text-sky-600 border-b-3 border-sky-600 hover:bg-sky-50 transition-all duration-200 rounded-t-lg whitespace-nowrap"
