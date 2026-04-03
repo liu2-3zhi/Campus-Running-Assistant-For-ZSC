@@ -18006,6 +18006,9 @@ async function handle2FAVerify() {
 
       showButtonSuccess("auth-2fa-verify-btn", "验证成功", 800);
       showAuthSuccess("2FA验证成功！");
+      $("mobile-auth-login-container").classList.add("hidden");
+      showMobileSessionPicker();
+
 
       if (!result.is_guest) {
         setTimeout(() => {
