@@ -29418,15 +29418,23 @@ function openMobileVerificationCodesModal() {
                 <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
               </div>
               <!-- 模态框标题区域 -->
-              <div class="flex items-center justify-between pb-3 border-b border-slate-200">
-                <h3 class="text-xl font-bold text-sky-600">🔑 验证码管理</h3>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileVerificationCodesModal()">
+                <div class="flex items-center gap-2">
+                  <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                  </div>
+                  <h3 class="text-xl font-bold text-emerald-600">验证码管理</h3>
+                </div>
                 <!-- 关闭按钮 -->
-                <button onclick="closeMobileVerificationCodesModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+                <button onclick="event.stopPropagation(); closeMobileVerificationCodesModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
               </div>
 
               <!-- 手动添加验证码区域 -->
-              <div class="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
-                <h5 class="font-semibold text-green-900 text-sm">➕ 手动添加验证码</h5>
+              <div class="bg-gradient-to-r from-emerald-50 to-white border border-emerald-100 rounded-xl p-4 space-y-3">
+                <div class="flex items-center gap-2 mb-2">
+                  <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                  <h5 class="font-semibold text-emerald-800 text-sm">手动添加验证码</h5>
+                </div>
                 <!-- 手机号输入框 -->
                 <div class="phone-input-wrapper">
                   <span class="phone-prefix">+86 </span>
@@ -29435,13 +29443,16 @@ function openMobileVerificationCodesModal() {
                 <!-- 验证码输入框 -->
                 <input type="text" id="mobile-manual-code-value" class="input-field text-sm w-full" placeholder="验证码（6位数字，留空自动生成）" maxlength="6" pattern="[0-9]{6}">
                 <!-- 添加按钮 -->
-                <button onclick="addMobileManualVerificationCode()" class="btn btn-primary w-full !py-2 text-sm min-h-[44px]">添加验证码</button>
-                <p class="text-xs text-slate-600">💡 此功能用于测试或紧急情况下手动添加验证码，不会实际发送短信</p>
+                <button onclick="addMobileManualVerificationCode()" class="btn btn-primary w-full !py-2 text-sm min-h-[44px] bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 border-none">添加验证码</button>
+                <p class="text-xs text-slate-500 flex items-start gap-1">
+                  <svg class="w-3 h-3 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  此功能用于测试或紧急情况下手动添加验证码，不会实际发送短信
+                </p>
               </div>
 
               <!-- 刷新按钮 -->
               <div class="flex justify-end">
-                <button onclick="loadMobileVerificationCodes()" class="btn btn-ghost text-sm">🔄 刷新列表</button>
+                <button onclick="loadMobileVerificationCodes()" class="btn btn-ghost text-sm hover:bg-slate-100 transition-colors">🔄 刷新列表</button>
               </div>
 
               <!-- 验证码列表容器 -->
@@ -29451,7 +29462,7 @@ function openMobileVerificationCodesModal() {
 
               <!-- 底部操作按钮 -->
               <div class="flex justify-end pt-3 border-t border-slate-100">
-                <button onclick="closeMobileVerificationCodesModal()" class="btn btn-ghost border border-slate-300 !py-2 text-sm min-h-[44px]">关闭</button>
+                <button onclick="closeMobileVerificationCodesModal()" class="btn btn-ghost border border-slate-200 rounded-xl !py-2 text-sm min-h-[44px] hover:bg-slate-50 transition-colors">关闭</button>
               </div>
             </div>
           `;
