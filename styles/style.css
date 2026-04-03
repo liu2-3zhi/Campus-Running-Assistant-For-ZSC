@@ -2221,3 +2221,92 @@ body.mobile-mode #session-picker-modal {
 .swal2-cancel:focus {
   box-shadow: none !important;
 }
+
+/* ========================================
+   移动端提醒列表 Markdown 内容样式
+   确保 editormd 渲染的 HTML 在紧凑区域内正确显示
+   ======================================== */
+.mobile-reminder-markdown-content {
+  overflow: hidden;
+}
+
+.mobile-reminder-markdown-content .editormd-html-preview,
+.mobile-reminder-markdown-content .markdown-body {
+  font-size: 0.75rem !important;
+  line-height: 1.4 !important;
+  color: #475569 !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.mobile-reminder-markdown-content p {
+  margin: 0 0 0.25rem 0 !important;
+}
+
+.mobile-reminder-markdown-content p:last-child {
+  margin-bottom: 0 !important;
+}
+
+.mobile-reminder-markdown-content ul,
+.mobile-reminder-markdown-content ol {
+  margin: 0.25rem 0 !important;
+  padding-left: 1.25rem !important;
+}
+
+.mobile-reminder-markdown-content li {
+  margin: 0.125rem 0 !important;
+}
+
+.mobile-reminder-markdown-content code {
+  font-size: 0.7rem !important;
+  padding: 0.125rem 0.25rem !important;
+  background: #f1f5f9 !important;
+  border-radius: 0.25rem !important;
+}
+
+.mobile-reminder-markdown-content pre {
+  margin: 0.25rem 0 !important;
+  padding: 0.5rem !important;
+  font-size: 0.7rem !important;
+  max-height: 4rem !important;
+  overflow: auto !important;
+}
+
+.mobile-reminder-markdown-content h1,
+.mobile-reminder-markdown-content h2,
+.mobile-reminder-markdown-content h3,
+.mobile-reminder-markdown-content h4,
+.mobile-reminder-markdown-content h5,
+.mobile-reminder-markdown-content h6 {
+  font-size: 0.8rem !important;
+  margin: 0.25rem 0 !important;
+  font-weight: 600 !important;
+}
+
+.mobile-reminder-markdown-content blockquote {
+  margin: 0.25rem 0 !important;
+  padding: 0.25rem 0.5rem !important;
+  border-left: 2px solid #cbd5e1 !important;
+  color: #64748b !important;
+}
+
+.mobile-reminder-markdown-content img {
+  max-width: 100% !important;
+  max-height: 3rem !important;
+  object-fit: contain !important;
+}
+
+.mobile-reminder-markdown-content a {
+  color: #0284c7 !important;
+  text-decoration: underline !important;
+}
+
+.mobile-reminder-markdown-content table {
+  font-size: 0.7rem !important;
+  margin: 0.25rem 0 !important;
+}
+
+.mobile-reminder-markdown-content th,
+.mobile-reminder-markdown-content td {
+  padding: 0.25rem !important;
+}
