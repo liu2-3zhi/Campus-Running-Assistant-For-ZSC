@@ -53975,31 +53975,49 @@ async function openMobileReminderEditModal(reminderId = "") {
         <!-- 隐藏字段：提醒ID -->
         <input type="hidden" id="mobile-reminder-id-field" value="">
         <!-- 提醒标题 -->
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">提醒标题 <span class="text-red-500">*</span></label>
+        <div class="p-4 bg-gradient-to-r from-amber-50 to-white border border-amber-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+          <label for="mobile-reminder-title-field" class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">提醒标题 <span class="text-red-500">*</span></span>
+          </label>
           <input type="text" id="mobile-reminder-title-field" class="input-field text-sm w-full" placeholder="请输入提醒标题（最多50字）" maxlength="50">
         </div>
         <!-- 提醒内容 -->
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">提醒内容 <span class="text-red-500">*</span></label>
+        <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+          <label for="mobile-reminder-message-field" class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">提醒内容 <span class="text-red-500">*</span></span>
+          </label>
           <textarea id="mobile-reminder-message-field" rows="3" class="input-field text-sm w-full resize-none" placeholder="请输入提醒内容（最多500字）" maxlength="500"></textarea>
           <div id="mobile-reminder-editor" style="min-height: 180px; border-radius: 6px; background: #fff; border: 1px solid #e6e6e6; margin-top: 8px;"></div>
         </div>
         <!-- 时间设置 -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">开始时间 <span class="text-red-500">*</span></label>
-            <input type="time" id="mobile-reminder-start-time-field" class="input-field text-sm w-full">
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">结束时间 <span class="text-red-500">*</span></label>
-            <input type="time" id="mobile-reminder-end-time-field" class="input-field text-sm w-full">
+        <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+          <label class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">时间设置 <span class="text-red-500">*</span></span>
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">开始时间</label>
+              <input type="time" id="mobile-reminder-start-time-field" class="input-field text-sm w-full">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">结束时间</label>
+              <input type="time" id="mobile-reminder-end-time-field" class="input-field text-sm w-full">
+            </div>
           </div>
         </div>
-        <p class="text-xs text-blue-600 bg-blue-50 p-2 rounded">💡 提示：如果结束时间小于开始时间，系统会认为是跨天提醒（例如：20:00 到次日 08:00）</p>
+        <p class="text-xs text-blue-600 bg-gradient-to-r from-blue-50 to-white p-3 rounded-xl border border-blue-100 flex items-start gap-2">
+          <svg class="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <span>提示：如果结束时间小于开始时间，系统会认为是跨天提醒（例如：20:00 到次日 08:00）</span>
+        </p>
         <!-- 启用状态 -->
-        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-          <span class="text-sm font-semibold text-slate-700">立即启用</span>
+        <div class="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">立即启用</span>
+          </div>
           <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id="mobile-reminder-enabled-field" class="sr-only peer" checked>
             <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
