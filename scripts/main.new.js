@@ -50060,17 +50060,19 @@ async function showMobileUserSchoolAccounts(username) {
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserSchoolAccounts()">
-          <svg class="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-indigo-600 text-center">学校账户密码</h3>
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-indigo-600">学校账户密码</h3>
         </div>
         <div class="text-center text-sm text-slate-500" id="mobile-school-accounts-username"></div>
         <div id="mobile-school-accounts-list" class="space-y-3 max-h-[50vh] overflow-y-auto">
           <p class="text-slate-400 text-center py-10 text-xs">加载中...</p>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileUserSchoolAccounts()" class="flex-1 py-2 px-4 bg-slate-100 text-slate-600 rounded-lg text-sm">关闭</button>
+          <button onclick="closeMobileUserSchoolAccounts()" class="flex-1 py-2.5 px-4 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50 transition-colors">关闭</button>
         </div>
       </div>
     `;
