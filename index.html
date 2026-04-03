@@ -21460,113 +21460,81 @@
       class="fixed inset-0 flex items-center justify-center hidden z-[1054]"
     >
       <div
-        class="absolute inset-0 bg-black/60"
+        class="absolute inset-0 bg-black/50"
         onclick="closeManageSchoolAccountsModal()"
       ></div>
 
       <div
-        class="panel rounded-2xl p-6 w-full max-w-[50rem] mx-4 max-h-[80vh] overflow-y-auto space-y-4 relative"
+        class="bg-white rounded-2xl shadow-2xl w-full max-w-[50rem] mx-4 max-h-[80vh] overflow-y-auto relative border border-slate-100 overflow-hidden"
+        onclick="event.stopPropagation()"
       >
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-xl font-bold text-sky-600">
-            管理学校账户:
-            <span id="school-accounts-username" class="text-slate-700"></span>
-          </h3>
-          <button
-            onclick="closeManageSchoolAccountsModal()"
-            class="btn btn-ghost !py-1 !px-3"
-          >
-            关闭
-          </button>
-        </div>
+        <!-- 头部渐变装饰条 -->
+        <div class="h-1.5 bg-gradient-to-r from-sky-400 via-blue-500 to-cyan-400"></div>
 
-        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-          <div class="flex items-center justify-between">
-            <!-- 左侧：显示账户统计信息 -->
-            <div>
-              <!-- 账户总数显示区域 -->
-              <p class="text-sm text-blue-700">
-                <strong>账户总数:</strong>
-                <!-- 使用 font-mono 字体显示数字，确保数字对齐美观 -->
-                <span id="school-accounts-count" class="font-mono">0</span>
-              </p>
-              <!-- 提示信息，引导用户了解可以进行的操作 -->
-              <p class="text-xs text-slate-600 mt-1">
-                💡 您可以查看、编辑或删除此用户的学校账户信息
-              </p>
+        <div class="p-6">
+          <!-- 标题行 -->
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-md">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
             </div>
+            <div class="flex-1">
+              <h3 class="text-lg font-bold text-slate-800">管理学校账户: <span id="school-accounts-username" class="text-sky-600"></span></h3>
+              <p class="text-xs text-slate-500">查看、编辑或删除此用户的学校账户信息</p>
+            </div>
+            <button
+              onclick="closeManageSchoolAccountsModal()"
+              class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+              title="关闭"
+              aria-label="关闭"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
 
-            <!-- 右侧：操作按钮组 - 使用flex布局让按钮横向排列 -->
-            <div class="flex items-center gap-2">
-              <!-- 刷新按钮：重新加载学校账户列表 -->
-              <!-- 使用 btn-primary 样式保持与"新增账户"按钮一致的视觉风格 -->
-              <!-- !py-2 !px-4 控制按钮内边距，!text-sm 设置文字大小 -->
-              <!-- flex items-center gap-2 让图标和文字水平居中，且之间有间距 -->
-              <button
-                onclick="refreshSchoolAccounts()"
-                class="btn btn-primary !py-2 !px-4 !text-sm flex items-center gap-2"
-              >
-                <!-- SVG刷新图标：循环箭头，表示重新加载的含义 -->
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+          <!-- 统计信息和操作按钮 -->
+          <div class="p-3 bg-gradient-to-r from-sky-50 to-white border border-sky-100 rounded-xl mb-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                <div>
+                  <p class="text-sm text-sky-700 font-medium">
+                    账户总数: <span id="school-accounts-count" class="font-mono font-bold">0</span>
+                  </p>
+                  <p class="text-xs text-slate-500">您可以查看、编辑或删除此用户的学校账户信息</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  onclick="refreshSchoolAccounts()"
+                  class="px-3 py-1.5 text-sm font-medium text-sky-600 bg-white border border-sky-200 rounded-lg hover:bg-sky-50 hover:border-sky-300 transition-all flex items-center gap-1.5 shadow-sm"
                 >
-                  <!-- 绘制刷新图标的路径：一个顺时针旋转的箭头 -->
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  ></path>
-                </svg>
-                <!-- 按钮文字标签 -->
-                刷新
-              </button>
-
-              <!-- 新增账户按钮：打开新增账户表单 -->
-              <!-- 样式与刷新按钮保持一致，确保界面统一美观 -->
-              <button
-                onclick="addNewSchoolAccount()"
-                class="btn btn-primary !py-2 !px-4 !text-sm flex items-center gap-2"
-              >
-                <!-- SVG加号图标：表示添加新项目 -->
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                  刷新
+                </button>
+                <button
+                  onclick="addNewSchoolAccount()"
+                  class="px-3 py-1.5 text-sm font-medium text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
                 >
-                  <!-- 绘制加号图标的路径：垂直线和水平线的交叉 -->
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 4v16m8-8H4"
-                  ></path>
-                </svg>
-                <!-- 按钮文字标签 -->
-                新增账户
-              </button>
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                  新增账户
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div
-          id="school-accounts-list"
-          class="space-y-3 max-h-[50vh] overflow-y-auto"
-        ></div>
+          <div
+            id="school-accounts-list"
+            class="space-y-3 max-h-[45vh] overflow-y-auto"
+          ></div>
 
-        <div class="flex justify-end gap-3 pt-4 border-t">
-          <button
-            onclick="closeManageSchoolAccountsModal()"
-            class="btn btn-ghost border border-slate-300"
-          >
-            关闭
-          </button>
+          <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
+            <button
+              onclick="closeManageSchoolAccountsModal()"
+              class="btn btn-ghost px-5 py-2.5 hover:bg-slate-100 transition-colors rounded-lg border border-slate-200"
+            >
+              关闭
+            </button>
+          </div>
         </div>
       </div>
     </div>
