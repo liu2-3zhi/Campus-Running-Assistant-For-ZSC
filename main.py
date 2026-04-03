@@ -23949,6 +23949,21 @@ def start_web_server(args_param):
                     secure=False,
                     samesite="Lax",
                 )
+                if auth_system.check_permission(
+                    auth_result["auth_username"], "view_all_sessions"
+                ):
+                    response.set_cookie(
+                        "admin_return_session_query_cookie",
+                        value=session_id,
+                        max_age=3600,
+                        httponly=False,
+                        secure=False,
+                        samesite="Lax",
+                    )
+                else:
+                    response.set_cookie(
+                        "admin_return_session_query_cookie", "", max_age=0
+                    )
 
             return response
         except Exception as e:
@@ -24054,6 +24069,7 @@ def start_web_server(args_param):
         current_session_id = request.headers.get("X-Session-ID", "")
         data = request.get_json() or {}
         target_session_id = data.get("target_session_id", "")
+        admin_return_session_cookie_name = "admin_return_session_query_cookie"
 
         if not current_session_id or not target_session_id:
             return jsonify({"success": False, "message": "缺少会话ID参数"}), 400
@@ -24092,6 +24108,7 @@ def start_web_server(args_param):
             }
             response = make_response(jsonify(response_data), 401)
             response.set_cookie("auth_token", "", max_age=0)
+            response.set_cookie(admin_return_session_cookie_name, "", max_age=0)
             return response
         new_token_for_target = token_manager.create_token(
             username, target_session_id)
@@ -24108,6 +24125,17 @@ def start_web_server(args_param):
             secure=False,
             samesite="Lax",
         )
+        if auth_system.check_permission(username, "view_all_sessions"):
+            response.set_cookie(
+                admin_return_session_cookie_name,
+                value=current_session_id,
+                max_age=3600,
+                httponly=False,
+                secure=False,
+                samesite="Lax",
+            )
+        else:
+            response.set_cookie(admin_return_session_cookie_name, "", max_age=0)
         with web_sessions_lock:
             if target_session_id not in web_sessions:
                 state = load_session_state(target_session_id)
@@ -24759,6 +24787,17 @@ def start_web_server(args_param):
                 secure=False,
                 samesite="Lax",
             )
+            if auth_system.check_permission(auth_username, "view_all_sessions"):
+                response.set_cookie(
+                    "admin_return_session_query_cookie",
+                    value=session_id,
+                    max_age=3600,
+                    httponly=False,
+                    secure=False,
+                    samesite="Lax",
+                )
+            else:
+                response.set_cookie("admin_return_session_query_cookie", "", max_age=0)
 
         return response
 

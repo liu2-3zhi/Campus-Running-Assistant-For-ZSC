@@ -13480,11 +13480,17 @@ function checkWeakPassword(password) {
 }
 
 // 新增：返回管理员会话逻辑
+function getAdminReturnSessionQueryCookie() {
+  const cookieValue = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith("admin_return_session_query_cookie="))
+    ?.split("=")[1];
+  return cookieValue ? decodeURIComponent(cookieValue) : "";
+}
+
 function returnToAdminSession() {
-  const originSession = localStorage.getItem("admin_return_origin");
+  const originSession = getAdminReturnSessionQueryCookie();
   if (originSession) {
-    // 清除记录并跳转回原会话
-    localStorage.removeItem("admin_return_origin");
     window.location.href = `/uuid=${originSession}`;
   } else {
     // 异常情况，回首页
@@ -13494,7 +13500,7 @@ function returnToAdminSession() {
 
 // 新增：检查是否需要显示返回按钮
 function checkAdminReturnState() {
-  const originSession = localStorage.getItem("admin_return_origin");
+  const originSession = getAdminReturnSessionQueryCookie();
   const overlay = document.getElementById("admin-return-overlay");
 
   logMessage_Info(
@@ -13524,12 +13530,6 @@ function checkAdminReturnState() {
     initDraggableAdminBtn();
   } else {
     overlay.classList.add("hidden");
-    // 修正：如果当前就在来源会话（管理员自己的会话），则清理掉localStorage标记
-    // 防止脏数据导致逻辑混乱
-    if (originSession && currentUUID && originSession === currentUUID) {
-      localStorage.removeItem("admin_return_origin");
-      console.log("[上帝模式] 检测到已位于管理员原会话，自动清除返回记录");
-    }
   }
 }
 
@@ -30649,16 +30649,9 @@ async function selectSession(sessionId) {
     return;
   }
 
-  // ========== 修改开始：上帝模式直接跳转 ==========
-  // 检查当前用户是否为超级管理员
-  if (currentUserData && currentUserData.group === "super_admin") {
+  // ========== 修改开始：具备查看所有会话权限时直接跳转 ==========
+  if (currentUserData && checkAdminPermission("view_all_sessions")) {
     logMessage_Info("[上帝模式] 识别到管理员身份，保留Token并直接跳转...");
-
-    // 保存当前管理员的会话ID作为返回点
-    // 注意：如果已经是通过上帝模式进入的二级页面，不要覆盖原始的来源
-    if (!localStorage.getItem("admin_return_origin")) {
-      localStorage.setItem("admin_return_origin", sessionUUID);
-    }
 
     Swal.fire({
       icon: "success",
@@ -31052,13 +31045,10 @@ async function selectSessionFromPicker(sessionId) {
   closeSessionPicker();
 
   // ========== 修改开始：上帝模式直接跳转 ==========
-  if (currentUserData && currentUserData.group === "super_admin") {
+  if (currentUserData && checkAdminPermission("view_all_sessions")) {
     logMessage_Info(
       "[上帝模式-移动端] 识别到管理员身份，保留Token并直接跳转...",
     );
-    if (!localStorage.getItem("admin_return_origin")) {
-      localStorage.setItem("admin_return_origin", sessionUUID);
-    }
     window.location.href = `/uuid=${sessionId}`;
     return;
   }
