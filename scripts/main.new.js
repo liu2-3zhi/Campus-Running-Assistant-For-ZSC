@@ -48748,13 +48748,22 @@ function showMobileAvatarCropModal(file) {
         <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileAvatarCropModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <h3 class="text-xl font-bold text-sky-600 text-center">裁剪头像</h3>
-        <div class="max-h-80 overflow-hidden bg-slate-100 rounded-lg">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileAvatarCropModal()">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+          </div>
+          <h3 class="text-xl font-bold text-sky-600">裁剪头像</h3>
+        </div>
+        <div class="max-h-80 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-50 rounded-xl border border-slate-200">
           <img id="mobile-crop-image" src="" alt="待裁剪图片" style="max-width: 100%">
         </div>
+        <p class="text-xs text-slate-500 text-center flex items-center justify-center gap-1">
+          <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          拖动或捏合来调整裁剪区域
+        </p>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileAvatarCropModal()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="confirmMobileAvatarCrop()" class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm">确认上传</button>
+          <button onclick="closeMobileAvatarCropModal()" class="flex-1 py-2.5 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="confirmMobileAvatarCrop()" class="flex-1 py-2.5 px-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-xl text-sm transition-all duration-200">✓ 确认上传</button>
         </div>
       </div>
     `;
