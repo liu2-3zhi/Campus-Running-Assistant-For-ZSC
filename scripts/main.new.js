@@ -1749,23 +1749,95 @@ async function showPaymentLogDetail(logId) {
   // console.log(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
   logMessage_Info(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
 
-  // ========== 步骤2：显示模态框和加载状态 ==========
+  let modal = document.getElementById("admin-payment-log-detail-modal");
+  let loadingDiv;
+  let errorDiv;
+  let contentDiv;
 
-  // 获取模态框和各个显示区域的DOM元素
-  const modal = document.getElementById("admin-payment-log-detail-modal");
-  const loadingDiv = document.getElementById("log-detail-loading");
-  const errorDiv = document.getElementById("log-detail-error");
-  const contentDiv = document.getElementById("log-detail-content");
+  if (isMobileMode) {
+    modal = document.getElementById("mobile-payment-log-detail-sheet");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "mobile-payment-log-detail-sheet";
+      modal.className = "fixed inset-0 hidden mobile-modal z-[1060]";
+      modal.innerHTML = `
+        <div class="absolute inset-0 bg-black/40" data-close-sheet="true"></div>
+        <div class="mobile-modal-content bg-white rounded-t-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+          <div class="flex justify-center mb-2 cursor-pointer" data-close-sheet="true">
+            <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              </div>
+              <h3 class="text-lg font-bold text-slate-800">支付日志详情</h3>
+            </div>
+            <button type="button" data-close-sheet="true" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+          <div id="mobile-log-detail-loading" class="hidden flex flex-col items-center justify-center py-10">
+            <svg class="animate-spin h-8 w-8 text-sky-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-slate-500 text-sm">正在加载日志详情...</p>
+          </div>
+          <div id="mobile-log-detail-error" class="hidden bg-red-50 border border-red-200 rounded-xl p-4">
+            <p class="text-sm font-semibold text-red-700 mb-1">加载失败</p>
+            <p id="mobile-log-detail-error-message" class="text-sm text-red-800">未知错误</p>
+          </div>
+          <div id="mobile-log-detail-content" class="hidden space-y-3 text-sm">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+              <div class="flex justify-between gap-3"><span class="text-slate-500">时间</span><span id="mobile-log-detail-datetime" class="text-right break-all text-slate-800">-</span></div>
+              <div class="flex justify-between gap-3"><span class="text-slate-500">操作类型</span><span id="mobile-log-detail-action" class="text-right break-all text-slate-800">-</span></div>
+              <div class="flex justify-between gap-3"><span class="text-slate-500">用户ID</span><span id="mobile-log-detail-user-id" class="text-right break-all text-slate-800">-</span></div>
+              <div class="flex justify-between gap-3"><span class="text-slate-500">订单号</span><span id="mobile-log-detail-order-id" class="text-right break-all text-slate-800">-</span></div>
+              <div class="flex justify-between gap-3"><span class="text-slate-500">客户端IP</span><span id="mobile-log-detail-client-ip" class="text-right break-all text-slate-800">-</span></div>
+              <div class="flex justify-between gap-3"><span class="text-slate-500">金额</span><span id="mobile-log-detail-amount" class="text-right break-all text-slate-800">-</span></div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="text-slate-700 font-semibold mb-2">完整数据</div>
+              <pre id="mobile-log-detail-json" class="text-xs text-slate-700 whitespace-pre-wrap break-all bg-white border border-slate-200 rounded-lg p-3 overflow-x-auto"></pre>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
 
-  // 防御性检查：确保所有必需的DOM元素都存在
+    loadingDiv = modal.querySelector("#mobile-log-detail-loading");
+    errorDiv = modal.querySelector("#mobile-log-detail-error");
+    contentDiv = modal.querySelector("#mobile-log-detail-content");
+    modal.querySelectorAll("[data-close-sheet='true']").forEach((element) => {
+      element.onclick = closePaymentLogDetailModal;
+    });
+    modal.classList.remove("hidden");
+    modal.classList.add("show");
+  } else {
+    // ========== 步骤2：显示模态框和加载状态 ==========
+
+    // 获取模态框和各个显示区域的DOM元素
+    loadingDiv = document.getElementById("log-detail-loading");
+    errorDiv = document.getElementById("log-detail-error");
+    contentDiv = document.getElementById("log-detail-content");
+
+    // 防御性检查：确保所有必需的DOM元素都存在
+    if (!modal || !loadingDiv || !errorDiv || !contentDiv) {
+      // console.error('[支付日志详情] 找不到必需的DOM元素');
+      logMessage_Error("[支付日志详情] 找不到必需的DOM元素");
+      return;
+    }
+
+    // 显示模态框
+    modal.classList.remove("hidden");
+  }
+
   if (!modal || !loadingDiv || !errorDiv || !contentDiv) {
-    // console.error('[支付日志详情] 找不到必需的DOM元素');
     logMessage_Error("[支付日志详情] 找不到必需的DOM元素");
     return;
   }
-
-  // 显示模态框
-  modal.classList.remove("hidden");
 
   // 显示加载状态，隐藏其他内容
   loadingDiv.classList.remove("hidden");
@@ -1808,32 +1880,45 @@ async function showPaymentLogDetail(logId) {
     // 提取日志详情数据
     const logDetail = result.log_detail || {};
 
+    const fieldMap = isMobileMode
+      ? {
+          datetime: modal.querySelector("#mobile-log-detail-datetime"),
+          action: modal.querySelector("#mobile-log-detail-action"),
+          userId: modal.querySelector("#mobile-log-detail-user-id"),
+          orderId: modal.querySelector("#mobile-log-detail-order-id"),
+          clientIp: modal.querySelector("#mobile-log-detail-client-ip"),
+          amount: modal.querySelector("#mobile-log-detail-amount"),
+          json: modal.querySelector("#mobile-log-detail-json"),
+        }
+      : {
+          datetime: document.getElementById("log-detail-datetime"),
+          action: document.getElementById("log-detail-action"),
+          userId: document.getElementById("log-detail-user-id"),
+          orderId: document.getElementById("log-detail-order-id"),
+          clientIp: document.getElementById("log-detail-client-ip"),
+          amount: document.getElementById("log-detail-amount"),
+          json: document.getElementById("log-detail-json"),
+        };
+
     // 填充基本信息字段
     // 使用 || 运算符提供默认值，防止字段不存在时显示undefined
-    document.getElementById("log-detail-datetime").textContent =
-      logDetail.datetime || "-";
-    document.getElementById("log-detail-action").textContent =
-      logDetail.action || "-";
-    document.getElementById("log-detail-user-id").textContent =
-      logDetail.user_id || "-";
-    document.getElementById("log-detail-order-id").textContent =
-      logDetail.order_id || "-";
-    document.getElementById("log-detail-client-ip").textContent =
-      logDetail.client_ip || "-";
+    fieldMap.datetime.textContent = logDetail.datetime || "-";
+    fieldMap.action.textContent = logDetail.action || "-";
+    fieldMap.userId.textContent = logDetail.user_id || "-";
+    fieldMap.orderId.textContent = logDetail.order_id || "-";
+    fieldMap.clientIp.textContent = logDetail.client_ip || "-";
 
     // 填充金额字段（如果存在）
     // 金额使用特殊格式化：¥符号 + 保留2位小数
-    const amountElem = document.getElementById("log-detail-amount");
     if (logDetail.amount) {
-      amountElem.textContent = `¥${parseFloat(logDetail.amount).toFixed(2)}`;
+      fieldMap.amount.textContent = `¥${parseFloat(logDetail.amount).toFixed(2)}`;
     } else {
-      amountElem.textContent = "-";
+      fieldMap.amount.textContent = "-";
     }
 
     // 填充完整JSON数据
     // 使用JSON.stringify格式化，indent=2使其易读
-    const jsonElem = document.getElementById("log-detail-json");
-    jsonElem.textContent = JSON.stringify(logDetail, null, 2);
+    fieldMap.json.textContent = JSON.stringify(logDetail, null, 2);
 
     // 隐藏加载状态，显示内容
     loadingDiv.classList.add("hidden");
@@ -1849,9 +1934,9 @@ async function showPaymentLogDetail(logId) {
     logMessage_Error("[支付日志详情] 获取日志详情失败: " + error);
 
     // 在模态框中显示错误信息
-    const errorMessageElem = document.getElementById(
-      "log-detail-error-message",
-    );
+    const errorMessageElem = isMobileMode
+      ? modal.querySelector("#mobile-log-detail-error-message")
+      : document.getElementById("log-detail-error-message");
     if (errorMessageElem) {
       errorMessageElem.textContent = error.message || "未知错误";
     }
@@ -1877,6 +1962,18 @@ async function showPaymentLogDetail(logId) {
  * 2. 重置所有显示区域的状态
  */
 function closePaymentLogDetailModal() {
+  if (isMobileMode) {
+    const mobileSheet = document.getElementById("mobile-payment-log-detail-sheet");
+    if (!mobileSheet) {
+      logMessage_Error("[支付日志详情] 找不到移动端模态框元素");
+      return;
+    }
+    mobileSheet.classList.remove("show");
+    setTimeout(() => mobileSheet.classList.add("hidden"), 300);
+    logMessage_Info("[支付日志详情] 移动端模态框已关闭");
+    return;
+  }
+
   // 获取模态框元素
   const modal = document.getElementById("admin-payment-log-detail-modal");
 
@@ -23358,6 +23455,84 @@ async function disable2FA() {
 
 async function test2FA() {
   const testCode = await new Promise((resolve) => {
+    if (isMobileMode) {
+      let sheet = document.getElementById("mobile-test-2fa-sheet");
+      if (!sheet) {
+        sheet = document.createElement("div");
+        sheet.id = "mobile-test-2fa-sheet";
+        sheet.className = "fixed inset-0 hidden mobile-modal z-[1060]";
+        sheet.innerHTML = `
+          <div class="absolute inset-0 bg-black/40" data-close-sheet="true"></div>
+          <div class="mobile-modal-content bg-white rounded-t-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex justify-center mb-2 cursor-pointer" data-close-sheet="true">
+              <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+            </div>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md">
+                  <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                </div>
+                <h3 class="text-lg font-bold text-slate-800">测试2FA验证</h3>
+              </div>
+              <button type="button" data-close-sheet="true" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+            <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-800">
+              请打开验证器应用，输入当前显示的6位数字
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">验证码</label>
+              <input type="text" id="mobile-test-2fa-code-input" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-center text-lg tracking-widest font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="请输入6位验证码" maxlength="6" inputmode="numeric" />
+            </div>
+            <div class="flex gap-3 justify-end">
+              <button type="button" data-close-sheet="true" class="btn btn-ghost px-4 py-2">取消</button>
+              <button type="button" class="btn btn-primary px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-lg" id="confirm-mobile-test-2fa">验证</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(sheet);
+      }
+
+      const closeSheet = () => {
+        sheet.classList.remove("show");
+        setTimeout(() => {
+          if (sheet) sheet.classList.add("hidden");
+        }, 300);
+        resolve(null);
+      };
+
+      sheet.querySelectorAll("[data-close-sheet='true']").forEach((element) => {
+        element.onclick = closeSheet;
+      });
+
+      const codeInput = sheet.querySelector("#mobile-test-2fa-code-input");
+      const confirmBtn = sheet.querySelector("#confirm-mobile-test-2fa");
+      if (codeInput) codeInput.value = "";
+
+      confirmBtn.onclick = () => {
+        const code = codeInput.value;
+        if (!code || code.length !== 6 || !/^[0-9]{6}$/.test(code)) {
+          Swal.fire({
+            title: "错误",
+            text: "请输入有效的6位数字验证码",
+            icon: "error",
+          });
+          return;
+        }
+        sheet.classList.remove("show");
+        setTimeout(() => {
+          if (sheet) sheet.classList.add("hidden");
+        }, 300);
+        resolve(code);
+      };
+
+      sheet.classList.remove("hidden");
+      sheet.classList.add("show");
+      if (codeInput) codeInput.focus();
+      return;
+    }
+
     const modal = document.createElement("div");
     modal.className = "fixed inset-0 flex items-center justify-center z-50";
     modal.innerHTML = `
@@ -23390,6 +23565,13 @@ async function test2FA() {
 
     const confirmBtn = modal.querySelector("#confirm-test-2fa");
     const codeInput = modal.querySelector("#test-2fa-code-input");
+    const closeModal = () => {
+      if (modal.isConnected) modal.remove();
+      resolve(null);
+    };
+
+    modal.querySelector(".fixed.inset-0.bg-black.bg-opacity-50").onclick = closeModal;
+    modal.querySelector(".btn.btn-ghost").onclick = closeModal;
 
     confirmBtn.onclick = () => {
       const code = codeInput.value;
@@ -48650,7 +48832,7 @@ function switchMobileAdminTab(tabId, prefix) {
         break;
       case "captcha":
         // 加载验证码设置（使用移动端专用函数）
-        mobileLoadCaptchaSettings();
+        mobileLoadCaptchaSettings(false);
         break;
       case "reminders":
         // 加载定时提醒列表（使用移动端专用函数）
@@ -53474,7 +53656,8 @@ async function mobileCheckSMSBalance() {
  *
  * @returns {Promise<void>} 无返回值
  */
-async function mobileLoadCaptchaSettings() {
+async function mobileLoadCaptchaSettings(showAlert = true) {
+  console.log("[移动端验证码] 开始加载验证码配置...");
   try {
     // 步骤1：记录开始加载的日志，便于调试和追踪
     console.log("[移动端验证码] 开始从 /api/captcha/config 加载验证码配置...");
@@ -53516,7 +53699,9 @@ async function mobileLoadCaptchaSettings() {
 
       // 步骤8：显示成功提示（使用移动端专用的提示函数）
       // showModalAlert是移动端使用的提示函数，比Swal更适合移动设备
-      showModalAlert("验证码配置已加载", "成功");
+      if (showAlert) {
+        showModalAlert("验证码配置已加载", "成功");
+      }
     } else {
       // 步骤9：处理API返回成功但没有配置数据的情况
       // 这通常表示配置文件不存在或格式错误
@@ -53530,7 +53715,9 @@ async function mobileLoadCaptchaSettings() {
       });
 
       // 步骤11：显示警告提示，告知用户正在使用默认值
-      showModalAlert("未找到配置文件，已加载默认值", "警告");
+      if (showAlert) {
+        showModalAlert("未找到配置文件，已加载默认值", "警告");
+      }
     }
   } catch (error) {
     // 步骤12：捕获并处理所有可能的异常（网络错误、解析错误等）
