@@ -14402,7 +14402,7 @@ function initializeMobileUI() {
         mobileAuthInputContainer.querySelector("input").value;
       mobileAuthLabel.textContent = "用户名";
       mobileAuthInputContainer.innerHTML = `
-            <input type="text" id="mobile-auth-username" class="w-full" placeholder="请输入用户名" autocomplete="username" value="${
+            <input type="text" id="mobile-auth-username" class="input-field w-full" placeholder="请输入用户名" autocomplete="username" value="${
               currentValue || ""
             }">
           `;
