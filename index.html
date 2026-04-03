@@ -6174,6 +6174,52 @@
                   </button>
                 </div>
               </div>
+              
+              <!-- 日志过滤和快捷筛选 -->
+              <div class="flex flex-wrap gap-2 items-center">
+                <!-- 过滤输入框 -->
+                <div class="flex-1 min-w-[150px]">
+                  <input
+                    type="text"
+                    id="mobile-multi-log-filter-input"
+                    placeholder="🔍 输入关键词过滤日志..."
+                    class="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-400 focus:border-sky-400 outline-none transition-all"
+                    oninput="filterMobileLogContent(this.value)"
+                  />
+                </div>
+                <!-- 快捷筛选按钮组 -->
+                <div class="flex gap-1 flex-wrap">
+                  <button
+                    type="button"
+                    class="px-2 py-1 text-xs rounded bg-red-100 text-red-600 hover:bg-red-200 transition-colors font-medium"
+                    onclick="filterMobileLogContent('ERROR')"
+                  >
+                    ERROR
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2 py-1 text-xs rounded bg-amber-100 text-amber-600 hover:bg-amber-200 transition-colors font-medium"
+                    onclick="filterMobileLogContent('WARNING')"
+                  >
+                    WARN
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2 py-1 text-xs rounded bg-sky-100 text-sky-600 hover:bg-sky-200 transition-colors font-medium"
+                    onclick="filterMobileLogContent('INFO')"
+                  >
+                    INFO
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2 py-1 text-xs rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium"
+                    onclick="filterMobileLogContent('')"
+                  >
+                    全部
+                  </button>
+                </div>
+              </div>
+              
               <!-- 日志内容显示区域：深色背景终端风格 -->
               <div
                 class="bg-slate-900 text-green-400 rounded-lg p-3 font-mono text-xs overflow-auto max-h-[100vh]"
@@ -20358,17 +20404,17 @@
     <!-- ========== 短信发送历史 ========== -->
     <div
       id="sms-history-modal"
-      class="fixed inset-0 flex items-center justify-center hidden z-[1054]"
+      class="fixed inset-0 flex items-center justify-center hidden z-[1054] p-2 sm:p-4"
     >
       <div
         class="absolute inset-0 bg-black/70"
         onclick="closeSMSHistoryModal()"
       ></div>
       <div
-        class="panel rounded-2xl p-6 w-[90%] max-w-5xl max-h-[85vh] space-y-4 relative overflow-hidden"
+        class="panel rounded-2xl p-4 sm:p-6 w-full max-w-5xl max-h-[90vh] space-y-4 relative overflow-hidden"
       >
         <div class="flex items-center justify-between">
-          <h3 class="text-xl font-bold text-sky-600">📋 短信发送历史</h3>
+          <h3 class="text-lg sm:text-xl font-bold text-sky-600">📋 短信发送历史</h3>
           <button
             onclick="closeSMSHistoryModal()"
             class="text-slate-400 hover:text-slate-600 text-2xl leading-none"
@@ -20887,15 +20933,15 @@
 
     <div
       id="sms-test-modal"
-      class="fixed inset-0 flex items-center justify-center hidden z-[1054]"
+      class="fixed inset-0 flex items-center justify-center hidden z-[1054] p-4"
     >
       <div
         class="absolute inset-0 bg-black/60"
         onclick="closeSMSTestModal()"
       ></div>
-      <div class="panel rounded-2xl p-6 w-[35rem] space-y-4 relative">
+      <div class="panel rounded-2xl p-4 sm:p-6 w-full max-w-lg space-y-4 relative max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-xl font-bold text-green-600">🧪 短信测试发送</h3>
+          <h3 class="text-lg sm:text-xl font-bold text-green-600">🧪 短信测试发送</h3>
           <button
             onclick="closeSMSTestModal()"
             class="text-slate-400 hover:text-slate-600 transition-colors"

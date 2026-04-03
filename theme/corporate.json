@@ -3,7 +3,7 @@
   "name": "商务专业风 (Corporate)",
   "description": "蓝灰色系、规整排版，强调可信度与专业感",
   "icon": "💼",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "tags": ["business", "professional", "blue", "gray", "enterprise"],
   "preview": {
     "primary":    "#1e40af",
@@ -41,7 +41,13 @@
     "--shadow-md":        "0 4px 12px rgba(0,0,0,0.10)",
     "--shadow-lg":        "0 8px 20px rgba(0,0,50,0.12)",
     "--blur-panel":       "8px",
-    "--accent-gradient":  "linear-gradient(90deg,#1e40af,#0369a1)"
+    "--accent-gradient":  "linear-gradient(180deg,#1e40af,#1e3a8a)",
+    "--btn-radius":       "6px",
+    "--input-border":     "#cbd5e1",
+    "--input-focus":      "#1e40af",
+    "--card-hover-shadow": "0 4px 16px rgba(15,23,42,0.12)",
+    "--table-header-bg":  "linear-gradient(180deg,#f1f5f9,#e2e8f0)",
+    "--transition-speed": "0.2s"
   },
   "bodyClasses": ["theme-corporate"],
   "darkMode": false,

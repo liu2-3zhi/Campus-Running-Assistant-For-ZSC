@@ -3,7 +3,7 @@
   "name": "默认 (Default)",
   "description": "天蓝渐变背景，毛玻璃卡片，清新专业感",
   "icon": "🌤️",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "tags": ["default", "blue", "gradient"],
   "preview": {
     "primary":    "#38bdf8",
@@ -41,7 +41,12 @@
     "--shadow-md":        "0 4px 12px rgba(0,0,0,0.10)",
     "--shadow-lg":        "0 10px 24px rgba(16,24,40,0.12)",
     "--blur-panel":       "16px",
-    "--accent-gradient":  "linear-gradient(90deg,#38bdf8,#818cf8)"
+    "--accent-gradient":  "linear-gradient(90deg,#38bdf8,#818cf8)",
+    "--btn-radius":       "12px",
+    "--input-border":     "#e2e8f0",
+    "--input-focus":      "#38bdf8",
+    "--card-hover-shadow": "0 12px 28px rgba(16,24,40,0.15)",
+    "--transition-speed": "0.3s"
   },
   "bodyClasses": [],
   "darkMode": false,

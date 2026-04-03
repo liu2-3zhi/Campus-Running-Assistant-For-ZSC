@@ -3,7 +3,7 @@
   "name": "复古风 (Retro/Vintage)",
   "description": "怀旧色调、经典字体、纹理背景，充满年代感",
   "icon": "🕰️",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "tags": ["retro", "vintage", "warm", "brown", "classic"],
   "preview": {
     "primary":    "#b45309",
@@ -41,7 +41,14 @@
     "--shadow-md":        "0 4px 14px rgba(120,83,15,0.15)",
     "--shadow-lg":        "0 8px 24px rgba(120,83,15,0.18)",
     "--blur-panel":       "4px",
-    "--accent-gradient":  "linear-gradient(90deg,#d97706,#b45309)"
+    "--accent-gradient":  "linear-gradient(180deg,#d97706,#b45309)",
+    "--btn-radius":       "2px",
+    "--input-border":     "#d6b56a",
+    "--input-focus":      "#b45309",
+    "--card-hover-shadow": "6px 6px 0 rgba(120,83,15,0.2)",
+    "--card-hover-transform": "translate(-2px, -2px)",
+    "--retro-shadow":     "4px 4px 0 rgba(120,83,15,0.15)",
+    "--transition-speed": "0.2s"
   },
   "bodyClasses": ["theme-retro"],
   "darkMode": false,

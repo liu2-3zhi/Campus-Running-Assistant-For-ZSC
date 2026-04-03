@@ -3,7 +3,7 @@
   "name": "极简风 (Minimalist)",
   "description": "简洁排版、大量留白，突出内容本身。适合注重效率的用户",
   "icon": "✨",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "tags": ["clean", "minimal", "modern", "blog"],
   "preview": {
     "primary":    "#2563eb",
@@ -41,7 +41,12 @@
     "--shadow-md":        "0 2px 8px rgba(0,0,0,0.08)",
     "--shadow-lg":        "0 4px 12px rgba(0,0,0,0.10)",
     "--blur-panel":       "0px",
-    "--accent-gradient":  "linear-gradient(90deg,#3b82f6,#2563eb)"
+    "--accent-gradient":  "#3b82f6",
+    "--btn-radius":       "4px",
+    "--input-border":     "#e4e4e7",
+    "--input-focus":      "#3b82f6",
+    "--card-hover-shadow": "0 2px 6px rgba(0,0,0,0.06)",
+    "--transition-speed": "0.2s"
   },
   "bodyClasses": ["theme-minimalist"],
   "darkMode": false,

@@ -15608,6 +15608,25 @@ let resolveConfirmPromise = null;
 
 function jsShowConfirm(title, message) {
   return new Promise((resolve) => {
+    // 在移动端模式下，优先使用 SweetAlert2 以确保兼容性和正确显示
+    if (isMobileMode && typeof Swal !== "undefined") {
+      Swal.fire({
+        title: title || "请确认",
+        html: String(message).replace(/\n/g, "<br>"),
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "确认",
+        cancelButtonText: "取消",
+        confirmButtonColor: "#f59e0b",
+        cancelButtonColor: "#64748b",
+        reverseButtons: true,
+      }).then((result) => {
+        resolve(result.isConfirmed);
+      });
+      return;
+    }
+
+    // PC端使用原有的自定义模态框
     const modal = $("confirm-modal");
     const titleEl = $("confirm-modal-title");
     const msgEl = $("confirm-modal-message");
@@ -15615,6 +15634,23 @@ function jsShowConfirm(title, message) {
     const cancelBtn = $("confirm-modal-cancel-btn");
 
     if (!modal || !titleEl || !msgEl || !okBtn || !cancelBtn) {
+      // 如果DOM元素不存在，使用 SweetAlert2 作为后备
+      if (typeof Swal !== "undefined") {
+        Swal.fire({
+          title: title || "请确认",
+          html: String(message).replace(/\n/g, "<br>"),
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "确认",
+          cancelButtonText: "取消",
+          confirmButtonColor: "#f59e0b",
+          cancelButtonColor: "#64748b",
+          reverseButtons: true,
+        }).then((result) => {
+          resolve(result.isConfirmed);
+        });
+        return;
+      }
       logMessage_Error(
         "Confirm modal DOM not found. Falling back to native confirm.",
       );
@@ -26010,317 +26046,9 @@ function mobileEditSchoolAccount(authUsername, schoolUsername, password, ua) {
   console.log("[移动端学校账户管理] 已打开编辑学校账户表单");
 }
 
-/**
- * 显示移动端学校账户管理模态框
- *
- * 功能说明：
- * - 从服务器加载指定用户的所有学校账户数据
- * - 在移动端模态框中显示账户列表
- * - 渲染每个账户的详细信息和操作按钮（编辑、删除、查看详情）
- *
- * 参数说明：
- * @param {string} username - 要查询学校账户的用户名
- *
- * 功能流程：
- * 1. 向服务器发送GET请求，获取用户的学校账户数据
- * 2. 解析返回的JSON数据，验证是否成功
- * 3. 更新模态框标题，显示用户名和账户总数
- * 4. 遍历账户数据，为每个账户生成HTML卡片
- * 5. 将生成的HTML插入到账户列表容器中
- * 6. 显示移动端模态框
- *
- * 账户卡片包含内容：
- * - 学校账号用户名（醒目显示）
- * - 密码（等宽字体，可选中复制）
- * - User-Agent（如果存在，显示在可滚动的代码块中）
- * - 操作按钮：编辑、删除、查看详情
- *
- * 错误处理：
- * - 网络请求失败：捕获异常并显示错误提示
- * - 服务器返回错误：解析error message并显示
- * - 没有账户数据：显示友好的空状态提示
- *
- * 安全措施：
- * - 使用escapeHtml函数转义所有用户输入，防止XSS攻击
- * - 使用JSON.stringify和data属性安全传递复杂数据
- * - 使用encodeURIComponent编码URL参数
- */
-async function showMobileUserSchoolAccounts(username) {
-  // 输出日志，标记数据加载的开始
-  console.log(`[移动端学校账户管理] 开始加载用户账户：${username}`);
-
-  try {
-    // ========== 发送HTTP请求获取账户数据 ==========
-    // 构建API端点URL，使用encodeURIComponent编码用户名，避免特殊字符导致的问题
-    const apiUrl = `/auth/get_user_school_accounts_only?username=${encodeURIComponent(
-      username,
-    )}`;
-
-    // 发送GET请求到服务器
-    const response = await fetch(apiUrl, {
-      headers: {
-        // 添加会话ID到请求头，用于服务器端的身份验证
-        // sessionUUID应该在用户登录时设置，存储在全局变量中
-        "X-Session-ID": sessionUUID,
-      },
-    });
-
-    // 解析响应体为JSON对象
-    const result = await response.json();
-
-    // ========== 验证API响应 ==========
-    // 检查result.success标志，判断服务器端操作是否成功
-    if (!result.success) {
-      // 如果失败，显示服务器返回的错误消息
-      // result.message包含服务器提供的错误描述
-      // 如果message不存在，使用默认文本"加载失败"
-      // showModalAlert(result.message || "加载失败", "错误");
-      Swal.fire({
-        title: "错误",
-        text: result.message || "加载失败",
-        icon: "error",
-      });
-
-      // 输出错误日志，便于调试
-      console.error("[移动端学校账户管理] 加载失败：", result.message);
-
-      // 提前返回，不执行后续的渲染操作
-      return;
-    }
-
-    // ========== 解析账户数据 ==========
-    // result.accounts是一个对象，键为学校账号用户名，值为账户详情
-    // 使用 || {} 确保即使accounts不存在，也有一个空对象作为后备值
-    const accounts = result.accounts || {};
-
-    // 计算账户总数
-    // Object.keys()返回对象的所有键组成的数组
-    // .length获取数组长度，即账户数量
-    const accountCount = Object.keys(accounts).length;
-
-    // 输出日志，显示成功加载的账户数量
-    console.log(`[移动端学校账户管理] 成功加载 ${accountCount} 个账户`);
-
-    // ========== 更新模态框标题和统计信息 ==========
-    // 更新标题中的用户名显示
-    // $()函数是getElementById的简写
-    const usernameEl = $("mobile-school-accounts-username");
-    if (usernameEl) {
-      // 使用textContent而非innerHTML，避免XSS攻击
-      usernameEl.textContent = username;
-    }
-
-    // 更新账户总数显示
-    const countEl = $("mobile-school-accounts-count");
-    if (countEl) {
-      // 将账户数量转换为字符串并显示
-      countEl.textContent = accountCount.toString();
-    }
-
-    // ========== 渲染账户列表 ==========
-    // 获取账户列表容器元素
-    const listContainer = $("mobile-school-accounts-list");
-
-    // 验证容器元素是否存在
-    if (!listContainer) {
-      console.error("[移动端学校账户管理] 错误：找不到账户列表容器元素");
-      return;
-    }
-
-    // 判断是否有账户数据
-    if (accountCount === 0) {
-      // ========== 空状态处理 ==========
-      // 如果没有账户，显示友好的空状态提示
-      listContainer.innerHTML = `
-              <p class="text-slate-400 text-center text-xs py-8">
-                该用户暂无学校账户
-              </p>
-            `;
-    } else {
-      // ========== 生成账户卡片HTML ==========
-      // 初始化HTML字符串
-      let html = "";
-
-      // 遍历accounts对象的所有条目
-      // Object.entries()返回[key, value]对的数组
-      for (const [schoolUsername, accountData] of Object.entries(accounts)) {
-        // 解析账户数据
-        // accountData可能是字符串（仅包含密码）或对象（包含password和ua）
-        let password = "";
-        let ua = "";
-
-        if (typeof accountData === "string") {
-          // 如果accountData是字符串，则它就是密码
-          password = accountData;
-        } else if (typeof accountData === "object" && accountData !== null) {
-          // 如果accountData是对象，则提取password和ua字段
-          password = accountData.password || "";
-          ua = accountData.ua || "";
-        }
-
-        // 构建账户数据的JSON字符串，用于传递给onclick函数
-        // 将所有需要的数据打包成一个对象
-        const accountDataJson = JSON.stringify({
-          authUsername: username,
-          schoolUsername: schoolUsername,
-          password: password,
-          ua: ua,
-        });
-
-        // 生成账户卡片的HTML
-        // 使用模板字符串拼接HTML，注意所有动态内容都要用escapeHtml转义
-        html += `
-                <!-- 账户卡片容器 -->
-                <!-- bg-slate-50: 浅灰色背景，区分不同的账户卡片 -->
-                <!-- p-3: 内边距0.75rem，移动端紧凑布局 -->
-                <!-- rounded-lg: 中等圆角 -->
-                <!-- border border-slate-200: 淡灰色边框 -->
-                <!-- space-y-2: 子元素之间垂直间距0.5rem -->
-                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
-                  
-                  <!-- 学校账号用户名和操作按钮行 -->
-                  <!-- flex items-center justify-between: 左右两端对齐布局 -->
-                  <div class="flex items-center justify-between">
-                    
-                    <!-- 学校账号用户名 -->
-                    <!-- font-semibold: 字体半粗 -->
-                    <!-- text-slate-800: 深灰色文字 -->
-                    <!-- text-base: 字体大小1rem（16px） -->
-                    <div class="font-semibold text-slate-800 text-base">
-                      ${escapeHtml(schoolUsername)}
-                    </div>
-                    
-                    <!-- 操作按钮组 -->
-                    <!-- flex gap-1.5: 水平排列，按钮之间间距6px -->
-                    <div class="flex gap-1.5">
-                    
-                      <button 
-                        class="py-1 px-2 bg-sky-500 text-white rounded text-xs font-medium hover:bg-sky-600 transition min-h-[36px]" 
-                        data-account='${accountDataJson.replace(
-                          /'/g,
-                          "&apos;",
-                        )}'
-                        onclick="(function(btn) { 
-                          const data = JSON.parse(btn.getAttribute('data-account')); 
-                          mobileEditSchoolAccount(data.authUsername, data.schoolUsername, data.password, data.ua); 
-                        })(this)"
-                        title="编辑此账户">
-                        编辑
-                      </button>
-                      
-                      <!-- 删除按钮 -->
-                      <!-- 点击时调用deleteSchoolAccount函数（PC端和移动端共用） -->
-                      <!-- 删除成功后会自动刷新列表 -->
-                      <!-- bg-red-500: 红色背景，表示危险操作 -->
-                      <!-- hover:bg-red-600: 鼠标悬停时颜色加深 -->
-                      <!-- 【尺寸优化】与编辑按钮保持一致：min-h-[36px] + py-1 px-2 -->
-                      <button 
-                        class="py-1 px-2 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition min-h-[36px]" 
-                        data-auth-username='${escapeHtml(username)}'
-                        data-school-username='${escapeHtml(schoolUsername)}'
-                        onclick="(function(btn) { 
-                          deleteSchoolAccount(
-                            btn.getAttribute('data-auth-username'), 
-                            btn.getAttribute('data-school-username')
-                          ); 
-                        })(this)"
-                        title="删除此账户">
-                        删除
-                      </button>
-                      
-                      <!-- 查看详情按钮 -->
-                      <!-- 调用View_details_of_users_with_outstanding_payments函数 -->
-                      <!-- 显示学号、姓名、欠费信息等详细数据 -->
-                      <!-- bg-emerald-500: 翡翠绿色背景 -->
-                      <!-- hover:bg-emerald-600: 鼠标悬停时颜色加深 -->
-                      <!-- 【尺寸优化】与编辑按钮保持一致：min-h-[36px] + py-1 px-2 -->
-                      <button 
-                        class="py-1 px-2 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[36px]" 
-                        onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
-                          schoolUsername,
-                        )}')"
-                        title="查看此账户的详细信息">
-                        详情
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <!-- 密码显示行 -->
-                  <!-- text-xs: 小字体（12px） -->
-                  <div class="text-xs">
-                    <!-- 标签文字 -->
-                    <!-- text-slate-500: 中灰色，次要信息 -->
-                    <span class="text-slate-500">密码:</span>
-                    
-                    <!-- 密码内容 -->
-                    <!-- font-mono: 等宽字体，适合显示密码 -->
-                    <!-- text-slate-700: 深灰色 -->
-                    <!-- ml-2: 左边距0.5rem（8px） -->
-                    <!-- select-all: 点击时自动全选内容，方便复制 -->
-                    <span class="font-mono text-slate-700 ml-2 select-all">
-                      ${escapeHtml(password)}
-                    </span>
-                  </div>
-                  
-                  ${
-                    // 条件渲染：只在UA存在时显示User-Agent区域
-                    ua
-                      ? `
-                  <!-- User-Agent显示区域 -->
-                  <div class="text-xs">
-                    <!-- 标签文字 -->
-                    <span class="text-slate-500">User-Agent:</span>
-                    
-                    <!-- UA内容容器 -->
-                    <!-- font-mono: 等宽字体，适合显示长字符串 -->
-                    <!-- text-xs: 小字体 -->
-                    <!-- text-slate-600: 中灰色 -->
-                    <!-- mt-1: 顶部外边距0.25rem（4px） -->
-                    <!-- p-2: 内边距0.5rem（8px） -->
-                    <!-- bg-white: 白色背景，与卡片背景区分 -->
-                    <!-- rounded: 小圆角 -->
-                    <!-- break-all: 允许在任意字符处换行，避免长字符串溢出 -->
-                    <!-- select-all: 点击时自动全选内容，方便复制 -->
-                    <div class="font-mono text-xs text-slate-600 mt-1 p-2 bg-white rounded break-all select-all">
-                      ${escapeHtml(ua)}
-                    </div>
-                  </div>
-                  `
-                      : "" // 如果ua不存在，返回空字符串，不渲染该区域
-                  }
-                </div>
-              `;
-      }
-
-      // 将生成的HTML插入到列表容器中
-      listContainer.innerHTML = html;
-    }
-
-    // ========== 显示移动端模态框 ==========
-    // 调用showModal工具函数显示模态框
-    // showModal会自动处理显示动画、事件绑定等工作
-    showModal("mobile-user-school-accounts-modal");
-
-    // 输出成功日志
-    console.log("[移动端学校账户管理] 模态框已显示");
-  } catch (error) {
-    // ========== 错误处理 ==========
-    // 捕获所有可能的异常（网络错误、解析错误等）
-
-    // 输出详细的错误日志到控制台，便于开发调试
-    console.error("[移动端学校账户管理] 加载失败：", error);
-
-    // 显示友好的错误提示给用户
-    // error.message包含错误的具体描述
-    // showModalAlert("加载失败: " + error.message, "错误");
-    Swal.fire({
-      title: "错误",
-      text: "加载失败: " + error.message,
-      icon: "error",
-    });
-  }
-}
-// ==================== 移动端学校账户管理功能 END ====================
+// [注意] showMobileUserSchoolAccounts 函数已移至文件后部（约50259行）
+// 该函数动态创建移动端模态框DOM，避免依赖预定义的HTML元素
+// 旧版函数已删除以解决函数重复定义问题
 
 async function manageUserPermissions(username) {
   currentManageUsername = username;
@@ -30674,7 +30402,7 @@ async function createNewSessionFromPicker() {
         Swal.fire({
           icon: "error",
           title: "创建失败",
-          text: 创建会话失败,
+          text: result.message || "创建会话失败",
         });
         if (mobileButton) {
           mobileButton.disabled = false;
@@ -46711,6 +46439,56 @@ function initMobileMultiAdminButtonEvents() {
 // ========================================
 let mobileMultiLogCurrentPage = 1;
 
+/**
+ * 将日志文本渲染为带关键词高亮的 HTML（移动端版本）
+ * 支持按过滤词过滤行，并对 ERROR/WARNING/INFO/DEBUG 着色
+ * @param {HTMLElement} el - 目标 pre 元素
+ * @param {string} rawLog - 原始日志文本
+ * @param {string} filter - 过滤关键词（为空时显示全部）
+ */
+function renderMobileHighlightedLog(el, rawLog, filter = "") {
+  if (!el) return;
+  const lines = rawLog.split("\n");
+  const keyword = filter.trim().toUpperCase();
+  const filtered = keyword
+    ? lines.filter(line => line.toUpperCase().includes(keyword))
+    : lines;
+
+  el.innerHTML = filtered.map(line => {
+    const escaped = line
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    if (/\bERROR\b/.test(line)) {
+      return `<span class="text-red-400 font-semibold">${escaped}</span>`;
+    } else if (/\bWARNING\b|\bWARN\b/.test(line)) {
+      return `<span class="text-amber-400">${escaped}</span>`;
+    } else if (/\bCRITICAL\b/.test(line)) {
+      return `<span class="text-red-300 font-bold bg-red-900/30">${escaped}</span>`;
+    } else if (/\bDEBUG\b/.test(line)) {
+      return `<span class="text-slate-500">${escaped}</span>`;
+    } else if (/\bINFO\b/.test(line)) {
+      return `<span class="text-sky-400">${escaped}</span>`;
+    } else if (/\bSUCCESS\b/.test(line)) {
+      return `<span class="text-green-400">${escaped}</span>`;
+    }
+    return `<span>${escaped}</span>`;
+  }).join("\n");
+}
+
+/**
+ * 移动端日志过滤函数
+ * @param {string} keyword - 过滤关键词
+ */
+function filterMobileLogContent(keyword) {
+  const contentEl = document.getElementById("mobile-multi-admin-logs-content");
+  if (!contentEl) return;
+  const raw = contentEl.dataset.rawLog || "";
+  renderMobileHighlightedLog(contentEl, raw, keyword);
+  const filterInput = document.getElementById("mobile-multi-log-filter-input");
+  if (filterInput && keyword !== undefined) filterInput.value = keyword;
+}
+
 async function loadMobileMultiAdminLogs(newPage = 1) {
   mobileMultiLogCurrentPage = newPage;
 
@@ -46720,6 +46498,7 @@ async function loadMobileMultiAdminLogs(newPage = 1) {
   const pageTotal = document.getElementById("mobile-multi-log-page-total");
   const prevBtn = document.getElementById("mobile-multi-log-prev-page");
   const nextBtn = document.getElementById("mobile-multi-log-next-page");
+  const filterInput = document.getElementById("mobile-multi-log-filter-input");
 
   if (!contentEl) {
     console.error("[移动端日志] 找不到日志内容容器");
@@ -46754,7 +46533,13 @@ async function loadMobileMultiAdminLogs(newPage = 1) {
       return;
     }
 
-    contentEl.textContent = result.logs.join("");
+    // 存储原始日志以供过滤使用
+    const rawLog = result.logs.join("");
+    contentEl.dataset.rawLog = rawLog;
+    
+    // 渲染带高亮的日志，应用当前过滤词
+    const currentFilter = filterInput ? filterInput.value : "";
+    renderMobileHighlightedLog(contentEl, rawLog, currentFilter);
 
     const pagination = result.pagination;
     if (pageTotal) pageTotal.textContent = `(共 ${pagination.total_lines} 行)`;
@@ -56966,6 +56751,9 @@ function createPaymentLogCard(log) {
     }
   }
 
+  // 生成唯一的ID用于详情折叠
+  const logId = `payment-log-detail-${log.id || Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
   // 步骤4：拼接完整的日志卡片HTML
   return `
         <div class="border-2 ${actionConfig.borderColor} ${
@@ -57005,8 +56793,27 @@ function createPaymentLogCard(log) {
                 }
             </div>
             
-            <!-- 详细数据 -->
-            ${logDataHTML}
+            <!-- 详细数据（可折叠） -->
+            ${logDataHTML ? `
+            <div class="pt-2">
+                <button 
+                    type="button"
+                    class="w-full py-1.5 px-3 text-xs bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1"
+                    onclick="(function(btn) {
+                        const detail = document.getElementById('${logId}');
+                        if (detail) {
+                            detail.classList.toggle('hidden');
+                            btn.querySelector('span').textContent = detail.classList.contains('hidden') ? '📋 查看详情' : '📋 收起详情';
+                        }
+                    })(this)"
+                >
+                    <span>📋 查看详情</span>
+                </button>
+                <div id="${logId}" class="hidden mt-2">
+                    ${logDataHTML}
+                </div>
+            </div>
+            ` : ''}
         </div>
     `;
 }

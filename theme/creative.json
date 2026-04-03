@@ -3,7 +3,7 @@
   "name": "创意艺术风 (Creative)",
   "description": "大胆配色、渐变插画感，充满活力与创造力",
   "icon": "🎨",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "tags": ["creative", "colorful", "gradient", "art", "design"],
   "preview": {
     "primary":    "#f59e0b",
@@ -41,7 +41,13 @@
     "--shadow-md":        "0 6px 18px rgba(236,72,153,0.14)",
     "--shadow-lg":        "0 12px 30px rgba(236,72,153,0.16)",
     "--blur-panel":       "20px",
-    "--accent-gradient":  "linear-gradient(90deg,#f59e0b,#ec4899,#8b5cf6)"
+    "--accent-gradient":  "linear-gradient(135deg,#f59e0b,#ec4899,#8b5cf6)",
+    "--btn-radius":       "22px",
+    "--input-border":     "#fed7aa",
+    "--input-focus":      "#ec4899",
+    "--card-hover-shadow": "0 16px 40px rgba(236,72,153,0.2)",
+    "--card-hover-transform": "translateY(-4px) rotate(-0.5deg)",
+    "--transition-speed": "0.4s"
   },
   "bodyClasses": ["theme-creative"],
   "darkMode": false,

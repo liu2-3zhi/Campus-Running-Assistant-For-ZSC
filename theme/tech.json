@@ -3,7 +3,7 @@
   "name": "科技未来风 (Tech/Futuristic)",
   "description": "霓虹渐变、几何线条，科技感与未来感兼具",
   "icon": "🚀",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "tags": ["tech", "futuristic", "neon", "dark", "cyberpunk"],
   "preview": {
     "primary":    "#06b6d4",
@@ -41,7 +41,14 @@
     "--shadow-md":        "0 6px 20px rgba(139,92,246,0.20)",
     "--shadow-lg":        "0 12px 36px rgba(139,92,246,0.24)",
     "--blur-panel":       "20px",
-    "--accent-gradient":  "linear-gradient(90deg,#06b6d4,#8b5cf6)"
+    "--accent-gradient":  "linear-gradient(135deg,#06b6d4,#8b5cf6)",
+    "--btn-radius":       "6px",
+    "--input-border":     "rgba(6,182,212,0.25)",
+    "--input-focus":      "#06b6d4",
+    "--card-hover-shadow": "0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(6,182,212,0.2)",
+    "--neon-glow":        "0 0 20px rgba(6,182,212,0.3)",
+    "--neon-glow-strong": "0 0 30px rgba(6,182,212,0.5), 0 0 60px rgba(139,92,246,0.3)",
+    "--transition-speed": "0.3s"
   },
   "bodyClasses": ["theme-tech"],
   "darkMode": true,

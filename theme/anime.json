@@ -3,7 +3,7 @@
   "name": "二次元/动漫风 (Anime)",
   "description": "明亮色彩、渐变背景，充满趣味感，适合年轻群体",
   "icon": "🌸",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "tags": ["anime", "kawaii", "pink", "soft", "youth"],
   "preview": {
     "primary":    "#ec4899",
@@ -41,7 +41,14 @@
     "--shadow-md":        "0 8px 24px rgba(168,85,247,0.16)",
     "--shadow-lg":        "0 16px 40px rgba(168,85,247,0.20)",
     "--blur-panel":       "24px",
-    "--accent-gradient":  "linear-gradient(90deg,#f472b6,#a855f7,#38bdf8)"
+    "--accent-gradient":  "linear-gradient(135deg,#f472b6,#a855f7,#38bdf8)",
+    "--btn-radius":       "32px",
+    "--input-border":     "#f5d0fe",
+    "--input-focus":      "#ec4899",
+    "--card-hover-shadow": "0 16px 48px rgba(168,85,247,0.25)",
+    "--card-hover-transform": "translateY(-6px) rotate(1deg)",
+    "--transition-speed": "0.4s",
+    "--bounce-timing":    "cubic-bezier(0.34, 1.56, 0.64, 1)"
   },
   "bodyClasses": ["theme-anime"],
   "darkMode": false,
