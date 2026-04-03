@@ -23790,7 +23790,7 @@ function _rerenderAdminUsersList() {
   _syncAdminUsersSortUI();
 
   const groupSelect = (user) => `
-    <select class="text-sm border border-slate-300 rounded px-2 py-1" onchange="updateUserGroup('${
+    <select class="text-sm bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300 cursor-pointer" onchange="updateUserGroup('${
       user.auth_username
     }', this.value)">
       ${groups.map((g) => `<option value="${g}" ${g === user.group ? "selected" : ""}>${g}</option>`).join("")}
