@@ -22870,15 +22870,27 @@ async function test2FA() {
     modal.className = "fixed inset-0 flex items-center justify-center z-50";
     modal.innerHTML = `
           <div class="fixed inset-0 bg-black bg-opacity-50" onclick="this.parentElement.remove()"></div>
-          <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 relative z-10">
-            <h3 class="text-lg font-semibold text-slate-800 mb-4">测试2FA</h3>
-            <div class="mb-4">
-              <label class="block text-sm font-semibold text-slate-700 mb-2">请输入验证器中的6位验证码</label>
-              <input type="text" id="test-2fa-code-input" class="input-field w-full" placeholder="输入6位验证码" maxlength="6" inputmode="numeric">
+          <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 relative z-10 border border-slate-100">
+            <div class="flex items-center gap-3 mb-5">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+              </div>
+              <h3 class="text-lg font-bold text-slate-800">测试2FA验证</h3>
             </div>
-            <div class="flex gap-2 justify-end">
-              <button class="btn btn-ghost" onclick="this.closest('.fixed').remove()">取消</button>
-              <button class="btn btn-primary" id="confirm-test-2fa">验证</button>
+            <div class="p-4 bg-gradient-to-r from-indigo-50 to-white border border-indigo-100 rounded-xl mb-4">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                <label class="text-sm font-semibold text-slate-700">验证码</label>
+              </div>
+              <input type="text" id="test-2fa-code-input" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-center text-xl tracking-widest font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="• • • • • •" maxlength="6" inputmode="numeric">
+              <p class="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                请打开验证器应用，输入当前显示的6位数字
+              </p>
+            </div>
+            <div class="flex gap-3 justify-end">
+              <button class="btn btn-ghost px-4 py-2 hover:bg-slate-100 transition-colors" onclick="this.closest('.fixed').remove()">取消</button>
+              <button class="btn btn-primary px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-lg transition-all duration-200" id="confirm-test-2fa">✓ 验证</button>
             </div>
           </div>
         `;
