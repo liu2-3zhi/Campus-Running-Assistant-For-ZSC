@@ -28606,6 +28606,64 @@ async function loadSMSHistory() {
 
 // ==================== 短信测试发送功能 ====================
 function openSMSTestModal() {
+  // 移动端：动态创建底部弹窗（bottom sheet）
+  if (isMobileMode) {
+    let sheet = document.getElementById("mobile-sms-test-sheet");
+    if (!sheet) {
+      sheet = document.createElement("div");
+      sheet.id = "mobile-sms-test-sheet";
+      sheet.className = "fixed inset-0 hidden mobile-modal z-[1060]";
+      sheet.innerHTML = `
+        <div class="absolute inset-0 bg-black/40" onclick="closeMobileSMSTestModal()"></div>
+        <div class="mobile-modal-content bg-white rounded-t-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+          <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileSMSTestModal()">
+            <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-md">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              </div>
+              <h3 class="text-lg font-bold text-green-700">短信测试发送</h3>
+            </div>
+            <button onclick="closeMobileSMSTestModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+          <div class="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800">
+            <strong>💡 说明：</strong>用于测试短信配置是否正确，可发送随机或指定验证码到手机。
+          </div>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">手机号 <span class="text-red-500">*</span></label>
+              <input type="tel" id="mobile-sms-test-phone" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 outline-none" placeholder="请输入11位手机号" maxlength="11" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">验证码（可选，留空自动生成）</label>
+              <input type="text" id="mobile-sms-test-code" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 outline-none" placeholder="留空则随机生成6位验证码" maxlength="6" />
+            </div>
+          </div>
+          <button onclick="sendMobileSMSTest()" class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold min-h-[44px] flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            发送测试短信
+          </button>
+          <div id="mobile-sms-test-result" class="hidden"></div>
+        </div>
+      `;
+      document.body.appendChild(sheet);
+    }
+    // 重置输入框和结果区域
+    const phoneInput = document.getElementById("mobile-sms-test-phone");
+    if (phoneInput) phoneInput.value = "";
+    const codeInput = document.getElementById("mobile-sms-test-code");
+    if (codeInput) codeInput.value = "";
+    const resultDiv = document.getElementById("mobile-sms-test-result");
+    if (resultDiv) resultDiv.className = "hidden";
+    sheet.classList.remove("hidden");
+    sheet.classList.add("show");
+    return;
+  }
+  // PC 端：使用原有模态框
   const modal = $("sms-test-modal");
   if (modal) {
     modal.classList.remove("hidden");
@@ -28635,6 +28693,63 @@ function openSMSTestModal() {
     }
   }
 }
+
+function closeMobileSMSTestModal() {
+  const sheet = document.getElementById("mobile-sms-test-sheet");
+  if (sheet) {
+    sheet.classList.remove("show");
+    setTimeout(() => sheet.classList.add("hidden"), 300);
+  }
+}
+
+async function sendMobileSMSTest() {
+  const phone = (document.getElementById("mobile-sms-test-phone")?.value || "").trim();
+  const customCode = (document.getElementById("mobile-sms-test-code")?.value || "").trim();
+  const resultDiv = document.getElementById("mobile-sms-test-result");
+
+  if (!phone) {
+    Swal.fire({ icon: "warning", title: "请输入手机号", confirmButtonText: "确定" });
+    return;
+  }
+  if (!/^1[3-9]\d{9}$/.test(phone)) {
+    Swal.fire({ icon: "warning", title: "手机号格式不正确", text: "请输入11位有效手机号", confirmButtonText: "确定" });
+    return;
+  }
+
+  if (resultDiv) {
+    resultDiv.className = "text-center text-sm text-slate-500 py-2";
+    resultDiv.textContent = "发送中...";
+  }
+
+  try {
+    const requestData = { phone };
+    if (customCode) requestData.code = customCode;
+    const response = await fetch("/api/sms/test_send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Session-ID": sessionUUID },
+      body: JSON.stringify(requestData),
+    });
+    const result = await response.json();
+
+    if (result.success) {
+      if (resultDiv) {
+        resultDiv.className = "bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-800";
+        resultDiv.innerHTML = `✓ 发送成功！验证码：<strong>${escapeHtml(String(result.code || ""))}</strong>，已发送至 ${escapeHtml(result.phone || phone)}`;
+      }
+    } else {
+      if (resultDiv) {
+        resultDiv.className = "bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-800";
+        resultDiv.innerHTML = `✗ 发送失败：${escapeHtml(result.message || "未知错误")}`;
+      }
+    }
+  } catch (e) {
+    if (resultDiv) {
+      resultDiv.className = "bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-800";
+      resultDiv.textContent = "网络错误，请重试";
+    }
+  }
+}
+
 function closeSMSTestModal() {
   const modal = $("sms-test-modal");
   if (modal) {
