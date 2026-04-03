@@ -14803,13 +14803,34 @@
             </div>
           </div>
 
-          <div id="admin-logs-panel_modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold">系统日志</h4>
-              <div class="flex gap-2">
+          <div id="admin-logs-panel_modal" class="hidden space-y-3">
+            <!-- 标题区 -->
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">系统日志</h4>
+              <div class="flex-1"></div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- 关键词过滤 -->
+                <input
+                  type="text"
+                  id="log-filter-input"
+                  class="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all w-32"
+                  placeholder="过滤关键词…"
+                  oninput="filterLogContent(this.value)"
+                  title="输入关键词过滤日志行"
+                />
+                <!-- 日志级别快速过滤 -->
+                <div class="flex gap-1">
+                  <button onclick="filterLogContent('ERROR')" class="px-2 py-1 text-[10px] font-bold rounded bg-red-100 text-red-600 border border-red-200 hover:bg-red-200 transition-colors">ERROR</button>
+                  <button onclick="filterLogContent('WARNING')" class="px-2 py-1 text-[10px] font-bold rounded bg-amber-100 text-amber-600 border border-amber-200 hover:bg-amber-200 transition-colors">WARN</button>
+                  <button onclick="filterLogContent('INFO')" class="px-2 py-1 text-[10px] font-bold rounded bg-sky-100 text-sky-600 border border-sky-200 hover:bg-sky-200 transition-colors">INFO</button>
+                  <button onclick="filterLogContent('')" class="px-2 py-1 text-[10px] font-bold rounded bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors">全部</button>
+                </div>
                 <select
                   id="log-limit-select_modal"
-                  class="text-sm border border-slate-300 rounded px-2 py-1"
+                  class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
                   aria-label="日志每页限制（对话框）"
                 >
                   <option value="100">每页100行</option>
@@ -14819,29 +14840,33 @@
                 </select>
                 <button
                   id="admin-refresh-logs_modal"
-                  class="btn btn-ghost !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                   刷新
                 </button>
               </div>
             </div>
+
+            <!-- 日志内容 -->
             <div
-              class="bg-slate-900 text-green-400 rounded-lg p-4 font-mono text-xs overflow-auto max-h-[47vh]"
+              class="bg-slate-900 text-green-400 rounded-xl border border-slate-700 p-4 font-mono text-xs overflow-auto max-h-[47vh] shadow-inner"
+              id="admin-logs-display-wrapper"
             >
               <pre
                 id="admin-logs-content_modal"
-                class="whitespace-pre-wrap overflow-visible"
-              >
-            加载中...</pre
-              >
+                class="whitespace-pre-wrap overflow-visible leading-relaxed"
+              >加载中...</pre>
             </div>
+
+            <!-- 分页 -->
             <div
               id="admin-logs-pagination"
-              class="flex justify-between items-center text-sm text-slate-600 pt-2 border-t border-slate-200"
+              class="flex justify-between items-center text-sm text-slate-600 pt-2 border-t border-slate-100"
             >
               <button
                 id="log-prev-page"
-                class="btn btn-ghost !py-1 !px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 上一页
               </button>
@@ -14849,30 +14874,34 @@
               <div class="flex items-center gap-2">
                 <select
                   id="log-page-select"
-                  class="text-sm border border-slate-300 rounded px-2 py-1 bg-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none cursor-pointer"
+                  class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:border-sky-500 focus:ring-2 focus:ring-sky-500 outline-none cursor-pointer"
                   aria-label="日志页码"
                 >
                   <option value="1">第 1 / 1 页</option>
                 </select>
                 <span
                   id="log-page-total"
-                  class="text-sm text-slate-500 whitespace-nowrap"
+                  class="text-xs text-slate-500 whitespace-nowrap"
                   >(共 0 行)</span
                 >
               </div>
 
               <button
                 id="log-next-page"
-                class="btn btn-ghost !py-1 !px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 下一页
               </button>
             </div>
           </div>
 
-          <div id="admin-sessions-panel_modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold">会话列表</h4>
+          <div id="admin-sessions-panel_modal" class="hidden space-y-3">
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">会话列表</h4>
+              <div class="flex-1"></div>
               <div class="flex items-center gap-3">
                 <label
                   id="god-mode-toggle_modal"
@@ -14886,18 +14915,14 @@
                     aria-label="god mode checkbox_modal"
                     title="god mode checkbox_modal"
                   />
-                  <span class="text-sm font-semibold text-red-600"
-                    >查看所有会话</span
-                  >
+                  <span class="text-sm font-semibold text-red-600">查看所有会话</span>
                 </label>
-                <div
-                  id="admin-session-count-display"
-                  class="text-sm text-slate-600"
-                ></div>
+                <div id="admin-session-count-display" class="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-lg"></div>
                 <button
                   id="admin-refresh-sessions_modal"
-                  class="btn btn-ghost !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                   刷新
                 </button>
               </div>
@@ -14910,11 +14935,15 @@
             </div>
           </div>
 
-          <div id="admin-health-panel_modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold">系统健康状态</h4>
+          <div id="admin-health-panel_modal" class="hidden space-y-3">
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">系统健康状态</h4>
+              <div class="flex-1"></div>
               <div class="flex items-center gap-2">
-                <label class="flex items-center gap-2 cursor-pointer">
+                <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
                   <input
                     type="checkbox"
                     id="health-auto-refresh-toggle"
@@ -14923,18 +14952,13 @@
                     aria-label="health auto refresh toggle"
                     title="health auto refresh toggle"
                   />
-                  <span class="text-sm text-slate-600">
-                    自动刷新(5秒)
-                    <span
-                      id="health-countdown-display"
-                      class="font-semibold text-sky-600"
-                    ></span>
-                  </span>
+                  <span>自动刷新(5秒) <span id="health-countdown-display" class="font-semibold text-sky-600"></span></span>
                 </label>
                 <button
                   id="admin-refresh-health_modal"
-                  class="btn btn-ghost !py-1 !px-2"
+                  class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                   手动刷新
                 </button>
               </div>
@@ -15486,59 +15510,45 @@
             </div>
           </div>
 
-          <div id="admin-messages-panel_modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold">留言板</h4>
+          <div id="admin-messages-panel_modal" class="hidden space-y-3">
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">留言板</h4>
+              <div class="flex-1"></div>
               <button
                 id="admin-refresh-messages_modal"
-                class="btn btn-ghost !py-1 !px-2"
+                class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
               >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 刷新
               </button>
             </div>
 
             <div
-              class="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3"
+              class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl space-y-3"
             >
-              <h5 class="font-semibold text-slate-700">发表留言</h5>
-              <div id="message-guest-fields" class="space-y-2 hidden">
-                <div>
-                  <label class="block text-sm font-semibold text-slate-700 mb-1"
-                    >昵称 <span class="text-red-500">*</span></label
-                  >
-                  <input
-                    type="text"
-                    id="message-nickname"
-                    class="input-field"
-                    placeholder="请输入您的昵称"
-                    maxlength="50"
-                  />
+              <h5 class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                <svg class="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                发表留言
+              </h5>
+              <div id="message-guest-fields" class="space-y-3 hidden">
+                <div class="p-3 bg-white border border-slate-100 rounded-lg">
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5">昵称 <span class="text-red-500">*</span></label>
+                  <input type="text" id="message-nickname" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all hover:border-slate-300" placeholder="请输入您的昵称" maxlength="50" />
                 </div>
-                <div>
-                  <label class="block text-sm font-semibold text-slate-700 mb-1"
-                    >邮箱 <span class="text-red-500">*</span></label
-                  >
-                  <input
-                    type="email"
-                    id="message-email"
-                    class="input-field"
-                    placeholder="请输入您的邮箱"
-                  />
+                <div class="p-3 bg-white border border-slate-100 rounded-lg">
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5">邮箱 <span class="text-red-500">*</span></label>
+                  <input type="email" id="message-email" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all hover:border-slate-300" placeholder="请输入您的邮箱" />
                 </div>
               </div>
               <div>
-                <label class="block text-sm font-semibold text-slate-700 mb-1"
-                  >留言内容 <span class="text-red-500">*</span></label
-                >
+                <label class="block text-xs font-semibold text-slate-600 mb-1.5">留言内容 <span class="text-red-500">*</span></label>
                 <!-- Markdown 编辑器占位，编辑器脚本会在切换到 messages 后动态加载并初始化 -->
                 <div
                   id="message-editor"
-                  style="
-                    min-height: 160px;
-                    border-radius: 6px;
-                    background: #fff;
-                    border: 1px solid #e6e6e6;
-                  "
+                  style="min-height: 160px; border-radius: 6px; background: #fff; border: 1px solid #e6e6e6;"
                 ></div>
                 <div class="text-xs text-slate-500 mt-1 text-right">
                   <span id="message-char-count">0</span> / 1000
@@ -15547,7 +15557,7 @@
               <button
                 id="post-message-btn"
                 onclick="postMessage()"
-                class="btn btn-primary w-full"
+                class="w-full px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 rounded-lg transition-all shadow-sm"
               >
                 发表留言
               </button>
@@ -15614,88 +15624,80 @@
           <!-- ============================================================ -->
           <!-- IP封禁管理 -->
           <!-- ============================================================ -->
-          <div id="admin-ip-ban-modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-lg">🚫 IP封禁管理</h4>
+          <div id="admin-ip-ban-modal" class="hidden space-y-3">
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">IP 封禁管理</h4>
+              <div class="flex-1"></div>
               <button
                 id="admin-refresh-ipban_modal"
-                class="btn btn-ghost !py-1 !px-2"
+                class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 onclick="loadIPBans()"
               >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 刷新
               </button>
             </div>
 
             <div
-              class="bg-gradient-to-br from-slate-50 to-gray-50 border-2 border-slate-200 rounded-lg p-4 shadow-sm"
+              class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl"
             >
-              <h5 class="font-bold text-base text-slate-800 mb-3">
-                📜 现有封禁规则
+              <h5 class="flex items-center gap-2 text-sm font-bold text-slate-700 mb-3">
+                <svg class="w-4 h-4 text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                现有封禁规则
               </h5>
               <div
                 id="ip-ban-list"
-                class="space-y-2 max-h-[35vh] overflow-y-auto -mr-2 pr-2"
+                class="space-y-2 max-h-[35vh] overflow-y-auto"
               >
                 <p class="text-slate-400 text-center py-10">加载中...</p>
               </div>
             </div>
 
             <div
-              class="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-lg p-4 shadow-sm"
+              class="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-xl"
             >
-              <h5 class="font-bold text-base text-blue-900 mb-3">
-                ➕ 添加封禁规则
+              <h5 class="flex items-center gap-2 text-sm font-bold text-blue-800 mb-3">
+                <svg class="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                添加封禁规则
               </h5>
               <div class="space-y-3">
-                <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1"
-                    >🏷️ 封禁类型</label
-                  >
+                <div class="p-3 bg-white border border-blue-100 rounded-lg">
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5">封禁类型</label>
                   <select
                     id="ban-type"
-                    class="select-field"
+                    class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
                     aria-label="封禁类型"
                   >
                     <option value="ip">单个IP</option>
                     <option value="range">IP范围(Range)</option>
                   </select>
-                  <p class="mt-1 text-xs text-slate-500">
-                    - <strong>单个IP</strong>: 封禁一个特定的IP地址 (例如:
-                    1.2.3.4)<br />
-                    - <strong>IP范围(Range)</strong>: 封禁一个IP地址范围 (例如:
-                    192.168.1.1-192.168.1.100)
+                  <p class="mt-1.5 text-xs text-slate-500">
+                    <strong>单个IP</strong>：封禁特定IP（如 1.2.3.4）；
+                    <strong>IP范围</strong>：封禁范围（如 192.168.1.1-192.168.1.100）
                   </p>
                 </div>
 
-                <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1"
-                    >🎯 封禁目标</label
-                  >
+                <div class="p-3 bg-white border border-blue-100 rounded-lg">
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5">封禁目标</label>
                   <input
                     type="text"
                     id="ban-target"
-                    class="input-field"
+                    class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all hover:border-slate-300"
                     placeholder="请输入IP地址 (例如: 1.2.3.4)"
                   />
-                  <p id="ban-target-hint" class="mt-1 text-xs text-slate-500">
-                    示例: 1.2.3.4
-                  </p>
-                  <p
-                    id="ban-target-error"
-                    class="hidden mt-1 text-xs text-red-600 font-semibold"
-                  ></p>
+                  <p id="ban-target-hint" class="mt-1 text-xs text-slate-500">示例: 1.2.3.4</p>
+                  <p id="ban-target-error" class="hidden mt-1 text-xs text-red-600 font-semibold"></p>
                 </div>
 
-                <div
-                  class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end pt-2 border-t border-blue-100"
-                >
-                  <div class="md:col-span-2">
-                    <label class="block text-sm font-medium text-slate-700 mb-1"
-                      >🔒 封禁范围</label
-                    >
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end pt-2 border-t border-blue-100">
+                  <div class="md:col-span-2 p-3 bg-white border border-blue-100 rounded-lg">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">封禁范围</label>
                     <select
                       id="ban-scope"
-                      class="select-field"
+                      class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
                       aria-label="封禁范围"
                     >
                       <option value="all">封禁所有功能</option>
@@ -15704,7 +15706,7 @@
                   </div>
                   <button
                     onclick="addIPBan()"
-                    class="btn btn-primary w-full min-h-[44px]"
+                    class="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 rounded-lg transition-all shadow-sm min-h-[44px]"
                   >
                     添加封禁
                   </button>

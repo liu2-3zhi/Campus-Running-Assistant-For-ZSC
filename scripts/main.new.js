@@ -21638,7 +21638,10 @@ async function loadAdminLogs(newPage = 1) {
       return;
     }
 
-    contentEl.textContent = result.logs.join("");
+    // 存储原始日志以供过滤使用
+    const rawLog = result.logs.join("");
+    contentEl.dataset.rawLog = rawLog;
+    renderHighlightedLog(contentEl, rawLog, $("log-filter-input") ? $("log-filter-input").value : "");
 
     const pagination = result.pagination;
     pageTotal.textContent = `(共 ${pagination.total_lines} 行)`;
@@ -21663,6 +21666,52 @@ async function loadAdminLogs(newPage = 1) {
     pageSelect.innerHTML = '<option value="1">1</option>';
     pageTotal.textContent = "(加载失败)";
   }
+}
+
+/**
+ * 将日志文本渲染为带关键词高亮的 HTML
+ * 支持按过滤词过滤行，并对 ERROR/WARNING/INFO/DEBUG 着色
+ * @param {HTMLElement} el - 目标 pre 元素
+ * @param {string} rawLog - 原始日志文本
+ * @param {string} filter - 过滤关键词（为空时显示全部）
+ */
+function renderHighlightedLog(el, rawLog, filter = "") {
+  if (!el) return;
+  const lines = rawLog.split("\n");
+  const keyword = filter.trim().toUpperCase();
+  const filtered = keyword
+    ? lines.filter(line => line.toUpperCase().includes(keyword))
+    : lines;
+
+  el.innerHTML = filtered.map(line => {
+    const escaped = line
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    if (/\bERROR\b/.test(line)) {
+      return `<span class="text-red-400 font-semibold">${escaped}</span>`;
+    } else if (/\bWARNING\b|\bWARN\b/.test(line)) {
+      return `<span class="text-amber-400">${escaped}</span>`;
+    } else if (/\bCRITICAL\b/.test(line)) {
+      return `<span class="text-red-300 font-bold bg-red-900/30">${escaped}</span>`;
+    } else if (/\bDEBUG\b/.test(line)) {
+      return `<span class="text-slate-500">${escaped}</span>`;
+    }
+    return `<span>${escaped}</span>`;
+  }).join("\n");
+}
+
+/**
+ * 对当前日志内容进行关键词过滤（由过滤输入框调用）
+ * @param {string} keyword
+ */
+function filterLogContent(keyword) {
+  const contentEl = $("admin-logs-content_modal");
+  if (!contentEl) return;
+  const raw = contentEl.dataset.rawLog || "";
+  renderHighlightedLog(contentEl, raw, keyword);
+  const filterInput = $("log-filter-input");
+  if (filterInput && keyword !== undefined) filterInput.value = keyword;
 }
 
 // ====================
