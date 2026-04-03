@@ -12279,15 +12279,87 @@ async function openAddWatermarkUserModal() {
 
   try {
     // [步骤1] 显示模态框
-    // 获取模态框元素
-    const modal = document.getElementById("add-watermark-user-modal");
+    let modal = document.getElementById("add-watermark-user-modal");
+    let listContainer;
+
+    if (isMobileMode) {
+      modal = document.getElementById("mobile-add-watermark-user-sheet");
+      if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "mobile-add-watermark-user-sheet";
+        modal.className = "fixed inset-0 hidden mobile-modal z-[1060]";
+        modal.innerHTML = `
+          <div class="absolute inset-0 bg-black/40" data-close-sheet="true"></div>
+          <div class="mobile-modal-content bg-white rounded-t-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex justify-center mb-2 cursor-pointer" data-close-sheet="true">
+              <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+            </div>
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-bold text-slate-800">添加水印用户</h3>
+                <p class="text-xs text-slate-500 mt-1">选择尚未加入水印控制配置的用户</p>
+              </div>
+              <button type="button" data-close-sheet="true" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+            <div class="flex gap-2">
+              <input
+                id="mobile-watermark-user-search"
+                type="text"
+                placeholder="搜索用户名..."
+                oninput="filterWatermarkUsers()"
+                class="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+              />
+              <button type="button" onclick="refreshWatermarkUserList()" class="px-4 py-2.5 text-sm font-medium text-sky-600 bg-sky-50 border border-sky-100 rounded-xl active:bg-sky-100">
+                刷新
+              </button>
+            </div>
+            <div id="mobile-available-watermark-users-list" class="space-y-2"></div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+      }
+
+      listContainer = modal.querySelector("#mobile-available-watermark-users-list");
+      modal.querySelectorAll("[data-close-sheet='true']").forEach((element) => {
+        element.onclick = closeAddWatermarkUserModal;
+      });
+      modal.classList.remove("hidden");
+      modal.classList.add("show");
+    } else {
+      modal = document.getElementById("add-watermark-user-modal");
+      if (!modal) {
+        const errorMsg = "无法找到添加用户模态框元素，请刷新页面后重试";
+        console.error("[水印控制] " + errorMsg);
+        Swal.fire({
+          icon: "error",
+          title: "错误",
+          text: errorMsg,
+        });
+        return;
+      }
+
+      modal.classList.remove("hidden");
+      modal.classList.remove("mobile-modal", "show");
+      modal.classList.add("items-center");
+      const modalPanel = modal.querySelector(".bg-white.shadow-2xl, .mobile-modal-content");
+      if (modalPanel) {
+        modalPanel.classList.remove(
+          "mobile-modal-content",
+          "rounded-t-3xl",
+          "rounded-b-none",
+          "w-full",
+          "max-w-none",
+        );
+        modalPanel.classList.add("rounded-2xl", "w-[90%]", "max-w-md");
+      }
+      listContainer = document.getElementById("available-watermark-users-list");
+    }
+
     if (!modal) {
-      // 如果模态框不存在，记录错误并通过弹窗提示用户
       const errorMsg = "无法找到添加用户模态框元素，请刷新页面后重试";
       console.error("[水印控制] " + errorMsg);
-      // 使用模态框提示用户，让错误更明显
-      // showModalAlert(errorMsg, "错误");
-      // 使用Swal.fire替代showModalAlert，提供更好的用户体验
       Swal.fire({
         icon: "error",
         title: "错误",
@@ -12295,9 +12367,6 @@ async function openAddWatermarkUserModal() {
       });
       return;
     }
-
-    // 移除hidden类，使模态框可见
-    modal.classList.remove("hidden");
     // 【调试日志】确认模态框已成功打开
     console.log("[水印控制] 模态框已打开，开始加载用户列表...");
 
@@ -12305,15 +12374,12 @@ async function openAddWatermarkUserModal() {
     console.log("[水印控制] 正在加载可添加的用户列表...");
 
     // 获取用户列表容器元素
-    const listContainer = document.getElementById(
-      "available-watermark-users-list",
-    );
     if (!listContainer) {
       // 如果列表容器不存在，记录错误并通过弹窗提示用户
       const errorMsg = "无法找到用户列表容器元素，页面可能未正确加载";
       console.error("[水印控制] " + errorMsg);
       // 关闭模态框，因为无法显示内容
-      modal.classList.add("hidden");
+      closeAddWatermarkUserModal();
       // 使用模态框提示用户
       // showModalAlert(errorMsg, "错误");
       // 使用Swal.fire替代showModalAlert，提供更好的用户体验
@@ -12426,9 +12492,9 @@ async function openAddWatermarkUserModal() {
     });
 
     // 在列表容器中显示错误信息
-    const listContainer = document.getElementById(
-      "available-watermark-users-list",
-    );
+    const listContainer =
+      document.getElementById("mobile-available-watermark-users-list") ||
+      document.getElementById("available-watermark-users-list");
     if (listContainer) {
       listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-sm">加载失败：${error.message}</p>`;
     }
@@ -12442,6 +12508,23 @@ async function openAddWatermarkUserModal() {
  * 隐藏添加用户的模态框，并清空搜索框的内容。
  */
 function closeAddWatermarkUserModal() {
+  if (isMobileMode) {
+    const mobileSheet = document.getElementById("mobile-add-watermark-user-sheet");
+    if (!mobileSheet) {
+      return;
+    }
+    mobileSheet.classList.remove("show");
+    setTimeout(() => mobileSheet.classList.add("hidden"), 300);
+
+    const mobileSearchInput = document.getElementById("mobile-watermark-user-search");
+    if (mobileSearchInput) {
+      mobileSearchInput.value = "";
+    }
+
+    console.log("[水印控制] 已关闭移动端添加用户模态框");
+    return;
+  }
+
   // [步骤1] 获取模态框元素
   const modal = document.getElementById("add-watermark-user-modal");
   if (!modal) {
@@ -12610,9 +12693,9 @@ async function refreshWatermarkUserList() {
     console.log("[水印控制] 正在刷新用户列表...");
 
     // 获取用户列表容器元素
-    const listContainer = document.getElementById(
-      "available-watermark-users-list",
-    );
+    const listContainer =
+      document.getElementById("mobile-available-watermark-users-list") ||
+      document.getElementById("available-watermark-users-list");
     if (!listContainer) {
       console.error("[水印控制] 无法找到用户列表容器元素");
       return;
@@ -12848,7 +12931,9 @@ async function addWatermarkUser(username) {
  */
 function filterWatermarkUsers() {
   // [步骤1] 获取搜索框元素和关键词
-  const searchInput = document.getElementById("watermark-user-search");
+  const searchInput =
+    document.getElementById("mobile-watermark-user-search") ||
+    document.getElementById("watermark-user-search");
   if (!searchInput) {
     return;
   }
@@ -12857,9 +12942,9 @@ function filterWatermarkUsers() {
   const keyword = searchInput.value.toLowerCase().trim();
 
   // [步骤2] 获取所有用户项元素
-  const listContainer = document.getElementById(
-    "available-watermark-users-list",
-  );
+  const listContainer =
+    document.getElementById("mobile-available-watermark-users-list") ||
+    document.getElementById("available-watermark-users-list");
   if (!listContainer) {
     return;
   }
@@ -14709,13 +14794,53 @@ function initializeMobileUI() {
   const mobile2faBtn = document.getElementById("mobile-2fa-submit-btn");
   if (mobile2faBtn)
     mobile2faBtn.addEventListener("click", async () => {
+      if (mobile2faBtn.disabled || mobile2faBtn.dataset.submitting === "true") {
+        return;
+      }
+
+      mobile2faBtn.dataset.submitting = "true";
+      setButtonLoading("mobile-2fa-submit-btn", true, "验证中...");
+
       try {
-        document.getElementById("auth-2fa-code").value =
-          document.getElementById("mobile-2fa-code").value;
+        const mobile2faCodeInput = document.getElementById("mobile-2fa-code");
+        const auth2faCodeInput = document.getElementById("auth-2fa-code");
+        if (auth2faCodeInput && mobile2faCodeInput) {
+          auth2faCodeInput.value = mobile2faCodeInput.value;
+        }
+
         await handle2FAVerify();
+
+        const mobileSessionPickerModal = document.getElementById(
+          "mobile-session-picker-modal",
+        );
+        if (
+          mobileSessionPickerModal &&
+          !mobileSessionPickerModal.classList.contains("hidden")
+        ) {
+          document
+            .getElementById("mobile-auth-login-container")
+            ?.classList.add("hidden");
+          document
+            .getElementById("mobile-auth-2fa-form")
+            ?.classList.add("hidden");
+          document
+            .getElementById("mobile-login-form")
+            ?.classList.remove("hidden");
+        }
       } catch (e) {
         console.error("代理[2FA验证]失败:", e);
         showMobileMessage("2FA验证时发生内部错误", "error");
+      } finally {
+        mobile2faBtn.dataset.submitting = "false";
+        const mobileSessionPickerModal = document.getElementById(
+          "mobile-session-picker-modal",
+        );
+        if (
+          !mobileSessionPickerModal ||
+          mobileSessionPickerModal.classList.contains("hidden")
+        ) {
+          setButtonLoading("mobile-2fa-submit-btn", false);
+        }
       }
     });
 
@@ -18534,7 +18659,12 @@ async function handle2FAVerify() {
           setButtonLoading("auth-2fa-verify-btn", false);
 
           $("auth-login-container").classList.add("hidden");
-          showSessionPicker();
+          if (isMobileMode) {
+            $("mobile-auth-login-container")?.classList.add("hidden");
+            showMobileSessionPicker();
+          } else {
+            showSessionPicker();
+          }
 
           logMessage_Info("[会话选择] 请选择要进入的会话，或创建新会话");
           logMessage_Info("[提示] 每个会话都是独立的学校账号登录状态");
