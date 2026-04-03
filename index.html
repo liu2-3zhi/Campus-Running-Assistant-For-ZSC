@@ -6671,61 +6671,85 @@
                   </div>
 
                   <div
-                    class="space-y-1"
+                    class="space-y-2"
                     id="mobile-unified-theme-style-presets"
                   >
-                    <label class="block text-xs font-medium text-slate-600"
-                      >样式预设</label
-                    >
-                    <div class="grid grid-cols-2 gap-1.5" id="mobile-unified-theme-style-presets-buttons">
+                    <label class="flex items-center gap-2 text-xs font-medium text-slate-600">
+                      <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                      </svg>
+                      样式预设
+                    </label>
+                    <div class="grid grid-cols-2 gap-2" id="mobile-unified-theme-style-presets-buttons">
+                      <!-- 默认主题卡片 -->
                       <button
                         data-theme-id="default"
                         onclick="setMobileUnifiedThemeStyle('default')"
-                        class="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-700 hover:border-sky-400 transition-all"
+                        class="theme-preset-card group flex flex-col items-center gap-1 p-3 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-200 rounded-xl text-slate-700 hover:border-sky-400 hover:shadow-md transition-all duration-200"
                       >
-                        <span>🌤️</span><span>默认</span>
+                        <span class="text-2xl group-hover:scale-110 transition-transform">🌤️</span>
+                        <span class="text-xs font-semibold">默认</span>
+                        <span class="text-[10px] text-slate-400 group-hover:text-sky-500">清新简洁</span>
                       </button>
+                      <!-- 极简风卡片 -->
                       <button
                         data-theme-id="minimalist"
                         onclick="setMobileUnifiedThemeStyle('minimalist')"
-                        class="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-700 hover:border-sky-400 transition-all"
+                        class="theme-preset-card group flex flex-col items-center gap-1 p-3 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-200 rounded-xl text-slate-700 hover:border-sky-400 hover:shadow-md transition-all duration-200"
                       >
-                        <span>✨</span><span>极简风</span>
+                        <span class="text-2xl group-hover:scale-110 transition-transform">✨</span>
+                        <span class="text-xs font-semibold">极简风</span>
+                        <span class="text-[10px] text-slate-400 group-hover:text-sky-500">Less is More</span>
                       </button>
+                      <!-- 商务专业卡片 -->
                       <button
                         data-theme-id="corporate"
                         onclick="setMobileUnifiedThemeStyle('corporate')"
-                        class="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-700 hover:border-sky-400 transition-all"
+                        class="theme-preset-card group flex flex-col items-center gap-1 p-3 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-200 rounded-xl text-slate-700 hover:border-sky-400 hover:shadow-md transition-all duration-200"
                       >
-                        <span>💼</span><span>商务专业</span>
+                        <span class="text-2xl group-hover:scale-110 transition-transform">💼</span>
+                        <span class="text-xs font-semibold">商务专业</span>
+                        <span class="text-[10px] text-slate-400 group-hover:text-sky-500">稳重大气</span>
                       </button>
+                      <!-- 创意艺术卡片 -->
                       <button
                         data-theme-id="creative"
                         onclick="setMobileUnifiedThemeStyle('creative')"
-                        class="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-700 hover:border-sky-400 transition-all"
+                        class="theme-preset-card group flex flex-col items-center gap-1 p-3 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-200 rounded-xl text-slate-700 hover:border-sky-400 hover:shadow-md transition-all duration-200"
                       >
-                        <span>🎨</span><span>创意艺术</span>
+                        <span class="text-2xl group-hover:scale-110 transition-transform">🎨</span>
+                        <span class="text-xs font-semibold">创意艺术</span>
+                        <span class="text-[10px] text-slate-400 group-hover:text-sky-500">灵感迸发</span>
                       </button>
+                      <!-- 科技未来卡片 -->
                       <button
                         data-theme-id="tech"
                         onclick="setMobileUnifiedThemeStyle('tech')"
-                        class="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-700 hover:border-sky-400 transition-all"
+                        class="theme-preset-card group flex flex-col items-center gap-1 p-3 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-200 rounded-xl text-slate-700 hover:border-sky-400 hover:shadow-md transition-all duration-200"
                       >
-                        <span>🚀</span><span>科技未来</span>
+                        <span class="text-2xl group-hover:scale-110 transition-transform">🚀</span>
+                        <span class="text-xs font-semibold">科技未来</span>
+                        <span class="text-[10px] text-slate-400 group-hover:text-sky-500">前沿科幻</span>
                       </button>
+                      <!-- 二次元卡片 -->
                       <button
                         data-theme-id="anime"
                         onclick="setMobileUnifiedThemeStyle('anime')"
-                        class="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-700 hover:border-sky-400 transition-all"
+                        class="theme-preset-card group flex flex-col items-center gap-1 p-3 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-200 rounded-xl text-slate-700 hover:border-sky-400 hover:shadow-md transition-all duration-200"
                       >
-                        <span>🌸</span><span>二次元</span>
+                        <span class="text-2xl group-hover:scale-110 transition-transform">🌸</span>
+                        <span class="text-xs font-semibold">二次元</span>
+                        <span class="text-[10px] text-slate-400 group-hover:text-sky-500">萌系可爱</span>
                       </button>
+                      <!-- 复古风卡片 - 跨两列 -->
                       <button
                         data-theme-id="retro"
                         onclick="setMobileUnifiedThemeStyle('retro')"
-                        class="col-span-2 flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-700 hover:border-sky-400 transition-all"
+                        class="theme-preset-card col-span-2 group flex flex-col items-center gap-1 p-3 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-200 rounded-xl text-slate-700 hover:border-sky-400 hover:shadow-md transition-all duration-200"
                       >
-                        <span>🕰️</span><span>复古风</span>
+                        <span class="text-2xl group-hover:scale-110 transition-transform">🕰️</span>
+                        <span class="text-xs font-semibold">复古风</span>
+                        <span class="text-[10px] text-slate-400 group-hover:text-sky-500">怀旧经典</span>
                       </button>
                     </div>
                   </div>
@@ -21708,6 +21732,8 @@
     <!-- 特点：触控友好、紧凑布局、底部弹出式设计 -->
     <!-- 外层容器：fixed定位覆盖整个视口，hidden默认隐藏，z-[1055]确保在其他元素之上 -->
     <!-- 注意：这里不添加onclick，避免点击任何地方都关闭模态框 -->
+     <!-- 废弃的代码，现在由showMobileUserSchoolAccounts()实现 -->
+<template>
     <div
       id="mobile-user-school-accounts-modal"
       class="fixed inset-0 hidden mobile-modal z-[1055]"
@@ -21932,6 +21958,7 @@
         </div>
       </div>
     </div>
+</template>
     <!-- ==================== 移动端学校账户管理模态框 END ==================== -->
 
     <!-- 修复ID冲突：重命名为 edit-school-account-modal-simple，这是简洁样式的编辑模态框（区别于现代化样式） -->

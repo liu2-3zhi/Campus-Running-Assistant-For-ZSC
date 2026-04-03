@@ -24745,36 +24745,113 @@ async function editAvailableRuns(username, currentRuns) {
   // 步骤1：使用 SweetAlert2 弹出输入对话框
   // 提供友好的用户界面，让管理员输入新的可用次数值
   const { value: newRuns } = await Swal.fire({
-    title: "修改可用执行次数", // 对话框标题
+    title: "修改可用执行次数",
     html: `
-            <div class="text-left mb-4">
-              <p class="text-sm text-slate-600 mb-2">用户：<strong class="text-slate-800">${username}</strong></p>
-              <p class="text-sm text-slate-600 mb-2">当前次数：<strong class="text-blue-600">${
-                currentRuns === -1 ? "无限制" : currentRuns + "次"
-              }</strong></p>
-              <div class="bg-blue-50 border-l-4 border-blue-500 p-3 mt-3">
-                <p class="text-xs text-blue-700">💡 提示：</p>
-                <ul class="text-xs text-blue-600 mt-1 ml-4 list-disc">
-                  <li>输入 <strong>-1</strong> 表示无限次数</li>
-                  <li>输入 <strong>0</strong> 表示没有可用次数</li>
-                  <li>输入正整数表示具体可用次数</li>
-                </ul>
-              </div>
+      <div class="space-y-4">
+        <!-- 用户信息卡片 -->
+        <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+              </svg>
             </div>
-          `,
-    input: "number", // 输入框类型为数字
-    inputLabel: "请输入新的可用次数", // 输入框标签
-    inputValue: currentRuns, // 默认值为当前的可用次数
-    showCancelButton: true, // 显示取消按钮
-    confirmButtonText: "确认修改", // 确认按钮文本
-    cancelButtonText: "取消", // 取消按钮文本
-    confirmButtonColor: "#3085d6", // 确认按钮颜色
-    cancelButtonColor: "#d33", // 取消按钮颜色
+            <div class="flex-1">
+              <p class="text-xs text-slate-500 font-medium">目标用户</p>
+              <p class="text-base font-bold text-slate-800">${escapeHtml(username)}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg">
+            <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+            </svg>
+            <span class="text-sm text-slate-600">当前次数：</span>
+            <span class="font-mono font-bold ${currentRuns === -1 ? 'text-green-600' : 'text-sky-600'}">${
+              currentRuns === -1 ? "♾️ 无限制" : currentRuns + " 次"
+            }</span>
+          </div>
+        </div>
+
+        <!-- 快捷操作按钮组 -->
+        <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+          <label class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            <span class="text-sm font-semibold text-slate-700">快捷设置</span>
+          </label>
+          <div class="grid grid-cols-4 gap-2">
+            <button type="button" onclick="document.getElementById('swal-input1').value = -1" class="py-2 px-3 bg-gradient-to-br from-green-500 to-emerald-600 text-white rounded-lg text-xs font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center gap-1">
+              <span>♾️</span>
+              <span>无限</span>
+            </button>
+            <button type="button" onclick="document.getElementById('swal-input1').value = 0" class="py-2 px-3 bg-gradient-to-br from-red-500 to-rose-600 text-white rounded-lg text-xs font-medium hover:from-red-600 hover:to-rose-700 transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center gap-1">
+              <span>🚫</span>
+              <span>0次</span>
+            </button>
+            <button type="button" onclick="document.getElementById('swal-input1').value = 10" class="py-2 px-3 bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-lg text-xs font-medium hover:from-sky-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center gap-1">
+              <span>🔟</span>
+              <span>10次</span>
+            </button>
+            <button type="button" onclick="document.getElementById('swal-input1').value = 100" class="py-2 px-3 bg-gradient-to-br from-purple-500 to-violet-600 text-white rounded-lg text-xs font-medium hover:from-purple-600 hover:to-violet-700 transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center gap-1">
+              <span>💯</span>
+              <span>100次</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 输入提示卡片 -->
+        <div class="p-4 bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-200 rounded-xl">
+          <div class="flex items-start gap-2">
+            <svg class="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <div class="flex-1">
+              <p class="text-sm font-semibold text-blue-700 mb-2">💡 输入说明</p>
+              <ul class="text-xs text-blue-600 space-y-1.5">
+                <li class="flex items-center gap-2">
+                  <span class="w-5 h-5 flex items-center justify-center bg-green-100 text-green-600 rounded-full text-xs font-bold">-1</span>
+                  <span>表示<strong>无限次数</strong>，不受限制</span>
+                </li>
+                <li class="flex items-center gap-2">
+                  <span class="w-5 h-5 flex items-center justify-center bg-red-100 text-red-600 rounded-full text-xs font-bold">0</span>
+                  <span>表示<strong>禁用</strong>，无法执行</span>
+                </li>
+                <li class="flex items-center gap-2">
+                  <span class="w-5 h-5 flex items-center justify-center bg-sky-100 text-sky-600 rounded-full text-xs font-bold">N</span>
+                  <span>正整数表示<strong>具体次数</strong></span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    `,
+    input: "number",
+    inputLabel: "请输入新的可用次数",
+    inputValue: currentRuns,
+    inputAttributes: {
+      class: "w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300 font-mono text-center text-lg",
+      min: -1,
+      step: 1,
+    },
+    showCancelButton: true,
+    confirmButtonText: "✅ 确认修改",
+    cancelButtonText: "❌ 取消",
+    confirmButtonColor: "#0ea5e9",
+    cancelButtonColor: "#64748b",
+    customClass: {
+      popup: "rounded-2xl",
+      title: "text-slate-800 font-bold",
+      confirmButton: "rounded-lg font-medium px-6 py-2.5",
+      cancelButton: "rounded-lg font-medium px-6 py-2.5",
+      input: "rounded-lg",
+    },
     // 步骤2：输入验证器 - 在用户点击确认前验证输入的合法性
     inputValidator: (value) => {
       // 检查输入是否为空（允许输入0，所以需要特殊判断）
       if (value === null || value === undefined || value === "") {
-        return "请输入有效的次数！";
+        return "⚠️ 请输入有效的次数！";
       }
 
       // 将输入转换为整数
@@ -24782,13 +24859,13 @@ async function editAvailableRuns(username, currentRuns) {
 
       // 检查是否为有效的整数
       if (isNaN(numValue)) {
-        return "请输入有效的整数！";
+        return "⚠️ 请输入有效的整数！";
       }
 
       // 检查取值范围：必须 >= -1
       // -1 表示无限次数，0 表示无可用次数，正数表示具体次数
       if (numValue < -1) {
-        return "次数不能小于-1！（-1表示无限次数）";
+        return "⚠️ 次数不能小于-1！（-1表示无限次数）";
       }
 
       // 验证通过，返回 undefined 表示没有错误
@@ -50191,17 +50268,29 @@ function setMobileUnifiedThemeStyle(styleName) {
     setThemeStyle(styleName);
   }
 
-  // 更新移动端面板内的按钮高亮状态（使用 data-theme-id 属性匹配）
-  document.querySelectorAll("[data-theme-id]").forEach((btn) => {
-    const isActive = btn.dataset.themeId === normalizedId;
-    btn.classList.toggle("border-sky-500", isActive);
-    btn.classList.toggle("bg-sky-50", isActive);
-    btn.classList.toggle("text-sky-600", isActive);
-    btn.classList.toggle("font-bold", isActive);
-    btn.classList.toggle("shadow-sm", isActive);
-    btn.classList.toggle("border-slate-200", !isActive);
-    btn.classList.toggle("text-slate-700", !isActive);
-  });
+  // 更新移动端面板内的按钮高亮状态（使用 data-theme-id 属性精确匹配）
+  const container = document.getElementById("mobile-unified-theme-style-presets-buttons");
+  if (container) {
+    container.querySelectorAll("[data-theme-id]").forEach((btn) => {
+      const btnThemeId = btn.dataset.themeId;
+      const isActive = btnThemeId === normalizedId;
+      
+      // 激活状态样式（卡片式）
+      btn.classList.toggle("border-sky-500", isActive);
+      btn.classList.toggle("bg-gradient-to-br", true);
+      btn.classList.toggle("from-sky-50", isActive);
+      btn.classList.toggle("to-sky-100", isActive);
+      btn.classList.toggle("from-white", !isActive);
+      btn.classList.toggle("to-slate-50", !isActive);
+      btn.classList.toggle("text-sky-600", isActive);
+      btn.classList.toggle("shadow-lg", isActive);
+      btn.classList.toggle("shadow-sky-500/20", isActive);
+      btn.classList.toggle("ring-2", isActive);
+      btn.classList.toggle("ring-sky-500/30", isActive);
+      btn.classList.toggle("border-slate-200", !isActive);
+      btn.classList.toggle("text-slate-700", !isActive);
+    });
+  }
 }
 
 // ========================================
@@ -50211,42 +50300,89 @@ function setMobileUnifiedThemeStyle(styleName) {
 
 // 【移动端】查看用户学校账户密码
 async function showMobileUserSchoolAccounts(username) {
+  // 存储当前用户名到全局变量，供刷新和新增账号功能使用
+  window._mobileSchoolAccountsUsername = username;
+
   let modal = document.getElementById("mobile-user-school-accounts-modal");
   if (!modal) {
+    console.log("创建移动端用户学校账户模态框");
     modal = document.createElement("div");
     modal.id = "mobile-user-school-accounts-modal";
-    modal.className = "fixed inset-0 hidden mobile-modal z-[60]";
+    modal.className = "fixed inset-0 hidden mobile-modal z-[1055]";
     modal.onclick = function (e) {
-      if (e.target === modal) closeMobileUserSchoolAccounts();
+      if (e.target === modal) closeMobileUserSchoolAccountsModal();
     };
     modal.innerHTML = `
-      <div class="absolute inset-0 bg-black/40" onclick="closeMobileUserSchoolAccounts()"></div>
-      <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUserSchoolAccounts()">
+      <!-- 半透明黑色背景遮罩层 -->
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobileUserSchoolAccountsModal()"></div>
+
+      <!-- 模态框主内容区域 -->
+      <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[75vh] overflow-y-auto" onclick="event.stopPropagation()">
+        <!-- 顶部拖动指示器 -->
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUserSchoolAccountsModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserSchoolAccounts()">
-          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
-            </svg>
+
+        <!-- 标题区域 -->
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserSchoolAccountsModal()">
+          <h3 class="text-lg font-bold text-sky-600 text-center">
+            管理学校账户:
+            <span id="mobile-school-accounts-username" class="text-slate-700"></span>
+          </h3>
+        </div>
+
+        <!-- 账户信息卡片 -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+          <div class="flex flex-col space-y-3">
+            <!-- 账户统计信息区域 -->
+            <div>
+              <p class="text-sm text-blue-700">
+                <strong>账户总数:</strong>
+                <span id="mobile-school-accounts-count" class="font-mono">0</span>
+              </p>
+              <p class="text-xs text-slate-600 mt-1">
+                💡 您可以查看、编辑或删除此用户的学校账户信息
+              </p>
+            </div>
+
+            <!-- 操作按钮组 -->
+            <div class="flex items-center gap-2">
+              <!-- 刷新按钮 -->
+              <button onclick="mobileRefreshSchoolAccounts()" class="flex-1 py-2 px-3 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition flex items-center justify-center gap-1.5 min-h-[44px]">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                刷新
+              </button>
+
+              <!-- 新增账号按钮 -->
+              <button onclick="mobileAddNewSchoolAccount()" class="flex-1 py-2 px-3 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition flex items-center justify-center gap-1.5 min-h-[44px]">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                新增账号
+              </button>
+            </div>
           </div>
-          <h3 class="text-xl font-bold text-indigo-600">学校账户密码</h3>
         </div>
-        <div class="text-center text-sm text-slate-500" id="mobile-school-accounts-username"></div>
-        <div id="mobile-school-accounts-list" class="space-y-3 max-h-[50vh] overflow-y-auto">
-          <p class="text-slate-400 text-center py-10 text-xs">加载中...</p>
+
+        <!-- 学校账户列表容器 -->
+        <div id="mobile-school-accounts-list" class="space-y-2 max-h-[50vh] overflow-y-auto pr-2">
+          <p class="text-slate-400 text-center text-xs py-8">正在加载账户列表...</p>
         </div>
-        <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileUserSchoolAccounts()" class="flex-1 py-2.5 px-4 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50 transition-colors">关闭</button>
+
+        <!-- 底部操作按钮区域 -->
+        <div class="flex justify-end pt-3 border-t border-slate-200">
+          <button onclick="closeMobileUserSchoolAccountsModal()" class="py-2 px-4 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition min-h-[44px]">
+            关闭
+          </button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
   }
 
-  document.getElementById("mobile-school-accounts-username").textContent =
-    `用户: ${username}`;
+  document.getElementById("mobile-school-accounts-username").textContent = username;
   document.getElementById("mobile-school-accounts-list").innerHTML =
     '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
 
@@ -50394,17 +50530,6 @@ async function showMobileUserSchoolAccounts(username) {
   } catch (e) {
     document.getElementById("mobile-school-accounts-list").innerHTML =
       `<p class="text-red-500 text-center py-10 text-xs">加载失败: ${e.message}</p>`;
-  }
-}
-
-function closeMobileUserSchoolAccounts() {
-  const modal = document.getElementById("mobile-user-school-accounts-modal");
-  if (modal) {
-    // [修正] 移除 show 类并等待动画结束
-    modal.classList.remove("show");
-    setTimeout(() => {
-      modal.classList.add("hidden");
-    }, 300);
   }
 }
 
