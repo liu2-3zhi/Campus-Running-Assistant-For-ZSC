@@ -28423,8 +28423,98 @@ function closeSMSBalanceModal() {
 
 // ==================== 短信发送历史功能 ====================
 function openSMSHistoryModal() {
+  // 移动端：使用底部抽屉弹窗
+  if (isMobileMode) {
+    let modal = document.getElementById("mobile-sms-history-modal-sheet");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "mobile-sms-history-modal-sheet";
+      modal.className = "fixed inset-0 hidden mobile-modal z-[1060]";
+      modal.innerHTML = `
+        <div class="absolute inset-0 bg-black/40" onclick="closeMobileSMSHistoryModal()"></div>
+        <div class="mobile-modal-content bg-white rounded-t-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+          <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileSMSHistoryModal()">
+            <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+              </div>
+              <h3 class="text-lg font-bold text-sky-700">短信发送历史</h3>
+            </div>
+            <button onclick="closeMobileSMSHistoryModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <input type="date" id="sms-history-date-filter-mobile" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 outline-none" />
+            <input type="text" id="sms-history-phone-filter-mobile" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 outline-none" placeholder="手机号过滤" />
+          </div>
+          <button onclick="loadMobileSMSHistory()" class="w-full py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl text-sm font-medium">🔄 刷新</button>
+          <div id="sms-history-list-mobile" class="space-y-3 max-h-[50vh] overflow-y-auto">
+            <p class="text-slate-400 text-center py-8 text-sm">点击刷新加载记录</p>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+    modal.classList.remove("hidden");
+    modal.classList.add("show");
+    loadMobileSMSHistory();
+    return;
+  }
+  // PC端：直接显示原有弹窗
   $("sms-history-modal").classList.remove("hidden");
   loadSMSHistory();
+}
+
+// 关闭移动端短信历史底部抽屉
+function closeMobileSMSHistoryModal() {
+  const modal = document.getElementById("mobile-sms-history-modal-sheet");
+  if (modal) {
+    modal.classList.remove("show");
+    setTimeout(() => modal.classList.add("hidden"), 300);
+  }
+}
+
+// 加载移动端短信历史记录
+async function loadMobileSMSHistory() {
+  const listContainer = document.getElementById("sms-history-list-mobile");
+  if (!listContainer) return;
+  listContainer.innerHTML = '<p class="text-slate-400 text-center py-8 text-sm">加载中...</p>';
+  const dateFilter = document.getElementById("sms-history-date-filter-mobile")?.value || "";
+  const phoneFilter = document.getElementById("sms-history-phone-filter-mobile")?.value.trim() || "";
+  const params = new URLSearchParams();
+  if (dateFilter) params.append("date", dateFilter);
+  if (phoneFilter) params.append("phone", phoneFilter);
+  try {
+    const response = await fetch(`/api/admin/sms/history?${params.toString()}`, {
+      headers: { "X-Session-ID": sessionUUID }
+    });
+    const result = await response.json();
+    if (result.success && result.records && result.records.length > 0) {
+      listContainer.innerHTML = result.records.map(record => `
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5">
+          <div class="flex justify-between items-start">
+            <span class="text-sm font-semibold text-slate-800">${escapeHtml(record.phone || "-")}</span>
+            <span class="text-xs text-slate-500">${escapeHtml(record.datetime || record.time || "")}</span>
+          </div>
+          <p class="text-xs text-slate-600 line-clamp-2">${escapeHtml(record.content || record.message || "-")}</p>
+          <div class="flex gap-2 flex-wrap">
+            ${record.status ? `<span class="text-xs px-2 py-0.5 rounded-full ${record.status === 'success' || record.status === '0' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${record.status === '0' || record.status === 'success' ? '✓ 成功' : '✗ 失败'}</span>` : ''}
+            ${record.template_id ? `<span class="text-xs text-slate-500">模板: ${escapeHtml(record.template_id)}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    } else if (result.records && result.records.length === 0) {
+      listContainer.innerHTML = '<p class="text-slate-400 text-center py-8 text-sm">暂无发送记录</p>';
+    } else {
+      listContainer.innerHTML = `<p class="text-red-500 text-center py-8 text-sm">${escapeHtml(result.message || "加载失败")}</p>`;
+    }
+  } catch (e) {
+    listContainer.innerHTML = '<p class="text-red-500 text-center py-8 text-sm">网络错误，请重试</p>';
+  }
 }
 
 function closeSMSHistoryModal() {
@@ -28951,7 +29041,7 @@ async function openSMSReplyLogsModal() {
     Swal.fire({
       title: "短信回复记录", // 弹窗标题
       html: tableHTML, // 弹窗内容（HTML格式）
-      width: "800px", // 弹窗宽度，足够宽以容纳表格
+      width: "min(800px, 95vw)", // 弹窗宽度，移动端自适应
       showCloseButton: true, // 显示右上角的关闭按钮（X）
       confirmButtonText: "关闭", // 底部确认按钮的文本
       customClass: {
@@ -56814,6 +56904,16 @@ function createPaymentLogCard(log) {
                 </div>
             </div>
             ` : ''}
+            <!-- 始终显示的查看详情按钮，跳转到详情弹窗 -->
+            <div class="pt-1">
+                <button
+                    type="button"
+                    class="w-full py-1.5 px-3 text-xs bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1"
+                    onclick="showPaymentLogDetail('${log.log_id || ''}')"
+                >
+                    <span>🔍 查看详情</span>
+                </button>
+            </div>
         </div>
     `;
 }
