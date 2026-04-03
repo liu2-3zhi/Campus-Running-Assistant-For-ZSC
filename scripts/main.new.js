@@ -50257,21 +50257,23 @@ async function showMobileUserLogs(username) {
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserLogs()">
-          <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-blue-600 text-center">用户日志</h3>
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-blue-600">用户日志</h3>
         </div>
         <div class="text-center text-sm text-slate-500" id="mobile-user-logs-username"></div>
-        <div class="flex gap-2 border-b border-slate-200">
-          <button id="mobile-log-tab-login" onclick="switchMobileUserLogTab('login')" class="flex-1 py-2 text-sm font-semibold text-sky-600 border-b-2 border-sky-600">登录日志</button>
-          <button id="mobile-log-tab-audit" onclick="switchMobileUserLogTab('audit')" class="flex-1 py-2 text-sm font-semibold text-slate-400 border-b-2 border-transparent">审计日志</button>
+        <div class="flex gap-2 bg-slate-50 p-1 rounded-xl">
+          <button id="mobile-log-tab-login" onclick="switchMobileUserLogTab('login')" class="flex-1 py-2 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-sm transition-all duration-200">登录日志</button>
+          <button id="mobile-log-tab-audit" onclick="switchMobileUserLogTab('audit')" class="flex-1 py-2 text-sm font-semibold text-slate-500 hover:bg-white rounded-lg transition-all duration-200">审计日志</button>
         </div>
         <div id="mobile-user-logs-content" class="space-y-2 max-h-[45vh] overflow-y-auto">
           <p class="text-slate-400 text-center py-10 text-xs">加载中...</p>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileUserLogs()" class="flex-1 py-2 px-4 bg-slate-100 text-slate-600 rounded-lg text-sm">关闭</button>
+          <button onclick="closeMobileUserLogs()" class="flex-1 py-2.5 px-4 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50 transition-colors">关闭</button>
         </div>
       </div>
     `;
