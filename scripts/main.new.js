@@ -50355,12 +50355,23 @@ function showMobileUserSessions(username, currentMax) {
           <h3 class="text-xl font-bold text-blue-600 text-center">会话管理</h3>
         </div>
         <div class="space-y-4">
-          <div class="text-center text-sm text-slate-600">用户: <span id="mobile-sessions-username" class="font-semibold"></span></div>
-          <div class="text-center text-sm text-slate-500">当前最大会话数: <span id="mobile-sessions-current" class="font-semibold text-sky-600"></span></div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">新的最大会话数</label>
-            <input type="number" id="mobile-new-max-sessions" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="0 表示无限制">
-            <p class="text-xs text-slate-500 mt-1">输入 0 表示无限制</p>
+          <div class="p-4 bg-gradient-to-r from-blue-50 to-white border border-blue-100 rounded-xl">
+            <div class="flex items-center justify-center gap-3">
+              <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+              <span class="text-sm text-slate-600">用户: <span id="mobile-sessions-username" class="font-semibold text-slate-800"></span></span>
+            </div>
+            <div class="flex items-center justify-center gap-3 mt-2">
+              <svg class="w-5 h-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span class="text-sm text-slate-500">当前最大会话数: <span id="mobile-sessions-current" class="font-semibold text-sky-600"></span></span>
+            </div>
+          </div>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-new-max-sessions" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">新的最大会话数</span>
+            </label>
+            <input type="number" id="mobile-new-max-sessions" min="0" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="0 表示无限制">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>输入 0 表示无限制，限制后超出的会话将被踢出</span></p>
           </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
