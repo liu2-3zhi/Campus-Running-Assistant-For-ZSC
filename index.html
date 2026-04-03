@@ -15717,13 +15717,18 @@
 
           <!-- ============短信服务配置============ -->
           <div id="admin-sms-config-modal" class="hidden space-y-4">
-            <div class="flex justify-between items-center">
-              <h4 class="font-semibold text-lg">📱 短信服务配置</h4>
+            <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-400 to-violet-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+              </div>
+              <h4 class="font-bold text-slate-700 text-base">短信服务配置</h4>
+              <div class="flex-1"></div>
               <button
                 id="admin-refresh-sms_modal"
-                class="btn btn-ghost !py-1 !px-2"
+                class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 onclick="loadSMSConfig()"
               >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 刷新
               </button>
             </div>
@@ -20493,71 +20498,73 @@
         class="absolute inset-0 bg-black/60"
         onclick="closeAdminModifyNicknameModal()"
       ></div>
-      <div class="panel rounded-2xl p-6 w-96 space-y-4 relative">
-        <div class="flex items-center justify-between">
-          <h3 class="text-xl font-bold text-sky-600">修改用户昵称</h3>
-          <button
-            onclick="closeAdminModifyNicknameModal()"
-            class="text-slate-400 hover:text-slate-600"
-          >
-            ×
-          </button>
-        </div>
-
-        <div class="space-y-3">
-          <div>
-            <label class="block text-sm font-semibold text-slate-700"
-              >用户名</label
+      <div class="panel rounded-2xl w-96 relative overflow-hidden">
+        <!-- 渐变装饰条 -->
+        <div class="h-1.5 bg-gradient-to-r from-sky-400 to-indigo-500"></div>
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800">修改用户昵称</h3>
+            <div class="flex-1"></div>
+            <button
+              onclick="closeAdminModifyNicknameModal()"
+              class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
             >
-            <input
-              type="text"
-              id="admin-modify-nickname-username"
-              class="input-field mt-1"
-              readonly=""
-              aria-label="admin modify nickname username"
-              title="admin modify nickname username"
-              placeholder="admin modify nickname username"
-            />
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
           </div>
 
-          <div>
-            <label class="block text-sm font-semibold text-slate-700"
-              >当前昵称</label
-            >
-            <input
-              type="text"
-              id="admin-modify-nickname-current"
-              class="input-field mt-1"
-              readonly=""
-              aria-label="admin modify nickname current"
-              title="admin modify nickname current"
-              placeholder="admin modify nickname current"
-            />
+          <div class="space-y-3">
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <label class="block text-xs font-semibold text-slate-600 mb-1.5">用户名</label>
+              <input
+                type="text"
+                id="admin-modify-nickname-username"
+                class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none"
+                readonly=""
+                aria-label="admin modify nickname username"
+                title="admin modify nickname username"
+                placeholder="admin modify nickname username"
+              />
+            </div>
+
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <label class="block text-xs font-semibold text-slate-600 mb-1.5">当前昵称</label>
+              <input
+                type="text"
+                id="admin-modify-nickname-current"
+                class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none"
+                readonly=""
+                aria-label="admin modify nickname current"
+                title="admin modify nickname current"
+                placeholder="admin modify nickname current"
+              />
+            </div>
+
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <label class="block text-xs font-semibold text-slate-600 mb-1.5">新昵称</label>
+              <input
+                type="text"
+                id="admin-modify-nickname-new"
+                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all hover:border-slate-300"
+                placeholder="请输入新昵称 (可含中文)"
+              />
+            </div>
           </div>
 
-          <div>
-            <label class="block text-sm font-semibold text-slate-700"
-              >新昵称</label
+          <div class="flex justify-end gap-3 pt-2">
+            <button
+              onclick="closeAdminModifyNicknameModal()"
+              class="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
             >
-            <input
-              type="text"
-              id="admin-modify-nickname-new"
-              class="input-field mt-1"
-              placeholder="请输入新昵称 (可含中文)"
-            />
+              取消
+            </button>
+            <button onclick="submitAdminModifyNickname()" class="px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-600 hover:to-indigo-600 rounded-lg transition-all shadow-sm">
+              确认修改
+            </button>
           </div>
-        </div>
-
-        <div class="flex justify-end gap-3 pt-4">
-          <button
-            onclick="closeAdminModifyNicknameModal()"
-            class="btn btn-ghost border border-slate-300"
-          >
-            取消
-          </button>
-          <button onclick="submitAdminModifyNickname()" class="btn btn-primary">
-            确认修改
-          </button>
         </div>
       </div>
     </div>
@@ -20570,110 +20577,110 @@
         class="absolute inset-0 bg-black/60"
         onclick="closeAdminModifyPhoneModal()"
       ></div>
-      <div class="panel rounded-2xl p-6 w-96 space-y-4 relative">
-        <div class="flex items-center justify-between">
-          <h3 class="text-xl font-bold text-sky-600">修改用户手机号</h3>
-          <button
-            onclick="closeAdminModifyPhoneModal()"
-            class="text-slate-400 hover:text-slate-600"
-          >
-            ×
-          </button>
-        </div>
-
-        <div class="space-y-3">
-          <div>
-            <label class="block text-sm font-semibold text-slate-700"
-              >用户名</label
-            >
-            <input
-              type="text"
-              id="admin-modify-phone-username"
-              class="input-field mt-1"
-              readonly=""
-              aria-label="admin modify phone username"
-              title="admin modify phone username"
-              placeholder="admin modify phone username"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-semibold text-slate-700"
-              >当前手机号</label
-            >
-            <div class="phone-input-wrapper mt-1">
-              <span class="phone-prefix">+86 </span>
-              <input
-                type="tel"
-                id="admin-modify-phone-current"
-                class="input-field"
-                readonly=""
-                aria-label="admin modify phone current"
-                title="admin modify phone current"
-                placeholder="admin modify phone current"
-              />
+      <div class="panel rounded-2xl w-96 relative overflow-hidden">
+        <!-- 渐变装饰条 -->
+        <div class="h-1.5 bg-gradient-to-r from-violet-400 to-purple-500"></div>
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
             </div>
+            <h3 class="text-lg font-bold text-slate-800">修改用户手机号</h3>
+            <div class="flex-1"></div>
+            <button
+              onclick="closeAdminModifyPhoneModal()"
+              class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
           </div>
 
-          <div>
-            <label class="block text-sm font-semibold text-slate-700"
-              >新手机号</label
-            >
-            <div class="phone-input-wrapper mt-1">
-              <span class="phone-prefix">+86 </span>
-              <input
-                type="tel"
-                id="admin-modify-phone-new"
-                class="input-field"
-                placeholder="请输入新手机号"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength="11"
-              />
-            </div>
-          </div>
-
-          <div id="admin-modify-phone-sms-group">
-            <label class="block text-sm font-semibold text-slate-700"
-              >验证码（可选）</label
-            >
-            <div class="flex gap-2 mt-1">
+          <div class="space-y-3">
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <label class="block text-xs font-semibold text-slate-600 mb-1.5">用户名</label>
               <input
                 type="text"
-                id="admin-modify-phone-code"
-                class="input-field flex-1"
-                placeholder="验证码"
-                maxlength="6"
-                inputmode="numeric"
-                pattern="[0-9]{6}"
+                id="admin-modify-phone-username"
+                class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none"
+                readonly=""
+                aria-label="admin modify phone username"
+                title="admin modify phone username"
+                placeholder="admin modify phone username"
               />
-              <button
-                onclick="sendAdminModifyPhoneCode()"
-                id="admin-modify-phone-send-btn"
-                class="btn btn-primary whitespace-nowrap"
-              >
-                发送验证码
-              </button>
             </div>
-            <p
-              class="text-xs text-slate-500 mt-1"
-              id="admin-modify-phone-sms-hint"
-            >
-              管理员修改手机号不强制要求验证码，如填写将进行校验
-            </p>
-          </div>
-        </div>
 
-        <div class="flex justify-end gap-3 pt-4">
-          <button
-            onclick="closeAdminModifyPhoneModal()"
-            class="btn btn-ghost border border-slate-300"
-          >
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <label class="block text-xs font-semibold text-slate-600 mb-1.5">当前手机号</label>
+              <div class="phone-input-wrapper">
+                <span class="phone-prefix">+86 </span>
+                <input
+                  type="tel"
+                  id="admin-modify-phone-current"
+                  class="input-field"
+                  readonly=""
+                  aria-label="admin modify phone current"
+                  title="admin modify phone current"
+                  placeholder="admin modify phone current"
+                />
+              </div>
+            </div>
+
+            <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <label class="block text-xs font-semibold text-slate-600 mb-1.5">新手机号</label>
+              <div class="phone-input-wrapper">
+                <span class="phone-prefix">+86 </span>
+                <input
+                  type="tel"
+                  id="admin-modify-phone-new"
+                  class="input-field"
+                  placeholder="请输入新手机号"
+                  inputmode="numeric"
+                  pattern="[0-9]*"
+                  maxlength="11"
+                />
+              </div>
+            </div>
+
+            <div id="admin-modify-phone-sms-group" class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+              <label class="block text-xs font-semibold text-slate-600 mb-1.5">验证码（可选）</label>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="admin-modify-phone-code"
+                  class="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition-all"
+                  placeholder="验证码"
+                  maxlength="6"
+                  inputmode="numeric"
+                  pattern="[0-9]{6}"
+                />
+                <button
+                  onclick="sendAdminModifyPhoneCode()"
+                  id="admin-modify-phone-send-btn"
+                  class="px-3 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 rounded-lg transition-all whitespace-nowrap"
+                >
+                  发送验证码
+                </button>
+              </div>
+              <p
+                class="text-xs text-slate-500 mt-1.5"
+                id="admin-modify-phone-sms-hint"
+              >
+                管理员修改手机号不强制要求验证码，如填写将进行校验
+              </p>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-3 pt-2">
+            <button
+              onclick="closeAdminModifyPhoneModal()"
+              class="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            >
             取消
           </button>
-          <button onclick="submitAdminModifyPhone()" class="btn btn-primary">
-            确认修改
-          </button>
+            <button onclick="submitAdminModifyPhone()" class="px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 rounded-lg transition-all shadow-sm">
+              确认修改
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -21951,50 +21958,51 @@
         class="absolute inset-0 bg-black/60"
         onclick="hideModal('set-max-sessions-modal')"
       ></div>
-      <div class="panel rounded-2xl p-6 w-96 space-y-4 relative">
-        <h3 class="text-xl font-bold text-sky-600">设置会话限制</h3>
+      <div class="panel rounded-2xl w-96 relative overflow-hidden">
+        <div class="h-1.5 bg-gradient-to-r from-teal-400 to-emerald-500"></div>
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"></path></svg>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800">设置会话限制</h3>
+            <div class="flex-1"></div>
+            <button
+              onclick="hideModal('set-max-sessions-modal')"
+              class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
 
-        <div class="space-y-2">
-          <p class="text-sm text-slate-600">
-            用户:
-            <span
-              id="sessions-username"
-              class="font-semibold text-slate-800"
-            ></span>
-          </p>
-          <p class="text-sm text-slate-600">
-            当前限制:
-            <span
-              id="sessions-current-max"
-              class="font-semibold text-slate-800"
-            ></span>
-          </p>
-        </div>
+          <div class="p-3 bg-teal-50 border border-teal-100 rounded-xl text-sm space-y-1">
+            <p class="text-slate-600">用户：<span id="sessions-username" class="font-semibold text-slate-800"></span></p>
+            <p class="text-slate-600">当前限制：<span id="sessions-current-max" class="font-semibold text-teal-700"></span></p>
+          </div>
 
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-1"
-            >新会话限制</label
-          >
-          <input
-            type="number"
-            id="new-max-sessions"
-            min="0"
-            class="input-field"
-            placeholder="输入会话数量"
-          />
-          <p class="text-xs text-slate-500 mt-1">0 = 无限制</p>
-        </div>
+          <div class="p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5">新会话限制</label>
+            <input
+              type="number"
+              id="new-max-sessions"
+              min="0"
+              class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all hover:border-slate-300"
+              placeholder="输入会话数量"
+            />
+            <p class="text-xs text-slate-500 mt-1.5">0 = 无限制</p>
+          </div>
 
-        <div class="flex justify-end gap-3 pt-4 border-t">
-          <button
-            onclick="hideModal('set-max-sessions-modal')"
-            class="btn btn-ghost border border-slate-300"
-          >
-            取消
-          </button>
-          <button onclick="submitSetMaxSessions()" class="btn btn-primary">
-            确认
-          </button>
+          <div class="flex justify-end gap-3 pt-2 border-t border-slate-100">
+            <button
+              onclick="hideModal('set-max-sessions-modal')"
+              class="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              取消
+            </button>
+            <button onclick="submitSetMaxSessions()" class="px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 rounded-lg transition-all shadow-sm">
+              确认
+            </button>
+          </div>
         </div>
       </div>
     </div>
