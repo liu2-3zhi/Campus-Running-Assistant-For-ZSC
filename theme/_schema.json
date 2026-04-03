@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Campus Running Assistant Theme",
+  "description": "Schema for theme configuration files",
+  "type": "object",
+  "required": ["id", "name", "description", "icon", "version", "preview", "variables"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Unique theme identifier (lowercase, hyphens allowed)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name shown in theme picker"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description of the theme"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Representative emoji icon"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version string"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Categorization tags"
+    },
+    "preview": {
+      "type": "object",
+      "required": ["primary", "accent", "background", "surface", "text"],
+      "properties": {
+        "primary":    { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "accent":     { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "surface":    { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "text":       { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+      }
+    },
+    "variables": {
+      "type": "object",
+      "description": "CSS custom properties to inject into :root",
+      "additionalProperties": { "type": "string" }
+    },
+    "bodyClasses": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "CSS classes to add to <body>"
+    },
+    "darkMode": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this theme is a dark mode theme"
+    },
+    "backgroundImage": {
+      "type": ["string", "null"],
+      "description": "Background image URL or null"
+    },
+    "fontFamily": {
+      "type": ["string", "null"],
+      "description": "CSS font-family override or null"
+    }
+  }
+}

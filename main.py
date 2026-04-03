@@ -32390,6 +32390,28 @@ def start_web_server(args_param):
             logging.error(f"Serving style error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
 
+    @app.route("/theme/<path:filename>")
+    def serve_theme(filename):
+        """
+        服务 ./theme 目录下的主题 JSON 文件
+        允许前端通过 fetch('/theme/{id}.json') 动态加载主题
+        """
+        try:
+            base_dir = os.path.dirname(__file__)
+            theme_dir = os.path.join(base_dir, "theme")
+            if not os.path.exists(theme_dir):
+                logging.warning(f"请求 theme 文件但目录不存在: {theme_dir}")
+                return jsonify({"success": False, "message": "Theme directory not found"}), 404
+            # 安全检查：只允许 .json 文件，且不允许路径穿越
+            if not filename.endswith(".json") or ".." in filename or "/" in filename:
+                return jsonify({"success": False, "message": "Invalid theme file"}), 400
+            response = send_from_directory(theme_dir, filename)
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+            return response
+        except Exception as e:
+            logging.error(f"Serving theme error: {e}")
+            return jsonify({"success": False, "message": "Theme file not found"}), 404
+
     # ========== 新增路由：Twemoji, Github_emojis, editor.md 静态资源 ==========
     @app.route("/twemoji/<path:filename>")
     def serve_twemoji(filename):

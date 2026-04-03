@@ -16622,11 +16622,145 @@ function safeResizeAndFitView() {
   }
 }
 
+// ==================== 主题系统 ====================
+
+/**
+ * 所有已知主题 ID（与 theme/ 目录下的文件名对应）
+ */
+const THEME_IDS = ["default", "minimalist", "corporate", "creative", "tech", "anime", "retro"];
+
+/**
+ * 主题 JSON 缓存（避免重复 fetch）
+ */
+const _themeCache = {};
+
+/**
+ * 从 theme/{id}.json 加载主题并应用到页面
+ * @param {string} themeId - 主题 ID（对应 ./theme/{id}.json）
+ * @param {boolean} save - 是否保存到后端
+ */
+async function loadTheme(themeId, save = true) {
+  // 参数回退
+  if (!themeId || themeId === "default") {
+    applyThemeObject(null, save);
+    return;
+  }
+
+  // 优先从缓存读
+  if (_themeCache[themeId]) {
+    applyThemeObject(_themeCache[themeId], save);
+    return;
+  }
+
+  try {
+    const resp = await fetch(`/theme/${themeId}.json`, { cache: "no-cache" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const themeObj = await resp.json();
+    _themeCache[themeId] = themeObj;
+    applyThemeObject(themeObj, save);
+  } catch (e) {
+    logMessage_Warning(`[主题] 无法加载主题文件 ${themeId}: ${e.message}`);
+    // 回退到旧版 setThemeStyle
+    setThemeStyle(themeId, save);
+  }
+}
+
+/**
+ * 将主题对象应用到 DOM（CSS 变量 + body 类 + 字体 + 深色模式）
+ * @param {Object|null} themeObj - theme JSON 对象，null 表示恢复默认
+ * @param {boolean} save
+ */
+function applyThemeObject(themeObj, save = true) {
+  const root = document.documentElement;
+  const body = document.body;
+
+  // 移除所有已知主题类
+  const allThemeClasses = THEME_IDS.map(id => `theme-${id}`).concat(
+    ["theme-anime", "theme-minimalist"]  // 兼容旧版
+  );
+  body.classList.remove(...allThemeClasses);
+
+  if (!themeObj) {
+    // 恢复默认：清除所有覆盖的 CSS 变量
+    [
+      "--bg-page","--bg-page-mid","--bg-page-end",
+      "--card-bg","--glass","--surface-1","--surface-2",
+      "--border-color","--border-light","--ink","--text-primary","--text-secondary","--text-muted",
+      "--radius-xs","--radius-sm","--radius-md","--radius-lg","--radius-xl","--radius-2xl",
+      "--shadow-xs","--shadow-sm","--shadow-md","--shadow-lg",
+      "--blur-panel","--accent-gradient",
+      "--base-color","--base-color-600","--base-color-500","--base-color-300"
+    ].forEach(v => root.style.removeProperty(v));
+    body.style.removeProperty("font-family");
+    return;
+  }
+
+  // 注入 CSS 变量
+  if (themeObj.variables) {
+    Object.entries(themeObj.variables).forEach(([key, value]) => {
+      root.style.setProperty(key, value);
+    });
+  }
+
+  // 应用 body 类
+  if (themeObj.bodyClasses) {
+    body.classList.add(...themeObj.bodyClasses);
+  }
+
+  // 深色模式
+  if (themeObj.darkMode) {
+    body.classList.add("dark-mode");
+  }
+
+  // 自定义字体
+  if (themeObj.fontFamily) {
+    body.style.fontFamily = themeObj.fontFamily;
+  } else {
+    body.style.removeProperty("font-family");
+  }
+
+  // 背景图
+  if (themeObj.backgroundImage) {
+    body.style.backgroundImage = `url('${themeObj.backgroundImage}')`;
+    body.style.backgroundSize = "cover";
+    body.style.backgroundPosition = "center";
+  }
+
+  // 保存
+  if (save) {
+    callPythonAPI("update_param", "theme_style", themeObj.id);
+    logMessage_Info(`[主题] 已切换为: ${themeObj.name}`);
+  }
+
+  // 更新 UI 选中状态
+  _updateThemeSelectorUI(themeObj.id);
+}
+
+/**
+ * 更新主题选择器按钮的视觉选中状态
+ */
+function _updateThemeSelectorUI(activeId) {
+  document.querySelectorAll("[data-theme-id]").forEach(btn => {
+    const isActive = btn.dataset.themeId === activeId;
+    btn.classList.toggle("ring-2", isActive);
+    btn.classList.toggle("ring-sky-500", isActive);
+    btn.classList.toggle("ring-offset-2", isActive);
+  });
+}
+
 function setThemeStyle(styleName, save = true) {
   // 增加 save 参数
-  document.body.classList.remove("theme-anime", "theme-minimalist");
+  document.body.classList.remove(
+    "theme-anime", "theme-minimalist",
+    "theme-corporate", "theme-creative", "theme-tech", "theme-retro"
+  );
 
   if (styleName !== "default") {
+    // 尝试从新主题系统加载（异步），若已在缓存中则同步应用
+    if (_themeCache[styleName]) {
+      applyThemeObject(_themeCache[styleName], save);
+      return;
+    }
     document.body.classList.add(styleName);
   }
 
@@ -21790,7 +21924,12 @@ async function loadPersonalInfo() {
         onColorPicked(themeColor);
       }
       if (paramsResult && paramsResult.theme_style) {
-        setThemeStyle(paramsResult.theme_style);
+        // 优先使用新主题系统（loadTheme）
+        if (typeof loadTheme === "function") {
+          loadTheme(paramsResult.theme_style.replace(/^theme-/, ""), false);
+        } else {
+          setThemeStyle(paramsResult.theme_style);
+        }
       }
       if (user.theme) {
         applyAndSaveTheme(user.theme);
@@ -38225,12 +38364,16 @@ function createParamInputs(
 
       if (def.type === "theme_selector") {
         div.innerHTML = `
-          <label class="block text-slate-700 font-semibold">${def.label}</label>
-          <p class="mt-1 text-xs text-slate-500">${def.help}</p>
-          <div class="grid grid-cols-3 gap-2 mt-2">
-              <button onclick="setThemeStyle('default')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">默认</button>
-              <button onclick="setThemeStyle('theme-anime')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">二次元</button>
-              <button onclick="setThemeStyle('theme-minimalist')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">简约</button>
+          <label class="block text-slate-700 font-semibold mb-1">${def.label}</label>
+          <p class="text-xs text-slate-500 mb-2">${def.help}</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button data-theme-id="default"    onclick="loadTheme('default')"    class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50 transition-all"><span>🌤️</span>默认</button>
+            <button data-theme-id="minimalist" onclick="loadTheme('minimalist')" class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50 transition-all"><span>✨</span>极简风</button>
+            <button data-theme-id="corporate"  onclick="loadTheme('corporate')"  class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50 transition-all"><span>💼</span>商务专业</button>
+            <button data-theme-id="creative"   onclick="loadTheme('creative')"   class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50 transition-all"><span>🎨</span>创意艺术</button>
+            <button data-theme-id="tech"       onclick="loadTheme('tech')"       class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50 transition-all"><span>🚀</span>科技未来</button>
+            <button data-theme-id="anime"      onclick="loadTheme('anime')"      class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50 transition-all"><span>🌸</span>二次元</button>
+            <button data-theme-id="retro"      onclick="loadTheme('retro')"      class="col-span-2 flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50 transition-all"><span>🕰️</span>复古风</button>
           </div>
         `;
       } else if (def.type === "color_picker") {
@@ -50001,45 +50144,25 @@ async function updateMobileUnifiedTheme() {
 
 // 5. 设置主题样式 (默认/二次元/简约)
 function setMobileUnifiedThemeStyle(styleName) {
-  // 调用全局设置函数 (setThemeStyle 内部已经包含了 update_param 的 API 调用)
-  if (typeof setThemeStyle === "function") {
+  // 使用新主题系统加载（同时兼容旧版 ID 如 theme-anime → anime）
+  const normalizedId = styleName.replace(/^theme-/, "");
+  if (typeof loadTheme === "function") {
+    loadTheme(normalizedId);
+  } else if (typeof setThemeStyle === "function") {
     setThemeStyle(styleName);
   }
 
-  // 更新移动端面板内的按钮高亮状态
-  // 修正：直接定位到样式预设的容器 ID
-  const container = document.getElementById(
-    "mobile-unified-theme-style-presets",
-  );
-  if (container) {
-    const buttons = container.querySelectorAll("button");
-    buttons.forEach((btn) => {
-      const onclickAttr = btn.getAttribute("onclick");
-      if (onclickAttr && onclickAttr.includes(`'${styleName}'`)) {
-        // 选中状态：高亮显示 (天蓝色背景+边框+加粗)
-        btn.classList.remove("border-slate-300", "text-[10px]");
-        btn.classList.add(
-          "border-sky-500",
-          "bg-sky-50",
-          "text-sky-600",
-          "font-bold",
-          "text-xs",
-          "shadow-sm",
-        );
-      } else {
-        // 未选中状态：恢复默认灰边
-        btn.classList.remove(
-          "border-sky-500",
-          "bg-sky-50",
-          "text-sky-600",
-          "font-bold",
-          "text-xs",
-          "shadow-sm",
-        );
-        btn.classList.add("border-slate-300", "text-[10px]");
-      }
-    });
-  }
+  // 更新移动端面板内的按钮高亮状态（使用 data-theme-id 属性匹配）
+  document.querySelectorAll("[data-theme-id]").forEach((btn) => {
+    const isActive = btn.dataset.themeId === normalizedId;
+    btn.classList.toggle("border-sky-500", isActive);
+    btn.classList.toggle("bg-sky-50", isActive);
+    btn.classList.toggle("text-sky-600", isActive);
+    btn.classList.toggle("font-bold", isActive);
+    btn.classList.toggle("shadow-sm", isActive);
+    btn.classList.toggle("border-slate-200", !isActive);
+    btn.classList.toggle("text-slate-700", !isActive);
+  });
 }
 
 // ========================================

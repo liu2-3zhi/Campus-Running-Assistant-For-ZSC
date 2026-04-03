@@ -1,21 +1,25 @@
 body {
   background: linear-gradient(
     180deg,
-    rgba(245, 250, 255, 1) 0%,
-    rgba(235, 245, 255, 1) 40%,
-    rgba(250, 240, 255, 1) 100%
+    var(--bg-page, rgba(245, 250, 255, 1)) 0%,
+    var(--bg-page-mid, rgba(235, 245, 255, 1)) 40%,
+    var(--bg-page-end, rgba(250, 240, 255, 1)) 100%
   );
   background-attachment: fixed;
+  color: var(--ink, #0f172a);
 }
 
 .panel {
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(var(--blur-panel, 16px));
+  backdrop-filter: blur(var(--blur-panel, 16px));
   background-color: var(--card-bg);
   border: 1px solid rgba(255, 255, 255, 0.45);
-  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.12);
+  box-shadow: var(--shadow-lg, 0 10px 24px rgba(16, 24, 40, 0.12));
 }
 
+/* ========================================
+   主题：二次元/动漫风 (Anime)
+   ======================================== */
 body.theme-anime {
   background-image: url("https://api.paugram.com/wallpaper");
   background-size: cover;
@@ -24,24 +28,137 @@ body.theme-anime {
 }
 
 body.theme-anime .panel {
-  background-color: rgba(255, 255, 255, 0.65);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  backdrop-filter: blur(20px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+  background-color: var(--card-bg, rgba(255, 255, 255, 0.80));
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.3));
+  box-shadow: var(--shadow-lg, 0 8px 32px 0 rgba(31, 38, 135, 0.2));
 }
 
+/* ========================================
+   主题：极简风 (Minimalist)
+   ======================================== */
 body.theme-minimalist {
-  background: #f8f9fa;
+  background: var(--bg-page, #f8f9fa);
 }
 
 body.theme-minimalist .panel {
-  background-color: #ffffff;
+  background-color: var(--card-bg, #ffffff);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  border: 1px solid #e9ecef;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border-radius: 12px;
+  border: 1px solid var(--border-color, #e4e4e7);
+  box-shadow: var(--shadow-sm, 0 1px 4px rgba(0, 0, 0, 0.06));
+  border-radius: var(--radius-md, 6px);
+}
+
+/* ========================================
+   主题：商务专业风 (Corporate)
+   ======================================== */
+body.theme-corporate {
+  background: linear-gradient(
+    180deg,
+    var(--bg-page, rgba(240, 244, 248, 1)) 0%,
+    var(--bg-page-mid, rgba(235, 240, 250, 1)) 50%,
+    var(--bg-page-end, rgba(238, 244, 252, 1)) 100%
+  );
+  background-attachment: fixed;
+}
+
+body.theme-corporate .panel {
+  background-color: var(--card-bg, rgba(255, 255, 255, 0.97));
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color, #cbd5e1);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.10));
+  border-radius: var(--radius-md, 8px);
+}
+
+/* ========================================
+   主题：创意艺术风 (Creative)
+   ======================================== */
+body.theme-creative {
+  background: linear-gradient(
+    180deg,
+    var(--bg-page, rgba(253, 244, 255, 1)) 0%,
+    var(--bg-page-mid, rgba(255, 237, 250, 1)) 50%,
+    var(--bg-page-end, rgba(255, 249, 235, 1)) 100%
+  );
+  background-attachment: fixed;
+}
+
+body.theme-creative .panel {
+  background-color: var(--card-bg, rgba(255, 255, 255, 0.88));
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color, #fed7aa);
+  box-shadow: var(--shadow-md, 0 6px 18px rgba(236, 72, 153, 0.14));
+  border-radius: var(--radius-xl, 22px);
+}
+
+/* ========================================
+   主题：科技未来风 (Tech/Futuristic)
+   ======================================== */
+body.theme-tech {
+  background: linear-gradient(
+    180deg,
+    var(--bg-page, rgba(15, 22, 41, 1)) 0%,
+    var(--bg-page-mid, rgba(17, 24, 44, 1)) 50%,
+    var(--bg-page-end, rgba(30, 20, 50, 1)) 100%
+  );
+  background-attachment: fixed;
+  color: var(--ink, #e2e8f0);
+}
+
+body.theme-tech .panel {
+  background-color: var(--card-bg, rgba(30, 38, 64, 0.90));
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color, rgba(6, 182, 212, 0.25));
+  box-shadow: var(--shadow-lg, 0 12px 36px rgba(139, 92, 246, 0.24));
+  border-radius: var(--radius-md, 8px);
+}
+
+body.theme-tech .input-field,
+body.theme-tech input[type="text"],
+body.theme-tech input[type="password"],
+body.theme-tech input[type="email"],
+body.theme-tech input[type="tel"],
+body.theme-tech input[type="number"],
+body.theme-tech textarea,
+body.theme-tech select {
+  background-color: var(--surface-1, rgba(15, 22, 41, 0.80));
+  border-color: var(--border-color, rgba(6, 182, 212, 0.25));
+  color: var(--ink, #e2e8f0);
+}
+
+body.theme-tech .input-field:focus,
+body.theme-tech input:focus,
+body.theme-tech textarea:focus,
+body.theme-tech select:focus {
+  border-color: var(--base-color, #06b6d4);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25);
+}
+
+/* ========================================
+   主题：复古风 (Retro/Vintage)
+   ======================================== */
+body.theme-retro {
+  background: linear-gradient(
+    180deg,
+    var(--bg-page, rgba(254, 249, 238, 1)) 0%,
+    var(--bg-page-mid, rgba(253, 244, 224, 1)) 50%,
+    var(--bg-page-end, rgba(254, 252, 243, 1)) 100%
+  );
+  background-attachment: fixed;
+}
+
+body.theme-retro .panel {
+  background-color: var(--card-bg, rgba(255, 251, 235, 0.92));
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border-color, #d6b56a);
+  box-shadow: var(--shadow-md, 0 4px 14px rgba(120, 83, 15, 0.15));
+  border-radius: var(--radius-sm, 4px);
 }
 
 body.dark-mode {
@@ -513,13 +630,52 @@ select.select-field {
 }
 
 :root {
-  --base-color: #7dd3fc;
-  --base-color-600: #0891b2;
-  --base-color-500: #22d3ee;
-  --base-color-300: #a5f3fc;
-  --card-bg: rgba(255, 255, 255, 0.85);
-  --glass: rgba(255, 255, 255, 0.65);
-  --ink: #0f172a;
+  /* 主题基色 */
+  --base-color:         #7dd3fc;
+  --base-color-600:     #0891b2;
+  --base-color-500:     #22d3ee;
+  --base-color-300:     #a5f3fc;
+
+  /* 背景渐变 */
+  --bg-page:            rgba(245, 250, 255, 1);
+  --bg-page-mid:        rgba(235, 245, 255, 1);
+  --bg-page-end:        rgba(250, 240, 255, 1);
+
+  /* 表面与卡片 */
+  --card-bg:            rgba(255, 255, 255, 0.85);
+  --glass:              rgba(255, 255, 255, 0.65);
+  --surface-1:          #f8fafc;
+  --surface-2:          #ffffff;
+
+  /* 边框 */
+  --border-color:       #e2e8f0;
+  --border-light:       #f1f5f9;
+
+  /* 文字 */
+  --ink:                #0f172a;
+  --text-primary:       #1e293b;
+  --text-secondary:     #64748b;
+  --text-muted:         #94a3b8;
+
+  /* 圆角 */
+  --radius-xs:          4px;
+  --radius-sm:          8px;
+  --radius-md:          12px;
+  --radius-lg:          16px;
+  --radius-xl:          20px;
+  --radius-2xl:         24px;
+
+  /* 阴影 */
+  --shadow-xs:          0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm:          0 2px 8px rgba(0,0,0,0.08);
+  --shadow-md:          0 4px 12px rgba(0,0,0,0.10);
+  --shadow-lg:          0 10px 24px rgba(16,24,40,0.12);
+
+  /* 模糊 */
+  --blur-panel:         16px;
+
+  /* 渐变装饰 */
+  --accent-gradient:    linear-gradient(90deg, #38bdf8, #818cf8);
 }
 
 html,
