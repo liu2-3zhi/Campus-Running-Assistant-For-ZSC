@@ -16671,6 +16671,142 @@ const THEME_IDS = ["default", "minimalist", "corporate", "creative", "tech", "an
 const _themeCache = {};
 
 /**
+ * 主题列表缓存
+ */
+let _themeListCache = null;
+
+/**
+ * 从后端获取所有可用主题列表
+ * @returns {Promise<Array>} 主题列表
+ */
+async function fetchThemeList() {
+  if (_themeListCache) {
+    return _themeListCache;
+  }
+  
+  try {
+    const resp = await fetch("/theme/list", { cache: "no-cache" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const result = await resp.json();
+    if (result.success && result.themes) {
+      _themeListCache = result.themes;
+      return result.themes;
+    }
+    throw new Error(result.message || "获取主题列表失败");
+  } catch (e) {
+    logMessage_Warning(`[主题] 获取主题列表失败: ${e.message}`);
+    return [];
+  }
+}
+
+/**
+ * 渲染主题选择按钮到指定容器
+ * @param {string} containerId - 容器元素ID
+ * @param {string} mode - 'pc' 或 'mobile'，用于不同的样式和事件处理
+ * @param {string} currentThemeId - 当前激活的主题ID
+ */
+async function renderThemeButtons(containerId, mode = "pc", currentThemeId = "default") {
+  const container = document.getElementById(containerId);
+  if (!container) {
+    logMessage_Warning(`[主题] 找不到主题按钮容器: ${containerId}`);
+    return;
+  }
+  
+  const themes = await fetchThemeList();
+  if (!themes || themes.length === 0) {
+    container.innerHTML = '<p class="text-slate-400 text-xs text-center py-4">暂无可用主题</p>';
+    return;
+  }
+  
+  // 根据主题描述提取简短描述词
+  const getShortDesc = (theme) => {
+    // 优先使用 shortDescription 字段（如果主题JSON中定义了）
+    if (theme.shortDescription) {
+      return theme.shortDescription;
+    }
+    // 回退映射（为常见主题提供友好的简短描述）
+    const descMap = {
+      'default': '清新简洁',
+      'minimalist': 'Less is More',
+      'corporate': '稳重大气',
+      'creative': '灵感迸发',
+      'tech': '前沿科幻',
+      'anime': '萌系可爱',
+      'retro': '怀旧经典'
+    };
+    if (descMap[theme.id]) {
+      return descMap[theme.id];
+    }
+    // 从 description 截取前8个字符
+    if (theme.description) {
+      return theme.description.substring(0, 8) + (theme.description.length > 8 ? '…' : '');
+    }
+    return '';
+  };
+  
+  // 提取主题显示名称（去掉英文部分）
+  const getDisplayName = (theme) => {
+    // 从 "默认 (Default)" 中提取 "默认"
+    const name = theme.name || theme.id;
+    const match = name.match(/^([^\(（]+)/);
+    return match ? match[1].trim() : name;
+  };
+  
+  if (mode === "mobile") {
+    // 移动端：卡片式布局
+    container.innerHTML = themes.map((theme, index) => {
+      const isActive = theme.id === currentThemeId;
+      const isLast = index === themes.length - 1;
+      const colSpanClass = (themes.length % 2 === 1 && isLast) ? "col-span-2" : "";
+      const activeClass = isActive ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200" : "border-slate-200";
+      
+      return `
+        <button
+          data-theme-id="${theme.id}"
+          onclick="setMobileUnifiedThemeStyle('${theme.id}')"
+          class="theme-preset-card ${colSpanClass} group flex flex-col items-center gap-1 p-3 bg-gradient-to-br from-white to-slate-50 border-2 ${activeClass} rounded-xl text-slate-700 hover:border-sky-400 hover:shadow-md transition-all duration-200"
+        >
+          <span class="text-2xl group-hover:scale-110 transition-transform">${theme.icon || '🎨'}</span>
+          <span class="text-xs font-semibold">${getDisplayName(theme)}</span>
+          <span class="text-[10px] text-slate-400 group-hover:text-sky-500">${getShortDesc(theme)}</span>
+        </button>
+      `;
+    }).join("");
+  } else {
+    // PC端：简洁按钮布局
+    container.innerHTML = themes.map((theme, index) => {
+      const isActive = theme.id === currentThemeId;
+      const isLast = index === themes.length - 1;
+      const colSpanClass = (themes.length % 2 === 1 && isLast) ? "col-span-2" : "";
+      const activeClass = isActive ? "border-sky-500 bg-sky-50 ring-1 ring-sky-200" : "border-slate-200 bg-white";
+      
+      return `
+        <button
+          data-theme-id="${theme.id}"
+          onclick="loadTheme('${theme.id}')"
+          class="${colSpanClass} flex items-center gap-2 px-3 py-2 ${activeClass} border rounded-lg text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50 transition-all"
+        >
+          <span class="text-base">${theme.icon || '🎨'}</span><span>${getDisplayName(theme)}</span>
+        </button>
+      `;
+    }).join("");
+  }
+  
+  logMessage_Info(`[主题] 已渲染 ${themes.length} 个主题按钮到 ${containerId}`);
+}
+
+/**
+ * 初始化所有主题选择器（PC端和移动端）
+ * @param {string} currentThemeId - 当前激活的主题ID
+ */
+async function initThemeSelectors(currentThemeId = "default") {
+  // PC端主题按钮容器
+  await renderThemeButtons("pc-theme-style-buttons", "pc", currentThemeId);
+  // 移动端主题按钮容器
+  await renderThemeButtons("mobile-unified-theme-style-presets-buttons", "mobile", currentThemeId);
+}
+
+/**
  * 从 theme/{id}.json 加载主题并应用到页面
  * @param {string} themeId - 主题 ID（对应 ./theme/{id}.json）
  * @param {boolean} save - 是否保存到后端
@@ -16728,6 +16864,16 @@ function applyThemeObject(themeObj, save = true) {
       "--base-color","--base-color-600","--base-color-500","--base-color-300"
     ].forEach(v => root.style.removeProperty(v));
     body.style.removeProperty("font-family");
+    body.style.removeProperty("background-image");
+    
+    // 保存默认主题设置到用户账户
+    if (save) {
+      saveThemeStyleToUser("default");
+      logMessage_Info("[主题] 已切换为: 默认");
+    }
+    
+    // 更新 UI 选中状态
+    _updateThemeSelectorUI("default");
     return;
   }
 
@@ -16762,9 +16908,9 @@ function applyThemeObject(themeObj, save = true) {
     body.style.backgroundPosition = "center";
   }
 
-  // 保存
+  // 保存主题风格到用户账户
   if (save) {
-    callPythonAPI("update_param", "theme_style", themeObj.id);
+    saveThemeStyleToUser(themeObj.id);
     logMessage_Info(`[主题] 已切换为: ${themeObj.name}`);
   }
 
@@ -16774,14 +16920,47 @@ function applyThemeObject(themeObj, save = true) {
 
 /**
  * 更新主题选择器按钮的视觉选中状态
+ * 同时支持 PC 端（admin-profile-content_modal）和移动端（mobile-unified-theme-style-presets）
  */
 function _updateThemeSelectorUI(activeId) {
-  document.querySelectorAll("[data-theme-id]").forEach(btn => {
+  // PC端主题按钮更新（新容器ID）
+  const pcContainer = document.getElementById("pc-theme-style-buttons");
+  if (pcContainer) {
+    pcContainer.querySelectorAll('[data-theme-id]').forEach(btn => {
+      const isActive = btn.dataset.themeId === activeId;
+      btn.classList.toggle("ring-1", isActive);
+      btn.classList.toggle("ring-sky-200", isActive);
+      btn.classList.toggle("border-sky-500", isActive);
+      btn.classList.toggle("bg-sky-50", isActive);
+      btn.classList.toggle("border-slate-200", !isActive);
+      btn.classList.toggle("bg-white", !isActive);
+    });
+  }
+  
+  // 兼容旧的PC端容器
+  document.querySelectorAll('#admin-profile-content_modal [data-theme-id]').forEach(btn => {
     const isActive = btn.dataset.themeId === activeId;
     btn.classList.toggle("ring-2", isActive);
     btn.classList.toggle("ring-sky-500", isActive);
     btn.classList.toggle("ring-offset-2", isActive);
+    btn.classList.toggle("border-sky-500", isActive);
+    btn.classList.toggle("bg-sky-50", isActive);
   });
+  
+  // 移动端卡片式主题按钮更新
+  const mobileContainer = document.getElementById("mobile-unified-theme-style-presets-buttons");
+  if (mobileContainer) {
+    mobileContainer.querySelectorAll("[data-theme-id]").forEach((btn) => {
+      const isActive = btn.dataset.themeId === activeId;
+      
+      // 激活状态样式（卡片式）
+      btn.classList.toggle("border-sky-500", isActive);
+      btn.classList.toggle("bg-sky-50", isActive);
+      btn.classList.toggle("ring-2", isActive);
+      btn.classList.toggle("ring-sky-200", isActive);
+      btn.classList.toggle("border-slate-200", !isActive);
+    });
+  }
 }
 
 function setThemeStyle(styleName, save = true) {
@@ -16812,9 +16991,12 @@ function setThemeStyle(styleName, save = true) {
     }
   });
 
-  // 仅当 save 为 true 时调用 API
+  // 更新新版主题选择器 UI（PC端和移动端）
+  _updateThemeSelectorUI(styleName);
+
+  // 仅当 save 为 true 时保存到用户账户
   if (save) {
-    callPythonAPI("update_param", "theme_style", styleName);
+    saveThemeStyleToUser(styleName);
     logMessage_Info(`主题样式已切换为: ${styleName}`);
   }
 }
@@ -16847,6 +17029,85 @@ function applyAndSaveTheme(theme) {
       });
   } catch (e) {
     logMessage_Error("[主题] 保存主题设置时出错:", e);
+  }
+}
+
+/**
+ * 从主题列表缓存中获取主题显示名称
+ * @param {string} themeId - 主题ID
+ * @returns {string} 主题显示名称
+ */
+function getThemeDisplayName(themeId) {
+  if (_themeListCache && Array.isArray(_themeListCache)) {
+    const theme = _themeListCache.find(t => t.id === themeId);
+    if (theme && theme.name) {
+      // 从 "默认 (Default)" 中提取 "默认"
+      const match = theme.name.match(/^([^\(（]+)/);
+      return match ? match[1].trim() : theme.name;
+    }
+  }
+  // 回退到默认映射
+  const fallbackNames = {
+    'default': '默认',
+    'minimalist': '极简风',
+    'corporate': '商务专业',
+    'creative': '创意艺术',
+    'tech': '科技未来',
+    'anime': '二次元',
+    'retro': '复古风'
+  };
+  return fallbackNames[themeId] || themeId;
+}
+
+/**
+ * 保存主题风格到用户账户（system_accounts）
+ * @param {string} themeStyle - 主题风格ID（如 'default', 'anime', 'minimalist' 等）
+ */
+function saveThemeStyleToUser(themeStyle) {
+  const themeName = getThemeDisplayName(themeStyle);
+
+  try {
+    fetch("/auth/user/update_theme_style", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-ID": sessionUUID,
+      },
+      body: JSON.stringify({ theme_style: themeStyle }),
+    })
+      .then((response) => response.json())
+      .then((result) => {
+        if (result.success) {
+          logMessage_Info(`[主题风格] 已保存到用户账户: ${themeStyle}`);
+          // 显示成功通知
+          Swal.fire({
+            icon: 'success',
+            title: '主题已切换',
+            text: `已切换为「${themeName}」风格`,
+            confirmButtonText: '确定',
+            confirmButtonColor: '#0ea5e9',
+          });
+        } else {
+          logMessage_Warning(`[主题风格] 保存失败: ${result.message}`);
+          Swal.fire({
+            icon: 'error',
+            title: '切换失败',
+            text: result.message || '保存主题风格失败',
+            confirmButtonText: '确定',
+          });
+        }
+      })
+      .catch((err) => {
+        logMessage_Error(`[主题风格] 保存请求失败:`, err);
+        Swal.fire({
+          icon: 'error',
+          title: '网络错误',
+          text: '无法保存主题设置，请检查网络连接',
+          confirmButtonText: '确定',
+        });
+      });
+  } catch (e) {
+    logMessage_Error("[主题风格] 保存时出错:", e);
   }
 }
 
@@ -22008,13 +22269,20 @@ async function loadPersonalInfo() {
         if (colorInput) colorInput.value = themeColor;
         onColorPicked(themeColor);
       }
-      if (paramsResult && paramsResult.theme_style) {
+      // 优先从用户数据读取主题风格，其次从全局参数读取
+      const userThemeStyle = user.theme_style || paramsResult?.theme_style;
+      const normalizedThemeId = userThemeStyle ? userThemeStyle.replace(/^theme-/, "") : "default";
+      if (userThemeStyle) {
         // 优先使用新主题系统（loadTheme）
         if (typeof loadTheme === "function") {
-          loadTheme(paramsResult.theme_style.replace(/^theme-/, ""), false);
+          loadTheme(normalizedThemeId, false);
         } else {
-          setThemeStyle(paramsResult.theme_style);
+          setThemeStyle(userThemeStyle, false);
         }
+      }
+      // 渲染PC端主题选择按钮
+      if (typeof renderThemeButtons === "function") {
+        renderThemeButtons("pc-theme-style-buttons", "pc", normalizedThemeId);
       }
       if (user.theme) {
         applyAndSaveTheme(user.theme);
@@ -31664,9 +31932,15 @@ async function initializeApp() {
       const base = pythonParams.theme_base_color || "#7dd3fc";
       setBaseColor(base, base, false); // 传入 false，不触发 API 保存
 
-      // 显式恢复主题样式
-      if (pythonParams.theme_style) {
-        setThemeStyle(pythonParams.theme_style, false);
+      // 显式恢复主题样式（优先使用用户保存的主题风格）
+      const userThemeStyleMulti = initialData.user_theme_style || pythonParams.theme_style;
+      if (userThemeStyleMulti) {
+        const normalizedId = userThemeStyleMulti.replace(/^theme-/, "");
+        if (typeof loadTheme === "function") {
+          loadTheme(normalizedId, false);
+        } else {
+          setThemeStyle(normalizedId, false);
+        }
       }
 
       startMultiAccountAutoRefresh(500);
@@ -31824,9 +32098,26 @@ async function initializeApp() {
       hideLoadingOverlays();
     }
 
-    if (pythonParams.theme_style) {
-      setThemeStyle(pythonParams.theme_style, false); // 传入 false
+    // 优先加载用户保存的主题风格（来自 system_accounts），其次使用全局配置
+    const userThemeStyle = initialData.user_theme_style || pythonParams.theme_style;
+    if (userThemeStyle) {
+      const normalizedId = userThemeStyle.replace(/^theme-/, "");
+      if (typeof loadTheme === "function") {
+        loadTheme(normalizedId, false);
+      } else {
+        setThemeStyle(normalizedId, false);
+      }
+      logMessage_Info(`[初始化] 加载用户主题风格: ${normalizedId}`);
     }
+    
+    // 初始化时渲染主题选择按钮
+    const currentThemeId = initialData.user_theme_style?.replace(/^theme-/, "") || 
+                           pythonParams.theme_style?.replace(/^theme-/, "") || "default";
+    if (typeof renderThemeButtons === "function") {
+      renderThemeButtons("pc-theme-style-buttons", "pc", currentThemeId);
+      renderThemeButtons("mobile-unified-theme-style-presets-buttons", "mobile", currentThemeId);
+    }
+    
     await refreshUserList();
 
     const loadingOverlay = $("loading-overlay");
@@ -49484,10 +49775,21 @@ async function loadMobileUnifiedProfile() {
                 colorPicker.value = paramsResult.theme_base_color;
               if (colorText) colorText.value = paramsResult.theme_base_color;
             }
-            // 新增：初始化时自动高亮当前选中的样式按钮
-            if (paramsResult.theme_style) {
-              setMobileUnifiedThemeStyle(paramsResult.theme_style);
+          }
+          // 优先从用户数据读取主题风格，其次从全局参数读取
+          const userThemeStyle = data.theme_style || paramsResult?.theme_style;
+          const normalizedId = userThemeStyle ? userThemeStyle.replace(/^theme-/, "") : "default";
+          if (userThemeStyle) {
+            // 应用主题风格
+            if (typeof loadTheme === "function") {
+              loadTheme(normalizedId, false);
+            } else if (typeof setThemeStyle === "function") {
+              setThemeStyle(normalizedId, false);
             }
+          }
+          // 渲染移动端主题选择按钮
+          if (typeof renderThemeButtons === "function") {
+            renderThemeButtons("mobile-unified-theme-style-presets-buttons", "mobile", normalizedId);
           }
         } catch (e) {
           console.error("[移动端统一面板-个人信息] 加载全局参数失败:", e);
@@ -50262,35 +50564,20 @@ async function updateMobileUnifiedTheme() {
 function setMobileUnifiedThemeStyle(styleName) {
   // 使用新主题系统加载（同时兼容旧版 ID 如 theme-anime → anime）
   const normalizedId = styleName.replace(/^theme-/, "");
+  
+  // 同时更新本地 pythonParams 对象
+  if (typeof pythonParams !== "undefined" && pythonParams) {
+    pythonParams.theme_style = normalizedId;
+  }
+  
+  // 调用主题加载函数（内部会处理保存和UI更新）
   if (typeof loadTheme === "function") {
-    loadTheme(normalizedId);
+    loadTheme(normalizedId, true);
   } else if (typeof setThemeStyle === "function") {
-    setThemeStyle(styleName);
+    setThemeStyle(styleName, true);
   }
-
-  // 更新移动端面板内的按钮高亮状态（使用 data-theme-id 属性精确匹配）
-  const container = document.getElementById("mobile-unified-theme-style-presets-buttons");
-  if (container) {
-    container.querySelectorAll("[data-theme-id]").forEach((btn) => {
-      const btnThemeId = btn.dataset.themeId;
-      const isActive = btnThemeId === normalizedId;
-      
-      // 激活状态样式（卡片式）
-      btn.classList.toggle("border-sky-500", isActive);
-      btn.classList.toggle("bg-gradient-to-br", true);
-      btn.classList.toggle("from-sky-50", isActive);
-      btn.classList.toggle("to-sky-100", isActive);
-      btn.classList.toggle("from-white", !isActive);
-      btn.classList.toggle("to-slate-50", !isActive);
-      btn.classList.toggle("text-sky-600", isActive);
-      btn.classList.toggle("shadow-lg", isActive);
-      btn.classList.toggle("shadow-sky-500/20", isActive);
-      btn.classList.toggle("ring-2", isActive);
-      btn.classList.toggle("ring-sky-500/30", isActive);
-      btn.classList.toggle("border-slate-200", !isActive);
-      btn.classList.toggle("text-slate-700", !isActive);
-    });
-  }
+  
+  console.log(`[移动端主题] 已切换为: ${normalizedId}`);
 }
 
 // ========================================

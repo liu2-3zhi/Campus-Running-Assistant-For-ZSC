@@ -7209,6 +7209,32 @@ class AuthSystem:
 
             return {"success": True, "message": "主题已更新"}
 
+    def update_user_theme_style(self, auth_username, theme_style):
+        """更新用户主题风格（默认/二次元/极简等）
+        
+        Args:
+            auth_username: 用户名
+            theme_style: 主题风格ID（如 'default', 'anime', 'minimalist' 等）
+            
+        Returns:
+            dict: {"success": bool, "message": str}
+        """
+        with self.lock:
+            user_file = self.get_user_file_path(auth_username)
+            if not os.path.exists(user_file):
+                return {"success": False, "message": "用户不存在"}
+
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+
+            user_data["theme_style"] = theme_style
+
+            with open(user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+
+            logging.info(f"[主题风格] 用户 {auth_username} 的主题风格已更新为: {theme_style}")
+            return {"success": True, "message": f"主题风格已更新为: {theme_style}"}
+
     def update_max_sessions(self, auth_username, max_sessions):
         """更新用户最大会话数量
 
@@ -7558,6 +7584,7 @@ class AuthSystem:
             "avatar_url": user_data.get("avatar_url") or "default_avatar.png",
             "max_sessions": user_data.get("max_sessions", 1),
             "theme": user_data.get("theme", "light"),
+            "theme_style": user_data.get("theme_style", "default"),
             "session_ids": user_data.get("session_ids", []),
             "nickname": user_data.get("nickname", user_data["auth_username"]),
             "phone": user_data.get("phone", ""),
@@ -10553,6 +10580,16 @@ class Api:
                 "is_multi_account_mode": getattr(self, "is_multi_account_mode", False),
                 "captcha_settings": captcha_settings,
             }
+            
+            # 获取当前认证用户的主题风格设置
+            if auth_username and not is_guest and "auth_system" in globals():
+                try:
+                    user_details = auth_system.get_user_details(auth_username)
+                    if user_details:
+                        response_data["user_theme_style"] = user_details.get("theme_style", "default")
+                        response_data["user_theme"] = user_details.get("theme", "light")
+                except Exception as e:
+                    logging.warning(f"获取用户 {auth_username} 的主题设置失败: {e}")
 
             # 如果是超级管理员，在初始化数据中包含密码恢复任务列表
             if auth_group == "super_admin":
@@ -26958,6 +26995,25 @@ def start_web_server(args_param):
         result = auth_system.update_user_theme(auth_username, theme)
         return jsonify(result)
 
+    @app.route("/auth/user/update_theme_style", methods=["POST"])
+    def auth_user_update_theme_style():
+        """更新用户主题风格（默认/二次元/极简等）"""
+        session_id = request.headers.get("X-Session-ID", "")
+        if not session_id or session_id not in web_sessions:
+            return jsonify({"success": False, "message": "未登录"}), 401
+
+        api_instance = web_sessions[session_id]
+        auth_username = getattr(api_instance, "auth_username", "")
+
+        if not auth_username or auth_username == "guest":
+            return jsonify({"success": False, "message": "游客无法设置主题风格"})
+
+        data = request.json
+        theme_style = data.get("theme_style", "default")
+
+        result = auth_system.update_user_theme_style(auth_username, theme_style)
+        return jsonify(result)
+
     @app.route("/api/user/profile", methods=["GET"])
     @login_required
     def api_user_profile():
@@ -32389,6 +32445,51 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"Serving style error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
+
+    @app.route("/theme/list")
+    def list_themes():
+        """
+        获取所有可用主题的列表
+        返回每个主题的 id, name, description, icon 等元数据
+        """
+        try:
+            base_dir = os.path.dirname(__file__)
+            theme_dir = os.path.join(base_dir, "theme")
+            if not os.path.exists(theme_dir):
+                return jsonify({"success": False, "message": "Theme directory not found"}), 404
+            
+            themes = []
+            for filename in sorted(os.listdir(theme_dir)):
+                # 跳过非主题文件（如 _schema.json, README.md）
+                if not filename.endswith(".json") or filename.startswith("_"):
+                    continue
+                
+                filepath = os.path.join(theme_dir, filename)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        theme_data = json.load(f)
+                        # 只提取必要的元数据，不包含完整的 variables
+                        themes.append({
+                            "id": theme_data.get("id", filename.replace(".json", "")),
+                            "name": theme_data.get("name", ""),
+                            "description": theme_data.get("description", ""),
+                            "shortDescription": theme_data.get("shortDescription", ""),
+                            "icon": theme_data.get("icon", "🎨"),
+                            "tags": theme_data.get("tags", []),
+                            "preview": theme_data.get("preview", {}),
+                        })
+                except Exception as e:
+                    logging.warning(f"读取主题文件 {filename} 失败: {e}")
+                    continue
+            
+            return jsonify({
+                "success": True,
+                "themes": themes,
+                "count": len(themes)
+            })
+        except Exception as e:
+            logging.error(f"获取主题列表失败: {e}")
+            return jsonify({"success": False, "message": str(e)}), 500
 
     @app.route("/theme/<path:filename>")
     def serve_theme(filename):
