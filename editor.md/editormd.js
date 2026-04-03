@@ -4916,6 +4916,22 @@
         }
 
         div.addClass("markdown-body " + this.classPrefix + "html-preview").append(markdownParsed);
+        
+        // 【修复】确保渲染后的内容不会被折叠/截断
+        // 重置可能导致文字被截断的 CSS 属性
+        div.css({
+            "overflow": "visible",
+            "text-overflow": "clip",
+            "white-space": "normal",
+            "word-wrap": "break-word",
+            "overflow-wrap": "break-word"
+        });
+        // 确保所有子元素（特别是标题和段落）不被截断
+        div.find("h1, h2, h3, h4, h5, h6, p, li, blockquote, td, th").css({
+            "overflow": "visible",
+            "text-overflow": "clip",
+            "white-space": "normal"
+        });
 
         div.find(".task-list-item").each(function () {
             $(this).parent().addClass("task-list");

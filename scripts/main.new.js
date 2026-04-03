@@ -7515,8 +7515,8 @@ async function copyOrderTradeNo() {
       return;
     }
     
-    // 优先复制平台订单号，若无则复制系统订单号
-    const orderNo = currentOrder.trade_no || currentOrder.order_id || "";
+    // 复制系统订单号
+    const orderNo = currentOrder.order_id || "";
     if (!orderNo || orderNo === "-") {
       Swal.fire({
         icon: "warning",
@@ -7546,9 +7546,23 @@ async function copyOrderTradeNo() {
     Swal.fire({
       icon: "success",
       title: "复制成功",
-      html: `<div style="word-break: break-all; font-family: monospace; font-size: 14px; padding: 8px; background: #f1f5f9; border-radius: 6px; margin-top: 8px;">${escapeHtml(orderNo)}</div>`,
-      timer: 2000,
+      html: `
+        <div class="text-center">
+          <p class="text-slate-600 text-sm mb-3">订单号已复制到剪贴板</p>
+          <div class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-lg shadow-sm">
+            <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+            </svg>
+            <code class="text-sky-700 font-mono text-sm break-all">${escapeHtml(orderNo)}</code>
+          </div>
+        </div>
+      `,
+      timer: 2500,
       showConfirmButton: false,
+      customClass: {
+        popup: 'swal2-clean-popup',
+        title: 'swal2-clean-title'
+      }
     });
     
     logMessage_Info("[订单详情] 订单号已复制：", orderNo);
@@ -7557,9 +7571,17 @@ async function copyOrderTradeNo() {
     Swal.fire({
       icon: "error",
       title: "复制失败",
-      text: error.message || "复制操作失败",
-      timer: 2000,
+      html: `
+        <div class="text-center">
+          <p class="text-slate-600 text-sm">${escapeHtml(error.message || "复制操作失败")}</p>
+        </div>
+      `,
+      timer: 2500,
       showConfirmButton: false,
+      customClass: {
+        popup: 'swal2-clean-popup',
+        title: 'swal2-clean-title'
+      }
     });
   }
 }
@@ -43373,7 +43395,7 @@ async function loadReminders() {
       return;
     }
     listContainer.innerHTML = "";
-    reminders.forEach((reminder) => {
+    reminders.forEach((reminder, index) => {
       const itemDiv = document.createElement("div");
       itemDiv.className =
         "p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition-shadow";
@@ -43381,6 +43403,8 @@ async function loadReminders() {
       const timeRangeClass = isCrossDay ? "text-purple-600" : "text-blue-600";
       const timeRangeIcon = isCrossDay ? "🌙" : "☀️";
       const timeRangeHint = isCrossDay ? "（跨天）" : "";
+      // 为每个提醒的 Markdown 内容创建唯一ID
+      const messageContainerId = `pc-reminder-message-${reminder.id}-${index}`;
       itemDiv.innerHTML = `
       <div class="flex justify-between items-start">
         <!-- 左侧：提醒信息 -->
@@ -43396,10 +43420,8 @@ async function loadReminders() {
                 : '<span class="px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded">禁用</span>'
             }
           </div>
-          <!-- 提醒内容 -->
-          <p class="text-sm text-slate-600 mb-3 line-clamp-2">${escapeHtml(
-            reminder.message,
-          )}</p>
+          <!-- 提醒内容（Markdown渲染） -->
+          <div id="${messageContainerId}" class="text-sm text-slate-600 mb-3 pc-reminder-markdown-content"></div>
           <!-- 时间范围 -->
           <div class="flex items-center gap-2 text-sm ${timeRangeClass}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -43470,6 +43492,47 @@ async function loadReminders() {
     `;
       listContainer.appendChild(itemDiv);
     });
+    
+    // 使用 Editor.md 渲染所有提醒内容的 Markdown（与留言板 admin-messages-list_modal 相同方式）
+    (function renderRemindersMarkdown(remindersList) {
+      if (!remindersList || !remindersList.length) return;
+      remindersList.forEach((reminder, index) => {
+        const messageContainerId = `pc-reminder-message-${reminder.id}-${index}`;
+        const container = document.getElementById(messageContainerId);
+        if (!container) return;
+
+        // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
+        if (window.editormd && typeof editormd.markdownToHTML === "function") {
+          try {
+            // editormd.markdownToHTML 会替换指定容器内容
+            editormd.markdownToHTML(messageContainerId, {
+              markdown: reminder.message || "",
+              htmlDecode: "style,iframe,image",
+              toc: false,
+              tocContainer: "",
+              gfm: true,
+              tocDropdown: false,
+              markdownSourceCode: false,
+              emoji: true,
+              taskList: true,
+              tex: false,
+              flowChart: false,
+              sequenceDiagram: false,
+            });
+            return;
+          } catch (e) {
+            console.warn("[定时提醒] PC端Markdown渲染失败，回退为纯文本显示", e);
+          }
+        }
+
+        // 最后回退：以转义文本并保留换行展示
+        container.innerHTML = escapeHtml(reminder.message || "").replace(
+          /\n/g,
+          "<br>",
+        );
+      });
+    })(reminders);
+    
     console.log(`[定时提醒] 已加载 ${reminders.length} 条提醒`);
   } catch (error) {
     console.error("[定时提醒] 加载失败:", error);
@@ -47889,11 +47952,9 @@ function switchMobileAdminTab(tabId, prefix) {
     // 构建目标面板的ID并显示
     const targetMultiPanelId = `mobile-multi-admin-${tabId}-panel`;
     const targetMultiPanel = document.getElementById(targetMultiPanelId);
-    console.log(`[switchMobileAdminTab] 目标面板ID: ${targetMultiPanelId}, 元素存在: ${!!targetMultiPanel}`);
     if (targetMultiPanel) {
       // 移除hidden类以显示目标面板
       targetMultiPanel.classList.remove("hidden");
-      console.log(`[switchMobileAdminTab] 已移除 ${targetMultiPanelId} 的 hidden 类`);
     } else {
       // 如果找不到目标面板，输出警告日志便于调试
       console.warn(
@@ -47975,7 +48036,6 @@ function switchMobileAdminTab(tabId, prefix) {
         break;
       case "reminders":
         // 加载定时提醒列表（使用移动端专用函数）
-        console.log("[switchMobileAdminTab] 触发 reminders 标签，调用 mobileRefreshReminders()");
         mobileRefreshReminders();
         break;
       case "ssl":
@@ -53326,8 +53386,6 @@ async function loadMobileCaptchaHistoryModal() {
  * 刷新移动端定时提醒列表
  */
 async function mobileRefreshReminders() {
-  console.log("[移动端提醒] mobileRefreshReminders() 被调用");
-  
   // 获取移动端提醒列表容器
   const listContainer = document.getElementById(
     "mobile-multi-admin-reminders-content",
@@ -53336,30 +53394,18 @@ async function mobileRefreshReminders() {
     console.error("[移动端提醒] 找不到列表容器 mobile-multi-admin-reminders-content");
     return;
   }
-  
-  // 检查面板是否可见
-  const panel = document.getElementById("mobile-multi-admin-reminders-panel");
-  if (panel) {
-    console.log("[移动端提醒] 面板存在，hidden 类:", panel.classList.contains("hidden"));
-  } else {
-    console.warn("[移动端提醒] 面板不存在: mobile-multi-admin-reminders-panel");
-  }
 
   // 显示加载状态
   listContainer.innerHTML =
     '<p class="text-slate-400 text-center py-10 text-xs">加载中...</p>';
-  console.log("[移动端提醒] 已设置加载状态");
 
   try {
-    console.log("[移动端提醒] 开始调用 API: /api/reminders/list");
     // 调用后端API获取提醒列表
     const response = await fetch("/api/reminders/list", {
       method: "GET",
       headers: { "X-Session-ID": sessionUUID },
     });
-    console.log("[移动端提醒] API 响应状态:", response.status);
     const result = await response.json();
-    console.log("[移动端提醒] API 返回数据:", result);
 
     if (!result.success) {
       listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">${
@@ -53372,7 +53418,6 @@ async function mobileRefreshReminders() {
     const total = reminders.length;
     const enabled = reminders.filter((r) => r.enabled).length;
     const disabled = total - enabled;
-    console.log(`[移动端提醒] 共 ${total} 条提醒，启用 ${enabled}，禁用 ${disabled}`);
 
     // 更新移动端统计数据
     const statTotal = document.getElementById("mobile-reminder-stat-total");
@@ -53388,12 +53433,10 @@ async function mobileRefreshReminders() {
     if (reminders.length === 0) {
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10 text-xs">暂无提醒，点击"添加"创建新提醒</p>';
-      console.log("[移动端提醒] 无提醒数据，显示空状态");
       return;
     }
 
     listContainer.innerHTML = "";
-    console.log("[移动端提醒] 开始渲染提醒列表...");
     reminders.forEach((reminder, index) => {
       const itemDiv = document.createElement("div");
       // 根据是否跨天设置样式
@@ -53419,7 +53462,7 @@ async function mobileRefreshReminders() {
               }">${reminder.enabled ? "启用" : "禁用"}</span>
             </div>
             <!-- 提醒内容（Markdown渲染） -->
-            <div id="${messageContainerId}" class="text-xs text-slate-600 mb-2 line-clamp-3 mobile-reminder-markdown-content"></div>
+            <div id="${messageContainerId}" class="text-xs text-slate-600 mb-2 mobile-reminder-markdown-content"></div>
             <!-- 时间范围 -->
             <div class="flex items-center gap-1 text-xs ${
               isCrossDay ? "text-purple-600" : "text-blue-600"
@@ -53456,33 +53499,46 @@ async function mobileRefreshReminders() {
       listContainer.appendChild(itemDiv);
     });
     
-    // 渲染所有提醒内容的 Markdown
+    // 渲染所有提醒内容的 Markdown（与留言板 admin-messages-list_modal 相同方式）
     console.log("[移动端提醒] 开始使用 Editor.md 渲染 Markdown...");
-    reminders.forEach((reminder, index) => {
-      const messageContainerId = `mobile-reminder-message-${reminder.id}-${index}`;
-      const messageContainer = document.getElementById(messageContainerId);
-      console.log(`[移动端提醒] 渲染第 ${index + 1} 条提醒，容器ID: ${messageContainerId}, 容器存在: ${!!messageContainer}, 内容长度: ${reminder.message?.length || 0}`);
-      if (messageContainer && reminder.message) {
-        try {
-          // 使用 editormd.markdownToHTML 渲染 Markdown
-          console.log(`[移动端提醒] 调用 editormd.markdownToHTML("${messageContainerId}", ...)`);
-          editormd.markdownToHTML(messageContainerId, {
-            markdown: reminder.message,
-            htmlDecode: "style,script,iframe",
-            emoji: true,
-            taskList: true,
-            tex: false,
-            flowChart: false,
-            sequenceDiagram: false,
-          });
-          console.log(`[移动端提醒] 第 ${index + 1} 条提醒渲染完成`);
-        } catch (err) {
-          // Markdown 渲染失败时回退为纯文本
-          console.error(`[移动端提醒] Markdown渲染失败，回退纯文本:`, err);
-          messageContainer.textContent = reminder.message;
+    (function renderRemindersMarkdown(remindersList) {
+      if (!remindersList || !remindersList.length) return;
+      remindersList.forEach((reminder, index) => {
+        const messageContainerId = `mobile-reminder-message-${reminder.id}-${index}`;
+        const container = document.getElementById(messageContainerId);
+        if (!container) return;
+
+        // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
+        if (window.editormd && typeof editormd.markdownToHTML === "function") {
+          try {
+            // editormd.markdownToHTML 会替换指定容器内容
+            editormd.markdownToHTML(messageContainerId, {
+              markdown: reminder.message || "",
+              htmlDecode: "style,iframe,image",
+              toc: false,
+              tocContainer: "",
+              gfm: true,
+              tocDropdown: false,
+              markdownSourceCode: false,
+              emoji: true,
+              taskList: true,
+              tex: false,
+              flowChart: false,
+              sequenceDiagram: false,
+            });
+            return;
+          } catch (e) {
+            console.warn("[移动端提醒] Markdown渲染失败，回退为纯文本显示", e);
+          }
         }
-      }
-    });
+
+        // 最后回退：以转义文本并保留换行展示
+        container.innerHTML = escapeHtml(reminder.message || "").replace(
+          /\n/g,
+          "<br>",
+        );
+      });
+    })(reminders);
 
     console.log(`[移动端提醒] 已加载 ${reminders.length} 条提醒`);
   } catch (error) {
