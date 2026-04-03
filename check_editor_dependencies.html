@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor.md 依赖检查</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .dependency {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .loaded {
+            background: #4CAF50;
+            color: white;
+        }
+        .missing {
+            background: #f44336;
+            color: white;
+        }
+        .info {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .summary {
+            background: #2196F3;
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>📦 Editor.md 依赖检查</h1>
+    <div id="results"></div>
+    <div id="summary" class="summary"></div>
+
+    <script>
+        // 检查依赖列表
+        const dependencies = [
+            { name: 'jQuery', check: () => typeof jQuery !== 'undefined', version: () => jQuery.fn.jquery },
+            { name: 'CodeMirror', check: () => typeof CodeMirror !== 'undefined', version: () => CodeMirror.version },
+            { name: 'marked', check: () => typeof marked !== 'undefined', version: () => marked.version || 'unknown' },
+            { name: 'prettify', check: () => typeof prettyPrint !== 'undefined' || typeof PR !== 'undefined', version: () => 'loaded' },
+            { name: 'KaTeX', check: () => typeof katex !== 'undefined', version: () => katex.version },
+            { name: 'Raphael', check: () => typeof Raphael !== 'undefined', version: () => Raphael.version },
+            { name: 'Underscore', check: () => typeof _ !== 'undefined', version: () => _.VERSION },
+            { name: 'Flowchart.js', check: () => typeof flowchart !== 'undefined', version: () => 'loaded' },
+            { name: 'jQuery Flowchart', check: () => typeof $.fn.flowChart !== 'undefined', version: () => 'loaded' },
+            { name: 'Sequence Diagram', check: () => typeof Diagram !== 'undefined', version: () => 'loaded' },
+            { name: 'Editor.md', check: () => typeof editormd !== 'undefined', version: () => editormd.version || 'loaded' }
+        ];
+
+        let loaded = 0;
+        let missing = 0;
+        const resultsDiv = document.getElementById('results');
+
+        dependencies.forEach(dep => {
+            const div = document.createElement('div');
+            div.className = 'dependency';
+            
+            const isLoaded = dep.check();
+            const statusClass = isLoaded ? 'loaded' : 'missing';
+            const statusText = isLoaded ? '✅ 已加载' : '❌ 未加载';
+            
+            if (isLoaded) {
+                loaded++;
+                const version = dep.version();
+                div.innerHTML = `
+                    <strong>${dep.name}</strong>
+                    <span class="status ${statusClass}">${statusText}</span>
+                    <div class="info">版本: ${version}</div>
+                `;
+            } else {
+                missing++;
+                div.innerHTML = `
+                    <strong>${dep.name}</strong>
+                    <span class="status ${statusClass}">${statusText}</span>
+                    <div class="info" style="color: #f44336;">请检查 index.html 中的依赖加载</div>
+                `;
+            }
+            
+            resultsDiv.appendChild(div);
+        });
+
+        // 显示汇总
+        const summaryDiv = document.getElementById('summary');
+        const total = dependencies.length;
+        const percentage = Math.round((loaded / total) * 100);
+        
+        summaryDiv.innerHTML = `
+            <h2>检查结果</h2>
+            <p style="font-size: 2em; margin: 10px 0;">${loaded} / ${total}</p>
+            <p>成功率: ${percentage}%</p>
+            ${missing > 0 ? `<p style="color: #ffeb3b;">⚠️ 有 ${missing} 个依赖未加载</p>` : '<p>🎉 所有依赖都已成功加载！</p>'}
+        `;
+    </script>
+</body>
+</html>

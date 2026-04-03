@@ -1520,14 +1520,30 @@
                 var editorOffset = editor.offset() || { top : 0, left : 0 };
                 var editorWidth  = editor.outerWidth();
                 var editorHeight = editor.outerHeight();
-                var viewportTop  = editorOffset.top  - $(window).scrollTop();
-                var viewportLeft = editorOffset.left - $(window).scrollLeft();
-                var top          = viewportTop  + (editorHeight - infoDialog.outerHeight()) / 2;
-                var left         = viewportLeft + (editorWidth  - infoDialog.outerWidth())  / 2;
+                var dialogWidth  = infoDialog.outerWidth();
+                var dialogHeight = infoDialog.outerHeight();
+                var scrollTop    = $(window).scrollTop();
+                var scrollLeft   = $(window).scrollLeft();
+                
+                var editorCenterDocX = editorOffset.left + editorWidth / 2;
+                var editorCenterDocY = editorOffset.top + editorHeight / 2;
+                
+                var top  = editorCenterDocY - scrollTop - dialogHeight / 2;
+                var left = editorCenterDocX - scrollLeft - dialogWidth / 2;
+                
+                var viewportWidth = $(window).width();
+                var viewportHeight = $(window).height();
+                var minTop  = 8;
+                var minLeft = 8;
+                var maxTop  = Math.max(viewportHeight - dialogHeight - 8, minTop);
+                var maxLeft = Math.max(viewportWidth - dialogWidth - 8, minLeft);
+                
+                top  = Math.min(Math.max(top, minTop), maxTop);
+                left = Math.min(Math.max(left, minLeft), maxLeft);
 
 				infoDialog.css({
-					top  : Math.max(top, 8) + "px",
-					left : Math.max(left, 8) + "px"
+					top  : top + "px",
+					left : left + "px"
 				});
 			};
 
@@ -1573,10 +1589,10 @@
                         return value;
                     }
                     var str = (value + "").trim();
-                    if (/^-?\d+(\.\d+)?%$/.test(str)) {
+                    if (/^-?\d+(\.\d+)?\s*%$/.test(str)) {
                         return base * parseFloat(str) / 100;
                     }
-                    if (/^-?\d+(\.\d+)?px$/.test(str)) {
+                    if (/^-?\d+(\.\d+)?\s*px$/.test(str)) {
                         return parseFloat(str);
                     }
                     if (/^-?\d+(\.\d+)?$/.test(str)) {
@@ -4844,7 +4860,10 @@
 
         if (settings.previewCodeHighlight) {
             div.find("pre").addClass("prettyprint linenums");
-            window.prettyPrint();
+            // 检查 prettyPrint 是否存在，避免在未加载 prettify 库时报错
+            if (typeof window.prettyPrint !== "undefined") {
+                window.prettyPrint();
+            }
         }
 
         if (!editormd.isIE8) {
@@ -5025,8 +5044,8 @@
     // 使用国外的CDN，加载速度有时会很慢，或者自定义URL
     // You can custom KaTeX load url.
     editormd.katexURL  = {
-        css : "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.1/katex.min",
-        js  : "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.1/katex.min"
+        css : "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min",
+        js  : "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min"
     };
 
     editormd.kaTeXLoaded = false;
@@ -5157,6 +5176,95 @@
         };
 
         dialog.lockScreen(true).showMask();
+        
+        if ($this.settings && $this.settings.dialogOpenAutoScroll !== null && $this.settings.dialogOpenAutoScroll !== undefined) {
+            if (!$this.state.dialogScrollTop) {
+                $this.state.dialogScrollTop = $(window).scrollTop();
+                $this.state.dialogScrollLeft = $(window).scrollLeft();
+            }
+            if (!$this.state.dialogAutoScrollRestoreNodes) {
+                $this.state.dialogAutoScrollRestoreNodes = [];
+            }
+            
+            var parseOffsetValue = function(value, base) {
+                if (value === null || typeof value === "undefined" || value === "") {
+                    return null;
+                }
+                if (typeof value === "number") {
+                    return value;
+                }
+                var str = (value + "").trim();
+                if (/^-?\d+(\.\d+)?\s*%$/.test(str)) {
+                    return base * parseFloat(str) / 100;
+                }
+                if (/^-?\d+(\.\d+)?\s*px$/.test(str)) {
+                    return parseFloat(str);
+                }
+                if (/^-?\d+(\.\d+)?$/.test(str)) {
+                    return parseFloat(str);
+                }
+                return null;
+            };
+            
+            var docHeight = Math.max(
+                $(document).height(),
+                document.documentElement ? document.documentElement.scrollHeight : 0,
+                document.body ? document.body.scrollHeight : 0
+            );
+            var scrollTop = parseOffsetValue($this.settings.dialogOpenAutoScroll, docHeight);
+            
+            if (scrollTop !== null) {
+                scrollTop = Math.max(scrollTop, 0);
+                
+                if ($this.settings.dialogOpenAutoScrollOuterHtml) {
+                    var baseLayerParent = editor.parents().eq(parseInt($this.settings.parentContainerLayer, 10) - 1);
+                    if (!baseLayerParent || !baseLayerParent.length) {
+                        baseLayerParent = editor.parent();
+                    }
+                    var outerParents = baseLayerParent.parents();
+                    
+                    outerParents.each(function() {
+                        if (this === document.body || this === document.documentElement) {
+                            return;
+                        }
+                        var maxTop = Math.max(this.scrollHeight - this.clientHeight, 0);
+                        var finalTop = Math.min(scrollTop, maxTop);
+                        $this.state.dialogAutoScrollRestoreNodes.push({
+                            node: this,
+                            scrollTop: this.scrollTop || 0,
+                            scrollLeft: this.scrollLeft || 0
+                        });
+                        this.scrollTop = finalTop;
+                        if (typeof this.scrollTo === "function") {
+                            this.scrollTo(this.scrollLeft || 0, finalTop);
+                        }
+                    });
+                    
+                    window.scrollTo(0, scrollTop);
+                    if (document.scrollingElement) {
+                        document.scrollingElement.scrollTop = scrollTop;
+                    }
+                    document.documentElement.scrollTop = scrollTop;
+                    document.body.scrollTop = scrollTop;
+                    $("html, body").scrollTop(scrollTop);
+                } else {
+                    var firstOuterParent = editor.parents().eq(parseInt($this.settings.parentContainerLayer, 10));
+                    if (firstOuterParent && firstOuterParent.length) {
+                        var maxTop = Math.max(firstOuterParent[0].scrollHeight - firstOuterParent[0].clientHeight, 0);
+                        var finalTop = Math.min(scrollTop, maxTop);
+                        $this.state.dialogAutoScrollRestoreNodes.push({
+                            node: firstOuterParent[0],
+                            scrollTop: firstOuterParent[0].scrollTop || 0,
+                            scrollLeft: firstOuterParent[0].scrollLeft || 0
+                        });
+                        firstOuterParent[0].scrollTop = finalTop;
+                        if (typeof firstOuterParent[0].scrollTo === "function") {
+                            firstOuterParent[0].scrollTo(firstOuterParent[0].scrollLeft || 0, finalTop);
+                        }
+                    }
+                }
+            }
+        }
 
         dialog.show().css({
             zIndex : editormd.dialogZindex,
@@ -5166,17 +5274,37 @@
         });
 
         var dialogPosition = function(){
+            // 使用与infoDialogPosition相同的定位逻辑，确保所有弹窗定位一致
             var editorOffset = editor.offset() || { top : 0, left : 0 };
             var editorWidth  = editor.outerWidth();
             var editorHeight = editor.outerHeight();
-            var viewportTop  = editorOffset.top  - $(window).scrollTop();
-            var viewportLeft = editorOffset.left - $(window).scrollLeft();
-            var top          = viewportTop  + (editorHeight - dialog.outerHeight()) / 2;
-            var left         = viewportLeft + (editorWidth  - dialog.outerWidth())  / 2;
+            var dialogWidth  = dialog.outerWidth();
+            var dialogHeight = dialog.outerHeight();
+            var scrollTop    = $(window).scrollTop();
+            var scrollLeft   = $(window).scrollLeft();
+            
+            // 计算编辑器中心在文档中的坐标
+            var editorCenterDocX = editorOffset.left + editorWidth / 2;
+            var editorCenterDocY = editorOffset.top + editorHeight / 2;
+            
+            // 转换为视口坐标，并居中弹窗
+            var top  = editorCenterDocY - scrollTop - dialogHeight / 2;
+            var left = editorCenterDocX - scrollLeft - dialogWidth / 2;
+            
+            // 确保弹窗在视口内
+            var viewportWidth = $(window).width();
+            var viewportHeight = $(window).height();
+            var minTop  = 8;
+            var minLeft = 8;
+            var maxTop  = Math.max(viewportHeight - dialogHeight - 8, minTop);
+            var maxLeft = Math.max(viewportWidth - dialogWidth - 8, minLeft);
+            
+            top  = Math.min(Math.max(top, minTop), maxTop);
+            left = Math.min(Math.max(left, minLeft), maxLeft);
 
             dialog.css({
-                top    : Math.max(top, 8) + "px",
-                left   : Math.max(left, 8) + "px"
+                top    : top + "px",
+                left   : left + "px"
             });
         };
 
@@ -5194,6 +5322,31 @@
 
         dialog.children("." + classPrefix + "dialog-close").on("click", function() {
             dialog.hide().lockScreen(false).hideMask();
+            
+            if ($this.state && $this.state.dialogAutoScrollRestoreNodes && $this.state.dialogAutoScrollRestoreNodes.length) {
+                for (var i = 0; i < $this.state.dialogAutoScrollRestoreNodes.length; i++) {
+                    var restoreItem = $this.state.dialogAutoScrollRestoreNodes[i];
+                    if (!restoreItem || !restoreItem.node) {
+                        continue;
+                    }
+                    restoreItem.node.scrollTop = restoreItem.scrollTop;
+                    restoreItem.node.scrollLeft = restoreItem.scrollLeft;
+                }
+                $this.state.dialogAutoScrollRestoreNodes = [];
+            }
+            
+            if ($this.state && $this.state.dialogScrollTop !== null && $this.state.dialogScrollLeft !== null) {
+                window.scrollTo($this.state.dialogScrollLeft, $this.state.dialogScrollTop);
+                if (document.scrollingElement) {
+                    document.scrollingElement.scrollTop = $this.state.dialogScrollTop;
+                    document.scrollingElement.scrollLeft = $this.state.dialogScrollLeft;
+                }
+                document.documentElement.scrollTop = $this.state.dialogScrollTop;
+                document.body.scrollTop = $this.state.dialogScrollTop;
+                $("html, body").scrollTop($this.state.dialogScrollTop);
+                $this.state.dialogScrollTop = null;
+                $this.state.dialogScrollLeft = null;
+            }
 
             if (!options.cached) {
                 dialog.remove();

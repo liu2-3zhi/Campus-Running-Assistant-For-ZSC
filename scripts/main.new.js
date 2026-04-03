@@ -47151,8 +47151,8 @@ async function ensureMobileMultiMessageEditorInitialized() {
           // 锁定所有父容器
           fullScreenForceDisableAllScroll: true,
           // 弹窗打开时自动滚动位置
-          // dialogOpenAutoScroll: "2px",
-          // dialogOpenAutoScrollOuterHtml: true,
+          dialogOpenAutoScroll: "75px",
+          dialogOpenAutoScrollOuterHtml: true,
         });
     const ta = document.getElementById("mobile-multi-message-content");
     if (ta) ta.classList.add("hidden");
