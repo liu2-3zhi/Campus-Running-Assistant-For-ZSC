@@ -203,7 +203,7 @@
                         var row = "<div class=\"" + classPrefix + "grid-table-row\">";
 
                         for (var x = 0; x < rowNumber; x++) {
-                            var emoji = $.trim(data[(i * rowNumber) + x]);
+                            var emoji = (data[(i * rowNumber) + x] || "").toString().trim();
 
                             if (typeof emoji !== "undefined" && emoji !== "") {
                                 var img = "", icon = "";
@@ -251,7 +251,7 @@
                     $tab.append(pagination($data, cname));
                 }
 
-				$tab.find("." + classPrefix + "emoji-btn").bind("click", function() {
+				$tab.find("." + classPrefix + "emoji-btn").on("click", function() {
 					$(this).toggleClass("selected");
 
 					if ($(this).hasClass("selected")) {
@@ -278,7 +278,7 @@
 				drawTable();
 			}
 
-			tab.find("li").bind("click", function() {
+			tab.find("li").on("click", function() {
 				var $this     = $(this);
 				emojiTabIndex = $this.index();
 

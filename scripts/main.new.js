@@ -3683,6 +3683,10 @@ document.addEventListener("DOMContentLoaded", function () {
     );
   }
 
+  // ========== Tab 3: 初始化移动端退款订单号自动填充功能 ==========
+  // 当用户输入订单号时，自动查询并填充退款金额（与PC端modal一致）
+  initMobileRefundOrderAutoFill();
+
   // ========== Tab 4: 绑定"创建测试订单"按钮的点击事件 ==========
 
   // 1. 通过ID获取"创建测试订单"按钮的DOM元素
@@ -4132,6 +4136,148 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 // ==========================================
+// 移动端退款订单号自动填充初始化函数
+// ==========================================
+/**
+ * 初始化移动端退款表单的订单号自动填充功能
+ * 当用户输入订单号时，自动查询订单金额并填充到退款金额输入框
+ * 功能与PC端 initOrderNumberAutoFill() 一致
+ */
+function initMobileRefundOrderAutoFill() {
+  // 获取移动端订单号输入框DOM元素
+  const tradeNoInput = document.getElementById("refund-order-trade-no");
+
+  // 如果输入框不存在，直接退出（可能在PC端或元素尚未加载）
+  if (!tradeNoInput) {
+    console.log("[移动端退款自动填充] 未找到订单号输入框元素，跳过初始化");
+    return;
+  }
+
+  // 为订单号输入框添加input事件监听
+  // 使用防抖（debounce）技术，避免频繁触发API请求
+  let debounceTimer = null;
+
+  tradeNoInput.addEventListener("input", function (event) {
+    // 清除之前的防抖计时器
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    // 获取用户输入的订单号（去除首尾空格）
+    const tradeNo = event.target.value.trim();
+
+    // 如果订单号为空，清空退款金额输入框并退出
+    if (!tradeNo) {
+      const amountInput = document.getElementById("refund-amount");
+      if (amountInput) {
+        amountInput.value = "";
+      }
+      return;
+    }
+
+    // 设置防抖计时器：用户停止输入500毫秒后才触发查询
+    debounceTimer = setTimeout(async () => {
+      // 调用订单号校验和金额获取函数（复用PC端逻辑，传入移动端元素ID）
+      await fetchMobileOrderAmountAndFill(tradeNo);
+    }, 500);
+  });
+
+  console.log("[移动端退款自动填充] 初始化完成");
+}
+
+/**
+ * 根据订单号获取订单金额并填充到移动端退款金额输入框
+ * 复用 fetchOrderAmountAndFill 的逻辑，但使用移动端元素ID
+ * @param {string} tradeNo - 订单号
+ */
+async function fetchMobileOrderAmountAndFill(tradeNo) {
+  console.log("[移动端退款自动填充] 开始处理订单号:", tradeNo);
+
+  // 获取移动端退款金额输入框
+  const amountInput = document.getElementById("refund-amount");
+  if (!amountInput) {
+    console.error("[移动端退款自动填充] 未找到退款金额输入框");
+    return;
+  }
+
+  // 校验订单号长度（通常订单号长度在10-50个字符之间）
+  if (tradeNo.length < 10) {
+    console.log("[移动端退款自动填充] 订单号长度不足，等待继续输入");
+    return;
+  }
+
+  try {
+    // 调用后端API按订单号直接查询，避免拉取全量订单导致遗漏
+    const response = await fetch(
+      `/api/payment/order_by_tradeno?trade_no=${encodeURIComponent(tradeNo)}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session-ID": sessionUUID,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error("[移动端退款自动填充] API请求失败:", response.status);
+      return;
+    }
+
+    const data = await response.json();
+
+    if (!data.success || !data.order) {
+      console.error("[移动端退款自动填充] API返回数据异常:", data);
+      return;
+    }
+    const order = data.order;
+
+    // 找到订单，计算退款金额
+    const orderAmount = parseFloat(order.amount) || 0;
+    const refundedAmount = parseFloat(order.refundmoney) || 0;
+    const refundCount = parseInt(order.refund_count || 0, 10) || 0;
+    const hasRefundRecords =
+      Array.isArray(order.refund_records) && order.refund_records.length > 0;
+    const orderStatus = String(order.status || "").toLowerCase();
+
+    // 一个订单只能退款一次：任一退款迹象均禁止再次退款
+    if (
+      refundedAmount > 0 ||
+      refundCount >= 1 ||
+      hasRefundRecords ||
+      orderStatus === "refunded_full" ||
+      orderStatus === "refunded_partial"
+    ) {
+      console.log("[移动端退款自动填充] 该订单已退款，不可再次退款");
+      amountInput.value = "";
+      Swal.fire({
+        icon: "warning",
+        title: "无法退款",
+        text: "该订单已退款，每个订单只能退款一次。",
+      });
+      return;
+    }
+
+    // 默认退款金额 = 订单金额 * 80%
+    const refundableAmount = Math.max(0, orderAmount * 0.8);
+
+    // 填充退款金额（保留两位小数）
+    amountInput.value = refundableAmount.toFixed(2);
+
+    console.log("[移动端退款自动填充] 订单金额已填充:", {
+      orderAmount,
+      refundedAmount,
+      refundCount,
+      hasRefundRecords,
+      refundableAmount: refundableAmount,
+      percentage: "80%",
+    });
+  } catch (error) {
+    console.error("[移动端退款自动填充] 查询订单失败:", error);
+  }
+}
+
+// ==========================================
 // Tab 3: 退款功能 (processRefund函数)
 // ==========================================
 // 【功能说明】
@@ -4293,7 +4439,7 @@ async function processRefund() {
       refundAmount,
     );
     // showModalAlert("退款金额必须大于0");
-    swal.fire({
+    Swal.fire({
       icon: "warning",
       title: "警告",
       text: "退款金额必须大于0",
@@ -4440,15 +4586,15 @@ async function processRefund() {
     resultContainer.innerHTML = successHTML;
     resultContainer.classList.remove("hidden");
 
-    // 6.5 可选：清空输入框，为下一次退款做准备
-    // 保留退款单号输入框为空，以便系统自动生成新的退款单号
-    // tradeNoInput.value = '';
-    // amountInput.value = '';
-    // refundNoInput.value = '';
-    // reasonInput.value = '';
+    // 6.5 清空输入框，为下一次退款做准备
+    // 退款成功后清空所有输入，方便用户进行下一次退款操作
+    tradeNoInput.value = '';
+    amountInput.value = '';
+    refundNoInput.value = '';
+    reasonInput.value = '';
 
     // 输出完成日志
-    logMessage_Info("[退款功能] 退款操作完成");
+    logMessage_Info("[退款功能] 退款操作完成，表单已清空");
   } catch (error) {
     // ========== 错误处理 ==========
     // 捕获所有可能的错误：网络错误、服务器错误、业务错误等
@@ -7342,6 +7488,101 @@ function showOrderDetailModal(order) {
   );
   if (modalOverlay) {
     modalOverlay.classList.remove("hidden");
+  }
+}
+
+/**
+ * 复制订单号到剪贴板
+ *
+ * 功能说明：
+ * 将当前订单的平台订单号（trade_no）复制到系统剪贴板
+ * 优先复制平台订单号，若无则复制系统订单号
+ */
+async function copyOrderTradeNo() {
+  logMessage_Info("[订单详情] 复制订单号到剪贴板...");
+  
+  try {
+    // 获取当前订单信息
+    const currentOrder = window.currentOrderDetail;
+    if (!currentOrder) {
+      Swal.fire({
+        icon: "error",
+        title: "复制失败",
+        text: "未找到当前订单信息",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      return;
+    }
+    
+    // 复制系统订单号
+    const orderNo = currentOrder.order_id || "";
+    if (!orderNo || orderNo === "-") {
+      Swal.fire({
+        icon: "warning",
+        title: "复制失败",
+        text: "订单号为空",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      return;
+    }
+    
+    // 使用 Clipboard API 复制到剪贴板
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(orderNo);
+    } else {
+      // 降级方案：使用 execCommand
+      const textArea = document.createElement("textarea");
+      textArea.value = orderNo;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+    
+    Swal.fire({
+      icon: "success",
+      title: "复制成功",
+      html: `
+        <div class="text-center">
+          <p class="text-slate-600 text-sm mb-3">订单号已复制到剪贴板</p>
+          <div class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-lg shadow-sm">
+            <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+            </svg>
+            <code class="text-sky-700 font-mono text-sm break-all">${escapeHtml(orderNo)}</code>
+          </div>
+        </div>
+      `,
+      timer: 2500,
+      showConfirmButton: false,
+      customClass: {
+        popup: 'swal2-clean-popup',
+        title: 'swal2-clean-title'
+      }
+    });
+    
+    logMessage_Info("[订单详情] 订单号已复制：", orderNo);
+  } catch (error) {
+    logMessage_Error("[订单详情] 复制订单号失败：", error);
+    Swal.fire({
+      icon: "error",
+      title: "复制失败",
+      html: `
+        <div class="text-center">
+          <p class="text-slate-600 text-sm">${escapeHtml(error.message || "复制操作失败")}</p>
+        </div>
+      `,
+      timer: 2500,
+      showConfirmButton: false,
+      customClass: {
+        popup: 'swal2-clean-popup',
+        title: 'swal2-clean-title'
+      }
+    });
   }
 }
 
@@ -13765,14 +14006,18 @@ async function saveMobileAttendanceParams() {
     }
 
     // showModalAlert("自动签到配置已保存", "成功");
-    Swal.fire({
+    // 使用队列方式显示提示，避免与其他提示冲突
+    // 先显示配置保存提示
+    await Swal.fire({
       icon: "success",
       title: "配置已保存",
       text: "自动签到配置已成功保存。",
+      timer: 1500,
+      showConfirmButton: false,
     });
 
-    if (enabled) {
-    }
+    // 然后显示自动签到状态提示
+    showAutoAttendanceToggleAlert(enabled, true); // true = 移动端
   } catch (e) {
     console.error("保存签到配置失败:", e);
     // showModalAlert("保存失败: " + e.message, "错误");
@@ -13782,6 +14027,257 @@ async function saveMobileAttendanceParams() {
       text: "保存失败: " + e.message,
     });
   }
+}
+
+/**
+ * 显示自动签到开关状态变更提示
+ * 根据设备类型显示不同格式的账号信息
+ * @param {boolean} enabled - 是否开启自动签到
+ * @param {boolean} isMobile - 是否为移动端
+ */
+function showAutoAttendanceToggleAlert(enabled, isMobile) {
+  // 获取当前用户信息
+  const userName = currentUserData?.name || "未知";
+  const studentId = currentUserData?.student_id || "未知";
+  
+  // 检查账号列表是否为空（多账号模式下使用）
+  const hasAccounts = cachedMultiAccounts && cachedMultiAccounts.length > 0;
+  
+  // 构建提示内容
+  let htmlContent = "";
+  
+  if (enabled) {
+    // 开启自动签到的提示
+    htmlContent = `
+      <div class="text-left">
+        <p class="mb-3 text-green-600 font-semibold">✅ 自动签到已开启</p>
+    `;
+    
+    // 如果有当前用户信息（单账号模式）
+    if (currentUserData && currentUserData.student_id) {
+      if (isMobile) {
+        // 移动端：卡片式展示
+        htmlContent += `
+          <div class="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-3 border border-sky-100 shadow-sm mb-3">
+            <p class="text-xs text-slate-500 mb-1">当前账号</p>
+            <p class="font-semibold text-slate-800">${escapeHtml(userName)}</p>
+            <p class="text-sm text-slate-600 font-mono">${escapeHtml(studentId)}</p>
+          </div>
+        `;
+      } else {
+        // PC端：表格式展示
+        htmlContent += `
+          <table class="w-full text-sm border-collapse mb-3">
+            <thead>
+              <tr class="bg-slate-100">
+                <th class="px-3 py-2 text-left border border-slate-200 font-semibold">姓名</th>
+                <th class="px-3 py-2 text-left border border-slate-200 font-semibold">学号</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="px-3 py-2 border border-slate-200">${escapeHtml(userName)}</td>
+                <td class="px-3 py-2 border border-slate-200 font-mono">${escapeHtml(studentId)}</td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      }
+    }
+    
+    htmlContent += `
+        <p class="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
+          ⏱ 自动签到将在 120 分钟内自动关闭
+        </p>
+      </div>
+    `;
+  } else {
+    // 关闭自动签到的提示
+    htmlContent = `
+      <div class="text-left">
+        <p class="mb-3 text-slate-600 font-semibold">⏸️ 自动签到已关闭</p>
+    `;
+    
+    // 如果有当前用户信息
+    if (currentUserData && currentUserData.student_id) {
+      if (isMobile) {
+        // 移动端：卡片式展示
+        htmlContent += `
+          <div class="bg-gradient-to-br from-slate-50 to-gray-50 rounded-xl p-3 border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 mb-1">当前账号</p>
+            <p class="font-semibold text-slate-800">${escapeHtml(userName)}</p>
+            <p class="text-sm text-slate-600 font-mono">${escapeHtml(studentId)}</p>
+          </div>
+        `;
+      } else {
+        // PC端：表格式展示
+        htmlContent += `
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-100">
+                <th class="px-3 py-2 text-left border border-slate-200 font-semibold">姓名</th>
+                <th class="px-3 py-2 text-left border border-slate-200 font-semibold">学号</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="px-3 py-2 border border-slate-200">${escapeHtml(userName)}</td>
+                <td class="px-3 py-2 border border-slate-200 font-mono">${escapeHtml(studentId)}</td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      }
+    }
+    
+    htmlContent += `</div>`;
+  }
+  
+  // 显示Swal弹窗
+  Swal.fire({
+    title: enabled ? "自动签到已开启" : "自动签到已关闭",
+    html: htmlContent,
+    icon: enabled ? "success" : "info",
+    confirmButtonText: "我知道了",
+    confirmButtonColor: enabled ? "#22c55e" : "#64748b",
+    customClass: {
+      popup: isMobile ? "swal2-popup-mobile" : "",
+    },
+  });
+}
+
+/**
+ * 显示多账号模式下自动签到开关状态变更提示
+ * 当账号列表为空时，提醒用户后续添加的账号也会应用此设置
+ * @param {boolean} enabled - 是否开启自动签到
+ * @param {boolean} isMobile - 是否为移动端
+ */
+function showMultiAutoAttendanceToggleAlert(enabled, isMobile) {
+  // 检查是否有账号
+  const hasAccounts = cachedMultiAccounts && cachedMultiAccounts.length > 0;
+  
+  let htmlContent = "";
+  
+  if (enabled) {
+    htmlContent = `<div class="text-left">`;
+    
+    if (!hasAccounts) {
+      // 账号列表为空的提示
+      htmlContent += `
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+          <p class="text-amber-700 font-semibold mb-1">⚠️ 当前暂无账号</p>
+          <p class="text-sm text-amber-600">
+            后续添加到账号列表的账号将自动开启自动签到功能。
+          </p>
+        </div>
+      `;
+    } else {
+      // 显示账号列表
+      if (isMobile) {
+        // 移动端：卡片式展示
+        htmlContent += `<div class="space-y-2 max-h-48 overflow-y-auto mb-3">`;
+        cachedMultiAccounts.forEach((account) => {
+          htmlContent += `
+            <div class="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-2 border border-sky-100">
+              <p class="font-semibold text-sm text-slate-800">${escapeHtml(account.name || account.username)}</p>
+              <p class="text-xs text-slate-600 font-mono">${escapeHtml(account.username)}</p>
+            </div>
+          `;
+        });
+        htmlContent += `</div>`;
+      } else {
+        // PC端：表格式展示
+        htmlContent += `
+          <div class="max-h-48 overflow-y-auto mb-3">
+            <table class="w-full text-sm border-collapse">
+              <thead class="sticky top-0">
+                <tr class="bg-slate-100">
+                  <th class="px-3 py-2 text-left border border-slate-200 font-semibold">姓名</th>
+                  <th class="px-3 py-2 text-left border border-slate-200 font-semibold">账号</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        cachedMultiAccounts.forEach((account) => {
+          htmlContent += `
+            <tr>
+              <td class="px-3 py-2 border border-slate-200">${escapeHtml(account.name || "-")}</td>
+              <td class="px-3 py-2 border border-slate-200 font-mono">${escapeHtml(account.username)}</td>
+            </tr>
+          `;
+        });
+        htmlContent += `</tbody></table></div>`;
+      }
+    }
+    
+    htmlContent += `
+      <p class="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
+        ⏱ 自动签到将在 120 分钟内自动关闭
+      </p>
+    </div>`;
+  } else {
+    htmlContent = `<div class="text-left">`;
+    
+    if (!hasAccounts) {
+      htmlContent += `
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <p class="text-slate-600 font-semibold mb-1">⏸️ 自动签到已关闭</p>
+          <p class="text-sm text-slate-500">
+            当前暂无账号，后续添加的账号不会自动开启签到。
+          </p>
+        </div>
+      `;
+    } else {
+      htmlContent += `<p class="mb-3 text-slate-600 font-semibold">⏸️ 以下账号的自动签到已关闭</p>`;
+      
+      if (isMobile) {
+        htmlContent += `<div class="space-y-2 max-h-48 overflow-y-auto">`;
+        cachedMultiAccounts.forEach((account) => {
+          htmlContent += `
+            <div class="bg-slate-50 rounded-xl p-2 border border-slate-200">
+              <p class="font-semibold text-sm text-slate-800">${escapeHtml(account.name || account.username)}</p>
+              <p class="text-xs text-slate-600 font-mono">${escapeHtml(account.username)}</p>
+            </div>
+          `;
+        });
+        htmlContent += `</div>`;
+      } else {
+        htmlContent += `
+          <div class="max-h-48 overflow-y-auto">
+            <table class="w-full text-sm border-collapse">
+              <thead class="sticky top-0">
+                <tr class="bg-slate-100">
+                  <th class="px-3 py-2 text-left border border-slate-200 font-semibold">姓名</th>
+                  <th class="px-3 py-2 text-left border border-slate-200 font-semibold">账号</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        cachedMultiAccounts.forEach((account) => {
+          htmlContent += `
+            <tr>
+              <td class="px-3 py-2 border border-slate-200">${escapeHtml(account.name || "-")}</td>
+              <td class="px-3 py-2 border border-slate-200 font-mono">${escapeHtml(account.username)}</td>
+            </tr>
+          `;
+        });
+        htmlContent += `</tbody></table></div>`;
+      }
+    }
+    
+    htmlContent += `</div>`;
+  }
+  
+  Swal.fire({
+    title: enabled ? "自动签到已开启" : "自动签到已关闭",
+    html: htmlContent,
+    icon: enabled ? "success" : "info",
+    confirmButtonText: "我知道了",
+    confirmButtonColor: enabled ? "#22c55e" : "#64748b",
+    customClass: {
+      popup: isMobile ? "swal2-popup-mobile" : "",
+    },
+  });
 }
 
 function isSessionUUIDInvalid(uuid) {
@@ -13906,7 +14402,7 @@ function initializeMobileUI() {
         mobileAuthInputContainer.querySelector("input").value;
       mobileAuthLabel.textContent = "用户名";
       mobileAuthInputContainer.innerHTML = `
-            <input type="text" id="mobile-auth-username" class="w-full" placeholder="请输入用户名" autocomplete="username" value="${
+            <input type="text" id="mobile-auth-username" class="input-field w-full" placeholder="请输入用户名" autocomplete="username" value="${
               currentValue || ""
             }">
           `;
@@ -17258,12 +17754,48 @@ async function handleAuthLogin(isMobile_use = false) {
     } else {
       setButtonLoading("auth-login-btn", false);
       showButtonError("auth-login-btn", "登录失败");
-      // showModalAlert(result.message || "登录失败", "登录失败");
-      Swal.fire({
-        icon: "error",
-        title: "登录失败",
-        text: result.message || "登录失败",
-      });
+      
+      // 检查是否是手机号未注册的错误
+      const isPhoneNotRegistered = result.message && (
+        result.message.includes("未注册") ||
+        result.message.includes("不存在") ||
+        result.message.includes("not registered") ||
+        result.message.includes("手机号未绑定")
+      );
+      
+      // 如果是手机号登录且手机号未注册，提示跳转到注册页面
+      if (isPhoneNotRegistered && login_mode === "phone") {
+        const phoneNumber = login_id;
+        const currentSmsCode = sms_code;
+        
+        Swal.fire({
+          icon: "info",
+          title: "手机号未注册",
+          html: `
+            <div class="text-left">
+              <p class="mb-3">手机号 <strong class="font-mono">${escapeHtml(phoneNumber)}</strong> 尚未注册。</p>
+              <p class="text-sm text-slate-600">是否立即注册？系统将自动填充手机号和验证码。</p>
+            </div>
+          `,
+          showCancelButton: true,
+          confirmButtonText: "立即注册",
+          confirmButtonColor: "#22c55e",
+          cancelButtonText: "取消",
+          cancelButtonColor: "#64748b",
+        }).then((swalResult) => {
+          if (swalResult.isConfirmed) {
+            // 跳转到注册选项卡
+            handlePhoneNotRegisteredRedirect(phoneNumber, currentSmsCode, isMobile_use);
+          }
+        });
+      } else {
+        // 普通登录失败提示
+        Swal.fire({
+          icon: "error",
+          title: "登录失败",
+          text: result.message || "登录失败",
+        });
+      }
 
       if (isMobile_use === false) {
         refreshCaptcha("login");
@@ -17298,6 +17830,122 @@ async function handleAuthLogin(isMobile_use = false) {
     );
     if (mobileLoginCaptchaErr) mobileLoginCaptchaErr.value = "";
   }
+}
+
+/**
+ * 处理手机号未注册时跳转到注册页面
+ * 自动填充手机号和验证码，并延迟验证码有效期
+ * @param {string} phoneNumber - 用户输入的手机号
+ * @param {string} smsCode - 用户输入的短信验证码
+ * @param {boolean} isMobile - 是否为移动端
+ */
+function handlePhoneNotRegisteredRedirect(phoneNumber, smsCode, isMobile) {
+  console.log("[手机号未注册跳转] 开始处理:", { phoneNumber, smsCode, isMobile });
+  
+  // 切换到注册选项卡
+  const loginTab = document.querySelector('[data-auth-tab="login"]');
+  const registerTab = document.querySelector('[data-auth-tab="register"]');
+  const loginPanel = document.getElementById("auth-login-panel");
+  const registerPanel = document.getElementById("auth-register-panel");
+  
+  // 移动端选项卡
+  const mobileLoginTab = document.querySelector('[data-mobile-auth-tab="login"]');
+  const mobileRegisterTab = document.querySelector('[data-mobile-auth-tab="register"]');
+  const mobileLoginPanel = document.getElementById("mobile-auth-login-panel");
+  const mobileRegisterPanel = document.getElementById("mobile-auth-register-panel");
+  
+  if (isMobile) {
+    // 移动端处理
+    if (mobileLoginTab && mobileRegisterTab && mobileLoginPanel && mobileRegisterPanel) {
+      // 切换选项卡激活状态
+      mobileLoginTab.classList.remove("border-sky-500", "text-sky-600", "font-semibold");
+      mobileLoginTab.classList.add("border-transparent", "text-slate-500");
+      mobileRegisterTab.classList.add("border-sky-500", "text-sky-600", "font-semibold");
+      mobileRegisterTab.classList.remove("border-transparent", "text-slate-500");
+      
+      // 切换面板显示
+      mobileLoginPanel.classList.add("hidden");
+      mobileRegisterPanel.classList.remove("hidden");
+    }
+  } else {
+    // PC端处理
+    if (loginTab && registerTab && loginPanel && registerPanel) {
+      // 切换选项卡激活状态
+      loginTab.classList.remove("border-sky-500", "text-sky-600", "font-semibold");
+      loginTab.classList.add("border-transparent", "text-slate-500");
+      registerTab.classList.add("border-sky-500", "text-sky-600", "font-semibold");
+      registerTab.classList.remove("border-transparent", "text-slate-500");
+      
+      // 切换面板显示
+      loginPanel.classList.add("hidden");
+      registerPanel.classList.remove("hidden");
+    }
+  }
+  
+  // 填充手机号到注册表单
+  const regPhoneInput = document.getElementById(isMobile ? "mobile-reg-phone" : "auth-reg-phone");
+  if (regPhoneInput) {
+    regPhoneInput.value = phoneNumber;
+    console.log("[手机号未注册跳转] 已填充手机号:", phoneNumber);
+  }
+  
+  // 填充验证码到注册表单
+  const regSmsCodeInput = document.getElementById(isMobile ? "mobile-reg-sms-code" : "auth-reg-sms-code");
+  if (regSmsCodeInput && smsCode) {
+    regSmsCodeInput.value = smsCode;
+    console.log("[手机号未注册跳转] 已填充验证码:", smsCode);
+    
+    // 调用后端API延长验证码有效期
+    (async () => {
+      try {
+        const response = await fetch("/api/sms/extend_code", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            phone: phoneNumber,
+          }),
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          console.log("[手机号未注册跳转] 验证码有效期已延长:", data.extend_minutes, "分钟");
+        } else {
+          console.warn("[手机号未注册跳转] 验证码延长失败:", data.message);
+        }
+      } catch (error) {
+        console.error("[手机号未注册跳转] 延长验证码请求失败:", error);
+      }
+    })();
+    
+    // 通知用户验证码已复用
+    Swal.fire({
+      icon: "success",
+      title: "信息已自动填充",
+      html: `
+        <div class="text-left">
+          <p class="mb-2 text-green-600">✅ 手机号和验证码已自动填充</p>
+          <p class="text-sm text-slate-600">验证码有效期已自动延长5分钟</p>
+          <p class="text-sm text-slate-600 mt-2">请设置用户名和密码完成注册。</p>
+        </div>
+      `,
+      timer: 3000,
+      timerProgressBar: true,
+      showConfirmButton: false,
+    });
+  }
+  
+  // 刷新注册页验证码
+  refreshCaptcha(isMobile ? "mobile-register" : "register");
+  
+  // 聚焦到用户名输入框
+  setTimeout(() => {
+    const regUsernameInput = document.getElementById(isMobile ? "mobile-reg-username" : "auth-reg-username");
+    if (regUsernameInput) {
+      regUsernameInput.focus();
+    }
+  }, 500);
 }
 
 async function handle2FAVerify() {
@@ -19233,6 +19881,7 @@ async function initializeInlineAdminPanel() {
 
 let messageEditor = null;
 let mobileMultiMessageEditor = null;
+let mobileReminderEditor = null;
 let accountCancellationCooldowns = { pc: 0, mobile: 0 };
 
 function formatCancellationTimeText(ts) {
@@ -19789,6 +20438,8 @@ function switchAdminTab(tab) {
                   toolbarCustomIcons: {},
                   // 工具栏图标文本（自定义工具栏按钮的文本）
                   toolbarIconTexts: {},
+                  // 父容器层级（用于解决全屏模式下的定位问题）
+                  parentContainerLayer: '5',
                 });
 
                 // 将编辑器内部生成的对话框（.editormd-dialog）移动到 body，并固定定位，避免被父容器裁剪
@@ -20166,10 +20817,10 @@ function switchAdminTab(tab) {
           try {
             await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
             // 先加载依赖库，再加载 editormd 本体，减少 race condition
-            await loadOnce("/editor.md/lib/marked.min.js", false).catch(
+            await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(
               () => {},
             );
-            await loadOnce("/editor.md/lib/prettify.min.js", false).catch(
+            await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
               () => {},
             );
             await loadOnce("/editor.md/editormd.js", false).catch(() => {});
@@ -22219,15 +22870,27 @@ async function test2FA() {
     modal.className = "fixed inset-0 flex items-center justify-center z-50";
     modal.innerHTML = `
           <div class="fixed inset-0 bg-black bg-opacity-50" onclick="this.parentElement.remove()"></div>
-          <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 relative z-10">
-            <h3 class="text-lg font-semibold text-slate-800 mb-4">测试2FA</h3>
-            <div class="mb-4">
-              <label class="block text-sm font-semibold text-slate-700 mb-2">请输入验证器中的6位验证码</label>
-              <input type="text" id="test-2fa-code-input" class="input-field w-full" placeholder="输入6位验证码" maxlength="6" inputmode="numeric">
+          <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 relative z-10 border border-slate-100">
+            <div class="flex items-center gap-3 mb-5">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+              </div>
+              <h3 class="text-lg font-bold text-slate-800">测试2FA验证</h3>
             </div>
-            <div class="flex gap-2 justify-end">
-              <button class="btn btn-ghost" onclick="this.closest('.fixed').remove()">取消</button>
-              <button class="btn btn-primary" id="confirm-test-2fa">验证</button>
+            <div class="p-4 bg-gradient-to-r from-indigo-50 to-white border border-indigo-100 rounded-xl mb-4">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                <label class="text-sm font-semibold text-slate-700">验证码</label>
+              </div>
+              <input type="text" id="test-2fa-code-input" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-center text-xl tracking-widest font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="• • • • • •" maxlength="6" inputmode="numeric">
+              <p class="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                请打开验证器应用，输入当前显示的6位数字
+              </p>
+            </div>
+            <div class="flex gap-3 justify-end">
+              <button class="btn btn-ghost px-4 py-2 hover:bg-slate-100 transition-colors" onclick="this.closest('.fixed').remove()">取消</button>
+              <button class="btn btn-primary px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-lg transition-all duration-200" id="confirm-test-2fa">✓ 验证</button>
             </div>
           </div>
         `;
@@ -22548,9 +23211,9 @@ async function showCreateGroupModal() {
           permissionsContainer.innerHTML = Object.keys(firstGroup.permissions)
             .map(
               (perm) => `
-                <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                  <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}">
-                  <span class="text-sm text-slate-700">${translatePermission(
+                <label class="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 hover:border-sky-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group">
+                  <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}">
+                  <span class="text-sm text-slate-700 group-hover:text-slate-900">${translatePermission(
                     perm,
                   )}</span>
                 </label>
@@ -23139,7 +23802,7 @@ function _rerenderAdminUsersList() {
   _syncAdminUsersSortUI();
 
   const groupSelect = (user) => `
-    <select class="text-sm border border-slate-300 rounded px-2 py-1" onchange="updateUserGroup('${
+    <select class="text-sm bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300 cursor-pointer" onchange="updateUserGroup('${
       user.auth_username
     }', this.value)">
       ${groups.map((g) => `<option value="${g}" ${g === user.group ? "selected" : ""}>${g}</option>`).join("")}
@@ -23494,15 +24157,36 @@ async function resetUserPassword(username) {
     modal.className = "fixed inset-0 flex items-center justify-center z-50";
     modal.innerHTML = `
           <div class="fixed inset-0 bg-black bg-opacity-50" onclick="this.parentElement.remove()"></div>
-          <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 relative z-10">
-            <h3 class="text-lg font-semibold text-slate-800 mb-4">重置密码 - ${username}</h3>
-            <div class="mb-4">
-              <label class="block text-sm font-semibold text-slate-700 mb-2">新密码（至少6位）</label>
-              <input type="password" id="reset-password-input" class="input-field w-full" placeholder="输入新密码">
+          <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 relative z-10 border border-slate-100">
+            <div class="flex items-center gap-3 mb-5">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+              </div>
+              <div>
+                <h3 class="text-lg font-bold text-slate-800">重置密码</h3>
+                <p class="text-xs text-slate-500">用户: ${username}</p>
+              </div>
             </div>
-            <div class="flex gap-2 justify-end">
-              <button class="btn btn-ghost" onclick="this.closest('.fixed').remove()">取消</button>
-              <button class="btn btn-primary" id="confirm-reset-password">确认重置</button>
+            <div class="p-4 bg-gradient-to-r from-purple-50 to-white border border-purple-100 rounded-xl mb-4">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                <label class="text-sm font-semibold text-slate-700">新密码</label>
+              </div>
+              <input type="password" id="reset-password-input" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新密码">
+              <p class="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                密码长度至少6位，建议包含数字和字母
+              </p>
+            </div>
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+              <div class="flex items-start gap-2">
+                <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                <p class="text-xs text-amber-700">此操作将立即更改用户密码，请确保用户知晓</p>
+              </div>
+            </div>
+            <div class="flex gap-3 justify-end">
+              <button class="btn btn-ghost px-4 py-2 hover:bg-slate-100 transition-colors" onclick="this.closest('.fixed').remove()">取消</button>
+              <button class="btn btn-primary px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white rounded-lg transition-all duration-200" id="confirm-reset-password">✓ 确认重置</button>
             </div>
           </div>
         `;
@@ -25503,28 +26187,28 @@ async function manageUserPermissions(username) {
           const isRemoved = removedPerms[perm] === true;
           const currentValue = result.all_permissions[perm];
 
-          let statusClass = "";
+          let statusClass = "bg-gradient-to-r from-slate-50 to-white border-slate-100 hover:border-sky-200";
           let statusText = "";
           if (isAdded) {
-            statusClass = "bg-green-50 border-green-200";
+            statusClass = "bg-gradient-to-r from-green-50 to-white border-green-200 hover:border-green-300";
             statusText = "(新增)";
           } else if (isRemoved) {
-            statusClass = "bg-red-50 border-red-200";
+            statusClass = "bg-gradient-to-r from-red-50 to-white border-red-200 hover:border-red-300";
             statusText = "(移除)";
           }
 
           return `
-              <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer border ${statusClass}">
-                <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" data-group-value="${groupHas}" ${
+              <label class="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group border ${statusClass}">
+                <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}" data-group-value="${groupHas}" ${
                   currentValue ? "checked" : ""
                 }>
-                <span class="text-sm text-slate-700 flex-1">${translatePermission(
+                <span class="text-sm text-slate-700 group-hover:text-slate-900 flex-1">${translatePermission(
                   perm,
                 )}</span>
                 ${
                   statusText
-                    ? `<span class="text-xs ${
-                        isAdded ? "text-green-600" : "text-red-600"
+                    ? `<span class="text-xs font-medium px-2 py-0.5 rounded-full ${
+                        isAdded ? "text-green-600 bg-green-100" : "text-red-600 bg-red-100"
                       }">${statusText}</span>`
                     : ""
                 }
@@ -26054,11 +26738,11 @@ async function editGroupPermissions(groupKey) {
       permissionsContainer.innerHTML = Object.keys(group.permissions)
         .map(
           (perm) => `
-            <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
-              <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" ${
+            <label class="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 hover:border-sky-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group">
+              <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}" ${
                 group.permissions[perm] ? "checked" : ""
               }>
-              <span class="text-sm text-slate-700">${translatePermission(
+              <span class="text-sm text-slate-700 group-hover:text-slate-900">${translatePermission(
                 perm,
               )}</span>
             </label>
@@ -28734,15 +29418,23 @@ function openMobileVerificationCodesModal() {
                 <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
               </div>
               <!-- 模态框标题区域 -->
-              <div class="flex items-center justify-between pb-3 border-b border-slate-200">
-                <h3 class="text-xl font-bold text-sky-600">🔑 验证码管理</h3>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileVerificationCodesModal()">
+                <div class="flex items-center gap-2">
+                  <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                  </div>
+                  <h3 class="text-xl font-bold text-emerald-600">验证码管理</h3>
+                </div>
                 <!-- 关闭按钮 -->
-                <button onclick="closeMobileVerificationCodesModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+                <button onclick="event.stopPropagation(); closeMobileVerificationCodesModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
               </div>
 
               <!-- 手动添加验证码区域 -->
-              <div class="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
-                <h5 class="font-semibold text-green-900 text-sm">➕ 手动添加验证码</h5>
+              <div class="bg-gradient-to-r from-emerald-50 to-white border border-emerald-100 rounded-xl p-4 space-y-3">
+                <div class="flex items-center gap-2 mb-2">
+                  <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                  <h5 class="font-semibold text-emerald-800 text-sm">手动添加验证码</h5>
+                </div>
                 <!-- 手机号输入框 -->
                 <div class="phone-input-wrapper">
                   <span class="phone-prefix">+86 </span>
@@ -28751,13 +29443,16 @@ function openMobileVerificationCodesModal() {
                 <!-- 验证码输入框 -->
                 <input type="text" id="mobile-manual-code-value" class="input-field text-sm w-full" placeholder="验证码（6位数字，留空自动生成）" maxlength="6" pattern="[0-9]{6}">
                 <!-- 添加按钮 -->
-                <button onclick="addMobileManualVerificationCode()" class="btn btn-primary w-full !py-2 text-sm min-h-[44px]">添加验证码</button>
-                <p class="text-xs text-slate-600">💡 此功能用于测试或紧急情况下手动添加验证码，不会实际发送短信</p>
+                <button onclick="addMobileManualVerificationCode()" class="btn btn-primary w-full !py-2 text-sm min-h-[44px] bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 border-none">添加验证码</button>
+                <p class="text-xs text-slate-500 flex items-start gap-1">
+                  <svg class="w-3 h-3 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  此功能用于测试或紧急情况下手动添加验证码，不会实际发送短信
+                </p>
               </div>
 
               <!-- 刷新按钮 -->
               <div class="flex justify-end">
-                <button onclick="loadMobileVerificationCodes()" class="btn btn-ghost text-sm">🔄 刷新列表</button>
+                <button onclick="loadMobileVerificationCodes()" class="btn btn-ghost text-sm hover:bg-slate-100 transition-colors">🔄 刷新列表</button>
               </div>
 
               <!-- 验证码列表容器 -->
@@ -28767,7 +29462,7 @@ function openMobileVerificationCodesModal() {
 
               <!-- 底部操作按钮 -->
               <div class="flex justify-end pt-3 border-t border-slate-100">
-                <button onclick="closeMobileVerificationCodesModal()" class="btn btn-ghost border border-slate-300 !py-2 text-sm min-h-[44px]">关闭</button>
+                <button onclick="closeMobileVerificationCodesModal()" class="btn btn-ghost border border-slate-200 rounded-xl !py-2 text-sm min-h-[44px] hover:bg-slate-50 transition-colors">关闭</button>
               </div>
             </div>
           `;
@@ -37631,6 +38326,10 @@ function onParamChange(event) {
     logMessage_Info("参数 'ignore_task_time' 已更改，正在自动刷新任务列表...");
     refreshTasks();
   }
+  // 自动签到开关变更时显示提示
+  if (key === "auto_attendance_enabled") {
+    showAutoAttendanceToggleAlert(value, false); // false = PC端
+  }
 }
 function onGlobalParamChange(event) {
   const key = event.target.dataset.key;
@@ -37642,6 +38341,10 @@ function onGlobalParamChange(event) {
   callPythonAPI("update_param", key, value);
   if (key === "ignore_task_time") {
     updateAllAccountsStatusText();
+  }
+  // 多账号模式下自动签到开关变更时显示提示
+  if (key === "auto_attendance_enabled") {
+    showMultiAutoAttendanceToggleAlert(value, false); // false = PC端
   }
 }
 async function openAccountParamsModal(username) {
@@ -41148,8 +41851,8 @@ function resetMobileMapView() {
       map.setFitView(markers, false, [50, 50, 50, 50]);
       console.log("[单账号地图] 复位视角：自动适应所有标记点");
     } else {
-      const defaultCenter = [116.397128, 39.916527];
-      const defaultZoom = 11;
+      const defaultCenter = [113.390342, 22.527403];
+      const defaultZoom = 15;
       map.setCenter(defaultCenter);
       map.setZoom(defaultZoom);
       console.log("[单账号地图] 复位视角：重置到默认位置");
@@ -41184,7 +41887,7 @@ function resetMultiMapView() {
       console.log("[多账号地图] 复位视角：自动适应所有路线");
     } else {
       const defaultCenter = [113.390342, 22.527403];
-      const defaultZoom = 11;
+      const defaultZoom = 15;
       multiAccountMap.setCenter(defaultCenter);
       multiAccountMap.setZoom(defaultZoom);
       console.log(
@@ -41616,72 +42319,143 @@ async function loadSystemConfig() {
 
     const config = result.config;
     formContainer.innerHTML = "";
-    const createInput = (section, key, label, type = "text", help = "") => {
-      // [修复问题28] 获取原始配置值
+
+    // ==================== 旧配置迁移逻辑 ====================
+    // 如果存在旧的 query_method 配置，自动迁移到 query_order
+    // 迁移规则：将旧的优先方式放到查询顺序的最前面
+    if (config.IP_Location && config.IP_Location.query_method) {
+      const oldMethod = String(config.IP_Location.query_method || "").trim().toLowerCase();
+      const currentOrder = String(config.IP_Location.query_order || "uapipro,amap,baidu").trim().toLowerCase();
+      const orderList = currentOrder.split(",").map(s => s.trim()).filter(s => s);
+      
+      // 如果旧配置的方式不在第一位，则将其移到第一位
+      if (oldMethod && orderList.includes(oldMethod) && orderList[0] !== oldMethod) {
+        const newOrderList = [oldMethod, ...orderList.filter(s => s !== oldMethod)];
+        config.IP_Location.query_order = newOrderList.join(",");
+        console.log("[配置迁移] IP归属地查询顺序已迁移:", config.IP_Location.query_order);
+      } else if (oldMethod && !orderList.includes(oldMethod)) {
+        // 如果旧方式不在列表中，添加到最前面
+        config.IP_Location.query_order = [oldMethod, ...orderList].join(",");
+        console.log("[配置迁移] IP归属地查询顺序已添加旧方式:", config.IP_Location.query_order);
+      }
+      // 标记配置已迁移（前端不再显示query_method）
+      delete config.IP_Location.query_method;
+    }
+
+    // ==================== 美化版 createInput 函数 ====================
+    const createInput = (section, key, label, type = "text", help = "", options = {}) => {
+      // 获取原始配置值
       const rawValue = config[section]?.[key];
 
-      // [修复问题28] 标准化布尔值
-      // 如果类型是boolean，将各种可能的值（字符串"true"/"false"、布尔值、数字等）统一转换为布尔类型
+      // 标准化布尔值
       let value = rawValue;
       if (type === "boolean") {
-        // 如果已经是布尔类型，直接使用
         if (typeof rawValue === "boolean") {
           value = rawValue;
-        }
-        // 如果是字符串"true"（不区分大小写），转换为true
-        else if (typeof rawValue === "string") {
+        } else if (typeof rawValue === "string") {
           value = rawValue.toLowerCase().trim() === "true";
-        }
-        // 如果是数字1，转换为true；数字0转换为false
-        else if (typeof rawValue === "number") {
+        } else if (typeof rawValue === "number") {
           value = rawValue === 1;
-        }
-        // 其他情况，使用false作为默认值
-        else {
+        } else {
           value = false;
         }
+      }
+
+      // 根据类型选择图标
+      let iconSvg = "";
+      if (type === "boolean") {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+      } else if (type === "number") {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path></svg>`;
+      } else if (type === "password_storage" || key.includes("key") || key.includes("secret")) {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>`;
+      } else if (type === "ip_query_order") {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>`;
+      } else {
+        iconSvg = `<svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>`;
       }
 
       let inputHtml = "";
       if (type === "boolean") {
         inputHtml = `
-        <select id="config-${section}-${key}" class="select-field">
-          <option value="true" ${value === true ? "selected" : ""}>启用</option>
-          <option value="false" ${
-            value === false ? "selected" : ""
-          }>禁用</option>
+        <select id="config-${section}-${key}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">
+          <option value="true" ${value === true ? "selected" : ""}>✅ 启用</option>
+          <option value="false" ${value === false ? "selected" : ""}>❌ 禁用</option>
         </select>
       `;
       } else if (type === "number") {
-        inputHtml = `<input type="number" id="config-${section}-${key}" value="${value}" class="input-field">`;
+        inputHtml = `<input type="number" id="config-${section}-${key}" value="${value}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">`;
       } else if (type === "password_storage") {
         inputHtml = `
-        <select id="config-${section}-${key}" class="select-field">
-          <option value="plaintext" ${
-            value === "plaintext" ? "selected" : ""
-          }>明文</option>
-          <option value="sha256" ${
-            value === "sha256" ? "selected" : ""
-          }>sha256</option>
-          <option value="bcrypt" ${
-            value === "bcrypt" ? "selected" : ""
-          }>bcrypt(自动加盐)</option>
+        <select id="config-${section}-${key}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">
+          <option value="plaintext" ${value === "plaintext" ? "selected" : ""}>🔓 明文</option>
+          <option value="sha256" ${value === "sha256" ? "selected" : ""}>🔐 SHA256</option>
+          <option value="bcrypt" ${value === "bcrypt" ? "selected" : ""}>🛡️ BCrypt (自动加盐)</option>
         </select>
       `;
+      } else if (type === "ip_query_order") {
+        // IP归属地查询顺序 - 拖拽排序
+        const allMethods = [
+          { key: "uapipro", name: "UapiPro", icon: "🌐" },
+          { key: "amap", name: "高德地图", icon: "🗺️" },
+          { key: "baidu", name: "百度开放数据", icon: "📍" },
+          { key: "pconline", name: "PConline", icon: "💻" },
+        ];
+        const currentOrderStr = String(value || "uapipro,amap,baidu").trim().toLowerCase();
+        const currentOrder = currentOrderStr.split(",").map(s => s.trim()).filter(s => s);
+        
+        // 根据当前顺序排列，未包含的放在后面
+        const sortedMethods = [
+          ...currentOrder.map(key => allMethods.find(m => m.key === key)).filter(Boolean),
+          ...allMethods.filter(m => !currentOrder.includes(m.key))
+        ];
+        
+        inputHtml = `
+        <div id="config-${section}-${key}-container" class="space-y-1.5">
+          <ul id="config-${section}-${key}-sortable" class="space-y-1.5">
+            ${sortedMethods.map((m, idx) => `
+              <li data-key="${m.key}" class="flex items-center gap-3 px-3 py-2.5 bg-white border border-slate-200 rounded-lg cursor-grab active:cursor-grabbing hover:bg-slate-50 hover:border-sky-300 transition-all duration-200 group">
+                <span class="text-slate-400 group-hover:text-sky-500 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
+                </span>
+                <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-sky-100 text-sky-600 rounded-full text-xs font-bold">${idx + 1}</span>
+                <span class="text-lg">${m.icon}</span>
+                <span class="flex-1 text-sm font-medium text-slate-700">${m.name}</span>
+                <span class="text-xs text-slate-400 font-mono">${m.key}</span>
+              </li>
+            `).join("")}
+          </ul>
+          <input type="hidden" id="config-${section}-${key}" value="${currentOrder.join(",")}" />
+        </div>
+      `;
       } else {
-        inputHtml = `<input type="text" id="config-${section}-${key}" value="${value}" class="input-field">`;
+        inputHtml = `<input type="text" id="config-${section}-${key}" value="${value || ""}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="${options.placeholder || ""}">`;
       }
       return `
-      <div class="mb-3">
-        <label for="config-${section}-${key}" class="block text-sm font-semibold text-slate-700">${label} <!-- <span class="text-xs font-mono text-slate-400">[${section}] ${key}</span> --></label>
+      <div class="mb-4 p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+        <label for="config-${section}-${key}" class="flex items-center gap-2 mb-2">
+          ${iconSvg}
+          <span class="text-sm font-semibold text-slate-700">${label}</span>
+        </label>
         ${inputHtml}
-        ${help ? `<p class="text-xs text-slate-500 mt-1">${help}</p>` : ""}
+        ${help ? `<p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>${help}</span></p>` : ""}
       </div>
     `;
     };
+    
+    // ==================== 美化版区段标题 ====================
+    const createSectionTitle = (title, icon = "") => {
+      return `
+      <div class="flex items-center gap-3 mt-6 mb-4 first:mt-0">
+        ${icon ? `<span class="text-xl">${icon}</span>` : ''}
+        <h5 class="font-bold text-base text-sky-800">${title}</h5>
+        <div class="flex-1 h-px bg-gradient-to-r from-sky-200 to-transparent"></div>
+      </div>
+    `;
+    };
+    
     let html = "";
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">游客配置</h5>';
+    html += createSectionTitle("游客配置", "👤");
     html += createInput(
       "Guest",
       "allow_guest_login",
@@ -41689,8 +42463,7 @@ async function loadSystemConfig() {
       "boolean",
       "是否允许未注册用户以游客身份使用系统。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">帮助配置</h5>';
+    html += createSectionTitle("帮助配置", "❓");
     // 新手帮助相关配置
     html += createInput(
       "Guest",
@@ -41706,8 +42479,7 @@ async function loadSystemConfig() {
       "text",
       "指向新手帮助页面或文档的URL地址。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">系统配置</h5>';
+    html += createSectionTitle("系统配置", "⚙️");
     html += createInput(
       "System",
       "session_expiry_days",
@@ -41750,8 +42522,7 @@ async function loadSystemConfig() {
       "number",
       "会话无活动超过此时间将被清理。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">日志配置</h5>';
+    html += createSectionTitle("日志配置", "📋");
     html += createInput(
       "Logging",
       "log_rotation_size_mb",
@@ -41780,8 +42551,7 @@ async function loadSystemConfig() {
       "text",
       "存储压缩日志 (logs/archive) 的目录。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">安全配置</h5>';
+    html += createSectionTitle("安全配置", "🔒");
     html += createInput(
       "Security",
       "password_storage",
@@ -41803,8 +42573,7 @@ async function loadSystemConfig() {
       "number",
       "登录审计日志的保留天数。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">账号功能配置</h5>';
+    html += createSectionTitle("账号功能配置", "👥");
     html += createInput(
       "Features",
       "account_cancellation_wait_hours",
@@ -41812,8 +42581,7 @@ async function loadSystemConfig() {
       "number",
       "用户申请注销账号后，在此时间段内登录可撤销注销，到期后账号将被自动删除。默认 24 小时。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">地图配置</h5>';
+    html += createSectionTitle("地图配置", "🗺️");
     html += createInput(
       "Map",
       "amap_js_key",
@@ -41821,13 +42589,34 @@ async function loadSystemConfig() {
       "text",
       "用于前端地图显示的JS API Key。",
     );
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
+    html += createSectionTitle("IP 归属地查询配置", "🌐");
+    html += createInput(
+      "IP_Location",
+      "query_order",
+      "查询顺序（拖拽排序）",
+      "ip_query_order",
+      "拖拽调整查询优先级。查询失败时会自动尝试下一个服务。",
+    );
+    html += createInput(
+      "IP_Location",
+      "amap_web_api_key",
+      "高德 Web API Key（IP定位）",
+      "text",
+      "用于调用 https://restapi.amap.com/v3/ip",
+    );
+    html += createInput(
+      "IP_Location",
+      "uapipro_api_key",
+      "UapiPro API Key",
+      "text",
+      "用于调用 https://uapis.cn/api/v1/network/ipinfo（Bearer Token）",
+    );
+    // html +=
+    //   '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
     // ==================== 网站备案信息配置 ====================
     // 添加网站备案（Beian）相关配置项，包括ICP备案号和公安网备案号
     // 这些配置项用于在网站底部显示合规信息，满足中国大陆网站的备案要求
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">网站备案信息</h5>';
+    html += createSectionTitle("网站备案信息", "📜");
     // ICP备案号配置项
     // 用于显示工信部颁发的ICP备案号，例如：京ICP备12345678号
     html += createInput(
@@ -41869,11 +42658,10 @@ async function loadSystemConfig() {
     // 添加百度云文本审核API相关配置项
     // 用途：对用户发布的留言内容进行智能审核，检测违规信息
     // 依赖：需要在百度智能云控制台创建"内容审核"应用
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">🔍 百度云审核服务</h5>';
+    html += createSectionTitle("百度云审核服务", "🔍");
     // 添加说明文字，引导管理员了解此配置的用途
     html +=
-      '<p class="text-xs text-slate-500 mb-3">用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）</p>';
+      '<p class="text-xs text-slate-500 mb-3 ml-1">用于留言内容审核，检测违规信息（色情、暴力、政治敏感等）</p>';
 
     // API Key 配置项
     // 用于身份验证，从百度智能云控制台获取
@@ -41913,13 +42701,12 @@ async function loadSystemConfig() {
     // ==================== 留言内容审核功能配置 ====================
     // 添加内容审核功能的总开关
     // 控制是否启用留言内容的自动审核
-    html +=
-      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">📝 留言内容审核</h5>';
+    html += createSectionTitle("留言内容审核", "📝");
 
     // 添加警告提示，提醒管理员需要先配置百度云API密钥
     // 使用醒目的黄色背景色和警告图标，增强视觉提示效果
     html +=
-      '<p class="text-xs text-amber-600 bg-amber-50 p-2 rounded mb-3">⚠️ 启用此功能需要先配置上方的百度云API密钥</p>';
+      '<p class="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg mb-3 ml-1">⚠️ 启用此功能需要先配置上方的百度云API密钥</p>';
 
     // 是否启用留言审核的开关
     // 类型：boolean（布尔值选择器，显示"启用"或"禁用"）
@@ -41933,6 +42720,39 @@ async function loadSystemConfig() {
     );
 
     formContainer.innerHTML = html;
+    
+    // ==================== 初始化 SortableJS 拖拽排序 ====================
+    // 为 IP 归属地查询顺序的拖拽列表初始化 SortableJS
+    const sortableContainer = document.getElementById("config-IP_Location-query_order-sortable");
+    if (sortableContainer && typeof Sortable !== "undefined") {
+      new Sortable(sortableContainer, {
+        animation: 150,
+        ghostClass: "bg-sky-100",
+        chosenClass: "shadow-lg",
+        dragClass: "opacity-50",
+        handle: ".cursor-grab",
+        onEnd: function () {
+          // 获取排序后的顺序
+          const items = sortableContainer.querySelectorAll("li[data-key]");
+          const order = Array.from(items).map(item => item.dataset.key);
+          // 更新隐藏输入框的值
+          const hiddenInput = document.getElementById("config-IP_Location-query_order");
+          if (hiddenInput) {
+            hiddenInput.value = order.join(",");
+          }
+          // 更新序号显示
+          items.forEach((item, idx) => {
+            const numSpan = item.querySelector(".bg-sky-100");
+            if (numSpan) {
+              numSpan.textContent = idx + 1;
+            }
+          });
+          console.log("[配置] IP归属地查询顺序已更新:", order.join(","));
+        },
+      });
+      console.log("[配置] SortableJS 拖拽排序已初始化");
+    }
+    
     configLoadState.system = true;
   } catch (e) {
     configLoadState.system = false;
@@ -42619,7 +43439,7 @@ async function loadReminders() {
       return;
     }
     listContainer.innerHTML = "";
-    reminders.forEach((reminder) => {
+    reminders.forEach((reminder, index) => {
       const itemDiv = document.createElement("div");
       itemDiv.className =
         "p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition-shadow";
@@ -42627,6 +43447,8 @@ async function loadReminders() {
       const timeRangeClass = isCrossDay ? "text-purple-600" : "text-blue-600";
       const timeRangeIcon = isCrossDay ? "🌙" : "☀️";
       const timeRangeHint = isCrossDay ? "（跨天）" : "";
+      // 为每个提醒的 Markdown 内容创建唯一ID
+      const messageContainerId = `pc-reminder-message-${reminder.id}-${index}`;
       itemDiv.innerHTML = `
       <div class="flex justify-between items-start">
         <!-- 左侧：提醒信息 -->
@@ -42642,10 +43464,8 @@ async function loadReminders() {
                 : '<span class="px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded">禁用</span>'
             }
           </div>
-          <!-- 提醒内容 -->
-          <p class="text-sm text-slate-600 mb-3 line-clamp-2">${escapeHtml(
-            reminder.message,
-          )}</p>
+          <!-- 提醒内容（Markdown渲染） -->
+          <div id="${messageContainerId}" class="text-sm text-slate-600 mb-3 pc-reminder-markdown-content"></div>
           <!-- 时间范围 -->
           <div class="flex items-center gap-2 text-sm ${timeRangeClass}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -42716,6 +43536,47 @@ async function loadReminders() {
     `;
       listContainer.appendChild(itemDiv);
     });
+    
+    // 使用 Editor.md 渲染所有提醒内容的 Markdown（与留言板 admin-messages-list_modal 相同方式）
+    (function renderRemindersMarkdown(remindersList) {
+      if (!remindersList || !remindersList.length) return;
+      remindersList.forEach((reminder, index) => {
+        const messageContainerId = `pc-reminder-message-${reminder.id}-${index}`;
+        const container = document.getElementById(messageContainerId);
+        if (!container) return;
+
+        // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
+        if (window.editormd && typeof editormd.markdownToHTML === "function") {
+          try {
+            // editormd.markdownToHTML 会替换指定容器内容
+            editormd.markdownToHTML(messageContainerId, {
+              markdown: reminder.message || "",
+              htmlDecode: "style,iframe,image",
+              toc: false,
+              tocContainer: "",
+              gfm: true,
+              tocDropdown: false,
+              markdownSourceCode: false,
+              emoji: true,
+              taskList: true,
+              tex: false,
+              flowChart: false,
+              sequenceDiagram: false,
+            });
+            return;
+          } catch (e) {
+            console.warn("[定时提醒] PC端Markdown渲染失败，回退为纯文本显示", e);
+          }
+        }
+
+        // 最后回退：以转义文本并保留换行展示
+        container.innerHTML = escapeHtml(reminder.message || "").replace(
+          /\n/g,
+          "<br>",
+        );
+      });
+    })(reminders);
+    
     console.log(`[定时提醒] 已加载 ${reminders.length} 条提醒`);
   } catch (error) {
     console.error("[定时提醒] 加载失败:", error);
@@ -42761,8 +43622,8 @@ async function openReminderEditModal(reminderId = "") {
       // 这里使用相对路径，项目中已有 editor.md 资源（若使用 CDN，请替换为 CDN 地址）
       await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
       // 先加载 editormd 依赖库，再加载主体脚本，减少 race condition
-      await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
-      await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {});
+      await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+      await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
       await loadOnce("/editor.md/editormd.js", false).catch(() => {});
 
       // 等待 window.editormd 可用（轮询），最长等待1500ms
@@ -42897,13 +43758,7 @@ async function openReminderEditModal(reminderId = "") {
           // 预览完成回调（预览生成完成后触发）
           onpreviewed: function () {},
           // 全屏回调（进入全屏模式时触发）
-          onfullscreen: function () {
-            // const reminder_editor = document.getElementById("reminder-editor");
-            // if (reminder_editor) {
-            //   reminder_editor.style.width = "100vw";
-            //   reminder_editor.style.height = "100vh";
-            // }
-          },
+          onfullscreen: function () {},
           // 退出全屏回调（退出全屏模式时触发）
           onfullscreenExit: function () {},
           // 滚动回调（编辑器滚动时触发）
@@ -42975,6 +43830,8 @@ async function openReminderEditModal(reminderId = "") {
           toolbarCustomIcons: {},
           // 工具栏图标文本（自定义工具栏按钮的文本）
           toolbarIconTexts: {},
+          // 父容器层级（用于解决全屏模式下的定位问题）
+          parentContainerLayer:"3",
         });
         window._reminderEditorInitialized = true;
         // 在初始化完成后，短延迟刷新编辑器以确保首次打开时预览/渲染正常
@@ -42993,14 +43850,6 @@ async function openReminderEditModal(reminderId = "") {
             ) {
               try {
                 window.reminderEditor.recreate();
-              } catch (e) {}
-            }
-            if (
-              window.reminderEditor &&
-              typeof window.reminderEditor.previewing === "function"
-            ) {
-              try {
-                window.reminderEditor.previewing();
               } catch (e) {}
             }
           } catch (e) {}
@@ -43472,8 +44321,8 @@ async function checkAndShowReminders() {
         await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
         await loadOnce("/editor.md/editormd.js", false).catch(() => {});
         // editormd 渲染依赖
-        await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
-        await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {});
+        await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+        await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
         console.log("[定时提醒] 预加载 editormd 及依赖完成");
       } catch (e) {
         console.warn("[定时提醒] 预加载 editormd 及依赖时发生错误:", e);
@@ -43524,10 +44373,10 @@ async function checkAndShowReminders() {
           await loadOnce("/editor.md/editormd.js", false).catch(() => {
             console.warn("延迟加载 editormd.js 失败");
           });
-          await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {
+          await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {
             console.warn("延迟加载 marked 失败");
           });
-          await loadOnce("/editor.md/lib/prettify.min.js", false).catch(() => {
+          await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {
             console.warn("延迟加载 prettify 失败");
           });
 
@@ -43617,8 +44466,8 @@ async function checkAndShowReminders() {
         );
 
         try {
-          await loadOnce("/editor.md/lib/marked.min.js", false).catch(() => {});
-          await loadOnce("/editor.md/lib/prettify.min.js", false).catch(
+          await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+          await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
             () => {},
           );
         } catch (e) {
@@ -44032,6 +44881,7 @@ async function loadCDNConfig() {
       if (mobileCdnCacheTime) {
         mobileCdnCacheTime.value = data.config.cache_time || 3600;
       }
+      _syncCDNForceRefreshAvailability(!!(data.config.cdn_enabled || false));
 
       // 在控制台输出日志，方便调试
       console.log("[CDN配置] 配置加载成功:", data.config);
@@ -44111,6 +44961,7 @@ async function saveCDNConfig() {
     if (data.success) {
       // 显示成功消息，告知用户配置已保存
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
+      _syncCDNForceRefreshAvailability(!!cdnEnabledToggle.checked);
 
       // 在控制台输出成功日志
       console.log("[CDN配置] 配置保存成功");
@@ -44184,6 +45035,7 @@ async function saveMobileCDNConfig() {
     // 检查保存是否成功
     if (data.success) {
       showModalAlert("CDN配置已保存，立即生效", "保存成功");
+      _syncCDNForceRefreshAvailability(!!cdnEnabledToggle.checked);
       console.log("[移动端CDN配置] 配置保存成功");
     } else {
       showModalAlert(data.message || "保存配置失败", "保存失败");
@@ -44196,6 +45048,93 @@ async function saveMobileCDNConfig() {
     // 恢复按钮状态
     setButtonLoading(saveBtn, false, "保存配置");
   }
+}
+
+// CDN 强制刷新（异步后台执行，防重复点击，自动重试）
+let cdnForceRefreshInFlight = false;
+let cdnForceRefreshRetryTimer = null;
+
+function _setCDNForceRefreshButtonState(disabled, text = "强制刷新服务器缓存") {
+  const btnIds = ["cdn-force-refresh-btn", "mobile-cdn-force-refresh-btn"];
+  btnIds.forEach((id) => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.disabled = disabled;
+    btn.textContent = text;
+  });
+}
+
+function _syncCDNForceRefreshAvailability(cdnEnabled) {
+  const shouldDisable = !cdnEnabled || cdnForceRefreshInFlight;
+  _setCDNForceRefreshButtonState(
+    shouldDisable,
+    cdnForceRefreshInFlight ? "后台刷新中..." : "强制刷新服务器缓存",
+  );
+}
+
+function triggerCDNForceRefresh() {
+  if (cdnForceRefreshInFlight) {
+    showModalAlert("CDN缓存正在后台刷新中，请勿重复点击", "提示");
+    return;
+  }
+
+  cdnForceRefreshInFlight = true;
+  if (cdnForceRefreshRetryTimer) {
+    clearTimeout(cdnForceRefreshRetryTimer);
+    cdnForceRefreshRetryTimer = null;
+  }
+  _setCDNForceRefreshButtonState(true, "后台刷新中...");
+  showModalAlert("已启动后台强制刷新，任务正在执行中", "已提交");
+
+  const maxAttempts = 3;
+  let attempt = 0;
+
+  const doRefresh = async () => {
+    attempt += 1;
+    try {
+      const response = await fetch("/api/cdn/refresh", {
+        method: "POST",
+        headers: {
+          "X-Session-ID": sessionUUID,
+          "Content-Type": "application/json",
+        },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result && result.success) {
+        showTempMessage(
+          `CDN后台刷新完成（成功 ${result.success_count || 0}，失败 ${result.fail_count || 0}）`,
+          "success",
+        );
+        cdnForceRefreshInFlight = false;
+        _setCDNForceRefreshButtonState(false);
+        return;
+      }
+
+      if (attempt < maxAttempts) {
+        showTempMessage(`CDN刷新失败，准备第 ${attempt + 1} 次重试...`, "warning");
+        cdnForceRefreshRetryTimer = setTimeout(doRefresh, 1200);
+      } else {
+        showModalAlert(
+          `CDN后台刷新失败：${(result && result.message) || `HTTP ${response.status}`}`,
+          "刷新失败",
+        );
+        cdnForceRefreshInFlight = false;
+        _setCDNForceRefreshButtonState(false);
+      }
+    } catch (e) {
+      if (attempt < maxAttempts) {
+        showTempMessage(`CDN刷新网络异常，准备第 ${attempt + 1} 次重试...`, "warning");
+        cdnForceRefreshRetryTimer = setTimeout(doRefresh, 1200);
+      } else {
+        showModalAlert(`CDN后台刷新失败：${e.message}`, "刷新失败");
+        cdnForceRefreshInFlight = false;
+        _setCDNForceRefreshButtonState(false);
+      }
+    }
+  };
+
+  // 立即后台执行，不阻塞当前UI
+  setTimeout(doRefresh, 0);
 }
 
 // ============================================================================
@@ -44638,6 +45577,11 @@ async function saveSystemConfig() {
       Map: {
         amap_js_key: $("config-Map-amap_js_key").value,
       },
+      IP_Location: {
+        query_order: ($("config-IP_Location-query_order").value || "").trim(),
+        amap_web_api_key: ($("config-IP_Location-amap_web_api_key").value || "").trim(),
+        uapipro_api_key: ($("config-IP_Location-uapipro_api_key").value || "").trim(),
+      },
       // ==================== 网站备案信息配置保存 ====================
       // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中
       // 这些配置项用于在网站底部显示合规的备案信息
@@ -44947,7 +45891,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // 设置复选框的选中状态
       autoAttendanceEnabled.checked =
         pythonParams["auto_attendance_enabled"] || false;
-      // 绑定 change 事件，实现实时保存
+      // 绑定 change 事件，实现实时保存和提示
       autoAttendanceEnabled.addEventListener("change", function () {
         if (typeof callPythonAPI === "function") {
           callPythonAPI(
@@ -44956,6 +45900,8 @@ document.addEventListener("DOMContentLoaded", function () {
             this.checked,
           );
           console.log(`[移动端多账号] 自动签到开关已更新: ${this.checked}`);
+          // 显示多账号模式的自动签到提示
+          showMultiAutoAttendanceToggleAlert(this.checked, true); // true = 移动端
         }
       });
     }
@@ -46069,60 +47015,245 @@ async function ensureMobileMultiMessageEditorInitialized() {
     const editorEl = document.getElementById("mobile-multi-message-editor");
     if (!editorEl) return false;
     mobileMultiMessageEditor = editormd("mobile-multi-message-editor", {
-      mode: "gfm",
-      name: "mobile-multi-message-content",
-      value: "",
-      theme: "default",
-      editorTheme: "default",
-      previewTheme: "default",
-      markdown: "",
-      width: "100%",
-      height: "220px",
-      path: "/editor.md/lib/",
-      pluginPath: "/editor.md/plugins/",
-      watch: true,
-      placeholder: "请输入留言（支持 Markdown）",
-      lineNumbers: false,
-      lineWrapping: true,
-      autoCloseBrackets: true,
-      searchReplace: true,
-      emoji: true,
-      taskList: true,
-      tex: true,
-      flowChart: false,
-      sequenceDiagram: true,
-      toolbarIcons: function () {
-        return [
-          "undo",
-          "redo",
-          "|",
-          "bold",
-          "italic",
-          "quote",
-          "|",
-          "list-ul",
-          "list-ol",
-          "|",
-          "link",
-          "image",
-          "code-block",
-          "|",
-          "watch",
-          "preview",
-        ];
-      },
-      onchange: function () {
-        try {
-          const md = mobileMultiMessageEditor.getMarkdown() || "";
-          const ta = document.getElementById("mobile-multi-message-content");
-          const count = document.getElementById(
-            "mobile-multi-message-char-count",
-          );
-          if (ta) ta.value = md;
-          if (count) count.textContent = String(md.length);
-        } catch (_) {}
-      },
-    });
+          // ===== 基本配置 =====
+          // 编辑器模式：
+          // gfm：GitHub Flavored Markdown，与 Markdown 语法基本相同，但增加了一些扩展语法，如表格、任务列表等
+          // markdown：标准 Markdown 语法
+          mode: "gfm",
+          // 表单元素名称，用于提交表单时标识该编辑器
+          name: "mobile-multi-message-content",
+          // CodeMirror 的值，如果模式不是 gfm/markdown（通常不需要设置，留空即可）
+          value: "",
+          // 编辑器主题，可选值：default（默认主题）, dark（暗色主题）
+          theme: "default",
+          // 编辑区域主题（代码编辑区域的样式），可选值包括：
+          // default, 3024-day, 3024-night, ambiance, ambiance-mobile, base16-dark, base16-light,
+          // blackboard, cobalt, eclipse, elegant, erlang-dark, lesser-dark, mbo, mdn-like,
+          // midnight, monokai, neat, neo, night, paraiso-dark, paraiso-light, pastel-on-dark,
+          // rubyblue, solarized, the-matrix, tomorrow-night-eighties, twilight, vibrant-ink,
+          // xq-dark, xq-light
+          editorTheme: "default",
+          // 预览区域主题，默认空表示使用默认主题，可选值：default（默认主题）, dark（暗色主题）
+          previewTheme: "default",
+          // Markdown 源代码（编辑器初始化时显示的内容，可以是预填的 Markdown 文本）
+          markdown: "",
+          // 如果初始化时 textarea 值不为空，则追加 markdown 到 textarea（通常用于追加内容到现有文本）
+          appendMarkdown: "",
+          // 编辑器宽度（支持百分比如"100%"或像素值如"800px"）
+          width: "auto",
+          // 编辑器高度（支持百分比如"100%"或像素值如"600px"）
+          height: "600px",
+          // 依赖模块文件目录（Editor.md 所需的文件路径，通常使用 CDN 地址）
+          path: "/editor.md/lib/",
+          // 插件路径，如果为空，默认使用 settings.path + "../plugins/"（插件存放目录）
+          pluginPath: "/editor.md/plugins/",
+          // 延迟解析 markdown 到 html，单位：毫秒（避免频繁解析，提升性能，默认300ms）
+          delay: 300,
+          // 自动加载依赖模块文件（推荐保持 true，确保所有功能正常工作）
+          autoLoadModules: true,
+          // ===== 编辑器行为配置 =====
+          // 监听模式（是否实时预览，true 为开启监听，false 为手动预览）
+          watch: true,
+          // 占位符文本（当编辑器为空时显示的提示文本，引导用户输入）
+          placeholder: "请输入留言（支持 Markdown）",
+          // 启用/禁用 跳转到行功能（Ctrl+G 快捷键，快速跳转到指定行）
+          gotoLine: true,
+          // 代码折叠（是否允许折叠代码块，方便查看长代码）
+          codeFold: false,
+          // 自动高度（是否根据内容自动调整编辑器高度，true 时高度自适应）
+          autoHeight: false,
+          // 启用/禁用 自动聚焦编辑器左侧输入区域（页面加载后自动聚焦到编辑器）
+          autoFocus: true,
+          // 自动关闭标签（输入 < 时自动补全标签，提高 HTML 编写效率）
+          autoCloseTags: true,
+          // 启用/禁用 搜索和替换功能（CodeMirror 的搜索功能，Ctrl+F 激活）
+          searchReplace: true,
+          // 同步滚动选项：true（同步滚动）| false（不同步）| "single"（单向同步），默认 true
+          syncScrolling: true,
+          // 启用/禁用 只读模式（设为 true 后无法编辑，只能查看）
+          readOnly: false,
+          // 制表符大小（Tab 键缩进的空格数，通常设为 4）
+          tabSize: 4,
+          // 缩进单位（每次缩进的空格数，通常与 tabSize 保持一致）
+          indentUnit: 4,
+          // 显示编辑器行号（左侧显示行号，便于定位代码位置）
+          lineNumbers: true,
+          // 行换行（是否自动换行，true 时长行会自动换行）
+          lineWrapping: true,
+          // 自动关闭括号（输入左括号时自动补全右括号，支持 (), [], {}）
+          autoCloseBrackets: true,
+          // 显示尾随空格（显示行末的空格字符，帮助保持代码整洁）
+          showTrailingSpace: true,
+          // 匹配括号（高亮匹配的括号对，方便检查括号匹配）
+          matchBrackets: true,
+          // 使用制表符缩进（true 使用 Tab 字符，false 使用空格）
+          indentWithTabs: true,
+          // 样式化选中文本（选中的文本是否有特殊样式，如背景色）
+          styleSelectedText: true,
+          // 匹配单词高亮：true（高亮所有相同单词）| false（不高亮）| "onselected"（只在选中时高亮）
+          matchWordHighlight: true,
+          // 高亮当前行（当前行是否有背景色，方便定位）
+          styleActiveLine: true,
+          // ===== 对话框配置 =====
+          // 对话框锁定屏幕（对话框弹出时是否锁定背景，防止误操作）
+          dialogLockScreen: true,
+          // 对话框显示遮罩（是否显示半透明遮罩层）
+          dialogShowMask: true,
+          // 对话框可拖拽（对话框是否可以拖动位置）
+          dialogDraggable: true,
+          // 对话框遮罩背景色（遮罩的颜色，通常使用白色或半透明）
+          dialogMaskBgColor: "#fff",
+          // 对话框遮罩不透明度（0.0 到 1.0，控制遮罩透明度）
+          dialogMaskOpacity: 0.1,
+          // 字体大小（编辑器内文字的大小，影响可读性）
+          fontSize: "13px",
+          // 如果启用，编辑器将创建一个 <textarea> 标签保存 HTML 代码用于表单提交
+          saveHTMLToTextarea: true,
+          // 禁用的键映射（禁用某些快捷键，数组格式，如 ["Ctrl-B", "Ctrl-I"]）
+          disabledKeyMaps: [],
+
+          // ===== 事件回调函数 =====
+          // 加载完成回调（编辑器初始化完成后触发）
+          onload: function () {},
+          // 调整大小回调（编辑器大小改变时触发）
+          onresize: function () {},
+          // 内容改变回调（编辑器内容发生变化时触发）
+          onchange: function () {
+            try {
+              const md = mobileMultiMessageEditor.getMarkdown() || "";
+              const ta = document.getElementById("mobile-multi-message-content");
+              const count = document.getElementById(
+                "mobile-multi-message-char-count",
+              );
+              if (ta) ta.value = md;
+              if (count) count.textContent = String(md.length);
+            } catch (_) {}
+          },
+          // 监听开始回调（开始监听模式时触发）
+          onwatch: null,
+          // 监听结束回调（结束监听模式时触发）
+          onunwatch: null,
+          // 预览中回调（正在生成预览时触发）
+          onpreviewing: function () {},
+          // 预览完成回调（预览生成完成后触发）
+          onpreviewed: function () {},
+          // 全屏回调（进入全屏模式时触发）
+          onfullscreen: function () {
+            document.getElementById("newbie-help-btn").style.setProperty("display", "none", "important");;
+          },
+          // 退出全屏回调（退出全屏模式时触发）
+          onfullscreenExit: function () {
+            document.getElementById("newbie-help-btn").style.removeProperty("display");;
+          },
+          // 滚动回调（编辑器滚动时触发）
+          onscroll: function () {},
+          // 预览滚动回调（预览区域滚动时触发）
+          onpreviewscroll: function () {},
+
+          // ===== 图片上传配置 =====
+          // 启用/禁用 上传功能（是否允许上传图片到服务器）
+          imageUpload: true,
+          // 支持的图片格式（允许上传的图片文件类型数组）
+          imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
+          // 上传 URL（图片上传的服务器端点地址）
+          imageUploadURL: "/upload",
+          // 启用/禁用 跨域上传（是否支持跨域上传图片）
+          crossDomainUpload: false,
+          // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
+          // uploadCallbackURL: "",
+
+          // ===== 目录和扩展功能配置 =====
+          // 启用/禁用 目录功能（是否自动生成文章目录）
+          toc: true,
+          // 使用 [TOCM]，自动创建目录下拉菜单（在标题前添加 [TOCM] 标记启用）
+          tocm: false,
+          // 目录下拉菜单按钮标题（下拉菜单的显示文本）
+          tocTitle: "",
+          // 启用/禁用 目录下拉菜单（是否显示目录下拉菜单按钮）
+          tocDropdown: false,
+          // 自定义目录容器选择器（目录插入的 DOM 元素选择器，默认插入编辑器内部）
+          tocContainer: "",
+          // 从 H1 开始创建目录（目录从哪一级标题开始生成，1表示H1，2表示H2）
+          tocStartLevel: 1,
+          // 打开 HTML 标签识别（是否解析和显示 HTML 标签）
+          htmlDecode: true,
+          // 启用解析分页符 [========]（是否支持分页符语法，用于分隔内容）
+          pageBreak: true,
+          // 启用 @链接功能（@用户名 自动转换为链接）
+          atLink: false,
+          // 邮箱地址自动链接（自动识别邮箱地址并转换为可点击链接）
+          emailLink: true,
+          // 启用 GitHub Flavored Markdown 任务列表（支持 - [ ] 任务列表语法）
+          taskList: true,
+          // 启用表情符号支持：
+          // :emoji: 支持 GitHub 表情、Twitter 表情 (Twemoji)
+          // :fa-xxx: 使用 FontAwesome 图标 web 字体
+          // :editormd-logo: :editormd-logo-1x: > 1~8x 支持 Editor.md logo 图标
+          emoji: true,
+          // 启用 TeX(LaTeX) 数学公式支持，基于 KaTeX 库
+          tex: true,
+          // 启用流程图支持（flowChart.js，只支持 IE9+，用于绘制流程图）
+          flowChart: true,
+          // 启用时序图支持（sequenceDiagram.js，只支持 IE9+，用于绘制时序图）
+          sequenceDiagram: true,
+          // 启用/禁用 编辑器预览区域代码高亮（预览区代码是否进行语法高亮）
+          previewCodeHighlight: true,
+
+          // ===== 工具栏配置 =====
+          // 显示或隐藏工具栏
+          toolbar: true,
+          // 窗口滚动时自动固定工具栏位置
+          toolbarAutoFixed: true,
+          // 工具栏图标模式：full（完整）| simple（简单）| mini（最小），参见 `editormd.toolbarModes` 属性
+          toolbarIcons: "full",
+          /*
+          toolbarIcons: function () {
+            return [
+              "undo",
+              "redo",
+              "|",
+              "bold",
+              "italic",
+              "quote",
+              "|",
+              "list-ul",
+              "list-ol",
+              "|",
+              "link",
+              "image",
+              "code-block",
+              "|",
+              "watch",
+              "preview",
+            ];
+          },
+          */
+          // 工具栏标题（自定义工具栏按钮的提示文本）
+          toolbarTitles: {},
+          // 工具栏处理程序（自定义工具栏按钮的点击事件）
+          toolbarHandlers: {},
+          // 使用 HTML 标签创建工具栏图标，未使用默认 <a> 标签（自定义工具栏图标的 HTML）
+          toolbarCustomIcons: {},
+          // 工具栏图标文本（自定义工具栏按钮的文本）
+          toolbarIconTexts: {},
+          // 父容器层级（用于解决全屏模式下的定位问题）
+          parentContainerLayer:"4",
+          // 全屏的时候是否允许滚动
+          fullScreenScrolling: true,
+          // 全屏的时候编辑器位于父容器的坐标位置
+          fullScreenCoordinatesX: null,
+          fullScreenCoordinatesY: "0px",
+          // 全屏的时候微调编辑器
+          fullScreenHeightAdjustment: "-75px",
+          // 进入全屏自动滚动
+          fullScreenAutomaticScrolling: "0%",
+          fullScreenAutomaticScrollingOuterHtml: true,
+          // 锁定所有父容器
+          fullScreenForceDisableAllScroll: true,
+          // 弹窗打开时自动滚动位置
+          dialogOpenAutoScroll: "75px",
+          dialogOpenAutoScrollOuterHtml: true,
+        });
     const ta = document.getElementById("mobile-multi-message-content");
     if (ta) ta.classList.add("hidden");
     return true;
@@ -46326,28 +47457,42 @@ async function showMobileCreateGroupModal() {
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileCreateGroupModal()">
-          <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-sky-600 text-center">创建权限组</h3>
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-sky-600">创建权限组</h3>
         </div>
         <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">权限组标识符 (英文)</label>
-            <input type="text" id="mobile-new-group-key" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="例如: vip_user">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-new-group-key" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">权限组标识符 (英文)</span>
+            </label>
+            <input type="text" id="mobile-new-group-key" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="例如: vip_user">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>用于系统内部识别的唯一标识符</span></p>
           </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">权限组名称</label>
-            <input type="text" id="mobile-new-group-name" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="例如: VIP用户">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-new-group-name" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">权限组名称</span>
+            </label>
+            <input type="text" id="mobile-new-group-name" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="例如: VIP用户">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>用户可见的显示名称</span></p>
           </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">权限设置</label>
-            <div id="mobile-create-group-permissions" class="grid grid-cols-1 gap-1 max-h-[30vh] overflow-y-auto border border-slate-200 rounded-lg p-2"></div>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">权限设置</span>
+            </label>
+            <div id="mobile-create-group-permissions" class="grid grid-cols-1 gap-1 max-h-[30vh] overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white"></div>
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>选择该权限组可使用的功能</span></p>
           </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileCreateGroupModal()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="submitMobileCreateGroup()" class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm">创建</button>
+          <button onclick="closeMobileCreateGroupModal()" class="flex-1 py-2.5 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="submitMobileCreateGroup()" class="flex-1 py-2.5 px-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-xl text-sm transition-all duration-200">✓ 创建</button>
         </div>
       </div>
     `;
@@ -46377,9 +47522,9 @@ async function showMobileCreateGroupModal() {
           permissionsContainer.innerHTML = Object.keys(firstGroup.permissions)
             .map(
               (perm) => `
-            <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
-              <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}">
-              <span class="text-sm text-slate-700">${translatePermission(
+            <label class="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 hover:border-sky-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group">
+              <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}">
+              <span class="text-sm text-slate-700 group-hover:text-slate-900">${translatePermission(
                 perm,
               )}</span>
             </label>
@@ -46489,19 +47634,29 @@ async function showMobileEditGroupModal(groupKey) {
             <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
           </div>
           <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileEditGroupModal()">
-            <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-            </svg>
-            <h3 class="text-xl font-bold text-sky-600 text-center">编辑权限组</h3>
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+              </svg>
+            </div>
+            <h3 class="text-xl font-bold text-sky-600">编辑权限组</h3>
           </div>
-          <div class="text-center text-sm text-slate-600" id="mobile-edit-group-name-display"></div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">权限设置</label>
-            <div id="mobile-edit-group-permissions" class="grid grid-cols-1 gap-1 max-h-[40vh] overflow-y-auto border border-slate-200 rounded-lg p-2"></div>
+          <div class="p-3 bg-gradient-to-r from-sky-50 to-white border border-sky-100 rounded-xl">
+            <div class="flex items-center justify-center gap-2">
+              <svg class="w-5 h-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+              <span id="mobile-edit-group-name-display" class="text-sm font-semibold text-slate-700"></span>
+            </div>
+          </div>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+            <label class="flex items-center gap-2 mb-3">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">权限设置</span>
+            </label>
+            <div id="mobile-edit-group-permissions" class="grid grid-cols-1 gap-1.5 max-h-[40vh] overflow-y-auto"></div>
           </div>
           <div class="flex gap-3 pt-4 border-t border-slate-100">
-            <button onclick="closeMobileEditGroupModal()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-            <button onclick="submitMobileEditGroup()" class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm">保存</button>
+            <button onclick="closeMobileEditGroupModal()" class="flex-1 py-2.5 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+            <button onclick="submitMobileEditGroup()" class="flex-1 py-2.5 px-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-xl text-sm transition-all duration-200">✓ 保存</button>
           </div>
         </div>
       `;
@@ -46535,11 +47690,11 @@ async function showMobileEditGroupModal(groupKey) {
       permissionsContainer.innerHTML = Object.keys(group.permissions)
         .map(
           (perm) => `
-              <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" ${
+              <label class="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-white border border-slate-100 hover:border-sky-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group">
+                <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}" ${
                   group.permissions[perm] ? "checked" : ""
                 }>
-                <span class="text-sm text-slate-700">${translatePermission(
+                <span class="text-sm text-slate-700 group-hover:text-slate-900">${translatePermission(
                   perm,
                 )}</span>
               </label>
@@ -47083,8 +48238,13 @@ function switchMobileAdminTab(tabId, prefix) {
       setTimeout(() => copyAdminContentToMobile("captcha", contentId), 500);
       break;
     case "reminders":
-      loadReminders();
-      setTimeout(() => copyAdminContentToMobile("reminders", contentId), 500);
+      // 多账号移动端使用专用提醒列表渲染，避免被PC内容复制覆盖
+      if (prefix === "mobile-multi-admin") {
+        mobileRefreshReminders();
+      } else {
+        loadReminders();
+        setTimeout(() => copyAdminContentToMobile("reminders", contentId), 500);
+      }
       break;
     case "ssl":
       loadSSLInfo();
@@ -47592,13 +48752,22 @@ function showMobileAvatarCropModal(file) {
         <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileAvatarCropModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <h3 class="text-xl font-bold text-sky-600 text-center">裁剪头像</h3>
-        <div class="max-h-80 overflow-hidden bg-slate-100 rounded-lg">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileAvatarCropModal()">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+          </div>
+          <h3 class="text-xl font-bold text-sky-600">裁剪头像</h3>
+        </div>
+        <div class="max-h-80 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-50 rounded-xl border border-slate-200">
           <img id="mobile-crop-image" src="" alt="待裁剪图片" style="max-width: 100%">
         </div>
+        <p class="text-xs text-slate-500 text-center flex items-center justify-center gap-1">
+          <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          拖动或捏合来调整裁剪区域
+        </p>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileAvatarCropModal()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="confirmMobileAvatarCrop()" class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm">确认上传</button>
+          <button onclick="closeMobileAvatarCropModal()" class="flex-1 py-2.5 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="confirmMobileAvatarCrop()" class="flex-1 py-2.5 px-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-xl text-sm transition-all duration-200">✓ 确认上传</button>
         </div>
       </div>
     `;
@@ -47735,26 +48904,37 @@ function showMobileModifyPhoneModal() {
           <h3 class="text-xl font-bold text-sky-600 text-center">修改绑定手机号</h3>
         </div>
         <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">当前手机号</label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-modify-phone-current" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">当前手机号</span>
+            </label>
             <div class="flex items-center gap-2">
-              <span class="text-sm text-slate-500">+86</span>
-              <input type="tel" id="mobile-modify-phone-current" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50" readonly>
+              <span class="text-sm text-slate-500 px-2 py-1 bg-slate-100 rounded">+86</span>
+              <input type="tel" id="mobile-modify-phone-current" class="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none" readonly>
             </div>
           </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">新手机号</label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-modify-phone-new" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">新手机号</span>
+            </label>
             <div class="flex items-center gap-2">
-              <span class="text-sm text-slate-500">+86</span>
-              <input type="tel" id="mobile-modify-phone-new" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新手机号" maxlength="11" inputmode="numeric" pattern="[0-9]*">
+              <span class="text-sm text-slate-500 px-2 py-1 bg-slate-100 rounded">+86</span>
+              <input type="tel" id="mobile-modify-phone-new" class="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新手机号" maxlength="11" inputmode="numeric" pattern="[0-9]*">
             </div>
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>请输入11位有效手机号码</span></p>
           </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">短信验证码</label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-modify-phone-code" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">短信验证码</span>
+            </label>
             <div class="flex gap-2">
-              <input type="text" id="mobile-modify-phone-code" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入验证码" maxlength="6" inputmode="numeric">
-              <button id="mobile-modify-phone-send-code" onclick="sendMobileModifyPhoneCode()" class="px-4 py-2 bg-sky-500 text-white rounded-lg text-sm whitespace-nowrap">发送验证码</button>
+              <input type="text" id="mobile-modify-phone-code" class="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入验证码" maxlength="6" inputmode="numeric">
+              <button id="mobile-modify-phone-send-code" onclick="sendMobileModifyPhoneCode()" class="px-4 py-2.5 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-sm whitespace-nowrap transition-colors duration-200">发送验证码</button>
             </div>
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>验证码将发送至新手机号</span></p>
           </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
@@ -48111,13 +49291,22 @@ function showMobileUnifiedAvatarCropModal(file) {
         <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileUnifiedAvatarCropModal()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <h3 class="text-xl font-bold text-sky-600 text-center">裁剪头像</h3>
-        <div class="max-h-80 overflow-hidden bg-slate-100 rounded-lg">
+        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUnifiedAvatarCropModal()">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+          </div>
+          <h3 class="text-xl font-bold text-sky-600">裁剪头像</h3>
+        </div>
+        <div class="max-h-80 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-50 rounded-xl border border-slate-200">
           <img id="mobile-unified-crop-image" src="" alt="待裁剪图片" style="max-width: 100%">
         </div>
+        <p class="text-xs text-slate-500 text-center flex items-center justify-center gap-1">
+          <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          拖动或捏合来调整裁剪区域
+        </p>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileUnifiedAvatarCropModal()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="confirmMobileUnifiedAvatarCrop()" class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm">确认上传</button>
+          <button onclick="closeMobileUnifiedAvatarCropModal()" class="flex-1 py-2.5 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="confirmMobileUnifiedAvatarCrop()" class="flex-1 py-2.5 px-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-xl text-sm transition-all duration-200">✓ 确认上传</button>
         </div>
       </div>
     `;
@@ -48249,9 +49438,12 @@ function showMobileUnifiedModifyPhoneModal() {
           </svg>
           <h3 class="text-xl font-bold text-sky-600 text-center">修改绑定手机号</h3>
         </div>
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">当前手机号</label>
+        <div class="space-y-4">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+            <label for="mobile-unified-modify-phone-current" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+              <span class="text-xs font-semibold text-slate-700">当前手机号</span>
+            </label>
             <div class="phone-input-wrapper">
               <span class="phone-prefix">+86 </span>
               <input
@@ -48263,17 +49455,24 @@ function showMobileUnifiedModifyPhoneModal() {
               />
             </div>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">验证原密码 <span class="text-red-500">*</span></label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-unified-modify-phone-password" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+              <span class="text-xs font-semibold text-slate-700">验证原密码 <span class="text-red-500">*</span></span>
+            </label>
             <input
               type="password"
               id="mobile-unified-modify-phone-password"
               class="input-field !text-xs !py-1.5 w-full"
               placeholder="请输入当前账号密码进行验证"
             />
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>为确保安全，请验证您的账号密码</span></p>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">新手机号</label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-unified-modify-phone-new" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+              <span class="text-xs font-semibold text-slate-700">新手机号</span>
+            </label>
             <div class="phone-input-wrapper">
               <span class="phone-prefix">+86 </span>
               <input
@@ -48285,9 +49484,13 @@ function showMobileUnifiedModifyPhoneModal() {
                 maxlength="11"
               />
             </div>
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>请输入11位有效手机号码</span></p>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">验证码</label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-unified-modify-phone-code" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+              <span class="text-xs font-semibold text-slate-700">验证码</span>
+            </label>
             <div class="flex gap-2">
               <input
                 type="text"
@@ -48300,11 +49503,12 @@ function showMobileUnifiedModifyPhoneModal() {
               <button
                 id="mobile-unified-modify-phone-send-code"
                 onclick="sendMobileUnifiedModifyPhoneCode()"
-                class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs whitespace-nowrap"
+                class="px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-xs whitespace-nowrap transition-colors duration-200"
               >
                 发送验证码
               </button>
             </div>
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>验证码将发送至新手机号</span></p>
           </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
@@ -48860,17 +50064,19 @@ async function showMobileUserSchoolAccounts(username) {
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserSchoolAccounts()">
-          <svg class="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-indigo-600 text-center">学校账户密码</h3>
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-indigo-600">学校账户密码</h3>
         </div>
         <div class="text-center text-sm text-slate-500" id="mobile-school-accounts-username"></div>
         <div id="mobile-school-accounts-list" class="space-y-3 max-h-[50vh] overflow-y-auto">
           <p class="text-slate-400 text-center py-10 text-xs">加载中...</p>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileUserSchoolAccounts()" class="flex-1 py-2 px-4 bg-slate-100 text-slate-600 rounded-lg text-sm">关闭</button>
+          <button onclick="closeMobileUserSchoolAccounts()" class="flex-1 py-2.5 px-4 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50 transition-colors">关闭</button>
         </div>
       </div>
     `;
@@ -49057,21 +50263,23 @@ async function showMobileUserLogs(username) {
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserLogs()">
-          <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-blue-600 text-center">用户日志</h3>
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-blue-600">用户日志</h3>
         </div>
         <div class="text-center text-sm text-slate-500" id="mobile-user-logs-username"></div>
-        <div class="flex gap-2 border-b border-slate-200">
-          <button id="mobile-log-tab-login" onclick="switchMobileUserLogTab('login')" class="flex-1 py-2 text-sm font-semibold text-sky-600 border-b-2 border-sky-600">登录日志</button>
-          <button id="mobile-log-tab-audit" onclick="switchMobileUserLogTab('audit')" class="flex-1 py-2 text-sm font-semibold text-slate-400 border-b-2 border-transparent">审计日志</button>
+        <div class="flex gap-2 bg-slate-50 p-1 rounded-xl">
+          <button id="mobile-log-tab-login" onclick="switchMobileUserLogTab('login')" class="flex-1 py-2 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-sm transition-all duration-200">登录日志</button>
+          <button id="mobile-log-tab-audit" onclick="switchMobileUserLogTab('audit')" class="flex-1 py-2 text-sm font-semibold text-slate-500 hover:bg-white rounded-lg transition-all duration-200">审计日志</button>
         </div>
         <div id="mobile-user-logs-content" class="space-y-2 max-h-[45vh] overflow-y-auto">
           <p class="text-slate-400 text-center py-10 text-xs">加载中...</p>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileUserLogs()" class="flex-1 py-2 px-4 bg-slate-100 text-slate-600 rounded-lg text-sm">关闭</button>
+          <button onclick="closeMobileUserLogs()" class="flex-1 py-2.5 px-4 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50 transition-colors">关闭</button>
         </div>
       </div>
     `;
@@ -49234,23 +50442,36 @@ function showMobileUserSessions(username, currentMax) {
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserSessions()">
-          <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-blue-600 text-center">会话管理</h3>
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-blue-600">会话管理</h3>
         </div>
         <div class="space-y-4">
-          <div class="text-center text-sm text-slate-600">用户: <span id="mobile-sessions-username" class="font-semibold"></span></div>
-          <div class="text-center text-sm text-slate-500">当前最大会话数: <span id="mobile-sessions-current" class="font-semibold text-sky-600"></span></div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">新的最大会话数</label>
-            <input type="number" id="mobile-new-max-sessions" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="0 表示无限制">
-            <p class="text-xs text-slate-500 mt-1">输入 0 表示无限制</p>
+          <div class="p-4 bg-gradient-to-r from-blue-50 to-white border border-blue-100 rounded-xl">
+            <div class="flex items-center justify-center gap-3">
+              <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+              <span class="text-sm text-slate-600">用户: <span id="mobile-sessions-username" class="font-semibold text-slate-800"></span></span>
+            </div>
+            <div class="flex items-center justify-center gap-3 mt-2">
+              <svg class="w-5 h-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span class="text-sm text-slate-500">当前最大会话数: <span id="mobile-sessions-current" class="font-semibold text-sky-600"></span></span>
+            </div>
+          </div>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-new-max-sessions" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">新的最大会话数</span>
+            </label>
+            <input type="number" id="mobile-new-max-sessions" min="0" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="0 表示无限制">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>输入 0 表示无限制，限制后超出的会话将被踢出</span></p>
           </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileUserSessions()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="submitMobileUserSessions()" class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm">保存</button>
+          <button onclick="closeMobileUserSessions()" class="flex-1 py-2.5 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="submitMobileUserSessions()" class="flex-1 py-2.5 px-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl text-sm transition-all duration-200">✓ 保存</button>
         </div>
       </div>
     `;
@@ -49340,22 +50561,41 @@ async function showMobileUserPermissions(username) {
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
         <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileUserPermissions()">
-          <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-emerald-600 text-center">权限设置</h3>
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-emerald-600">权限设置</h3>
         </div>
-        <div class="text-center text-sm text-slate-600">用户: <span id="mobile-permissions-username" class="font-semibold"></span></div>
-        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <p class="text-xs text-blue-700">权限组: <span id="mobile-user-base-group" class="font-mono font-semibold"></span></p>
-          <p class="text-xs text-slate-600 mt-1">💡 绿色表示新增权限，红色表示移除权限</p>
+        <div class="p-3 bg-gradient-to-r from-emerald-50 to-white border border-emerald-100 rounded-xl">
+          <div class="flex items-center justify-center gap-2">
+            <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+            <span class="text-sm text-slate-600">用户: <span id="mobile-permissions-username" class="font-semibold text-slate-800"></span></span>
+          </div>
         </div>
-        <div id="mobile-user-permissions-list" class="space-y-1 max-h-[40vh] overflow-y-auto border border-slate-200 rounded-lg p-2">
-          <p class="text-slate-400 text-center py-10 text-xs">加载中...</p>
+        <div class="bg-gradient-to-r from-blue-50 to-white border border-blue-100 rounded-xl p-3">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+            <span class="text-xs text-blue-700">权限组: <span id="mobile-user-base-group" class="font-mono font-semibold"></span></span>
+          </div>
+          <p class="text-xs text-slate-500 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span>绿色表示新增权限，红色表示移除权限</span>
+          </p>
+        </div>
+        <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+          <label class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">权限列表</span>
+          </label>
+          <div id="mobile-user-permissions-list" class="space-y-1.5 max-h-[35vh] overflow-y-auto">
+            <p class="text-slate-400 text-center py-10 text-xs">加载中...</p>
+          </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileUserPermissions()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="submitMobileUserPermissions()" class="flex-1 py-2 px-4 bg-emerald-500 text-white rounded-lg text-sm">保存</button>
+          <button onclick="closeMobileUserPermissions()" class="flex-1 py-2.5 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="submitMobileUserPermissions()" class="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-sm transition-all duration-200">✓ 保存</button>
         </div>
       </div>
     `;
@@ -49404,26 +50644,26 @@ async function showMobileUserPermissions(username) {
           const currentValue = result.all_permissions[perm];
           const groupValue = groupPerms[perm] || false;
 
-          let statusClass = "";
-          if (isAdded) statusClass = "bg-green-50 border-green-200";
-          else if (isRemoved) statusClass = "bg-red-50 border-red-200";
+          let statusClass = "bg-gradient-to-r from-slate-50 to-white border-slate-100 hover:border-sky-200";
+          if (isAdded) statusClass = "bg-gradient-to-r from-green-50 to-white border-green-200 hover:border-green-300";
+          else if (isRemoved) statusClass = "bg-gradient-to-r from-red-50 to-white border-red-200 hover:border-red-300";
 
           return `
-          <label class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer border ${statusClass}">
-            <input type="checkbox" class="w-4 h-4 rounded" data-permission="${perm}" data-group-value="${groupValue}" ${
+          <label class="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm group border ${statusClass}">
+            <input type="checkbox" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" data-permission="${perm}" data-group-value="${groupValue}" ${
               currentValue ? "checked" : ""
             }>
-            <span class="text-xs text-slate-700 flex-1">${translatePermission(
+            <span class="text-xs text-slate-700 group-hover:text-slate-900 flex-1">${translatePermission(
               perm,
             )}</span>
             ${
               isAdded
-                ? '<span class="text-xs text-green-600">(新增)</span>'
+                ? '<span class="text-xs font-medium px-2 py-0.5 rounded-full text-green-600 bg-green-100">(新增)</span>'
                 : ""
             }
             ${
               isRemoved
-                ? '<span class="text-xs text-red-600">(移除)</span>'
+                ? '<span class="text-xs font-medium px-2 py-0.5 rounded-full text-red-600 bg-red-100">(移除)</span>'
                 : ""
             }
           </label>
@@ -49511,26 +50751,39 @@ function showMobileModifyNickname(username, currentNickname) {
         <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileModifyNickname()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileModifyNickname()">
-          <svg class="w-6 h-6 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-teal-600 text-center">修改昵称</h3>
+        <div class="flex items-center gap-3 pb-4 border-b border-slate-200">
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-xl font-bold text-slate-800">修改昵称</h3>
+            <p class="text-xs text-slate-500">用户: <span id="mobile-nickname-username" class="font-semibold text-teal-600"></span></p>
+          </div>
         </div>
-        <div class="text-center text-sm text-slate-600">用户: <span id="mobile-nickname-username" class="font-semibold"></span></div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">当前昵称</label>
-          <input type="text" id="mobile-current-nickname" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" readonly value="${
-            currentNickname || "当前无昵称"
-          }">
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">新昵称</label>
-          <input type="text" id="mobile-modify-new-nickname" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新昵称">
+        <div class="space-y-4">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+            <label for="mobile-current-nickname" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">当前昵称</span>
+            </label>
+            <input type="text" id="mobile-current-nickname" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none" readonly value="${
+              currentNickname || "当前无昵称"
+            }">
+          </div>
+          <div class="p-4 bg-gradient-to-r from-teal-50 to-white border border-teal-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-modify-new-nickname" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-teal-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">新昵称</span>
+            </label>
+            <input type="text" id="mobile-modify-new-nickname" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新昵称">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>昵称将显示在用户列表和个人信息中</span></p>
+          </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileModifyNickname()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="submitMobileModifyNickname()" class="flex-1 py-2 px-4 bg-teal-500 text-white rounded-lg text-sm">保存</button>
+          <button onclick="closeMobileModifyNickname()" class="flex-1 py-3 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="submitMobileModifyNickname()" class="flex-1 py-3 px-4 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white rounded-xl text-sm font-medium shadow-lg shadow-teal-500/20 transition-all duration-200">✓ 保存</button>
         </div>
       </div>
     `;
@@ -49618,32 +50871,53 @@ function showMobileAdminModifyPhone(username, currentPhone) {
         <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileAdminModifyPhone()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileAdminModifyPhone()">
-          <svg class="w-6 h-6 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-teal-600 text-center">修改手机号</h3>
-        </div>
-        <div class="text-center text-sm text-slate-600">用户: <span id="mobile-admin-phone-username" class="font-semibold"></span></div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">当前手机号</label>
-          <input type="tel" id="mobile-admin-phone-current" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50" readonly>
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">新手机号</label>
-          <input type="tel" id="mobile-admin-phone-new" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新手机号" maxlength="11" inputmode="numeric">
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">短信验证码（可选）</label>
-          <div class="flex gap-2">
-            <input type="text" id="mobile-admin-phone-code" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="验证码" maxlength="6" inputmode="numeric">
-            <button id="mobile-admin-phone-send-btn" onclick="sendMobileAdminPhoneCode()" class="px-4 py-2 bg-sky-500 text-white rounded-lg text-sm whitespace-nowrap">发送</button>
+        <div class="flex items-center gap-3 pb-4 border-b border-slate-200">
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+            </svg>
           </div>
-          <p class="text-xs text-slate-500 mt-1">管理员修改手机号不强制要求验证码，如填写将进行校验</p>
+          <div>
+            <h3 class="text-xl font-bold text-slate-800">修改手机号</h3>
+            <p class="text-xs text-slate-500">用户: <span id="mobile-admin-phone-username" class="font-semibold text-teal-600"></span></p>
+          </div>
+        </div>
+        <div class="space-y-4">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+            <label for="mobile-admin-phone-current" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">当前手机号</span>
+            </label>
+            <input type="tel" id="mobile-admin-phone-current" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none" readonly>
+          </div>
+          <div class="p-4 bg-gradient-to-r from-teal-50 to-white border border-teal-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-admin-phone-new" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-teal-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">新手机号</span>
+            </label>
+            <input type="tel" id="mobile-admin-phone-new" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新手机号" maxlength="11" inputmode="numeric">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>请输入11位有效手机号码</span></p>
+          </div>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-admin-phone-code" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-teal-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">短信验证码（可选）</span>
+            </label>
+            <div class="flex gap-2">
+              <input type="text" id="mobile-admin-phone-code" class="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="验证码" maxlength="6" inputmode="numeric">
+              <button id="mobile-admin-phone-send-btn" onclick="sendMobileAdminPhoneCode()" class="px-4 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white rounded-lg text-sm whitespace-nowrap transition-all duration-200">发送</button>
+            </div>
+          </div>
+          <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <div class="flex items-start gap-2">
+              <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+              <p class="text-xs text-amber-700">管理员修改手机号不强制要求验证码，如填写将进行校验</p>
+            </div>
+          </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileAdminModifyPhone()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="submitMobileAdminModifyPhone()" class="flex-1 py-2 px-4 bg-teal-500 text-white rounded-lg text-sm">确认</button>
+          <button onclick="closeMobileAdminModifyPhone()" class="flex-1 py-3 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="submitMobileAdminModifyPhone()" class="flex-1 py-3 px-4 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white rounded-xl text-sm font-medium shadow-lg shadow-teal-500/20 transition-all duration-200">✓ 确认修改</button>
         </div>
       </div>
     `;
@@ -49778,10 +51052,21 @@ function showMobileResetPassword(username) {
           </svg>
           <h3 class="text-xl font-bold text-purple-600 text-center">重置密码</h3>
         </div>
-        <div class="text-center text-sm text-slate-600">用户: <span id="mobile-reset-password-username" class="font-semibold"></span></div>
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">新密码（至少6位）</label>
-          <input type="password" id="mobile-new-password_2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="请输入新密码">
+        <div class="p-4 bg-gradient-to-r from-purple-50 to-white border border-purple-100 rounded-xl mb-4">
+          <div class="flex items-center justify-center gap-3">
+            <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+            <span class="text-sm text-slate-600">用户: <span id="mobile-reset-password-username" class="font-semibold text-slate-800"></span></span>
+          </div>
+        </div>
+        <div class="space-y-4">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-new-password_2" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-purple-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+              <span class="text-sm font-semibold text-slate-700">新密码（至少6位）</span>
+            </label>
+            <input type="password" id="mobile-new-password_2" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新密码">
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>密码长度至少6位，建议使用字母、数字组合</span></p>
+          </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
           <button onclick="closeMobileResetPassword()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
@@ -51301,11 +52586,14 @@ async function mobileLoadSMSConfig() {
       // 渲染移动端短信配置表单
       contentEl.innerHTML = `
         <!-- 短信服务主开关 -->
-        <div class="bg-white border border-slate-200 rounded-lg p-3">
+        <div class="bg-gradient-to-r from-blue-50 to-white border border-blue-100 rounded-xl p-4">
           <div class="flex items-center justify-between">
-            <div>
-              <h5 class="font-semibold text-sm text-slate-800">启用短信服务</h5>
-              <p class="text-xs text-slate-500">开启后可使用短信验证功能</p>
+            <div class="flex items-center gap-3">
+              <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+              <div>
+                <h5 class="font-semibold text-sm text-slate-800">启用短信服务</h5>
+                <p class="text-xs text-slate-500">开启后可使用短信验证功能</p>
+              </div>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" id="mobile-sms-enabled" class="sr-only peer" ${
@@ -51317,58 +52605,76 @@ async function mobileLoadSMSConfig() {
         </div>
 
         <!-- 功能开关组 -->
-        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-3">
-          <h5 class="font-semibold text-xs text-slate-700">功能开关</h5>
+        <div class="bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <h5 class="font-semibold text-xs text-slate-700">功能开关</h5>
+          </div>
           
-          <div class="flex items-center justify-between py-2 border-b border-slate-100">
+          <label class="flex items-center justify-between py-2.5 px-3 bg-white border border-slate-100 rounded-lg cursor-pointer hover:border-sky-200 transition-colors">
             <span class="text-xs text-slate-600">允许手机号绑定/修改</span>
-            <input type="checkbox" id="mobile-sms-enable-phone-modification" class="w-4 h-4 rounded" ${
+            <input type="checkbox" id="mobile-sms-enable-phone-modification" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_modification ? "checked" : ""
             }>
-          </div>
+          </label>
           
-          <div class="flex items-center justify-between py-2 border-b border-slate-100">
+          <label class="flex items-center justify-between py-2.5 px-3 bg-white border border-slate-100 rounded-lg cursor-pointer hover:border-sky-200 transition-colors">
             <span class="text-xs text-slate-600">允许手机号登录</span>
-            <input type="checkbox" id="mobile-sms-enable-phone-login" class="w-4 h-4 rounded" ${
+            <input type="checkbox" id="mobile-sms-enable-phone-login" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_login ? "checked" : ""
             }>
-          </div>
+          </label>
           
-          <div class="flex items-center justify-between py-2">
+          <label class="flex items-center justify-between py-2.5 px-3 bg-white border border-slate-100 rounded-lg cursor-pointer hover:border-sky-200 transition-colors">
             <span class="text-xs text-slate-600">注册时强制手机验证</span>
-            <input type="checkbox" id="mobile-sms-enable-phone-registration-verify" class="w-4 h-4 rounded" ${
+            <input type="checkbox" id="mobile-sms-enable-phone-registration-verify" class="w-4 h-4 rounded accent-sky-500 cursor-pointer" ${
               config.enable_phone_registration_verify ? "checked" : ""
             }>
-          </div>
+          </label>
         </div>
 
         <!-- API配置 -->
-        <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
-          <h5 class="font-semibold text-xs text-slate-700">API配置</h5>
+        <div class="bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+            <h5 class="font-semibold text-xs text-slate-700">API配置</h5>
+          </div>
           
           <div>
-            <label class="block text-xs text-slate-600 mb-1">用户名/账号</label>
+            <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+              用户名/账号
+            </label>
             <input type="text" id="mobile-sms-username" value="${
               config.username || ""
             }" class="input-field text-xs w-full" placeholder="短信服务商账号">
           </div>
           
           <div>
-            <label class="block text-xs text-slate-600 mb-1">API Key</label>
+            <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+              API Key
+            </label>
             <input type="password" id="mobile-sms-apikey" value="${
               config.api_key || ""
             }" class="input-field text-xs w-full" placeholder="短信服务商API密钥">
           </div>
           
           <div>
-            <label class="block text-xs text-slate-600 mb-1">签名</label>
+            <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+              签名
+            </label>
             <input type="text" id="mobile-sms-signature" value="${
               config.signature || ""
             }" class="input-field text-xs w-full" placeholder="短信签名">
           </div>
           
           <div>
-            <label class="block text-xs text-slate-600 mb-1">模板ID</label>
+            <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              模板ID
+            </label>
             <input type="text" id="mobile-sms-template" value="${
               config.template_register || ""
             }" class="input-field text-xs w-full" placeholder="验证码模板ID">
@@ -51376,30 +52682,45 @@ async function mobileLoadSMSConfig() {
         </div>
 
         <!-- 限制配置 -->
-        <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
-          <h5 class="font-semibold text-xs text-slate-700">安全限制</h5>
+        <div class="bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            <h5 class="font-semibold text-xs text-slate-700">安全限制</h5>
+          </div>
           
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs text-slate-600 mb-1">验证码有效期(分钟)</label>
+              <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                有效期(分钟)
+              </label>
               <input type="number" id="mobile-sms-code-expire" value="${
                 config.code_expire_minutes || 5
               }" class="input-field text-xs w-full" min="1" max="30">
             </div>
             <div>
-              <label class="block text-xs text-slate-600 mb-1">账号日限额</label>
+              <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                账号日限额
+              </label>
               <input type="number" id="mobile-sms-limit-account" value="${
                 config.rate_limit_per_account_day || 10
               }" class="input-field text-xs w-full" min="1">
             </div>
             <div>
-              <label class="block text-xs text-slate-600 mb-1">IP日限额</label>
+              <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+                IP日限额
+              </label>
               <input type="number" id="mobile-sms-limit-ip" value="${
                 config.rate_limit_per_ip_day || 20
               }" class="input-field text-xs w-full" min="1">
             </div>
             <div>
-              <label class="block text-xs text-slate-600 mb-1">手机号日限额</label>
+              <label class="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+                手机号日限额
+              </label>
               <input type="number" id="mobile-sms-limit-phone" value="${
                 config.rate_limit_per_phone_day || 5
               }" class="input-field text-xs w-full" min="1">
@@ -52299,7 +53620,7 @@ async function mobileRefreshReminders() {
     "mobile-multi-admin-reminders-content",
   );
   if (!listContainer) {
-    console.error("[移动端提醒] 找不到列表容器");
+    console.error("[移动端提醒] 找不到列表容器 mobile-multi-admin-reminders-content");
     return;
   }
 
@@ -52345,12 +53666,14 @@ async function mobileRefreshReminders() {
     }
 
     listContainer.innerHTML = "";
-    reminders.forEach((reminder) => {
+    reminders.forEach((reminder, index) => {
       const itemDiv = document.createElement("div");
       // 根据是否跨天设置样式
       const isCrossDay = reminder.start_time > reminder.end_time;
       const timeIcon = isCrossDay ? "🌙" : "☀️";
       const timeHint = isCrossDay ? "(跨天)" : "";
+      // 为每个提醒的 Markdown 内容创建唯一ID
+      const messageContainerId = `mobile-reminder-message-${reminder.id}-${index}`;
 
       itemDiv.className = "bg-white border border-slate-200 rounded-lg p-3";
       itemDiv.innerHTML = `
@@ -52367,10 +53690,8 @@ async function mobileRefreshReminders() {
                   : "bg-slate-100 text-slate-600"
               }">${reminder.enabled ? "启用" : "禁用"}</span>
             </div>
-            <!-- 提醒内容 -->
-            <p class="text-xs text-slate-600 mb-2 line-clamp-2">${escapeHtml(
-              reminder.message,
-            )}</p>
+            <!-- 提醒内容（Markdown渲染） -->
+            <div id="${messageContainerId}" class="text-xs text-slate-600 mb-2 mobile-reminder-markdown-content"></div>
             <!-- 时间范围 -->
             <div class="flex items-center gap-1 text-xs ${
               isCrossDay ? "text-purple-600" : "text-blue-600"
@@ -52406,11 +53727,332 @@ async function mobileRefreshReminders() {
       `;
       listContainer.appendChild(itemDiv);
     });
+    
+    // 渲染所有提醒内容的 Markdown（与留言板 admin-messages-list_modal 相同方式）
+    console.log("[移动端提醒] 开始使用 Editor.md 渲染 Markdown...");
+    (function renderRemindersMarkdown(remindersList) {
+      if (!remindersList || !remindersList.length) return;
+      remindersList.forEach((reminder, index) => {
+        const messageContainerId = `mobile-reminder-message-${reminder.id}-${index}`;
+        const container = document.getElementById(messageContainerId);
+        if (!container) return;
+
+        // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
+        if (window.editormd && typeof editormd.markdownToHTML === "function") {
+          try {
+            // editormd.markdownToHTML 会替换指定容器内容
+            editormd.markdownToHTML(messageContainerId, {
+              markdown: reminder.message || "",
+              htmlDecode: "style,iframe,image",
+              toc: false,
+              tocContainer: "",
+              gfm: true,
+              tocDropdown: false,
+              markdownSourceCode: false,
+              emoji: true,
+              taskList: true,
+              tex: false,
+              flowChart: false,
+              sequenceDiagram: false,
+            });
+            return;
+          } catch (e) {
+            console.warn("[移动端提醒] Markdown渲染失败，回退为纯文本显示", e);
+          }
+        }
+
+        // 最后回退：以转义文本并保留换行展示
+        container.innerHTML = escapeHtml(reminder.message || "").replace(
+          /\n/g,
+          "<br>",
+        );
+      });
+    })(reminders);
 
     console.log(`[移动端提醒] 已加载 ${reminders.length} 条提醒`);
   } catch (error) {
     console.error("[移动端提醒] 加载失败:", error);
     listContainer.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">加载失败: ${error.message}</p>`;
+  }
+}
+
+/**
+ * 初始化移动端提醒 Editor.md 编辑器（仅初始化一次）
+ * @returns {Promise<boolean>}
+ */
+async function ensureMobileReminderEditorInitialized() {
+  try {
+    const textareaEl = document.getElementById("mobile-reminder-message-field");
+    const editorEl = document.getElementById("mobile-reminder-editor");
+    const setFallbackVisibility = (useEditor) => {
+      if (textareaEl) {
+        textareaEl.style.display = useEditor ? "none" : "";
+      }
+      if (editorEl) {
+        editorEl.style.display = useEditor ? "" : "none";
+      }
+    };
+
+    if (
+      mobileReminderEditor &&
+      typeof mobileReminderEditor.getMarkdown === "function"
+    ) {
+      setFallbackVisibility(true);
+      return true;
+    }
+    if (typeof editormd === "undefined") {
+      setFallbackVisibility(false);
+      return false;
+    }
+    if (!editorEl) {
+      setFallbackVisibility(false);
+      return false;
+    }
+
+    mobileReminderEditor = editormd("mobile-reminder-editor", {
+          // ===== 基本配置 =====
+          // 编辑器模式：
+          // gfm：GitHub Flavored Markdown，与 Markdown 语法基本相同，但增加了一些扩展语法，如表格、任务列表等
+          // markdown：标准 Markdown 语法
+          mode: "gfm",
+          // 表单元素名称，用于提交表单时标识该编辑器
+          name: "mobile-reminder-message-field",
+          // CodeMirror 的值，如果模式不是 gfm/markdown（通常不需要设置，留空即可）
+          value: "",
+          // 编辑器主题，可选值：default（默认主题）, dark（暗色主题）
+          theme: "default",
+          // 编辑区域主题（代码编辑区域的样式），可选值包括：
+          // default, 3024-day, 3024-night, ambiance, ambiance-mobile, base16-dark, base16-light,
+          // blackboard, cobalt, eclipse, elegant, erlang-dark, lesser-dark, mbo, mdn-like,
+          // midnight, monokai, neat, neo, night, paraiso-dark, paraiso-light, pastel-on-dark,
+          // rubyblue, solarized, the-matrix, tomorrow-night-eighties, twilight, vibrant-ink,
+          // xq-dark, xq-light
+          editorTheme: "default",
+          // 预览区域主题，默认空表示使用默认主题，可选值：default（默认主题）, dark（暗色主题）
+          previewTheme: "default",
+          // Markdown 源代码（编辑器初始化时显示的内容，可以是预填的 Markdown 文本）
+          markdown: "",
+          // 如果初始化时 textarea 值不为空，则追加 markdown 到 textarea（通常用于追加内容到现有文本）
+          appendMarkdown: "",
+          // 编辑器宽度（支持百分比如"100%"或像素值如"800px"）
+          width: "auto",
+          // 编辑器高度（支持百分比如"100%"或像素值如"600px"）
+          height: "600px",
+          // 依赖模块文件目录（Editor.md 所需的文件路径，通常使用 CDN 地址）
+          path: "/editor.md/lib/",
+          // 插件路径，如果为空，默认使用 settings.path + "../plugins/"（插件存放目录）
+          pluginPath: "/editor.md/plugins/",
+          // 延迟解析 markdown 到 html，单位：毫秒（避免频繁解析，提升性能，默认300ms）
+          delay: 300,
+          // 自动加载依赖模块文件（推荐保持 true，确保所有功能正常工作）
+          autoLoadModules: true,
+          // ===== 编辑器行为配置 =====
+          // 监听模式（是否实时预览，true 为开启监听，false 为手动预览）
+          watch: true,
+          // 占位符文本（当编辑器为空时显示的提示文本，引导用户输入）
+          placeholder: "请输入提醒内容（支持 Markdown，最多500字）",
+          // 启用/禁用 跳转到行功能（Ctrl+G 快捷键，快速跳转到指定行）
+          gotoLine: true,
+          // 代码折叠（是否允许折叠代码块，方便查看长代码）
+          codeFold: false,
+          // 自动高度（是否根据内容自动调整编辑器高度，true 时高度自适应）
+          autoHeight: false,
+          // 启用/禁用 自动聚焦编辑器左侧输入区域（页面加载后自动聚焦到编辑器）
+          autoFocus: true,
+          // 自动关闭标签（输入 < 时自动补全标签，提高 HTML 编写效率）
+          autoCloseTags: true,
+          // 启用/禁用 搜索和替换功能（CodeMirror 的搜索功能，Ctrl+F 激活）
+          searchReplace: true,
+          // 同步滚动选项：true（同步滚动）| false（不同步）| "single"（单向同步），默认 true
+          syncScrolling: true,
+          // 启用/禁用 只读模式（设为 true 后无法编辑，只能查看）
+          readOnly: false,
+          // 制表符大小（Tab 键缩进的空格数，通常设为 4）
+          tabSize: 4,
+          // 缩进单位（每次缩进的空格数，通常与 tabSize 保持一致）
+          indentUnit: 4,
+          // 显示编辑器行号（左侧显示行号，便于定位代码位置）
+          lineNumbers: true,
+          // 行换行（是否自动换行，true 时长行会自动换行）
+          lineWrapping: true,
+          // 自动关闭括号（输入左括号时自动补全右括号，支持 (), [], {}）
+          autoCloseBrackets: true,
+          // 显示尾随空格（显示行末的空格字符，帮助保持代码整洁）
+          showTrailingSpace: true,
+          // 匹配括号（高亮匹配的括号对，方便检查括号匹配）
+          matchBrackets: true,
+          // 使用制表符缩进（true 使用 Tab 字符，false 使用空格）
+          indentWithTabs: true,
+          // 样式化选中文本（选中的文本是否有特殊样式，如背景色）
+          styleSelectedText: true,
+          // 匹配单词高亮：true（高亮所有相同单词）| false（不高亮）| "onselected"（只在选中时高亮）
+          matchWordHighlight: true,
+          // 高亮当前行（当前行是否有背景色，方便定位）
+          styleActiveLine: true,
+          // ===== 对话框配置 =====
+          // 对话框锁定屏幕（对话框弹出时是否锁定背景，防止误操作）
+          dialogLockScreen: true,
+          // 对话框显示遮罩（是否显示半透明遮罩层）
+          dialogShowMask: true,
+          // 对话框可拖拽（对话框是否可以拖动位置）
+          dialogDraggable: true,
+          // 对话框遮罩背景色（遮罩的颜色，通常使用白色或半透明）
+          dialogMaskBgColor: "#fff",
+          // 对话框遮罩不透明度（0.0 到 1.0，控制遮罩透明度）
+          dialogMaskOpacity: 0.1,
+          // 字体大小（编辑器内文字的大小，影响可读性）
+          fontSize: "13px",
+          // 如果启用，编辑器将创建一个 <textarea> 标签保存 HTML 代码用于表单提交
+          saveHTMLToTextarea: true,
+          // 禁用的键映射（禁用某些快捷键，数组格式，如 ["Ctrl-B", "Ctrl-I"]）
+          disabledKeyMaps: [],
+
+          // ===== 事件回调函数 =====
+          // 加载完成回调（编辑器初始化完成后触发）
+          onload: function () {},
+          // 调整大小回调（编辑器大小改变时触发）
+          onresize: function () {},
+          // 内容改变回调（编辑器内容发生变化时触发）
+          onchange: function () {
+            // try {
+            //   const md = mobileMultiMessageEditor.getMarkdown() || "";
+            //   const ta = document.getElementById("mobile-multi-message-content");
+            //   const count = document.getElementById(
+            //     "mobile-multi-message-char-count",
+            //   );
+            //   if (ta) ta.value = md;
+            //   if (count) count.textContent = String(md.length);
+            // } catch (_) {}
+          },
+          // 监听开始回调（开始监听模式时触发）
+          onwatch: null,
+          // 监听结束回调（结束监听模式时触发）
+          onunwatch: null,
+          // 预览中回调（正在生成预览时触发）
+          onpreviewing: function () {},
+          // 预览完成回调（预览生成完成后触发）
+          onpreviewed: function () {},
+          // 全屏回调（进入全屏模式时触发）
+          onfullscreen: function () {},
+          // 退出全屏回调（退出全屏模式时触发）
+          onfullscreenExit: function () {},
+          // 滚动回调（编辑器滚动时触发）
+          onscroll: function () {},
+          // 预览滚动回调（预览区域滚动时触发）
+          onpreviewscroll: function () {},
+
+          // ===== 图片上传配置 =====
+          // 启用/禁用 上传功能（是否允许上传图片到服务器）
+          imageUpload: true,
+          // 支持的图片格式（允许上传的图片文件类型数组）
+          imageFormats: ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
+          // 上传 URL（图片上传的服务器端点地址）
+          imageUploadURL: "/upload",
+          // 启用/禁用 跨域上传（是否支持跨域上传图片）
+          crossDomainUpload: false,
+          // 跨域上传回调 URL（跨域上传时的回调地址，用于处理上传结果）
+          // uploadCallbackURL: "",
+
+          // ===== 目录和扩展功能配置 =====
+          // 启用/禁用 目录功能（是否自动生成文章目录）
+          toc: true,
+          // 使用 [TOCM]，自动创建目录下拉菜单（在标题前添加 [TOCM] 标记启用）
+          tocm: false,
+          // 目录下拉菜单按钮标题（下拉菜单的显示文本）
+          tocTitle: "",
+          // 启用/禁用 目录下拉菜单（是否显示目录下拉菜单按钮）
+          tocDropdown: false,
+          // 自定义目录容器选择器（目录插入的 DOM 元素选择器，默认插入编辑器内部）
+          tocContainer: "",
+          // 从 H1 开始创建目录（目录从哪一级标题开始生成，1表示H1，2表示H2）
+          tocStartLevel: 1,
+          // 打开 HTML 标签识别（是否解析和显示 HTML 标签）
+          htmlDecode: true,
+          // 启用解析分页符 [========]（是否支持分页符语法，用于分隔内容）
+          pageBreak: true,
+          // 启用 @链接功能（@用户名 自动转换为链接）
+          atLink: false,
+          // 邮箱地址自动链接（自动识别邮箱地址并转换为可点击链接）
+          emailLink: true,
+          // 启用 GitHub Flavored Markdown 任务列表（支持 - [ ] 任务列表语法）
+          taskList: true,
+          // 启用表情符号支持：
+          // :emoji: 支持 GitHub 表情、Twitter 表情 (Twemoji)
+          // :fa-xxx: 使用 FontAwesome 图标 web 字体
+          // :editormd-logo: :editormd-logo-1x: > 1~8x 支持 Editor.md logo 图标
+          emoji: true,
+          // 启用 TeX(LaTeX) 数学公式支持，基于 KaTeX 库
+          tex: true,
+          // 启用流程图支持（flowChart.js，只支持 IE9+，用于绘制流程图）
+          flowChart: true,
+          // 启用时序图支持（sequenceDiagram.js，只支持 IE9+，用于绘制时序图）
+          sequenceDiagram: true,
+          // 启用/禁用 编辑器预览区域代码高亮（预览区代码是否进行语法高亮）
+          previewCodeHighlight: true,
+
+          // ===== 工具栏配置 =====
+          // 显示或隐藏工具栏
+          toolbar: true,
+          // 窗口滚动时自动固定工具栏位置
+          toolbarAutoFixed: true,
+          // 工具栏图标模式：full（完整）| simple（简单）| mini（最小），参见 `editormd.toolbarModes` 属性
+          toolbarIcons: "full",
+          /*
+          toolbarIcons: function () {
+            return [
+              "undo",
+              "redo",
+              "|",
+              "bold",
+              "italic",
+              "quote",
+              "|",
+              "list-ul",
+              "list-ol",
+              "|",
+              "link",
+              "image",
+              "code-block",
+              "|",
+              "watch",
+              "preview",
+            ];
+          },
+          */
+          // 工具栏标题（自定义工具栏按钮的提示文本）
+          toolbarTitles: {},
+          // 工具栏处理程序（自定义工具栏按钮的点击事件）
+          toolbarHandlers: {},
+          // 使用 HTML 标签创建工具栏图标，未使用默认 <a> 标签（自定义工具栏图标的 HTML）
+          toolbarCustomIcons: {},
+          // 工具栏图标文本（自定义工具栏按钮的文本）
+          toolbarIconTexts: {},
+          // 父容器层级（用于解决全屏模式下的定位问题）
+          parentContainerLayer: "2",
+          // 全屏的时候是否允许滚动
+          fullScreenScrolling: false,
+          // 全屏的时候编辑器位于父容器的坐标位置
+          fullScreenCoordinatesX: null,
+          fullScreenCoordinatesY: "0px",
+          // 进入全屏自动滚动
+          fullScreenAutomaticScrolling: "0%",
+          fullScreenAutomaticScrollingOuterHtml: true,
+          // 锁定所有父容器
+          fullScreenForceDisableAllScroll: false,
+          // 弹窗打开时自动滚动位置
+          dialogOpenAutoScroll: "110px",
+          dialogOpenAutoScrollOuterHtml: true,
+        });
+
+    setFallbackVisibility(true);
+    return true;
+  } catch (e) {
+    console.error("[移动端提醒] Editor.md 初始化失败:", e);
+    const textareaEl = document.getElementById("mobile-reminder-message-field");
+    const editorEl = document.getElementById("mobile-reminder-editor");
+    if (textareaEl) textareaEl.style.display = "";
+    if (editorEl) editorEl.style.display = "none";
+    return false;
   }
 }
 
@@ -52446,30 +54088,49 @@ async function openMobileReminderEditModal(reminderId = "") {
         <!-- 隐藏字段：提醒ID -->
         <input type="hidden" id="mobile-reminder-id-field" value="">
         <!-- 提醒标题 -->
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">提醒标题 <span class="text-red-500">*</span></label>
+        <div class="p-4 bg-gradient-to-r from-amber-50 to-white border border-amber-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+          <label for="mobile-reminder-title-field" class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">提醒标题 <span class="text-red-500">*</span></span>
+          </label>
           <input type="text" id="mobile-reminder-title-field" class="input-field text-sm w-full" placeholder="请输入提醒标题（最多50字）" maxlength="50">
         </div>
         <!-- 提醒内容 -->
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">提醒内容 <span class="text-red-500">*</span></label>
+        <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+          <label for="mobile-reminder-message-field" class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">提醒内容 <span class="text-red-500">*</span></span>
+          </label>
           <textarea id="mobile-reminder-message-field" rows="3" class="input-field text-sm w-full resize-none" placeholder="请输入提醒内容（最多500字）" maxlength="500"></textarea>
+          <div id="mobile-reminder-editor" style="min-height: 180px; border-radius: 6px; background: #fff; border: 1px solid #e6e6e6; margin-top: 8px;"></div>
         </div>
         <!-- 时间设置 -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">开始时间 <span class="text-red-500">*</span></label>
-            <input type="time" id="mobile-reminder-start-time-field" class="input-field text-sm w-full">
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-2">结束时间 <span class="text-red-500">*</span></label>
-            <input type="time" id="mobile-reminder-end-time-field" class="input-field text-sm w-full">
+        <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+          <label class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">时间设置 <span class="text-red-500">*</span></span>
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">开始时间</label>
+              <input type="time" id="mobile-reminder-start-time-field" class="input-field text-sm w-full">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">结束时间</label>
+              <input type="time" id="mobile-reminder-end-time-field" class="input-field text-sm w-full">
+            </div>
           </div>
         </div>
-        <p class="text-xs text-blue-600 bg-blue-50 p-2 rounded">💡 提示：如果结束时间小于开始时间，系统会认为是跨天提醒（例如：20:00 到次日 08:00）</p>
+        <p class="text-xs text-blue-600 bg-gradient-to-r from-blue-50 to-white p-3 rounded-xl border border-blue-100 flex items-start gap-2">
+          <svg class="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <span>提示：如果结束时间小于开始时间，系统会认为是跨天提醒（例如：20:00 到次日 08:00）</span>
+        </p>
         <!-- 启用状态 -->
-        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-          <span class="text-sm font-semibold text-slate-700">立即启用</span>
+        <div class="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span class="text-sm font-semibold text-slate-700">立即启用</span>
+          </div>
           <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id="mobile-reminder-enabled-field" class="sr-only peer" checked>
             <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
@@ -52543,6 +54204,26 @@ async function openMobileReminderEditModal(reminderId = "") {
     modal.classList.add("show");
   }, 10);
 
+  // 模态框可见后再初始化/刷新编辑器，避免隐藏状态下全屏坐标计算偶发失效
+  setTimeout(async () => {
+    const initialMessage = messageField ? messageField.value || "" : "";
+    await ensureMobileReminderEditorInitialized();
+    if (
+      mobileReminderEditor &&
+      typeof mobileReminderEditor.setMarkdown === "function"
+    ) {
+      mobileReminderEditor.setMarkdown(initialMessage);
+    }
+    if (
+      mobileReminderEditor &&
+      mobileReminderEditor.cm &&
+      typeof mobileReminderEditor.cm.refresh === "function"
+    ) {
+      mobileReminderEditor.cm.refresh();
+    }
+
+  }, 60);
+
   // 聚焦到标题输入框
   if (titleField) titleField.focus();
 }
@@ -52569,9 +54250,15 @@ async function saveMobileReminder() {
     document.getElementById("mobile-reminder-id-field")?.value.trim() || "";
   const title =
     document.getElementById("mobile-reminder-title-field")?.value.trim() || "";
-  const message =
+  const messageFromTextarea =
     document.getElementById("mobile-reminder-message-field")?.value.trim() ||
     "";
+  const messageFromEditor =
+    mobileReminderEditor &&
+    typeof mobileReminderEditor.getMarkdown === "function"
+      ? (mobileReminderEditor.getMarkdown() || "").trim()
+      : "";
+  const message = messageFromEditor || messageFromTextarea;
   const startTime =
     document.getElementById("mobile-reminder-start-time-field")?.value || "";
   const endTime =
@@ -55907,24 +57594,70 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
             <div style="text-align: left;">
                 <div style="
                     padding: 12px;
-                    background: #f1f5f9;
-                    border-radius: 8px;
+                    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+                    border-radius: 12px;
                     margin-bottom: 20px;
                     text-align: center;
+                    box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
                 ">
-                    <div style="color: #64748b; font-size: 13px; margin-bottom: 5px;">应付金额</div>
-                    <div style="color: #dc2626; font-size: 24px; font-weight: bold;">¥${totalAmount}</div>
+                    <div style="color: #64748b; font-size: 13px; margin-bottom: 5px;">💰 应付金额</div>
+                    <div style="color: #dc2626; font-size: 28px; font-weight: bold;">¥${totalAmount}</div>
                 </div>
-                ${paymentMethodsHtml}
+                <div class="payment-methods-container" style="
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                    gap: 10px;
+                    max-height: calc(100vh - 350px);
+                    overflow-y: auto;
+                    padding: 4px;
+                ">
+                    ${paymentMethodsHtml}
+                </div>
             </div>
         `,
-    icon: "question",
     showCancelButton: true,
     confirmButtonText: "确认支付",
     cancelButtonText: "返回",
     confirmButtonColor: "#3b82f6",
     cancelButtonColor: "#94a3b8",
-    width: "500px",
+    width: "auto",
+    customClass: {
+      popup: "swal2-payment-popup",
+    },
+    didOpen: () => {
+      // 根据屏幕高度动态调整
+      const popup = Swal.getPopup();
+      const container = popup.querySelector(".payment-methods-container");
+      if (container) {
+        const viewportHeight = window.innerHeight;
+        const methodsCount = paymentMethods.length;
+        if (viewportHeight > 600 && methodsCount <= 4) {
+          container.style.maxHeight = "none";
+          container.style.overflowY = "visible";
+        }
+        popup.style.maxWidth = methodsCount > 2 ? "550px" : "400px";
+        popup.style.minWidth = "320px";
+      }
+      // 绑定点击事件，点击整个div时选中对应的radio按钮
+      window.selectPaymentMethod = (method) => {
+        const radio = document.querySelector(
+          `input[name="payment-method"][value="${method}"]`,
+        );
+        if (radio) {
+          radio.checked = true;
+          // 添加选中视觉效果
+          document.querySelectorAll(".payment-method-option").forEach(el => {
+            el.style.borderColor = "#e2e8f0";
+            el.style.background = "white";
+          });
+          const parentDiv = radio.closest(".payment-method-option");
+          if (parentDiv) {
+            parentDiv.style.borderColor = "#3b82f6";
+            parentDiv.style.background = "#f0f9ff";
+          }
+        }
+      };
+    },
     preConfirm: () => {
       // 在用户点击"确认支付"时，验证是否选择了支付方式
       const selectedMethod = document.querySelector(
@@ -55935,17 +57668,6 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
         return false;
       }
       return selectedMethod.value; // 返回选中的支付方式
-    },
-    didOpen: () => {
-      // 绑定点击事件，点击整个div时选中对应的radio按钮
-      window.selectPaymentMethod = (method) => {
-        const radio = document.querySelector(
-          `input[name="payment-method"][value="${method}"]`,
-        );
-        if (radio) {
-          radio.checked = true;
-        }
-      };
     },
   });
 
@@ -57531,7 +59253,8 @@ async function adminClearOverdue(
  * 功能说明：
  * 1. 为订单号输入框添加input事件监听
  * 2. 当用户输入完订单号后，自动获取订单金额
- * 3. 计算金额的75%并填充到退款金额输入框
+ * 3. 检查是否已退款（一个订单只能退款一次）
+ * 4. 计算金额的80%并填充到退款金额输入框
  *
  * 调用时机：
  * - 页面加载完成后自动初始化
@@ -57540,7 +59263,8 @@ async function adminClearOverdue(
  * - 监听订单号输入框的input事件
  * - 进行订单号格式校验（长度、字符等）
  * - 调用后端API获取订单信息
- * - 计算75%金额并自动填充
+ * - 检查订单是否已退款
+ * - 计算80%金额并自动填充
  * - 提供友好的错误提示
  */
 function initOrderNumberAutoFill() {
@@ -57589,14 +59313,15 @@ function initOrderNumberAutoFill() {
 }
 
 /**
- * 根据订单号获取订单金额并填充75%到退款金额输入框
+ * 根据订单号获取订单金额并填充80%到退款金额输入框
  * 功能说明：
  * 1. 校验订单号格式（长度、字符等）
  * 2. 调用后端API查询订单信息
- * 3. 获取订单金额
- * 4. 计算金额的75%
- * 5. 自动填充到退款金额输入框
- * 6. 提供详细的错误提示
+ * 3. 检查是否已退款（一个订单只能退款一次）
+ * 4. 获取订单金额
+ * 5. 计算金额的80%
+ * 6. 自动填充到退款金额输入框
+ * 7. 提供详细的错误提示
  *
  * @param {string} tradeNo - 订单号
  *
@@ -57722,6 +59447,32 @@ async function fetchOrderAmountAndFill(tradeNo) {
 
     console.log("[订单号自动填充] 成功获取订单数据:", matchedOrder);
 
+    // ========== 步骤4.5：检查是否已退款（一个订单只能退款一次） ==========
+    
+    const refundedAmount = parseFloat(matchedOrder.refundmoney) || 0;
+    const refundCount = parseInt(matchedOrder.refund_count || 0, 10) || 0;
+    const hasRefundRecords =
+      Array.isArray(matchedOrder.refund_records) &&
+      matchedOrder.refund_records.length > 0;
+    const orderStatus = String(matchedOrder.status || "").toLowerCase();
+    if (
+      refundedAmount > 0 ||
+      refundCount >= 1 ||
+      hasRefundRecords ||
+      orderStatus === "refunded_full" ||
+      orderStatus === "refunded_partial"
+    ) {
+      console.log("[订单号自动填充] 该订单已退款，不可再次退款");
+      const amountInput = document.getElementById("admin-refund-amount_modal");
+      if (amountInput) amountInput.value = "";
+      Swal.fire({
+        icon: "warning",
+        title: "无法退款",
+        text: "该订单已退款，每个订单只能退款一次。",
+      });
+      return;
+    }
+
     // ========== 步骤5：获取订单金额并校验 ==========
 
     // 从订单对象中获取金额字段
@@ -57734,17 +59485,17 @@ async function fetchOrderAmountAndFill(tradeNo) {
       return;
     }
 
-    // ========== 步骤5：计算退款金额（75%） ==========
+    // ========== 步骤5.5：计算退款金额（80%） ==========
 
-    // 计算退款金额：原金额 × 0.75
-    const refundAmount = orderAmount * 0.75;
+    // 计算退款金额：原金额 × 0.80
+    const refundAmount = orderAmount * 0.80;
 
     // 保留2位小数，符合货币金额的标准格式
     const refundAmountFormatted = refundAmount.toFixed(2);
 
     console.log("[订单号自动填充] 计算退款金额:", {
       原订单金额: orderAmount,
-      退款金额_75Percent: refundAmountFormatted,
+      退款金额_80Percent: refundAmountFormatted,
     });
 
     // ========== 步骤6：填充退款金额到输入框 ==========
@@ -57768,7 +59519,7 @@ async function fetchOrderAmountAndFill(tradeNo) {
     console.log("[订单号自动填充] 成功填充退款金额:", refundAmountFormatted);
 
     // 可选：显示成功提示（可根据需要开启）
-    // showModalAlert(`已自动填充退款金额：¥${refundAmountFormatted}（原金额的75%）`, '成功');
+    // showModalAlert(`已自动填充退款金额：¥${refundAmountFormatted}（原金额的80%）`, '成功');
   } catch (error) {
     // ========== 异常处理 ==========
 
@@ -58268,15 +60019,63 @@ async function _chooseBillingPayType(options = {}) {
     html: `
       <div style="text-align: left;">
         ${amountHtml}
-        ${paymentMethodsHtml}
+        <div class="payment-methods-container" style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 12px;
+          max-height: calc(100vh - 320px);
+          overflow-y: auto;
+          padding: 4px;
+        ">
+          ${paymentMethodsHtml}
+        </div>
       </div>
     `,
     showCancelButton: true,
-    confirmButtonText: "确认",
+    confirmButtonText: "确认支付",
     cancelButtonText: "取消",
     confirmButtonColor: "#3b82f6",
     cancelButtonColor: "#94a3b8",
-    width: "500px",
+    width: "auto",
+    customClass: {
+      popup: "swal2-payment-popup",
+      htmlContainer: "swal2-payment-html",
+    },
+    didOpen: () => {
+      // 根据屏幕高度动态调整弹窗样式
+      const popup = Swal.getPopup();
+      const container = popup.querySelector(".payment-methods-container");
+      if (container) {
+        const viewportHeight = window.innerHeight;
+        const methodsCount = enabledMethods.length;
+        // 当屏幕高度足够时，移除滚动限制
+        if (viewportHeight > 600 && methodsCount <= 4) {
+          container.style.maxHeight = "none";
+          container.style.overflowY = "visible";
+        }
+        // 设置弹窗最大宽度
+        popup.style.maxWidth = methodsCount > 2 ? "600px" : "420px";
+        popup.style.minWidth = "340px";
+      }
+      window.selectBillingPaymentMethod = (method) => {
+        const radio = document.querySelector(
+          `input[name="billing-payment-method"][value="${method}"]`,
+        );
+        if (radio) {
+          radio.checked = true;
+          // 添加选中效果
+          document.querySelectorAll(".payment-method-option").forEach(el => {
+            el.style.borderColor = "#e2e8f0";
+            el.style.background = "white";
+          });
+          const parentDiv = radio.closest(".payment-method-option");
+          if (parentDiv) {
+            parentDiv.style.borderColor = "#3b82f6";
+            parentDiv.style.background = "#f0f9ff";
+          }
+        }
+      };
+    },
     preConfirm: () => {
       const selectedMethod = document.querySelector(
         'input[name="billing-payment-method"]:checked',
@@ -58286,16 +60085,6 @@ async function _chooseBillingPayType(options = {}) {
         return false;
       }
       return selectedMethod.value;
-    },
-    didOpen: () => {
-      window.selectBillingPaymentMethod = (method) => {
-        const radio = document.querySelector(
-          `input[name="billing-payment-method"][value="${method}"]`,
-        );
-        if (radio) {
-          radio.checked = true;
-        }
-      };
     },
   });
   if (!chooseResult.isConfirmed) return null;
