@@ -41851,8 +41851,8 @@ function resetMobileMapView() {
       map.setFitView(markers, false, [50, 50, 50, 50]);
       console.log("[单账号地图] 复位视角：自动适应所有标记点");
     } else {
-      const defaultCenter = [116.397128, 39.916527];
-      const defaultZoom = 11;
+      const defaultCenter = [113.390342, 22.527403];
+      const defaultZoom = 15;
       map.setCenter(defaultCenter);
       map.setZoom(defaultZoom);
       console.log("[单账号地图] 复位视角：重置到默认位置");
@@ -41887,7 +41887,7 @@ function resetMultiMapView() {
       console.log("[多账号地图] 复位视角：自动适应所有路线");
     } else {
       const defaultCenter = [113.390342, 22.527403];
-      const defaultZoom = 11;
+      const defaultZoom = 15;
       multiAccountMap.setCenter(defaultCenter);
       multiAccountMap.setZoom(defaultZoom);
       console.log(
