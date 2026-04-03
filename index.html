@@ -2835,7 +2835,7 @@
         class="hidden h-screen w-screen grid grid-cols-1 lg:grid-cols-[530px,1fr] xl:grid-cols-[530px,1fr] gap-4 p-4"
       >
         <div class="flex flex-col gap-4 h-full min-h-0">
-          <div class="panel rounded-xl p-4 flex-shrink-0">
+          <div class="panel rounded-xl p-4 flex-shrink-0" id="multi-control-panel-desktop-inline">
             <div class="flex justify-between items-center mb-3">
               <h2 class="text-lg font-bold text-slate-800 card-title">
                 多账号控制台
@@ -2915,7 +2915,7 @@
               </label>
             </div>
           </div>
-          <div class="panel rounded-xl p-4 flex-grow flex flex-col min-h-0">
+          <div class="panel rounded-xl p-4 flex-grow flex flex-col min-h-0" id="multi-account-list-panel-desktop-inline">
             <div class="flex justify-between items-center mb-1">
               <div class="flex items-center gap-2">
                 <h2 class="text-lg font-bold text-slate-800">
@@ -3033,7 +3033,7 @@
               </button>
             </div>
           </div>
-          <div class="panel rounded-xl p-4 flex-shrink-0">
+          <div class="panel rounded-xl p-4 flex-shrink-0" id="multi-global-params-panel-desktop-inline">
             <h3 class="font-bold text-slate-800 mb-2">全局参数</h3>
             <div
               id="multi-global-params-container"
@@ -14122,7 +14122,7 @@
 
           <button
             id="admin-modal-close-btn"
-            class="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors duration-200"
+            class="w-9 h-9 flex items-center justify-center text-slate-400 border border-transparent hover:border-red-500 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors duration-200"
             onclick="toggleAdminPanel(false)"
             title="关闭"
           >
@@ -14744,6 +14744,7 @@
               <p class="text-slate-400 text-center py-10">加载中...</p>
             </div>
           </div>
+        
 
           <div id="admin-groups-panel_modal" class="hidden space-y-4">
             <div class="flex justify-between items-center">
@@ -14800,7 +14801,7 @@
                 id="admin-logs-content_modal"
                 class="whitespace-pre-wrap overflow-visible"
               >
-加载中...</pre
+            加载中...</pre
               >
             </div>
             <div
@@ -16870,8 +16871,7 @@
                     id="bruteforce-accounts"
                     rows="4"
                     class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-sm"
-                    placeholder="输入账号，每行一个或用逗号分隔
-"
+                    placeholder="输入账号，每行一个或用逗号分隔"
                   ></textarea>
                   <!-- 输入提示 -->
                   <p class="text-xs text-slate-500 mt-1">
@@ -16963,7 +16963,7 @@
               >密码恢复过程可能需要较长时间，请耐心等待。系统会尝试常见的密码模式（身份证后六位）。
             </div>
           </div>
-        </div>
+        
 
                 <!-- ========================================
            PC端支付日志面板 (admin-payment-logs-panel_modal)
@@ -21323,7 +21323,7 @@
               </div>
               <div
                 id="create-group-permissions"
-                class="grid grid-cols-2 gap-2 max-h-[40vh] overflow-y-auto border border-slate-200 rounded-lg p-3 bg-white"
+                class="grid grid-cols-2 gap-2 max-h-[30vh] overflow-y-auto border border-slate-200 rounded-lg p-3 bg-white"
               ></div>
             </div>
           </div>
