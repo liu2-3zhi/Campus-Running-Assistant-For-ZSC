@@ -337,6 +337,7 @@
 
 .editormd-dialog-info {
   width: 420px;
+  max-width: calc(100vw - 16px);
 }
 .editormd-dialog-info h1 {
   font-weight: normal;
@@ -362,6 +363,15 @@
 }
 .editormd-dialog-info a:hover .fa-external-link {
   display: inline-block;
+}
+
+@media (max-width: 480px) {
+  .editormd-dialog-info {
+    width: calc(100vw - 16px);
+  }
+  .editormd-dialog-info .editormd-dialog-container {
+    padding: 16px;
+  }
 }
 
 .editormd-mask,
@@ -4762,8 +4772,14 @@ hr.editormd-page-break {
   position: fixed;
   top: 0;
   left: 0;
+  right: auto;
+  bottom: auto;
+  width: auto;
+  max-width: none;
+  height: auto;
+  box-sizing: border-box;
   border: none;
-  margin: 0 auto !important;
+  margin: 0;
 }
 
 /* Editor.md Dark theme */

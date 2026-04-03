@@ -84,20 +84,20 @@
     };
 
     editormd.defaults     = {
-        mode                 : "gfm",          //gfm or markdown
-        name                 : "",             // Form element name
-        value                : "",             // value for CodeMirror, if mode not gfm/markdown
-        theme                : "",             // Editor.md self themes, before v1.5.0 is CodeMirror theme, default empty
-        editorTheme          : "default",      // Editor area, this is CodeMirror theme at v1.5.0
-        previewTheme         : "",             // Preview area theme, default empty
-        markdown             : "",             // Markdown source code
-        appendMarkdown       : "",             // if in init textarea value not empty, append markdown to textarea
+        mode                 : "gfm",          // 编辑模式：gfm 或 markdown
+        name                 : "",             // 表单字段名
+        value                : "",             // CodeMirror 初始值（当 mode 非 gfm/markdown 时使用）
+        theme                : "",             // Editor.md 主题（v1.5.0 前为 CodeMirror 主题），默认空
+        editorTheme          : "default",      // 编辑区主题（v1.5.0 起）
+        previewTheme         : "",             // 预览区主题，默认空
+        markdown             : "",             // Markdown 源码
+        appendMarkdown       : "",             // 初始化时若 textarea 有值，则追加 markdown
         width                : "100%",
         height               : "100%",
-        path                 : "./lib/",       // Dependents module file directory
-        pluginPath           : "",             // If this empty, default use settings.path + "../plugins/"
-        delay                : 300,            // Delay parse markdown to html, Uint : ms
-        autoLoadModules      : true,           // Automatic load dependent module files
+        path                 : "./lib/",       // 依赖模块目录
+        pluginPath           : "",             // 插件目录；为空时默认 settings.path + "../plugins/"
+        delay                : 300,            // Markdown 转 HTML 延迟（毫秒）
+        autoLoadModules      : true,           // 自动加载依赖模块
         watch                : true,
         placeholder          : "Enjoy Markdown! coding now...",
         gotoLine             : true,
@@ -106,7 +106,7 @@
 		autoFocus            : true,
         autoCloseTags        : true,
         searchReplace        : true,
-        syncScrolling        : true,           // true | false | "single", default true
+        syncScrolling        : true,           // 同步滚动：true | false | "single"，默认 true
         readOnly             : false,
         tabSize              : 4,
 		indentUnit           : 4,
@@ -117,11 +117,22 @@
 		matchBrackets        : true,
 		indentWithTabs       : true,
 		styleSelectedText    : true,
-        matchWordHighlight   : true,           // options: true, false, "onselected"
-        styleActiveLine      : true,           // Highlight the current line
+        matchWordHighlight   : true,           // 单词高亮：true、false、"onselected"
+        styleActiveLine      : true,           // 高亮当前行
         dialogLockScreen     : false,
         dialogShowMask       : true,
         dialogDraggable      : true,
+        fullScreenScrolling  : false,           // false 时全屏锁定页面/父容器滚动
+        fullScreenForceDisableAllScroll : false, // true 时强制锁定所有父容器滚动（覆盖 fullScreenScrolling）
+        fullScreenCoordinatesX : null,          // 全屏时编辑器 X 坐标（父容器相对坐标，如 "2%"、"2px"）
+        fullScreenCoordinatesY : null,          // 全屏时编辑器 Y 坐标（父容器相对坐标，如 "2%"、"2px"）
+        fullScreenAutomaticScrolling : null,    // 进入全屏自动滚动（基于整页，如 "2%"、"2px"）
+        fullScreenAutomaticScrollingOuterHtml : false, // 自动滚动时是否同时滚动最外层 html/body
+        fullScreenWidthAdjustment : null,       // 全屏宽度微调：可传函数，或 "2px"/"2%" 这类增量值，默认 null
+        fullScreenHeightAdjustment : null,      // 全屏高度微调：可传函数，或 "-100px"/"2%" 这类增量值，默认 null
+        parentContainerLayer : 1,              // 全屏父容器层级（1=最近的父 div）
+        dialogOpenAutoScroll : null,           // 弹窗打开时自动滚动位置（如 "0%"、"100px"），null 则不滚动，默认 null
+        dialogOpenAutoScrollOuterHtml : false, // 弹窗自动滚动时是否同时滚动最外层 html/body 及所有父容器
         dialogMaskBgColor    : "#fff",
         dialogMaskOpacity    : 0.1,
         fontSize             : "13px",
@@ -143,27 +154,27 @@
         imageUpload          : false,
         imageFormats         : ["jpg", "jpeg", "gif", "png", "bmp", "webp"],
         imageUploadURL       : "",
-        imageUploadFields    : "", // append upload form fields for CRSF etc. Server-side receives the POST parameters. v1.5.1+
-        imageUploadCallback  : function() {}, // set image upload finish (success or failure) callback handler v1.5.1+
-        imageUploadCallbackName : '__Editor_md_ImageUploadCallback', // upload callback name for cross-domain upload v1.5.1+
+        imageUploadFields    : "", // 追加上传表单字段（如 CSRF），服务端通过 POST 接收（v1.5.1+）
+        imageUploadCallback  : function() {}, // 图片上传完成回调（成功/失败，v1.5.1+）
+        imageUploadCallbackName : '__Editor_md_ImageUploadCallback', // 跨域上传回调名（v1.5.1+）
         crossDomainUpload    : false,
         uploadCallbackURL    : "",
 
-        toc                  : true,           // Table of contents
-        tocm                 : false,           // Using [TOCM], auto create ToC dropdown menu
-        tocTitle             : "",             // for ToC dropdown menu btn
+        toc                  : true,           // 目录（Table of Contents）
+        tocm                 : false,           // 使用 [TOCM] 自动生成目录下拉菜单
+        tocTitle             : "",             // 目录下拉按钮标题
         tocDropdown          : false,
         tocContainer         : "",
-        tocStartLevel        : 1,              // Said from H1 to create ToC
-        htmlDecode           : false,          // Open the HTML tag identification, If set String value expression : tagName,tagName,...|attrName,attrName,...
-        pageBreak            : true,           // Enable parse page break [========]
-        atLink               : true,           // for @link
-        emailLink            : true,           // for email address auto link
-        taskList             : false,          // Enable Github Flavored Markdown task lists
-        emoji                : false,          // :emoji: , Support Github emoji, Twitter Emoji (Twemoji);
-                                               // Support FontAwesome icon emoji :fa-xxx: > Using fontAwesome icon web fonts;
-                                               // Support Editor.md logo icon emoji :editormd-logo: :editormd-logo-1x: > 1~8x;
-        emojiCategories      : [               // Custom Emoji categories
+        tocStartLevel        : 1,              // 目录起始级别（从 H1 开始）
+        htmlDecode           : false,          // 是否启用 HTML 解析；字符串格式：tag1,tag2|attr1,attr2
+        pageBreak            : true,           // 解析分页符 [========]
+        atLink               : true,           // 启用 @link
+        emailLink            : true,           // 自动识别邮箱链接
+        taskList             : false,          // 启用 GFM 任务列表
+        emoji                : false,          // 支持 :emoji:（Github/Twemoji）
+                                               // 支持 FontAwesome：:fa-xxx:
+                                               // 支持 Editor.md logo：:editormd-logo: / :editormd-logo-1x: ~ 8x
+        emojiCategories      : [               // 自定义 Emoji 分类
             "github-emoji",
             "twemoji",
             "font-awesome",
@@ -171,13 +182,13 @@
             // emoji 目录
         ],
 
-        tex                  : false,          // TeX(LaTeX), based on KaTeX
-        flowChart            : false,          // flowChart.js only support IE9+
-        sequenceDiagram      : false,          // sequenceDiagram.js only support IE9+
+        tex                  : false,          // TeX(LaTeX)，基于 KaTeX
+        flowChart            : false,          // flowChart.js（仅支持 IE9+）
+        sequenceDiagram      : false,          // sequenceDiagram.js（仅支持 IE9+）
         previewCodeHighlight : true,
 
-        toolbar              : true,           // show/hide toolbar
-        toolbarAutoFixed     : true,           // on window scroll auto fixed position
+        toolbar              : true,           // 显示/隐藏工具栏
+        toolbarAutoFixed     : true,           // 窗口滚动时自动固定工具栏
         toolbarIcons         : "full",
         toolbarTitles        : {},
         toolbarHandlers      : {
@@ -350,7 +361,13 @@
             watching   : false,
             loaded     : false,
             preview    : false,
-            fullscreen : false
+            fullscreen : false,
+            fullscreenPlaceholder : null,
+            fullscreenLockedScrollParents : [],
+            fullscreenAutoScrollRestoreNodes : [],
+            dialogScrollTop : null,
+            dialogScrollLeft : null,
+            dialogAutoScrollRestoreNodes : []
         },
 
         /**
@@ -372,6 +389,31 @@
 
             var classPrefix      = this.classPrefix  = editormd.classPrefix;
             var settings         = $.extend(true, {}, editormd.defaults, options);
+            var normalizeNullableBoolean = function(value, defaultValue) {
+                if (value === null || typeof value === "undefined") {
+                    return defaultValue;
+                }
+
+                if (typeof value === "boolean") {
+                    return value;
+                }
+
+                if (typeof value === "string") {
+                    var lower = value.toLowerCase().trim();
+                    if (lower === "true") {
+                        return true;
+                    }
+                    if (lower === "false") {
+                        return false;
+                    }
+                    if (lower === "null" || lower === "") {
+                        return defaultValue;
+                    }
+                }
+
+                return !!value;
+            };
+            settings.fullScreenScrolling = normalizeNullableBoolean(settings.fullScreenScrolling, false);
 
             if (options.imageFormats) {
                 settings.imageFormats = options.imageFormats;
@@ -477,7 +519,12 @@
                 }
 
                 if (typeof window.marked !== "undefined") {
-                    editormd.$marked = window.marked;
+                    // 兼容 marked v4.x API
+                    if (typeof window.marked === "function") {
+                        editormd.$marked = window.marked;
+                    } else if (typeof window.marked.parse === "function") {
+                        editormd.$marked = window.marked.parse.bind(window.marked);
+                    }
                 }
 
                 this.setCodeMirror().setToolbar().loadedDisplay();
@@ -500,6 +547,24 @@
             var settings     = this.settings;
             var loadPath     = settings.path;
 
+            // 检测全局已加载的库，避免重复加载
+            var isRaphaelLoaded = typeof window.Raphael !== "undefined";
+            var isUnderscoreLoaded = typeof window._ !== "undefined";
+            var isFlowchartLoaded = typeof window.flowchart !== "undefined";
+            var isSequenceLoaded = typeof window.Diagram !== "undefined";
+            var isMarkedLoaded = typeof window.marked !== "undefined";
+            var isPrettifyLoaded = typeof window.prettyPrint !== "undefined" || typeof window.PR !== "undefined";
+
+            // 兼容 marked v4.x API (marked.parse) 和旧版 (marked)
+            var getMarkedParser = function() {
+                if (typeof window.marked === "function") {
+                    return window.marked;
+                } else if (typeof window.marked === "object" && typeof window.marked.parse === "function") {
+                    return window.marked.parse.bind(window.marked);
+                }
+                return null;
+            };
+
             var loadFlowChartOrSequenceDiagram = function() {
 
                 if (editormd.isIE8) {
@@ -509,83 +574,136 @@
                 }
 
                 if (settings.flowChart || settings.sequenceDiagram) {
-                    editormd.loadScript(loadPath + "raphael.min", function() {
-
-                        editormd.loadScript(loadPath + "underscore.min", function() {
-
-                            if (!settings.flowChart && settings.sequenceDiagram) {
-                                editormd.loadScript(loadPath + "sequence-diagram.min", function() {
-                                    _this.loadedDisplay();
-                                });
-                            } else if (settings.flowChart && !settings.sequenceDiagram) {
-                                editormd.loadScript(loadPath + "flowchart.min", function() {
-                                    editormd.loadScript(loadPath + "jquery.flowchart.min", function() {
+                    // 如果依赖已加载，直接继续
+                    if (isRaphaelLoaded && isUnderscoreLoaded) {
+                        if (settings.flowChart && settings.sequenceDiagram) {
+                            if (isFlowchartLoaded && isSequenceLoaded) {
+                                _this.loadedDisplay();
+                            } else {
+                                _this.loadedDisplay();
+                            }
+                        } else if (settings.flowChart && isFlowchartLoaded) {
+                            _this.loadedDisplay();
+                        } else if (settings.sequenceDiagram && isSequenceLoaded) {
+                            _this.loadedDisplay();
+                        } else {
+                            _this.loadedDisplay();
+                        }
+                    } else {
+                        // 回退到动态加载
+                        editormd.loadScript(loadPath + "raphael.min", function() {
+                            editormd.loadScript(loadPath + "underscore.min", function() {
+                                if (!settings.flowChart && settings.sequenceDiagram) {
+                                    editormd.loadScript(loadPath + "sequence-diagram.min", function() {
                                         _this.loadedDisplay();
                                     });
-                                });
-                            } else if (settings.flowChart && settings.sequenceDiagram) {
-                                editormd.loadScript(loadPath + "flowchart.min", function() {
-                                    editormd.loadScript(loadPath + "jquery.flowchart.min", function() {
-                                        editormd.loadScript(loadPath + "sequence-diagram.min", function() {
+                                } else if (settings.flowChart && !settings.sequenceDiagram) {
+                                    editormd.loadScript(loadPath + "flowchart.min", function() {
+                                        editormd.loadScript(loadPath + "jquery.flowchart.min", function() {
                                             _this.loadedDisplay();
                                         });
                                     });
-                                });
-                            }
+                                } else if (settings.flowChart && settings.sequenceDiagram) {
+                                    editormd.loadScript(loadPath + "flowchart.min", function() {
+                                        editormd.loadScript(loadPath + "jquery.flowchart.min", function() {
+                                            editormd.loadScript(loadPath + "sequence-diagram.min", function() {
+                                                _this.loadedDisplay();
+                                            });
+                                        });
+                                    });
+                                }
+                            });
                         });
-
-                    });
+                    }
                 } else {
                     _this.loadedDisplay();
                 }
             };
 
-            editormd.loadCSS(loadPath + "codemirror/codemirror.min");
+            // 检测 CodeMirror 是否已全局加载
+            var isCodeMirrorLoaded = typeof window.CodeMirror !== "undefined";
 
-            if (settings.searchReplace && !settings.readOnly) {
-                editormd.loadCSS(loadPath + "codemirror/addon/dialog/dialog");
-                editormd.loadCSS(loadPath + "codemirror/addon/search/matchesonscrollbar");
+            // 如果 CodeMirror 未加载，才加载 CSS
+            if (!isCodeMirrorLoaded) {
+                editormd.loadCSS(loadPath + "codemirror/codemirror.min");
+
+                if (settings.searchReplace && !settings.readOnly) {
+                    editormd.loadCSS(loadPath + "codemirror/addon/dialog/dialog");
+                    editormd.loadCSS(loadPath + "codemirror/addon/search/matchesonscrollbar");
+                }
+
+                if (settings.codeFold) {
+                    editormd.loadCSS(loadPath + "codemirror/addon/fold/foldgutter");
+                }
             }
 
-            if (settings.codeFold) {
-                editormd.loadCSS(loadPath + "codemirror/addon/fold/foldgutter");
-            }
+            // 继续加载的通用函数
+            var continueLoading = function() {
+                _this.setCodeMirror();
 
-            editormd.loadScript(loadPath + "codemirror/codemirror.min", function() {
-                editormd.$CodeMirror = CodeMirror;
+                if (settings.mode !== "gfm" && settings.mode !== "markdown") {
+                    _this.loadedDisplay();
 
-                editormd.loadScript(loadPath + "codemirror/modes.min", function() {
+                    return false;
+                }
 
-                    editormd.loadScript(loadPath + "codemirror/addons.min", function() {
+                _this.setToolbar();
 
-                        _this.setCodeMirror();
-
-                        if (settings.mode !== "gfm" && settings.mode !== "markdown") {
-                            _this.loadedDisplay();
-
-                            return false;
+                // 检测 marked 是否已全局加载
+                if (isMarkedLoaded) {
+                    editormd.$marked = getMarkedParser();
+                    
+                    // 检测 prettify 是否已全局加载
+                    if (settings.previewCodeHighlight) {
+                        if (isPrettifyLoaded) {
+                            loadFlowChartOrSequenceDiagram();
+                        } else {
+                            editormd.loadScript(loadPath + "prettify.min", function() {
+                                loadFlowChartOrSequenceDiagram();
+                            });
                         }
+                    } else {
+                        loadFlowChartOrSequenceDiagram();
+                    }
+                } else {
+                    editormd.loadScript(loadPath + "marked.min", function() {
 
-                        _this.setToolbar();
+                        editormd.$marked = getMarkedParser();
 
-                        editormd.loadScript(loadPath + "marked.min", function() {
-
-                            editormd.$marked = marked;
-
-                            if (settings.previewCodeHighlight) {
+                        if (settings.previewCodeHighlight) {
+                            if (isPrettifyLoaded) {
+                                loadFlowChartOrSequenceDiagram();
+                            } else {
                                 editormd.loadScript(loadPath + "prettify.min", function() {
                                     loadFlowChartOrSequenceDiagram();
                                 });
-                            } else {
-                                loadFlowChartOrSequenceDiagram();
                             }
+                        } else {
+                            loadFlowChartOrSequenceDiagram();
+                        }
+                    });
+                }
+            };
+
+            // 如果 CodeMirror 已加载，直接使用
+            if (isCodeMirrorLoaded) {
+                editormd.$CodeMirror = CodeMirror;
+                continueLoading();
+            } else {
+                // 动态加载 CodeMirror
+                editormd.loadScript(loadPath + "codemirror/codemirror.min", function() {
+                    editormd.$CodeMirror = CodeMirror;
+
+                    editormd.loadScript(loadPath + "codemirror/modes.min", function() {
+
+                        editormd.loadScript(loadPath + "codemirror/addons.min", function() {
+                            continueLoading();
                         });
 
                     });
 
                 });
-
-            });
+            }
 
             return this;
         },
@@ -1047,8 +1165,8 @@
             };
 
             if (!state.fullscreen && !state.preview && settings.toolbar && settings.toolbarAutoFixed) {
-                $(window).bind("scroll", autoFixedHandle);
-                $(window).bind("resize", autoFixedHandle);
+                $(window).on("scroll", autoFixedHandle);
+                $(window).on("resize", autoFixedHandle);
             }
 
             return this;
@@ -1192,7 +1310,7 @@
             var toolbarIcons        = this.toolbarIcons = toolbar.find("." + classPrefix + "menu > li > a");
             var toolbarIconHandlers = this.getToolbarHandles();
 
-            toolbarIcons.bind("click", function() {
+            toolbarIcons.on("click", function() {
 
                 var icon                = $(this).children(".fa");
                 var name                = icon.attr("name");
@@ -1256,9 +1374,13 @@
             var _this        = this;
 			var editor       = this.editor;
             var classPrefix  = this.classPrefix;
+            var settings     = this.settings;
 
             var infoDialogHTML = [
                 "<div class=\"" + classPrefix + "dialog " + classPrefix + "dialog-info\" style=\"\">",
+                "<div class=\"" + classPrefix + "dialog-header\" style=\"cursor: move;\">",
+                "<strong class=\"" + classPrefix + "dialog-title\">关于 Editor.md</strong>",
+                "</div>",
                 "<div class=\"" + classPrefix + "dialog-container\">",
                 "<h1><i class=\"editormd-logo editormd-logo-lg editormd-logo-color\"></i> " + editormd.title + "<small>v" + editormd.version + "</small></h1>",
                 "<p>" + this.lang.description + "</p>",
@@ -1273,11 +1395,105 @@
 
             var infoDialog  = this.infoDialog = editor.children("." + classPrefix + "dialog-info");
 
-            infoDialog.find("." + classPrefix + "dialog-close").bind("click", function() {
+            infoDialog.find("." + classPrefix + "dialog-close").on("click", function() {
                 _this.hideInfoDialog();
             });
 
             infoDialog.css("border", (editormd.isIE8) ? "1px solid #ddd" : "").css("z-index", editormd.dialogZindex).show();
+
+            // 添加拖动功能
+            if (settings.dialogDraggable) {
+                var dialogHeader = infoDialog.children("." + classPrefix + "dialog-header");
+                var posX, posY;
+
+                var userCanSelect = function (obj) {
+                    obj.removeClass(classPrefix + "user-unselect").off("selectstart");
+                };
+
+                var userUnselect = function (obj) {
+                    obj.addClass(classPrefix + "user-unselect").on("selectstart", function() {
+                        return false;
+                    });
+                };
+
+                var moveAction = function (e) {
+                    e = e || window.event;
+                    var left, top, nowLeft = parseInt(infoDialog[0].style.left), nowTop = parseInt(infoDialog[0].style.top);
+
+                    if( nowLeft >= 0 ) {
+                        if( nowLeft + infoDialog.width() <= $(window).width()) {
+                            left = e.clientX - posX;
+                        } else {
+                            left = $(window).width() - infoDialog.width();
+                            document.onmousemove = null;
+                        }
+                    } else {
+                        left = 0;
+                        document.onmousemove = null;
+                    }
+
+                    if( nowTop >= 0 ) {
+                        top = e.clientY - posY;
+                    } else {
+                        top = 0;
+                        document.onmousemove = null;
+                    }
+
+                    document.onselectstart = function() {
+                        return false;
+                    };
+
+                    userUnselect($("body"));
+                    userUnselect(infoDialog);
+
+                    _this.state.infoDialogMoved = true;
+                    infoDialog[0].style.left = left + "px";
+                    infoDialog[0].style.top  = top + "px";
+                };
+
+                dialogHeader.on("mousedown", function(e) {
+                    e = e || window.event;
+                    posX = e.clientX - parseInt(infoDialog[0].style.left);
+                    posY = e.clientY - parseInt(infoDialog[0].style.top);
+
+                    document.onmousemove = moveAction;
+                });
+
+                document.onmouseup = function() {
+                    userCanSelect($("body"));
+                    userCanSelect(infoDialog);
+
+                    document.onselectstart = null;
+                    document.onmousemove = null;
+                };
+
+                dialogHeader.touchDraggable = function() {
+                    var offset, position;
+
+                    var start = function(e) {
+                        var orig = e.originalEvent;
+                        position = infoDialog.position();
+                        offset   = {
+                            x : orig.changedTouches[0].pageX - position.left,
+                            y : orig.changedTouches[0].pageY - position.top
+                        };
+                    };
+
+                    var move = function(e) {
+                        e.preventDefault();
+                        var orig = e.originalEvent;
+                        _this.state.infoDialogMoved = true;
+                        infoDialog.css({
+                            top  : orig.changedTouches[0].pageY - offset.y,
+                            left : orig.changedTouches[0].pageX - offset.x
+                        });
+                    };
+
+                    this.on("touchstart", start).on("touchmove", move);
+                };
+
+                dialogHeader.touchDraggable();
+            }
 
             this.infoDialogPosition();
 
@@ -1292,18 +1508,46 @@
          */
 
         infoDialogPosition : function() {
+            var _this      = this;
+            var editor     = this.editor;
             var infoDialog = this.infoDialog;
 
 			var _infoDialogPosition = function() {
+                if (_this.state.infoDialogMoved) {
+                    return;
+                }
+
+                var editorOffset = editor.offset() || { top : 0, left : 0 };
+                var editorWidth  = editor.outerWidth();
+                var editorHeight = editor.outerHeight();
+                var dialogWidth  = infoDialog.outerWidth();
+                var dialogHeight = infoDialog.outerHeight();
+                var scrollTop    = $(window).scrollTop();
+                var scrollLeft   = $(window).scrollLeft();
+                
+                var editorCenterDocX = editorOffset.left + editorWidth / 2;
+                var editorCenterDocY = editorOffset.top + editorHeight / 2;
+                
+                var top  = editorCenterDocY - scrollTop - dialogHeight / 2;
+                var left = editorCenterDocX - scrollLeft - dialogWidth / 2;
+                
+                var viewportWidth = $(window).width();
+                var viewportHeight = $(window).height();
+                var minTop  = 8;
+                var minLeft = 8;
+                var maxTop  = Math.max(viewportHeight - dialogHeight - 8, minTop);
+                var maxLeft = Math.max(viewportWidth - dialogWidth - 8, minLeft);
+                
+                top  = Math.min(Math.max(top, minTop), maxTop);
+                left = Math.min(Math.max(left, minLeft), maxLeft);
+
 				infoDialog.css({
-					top  : ($(window).height() - infoDialog.height()) / 2 + "px",
-					left : ($(window).width()  - infoDialog.width()) / 2  + "px"
+					top  : top + "px",
+					left : left + "px"
 				});
 			};
 
 			_infoDialogPosition();
-
-			$(window).resize(_infoDialogPosition);
 
             return this;
         },
@@ -1321,10 +1565,147 @@
 
 			var editor      = this.editor;
             var settings    = this.settings;
-			var infoDialog  = this.infoDialog = editor.children("." + this.classPrefix + "dialog-info");
+			var infoDialog  = this.infoDialog = $("body").children("." + this.classPrefix + "dialog-info[data-editor-id=\"" + this.id + "\"]");
+
+            this.state.infoDialogMoved = false;
 
             if (infoDialog.length < 1) {
                 this.createInfoDialog();
+                infoDialog = this.infoDialog;
+            }
+
+            if (settings.dialogOpenAutoScroll !== null && settings.dialogOpenAutoScroll !== undefined) {
+                var _this = this;
+                var state = this.state;
+                state.dialogScrollTop = $(window).scrollTop();
+                state.dialogScrollLeft = $(window).scrollLeft();
+                state.dialogAutoScrollRestoreNodes = [];
+                
+                var parseOffsetValue = function(value, base) {
+                    if (value === null || typeof value === "undefined" || value === "") {
+                        return null;
+                    }
+                    if (typeof value === "number") {
+                        return value;
+                    }
+                    var str = (value + "").trim();
+                    if (/^-?\d+(\.\d+)?\s*%$/.test(str)) {
+                        return base * parseFloat(str) / 100;
+                    }
+                    if (/^-?\d+(\.\d+)?\s*px$/.test(str)) {
+                        return parseFloat(str);
+                    }
+                    if (/^-?\d+(\.\d+)?$/.test(str)) {
+                        return parseFloat(str);
+                    }
+                    return null;
+                };
+                
+                var docHeight = Math.max(
+                    $(document).height(),
+                    document.documentElement ? document.documentElement.scrollHeight : 0,
+                    document.body ? document.body.scrollHeight : 0
+                );
+                var scrollTop = parseOffsetValue(settings.dialogOpenAutoScroll, docHeight);
+                
+                console.log("[Editor.md][弹窗] 弹窗自动滚动", {
+                    dialogOpenAutoScroll: settings.dialogOpenAutoScroll,
+                    dialogOpenAutoScrollOuterHtml: settings.dialogOpenAutoScrollOuterHtml,
+                    parsedScrollTop: scrollTop,
+                    docHeight: docHeight
+                });
+                
+                if (scrollTop !== null) {
+                    scrollTop = Math.max(scrollTop, 0);
+
+                    // 先处理编辑器最近可滚动父容器（如 mobile-modal-content），确保 about 弹窗也能在移动端容器内滚动
+                    var nearestScrollableParent = null;
+                    editor.parents().each(function() {
+                        if (this === document.body || this === document.documentElement) {
+                            return;
+                        }
+                        var style = window.getComputedStyle ? window.getComputedStyle(this) : null;
+                        var overflowY = style ? (style.overflowY || style.overflow || "") : "";
+                        var canScroll = /auto|scroll/i.test(overflowY) && this.scrollHeight > this.clientHeight;
+                        if (canScroll) {
+                            nearestScrollableParent = this;
+                            return false;
+                        }
+                    });
+                    if (nearestScrollableParent) {
+                        var nearestMaxTop = Math.max(nearestScrollableParent.scrollHeight - nearestScrollableParent.clientHeight, 0);
+                        var nearestFinalTop = Math.min(scrollTop, nearestMaxTop);
+                        state.dialogAutoScrollRestoreNodes.push({
+                            node: nearestScrollableParent,
+                            scrollTop: nearestScrollableParent.scrollTop || 0,
+                            scrollLeft: nearestScrollableParent.scrollLeft || 0
+                        });
+                        nearestScrollableParent.scrollTop = nearestFinalTop;
+                        if (typeof nearestScrollableParent.scrollTo === "function") {
+                            nearestScrollableParent.scrollTo(nearestScrollableParent.scrollLeft || 0, nearestFinalTop);
+                        }
+                    }
+                    
+                    if (settings.dialogOpenAutoScrollOuterHtml) {
+                        var baseLayerParent = editor.parents().eq(parseInt(settings.parentContainerLayer, 10) - 1);
+                        if (!baseLayerParent || !baseLayerParent.length) {
+                            baseLayerParent = editor.parent();
+                        }
+                        var outerParents = baseLayerParent.parents();
+                        
+                        outerParents.each(function() {
+                            if (this === document.body || this === document.documentElement) {
+                                return;
+                            }
+                            var maxTop = Math.max(this.scrollHeight - this.clientHeight, 0);
+                            var finalTop = Math.min(scrollTop, maxTop);
+                            state.dialogAutoScrollRestoreNodes.push({
+                                node: this,
+                                scrollTop: this.scrollTop || 0,
+                                scrollLeft: this.scrollLeft || 0
+                            });
+                            this.scrollTop = finalTop;
+                            if (typeof this.scrollTo === "function") {
+                                this.scrollTo(this.scrollLeft || 0, finalTop);
+                            }
+                        });
+                        
+                        window.scrollTo(0, scrollTop);
+                        if (document.scrollingElement) {
+                            document.scrollingElement.scrollTop = scrollTop;
+                        }
+                        document.documentElement.scrollTop = scrollTop;
+                        document.body.scrollTop = scrollTop;
+                        $("html, body").scrollTop(scrollTop);
+                        
+                        console.log("[Editor.md][弹窗] 已滚动外层", {
+                            targetScrollTop: scrollTop,
+                            actualScrollTop: $(window).scrollTop(),
+                            restoredParentsCount: state.dialogAutoScrollRestoreNodes.length
+                        });
+                    } else {
+                        var firstOuterParent = editor.parents().eq(parseInt(settings.parentContainerLayer, 10));
+                        if (firstOuterParent && firstOuterParent.length) {
+                            var maxTop = Math.max(firstOuterParent[0].scrollHeight - firstOuterParent[0].clientHeight, 0);
+                            var finalTop = Math.min(scrollTop, maxTop);
+                            state.dialogAutoScrollRestoreNodes.push({
+                                node: firstOuterParent[0],
+                                scrollTop: firstOuterParent[0].scrollTop || 0,
+                                scrollLeft: firstOuterParent[0].scrollLeft || 0
+                            });
+                            firstOuterParent[0].scrollTop = finalTop;
+                            if (typeof firstOuterParent[0].scrollTo === "function") {
+                                firstOuterParent[0].scrollTo(firstOuterParent[0].scrollLeft || 0, finalTop);
+                            }
+                            
+                            console.log("[Editor.md][弹窗] 已滚动首层父容器", {
+                                targetScrollTop: scrollTop,
+                                actualScrollTop: firstOuterParent[0].scrollTop,
+                                parentTag: firstOuterParent[0].tagName
+                            });
+                        }
+                    }
+                }
             }
 
             this.lockScreen(true);
@@ -1353,6 +1734,31 @@
             this.infoDialog.hide();
             this.mask.hide();
             this.lockScreen(false);
+
+            if (this.state.dialogAutoScrollRestoreNodes && this.state.dialogAutoScrollRestoreNodes.length) {
+                for (var i = 0; i < this.state.dialogAutoScrollRestoreNodes.length; i++) {
+                    var restoreItem = this.state.dialogAutoScrollRestoreNodes[i];
+                    if (!restoreItem || !restoreItem.node) {
+                        continue;
+                    }
+                    restoreItem.node.scrollTop = restoreItem.scrollTop;
+                    restoreItem.node.scrollLeft = restoreItem.scrollLeft;
+                }
+                this.state.dialogAutoScrollRestoreNodes = [];
+            }
+
+            if (this.state.dialogScrollTop !== null && this.state.dialogScrollLeft !== null) {
+                window.scrollTo(this.state.dialogScrollLeft, this.state.dialogScrollTop);
+                if (document.scrollingElement) {
+                    document.scrollingElement.scrollTop = this.state.dialogScrollTop;
+                    document.scrollingElement.scrollLeft = this.state.dialogScrollLeft;
+                }
+                document.documentElement.scrollTop = this.state.dialogScrollTop;
+                document.body.scrollTop = this.state.dialogScrollTop;
+                $("html, body").scrollTop(this.state.dialogScrollTop);
+                this.state.dialogScrollTop = null;
+                this.state.dialogScrollLeft = null;
+            }
 
             return this;
         },
@@ -1605,7 +2011,7 @@
             }
 
             var cmBindScroll = function() {
-                codeMirror.find(".CodeMirror-scroll").bind(mouseOrTouch("scroll", "touchmove"), function(event) {
+                codeMirror.find(".CodeMirror-scroll").on(mouseOrTouch("scroll", "touchmove"), function(event) {
                     var height    = $(this).height();
                     var scrollTop = $(this).scrollTop();
                     var percent   = (scrollTop / $(this)[0].scrollHeight);
@@ -1632,12 +2038,12 @@
             };
 
             var cmUnbindScroll = function() {
-                codeMirror.find(".CodeMirror-scroll").unbind(mouseOrTouch("scroll", "touchmove"));
+                codeMirror.find(".CodeMirror-scroll").off(mouseOrTouch("scroll", "touchmove"));
             };
 
             var previewBindScroll = function() {
 
-                preview.bind(mouseOrTouch("scroll", "touchmove"), function(event) {
+                preview.on(mouseOrTouch("scroll", "touchmove"), function(event) {
                     var height    = $(this).height();
                     var scrollTop = $(this).scrollTop();
                     var percent   = (scrollTop / $(this)[0].scrollHeight);
@@ -1657,10 +2063,10 @@
             };
 
             var previewUnbindScroll = function() {
-                preview.unbind(mouseOrTouch("scroll", "touchmove"));
+                preview.off(mouseOrTouch("scroll", "touchmove"));
             };
 
-			codeMirror.bind({
+			codeMirror.on({
 				mouseover  : cmBindScroll,
 				mouseout   : cmUnbindScroll,
 				touchstart : cmBindScroll,
@@ -1671,7 +2077,7 @@
                 return this;
             }
 
-			preview.bind({
+			preview.on({
 				mouseover  : previewBindScroll,
 				mouseout   : previewUnbindScroll,
 				touchstart : previewBindScroll,
@@ -1821,8 +2227,13 @@
                 var $codeMirrorGutters = codeMirror.find('.CodeMirror-gutters');
 
                 if (state.fullscreen) {
-                    editor.height($(window).height());
-                    $codeMirrorGutters.height($(window).height() - toolbarHeight);
+                    if (state.fullscreenRect && state.fullscreenRect.height) {
+                        editor.height(state.fullscreenRect.height);
+                        $codeMirrorGutters.height(state.fullscreenRect.height - toolbarHeight);
+                    } else {
+                        editor.height($(window).height());
+                        $codeMirrorGutters.height($(window).height() - toolbarHeight);
+                    }
                 } else {
                     $codeMirrorGutters.height(editor.height() - toolbarHeight);
                 }
@@ -1911,15 +2322,16 @@
             var markedOptions = this.markedOptions = {
                 renderer    : editormd.markedRenderer(markdownToC, rendererOptions),
                 gfm         : true,
-                tables      : true,
                 breaks      : true,
                 pedantic    : false,
-                sanitize    : (settings.htmlDecode) ? false : true,  // 关闭忽略HTML标签，即开启识别HTML标签，默认为false
                 smartLists  : true,
                 smartypants : true
             };
 
-            marked.setOptions(markedOptions);
+            // 兼容 marked v4.x (移除 sanitize 选项，使用 marked.use 或直接传参)
+            if (typeof window.marked === "object" && typeof window.marked.setOptions === "function") {
+                window.marked.setOptions(markedOptions);
+            }
 
             var newMarkdownDoc = editormd.$marked(cmValue, markedOptions);
             newMarkdownDoc     = editormd.filterHTMLTags(newMarkdownDoc, settings.htmlDecode);
@@ -2411,7 +2823,7 @@
                     preview.css("background", "#fff");
                 }
 
-                editor.find("." + this.classPrefix + "preview-close-btn").show().bind("click", function(){
+                editor.find("." + this.classPrefix + "preview-close-btn").show().on("click", function(){
                     _this.previewed();
                 });
 
@@ -2434,9 +2846,9 @@
                     $.proxy(settings.onpreviewing, this)();
                 }
 
-                $(window).bind("keyup", escHandle);
+                $(window).on("keyup", escHandle);
             } else {
-                $(window).unbind("keyup", escHandle);
+                $(window).off("keyup", escHandle);
                 this.previewed();
             }
         },
@@ -2467,7 +2879,7 @@
 
             preview[(settings.watch) ? "show" : "hide"]();
 
-            previewCloseBtn.hide().unbind("click");
+            previewCloseBtn.hide().off("click");
 
             previewContainer.removeClass(this.classPrefix + "preview-active");
 
@@ -2509,6 +2921,474 @@
             var toolbar          = this.toolbar;
             var settings         = this.settings;
             var fullscreenClass  = this.classPrefix + "fullscreen";
+            var logPrefix        = "[Editor.md][全屏]";
+            var formatElementHTML = function($el) {
+                if (!$el || !$el.length) {
+                    return "(null)";
+                }
+
+                var tag = ($el[0].tagName || "").toLowerCase();
+                var id = $el.attr("id");
+                var className = ($el.attr("class") || "").trim().replace(/\s+/g, " ");
+                var attrs = "";
+
+                if (id) {
+                    attrs += " id=\"" + id + "\"";
+                }
+
+                if (className) {
+                    attrs += " class=\"" + className + "\"";
+                }
+
+                return "<" + tag + attrs + ">";
+            };
+            var getElementBrief = function($el) {
+                if (!$el || !$el.length) {
+                    return null;
+                }
+
+                var el = $el[0];
+                var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+
+                return {
+                    tag: el.tagName,
+                    id: $el.attr("id") || "",
+                    className: $el.attr("class") || "",
+                    position: $el.css("position"),
+                    overflow: $el.css("overflow"),
+                    overflowX: $el.css("overflow-x"),
+                    overflowY: $el.css("overflow-y"),
+                    width: $el.outerWidth(),
+                    height: $el.outerHeight(),
+                    rect: rect ? {
+                        top: rect.top,
+                        left: rect.left,
+                        right: rect.right,
+                        bottom: rect.bottom,
+                        width: rect.width,
+                        height: rect.height
+                    } : null
+                };
+            };
+            var getParentChain = function($el, maxDepth) {
+                var chain = [];
+                var current = $el;
+                var depth = 0;
+
+                while (current && current.length && depth < maxDepth) {
+                    chain.push(getElementBrief(current));
+                    current = current.parent();
+                    depth++;
+                }
+
+                return chain;
+            };
+            var parseOffsetValue = function(value, base) {
+                if (value === null || typeof value === "undefined" || value === "") {
+                    return null;
+                }
+
+                if (typeof value === "number") {
+                    return value;
+                }
+
+                var str = (value + "").trim();
+                if (/^-?\d+(\.\d+)?%$/.test(str)) {
+                    return base * parseFloat(str) / 100;
+                }
+
+                if (/^-?\d+(\.\d+)?px$/.test(str)) {
+                    return parseFloat(str);
+                }
+
+                if (/^-?\d+(\.\d+)?$/.test(str)) {
+                    return parseFloat(str);
+                }
+
+                return null;
+            };
+            var getFullscreenRect = function() {
+                var viewportWidth  = $(window).width();
+                var viewportHeight = $(window).height();
+                var parent         = editor.parent();
+                var editorRect     = (editor.length && editor[0].getBoundingClientRect) ? editor[0].getBoundingClientRect() : null;
+                var parentLayer    = parseInt(settings.parentContainerLayer, 10);
+                var normalizedLayer = (isNaN(parentLayer) || parentLayer < 1) ? 1 : parentLayer;
+                var parentDivs     = editor.parents("div");
+                var layerIndex     = normalizedLayer - 1;
+                var layerParent    = parentDivs.eq(layerIndex);
+                var nearestDivParent = layerParent.length ? layerParent : parentDivs.first();
+                var targetParent   = nearestDivParent.length ? nearestDivParent : parent;
+                var parentRect     = (targetParent.length && targetParent[0].getBoundingClientRect) ? targetParent[0].getBoundingClientRect() : null;
+                var parentBaseTop  = 0;
+                var parentBaseLeft = 0;
+                var parentBaseWidth = viewportWidth;
+                var parentBaseHeight = viewportHeight;
+                var top            = editorRect ? editorRect.top : 0;
+                var left           = editorRect ? editorRect.left : 0;
+                var width          = viewportWidth;
+                var height         = viewportHeight;
+
+                if (parentRect) {
+                    parentBaseTop  = parentRect.top;
+                    parentBaseLeft = parentRect.left;
+                    parentBaseWidth = parentRect.width;
+                    parentBaseHeight = parentRect.height;
+
+                    top    = Math.max(parentBaseTop, 0);
+                    left   = Math.max(parentBaseLeft, 0);
+                    width  = Math.max(Math.min(parentRect.width, viewportWidth - left), 1);
+                    height = Math.max(Math.min(parentRect.height, viewportHeight - top), 1);
+                }
+
+                var xOffset = parseOffsetValue(settings.fullScreenCoordinatesX, parentBaseWidth);
+                var yOffset = parseOffsetValue(settings.fullScreenCoordinatesY, parentBaseHeight);
+
+                if (xOffset !== null) {
+                    left = parentBaseLeft + xOffset;
+                }
+
+                if (yOffset !== null) {
+                    top = parentBaseTop + yOffset;
+                }
+
+                var widthAdjustmentValue = parseOffsetValue(settings.fullScreenWidthAdjustment, width);
+                if (typeof settings.fullScreenWidthAdjustment === "function") {
+                    var adjustedWidth = settings.fullScreenWidthAdjustment(width, {
+                        viewportWidth: viewportWidth,
+                        viewportHeight: viewportHeight,
+                        parentWidth: parentBaseWidth,
+                        parentHeight: parentBaseHeight,
+                        left: left,
+                        top: top
+                    });
+                    if (typeof adjustedWidth === "number" && !isNaN(adjustedWidth)) {
+                        width = Math.max(adjustedWidth, 1);
+                    }
+                } else if (widthAdjustmentValue !== null) {
+                    width = Math.max(width + widthAdjustmentValue, 1);
+                }
+
+                var heightAdjustmentValue = parseOffsetValue(settings.fullScreenHeightAdjustment, height);
+                if (typeof settings.fullScreenHeightAdjustment === "function") {
+                    var adjustedHeight = settings.fullScreenHeightAdjustment(height, {
+                        viewportWidth: viewportWidth,
+                        viewportHeight: viewportHeight,
+                        parentWidth: parentBaseWidth,
+                        parentHeight: parentBaseHeight,
+                        left: left,
+                        top: top
+                    });
+                    if (typeof adjustedHeight === "number" && !isNaN(adjustedHeight)) {
+                        height = Math.max(adjustedHeight, 1);
+                    }
+                } else if (heightAdjustmentValue !== null) {
+                    height = Math.max(height + heightAdjustmentValue, 1);
+                }
+
+                console.log(logPrefix, "计算全屏区域", {
+                    viewportWidth: viewportWidth,
+                    viewportHeight: viewportHeight,
+                    windowInnerWidth: window.innerWidth,
+                    windowInnerHeight: window.innerHeight,
+                    devicePixelRatio: window.devicePixelRatio,
+                    scrollTop: $(window).scrollTop(),
+                    scrollLeft: $(window).scrollLeft(),
+                    parentContainerLayer: settings.parentContainerLayer,
+                    fullScreenCoordinatesX: settings.fullScreenCoordinatesX,
+                    fullScreenCoordinatesY: settings.fullScreenCoordinatesY,
+                    hasFullScreenWidthAdjustment: typeof settings.fullScreenWidthAdjustment === "function",
+                    hasFullScreenHeightAdjustment: typeof settings.fullScreenHeightAdjustment === "function",
+                    widthAdjustmentValue: widthAdjustmentValue,
+                    heightAdjustmentValue: heightAdjustmentValue,
+                    normalizedLayer: normalizedLayer,
+                    layerIndex: layerIndex,
+                    editorElement: getElementBrief(editor),
+                    parentElement: getElementBrief(parent),
+                    nearestDivParentElement: getElementBrief(targetParent),
+                    nearestDivParentHTML: formatElementHTML(targetParent),
+                    nearestDivParentSizeText: Math.round(width) + "px x " + Math.round(height) + "px",
+                    parentChain: getParentChain(editor, 6),
+                    parentClass: targetParent.attr("class") || "",
+                    parentId: targetParent.attr("id") || "",
+                    parentRect: parentRect ? {
+                        top: parentRect.top,
+                        left: parentRect.left,
+                        width: parentRect.width,
+                        height: parentRect.height
+                    } : null,
+                    coordinateBaseWidth: parentBaseWidth,
+                    coordinateBaseHeight: parentBaseHeight,
+                    originalEditorTop: editorRect ? editorRect.top : null,
+                    originalEditorLeft: editorRect ? editorRect.left : null,
+                    coordinateOffsetX: xOffset,
+                    coordinateOffsetY: yOffset,
+                    appliedRect: { top: top, left: left, width: width, height: height }
+                });
+
+                return {
+                    top    : top,
+                    left   : left,
+                    width  : width,
+                    height : height
+                };
+            };
+            var applyFullscreenRect = function(rect, stage) {
+                editor.css({
+                    top    : rect.top + "px",
+                    left   : rect.left + "px",
+                    width  : rect.width + "px",
+                    height : rect.height + "px"
+                });
+
+                var domRect = editor[0] && editor[0].getBoundingClientRect ? editor[0].getBoundingClientRect() : null;
+                if (domRect) {
+                    var offsetTop = domRect.top - rect.top;
+                    var offsetLeft = domRect.left - rect.left;
+
+                    if (Math.abs(offsetTop) > 1 || Math.abs(offsetLeft) > 1) {
+                        editor.css({
+                            top  : (rect.top - offsetTop) + "px",
+                            left : (rect.left - offsetLeft) + "px"
+                        });
+
+                        var correctedRect = editor[0].getBoundingClientRect();
+                        console.log(logPrefix, "检测到偏移并已校正", {
+                            stage: stage,
+                            targetTop: rect.top,
+                            targetLeft: rect.left,
+                            firstPaintTop: domRect.top,
+                            firstPaintLeft: domRect.left,
+                            offsetTop: offsetTop,
+                            offsetLeft: offsetLeft,
+                            correctedTop: correctedRect.top,
+                            correctedLeft: correctedRect.left
+                        });
+                    }
+                }
+            };
+            var stabilizeFullscreenRect = function(rect) {
+                var steps = [
+                    { delay: 0, label: "rAF#1" },
+                    { delay: 0, label: "rAF#2" },
+                    { delay: 30, label: "timeout#30ms" },
+                    { delay: 80, label: "timeout#80ms" }
+                ];
+
+                var runStep = function(index) {
+                    if (!state.fullscreen || !state.fullscreenRect) {
+                        return;
+                    }
+                    if (index >= steps.length) {
+                        return;
+                    }
+
+                    var step = steps[index];
+                    var applyStep = function() {
+                        if (!state.fullscreen || !state.fullscreenRect) {
+                            return;
+                        }
+
+                        applyFullscreenRect(rect, "稳定定位-" + step.label);
+                        var nowRect = editor[0] && editor[0].getBoundingClientRect ? editor[0].getBoundingClientRect() : null;
+                        console.log(logPrefix, "稳定定位检查", {
+                            step: step.label,
+                            targetTop: rect.top,
+                            targetLeft: rect.left,
+                            currentTop: nowRect ? nowRect.top : null,
+                            currentLeft: nowRect ? nowRect.left : null
+                        });
+                        runStep(index + 1);
+                    };
+
+                    if (step.delay === 0) {
+                        window.requestAnimationFrame(applyStep);
+                    } else {
+                        setTimeout(applyStep, step.delay);
+                    }
+                };
+
+                runStep(0);
+            };
+            var stabilizeAutoScroll = function(targetTopValue) {
+                var scrollLayer = parseInt(settings.parentContainerLayer, 10);
+                var normalizedScrollLayer = (isNaN(scrollLayer) || scrollLayer < 1) ? 1 : scrollLayer;
+                var baseLayerParent = editor.parents().eq(normalizedScrollLayer - 1);
+                if (!baseLayerParent || !baseLayerParent.length) {
+                    baseLayerParent = editor.parent();
+                }
+                var outerParents = baseLayerParent.parents();
+                var firstOuterParent = outerParents.eq(0);
+                var top = Math.max(targetTopValue, 0);
+                var steps = [
+                    { delay: 0, label: "scroll-rAF#1" },
+                    { delay: 0, label: "scroll-rAF#2" },
+                    { delay: 40, label: "scroll-timeout#40ms" },
+                    { delay: 100, label: "scroll-timeout#100ms" }
+                ];
+                var getNodeLabel = function(node) {
+                    if (!node) {
+                        return "";
+                    }
+                    var id = node.id ? ("#" + node.id) : "";
+                    var className = node.className && typeof node.className === "string" ? ("." + node.className.trim().replace(/\s+/g, ".")) : "";
+                    return node.tagName + id + className;
+                };
+                var setNodeScrollTop = function(node, value) {
+                    if (!node) {
+                        return;
+                    }
+                    node.scrollTop = value;
+                    if (typeof node.scrollTo === "function") {
+                        node.scrollTo(node.scrollLeft || 0, value);
+                    }
+                };
+                var rememberRestoreNode = function(node) {
+                    if (!node) {
+                        return;
+                    }
+                    for (var i = 0; i < state.fullscreenAutoScrollRestoreNodes.length; i++) {
+                        if (state.fullscreenAutoScrollRestoreNodes[i].node === node) {
+                            return;
+                        }
+                    }
+                    state.fullscreenAutoScrollRestoreNodes.push({
+                        node: node,
+                        scrollTop: node.scrollTop || 0,
+                        scrollLeft: node.scrollLeft || 0
+                    });
+                };
+
+                if (settings.fullScreenAutomaticScrollingOuterHtml) {
+                    if (baseLayerParent && baseLayerParent.length) {
+                        rememberRestoreNode(baseLayerParent[0]);
+                    }
+                    outerParents.each(function() {
+                        if (this === document.body || this === document.documentElement) {
+                            return;
+                        }
+                        rememberRestoreNode(this);
+                    });
+                } else if (firstOuterParent && firstOuterParent.length) {
+                    rememberRestoreNode(firstOuterParent[0]);
+                }
+
+                var runStep = function(index) {
+                    if (!state.fullscreen) {
+                        return;
+                    }
+                    if (index >= steps.length) {
+                        return;
+                    }
+
+                    var step = steps[index];
+                    var doScroll = function() {
+                        if (!state.fullscreen) {
+                            return;
+                        }
+                        var htmlMaxTop = Math.max(
+                            (document.documentElement ? document.documentElement.scrollHeight - document.documentElement.clientHeight : 0),
+                            (document.body ? document.body.scrollHeight - document.body.clientHeight : 0),
+                            0
+                        );
+                        var firstOuterMaxTop = null;
+                        if (firstOuterParent && firstOuterParent.length) {
+                            firstOuterMaxTop = Math.max(firstOuterParent[0].scrollHeight - firstOuterParent[0].clientHeight, 0);
+                        }
+                        var finalOuterTop = Math.min(top, htmlMaxTop);
+                        var finalFirstOuterTop = firstOuterMaxTop === null ? top : Math.min(top, firstOuterMaxTop);
+                        var affectedParents = [];
+
+                        if (settings.fullScreenAutomaticScrollingOuterHtml) {
+                            if (baseLayerParent && baseLayerParent.length) {
+                                var baseNode = baseLayerParent[0];
+                                if (baseNode !== document.body && baseNode !== document.documentElement) {
+                                    var baseMaxTop = Math.max(baseNode.scrollHeight - baseNode.clientHeight, 0);
+                                    var baseFinalTop = Math.min(top, baseMaxTop);
+                                    setNodeScrollTop(baseNode, baseFinalTop);
+                                    affectedParents.push({
+                                        node: getNodeLabel(baseNode),
+                                        maxTop: baseMaxTop,
+                                        appliedTop: baseFinalTop,
+                                        actualTop: baseNode.scrollTop
+                                    });
+                                }
+                            }
+                            outerParents.each(function() {
+                                if (this === document.body || this === document.documentElement) {
+                                    return;
+                                }
+                                var maxTop = Math.max(this.scrollHeight - this.clientHeight, 0);
+                                var finalTop = Math.min(top, maxTop);
+                                setNodeScrollTop(this, finalTop);
+                                affectedParents.push({
+                                    node: getNodeLabel(this),
+                                    maxTop: maxTop,
+                                    appliedTop: finalTop,
+                                    actualTop: this.scrollTop
+                                });
+                            });
+                        } else if (firstOuterParent && firstOuterParent.length) {
+                            setNodeScrollTop(firstOuterParent[0], finalFirstOuterTop);
+                            affectedParents.push({
+                                node: getNodeLabel(firstOuterParent[0]),
+                                maxTop: firstOuterMaxTop,
+                                appliedTop: finalFirstOuterTop,
+                                actualTop: firstOuterParent[0].scrollTop
+                            });
+                        }
+
+                        if (settings.fullScreenAutomaticScrollingOuterHtml) {
+                            window.scrollTo(0, finalOuterTop);
+                            if (document.scrollingElement) {
+                                document.scrollingElement.scrollTop = finalOuterTop;
+                            }
+                            document.documentElement.scrollTop = finalOuterTop;
+                            document.body.scrollTop = finalOuterTop;
+                            $("html, body").scrollTop(finalOuterTop);
+                        }
+                        var isLastStep = index === (steps.length - 1);
+                        if (isLastStep && state.fullscreen && state.fullscreenRect) {
+                            var reflowRect = getFullscreenRect();
+                            var stabilizedRect = {
+                                top: reflowRect.top,
+                                left: reflowRect.left,
+                                width: state.fullscreenRect.width,
+                                height: state.fullscreenRect.height
+                            };
+                            state.fullscreenRect = stabilizedRect;
+                            applyFullscreenRect(stabilizedRect, "自动滚动后重设-" + step.label);
+                        }
+                        console.log(logPrefix, "自动滚动重试", {
+                            step: step.label,
+                            targetTop: top,
+                            htmlMaxTop: htmlMaxTop,
+                            firstOuterMaxTop: firstOuterMaxTop,
+                            finalOuterTop: finalOuterTop,
+                            finalFirstOuterTop: finalFirstOuterTop,
+                            fullScreenAutomaticScrollingOuterHtml: settings.fullScreenAutomaticScrollingOuterHtml,
+                            parentContainerLayer: settings.parentContainerLayer,
+                            normalizedScrollLayer: normalizedScrollLayer,
+                            baseLayerParent: baseLayerParent && baseLayerParent.length ? getNodeLabel(baseLayerParent[0]) : null,
+                            firstOuterParent: firstOuterParent && firstOuterParent.length ? getNodeLabel(firstOuterParent[0]) : null,
+                            affectedParents: affectedParents,
+                            actualOuterTop: $(window).scrollTop(),
+                            actualDocumentElementTop: document.documentElement.scrollTop,
+                            actualBodyTop: document.body.scrollTop,
+                            actualScrollingElementTop: document.scrollingElement ? document.scrollingElement.scrollTop : null
+                        });
+                        runStep(index + 1);
+                    };
+
+                    if (step.delay === 0) {
+                        window.requestAnimationFrame(doScroll);
+                    } else {
+                        setTimeout(doScroll, step.delay);
+                    }
+                };
+
+                runStep(0);
+            };
 
             if (toolbar) {
                 toolbar.find(".fa[name=fullscreen]").parent().toggleClass("active");
@@ -2524,24 +3404,140 @@
 
             if (!editor.hasClass(fullscreenClass)) {
                 state.fullscreen = true;
+                state.fullscreenScrollTop  = $(window).scrollTop();
+                state.fullscreenScrollLeft = $(window).scrollLeft();
+                console.log(logPrefix, "进入全屏", {
+                    userAgent: navigator.userAgent,
+                    fullscreenClass: fullscreenClass,
+                    editorHasClassBefore: editor.hasClass(fullscreenClass),
+                    oldWidth: editor.data("oldWidth"),
+                    oldHeight: editor.data("oldHeight"),
+                    editorCurrentWidth: editor.outerWidth(),
+                    editorCurrentHeight: editor.outerHeight(),
+                    scrollTop: state.fullscreenScrollTop,
+                    scrollLeft: state.fullscreenScrollLeft,
+                    editorInfo: getElementBrief(editor),
+                    parentInfo: getElementBrief(editor.parent()),
+                    nearestDivParentHTML: formatElementHTML(editor.parents("div").first()),
+                    nearestDivParentInfo: getElementBrief(editor.parents("div").first()),
+                    fullScreenAutomaticScrolling: settings.fullScreenAutomaticScrolling
+                });
 
-                $("html,body").css("overflow", "hidden");
+                state.fullscreenLockedScrollParents = [];
+                state.fullscreenAutoScrollRestoreNodes = [];
+                if (!settings.fullScreenScrolling || settings.fullScreenForceDisableAllScroll) {
+                    $("html,body").css("overflow", "hidden");
+                    var lockLayer = parseInt(settings.parentContainerLayer, 10);
+                    var normalizedLockLayer = (isNaN(lockLayer) || lockLayer < 1) ? 1 : lockLayer;
+                    var lockParents = settings.fullScreenForceDisableAllScroll ? editor.parents() : editor.parents().slice(0, normalizedLockLayer);
+                    var scrollParents = lockParents.filter(function() {
+                        var $node = $(this);
+                        var overflowY = $node.css("overflow-y");
+                        var overflow = $node.css("overflow");
+                        var isScrollable = /(auto|scroll)/.test(overflowY) || /(auto|scroll)/.test(overflow);
+                        return isScrollable && this !== document.body && this !== document.documentElement;
+                    });
+                    scrollParents.each(function() {
+                        var $node = $(this);
+                        state.fullscreenLockedScrollParents.push({
+                            node: this,
+                            overflow: $node.css("overflow"),
+                            overflowX: $node.css("overflow-x"),
+                            overflowY: $node.css("overflow-y")
+                        });
+                        $node.css({
+                            overflow: "hidden",
+                            overflowX: "hidden",
+                            overflowY: "hidden"
+                        });
+                    });
+                    console.log(logPrefix, "已锁定父容器滚动", {
+                        fullScreenScrolling: settings.fullScreenScrolling,
+                        fullScreenForceDisableAllScroll: settings.fullScreenForceDisableAllScroll,
+                        parentContainerLayer: settings.parentContainerLayer,
+                        normalizedLockLayer: normalizedLockLayer,
+                        lockedCount: state.fullscreenLockedScrollParents.length
+                    });
+                } else {
+                    console.log(logPrefix, "全屏滚动未锁定", {
+                        fullScreenScrolling: settings.fullScreenScrolling,
+                        fullScreenForceDisableAllScroll: settings.fullScreenForceDisableAllScroll
+                    });
+                }
+                var fullscreenRect = getFullscreenRect();
+
+                if (!state.fullscreenPlaceholder || state.fullscreenPlaceholder.length < 1) {
+                    var placeholder = $("<div class=\"" + this.classPrefix + "fullscreen-placeholder\"></div>");
+                    placeholder.css({
+                        width  : editor.outerWidth() + "px",
+                        height : editor.outerHeight() + "px",
+                        margin : editor.css("margin")
+                    });
+                    editor.before(placeholder);
+                    state.fullscreenPlaceholder = placeholder;
+                    console.log(logPrefix, "已创建占位符防止布局跳动", {
+                        placeholderWidth: placeholder.css("width"),
+                        placeholderHeight: placeholder.css("height")
+                    });
+                }
 
                 editor.css({
-                    // width  : $(window).width(),
-                    width : "100%vw",
-                    // height : $(window).height(),
-                    height : "100%vh",
-                    zIndex : editormd.dialogZindex,
+                    zIndex : editormd.dialogZindex
                 }).addClass(fullscreenClass);
+                applyFullscreenRect(fullscreenRect, "首次进入全屏");
+                state.fullscreenRect = fullscreenRect;
+                stabilizeFullscreenRect(fullscreenRect);
+                console.log(logPrefix, "应用全屏区域", {
+                    appliedRect: fullscreenRect,
+                    appliedSizeText: Math.round(fullscreenRect.width) + "px x " + Math.round(fullscreenRect.height) + "px",
+                    editorStyleTop: editor.css("top"),
+                    editorStyleLeft: editor.css("left"),
+                    editorStyleWidth: editor.css("width"),
+                    editorStyleHeight: editor.css("height"),
+                    editorStylePosition: editor.css("position"),
+                    editorInfoAfterApply: getElementBrief(editor)
+                });
+
+                $(window).off("resize.editormdFullscreen").on("resize.editormdFullscreen", function() {
+                    if (_this.state.fullscreen) {
+                        var resizeRect = getFullscreenRect();
+                        _this.state.fullscreenRect = resizeRect;
+                        applyFullscreenRect(resizeRect, "窗口变化");
+                        stabilizeFullscreenRect(resizeRect);
+                        console.log(logPrefix, "窗口变化后应用区域", {
+                            resizeRect: resizeRect,
+                            editorStyleTop: editor.css("top"),
+                            editorStyleLeft: editor.css("left"),
+                            editorStyleWidth: editor.css("width"),
+                            editorStyleHeight: editor.css("height"),
+                            editorInfoAfterResize: getElementBrief(editor),
+                            parentInfoAfterResize: getElementBrief(editor.parent())
+                        });
+                        _this.resize();
+                    }
+                });
 
                 this.resize();
+                if (state.fullscreenRect) {
+                    applyFullscreenRect(state.fullscreenRect, "resize后重设");
+                    stabilizeFullscreenRect(state.fullscreenRect);
+                    console.log(logPrefix, "resize后重新应用全屏区域", state.fullscreenRect);
+                }
+                var docHeight = Math.max(
+                    $(document).height(),
+                    document.documentElement ? document.documentElement.scrollHeight : 0,
+                    document.body ? document.body.scrollHeight : 0
+                );
+                var autoScrollTargetTop = parseOffsetValue(settings.fullScreenAutomaticScrolling, docHeight);
+                if (autoScrollTargetTop !== null) {
+                    stabilizeAutoScroll(autoScrollTargetTop);
+                }
 
                 $.proxy(settings.onfullscreen, this)();
 
-                $(window).bind("keyup", escHandle);
+                $(window).on("keyup", escHandle);
             } else {
-                $(window).unbind("keyup", escHandle);
+                $(window).off("keyup", escHandle);
                 this.fullscreenExit();
             }
 
@@ -2561,6 +3557,29 @@
             var settings          = this.settings;
             var toolbar           = this.toolbar;
             var fullscreenClass   = this.classPrefix + "fullscreen";
+            var logPrefix         = "[Editor.md][全屏]";
+            var getElementBrief   = function($el) {
+                if (!$el || !$el.length) {
+                    return null;
+                }
+
+                var el = $el[0];
+                var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+
+                return {
+                    tag: el.tagName,
+                    id: $el.attr("id") || "",
+                    className: $el.attr("class") || "",
+                    width: $el.outerWidth(),
+                    height: $el.outerHeight(),
+                    rect: rect ? {
+                        top: rect.top,
+                        left: rect.left,
+                        width: rect.width,
+                        height: rect.height
+                    } : null
+                };
+            };
 
             this.state.fullscreen = false;
 
@@ -2568,13 +3587,71 @@
                 toolbar.find(".fa[name=fullscreen]").parent().removeClass("active");
             }
 
-            $("html,body").css("overflow", "");
+            if (!settings.fullScreenScrolling || settings.fullScreenForceDisableAllScroll) {
+                $("html,body").css("overflow", "");
+            }
+            if ((!settings.fullScreenScrolling || settings.fullScreenForceDisableAllScroll) && this.state.fullscreenLockedScrollParents && this.state.fullscreenLockedScrollParents.length) {
+                for (var i = 0; i < this.state.fullscreenLockedScrollParents.length; i++) {
+                    var locked = this.state.fullscreenLockedScrollParents[i];
+                    var $node = $(locked.node);
+                    $node.css({
+                        overflow: locked.overflow,
+                        overflowX: locked.overflowX,
+                        overflowY: locked.overflowY
+                    });
+                }
+                console.log(logPrefix, "已恢复父容器滚动", {
+                    fullScreenScrolling: settings.fullScreenScrolling,
+                    fullScreenForceDisableAllScroll: settings.fullScreenForceDisableAllScroll,
+                    restoredCount: this.state.fullscreenLockedScrollParents.length
+                });
+            }
+            this.state.fullscreenLockedScrollParents = [];
+            if (this.state.fullscreenAutoScrollRestoreNodes && this.state.fullscreenAutoScrollRestoreNodes.length) {
+                for (var j = 0; j < this.state.fullscreenAutoScrollRestoreNodes.length; j++) {
+                    var restoreItem = this.state.fullscreenAutoScrollRestoreNodes[j];
+                    if (!restoreItem || !restoreItem.node) {
+                        continue;
+                    }
+                    restoreItem.node.scrollTop = restoreItem.scrollTop;
+                    restoreItem.node.scrollLeft = restoreItem.scrollLeft;
+                }
+                console.log(logPrefix, "已恢复自动滚动父容器位置", {
+                    restoredCount: this.state.fullscreenAutoScrollRestoreNodes.length
+                });
+            }
+            this.state.fullscreenAutoScrollRestoreNodes = [];
+            $(window).off("resize.editormdFullscreen");
+            $(window).scrollTop(this.state.fullscreenScrollTop || 0);
+            $(window).scrollLeft(this.state.fullscreenScrollLeft || 0);
+            if (document.scrollingElement) {
+                document.scrollingElement.scrollTop = this.state.fullscreenScrollTop || 0;
+                document.scrollingElement.scrollLeft = this.state.fullscreenScrollLeft || 0;
+            }
+            document.documentElement.scrollTop = this.state.fullscreenScrollTop || 0;
+            document.body.scrollTop = this.state.fullscreenScrollTop || 0;
 
             editor.css({
+                top    : "",
+                left   : "",
                 width  : editor.data("oldWidth"),
                 height : editor.data("oldHeight"),
                 zIndex : ''
             }).removeClass(fullscreenClass);
+
+            if (this.state.fullscreenPlaceholder && this.state.fullscreenPlaceholder.length) {
+                this.state.fullscreenPlaceholder.remove();
+                this.state.fullscreenPlaceholder = null;
+                console.log(logPrefix, "已移除占位符并恢复页面流");
+            }
+
+            this.state.fullscreenRect = null;
+            console.log(logPrefix, "退出全屏并恢复尺寸", {
+                restoreWidth: editor.data("oldWidth"),
+                restoreHeight: editor.data("oldHeight"),
+                editorInfoAfterExit: getElementBrief(editor),
+                parentInfoAfterExit: getElementBrief(editor.parent())
+            });
 
             this.resize();
 
@@ -3246,7 +4323,51 @@
         var _headingIds     = [];
         var settings        = $.extend(defaults, options || {});
         var marked          = editormd.$marked;
-        var markedRenderer  = new marked.Renderer();
+        
+        // 兼容不同版本 marked 的 Renderer API（构造器/工厂函数/对象）
+        var MarkedRenderer = null;
+        if (window.marked && window.marked.Renderer) {
+            MarkedRenderer = window.marked.Renderer;
+        } else if (marked && marked.Renderer) {
+            MarkedRenderer = marked.Renderer;
+        }
+
+        var markedRenderer = null;
+        if (MarkedRenderer) {
+            if (typeof MarkedRenderer === "function") {
+                try {
+                    markedRenderer = new MarkedRenderer();
+                } catch (e1) {
+                    try {
+                        markedRenderer = MarkedRenderer();
+                    } catch (e2) {}
+                }
+            } else if (typeof MarkedRenderer === "object") {
+                markedRenderer = $.extend(true, {}, MarkedRenderer);
+            }
+        }
+
+        if (!markedRenderer || typeof markedRenderer !== "object") {
+            // 最后兜底，避免 "MarkedRenderer is not a constructor" 导致 Markdown 渲染失败
+            markedRenderer = {};
+        }
+
+        var defaultCodeRenderer = function(code) {
+            return "<pre><code>" + code + "</code></pre>";
+        };
+        if (
+            MarkedRenderer &&
+            MarkedRenderer.prototype &&
+            typeof MarkedRenderer.prototype.code === "function"
+        ) {
+            defaultCodeRenderer = function() {
+                return MarkedRenderer.prototype.code.apply(this, arguments);
+            };
+        } else if (typeof markedRenderer.code === "function") {
+            defaultCodeRenderer = function() {
+                return markedRenderer.code.apply(this, arguments);
+            };
+        }
         markdownToC         = markdownToC || [];
 
         var regexs          = editormd.regexs;
@@ -3466,7 +4587,7 @@
             } else if ( lang === "math" || lang === "latex" || lang === "katex") {
                 return "<p class=\"" + editormd.classNames.tex + "\">" + code + "</p>";
             } else {
-                return marked.Renderer.prototype.code.apply(this, arguments);
+                return defaultCodeRenderer.apply(this, arguments);
             }
         };
 
@@ -3739,7 +4860,12 @@
             previewCodeHighlight : true
         };
 
-        editormd.$marked  = marked;
+        // 兼容 marked v4.x API
+        if (typeof marked === "function") {
+            editormd.$marked = marked;
+        } else if (typeof marked === "object" && typeof marked.parse === "function") {
+            editormd.$marked = marked.parse.bind(marked);
+        }
 
         var div           = $("#" + id);
         var settings      = div.settings = $.extend(true, {}, defaults, options || {});
@@ -3771,17 +4897,15 @@
         var markedOptions = {
             renderer    : editormd.markedRenderer(markdownToC, rendererOptions),
             gfm         : settings.gfm,
-            tables      : true,
             breaks      : true,
             pedantic    : false,
-            sanitize    : (settings.htmlDecode) ? false : true, // 是否忽略HTML标签，即是否开启HTML标签解析，为了安全性，默认不开启
             smartLists  : true,
             smartypants : true
         };
 
         markdownDoc = markdownDoc.toString();
 
-        var markdownParsed = marked(markdownDoc, markedOptions);
+        var markdownParsed = editormd.$marked(markdownDoc, markedOptions);
 
         markdownParsed = editormd.filterHTMLTags(markdownParsed, settings.htmlDecode);
 
@@ -3792,6 +4916,22 @@
         }
 
         div.addClass("markdown-body " + this.classPrefix + "html-preview").append(markdownParsed);
+        
+        // 【修复】确保渲染后的内容不会被折叠/截断
+        // 重置可能导致文字被截断的 CSS 属性
+        div.css({
+            "overflow": "visible",
+            "text-overflow": "clip",
+            "white-space": "normal",
+            "word-wrap": "break-word",
+            "overflow-wrap": "break-word"
+        });
+        // 确保所有子元素（特别是标题和段落）不被截断
+        div.find("h1, h2, h3, h4, h5, h6, p, li, blockquote, td, th").css({
+            "overflow": "visible",
+            "text-overflow": "clip",
+            "white-space": "normal"
+        });
 
         div.find(".task-list-item").each(function () {
             $(this).parent().addClass("task-list");
@@ -3817,7 +4957,10 @@
 
         if (settings.previewCodeHighlight) {
             div.find("pre").addClass("prettyprint linenums");
-            window.prettyPrint();
+            // 检查 prettyPrint 是否存在，避免在未加载 prettify 库时报错
+            if (typeof window.prettyPrint !== "undefined") {
+                window.prettyPrint();
+            }
         }
 
         if (!editormd.isIE8) {
@@ -3998,8 +5141,8 @@
     // 使用国外的CDN，加载速度有时会很慢，或者自定义URL
     // You can custom KaTeX load url.
     editormd.katexURL  = {
-        css : "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.1/katex.min",
-        js  : "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.1/katex.min"
+        css : "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min",
+        js  : "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min"
     };
 
     editormd.kaTeXLoaded = false;
@@ -4026,6 +5169,9 @@
      */
 
     editormd.lockScreen = function(lock) {
+        if (lock) {
+            window.scrollTo(0, 0);
+        }
         $("html,body").css("overflow", (lock) ? "hidden" : "");
     };
 
@@ -4093,6 +5239,9 @@
 
         dialog.lockScreen = function(lock) {
             if (options.lockScreen) {
+                if (lock) {
+                    window.scrollTo(0, 0);
+                }
                 $("html,body").css("overflow", (lock) ? "hidden" : "");
                 $this.resize();
             }
@@ -4124,6 +5273,123 @@
         };
 
         dialog.lockScreen(true).showMask();
+        
+        if ($this.settings && $this.settings.dialogOpenAutoScroll !== null && $this.settings.dialogOpenAutoScroll !== undefined) {
+            if (!$this.state.dialogScrollTop) {
+                $this.state.dialogScrollTop = $(window).scrollTop();
+                $this.state.dialogScrollLeft = $(window).scrollLeft();
+            }
+            if (!$this.state.dialogAutoScrollRestoreNodes) {
+                $this.state.dialogAutoScrollRestoreNodes = [];
+            }
+            
+            var parseOffsetValue = function(value, base) {
+                if (value === null || typeof value === "undefined" || value === "") {
+                    return null;
+                }
+                if (typeof value === "number") {
+                    return value;
+                }
+                var str = (value + "").trim();
+                if (/^-?\d+(\.\d+)?\s*%$/.test(str)) {
+                    return base * parseFloat(str) / 100;
+                }
+                if (/^-?\d+(\.\d+)?\s*px$/.test(str)) {
+                    return parseFloat(str);
+                }
+                if (/^-?\d+(\.\d+)?$/.test(str)) {
+                    return parseFloat(str);
+                }
+                return null;
+            };
+            
+            var docHeight = Math.max(
+                $(document).height(),
+                document.documentElement ? document.documentElement.scrollHeight : 0,
+                document.body ? document.body.scrollHeight : 0
+            );
+            var scrollTop = parseOffsetValue($this.settings.dialogOpenAutoScroll, docHeight);
+            
+            if (scrollTop !== null) {
+                scrollTop = Math.max(scrollTop, 0);
+
+                // 先处理编辑器最近可滚动父容器（如 mobile-modal-content），确保弹窗内滚动也生效
+                var nearestScrollableParent = null;
+                editor.parents().each(function() {
+                    if (this === document.body || this === document.documentElement) {
+                        return;
+                    }
+                    var style = window.getComputedStyle ? window.getComputedStyle(this) : null;
+                    var overflowY = style ? (style.overflowY || style.overflow || "") : "";
+                    var canScroll = /auto|scroll/i.test(overflowY) && this.scrollHeight > this.clientHeight;
+                    if (canScroll) {
+                        nearestScrollableParent = this;
+                        return false;
+                    }
+                });
+                if (nearestScrollableParent) {
+                    var nearestMaxTop = Math.max(nearestScrollableParent.scrollHeight - nearestScrollableParent.clientHeight, 0);
+                    var nearestFinalTop = Math.min(scrollTop, nearestMaxTop);
+                    $this.state.dialogAutoScrollRestoreNodes.push({
+                        node: nearestScrollableParent,
+                        scrollTop: nearestScrollableParent.scrollTop || 0,
+                        scrollLeft: nearestScrollableParent.scrollLeft || 0
+                    });
+                    nearestScrollableParent.scrollTop = nearestFinalTop;
+                    if (typeof nearestScrollableParent.scrollTo === "function") {
+                        nearestScrollableParent.scrollTo(nearestScrollableParent.scrollLeft || 0, nearestFinalTop);
+                    }
+                }
+                
+                if ($this.settings.dialogOpenAutoScrollOuterHtml) {
+                    var baseLayerParent = editor.parents().eq(parseInt($this.settings.parentContainerLayer, 10) - 1);
+                    if (!baseLayerParent || !baseLayerParent.length) {
+                        baseLayerParent = editor.parent();
+                    }
+                    var outerParents = baseLayerParent.parents();
+                    
+                    outerParents.each(function() {
+                        if (this === document.body || this === document.documentElement) {
+                            return;
+                        }
+                        var maxTop = Math.max(this.scrollHeight - this.clientHeight, 0);
+                        var finalTop = Math.min(scrollTop, maxTop);
+                        $this.state.dialogAutoScrollRestoreNodes.push({
+                            node: this,
+                            scrollTop: this.scrollTop || 0,
+                            scrollLeft: this.scrollLeft || 0
+                        });
+                        this.scrollTop = finalTop;
+                        if (typeof this.scrollTo === "function") {
+                            this.scrollTo(this.scrollLeft || 0, finalTop);
+                        }
+                    });
+                    
+                    window.scrollTo(0, scrollTop);
+                    if (document.scrollingElement) {
+                        document.scrollingElement.scrollTop = scrollTop;
+                    }
+                    document.documentElement.scrollTop = scrollTop;
+                    document.body.scrollTop = scrollTop;
+                    $("html, body").scrollTop(scrollTop);
+                } else {
+                    var firstOuterParent = editor.parents().eq(parseInt($this.settings.parentContainerLayer, 10));
+                    if (firstOuterParent && firstOuterParent.length) {
+                        var maxTop = Math.max(firstOuterParent[0].scrollHeight - firstOuterParent[0].clientHeight, 0);
+                        var finalTop = Math.min(scrollTop, maxTop);
+                        $this.state.dialogAutoScrollRestoreNodes.push({
+                            node: firstOuterParent[0],
+                            scrollTop: firstOuterParent[0].scrollTop || 0,
+                            scrollLeft: firstOuterParent[0].scrollLeft || 0
+                        });
+                        firstOuterParent[0].scrollTop = finalTop;
+                        if (typeof firstOuterParent[0].scrollTo === "function") {
+                            firstOuterParent[0].scrollTo(firstOuterParent[0].scrollLeft || 0, finalTop);
+                        }
+                    }
+                }
+            }
+        }
 
         dialog.show().css({
             zIndex : editormd.dialogZindex,
@@ -4133,18 +5399,79 @@
         });
 
         var dialogPosition = function(){
+            // 使用与infoDialogPosition相同的定位逻辑，确保所有弹窗定位一致
+            var editorOffset = editor.offset() || { top : 0, left : 0 };
+            var editorWidth  = editor.outerWidth();
+            var editorHeight = editor.outerHeight();
+            var dialogWidth  = dialog.outerWidth();
+            var dialogHeight = dialog.outerHeight();
+            var scrollTop    = $(window).scrollTop();
+            var scrollLeft   = $(window).scrollLeft();
+            
+            // 计算编辑器中心在文档中的坐标
+            var editorCenterDocX = editorOffset.left + editorWidth / 2;
+            var editorCenterDocY = editorOffset.top + editorHeight / 2;
+            
+            // 转换为视口坐标，并居中弹窗
+            var top  = editorCenterDocY - scrollTop - dialogHeight / 2;
+            var left = editorCenterDocX - scrollLeft - dialogWidth / 2;
+            
+            // 确保弹窗在视口内
+            var viewportWidth = $(window).width();
+            var viewportHeight = $(window).height();
+            var minTop  = 8;
+            var minLeft = 8;
+            var maxTop  = Math.max(viewportHeight - dialogHeight - 8, minTop);
+            var maxLeft = Math.max(viewportWidth - dialogWidth - 8, minLeft);
+            
+            top  = Math.min(Math.max(top, minTop), maxTop);
+            left = Math.min(Math.max(left, minLeft), maxLeft);
+
             dialog.css({
-                top    : ($(window).height() - dialog.height()) / 2 + "px",
-                left   : ($(window).width() - dialog.width()) / 2 + "px"
+                top    : top + "px",
+                left   : left + "px"
             });
+        };
+
+        // Keep dialogs centered every time they are shown (including cached dialogs reopened later).
+        var _dialogShow = dialog.show;
+        dialog.show = function() {
+            _dialogShow.apply(dialog, arguments);
+            dialogPosition();
+            return dialog;
         };
 
         dialogPosition();
 
         $(window).resize(dialogPosition);
 
-        dialog.children("." + classPrefix + "dialog-close").bind("click", function() {
+        dialog.children("." + classPrefix + "dialog-close").on("click", function() {
             dialog.hide().lockScreen(false).hideMask();
+            
+            if ($this.state && $this.state.dialogAutoScrollRestoreNodes && $this.state.dialogAutoScrollRestoreNodes.length) {
+                for (var i = 0; i < $this.state.dialogAutoScrollRestoreNodes.length; i++) {
+                    var restoreItem = $this.state.dialogAutoScrollRestoreNodes[i];
+                    if (!restoreItem || !restoreItem.node) {
+                        continue;
+                    }
+                    restoreItem.node.scrollTop = restoreItem.scrollTop;
+                    restoreItem.node.scrollLeft = restoreItem.scrollLeft;
+                }
+                $this.state.dialogAutoScrollRestoreNodes = [];
+            }
+            
+            if ($this.state && $this.state.dialogScrollTop !== null && $this.state.dialogScrollLeft !== null) {
+                window.scrollTo($this.state.dialogScrollLeft, $this.state.dialogScrollTop);
+                if (document.scrollingElement) {
+                    document.scrollingElement.scrollTop = $this.state.dialogScrollTop;
+                    document.scrollingElement.scrollLeft = $this.state.dialogScrollLeft;
+                }
+                document.documentElement.scrollTop = $this.state.dialogScrollTop;
+                document.body.scrollTop = $this.state.dialogScrollTop;
+                $("html, body").scrollTop($this.state.dialogScrollTop);
+                $this.state.dialogScrollTop = null;
+                $this.state.dialogScrollLeft = null;
+            }
 
             if (!options.cached) {
                 dialog.remove();
@@ -4160,7 +5487,7 @@
 
                 footer.append("<button class=\"" + classPrefix + "btn " + btnClassName + "\">" + btn[0] + "</button>");
                 btn[1] = $.proxy(btn[1], dialog);
-                footer.children("." + btnClassName).bind("click", btn[1]);
+                footer.children("." + btnClassName).on("click", btn[1]);
             }
         }
 
@@ -4169,7 +5496,7 @@
             var dialogHeader = dialog.children("." + classPrefix + "dialog-header");
 
             if (!options.mask) {
-                dialogHeader.bind("click", function(){
+                dialogHeader.on("click", function(){
                     editormd.dialogZindex += 2;
                     dialog.css("z-index", editormd.dialogZindex);
                 });
@@ -4257,7 +5584,7 @@
                     });
                 };
 
-                this.bind("touchstart", start).bind("touchmove", move);
+                this.on("touchstart", start).on("touchmove", move);
             };
 
             dialogHeader.touchDraggable();
