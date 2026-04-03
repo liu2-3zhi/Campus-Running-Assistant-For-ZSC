@@ -49372,9 +49372,12 @@ function showMobileUnifiedModifyPhoneModal() {
           </svg>
           <h3 class="text-xl font-bold text-sky-600 text-center">修改绑定手机号</h3>
         </div>
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">当前手机号</label>
+        <div class="space-y-4">
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl">
+            <label for="mobile-unified-modify-phone-current" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+              <span class="text-xs font-semibold text-slate-700">当前手机号</span>
+            </label>
             <div class="phone-input-wrapper">
               <span class="phone-prefix">+86 </span>
               <input
@@ -49386,17 +49389,24 @@ function showMobileUnifiedModifyPhoneModal() {
               />
             </div>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">验证原密码 <span class="text-red-500">*</span></label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-unified-modify-phone-password" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+              <span class="text-xs font-semibold text-slate-700">验证原密码 <span class="text-red-500">*</span></span>
+            </label>
             <input
               type="password"
               id="mobile-unified-modify-phone-password"
               class="input-field !text-xs !py-1.5 w-full"
               placeholder="请输入当前账号密码进行验证"
             />
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>为确保安全，请验证您的账号密码</span></p>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">新手机号</label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-unified-modify-phone-new" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+              <span class="text-xs font-semibold text-slate-700">新手机号</span>
+            </label>
             <div class="phone-input-wrapper">
               <span class="phone-prefix">+86 </span>
               <input
@@ -49408,9 +49418,13 @@ function showMobileUnifiedModifyPhoneModal() {
                 maxlength="11"
               />
             </div>
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>请输入11位有效手机号码</span></p>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">验证码</label>
+          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+            <label for="mobile-unified-modify-phone-code" class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+              <span class="text-xs font-semibold text-slate-700">验证码</span>
+            </label>
             <div class="flex gap-2">
               <input
                 type="text"
@@ -49423,11 +49437,12 @@ function showMobileUnifiedModifyPhoneModal() {
               <button
                 id="mobile-unified-modify-phone-send-code"
                 onclick="sendMobileUnifiedModifyPhoneCode()"
-                class="btn btn-ghost border border-slate-300 !py-1 !px-2 text-xs whitespace-nowrap"
+                class="px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-xs whitespace-nowrap transition-colors duration-200"
               >
                 发送验证码
               </button>
             </div>
+            <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>验证码将发送至新手机号</span></p>
           </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
