@@ -50751,16 +50751,15 @@ function showMobileModifyNickname(username, currentNickname) {
         <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileModifyNickname()">
           <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileModifyNickname()">
-          <svg class="w-6 h-6 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-          </svg>
-          <h3 class="text-xl font-bold text-teal-600 text-center">修改昵称</h3>
-        </div>
-        <div class="p-4 bg-gradient-to-r from-teal-50 to-white border border-teal-100 rounded-xl mb-4">
-          <div class="flex items-center justify-center gap-3">
-            <svg class="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-            <span class="text-sm text-slate-600">用户: <span id="mobile-nickname-username" class="font-semibold text-slate-800"></span></span>
+        <div class="flex items-center gap-3 pb-4 border-b border-slate-200">
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-xl font-bold text-slate-800">修改昵称</h3>
+            <p class="text-xs text-slate-500">用户: <span id="mobile-nickname-username" class="font-semibold text-teal-600"></span></p>
           </div>
         </div>
         <div class="space-y-4">
@@ -50769,22 +50768,22 @@ function showMobileModifyNickname(username, currentNickname) {
               <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
               <span class="text-sm font-semibold text-slate-700">当前昵称</span>
             </label>
-            <input type="text" id="mobile-current-nickname" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none" readonly value="${
+            <input type="text" id="mobile-current-nickname" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none" readonly value="${
               currentNickname || "当前无昵称"
             }">
           </div>
-          <div class="p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
+          <div class="p-4 bg-gradient-to-r from-teal-50 to-white border border-teal-100 rounded-xl hover:shadow-sm transition-shadow duration-200">
             <label for="mobile-modify-new-nickname" class="flex items-center gap-2 mb-2">
               <svg class="w-4 h-4 text-teal-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
               <span class="text-sm font-semibold text-slate-700">新昵称</span>
             </label>
-            <input type="text" id="mobile-modify-new-nickname" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新昵称">
+            <input type="text" id="mobile-modify-new-nickname" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="请输入新昵称">
             <p class="text-xs text-slate-500 mt-2 flex items-start gap-1"><svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>昵称将显示在用户列表和个人信息中</span></p>
           </div>
         </div>
         <div class="flex gap-3 pt-4 border-t border-slate-100">
-          <button onclick="closeMobileModifyNickname()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
-          <button onclick="submitMobileModifyNickname()" class="flex-1 py-2 px-4 bg-teal-500 text-white rounded-lg text-sm">保存</button>
+          <button onclick="closeMobileModifyNickname()" class="flex-1 py-3 px-4 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">取消</button>
+          <button onclick="submitMobileModifyNickname()" class="flex-1 py-3 px-4 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white rounded-xl text-sm font-medium shadow-lg shadow-teal-500/20 transition-all duration-200">✓ 保存</button>
         </div>
       </div>
     `;
