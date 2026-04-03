@@ -19920,118 +19920,93 @@
     >
       <!-- 半透明黑色背景遮罩，点击关闭模态框 -->
       <div
-        class="absolute inset-0 bg-black/70"
+        class="absolute inset-0 bg-black/50"
         onclick="closeAddWatermarkUserModal()"
       ></div>
 
       <!-- 模态框主体内容 -->
       <div
-        class="panel rounded-2xl p-6 w-[90%] max-w-md max-h-[85vh] space-y-4 relative overflow-y-auto"
+        class="bg-white rounded-2xl shadow-2xl w-[90%] max-w-md max-h-[85vh] overflow-y-auto relative border border-slate-100 overflow-hidden"
+        onclick="event.stopPropagation()"
       >
-        <!-- 模态框标题栏 -->
-        <div class="flex items-center justify-between">
-          <h3 class="text-xl font-bold text-sky-600">
-            <!-- 用户图标 -->
-            <svg
-              class="w-5 h-5 inline mr-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
-              ></path>
-            </svg>
-            添加用户到水印控制
-          </h3>
-          <!-- 【新增】刷新按钮和关闭按钮的容器 -->
-          <div class="flex items-center space-x-2">
-            <!-- 【新增】刷新按钮：重新加载用户列表 -->
-            <button
-              onclick="refreshWatermarkUserList()"
-              class="text-sky-500 hover:text-sky-700 transition-colors"
-              title="刷新用户列表"
-            >
-              <svg
-                class="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                ></path>
-              </svg>
-            </button>
-            <!-- 关闭按钮 -->
-            <button
-              onclick="closeAddWatermarkUserModal()"
-              class="text-slate-400 hover:text-slate-600 text-2xl leading-none"
-              title="关闭"
-            >
-              ×
-            </button>
-          </div>
-        </div>
+        <!-- 头部渐变装饰条 -->
+        <div class="h-1.5 bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-500"></div>
 
-        <!-- 模态框内容区域 -->
-        <div class="space-y-3">
+        <div class="p-6">
+          <!-- 标题行 -->
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-sky-600 flex items-center justify-center flex-shrink-0 shadow-md">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+            </div>
+            <div class="flex-1">
+              <h3 class="text-lg font-bold text-slate-800">添加用户到水印控制</h3>
+              <p class="text-xs text-slate-500">选择用户并添加自定义水印配置</p>
+            </div>
+            <!-- 刷新和关闭按钮 -->
+            <div class="flex items-center gap-1">
+              <button
+                onclick="refreshWatermarkUserList()"
+                class="w-8 h-8 flex items-center justify-center text-sky-500 hover:text-sky-700 hover:bg-sky-50 rounded-full transition-all"
+                title="刷新用户列表"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+              </button>
+              <button
+                onclick="closeAddWatermarkUserModal()"
+                class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+                title="关闭"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+          </div>
+
           <!-- 说明文字 -->
-          <p class="text-sm text-slate-600">
-            从下方列表中选择要添加到水印控制配置的用户。添加后，您可以为该用户设置是否允许使用去水印功能。
-          </p>
+          <div class="p-3 bg-gradient-to-r from-sky-50 to-white border border-sky-100 rounded-xl mb-4">
+            <div class="flex items-start gap-2">
+              <svg class="w-4 h-4 text-sky-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <p class="text-xs text-slate-600">从下方列表中选择要添加到水印控制配置的用户。添加后，您可以为该用户设置是否允许使用去水印功能。</p>
+            </div>
+          </div>
 
           <!-- 搜索框 -->
-          <div class="relative">
+          <div class="relative mb-3">
             <input
               type="text"
               id="watermark-user-search"
-              class="w-full px-3 py-2 pl-10 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500"
+              class="w-full px-3 py-2.5 pl-10 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300"
               placeholder="搜索用户名..."
               onkeyup="filterWatermarkUsers()"
               aria-label="搜索用户"
             />
-            <!-- 搜索图标 -->
             <svg
-              class="w-5 h-5 absolute left-3 top-2.5 text-slate-400"
+              class="w-4 h-4 absolute left-3 top-3 text-slate-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              ></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
             </svg>
           </div>
 
           <!-- 可用用户列表 -->
           <div
             id="available-watermark-users-list"
-            class="space-y-2 max-h-[50vh] overflow-y-auto border border-slate-200 rounded-lg p-3"
+            class="space-y-2 max-h-[45vh] overflow-y-auto border border-slate-200 rounded-xl p-3 bg-slate-50"
           >
-            <!-- 加载提示：初始显示，加载完成后由JS替换为用户列表 -->
             <p class="text-slate-400 text-center py-10 text-sm">加载中...</p>
           </div>
-        </div>
 
-        <!-- 底部按钮 -->
-        <div class="flex justify-end">
-          <button
-            onclick="closeAddWatermarkUserModal()"
-            class="px-4 py-2 bg-slate-400 text-white rounded-lg text-sm font-semibold hover:bg-slate-500 active:bg-slate-600 transition-colors"
-            title="关闭对话框"
-          >
-            关闭
-          </button>
+          <!-- 底部按钮 -->
+          <div class="flex justify-end mt-5 pt-4 border-t border-slate-100">
+            <button
+              onclick="closeAddWatermarkUserModal()"
+              class="btn btn-ghost px-5 py-2.5 hover:bg-slate-100 transition-colors rounded-lg border border-slate-200"
+              title="关闭对话框"
+            >
+              关闭
+            </button>
+          </div>
         </div>
       </div>
     </div>
