@@ -131,6 +131,8 @@
         fullScreenWidthAdjustment : null,       // 全屏宽度微调：可传函数，或 "2px"/"2%" 这类增量值，默认 null
         fullScreenHeightAdjustment : null,      // 全屏高度微调：可传函数，或 "-100px"/"2%" 这类增量值，默认 null
         parentContainerLayer : 1,              // 全屏父容器层级（1=最近的父 div）
+        dialogOpenAutoScroll : null,           // 弹窗打开时自动滚动位置（如 "0%"、"100px"），null 则不滚动，默认 null
+        dialogOpenAutoScrollOuterHtml : false, // 弹窗自动滚动时是否同时滚动最外层 html/body 及所有父容器
         dialogMaskBgColor    : "#fff",
         dialogMaskOpacity    : 0.1,
         fontSize             : "13px",
@@ -362,7 +364,10 @@
             fullscreen : false,
             fullscreenPlaceholder : null,
             fullscreenLockedScrollParents : [],
-            fullscreenAutoScrollRestoreNodes : []
+            fullscreenAutoScrollRestoreNodes : [],
+            dialogScrollTop : null,
+            dialogScrollLeft : null,
+            dialogAutoScrollRestoreNodes : []
         },
 
         /**
@@ -1544,12 +1549,119 @@
 
 			var editor      = this.editor;
             var settings    = this.settings;
-			var infoDialog  = this.infoDialog = editor.children("." + this.classPrefix + "dialog-info");
+			var infoDialog  = this.infoDialog = $("body").children("." + this.classPrefix + "dialog-info[data-editor-id=\"" + this.id + "\"]");
 
             this.state.infoDialogMoved = false;
 
             if (infoDialog.length < 1) {
                 this.createInfoDialog();
+                infoDialog = this.infoDialog;
+            }
+
+            if (settings.dialogOpenAutoScroll !== null && settings.dialogOpenAutoScroll !== undefined) {
+                var _this = this;
+                var state = this.state;
+                state.dialogScrollTop = $(window).scrollTop();
+                state.dialogScrollLeft = $(window).scrollLeft();
+                state.dialogAutoScrollRestoreNodes = [];
+                
+                var parseOffsetValue = function(value, base) {
+                    if (value === null || typeof value === "undefined" || value === "") {
+                        return null;
+                    }
+                    if (typeof value === "number") {
+                        return value;
+                    }
+                    var str = (value + "").trim();
+                    if (/^-?\d+(\.\d+)?%$/.test(str)) {
+                        return base * parseFloat(str) / 100;
+                    }
+                    if (/^-?\d+(\.\d+)?px$/.test(str)) {
+                        return parseFloat(str);
+                    }
+                    if (/^-?\d+(\.\d+)?$/.test(str)) {
+                        return parseFloat(str);
+                    }
+                    return null;
+                };
+                
+                var docHeight = Math.max(
+                    $(document).height(),
+                    document.documentElement ? document.documentElement.scrollHeight : 0,
+                    document.body ? document.body.scrollHeight : 0
+                );
+                var scrollTop = parseOffsetValue(settings.dialogOpenAutoScroll, docHeight);
+                
+                console.log("[Editor.md][弹窗] 弹窗自动滚动", {
+                    dialogOpenAutoScroll: settings.dialogOpenAutoScroll,
+                    dialogOpenAutoScrollOuterHtml: settings.dialogOpenAutoScrollOuterHtml,
+                    parsedScrollTop: scrollTop,
+                    docHeight: docHeight
+                });
+                
+                if (scrollTop !== null) {
+                    scrollTop = Math.max(scrollTop, 0);
+                    
+                    if (settings.dialogOpenAutoScrollOuterHtml) {
+                        var baseLayerParent = editor.parents().eq(parseInt(settings.parentContainerLayer, 10) - 1);
+                        if (!baseLayerParent || !baseLayerParent.length) {
+                            baseLayerParent = editor.parent();
+                        }
+                        var outerParents = baseLayerParent.parents();
+                        
+                        outerParents.each(function() {
+                            if (this === document.body || this === document.documentElement) {
+                                return;
+                            }
+                            var maxTop = Math.max(this.scrollHeight - this.clientHeight, 0);
+                            var finalTop = Math.min(scrollTop, maxTop);
+                            state.dialogAutoScrollRestoreNodes.push({
+                                node: this,
+                                scrollTop: this.scrollTop || 0,
+                                scrollLeft: this.scrollLeft || 0
+                            });
+                            this.scrollTop = finalTop;
+                            if (typeof this.scrollTo === "function") {
+                                this.scrollTo(this.scrollLeft || 0, finalTop);
+                            }
+                        });
+                        
+                        window.scrollTo(0, scrollTop);
+                        if (document.scrollingElement) {
+                            document.scrollingElement.scrollTop = scrollTop;
+                        }
+                        document.documentElement.scrollTop = scrollTop;
+                        document.body.scrollTop = scrollTop;
+                        $("html, body").scrollTop(scrollTop);
+                        
+                        console.log("[Editor.md][弹窗] 已滚动外层", {
+                            targetScrollTop: scrollTop,
+                            actualScrollTop: $(window).scrollTop(),
+                            restoredParentsCount: state.dialogAutoScrollRestoreNodes.length
+                        });
+                    } else {
+                        var firstOuterParent = editor.parents().eq(parseInt(settings.parentContainerLayer, 10));
+                        if (firstOuterParent && firstOuterParent.length) {
+                            var maxTop = Math.max(firstOuterParent[0].scrollHeight - firstOuterParent[0].clientHeight, 0);
+                            var finalTop = Math.min(scrollTop, maxTop);
+                            state.dialogAutoScrollRestoreNodes.push({
+                                node: firstOuterParent[0],
+                                scrollTop: firstOuterParent[0].scrollTop || 0,
+                                scrollLeft: firstOuterParent[0].scrollLeft || 0
+                            });
+                            firstOuterParent[0].scrollTop = finalTop;
+                            if (typeof firstOuterParent[0].scrollTo === "function") {
+                                firstOuterParent[0].scrollTo(firstOuterParent[0].scrollLeft || 0, finalTop);
+                            }
+                            
+                            console.log("[Editor.md][弹窗] 已滚动首层父容器", {
+                                targetScrollTop: scrollTop,
+                                actualScrollTop: firstOuterParent[0].scrollTop,
+                                parentTag: firstOuterParent[0].tagName
+                            });
+                        }
+                    }
+                }
             }
 
             this.lockScreen(true);
@@ -1578,6 +1690,31 @@
             this.infoDialog.hide();
             this.mask.hide();
             this.lockScreen(false);
+
+            if (this.state.dialogAutoScrollRestoreNodes && this.state.dialogAutoScrollRestoreNodes.length) {
+                for (var i = 0; i < this.state.dialogAutoScrollRestoreNodes.length; i++) {
+                    var restoreItem = this.state.dialogAutoScrollRestoreNodes[i];
+                    if (!restoreItem || !restoreItem.node) {
+                        continue;
+                    }
+                    restoreItem.node.scrollTop = restoreItem.scrollTop;
+                    restoreItem.node.scrollLeft = restoreItem.scrollLeft;
+                }
+                this.state.dialogAutoScrollRestoreNodes = [];
+            }
+
+            if (this.state.dialogScrollTop !== null && this.state.dialogScrollLeft !== null) {
+                window.scrollTo(this.state.dialogScrollLeft, this.state.dialogScrollTop);
+                if (document.scrollingElement) {
+                    document.scrollingElement.scrollTop = this.state.dialogScrollTop;
+                    document.scrollingElement.scrollLeft = this.state.dialogScrollLeft;
+                }
+                document.documentElement.scrollTop = this.state.dialogScrollTop;
+                document.body.scrollTop = this.state.dialogScrollTop;
+                $("html, body").scrollTop(this.state.dialogScrollTop);
+                this.state.dialogScrollTop = null;
+                this.state.dialogScrollLeft = null;
+            }
 
             return this;
         },
