@@ -23024,12 +23024,119 @@ async function disable2FA() {
   }
 }
 
-async function test2FA() {
+function showMobileTest2FAModal() {
+  return new Promise((resolve) => {
+    let modal = document.getElementById("mobile-test-2fa-modal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "mobile-test-2fa-modal";
+      modal.className = "fixed inset-0 hidden mobile-modal z-[60]";
+      modal.onclick = function (e) {
+        if (e.target === modal) closeMobileTest2FAModal();
+      };
+      modal.innerHTML = `
+        <div class="absolute inset-0 bg-black/40" onclick="closeMobileTest2FAModal()"></div>
+        <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+          <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileTest2FAModal()">
+            <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+          </div>
+          <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileTest2FAModal()">
+            <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0-1.657 1.343-3 3-3h1a3 3 0 013 3v7a3 3 0 01-3 3H8a3 3 0 01-3-3v-7a3 3 0 013-3h1c1.657 0 3 1.343 3 3zm0 0V8a3 3 0 116 0v3m-6 0h6"></path>
+            </svg>
+            <h3 class="text-xl font-bold text-sky-600 text-center">测试2FA</h3>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">验证码</label>
+              <input
+                type="text"
+                id="mobile-test-2fa-code"
+                class="input-field !text-xs !py-1.5 w-full"
+                placeholder="请输入验证器中的6位验证码"
+                maxlength="6"
+                inputmode="numeric"
+              />
+            </div>
+          </div>
+          <div class="flex gap-3 pt-4 border-t border-slate-100">
+            <button onclick="closeMobileTest2FAModal()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
+            <button id="mobile-test-2fa-confirm" class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm">验证</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
 
-  if (isMobileMode) {
-    
-  } else {
+    const codeInput = document.getElementById("mobile-test-2fa-code");
+    const confirmBtn = document.getElementById("mobile-test-2fa-confirm");
+
+    if (codeInput) codeInput.value = "";
+
+    const cleanup = () => {
+      window._mobileTest2FAResolver = null;
+      if (confirmBtn) confirmBtn.onclick = null;
+      if (codeInput) codeInput.onkeypress = null;
+    };
+
+    window._mobileTest2FAResolver = (code = null) => {
+      cleanup();
+      resolve(code);
+    };
+
+    if (confirmBtn) {
+      confirmBtn.onclick = () => {
+        const code = codeInput ? codeInput.value.trim() : "";
+        if (!/^[0-9]{6}$/.test(code)) {
+          showModalAlert("请输入有效的6位数字验证码", "错误");
+          return;
+        }
+        closeMobileTest2FAModal(code);
+      };
+    }
+
+    if (codeInput) {
+      codeInput.onkeypress = (e) => {
+        if (e.key === "Enter") {
+          confirmBtn?.click();
+        }
+      };
+    }
+
+    modal.classList.remove("hidden");
+    setTimeout(() => {
+      modal.classList.add("show");
+      codeInput?.focus();
+    }, 10);
+  });
+}
+
+function closeMobileTest2FAModal(code = null) {
+  const modal = document.getElementById("mobile-test-2fa-modal");
+  if (modal) {
+    modal.classList.remove("show");
+    setTimeout(() => {
+      modal.classList.add("hidden");
+      if (typeof window._mobileTest2FAResolver === "function") {
+        const resolver = window._mobileTest2FAResolver;
+        window._mobileTest2FAResolver = null;
+        resolver(code);
+      }
+    }, 300);
+  } else if (typeof window._mobileTest2FAResolver === "function") {
+    const resolver = window._mobileTest2FAResolver;
+    window._mobileTest2FAResolver = null;
+    resolver(code);
+  }
+}
+
+async function test2FA() {
   const testCode = await new Promise((resolve) => {
+    if (isMobileMode) {
+      showMobileTest2FAModal().then(resolve);
+      return;
+    }
+
     const modal = document.createElement("div");
     modal.className = "fixed inset-0 flex items-center justify-center z-50";
     modal.innerHTML = `
@@ -23050,12 +23157,20 @@ async function test2FA() {
 
     const confirmBtn = modal.querySelector("#confirm-test-2fa");
     const codeInput = modal.querySelector("#test-2fa-code-input");
-    }
+
+    const finish = (code = null) => {
+      if (modal.parentNode) {
+        modal.remove();
+      }
+      resolve(code);
+    };
+
+    modal.querySelector(".bg-black")?.addEventListener("click", () => finish(null));
+    modal.querySelector(".btn-ghost")?.addEventListener("click", () => finish(null));
 
     confirmBtn.onclick = () => {
-      const code = codeInput.value;
+      const code = codeInput.value.trim();
       if (!code || code.length !== 6 || !/^[0-9]{6}$/.test(code)) {
-        // showModalAlert("请输入有效的6位数字验证码", "错误");
         Swal.fire({
           title: "错误",
           text: "请输入有效的6位数字验证码",
@@ -23063,9 +23178,14 @@ async function test2FA() {
         });
         return;
       }
-      modal.remove();
-      resolve(code);
+      finish(code);
     };
+
+    codeInput?.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        confirmBtn.click();
+      }
+    });
   });
 
   if (!testCode) return;
