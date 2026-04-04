@@ -26360,6 +26360,59 @@ def start_web_server(args_param):
             page = 1
             limit = 100
 
+        keyword_expr = request.args.get("keyword", "").strip()
+
+        def normalize_log_keyword_expr(expr):
+            return re.sub(r"\s+", "", expr or "")
+
+        def tokenize_log_keyword_expr(expr):
+            normalized = normalize_log_keyword_expr(expr)
+            if not normalized:
+                return []
+            tokens = []
+            current = []
+            for ch in normalized:
+                if ch in "|&":
+                    if current:
+                        tokens.append("".join(current))
+                        current = []
+                    tokens.append(ch)
+                else:
+                    current.append(ch)
+            if current:
+                tokens.append("".join(current))
+            return [token for token in tokens if token]
+
+        def matches_log_keyword_expr(line, expr):
+            tokens = tokenize_log_keyword_expr(expr)
+            if not tokens:
+                return True
+
+            line_lower = line.lower()
+            or_groups = []
+            current_group = []
+
+            for token in tokens:
+                if token == "|":
+                    if current_group:
+                        or_groups.append(current_group)
+                        current_group = []
+                    continue
+                if token == "&":
+                    continue
+                current_group.append(token.lower())
+
+            if current_group:
+                or_groups.append(current_group)
+
+            if not or_groups:
+                return True
+
+            return any(
+                all(keyword and keyword in line_lower for keyword in group)
+                for group in or_groups
+            )
+
         all_log_content = []
         log_files = []
         if os.path.exists(LOGIN_LOGS_DIR):
@@ -26379,6 +26432,12 @@ def start_web_server(args_param):
             except (FileNotFoundError, PermissionError, UnicodeDecodeError) as e:
                 logging.debug(f"[日志读取] 无法读取日志文件 {log_file}: {e}")
                 continue
+
+        if keyword_expr:
+            all_log_content = [
+                line for line in all_log_content if matches_log_keyword_expr(line, keyword_expr)
+            ]
+
         total_lines = len(all_log_content)
         total_pages = (total_lines + limit - 1) // limit
         if page > total_pages and total_pages > 0:
@@ -26398,6 +26457,7 @@ def start_web_server(args_param):
                     "total_lines": total_lines,
                     "limit": limit,
                 },
+                "filters": {"keyword": keyword_expr},
             }
         )
 

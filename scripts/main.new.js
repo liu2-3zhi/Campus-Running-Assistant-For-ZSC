@@ -13680,6 +13680,28 @@ let avatarCropper = null;
 let isRegistrationCrop = false;
 let registrationCroppedAvatarBlob = null;
 let currentLogPage = 1;
+const LOG_HIGHLIGHT_RULES = [
+  {
+    key: "error",
+    pattern: /\b(error|err|fatal|critical)\b/gi,
+    className: "text-red-300 font-semibold",
+  },
+  {
+    key: "warning",
+    pattern: /\b(warning|warn)\b/gi,
+    className: "text-amber-200 font-semibold",
+  },
+  {
+    key: "info",
+    pattern: /\b(info|notice)\b/gi,
+    className: "text-sky-200 font-semibold",
+  },
+  {
+    key: "debug",
+    pattern: /\b(debug|trace)\b/gi,
+    className: "text-violet-200 font-semibold",
+  },
+];
 let croppedAvatarFile = null;
 
 let currentSessionInfo = {
@@ -18961,6 +18983,8 @@ if (typeof window !== "undefined") {
     const logPrevPageBtn = $("log-prev-page");
     const logNextPageBtn = $("log-next-page");
     const logLimitSelect = $("log-limit-select_modal");
+    const logFilterSelect = $("log-level-filter_modal");
+    const logKeywordInput = $("log-keyword-filter_modal");
 
     if (logPrevPageBtn) {
       logPrevPageBtn.addEventListener("click", () => {
@@ -18977,6 +19001,16 @@ if (typeof window !== "undefined") {
     if (logLimitSelect) {
       logLimitSelect.addEventListener("change", () => {
         loadAdminLogs(1);
+      });
+    }
+    if (logFilterSelect) {
+      logFilterSelect.addEventListener("change", () => {
+        loadAdminLogs(currentLogPage);
+      });
+    }
+    if (logKeywordInput) {
+      logKeywordInput.addEventListener("input", () => {
+        loadAdminLogs(currentLogPage);
       });
     }
 
@@ -21487,6 +21521,8 @@ async function loadAdminLogs(newPage = 1) {
 
   const contentEl = $("admin-logs-content_modal");
   const limitSelect = $("log-limit-select_modal");
+  const filterSelect = $("log-level-filter_modal");
+  const keywordInput = $("log-keyword-filter_modal");
   const pageSelect = $("log-page-select");
   const pageTotal = $("log-page-total");
   const prevBtn = $("log-prev-page");
@@ -21511,8 +21547,9 @@ async function loadAdminLogs(newPage = 1) {
 
   try {
     const limit = limitSelect ? limitSelect.value : 100;
+    const keywordValue = keywordInput ? keywordInput.value.trim() : "";
     const response = await fetch(
-      `/logs/view?page=${currentLogPage}&limit=${limit}`,
+      `/logs/view?page=${currentLogPage}&limit=${limit}&keyword=${encodeURIComponent(keywordValue)}`,
       {
         headers: {
           "X-Session-ID": sessionUUID,
@@ -21528,17 +21565,26 @@ async function loadAdminLogs(newPage = 1) {
       return;
     }
 
-    if (result.logs.length === 0) {
-      contentEl.textContent = "暂无日志";
+    const rawLogs = Array.isArray(result.logs) ? result.logs : [];
+    const filteredLogs = filterLogsByLevel(
+      rawLogs,
+      filterSelect ? filterSelect.value : "all",
+    );
+
+    if (filteredLogs.length === 0) {
+      contentEl.textContent = rawLogs.length === 0 ? "暂无日志" : "当前筛选条件下暂无日志";
       pageSelect.innerHTML = '<option value="1">第 1 / 1 页</option>';
-      pageTotal.textContent = "(共 0 行)";
+      pageTotal.textContent = rawLogs.length === 0 ? "(共 0 行)" : `(本页筛选后 0 / ${rawLogs.length} 行)`;
       return;
     }
 
-    contentEl.textContent = result.logs.join("");
+    renderHighlightedLogs(contentEl, filteredLogs, keywordValue);
 
     const pagination = result.pagination;
-    pageTotal.textContent = `(共 ${pagination.total_lines} 行)`;
+    pageTotal.textContent =
+      (filterSelect && filterSelect.value !== "all") || keywordValue
+        ? `(本页筛选后 ${filteredLogs.length} / ${rawLogs.length} 行，总计 ${pagination.total_lines} 行)`
+        : `(共 ${pagination.total_lines} 行)`;
 
     pageSelect.innerHTML = "";
     for (let i = 1; i <= pagination.total_pages; i++) {
@@ -21560,6 +21606,89 @@ async function loadAdminLogs(newPage = 1) {
     pageSelect.innerHTML = '<option value="1">1</option>';
     pageTotal.textContent = "(加载失败)";
   }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function highlightCustomKeyword(text, keyword) {
+  if (!keyword) {
+    return text;
+  }
+
+  const keywordParts = keyword
+    .split(/[|&]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  if (!keywordParts.length) {
+    return text;
+  }
+
+  const escapedKeyword = keywordParts.map((part) => escapeRegExp(part)).join("|");
+  if (!escapedKeyword) {
+    return text;
+  }
+
+  return text.replace(
+    new RegExp(`(${escapedKeyword})`, "gi"),
+    '<span class="bg-yellow-300 text-slate-900 font-bold px-0.5 rounded">$1</span>',
+  );
+}
+
+function getLogLineClass(line) {
+  const text = String(line || "");
+  let matchedRule = null;
+  let matchedIndex = Number.POSITIVE_INFINITY;
+
+  LOG_HIGHLIGHT_RULES.forEach((rule) => {
+    rule.pattern.lastIndex = 0;
+    const match = rule.pattern.exec(text);
+    rule.pattern.lastIndex = 0;
+    if (match && match.index < matchedIndex) {
+      matchedIndex = match.index;
+      matchedRule = rule;
+    }
+  });
+
+  return matchedRule ? matchedRule.className : "";
+}
+
+function highlightLogLine(line, keyword = "") {
+  const html = highlightCustomKeyword(escapeHtml(line), keyword);
+  const lineClass = getLogLineClass(line);
+  return lineClass ? `<span class="${lineClass}">${html}</span>` : html;
+}
+
+function renderHighlightedLogs(contentEl, logs, keyword = "") {
+  contentEl.innerHTML = logs.map((line) => highlightLogLine(line, keyword)).join("");
+}
+
+function filterLogsByLevel(logs, level) {
+  if (!Array.isArray(logs) || level === "all") {
+    return Array.isArray(logs) ? logs : [];
+  }
+
+  const rule = LOG_HIGHLIGHT_RULES.find((item) => item.key === level);
+  if (!rule) {
+    return logs;
+  }
+
+  return logs.filter((line) => {
+    rule.pattern.lastIndex = 0;
+    return rule.pattern.test(line);
+  });
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // ====================
@@ -22896,6 +23025,10 @@ async function disable2FA() {
 }
 
 async function test2FA() {
+
+  if (isMobileMode) {
+    
+  } else {
   const testCode = await new Promise((resolve) => {
     const modal = document.createElement("div");
     modal.className = "fixed inset-0 flex items-center justify-center z-50";
@@ -22917,6 +23050,7 @@ async function test2FA() {
 
     const confirmBtn = modal.querySelector("#confirm-test-2fa");
     const codeInput = modal.querySelector("#test-2fa-code-input");
+    }
 
     confirmBtn.onclick = () => {
       const code = codeInput.value;
@@ -46285,8 +46419,12 @@ async function initMobileAdminPanel(prefix) {
       return true;
 
     // 权限类型4: "no_guest" - 仅非游客用户可见
-    if (tab.permission === "no_guest" && currentUserIsGuest === true) 
-      return false;
+    if (tab.permission === "no_guest" ){
+      if ( currentUserIsGuest === true || currentUserIsGuest === 'true') {
+        return false;}
+      else{
+        return true;}
+    }
 
     // ========================================
     // 【关键修复】权限类型4: "payment-logs-special" - 支付历史标签的特殊权限逻辑
@@ -46381,9 +46519,25 @@ function initMobileMultiAdminButtonEvents() {
   const logLimitSelect = document.getElementById(
     "mobile-multi-log-limit-select",
   );
+  const logFilterSelect = document.getElementById(
+    "mobile-multi-log-level-filter",
+  );
+  const logKeywordInput = document.getElementById(
+    "mobile-multi-log-keyword-filter",
+  );
   if (logLimitSelect) {
     logLimitSelect.onchange = function () {
       loadMobileMultiAdminLogs(1);
+    };
+  }
+  if (logFilterSelect) {
+    logFilterSelect.onchange = function () {
+      loadMobileMultiAdminLogs(mobileMultiLogCurrentPage);
+    };
+  }
+  if (logKeywordInput) {
+    logKeywordInput.oninput = function () {
+      loadMobileMultiAdminLogs(mobileMultiLogCurrentPage);
     };
   }
 
@@ -46530,6 +46684,8 @@ async function loadMobileMultiAdminLogs(newPage = 1) {
 
   const contentEl = document.getElementById("mobile-multi-admin-logs-content");
   const limitSelect = document.getElementById("mobile-multi-log-limit-select");
+  const filterSelect = document.getElementById("mobile-multi-log-level-filter");
+  const keywordInput = document.getElementById("mobile-multi-log-keyword-filter");
   const pageSelect = document.getElementById("mobile-multi-log-page-select");
   const pageTotal = document.getElementById("mobile-multi-log-page-total");
   const prevBtn = document.getElementById("mobile-multi-log-prev-page");
@@ -46547,9 +46703,13 @@ async function loadMobileMultiAdminLogs(newPage = 1) {
 
   try {
     const limit = limitSelect ? limitSelect.value : 100;
-    const response = await fetch(`/logs/view?page=${newPage}&limit=${limit}`, {
-      headers: { "X-Session-ID": sessionUUID },
-    });
+    const keywordValue = keywordInput ? keywordInput.value.trim() : "";
+    const response = await fetch(
+      `/logs/view?page=${newPage}&limit=${limit}&keyword=${encodeURIComponent(keywordValue)}`,
+      {
+        headers: { "X-Session-ID": sessionUUID },
+      },
+    );
     const result = await response.json();
 
     if (!result.success) {
@@ -46560,18 +46720,32 @@ async function loadMobileMultiAdminLogs(newPage = 1) {
       return;
     }
 
-    if (result.logs.length === 0) {
-      contentEl.textContent = "暂无日志";
+    const rawLogs = Array.isArray(result.logs) ? result.logs : [];
+    const filteredLogs = filterLogsByLevel(
+      rawLogs,
+      filterSelect ? filterSelect.value : "all",
+    );
+
+    if (filteredLogs.length === 0) {
+      contentEl.textContent = rawLogs.length === 0 ? "暂无日志" : "当前筛选条件下暂无日志";
       if (pageSelect)
         pageSelect.innerHTML = '<option value="1">第 1 / 1 页</option>';
-      if (pageTotal) pageTotal.textContent = "(共 0 行)";
+      if (pageTotal) {
+        pageTotal.textContent =
+          rawLogs.length === 0 ? "(共 0 行)" : `(本页筛选后 0 / ${rawLogs.length} 行)`;
+      }
       return;
     }
 
-    contentEl.textContent = result.logs.join("");
+    renderHighlightedLogs(contentEl, filteredLogs, keywordValue);
 
     const pagination = result.pagination;
-    if (pageTotal) pageTotal.textContent = `(共 ${pagination.total_lines} 行)`;
+    if (pageTotal) {
+      pageTotal.textContent =
+        (filterSelect && filterSelect.value !== "all") || keywordValue
+          ? `(本页筛选后 ${filteredLogs.length} / ${rawLogs.length} 行，总计 ${pagination.total_lines} 行)`
+          : `(共 ${pagination.total_lines} 行)`;
+    }
 
     if (pageSelect) {
       pageSelect.innerHTML = "";

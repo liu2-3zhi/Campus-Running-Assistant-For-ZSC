@@ -6131,31 +6131,50 @@
               class="hidden space-y-3 overflow-hidden"
             >
               <!-- 面板头部：包含标题和控制选项 -->
-              <div class="flex justify-between items-center">
-                <!-- 面板标题 -->
-                <h4 class="font-semibold text-sm">系统日志</h4>
-                <!-- 控制选项组：日志行数选择和刷新按钮 -->
-                <div class="flex gap-2">
-                  <!-- 日志行数选择下拉框 -->
-                  <select
-                    id="mobile-multi-log-limit-select"
-                    class="text-xs border border-slate-300 rounded px-2 py-1"
-                    aria-label="移动日志每页限制"
-                  >
-                    <option value="100">每页100行</option>
-                    <option value="200">每页200行</option>
-                    <option value="500">每页500行</option>
-                    <option value="1000">每页1000行</option>
-                  </select>
-                  <!-- 刷新日志按钮 -->
-                  <button
-                    id="mobile-multi-admin-refresh-logs"
-                    class="btn btn-ghost !py-1 !px-2 text-xs"
-                  >
-                    刷新
-                  </button>
-                </div>
-              </div>
+<div class="flex flex-col gap-2">
+  <!-- 面板标题 -->
+  <h4 class="font-semibold text-sm">系统日志</h4>
+  <!-- 控制选项组：日志级别过滤、日志行数选择和刷新按钮 -->
+  <div class="flex flex-col gap-2">
+    <select
+      id="mobile-multi-log-level-filter"
+      class="text-xs border border-slate-300 rounded px-2 py-1"
+      aria-label="移动日志级别过滤"
+    >
+      <option value="all">全部级别</option>
+      <option value="debug">Debug</option>
+      <option value="info">Info</option>
+      <option value="warning">Warning</option>
+      <option value="error">Error</option>
+    </select>
+    <input
+      id="mobile-multi-log-keyword-filter"
+      type="text"
+      class="text-xs border border-slate-300 rounded px-2 py-1 min-w-[8rem]"
+      placeholder="输入关键词过滤"
+      aria-label="移动日志关键词过滤"
+    />
+    <!-- 日志行数选择下拉框 -->
+    <select
+      id="mobile-multi-log-limit-select"
+      class="text-xs border border-slate-300 rounded px-2 py-1"
+      aria-label="移动日志每页限制"
+    >
+      <option value="100">每页100行</option>
+      <option value="200">每页200行</option>
+      <option value="500">每页500行</option>
+      <option value="1000">每页1000行</option>
+    </select>
+    <!-- 刷新日志按钮 -->
+    <button
+      id="mobile-multi-admin-refresh-logs"
+      class="btn btn-ghost !py-1 !px-2 text-xs"
+    >
+      刷新
+    </button>
+  </div>
+</div>
+
               <!-- 日志内容显示区域：深色背景终端风格 -->
               <div
                 class="bg-slate-900 text-green-400 rounded-lg p-3 font-mono text-xs overflow-auto max-h-[100vh]"
@@ -6577,6 +6596,9 @@
                     id="mobile-unified-2fa-enabled-actions"
                     class="hidden flex justify-end gap-2"
                   >
+                  <button onclick="test2FA()" class="btn btn-ghost">
+                    测试2FA
+                  </button>
                     <button
                       onclick="disableMobileUnified2FA()"
                       class="btn btn-ghost border border-red-200 text-red-600 !py-1 !px-3 text-xs"
@@ -14727,7 +14749,25 @@
           <div id="admin-logs-panel_modal" class="hidden space-y-4">
             <div class="flex justify-between items-center">
               <h4 class="font-semibold">系统日志</h4>
-              <div class="flex gap-2">
+              <div class="flex gap-2 flex-wrap justify-end">
+                <select
+                  id="log-level-filter_modal"
+                  class="text-sm border border-slate-300 rounded px-2 py-1"
+                  aria-label="日志级别过滤（对话框）"
+                >
+                  <option value="all">全部级别</option>
+                  <option value="debug">Debug</option>
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="error">Error</option>
+                </select>
+                <input
+                  id="log-keyword-filter_modal"
+                  type="text"
+                  class="text-sm border border-slate-300 rounded px-2 py-1 min-w-[10rem]"
+                  placeholder="输入关键词过滤"
+                  aria-label="日志关键词过滤（对话框）"
+                />
                 <select
                   id="log-limit-select_modal"
                   class="text-sm border border-slate-300 rounded px-2 py-1"
