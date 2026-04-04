@@ -17774,7 +17774,7 @@ async function handleAuthLogin(isMobile_use = false) {
           html: `
             <div class="text-left">
               <p class="mb-3">手机号 <strong class="font-mono">${escapeHtml(phoneNumber)}</strong> 尚未注册。</p>
-              <p class="text-sm text-slate-600">是否立即注册？系统将自动填充手机号和验证码。</p>
+              <p class="text-sm text-slate-600">是否立即注册？</p>
             </div>
           `,
           showCancelButton: true,
@@ -18007,7 +18007,7 @@ async function handle2FAVerify() {
       showButtonSuccess("auth-2fa-verify-btn", "验证成功", 800);
       showAuthSuccess("2FA验证成功！");
       $("mobile-auth-login-container").classList.add("hidden");
-      showMobileSessionPicker();
+      
 
 
       if (!result.is_guest) {
@@ -18015,7 +18015,11 @@ async function handle2FAVerify() {
           setButtonLoading("auth-2fa-verify-btn", false);
 
           $("auth-login-container").classList.add("hidden");
+          if (isMobileMode) {
+            showMobileSessionPicker();}
+            else {
           showSessionPicker();
+            }
 
           logMessage_Info("[会话选择] 请选择要进入的会话，或创建新会话");
           logMessage_Info("[提示] 每个会话都是独立的学校账号登录状态");
@@ -19459,6 +19463,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
     let canManageUsers = false;
     let canViewLogs = false;
     let canViewCaptchaHistory = false;
+    let canManageBilling = false;
+    let canRestoreAccount = false;
     if (!skipAuthCheck) {
       try {
         // [权限检查] 并行执行多个权限检查，提高效率
@@ -19474,6 +19480,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         // [4] (auth status check) - 身份验证状态检查
         // [5] view_logs           - 查看日志权限（系统日志、操作日志）
         // [6] view_captcha_history- 查看验证码历史权限
+        // [7] manage_billing      - 账单管理权限
+        // [8] restore_account     - 恢复账号权限
         const permissionChecks = await Promise.all([
           checkAdminPermission("manage_users"), // 索引0: 用户管理权限
           checkAdminPermission("view_messages"), // 索引1: 消息查看权限
@@ -19482,6 +19490,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
           checkAuthStatus(), // 索引4: 身份验证状态
           checkAdminPermission("view_logs"), // 索引5: 日志查看权限
           checkAdminPermission("view_captcha_history"), // 索引6: 验证码历史查看权限
+          checkAdminPermission("manage_system"), // 索引7: 账单管理权限
+          checkAdminPermission("manage_system"), // 索引8: 恢复账号权限
         ]);
 
         // [权限赋值] 从Promise.all的结果数组中提取各项权限
@@ -19492,7 +19502,9 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         hasGodMode = permissionChecks[3]; // 上帝模式权限结果 ← 这是bruteforce标签的关键
         isAuthenticated = permissionChecks[4]; // 身份验证状态结果
         canViewLogs = permissionChecks[5]; // 日志查看权限结果
-        canViewCaptchaHistory = permissionChecks[6]; // 验证码历史权限结果
+        canViewCaptchaHistory = permissionChecks[6]; // 验证码历史查看权限结果
+        canManageBilling = permissionChecks[7]; // 账单管理权限结果
+        canRestoreAccount = permissionChecks[8]; // 恢复账号权限结果
 
         // [调试日志] 记录所有权限检查的完整结果
         // 这对于调试权限问题非常重要，可以一目了然地看到用户拥有哪些权限
@@ -19504,6 +19516,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
           isAuthenticated: isAuthenticated, // 是否已认证
           canViewLogs: canViewLogs, // 是否可查看日志
           canViewCaptchaHistory: canViewCaptchaHistory, // 是否可查看验证码历史
+          canManageBilling: canManageBilling, // 是否可管理账单
+          canRestoreAccount: canRestoreAccount, // 是否可恢复账号
           userGroup: currentUserData?.group || "未知", // 当前用户组
           username: currentUserData?.username || "未知", // 当前用户名
         });
@@ -19535,6 +19549,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         isAuthenticated = false;
         canViewLogs = false;
         canViewCaptchaHistory = false;
+        canManageBilling = false;
+        canRestoreAccount = false;
       }
     }
 
@@ -19841,6 +19857,18 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
       console.warn(
         "[水印控制Tab警告] 未找到ID为'admin-tab-watermark-control_modal'的元素",
       );
+    }
+
+    adminBillingTab = $("admin-tab-billing_modal");
+
+    restoreAccountTab=$("admin-tab-restore-account_modal");
+
+    if (adminBillingTab) {
+      adminBillingTab.style.display = canManageBilling ? "block" : "none";
+    }
+
+    if (restoreAccountTab) {
+      restoreAccountTab.style.display = canRestoreAccount ? "block" : "none";
     }
 
     if (modalCaptchaTab)
@@ -30740,6 +30768,20 @@ function startSessionValidityCheck() {
     5 * 60 * 1000,
   );
 }
+// function updateMobileGuestVisibility() {
+//   console.log("[移动端] 更新游客用户相关元素的可见性，当前用户是否为游客:",
+//     currentUserIsGuest);
+//   const mobileSidebarUserDetailsLink = document.getElementById(
+//     "mobile-sidebar-user-details-link",
+//   );
+
+//   if (mobileSidebarUserDetailsLink) {
+//     mobileSidebarUserDetailsLink.style.display = currentUserIsGuest
+//       ? "none"
+//       : "";
+//   }
+// }
+
 async function initializeApp() {
   function ShowMobileLoadingOverlay() {
     const isMobile = detectMobileDevice();
@@ -31191,6 +31233,7 @@ async function initializeApp() {
 
     currentUserIsGuest = initialData.is_guest || false;
     currentAuthUsername = initialData.auth_username || null;
+    // updateMobileGuestVisibility();
     logMessage_Info(
       `initializeApp: currentUserIsGuest = ${currentUserIsGuest}, auth_username = ${currentAuthUsername}`,
     );
@@ -46055,7 +46098,7 @@ async function initMobileAdminPanel(prefix) {
       id: "profile",
       label: "资料",
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>',
-      permission: "all",
+      permission: "no_guest",
     },
     {
       id: "sessions",
@@ -46240,6 +46283,10 @@ async function initMobileAdminPanel(prefix) {
     // 权限类型3: "super_admin" - 仅超级管理员可见
     if (tab.permission === "super_admin" && userGroup === "super_admin")
       return true;
+
+    // 权限类型4: "no_guest" - 仅非游客用户可见
+    if (tab.permission === "no_guest" && currentUserIsGuest === true) 
+      return false;
 
     // ========================================
     // 【关键修复】权限类型4: "payment-logs-special" - 支付历史标签的特殊权限逻辑
