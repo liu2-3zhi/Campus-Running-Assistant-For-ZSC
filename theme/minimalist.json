@@ -1,0 +1,9 @@
+{
+  "basic_information": {
+    "id": "theme-minimalist",
+    "label": "极简风",
+    "description": "简洁排版、大量留白，突出内容本身。",
+    "svg": "<svg width=\"320\" height=\"200\" viewBox=\"0 0 320 200\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"320\" height=\"200\" rx=\"24\" fill=\"#FAFAF9\"/><rect x=\"34\" y=\"24\" width=\"252\" height=\"152\" rx=\"20\" fill=\"#FFFFFF\" stroke=\"#E7E5E4\"/><rect x=\"62\" y=\"48\" width=\"76\" height=\"10\" rx=\"5\" fill=\"#1C1917\"/><rect x=\"62\" y=\"70\" width=\"144\" height=\"6\" rx=\"3\" fill=\"#D6D3D1\"/><rect x=\"62\" y=\"84\" width=\"126\" height=\"6\" rx=\"3\" fill=\"#E7E5E4\"/><line x1=\"62\" y1=\"104\" x2=\"258\" y2=\"104\" stroke=\"#E7E5E4\"/><rect x=\"62\" y=\"122\" width=\"54\" height=\"54\" rx=\"27\" fill=\"#F5F5F4\"/><rect x=\"136\" y=\"126\" width=\"86\" height=\"8\" rx=\"4\" fill=\"#D6D3D1\"/><rect x=\"136\" y=\"144\" width=\"72\" height=\"8\" rx=\"4\" fill=\"#E7E5E4\"/><rect x=\"136\" y=\"162\" width=\"48\" height=\"8\" rx=\"4\" fill=\"#78716C\" fill-opacity=\"0.22\"/></svg>"
+  },
+  "global_environment_variables": {}
+}

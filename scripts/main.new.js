@@ -16576,6 +16576,8 @@ const paramGroups = [
 ];
 
 let pythonParams = {};
+let currentThemeConfig = {};
+let availableThemeStyles = [];
 
 let cachedMultiAccounts = [];
 
@@ -16644,35 +16646,243 @@ function safeResizeAndFitView() {
   }
 }
 
-function setThemeStyle(styleName, save = true) {
-  // 增加 save 参数
-  document.body.classList.remove("theme-anime", "theme-minimalist");
+function applyThemeGlobalEnvironmentVariables(themeConfig) {
+  const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
+  const env =
+    config.global_environment_variables &&
+    typeof config.global_environment_variables === "object"
+      ? config.global_environment_variables
+      : {};
 
-  if (styleName !== "default") {
-    document.body.classList.add(styleName);
+  currentThemeConfig = config;
+  window.themeConfig = config;
+  window.themeGlobalEnvironmentVariables = env;
+
+  Object.keys(window).forEach((key) => {
+    if (key.startsWith("themeEnv_")) {
+      try {
+        delete window[key];
+      } catch (_) {}
+    }
+  });
+
+  Object.entries(env).forEach(([key, value]) => {
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)) return;
+    window[`themeEnv_${key}`] = value;
+  });
+}
+
+function getThemeStyleConfig(styleId) {
+  const normalizedStyle = normalizeThemeStyle(styleId);
+  const styles = Array.isArray(availableThemeStyles) ? availableThemeStyles : [];
+  const matchedStyle = styles.find((style) => style && style.id === normalizedStyle);
+
+  if (matchedStyle && typeof matchedStyle === "object") {
+    return {
+      basic_information: {
+        id: matchedStyle.id || normalizedStyle,
+        label: matchedStyle.label || matchedStyle.id || normalizedStyle,
+        description: matchedStyle.description || "",
+        svg: matchedStyle.svg || "",
+      },
+      global_environment_variables:
+        matchedStyle.global_environment_variables &&
+        typeof matchedStyle.global_environment_variables === "object"
+          ? matchedStyle.global_environment_variables
+          : {},
+    };
   }
 
-  const themeButtons = document.querySelectorAll(
-    '#admin-profile-panel_modal button[onclick^="setThemeStyle"]',
+  return normalizedStyle === "default" ? {} : currentThemeConfig || {};
+}
+
+function setThemeStyle(styleName, save = true) {
+  const normalizedStyle = normalizeThemeStyle(styleName);
+  const nextThemeConfig = getThemeStyleConfig(normalizedStyle);
+  pythonParams.theme_style = normalizedStyle;
+
+  document.body.classList.remove(
+    "theme-anime",
+    "theme-minimalist",
+    "theme-corporate",
+    "theme-creative",
+    "theme-futuristic",
+    "theme-retro",
+    "theme-admin",
   );
-  themeButtons.forEach((btn) => {
-    const onclickValue = btn.getAttribute("onclick");
-    if (onclickValue && onclickValue.includes(`'${styleName}'`)) {
+
+  if (normalizedStyle !== "default") {
+    document.body.classList.add(normalizedStyle);
+  }
+
+  applyThemeGlobalEnvironmentVariables(nextThemeConfig);
+
+  document.querySelectorAll('[data-theme-style]').forEach((btn) => {
+    if (btn.dataset.themeStyle === normalizedStyle) {
       btn.classList.add("border-2", "border-sky-500");
     } else {
       btn.classList.remove("border-2", "border-sky-500");
     }
   });
 
-  // 仅当 save 为 true 时调用 API
   if (save) {
-    callPythonAPI("update_param", "theme_style", styleName);
-    logMessage_Info(`主题样式已切换为: ${styleName}`);
+    callPythonAPI("update_param", "theme_style", normalizedStyle);
+    logMessage_Info(`主题样式已切换为: ${normalizedStyle}`);
   }
 }
 
-function applyAndSaveTheme(theme) {
-  if (theme === "dark") {
+const THEME_STORAGE_KEY = "theme_preference";
+let currentThemePreference = "light";
+window.currentThemePreference = currentThemePreference;
+
+function normalizeThemePreference(theme) {
+  return theme === "dark" ? "dark" : "light";
+}
+
+function updateGlobalThemePreference(theme) {
+  currentThemePreference = normalizeThemePreference(theme);
+  window.currentThemePreference = currentThemePreference;
+  return currentThemePreference;
+}
+
+function cacheThemePreference(theme) {
+  const normalizedTheme = updateGlobalThemePreference(theme);
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
+  } catch (e) {
+    logMessage_Warning("[主题] 写入本地主题缓存失败:", e);
+  }
+  return normalizedTheme;
+}
+
+function getCachedThemePreference() {
+  try {
+    return normalizeThemePreference(localStorage.getItem(THEME_STORAGE_KEY));
+  } catch (e) {
+    logMessage_Warning("[主题] 读取本地主题缓存失败:", e);
+    return "light";
+  }
+}
+
+function syncThemeSelects(theme) {
+  const normalizedTheme = normalizeThemePreference(theme);
+  const profileThemeSelect = $("profile-theme-select");
+  if (profileThemeSelect) {
+    profileThemeSelect.value = normalizedTheme;
+  }
+
+  const mobileThemeSelect = document.getElementById("mobile-unified-theme-select");
+  if (mobileThemeSelect) {
+    mobileThemeSelect.value = normalizedTheme;
+  }
+}
+
+function normalizeThemeStyle(styleId) {
+  if (typeof styleId !== "string" || !styleId.trim()) {
+    return "default";
+  }
+
+  const normalizedStyle = styleId.trim();
+  const styles = Array.isArray(availableThemeStyles) ? availableThemeStyles : [];
+  if (styles.some((style) => style && style.id === normalizedStyle)) {
+    return normalizedStyle;
+  }
+
+  return normalizedStyle === "default" ? "default" : "default";
+}
+
+function renderThemeStyleButtons(container, currentStyle = "default", options = {}) {
+  if (!container) return;
+
+  const styles = Array.isArray(availableThemeStyles) ? availableThemeStyles : [];
+  const normalizedCurrentStyle = normalizeThemeStyle(currentStyle);
+  const { mobile = false } = options;
+  const clickHandler = mobile ? "setMobileUnifiedThemeStyle" : "setThemeStyle";
+
+  if (mobile) {
+    container.className = "space-y-3";
+  } else {
+    container.className = "grid grid-cols-2 gap-2";
+  }
+
+  container.innerHTML = "";
+  styles.forEach((style) => {
+    if (!style || !style.id) return;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("onclick", `${clickHandler}('${style.id}')`);
+    button.title = style.description || style.label || style.id;
+    button.dataset.themeStyle = style.id;
+
+    const safeLabel = escapeHtml(style.label || style.id);
+    const safeDescription = escapeHtml(style.description || "");
+    const safeSvg = style.svg ? sanitizeSVG(style.svg) : "";
+
+    button.className = mobile
+      ? "w-full rounded-2xl border-2 border-transparent bg-white p-3 text-left shadow-sm overflow-hidden"
+      : "btn btn-ghost !rounded-lg !py-2 !px-2 border-2 border-transparent text-left overflow-hidden";
+
+    button.innerHTML = mobile
+      ? `
+        <div class="flex items-start gap-3">
+          <div class="w-28 h-20 shrink-0 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
+            ${safeSvg || '<span class="text-xs text-slate-400">暂无预览</span>'}
+          </div>
+          <div class="min-w-0 flex-1 pt-0.5">
+            <div class="text-sm font-semibold text-slate-800 break-words">${safeLabel}</div>
+            ${safeDescription ? `<div class="text-xs text-slate-500 mt-1 break-words">${safeDescription}</div>` : ""}
+          </div>
+        </div>
+      `
+      : `
+        <div class="space-y-2">
+          <div class="h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
+            ${safeSvg || '<span class="text-xs text-slate-400">暂无预览</span>'}
+          </div>
+          <div>
+            <div class="text-sm font-medium text-slate-800">${safeLabel}</div>
+            ${safeDescription ? `<div class="text-xs text-slate-500 mt-1 line-clamp-2">${safeDescription}</div>` : ""}
+          </div>
+        </div>
+      `;
+
+    if (style.id === normalizedCurrentStyle) {
+      button.classList.add("border-2", "border-sky-500");
+    }
+
+    container.appendChild(button);
+  });
+}
+
+async function ensureThemeStylesLoaded(force = false) {
+  if (!force && Array.isArray(availableThemeStyles) && availableThemeStyles.length > 0) {
+    return availableThemeStyles;
+  }
+
+  try {
+    const result = await callPythonAPI("get_theme_styles");
+    if (result && result.success && Array.isArray(result.theme_styles)) {
+      availableThemeStyles = result.theme_styles;
+      if (result.theme_config && typeof result.theme_config === "object") {
+        currentThemeConfig = result.theme_config;
+        applyThemeGlobalEnvironmentVariables(currentThemeConfig);
+      }
+      return availableThemeStyles;
+    }
+  } catch (e) {
+    logMessage_Warning("[主题] 加载主题风格列表失败:", e);
+  }
+
+  availableThemeStyles = [];
+  return availableThemeStyles;
+}
+
+function applyTheme(theme, options = {}) {
+  const normalizedTheme = normalizeThemePreference(theme);
+  const { cache = true, syncControls = true } = options;
+
+  if (normalizedTheme === "dark") {
     document.body.classList.add("dark-mode");
     logMessage_Info("[主题] 已应用深色模式");
   } else {
@@ -16680,26 +16890,94 @@ function applyAndSaveTheme(theme) {
     logMessage_Info("[主题] 已应用浅色模式");
   }
 
+  if (cache) {
+    cacheThemePreference(normalizedTheme);
+  } else {
+    updateGlobalThemePreference(normalizedTheme);
+  }
+
+  if (syncControls) {
+    syncThemeSelects(normalizedTheme);
+  }
+
+  return normalizedTheme;
+}
+
+async function saveThemePreference(theme) {
+  const normalizedTheme = applyTheme(theme);
+
+  if (!sessionUUID) {
+    logMessage_Info(`[主题] 当前未登录，仅保存本地主题: ${normalizedTheme}`);
+    return { success: true, theme: normalizedTheme, localOnly: true };
+  }
+
   try {
-    fetch("/auth/user/update_theme", {
+    const response = await fetch("/auth/user/update_theme", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Session-ID": sessionUUID,
       },
-      body: JSON.stringify({ theme: theme }),
-    })
-      .then((response) => response.json())
-      .then((result) => {
-        if (result.success) {
-          logMessage_Info(`[主题] 主题设置已保存: ${theme}`);
-        } else {
-          logMessage_Warning(`[主题] 保存主题设置失败: ${result.message}`);
-        }
-      });
+      body: JSON.stringify({ theme: normalizedTheme }),
+    });
+    const result = await response.json();
+
+    if (result.success) {
+      logMessage_Info(`[主题] 主题设置已保存: ${normalizedTheme}`);
+      return { ...result, theme: normalizeThemePreference(result.theme || normalizedTheme) };
+    }
+
+    logMessage_Warning(`[主题] 保存主题设置失败: ${result.message}`);
+    return result;
   } catch (e) {
     logMessage_Error("[主题] 保存主题设置时出错:", e);
+    return { success: false, message: e.message || "保存主题失败" };
   }
+}
+
+async function syncThemeFromServer(themeFromResponse = null) {
+  const responseTheme =
+    typeof themeFromResponse === "string" && themeFromResponse
+      ? normalizeThemePreference(themeFromResponse)
+      : null;
+
+  if (!sessionUUID) {
+    const fallbackTheme = responseTheme || getCachedThemePreference();
+    applyTheme(fallbackTheme);
+    return fallbackTheme;
+  }
+
+  if (responseTheme) {
+    applyTheme(responseTheme);
+    logMessage_Info(`[主题] 已同步服务器主题: ${responseTheme}`);
+    return responseTheme;
+  }
+
+  try {
+    const response = await fetch("/auth/user/theme", {
+      headers: {
+        "X-Session-ID": sessionUUID,
+      },
+    });
+    const result = await response.json();
+    if (result.success) {
+      const serverTheme = normalizeThemePreference(result.theme);
+      applyTheme(serverTheme);
+      logMessage_Info(`[主题] 已同步服务器主题: ${serverTheme}`);
+      return serverTheme;
+    }
+    logMessage_Warning(`[主题] 读取服务器主题失败: ${result.message}`);
+  } catch (e) {
+    logMessage_Warning("[主题] 同步服务器主题失败:", e);
+  }
+
+  const fallbackTheme = getCachedThemePreference();
+  applyTheme(fallbackTheme);
+  return fallbackTheme;
+}
+
+function applyAndSaveTheme(theme) {
+  return saveThemePreference(theme);
 }
 
 function resetBaseColorToDefault(prefix) {
@@ -17632,6 +17910,8 @@ async function handleAuthLogin(isMobile_use = false) {
           sessionUUID.substring(0, 16) + "...",
         );
       }
+
+      await syncThemeFromServer(result.theme);
 
       let successMessage = "登录成功！";
 
@@ -21953,7 +22233,7 @@ async function loadPersonalInfo() {
         setThemeStyle(paramsResult.theme_style);
       }
       if (user.theme) {
-        applyAndSaveTheme(user.theme);
+        applyTheme(user.theme);
       }
     } catch (e) {
       logMessage_Warning("[loadPersonalInfo] 加载主题设置失败:", e);
@@ -23234,44 +23514,20 @@ async function updateTheme() {
   if (!themeSelect) return;
 
   const selectedTheme = themeSelect.value;
+  const previousTheme = currentThemePreference;
+  const result = await saveThemePreference(selectedTheme);
 
-  applyAndSaveTheme(selectedTheme);
-
-  try {
-    const response = await fetch("/auth/user/update_theme", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
-      },
-      body: JSON.stringify({
-        theme: selectedTheme,
-      }),
+  if (result.success) {
+    Swal.fire({
+      title: "成功",
+      text: "主题更新成功！",
+      icon: "success",
     });
-    const result = await response.json();
-
-    if (result.success) {
-      // showModalAlert("主题更新成功！", "成功");
-      Swal.fire({
-        title: "成功",
-        text: "主题更新成功！",
-        icon: "success",
-      });
-    } else {
-      // showModalAlert(`更新失败: ${result.message}`, "错误");
-      Swal.fire({
-        title: "错误",
-        text: `更新失败: ${result.message}`,
-        icon: "error",
-      });
-      applyAndSaveTheme(selectedTheme === "dark" ? "light" : "dark");
-    }
-  } catch (e) {
-    logMessage_Error("更新主题失败:", e);
-    // showModalAlert(`更新失败: ${e.message}`, "错误");
+  } else {
+    applyTheme(previousTheme);
     Swal.fire({
       title: "错误",
-      text: `更新失败: ${e.message}`,
+      text: `更新失败: ${result.message}`,
       icon: "error",
     });
   }
@@ -31061,6 +31317,7 @@ async function initializeApp() {
 
   ShowLoadingOverlay();
   ShowMobileLoadingOverlay();
+  applyTheme(getCachedThemePreference());
 
   try {
     function isValidUUID(uuid) {
@@ -31484,6 +31741,27 @@ async function initializeApp() {
 
     // 使用统一的加载函数获取初始数据，并自动更新管理员任务列表
     const initialData = await loadInitialData();
+    availableThemeStyles = Array.isArray(initialData?.theme_styles)
+      ? initialData.theme_styles
+      : [];
+    currentThemeConfig =
+      initialData?.theme_config && typeof initialData.theme_config === "object"
+        ? initialData.theme_config
+        : {};
+    applyThemeGlobalEnvironmentVariables(currentThemeConfig);
+    if (!availableThemeStyles.length) {
+      await ensureThemeStylesLoaded();
+    }
+    renderThemeStyleButtons(
+      document.getElementById("profile-theme-style-buttons"),
+      pythonParams.theme_style || "default",
+    );
+    renderThemeStyleButtons(
+      document.getElementById("mobile-unified-theme-style-buttons"),
+      pythonParams.theme_style || "default",
+      { mobile: true },
+    );
+    await syncThemeFromServer(initialData?.theme);
 
     currentUserIsGuest = initialData.is_guest || false;
     currentAuthUsername = initialData.auth_username || null;
@@ -33241,6 +33519,7 @@ async function onLogin() {
   logMessage_Info("[前端-登录] 调用后端API进行登录验证...");
   const result = await callPythonAPI("login", user, pass);
   if (result.success) {
+    await syncThemeFromServer(result.theme);
     logMessage_Info("[前端-登录] ✓ 登录成功！");
     showButtonSuccess("login-button", "登录成功");
     if (result.amap_key) {
@@ -38483,12 +38762,10 @@ function createParamInputs(
         div.innerHTML = `
           <label class="block text-slate-700 font-semibold">${def.label}</label>
           <p class="mt-1 text-xs text-slate-500">${def.help}</p>
-          <div class="grid grid-cols-3 gap-2 mt-2">
-              <button onclick="setThemeStyle('default')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">默认</button>
-              <button onclick="setThemeStyle('theme-anime')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">二次元</button>
-              <button onclick="setThemeStyle('theme-minimalist')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">简约</button>
-          </div>
+          <div id="${prefix}-theme-style-buttons" class="grid grid-cols-2 gap-2 mt-2"></div>
         `;
+        const buttonsContainer = div.querySelector(`#${prefix}-theme-style-buttons`);
+        renderThemeStyleButtons(buttonsContainer, pythonParams.theme_style || "default");
       } else if (def.type === "color_picker") {
         div.innerHTML = `
           <label for="${prefix}-${key}" class="block text-slate-700 font-semibold">${def.label}</label>
@@ -50208,70 +50485,26 @@ async function updateMobileUnifiedTheme() {
   if (!select) return;
 
   const selectedTheme = select.value;
+  const previousTheme = currentThemePreference;
+  const result = await saveThemePreference(selectedTheme);
 
-  // 调用全局应用主题函数 (main.py/index.html 中已存在)
-  if (typeof applyAndSaveTheme === "function") {
-    applyAndSaveTheme(selectedTheme);
-  }
-
-  // 同时调用后端API持久化保存
-  try {
-    const response = await fetch("/auth/user/update_theme", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
-      },
-      body: JSON.stringify({
-        theme: selectedTheme,
-      }),
-    });
-  } catch (e) {
-    console.error("更新主题失败:", e);
+  if (!result.success) {
+    applyTheme(previousTheme);
+    console.error("更新主题失败:", result.message);
   }
 }
 
 // 5. 设置主题样式 (默认/二次元/简约)
 function setMobileUnifiedThemeStyle(styleName) {
-  // 调用全局设置函数 (setThemeStyle 内部已经包含了 update_param 的 API 调用)
   if (typeof setThemeStyle === "function") {
     setThemeStyle(styleName);
   }
 
-  // 更新移动端面板内的按钮高亮状态
-  // 修正：直接定位到样式预设的容器 ID
-  const container = document.getElementById(
-    "mobile-unified-theme-style-presets",
+  renderThemeStyleButtons(
+    document.getElementById("mobile-unified-theme-style-buttons"),
+    styleName,
+    { mobile: true },
   );
-  if (container) {
-    const buttons = container.querySelectorAll("button");
-    buttons.forEach((btn) => {
-      const onclickAttr = btn.getAttribute("onclick");
-      if (onclickAttr && onclickAttr.includes(`'${styleName}'`)) {
-        // 选中状态：高亮显示 (天蓝色背景+边框+加粗)
-        btn.classList.remove("border-slate-300", "text-[10px]");
-        btn.classList.add(
-          "border-sky-500",
-          "bg-sky-50",
-          "text-sky-600",
-          "font-bold",
-          "text-xs",
-          "shadow-sm",
-        );
-      } else {
-        // 未选中状态：恢复默认灰边
-        btn.classList.remove(
-          "border-sky-500",
-          "bg-sky-50",
-          "text-sky-600",
-          "font-bold",
-          "text-xs",
-          "shadow-sm",
-        );
-        btn.classList.add("border-slate-300", "text-[10px]");
-      }
-    });
-  }
 }
 
 // ========================================
