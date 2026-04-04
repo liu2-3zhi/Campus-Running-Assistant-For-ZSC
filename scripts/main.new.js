@@ -15827,15 +15827,11 @@ async function callPythonAPI(method, ...args) {
       `[API调用] 警告: sessionUUID为空，可能导致会话无效错误，尝试从URL提取...`,
     );
     sessionUUID = getUUIDFromURL();
-    if (
-      sessionUUID ||
-      sessionUUID !== null ||
-      sessionUUID !== undefined ||
-      sessionUUID !== "null"
-    ) {
+    if (sessionUUID && sessionUUID !== "null" && sessionUUID !== "undefined") {
       logMessage_Info(`[API调用] 从URL提取到会话ID: ${sessionUUID}`);
       headers["X-Session-ID"] = sessionUUID;
     } else {
+      sessionUUID = null;
       logMessage_Warning(`[API调用] 无法从URL提取会话ID`);
     }
   }
@@ -16085,6 +16081,15 @@ async function callPythonAPI(method, ...args) {
       errorData.message &&
       errorData.message.includes("会话已过期或无效")
     ) {
+      const shouldSuppressSessionExpiredModal =
+        method === "get_theme_styles" && !sessionUUID;
+      if (shouldSuppressSessionExpiredModal) {
+        logMessage_Info(
+          "[API调用] get_theme_styles 在未登录状态返回会话失效，跳过弹窗并交由本地缓存兜底",
+        );
+        throw new Error("会话已过期或无效");
+      }
+
       logMessage_Error("[API调用] ✗ 会话已过期或无效！");
       logMessage_Info("[系统] 您的会话已过期或无效，请重新登录。");
 
@@ -16767,6 +16772,51 @@ function applyThemeGlobalEnvironmentVariables(themeConfig) {
     if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)) return;
     window[`themeEnv_${key}`] = value;
   });
+
+  applyThemeLoginContainerStyle(config);
+}
+
+function applyThemeLoginContainerStyle(themeConfig) {
+  const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
+  const env =
+    config.global_environment_variables &&
+    typeof config.global_environment_variables === "object"
+      ? config.global_environment_variables
+      : {};
+
+  const desktopContainer = document.getElementById("auth-login-container");
+  const desktopPanel = document.getElementById("auth-login-container_panel");
+  const mobileContainer = document.getElementById("mobile-auth-login-container");
+  const mobileCard = document.getElementById("mobile-auth-login-container-card");
+
+  const desktopBackground = env.auth_login_container_background || "";
+  const panelBackground = env.auth_login_panel_background || "";
+  const mobileBackground = env.mobile_auth_login_card_background || "";
+  const panelShadow = env.auth_login_panel_shadow || "";
+  const mobileShadow = env.mobile_auth_login_card_shadow || "";
+  const panelBorder = env.auth_login_panel_border || "";
+
+  if (desktopContainer) {
+    desktopContainer.style.background = desktopBackground;
+  }
+
+  if (desktopPanel) {
+    desktopPanel.style.background = panelBackground;
+    desktopPanel.style.boxShadow = panelShadow;
+    desktopPanel.style.borderColor = panelBorder;
+  }
+
+  if (mobileContainer) {
+    mobileContainer.style.background = desktopBackground;
+    mobileContainer.style.borderRadius = "";
+    mobileContainer.style.padding = "";
+  }
+
+  if (mobileCard) {
+    mobileCard.style.background = mobileBackground;
+    mobileCard.style.boxShadow = mobileShadow;
+    mobileCard.style.borderColor = panelBorder;
+  }
 }
 
 function getThemeStyleConfig(styleId) {
@@ -16796,7 +16846,8 @@ function getThemeStyleConfig(styleId) {
 function setThemeStyle(styleName, save = true) {
   const normalizedStyle = normalizeThemeStyle(styleName);
   const nextThemeConfig = getThemeStyleConfig(normalizedStyle);
-  pythonParams.theme_style = normalizedStyle;
+  const cachedStyle = cacheThemeStyle(normalizedStyle);
+  pythonParams.theme_style = cachedStyle;
 
   document.body.classList.remove(
     "theme-anime",
@@ -16808,14 +16859,14 @@ function setThemeStyle(styleName, save = true) {
     "theme-admin",
   );
 
-  if (normalizedStyle !== "default") {
-    document.body.classList.add(normalizedStyle);
+  if (cachedStyle !== "default") {
+    document.body.classList.add(cachedStyle);
   }
 
   applyThemeGlobalEnvironmentVariables(nextThemeConfig);
 
   document.querySelectorAll('[data-theme-style]').forEach((btn) => {
-    if (btn.dataset.themeStyle === normalizedStyle) {
+    if (btn.dataset.themeStyle === cachedStyle) {
       btn.classList.add("border-2", "border-sky-500");
     } else {
       btn.classList.remove("border-2", "border-sky-500");
@@ -16823,14 +16874,17 @@ function setThemeStyle(styleName, save = true) {
   });
 
   if (save) {
-    callPythonAPI("update_param", "theme_style", normalizedStyle);
-    logMessage_Info(`主题样式已切换为: ${normalizedStyle}`);
+    callPythonAPI("update_param", "theme_style", cachedStyle);
+    logMessage_Info(`主题样式已切换为: ${cachedStyle}`);
   }
 }
 
 const THEME_STORAGE_KEY = "theme_preference";
+const THEME_STYLE_STORAGE_KEY = "theme_style";
 let currentThemePreference = "light";
+let currentThemeStyle = "default";
 window.currentThemePreference = currentThemePreference;
+window.currentThemeStyle = currentThemeStyle;
 
 function normalizeThemePreference(theme) {
   return theme === "dark" ? "dark" : "light";
@@ -16874,6 +16928,41 @@ function syncThemeSelects(theme) {
   }
 }
 
+function updateGlobalThemeStyle(styleId) {
+  currentThemeStyle = normalizeThemeStyle(styleId);
+  window.currentThemeStyle = currentThemeStyle;
+  return currentThemeStyle;
+}
+
+function cacheThemeStyle(styleId) {
+  const normalizedStyle = updateGlobalThemeStyle(styleId);
+  try {
+    localStorage.setItem(THEME_STYLE_STORAGE_KEY, normalizedStyle);
+  } catch (e) {
+    logMessage_Warning("[主题] 写入本地主题风格缓存失败:", e);
+  }
+  return normalizedStyle;
+}
+
+function getCachedThemeStyle() {
+  try {
+    return updateGlobalThemeStyle(localStorage.getItem(THEME_STYLE_STORAGE_KEY));
+  } catch (e) {
+    logMessage_Warning("[主题] 读取本地主题风格缓存失败:", e);
+    return updateGlobalThemeStyle("default");
+  }
+}
+
+const KNOWN_THEME_STYLE_IDS = [
+  "default",
+  "theme-anime",
+  "theme-minimalist",
+  "theme-corporate",
+  "theme-creative",
+  "theme-futuristic",
+  "theme-retro",
+];
+
 function normalizeThemeStyle(styleId) {
   if (typeof styleId !== "string" || !styleId.trim()) {
     return "default";
@@ -16885,7 +16974,11 @@ function normalizeThemeStyle(styleId) {
     return normalizedStyle;
   }
 
-  return normalizedStyle === "default" ? "default" : "default";
+  if (KNOWN_THEME_STYLE_IDS.includes(normalizedStyle)) {
+    return normalizedStyle;
+  }
+
+  return "default";
 }
 
 function renderThemeStyleButtons(container, currentStyle = "default", options = {}) {
@@ -17032,45 +17125,65 @@ async function saveThemePreference(theme) {
   }
 }
 
-async function syncThemeFromServer(themeFromResponse = null) {
+async function syncThemeFromServer(themeFromResponse = null, themeStyleFromResponse = null) {
   const responseTheme =
     typeof themeFromResponse === "string" && themeFromResponse
       ? normalizeThemePreference(themeFromResponse)
       : null;
+  const responseThemeStyle =
+    typeof themeStyleFromResponse === "string" && themeStyleFromResponse
+      ? normalizeThemeStyle(themeStyleFromResponse)
+      : null;
 
   if (!sessionUUID) {
     const fallbackTheme = responseTheme || getCachedThemePreference();
+    const fallbackThemeStyle = responseThemeStyle || getCachedThemeStyle();
     applyTheme(fallbackTheme);
-    return fallbackTheme;
+    setThemeStyle(fallbackThemeStyle, false);
+    return { theme: fallbackTheme, theme_style: fallbackThemeStyle };
   }
 
-  if (responseTheme) {
-    applyTheme(responseTheme);
-    logMessage_Info(`[主题] 已同步服务器主题: ${responseTheme}`);
-    return responseTheme;
-  }
+  let serverTheme = responseTheme;
+  let serverThemeStyle = responseThemeStyle;
 
-  try {
-    const response = await fetch("/auth/user/theme", {
-      headers: {
-        "X-Session-ID": sessionUUID,
-      },
-    });
-    const result = await response.json();
-    if (result.success) {
-      const serverTheme = normalizeThemePreference(result.theme);
-      applyTheme(serverTheme);
-      logMessage_Info(`[主题] 已同步服务器主题: ${serverTheme}`);
-      return serverTheme;
+  if (!serverTheme) {
+    try {
+      const response = await fetch("/auth/user/theme", {
+        headers: {
+          "X-Session-ID": sessionUUID,
+        },
+      });
+      const result = await response.json();
+      if (result.success) {
+        serverTheme = normalizeThemePreference(result.theme);
+      } else {
+        logMessage_Warning(`[主题] 读取服务器主题失败: ${result.message}`);
+      }
+    } catch (e) {
+      logMessage_Warning("[主题] 同步服务器主题失败:", e);
     }
-    logMessage_Warning(`[主题] 读取服务器主题失败: ${result.message}`);
-  } catch (e) {
-    logMessage_Warning("[主题] 同步服务器主题失败:", e);
   }
 
-  const fallbackTheme = getCachedThemePreference();
-  applyTheme(fallbackTheme);
-  return fallbackTheme;
+  if (!serverThemeStyle) {
+    try {
+      const paramsResult = await callPythonAPI("get_params");
+      if (paramsResult && paramsResult.theme_style) {
+        serverThemeStyle = normalizeThemeStyle(paramsResult.theme_style);
+      }
+    } catch (e) {
+      logMessage_Warning("[主题] 同步服务器主题风格失败:", e);
+    }
+  }
+
+  const finalTheme = serverTheme || getCachedThemePreference();
+  const finalThemeStyle = serverThemeStyle || getCachedThemeStyle();
+
+  applyTheme(finalTheme);
+  setThemeStyle(finalThemeStyle, false);
+  logMessage_Info(`[主题] 已同步服务器主题: ${finalTheme}`);
+  logMessage_Info(`[主题] 已同步服务器主题风格: ${finalThemeStyle}`);
+
+  return { theme: finalTheme, theme_style: finalThemeStyle };
 }
 
 function applyAndSaveTheme(theme) {
@@ -18008,7 +18121,7 @@ async function handleAuthLogin(isMobile_use = false) {
         );
       }
 
-      await syncThemeFromServer(result.theme);
+      await syncThemeFromServer(result.theme, result.theme_style);
 
       let successMessage = "登录成功！";
 
@@ -31415,6 +31528,10 @@ async function initializeApp() {
   ShowLoadingOverlay();
   ShowMobileLoadingOverlay();
   applyTheme(getCachedThemePreference());
+  const cachedThemeStyle = getCachedThemeStyle();
+  setThemeStyle(cachedThemeStyle, false);
+  await ensureThemeStylesLoaded();
+  setThemeStyle(cachedThemeStyle, false);
 
   try {
     function isValidUUID(uuid) {
@@ -31851,14 +31968,14 @@ async function initializeApp() {
     }
     renderThemeStyleButtons(
       document.getElementById("profile-theme-style-buttons"),
-      pythonParams.theme_style || "default",
+      pythonParams.theme_style || currentThemeStyle || "default",
     );
     renderThemeStyleButtons(
       document.getElementById("mobile-unified-theme-style-buttons"),
-      pythonParams.theme_style || "default",
+      pythonParams.theme_style || currentThemeStyle || "default",
       { mobile: true },
     );
-    await syncThemeFromServer(initialData?.theme);
+    await syncThemeFromServer(initialData?.theme, initialData?.theme_style);
 
     currentUserIsGuest = initialData.is_guest || false;
     currentAuthUsername = initialData.auth_username || null;
@@ -33616,7 +33733,7 @@ async function onLogin() {
   logMessage_Info("[前端-登录] 调用后端API进行登录验证...");
   const result = await callPythonAPI("login", user, pass);
   if (result.success) {
-    await syncThemeFromServer(result.theme);
+    await syncThemeFromServer(result.theme, result.theme_style);
     logMessage_Info("[前端-登录] ✓ 登录成功！");
     showButtonSuccess("login-button", "登录成功");
     if (result.amap_key) {
