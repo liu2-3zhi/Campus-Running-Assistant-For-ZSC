@@ -21,6 +21,9 @@ jobs:
 
       - name: 拉取仓库代码
         uses: actions/checkout@v4
+        with:
+          submodules: true   # 拉取子模块
+          fetch-depth: 0     # 保证能获取完整历史，避免浅克隆
 
       - name: 生成时间戳 TAG
         id: time
