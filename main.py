@@ -10706,6 +10706,24 @@ class Api:
                     logging.warning(f"获取主题配置失败 {current_theme_style}: {e}")
                     current_theme_config = auth_system.get_theme_config("default")
 
+            cdn_cache_status = {}
+            try:
+                with js_cache_lock:
+                    for key, config in CDN_FILES.items():
+                        cdn_cache_status[key] = {
+                            "type": config["type"],
+                            "cached": key in js_cache_storage,
+                            "last_update_time": (
+                                datetime.datetime.fromtimestamp(
+                                    js_cache_last_update[key]
+                                ).strftime("%Y-%m-%d %H:%M:%S")
+                                if key in js_cache_last_update
+                                else None
+                            ),
+                        }
+            except Exception as e:
+                logging.warning(f"[get_initial_data] 获取CDN缓存状态失败: {e}")
+
             response_data = {
                 "success": True,
                 "users": users,
@@ -10723,6 +10741,7 @@ class Api:
                 "theme_global_environment_variables": current_theme_config.get(
                     "global_environment_variables", {}
                 ),
+                "cdn_cache": cdn_cache_status,
                 "is_multi_account_mode": getattr(self, "is_multi_account_mode", False),
                 "captcha_settings": captcha_settings,
             }

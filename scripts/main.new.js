@@ -1730,14 +1730,8 @@ function loadAdminPaymentLogsNext() {
  * 5. 处理错误情况
  */
 async function showPaymentLogDetail(logId) {
-  // ========== 步骤1：验证参数 ==========
-
-  // 检查logId是否有效
-  // 如果为空或未定义，显示错误提示并返回
   if (!logId) {
-    // console.error('[支付日志详情] 日志ID为空');
     logMessage_Error("[支付日志详情] 日志ID为空");
-    // showModalAlert("日志ID无效");
     Swal.fire({
       icon: "error",
       title: "日志ID无效",
@@ -1746,120 +1740,222 @@ async function showPaymentLogDetail(logId) {
     return;
   }
 
-  // console.log(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
   logMessage_Info(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
 
-  // ========== 步骤2：显示模态框和加载状态 ==========
-
-  // 获取模态框和各个显示区域的DOM元素
+  const useMobileModal = typeof isMobileMode !== "undefined" && isMobileMode;
   const modal = document.getElementById("admin-payment-log-detail-modal");
   const loadingDiv = document.getElementById("log-detail-loading");
   const errorDiv = document.getElementById("log-detail-error");
   const contentDiv = document.getElementById("log-detail-content");
 
-  // 防御性检查：确保所有必需的DOM元素都存在
-  if (!modal || !loadingDiv || !errorDiv || !contentDiv) {
-    // console.error('[支付日志详情] 找不到必需的DOM元素');
+  if (!useMobileModal && (!modal || !loadingDiv || !errorDiv || !contentDiv)) {
     logMessage_Error("[支付日志详情] 找不到必需的DOM元素");
     return;
   }
 
-  // 显示模态框
-  modal.classList.remove("hidden");
+  if (useMobileModal) {
+    openMobilePaymentLogDetailModal();
+    const mobileLoadingDiv = document.getElementById(
+      "mobile-log-detail-loading",
+    );
+    const mobileErrorDiv = document.getElementById("mobile-log-detail-error");
+    const mobileContentDiv = document.getElementById(
+      "mobile-log-detail-content",
+    );
+    const mobileErrorMessageElem = document.getElementById(
+      "mobile-log-detail-error-message",
+    );
 
-  // 显示加载状态，隐藏其他内容
-  loadingDiv.classList.remove("hidden");
-  errorDiv.classList.add("hidden");
-  contentDiv.classList.add("hidden");
+    if (!mobileLoadingDiv || !mobileErrorDiv || !mobileContentDiv) {
+      logMessage_Error("[支付日志详情] 找不到移动端模态框元素");
+      return;
+    }
 
-  // ========== 步骤3：调用后端API获取日志详情 ==========
+    mobileLoadingDiv.classList.remove("hidden");
+    mobileErrorDiv.classList.add("hidden");
+    mobileContentDiv.classList.add("hidden");
+    if (mobileErrorMessageElem) {
+      mobileErrorMessageElem.textContent = "";
+    }
+  } else {
+    modal.classList.remove("hidden");
+    loadingDiv.classList.remove("hidden");
+    errorDiv.classList.add("hidden");
+    contentDiv.classList.add("hidden");
+  }
 
   try {
-    // 发送POST请求到后端API
-    // 请求体包含log_id参数
     const response = await fetch("/api/admin/payment/log_detail", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID, // 附加会话ID用于身份验证
+        "X-Session-ID": sessionUUID,
       },
       body: JSON.stringify({
-        log_id: logId, // 传递日志ID
+        log_id: logId,
       }),
     });
 
-    // 检查HTTP响应状态码
-    // 如果不是2xx范围，抛出错误
     if (!response.ok) {
       throw new Error(`HTTP错误: ${response.status}`);
     }
 
-    // 解析响应体为JSON对象
     const result = await response.json();
-
-    // 检查业务逻辑是否成功
-    // success字段为false表示业务处理失败（如权限不足、日志不存在等）
     if (!result.success) {
       throw new Error(result.message || "获取日志详情失败");
     }
 
-    // ========== 步骤4：填充模态框内容 ==========
-
-    // 提取日志详情数据
     const logDetail = result.log_detail || {};
+    const amountText = logDetail.amount
+      ? `¥${parseFloat(logDetail.amount).toFixed(2)}`
+      : "-";
+    const detailJson = JSON.stringify(logDetail, null, 2);
 
-    // 填充基本信息字段
-    // 使用 || 运算符提供默认值，防止字段不存在时显示undefined
-    document.getElementById("log-detail-datetime").textContent =
-      logDetail.datetime || "-";
-    document.getElementById("log-detail-action").textContent =
-      logDetail.action || "-";
-    document.getElementById("log-detail-user-id").textContent =
-      logDetail.user_id || "-";
-    document.getElementById("log-detail-order-id").textContent =
-      logDetail.order_id || "-";
-    document.getElementById("log-detail-client-ip").textContent =
-      logDetail.client_ip || "-";
+    if (useMobileModal) {
+      document.getElementById("mobile-log-detail-datetime").textContent =
+        logDetail.datetime || "-";
+      document.getElementById("mobile-log-detail-action").textContent =
+        logDetail.action || "-";
+      document.getElementById("mobile-log-detail-user-id").textContent =
+        logDetail.user_id || "-";
+      document.getElementById("mobile-log-detail-order-id").textContent =
+        logDetail.order_id || "-";
+      document.getElementById("mobile-log-detail-client-ip").textContent =
+        logDetail.client_ip || "-";
+      document.getElementById("mobile-log-detail-amount").textContent =
+        amountText;
+      document.getElementById("mobile-log-detail-json").textContent = detailJson;
 
-    // 填充金额字段（如果存在）
-    // 金额使用特殊格式化：¥符号 + 保留2位小数
-    const amountElem = document.getElementById("log-detail-amount");
-    if (logDetail.amount) {
-      amountElem.textContent = `¥${parseFloat(logDetail.amount).toFixed(2)}`;
+      document.getElementById("mobile-log-detail-loading").classList.add("hidden");
+      document.getElementById("mobile-log-detail-content").classList.remove("hidden");
     } else {
-      amountElem.textContent = "-";
+      document.getElementById("log-detail-datetime").textContent =
+        logDetail.datetime || "-";
+      document.getElementById("log-detail-action").textContent =
+        logDetail.action || "-";
+      document.getElementById("log-detail-user-id").textContent =
+        logDetail.user_id || "-";
+      document.getElementById("log-detail-order-id").textContent =
+        logDetail.order_id || "-";
+      document.getElementById("log-detail-client-ip").textContent =
+        logDetail.client_ip || "-";
+
+      const amountElem = document.getElementById("log-detail-amount");
+      amountElem.textContent = amountText;
+
+      const jsonElem = document.getElementById("log-detail-json");
+      jsonElem.textContent = detailJson;
+
+      loadingDiv.classList.add("hidden");
+      contentDiv.classList.remove("hidden");
     }
 
-    // 填充完整JSON数据
-    // 使用JSON.stringify格式化，indent=2使其易读
-    const jsonElem = document.getElementById("log-detail-json");
-    jsonElem.textContent = JSON.stringify(logDetail, null, 2);
-
-    // 隐藏加载状态，显示内容
-    loadingDiv.classList.add("hidden");
-    contentDiv.classList.remove("hidden");
-
-    // console.log('[支付日志详情] 日志详情加载成功');
     logMessage_Info("[支付日志详情] 日志详情加载成功");
   } catch (error) {
-    // ========== 步骤5：错误处理 ==========
-
-    // 在控制台输出详细错误信息，便于调试
-    // console.error('[支付日志详情] 获取日志详情失败:', error);
     logMessage_Error("[支付日志详情] 获取日志详情失败: " + error);
 
-    // 在模态框中显示错误信息
-    const errorMessageElem = document.getElementById(
-      "log-detail-error-message",
-    );
-    if (errorMessageElem) {
-      errorMessageElem.textContent = error.message || "未知错误";
-    }
+    if (useMobileModal) {
+      const mobileErrorMessageElem = document.getElementById(
+        "mobile-log-detail-error-message",
+      );
+      if (mobileErrorMessageElem) {
+        mobileErrorMessageElem.textContent = error.message || "未知错误";
+      }
+      document.getElementById("mobile-log-detail-loading").classList.add("hidden");
+      document.getElementById("mobile-log-detail-error").classList.remove("hidden");
+    } else {
+      const errorMessageElem = document.getElementById(
+        "log-detail-error-message",
+      );
+      if (errorMessageElem) {
+        errorMessageElem.textContent = error.message || "未知错误";
+      }
 
-    // 隐藏加载状态，显示错误信息
-    loadingDiv.classList.add("hidden");
-    errorDiv.classList.remove("hidden");
+      loadingDiv.classList.add("hidden");
+      errorDiv.classList.remove("hidden");
+    }
   }
+}
+
+function openMobilePaymentLogDetailModal() {
+  let modal = document.getElementById("mobile-payment-log-detail-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "mobile-payment-log-detail-modal";
+    modal.className = "fixed inset-0 hidden mobile-modal z-[60]";
+    modal.onclick = function (e) {
+      if (e.target === modal) closeMobilePaymentLogDetailModal();
+    };
+    modal.innerHTML = `
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobilePaymentLogDetailModal()"></div>
+      <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobilePaymentLogDetailModal()">
+          <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+        </div>
+        <div class="flex items-center justify-between gap-3 pb-3 border-b border-slate-200">
+          <h3 class="text-lg font-bold text-slate-800">支付日志详情</h3>
+          <!-- <button onclick="closeMobilePaymentLogDetailModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button> -->
+        </div>
+
+        <div id="mobile-log-detail-loading" class="py-10 text-center text-sm text-slate-500">加载中...</div>
+
+        <div id="mobile-log-detail-error" class="hidden rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+          <div class="font-medium">加载失败</div>
+          <div id="mobile-log-detail-error-message" class="mt-1 break-all"></div>
+        </div>
+
+        <div id="mobile-log-detail-content" class="hidden space-y-3">
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">记录时间</div>
+            <div id="mobile-log-detail-datetime" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">操作类型</div>
+            <div id="mobile-log-detail-action" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">用户ID</div>
+            <div id="mobile-log-detail-user-id" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">订单号</div>
+            <div id="mobile-log-detail-order-id" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">客户端IP</div>
+            <div id="mobile-log-detail-client-ip" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">金额</div>
+            <div id="mobile-log-detail-amount" class="mt-1 text-base font-semibold text-slate-900 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <div class="text-[11px] text-slate-400">完整数据</div>
+            <pre id="mobile-log-detail-json" class="mt-2 text-xs leading-5 text-slate-700 overflow-x-auto font-mono whitespace-pre-wrap break-all">-</pre>
+          </div>
+          <button onclick="closeMobilePaymentLogDetailModal()" class="w-full min-h-[44px] rounded-2xl bg-sky-500 px-4 py-3 text-sm font-medium text-white hover:bg-sky-600 transition-colors">
+            关闭
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+
+  modal.classList.remove("hidden");
+  setTimeout(() => {
+    modal.classList.add("show");
+  }, 10);
+}
+
+function closeMobilePaymentLogDetailModal() {
+  const modal = document.getElementById("mobile-payment-log-detail-modal");
+  if (!modal) return;
+
+  modal.classList.remove("show");
+  setTimeout(() => {
+    modal.classList.add("hidden");
+  }, 300);
 }
 
 /**
@@ -1877,20 +1973,21 @@ async function showPaymentLogDetail(logId) {
  * 2. 重置所有显示区域的状态
  */
 function closePaymentLogDetailModal() {
-  // 获取模态框元素
+  if (typeof isMobileMode !== "undefined" && isMobileMode) {
+    closeMobilePaymentLogDetailModal();
+    logMessage_Info("[支付日志详情] 移动端模态框已关闭");
+    return;
+  }
+
   const modal = document.getElementById("admin-payment-log-detail-modal");
 
-  // 防御性检查：确保模态框元素存在
   if (!modal) {
-    // console.error('[支付日志详情] 找不到模态框元素');
     logMessage_Error("[支付日志详情] 找不到模态框元素");
     return;
   }
 
-  // 隐藏模态框
   modal.classList.add("hidden");
 
-  // console.log('[支付日志详情] 模态框已关闭');
   logMessage_Info("[支付日志详情] 模态框已关闭");
 }
 
@@ -45634,17 +45731,30 @@ function triggerCDNForceRefresh() {
       });
       const result = await response.json().catch(() => ({}));
       if (response.ok && result && result.success) {
-        showTempMessage(
-          `CDN后台刷新完成（成功 ${result.success_count || 0}，失败 ${result.fail_count || 0}）`,
-          "success",
-        );
+        // showTempMessage(
+        //   `CDN后台刷新完成（成功 ${result.success_count || 0}，失败 ${result.fail_count || 0}）`,
+        //   "success",
+        // );
+        swal.fire({
+          title: "CDN后台刷新完成",
+          html: `成功 <strong>${result.success_count || 0}</strong>，失败 <strong>${result.fail_count || 0}</strong>`,
+          icon: "success",
+          confirmButtonText: "知道了",
+        });
         cdnForceRefreshInFlight = false;
         _setCDNForceRefreshButtonState(false);
         return;
       }
 
       if (attempt < maxAttempts) {
-        showTempMessage(`CDN刷新失败，准备第 ${attempt + 1} 次重试...`, "warning");
+        // showTempMessage(`CDN刷新失败，准备第 ${attempt + 1} 次重试...`, "warning");
+        swal.fire({
+          title: "CDN刷新失败",
+          html: `准备第 <strong>${attempt + 1}</strong> 次重试...`,
+          icon: "warning",
+          showConfirmButton: false,
+          timer: 1200,
+        });
         cdnForceRefreshRetryTimer = setTimeout(doRefresh, 1200);
       } else {
         showModalAlert(
@@ -45656,7 +45766,14 @@ function triggerCDNForceRefresh() {
       }
     } catch (e) {
       if (attempt < maxAttempts) {
-        showTempMessage(`CDN刷新网络异常，准备第 ${attempt + 1} 次重试...`, "warning");
+        // showTempMessage(`CDN刷新网络异常，准备第 ${attempt + 1} 次重试...`, "warning");
+        swal.fire({
+          title: "CDN刷新网络异常",
+          html: `准备第 <strong>${attempt + 1}</strong> 次重试...`,
+          icon: "warning",
+          showConfirmButton: false,
+          timer: 1200,
+        });
         cdnForceRefreshRetryTimer = setTimeout(doRefresh, 1200);
       } else {
         showModalAlert(`CDN后台刷新失败：${e.message}`, "刷新失败");
@@ -48653,7 +48770,7 @@ function switchMobileAdminTab(tabId, prefix) {
         break;
       case "captcha":
         // 加载验证码设置（使用移动端专用函数）
-        mobileLoadCaptchaSettings();
+        mobileLoadCaptchaSettings(false);
         break;
       case "reminders":
         // 加载定时提醒列表（使用移动端专用函数）
@@ -53248,7 +53365,7 @@ async function mobileCheckSMSBalance() {
  *
  * @returns {Promise<void>} 无返回值
  */
-async function mobileLoadCaptchaSettings() {
+async function mobileLoadCaptchaSettings(showAlert = true) {
   try {
     // 步骤1：记录开始加载的日志，便于调试和追踪
     console.log("[移动端验证码] 开始从 /api/captcha/config 加载验证码配置...");
@@ -53290,7 +53407,8 @@ async function mobileLoadCaptchaSettings() {
 
       // 步骤8：显示成功提示（使用移动端专用的提示函数）
       // showModalAlert是移动端使用的提示函数，比Swal更适合移动设备
-      showModalAlert("验证码配置已加载", "成功");
+      if (showAlert){
+        showModalAlert("验证码配置已加载", "成功");}
     } else {
       // 步骤9：处理API返回成功但没有配置数据的情况
       // 这通常表示配置文件不存在或格式错误
@@ -53304,7 +53422,9 @@ async function mobileLoadCaptchaSettings() {
       });
 
       // 步骤11：显示警告提示，告知用户正在使用默认值
-      showModalAlert("未找到配置文件，已加载默认值", "警告");
+      if (showAlert) {
+        showModalAlert("未找到配置文件，已加载默认值", "警告");
+      }
     }
   } catch (error) {
     // 步骤12：捕获并处理所有可能的异常（网络错误、解析错误等）
@@ -57021,67 +57141,70 @@ async function loadPaymentLogs(page) {
  * @returns {string} 返回日志卡片的HTML字符串
  */
 function createPaymentLogCard(log) {
-  // 步骤1：根据操作类型选择样式颜色
   let actionConfig = {};
 
   switch (log.action) {
     case "create_order":
       actionConfig = {
         text: "创建订单",
-        color: "blue",
-        bgColor: "bg-blue-50",
-        borderColor: "border-blue-200",
-        textColor: "text-blue-700",
+        bgClass: "bg-blue-50",
+        borderClass: "border-blue-200",
+        badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
+        valueClass: "text-blue-700",
+        buttonClass: "bg-blue-500 hover:bg-blue-600",
       };
       break;
     case "query_order":
       actionConfig = {
         text: "查询订单",
-        color: "purple",
-        bgColor: "bg-purple-50",
-        borderColor: "border-purple-200",
-        textColor: "text-purple-700",
+        bgClass: "bg-purple-50",
+        borderClass: "border-purple-200",
+        badgeClass: "bg-purple-100 text-purple-700 border-purple-200",
+        valueClass: "text-purple-700",
+        buttonClass: "bg-purple-500 hover:bg-purple-600",
       };
       break;
     case "payment_success":
       actionConfig = {
         text: "支付成功",
-        color: "green",
-        bgColor: "bg-green-50",
-        borderColor: "border-green-200",
-        textColor: "text-green-700",
+        bgClass: "bg-emerald-50",
+        borderClass: "border-emerald-200",
+        badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
+        valueClass: "text-emerald-700",
+        buttonClass: "bg-emerald-500 hover:bg-emerald-600",
       };
       break;
     case "payment_fail":
       actionConfig = {
         text: "支付失败",
-        color: "red",
-        bgColor: "bg-red-50",
-        borderColor: "border-red-200",
-        textColor: "text-red-700",
+        bgClass: "bg-red-50",
+        borderClass: "border-red-200",
+        badgeClass: "bg-red-100 text-red-700 border-red-200",
+        valueClass: "text-red-700",
+        buttonClass: "bg-red-500 hover:bg-red-600",
       };
       break;
     case "config_update":
       actionConfig = {
         text: "配置更新",
-        color: "amber",
-        bgColor: "bg-amber-50",
-        borderColor: "border-amber-200",
-        textColor: "text-amber-700",
+        bgClass: "bg-amber-50",
+        borderClass: "border-amber-200",
+        badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
+        valueClass: "text-amber-700",
+        buttonClass: "bg-amber-500 hover:bg-amber-600",
       };
       break;
     default:
       actionConfig = {
         text: log.action || "未知操作",
-        color: "slate",
-        bgColor: "bg-slate-50",
-        borderColor: "border-slate-200",
-        textColor: "text-slate-700",
+        bgClass: "bg-slate-50",
+        borderClass: "border-slate-200",
+        badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+        valueClass: "text-slate-700",
+        buttonClass: "bg-slate-600 hover:bg-slate-700",
       };
   }
 
-  // 步骤2：格式化创建时间
-  // 将ISO格式的时间转换为易读格式（如：2024-12-10 10:30:45）
   const createTime = new Date(log.create_time).toLocaleString("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -57092,79 +57215,79 @@ function createPaymentLogCard(log) {
     hour12: false,
   });
 
-  // 步骤3：格式化日志数据
-  // 将JSON对象转换为格式化的字符串，缩进2个空格
   let logDataHTML = "";
   if (log.log_data) {
     try {
-      // 尝试解析JSON数据（如果是字符串）
       const logDataObj =
         typeof log.log_data === "string"
           ? JSON.parse(log.log_data)
           : log.log_data;
-
-      // 将对象转换为格式化的JSON字符串
       const logDataStr = JSON.stringify(logDataObj, null, 2);
-
-      // 生成HTML
       logDataHTML = `
-                <div class="mt-2">
-                    <p class="text-xs font-semibold text-slate-700 mb-1">详细数据</p>
-                    <pre class="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200 overflow-x-auto font-mono">${logDataStr}</pre>
+                <div class="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                    <div class="mb-2 text-[11px] font-medium text-slate-500">详细数据</div>
+                    <pre class="text-xs leading-5 text-slate-700 overflow-x-auto font-mono whitespace-pre-wrap break-all">${logDataStr}</pre>
                 </div>
             `;
     } catch (e) {
-      // JSON解析失败，直接显示原始字符串
       logDataHTML = `
-                <div class="mt-2">
-                    <p class="text-xs font-semibold text-slate-700 mb-1">详细数据</p>
-                    <p class="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200">${log.log_data}</p>
+                <div class="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                    <div class="mb-2 text-[11px] font-medium text-slate-500">详细数据</div>
+                    <div class="text-xs leading-5 text-slate-700 break-all">${log.log_data}</div>
                 </div>
             `;
     }
   }
 
-  // 步骤4：拼接完整的日志卡片HTML
+  const safeLogId = String(log.log_id || "").replace(/'/g, "\\'");
+  const amountText =
+    log.amount !== undefined && log.amount !== null && log.amount !== ""
+      ? `¥${parseFloat(log.amount).toFixed(2)}`
+      : "-";
+  const statusText = log.status || "-";
+  const detailButton = log.log_id
+    ? `
+            <button onclick="showPaymentLogDetail('${safeLogId}')" class="w-full min-h-[44px] rounded-2xl px-4 py-3 text-sm font-medium text-white transition-colors ${actionConfig.buttonClass}">
+                查看详情
+            </button>
+        `
+    : "";
+
+  const detailRows = [
+    { label: "订单号", value: log.order_id || "未关联订单", valueClass: "text-slate-800" },
+    { label: "用户ID", value: log.user_id || "系统", valueClass: "text-slate-800" },
+    { label: "状态", value: statusText, valueClass: actionConfig.valueClass },
+    { label: "金额", value: amountText, valueClass: "text-slate-900 font-semibold" },
+    { label: "记录时间", value: createTime, valueClass: "text-slate-700" },
+    { label: "日志ID", value: log.log_id || "-", valueClass: "text-slate-500 font-mono text-[11px]" },
+  ];
+
+  const detailRowsHTML = detailRows
+    .map(
+      (item) => `
+            <div class="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                <div class="text-[11px] font-medium text-slate-400">${item.label}</div>
+                <div class="mt-1 text-sm break-all ${item.valueClass}">${item.value}</div>
+            </div>
+        `,
+    )
+    .join("");
+
   return `
-        <div class="border-2 ${actionConfig.borderColor} ${
-          actionConfig.bgColor
-        } rounded-lg p-3 space-y-2">
-            <!-- 日志头部：操作类型和时间 -->
-            <div class="flex justify-between items-start">
-                <!-- 操作类型徽章 -->
-                <span class="px-2 py-1 ${actionConfig.bgColor} ${
-                  actionConfig.textColor
-                } rounded text-xs font-semibold border ${actionConfig.borderColor}">
+        <div class="rounded-3xl border ${actionConfig.borderClass} ${actionConfig.bgClass} p-4 shadow-sm space-y-3">
+            <div class="flex items-center justify-between gap-3">
+                <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${actionConfig.badgeClass}">
                     ${actionConfig.text}
                 </span>
-                <!-- 时间 -->
-                <span class="text-xs text-slate-500">${createTime}</span>
             </div>
-            
-            <!-- 日志详情 -->
-            <div class="space-y-1 text-xs">
-                <!-- 用户ID -->
-                <div class="flex justify-between">
-                    <span class="text-slate-600">用户ID</span>
-                    <span class="text-slate-800 font-medium">${
-                      log.user_id || "系统"
-                    }</span>
-                </div>
-                <!-- 订单ID（如果有） -->
-                ${
-                  log.order_id
-                    ? `
-                    <div class="flex justify-between">
-                        <span class="text-slate-600">订单ID</span>
-                        <span class="text-slate-800 font-mono text-xs">${log.order_id}</span>
-                    </div>
-                `
-                    : ""
-                }
+
+            <div class="space-y-2">
+                ${detailRowsHTML}
             </div>
-            
-            <!-- 详细数据 -->
+
             ${logDataHTML}
+
+            ${detailButton}
         </div>
     `;
 }
