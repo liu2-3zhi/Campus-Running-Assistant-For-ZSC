@@ -1,0 +1,9 @@
+{
+  "basic_information": {
+    "id": "theme-retro",
+    "label": "复古风",
+    "description": "怀旧色调、经典字体、纹理背景。",
+    "svg": "<svg width=\"320\" height=\"200\" viewBox=\"0 0 320 200\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"320\" height=\"200\" rx=\"24\" fill=\"#F5E6C8\"/><rect x=\"26\" y=\"24\" width=\"268\" height=\"152\" rx=\"20\" fill=\"#FFF8E8\" stroke=\"#D6B98A\"/><rect x=\"48\" y=\"44\" width=\"82\" height=\"12\" rx=\"6\" fill=\"#6B4423\"/><rect x=\"48\" y=\"66\" width=\"104\" height=\"8\" rx=\"4\" fill=\"#B08968\"/><rect x=\"48\" y=\"100\" width=\"92\" height=\"54\" rx=\"14\" fill=\"#DDB892\" fill-opacity=\"0.65\"/><circle cx=\"218\" cy=\"118\" r=\"34\" fill=\"#CB997E\" fill-opacity=\"0.68\"/><circle cx=\"218\" cy=\"118\" r=\"20\" fill=\"#FFE8D6\"/><rect x=\"168\" y=\"54\" width=\"86\" height=\"12\" rx=\"6\" fill=\"#7F5539\" fill-opacity=\"0.78\"/><rect x=\"168\" y=\"76\" width=\"72\" height=\"8\" rx=\"4\" fill=\"#B08968\"/></svg>"
+  },
+  "global_environment_variables": {}
+}
