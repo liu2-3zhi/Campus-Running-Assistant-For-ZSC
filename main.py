@@ -32310,7 +32310,7 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "未登录"}), 401
 
             # 检查管理员权限
-            if not auth_system.check_permission(auth_username, "admin_panel"):
+            if not auth_system.check_permission(auth_username, "modify_config"):
                 return jsonify({"success": False, "message": "权限不足"}), 403
 
             # 执行刷新
