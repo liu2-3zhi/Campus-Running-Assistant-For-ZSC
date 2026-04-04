@@ -1842,6 +1842,8 @@ PERMISSIONS_FILE = "permissions.json"
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
 AUTO_ATTENDANCE_CONFIG_FILE = os.path.join(
     "configs", "auto_attendance_config.json")
+THEME_DIR = "theme"
+THEME_METADATA_FIELDS = {"id", "label", "description", "placeholder"}
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -2556,6 +2558,7 @@ def _create_directories():
     directories = {
         "school_accounts": SCHOOL_ACCOUNTS_DIR,
         "system_accounts": SYSTEM_ACCOUNTS_DIR,
+        "theme": os.path.join(base_dir, THEME_DIR),
         "logs": LOGIN_LOGS_DIR,
         "sessions": SESSION_STORAGE_DIR,
         "tokens": TOKENS_STORAGE_DIR,
@@ -6300,6 +6303,124 @@ class AuthSystem:
             json.dump(self.permissions, f, indent=2, ensure_ascii=False)
         logging.debug(f"_save_permissions: 权限配置已保存到 {PERMISSIONS_FILE}")
 
+    def get_user_theme_file_path(self, auth_username):
+        """获取用户主题配置文件路径（存储到 system_accounts）"""
+        return self.get_user_file_path(auth_username)
+
+    def _deep_merge_theme_config(self, base_config, override_config):
+        """递归合并主题配置"""
+        if not isinstance(base_config, dict):
+            base_config = {}
+        if not isinstance(override_config, dict):
+            return dict(base_config)
+
+        merged = dict(base_config)
+        for key, value in override_config.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = self._deep_merge_theme_config(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    def _read_theme_definition(self, style_id):
+        """读取主题定义文件"""
+        normalized_style = str(style_id or "default").strip() or "default"
+        file_stem = normalized_style
+        if normalized_style.startswith("theme-"):
+            file_stem = normalized_style[6:]
+
+        theme_path = os.path.join(os.path.dirname(__file__), THEME_DIR, f"{file_stem}.json")
+        if not os.path.exists(theme_path):
+            return {}
+
+        try:
+            with open(theme_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            logging.warning(f"读取主题定义失败 {theme_path}: {e}")
+            return {}
+
+    def get_theme_config(self, style_id):
+        """读取主题配置，默认先加载 default 再叠加目标主题"""
+        default_config = self._read_theme_definition("default")
+        normalized_style = str(style_id or "default").strip() or "default"
+        if normalized_style == "default":
+            merged_config = self._deep_merge_theme_config({}, default_config)
+        else:
+            merged_config = self._deep_merge_theme_config(
+                default_config,
+                self._read_theme_definition(normalized_style),
+            )
+
+        basic_information = merged_config.get("basic_information")
+        if not isinstance(basic_information, dict):
+            basic_information = {}
+
+        basic_information["id"] = str(basic_information.get("id") or normalized_style).strip() or "default"
+        basic_information["label"] = str(
+            basic_information.get("label") or basic_information["id"]
+        ).strip()
+        basic_information["description"] = str(
+            basic_information.get("description") or ""
+        ).strip()
+        basic_information["svg"] = str(basic_information.get("svg") or "").strip()
+        merged_config["basic_information"] = basic_information
+
+        global_environment_variables = merged_config.get("global_environment_variables")
+        if not isinstance(global_environment_variables, dict):
+            global_environment_variables = {}
+        merged_config["global_environment_variables"] = global_environment_variables
+
+        return merged_config
+
+    def get_available_theme_styles(self):
+        """从 ./theme 目录扫描主题定义文件"""
+        theme_dir = os.path.join(os.path.dirname(__file__), THEME_DIR)
+
+        with self.lock:
+            if not os.path.isdir(theme_dir):
+                return []
+
+            try:
+                theme_files = sorted(
+                    file_name
+                    for file_name in os.listdir(theme_dir)
+                    if file_name.lower().endswith(".json")
+                )
+            except Exception as e:
+                logging.warning(f"读取主题目录失败 {theme_dir}: {e}")
+                return []
+
+            valid_styles = []
+            for file_name in theme_files:
+                style_id = os.path.splitext(file_name)[0]
+                if style_id != "default":
+                    style_id = f"theme-{style_id}"
+
+                merged_config = self.get_theme_config(style_id)
+                basic_information = merged_config.get("basic_information")
+                if not isinstance(basic_information, dict):
+                    continue
+
+                theme_id = str(basic_information.get("id") or style_id).strip()
+                if not theme_id:
+                    continue
+
+                valid_styles.append(
+                    {
+                        "id": theme_id,
+                        "label": str(basic_information.get("label") or theme_id).strip(),
+                        "description": str(basic_information.get("description") or "").strip(),
+                        "svg": str(basic_information.get("svg") or "").strip(),
+                        "global_environment_variables": merged_config.get(
+                            "global_environment_variables", {}
+                        ),
+                    }
+                )
+
+        return valid_styles
+
     def get_user_file_path(self, auth_username):
         """获取用户文件路径"""
         # 修复: 强制转换为字符串，防止传入 int 类型导致 'int' object has no attribute 'encode'
@@ -7193,7 +7314,11 @@ class AuthSystem:
             return {"success": True, "message": "头像已更新"}
 
     def update_user_theme(self, auth_username, theme):
-        """更新用户主题偏好"""
+        """更新用户主题偏好（存储到 system_accounts）"""
+        normalized_theme = str(theme).strip().lower()
+        if normalized_theme not in ["light", "dark"]:
+            return {"success": False, "message": "无效的主题值"}
+
         with self.lock:
             user_file = self.get_user_file_path(auth_username)
             if not os.path.exists(user_file):
@@ -7202,12 +7327,37 @@ class AuthSystem:
             with open(user_file, "r", encoding="utf-8") as f:
                 user_data = json.load(f)
 
-            user_data["theme"] = theme
+            user_data["theme"] = normalized_theme
 
             with open(user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
 
-            return {"success": True, "message": "主题已更新"}
+            return {
+                "success": True,
+                "message": "主题已更新",
+                "theme": normalized_theme,
+            }
+
+    def get_user_theme(self, auth_username):
+        """获取用户主题偏好（从 system_accounts 读取）"""
+        user_file = self.get_user_file_path(auth_username)
+        fallback_theme = "light"
+
+        with self.lock:
+            if not os.path.exists(user_file):
+                return {"success": False, "message": "用户不存在", "theme": fallback_theme}
+
+            try:
+                with open(user_file, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+                theme = str(user_data.get("theme", fallback_theme)).strip().lower()
+                if theme not in ["light", "dark"]:
+                    theme = fallback_theme
+            except Exception as e:
+                logging.warning(f"读取用户主题配置失败 {user_file}: {e}")
+                theme = fallback_theme
+
+            return {"success": True, "theme": theme}
 
     def update_max_sessions(self, auth_username, max_sessions):
         """更新用户最大会话数量
@@ -10539,6 +10689,23 @@ class Api:
             }
             logging.debug(f"【本地验证码】加载验证码设置: {captcha_settings}")
 
+            current_theme = "light"
+            current_theme_config = auth_system.get_theme_config("default") if "auth_system" in globals() else {}
+            if auth_username and not is_guest and "auth_system" in globals():
+                try:
+                    theme_result = auth_system.get_user_theme(auth_username)
+                    if theme_result.get("success"):
+                        current_theme = theme_result.get("theme", "light")
+                except Exception as e:
+                    logging.warning(f"获取用户 {auth_username} 的主题失败: {e}")
+
+                current_theme_style = self.global_params.get("theme_style", "default")
+                try:
+                    current_theme_config = auth_system.get_theme_config(current_theme_style)
+                except Exception as e:
+                    logging.warning(f"获取主题配置失败 {current_theme_style}: {e}")
+                    current_theme_config = auth_system.get_theme_config("default")
+
             response_data = {
                 "success": True,
                 "users": users,
@@ -10550,6 +10717,12 @@ class Api:
                 "auth_username": auth_username,
                 "auth_group": auth_group,
                 "is_guest": is_guest,
+                "theme": current_theme,
+                "theme_styles": auth_system.get_available_theme_styles(),
+                "theme_config": current_theme_config,
+                "theme_global_environment_variables": current_theme_config.get(
+                    "global_environment_variables", {}
+                ),
                 "is_multi_account_mode": getattr(self, "is_multi_account_mode", False),
                 "captcha_settings": captcha_settings,
             }
@@ -13101,6 +13274,15 @@ class Api:
             except (ValueError, TypeError) as e:
                 return {"success": False, "message": str(e)}
         return {"success": False, "message": "Unknown parameter"}
+
+    def get_theme_styles(self):
+        """获取主题样式列表和当前主题配置"""
+        current_theme_style = getattr(self, "global_params", {}).get("theme_style", "default")
+        return {
+            "success": True,
+            "theme_styles": auth_system.get_available_theme_styles(),
+            "theme_config": auth_system.get_theme_config(current_theme_style),
+        }
 
     def get_params(self):
         """
@@ -26998,6 +27180,22 @@ def start_web_server(args_param):
             )
         else:
             return jsonify(result)
+
+    @app.route("/auth/user/theme", methods=["GET"])
+    def auth_user_get_theme():
+        """获取当前登录用户主题"""
+        session_id = request.headers.get("X-Session-ID", "")
+        if not session_id or session_id not in web_sessions:
+            return jsonify({"success": False, "message": "未登录"}), 401
+
+        api_instance = web_sessions[session_id]
+        auth_username = getattr(api_instance, "auth_username", "")
+
+        if not auth_username or auth_username == "guest":
+            return jsonify({"success": False, "message": "游客无法读取主题", "theme": "light"})
+
+        result = auth_system.get_user_theme(auth_username)
+        return jsonify(result)
 
     @app.route("/auth/user/update_theme", methods=["POST"])
     def auth_user_update_theme():

@@ -1,0 +1,9 @@
+{
+  "basic_information": {
+    "id": "theme-creative",
+    "label": "创意艺术风",
+    "description": "大胆配色、插画、非对称排版。",
+    "svg": "<svg width=\"320\" height=\"200\" viewBox=\"0 0 320 200\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"320\" height=\"200\" rx=\"24\" fill=\"url(#bg)\"/><rect x=\"28\" y=\"22\" width=\"264\" height=\"156\" rx=\"22\" fill=\"#FFFFFF\" fill-opacity=\"0.82\"/><circle cx=\"78\" cy=\"72\" r=\"28\" fill=\"#F59E0B\" fill-opacity=\"0.55\"/><circle cx=\"116\" cy=\"58\" r=\"18\" fill=\"#EC4899\" fill-opacity=\"0.5\"/><path d=\"M198 54C212 38 240 38 254 54C268 70 268 98 254 114C240 130 212 130 198 114C184 98 184 70 198 54Z\" fill=\"#8B5CF6\" fill-opacity=\"0.42\"/><rect x=\"56\" y=\"122\" width=\"88\" height=\"10\" rx=\"5\" fill=\"#1F2937\" fill-opacity=\"0.8\"/><rect x=\"56\" y=\"140\" width=\"118\" height=\"8\" rx=\"4\" fill=\"#94A3B8\"/><rect x=\"188\" y=\"128\" width=\"72\" height=\"24\" rx=\"12\" fill=\"#06B6D4\" fill-opacity=\"0.28\"/><defs><linearGradient id=\"bg\" x1=\"18\" y1=\"18\" x2=\"292\" y2=\"182\" gradientUnits=\"userSpaceOnUse\"><stop stop-color=\"#FDE68A\"/><stop offset=\"0.45\" stop-color=\"#F9A8D4\"/><stop offset=\"1\" stop-color=\"#93C5FD\"/></linearGradient></defs></svg>"
+  },
+  "global_environment_variables": {}
+}

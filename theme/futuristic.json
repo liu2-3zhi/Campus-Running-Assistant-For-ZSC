@@ -1,0 +1,9 @@
+{
+  "basic_information": {
+    "id": "theme-futuristic",
+    "label": "科技未来风",
+    "description": "霓虹渐变、几何线条、金属质感。",
+    "svg": "<svg width=\"320\" height=\"200\" viewBox=\"0 0 320 200\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"320\" height=\"200\" rx=\"24\" fill=\"#08111F\"/><rect x=\"24\" y=\"24\" width=\"272\" height=\"152\" rx=\"20\" fill=\"#0F172A\" stroke=\"#22D3EE\" stroke-opacity=\"0.45\"/><path d=\"M44 142L92 92L134 118L182 64L238 106L276 72\" stroke=\"#22D3EE\" stroke-width=\"8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"44\" y=\"44\" width=\"86\" height=\"10\" rx=\"5\" fill=\"#E2E8F0\" fill-opacity=\"0.95\"/><rect x=\"44\" y=\"62\" width=\"112\" height=\"6\" rx=\"3\" fill=\"#38BDF8\" fill-opacity=\"0.45\"/><circle cx=\"248\" cy=\"56\" r=\"18\" fill=\"#A855F7\" fill-opacity=\"0.28\"/><circle cx=\"228\" cy=\"138\" r=\"26\" fill=\"#06B6D4\" fill-opacity=\"0.18\"/><circle cx=\"102\" cy=\"140\" r=\"30\" fill=\"#22C55E\" fill-opacity=\"0.1\"/></svg>"
+  },
+  "global_environment_variables": {}
+}
