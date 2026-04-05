@@ -23752,6 +23752,9 @@ def start_web_server(args_param):
     def cache_google_fonts_with_ttf(css_content, key, css_url, css_filename):
         """
         缓存CSS中引用的字体文件（TTF/WOFF/WOFF2/OTF），并将URL改写为本地接口。
+        
+        优化策略：先将所有字体文件下载到临时目录，全部成功后再原子性地替换
+        CSS和字体文件夹，避免下载中断导致的不一致状态。
 
         参数:
             css_content: CSS文件内容
@@ -23765,32 +23768,119 @@ def start_web_server(args_param):
         font_urls = parse_google_fonts_css(css_content, css_url, key)
         logging.info(f"[CDN缓存] 资源 {key} 发现 {len(font_urls)} 个字体文件需要缓存")
 
-        modified_css = css_content
+        if not font_urls:
+            return css_content
+
         # 目录名取CSS文件基名，并去掉 .min.css 或 .css 后缀
         css_name = os.path.basename((css_filename or f"{key}.css").strip() or f"{key}.css")
         css_font_dir = re.sub(r"(?:\.min)?\.css$", "", css_name, flags=re.IGNORECASE).strip() or str(key)
 
+        # 创建临时目录用于存放下载的字体文件
+        temp_font_dir = os.path.join(JS_CACHE_DIR, f".tmp_{css_font_dir}_{int(time.time() * 1000)}")
+        final_font_dir = os.path.join(JS_CACHE_DIR, css_font_dir)
+        
+        try:
+            os.makedirs(temp_font_dir, exist_ok=True)
+        except Exception as e:
+            logging.error(f"[CDN缓存] 创建临时字体目录失败: {e}")
+            return css_content
+
+        # 第一阶段：下载所有字体到临时目录
+        downloaded_fonts = []  # [(font_key, font_storage_key, font_content, temp_path), ...]
+        download_success = True
+        modified_css = css_content
+
         for original_ref, absolute_url, font_key in font_urls:
-            logging.info(f"[CDN缓存] 正在下载字体: {font_key}")
+            logging.info(f"[CDN缓存] 正在下载字体到临时目录: {font_key}")
             font_content = fetch_cdn_file(absolute_url, timeout=60, binary=True)
 
             if font_content:
-                # 按CSS文件名归档字体文件，如 zilla-slab.min.css/<font-file>
                 font_relative_path = os.path.join(css_font_dir, font_key)
                 font_storage_key = font_relative_path.replace("\\", "/").replace("/", "__")
-
-                with font_cache_lock:
-                    font_cache_storage[font_storage_key] = font_content
-
-                save_cached_file(font_relative_path, font_content, binary=True)
-
-                local_url = f"/api/cdn/font/{font_storage_key}"
-                modified_css = modified_css.replace(original_ref, local_url)
-                logging.info(f"[CDN缓存] 字体已缓存并改写: {font_relative_path}")
+                temp_font_path = os.path.join(temp_font_dir, font_key)
+                
+                try:
+                    # 写入临时目录
+                    with open(temp_font_path, "wb") as f:
+                        f.write(font_content)
+                    
+                    downloaded_fonts.append((font_key, font_storage_key, font_content, temp_font_path))
+                    
+                    # 预先构建修改后的CSS（但不保存）
+                    local_url = f"/api/cdn/font/{font_storage_key}"
+                    modified_css = modified_css.replace(original_ref, local_url)
+                    logging.info(f"[CDN缓存] 字体已下载到临时目录: {temp_font_path}")
+                except Exception as e:
+                    logging.error(f"[CDN缓存] 写入临时字体文件失败: {font_key}, 错误: {e}")
+                    download_success = False
+                    break
             else:
                 logging.warning(f"[CDN缓存] 字体下载失败: {absolute_url}")
+                download_success = False
+                break
 
-        return modified_css
+        # 第二阶段：如果所有字体下载成功，原子性替换
+        if download_success and downloaded_fonts:
+            try:
+                # 备份旧字体目录（如果存在）
+                backup_dir = None
+                if os.path.exists(final_font_dir):
+                    backup_dir = os.path.join(JS_CACHE_DIR, f".backup_{css_font_dir}_{int(time.time() * 1000)}")
+                    try:
+                        os.rename(final_font_dir, backup_dir)
+                        logging.info(f"[CDN缓存] 已备份旧字体目录: {backup_dir}")
+                    except Exception as e:
+                        logging.warning(f"[CDN缓存] 备份旧字体目录失败: {e}")
+                        backup_dir = None
+
+                # 将临时目录重命名为最终目录
+                os.rename(temp_font_dir, final_font_dir)
+                logging.info(f"[CDN缓存] 字体目录替换成功: {final_font_dir}")
+
+                # 更新内存缓存
+                with font_cache_lock:
+                    for font_key, font_storage_key, font_content, _ in downloaded_fonts:
+                        font_cache_storage[font_storage_key] = font_content
+                        logging.info(f"[CDN缓存] 字体已加入内存缓存: {font_storage_key}")
+
+                # 删除备份目录
+                if backup_dir and os.path.exists(backup_dir):
+                    try:
+                        shutil.rmtree(backup_dir)
+                        logging.info(f"[CDN缓存] 已删除旧字体备份: {backup_dir}")
+                    except Exception as e:
+                        logging.warning(f"[CDN缓存] 删除备份目录失败: {backup_dir}, 错误: {e}")
+
+                logging.info(f"[CDN缓存] 资源 {key} 的 {len(downloaded_fonts)} 个字体文件已全部原子性更新")
+                return modified_css
+
+            except Exception as e:
+                logging.error(f"[CDN缓存] 原子替换字体目录失败: {e}")
+                # 恢复备份
+                if backup_dir and os.path.exists(backup_dir):
+                    try:
+                        if os.path.exists(final_font_dir):
+                            shutil.rmtree(final_font_dir)
+                        os.rename(backup_dir, final_font_dir)
+                        logging.info(f"[CDN缓存] 已恢复备份字体目录")
+                    except Exception as restore_e:
+                        logging.error(f"[CDN缓存] 恢复备份失败: {restore_e}")
+                # 清理临时目录
+                try:
+                    if os.path.exists(temp_font_dir):
+                        shutil.rmtree(temp_font_dir)
+                except Exception:
+                    pass
+                return css_content
+        else:
+            # 下载失败，清理临时目录
+            logging.warning(f"[CDN缓存] 资源 {key} 字体下载未完全成功，保留原有CSS不做修改")
+            try:
+                if os.path.exists(temp_font_dir):
+                    shutil.rmtree(temp_font_dir)
+            except Exception as e:
+                logging.warning(f"[CDN缓存] 清理临时目录失败: {temp_font_dir}, 错误: {e}")
+            return css_content
 
     def load_cached_fonts():
         """
