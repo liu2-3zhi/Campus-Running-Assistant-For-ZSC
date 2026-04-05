@@ -8074,11 +8074,12 @@ class AuthSystem:
 
             current_count = len(old_sessions)
             # 当已达到或超过最大会话数时，也应该清理最旧会话以为新会话腾出位置
+            # if current_count >= max_sessions:
             if current_count >= max_sessions:
-                sessions_to_remove = old_sessions[:
-                                                  current_count - max_sessions + 1]
-                remaining_sessions = old_sessions[current_count -
-                                                  max_sessions + 1:]
+                # sessions_to_remove = old_sessions[: current_count - max_sessions + 1]
+                sessions_to_remove = old_sessions[: current_count - max_sessions]
+                # remaining_sessions = old_sessions[current_count - max_sessions + 1:]
+                remaining_sessions = old_sessions[current_count - max_sessions:]
                 user_data["session_ids"] = remaining_sessions + \
                     [new_session_id]
 
