@@ -28,3 +28,5 @@ auto_attendance_config.json
 /Remove_Acoount
 /User_Billing
 *.back
+/.claude
+/random_background_image

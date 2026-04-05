@@ -220,6 +220,8 @@
       onerror="this.src = 'https://code.jquery.com/jquery-3.7.1.js'"
     ></script>
     
+    <!-- 旧代码 -->
+    <template>
     <!-- CodeMirror (CDN) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.css">
@@ -269,6 +271,258 @@
     <!-- Markdown 解析和代码高亮 -->
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+    </template>
+    
+<!-- ============================== -->
+<!-- CodeMirror 核心依赖 -->
+<!-- 编辑器基础功能与核心样式 -->
+<!-- ============================== -->
+<!-- CodeMirror 编辑器核心脚本 -->
+<script
+  src="/api/cdn/codemirror-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.js'"
+></script>
+<!-- CodeMirror 编辑器核心样式表 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/codemirror-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.css'"
+>
+<!-- 搜索/替换弹窗对话框样式 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/codemirror-dialog-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css'"
+>
+<!-- 滚动条显示搜索匹配位置样式 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/codemirror-matchesonscrollbar-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.css'"
+>
+<!-- 代码折叠侧边栏样式 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/codemirror-foldgutter-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.css'"
+>
+
+<!-- ============================== -->
+<!-- CodeMirror 语言语法高亮 -->
+<!-- 支持各种编程语言的代码着色 -->
+<!-- ============================== -->
+<!-- 语言模式元信息，自动识别文件类型 -->
+<script
+  src="/api/cdn/codemirror-meta-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/meta.js'"
+></script>
+<!-- Markdown 语法高亮支持 -->
+<script
+  src="/api/cdn/codemirror-markdown-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/markdown.js'"
+></script>
+<!-- XML / HTML 标签语法高亮 -->
+<script
+  src="/api/cdn/codemirror-xml-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/xml/xml.js'"
+></script>
+<!-- JavaScript 语法高亮 -->
+<script
+  src="/api/cdn/codemirror-javascript-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/javascript.js'"
+></script>
+<!-- CSS 样式语法高亮 -->
+<script
+  src="/api/cdn/codemirror-css-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/css/css.js'"
+></script>
+<!-- HTML 混合模式（内嵌 JS/CSS）高亮 -->
+<script
+  src="/api/cdn/codemirror-htmlmixed-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/htmlmixed/htmlmixed.js'"
+></script>
+<!-- GitHub Markdown 扩展语法支持 -->
+<script
+  src="/api/cdn/codemirror-gfm-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/gfm.js'"
+></script>
+<!-- Python 语法高亮 -->
+<script
+  src="/api/cdn/codemirror-python-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/python/python.js'"
+></script>
+<!-- C/C++/Java 等类 C 语言语法高亮 -->
+<script
+  src="/api/cdn/codemirror-clike-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/clike/clike.js'"
+></script>
+<!-- Shell / Bash 命令行语法高亮 -->
+<script
+  src="/api/cdn/codemirror-shell-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/shell/shell.js'"
+></script>
+<!-- SQL 数据库语句语法高亮 -->
+<script
+  src="/api/cdn/codemirror-sql-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sql/sql.js'"
+></script>
+<!-- YAML 配置文件语法高亮 -->
+<script
+  src="/api/cdn/codemirror-yaml-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/yaml/yaml.js'"
+></script>
+
+<!-- ============================== -->
+<!-- CodeMirror 编辑增强插件 -->
+<!-- 提升编辑体验的实用功能 -->
+<!-- ============================== -->
+<!-- 括号匹配高亮显示 -->
+<script
+  src="/api/cdn/codemirror-matchbrackets-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchbrackets.js'"
+></script>
+<!-- 自动补全括号、引号 -->
+<script
+  src="/api/cdn/codemirror-closebrackets-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closebrackets.js'"
+></script>
+<!-- HTML 标签自动闭合 -->
+<script
+  src="/api/cdn/codemirror-closetag-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closetag.js'"
+></script>
+<!-- 代码折叠核心功能 -->
+<script
+  src="/api/cdn/codemirror-foldcode-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldcode.js'"
+></script>
+<!-- 代码折叠侧边栏交互 -->
+<script
+  src="/api/cdn/codemirror-foldgutter-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.js'"
+></script>
+<!-- 大括号代码块折叠 -->
+<script
+  src="/api/cdn/codemirror-brace-fold-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/brace-fold.js'"
+></script>
+<!-- XML/HTML 标签区域折叠 -->
+<script
+  src="/api/cdn/codemirror-xml-fold-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/xml-fold.js'"
+></script>
+<!-- Markdown 内容区域折叠 -->
+<script
+  src="/api/cdn/codemirror-markdown-fold-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/markdown-fold.js'"
+></script>
+<!-- 多语言模式叠加支持 -->
+<script
+  src="/api/cdn/codemirror-overlay-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/mode/overlay.js'"
+></script>
+<!-- 当前光标所在行高亮 -->
+<script
+  src="/api/cdn/codemirror-active-line-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/selection/active-line.js'"
+></script>
+<!-- 编辑器内文本搜索 -->
+<script
+  src="/api/cdn/codemirror-search-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/search.js'"
+></script>
+<!-- 搜索结果光标定位遍历 -->
+<script
+  src="/api/cdn/codemirror-searchcursor-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/searchcursor.js'"
+></script>
+<!-- 选中单词全文高亮 -->
+<script
+  src="/api/cdn/codemirror-match-highlighter-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/match-highlighter.js'"
+></script>
+<!-- 搜索/替换弹窗功能 -->
+<script
+  src="/api/cdn/codemirror-dialog-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.js'"
+></script>
+<!-- 编辑器空内容占位提示文字 -->
+<script
+  src="/api/cdn/codemirror-placeholder-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/display/placeholder.js'"
+></script>
+
+<!-- ============================== -->
+<!-- KaTeX 数学公式渲染 -->
+<!-- 用于快速渲染 LaTeX 数学公式 -->
+<!-- ============================== -->
+<!-- KaTeX 核心 JS 库 -->
+<script
+  src="/api/cdn/katex-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/katex/dist/katex.js'"
+></script>
+<!-- 数学公式渲染样式 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/katex-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/katex/dist/katex.css'"
+>
+
+<!-- ============================== -->
+<!-- 流程图 / 时序图依赖库 -->
+<!-- 用于绘制流程图、时序图等图形 -->
+<!-- ============================== -->
+<!-- 矢量图形绘图基础库 -->
+<script
+  src="/api/cdn/raphael-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/raphael/raphael.js'"
+></script>
+<!-- 工具函数库，图形解析依赖 -->
+<script
+  src="/api/cdn/underscore-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/underscore/underscore.js'"
+></script>
+<!-- 流程图解析与渲染 -->
+<script
+  src="/api/cdn/flowchart-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/flowchart.js/release/flowchart.js'"
+></script>
+<!-- jQuery 流程图扩展 -->
+<script
+  src="/api/cdn/jquery-flowchart-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.js'"
+></script>
+<link
+  rel="stylesheet"
+  href="/api/cdn/jquery-flowchart-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.css'"
+>
+
+<!-- 时序图/序列图渲染（已修复错误地址） -->
+<script
+  src="/api/cdn/sequence-diagram-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.js'"
+></script>
+<link
+  rel="stylesheet"
+  href="/api/cdn/sequence-diagram-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.css'"
+>
+
+<!-- ============================== -->
+<!-- Markdown 解析与代码高亮 -->
+<!-- 解析 Markdown 并对代码着色 -->
+<!-- ============================== -->
+<!-- Markdown 转 HTML 解析器 -->
+<script
+  src="/api/cdn/marked-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.min.js'"
+></script>
+<!-- Google 代码高亮库 -->
+<script
+  src="/api/cdn/prettify-js"
+  onerror="this.src='https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js'"
+></script>
     
     <!-- Editor.md 核心 -->
     <script src="/editor.md/editormd.js"></script>
@@ -3379,7 +3633,7 @@
           <span class="ml-2 text-lg font-bold text-slate-800">跑步助手</span>
         </div>
       </header>
-      <main class="mobile-content">
+      <main class="mobile-content" id="mobile-content">
         <div id="mobile-auth-login-container" class="space-y-4">
           <div class="mobile-card" id="mobile-auth-login-container-card">
             <div class="text-center mb-6">
@@ -6131,31 +6385,50 @@
               class="hidden space-y-3 overflow-hidden"
             >
               <!-- 面板头部：包含标题和控制选项 -->
-              <div class="flex justify-between items-center">
-                <!-- 面板标题 -->
-                <h4 class="font-semibold text-sm">系统日志</h4>
-                <!-- 控制选项组：日志行数选择和刷新按钮 -->
-                <div class="flex gap-2">
-                  <!-- 日志行数选择下拉框 -->
-                  <select
-                    id="mobile-multi-log-limit-select"
-                    class="text-xs border border-slate-300 rounded px-2 py-1"
-                    aria-label="移动日志每页限制"
-                  >
-                    <option value="100">每页100行</option>
-                    <option value="200">每页200行</option>
-                    <option value="500">每页500行</option>
-                    <option value="1000">每页1000行</option>
-                  </select>
-                  <!-- 刷新日志按钮 -->
-                  <button
-                    id="mobile-multi-admin-refresh-logs"
-                    class="btn btn-ghost !py-1 !px-2 text-xs"
-                  >
-                    刷新
-                  </button>
-                </div>
-              </div>
+<div class="flex flex-col gap-2">
+  <!-- 面板标题 -->
+  <h4 class="font-semibold text-sm">系统日志</h4>
+  <!-- 控制选项组：日志级别过滤、日志行数选择和刷新按钮 -->
+  <div class="flex flex-col gap-2">
+    <select
+      id="mobile-multi-log-level-filter"
+      class="text-xs border border-slate-300 rounded px-2 py-1"
+      aria-label="移动日志级别过滤"
+    >
+      <option value="all">全部级别</option>
+      <option value="debug">Debug</option>
+      <option value="info">Info</option>
+      <option value="warning">Warning</option>
+      <option value="error">Error</option>
+    </select>
+    <input
+      id="mobile-multi-log-keyword-filter"
+      type="text"
+      class="text-xs border border-slate-300 rounded px-2 py-1 min-w-[8rem]"
+      placeholder="输入关键词过滤"
+      aria-label="移动日志关键词过滤"
+    />
+    <!-- 日志行数选择下拉框 -->
+    <select
+      id="mobile-multi-log-limit-select"
+      class="text-xs border border-slate-300 rounded px-2 py-1"
+      aria-label="移动日志每页限制"
+    >
+      <option value="100">每页100行</option>
+      <option value="200">每页200行</option>
+      <option value="500">每页500行</option>
+      <option value="1000">每页1000行</option>
+    </select>
+    <!-- 刷新日志按钮 -->
+    <button
+      id="mobile-multi-admin-refresh-logs"
+      class="btn btn-ghost !py-1 !px-2 text-xs"
+    >
+      刷新
+    </button>
+  </div>
+</div>
+
               <!-- 日志内容显示区域：深色背景终端风格 -->
               <div
                 class="bg-slate-900 text-green-400 rounded-lg p-3 font-mono text-xs overflow-auto max-h-[100vh]"
@@ -6577,6 +6850,9 @@
                     id="mobile-unified-2fa-enabled-actions"
                     class="hidden flex justify-end gap-2"
                   >
+                  <button onclick="test2FA()" class="btn btn-ghost">
+                    测试2FA
+                  </button>
                     <button
                       onclick="disableMobileUnified2FA()"
                       class="btn btn-ghost border border-red-200 text-red-600 !py-1 !px-3 text-xs"
@@ -6606,33 +6882,14 @@
                     </select>
                   </div>
 
-                  <div
-                    class="space-y-1"
-                    id="mobile-unified-theme-style-presets"
-                  >
+                  <div class="space-y-1" id="mobile-unified-theme-style-presets">
                     <label class="block text-xs font-medium text-slate-600"
                       >样式预设</label
                     >
-                    <div class="grid grid-cols-3 gap-2">
-                      <button
-                        onclick="setMobileUnifiedThemeStyle('default')"
-                        class="btn btn-ghost border border-slate-300 !py-1 !px-1 text-[10px]"
-                      >
-                        默认
-                      </button>
-                      <button
-                        onclick="setMobileUnifiedThemeStyle('theme-anime')"
-                        class="btn btn-ghost border border-slate-300 !py-1 !px-1 text-[10px]"
-                      >
-                        二次元
-                      </button>
-                      <button
-                        onclick="setMobileUnifiedThemeStyle('theme-minimalist')"
-                        class="btn btn-ghost border border-slate-300 !py-1 !px-1 text-[10px]"
-                      >
-                        简约
-                      </button>
-                    </div>
+                    <div
+                      id="mobile-unified-theme-style-buttons"
+                      class="space-y-2"
+                    ></div>
                   </div>
 
                   <div class="space-y-1">
@@ -14727,7 +14984,25 @@
           <div id="admin-logs-panel_modal" class="hidden space-y-4">
             <div class="flex justify-between items-center">
               <h4 class="font-semibold">系统日志</h4>
-              <div class="flex gap-2">
+              <div class="flex gap-2 flex-wrap justify-end">
+                <select
+                  id="log-level-filter_modal"
+                  class="text-sm border border-slate-300 rounded px-2 py-1"
+                  aria-label="日志级别过滤（对话框）"
+                >
+                  <option value="all">全部级别</option>
+                  <option value="debug">Debug</option>
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="error">Error</option>
+                </select>
+                <input
+                  id="log-keyword-filter_modal"
+                  type="text"
+                  class="text-sm border border-slate-300 rounded px-2 py-1 min-w-[10rem]"
+                  placeholder="输入关键词过滤"
+                  aria-label="日志关键词过滤（对话框）"
+                />
                 <select
                   id="log-limit-select_modal"
                   class="text-sm border border-slate-300 rounded px-2 py-1"
@@ -15200,26 +15475,10 @@
                   <label class="block text-sm font-semibold text-slate-700"
                     >主题样式</label
                   >
-                  <div class="grid grid-cols-3 gap-2">
-                    <button
-                      onclick="setThemeStyle('default')"
-                      class="btn btn-ghost !py-2 text-sm border border-slate-300 hover:border-sky-500"
-                    >
-                      默认
-                    </button>
-                    <button
-                      onclick="setThemeStyle('theme-anime')"
-                      class="btn btn-ghost !py-2 text-sm border border-slate-300 hover:border-sky-500"
-                    >
-                      二次元
-                    </button>
-                    <button
-                      onclick="setThemeStyle('theme-minimalist')"
-                      class="btn btn-ghost !py-2 text-sm border border-slate-300 hover:border-sky-500"
-                    >
-                      简约
-                    </button>
-                  </div>
+                  <div
+                    id="profile-theme-style-buttons"
+                    class="grid grid-cols-2 gap-2"
+                  ></div>
                 </div>
 
                 <div class="space-y-2">

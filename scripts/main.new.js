@@ -1730,14 +1730,8 @@ function loadAdminPaymentLogsNext() {
  * 5. 处理错误情况
  */
 async function showPaymentLogDetail(logId) {
-  // ========== 步骤1：验证参数 ==========
-
-  // 检查logId是否有效
-  // 如果为空或未定义，显示错误提示并返回
   if (!logId) {
-    // console.error('[支付日志详情] 日志ID为空');
     logMessage_Error("[支付日志详情] 日志ID为空");
-    // showModalAlert("日志ID无效");
     Swal.fire({
       icon: "error",
       title: "日志ID无效",
@@ -1746,120 +1740,222 @@ async function showPaymentLogDetail(logId) {
     return;
   }
 
-  // console.log(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
   logMessage_Info(`[支付日志详情] 正在加载日志详情，log_id: ${logId}`);
 
-  // ========== 步骤2：显示模态框和加载状态 ==========
-
-  // 获取模态框和各个显示区域的DOM元素
+  const useMobileModal = typeof isMobileMode !== "undefined" && isMobileMode;
   const modal = document.getElementById("admin-payment-log-detail-modal");
   const loadingDiv = document.getElementById("log-detail-loading");
   const errorDiv = document.getElementById("log-detail-error");
   const contentDiv = document.getElementById("log-detail-content");
 
-  // 防御性检查：确保所有必需的DOM元素都存在
-  if (!modal || !loadingDiv || !errorDiv || !contentDiv) {
-    // console.error('[支付日志详情] 找不到必需的DOM元素');
+  if (!useMobileModal && (!modal || !loadingDiv || !errorDiv || !contentDiv)) {
     logMessage_Error("[支付日志详情] 找不到必需的DOM元素");
     return;
   }
 
-  // 显示模态框
-  modal.classList.remove("hidden");
+  if (useMobileModal) {
+    openMobilePaymentLogDetailModal();
+    const mobileLoadingDiv = document.getElementById(
+      "mobile-log-detail-loading",
+    );
+    const mobileErrorDiv = document.getElementById("mobile-log-detail-error");
+    const mobileContentDiv = document.getElementById(
+      "mobile-log-detail-content",
+    );
+    const mobileErrorMessageElem = document.getElementById(
+      "mobile-log-detail-error-message",
+    );
 
-  // 显示加载状态，隐藏其他内容
-  loadingDiv.classList.remove("hidden");
-  errorDiv.classList.add("hidden");
-  contentDiv.classList.add("hidden");
+    if (!mobileLoadingDiv || !mobileErrorDiv || !mobileContentDiv) {
+      logMessage_Error("[支付日志详情] 找不到移动端模态框元素");
+      return;
+    }
 
-  // ========== 步骤3：调用后端API获取日志详情 ==========
+    mobileLoadingDiv.classList.remove("hidden");
+    mobileErrorDiv.classList.add("hidden");
+    mobileContentDiv.classList.add("hidden");
+    if (mobileErrorMessageElem) {
+      mobileErrorMessageElem.textContent = "";
+    }
+  } else {
+    modal.classList.remove("hidden");
+    loadingDiv.classList.remove("hidden");
+    errorDiv.classList.add("hidden");
+    contentDiv.classList.add("hidden");
+  }
 
   try {
-    // 发送POST请求到后端API
-    // 请求体包含log_id参数
     const response = await fetch("/api/admin/payment/log_detail", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID, // 附加会话ID用于身份验证
+        "X-Session-ID": sessionUUID,
       },
       body: JSON.stringify({
-        log_id: logId, // 传递日志ID
+        log_id: logId,
       }),
     });
 
-    // 检查HTTP响应状态码
-    // 如果不是2xx范围，抛出错误
     if (!response.ok) {
       throw new Error(`HTTP错误: ${response.status}`);
     }
 
-    // 解析响应体为JSON对象
     const result = await response.json();
-
-    // 检查业务逻辑是否成功
-    // success字段为false表示业务处理失败（如权限不足、日志不存在等）
     if (!result.success) {
       throw new Error(result.message || "获取日志详情失败");
     }
 
-    // ========== 步骤4：填充模态框内容 ==========
-
-    // 提取日志详情数据
     const logDetail = result.log_detail || {};
+    const amountText = logDetail.amount
+      ? `¥${parseFloat(logDetail.amount).toFixed(2)}`
+      : "-";
+    const detailJson = JSON.stringify(logDetail, null, 2);
 
-    // 填充基本信息字段
-    // 使用 || 运算符提供默认值，防止字段不存在时显示undefined
-    document.getElementById("log-detail-datetime").textContent =
-      logDetail.datetime || "-";
-    document.getElementById("log-detail-action").textContent =
-      logDetail.action || "-";
-    document.getElementById("log-detail-user-id").textContent =
-      logDetail.user_id || "-";
-    document.getElementById("log-detail-order-id").textContent =
-      logDetail.order_id || "-";
-    document.getElementById("log-detail-client-ip").textContent =
-      logDetail.client_ip || "-";
+    if (useMobileModal) {
+      document.getElementById("mobile-log-detail-datetime").textContent =
+        logDetail.datetime || "-";
+      document.getElementById("mobile-log-detail-action").textContent =
+        logDetail.action || "-";
+      document.getElementById("mobile-log-detail-user-id").textContent =
+        logDetail.user_id || "-";
+      document.getElementById("mobile-log-detail-order-id").textContent =
+        logDetail.order_id || "-";
+      document.getElementById("mobile-log-detail-client-ip").textContent =
+        logDetail.client_ip || "-";
+      document.getElementById("mobile-log-detail-amount").textContent =
+        amountText;
+      document.getElementById("mobile-log-detail-json").textContent = detailJson;
 
-    // 填充金额字段（如果存在）
-    // 金额使用特殊格式化：¥符号 + 保留2位小数
-    const amountElem = document.getElementById("log-detail-amount");
-    if (logDetail.amount) {
-      amountElem.textContent = `¥${parseFloat(logDetail.amount).toFixed(2)}`;
+      document.getElementById("mobile-log-detail-loading").classList.add("hidden");
+      document.getElementById("mobile-log-detail-content").classList.remove("hidden");
     } else {
-      amountElem.textContent = "-";
+      document.getElementById("log-detail-datetime").textContent =
+        logDetail.datetime || "-";
+      document.getElementById("log-detail-action").textContent =
+        logDetail.action || "-";
+      document.getElementById("log-detail-user-id").textContent =
+        logDetail.user_id || "-";
+      document.getElementById("log-detail-order-id").textContent =
+        logDetail.order_id || "-";
+      document.getElementById("log-detail-client-ip").textContent =
+        logDetail.client_ip || "-";
+
+      const amountElem = document.getElementById("log-detail-amount");
+      amountElem.textContent = amountText;
+
+      const jsonElem = document.getElementById("log-detail-json");
+      jsonElem.textContent = detailJson;
+
+      loadingDiv.classList.add("hidden");
+      contentDiv.classList.remove("hidden");
     }
 
-    // 填充完整JSON数据
-    // 使用JSON.stringify格式化，indent=2使其易读
-    const jsonElem = document.getElementById("log-detail-json");
-    jsonElem.textContent = JSON.stringify(logDetail, null, 2);
-
-    // 隐藏加载状态，显示内容
-    loadingDiv.classList.add("hidden");
-    contentDiv.classList.remove("hidden");
-
-    // console.log('[支付日志详情] 日志详情加载成功');
     logMessage_Info("[支付日志详情] 日志详情加载成功");
   } catch (error) {
-    // ========== 步骤5：错误处理 ==========
-
-    // 在控制台输出详细错误信息，便于调试
-    // console.error('[支付日志详情] 获取日志详情失败:', error);
     logMessage_Error("[支付日志详情] 获取日志详情失败: " + error);
 
-    // 在模态框中显示错误信息
-    const errorMessageElem = document.getElementById(
-      "log-detail-error-message",
-    );
-    if (errorMessageElem) {
-      errorMessageElem.textContent = error.message || "未知错误";
-    }
+    if (useMobileModal) {
+      const mobileErrorMessageElem = document.getElementById(
+        "mobile-log-detail-error-message",
+      );
+      if (mobileErrorMessageElem) {
+        mobileErrorMessageElem.textContent = error.message || "未知错误";
+      }
+      document.getElementById("mobile-log-detail-loading").classList.add("hidden");
+      document.getElementById("mobile-log-detail-error").classList.remove("hidden");
+    } else {
+      const errorMessageElem = document.getElementById(
+        "log-detail-error-message",
+      );
+      if (errorMessageElem) {
+        errorMessageElem.textContent = error.message || "未知错误";
+      }
 
-    // 隐藏加载状态，显示错误信息
-    loadingDiv.classList.add("hidden");
-    errorDiv.classList.remove("hidden");
+      loadingDiv.classList.add("hidden");
+      errorDiv.classList.remove("hidden");
+    }
   }
+}
+
+function openMobilePaymentLogDetailModal() {
+  let modal = document.getElementById("mobile-payment-log-detail-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "mobile-payment-log-detail-modal";
+    modal.className = "fixed inset-0 hidden mobile-modal z-[60]";
+    modal.onclick = function (e) {
+      if (e.target === modal) closeMobilePaymentLogDetailModal();
+    };
+    modal.innerHTML = `
+      <div class="absolute inset-0 bg-black/40" onclick="closeMobilePaymentLogDetailModal()"></div>
+      <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+        <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobilePaymentLogDetailModal()">
+          <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+        </div>
+        <div class="flex items-center justify-between gap-3 pb-3 border-b border-slate-200">
+          <h3 class="text-lg font-bold text-slate-800">支付日志详情</h3>
+          <!-- <button onclick="closeMobilePaymentLogDetailModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button> -->
+        </div>
+
+        <div id="mobile-log-detail-loading" class="py-10 text-center text-sm text-slate-500">加载中...</div>
+
+        <div id="mobile-log-detail-error" class="hidden rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+          <div class="font-medium">加载失败</div>
+          <div id="mobile-log-detail-error-message" class="mt-1 break-all"></div>
+        </div>
+
+        <div id="mobile-log-detail-content" class="hidden space-y-3">
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">记录时间</div>
+            <div id="mobile-log-detail-datetime" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">操作类型</div>
+            <div id="mobile-log-detail-action" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">用户ID</div>
+            <div id="mobile-log-detail-user-id" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">订单号</div>
+            <div id="mobile-log-detail-order-id" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">客户端IP</div>
+            <div id="mobile-log-detail-client-ip" class="mt-1 text-sm text-slate-800 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-[11px] text-slate-400">金额</div>
+            <div id="mobile-log-detail-amount" class="mt-1 text-base font-semibold text-slate-900 break-all">-</div>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <div class="text-[11px] text-slate-400">完整数据</div>
+            <pre id="mobile-log-detail-json" class="mt-2 text-xs leading-5 text-slate-700 overflow-x-auto font-mono whitespace-pre-wrap break-all">-</pre>
+          </div>
+          <button onclick="closeMobilePaymentLogDetailModal()" class="w-full min-h-[44px] rounded-2xl bg-sky-500 px-4 py-3 text-sm font-medium text-white hover:bg-sky-600 transition-colors">
+            关闭
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+
+  modal.classList.remove("hidden");
+  setTimeout(() => {
+    modal.classList.add("show");
+  }, 10);
+}
+
+function closeMobilePaymentLogDetailModal() {
+  const modal = document.getElementById("mobile-payment-log-detail-modal");
+  if (!modal) return;
+
+  modal.classList.remove("show");
+  setTimeout(() => {
+    modal.classList.add("hidden");
+  }, 300);
 }
 
 /**
@@ -1877,20 +1973,21 @@ async function showPaymentLogDetail(logId) {
  * 2. 重置所有显示区域的状态
  */
 function closePaymentLogDetailModal() {
-  // 获取模态框元素
+  if (typeof isMobileMode !== "undefined" && isMobileMode) {
+    closeMobilePaymentLogDetailModal();
+    logMessage_Info("[支付日志详情] 移动端模态框已关闭");
+    return;
+  }
+
   const modal = document.getElementById("admin-payment-log-detail-modal");
 
-  // 防御性检查：确保模态框元素存在
   if (!modal) {
-    // console.error('[支付日志详情] 找不到模态框元素');
     logMessage_Error("[支付日志详情] 找不到模态框元素");
     return;
   }
 
-  // 隐藏模态框
   modal.classList.add("hidden");
 
-  // console.log('[支付日志详情] 模态框已关闭');
   logMessage_Info("[支付日志详情] 模态框已关闭");
 }
 
@@ -10301,7 +10398,7 @@ async function initRegisterAvailableRunsHint() {
     const config = await response.json();
 
     // 在控制台输出获取到的配置（用于调试）
-    console.log("[注册提示] 获取到的配置:", config);
+    // console.log("[注册提示] 获取到的配置:", config);
 
     // ========== 步骤2：检查是否需要显示提示 ==========
 
@@ -13680,6 +13777,28 @@ let avatarCropper = null;
 let isRegistrationCrop = false;
 let registrationCroppedAvatarBlob = null;
 let currentLogPage = 1;
+const LOG_HIGHLIGHT_RULES = [
+  {
+    key: "error",
+    pattern: /\b(error|err|fatal|critical)\b/gi,
+    className: "text-red-300 font-semibold",
+  },
+  {
+    key: "warning",
+    pattern: /\b(warning|warn)\b/gi,
+    className: "text-amber-200 font-semibold",
+  },
+  {
+    key: "info",
+    pattern: /\b(info|notice)\b/gi,
+    className: "text-sky-200 font-semibold",
+  },
+  {
+    key: "debug",
+    pattern: /\b(debug|trace)\b/gi,
+    className: "text-violet-200 font-semibold",
+  },
+];
 let croppedAvatarFile = null;
 
 let currentSessionInfo = {
@@ -15505,6 +15624,7 @@ document.addEventListener("DOMContentLoaded", function () {
   console.log("[页面加载] DOM内容已加载，开始执行设备检测和UI切换");
 
   switchUIContainer();
+  syncThemeBackgroundTarget();
 
   console.log(
     "[页面加载] 移动端检测和UI切换完成（基于User-Agent，不监听窗口变化）",
@@ -15708,15 +15828,11 @@ async function callPythonAPI(method, ...args) {
       `[API调用] 警告: sessionUUID为空，可能导致会话无效错误，尝试从URL提取...`,
     );
     sessionUUID = getUUIDFromURL();
-    if (
-      sessionUUID ||
-      sessionUUID !== null ||
-      sessionUUID !== undefined ||
-      sessionUUID !== "null"
-    ) {
+    if (sessionUUID && sessionUUID !== "null" && sessionUUID !== "undefined") {
       logMessage_Info(`[API调用] 从URL提取到会话ID: ${sessionUUID}`);
       headers["X-Session-ID"] = sessionUUID;
     } else {
+      sessionUUID = null;
       logMessage_Warning(`[API调用] 无法从URL提取会话ID`);
     }
   }
@@ -15966,6 +16082,15 @@ async function callPythonAPI(method, ...args) {
       errorData.message &&
       errorData.message.includes("会话已过期或无效")
     ) {
+      const shouldSuppressSessionExpiredModal =
+        method === "get_theme_styles" && !sessionUUID;
+      if (shouldSuppressSessionExpiredModal) {
+        logMessage_Info(
+          "[API调用] get_theme_styles 在未登录状态返回会话失效，跳过弹窗并交由本地缓存兜底",
+        );
+        throw new Error("会话已过期或无效");
+      }
+
       logMessage_Error("[API调用] ✗ 会话已过期或无效！");
       logMessage_Info("[系统] 您的会话已过期或无效，请重新登录。");
 
@@ -16554,6 +16679,8 @@ const paramGroups = [
 ];
 
 let pythonParams = {};
+let currentThemeConfig = {};
+let availableThemeStyles = [];
 
 let cachedMultiAccounts = [];
 
@@ -16622,35 +16749,467 @@ function safeResizeAndFitView() {
   }
 }
 
-function setThemeStyle(styleName, save = true) {
-  // 增加 save 参数
-  document.body.classList.remove("theme-anime", "theme-minimalist");
 
-  if (styleName !== "default") {
-    document.body.classList.add(styleName);
+
+function applyThemeGlobalEnvironmentVariables(themeConfig) {
+  const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
+  const env =
+    config.global_environment_variables &&
+    typeof config.global_environment_variables === "object"
+      ? config.global_environment_variables
+      : {};
+
+  currentThemeConfig = config;
+  window.themeConfig = config;
+  window.themeGlobalEnvironmentVariables = env;
+
+  Object.keys(window).forEach((key) => {
+    if (key.startsWith("themeEnv_")) {
+      try {
+        delete window[key];
+      } catch (_) {}
+    }
+  });
+
+  Object.entries(env).forEach(([key, value]) => {
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)) return;
+    window[`themeEnv_${key}`] = value;
+  });
+
+  applyThemeLoginContainerStyle(config);
+  scheduleThemeBackgroundConsumed();
+}
+
+let currentThemeBackgroundTarget = null;
+let currentThemeBackgroundImageUrl = "";
+let themeBackgroundFeedbackInFlight = false;
+let pendingThemeBackgroundFeedback = null;
+let themeBackgroundConsumeDebounceTimer = null;
+const THEME_BACKGROUND_CONSUME_DEBOUNCE_MS = 300;
+
+function getCurrentThemeBackgroundTarget() {
+  return isMobileMode ? "mobile" : "pc";
+}
+
+function getThemeBackgroundImageUrlByTarget(target) {
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const env =
+    currentThemeConfig &&
+    currentThemeConfig.global_environment_variables &&
+    typeof currentThemeConfig.global_environment_variables === "object"
+      ? currentThemeConfig.global_environment_variables
+      : {};
+  return normalizedTarget === "mobile"
+    ? extractThemeBackgroundImageUrl(env.mobile_auth_login_content_background || "")
+    : extractThemeBackgroundImageUrl(env.auth_login_container_background || "");
+}
+
+function scheduleThemeBackgroundConsumed() {
+  const target = getCurrentThemeBackgroundTarget();
+  const imageUrl = getThemeBackgroundImageUrlByTarget(target);
+  if (!imageUrl) {
+    return;
+  }
+  if (themeBackgroundConsumeDebounceTimer) {
+    clearTimeout(themeBackgroundConsumeDebounceTimer);
+  }
+  themeBackgroundConsumeDebounceTimer = setTimeout(() => {
+    themeBackgroundConsumeDebounceTimer = null;
+    notifyThemeBackgroundConsumed(target, imageUrl);
+  }, THEME_BACKGROUND_CONSUME_DEBOUNCE_MS);
+}
+
+async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const imageUrl =
+    typeof imageUrlOverride === "string" && imageUrlOverride
+      ? imageUrlOverride
+      : getThemeBackgroundImageUrlByTarget(normalizedTarget);
+
+  if (!imageUrl) {
+    return;
   }
 
-  const themeButtons = document.querySelectorAll(
-    '#admin-profile-panel_modal button[onclick^="setThemeStyle"]',
-  );
-  themeButtons.forEach((btn) => {
-    const onclickValue = btn.getAttribute("onclick");
-    if (onclickValue && onclickValue.includes(`'${styleName}'`)) {
+  if (themeBackgroundFeedbackInFlight) {
+    pendingThemeBackgroundFeedback = { target: normalizedTarget, imageUrl };
+    return;
+  }
+
+  if (
+    currentThemeBackgroundTarget === normalizedTarget &&
+    currentThemeBackgroundImageUrl === imageUrl
+  ) {
+    return;
+  }
+
+  themeBackgroundFeedbackInFlight = true;
+
+  try {
+    let result = null;
+    if (sessionUUID) {
+      result = await callPythonAPI(
+        "mark_theme_background_consumed",
+        normalizedTarget,
+        imageUrl,
+      );
+    } else {
+      const response = await fetch("/api/public/theme_background/consume", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ target: normalizedTarget, image_url: imageUrl }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP错误: ${response.status}`);
+      }
+      result = await response.json();
+    }
+
+    if (result && result.success) {
+      currentThemeBackgroundTarget = normalizedTarget;
+      currentThemeBackgroundImageUrl = imageUrl;
+      if (result.theme_config && typeof result.theme_config === "object") {
+        currentThemeConfig = result.theme_config;
+        applyThemeLoginContainerStyle(currentThemeConfig);
+      }
+    }
+  } catch (e) {
+    logMessage_Warning("[主题] 上报已使用背景失败:", e);
+  } finally {
+    themeBackgroundFeedbackInFlight = false;
+    if (pendingThemeBackgroundFeedback) {
+      const nextFeedback = pendingThemeBackgroundFeedback;
+      pendingThemeBackgroundFeedback = null;
+      notifyThemeBackgroundConsumed(nextFeedback.target, nextFeedback.imageUrl);
+    }
+  }
+}
+
+function extractThemeBackgroundImageUrl(backgroundValue) {
+  const normalizedValue = typeof backgroundValue === "string" ? backgroundValue : "";
+  const match = normalizedValue.match(/url\(["']?(\/theme-assets\/[^"')]+)["']?\)/i);
+  return match && match[1] ? match[1] : "";
+}
+
+function syncThemeBackgroundTarget() {
+  scheduleThemeBackgroundConsumed();
+}
+
+window.addEventListener("resize", syncThemeBackgroundTarget);
+
+function applyThemeLoginContainerStyle(themeConfig) {
+  const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
+  const env =
+    config.global_environment_variables &&
+    typeof config.global_environment_variables === "object"
+      ? config.global_environment_variables
+      : {};
+
+  const desktopContainer = document.getElementById("auth-login-container");
+  const desktopPanel = document.getElementById("auth-login-container_panel");
+  const mobileContent = document.getElementById("mobile-content");
+  const mobileContainer = document.getElementById("mobile-auth-login-container");
+  const mobileCard = document.getElementById("mobile-auth-login-container-card");
+
+  const desktopBackground = env.auth_login_container_background || "";
+  const panelBackground = env.auth_login_panel_background || "";
+  const mobileContentBackground = env.mobile_auth_login_content_background || "";
+  const mobileCardBackground = env.mobile_auth_login_card_background || "";
+  const panelShadow = env.auth_login_panel_shadow || "";
+  const mobileShadow = env.mobile_auth_login_card_shadow || "";
+  const panelBorder = env.auth_login_panel_border || "";
+
+  if (desktopContainer) {
+    desktopContainer.style.background = desktopBackground;
+  }
+
+  if (desktopPanel) {
+    desktopPanel.style.background = panelBackground;
+    desktopPanel.style.boxShadow = panelShadow;
+    desktopPanel.style.borderColor = panelBorder;
+  }
+
+  if (mobileContent) {
+    mobileContent.style.background = mobileContentBackground;
+    mobileContent.style.backgroundSize = mobileContentBackground ? "cover" : "";
+    mobileContent.style.backgroundPosition = mobileContentBackground ? "center" : "";
+    mobileContent.style.backgroundRepeat = mobileContentBackground ? "no-repeat" : "";
+  }
+
+  if (mobileContainer) {
+    mobileContainer.style.background = "";
+    mobileContainer.style.borderRadius = "";
+    mobileContainer.style.padding = "";
+  }
+
+  if (mobileCard) {
+    mobileCard.style.background = mobileCardBackground;
+    mobileCard.style.boxShadow = mobileShadow;
+    mobileCard.style.borderColor = panelBorder;
+  }
+}
+
+function getThemeStyleConfig(styleId) {
+  const normalizedStyle = normalizeThemeStyle(styleId);
+  const styles = Array.isArray(availableThemeStyles) ? availableThemeStyles : [];
+  const matchedStyle = styles.find((style) => style && style.id === normalizedStyle);
+
+  if (matchedStyle && typeof matchedStyle === "object") {
+    return {
+      basic_information: {
+        id: matchedStyle.id || normalizedStyle,
+        label: matchedStyle.label || matchedStyle.id || normalizedStyle,
+        description: matchedStyle.description || "",
+        svg: matchedStyle.svg || "",
+      },
+      global_environment_variables:
+        matchedStyle.global_environment_variables &&
+        typeof matchedStyle.global_environment_variables === "object"
+          ? matchedStyle.global_environment_variables
+          : {},
+    };
+  }
+
+  return currentThemeConfig && typeof currentThemeConfig === "object"
+    ? currentThemeConfig
+    : {};
+}
+
+function setThemeStyle(styleName, save = true) {
+  const normalizedStyle = normalizeThemeStyle(styleName);
+  const nextThemeConfig = getThemeStyleConfig(normalizedStyle);
+  const cachedStyle = cacheThemeStyle(normalizedStyle);
+  pythonParams.theme_style = cachedStyle;
+
+  applyThemeGlobalEnvironmentVariables(nextThemeConfig);
+
+  document.querySelectorAll('[data-theme-style]').forEach((btn) => {
+    if (btn.dataset.themeStyle === cachedStyle) {
       btn.classList.add("border-2", "border-sky-500");
     } else {
       btn.classList.remove("border-2", "border-sky-500");
     }
   });
 
-  // 仅当 save 为 true 时调用 API
   if (save) {
-    callPythonAPI("update_param", "theme_style", styleName);
-    logMessage_Info(`主题样式已切换为: ${styleName}`);
+    callPythonAPI("update_param", "theme_style", cachedStyle);
+    logMessage_Info(`主题样式已切换为: ${cachedStyle}`);
   }
 }
 
-function applyAndSaveTheme(theme) {
-  if (theme === "dark") {
+const THEME_STORAGE_KEY = "theme_preference";
+const THEME_STYLE_STORAGE_KEY = "theme_style";
+let currentThemePreference = "light";
+let currentThemeStyle = "default";
+window.currentThemePreference = currentThemePreference;
+window.currentThemeStyle = currentThemeStyle;
+
+function normalizeThemePreference(theme) {
+  return theme === "dark" ? "dark" : "light";
+}
+
+function updateGlobalThemePreference(theme) {
+  currentThemePreference = normalizeThemePreference(theme);
+  window.currentThemePreference = currentThemePreference;
+  return currentThemePreference;
+}
+
+function cacheThemePreference(theme) {
+  const normalizedTheme = updateGlobalThemePreference(theme);
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
+  } catch (e) {
+    logMessage_Warning("[主题] 写入本地主题缓存失败:", e);
+  }
+  return normalizedTheme;
+}
+
+function getCachedThemePreference() {
+  try {
+    return normalizeThemePreference(localStorage.getItem(THEME_STORAGE_KEY));
+  } catch (e) {
+    logMessage_Warning("[主题] 读取本地主题缓存失败:", e);
+    return "light";
+  }
+}
+
+function syncThemeSelects(theme) {
+  const normalizedTheme = normalizeThemePreference(theme);
+  const profileThemeSelect = $("profile-theme-select");
+  if (profileThemeSelect) {
+    profileThemeSelect.value = normalizedTheme;
+  }
+
+  const mobileThemeSelect = document.getElementById("mobile-unified-theme-select");
+  if (mobileThemeSelect) {
+    mobileThemeSelect.value = normalizedTheme;
+  }
+}
+
+function updateGlobalThemeStyle(styleId) {
+  currentThemeStyle = normalizeThemeStyle(styleId);
+  window.currentThemeStyle = currentThemeStyle;
+  return currentThemeStyle;
+}
+
+function cacheThemeStyle(styleId) {
+  const normalizedStyle = updateGlobalThemeStyle(styleId);
+  try {
+    localStorage.setItem(THEME_STYLE_STORAGE_KEY, normalizedStyle);
+  } catch (e) {
+    logMessage_Warning("[主题] 写入本地主题风格缓存失败:", e);
+  }
+  return normalizedStyle;
+}
+
+function getCachedThemeStyle() {
+  try {
+    return updateGlobalThemeStyle(localStorage.getItem(THEME_STYLE_STORAGE_KEY));
+  } catch (e) {
+    logMessage_Warning("[主题] 读取本地主题风格缓存失败:", e);
+    return updateGlobalThemeStyle("default");
+  }
+}
+
+const KNOWN_THEME_STYLE_IDS = [
+  "default",
+  "theme-anime",
+  "theme-minimalist",
+  "theme-corporate",
+  "theme-creative",
+  "theme-futuristic",
+  "theme-retro",
+];
+
+function normalizeThemeStyle(styleId) {
+  if (typeof styleId !== "string" || !styleId.trim()) {
+    return "default";
+  }
+
+  const normalizedStyle = styleId.trim();
+  const styles = Array.isArray(availableThemeStyles) ? availableThemeStyles : [];
+  if (styles.some((style) => style && style.id === normalizedStyle)) {
+    return normalizedStyle;
+  }
+
+  if (KNOWN_THEME_STYLE_IDS.includes(normalizedStyle)) {
+    return normalizedStyle;
+  }
+
+  return "default";
+}
+
+function renderThemeStyleButtons(container, currentStyle = "default", options = {}) {
+  if (!container) return;
+
+  const styles = Array.isArray(availableThemeStyles) ? availableThemeStyles : [];
+  const normalizedCurrentStyle = normalizeThemeStyle(currentStyle);
+  const { mobile = false } = options;
+  const clickHandler = mobile ? "setMobileUnifiedThemeStyle" : "setThemeStyle";
+
+  if (mobile) {
+    container.className = "space-y-3";
+  } else {
+    container.className = "grid grid-cols-2 gap-2";
+  }
+
+  container.innerHTML = "";
+  styles.forEach((style) => {
+    if (!style || !style.id) return;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("onclick", `${clickHandler}('${style.id}')`);
+    button.title = style.description || style.label || style.id;
+    button.dataset.themeStyle = style.id;
+
+    const safeLabel = escapeHtml(style.label || style.id);
+    const safeDescription = escapeHtml(style.description || "");
+    const safeSvg = style.svg ? sanitizeSVG(style.svg) : "";
+
+    button.className = mobile
+      ? "w-full rounded-2xl border-2 border-transparent bg-white p-3 text-left shadow-sm overflow-hidden"
+      : "btn btn-ghost !rounded-lg !py-2 !px-2 border-2 border-transparent text-left overflow-hidden";
+
+    button.innerHTML = mobile
+      ? `
+        <div class="flex items-start gap-3">
+          <div class="w-28 h-20 shrink-0 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
+            ${safeSvg || '<span class="text-xs text-slate-400">暂无预览</span>'}
+          </div>
+          <div class="min-w-0 flex-1 pt-0.5">
+            <div class="text-sm font-semibold text-slate-800 break-words">${safeLabel}</div>
+            ${safeDescription ? `<div class="text-xs text-slate-500 mt-1 break-words">${safeDescription}</div>` : ""}
+          </div>
+        </div>
+      `
+      : `
+        <div class="space-y-2">
+          <div class="h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
+            ${safeSvg || '<span class="text-xs text-slate-400">暂无预览</span>'}
+          </div>
+          <div>
+            <div class="text-sm font-medium text-slate-800">${safeLabel}</div>
+            ${safeDescription ? `<div class="text-xs text-slate-500 mt-1 line-clamp-2">${safeDescription}</div>` : ""}
+          </div>
+        </div>
+      `;
+
+    if (style.id === normalizedCurrentStyle) {
+      button.classList.add("border-2", "border-sky-500");
+    }
+
+    container.appendChild(button);
+  });
+}
+
+async function ensureThemeStylesLoaded(force = false) {
+  if (!force && Array.isArray(availableThemeStyles) && availableThemeStyles.length > 0) {
+    return availableThemeStyles;
+  }
+
+  try {
+    const requestedThemeStyle = normalizeThemeStyle(getCachedThemeStyle());
+    const requestedTarget = getCurrentThemeBackgroundTarget();
+    const result = sessionUUID
+      ? await callPythonAPI("get_theme_styles", requestedTarget)
+      : await fetch(
+          `/api/public/theme_styles?style_id=${encodeURIComponent(requestedThemeStyle)}&background_target=${encodeURIComponent(requestedTarget)}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ).then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status}`);
+          }
+          return response.json();
+        });
+
+    if (result && result.success && Array.isArray(result.theme_styles)) {
+      availableThemeStyles = result.theme_styles;
+      if (result.theme_config && typeof result.theme_config === "object") {
+        currentThemeConfig = result.theme_config;
+        applyThemeGlobalEnvironmentVariables(currentThemeConfig);
+      }
+      return availableThemeStyles;
+    }
+  } catch (e) {
+    logMessage_Warning("[主题] 加载主题风格列表失败:", e);
+  }
+
+  availableThemeStyles = [];
+  return availableThemeStyles;
+}
+
+function applyTheme(theme, options = {}) {
+  const normalizedTheme = normalizeThemePreference(theme);
+  const { cache = true, syncControls = true } = options;
+
+  if (normalizedTheme === "dark") {
     document.body.classList.add("dark-mode");
     logMessage_Info("[主题] 已应用深色模式");
   } else {
@@ -16658,26 +17217,110 @@ function applyAndSaveTheme(theme) {
     logMessage_Info("[主题] 已应用浅色模式");
   }
 
+  if (cache) {
+    cacheThemePreference(normalizedTheme);
+  } else {
+    updateGlobalThemePreference(normalizedTheme);
+  }
+
+  if (syncControls) {
+    syncThemeSelects(normalizedTheme);
+  }
+
+  return normalizedTheme;
+}
+
+async function saveThemePreference(theme) {
+  const normalizedTheme = applyTheme(theme);
+
+  if (!sessionUUID) {
+    logMessage_Info(`[主题] 当前未登录，仅保存本地主题: ${normalizedTheme}`);
+    return { success: true, theme: normalizedTheme, localOnly: true };
+  }
+
   try {
-    fetch("/auth/user/update_theme", {
+    const response = await fetch("/auth/user/update_theme", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Session-ID": sessionUUID,
       },
-      body: JSON.stringify({ theme: theme }),
-    })
-      .then((response) => response.json())
-      .then((result) => {
-        if (result.success) {
-          logMessage_Info(`[主题] 主题设置已保存: ${theme}`);
-        } else {
-          logMessage_Warning(`[主题] 保存主题设置失败: ${result.message}`);
-        }
-      });
+      body: JSON.stringify({ theme: normalizedTheme }),
+    });
+    const result = await response.json();
+
+    if (result.success) {
+      logMessage_Info(`[主题] 主题设置已保存: ${normalizedTheme}`);
+      return { ...result, theme: normalizeThemePreference(result.theme || normalizedTheme) };
+    }
+
+    logMessage_Warning(`[主题] 保存主题设置失败: ${result.message}`);
+    return result;
   } catch (e) {
     logMessage_Error("[主题] 保存主题设置时出错:", e);
+    return { success: false, message: e.message || "保存主题失败" };
   }
+}
+
+async function syncThemeFromServer(themeFromResponse = null, themeStyleFromResponse = null) {
+  const responseTheme =
+    typeof themeFromResponse === "string" && themeFromResponse
+      ? normalizeThemePreference(themeFromResponse)
+      : null;
+  const responseThemeStyle =
+    typeof themeStyleFromResponse === "string" && themeStyleFromResponse
+      ? normalizeThemeStyle(themeStyleFromResponse)
+      : null;
+
+  if (!sessionUUID) {
+    const fallbackTheme = responseTheme || getCachedThemePreference();
+    const fallbackThemeStyle = responseThemeStyle || getCachedThemeStyle();
+    applyTheme(fallbackTheme);
+    setThemeStyle(fallbackThemeStyle, false);
+    return { theme: fallbackTheme, theme_style: fallbackThemeStyle };
+  }
+
+  let serverTheme = responseTheme;
+  let serverThemeStyle = responseThemeStyle;
+
+  if (!serverTheme) {
+    try {
+      const response = await fetch("/auth/user/theme", {
+        headers: {
+          "X-Session-ID": sessionUUID,
+        },
+      });
+      const result = await response.json();
+      if (result.success) {
+        serverTheme = normalizeThemePreference(result.theme);
+      } else {
+        logMessage_Warning(`[主题] 读取服务器主题失败: ${result.message}`);
+      }
+    } catch (e) {
+      logMessage_Warning("[主题] 同步服务器主题失败:", e);
+    }
+  }
+
+  if (!serverThemeStyle) {
+    try {
+      const paramsResult = await callPythonAPI("get_params");
+      if (paramsResult && paramsResult.theme_style) {
+        serverThemeStyle = normalizeThemeStyle(paramsResult.theme_style);
+      }
+    } catch (e) {
+      logMessage_Warning("[主题] 同步服务器主题风格失败:", e);
+    }
+  }
+
+  const finalTheme = serverTheme || getCachedThemePreference();
+  const finalThemeStyle = serverThemeStyle || getCachedThemeStyle();
+
+  applyTheme(finalTheme);
+  setThemeStyle(finalThemeStyle, false);
+  logMessage_Info(`[主题] 已同步服务器主题: ${finalTheme}`);
+  logMessage_Info(`[主题] 已同步服务器主题风格: ${finalThemeStyle}`);
+
+  return { theme: finalTheme, theme_style: finalThemeStyle };
 }
 
 function resetBaseColorToDefault(prefix) {
@@ -16948,7 +17591,7 @@ async function loadCaptcha(formType) {
   if (container) {
     // 取padding后内容区宽度
     const style = window.getComputedStyle(container);
-    console.log("[验证码] 容器计算样式:", style);
+    // console.log("[验证码] 容器计算样式:", style);
     const paddingLeft = parseFloat(style.paddingLeft) || 0;
     const paddingRight = parseFloat(style.paddingRight) || 0;
     if (formType === "login" || formType === "register") {
@@ -17611,6 +18254,8 @@ async function handleAuthLogin(isMobile_use = false) {
         );
       }
 
+      await syncThemeFromServer(result.theme, result.theme_style);
+
       let successMessage = "登录成功！";
 
       if (result.multi_device_warning) {
@@ -17774,7 +18419,7 @@ async function handleAuthLogin(isMobile_use = false) {
           html: `
             <div class="text-left">
               <p class="mb-3">手机号 <strong class="font-mono">${escapeHtml(phoneNumber)}</strong> 尚未注册。</p>
-              <p class="text-sm text-slate-600">是否立即注册？系统将自动填充手机号和验证码。</p>
+              <p class="text-sm text-slate-600">是否立即注册？</p>
             </div>
           `,
           showCancelButton: true,
@@ -18007,7 +18652,7 @@ async function handle2FAVerify() {
       showButtonSuccess("auth-2fa-verify-btn", "验证成功", 800);
       showAuthSuccess("2FA验证成功！");
       $("mobile-auth-login-container").classList.add("hidden");
-      showMobileSessionPicker();
+      
 
 
       if (!result.is_guest) {
@@ -18015,7 +18660,11 @@ async function handle2FAVerify() {
           setButtonLoading("auth-2fa-verify-btn", false);
 
           $("auth-login-container").classList.add("hidden");
+          if (isMobileMode) {
+            showMobileSessionPicker();}
+            else {
           showSessionPicker();
+            }
 
           logMessage_Info("[会话选择] 请选择要进入的会话，或创建新会话");
           logMessage_Info("[提示] 每个会话都是独立的学校账号登录状态");
@@ -18957,6 +19606,8 @@ if (typeof window !== "undefined") {
     const logPrevPageBtn = $("log-prev-page");
     const logNextPageBtn = $("log-next-page");
     const logLimitSelect = $("log-limit-select_modal");
+    const logFilterSelect = $("log-level-filter_modal");
+    const logKeywordInput = $("log-keyword-filter_modal");
 
     if (logPrevPageBtn) {
       logPrevPageBtn.addEventListener("click", () => {
@@ -18973,6 +19624,16 @@ if (typeof window !== "undefined") {
     if (logLimitSelect) {
       logLimitSelect.addEventListener("change", () => {
         loadAdminLogs(1);
+      });
+    }
+    if (logFilterSelect) {
+      logFilterSelect.addEventListener("change", () => {
+        loadAdminLogs(currentLogPage);
+      });
+    }
+    if (logKeywordInput) {
+      logKeywordInput.addEventListener("input", () => {
+        loadAdminLogs(currentLogPage);
       });
     }
 
@@ -19459,6 +20120,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
     let canManageUsers = false;
     let canViewLogs = false;
     let canViewCaptchaHistory = false;
+    let canManageBilling = false;
+    let canRestoreAccount = false;
     if (!skipAuthCheck) {
       try {
         // [权限检查] 并行执行多个权限检查，提高效率
@@ -19474,6 +20137,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         // [4] (auth status check) - 身份验证状态检查
         // [5] view_logs           - 查看日志权限（系统日志、操作日志）
         // [6] view_captcha_history- 查看验证码历史权限
+        // [7] manage_billing      - 账单管理权限
+        // [8] restore_account     - 恢复账号权限
         const permissionChecks = await Promise.all([
           checkAdminPermission("manage_users"), // 索引0: 用户管理权限
           checkAdminPermission("view_messages"), // 索引1: 消息查看权限
@@ -19482,6 +20147,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
           checkAuthStatus(), // 索引4: 身份验证状态
           checkAdminPermission("view_logs"), // 索引5: 日志查看权限
           checkAdminPermission("view_captcha_history"), // 索引6: 验证码历史查看权限
+          checkAdminPermission("manage_system"), // 索引7: 账单管理权限
+          checkAdminPermission("manage_system"), // 索引8: 恢复账号权限
         ]);
 
         // [权限赋值] 从Promise.all的结果数组中提取各项权限
@@ -19492,7 +20159,9 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         hasGodMode = permissionChecks[3]; // 上帝模式权限结果 ← 这是bruteforce标签的关键
         isAuthenticated = permissionChecks[4]; // 身份验证状态结果
         canViewLogs = permissionChecks[5]; // 日志查看权限结果
-        canViewCaptchaHistory = permissionChecks[6]; // 验证码历史权限结果
+        canViewCaptchaHistory = permissionChecks[6]; // 验证码历史查看权限结果
+        canManageBilling = permissionChecks[7]; // 账单管理权限结果
+        canRestoreAccount = permissionChecks[8]; // 恢复账号权限结果
 
         // [调试日志] 记录所有权限检查的完整结果
         // 这对于调试权限问题非常重要，可以一目了然地看到用户拥有哪些权限
@@ -19504,6 +20173,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
           isAuthenticated: isAuthenticated, // 是否已认证
           canViewLogs: canViewLogs, // 是否可查看日志
           canViewCaptchaHistory: canViewCaptchaHistory, // 是否可查看验证码历史
+          canManageBilling: canManageBilling, // 是否可管理账单
+          canRestoreAccount: canRestoreAccount, // 是否可恢复账号
           userGroup: currentUserData?.group || "未知", // 当前用户组
           username: currentUserData?.username || "未知", // 当前用户名
         });
@@ -19535,6 +20206,8 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
         isAuthenticated = false;
         canViewLogs = false;
         canViewCaptchaHistory = false;
+        canManageBilling = false;
+        canRestoreAccount = false;
       }
     }
 
@@ -19841,6 +20514,18 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
       console.warn(
         "[水印控制Tab警告] 未找到ID为'admin-tab-watermark-control_modal'的元素",
       );
+    }
+
+    adminBillingTab = $("admin-tab-billing_modal");
+
+    restoreAccountTab=$("admin-tab-restore-account_modal");
+
+    if (adminBillingTab) {
+      adminBillingTab.style.display = canManageBilling ? "block" : "none";
+    }
+
+    if (restoreAccountTab) {
+      restoreAccountTab.style.display = canRestoreAccount ? "block" : "none";
     }
 
     if (modalCaptchaTab)
@@ -20820,12 +21505,13 @@ function switchAdminTab(tab) {
           try {
             await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
             // 先加载依赖库，再加载 editormd 本体，减少 race condition
-            await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(
-              () => {},
-            );
-            await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
-              () => {},
-            );
+            // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(
+            //   () => {},
+            // );
+            // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
+            //   () => {},
+            // );
+            // 依赖库已经预加载
             await loadOnce("/editor.md/editormd.js", false).catch(() => {});
             // 尝试在资源加载后触发已存在实例的刷新（若实例已存在）
             setTimeout(() => {
@@ -21459,6 +22145,8 @@ async function loadAdminLogs(newPage = 1) {
 
   const contentEl = $("admin-logs-content_modal");
   const limitSelect = $("log-limit-select_modal");
+  const filterSelect = $("log-level-filter_modal");
+  const keywordInput = $("log-keyword-filter_modal");
   const pageSelect = $("log-page-select");
   const pageTotal = $("log-page-total");
   const prevBtn = $("log-prev-page");
@@ -21483,8 +22171,9 @@ async function loadAdminLogs(newPage = 1) {
 
   try {
     const limit = limitSelect ? limitSelect.value : 100;
+    const keywordValue = keywordInput ? keywordInput.value.trim() : "";
     const response = await fetch(
-      `/logs/view?page=${currentLogPage}&limit=${limit}`,
+      `/logs/view?page=${currentLogPage}&limit=${limit}&keyword=${encodeURIComponent(keywordValue)}`,
       {
         headers: {
           "X-Session-ID": sessionUUID,
@@ -21500,17 +22189,26 @@ async function loadAdminLogs(newPage = 1) {
       return;
     }
 
-    if (result.logs.length === 0) {
-      contentEl.textContent = "暂无日志";
+    const rawLogs = Array.isArray(result.logs) ? result.logs : [];
+    const filteredLogs = filterLogsByLevel(
+      rawLogs,
+      filterSelect ? filterSelect.value : "all",
+    );
+
+    if (filteredLogs.length === 0) {
+      contentEl.textContent = rawLogs.length === 0 ? "暂无日志" : "当前筛选条件下暂无日志";
       pageSelect.innerHTML = '<option value="1">第 1 / 1 页</option>';
-      pageTotal.textContent = "(共 0 行)";
+      pageTotal.textContent = rawLogs.length === 0 ? "(共 0 行)" : `(本页筛选后 0 / ${rawLogs.length} 行)`;
       return;
     }
 
-    contentEl.textContent = result.logs.join("");
+    renderHighlightedLogs(contentEl, filteredLogs, keywordValue);
 
     const pagination = result.pagination;
-    pageTotal.textContent = `(共 ${pagination.total_lines} 行)`;
+    pageTotal.textContent =
+      (filterSelect && filterSelect.value !== "all") || keywordValue
+        ? `(本页筛选后 ${filteredLogs.length} / ${rawLogs.length} 行，总计 ${pagination.total_lines} 行)`
+        : `(共 ${pagination.total_lines} 行)`;
 
     pageSelect.innerHTML = "";
     for (let i = 1; i <= pagination.total_pages; i++) {
@@ -21532,6 +22230,89 @@ async function loadAdminLogs(newPage = 1) {
     pageSelect.innerHTML = '<option value="1">1</option>';
     pageTotal.textContent = "(加载失败)";
   }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function highlightCustomKeyword(text, keyword) {
+  if (!keyword) {
+    return text;
+  }
+
+  const keywordParts = keyword
+    .split(/[|&]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  if (!keywordParts.length) {
+    return text;
+  }
+
+  const escapedKeyword = keywordParts.map((part) => escapeRegExp(part)).join("|");
+  if (!escapedKeyword) {
+    return text;
+  }
+
+  return text.replace(
+    new RegExp(`(${escapedKeyword})`, "gi"),
+    '<span class="bg-yellow-300 text-slate-900 font-bold px-0.5 rounded">$1</span>',
+  );
+}
+
+function getLogLineClass(line) {
+  const text = String(line || "");
+  let matchedRule = null;
+  let matchedIndex = Number.POSITIVE_INFINITY;
+
+  LOG_HIGHLIGHT_RULES.forEach((rule) => {
+    rule.pattern.lastIndex = 0;
+    const match = rule.pattern.exec(text);
+    rule.pattern.lastIndex = 0;
+    if (match && match.index < matchedIndex) {
+      matchedIndex = match.index;
+      matchedRule = rule;
+    }
+  });
+
+  return matchedRule ? matchedRule.className : "";
+}
+
+function highlightLogLine(line, keyword = "") {
+  const html = highlightCustomKeyword(escapeHtml(line), keyword);
+  const lineClass = getLogLineClass(line);
+  return lineClass ? `<span class="${lineClass}">${html}</span>` : html;
+}
+
+function renderHighlightedLogs(contentEl, logs, keyword = "") {
+  contentEl.innerHTML = logs.map((line) => highlightLogLine(line, keyword)).join("");
+}
+
+function filterLogsByLevel(logs, level) {
+  if (!Array.isArray(logs) || level === "all") {
+    return Array.isArray(logs) ? logs : [];
+  }
+
+  const rule = LOG_HIGHLIGHT_RULES.find((item) => item.key === level);
+  if (!rule) {
+    return logs;
+  }
+
+  return logs.filter((line) => {
+    rule.pattern.lastIndex = 0;
+    return rule.pattern.test(line);
+  });
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // ====================
@@ -21677,6 +22458,7 @@ async function loadPersonalInfo() {
     const phoneInput = $("profile-phone");
     if (nicknameInput) nicknameInput.value = user.nickname || "";
     if (phoneInput) phoneInput.value = user.phone || "未绑定";
+    _showPhoneLocationNearInput(phoneInput, user.phone);
 
     const phoneWrapper = phoneInput
       ? phoneInput.closest(".phone-input-wrapper")
@@ -21796,7 +22578,7 @@ async function loadPersonalInfo() {
         setThemeStyle(paramsResult.theme_style);
       }
       if (user.theme) {
-        applyAndSaveTheme(user.theme);
+        applyTheme(user.theme);
       }
     } catch (e) {
       logMessage_Warning("[loadPersonalInfo] 加载主题设置失败:", e);
@@ -22867,8 +23649,119 @@ async function disable2FA() {
   }
 }
 
+function showMobileTest2FAModal() {
+  return new Promise((resolve) => {
+    let modal = document.getElementById("mobile-test-2fa-modal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "mobile-test-2fa-modal";
+      modal.className = "fixed inset-0 hidden mobile-modal z-[60]";
+      modal.onclick = function (e) {
+        if (e.target === modal) closeMobileTest2FAModal();
+      };
+      modal.innerHTML = `
+        <div class="absolute inset-0 bg-black/40" onclick="closeMobileTest2FAModal()"></div>
+        <div class="mobile-modal-content bg-white rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+          <div class="flex justify-center mb-2 cursor-pointer" onclick="closeMobileTest2FAModal()">
+            <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+          </div>
+          <div class="flex items-center justify-center gap-2 pb-3 border-b border-slate-200 cursor-pointer" onclick="closeMobileTest2FAModal()">
+            <svg class="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0-1.657 1.343-3 3-3h1a3 3 0 013 3v7a3 3 0 01-3 3H8a3 3 0 01-3-3v-7a3 3 0 013-3h1c1.657 0 3 1.343 3 3zm0 0V8a3 3 0 116 0v3m-6 0h6"></path>
+            </svg>
+            <h3 class="text-xl font-bold text-sky-600 text-center">测试2FA</h3>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">验证码</label>
+              <input
+                type="text"
+                id="mobile-test-2fa-code"
+                class="input-field !text-xs !py-1.5 w-full"
+                placeholder="请输入验证器中的6位验证码"
+                maxlength="6"
+                inputmode="numeric"
+              />
+            </div>
+          </div>
+          <div class="flex gap-3 pt-4 border-t border-slate-100">
+            <button onclick="closeMobileTest2FAModal()" class="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm text-slate-600">取消</button>
+            <button id="mobile-test-2fa-confirm" class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm">验证</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    const codeInput = document.getElementById("mobile-test-2fa-code");
+    const confirmBtn = document.getElementById("mobile-test-2fa-confirm");
+
+    if (codeInput) codeInput.value = "";
+
+    const cleanup = () => {
+      window._mobileTest2FAResolver = null;
+      if (confirmBtn) confirmBtn.onclick = null;
+      if (codeInput) codeInput.onkeypress = null;
+    };
+
+    window._mobileTest2FAResolver = (code = null) => {
+      cleanup();
+      resolve(code);
+    };
+
+    if (confirmBtn) {
+      confirmBtn.onclick = () => {
+        const code = codeInput ? codeInput.value.trim() : "";
+        if (!/^[0-9]{6}$/.test(code)) {
+          showModalAlert("请输入有效的6位数字验证码", "错误");
+          return;
+        }
+        closeMobileTest2FAModal(code);
+      };
+    }
+
+    if (codeInput) {
+      codeInput.onkeypress = (e) => {
+        if (e.key === "Enter") {
+          confirmBtn?.click();
+        }
+      };
+    }
+
+    modal.classList.remove("hidden");
+    setTimeout(() => {
+      modal.classList.add("show");
+      codeInput?.focus();
+    }, 10);
+  });
+}
+
+function closeMobileTest2FAModal(code = null) {
+  const modal = document.getElementById("mobile-test-2fa-modal");
+  if (modal) {
+    modal.classList.remove("show");
+    setTimeout(() => {
+      modal.classList.add("hidden");
+      if (typeof window._mobileTest2FAResolver === "function") {
+        const resolver = window._mobileTest2FAResolver;
+        window._mobileTest2FAResolver = null;
+        resolver(code);
+      }
+    }, 300);
+  } else if (typeof window._mobileTest2FAResolver === "function") {
+    const resolver = window._mobileTest2FAResolver;
+    window._mobileTest2FAResolver = null;
+    resolver(code);
+  }
+}
+
 async function test2FA() {
   const testCode = await new Promise((resolve) => {
+    if (isMobileMode) {
+      showMobileTest2FAModal().then(resolve);
+      return;
+    }
+
     const modal = document.createElement("div");
     modal.className = "fixed inset-0 flex items-center justify-center z-50";
     modal.innerHTML = `
@@ -22890,10 +23783,19 @@ async function test2FA() {
     const confirmBtn = modal.querySelector("#confirm-test-2fa");
     const codeInput = modal.querySelector("#test-2fa-code-input");
 
+    const finish = (code = null) => {
+      if (modal.parentNode) {
+        modal.remove();
+      }
+      resolve(code);
+    };
+
+    modal.querySelector(".bg-black")?.addEventListener("click", () => finish(null));
+    modal.querySelector(".btn-ghost")?.addEventListener("click", () => finish(null));
+
     confirmBtn.onclick = () => {
-      const code = codeInput.value;
+      const code = codeInput.value.trim();
       if (!code || code.length !== 6 || !/^[0-9]{6}$/.test(code)) {
-        // showModalAlert("请输入有效的6位数字验证码", "错误");
         Swal.fire({
           title: "错误",
           text: "请输入有效的6位数字验证码",
@@ -22901,9 +23803,14 @@ async function test2FA() {
         });
         return;
       }
-      modal.remove();
-      resolve(code);
+      finish(code);
     };
+
+    codeInput?.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        confirmBtn.click();
+      }
+    });
   });
 
   if (!testCode) return;
@@ -22942,54 +23849,6 @@ async function test2FA() {
     Swal.fire({
       title: "错误",
       text: `测试失败: ${e.message}`,
-      icon: "error",
-    });
-  }
-}
-
-async function updateTheme() {
-  const themeSelect = $("profile-theme-select");
-  if (!themeSelect) return;
-
-  const selectedTheme = themeSelect.value;
-
-  applyAndSaveTheme(selectedTheme);
-
-  try {
-    const response = await fetch("/auth/user/update_theme", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
-      },
-      body: JSON.stringify({
-        theme: selectedTheme,
-      }),
-    });
-    const result = await response.json();
-
-    if (result.success) {
-      // showModalAlert("主题更新成功！", "成功");
-      Swal.fire({
-        title: "成功",
-        text: "主题更新成功！",
-        icon: "success",
-      });
-    } else {
-      // showModalAlert(`更新失败: ${result.message}`, "错误");
-      Swal.fire({
-        title: "错误",
-        text: `更新失败: ${result.message}`,
-        icon: "error",
-      });
-      applyAndSaveTheme(selectedTheme === "dark" ? "light" : "dark");
-    }
-  } catch (e) {
-    logMessage_Error("更新主题失败:", e);
-    // showModalAlert(`更新失败: ${e.message}`, "错误");
-    Swal.fire({
-      title: "错误",
-      text: `更新失败: ${e.message}`,
       icon: "error",
     });
   }
@@ -23819,7 +24678,7 @@ function _rerenderAdminUsersList() {
             <div class="flex-1">
               <p class="font-semibold text-slate-800">${user.auth_username}${bannedBadge}</p>
               <p class="text-xs text-slate-500">昵称: ${user.nickname || "未设置"}</p>
-              <p class="text-xs text-slate-500">手机号: ${user.phone || "未绑定"}</p>
+              <p class="text-xs text-slate-500">手机号: ${user.phone || "未绑定"}<span class="phone-location-badge" data-phone="${user.phone || ""}"></span></p>
               <p class="text-xs text-slate-500">创建时间: ${createdDate}</p>
               <p class="text-xs text-slate-500">最后登录: ${lastLoginDate}</p>
               <p class="text-xs text-slate-500">登录IP: ${user.last_login_ip || "无记录"} (${user.last_login_city || "未知"})</p>
@@ -23876,7 +24735,15 @@ function _rerenderAdminUsersList() {
     .join("");
 
   const listEl = $("admin-users-list_modal");
-  if (listEl) listEl.innerHTML = listHtml;
+  if (listEl) {
+    listEl.innerHTML = listHtml;
+    listEl.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+      const phone = span.dataset.phone;
+      if (!phone) return;
+      const info = await fetchPhoneInfo(phone);
+      span.innerHTML = _phoneInfoBadge(info);
+    });
+  }
 
   // 重新同步到移动端并重新绑定移动端按钮事件处理器
   if (typeof copyAdminContentToMultiPanel === "function") {
@@ -23885,6 +24752,50 @@ function _rerenderAdminUsersList() {
 
   // 重新加载用户头像
   sorted.forEach((user) => loadUserAvatar(user.auth_username));
+}
+
+// 手机号归属地查询缓存
+const _phoneInfoCache = {};
+async function fetchPhoneInfo(phone) {
+  if (!phone || phone === "未绑定") return null;
+  const key = String(phone).replace(/\D/g, "");
+  if (!key) return null;
+  if (_phoneInfoCache[key] !== undefined) return _phoneInfoCache[key];
+  try {
+    const resp = await fetch(`/api/phone_info?phone=${encodeURIComponent(key)}`, {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const data = await resp.json();
+    const result = data.success ? { province: data.province || "", city: data.city || "", sp: data.sp || "" } : null;
+    _phoneInfoCache[key] = result;
+    return result;
+  } catch {
+    _phoneInfoCache[key] = null;
+    return null;
+  }
+}
+function _phoneInfoBadge(info) {
+  if (!info) return "";
+  const parts = [info.province, info.city, info.sp].filter(Boolean);
+  if (!parts.length) return "";
+  return ` <span class="text-[11px] text-slate-400">(${parts.join(" ")})</span>`;
+}
+// 在 phone input 旁边显示归属地（找或创建 .phone-location-tag span）
+async function _showPhoneLocationNearInput(inputEl, phone) {
+  if (!inputEl) return;
+  let tag = inputEl.parentElement && inputEl.parentElement.querySelector(".phone-location-tag");
+  if (!tag) {
+    tag = document.createElement("span");
+    tag.className = "phone-location-tag text-[11px] text-slate-400 ml-1";
+    inputEl.insertAdjacentElement("afterend", tag);
+  }
+  tag.textContent = "";
+  if (!phone || phone === "未绑定") return;
+  const info = await fetchPhoneInfo(phone);
+  if (info) {
+    const parts = [info.province, info.city, info.sp].filter(Boolean);
+    if (parts.length) tag.textContent = `(${parts.join(" ")})`;
+  }
 }
 
 async function loadAdminUsers() {
@@ -26365,6 +27276,7 @@ function modifyUserPhone(username, currentPhone) {
   $("admin-modify-phone-new").value = "";
   $("admin-modify-phone-code").value = "";
   $("admin-modify-phone-modal").classList.remove("hidden");
+  _showPhoneLocationNearInput($("admin-modify-phone-current"), currentPhone);
 
   const adminCurrentPhoneInput = $("admin-modify-phone-current");
   const adminCurrentPhoneWrapper = adminCurrentPhoneInput
@@ -28513,7 +29425,7 @@ async function loadSMSHistory() {
                   <span class="text-xs text-slate-500">📱 手机号</span>
                   <p class="font-semibold text-slate-700">+86 ${
                     record.phone || "N/A"
-                  }</p>
+                  }<span class="phone-location-badge text-[11px] text-slate-400 ml-1" data-phone="${record.phone || ""}"></span></p>
                 </div>
                 <div>
                   <span class="text-xs text-slate-500">👤 用户名</span>
@@ -28554,6 +29466,10 @@ async function loadSMSHistory() {
           `,
         )
         .join("");
+      listContainer.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+        const info = await fetchPhoneInfo(span.dataset.phone);
+        if (info) { const p = [info.province, info.city, info.sp].filter(Boolean); if (p.length) span.textContent = `(${p.join(" ")})`; }
+      });
     } else {
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10">暂无记录</p>';
@@ -29120,7 +30036,7 @@ async function loadVerificationCodes() {
                     <span class="text-xs text-slate-500">📱 手机号</span>
                     <p class="font-semibold text-slate-700">+86 ${
                       item.phone
-                    }</p>
+                    }<span class="phone-location-badge text-[11px] text-slate-400 ml-1" data-phone="${item.phone || ""}"></span></p>
                   </div>
                   <div>
                     <span class="text-xs text-slate-500">🔢 验证码</span>
@@ -29149,6 +30065,10 @@ async function loadVerificationCodes() {
           `;
         })
         .join("");
+      listContainer.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+        const info = await fetchPhoneInfo(span.dataset.phone);
+        if (info) { const p = [info.province, info.city, info.sp].filter(Boolean); if (p.length) span.textContent = `(${p.join(" ")})`; }
+      });
     } else {
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10">当前没有有效的验证码</p>';
@@ -30740,6 +31660,20 @@ function startSessionValidityCheck() {
     5 * 60 * 1000,
   );
 }
+// function updateMobileGuestVisibility() {
+//   console.log("[移动端] 更新游客用户相关元素的可见性，当前用户是否为游客:",
+//     currentUserIsGuest);
+//   const mobileSidebarUserDetailsLink = document.getElementById(
+//     "mobile-sidebar-user-details-link",
+//   );
+
+//   if (mobileSidebarUserDetailsLink) {
+//     mobileSidebarUserDetailsLink.style.display = currentUserIsGuest
+//       ? "none"
+//       : "";
+//   }
+// }
+
 async function initializeApp() {
   function ShowMobileLoadingOverlay() {
     const isMobile = detectMobileDevice();
@@ -30765,6 +31699,11 @@ async function initializeApp() {
 
   ShowLoadingOverlay();
   ShowMobileLoadingOverlay();
+  applyTheme(getCachedThemePreference());
+  const cachedThemeStyle = getCachedThemeStyle();
+  setThemeStyle(cachedThemeStyle, false);
+  await ensureThemeStylesLoaded();
+  setThemeStyle(cachedThemeStyle, false);
 
   try {
     function isValidUUID(uuid) {
@@ -31188,9 +32127,31 @@ async function initializeApp() {
 
     // 使用统一的加载函数获取初始数据，并自动更新管理员任务列表
     const initialData = await loadInitialData();
+    availableThemeStyles = Array.isArray(initialData?.theme_styles)
+      ? initialData.theme_styles
+      : [];
+    currentThemeConfig =
+      initialData?.theme_config && typeof initialData.theme_config === "object"
+        ? initialData.theme_config
+        : {};
+    applyThemeGlobalEnvironmentVariables(currentThemeConfig);
+    if (!availableThemeStyles.length) {
+      await ensureThemeStylesLoaded();
+    }
+    renderThemeStyleButtons(
+      document.getElementById("profile-theme-style-buttons"),
+      pythonParams.theme_style || currentThemeStyle || "default",
+    );
+    renderThemeStyleButtons(
+      document.getElementById("mobile-unified-theme-style-buttons"),
+      pythonParams.theme_style || currentThemeStyle || "default",
+      { mobile: true },
+    );
+    await syncThemeFromServer(initialData?.theme, initialData?.theme_style);
 
     currentUserIsGuest = initialData.is_guest || false;
     currentAuthUsername = initialData.auth_username || null;
+    // updateMobileGuestVisibility();
     logMessage_Info(
       `initializeApp: currentUserIsGuest = ${currentUserIsGuest}, auth_username = ${currentAuthUsername}`,
     );
@@ -32944,6 +33905,7 @@ async function onLogin() {
   logMessage_Info("[前端-登录] 调用后端API进行登录验证...");
   const result = await callPythonAPI("login", user, pass);
   if (result.success) {
+    await syncThemeFromServer(result.theme, result.theme_style);
     logMessage_Info("[前端-登录] ✓ 登录成功！");
     showButtonSuccess("login-button", "登录成功");
     if (result.amap_key) {
@@ -38186,12 +39148,13 @@ function createParamInputs(
         div.innerHTML = `
           <label class="block text-slate-700 font-semibold">${def.label}</label>
           <p class="mt-1 text-xs text-slate-500">${def.help}</p>
-          <div class="grid grid-cols-3 gap-2 mt-2">
-              <button onclick="setThemeStyle('default')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">默认</button>
-              <button onclick="setThemeStyle('theme-anime')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">二次元</button>
-              <button onclick="setThemeStyle('theme-minimalist')" class="btn btn-ghost !rounded-lg !py-1.5 border-2 border-transparent">简约</button>
-          </div>
+          <div id="${prefix}-theme-style-buttons" class="grid grid-cols-2 gap-2 mt-2"></div>
         `;
+        const buttonsContainer = div.querySelector(`#${prefix}-theme-style-buttons`);
+        renderThemeStyleButtons(
+          buttonsContainer,
+          pythonParams.theme_style || currentThemeStyle || "default",
+        );
       } else if (def.type === "color_picker") {
         div.innerHTML = `
           <label for="${prefix}-${key}" class="block text-slate-700 font-semibold">${def.label}</label>
@@ -42145,6 +43108,39 @@ document.addEventListener("DOMContentLoaded", function () {
       loadCaptcha("register");
     }, 100);
   }
+
+  // 手机号归属地：注册/登录输入框实时显示
+  ["auth-reg-phone", "mobile-reg-phone", "auth-username"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let _debounce = null;
+    el.addEventListener("input", function () {
+      clearTimeout(_debounce);
+      _debounce = setTimeout(() => _showPhoneLocationNearInput(el, el.value.trim()), 500);
+    });
+  });
+  // mobile-username-container 内动态创建的 mobile-auth-username（手机登录）
+  const mobileUsernameContainer = document.getElementById("mobile-username-container");
+  if (mobileUsernameContainer) {
+    let _mobileDebounce = null;
+    mobileUsernameContainer.addEventListener("input", function (e) {
+      if (e.target && e.target.id === "mobile-auth-username") {
+        clearTimeout(_mobileDebounce);
+        _mobileDebounce = setTimeout(() => _showPhoneLocationNearInput(e.target, e.target.value.trim()), 500);
+      }
+    });
+  }
+  // auth-username-container 内动态创建的 auth-username（手机登录）
+  const authUsernameContainer = document.getElementById("auth-username-container");
+  if (authUsernameContainer) {
+    let _authDebounce = null;
+    authUsernameContainer.addEventListener("input", function (e) {
+      if (e.target && e.target.id === "auth-username") {
+        clearTimeout(_authDebounce);
+        _authDebounce = setTimeout(() => _showPhoneLocationNearInput(e.target, e.target.value.trim()), 500);
+      }
+    });
+  }
 });
 function modifyPhone() {
   const currentPhone = document.getElementById("profile-phone").value;
@@ -42153,6 +43149,7 @@ function modifyPhone() {
   document.getElementById("modify-phone-code").value = "";
   document.getElementById("modify-phone-modal").style.display = "flex";
   document.getElementById("modify-phone-password").value = "";
+  _showPhoneLocationNearInput(document.getElementById("modify-phone-current"), currentPhone);
   document.body.classList.add("modal-visible");
 
   const currentPhoneInput = document.getElementById("modify-phone-current");
@@ -42490,6 +43487,13 @@ async function loadSystemConfig() {
     );
     html += createInput(
       "Logging",
+      "random_background_cache_max_size_mb",
+      "背景缓存最大 (MB)",
+      "number",
+      "random_background_image 目录总大小限制，0为不限制。",
+    );
+    html += createInput(
+      "Logging",
       "log_dir",
       "日志目录",
       "text",
@@ -42556,16 +43560,16 @@ async function loadSystemConfig() {
     html += createInput(
       "IP_Location",
       "amap_web_api_key",
-      "高德 Web API Key（IP定位）",
+      "高德 Web API Key",
       "text",
-      "用于调用 https://restapi.amap.com/v3/ip",
+      "用于调用高德地图的 Web API 进行 IP 归属地查询等",
     );
     html += createInput(
       "IP_Location",
       "uapipro_api_key",
       "UapiPro API Key",
       "text",
-      "用于调用 https://uapis.cn/api/v1/network/ipinfo（Bearer Token）",
+      "用于调用 UapiPro 的 API 进行 IP 归属地查询、手机号归属地查询、随机图片等",
     );
     // html +=
     //   '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
@@ -43580,10 +44584,12 @@ async function openReminderEditModal(reminderId = "") {
       };
       // 这里使用相对路径，项目中已有 editor.md 资源（若使用 CDN，请替换为 CDN 地址）
       await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
-      // 先加载 editormd 依赖库，再加载主体脚本，减少 race condition
-      await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
-      await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
-      await loadOnce("/editor.md/editormd.js", false).catch(() => {});
+      // // 先加载 editormd 依赖库，再加载主体脚本，减少 race condition
+      // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+      // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
+      // await loadOnce("/editor.md/editormd.js", false).catch(() => {});
+      // 依赖库已经预价值 
+
 
       // 等待 window.editormd 可用（轮询），最长等待1500ms
       const waitForGlobal = (name, timeout = 1500) =>
@@ -44279,9 +45285,11 @@ async function checkAndShowReminders() {
         // editormd 样式与核心脚本
         await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
         await loadOnce("/editor.md/editormd.js", false).catch(() => {});
-        // editormd 渲染依赖
-        await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
-        await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
+        // // editormd 渲染依赖
+        // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+        // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
+        // 依赖库已经预加载
+
         console.log("[定时提醒] 预加载 editormd 及依赖完成");
       } catch (e) {
         console.warn("[定时提醒] 预加载 editormd 及依赖时发生错误:", e);
@@ -44332,34 +45340,35 @@ async function checkAndShowReminders() {
           await loadOnce("/editor.md/editormd.js", false).catch(() => {
             console.warn("延迟加载 editormd.js 失败");
           });
-          await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {
-            console.warn("延迟加载 marked 失败");
-          });
-          await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {
-            console.warn("延迟加载 prettify 失败");
-          });
+          // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {
+          //   console.warn("延迟加载 marked 失败");
+          // });
+          // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {
+          //   console.warn("延迟加载 prettify 失败");
+          // });
 
-          await loadOnce("/editor.md/lib/flowchart.min.js", false).catch(() => {
-            console.warn("延迟加载 flowchart 失败");
-          });
-          await loadOnce("/editor.md/lib/jquery.flowchart.min.js", false).catch(
-            () => {
-              console.warn("延迟加载 jquery.flowchart 失败");
-            },
-          );
-          await loadOnce("/editor.md/lib/raphael.min.js", false).catch(() => {
-            console.warn("延迟加载 raphael 失败");
-          });
-          await loadOnce("/editor.md/lib/sequence-diagram.min.js", false).catch(
-            () => {
-              console.warn("延迟加载 sequence-diagram 失败");
-            },
-          );
-          await loadOnce("/editor.md/lib/underscore.min.js", false).catch(
-            () => {
-              console.warn("延迟加载 underscore 失败");
-            },
-          );
+          // await loadOnce("/editor.md/lib/flowchart.min.js", false).catch(() => {
+          //   console.warn("延迟加载 flowchart 失败");
+          // });
+          // await loadOnce("/editor.md/lib/jquery.flowchart.min.js", false).catch(
+          //   () => {
+          //     console.warn("延迟加载 jquery.flowchart 失败");
+          //   },
+          // );
+          // await loadOnce("/editor.md/lib/raphael.min.js", false).catch(() => {
+          //   console.warn("延迟加载 raphael 失败");
+          // });
+          // await loadOnce("/editor.md/lib/sequence-diagram.min.js", false).catch(
+          //   () => {
+          //     console.warn("延迟加载 sequence-diagram 失败");
+          //   },
+          // );
+          // await loadOnce("/editor.md/lib/underscore.min.js", false).catch(
+          //   () => {
+          //     console.warn("延迟加载 underscore 失败");
+          //   },
+          // );
+          // 依赖库已经预加载
         }, 500);
       };
 
@@ -44425,10 +45434,11 @@ async function checkAndShowReminders() {
         );
 
         try {
-          await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
-          await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
-            () => {},
-          );
+          // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+          // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
+          //   () => {},
+          // );
+          // 依赖库已经预加载
         } catch (e) {
           console.warn("[定时提醒] 加载 editormd 依赖失败:", e);
         }
@@ -45060,17 +46070,30 @@ function triggerCDNForceRefresh() {
       });
       const result = await response.json().catch(() => ({}));
       if (response.ok && result && result.success) {
-        showTempMessage(
-          `CDN后台刷新完成（成功 ${result.success_count || 0}，失败 ${result.fail_count || 0}）`,
-          "success",
-        );
+        // showTempMessage(
+        //   `CDN后台刷新完成（成功 ${result.success_count || 0}，失败 ${result.fail_count || 0}）`,
+        //   "success",
+        // );
+        swal.fire({
+          title: "CDN后台刷新完成",
+          html: `成功 <strong>${result.success_count || 0}</strong>，失败 <strong>${result.fail_count || 0}</strong>`,
+          icon: "success",
+          confirmButtonText: "知道了",
+        });
         cdnForceRefreshInFlight = false;
         _setCDNForceRefreshButtonState(false);
         return;
       }
 
       if (attempt < maxAttempts) {
-        showTempMessage(`CDN刷新失败，准备第 ${attempt + 1} 次重试...`, "warning");
+        // showTempMessage(`CDN刷新失败，准备第 ${attempt + 1} 次重试...`, "warning");
+        swal.fire({
+          title: "CDN刷新失败",
+          html: `准备第 <strong>${attempt + 1}</strong> 次重试...`,
+          icon: "warning",
+          showConfirmButton: false,
+          timer: 1200,
+        });
         cdnForceRefreshRetryTimer = setTimeout(doRefresh, 1200);
       } else {
         showModalAlert(
@@ -45082,7 +46105,14 @@ function triggerCDNForceRefresh() {
       }
     } catch (e) {
       if (attempt < maxAttempts) {
-        showTempMessage(`CDN刷新网络异常，准备第 ${attempt + 1} 次重试...`, "warning");
+        // showTempMessage(`CDN刷新网络异常，准备第 ${attempt + 1} 次重试...`, "warning");
+        swal.fire({
+          title: "CDN刷新网络异常",
+          html: `准备第 <strong>${attempt + 1}</strong> 次重试...`,
+          icon: "warning",
+          showConfirmButton: false,
+          timer: 1200,
+        });
         cdnForceRefreshRetryTimer = setTimeout(doRefresh, 1200);
       } else {
         showModalAlert(`CDN后台刷新失败：${e.message}`, "刷新失败");
@@ -45519,6 +46549,10 @@ async function saveSystemConfig() {
         ),
         archive_max_size_mb: parseInt(
           $("config-Logging-archive_max_size_mb").value,
+          10,
+        ),
+        random_background_cache_max_size_mb: parseInt(
+          $("config-Logging-random_background_cache_max_size_mb").value,
           10,
         ),
         log_dir: $("config-Logging-log_dir").value,
@@ -46055,7 +47089,7 @@ async function initMobileAdminPanel(prefix) {
       id: "profile",
       label: "资料",
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>',
-      permission: "all",
+      permission: "no_guest",
     },
     {
       id: "sessions",
@@ -46241,6 +47275,14 @@ async function initMobileAdminPanel(prefix) {
     if (tab.permission === "super_admin" && userGroup === "super_admin")
       return true;
 
+    // 权限类型4: "no_guest" - 仅非游客用户可见
+    if (tab.permission === "no_guest" ){
+      if ( currentUserIsGuest === true || currentUserIsGuest === 'true') {
+        return false;}
+      else{
+        return true;}
+    }
+
     // ========================================
     // 【关键修复】权限类型4: "payment-logs-special" - 支付历史标签的特殊权限逻辑
     // 与PC端保持一致的显示规则：
@@ -46334,9 +47376,25 @@ function initMobileMultiAdminButtonEvents() {
   const logLimitSelect = document.getElementById(
     "mobile-multi-log-limit-select",
   );
+  const logFilterSelect = document.getElementById(
+    "mobile-multi-log-level-filter",
+  );
+  const logKeywordInput = document.getElementById(
+    "mobile-multi-log-keyword-filter",
+  );
   if (logLimitSelect) {
     logLimitSelect.onchange = function () {
       loadMobileMultiAdminLogs(1);
+    };
+  }
+  if (logFilterSelect) {
+    logFilterSelect.onchange = function () {
+      loadMobileMultiAdminLogs(mobileMultiLogCurrentPage);
+    };
+  }
+  if (logKeywordInput) {
+    logKeywordInput.oninput = function () {
+      loadMobileMultiAdminLogs(mobileMultiLogCurrentPage);
     };
   }
 
@@ -46483,6 +47541,8 @@ async function loadMobileMultiAdminLogs(newPage = 1) {
 
   const contentEl = document.getElementById("mobile-multi-admin-logs-content");
   const limitSelect = document.getElementById("mobile-multi-log-limit-select");
+  const filterSelect = document.getElementById("mobile-multi-log-level-filter");
+  const keywordInput = document.getElementById("mobile-multi-log-keyword-filter");
   const pageSelect = document.getElementById("mobile-multi-log-page-select");
   const pageTotal = document.getElementById("mobile-multi-log-page-total");
   const prevBtn = document.getElementById("mobile-multi-log-prev-page");
@@ -46500,9 +47560,13 @@ async function loadMobileMultiAdminLogs(newPage = 1) {
 
   try {
     const limit = limitSelect ? limitSelect.value : 100;
-    const response = await fetch(`/logs/view?page=${newPage}&limit=${limit}`, {
-      headers: { "X-Session-ID": sessionUUID },
-    });
+    const keywordValue = keywordInput ? keywordInput.value.trim() : "";
+    const response = await fetch(
+      `/logs/view?page=${newPage}&limit=${limit}&keyword=${encodeURIComponent(keywordValue)}`,
+      {
+        headers: { "X-Session-ID": sessionUUID },
+      },
+    );
     const result = await response.json();
 
     if (!result.success) {
@@ -46513,18 +47577,32 @@ async function loadMobileMultiAdminLogs(newPage = 1) {
       return;
     }
 
-    if (result.logs.length === 0) {
-      contentEl.textContent = "暂无日志";
+    const rawLogs = Array.isArray(result.logs) ? result.logs : [];
+    const filteredLogs = filterLogsByLevel(
+      rawLogs,
+      filterSelect ? filterSelect.value : "all",
+    );
+
+    if (filteredLogs.length === 0) {
+      contentEl.textContent = rawLogs.length === 0 ? "暂无日志" : "当前筛选条件下暂无日志";
       if (pageSelect)
         pageSelect.innerHTML = '<option value="1">第 1 / 1 页</option>';
-      if (pageTotal) pageTotal.textContent = "(共 0 行)";
+      if (pageTotal) {
+        pageTotal.textContent =
+          rawLogs.length === 0 ? "(共 0 行)" : `(本页筛选后 0 / ${rawLogs.length} 行)`;
+      }
       return;
     }
 
-    contentEl.textContent = result.logs.join("");
+    renderHighlightedLogs(contentEl, filteredLogs, keywordValue);
 
     const pagination = result.pagination;
-    if (pageTotal) pageTotal.textContent = `(共 ${pagination.total_lines} 行)`;
+    if (pageTotal) {
+      pageTotal.textContent =
+        (filterSelect && filterSelect.value !== "all") || keywordValue
+          ? `(本页筛选后 ${filteredLogs.length} / ${rawLogs.length} 行，总计 ${pagination.total_lines} 行)`
+          : `(共 ${pagination.total_lines} 行)`;
+    }
 
     if (pageSelect) {
       pageSelect.innerHTML = "";
@@ -48035,7 +49113,7 @@ function switchMobileAdminTab(tabId, prefix) {
         break;
       case "captcha":
         // 加载验证码设置（使用移动端专用函数）
-        mobileLoadCaptchaSettings();
+        mobileLoadCaptchaSettings(false);
         break;
       case "reminders":
         // 加载定时提醒列表（使用移动端专用函数）
@@ -49054,6 +50132,7 @@ async function loadMobileUnifiedProfile() {
       );
       if (phoneInput) {
         phoneInput.value = data.phone || "未绑定";
+        _showPhoneLocationNearInput(phoneInput, data.phone);
         // 处理手机号显示
         const phoneWrapper = phoneInput.closest(".phone-input-wrapper");
         if (phoneWrapper) {
@@ -49418,6 +50497,7 @@ function showMobileUnifiedModifyPhoneModal() {
   );
   if (currentPhoneModal && currentPhone) {
     currentPhoneModal.value = currentPhone.value || "";
+    _showPhoneLocationNearInput(currentPhoneModal, currentPhone.value);
     // 处理手机号显示
     const phoneWrapper = currentPhoneModal.closest(".phone-input-wrapper");
     if (phoneWrapper) {
@@ -49861,76 +50941,17 @@ async function disableMobileUnified2FA() {
   }
 }
 
-// 4. 更新主题 (Light/Dark)
-async function updateMobileUnifiedTheme() {
-  const select = document.getElementById("mobile-unified-theme-select");
-  if (!select) return;
-
-  const selectedTheme = select.value;
-
-  // 调用全局应用主题函数 (main.py/index.html 中已存在)
-  if (typeof applyAndSaveTheme === "function") {
-    applyAndSaveTheme(selectedTheme);
-  }
-
-  // 同时调用后端API持久化保存
-  try {
-    const response = await fetch("/auth/user/update_theme", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
-      },
-      body: JSON.stringify({
-        theme: selectedTheme,
-      }),
-    });
-  } catch (e) {
-    console.error("更新主题失败:", e);
-  }
-}
-
-// 5. 设置主题样式 (默认/二次元/简约)
+// 5. 设置主题样式
 function setMobileUnifiedThemeStyle(styleName) {
-  // 调用全局设置函数 (setThemeStyle 内部已经包含了 update_param 的 API 调用)
   if (typeof setThemeStyle === "function") {
     setThemeStyle(styleName);
   }
 
-  // 更新移动端面板内的按钮高亮状态
-  // 修正：直接定位到样式预设的容器 ID
-  const container = document.getElementById(
-    "mobile-unified-theme-style-presets",
+  renderThemeStyleButtons(
+    document.getElementById("mobile-unified-theme-style-buttons"),
+    styleName,
+    { mobile: true },
   );
-  if (container) {
-    const buttons = container.querySelectorAll("button");
-    buttons.forEach((btn) => {
-      const onclickAttr = btn.getAttribute("onclick");
-      if (onclickAttr && onclickAttr.includes(`'${styleName}'`)) {
-        // 选中状态：高亮显示 (天蓝色背景+边框+加粗)
-        btn.classList.remove("border-slate-300", "text-[10px]");
-        btn.classList.add(
-          "border-sky-500",
-          "bg-sky-50",
-          "text-sky-600",
-          "font-bold",
-          "text-xs",
-          "shadow-sm",
-        );
-      } else {
-        // 未选中状态：恢复默认灰边
-        btn.classList.remove(
-          "border-sky-500",
-          "bg-sky-50",
-          "text-sky-600",
-          "font-bold",
-          "text-xs",
-          "shadow-sm",
-        );
-        btn.classList.add("border-slate-300", "text-[10px]");
-      }
-    });
-  }
 }
 
 // ========================================
@@ -50749,6 +51770,7 @@ function showMobileAdminModifyPhone(username, currentPhone) {
   document.getElementById("mobile-admin-phone-username").textContent = username;
   document.getElementById("mobile-admin-phone-current").value =
     currentPhone || "未绑定";
+  _showPhoneLocationNearInput(document.getElementById("mobile-admin-phone-current"), currentPhone);
   document.getElementById("mobile-admin-phone-new").value = "";
   document.getElementById("mobile-admin-phone-code").value = "";
 
@@ -52674,7 +53696,7 @@ async function mobileCheckSMSBalance() {
  *
  * @returns {Promise<void>} 无返回值
  */
-async function mobileLoadCaptchaSettings() {
+async function mobileLoadCaptchaSettings(showAlert = true) {
   try {
     // 步骤1：记录开始加载的日志，便于调试和追踪
     console.log("[移动端验证码] 开始从 /api/captcha/config 加载验证码配置...");
@@ -52716,7 +53738,8 @@ async function mobileLoadCaptchaSettings() {
 
       // 步骤8：显示成功提示（使用移动端专用的提示函数）
       // showModalAlert是移动端使用的提示函数，比Swal更适合移动设备
-      showModalAlert("验证码配置已加载", "成功");
+      if (showAlert){
+        showModalAlert("验证码配置已加载", "成功");}
     } else {
       // 步骤9：处理API返回成功但没有配置数据的情况
       // 这通常表示配置文件不存在或格式错误
@@ -52730,7 +53753,9 @@ async function mobileLoadCaptchaSettings() {
       });
 
       // 步骤11：显示警告提示，告知用户正在使用默认值
-      showModalAlert("未找到配置文件，已加载默认值", "警告");
+      if (showAlert) {
+        showModalAlert("未找到配置文件，已加载默认值", "警告");
+      }
     }
   } catch (error) {
     // 步骤12：捕获并处理所有可能的异常（网络错误、解析错误等）
@@ -56447,67 +57472,70 @@ async function loadPaymentLogs(page) {
  * @returns {string} 返回日志卡片的HTML字符串
  */
 function createPaymentLogCard(log) {
-  // 步骤1：根据操作类型选择样式颜色
   let actionConfig = {};
 
   switch (log.action) {
     case "create_order":
       actionConfig = {
         text: "创建订单",
-        color: "blue",
-        bgColor: "bg-blue-50",
-        borderColor: "border-blue-200",
-        textColor: "text-blue-700",
+        bgClass: "bg-blue-50",
+        borderClass: "border-blue-200",
+        badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
+        valueClass: "text-blue-700",
+        buttonClass: "bg-blue-500 hover:bg-blue-600",
       };
       break;
     case "query_order":
       actionConfig = {
         text: "查询订单",
-        color: "purple",
-        bgColor: "bg-purple-50",
-        borderColor: "border-purple-200",
-        textColor: "text-purple-700",
+        bgClass: "bg-purple-50",
+        borderClass: "border-purple-200",
+        badgeClass: "bg-purple-100 text-purple-700 border-purple-200",
+        valueClass: "text-purple-700",
+        buttonClass: "bg-purple-500 hover:bg-purple-600",
       };
       break;
     case "payment_success":
       actionConfig = {
         text: "支付成功",
-        color: "green",
-        bgColor: "bg-green-50",
-        borderColor: "border-green-200",
-        textColor: "text-green-700",
+        bgClass: "bg-emerald-50",
+        borderClass: "border-emerald-200",
+        badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
+        valueClass: "text-emerald-700",
+        buttonClass: "bg-emerald-500 hover:bg-emerald-600",
       };
       break;
     case "payment_fail":
       actionConfig = {
         text: "支付失败",
-        color: "red",
-        bgColor: "bg-red-50",
-        borderColor: "border-red-200",
-        textColor: "text-red-700",
+        bgClass: "bg-red-50",
+        borderClass: "border-red-200",
+        badgeClass: "bg-red-100 text-red-700 border-red-200",
+        valueClass: "text-red-700",
+        buttonClass: "bg-red-500 hover:bg-red-600",
       };
       break;
     case "config_update":
       actionConfig = {
         text: "配置更新",
-        color: "amber",
-        bgColor: "bg-amber-50",
-        borderColor: "border-amber-200",
-        textColor: "text-amber-700",
+        bgClass: "bg-amber-50",
+        borderClass: "border-amber-200",
+        badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
+        valueClass: "text-amber-700",
+        buttonClass: "bg-amber-500 hover:bg-amber-600",
       };
       break;
     default:
       actionConfig = {
         text: log.action || "未知操作",
-        color: "slate",
-        bgColor: "bg-slate-50",
-        borderColor: "border-slate-200",
-        textColor: "text-slate-700",
+        bgClass: "bg-slate-50",
+        borderClass: "border-slate-200",
+        badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+        valueClass: "text-slate-700",
+        buttonClass: "bg-slate-600 hover:bg-slate-700",
       };
   }
 
-  // 步骤2：格式化创建时间
-  // 将ISO格式的时间转换为易读格式（如：2024-12-10 10:30:45）
   const createTime = new Date(log.create_time).toLocaleString("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -56518,79 +57546,79 @@ function createPaymentLogCard(log) {
     hour12: false,
   });
 
-  // 步骤3：格式化日志数据
-  // 将JSON对象转换为格式化的字符串，缩进2个空格
   let logDataHTML = "";
   if (log.log_data) {
     try {
-      // 尝试解析JSON数据（如果是字符串）
       const logDataObj =
         typeof log.log_data === "string"
           ? JSON.parse(log.log_data)
           : log.log_data;
-
-      // 将对象转换为格式化的JSON字符串
       const logDataStr = JSON.stringify(logDataObj, null, 2);
-
-      // 生成HTML
       logDataHTML = `
-                <div class="mt-2">
-                    <p class="text-xs font-semibold text-slate-700 mb-1">详细数据</p>
-                    <pre class="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200 overflow-x-auto font-mono">${logDataStr}</pre>
+                <div class="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                    <div class="mb-2 text-[11px] font-medium text-slate-500">详细数据</div>
+                    <pre class="text-xs leading-5 text-slate-700 overflow-x-auto font-mono whitespace-pre-wrap break-all">${logDataStr}</pre>
                 </div>
             `;
     } catch (e) {
-      // JSON解析失败，直接显示原始字符串
       logDataHTML = `
-                <div class="mt-2">
-                    <p class="text-xs font-semibold text-slate-700 mb-1">详细数据</p>
-                    <p class="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200">${log.log_data}</p>
+                <div class="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                    <div class="mb-2 text-[11px] font-medium text-slate-500">详细数据</div>
+                    <div class="text-xs leading-5 text-slate-700 break-all">${log.log_data}</div>
                 </div>
             `;
     }
   }
 
-  // 步骤4：拼接完整的日志卡片HTML
+  const safeLogId = String(log.log_id || "").replace(/'/g, "\\'");
+  const amountText =
+    log.amount !== undefined && log.amount !== null && log.amount !== ""
+      ? `¥${parseFloat(log.amount).toFixed(2)}`
+      : "-";
+  const statusText = log.status || "-";
+  const detailButton = log.log_id
+    ? `
+            <button onclick="showPaymentLogDetail('${safeLogId}')" class="w-full min-h-[44px] rounded-2xl px-4 py-3 text-sm font-medium text-white transition-colors ${actionConfig.buttonClass}">
+                查看详情
+            </button>
+        `
+    : "";
+
+  const detailRows = [
+    { label: "订单号", value: log.order_id || "未关联订单", valueClass: "text-slate-800" },
+    { label: "用户ID", value: log.user_id || "系统", valueClass: "text-slate-800" },
+    { label: "状态", value: statusText, valueClass: actionConfig.valueClass },
+    { label: "金额", value: amountText, valueClass: "text-slate-900 font-semibold" },
+    { label: "记录时间", value: createTime, valueClass: "text-slate-700" },
+    { label: "日志ID", value: log.log_id || "-", valueClass: "text-slate-500 font-mono text-[11px]" },
+  ];
+
+  const detailRowsHTML = detailRows
+    .map(
+      (item) => `
+            <div class="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                <div class="text-[11px] font-medium text-slate-400">${item.label}</div>
+                <div class="mt-1 text-sm break-all ${item.valueClass}">${item.value}</div>
+            </div>
+        `,
+    )
+    .join("");
+
   return `
-        <div class="border-2 ${actionConfig.borderColor} ${
-          actionConfig.bgColor
-        } rounded-lg p-3 space-y-2">
-            <!-- 日志头部：操作类型和时间 -->
-            <div class="flex justify-between items-start">
-                <!-- 操作类型徽章 -->
-                <span class="px-2 py-1 ${actionConfig.bgColor} ${
-                  actionConfig.textColor
-                } rounded text-xs font-semibold border ${actionConfig.borderColor}">
+        <div class="rounded-3xl border ${actionConfig.borderClass} ${actionConfig.bgClass} p-4 shadow-sm space-y-3">
+            <div class="flex items-center justify-between gap-3">
+                <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${actionConfig.badgeClass}">
                     ${actionConfig.text}
                 </span>
-                <!-- 时间 -->
-                <span class="text-xs text-slate-500">${createTime}</span>
             </div>
-            
-            <!-- 日志详情 -->
-            <div class="space-y-1 text-xs">
-                <!-- 用户ID -->
-                <div class="flex justify-between">
-                    <span class="text-slate-600">用户ID</span>
-                    <span class="text-slate-800 font-medium">${
-                      log.user_id || "系统"
-                    }</span>
-                </div>
-                <!-- 订单ID（如果有） -->
-                ${
-                  log.order_id
-                    ? `
-                    <div class="flex justify-between">
-                        <span class="text-slate-600">订单ID</span>
-                        <span class="text-slate-800 font-mono text-xs">${log.order_id}</span>
-                    </div>
-                `
-                    : ""
-                }
+
+            <div class="space-y-2">
+                ${detailRowsHTML}
             </div>
-            
-            <!-- 详细数据 -->
+
             ${logDataHTML}
+
+            ${detailButton}
         </div>
     `;
 }
@@ -60949,7 +61977,7 @@ async function loadRemovedAccountsList() {
           </div>
           <div class="px-4 py-3">
             <div class="grid grid-cols-2 xl:grid-cols-4 gap-2 text-[11px] mb-3">
-              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">手机号</div><div class="text-slate-700 mt-0.5 break-all">${phoneText}</div></div>
+              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">手机号</div><div class="text-slate-700 mt-0.5 break-all">${phoneText}<span class="phone-location-badge text-[11px] text-slate-400 ml-1" data-phone="${_escapeAttr(entry?.phone || "")}"></span></div></div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">创建时间</div><div class="text-slate-700 mt-0.5 break-all">${createdAtText}</div></div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">最后登录</div><div class="text-slate-700 mt-0.5 break-all">${lastLoginText}</div></div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">登录IP</div><div class="text-slate-700 mt-0.5 break-all">${loginIpText} (${loginCityText})</div></div>
@@ -60968,6 +61996,10 @@ async function loadRemovedAccountsList() {
     });
     html += "</div>";
     container.innerHTML = html;
+    container.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+      const info = await fetchPhoneInfo(span.dataset.phone);
+      if (info) { const p = [info.province, info.city, info.sp].filter(Boolean); if (p.length) span.textContent = `(${p.join(" ")})`; }
+    });
   } catch (e) {
     container.innerHTML =
       '<p class="text-slate-700 text-red-500">加载异常: ' + e.message + "</p>";
@@ -61351,6 +62383,7 @@ async function showRemovedAccountDetail(authUsername) {
           </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-3">
+          <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">绑定手机</div><div class="text-slate-700 break-all">${_escapeAttr(detail.phone || "未绑定")}</div></div>
           <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">登录 IP</div><div class="text-slate-700 break-all">${_escapeAttr(detail.last_login_ip || "-")}</div></div>
           <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">最后登录时间</div><div class="text-slate-700 break-all">${_escapeAttr(_formatUnixOrIsoTime(detail.last_login))}</div></div>
           <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">注册时间</div><div class="text-slate-700 break-all">${_escapeAttr(_formatUnixOrIsoTime(detail.register_time))}</div></div>
