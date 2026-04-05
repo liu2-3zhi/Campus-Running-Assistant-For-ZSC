@@ -16849,20 +16849,6 @@ function setThemeStyle(styleName, save = true) {
   const cachedStyle = cacheThemeStyle(normalizedStyle);
   pythonParams.theme_style = cachedStyle;
 
-  document.body.classList.remove(
-    "theme-anime",
-    "theme-minimalist",
-    "theme-corporate",
-    "theme-creative",
-    "theme-futuristic",
-    "theme-retro",
-    "theme-admin",
-  );
-
-  if (cachedStyle !== "default") {
-    document.body.classList.add(cachedStyle);
-  }
-
   applyThemeGlobalEnvironmentVariables(nextThemeConfig);
 
   document.querySelectorAll('[data-theme-style]').forEach((btn) => {
@@ -17184,10 +17170,6 @@ async function syncThemeFromServer(themeFromResponse = null, themeStyleFromRespo
   logMessage_Info(`[主题] 已同步服务器主题风格: ${finalThemeStyle}`);
 
   return { theme: finalTheme, theme_style: finalThemeStyle };
-}
-
-function applyAndSaveTheme(theme) {
-  return saveThemePreference(theme);
 }
 
 function resetBaseColorToDefault(prefix) {
@@ -23714,30 +23696,6 @@ async function test2FA() {
     Swal.fire({
       title: "错误",
       text: `测试失败: ${e.message}`,
-      icon: "error",
-    });
-  }
-}
-
-async function updateTheme() {
-  const themeSelect = $("profile-theme-select");
-  if (!themeSelect) return;
-
-  const selectedTheme = themeSelect.value;
-  const previousTheme = currentThemePreference;
-  const result = await saveThemePreference(selectedTheme);
-
-  if (result.success) {
-    Swal.fire({
-      title: "成功",
-      text: "主题更新成功！",
-      icon: "success",
-    });
-  } else {
-    applyTheme(previousTheme);
-    Swal.fire({
-      title: "错误",
-      text: `更新失败: ${result.message}`,
       icon: "error",
     });
   }
@@ -38979,7 +38937,10 @@ function createParamInputs(
           <div id="${prefix}-theme-style-buttons" class="grid grid-cols-2 gap-2 mt-2"></div>
         `;
         const buttonsContainer = div.querySelector(`#${prefix}-theme-style-buttons`);
-        renderThemeStyleButtons(buttonsContainer, pythonParams.theme_style || "default");
+        renderThemeStyleButtons(
+          buttonsContainer,
+          pythonParams.theme_style || currentThemeStyle || "default",
+        );
       } else if (def.type === "color_picker") {
         div.innerHTML = `
           <label for="${prefix}-${key}" class="block text-slate-700 font-semibold">${def.label}</label>
@@ -50713,22 +50674,7 @@ async function disableMobileUnified2FA() {
   }
 }
 
-// 4. 更新主题 (Light/Dark)
-async function updateMobileUnifiedTheme() {
-  const select = document.getElementById("mobile-unified-theme-select");
-  if (!select) return;
-
-  const selectedTheme = select.value;
-  const previousTheme = currentThemePreference;
-  const result = await saveThemePreference(selectedTheme);
-
-  if (!result.success) {
-    applyTheme(previousTheme);
-    console.error("更新主题失败:", result.message);
-  }
-}
-
-// 5. 设置主题样式 (默认/二次元/简约)
+// 5. 设置主题样式
 function setMobileUnifiedThemeStyle(styleName) {
   if (typeof setThemeStyle === "function") {
     setThemeStyle(styleName);
