@@ -6,11 +6,11 @@
     "svg": "<svg width=\"320\" height=\"200\" viewBox=\"0 0 320 200\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"320\" height=\"200\" rx=\"24\" fill=\"#F8FAFC\"/><rect x=\"18\" y=\"18\" width=\"284\" height=\"164\" rx=\"20\" fill=\"#FFFFFF\" stroke=\"#E2E8F0\"/><rect x=\"38\" y=\"40\" width=\"104\" height=\"12\" rx=\"6\" fill=\"#0F172A\" fill-opacity=\"0.9\"/><rect x=\"38\" y=\"64\" width=\"172\" height=\"8\" rx=\"4\" fill=\"#CBD5E1\"/><rect x=\"38\" y=\"80\" width=\"148\" height=\"8\" rx=\"4\" fill=\"#E2E8F0\"/><rect x=\"38\" y=\"108\" width=\"108\" height=\"54\" rx=\"14\" fill=\"#F1F5F9\" stroke=\"#E2E8F0\"/><rect x=\"160\" y=\"108\" width=\"122\" height=\"12\" rx=\"6\" fill=\"#D4D4D8\"/><rect x=\"160\" y=\"130\" width=\"104\" height=\"12\" rx=\"6\" fill=\"#E2E8F0\"/><rect x=\"160\" y=\"152\" width=\"74\" height=\"12\" rx=\"6\" fill=\"#0EA5E9\" fill-opacity=\"0.22\"/></svg>"
   },
   "global_environment_variables": {
-    "auth_login_container_background": "",
-    "auth_login_panel_background": "",
-    "auth_login_panel_shadow": "",
-    "auth_login_panel_border": "",
-    "mobile_auth_login_card_background": "",
-    "mobile_auth_login_card_shadow": ""
+    "auth_login_container_background": "var(--theme-default-auth-login-container-background, linear-gradient(135deg, rgba(248,250,252,0.18), rgba(241,245,249,0.18)))",
+    "auth_login_panel_background": "rgba(255,255,255,0.52)",
+    "auth_login_panel_shadow": "0 20px 60px rgba(15,23,42,0.12)",
+    "auth_login_panel_border": "rgba(255,255,255,0.24)",
+    "mobile_auth_login_card_background": "rgba(255,255,255,0.58)",
+    "mobile_auth_login_card_shadow": "0 18px 48px rgba(15,23,42,0.12)"
   }
 }

@@ -29,3 +29,4 @@ auto_attendance_config.json
 /User_Billing
 *.back
 /.claude
+/random_background_image
