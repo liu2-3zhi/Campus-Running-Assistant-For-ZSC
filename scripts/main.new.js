@@ -10398,7 +10398,7 @@ async function initRegisterAvailableRunsHint() {
     const config = await response.json();
 
     // 在控制台输出获取到的配置（用于调试）
-    console.log("[注册提示] 获取到的配置:", config);
+    // console.log("[注册提示] 获取到的配置:", config);
 
     // ========== 步骤2：检查是否需要显示提示 ==========
 
@@ -15624,6 +15624,7 @@ document.addEventListener("DOMContentLoaded", function () {
   console.log("[页面加载] DOM内容已加载，开始执行设备检测和UI切换");
 
   switchUIContainer();
+  syncThemeBackgroundTarget();
 
   console.log(
     "[页面加载] 移动端检测和UI切换完成（基于User-Agent，不监听窗口变化）",
@@ -16748,6 +16749,8 @@ function safeResizeAndFitView() {
   }
 }
 
+
+
 function applyThemeGlobalEnvironmentVariables(themeConfig) {
   const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
   const env =
@@ -16774,7 +16777,126 @@ function applyThemeGlobalEnvironmentVariables(themeConfig) {
   });
 
   applyThemeLoginContainerStyle(config);
+  scheduleThemeBackgroundConsumed();
 }
+
+let currentThemeBackgroundTarget = null;
+let currentThemeBackgroundImageUrl = "";
+let themeBackgroundFeedbackInFlight = false;
+let pendingThemeBackgroundFeedback = null;
+let themeBackgroundConsumeDebounceTimer = null;
+const THEME_BACKGROUND_CONSUME_DEBOUNCE_MS = 300;
+
+function getCurrentThemeBackgroundTarget() {
+  return isMobileMode ? "mobile" : "pc";
+}
+
+function getThemeBackgroundImageUrlByTarget(target) {
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const env =
+    currentThemeConfig &&
+    currentThemeConfig.global_environment_variables &&
+    typeof currentThemeConfig.global_environment_variables === "object"
+      ? currentThemeConfig.global_environment_variables
+      : {};
+  return normalizedTarget === "mobile"
+    ? extractThemeBackgroundImageUrl(env.mobile_auth_login_content_background || "")
+    : extractThemeBackgroundImageUrl(env.auth_login_container_background || "");
+}
+
+function scheduleThemeBackgroundConsumed() {
+  const target = getCurrentThemeBackgroundTarget();
+  const imageUrl = getThemeBackgroundImageUrlByTarget(target);
+  if (!imageUrl) {
+    return;
+  }
+  if (themeBackgroundConsumeDebounceTimer) {
+    clearTimeout(themeBackgroundConsumeDebounceTimer);
+  }
+  themeBackgroundConsumeDebounceTimer = setTimeout(() => {
+    themeBackgroundConsumeDebounceTimer = null;
+    notifyThemeBackgroundConsumed(target, imageUrl);
+  }, THEME_BACKGROUND_CONSUME_DEBOUNCE_MS);
+}
+
+async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const imageUrl =
+    typeof imageUrlOverride === "string" && imageUrlOverride
+      ? imageUrlOverride
+      : getThemeBackgroundImageUrlByTarget(normalizedTarget);
+
+  if (!imageUrl) {
+    return;
+  }
+
+  if (themeBackgroundFeedbackInFlight) {
+    pendingThemeBackgroundFeedback = { target: normalizedTarget, imageUrl };
+    return;
+  }
+
+  if (
+    currentThemeBackgroundTarget === normalizedTarget &&
+    currentThemeBackgroundImageUrl === imageUrl
+  ) {
+    return;
+  }
+
+  themeBackgroundFeedbackInFlight = true;
+
+  try {
+    let result = null;
+    if (sessionUUID) {
+      result = await callPythonAPI(
+        "mark_theme_background_consumed",
+        normalizedTarget,
+        imageUrl,
+      );
+    } else {
+      const response = await fetch("/api/public/theme_background/consume", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ target: normalizedTarget, image_url: imageUrl }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP错误: ${response.status}`);
+      }
+      result = await response.json();
+    }
+
+    if (result && result.success) {
+      currentThemeBackgroundTarget = normalizedTarget;
+      currentThemeBackgroundImageUrl = imageUrl;
+      if (result.theme_config && typeof result.theme_config === "object") {
+        currentThemeConfig = result.theme_config;
+        applyThemeLoginContainerStyle(currentThemeConfig);
+      }
+    }
+  } catch (e) {
+    logMessage_Warning("[主题] 上报已使用背景失败:", e);
+  } finally {
+    themeBackgroundFeedbackInFlight = false;
+    if (pendingThemeBackgroundFeedback) {
+      const nextFeedback = pendingThemeBackgroundFeedback;
+      pendingThemeBackgroundFeedback = null;
+      notifyThemeBackgroundConsumed(nextFeedback.target, nextFeedback.imageUrl);
+    }
+  }
+}
+
+function extractThemeBackgroundImageUrl(backgroundValue) {
+  const normalizedValue = typeof backgroundValue === "string" ? backgroundValue : "";
+  const match = normalizedValue.match(/url\(["']?(\/theme-assets\/[^"')]+)["']?\)/i);
+  return match && match[1] ? match[1] : "";
+}
+
+function syncThemeBackgroundTarget() {
+  scheduleThemeBackgroundConsumed();
+}
+
+window.addEventListener("resize", syncThemeBackgroundTarget);
 
 function applyThemeLoginContainerStyle(themeConfig) {
   const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
@@ -16786,12 +16908,14 @@ function applyThemeLoginContainerStyle(themeConfig) {
 
   const desktopContainer = document.getElementById("auth-login-container");
   const desktopPanel = document.getElementById("auth-login-container_panel");
+  const mobileContent = document.getElementById("mobile-content");
   const mobileContainer = document.getElementById("mobile-auth-login-container");
   const mobileCard = document.getElementById("mobile-auth-login-container-card");
 
   const desktopBackground = env.auth_login_container_background || "";
   const panelBackground = env.auth_login_panel_background || "";
-  const mobileBackground = env.mobile_auth_login_card_background || "";
+  const mobileContentBackground = env.mobile_auth_login_content_background || "";
+  const mobileCardBackground = env.mobile_auth_login_card_background || "";
   const panelShadow = env.auth_login_panel_shadow || "";
   const mobileShadow = env.mobile_auth_login_card_shadow || "";
   const panelBorder = env.auth_login_panel_border || "";
@@ -16806,14 +16930,21 @@ function applyThemeLoginContainerStyle(themeConfig) {
     desktopPanel.style.borderColor = panelBorder;
   }
 
+  if (mobileContent) {
+    mobileContent.style.background = mobileContentBackground;
+    mobileContent.style.backgroundSize = mobileContentBackground ? "cover" : "";
+    mobileContent.style.backgroundPosition = mobileContentBackground ? "center" : "";
+    mobileContent.style.backgroundRepeat = mobileContentBackground ? "no-repeat" : "";
+  }
+
   if (mobileContainer) {
-    mobileContainer.style.background = desktopBackground;
+    mobileContainer.style.background = "";
     mobileContainer.style.borderRadius = "";
     mobileContainer.style.padding = "";
   }
 
   if (mobileCard) {
-    mobileCard.style.background = mobileBackground;
+    mobileCard.style.background = mobileCardBackground;
     mobileCard.style.boxShadow = mobileShadow;
     mobileCard.style.borderColor = panelBorder;
   }
@@ -16840,7 +16971,9 @@ function getThemeStyleConfig(styleId) {
     };
   }
 
-  return normalizedStyle === "default" ? {} : currentThemeConfig || {};
+  return currentThemeConfig && typeof currentThemeConfig === "object"
+    ? currentThemeConfig
+    : {};
 }
 
 function setThemeStyle(styleName, save = true) {
@@ -17037,7 +17170,25 @@ async function ensureThemeStylesLoaded(force = false) {
   }
 
   try {
-    const result = await callPythonAPI("get_theme_styles");
+    const requestedThemeStyle = normalizeThemeStyle(getCachedThemeStyle());
+    const requestedTarget = getCurrentThemeBackgroundTarget();
+    const result = sessionUUID
+      ? await callPythonAPI("get_theme_styles", requestedTarget)
+      : await fetch(
+          `/api/public/theme_styles?style_id=${encodeURIComponent(requestedThemeStyle)}&background_target=${encodeURIComponent(requestedTarget)}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ).then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status}`);
+          }
+          return response.json();
+        });
+
     if (result && result.success && Array.isArray(result.theme_styles)) {
       availableThemeStyles = result.theme_styles;
       if (result.theme_config && typeof result.theme_config === "object") {
@@ -17440,7 +17591,7 @@ async function loadCaptcha(formType) {
   if (container) {
     // 取padding后内容区宽度
     const style = window.getComputedStyle(container);
-    console.log("[验证码] 容器计算样式:", style);
+    // console.log("[验证码] 容器计算样式:", style);
     const paddingLeft = parseFloat(style.paddingLeft) || 0;
     const paddingRight = parseFloat(style.paddingRight) || 0;
     if (formType === "login" || formType === "register") {
@@ -43239,6 +43390,13 @@ async function loadSystemConfig() {
     );
     html += createInput(
       "Logging",
+      "random_background_cache_max_size_mb",
+      "背景缓存最大 (MB)",
+      "number",
+      "random_background_image 目录总大小限制，0为不限制。",
+    );
+    html += createInput(
+      "Logging",
       "log_dir",
       "日志目录",
       "text",
@@ -46288,6 +46446,10 @@ async function saveSystemConfig() {
         ),
         archive_max_size_mb: parseInt(
           $("config-Logging-archive_max_size_mb").value,
+          10,
+        ),
+        random_background_cache_max_size_mb: parseInt(
+          $("config-Logging-random_background_cache_max_size_mb").value,
           10,
         ),
         log_dir: $("config-Logging-log_dir").value,
