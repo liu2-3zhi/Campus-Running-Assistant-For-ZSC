@@ -21505,12 +21505,13 @@ function switchAdminTab(tab) {
           try {
             await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
             // 先加载依赖库，再加载 editormd 本体，减少 race condition
-            await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(
-              () => {},
-            );
-            await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
-              () => {},
-            );
+            // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(
+            //   () => {},
+            // );
+            // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
+            //   () => {},
+            // );
+            // 依赖库已经预加载
             await loadOnce("/editor.md/editormd.js", false).catch(() => {});
             // 尝试在资源加载后触发已存在实例的刷新（若实例已存在）
             setTimeout(() => {
@@ -44487,10 +44488,12 @@ async function openReminderEditModal(reminderId = "") {
       };
       // 这里使用相对路径，项目中已有 editor.md 资源（若使用 CDN，请替换为 CDN 地址）
       await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
-      // 先加载 editormd 依赖库，再加载主体脚本，减少 race condition
-      await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
-      await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
-      await loadOnce("/editor.md/editormd.js", false).catch(() => {});
+      // // 先加载 editormd 依赖库，再加载主体脚本，减少 race condition
+      // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+      // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
+      // await loadOnce("/editor.md/editormd.js", false).catch(() => {});
+      // 依赖库已经预价值 
+
 
       // 等待 window.editormd 可用（轮询），最长等待1500ms
       const waitForGlobal = (name, timeout = 1500) =>
@@ -45186,9 +45189,11 @@ async function checkAndShowReminders() {
         // editormd 样式与核心脚本
         await loadOnce("/editor.md/css/editormd.css", true).catch(() => {});
         await loadOnce("/editor.md/editormd.js", false).catch(() => {});
-        // editormd 渲染依赖
-        await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
-        await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
+        // // editormd 渲染依赖
+        // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+        // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {});
+        // 依赖库已经预加载
+
         console.log("[定时提醒] 预加载 editormd 及依赖完成");
       } catch (e) {
         console.warn("[定时提醒] 预加载 editormd 及依赖时发生错误:", e);
@@ -45239,34 +45244,35 @@ async function checkAndShowReminders() {
           await loadOnce("/editor.md/editormd.js", false).catch(() => {
             console.warn("延迟加载 editormd.js 失败");
           });
-          await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {
-            console.warn("延迟加载 marked 失败");
-          });
-          await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {
-            console.warn("延迟加载 prettify 失败");
-          });
+          // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {
+          //   console.warn("延迟加载 marked 失败");
+          // });
+          // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(() => {
+          //   console.warn("延迟加载 prettify 失败");
+          // });
 
-          await loadOnce("/editor.md/lib/flowchart.min.js", false).catch(() => {
-            console.warn("延迟加载 flowchart 失败");
-          });
-          await loadOnce("/editor.md/lib/jquery.flowchart.min.js", false).catch(
-            () => {
-              console.warn("延迟加载 jquery.flowchart 失败");
-            },
-          );
-          await loadOnce("/editor.md/lib/raphael.min.js", false).catch(() => {
-            console.warn("延迟加载 raphael 失败");
-          });
-          await loadOnce("/editor.md/lib/sequence-diagram.min.js", false).catch(
-            () => {
-              console.warn("延迟加载 sequence-diagram 失败");
-            },
-          );
-          await loadOnce("/editor.md/lib/underscore.min.js", false).catch(
-            () => {
-              console.warn("延迟加载 underscore 失败");
-            },
-          );
+          // await loadOnce("/editor.md/lib/flowchart.min.js", false).catch(() => {
+          //   console.warn("延迟加载 flowchart 失败");
+          // });
+          // await loadOnce("/editor.md/lib/jquery.flowchart.min.js", false).catch(
+          //   () => {
+          //     console.warn("延迟加载 jquery.flowchart 失败");
+          //   },
+          // );
+          // await loadOnce("/editor.md/lib/raphael.min.js", false).catch(() => {
+          //   console.warn("延迟加载 raphael 失败");
+          // });
+          // await loadOnce("/editor.md/lib/sequence-diagram.min.js", false).catch(
+          //   () => {
+          //     console.warn("延迟加载 sequence-diagram 失败");
+          //   },
+          // );
+          // await loadOnce("/editor.md/lib/underscore.min.js", false).catch(
+          //   () => {
+          //     console.warn("延迟加载 underscore 失败");
+          //   },
+          // );
+          // 依赖库已经预加载
         }, 500);
       };
 
@@ -45332,10 +45338,11 @@ async function checkAndShowReminders() {
         );
 
         try {
-          await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
-          await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
-            () => {},
-          );
+          // await loadOnce("https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js", false).catch(() => {});
+          // await loadOnce("https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js", false).catch(
+          //   () => {},
+          // );
+          // 依赖库已经预加载
         } catch (e) {
           console.warn("[定时提醒] 加载 editormd 依赖失败:", e);
         }

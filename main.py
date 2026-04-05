@@ -23169,7 +23169,304 @@ def start_web_server(args_param):
             "url": "https://cdn.jsdelivr.net/npm/sortablejs/Sortable.js",
             "filename": "sortable.min.js",
             "type": "js",
-        }
+        },
+        
+
+
+
+# ==============================
+# CodeMirror 核心依赖
+# 编辑器基础功能与核心样式
+# ==============================
+"codemirror-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.js",
+    "filename": "codemirror.js",
+    "type": "js",
+},
+# CodeMirror 编辑器核心样式表
+"codemirror-css": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.css",
+    "filename": "codemirror.css",
+    "type": "css",
+},
+# 搜索/替换弹窗对话框样式
+"codemirror-dialog-css": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css",
+    "filename": "dialog.css",
+    "type": "css",
+},
+# 滚动条显示搜索匹配位置样式
+"codemirror-matchesonscrollbar-css": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.css",
+    "filename": "matchesonscrollbar.css",
+    "type": "css",
+},
+# 代码折叠侧边栏样式
+"codemirror-foldgutter-css": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.css",
+    "filename": "foldgutter.css",
+    "type": "css",
+},
+
+# ==============================
+# CodeMirror 语言语法高亮
+# 支持各种编程语言的代码着色
+# ==============================
+# 语言模式元信息，自动识别文件类型
+"codemirror-meta-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/meta.js",
+    "filename": "meta.js",
+    "type": "js",
+},
+# Markdown 语法高亮支持
+"codemirror-markdown-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/markdown.js",
+    "filename": "markdown.js",
+    "type": "js",
+},
+# XML / HTML 标签语法高亮
+"codemirror-xml-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/xml/xml.js",
+    "filename": "xml.js",
+    "type": "js",
+},
+# JavaScript 语法高亮
+"codemirror-javascript-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/javascript.js",
+    "filename": "javascript.js",
+    "type": "js",
+},
+# CSS 样式语法高亮
+"codemirror-css-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/css/css.js",
+    "filename": "css.js",
+    "type": "js",
+},
+# HTML 混合模式（内嵌 JS/CSS）高亮
+"codemirror-htmlmixed-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/htmlmixed/htmlmixed.js",
+    "filename": "htmlmixed.js",
+    "type": "js",
+},
+# GitHub Markdown 扩展语法支持
+"codemirror-gfm-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/gfm.js",
+    "filename": "gfm.js",
+    "type": "js",
+},
+# Python 语法高亮
+"codemirror-python-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/python/python.js",
+    "filename": "python.js",
+    "type": "js",
+},
+# C/C++/Java 等类 C 语言语法高亮
+"codemirror-clike-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/clike/clike.js",
+    "filename": "clike.js",
+    "type": "js",
+},
+# Shell / Bash 命令行语法高亮
+"codemirror-shell-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/shell/shell.js",
+    "filename": "shell.js",
+    "type": "js",
+},
+# SQL 数据库语句语法高亮
+"codemirror-sql-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sql/sql.js",
+    "filename": "sql.js",
+    "type": "js",
+},
+# YAML 配置文件语法高亮
+"codemirror-yaml-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/yaml/yaml.js",
+    "filename": "yaml.js",
+    "type": "js",
+},
+
+# ==============================
+# CodeMirror 编辑增强插件
+# 提升编辑体验的实用功能
+# ==============================
+# 括号匹配高亮显示
+"codemirror-matchbrackets-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchbrackets.js",
+    "filename": "matchbrackets.js",
+    "type": "js",
+},
+# 自动补全括号、引号
+"codemirror-closebrackets-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closebrackets.js",
+    "filename": "closebrackets.js",
+    "type": "js",
+},
+# HTML 标签自动闭合
+"codemirror-closetag-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closetag.js",
+    "filename": "closetag.js",
+    "type": "js",
+},
+# 代码折叠核心功能
+"codemirror-foldcode-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldcode.js",
+    "filename": "foldcode.js",
+    "type": "js",
+},
+# 代码折叠侧边栏交互
+"codemirror-foldgutter-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.js",
+    "filename": "foldgutter.js",
+    "type": "js",
+},
+# 大括号代码块折叠
+"codemirror-brace-fold-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/brace-fold.js",
+    "filename": "brace-fold.js",
+    "type": "js",
+},
+# XML/HTML 标签区域折叠
+"codemirror-xml-fold-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/xml-fold.js",
+    "filename": "xml-fold.js",
+    "type": "js",
+},
+# Markdown 内容区域折叠
+"codemirror-markdown-fold-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/markdown-fold.js",
+    "filename": "markdown-fold.js",
+    "type": "js",
+},
+# 多语言模式叠加支持
+"codemirror-overlay-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/mode/overlay.js",
+    "filename": "overlay.js",
+    "type": "js",
+},
+# 当前光标所在行高亮
+"codemirror-active-line-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/selection/active-line.js",
+    "filename": "active-line.js",
+    "type": "js",
+},
+# 编辑器内文本搜索
+"codemirror-search-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/search.js",
+    "filename": "search.js",
+    "type": "js",
+},
+# 搜索结果光标定位遍历
+"codemirror-searchcursor-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/searchcursor.js",
+    "filename": "searchcursor.js",
+    "type": "js",
+},
+# 选中单词全文高亮
+"codemirror-match-highlighter-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/match-highlighter.js",
+    "filename": "match-highlighter.js",
+    "type": "js",
+},
+# 搜索/替换弹窗功能
+"codemirror-dialog-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.js",
+    "filename": "dialog.js",
+    "type": "js",
+},
+# 编辑器空内容占位提示文字
+"codemirror-placeholder-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/placeholder.js",
+    "filename": "placeholder.js",
+    "type": "js",
+},
+
+# ==============================
+# KaTeX 数学公式渲染
+# 用于快速渲染 LaTeX 数学公式
+# ==============================
+# KaTeX 核心 JS 库
+"katex-js": {
+    "url": "https://cdn.jsdelivr.net/npm/katex/dist/katex.js",
+    "filename": "katex.js",
+    "type": "js",
+},
+# 数学公式渲染样式
+"katex-css": {
+    "url": "https://cdn.jsdelivr.net/npm/katex/dist/katex.css",
+    "filename": "katex.css",
+    "type": "css",
+},
+
+# ==============================
+# 流程图 / 时序图依赖库
+# 用于绘制流程图、时序图等图形
+# ==============================
+# 矢量图形绘图基础库
+"raphael-js": {
+    "url": "https://cdn.jsdelivr.net/npm/raphael/raphael.js",
+    "filename": "raphael.js",
+    "type": "js",
+},
+# 工具函数库，图形解析依赖
+"underscore-js": {
+    "url": "https://cdn.jsdelivr.net/npm/underscore/underscore.js",
+    "filename": "underscore.js",
+    "type": "js",
+},
+# 流程图解析与渲染
+"flowchart-js": {
+    "url": "https://cdn.jsdelivr.net/npm/flowchart.js/release/flowchart.js",
+    "filename": "flowchart.js",
+    "type": "js",
+},
+# jQuery 流程图扩展
+"jquery-flowchart-js": {
+    "url": "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.js",
+    "filename": "jquery.flowchart.js",
+    "type": "js",
+},
+"jquery-flowchart-css": {
+    "url": "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.css",
+    "filename": "jquery.flowchart.css",
+    "type": "js",
+},
+
+
+# 时序图/序列图渲染
+"sequence-diagram-js": {
+    # "url": "https://cdn.jsdelivr.net/npm/js-sequence-diagrams/dist/sequence-diagram.js",  # URL错误
+    "url": "https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.js",
+    "filename": "sequence-diagram.js",
+    "type": "js",
+},
+"sequence-diagram-css": {
+    # "url": "https://cdn.jsdelivr.net/npm/js-sequence-diagrams/dist/sequence-diagram.js",  # URL错误
+    "url": "https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.css",
+    "filename": "sequence-diagram.css",
+    "type": "css",
+},
+
+# ==============================
+# Markdown 解析与代码高亮
+# 解析 Markdown 并对代码着色
+# ==============================
+# Markdown 转 HTML 解析器
+"marked-js": {
+    "url": "https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.min.js",
+    "filename": "marked.js",
+    "type": "js",
+},
+# Google 代码高亮库
+"prettify-js": {
+    "url": "https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js",
+    "filename": "run_prettify.js",
+    "type": "js",
+}
+
+
+
+
+
 
     }
 
