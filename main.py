@@ -81,7 +81,7 @@ heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
 shutil = _try_import_builtin("shutil")
 codecs = _try_import_builtin("codecs")
-tempfile = _try_import_builtin("tempfile")
+mimetypes = _try_import_builtin("mimetypes")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -1454,23 +1454,32 @@ class CustomLogHandler(logging.FileHandler):
 
 def archive_old_logs():
     """
-    归档旧的日志文件。
+    归档旧的日志文件和随机背景缓存。
     """
 
     if not os.path.exists(archive_dir):
         os.makedirs(archive_dir, exist_ok=True)
         print(f"[日志归档] 创建归档目录: {archive_dir}")
 
-    log_files_to_archive = []
+    files_to_archive = []
     for filename in os.listdir(log_dir):
         if filename == "zx-slm-tool.log" or (
             filename.startswith("zx-slm-tool-") and filename.endswith(".log")
         ):
             log_path = os.path.join(log_dir, filename)
             if os.path.isfile(log_path) and os.path.getsize(log_path) > 0:
-                log_files_to_archive.append((log_path, filename))
+                files_to_archive.append((log_path, filename))
 
-    if not log_files_to_archive:
+    background_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), RANDOM_BACKGROUND_IMAGE_DIR)
+    if os.path.isdir(background_dir):
+        for filename in os.listdir(background_dir):
+            file_path = os.path.join(background_dir, filename)
+            if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
+                files_to_archive.append(
+                    (file_path, f"{RANDOM_BACKGROUND_IMAGE_DIR}/{filename}")
+                )
+
+    if not files_to_archive:
         print(f"[日志归档] 没有需要归档的日志文件")
         return
 
@@ -1480,13 +1489,13 @@ def archive_old_logs():
 
     try:
         with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-            for log_path, filename in log_files_to_archive:
-                zipf.write(log_path, filename)
-                print(f"[日志归档] 已压缩: {filename}")
+            for file_path, archive_name in files_to_archive:
+                zipf.write(file_path, archive_name)
+                print(f"[日志归档] 已压缩: {archive_name}")
 
-        for log_path, filename in log_files_to_archive:
-            os.remove(log_path)
-            print(f"[日志归档] 已删除原文件: {filename}")
+        for file_path, archive_name in files_to_archive:
+            os.remove(file_path)
+            print(f"[日志归档] 已删除原文件: {archive_name}")
 
         print(f"[日志归档] 归档完成: {archive_path}")
 
@@ -1568,7 +1577,7 @@ def setup_logging():
     配置详细的日志系统（带自定义轮转逻辑）。
     """
     log_rotation_size_mb = 10
-    archive_max_size_mb = 1024*10    # 10GB
+    archive_max_size_mb = 5120
     global log_dir, archive_dir
     log_dir = "logs"
     archive_dir = os.path.join(log_dir, "archive")
@@ -1582,7 +1591,7 @@ def setup_logging():
                     "Logging", "log_rotation_size_mb", fallback=10
                 )
                 archive_max_size_mb = config.getint(
-                    "Logging", "archive_max_size_mb", fallback=500
+                    "Logging", "archive_max_size_mb", fallback=5120
                 )
                 log_dir = config.get("Logging", "log_dir", fallback="logs")
                 archive_dir = config.get(
@@ -1843,6 +1852,8 @@ PERMISSIONS_FILE = "permissions.json"
 AUTO_ATTENDANCE_CONFIG_FILE = os.path.join(
     "configs", "auto_attendance_config.json")
 THEME_DIR = "theme"
+RANDOM_BACKGROUND_IMAGE_DIR = "random_background_image"
+RANDOM_BACKGROUND_INDEX_FILE = os.path.join(RANDOM_BACKGROUND_IMAGE_DIR, "index.json")
 THEME_METADATA_FIELDS = {"id", "label", "description", "placeholder"}
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
@@ -2963,7 +2974,8 @@ def _get_default_config():
 
     config["Logging"] = {
         "log_rotation_size_mb": "10",
-        "archive_max_size_mb": "500",
+        "archive_max_size_mb": "5120",
+        "random_background_cache_max_size_mb": "1024",
         "log_dir": "logs",
         "archive_dir": "logs/archive",
     }
@@ -3390,7 +3402,12 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 归档目录最大大小（MB）\n")
         f.write("# 超过此大小时会删除最早的归档文件，设置为0表示不限制\n")
         f.write(
-            f"archive_max_size_mb = {config_obj.get('Logging', 'archive_max_size_mb', fallback='500')}\n"
+            f"archive_max_size_mb = {config_obj.get('Logging', 'archive_max_size_mb', fallback='5120')}\n"
+        )
+        f.write("# 主题随机背景缓存目录最大大小（MB）\n")
+        f.write("# 超过此大小时会删除 random_background_image 中最早的缓存文件，设置为0表示不限制\n")
+        f.write(
+            f"random_background_cache_max_size_mb = {config_obj.get('Logging', 'random_background_cache_max_size_mb', fallback='1024')}\n"
         )
         f.write("# 日志文件存储目录\n")
         f.write(
@@ -6341,7 +6358,261 @@ class AuthSystem:
             logging.warning(f"读取主题定义失败 {theme_path}: {e}")
             return {}
 
-    def get_theme_config(self, style_id):
+    def _build_theme_background_image_url(self, relative_path):
+        return _build_theme_background_image_url(relative_path)
+
+    def _get_random_background_cache_limit_bytes(self):
+        try:
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            limit_mb = config.getint(
+                "Logging", "random_background_cache_max_size_mb", fallback=1024
+            )
+            if limit_mb <= 0:
+                return 0
+            return limit_mb * 1024 * 1024
+        except Exception as e:
+            logging.warning(f"[主题背景] 读取背景缓存上限失败，使用默认值 1024MB: {e}")
+            return 1024 * 1024 * 1024
+
+    def _get_cached_random_background_image_urls(self, cache_dir, image_type, limit=5):
+        try:
+            _cleanup_random_background_index(cache_dir)
+            candidates = []
+            prefix = f"{image_type}_"
+            for file_name in os.listdir(cache_dir):
+                file_path = os.path.join(cache_dir, file_name)
+                if file_name == "index.json":
+                    continue
+                if not os.path.isfile(file_path) or not file_name.startswith(prefix):
+                    continue
+                entry, normalized_name = _get_random_background_index_entry(cache_dir, file_name)
+                if not normalized_name or (entry and entry.get("expired")):
+                    continue
+                try:
+                    stat = os.stat(file_path)
+                except OSError:
+                    continue
+                created_at = entry.get("created_at") if isinstance(entry, dict) else None
+                sort_key = stat.st_mtime
+                if created_at:
+                    try:
+                        sort_key = datetime.datetime.fromisoformat(str(created_at)).timestamp()
+                    except (TypeError, ValueError):
+                        sort_key = stat.st_mtime
+                candidates.append((float(sort_key), normalized_name))
+
+            if not candidates:
+                return []
+
+            candidates.sort(key=lambda item: item[0])
+            urls = []
+            selected_candidates = candidates if int(limit or 0) <= 0 else candidates[:max(int(limit or 0), 1)]
+            for _, file_name in selected_candidates:
+                urls.append(
+                    self._build_theme_background_image_url(
+                        f"{RANDOM_BACKGROUND_IMAGE_DIR}/{file_name}"
+                    )
+                )
+            return urls
+        except Exception as e:
+            logging.warning(f"[主题背景] 读取 {image_type} 背景缓存失败: {e}")
+            return []
+
+    def _get_cached_random_background_image_url(self, cache_dir, image_type, random_pick=False):
+        cached_urls = self._get_cached_random_background_image_urls(cache_dir, image_type, limit=0)
+        if not cached_urls:
+            return ""
+        if random_pick and len(cached_urls) > 1:
+            with _BACKGROUND_SELECTION_LOCK:
+                previous_url = _BACKGROUND_SELECTION_STATE.get(image_type)
+                available_urls = [url for url in cached_urls if url != previous_url]
+                selected_url = random.choice(available_urls or cached_urls)
+                _BACKGROUND_SELECTION_STATE[image_type] = selected_url
+                return selected_url
+        return cached_urls[0]
+
+    def _peek_cached_random_background_image_url(self, cache_dir, image_type):
+        return self._get_cached_random_background_image_url(cache_dir, image_type, random_pick=True)
+
+    def _consume_cached_random_background_image_url(self, cache_dir, image_type):
+        selected_url = self._get_cached_random_background_image_url(cache_dir, image_type, random_pick=True)
+        if selected_url:
+            _mark_random_background_file_expired(cache_dir, selected_url, expired=True)
+        return selected_url
+
+    def _consume_default_theme_background_images(self, targets=None):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(cache_dir, exist_ok=True)
+
+        normalized_targets = []
+        for target in (targets or ["pc", "mobile"]):
+            if target == "mobile":
+                normalized_targets.append(("mobile", "mb"))
+            elif target == "pc":
+                normalized_targets.append(("pc", "pc"))
+
+        if not normalized_targets:
+            normalized_targets = [("pc", "pc"), ("mobile", "mb")]
+
+        background_image_urls = {}
+        refresh_image_types = []
+        for key, image_type in normalized_targets:
+            background_image_urls[key] = self._consume_cached_random_background_image_url(cache_dir, image_type)
+            refresh_image_types.append(image_type)
+
+        self._refresh_default_theme_background_cache_async(refresh_image_types)
+        return background_image_urls
+
+    def _peek_default_theme_background_images(self, targets=None):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(cache_dir, exist_ok=True)
+
+        normalized_targets = []
+        for target in (targets or ["pc", "mobile"]):
+            if target == "mobile":
+                normalized_targets.append(("mobile", "mb"))
+            elif target == "pc":
+                normalized_targets.append(("pc", "pc"))
+
+        if not normalized_targets:
+            normalized_targets = [("pc", "pc"), ("mobile", "mb")]
+
+        background_image_urls = {}
+        for key, image_type in normalized_targets:
+            background_image_urls[key] = self._peek_cached_random_background_image_url(cache_dir, image_type)
+
+        return background_image_urls
+
+    def _cleanup_random_background_cache(self, cache_dir, max_cache_size_bytes=None):
+        _cleanup_random_background_cache(cache_dir, max_cache_size_bytes)
+
+    def _fetch_random_background_image(self, cache_dir, api_key, image_type):
+        return _fetch_random_background_image(cache_dir, api_key, image_type)
+
+    def _ensure_background_cache_count(self, cache_dir, api_key, image_type, target_count=5):
+        logging.info(f"[主题背景] 确保 {image_type} 背景缓存数量至少为 {target_count} 张...")
+        target_count = max(int(target_count or 0), 0)
+        if target_count == 0:
+            logging.info(f"[主题背景] 目标缓存数量为 0，跳过 {image_type} 背景缓存检查")
+            return
+
+        cached_urls = self._get_cached_random_background_image_urls(
+            cache_dir, image_type, limit=target_count
+        )
+        missing_count = target_count - len(cached_urls)
+        logging.info(f"[主题背景] {image_type} 背景缓存缺失 {missing_count} 张")
+        for _ in range(missing_count):
+            try:
+                logging.info(f"[主题背景] 正在拉取新的 {image_type} 随机背景图以补足缓存...")
+                self._fetch_random_background_image(cache_dir, api_key, image_type)
+            except Exception as e:
+                logging.warning(f"[主题背景] 补足 {image_type} 背景缓存失败: {e}")
+                break
+            logging.info(f"[主题背景] 已完成一次 {image_type} 背景图拉取尝试以补足缓存")
+        logging.info(f"[主题背景] 已完成 {image_type} 背景缓存检查，当前缓存数量: {len(self._get_cached_random_background_image_urls(cache_dir, image_type))} 张")
+
+    def _ensure_default_theme_background_cache(self):
+        logging.info("[主题背景] 正在预下载默认主题背景缓存...")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(cache_dir, exist_ok=True)
+
+        config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+        api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
+        if not api_key:
+            logging.info("[主题背景] 未配置 UapiPro API Key，跳过预下载缓存")
+            return
+
+        for image_type in ("pc", "mb"):
+            self._ensure_background_cache_count(cache_dir, api_key, image_type, target_count=BACKGROUND_CACHE_TARGET_COUNT)
+
+    def _refresh_default_theme_background_cache_async(self, image_types=None):
+        global _THEME_BACKGROUND_REFRESH_IN_PROGRESS
+        with _THEME_BACKGROUND_REFRESH_LOCK:
+            if _THEME_BACKGROUND_REFRESH_IN_PROGRESS:
+                return
+            _THEME_BACKGROUND_REFRESH_IN_PROGRESS = True
+
+        normalized_image_types = []
+        for image_type in (image_types or ["pc", "mb"]):
+            normalized_type = str(image_type or "").strip().lower()
+            if normalized_type in ("pc", "mb") and normalized_type not in normalized_image_types:
+                normalized_image_types.append(normalized_type)
+        if not normalized_image_types:
+            normalized_image_types = ["pc", "mb"]
+
+        def _worker():
+            global _THEME_BACKGROUND_REFRESH_IN_PROGRESS
+            try:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+                os.makedirs(cache_dir, exist_ok=True)
+
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+                api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
+                if not api_key:
+                    return
+
+                for image_type in normalized_image_types:
+                    self._ensure_background_cache_count(
+                        cache_dir,
+                        api_key,
+                        image_type,
+                        target_count=BACKGROUND_CACHE_TARGET_COUNT,
+                    )
+            except Exception as e:
+                logging.warning(f"[主题背景] 异步刷新背景缓存失败: {e}")
+            finally:
+                with _THEME_BACKGROUND_REFRESH_LOCK:
+                    _THEME_BACKGROUND_REFRESH_IN_PROGRESS = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _resolve_default_theme_background_images(self, targets=None):
+        return self._peek_default_theme_background_images(targets)
+
+    def _inject_default_theme_background_image(self, merged_config, style_id, targets=None):
+        normalized_style = str(style_id or "default").strip() or "default"
+        if normalized_style != "default":
+            return merged_config
+
+        config = dict(merged_config) if isinstance(merged_config, dict) else {}
+        env = config.get("global_environment_variables")
+        if not isinstance(env, dict):
+            env = {}
+            config["global_environment_variables"] = env
+
+        background_image_urls = self._resolve_default_theme_background_images(targets)
+        pc_background_image_url = background_image_urls.get("pc", "")
+        mobile_background_image_url = background_image_urls.get("mobile", "")
+        if not pc_background_image_url and not mobile_background_image_url:
+            return config
+
+        if pc_background_image_url:
+            env["auth_login_container_background"] = (
+                "linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10)), "
+                f'url("{pc_background_image_url}") center / cover no-repeat fixed'
+            )
+
+        if mobile_background_image_url:
+            env["mobile_auth_login_content_background"] = (
+                "linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)), "
+                f'url("{mobile_background_image_url}") center / cover no-repeat'
+            )
+        else:
+            env.setdefault("mobile_auth_login_content_background", "")
+
+        env.setdefault("mobile_auth_login_card_background", "rgba(255,255,255,0.58)")
+
+        env.setdefault("auth_login_panel_background", "rgba(255,255,255,0.52)")
+        env.setdefault("auth_login_panel_shadow", "0 20px 60px rgba(15,23,42,0.12)")
+        env.setdefault("auth_login_panel_border", "rgba(255,255,255,0.24)")
+        env.setdefault("mobile_auth_login_card_shadow", "0 18px 48px rgba(15,23,42,0.12)")
+        return config
+
+    def get_theme_config(self, style_id, targets=None):
         """读取主题配置，默认先加载 default 再叠加目标主题"""
         default_config = self._read_theme_definition("default")
         normalized_style = str(style_id or "default").strip() or "default"
@@ -6371,6 +6642,9 @@ class AuthSystem:
         if not isinstance(global_environment_variables, dict):
             global_environment_variables = {}
         merged_config["global_environment_variables"] = global_environment_variables
+        merged_config = self._inject_default_theme_background_image(
+            merged_config, normalized_style, targets
+        )
 
         return merged_config
 
@@ -7150,44 +7424,53 @@ class AuthSystem:
         """列出所有用户"""
         users = []
         for filename in os.listdir(SYSTEM_ACCOUNTS_DIR):
-            if filename.endswith(".json"):
-                user_file = os.path.join(SYSTEM_ACCOUNTS_DIR, filename)
-                try:
-                    with open(user_file, "r", encoding="utf-8") as f:
-                        user_data = json.load(f)
+            if filename == "_index.json" or not filename.endswith(".json"):
+                continue
 
-                    last_ip = user_data.get("last_login_ip", None)
-                    last_city = None
-                    if last_ip:
-                        try:
-                            last_city = get_ip_location(last_ip)
-                        except Exception as ip_e:
-                            logging.warning(f"查询IP归属地失败 {last_ip}: {ip_e}")
-                            last_city = "查询失败"
+            user_file = os.path.join(SYSTEM_ACCOUNTS_DIR, filename)
+            try:
+                with open(user_file, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
 
-                    users.append(
-                        {
-                            "auth_username": user_data["auth_username"],
-                            "nickname": user_data.get("nickname", ""),
-                            "phone": user_data.get("phone", ""),
-                            "group": user_data.get("group", "user"),
-                            "created_at": user_data.get("created_at"),
-                            "last_login": user_data.get("last_login"),
-                            "last_login_ip": last_ip,
-                            "last_login_city": last_city,
-                            "2fa_enabled": user_data.get("2fa_enabled", False),
-                            "banned": user_data.get("banned", False),
-                            "max_sessions": user_data.get("max_sessions", 1),
-                            # 添加可用执行次数字段：从用户数据中获取 available_runs，默认值为0
-                            # -1 表示无限次数，0表示无剩余次数，正数表示剩余次数
-                            "available_runs": user_data.get("available_runs", 0),
-                        }
+                auth_username = user_data.get("auth_username")
+                if not auth_username:
+                    logging.warning(
+                        f"[用户管理] 跳过缺少 auth_username 的用户文件: {user_file}"
                     )
-                except Exception as e:
-                    logging.error(
-                        f"[用户管理] 读取用户文件失败 --> 文件名: {filename}, 文件路径: {user_file}, 错误类型: {type(e).__name__}, 错误详情: {e}, 可能原因: 文件损坏、JSON格式错误或权限不足",
-                        exc_info=True,
-                    )
+                    continue
+
+                last_ip = user_data.get("last_login_ip", None)
+                last_city = None
+                if last_ip:
+                    try:
+                        last_city = get_ip_location(last_ip)
+                    except Exception as ip_e:
+                        logging.warning(f"查询IP归属地失败 {last_ip}: {ip_e}")
+                        last_city = "查询失败"
+
+                users.append(
+                    {
+                        "auth_username": auth_username,
+                        "nickname": user_data.get("nickname", ""),
+                        "phone": user_data.get("phone", ""),
+                        "group": user_data.get("group", "user"),
+                        "created_at": user_data.get("created_at"),
+                        "last_login": user_data.get("last_login"),
+                        "last_login_ip": last_ip,
+                        "last_login_city": last_city,
+                        "2fa_enabled": user_data.get("2fa_enabled", False),
+                        "banned": user_data.get("banned", False),
+                        "max_sessions": user_data.get("max_sessions", 1),
+                        # 添加可用执行次数字段：从用户数据中获取 available_runs，默认值为0
+                        # -1 表示无限次数，0表示无剩余次数，正数表示剩余次数
+                        "available_runs": user_data.get("available_runs", 0),
+                    }
+                )
+            except Exception as e:
+                logging.error(
+                    f"[用户管理] 读取用户文件失败 --> 文件名: {filename}, 文件路径: {user_file}, 错误类型: {type(e).__name__}, 错误详情: {e}, 可能原因: 文件损坏、JSON格式错误或权限不足",
+                    exc_info=True,
+                )
         return users
 
     def get_all_groups(self):
@@ -8235,6 +8518,215 @@ class AccountSession:
         self.api_bridge.log(f"[{self.username}] {message}")
 
 
+def _load_random_background_index(cache_dir):
+    index_path = os.path.join(cache_dir, "index.json")
+    default_index = {"files": {}, "feedback": {}}
+    try:
+        if not os.path.exists(index_path):
+            return default_index
+        with open(index_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return default_index
+        files = data.get("files") if isinstance(data.get("files"), dict) else {}
+        feedback = data.get("feedback") if isinstance(data.get("feedback"), dict) else {}
+        return {"files": files, "feedback": feedback}
+    except Exception as e:
+        logging.warning(f"[主题背景] 读取背景索引失败 {index_path}: {e}")
+        return default_index
+
+
+def _save_random_background_index(cache_dir, index_data):
+    index_path = os.path.join(cache_dir, "index.json")
+    safe_index = {
+        "files": index_data.get("files", {}) if isinstance(index_data, dict) else {},
+        "feedback": index_data.get("feedback", {}) if isinstance(index_data, dict) else {},
+    }
+    temp_index_path = f"{index_path}.tmp"
+    try:
+        with open(temp_index_path, "w", encoding="utf-8") as f:
+            json.dump(safe_index, f, indent=2, ensure_ascii=False)
+        os.replace(temp_index_path, index_path)
+    except Exception as e:
+        try:
+            if os.path.exists(temp_index_path):
+                os.remove(temp_index_path)
+        except OSError:
+            pass
+        logging.warning(f"[主题背景] 保存背景索引失败 {index_path}: {e}")
+
+
+def _parse_random_background_file_name(file_name):
+    normalized_name = str(file_name or "").strip()
+    if not normalized_name or normalized_name == "index.json":
+        return "", ""
+    prefix, _, _ = normalized_name.partition("_")
+    image_type = prefix if prefix in ("pc", "mb") else ""
+    return normalized_name, image_type
+
+
+def _get_random_background_index_entry(cache_dir, file_name):
+    normalized_name, image_type = _parse_random_background_file_name(file_name)
+    if not normalized_name:
+        return None, ""
+    index_data = _load_random_background_index(cache_dir)
+    files = index_data.setdefault("files", {})
+    entry = files.get(normalized_name) if isinstance(files.get(normalized_name), dict) else None
+    changed = False
+    if not isinstance(entry, dict):
+        entry = {"expired": False}
+        changed = True
+    if "image_type" not in entry and image_type:
+        entry["image_type"] = image_type
+        changed = True
+    if "expired" not in entry:
+        entry["expired"] = False
+        changed = True
+    if changed:
+        files[normalized_name] = entry
+        _save_random_background_index(cache_dir, index_data)
+    return entry, normalized_name
+
+
+def _mark_random_background_file_state(cache_dir, file_name, **fields):
+    normalized_name, image_type = _parse_random_background_file_name(file_name)
+    if not normalized_name:
+        return
+    index_data = _load_random_background_index(cache_dir)
+    files = index_data.setdefault("files", {})
+    entry = files.get(normalized_name) if isinstance(files.get(normalized_name), dict) else {}
+    entry.update(fields)
+    entry.setdefault("expired", False)
+    entry.setdefault("image_type", image_type)
+    files[normalized_name] = entry
+    _save_random_background_index(cache_dir, index_data)
+
+
+def _mark_random_background_file_expired(cache_dir, image_url, expired=True):
+    normalized_url = str(image_url or "").strip()
+    prefix = f"/theme-assets/{RANDOM_BACKGROUND_IMAGE_DIR}/"
+    if not normalized_url.startswith(prefix):
+        return
+    file_name = normalized_url[len(prefix):]
+    _mark_random_background_file_state(
+        cache_dir,
+        file_name,
+        expired=bool(expired),
+        expired_at=datetime.datetime.now().isoformat(timespec="seconds") if expired else None,
+        last_used_at=datetime.datetime.now().isoformat(timespec="seconds"),
+    )
+
+
+def _reset_random_background_file_expired(cache_dir, image_url):
+    normalized_url = str(image_url or "").strip()
+    prefix = f"/theme-assets/{RANDOM_BACKGROUND_IMAGE_DIR}/"
+    if not normalized_url.startswith(prefix):
+        return
+    file_name = normalized_url[len(prefix):]
+    _mark_random_background_file_state(
+        cache_dir,
+        file_name,
+        expired=False,
+        expired_at=None,
+    )
+
+
+def _extract_background_image_url_from_value(background_value):
+    normalized_value = str(background_value or "")
+    match = re.search(r'url\(["\']?(/theme-assets/[^"\')]+)["\']?\)', normalized_value, re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
+def _cleanup_random_background_index(cache_dir):
+    index_data = _load_random_background_index(cache_dir)
+    files = index_data.get("files", {}) if isinstance(index_data, dict) else {}
+    if not files:
+        return
+    existing_files = {
+        file_name
+        for file_name in os.listdir(cache_dir)
+        if os.path.isfile(os.path.join(cache_dir, file_name)) and file_name != "index.json"
+    }
+    cleaned_files = {
+        file_name: entry
+        for file_name, entry in files.items()
+        if file_name in existing_files
+    }
+    if cleaned_files != files:
+        index_data["files"] = cleaned_files
+        _save_random_background_index(cache_dir, index_data)
+
+
+def _allow_random_background_feedback(cache_dir, client_ip, target):
+    normalized_ip = str(client_ip or "-").strip() or "-"
+    normalized_target = "mobile" if str(target or "").strip().lower() == "mobile" else "pc"
+    feedback_key = f"{normalized_ip}:{normalized_target}"
+    index_data = _load_random_background_index(cache_dir)
+    feedback = index_data.setdefault("feedback", {})
+    now = time.time()
+    last_feedback_at = float(feedback.get(feedback_key) or 0)
+    if now - last_feedback_at < 5:
+        return False
+    feedback[feedback_key] = now
+    stale_keys = [key for key, value in feedback.items() if now - float(value or 0) > 3600]
+    for key in stale_keys:
+        feedback.pop(key, None)
+    _save_random_background_index(cache_dir, index_data)
+    return True
+
+
+def _cleanup_random_background_cache(cache_dir, max_cache_size_bytes=None):
+    _cleanup_random_background_index(cache_dir)
+    if max_cache_size_bytes is None:
+        try:
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            limit_mb = config.getint(
+                "Logging", "random_background_cache_max_size_mb", fallback=1024
+            )
+            max_cache_size_bytes = 0 if limit_mb <= 0 else limit_mb * 1024 * 1024
+        except Exception as e:
+            logging.warning(f"[主题背景] 读取背景缓存上限失败，使用默认值 1024MB: {e}")
+            max_cache_size_bytes = 1024 * 1024 * 1024
+    if max_cache_size_bytes == 0:
+        return
+
+    try:
+        cache_files = []
+        total_size = 0
+        for file_name in os.listdir(cache_dir):
+            file_path = os.path.join(cache_dir, file_name)
+            if file_name == "index.json":
+                continue
+            if not os.path.isfile(file_path):
+                continue
+
+            try:
+                stat = os.stat(file_path)
+            except OSError as e:
+                logging.warning(f"[主题背景] 读取缓存文件信息失败 {file_path}: {e}")
+                continue
+
+            total_size += stat.st_size
+            cache_files.append((file_path, stat.st_mtime, stat.st_size))
+
+        if total_size <= max_cache_size_bytes:
+            return
+
+        cache_files.sort(key=lambda item: item[1])
+        for file_path, _, file_size in cache_files:
+            if total_size <= max_cache_size_bytes:
+                break
+
+            try:
+                os.remove(file_path)
+                total_size -= file_size
+                logging.info(f"[主题背景] 缓存目录超过上限，已删除最早缓存文件: {file_path}")
+            except OSError as e:
+                logging.warning(f"[主题背景] 删除旧缓存文件失败 {file_path}: {e}")
+    except Exception as e:
+        logging.warning(f"[主题背景] 清理背景缓存目录失败: {e}")
+
+
 class ApiClient:
     """处理与后端服务器网络请求的类"""
 
@@ -8750,10 +9242,151 @@ class ApiClient:
         )
 
 
+BACKGROUND_CACHE_TARGET_COUNT = 5
+_BACKGROUND_SELECTION_STATE = {}
+_BACKGROUND_SELECTION_LOCK = threading.Lock()
+_THEME_BACKGROUND_REFRESH_LOCK = threading.Lock()
+_THEME_BACKGROUND_REFRESH_IN_PROGRESS = False
+_THEME_BACKGROUND_WARMUP_LOCK = threading.Lock()
+_THEME_BACKGROUND_WARMUP_IN_PROGRESS = False
+
+
 # ==============================================================================
 # 3. 后端主逻辑 (Backend API Bridge)
 #    作为Python后端和WebView前端之间的桥梁，处理所有业务逻辑。
 # ==============================================================================
+
+
+def _ensure_random_background_cache_count(cache_dir, api_key, image_type, target_count=5):
+    logging.info(f"[主题背景] 确保 {image_type} 背景缓存数量至少为 {target_count} 张...")
+    target_count = max(int(target_count or 0), 0)
+    if target_count == 0:
+        logging.info(f"[主题背景] 目标缓存数量为 0，跳过 {image_type} 背景缓存检查")
+        return
+
+    available_count = len(
+        [
+            file_name
+            for file_name in os.listdir(cache_dir)
+            if os.path.isfile(os.path.join(cache_dir, file_name))
+            and file_name != "index.json"
+            and file_name.startswith(f"{image_type}_")
+        ]
+    )
+    missing_count = max(target_count - available_count, 0)
+    logging.info(f"[主题背景] {image_type} 背景缓存缺失 {missing_count} 张")
+    if missing_count == 0:
+        return
+
+    temp_api = Api(args)
+    for _ in range(missing_count):
+        try:
+            logging.info(f"[主题背景] 正在拉取新的 {image_type} 随机背景图以补足缓存...")
+            _fetch_random_background_image(cache_dir, api_key, image_type)
+        except Exception as e:
+            logging.warning(f"[主题背景] 补足 {image_type} 背景缓存失败: {e}")
+            break
+        logging.info(f"[主题背景] 已完成一次 {image_type} 背景图拉取尝试以补足缓存")
+
+
+def _start_default_theme_background_cache_warmup():
+    global _THEME_BACKGROUND_WARMUP_IN_PROGRESS
+    with _THEME_BACKGROUND_WARMUP_LOCK:
+        if _THEME_BACKGROUND_WARMUP_IN_PROGRESS:
+            logging.info("[主题背景] 启动预热线程已在执行，跳过重复启动")
+            return
+        _THEME_BACKGROUND_WARMUP_IN_PROGRESS = True
+
+    logging.info("[主题背景] 启动时预下载背景缓存线程正在启动...")
+
+    def _worker():
+        global _THEME_BACKGROUND_WARMUP_IN_PROGRESS
+        try:
+            logging.info("[主题背景] 启动时预下载背景缓存线程已启动")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
+            if not api_key:
+                logging.info("[主题背景] 未配置 UapiPro API Key，跳过启动预下载缓存")
+                return
+
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+            os.makedirs(cache_dir, exist_ok=True)
+
+            index_data = _load_random_background_index(cache_dir)
+            _save_random_background_index(cache_dir, index_data)
+
+            for image_type in ("pc", "mb"):
+                _ensure_random_background_cache_count(
+                    cache_dir,
+                    api_key,
+                    image_type,
+                    target_count=BACKGROUND_CACHE_TARGET_COUNT,
+                )
+
+            try:
+                _cleanup_random_background_cache(cache_dir)
+            except Exception as cleanup_error:
+                logging.warning(f"[主题背景] 启动预热后清理缓存失败: {cleanup_error}")
+        except Exception as e:
+            logging.warning(f"[主题背景] 启动时预下载背景缓存失败: {e}", exc_info=True)
+        finally:
+            with _THEME_BACKGROUND_WARMUP_LOCK:
+                _THEME_BACKGROUND_WARMUP_IN_PROGRESS = False
+
+    threading.Thread(target=_worker, name="ThemeBackgroundWarmup", daemon=True).start()
+
+
+def _fetch_random_background_image(cache_dir, api_key, image_type):
+    url = f"https://uapis.cn/api/v1/random/image?category=acg&type={image_type}"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                extension = mimetypes.guess_extension(content_type) or ".jpg"
+                if extension == ".jpe":
+                    extension = ".jpg"
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")[:-3]
+                file_name = f"{image_type}_{timestamp}{extension}"
+                file_path = os.path.join(cache_dir, file_name)
+                with open(file_path, "wb") as f:
+                    f.write(response.content)
+
+                _mark_random_background_file_state(
+                    cache_dir,
+                    file_name,
+                    image_type=image_type,
+                    expired=False,
+                    created_at=datetime.datetime.now().isoformat(timespec="seconds"),
+                    last_used_at=None,
+                    expired_at=None,
+                )
+                _cleanup_random_background_cache(cache_dir)
+                return _build_theme_background_image_url(
+                    f"{RANDOM_BACKGROUND_IMAGE_DIR}/{file_name}"
+                )
+
+            if response.status_code == 404:
+                logging.warning(f"[主题背景] 未找到类型为 {image_type} 的随机背景图")
+                return ""
+
+            logging.warning(
+                f"[主题背景] 拉取 {image_type} 随机背景图失败，状态码: {response.status_code}，第 {attempt} 次尝试"
+            )
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"[主题背景] 拉取 {image_type} 随机背景图异常，第 {attempt} 次尝试: {e}")
+
+    return ""
+
+
+def _build_theme_background_image_url(relative_path):
+    normalized_path = str(relative_path or "").replace("\\", "/").strip("/")
+    if not normalized_path:
+        return ""
+    return f"/theme-assets/{normalized_path}"
 
 
 class Api:
@@ -13294,13 +13927,85 @@ class Api:
                 return {"success": False, "message": str(e)}
         return {"success": False, "message": "Unknown parameter"}
 
-    def get_theme_styles(self):
+    def get_theme_styles(self, background_target=None):
         """获取主题样式列表和当前主题配置"""
         current_theme_style = getattr(self, "global_params", {}).get("theme_style", "default")
+        target_list = []
+        if background_target == "mobile":
+            target_list = ["mobile"]
+        elif background_target == "pc":
+            target_list = ["pc"]
         return {
             "success": True,
             "theme_styles": auth_system.get_available_theme_styles(),
-            "theme_config": auth_system.get_theme_config(current_theme_style),
+            "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
+        }
+
+    def get_public_theme_styles(self, style_id="default", background_target=None):
+        """获取公开主题样式列表和指定主题配置（无需登录）"""
+        current_theme_style = str(style_id or "default").strip() or "default"
+        target_list = []
+        if background_target == "mobile":
+            target_list = ["mobile"]
+        elif background_target == "pc":
+            target_list = ["pc"]
+        return {
+            "success": True,
+            "theme_styles": auth_system.get_available_theme_styles(),
+            "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
+        }
+
+    def get_theme_styles(self, background_target=None):
+        """获取主题样式列表和当前主题配置"""
+        current_theme_style = getattr(self, "global_params", {}).get("theme_style", "default")
+        target_list = []
+        if background_target == "mobile":
+            target_list = ["mobile"]
+        elif background_target == "pc":
+            target_list = ["pc"]
+        return {
+            "success": True,
+            "theme_styles": auth_system.get_available_theme_styles(),
+            "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
+        }
+
+    def get_public_theme_styles(self, style_id="default", background_target=None):
+        """获取公开主题样式列表和指定主题配置（无需登录）"""
+        current_theme_style = str(style_id or "default").strip() or "default"
+        target_list = []
+        if background_target == "mobile":
+            target_list = ["mobile"]
+        elif background_target == "pc":
+            target_list = ["pc"]
+        return {
+            "success": True,
+            "theme_styles": auth_system.get_available_theme_styles(),
+            "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
+        }
+
+    def mark_theme_background_consumed(self, target="pc", image_url=""):
+        normalized_target = "mobile" if str(target or "").strip().lower() == "mobile" else "pc"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(cache_dir, exist_ok=True)
+        if image_url:
+            _mark_random_background_file_expired(cache_dir, image_url, expired=True)
+        next_theme_config = auth_system.get_theme_config("default", [normalized_target])
+        next_env = (
+            next_theme_config.get("global_environment_variables")
+            if isinstance(next_theme_config, dict)
+            else {}
+        )
+        next_image_url = (
+            str(next_env.get("mobile_auth_login_content_background") or "")
+            if normalized_target == "mobile"
+            else str(next_env.get("auth_login_container_background") or "")
+        )
+        if image_url and image_url == _extract_background_image_url_from_value(next_image_url):
+            _reset_random_background_file_expired(cache_dir, image_url)
+        return {
+            "success": True,
+            "theme_config": next_theme_config,
         }
 
     def get_params(self):
@@ -29067,7 +29772,15 @@ def start_web_server(args_param):
                         "Logging",
                         "archive_max_size_mb",
                         fallback=default_config.get(
-                            "Logging", "archive_max_size_mb", fallback=500
+                            "Logging", "archive_max_size_mb", fallback=5120
+                        ),
+                    ),
+                    "random_background_cache_max_size_mb": _get_config_value(
+                        config,
+                        "Logging",
+                        "random_background_cache_max_size_mb",
+                        fallback=default_config.get(
+                            "Logging", "random_background_cache_max_size_mb", fallback=1024
                         ),
                     ),
                     "log_dir": _get_config_value(
@@ -29376,6 +30089,7 @@ def start_web_server(args_param):
                 for key in [
                     "log_rotation_size_mb",
                     "archive_max_size_mb",
+                    "random_background_cache_max_size_mb",
                     "log_dir",
                     "archive_dir",
                 ]:
@@ -29741,6 +30455,47 @@ def start_web_server(args_param):
                 exc_info=True,
             )
             return jsonify({"success": False, "message": str(e)}), 500
+
+    # ====================
+    # 公开API：主题信息
+    # ====================
+
+    @app.route("/api/public/theme_styles", methods=["GET"])
+    def get_public_theme_styles():
+        """获取公开主题信息（无需登录，不更新任何用户状态）"""
+        try:
+            requested_style = request.args.get("style_id", "default")
+            requested_style = str(requested_style or "default").strip() or "default"
+            requested_target = str(request.args.get("background_target") or "").strip().lower()
+            if requested_target not in ("pc", "mobile"):
+                requested_target = None
+            public_api_instance = Api(args)
+            return jsonify(public_api_instance.get_public_theme_styles(requested_style, requested_target))
+        except Exception as e:
+            logging.error(f"获取公开主题信息失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "获取主题信息失败"}), 500
+
+    @app.route("/api/public/theme_background/consume", methods=["POST"])
+    def consume_public_theme_background():
+        """公开接口：按前端当前视图消耗对应背景缓存"""
+        try:
+            data = request.get_json() or {}
+            target = str(data.get("target") or "pc").strip().lower()
+            image_url = str(data.get("image_url") or "").strip()
+            if target not in ("pc", "mobile"):
+                target = "pc"
+            client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "-")
+            client_ip = str(client_ip).split(",")[0].strip() or "-"
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+            os.makedirs(cache_dir, exist_ok=True)
+            if not _allow_random_background_feedback(cache_dir, client_ip, target):
+                return jsonify({"success": True, "skipped": True})
+            public_api_instance = Api(args)
+            return jsonify(public_api_instance.mark_theme_background_consumed(target, image_url))
+        except Exception as e:
+            logging.error(f"公开消耗主题背景失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "消耗主题背景失败"}), 500
 
     # ====================
     # 公开API：备案信息配置
@@ -32665,6 +33420,23 @@ def start_web_server(args_param):
             return send_from_directory(style_dir, filename)
         except Exception as e:
             logging.error(f"Serving style error: {e}")
+            return jsonify({"success": False, "message": "File not found"}), 404
+
+    @app.route("/theme-assets/<path:filename>")
+    def serve_theme_assets(filename):
+        logging.info(f"请求主题资源文件: {filename}")
+        if '/' in filename:
+            logging.warning(f"主题资源文件路径不合法，包含目录分隔符: {filename}")
+            filename = os.path.basename(filename)  # 只保留文件名部分，防止目录穿越攻击
+            logging.info(f"修正后的主题资源文件名: {filename}")
+        try:
+            base_dir = os.path.dirname(__file__)
+            assets_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+            if not os.path.exists(assets_dir):
+                return jsonify({"success": False, "message": "File not found"}), 404
+            return send_from_directory(assets_dir, filename)
+        except Exception as e:
+            logging.error(f"Serving theme asset error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
 
     # ========== 新增路由：Twemoji, Github_emojis, editor.md 静态资源 ==========
@@ -46952,6 +47724,7 @@ def main():
         traceback.print_exc()
     _load_ip_cache()
     _migrate_ip_location_config_if_needed()
+    # _start_default_theme_background_cache_warmup() # 启动太早了，等核心模块加载后再启动
     # ========== 第3步：导入所有依赖库 ==========
     import_standard_libraries()
     import_core_third_party()
@@ -47076,6 +47849,8 @@ def main():
                 args.port = found_port
         else:
             logging.info(f"默认端口 {DEFAULT_PORT} 可用。")
+            
+    _start_default_theme_background_cache_warmup()
     # ========== 第9步：启动Web服务器 ==========
     logging.info("启动Web服务器模式（使用服务器端Chrome渲染）...")
     start_web_server(args)
