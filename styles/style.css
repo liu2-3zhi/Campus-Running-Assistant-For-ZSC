@@ -16,45 +16,6 @@ body {
   box-shadow: 0 10px 24px rgba(16, 24, 40, 0.12);
 }
 
-body.theme-anime {
-  background-image: url("https://api.paugram.com/wallpaper");
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
-}
-
-body.theme-anime .panel {
-  background-color: rgba(255, 255, 255, 0.65);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  backdrop-filter: blur(20px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
-}
-
-body.theme-minimalist {
-  background: #f8f9fa;
-}
-
-body.theme-minimalist .panel {
-  background-color: #ffffff;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  border: 1px solid #e9ecef;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border-radius: 12px;
-}
-
-body.dark-mode {
-  background: linear-gradient(
-    180deg,
-    rgba(17, 24, 39, 1) 0%,
-    rgba(31, 41, 55, 1) 40%,
-    rgba(55, 48, 68, 1) 100%
-  );
-  background-attachment: fixed;
-  color: #e5e7eb;
-}
-
 body.dark-mode .panel {
   background-color: rgba(31, 41, 55, 0.8);
   -webkit-backdrop-filter: blur(16px);
@@ -267,22 +228,6 @@ body.dark-mode .neumorphic-modal .modal-content button {
   box-shadow:
     6px 6px 12px rgba(0, 0, 0, 0.6),
     -6px -6px 12px rgba(74, 85, 104, 0.4);
-}
-
-body.dark-mode.theme-anime {
-  background-image:
-    linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)),
-    url("https://api.paugram.com/wallpaper");
-}
-
-body.dark-mode.theme-minimalist {
-  background: #1a202c;
-}
-
-body.dark-mode.theme-minimalist .panel {
-  background-color: #2d3748;
-  border: 1px solid #4a5568;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
 #multi-config-user-select {
