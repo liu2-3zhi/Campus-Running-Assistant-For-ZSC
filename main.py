@@ -18403,6 +18403,10 @@ ip_location_cache = {}
 ip_cache_lock = threading.Lock()
 CACHE_DURATION_SECONDS = 86400
 
+PHONE_CACHE_FILE = os.path.join("logs", "phone_location_cache.json")
+phone_location_cache = {}
+phone_cache_lock = threading.Lock()
+
 
 def _load_ip_cache():
     """启动时加载IP归属地缓存文件"""
@@ -18446,6 +18450,28 @@ def _save_ip_cache():
             logging.error(f"[IP缓存] 保存缓存文件失败: {e}")
         except Exception as e:
             logging.error(f"[IP缓存] 序列化缓存数据失败: {e}")
+
+
+def _load_phone_cache():
+    global phone_location_cache
+    if not os.path.exists(PHONE_CACHE_FILE):
+        return
+    with phone_cache_lock:
+        try:
+            with open(PHONE_CACHE_FILE, "r", encoding="utf-8") as f:
+                phone_location_cache = json.load(f)
+        except Exception:
+            phone_location_cache = {}
+
+
+def _save_phone_cache():
+    with phone_cache_lock:
+        try:
+            os.makedirs(os.path.dirname(PHONE_CACHE_FILE), exist_ok=True)
+            with open(PHONE_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(phone_location_cache.copy(), f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logging.error(f"[手机缓存] 保存失败: {e}")
 
 
 def _migrate_ip_location_config_if_needed():
@@ -30843,6 +30869,43 @@ def start_web_server(args_param):
                 exc_info=True,
             )
             return jsonify({"success": False, "message": str(e)}), 500
+
+    @app.route("/api/phone_info", methods=["GET"])
+    @login_required
+    def api_phone_info():
+        """查询手机号归属地（省份、城市、运营商）"""
+        phone = str(request.args.get("phone") or "").strip()
+        if not phone:
+            return jsonify({"success": False, "message": "缺少手机号参数"}), 400
+        try:
+            with phone_cache_lock:
+                cached = phone_location_cache.get(phone)
+            if cached:
+                return jsonify({"success": True, **cached})
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
+            if not api_key:
+                return jsonify({"success": False, "message": "未配置 API Key"}), 503
+            resp = requests.get(
+                f"https://uapis.cn/api/v1/misc/phoneinfo?phone={phone}",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=8,
+            )
+            data = resp.json() if resp.headers.get("Content-Type", "").startswith("application/json") else {}
+            if resp.status_code == 200:
+                result = {
+                    "province": data.get("province", ""),
+                    "city": data.get("city", ""),
+                    "sp": data.get("sp", ""),
+                }
+                with phone_cache_lock:
+                    phone_location_cache[phone] = result
+                _save_phone_cache()
+                return jsonify({"success": True, **result})
+            return jsonify({"success": False, "message": data.get("message", "查询失败")}), resp.status_code
+        except Exception as e:
+            logging.warning(f"[手机归属地] 查询失败: {e}")
+            return jsonify({"success": False, "message": "查询失败"}), 500
 
     # ====================
     # 公开API：主题信息
@@ -48111,6 +48174,7 @@ def main():
         print(f"[错误] 日志系统初始化失败: {e}")
         traceback.print_exc()
     _load_ip_cache()
+    _load_phone_cache()
     _migrate_ip_location_config_if_needed()
     # _start_default_theme_background_cache_warmup() # 启动太早了，等核心模块加载后再启动
     # ========== 第3步：导入所有依赖库 ==========
