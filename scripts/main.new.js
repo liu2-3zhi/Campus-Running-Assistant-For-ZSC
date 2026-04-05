@@ -22458,6 +22458,7 @@ async function loadPersonalInfo() {
     const phoneInput = $("profile-phone");
     if (nicknameInput) nicknameInput.value = user.nickname || "";
     if (phoneInput) phoneInput.value = user.phone || "未绑定";
+    _showPhoneLocationNearInput(phoneInput, user.phone);
 
     const phoneWrapper = phoneInput
       ? phoneInput.closest(".phone-input-wrapper")
@@ -24677,7 +24678,7 @@ function _rerenderAdminUsersList() {
             <div class="flex-1">
               <p class="font-semibold text-slate-800">${user.auth_username}${bannedBadge}</p>
               <p class="text-xs text-slate-500">昵称: ${user.nickname || "未设置"}</p>
-              <p class="text-xs text-slate-500">手机号: ${user.phone || "未绑定"}</p>
+              <p class="text-xs text-slate-500">手机号: ${user.phone || "未绑定"}<span class="phone-location-badge" data-phone="${user.phone || ""}"></span></p>
               <p class="text-xs text-slate-500">创建时间: ${createdDate}</p>
               <p class="text-xs text-slate-500">最后登录: ${lastLoginDate}</p>
               <p class="text-xs text-slate-500">登录IP: ${user.last_login_ip || "无记录"} (${user.last_login_city || "未知"})</p>
@@ -24734,7 +24735,15 @@ function _rerenderAdminUsersList() {
     .join("");
 
   const listEl = $("admin-users-list_modal");
-  if (listEl) listEl.innerHTML = listHtml;
+  if (listEl) {
+    listEl.innerHTML = listHtml;
+    listEl.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+      const phone = span.dataset.phone;
+      if (!phone) return;
+      const info = await fetchPhoneInfo(phone);
+      span.innerHTML = _phoneInfoBadge(info);
+    });
+  }
 
   // 重新同步到移动端并重新绑定移动端按钮事件处理器
   if (typeof copyAdminContentToMultiPanel === "function") {
@@ -24743,6 +24752,50 @@ function _rerenderAdminUsersList() {
 
   // 重新加载用户头像
   sorted.forEach((user) => loadUserAvatar(user.auth_username));
+}
+
+// 手机号归属地查询缓存
+const _phoneInfoCache = {};
+async function fetchPhoneInfo(phone) {
+  if (!phone || phone === "未绑定") return null;
+  const key = String(phone).replace(/\D/g, "");
+  if (!key) return null;
+  if (_phoneInfoCache[key] !== undefined) return _phoneInfoCache[key];
+  try {
+    const resp = await fetch(`/api/phone_info?phone=${encodeURIComponent(key)}`, {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const data = await resp.json();
+    const result = data.success ? { province: data.province || "", city: data.city || "", sp: data.sp || "" } : null;
+    _phoneInfoCache[key] = result;
+    return result;
+  } catch {
+    _phoneInfoCache[key] = null;
+    return null;
+  }
+}
+function _phoneInfoBadge(info) {
+  if (!info) return "";
+  const parts = [info.province, info.city, info.sp].filter(Boolean);
+  if (!parts.length) return "";
+  return ` <span class="text-[11px] text-slate-400">(${parts.join(" ")})</span>`;
+}
+// 在 phone input 旁边显示归属地（找或创建 .phone-location-tag span）
+async function _showPhoneLocationNearInput(inputEl, phone) {
+  if (!inputEl) return;
+  let tag = inputEl.parentElement && inputEl.parentElement.querySelector(".phone-location-tag");
+  if (!tag) {
+    tag = document.createElement("span");
+    tag.className = "phone-location-tag text-[11px] text-slate-400 ml-1";
+    inputEl.insertAdjacentElement("afterend", tag);
+  }
+  tag.textContent = "";
+  if (!phone || phone === "未绑定") return;
+  const info = await fetchPhoneInfo(phone);
+  if (info) {
+    const parts = [info.province, info.city, info.sp].filter(Boolean);
+    if (parts.length) tag.textContent = `(${parts.join(" ")})`;
+  }
 }
 
 async function loadAdminUsers() {
@@ -27223,6 +27276,7 @@ function modifyUserPhone(username, currentPhone) {
   $("admin-modify-phone-new").value = "";
   $("admin-modify-phone-code").value = "";
   $("admin-modify-phone-modal").classList.remove("hidden");
+  _showPhoneLocationNearInput($("admin-modify-phone-current"), currentPhone);
 
   const adminCurrentPhoneInput = $("admin-modify-phone-current");
   const adminCurrentPhoneWrapper = adminCurrentPhoneInput
@@ -29371,7 +29425,7 @@ async function loadSMSHistory() {
                   <span class="text-xs text-slate-500">📱 手机号</span>
                   <p class="font-semibold text-slate-700">+86 ${
                     record.phone || "N/A"
-                  }</p>
+                  }<span class="phone-location-badge text-[11px] text-slate-400 ml-1" data-phone="${record.phone || ""}"></span></p>
                 </div>
                 <div>
                   <span class="text-xs text-slate-500">👤 用户名</span>
@@ -29412,6 +29466,10 @@ async function loadSMSHistory() {
           `,
         )
         .join("");
+      listContainer.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+        const info = await fetchPhoneInfo(span.dataset.phone);
+        if (info) { const p = [info.province, info.city, info.sp].filter(Boolean); if (p.length) span.textContent = `(${p.join(" ")})`; }
+      });
     } else {
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10">暂无记录</p>';
@@ -29978,7 +30036,7 @@ async function loadVerificationCodes() {
                     <span class="text-xs text-slate-500">📱 手机号</span>
                     <p class="font-semibold text-slate-700">+86 ${
                       item.phone
-                    }</p>
+                    }<span class="phone-location-badge text-[11px] text-slate-400 ml-1" data-phone="${item.phone || ""}"></span></p>
                   </div>
                   <div>
                     <span class="text-xs text-slate-500">🔢 验证码</span>
@@ -30007,6 +30065,10 @@ async function loadVerificationCodes() {
           `;
         })
         .join("");
+      listContainer.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+        const info = await fetchPhoneInfo(span.dataset.phone);
+        if (info) { const p = [info.province, info.city, info.sp].filter(Boolean); if (p.length) span.textContent = `(${p.join(" ")})`; }
+      });
     } else {
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10">当前没有有效的验证码</p>';
@@ -43046,6 +43108,39 @@ document.addEventListener("DOMContentLoaded", function () {
       loadCaptcha("register");
     }, 100);
   }
+
+  // 手机号归属地：注册/登录输入框实时显示
+  ["auth-reg-phone", "mobile-reg-phone", "auth-username"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let _debounce = null;
+    el.addEventListener("input", function () {
+      clearTimeout(_debounce);
+      _debounce = setTimeout(() => _showPhoneLocationNearInput(el, el.value.trim()), 500);
+    });
+  });
+  // mobile-username-container 内动态创建的 mobile-auth-username（手机登录）
+  const mobileUsernameContainer = document.getElementById("mobile-username-container");
+  if (mobileUsernameContainer) {
+    let _mobileDebounce = null;
+    mobileUsernameContainer.addEventListener("input", function (e) {
+      if (e.target && e.target.id === "mobile-auth-username") {
+        clearTimeout(_mobileDebounce);
+        _mobileDebounce = setTimeout(() => _showPhoneLocationNearInput(e.target, e.target.value.trim()), 500);
+      }
+    });
+  }
+  // auth-username-container 内动态创建的 auth-username（手机登录）
+  const authUsernameContainer = document.getElementById("auth-username-container");
+  if (authUsernameContainer) {
+    let _authDebounce = null;
+    authUsernameContainer.addEventListener("input", function (e) {
+      if (e.target && e.target.id === "auth-username") {
+        clearTimeout(_authDebounce);
+        _authDebounce = setTimeout(() => _showPhoneLocationNearInput(e.target, e.target.value.trim()), 500);
+      }
+    });
+  }
 });
 function modifyPhone() {
   const currentPhone = document.getElementById("profile-phone").value;
@@ -43054,6 +43149,7 @@ function modifyPhone() {
   document.getElementById("modify-phone-code").value = "";
   document.getElementById("modify-phone-modal").style.display = "flex";
   document.getElementById("modify-phone-password").value = "";
+  _showPhoneLocationNearInput(document.getElementById("modify-phone-current"), currentPhone);
   document.body.classList.add("modal-visible");
 
   const currentPhoneInput = document.getElementById("modify-phone-current");
@@ -43464,16 +43560,16 @@ async function loadSystemConfig() {
     html += createInput(
       "IP_Location",
       "amap_web_api_key",
-      "高德 Web API Key（IP定位）",
+      "高德 Web API Key",
       "text",
-      "用于调用 https://restapi.amap.com/v3/ip",
+      "用于调用高德地图的 Web API 进行 IP 归属地查询等",
     );
     html += createInput(
       "IP_Location",
       "uapipro_api_key",
       "UapiPro API Key",
       "text",
-      "用于调用 https://uapis.cn/api/v1/network/ipinfo（Bearer Token）",
+      "用于调用 UapiPro 的 API 进行 IP 归属地查询、手机号归属地查询、随机图片等",
     );
     // html +=
     //   '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">第三方 API 配置</h5>';
@@ -50036,6 +50132,7 @@ async function loadMobileUnifiedProfile() {
       );
       if (phoneInput) {
         phoneInput.value = data.phone || "未绑定";
+        _showPhoneLocationNearInput(phoneInput, data.phone);
         // 处理手机号显示
         const phoneWrapper = phoneInput.closest(".phone-input-wrapper");
         if (phoneWrapper) {
@@ -50400,6 +50497,7 @@ function showMobileUnifiedModifyPhoneModal() {
   );
   if (currentPhoneModal && currentPhone) {
     currentPhoneModal.value = currentPhone.value || "";
+    _showPhoneLocationNearInput(currentPhoneModal, currentPhone.value);
     // 处理手机号显示
     const phoneWrapper = currentPhoneModal.closest(".phone-input-wrapper");
     if (phoneWrapper) {
@@ -51672,6 +51770,7 @@ function showMobileAdminModifyPhone(username, currentPhone) {
   document.getElementById("mobile-admin-phone-username").textContent = username;
   document.getElementById("mobile-admin-phone-current").value =
     currentPhone || "未绑定";
+  _showPhoneLocationNearInput(document.getElementById("mobile-admin-phone-current"), currentPhone);
   document.getElementById("mobile-admin-phone-new").value = "";
   document.getElementById("mobile-admin-phone-code").value = "";
 
@@ -61878,7 +61977,7 @@ async function loadRemovedAccountsList() {
           </div>
           <div class="px-4 py-3">
             <div class="grid grid-cols-2 xl:grid-cols-4 gap-2 text-[11px] mb-3">
-              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">手机号</div><div class="text-slate-700 mt-0.5 break-all">${phoneText}</div></div>
+              <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">手机号</div><div class="text-slate-700 mt-0.5 break-all">${phoneText}<span class="phone-location-badge text-[11px] text-slate-400 ml-1" data-phone="${_escapeAttr(entry?.phone || "")}"></span></div></div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">创建时间</div><div class="text-slate-700 mt-0.5 break-all">${createdAtText}</div></div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">最后登录</div><div class="text-slate-700 mt-0.5 break-all">${lastLoginText}</div></div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2"><div class="text-slate-500">登录IP</div><div class="text-slate-700 mt-0.5 break-all">${loginIpText} (${loginCityText})</div></div>
@@ -61897,6 +61996,10 @@ async function loadRemovedAccountsList() {
     });
     html += "</div>";
     container.innerHTML = html;
+    container.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+      const info = await fetchPhoneInfo(span.dataset.phone);
+      if (info) { const p = [info.province, info.city, info.sp].filter(Boolean); if (p.length) span.textContent = `(${p.join(" ")})`; }
+    });
   } catch (e) {
     container.innerHTML =
       '<p class="text-slate-700 text-red-500">加载异常: ' + e.message + "</p>";
@@ -62280,6 +62383,7 @@ async function showRemovedAccountDetail(authUsername) {
           </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-3">
+          <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">绑定手机</div><div class="text-slate-700 break-all">${_escapeAttr(detail.phone || "未绑定")}</div></div>
           <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">登录 IP</div><div class="text-slate-700 break-all">${_escapeAttr(detail.last_login_ip || "-")}</div></div>
           <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">最后登录时间</div><div class="text-slate-700 break-all">${_escapeAttr(_formatUnixOrIsoTime(detail.last_login))}</div></div>
           <div class="bg-white border border-slate-200 rounded-lg px-2.5 py-2"><div class="text-slate-500 mb-0.5">注册时间</div><div class="text-slate-700 break-all">${_escapeAttr(_formatUnixOrIsoTime(detail.register_time))}</div></div>
