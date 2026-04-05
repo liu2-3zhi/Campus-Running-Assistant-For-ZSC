@@ -9,7 +9,7 @@
 
 <body>
 
-  <link rel="stylesheet" href="/editor.md/css/editormd.css" />
+  <link rel="stylesheet" href="../editor.md/css/editormd.css" />
   <div id="editor" style="min-height: 500px;">
     
   </div>
@@ -48,7 +48,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/code-prettify@0.1.0/src/prettify.min.js"></script>
   
-  <script src="/editor.md/editormd.js"></script>
+  <script src="../editor.md/editormd.js"></script>
   <script type="text/javascript">
     $(function () {
       var editor = editormd("editor", {
@@ -81,9 +81,9 @@
         // 编辑器高度（支持百分比如"100%"或像素值如"600px"）
         height: "100%",
         // 依赖模块文件目录（Editor.md 所需的文件路径，通常使用 CDN 地址）
-        path: "/editor.md/lib/",
+        path: "../editor.md/lib/",
         // 插件路径，如果为空，默认使用 settings.path + "../plugins/"（插件存放目录）
-        pluginPath: "/editor.md/plugins/",
+        pluginPath: "../editor.md/plugins/",
         // 延迟解析 markdown 到 html，单位：毫秒（避免频繁解析，提升性能，默认300ms）
         delay: 300,
         // 自动加载依赖模块文件（推荐保持 true，确保所有功能正常工作）
